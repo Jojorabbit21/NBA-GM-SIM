@@ -264,6 +264,9 @@ export const useSimulation = (
         setIsSimulating(true);
 
         try {
+            const _t0 = performance.now();
+            const _perf: Record<string, number> = {};
+
             // Apply trade settings from simSettings
             if (simSettings) applyTradeSimSettings(simSettings);
 
@@ -280,12 +283,17 @@ export const useSimulation = (
                 playoffSeries.filter(s => s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)).map(s => s.id)
             );
 
+            _perf['1_findGame+snapshots'] = performance.now() - _t0;
+
             // 2. Prepare mutable clones for the pipeline
+            let _t1 = performance.now();
             let newTeams: Team[] = JSON.parse(JSON.stringify(teams));
             let newSchedule: Game[] = JSON.parse(JSON.stringify(schedule));
             let newPlayoffSeries: PlayoffSeries[] = JSON.parse(JSON.stringify(playoffSeries));
+            _perf['2_deepClone'] = performance.now() - _t1;
 
             // 2.5. 부상 복귀 체크
+            _t1 = performance.now();
             const recoveredPlayers = processInjuryRecovery(newTeams, currentSimDate, myTeamId);
             if (recoveredPlayers.length > 0 && !isGuestMode && session?.user?.id) {
                 for (const rec of recoveredPlayers) {
@@ -304,12 +312,16 @@ export const useSimulation = (
                 }
                 refreshUnreadCount();
             }
+            _perf['3_injuryRecovery'] = performance.now() - _t1;
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
+            _t1 = performance.now();
             const excludeGameId = userGame?.id || spectateGameId;
             const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings, coachingData);
+            _perf['4_cpuGames(' + cpuData.gameResultsToSave.length + '+' + cpuData.playoffResultsToSave.length + ')'] = performance.now() - _t1;
 
             // [Fix] Save CPU Game Results to DB
+            _t1 = performance.now();
             if (!isGuestMode) {
                 if (cpuData.gameResultsToSave.length > 0) {
                     // Batch insert regular season games
@@ -320,12 +332,15 @@ export const useSimulation = (
                     await Promise.all(cpuData.playoffResultsToSave.map(res => savePlayoffGameResult(res as any)));
                 }
             }
+            _perf['5_saveCpuResults'] = performance.now() - _t1;
 
             // 4. Handle User Game
             if (userGame) {
                 // Run Simulation (Pure Logic)
+                _t1 = performance.now();
                 const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed, simSettings, coachingData);
-                
+                _perf['6_userSimulation'] = performance.now() - _t1;
+
                 setTempSimulationResult(result);
 
                 // [UX Fix] Do NOT set activeGame if skipping animation to prevent flickering to Sim View.
@@ -338,15 +353,22 @@ export const useSimulation = (
                     if (isFinalizingRef.current) return;
                     isFinalizingRef.current = true;
                     try {
+                    const _ft0 = performance.now();
+                    const _fPerf: Record<string, number> = {};
+
                     // Apply Results (Mutates newTeams/Schedule/Playoffs)
+                    let _ft1 = performance.now();
                     await applyUserGameResult(
                         result, userGame, newTeams, newSchedule, newPlayoffSeries,
                         currentSimDate, session?.user?.id, myTeamId, userTactics, isGuestMode, refreshUnreadCount,
                         tendencySeed, simSettings,
                     );
+                    _fPerf['1_applyUserGameResult'] = performance.now() - _ft1;
 
                     // 5. Handle Season Events (Playoffs, Trades) - Post Game
+                    _ft1 = performance.now();
                     const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+                    _fPerf['2_seasonEvents'] = performance.now() - _ft1;
 
                     if (seasonEvents.updatedPlayoffSeries) {
                         newPlayoffSeries = seasonEvents.updatedPlayoffSeries;
@@ -364,12 +386,15 @@ export const useSimulation = (
                     }
 
                     // 시즌/플레이오프 리뷰 메시지 자동 발송
+                    _ft1 = performance.now();
                     await sendReviewMessages(
                         prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
                         newPlayoffSeries, newTeams, currentSimDate, transactions
                     );
+                    _fPerf['3_reviewMessages'] = performance.now() - _ft1;
 
                     // 월간 스카우트 보고서 (월 경계 감지)
+                    _ft1 = performance.now();
                     if (!isGuestMode && session?.user?.id) {
                         const nd = new Date(currentSimDate);
                         nd.setDate(nd.getDate() + 1);
@@ -378,6 +403,7 @@ export const useSimulation = (
                             await maybeSendScoutReport(newTeams, myTeamId, session.user.id, currentSimDate, refreshUnreadCount);
                         }
                     }
+                    _fPerf['4_scoutReport'] = performance.now() - _ft1;
 
                     // Commit State Updates
                     setTeams(newTeams);
@@ -407,10 +433,16 @@ export const useSimulation = (
                     });
 
                     setActiveGame(null);
+
+                    _fPerf['TOTAL'] = performance.now() - _ft0;
+                    console.log(`[PERF] finalizeSim (${currentSimDate})`, Object.entries(_fPerf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
                     } finally {
                         isFinalizingRef.current = false;
                     }
                 };
+
+                _perf['TOTAL_preFinalize'] = performance.now() - _t0;
+                console.log(`[PERF] handleExecuteSim:GAME (${currentSimDate})`, Object.entries(_perf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
 
                 if (skipAnimation) {
                     await finalizeSimRef.current();
@@ -421,6 +453,7 @@ export const useSimulation = (
                 // No User Game - Advance Day Only
 
                 // 비경기일 체력 회복 + 훈련 중 부상 체크
+                _t1 = performance.now();
                 const injuriesOn = simSettings?.injuriesEnabled ?? false;
                 const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
                 const trainingInjuries = applyRestDayRecovery(newTeams, injFreq);
@@ -456,9 +489,12 @@ export const useSimulation = (
                         );
                     }
                 }
+                _perf['6_restDayRecovery'] = performance.now() - _t1;
 
                 // Handle Season Events
+                _t1 = performance.now();
                 const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+                _perf['7_seasonEvents'] = performance.now() - _t1;
 
                 if (seasonEvents.updatedPlayoffSeries) {
                     newPlayoffSeries = seasonEvents.updatedPlayoffSeries;
@@ -475,10 +511,12 @@ export const useSimulation = (
                 }
 
                 // 시즌/플레이오프 리뷰 메시지 자동 발송
+                _t1 = performance.now();
                 await sendReviewMessages(
                     prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
                     newPlayoffSeries, newTeams, currentSimDate, transactions
                 );
+                _perf['8_reviewMessages'] = performance.now() - _t1;
 
                 // Commit Updates
                 setTeams(newTeams);
@@ -491,13 +529,16 @@ export const useSimulation = (
                 const nextDate = d.toISOString().split('T')[0];
 
                 // 월간 스카우트 보고서 (월 경계 감지)
+                _t1 = performance.now();
                 if (!isGuestMode && session?.user?.id) {
                     if (new Date(currentSimDate).getMonth() !== new Date(nextDate).getMonth()) {
                         await maybeSendScoutReport(newTeams, myTeamId, session.user.id, currentSimDate, refreshUnreadCount);
                     }
                 }
+                _perf['9_scoutReport'] = performance.now() - _t1;
 
                 // 리그 일정에서 참관 요청 시 — 날짜 진행 보류, LiveGameView에서 경기 진행
+                _t1 = performance.now();
                 if (spectateGameId) {
                     const spectateGame = newSchedule.find(g => g.id === spectateGameId);
                     if (spectateGame) {
@@ -514,6 +555,10 @@ export const useSimulation = (
                         await forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
                     }
                 }
+                _perf['10_advanceDate+forceSave'] = performance.now() - _t1;
+
+                _perf['TOTAL'] = performance.now() - _t0;
+                console.log(`[PERF] handleExecuteSim:REST (${currentSimDate})`, Object.entries(_perf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
 
                 setIsSimulating(false);
             }
