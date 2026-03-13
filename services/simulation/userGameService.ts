@@ -7,7 +7,7 @@ import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore }
 import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
-import { sendMessage } from '../messageService';
+import { sendMessage, bulkSendMessages } from '../messageService';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 
@@ -224,13 +224,16 @@ export const applyUserGameResult = async (
             }
         }
 
-        await sendMessage(
-            userId,
-            myTeamId,
-            currentSimDate,
-            'GAME_RECAP',
-            `[경기 결과] vs ${isHome ? awayTeam.name : homeTeam.name}`,
-            {
+        // 메시지 배치 수집 후 한번에 전송
+        const messageBatch: { user_id: string; team_id: string; date: string; type: any; title: string; content: any }[] = [];
+
+        messageBatch.push({
+            user_id: userId,
+            team_id: myTeamId,
+            date: currentSimDate,
+            type: 'GAME_RECAP',
+            title: `[경기 결과] vs ${isHome ? awayTeam.name : homeTeam.name}`,
+            content: {
                 gameId: userGame.id,
                 homeTeamId: homeTeam.id,
                 awayTeamId: awayTeam.id,
@@ -239,17 +242,18 @@ export const applyUserGameResult = async (
                 userBoxScore: isHome ? result.homeBox : result.awayBox,
                 recap: recapNews,
                 playoffInfo,
-            }
-        );
+            },
+        });
 
         // 유저 팀 선수 부상 보고서 발송
         if (result.injuries && result.injuries.length > 0) {
             const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);
             for (const inj of myInjuries) {
                 const returnDateStr = computeReturnDate(currentSimDate, inj.durationDesc);
-                await sendMessage(userId, myTeamId, currentSimDate, 'INJURY_REPORT',
-                    `[부상 보고] ${inj.playerName} — ${inj.injuryType}`,
-                    {
+                messageBatch.push({
+                    user_id: userId, team_id: myTeamId, date: currentSimDate, type: 'INJURY_REPORT',
+                    title: `[부상 보고] ${inj.playerName} — ${inj.injuryType}`,
+                    content: {
                         playerId: inj.playerId,
                         playerName: inj.playerName,
                         injuryType: inj.injuryType,
@@ -257,8 +261,8 @@ export const applyUserGameResult = async (
                         duration: inj.durationDesc,
                         returnDate: returnDateStr,
                         isRecovery: false,
-                    }
-                );
+                    },
+                });
             }
         }
 
@@ -276,9 +280,10 @@ export const applyUserGameResult = async (
                     const oppTeam = [homeTeam, awayTeam].find(t => t.id === oppTeamId);
                     const returnDate = computeReturnDate(currentSimDate, `${mySusp * 2}일`);
 
-                    await sendMessage(userId, myTeamId, currentSimDate, 'SUSPENSION',
-                        `[출장정지] ${myPlayerName} — ${mySusp}경기 출장정지`,
-                        {
+                    messageBatch.push({
+                        user_id: userId, team_id: myTeamId, date: currentSimDate, type: 'SUSPENSION',
+                        title: `[출장정지] ${myPlayerName} — ${mySusp}경기 출장정지`,
+                        content: {
                             playerId: myPlayerId,
                             playerName: myPlayerName,
                             teamId: myTeamId,
@@ -288,11 +293,13 @@ export const applyUserGameResult = async (
                             opponentTeamName: oppTeam?.name || '',
                             suspensionGames: mySusp,
                             returnDate,
-                        }
-                    );
+                        },
+                    });
                 }
             }
         }
+
+        await bulkSendMessages(messageBatch);
 
         refreshUnreadCount();
     }

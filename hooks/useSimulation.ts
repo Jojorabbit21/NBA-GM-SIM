@@ -116,11 +116,12 @@ export const useSimulation = (
 
             // 날짜 진행
             advanceDate(nextDate, {});
-            if (!isGuestMode) {
-                await forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
-            }
-
             setSpectateTarget(null);
+
+            // 저장은 UI 해제 후 백그라운드 (fire-and-forget)
+            if (!isGuestMode) {
+                forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
+            }
         } catch (e) {
             console.error("Spectate Finalization Error:", e);
             setToastMessage("참관 경기 결과 처리 중 오류가 발생했습니다.");
@@ -551,16 +552,18 @@ export const useSimulation = (
                 } else {
                     // 일반 휴식일: 즉시 날짜 진행
                     advanceDate(nextDate, {});
-                    if (!isGuestMode) {
-                        await forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
-                    }
                 }
-                _perf['10_advanceDate+forceSave'] = performance.now() - _t1;
+                _perf['10_advanceDate'] = performance.now() - _t1;
 
                 _perf['TOTAL'] = performance.now() - _t0;
                 console.log(`[PERF] handleExecuteSim:REST (${currentSimDate})`, Object.entries(_perf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
 
                 setIsSimulating(false);
+
+                // 저장은 UI 해제 후 백그라운드 (fire-and-forget)
+                if (!isGuestMode && !spectateGameId) {
+                    forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
+                }
             }
 
         } catch (e) {
