@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import { MessageListItem, Team, Player } from '../types';
+import { MessageListItem, Team, Player, MessageFilterCategory, MESSAGE_FILTER_MAP, MessageType } from '../types';
 import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { MessageList } from '../components/inbox/MessageList';
 import { MessageContentRenderer } from '../components/inbox/MessageContentRenderer';
@@ -26,6 +26,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [filterCategory, setFilterCategory] = useState<MessageFilterCategory>('ALL');
   const contentCache = useRef<Map<string, any>>(new Map());
 
   const handleSelectMessage = useCallback(async (msg: MessageListItem) => {
@@ -53,9 +54,10 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
+    const typeFilter: MessageType[] | undefined = filterCategory === 'ALL' ? undefined : MESSAGE_FILTER_MAP[filterCategory];
     const [data, count] = await Promise.all([
-      fetchMessageList(userId, myTeamId, page),
-      page === 0 ? fetchTotalMessageCount(userId, myTeamId) : Promise.resolve(totalCount),
+      fetchMessageList(userId, myTeamId, page, 20, typeFilter),
+      page === 0 ? fetchTotalMessageCount(userId, myTeamId, typeFilter) : Promise.resolve(totalCount),
     ]);
 
     if (page === 0) setTotalCount(count);
@@ -68,7 +70,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     }
 
     setLoading(false);
-  }, [userId, myTeamId, page, handleSelectMessage]);
+  }, [userId, myTeamId, page, filterCategory, handleSelectMessage]);
 
   useEffect(() => {
     loadMessages();
@@ -130,6 +132,8 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
               selectedMessageId={selectedMessage?.id ?? null}
               loading={loading}
               totalCount={totalCount}
+              filterCategory={filterCategory}
+              onFilterChange={(cat) => { setFilterCategory(cat); setPage(0); setMessages([]); setSelectedMessage(null); setSelectedContent(null); }}
               onSelectMessage={handleSelectMessage}
               onMarkAllRead={handleMarkAllRead}
               onRefresh={() => { setPage(0); setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
