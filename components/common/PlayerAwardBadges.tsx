@@ -56,29 +56,28 @@ function aggregateAwards(awards: PlayerAwardEntry[]): AggregatedAward[] {
 
 // ── 헤더용 트로피 Pill (주요 4종, tooltip 포함) ──
 
-const HeaderPill: React.FC<{ award: AggregatedAward }> = ({ award }) => {
+const HeaderTrophy: React.FC<{ award: AggregatedAward }> = ({ award }) => {
     const [hovered, setHovered] = useState(false);
     const meta = AWARD_META[award.type];
 
     return (
         <div
-            className="relative inline-flex"
+            className="relative"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg
-                bg-white/5 border border-white/10 cursor-default transition-colors hover:bg-white/10">
-                {meta.img && (
-                    <img src={meta.img} alt={meta.name} className="w-5 h-5 object-contain" />
-                )}
-                {award.count >= 2 && (
-                    <span className={`text-[10px] font-black ${meta.color} opacity-80`}>
-                        ×{award.count}
-                    </span>
-                )}
-            </div>
+            {/* 트로피 이미지 */}
+            {meta.img && (
+                <img src={meta.img} alt={meta.name} className="w-10 h-10 object-contain drop-shadow-lg" />
+            )}
+            {/* 우측 하단 카운트 칩 */}
+            <span className="absolute -bottom-1 -right-1.5 bg-slate-800 border border-slate-600 rounded-full
+                px-1.5 py-0 text-[9px] font-black text-white leading-4 shadow-md">
+                ×{award.count}
+            </span>
+            {/* Tooltip */}
             {hovered && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
                     bg-slate-800 border border-slate-600 rounded-lg px-3 py-2
                     text-xs text-slate-200 whitespace-nowrap shadow-xl pointer-events-none">
                     <div className="font-bold text-white mb-1">{meta.name}{award.count >= 2 ? ` ×${award.count}` : ''}</div>
@@ -99,9 +98,9 @@ export const HeaderAwardTrophies: React.FC<{ awards: PlayerAwardEntry[] }> = ({ 
     if (headerAwards.length === 0) return null;
 
     return (
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-end gap-3 shrink-0">
             {headerAwards.map(a => (
-                <HeaderPill key={a.type} award={a} />
+                <HeaderTrophy key={a.type} award={a} />
             ))}
         </div>
     );
