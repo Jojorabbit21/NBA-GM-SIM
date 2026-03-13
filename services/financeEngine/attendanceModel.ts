@@ -6,7 +6,7 @@ import { Team } from '../../types/team';
  * 관중 모델 — 매 홈 경기 관중 수 / 점유율 계산
  *
  * 기본 점유율 (마켓 티어별, 낮은 베이스):
- *   Tier 1: 60%  |  Tier 2: 50%  |  Tier 3: 40%  |  Tier 4: 30%
+ *   Tier 1: 45%  |  Tier 2: 40%  |  Tier 3: 35%  |  Tier 4: 30%
  *
  * 보정 요소 (대폭 강화):
  *   1. 팀 승률 — 50% 기준 ±30% (승률이 관중의 핵심 요인)
@@ -15,9 +15,9 @@ import { Team } from '../../types/team';
  */
 
 const BASE_OCCUPANCY: Record<number, number> = {
-    1: 0.60,
-    2: 0.50,
-    3: 0.40,
+    1: 0.45,
+    2: 0.40,
+    3: 0.35,
     4: 0.30,
 };
 
