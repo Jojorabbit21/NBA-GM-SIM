@@ -19,7 +19,7 @@ export function populateCoachData(rows: { team_id: string; coach_name: string; p
             name: row.coach_name,
             preferences: prefs,
             contractYears: row.contract_years,
-            contractSalary: row.contract_salary,
+            contractSalary: row.contract_salary < 1000 ? Math.round(row.contract_salary * 1_000_000) : row.contract_salary,
             contractYearsRemaining: row.contract_years_remaining,
         };
     }
@@ -102,7 +102,7 @@ export function generateHeadCoach(teamId: string, tendencySeed: string): HeadCoa
 
     const extremity = Object.values(preferences).reduce((sum, v) => sum + Math.abs(v - 5.5), 0) / 7;
     const contractYears = seededNormalInt(baseSeed + 10, 3, 0.8, 2, 4);
-    const contractSalary = Math.round(5 + extremity * 2);
+    const contractSalary = Math.round((5 + extremity * 2) * 1_000_000);
 
     return {
         id: `coach_${teamId}`,

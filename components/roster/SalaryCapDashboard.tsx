@@ -2,6 +2,7 @@
 import React from 'react';
 import { AlertCircle, Info } from 'lucide-react';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface SalaryCapDashboardProps {
   currentTotalSalary: number;
@@ -79,7 +80,7 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
           <div className="space-y-1">
             <div className="flex items-baseline gap-3">
               <span className={`text-2xl font-black uppercase tracking-tight ${capStatus.color}`}>{capStatus.label}</span>
-              <span className="text-sm font-bold text-slate-500">총 연봉: ${currentTotalSalary.toFixed(1)}M</span>
+              <span className="text-sm font-bold text-slate-500">총 연봉: {formatMoney(currentTotalSalary)}</span>
             </div>
             <p className="text-sm font-medium text-slate-400 max-w-2xl">{capStatus.msg}</p>
           </div>
@@ -88,13 +89,13 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
           <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">CAP SPACE</div>
             <div className={`text-xl font-black ${currentTotalSalary < SALARY_CAP ? 'text-emerald-400' : 'text-slate-600'}`}>
-              {currentTotalSalary < SALARY_CAP ? `$${(SALARY_CAP - currentTotalSalary).toFixed(1)}M` : '-'}
+              {currentTotalSalary < SALARY_CAP ? formatMoney(SALARY_CAP - currentTotalSalary) : '-'}
             </div>
           </div>
           <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">TAX GAP</div>
             <div className={`text-xl font-black ${currentTotalSalary < TAX_LEVEL ? 'text-blue-400' : 'text-red-500'}`}>
-              {currentTotalSalary < TAX_LEVEL ? `$${(TAX_LEVEL - currentTotalSalary).toFixed(1)}M` : `+$${(currentTotalSalary - TAX_LEVEL).toFixed(1)}M`}
+              {currentTotalSalary < TAX_LEVEL ? formatMoney(TAX_LEVEL - currentTotalSalary) : `+${formatMoney(currentTotalSalary - TAX_LEVEL)}`}
             </div>
           </div>
         </div>
@@ -123,16 +124,16 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
         <div className="flex text-[10px] font-black text-slate-500 uppercase tracking-widest relative h-8">
           <div className="absolute" style={{ left: '0%' }}>$0</div>
           <div className="absolute text-center" style={{ left: '20%', transform: 'translateX(-50%)' }}>
-            <div className="text-slate-400 border-x border-slate-800 px-2">CAP: ${SALARY_CAP}M</div>
+            <div className="text-slate-400 border-x border-slate-800 px-2">CAP: {formatMoney(SALARY_CAP)}</div>
           </div>
           <div className="absolute text-center" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-            <div className="text-amber-500 border-x border-slate-800 px-2">TAX: ${TAX_LEVEL}M</div>
+            <div className="text-amber-500 border-x border-slate-800 px-2">TAX: {formatMoney(TAX_LEVEL)}</div>
           </div>
           <div className="absolute text-center" style={{ left: '70%', transform: 'translateX(-50%)' }}>
-            <div className="text-orange-500 border-x border-slate-800 px-2">APR1: ${FIRST_APRON}M</div>
+            <div className="text-orange-500 border-x border-slate-800 px-2">APR1: {formatMoney(FIRST_APRON)}</div>
           </div>
           <div className="absolute text-center" style={{ left: '90%', transform: 'translateX(-50%)' }}>
-            <div className="text-red-500 border-x border-slate-800 px-2">APR2: ${SECOND_APRON}M</div>
+            <div className="text-red-500 border-x border-slate-800 px-2">APR2: {formatMoney(SECOND_APRON)}</div>
           </div>
         </div>
       </div>

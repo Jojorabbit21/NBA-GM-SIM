@@ -672,9 +672,15 @@ export function processOffseason(
         const newAge = player.age + 1;
         player.age = newAge;
 
-        // contractYears -1
-        if (player.contractYears > 0) {
-            player.contractYears -= 1;
+        // 계약 연차 진행
+        if (player.contract) {
+            player.contract.currentYear += 1;
+            if (player.contract.currentYear < player.contract.years.length) {
+                player.salary = player.contract.years[player.contract.currentYear];
+            }
+            player.contractYears = player.contract.years.length - player.contract.currentYear;
+        } else {
+            if (player.contractYears > 0) player.contractYears -= 1;
         }
 
         // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)

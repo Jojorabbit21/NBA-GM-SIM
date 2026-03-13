@@ -6,6 +6,7 @@ import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
 import { checkTradeLegality } from './salaryRules';
+import { formatMoney } from '../../utils/formatMoney';
 
 // ──────────────────────────────────────────────
 // 인접 포지션 매핑 (SG↔SF, PF↔C 등)
@@ -135,7 +136,7 @@ function buildTeamTradeProfile(team: Team): TeamTradeProfile {
         // 나쁜 계약
         if (ovr < CC.LOW_VALUE_DUMP_OVR && p.salary > CC.BAD_CONTRACT_SALARY_FLOOR) {
             willingness += 4;
-            reasons.push(`나쁜 계약 (OVR ${ovr}, $${p.salary}M)`);
+            reasons.push(`나쁜 계약 (OVR ${ovr}, ${formatMoney(p.salary)})`);
         }
 
         // 벤치 끝자리

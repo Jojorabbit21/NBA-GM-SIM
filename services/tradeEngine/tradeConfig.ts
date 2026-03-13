@@ -16,7 +16,7 @@ export const TRADE_CONFIG = {
     },
     CONTRACT: {
         BAD_CONTRACT_OVR: 78,
-        BAD_CONTRACT_SALARY: 15,
+        BAD_CONTRACT_SALARY: 15_000_000,
         BAD_CONTRACT_PENALTY: 0.6,
         EXPIRING_BONUS: 1.05,
         LONG_BAD_PENALTY: 0.85,
@@ -31,10 +31,10 @@ export const TRADE_CONFIG = {
         PACKAGE_WEIGHTS: [1.0, 0.8, 0.2, 0.05, 0.05],
     },
     SALARY: {
-        CAP_LINE: 141,
-        TAX_LINE: 171,
-        APRON_1: 178,
-        APRON_2: 189,
+        CAP_LINE: 141_000_000,
+        TAX_LINE: 171_000_000,
+        APRON_1: 178_000_000,
+        APRON_2: 189_000_000,
     },
     OFFERS: {
         MAX_OFFERS: 5,
@@ -65,7 +65,7 @@ export const TRADE_CONFIG = {
         UNTOUCHABLE_OVR: 97,
         EXCESS_DEPTH_THRESHOLD: 3,
         LOW_VALUE_DUMP_OVR: 72,
-        BAD_CONTRACT_SALARY_FLOOR: 12,
+        BAD_CONTRACT_SALARY_FLOOR: 12_000_000,
 
         // 매칭 후보
         MAX_CANDIDATE_PAIRS: 15,

@@ -103,6 +103,22 @@ export interface PlayerAwardEntry {
     rank?: number;    // MVP 1~10위, DPOY 1~5위 (없으면 수상/선정)
 }
 
+// ── 선수 계약 구조 ──
+export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension' | 'sign-and-trade';
+
+export interface ContractOption {
+    type: 'player' | 'team';
+    year: number;               // 적용 연차 (0-based, 보통 마지막 해)
+}
+
+export interface PlayerContract {
+    years: number[];            // 연차별 연봉 (달러) [30_000_000, 32_000_000, ...]
+    currentYear: number;        // 0-based
+    type: ContractType;
+    noTrade?: boolean;
+    option?: ContractOption;
+}
+
 // [New] Interface for saving player state (Condition + Health + Growth)
 export interface SavedPlayerState {
     condition: number;
@@ -116,6 +132,7 @@ export interface SavedPlayerState {
     seasonStartAttributes?: Record<string, number>; // 시즌 시작 기준 속성값
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
+    contract?: PlayerContract;
 }
 
 export interface Player {
@@ -203,6 +220,7 @@ export interface Player {
     seasonStartAttributes?: Record<string, number>;  // 시즌 시작 시 속성 스냅샷 (delta 표시용)
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
+    contract?: PlayerContract;
 }
 
 export interface RosterUpdate {

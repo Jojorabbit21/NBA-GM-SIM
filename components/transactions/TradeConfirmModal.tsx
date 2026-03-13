@@ -6,6 +6,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr, LEAGUE_FINANCIALS } from '../../utils/constants';
 import { Modal } from '../common/Modal';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { formatMoney } from '../../utils/formatMoney';
 
 const { TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
@@ -84,27 +85,27 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
               return { valid: false, reason: "2차 에이프런 초과 팀은 샐러리 집계(Aggregation) 트레이드가 금지됩니다. (다수 선수를 묶어 1명 영입 불가)" };
           }
           if (userSalaryIn > userSalaryOut) {
-              return { valid: false, reason: `2차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
+              return { valid: false, reason: `2차 에이프런 초과 팀은 나가는 연봉(${formatMoney(userSalaryOut)})보다 더 많은 연봉(${formatMoney(userSalaryIn)})을 받을 수 없습니다.` };
           }
       }
       // 2. First Apron Rules
       else if (currentTotalCap >= FIRST_APRON) {
           if (userSalaryIn > userSalaryOut) {
-              return { valid: false, reason: `1차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
+              return { valid: false, reason: `1차 에이프런 초과 팀은 나가는 연봉(${formatMoney(userSalaryOut)})보다 더 많은 연봉(${formatMoney(userSalaryIn)})을 받을 수 없습니다.` };
           }
       }
       // 3. Taxpayer Rules
       else if (currentTotalCap >= TAX_LEVEL) {
           const limit = userSalaryOut * 1.10; // Simplified
           if (userSalaryIn > limit) {
-              return { valid: false, reason: `사치세 납부 팀은 나가는 연봉의 110%($${limit.toFixed(1)}M)까지만 받을 수 있습니다.` };
+              return { valid: false, reason: `사치세 납부 팀은 나가는 연봉의 110%(${formatMoney(limit)})까지만 받을 수 있습니다.` };
           }
       }
       // 4. Non-Taxpayer Rules
       else {
           const limit = (userSalaryOut * 1.25) + 0.25; // +250k simplified
           if (userSalaryIn > limit) {
-              return { valid: false, reason: `샐러리 매칭 실패: 나가는 연봉의 125%($${limit.toFixed(1)}M)를 초과하여 받을 수 없습니다.` };
+              return { valid: false, reason: `샐러리 매칭 실패: 나가는 연봉의 125%(${formatMoney(limit)})를 초과하여 받을 수 없습니다.` };
           }
       }
 
@@ -165,7 +166,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                     <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
                                 </TableCell>
                                 <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
-                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-red-400">-${p.salary.toFixed(1)}M</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-red-400">-{formatMoney(p.salary)}</TableCell>
                             </TableRow>
                             );
                         })}
@@ -180,7 +181,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                     <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
                                 </TableCell>
                                 <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
-                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-emerald-400">+${p.salary.toFixed(1)}M</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-emerald-400">+{formatMoney(p.salary)}</TableCell>
                             </TableRow>
                             );
                         })}
@@ -189,7 +190,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                         <tr className="bg-slate-900/80 font-black">
                             <td colSpan={5} className="py-4 px-6 text-xs text-slate-400 uppercase tracking-widest">총 자산 변동 합계</td>
                             <td className={`py-4 px-6 text-right font-mono text-base ${salaryDiff >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                                {salaryDiff > 0 ? '+' : ''}{salaryDiff.toFixed(1)}M
+                                {salaryDiff > 0 ? '+' : ''}{formatMoney(salaryDiff)}
                             </td>
                         </tr>
                     </tfoot>
@@ -244,7 +245,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                     </div>
                     <div className="bg-slate-950/60 border border-slate-800 p-5 rounded-3xl flex flex-col justify-center items-center text-center">
                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">최종 샐러리 합계</div>
-                        <div className="text-3xl font-black text-white leading-none">${postTradeTotalCap.toFixed(1)}<span className="text-sm text-slate-500 ml-0.5">M</span></div>
+                        <div className="text-3xl font-black text-white leading-none">{formatMoney(postTradeTotalCap)}</div>
                     </div>
                 </div>
             </div>

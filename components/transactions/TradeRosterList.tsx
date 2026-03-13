@@ -4,6 +4,7 @@ import { Users, Info, ArrowLeftRight, Check, MinusCircle, CheckCircle2 } from 'l
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface TradeRosterListProps {
   roster: Player[];
@@ -67,7 +68,7 @@ export const TradeRosterList: React.FC<TradeRosterListProps> = ({
                                 )}
                             </div>
                             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-                                {p.position} | {p.age}세 | ${p.salary}M
+                                {p.position} | {p.age}세 | {formatMoney(p.salary)}
                             </div>
                         </div>
                     </div>

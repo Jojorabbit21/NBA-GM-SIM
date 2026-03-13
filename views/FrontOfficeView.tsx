@@ -311,10 +311,9 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
 
 // ── 유틸 ──
 
-/** $M 값을 전체 달러 표기로 변환 (예: 155.3 → $155,300,000) */
+/** 달러 값을 전체 표기로 변환 (예: 155300000 → $155,300,000) */
 function fmtFull(v: number): string {
-    const dollars = Math.round(v * 1_000_000);
-    return `$${dollars.toLocaleString()}`;
+    return `$${Math.round(v).toLocaleString()}`;
 }
 
 /** $B 값을 전체 달러 표기로 변환 (예: 120 → $120,000,000,000) */

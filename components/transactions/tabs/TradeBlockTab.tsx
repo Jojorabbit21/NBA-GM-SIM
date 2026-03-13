@@ -6,6 +6,7 @@ import { PositionFilter } from '../PositionFilter';
 import { OvrBadge } from '../../common/OvrBadge';
 import { TeamLogo } from '../../common/TeamLogo';
 import { calculatePlayerOvr } from '../../../utils/constants';
+import { formatMoney } from '../../../utils/formatMoney';
 
 interface TradeBlockTabProps {
     team: Team;
@@ -101,7 +102,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                                         </td>
                                         <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-bold text-slate-400 uppercase">{p.position}</td>
                                         <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-mono text-slate-400">{p.age}</td>
-                                        <td className="py-2 px-3 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">${p.salary}M</td>
+                                        <td className="py-2 px-3 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
                                     </tr>
                                 );
                             })}
@@ -184,7 +185,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                                                         </div>
                                                         <span className="text-xs font-bold text-slate-500 uppercase w-8 text-center">{p.position}</span>
                                                         <span className="text-xs font-mono text-slate-500 w-6 text-center">{p.age}</span>
-                                                        <span className="text-xs font-mono font-bold text-slate-300 w-16 text-right">${p.salary.toFixed(1)}M</span>
+                                                        <span className="text-xs font-mono font-bold text-slate-300 w-16 text-right">{formatMoney(p.salary)}</span>
                                                     </div>
                                                 );
                                             })}
