@@ -16,7 +16,7 @@ import {
 import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
-import { HeaderAwardTrophies, PlayerAwardList } from '../components/common/PlayerAwardBadges';
+import { HeaderAwardTrophies } from '../components/common/PlayerAwardBadges';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -859,8 +859,65 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <div className="px-6 py-3 bg-slate-700">
                                 <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
                             </div>
-                            <div className="min-h-[440px]">
-                                <PlayerAwardList awards={player.awards} />
+                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            {!player.awards || player.awards.length === 0 ? (
+                                <div className="flex items-center justify-center h-[400px]">
+                                    <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
+                                </div>
+                            ) : (
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <TableHead>
+                                        {['시즌', '이름', '내용'].map((h, i) => (
+                                            <TableHeaderCell
+                                                key={h}
+                                                align="center"
+                                                className={i < 2 ? 'border-r border-r-slate-800/30' : ''}
+                                            >
+                                                {h}
+                                            </TableHeaderCell>
+                                        ))}
+                                    </TableHead>
+                                    <TableBody>
+                                        {[...player.awards]
+                                            .sort((a, b) => {
+                                                const sc = b.season.localeCompare(a.season);
+                                                if (sc !== 0) return sc;
+                                                const orderMap: Record<string, number> = {
+                                                    CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
+                                                    ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
+                                                };
+                                                return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
+                                            })
+                                            .map((entry, idx) => {
+                                                const nameMap: Record<string, string> = {
+                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: 'MVP',
+                                                    FINALS_MVP: '파이널 MVP', DPOY: 'DPOY',
+                                                    ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
+                                                    ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
+                                                };
+                                                const detailMap: Record<string, string> = {
+                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', MVP: '수상',
+                                                    FINALS_MVP: '수상', DPOY: '수상',
+                                                    ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
+                                                    ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
+                                                };
+                                                return (
+                                                    <TableRow key={idx} className="h-10">
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{nameMap[entry.type] ?? entry.type}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detailMap[entry.type] ?? '-'}</span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                    </TableBody>
+                                </Table>
+                            )}
                             </div>
                         </div>
                     </div>

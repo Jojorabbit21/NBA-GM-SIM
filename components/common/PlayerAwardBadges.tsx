@@ -23,11 +23,11 @@ const AWARD_META: Record<PlayerAwardType, AwardMeta> = {
     MVP:                  { name: 'MVP',            detail: '수상',   shortLabel: 'MVP',   img: '/images/mvp.png',   color: 'text-yellow-400', order: 2 },
     FINALS_MVP:           { name: '파이널 MVP',     detail: '수상',   shortLabel: 'FMVP',  img: '/images/fmvp.png',  color: 'text-yellow-300', order: 3 },
     DPOY:                 { name: 'DPOY',           detail: '수상',   shortLabel: 'DPOY',  img: '/images/dpoy.png',  color: 'text-blue-400',   order: 4 },
-    ALL_NBA_1:            { name: '올-오펜시브 Team',   detail: '1st',    shortLabel: '1st',   icon: 'trophy',           color: 'text-amber-400',  order: 5 },
-    ALL_NBA_2:            { name: '올-오펜시브 Team',   detail: '2nd',    shortLabel: '2nd',   icon: 'trophy',           color: 'text-slate-300',  order: 6 },
-    ALL_NBA_3:            { name: '올-오펜시브 Team',   detail: '3rd',    shortLabel: '3rd',   icon: 'trophy',           color: 'text-slate-400',  order: 7 },
-    ALL_DEF_1:            { name: '올-디펜시브 Team',   detail: '1st',    shortLabel: 'D1st',  icon: 'shield',           color: 'text-green-400',  order: 8 },
-    ALL_DEF_2:            { name: '올-디펜시브 Team',   detail: '2nd',    shortLabel: 'D2nd',  icon: 'shield',           color: 'text-green-500',  order: 9 },
+    ALL_NBA_1:            { name: '올-오펜시브 팀',     detail: '1st',    shortLabel: '1st',   icon: 'trophy',           color: 'text-amber-400',  order: 5 },
+    ALL_NBA_2:            { name: '올-오펜시브 팀',     detail: '2nd',    shortLabel: '2nd',   icon: 'trophy',           color: 'text-slate-300',  order: 6 },
+    ALL_NBA_3:            { name: '올-오펜시브 팀',     detail: '3rd',    shortLabel: '3rd',   icon: 'trophy',           color: 'text-slate-400',  order: 7 },
+    ALL_DEF_1:            { name: '올-디펜시브 팀',     detail: '1st',    shortLabel: 'D1st',  icon: 'shield',           color: 'text-green-400',  order: 8 },
+    ALL_DEF_2:            { name: '올-디펜시브 팀',     detail: '2nd',    shortLabel: 'D2nd',  icon: 'shield',           color: 'text-green-500',  order: 9 },
 };
 
 // ── 헤더용 집계 ──

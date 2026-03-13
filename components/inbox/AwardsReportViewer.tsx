@@ -226,10 +226,10 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                 </div>
             )}
 
-            {/* ── 올-NBA 팀 ── */}
+            {/* ── 올-오펜시브 팀 ── */}
             {content.allNbaTeams.length > 0 && (
                 <div>
-                    <h3 className={sectionLabel}>올-NBA 팀</h3>
+                    <h3 className={sectionLabel}>올-오펜시브 팀</h3>
                     <div className="border border-slate-600 rounded-lg overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
