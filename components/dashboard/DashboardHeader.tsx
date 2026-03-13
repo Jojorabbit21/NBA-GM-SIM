@@ -17,6 +17,7 @@ interface DashboardHeaderProps {
   opponentOvrValue: number;
   isGameToday: boolean;
   isSimulating?: boolean;
+  simProgress?: { percent: number; label: string } | null;
   onSimClick: () => void;
   onAutoSimClick?: () => void; // New prop
   currentSeries?: PlayoffSeries;
@@ -28,7 +29,7 @@ interface DashboardHeaderProps {
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
-  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, onAutoSimClick,
+  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
   currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver
 }) => {
   const homeTeam = isHome ? team : opponent;
@@ -61,12 +62,20 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       const hl = isLightBg ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
       const hlMid = isLightBg ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
       const shBot = isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.1)';
+
+      // 프로그레스 바 모드: 좌→우 채움 그라데이션
+      const progressGradient = simProgress
+          ? `linear-gradient(90deg, ${btnTheme.bg} 0%, ${btnTheme.bg} ${simProgress.percent}%, rgba(0,0,0,0.35) ${simProgress.percent + 0.5}%, rgba(0,0,0,0.25) 100%)`
+          : undefined;
+
       return {
           style: {
               backgroundColor: btnTheme.bg,
-              backgroundImage: isPressed
-                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
-                  : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
+              backgroundImage: simProgress
+                  ? progressGradient
+                  : isPressed
+                      ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
+                      : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
               color: btnTheme.text,
               boxShadow: isPressed
                   ? `inset 0 1px 2px rgba(0,0,0,0.2), 0 1px 4px ${glowColor}20`
@@ -76,7 +85,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               '--glow-color': `${glowColor}50`,
               '--glow-dim': `${glowColor}18`,
               transform: isPressed ? 'scale(0.97)' : 'scale(1)',
-              transition: 'all 0.15s ease',
+              transition: simProgress ? 'background-image 0.3s ease, all 0.15s ease' : 'all 0.15s ease',
               filter: isHovered && !isPressed ? 'brightness(1.05)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
           } as React.CSSProperties,
           onMouseDown: () => !isSimulating && setPressedBtn(id),
@@ -206,7 +215,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             {...primaryBtn('sim')}
                             className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
                         >
-                            {isSimulating ? (
+                            {simProgress ? (
+                                <><Loader2 size={18} className="animate-spin" /> {simProgress.label}</>
+                            ) : isSimulating ? (
                                 <><Loader2 size={18} className="animate-spin" /> 처리 중</>
                             ) : (
                                 <><Play size={16} fill="currentColor" /> 경기 시작</>
@@ -233,8 +244,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         {...primaryBtn('sim')}
                         className="flex-1 flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                     >
-                        {isSimulating ? (
-                            <><Loader2 size={18} className="animate-spin" /> 처리 중</>
+                        {simProgress ? (
+                            <><Loader2 size={18} className="animate-spin" /> {simProgress.label}</>
                         ) : (
                             <><ChevronRight size={18} /> 내일로 이동</>
                         )}
