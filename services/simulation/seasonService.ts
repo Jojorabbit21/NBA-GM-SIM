@@ -5,7 +5,7 @@ import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
 import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
 import { runAwardVoting, SeasonAwardsContent } from '../../utils/awardVoting';
-import { stampSeasonAwards } from '../../utils/awardStamper';
+import { stampSeasonAwards, stampRegSeasonChampion } from '../../utils/awardStamper';
 import { sendMessage } from '../../services/messageService';
 import { buildRegSeasonChampionContent } from '../../services/reportGenerator';
 
@@ -53,11 +53,12 @@ export const handleSeasonEvents = async (
             {
                 const awardResult = runAwardVoting(teams, tendencySeed);
                 stampSeasonAwards(teams, awardResult, '2025-26');
+                const championContent = buildRegSeasonChampionContent(teams, schedule);
+                stampRegSeasonChampion(teams, '2025-26', championContent.championTeamId);
                 if (!isGuestMode && userId) {
                     await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
                         '[공식] 2025-26 정규시즌 어워드 투표 결과', awardResult);
                     // ★ 정규시즌 우승팀 보고서 발송
-                    const championContent = buildRegSeasonChampionContent(teams, schedule);
                     await sendMessage(userId, myTeamId, currentSimDate, 'REG_SEASON_CHAMPION',
                         `[속보] 2025-26 정규시즌 우승: ${championContent.championTeamName}`, championContent);
                 }
@@ -141,8 +142,9 @@ export const handleSeasonEventsSync = (
             // ★ 정규시즌 어워드 투표 (배치 — sendMessage 생략, 반환) → 선수에 stamp
             awardContent = runAwardVoting(teams, tendencySeed);
             stampSeasonAwards(teams, awardContent, '2025-26');
-            // ★ 정규시즌 우승팀 보고서 (배치 — 반환)
+            // ★ 정규시즌 우승팀 보고서 (배치 — 반환) → 선수에 stamp
             championContent = buildRegSeasonChampionContent(teams, schedule);
+            stampRegSeasonChampion(teams, '2025-26', championContent.championTeamId);
         }
     }
 

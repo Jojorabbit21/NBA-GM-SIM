@@ -313,6 +313,33 @@ export async function runBatchSeason(
             }
         }
 
+        // 2.5 CPU 경기 출장정지 → LEAGUE_NEWS (타팀 싸움 뉴스)
+        if (userId && cpuPayloads.suspensions.length > 0) {
+            for (const { susp } of cpuPayloads.suspensions) {
+                const fighterTeam = teams.find(t => t.id === susp.teamId);
+                const oppTeam = teams.find(t => t.id === susp.opponentTeamId);
+                allMessages.push({
+                    user_id: userId,
+                    team_id: myTeamId,
+                    date,
+                    type: 'LEAGUE_NEWS' as MessageType,
+                    title: `[리그 뉴스] ${susp.playerName}, ${susp.suspensionGames}경기 출장정지`,
+                    content: {
+                        fighterPlayerId: susp.playerId,
+                        fighterPlayerName: susp.playerName,
+                        fighterTeamId: susp.teamId,
+                        fighterTeamName: fighterTeam?.name || '',
+                        fighterSuspensionGames: susp.suspensionGames,
+                        opponentPlayerId: susp.opponentPlayerId,
+                        opponentPlayerName: susp.opponentPlayerName,
+                        opponentTeamId: susp.opponentTeamId,
+                        opponentTeamName: oppTeam?.name || '',
+                        opponentSuspensionGames: susp.opponentSuspensionGames,
+                    },
+                });
+            }
+        }
+
         // 3. 시즌 이벤트 (동기)
         const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed);
         if (events.newTransactions.length > 0) {
@@ -417,10 +444,11 @@ function processCpuGamesInPlace(
     declineRate: number = 1.0,
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null
-): { regular: any[]; playoff: any[] } {
+): { regular: any[]; playoff: any[]; suspensions: { susp: any; homeTeamId: string; awayTeamId: string }[] } {
     const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings, coachingData);
     const regular: any[] = [];
     const playoff: any[] = [];
+    const suspensions: { susp: any; homeTeamId: string; awayTeamId: string }[] = [];
 
     for (const res of results) {
         const home = teams.find(t => t.id === res.homeTeamId);
@@ -471,6 +499,13 @@ function processCpuGamesInPlace(
             });
         }
 
+        // CPU 게임 출장정지 수집 (LEAGUE_NEWS용)
+        if (res.suspensions && res.suspensions.length > 0) {
+            for (const s of res.suspensions) {
+                suspensions.push({ susp: s, homeTeamId: res.homeTeamId, awayTeamId: res.awayTeamId });
+            }
+        }
+
         const gameIdx = schedule.findIndex(g => g.id === res.gameId);
         if (gameIdx !== -1) {
             schedule[gameIdx].played = true;
@@ -505,7 +540,7 @@ function processCpuGamesInPlace(
         }
     }
 
-    return { regular, playoff };
+    return { regular, playoff, suspensions };
 }
 
 /** applyUserGameResult의 순수 로직만 추출 (DB save, sendMessage, Gemini 제거) */

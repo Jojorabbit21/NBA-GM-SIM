@@ -18,6 +18,7 @@ export interface CpuGameResult {
     pbpShotEvents?: ShotEvent[];
     pbpLogs?: PbpLog[]; // In-memory only, not saved to DB
     rosterUpdates?: Record<string, any>;
+    suspensions?: SimulationResult['suspensions'];
 }
 
 /**
@@ -65,7 +66,8 @@ export const simulateCpuGames = (
                 rotationData: simResult.rotationData,
                 pbpShotEvents: simResult.pbpShotEvents,
                 pbpLogs: simResult.pbpLogs,
-                rosterUpdates: simResult.rosterUpdates
+                rosterUpdates: simResult.rosterUpdates,
+                suspensions: simResult.suspensions
             });
         }
     }

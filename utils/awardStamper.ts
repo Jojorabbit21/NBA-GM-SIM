@@ -69,6 +69,18 @@ export function stampSeasonAwards(teams: Team[], awardContent: SeasonAwardsConte
 }
 
 /**
+ * 정규시즌 우승팀 전원에 stamp.
+ */
+export function stampRegSeasonChampion(teams: Team[], season: string, championTeamId: string): void {
+    const champTeam = teams.find(t => t.id === championTeamId);
+    if (champTeam) {
+        for (const player of champTeam.roster) {
+            pushAward(player, 'REG_SEASON_CHAMPION', season, championTeamId);
+        }
+    }
+}
+
+/**
  * 챔피언 + 파이널 MVP를 선수에 stamp.
  */
 export function stampPlayoffAwards(
