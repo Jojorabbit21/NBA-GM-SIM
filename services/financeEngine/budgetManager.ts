@@ -50,7 +50,7 @@ export class BudgetManager {
 
         const { attendance } = calculateGameAttendance(homeTeam, awayTeamId);
         const gateRevenue = calculateGateRevenue(homeTeam.id, attendance);
-        const mdRevenue = calculateMerchandiseRevenue(homeTeam.id, attendance);
+        const mdRevenue = calculateMerchandiseRevenue(homeTeam.id, attendance, homeTeam.roster);
 
         finance.revenue.gate += gateRevenue;
         finance.revenue.merchandise += mdRevenue;

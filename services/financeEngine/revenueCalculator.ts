@@ -14,6 +14,12 @@ import { Team } from '../../types/team';
 // 2025-26 기준: 리그 전체 중앙 방송 수익 ~$4.65B → 팀당 ~$155M
 const CENTRAL_BROADCASTING_PER_TEAM = 155; // $M
 
+/** 기준값에 ±pct% 범위의 노이즈 ($M, 소수점 6자리 = 1달러 단위) */
+function jitter(base: number, pct: number = 3): number {
+    const noise = base * (pct / 100) * (Math.random() * 2 - 1);
+    return Math.round((base + noise) * 1_000_000) / 1_000_000;
+}
+
 export function calculateFixedRevenue(
     teamId: string,
     prevSeasonWinPct?: number,
@@ -25,17 +31,17 @@ export function calculateFixedRevenue(
 
     const { market } = finData;
 
-    // 중앙 방송: 전팀 균등
-    const broadcasting = CENTRAL_BROADCASTING_PER_TEAM;
+    // 중앙 방송: 전팀 균등 + 노이즈
+    const broadcasting = jitter(CENTRAL_BROADCASTING_PER_TEAM);
 
-    // 로컬 미디어: 팀별 계약 기반
-    const localMedia = market.localMediaDeal;
+    // 로컬 미디어: 팀별 계약 기반 + 노이즈
+    const localMedia = jitter(market.localMediaDeal);
 
-    // 스폰서십: 기본값 × 성적 보정 (±15%)
+    // 스폰서십: 기본값 × 성적 보정 (±15%) + 노이즈
     const winPctBonus = prevSeasonWinPct !== undefined
         ? 1 + (prevSeasonWinPct - 0.5) * 0.3  // 70% 승률 → ×1.06, 30% → ×0.94
         : 1.0;
-    const sponsorship = Math.round(market.sponsorshipBase * winPctBonus * 10) / 10;
+    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus * 10) / 10);
 
     return { broadcasting, localMedia, sponsorship };
 }
@@ -56,7 +62,7 @@ export function calculateFixedExpenses(
 
     // 운영비: 경기장 좌석수 기반 (좌석당 $3,000 연간 운영비 가정)
     const arenaCapacity = finData?.market.arenaCapacity ?? 18000;
-    const operations = Math.round(arenaCapacity * 3000 / 1_000_000 * 10) / 10; // ~$54~63M
+    const operations = jitter(Math.round(arenaCapacity * 3000 / 1_000_000 * 10) / 10); // ~$54~63M
 
     // 선수 연봉 합계
     const payroll = roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
@@ -81,8 +87,8 @@ const OTHER_REVENUE: Record<number, number> = {
 
 export function calculateOtherRevenue(teamId: string): number {
     const finData = TEAM_FINANCE_DATA[teamId];
-    if (!finData) return 20;
-    return OTHER_REVENUE[finData.market.marketTier] ?? 20;
+    if (!finData) return jitter(20);
+    return jitter(OTHER_REVENUE[finData.market.marketTier] ?? 20);
 }
 
 /**
