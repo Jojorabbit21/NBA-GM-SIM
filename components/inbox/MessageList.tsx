@@ -79,7 +79,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                        key={msg.id}
                        onClick={() => onSelectMessage(msg)}
                        className={`
-                           relative p-4 cursor-pointer transition-all border-b border-slate-800/50 group
+                           relative px-4 py-2 cursor-pointer transition-all border-b border-slate-800/50 group
                            ${selectedMessageId === msg.id ? 'bg-indigo-900/20 border-l-2 border-l-indigo-500' : 'hover:bg-slate-900'}
                        `}
                     >
