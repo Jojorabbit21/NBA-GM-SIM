@@ -47,7 +47,7 @@ export const processCpuGames = (
 
             // 홈 경기 수익 누적
             if (!isPlayoff) {
-                getBudgetManager().processHomeGame(home, away.id);
+                getBudgetManager().processHomeGame(home, away.id, currentSimDate);
             }
 
             // 선수 성장/퇴화 (정규시즌만)

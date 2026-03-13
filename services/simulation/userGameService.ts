@@ -114,7 +114,7 @@ export const applyUserGameResult = async (
 
     // 1.5. 홈 경기 수익 누적 (정규시즌만)
     if (!isPlayoff) {
-        getBudgetManager().processHomeGame(homeTeam, awayTeam.id);
+        getBudgetManager().processHomeGame(homeTeam, awayTeam.id, currentSimDate);
     }
 
     // 1.6. 선수 성장/퇴화 (정규시즌만)
