@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SUSPENSION' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
 
 export interface Message {
     id: string;
@@ -65,6 +65,18 @@ export interface InjuryReportContent {
     isRecovery?: boolean;
     /** true면 훈련 중 부상 */
     isTrainingInjury?: boolean;
+}
+
+export interface SuspensionContent {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    opponentPlayerId: string;
+    opponentPlayerName: string;
+    opponentTeamId: string;
+    opponentTeamName: string;
+    suspensionGames: number;
+    returnDate: string;
 }
 
 export interface SeasonReviewContent {

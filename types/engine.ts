@@ -92,8 +92,9 @@ export interface SimulationResult {
     rosterUpdates: Record<string, any>;
     pbpLogs: PbpLog[];
     rotationData: RotationData;
-    pbpShotEvents?: ShotEvent[]; 
+    pbpShotEvents?: ShotEvent[];
     injuries?: InjuryEvent[];
+    suspensions?: { playerId: string; playerName: string; teamId: string; opponentPlayerId: string; opponentPlayerName: string; opponentTeamId: string; suspensionGames: number; opponentSuspensionGames: number; quarter: number; timeRemaining: string }[];
 }
 
 export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition' | 'Putback' | 'OffBallScreen' | 'DriveKick';

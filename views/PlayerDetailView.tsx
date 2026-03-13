@@ -16,6 +16,7 @@ import {
 import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
+import { HeaderAwardTrophies, PlayerAwardList } from '../components/common/PlayerAwardBadges';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -516,15 +517,20 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </button>
                     </div>
 
-                    {/* Player name + OVR */}
-                    <div className="px-6 pt-1 pb-4 relative z-10 flex items-center gap-4">
-                        <OvrBadge value={calculatedOvr} size="md" />
-                        <h2 className="text-3xl font-black uppercase tracking-tight" style={{ color: theme.text }}>{player.name}</h2>
-                        {player.health && player.health !== 'Healthy' && (
-                            <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
-                                {player.injuryType || player.health}
-                                {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                            </span>
+                    {/* Player name + OVR + Header Trophies */}
+                    <div className="px-6 pt-1 pb-4 relative z-10 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                            <OvrBadge value={calculatedOvr} size="md" />
+                            <h2 className="text-3xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
+                            {player.health && player.health !== 'Healthy' && (
+                                <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md shrink-0">
+                                    {player.injuryType || player.health}
+                                    {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                                </span>
+                            )}
+                        </div>
+                        {player.awards && player.awards.length > 0 && (
+                            <HeaderAwardTrophies awards={player.awards} />
                         )}
                     </div>
 
@@ -790,60 +796,72 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     </div>
 
-                    {/* ── SECTION 4: 부상 이력 ── */}
-                    <div className="border-t-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700">
-                            <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
-                        </div>
-                        <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
-                        {!player.injuryHistory || player.injuryHistory.length === 0 ? (
-                            <div className="flex items-center justify-center h-[400px]">
-                                <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
+                    {/* ── SECTION 4: 부상 이력 + 수상 내역 (좌우 분할) ── */}
+                    <div className="border-t-2 border-slate-700 grid grid-cols-2">
+                        {/* 좌측: 부상 이력 */}
+                        <div className="border-r border-slate-700">
+                            <div className="px-6 py-3 bg-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
                             </div>
-                        ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead>
-                                        {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
-                                            <TableHeaderCell
-                                                key={h}
-                                                align="center"
-                                                className={i < 3 ? 'border-r border-r-slate-800/30' : ''}
-                                            >
-                                                {h}
-                                            </TableHeaderCell>
-                                        ))}
-                                    </TableHead>
-                                    <TableBody>
-                                        {[...player.injuryHistory]
-                                            .sort((a, b) => b.date.localeCompare(a.date))
-                                            .map((entry, idx) => {
-                                                const dateStr = entry.date.slice(5).replace('-', '/');
-                                                const severityColor =
-                                                    entry.severity === 'Season-Ending' ? 'text-red-400' :
-                                                    entry.severity === 'Major' ? 'text-amber-400' :
-                                                    'text-white';
-                                                return (
-                                                    <TableRow key={idx} className="h-10">
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
-                                                                {entry.isTraining ? '훈련' : '경기'}
-                                                            </span>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                    </TableBody>
-                                </Table>
-                        )}
+                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
+                                <div className="flex items-center justify-center h-[400px]">
+                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
+                                </div>
+                            ) : (
+                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                        <TableHead>
+                                            {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
+                                                <TableHeaderCell
+                                                    key={h}
+                                                    align="center"
+                                                    className={i < 3 ? 'border-r border-r-slate-800/30' : ''}
+                                                >
+                                                    {h}
+                                                </TableHeaderCell>
+                                            ))}
+                                        </TableHead>
+                                        <TableBody>
+                                            {[...player.injuryHistory]
+                                                .sort((a, b) => b.date.localeCompare(a.date))
+                                                .map((entry, idx) => {
+                                                    const dateStr = entry.date.slice(5).replace('-', '/');
+                                                    const severityColor =
+                                                        entry.severity === 'Season-Ending' ? 'text-red-400' :
+                                                        entry.severity === 'Major' ? 'text-amber-400' :
+                                                        'text-white';
+                                                    return (
+                                                        <TableRow key={idx} className="h-10">
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center">
+                                                                <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
+                                                                    {entry.isTraining ? '훈련' : '경기'}
+                                                                </span>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                        </TableBody>
+                                    </Table>
+                            )}
+                            </div>
+                        </div>
+                        {/* 우측: 수상 내역 */}
+                        <div>
+                            <div className="px-6 py-3 bg-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
+                            </div>
+                            <div className="min-h-[440px]">
+                                <PlayerAwardList awards={player.awards} />
+                            </div>
                         </div>
                     </div>
 

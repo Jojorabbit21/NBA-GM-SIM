@@ -86,7 +86,56 @@ ffChance = min(FLAGRANT_MAX_RATE, FLAGRANT_BASE × (1 + normalize^POWER × 3))
 
 ---
 
-## 3. 이전 방식과의 차이
+## 3. Fight (싸움 → 출장정지)
+
+### 설계 의도
+극단적으로 다혈질인 선수가 경기 중 상대와 물리적 충돌을 일으켜 퇴장 + 출장정지를 받는 이벤트.
+리그 전체 시즌 ~5-10건 수준의 극히 희귀한 이벤트.
+
+### 발동 조건
+- `temperament >= 0.5`인 수비 선수만 후보 (전체 선수의 ~25%)
+- 후보 중 가장 높은 temperament로 확률 결정
+- **FF/TF와 완전 독립적인 이벤트**
+
+### 확률 공식
+```
+fightChance = FIGHT_BASE_CHANCE × (1 + (temperament - 0.5) × FIGHT_TEMPERAMENT_SCALE)
+```
+
+### 상수값
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `FIGHT_TEMPERAMENT_THRESHOLD` | 0.5 | 이 이상만 싸움 후보 |
+| `FIGHT_BASE_CHANCE` | 0.00003 | 포제션당 0.003% |
+| `FIGHT_TEMPERAMENT_SCALE` | 3.0 | temperament 스케일링 |
+| `FIGHT_SUSPENSION_MIN` | 1 | 출장정지 최소 경기 수 |
+| `FIGHT_SUSPENSION_MAX` | 5 | 출장정지 최대 경기 수 |
+
+### 확률 예시 (리그 전체 246,000포제션/시즌 기준)
+
+| temperament | fightChance | 시즌 기대치 (리그 전체) |
+|-------------|------------|----------------------|
+| 0.5 | 0.003% | ~7.4건 |
+| 0.7 | 0.005% | ~12.3건 |
+| 1.0 | 0.008% | ~19.7건 |
+
+→ 실제로는 temperament >= 0.5인 선수가 코트에 있는 포제션만 대상이므로 훨씬 적음.
+→ 예상: 리그 전체 시즌 **~5-10건**
+
+### 결과 처리
+- **양 선수 즉시 퇴장** (pf = 6)
+- 싸움 건 선수 (defender): 2 테크니컬 자동 부여, 1~5경기 출장정지
+- 상대 (공격팀 랜덤): 1 테크니컬, 1~2경기 출장정지 (temperament >= 0.3이면 2경기)
+- 출장정지: 기존 부상 시스템 경로 활용 (`injuryType='출장정지 (싸움)'`)
+- **메시지**: SUSPENSION 타입으로 받은 메시지함에 부단장 서신 형태 도착
+
+### 출장정지 경기 수 결정
+- 싸움 건 선수: `temperament`에 비례 (0.5 → 1~2경기, 1.0 → 3~5경기)
+- 상대: temperament >= 0.3이면 2경기, 아니면 1경기 (보복 정도)
+
+---
+
+## 4. 이전 방식과의 차이
 
 | 항목 | 이전 | 현재 |
 |------|------|------|
@@ -103,8 +152,13 @@ ffChance = min(FLAGRANT_MAX_RATE, FLAGRANT_BASE × (1 + normalize^POWER × 3))
 
 | 파일 | 역할 |
 |------|------|
-| `services/game/config/constants.ts` | FOUL_EVENTS 상수 정의 |
-| `services/game/engine/pbp/possessionHandler.ts` | 3.6~3.6.1 섹션: TF/FF 발동 + 대상 선택 |
-| `services/game/engine/pbp/statsMappers.ts` | TF/FF 결과 처리 (스탯, FT, 퇴장) |
+| `services/game/config/constants.ts` | FOUL_EVENTS 상수 정의 (TF/FF/Fight) |
+| `services/game/engine/pbp/possessionHandler.ts` | 3.6~3.6.2 섹션: TF/FF/Fight 발동 + 대상 선택 |
+| `services/game/engine/pbp/statsMappers.ts` | TF/FF/Fight 결과 처리 (스탯, FT, 퇴장, 출장정지) |
+| `services/game/engine/pbp/pbpTypes.ts` | SuspensionEvent, PossessionResult.fight 타입 |
+| `services/game/engine/pbp/liveEngine.ts` | suspensions[] 초기화 + 결과 전파 |
 | `services/game/engine/commentary/textGenerator.ts` | TF/FF 해설 텍스트 |
+| `services/simulation/batchSeasonService.ts` | SUSPENSION 메시지 생성 |
+| `components/inbox/MessageContentRenderer.tsx` | SUSPENSION 메시지 렌더링 (부단장 서신) |
+| `types/message.ts` | SUSPENSION MessageType + SuspensionContent |
 | `utils/hiddenTendencies.ts` | temperament, foulProneness 생성 |

@@ -190,6 +190,7 @@ export function createGameState(
         rotationHistory: {},
         shotEvents: [],
         injuries: [],
+        suspensions: [],
         momentum: {
             homeEpochPts: 0,
             awayEpochPts: 0,
@@ -554,6 +555,7 @@ export function extractSimResult(state: GameState): SimulationResult {
         rotationData: state.rotationHistory,
         pbpShotEvents: state.shotEvents,
         injuries: state.injuries,
+        suspensions: state.suspensions,
     };
 }
 

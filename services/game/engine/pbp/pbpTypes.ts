@@ -146,6 +146,20 @@ export interface InjuryEvent {
     timeRemaining: string;
 }
 
+// [New] Suspension Event (싸움 → 출장정지)
+export interface SuspensionEvent {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    opponentPlayerId: string;
+    opponentPlayerName: string;
+    opponentTeamId: string;
+    suspensionGames: number;       // 출장정지 경기 수
+    opponentSuspensionGames: number;
+    quarter: number;
+    timeRemaining: string;
+}
+
 // [New] Momentum/Run tracking for Live Game Mode
 export interface MomentumState {
     homeEpochPts: number;       // 현재 에포크 내 홈팀 누적 득점
@@ -203,6 +217,9 @@ export interface GameState {
     // [New] Injury Tracking
     injuries: InjuryEvent[];
 
+    // [New] Suspension Tracking (싸움 → 출장정지)
+    suspensions: SuspensionEvent[];
+
     // [New] Momentum/Run System (Live Game Mode)
     momentum: MomentumState;
 
@@ -247,7 +264,7 @@ export interface CourtSnapshot {
 
 export interface PossessionResult {
     type: 'score' | 'miss' | 'turnover' | 'foul' | 'freethrow' | 'rebound'
-        | 'offensiveFoul' | 'technicalFoul' | 'flagrantFoul' | 'shotClockViolation';
+        | 'offensiveFoul' | 'technicalFoul' | 'flagrantFoul' | 'shotClockViolation' | 'fight';
     
     // Actors
     offTeam: TeamState;
@@ -280,6 +297,12 @@ export interface PossessionResult {
 
     // [New] Flagrant Foul
     isFlagrant2?: boolean;
+
+    // [New] Fight (싸움 → 양측 퇴장 + 출장정지)
+    fighter?: LivePlayer;          // 싸움 건 선수 (수비팀)
+    fightOpponent?: LivePlayer;    // 상대 (공격팀 코트 랜덤)
+    fighterSuspension?: number;    // 출장정지 경기 수
+    opponentSuspension?: number;
 
     // [New] PnR Defense Coverage
     pnrCoverage?: 'drop' | 'hedge' | 'blitz';

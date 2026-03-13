@@ -59,6 +59,14 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 
 ---
 
+## 일정 & 시즌
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [schedule-generator.md](schedule-generator.md) | 시즌 일정 자동생성 (82경기 × 30팀) | scheduleGenerator.ts |
+
+---
+
 ## 데이터 처리 & UI
 
 | 문서 | 설명 | 핵심 파일 |
@@ -109,6 +117,11 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 | playoffLogic.ts | [playoff-system.md](playoff-system.md) |
 | tiebreaker.ts | [playoff-system.md](playoff-system.md) |
 | simulationUtils.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
+
+### 일정 생성 (`utils/`)
+| 파일 | 문서 |
+|------|------|
+| scheduleGenerator.ts | [schedule-generator.md](schedule-generator.md) |
 
 ### 외부 엔진 파일
 | 파일 | 문서 |

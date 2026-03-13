@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
-import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
+import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -525,6 +525,45 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
         case 'SCOUT_REPORT': {
             const sc = content as ScoutReportContent;
             return <ScoutReportRenderer content={sc} teams={teams} onPlayerClick={onPlayerClick} />;
+        }
+
+        case 'SUSPENSION': {
+            const susp = content as SuspensionContent;
+            const oppTeamData = TEAM_DATA[susp.opponentTeamId];
+            return (
+                <div className="space-y-8 text-slate-300 leading-relaxed">
+                    <p>단장님,</p>
+                    <p>
+                        금일 경기 중 우리 팀의{' '}
+                        <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(susp.playerId)}>
+                            {susp.playerName}
+                        </button>{' '}
+                        선수가 {oppTeamData?.city ?? ''} {susp.opponentTeamName}의{' '}
+                        <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(susp.opponentPlayerId)}>
+                            {susp.opponentPlayerName}
+                        </button>{' '}
+                        선수와 경기 중 물리적 충돌을 일으켰음을 보고드립니다.
+                    </p>
+                    <p>
+                        리그 사무국은 해당 사건을 검토한 결과,{' '}
+                        <span className="text-red-400 font-bold">{susp.playerName}</span> 선수에게{' '}
+                        <span className="text-red-400 font-black">{susp.suspensionGames}경기 출장정지</span> 징계를 내렸습니다.
+                    </p>
+                    <div className="pl-3 space-y-1 text-sm">
+                        <p><span className="text-slate-500">징계 대상:</span> <span className="text-white font-bold">{susp.playerName}</span></p>
+                        <p><span className="text-slate-500">사유:</span> <span className="text-red-400 font-bold">경기 중 싸움 (Physical Altercation)</span></p>
+                        <p><span className="text-slate-500">징계:</span> <span className="text-white font-bold">{susp.suspensionGames}경기 출장정지</span></p>
+                        <p><span className="text-slate-500">복귀 예정일:</span> <span className="text-white font-bold">{susp.returnDate}</span></p>
+                    </div>
+                    <p className="text-slate-400 text-sm">
+                        해당 기간 동안 로스터 운용에 차질이 예상되오니, 대체 선수 기용 계획을 수립하시기 바랍니다.
+                    </p>
+                    <div className="pt-4">
+                        <p className="text-white font-bold">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
         }
 
         default:

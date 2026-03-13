@@ -434,18 +434,23 @@ ballDominance 0.5 → 공을 요구하지 않아 0.5배
 |------|-----|
 | 범위 | -1.0 ~ +1.0 |
 | 분포 | 정규 (μ=0, σ=0.3) |
-| 적용 파일 | `possessionHandler.ts:336` |
-| 함수 | `simulatePossession()` — 수비 파울 체크 |
+| 적용 파일 | `possessionHandler.ts` |
+| 함수 | `simulatePossession()` — 수비 파울 체크 + 플래그런트 파울 |
 
-**공식**:
+**효과 1 — 슈팅 파울 확률**:
 ```
 baseFoulChance += foulProneness * 0.02
 baseFoulChance = Math.max(0.03, baseFoulChance)  // 최소 3%
 ```
+foulProneness +1.0 → 파울 확률 +2% / -1.0 → -2% (하한 3%)
 
-**효과**: foulProneness +1.0 → 파울 확률 +2% / -1.0 → -2% (하한 3%)
+**효과 2 — 플래그런트 파울 (주 영향, 70%)**: → `tf-ff-system.md` 참조
+```
+combined = foulProneness × 0.7 + temperament × 0.3
+```
+더티 플레이어일수록 플래그런트 파울 대상 + 발동 확률 증가.
 
-**NBA 맥락**: 드레이먼드 그린(+1.0급)은 공격적 수비로 파울이 잦음. 카와이 레너드(-1.0급)는 깨끗한 수비.
+**NBA 맥락**: 드레이먼드 그린(+1.0급)은 공격적 수비로 파울이 잦고 플래그런트도 빈번. 카와이 레너드(-1.0급)는 깨끗한 수비.
 
 ---
 
@@ -487,22 +492,27 @@ if (Math.random() < assistProb + assistMod) → 어시스트 기록
 |------|-----|
 | 범위 | -1.0(냉정) ~ +1.0(다혈질) |
 | 분포 | 정규 (μ=0, σ=0.35) |
-| 적용 파일 | `possessionHandler.ts:402` |
-| 함수 | `simulatePossession()` — 테크니컬 파울 체크 |
+| 적용 파일 | `possessionHandler.ts` |
+| 함수 | `simulatePossession()` — 테크니컬 파울 + 플래그런트 파울 + 싸움 체크 |
 
-**공식**:
+**효과 1 — 테크니컬 파울 (대상 선택 가중)**:
+수비팀 코트 전원 중 temperament 가중 랜덤으로 대상 선택 (커브 power=2.0).
 ```
-techChance = TECHNICAL_FOUL_CHANCE * (1 + temperament * 0.8)
-// temperament +1.0 → 기본 확률 × 1.8배
-// temperament -1.0 → 기본 확률 × 0.2배
+normalize(t) = max(0.05, (temperament + 1) / 2)
+weight = normalize(t) ^ 2.0
+```
+다혈질(+1.0) 선수는 냉정(-1.0) 선수 대비 400배 높은 가중치.
+
+**효과 2 — 플래그런트 파울 (보조 영향, 30%)**: → `tf-ff-system.md` 참조
+```
+combined = foulProneness × 0.7 + temperament × 0.3
 ```
 
-**효과**: 다혈질(+1.0) → 테크니컬 파울 확률 1.8배 (0.3% → 0.54%)
-냉정(-1.0) → 테크니컬 파울 확률 0.2배 (0.3% → 0.06%)
+**효과 3 — 싸움/출장정지**: → `tf-ff-system.md` 참조
+temperament >= 0.5인 선수만 싸움 후보. 포제션당 ~0.003% 확률로 발동.
+결과: 양측 퇴장 + 1~5경기 출장정지. 리그 전체 시즌 ~5-10건.
 
-> 주의: 테크니컬은 **수비자(defender)** 에게 부여 → defender의 tendencies 사용
-
-**NBA 맥락**: 라시드 월리스(+1.0급)는 매 경기 테크니컬 위험. 팀 던컨(-1.0급)은 거의 테크니컬을 받지 않음.
+**NBA 맥락**: 라시드 월리스(+1.0급)는 매 경기 테크니컬 위험 + 싸움 가능성. 팀 던컨(-1.0급)은 거의 테크니컬을 받지 않음.
 
 ---
 
@@ -549,9 +559,9 @@ ego가 낮은(겸손한) 선수는 어떤 역할이든 안정적.
 | shotDiscipline | possessionHandler | 449 | simulatePossession | `+= value * 0.015` | ±1.5% FG% |
 | defensiveMotor | flowEngine | 89 | calculateHitRate | `defRating += val * 3` | ±0.6% 상대FG% |
 | ballDominance | playTypes | 126 | pickWeightedActor | `weight *= value` | 0.5x~1.5x 선택 |
-| foulProneness | possessionHandler | 336 | simulatePossession | `+= value * 0.02` | ±2% 파울 |
+| foulProneness | possessionHandler | 336 | simulatePossession | `+= value * 0.02` + FF 70% 가중 | ±2% 파울 + FF 대상 |
 | playStyle | playTypes/statsMappers | 132/150 | pickWeightedActor/applyResult | ±20~30% 가중치 / ±10% 어시스트 | 복합 |
-| temperament | possessionHandler | 402 | simulatePossession | `techChance *= (1+val*0.8)` | 0.2x~1.8x 테크 |
+| temperament | possessionHandler | 402 | simulatePossession | TF 가중 선택 + FF 30% + 싸움 | TF/FF/Fight 복합 |
 | ego | possessionHandler | 454 | simulatePossession | `val*((3-rank)/2)*0.015` | ±1.5% FG% |
 
 ---

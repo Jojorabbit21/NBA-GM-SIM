@@ -528,6 +528,48 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
     }
 
+    // 3.6.2 Fight Check (싸움 → 양측 퇴장 + 출장정지, 극히 희귀)
+    // temperament >= THRESHOLD인 수비 선수만 대상, 리그 전체 시즌 ~5-10건
+    {
+        const fightCfg = offFoulConfig;
+        const hotDefenders = defTeam.onCourt.filter(
+            p => (p.tendencies?.temperament ?? 0) >= fightCfg.FIGHT_TEMPERAMENT_THRESHOLD
+        );
+        if (hotDefenders.length > 0) {
+            // 가장 다혈질인 선수의 temperament로 확률 결정
+            const hottest = hotDefenders.reduce((a, b) =>
+                (b.tendencies?.temperament ?? 0) > (a.tendencies?.temperament ?? 0) ? b : a
+            );
+            const t = hottest.tendencies?.temperament ?? 0.5;
+            // 확률: base × (1 + (t - threshold) × scale)
+            const fightChance = fightCfg.FIGHT_BASE_CHANCE
+                * (1 + (t - fightCfg.FIGHT_TEMPERAMENT_THRESHOLD) * fightCfg.FIGHT_TEMPERAMENT_SCALE);
+
+            if (Math.random() < fightChance) {
+                // 상대: 공격팀 코트 랜덤
+                const fightOpponent = offTeam.onCourt[Math.floor(Math.random() * offTeam.onCourt.length)];
+                // 출장정지: temperament에 비례 (1~5경기)
+                const suspBase = fightCfg.FIGHT_SUSPENSION_MIN;
+                const suspRange = fightCfg.FIGHT_SUSPENSION_MAX - suspBase;
+                const fighterSusp = suspBase + Math.floor((t - 0.5) * 2 * suspRange * Math.random() + suspRange * 0.5 * Math.random());
+                const clampedFighterSusp = Math.min(fightCfg.FIGHT_SUSPENSION_MAX, Math.max(suspBase, fighterSusp));
+                // 상대는 보복 정도에 따라 1~2경기 (기본 1, temperament 높으면 2)
+                const oppTemp = fightOpponent.tendencies?.temperament ?? 0;
+                const oppSusp = oppTemp >= 0.3 ? 2 : 1;
+
+                return {
+                    type: 'fight' as const,
+                    offTeam, defTeam, actor, defender: hottest,
+                    points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+                    fighter: hottest,
+                    fightOpponent,
+                    fighterSuspension: clampedFighterSusp,
+                    opponentSuspension: oppSusp,
+                };
+            }
+        }
+    }
+
     // 3.7 Shot Clock Violation Check (수비 전술 + 공격 볼무브 트레이드-오프)
     const offSliders = offTeam.tactics.sliders;
     const defSliders = defTeam.tactics.sliders;

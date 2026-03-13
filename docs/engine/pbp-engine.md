@@ -686,7 +686,8 @@ baseFoulChance = min(0.18, 0.08 + (defIntensity * 0.015))
 추가 파울 이벤트:
   오펜시브 파울: 1.5% (PostUp/Iso: 2.5%, PnR: +0.8%)
   테크니컬 파울: 0.3% base, 수비팀 전원 중 temperament 가중 선택 (→ tf-ff-system.md)
-  플래그런트 파울: 0.3% base, foulProneness(70%)+temperament(30%) 가중, 커브 적용 (→ tf-ff-system.md)
+  플래그런트 파울: 0.04% base, foulProneness(70%)+temperament(30%) 가중, 커브 적용 (→ tf-ff-system.md)
+  싸움/출장정지: 0.003% base, temperament≥0.5만 대상, 양측 퇴장+1~5경기 출장정지 (→ tf-ff-system.md)
   샷클락 바이올레이션: 0.3% + 수비 전술 보정
 ```
 

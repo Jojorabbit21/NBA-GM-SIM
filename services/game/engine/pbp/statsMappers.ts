@@ -400,5 +400,62 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             ? state.home.name
             : state.away.name;
         addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover');
+
+    } else if (type === 'fight') {
+        // 싸움: 양측 퇴장 + 출장정지
+        const fighter = result.fighter;
+        const opponent = result.fightOpponent;
+        const fighterSusp = result.fighterSuspension ?? 1;
+        const oppSusp = result.opponentSuspension ?? 1;
+
+        if (fighter) {
+            fighter.pf = 6; // 퇴장
+            fighter.techFouls = (fighter.techFouls || 0) + 2; // 자동 2 테크니컬
+        }
+        if (opponent) {
+            opponent.pf = 6; // 퇴장
+            opponent.techFouls = (opponent.techFouls || 0) + 1;
+        }
+
+        // 출장정지 기록
+        const timeStr = formatTime(state.gameClock);
+        if (fighter && opponent) {
+            addLog(state, defTeam.id,
+                `🥊 ${fighter.playerName}이(가) ${opponent.playerName}에게 주먹을 휘둘렀습니다! 양 선수 퇴장!`,
+                'info');
+            addLog(state, defTeam.id,
+                `📋 ${fighter.playerName} ${fighterSusp}경기 출장정지 / ${opponent.playerName} ${oppSusp}경기 출장정지`,
+                'info');
+        }
+
+        // SuspensionEvent 기록 (liveEngine에서 수거)
+        if (fighter && opponent) {
+            state.suspensions.push({
+                playerId: fighter.playerId,
+                playerName: fighter.playerName,
+                teamId: defTeam.id,
+                opponentPlayerId: opponent.playerId,
+                opponentPlayerName: opponent.playerName,
+                opponentTeamId: offTeam.id,
+                suspensionGames: fighterSusp,
+                opponentSuspensionGames: oppSusp,
+                quarter: state.quarter,
+                timeRemaining: timeStr,
+            });
+        }
+
+        // 싸움 후에도 출장정지된 선수를 부상 처리하여 이후 경기 결장
+        if (fighter) {
+            fighter.health = 'Injured';
+            fighter.injuryType = '출장정지 (싸움)';
+            fighter.returnDate = `${fighterSusp}경기`;
+            fighter.injuredThisGame = true;
+        }
+        if (opponent) {
+            opponent.health = 'Injured';
+            opponent.injuryType = '출장정지 (싸움)';
+            opponent.returnDate = `${oppSusp}경기`;
+            opponent.injuredThisGame = true;
+        }
     }
 }

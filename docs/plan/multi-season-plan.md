@@ -129,7 +129,7 @@ OffseasonView (Step 단계 UI)
 2. 에이징 결과(playerOverrides) → user_season_history에 저장
 3. FA 서명 트랜잭션 → user_transactions(season = 다음시즌)에 저장
 4. saves 업데이트: current_season, season_number, sim_date 리셋
-5. 스케줄 생성 (meta_schedule 날짜를 +1년 offset)
+5. 스케줄 생성 (generateSeasonSchedule(buildScheduleConfig(nextSeasonNumber)))
 6. 인메모리 상태 리셋: stats 초기화, W/L 리셋, playoff 클리어
 7. 이전 시즌 대용량 데이터 정리 (5단계 참조)
 8. setView('Dashboard')
@@ -187,9 +187,11 @@ age 40+               → 은퇴 확정 (100%)
 
 ### 3-5. 스케줄 생성
 
-- `meta_schedule` 원본의 날짜를 +1년 offset하여 재활용
-- 매치업 패턴은 동일 유지 (단일 플레이어 게임에서 충분)
-- 게임 ID는 `s{seasonNumber}_{originalId}` 형태로 고유 보장
+- **구현 완료**: `utils/scheduleGenerator.ts` — NBA 실제 경기 배분 공식 기반 자동 생성
+- 상세 문서: `docs/engine/schedule-generator.md`
+- 시즌 1(2025-26)은 기존 `meta_schedule` 유지, 시즌 2부터 `generateSeasonSchedule()` 사용
+- `seasonNumber`로 seed 결정 → 매 시즌 다른 매치업/일정 (결정론적)
+- 게임 ID: `g_{home}_{away}_{YYYY-MM-DD}` (연도가 다르므로 시즌 간 충돌 없음)
 
 **생성 대상 파일:**
 - 신규: `services/offseason/playerAging.ts`
@@ -375,7 +377,7 @@ Pro 플랜 (8 GB): 유저 30명 × ~10시즌까지 여유
 | 드래프트 (신인 입단) | 추후 별도 구현 | 멀티시즌 기본 프레임 먼저 완성 후 독립 태스크로 |
 | 은퇴 시스템 | 나이 + OVR 복합 기준 | 36세+ & OVR 기반 확률적 은퇴, 40세+ 확정 은퇴 |
 | CPU 팀 FA 처리 | 자동 재계약 | 싱글플레이어에서 CPU FA 로직은 불필요한 복잡도 |
-| 스케줄 생성 | meta_schedule +1년 offset | 매치업 패턴보다 경기 결과가 중요 |
+| 스케줄 생성 | `scheduleGenerator.ts` 자동 생성 (시즌 2+) | NBA 실제 경기 배분 공식 적용, 매 시즌 다른 매치업 |
 | saves 구조 | 단일 row 유지 + season 컬럼 | 유저는 항상 하나의 진행 중 게임만 가짐 |
 | 스탯 저장 | 시즌 종료 시 user_season_history에 아카이브 | Player 타입 변경 최소화 |
 | OVR 변화 | seeded random (tendencySeed 활용) | 결정론적 재현 보장 |
