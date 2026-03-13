@@ -5,6 +5,7 @@ import { HeadCoach } from '../types/coaching';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
+import { formatMoney } from '../utils/formatMoney';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface CoachDetailViewProps {
@@ -189,7 +190,7 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                                             {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
                                         </span>
                                     </td>
-                                    <td className="pr-8 pt-2">${coach.contractSalary}M</td>
+                                    <td className="pr-8 pt-2">{formatMoney(coach.contractSalary)}</td>
                                     <td className="pr-8 pt-2">{coach.contractYears}년</td>
                                     <td className="pt-2">{coach.contractYearsRemaining}년</td>
                                 </tr>

@@ -26,7 +26,7 @@ export function checkTradeLegality(team: Team, incoming: Player[], outgoing: Pla
         if (inSalary > outSalary * 1.10) return false;
     } else {
         // Above cap but below tax: 125% + padding
-        if (inSalary > (outSalary * 1.25) + 0.25) return false;
+        if (inSalary > (outSalary * 1.25) + 250_000) return false;
     }
 
     return true;

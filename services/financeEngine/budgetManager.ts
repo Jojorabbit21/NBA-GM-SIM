@@ -23,7 +23,7 @@ export class BudgetManager {
         coachSalaries: Record<string, number>,
     ): void {
         for (const team of teams) {
-            const coachSalary = coachSalaries[team.id] ?? 7;
+            const coachSalary = coachSalaries[team.id] ?? 7_000_000;
             this.finances[team.id] = initializeTeamFinance(
                 team.id,
                 coachSalary,
@@ -165,6 +165,17 @@ export class BudgetManager {
      */
     loadFromSaveData(data: SavedTeamFinances): void {
         for (const [teamId, saved] of Object.entries(data)) {
+            // 구세이브 호환: $M 단위 → 달러 변환 (payroll < 1000이면 $M 단위로 간주)
+            if (saved.expenses.payroll > 0 && saved.expenses.payroll < 1000) {
+                for (const key of Object.keys(saved.revenue) as Array<keyof typeof saved.revenue>) {
+                    (saved.revenue as any)[key] = Math.round(saved.revenue[key] * 1_000_000);
+                }
+                for (const key of Object.keys(saved.expenses) as Array<keyof typeof saved.expenses>) {
+                    (saved.expenses as any)[key] = Math.round(saved.expenses[key] * 1_000_000);
+                }
+                saved.budget = Math.round(saved.budget * 1_000_000);
+            }
+
             // 구세이브 호환: 새 지출 필드 없으면 재계산
             const expenses = { ...saved.expenses };
             if (expenses.scouting === undefined) expenses.scouting = calculateScoutingExpense(teamId);
@@ -190,32 +201,32 @@ export class BudgetManager {
 
         const totalRevenue = Object.values(finance.revenue).reduce((s, v) => s + v, 0);
         const totalExpenses = Object.values(finance.expenses).reduce((s, v) => s + v, 0);
-        finance.operatingIncome = Math.round((totalRevenue - totalExpenses) * 10) / 10;
+        finance.operatingIncome = Math.round(totalRevenue - totalExpenses);
     }
 }
 
 /**
- * 럭셔리 택스 계산 (6구간 누진)
+ * 럭셔리 택스 계산 (6구간 누진, 달러 단위)
  *
- * | 구간 ($M 초과) | 세율 |
- * |---------------|------|
- * | 0~5           | $1.50 |
- * | 5~10          | $1.75 |
- * | 10~15         | $2.50 |
- * | 15~20         | $3.25 |
- * | 20~25         | $3.75 |
- * | 25+           | $4.25 + $0.50/추가 $5M |
+ * | 구간 (초과) | 세율 |
+ * |------------|------|
+ * | 0~$5M      | $1.50 per $1 |
+ * | $5~10M     | $1.75 |
+ * | $10~15M    | $2.50 |
+ * | $15~20M    | $3.25 |
+ * | $20~25M    | $3.75 |
+ * | $25M+      | $4.25 + $0.50/추가 $5M |
  */
 export function calculateLuxuryTax(payroll: number, taxLevel: number): number {
     const excess = payroll - taxLevel;
     if (excess <= 0) return 0;
 
     const brackets = [
-        { limit: 5, rate: 1.50 },
-        { limit: 5, rate: 1.75 },
-        { limit: 5, rate: 2.50 },
-        { limit: 5, rate: 3.25 },
-        { limit: 5, rate: 3.75 },
+        { limit: 5_000_000, rate: 1.50 },
+        { limit: 5_000_000, rate: 1.75 },
+        { limit: 5_000_000, rate: 2.50 },
+        { limit: 5_000_000, rate: 3.25 },
+        { limit: 5_000_000, rate: 3.75 },
     ];
 
     let tax = 0;
@@ -228,19 +239,19 @@ export function calculateLuxuryTax(payroll: number, taxLevel: number): number {
         remaining -= taxable;
     }
 
-    // 25M+ 초과분: $4.25 + $0.50 per additional $5M bracket
+    // $25M+ 초과분: $4.25 + $0.50 per additional $5M bracket
     if (remaining > 0) {
-        const extraBrackets = Math.ceil(remaining / 5);
+        const extraBrackets = Math.ceil(remaining / 5_000_000);
         let extraRemaining = remaining;
         for (let i = 0; i < extraBrackets; i++) {
             const bracketRate = 4.25 + i * 0.50;
-            const taxable = Math.min(extraRemaining, 5);
+            const taxable = Math.min(extraRemaining, 5_000_000);
             tax += taxable * bracketRate;
             extraRemaining -= taxable;
         }
     }
 
-    return Math.round(tax * 10) / 10;
+    return Math.round(tax);
 }
 
 /**

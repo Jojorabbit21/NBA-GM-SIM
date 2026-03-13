@@ -12,12 +12,12 @@ import { Team } from '../../types/team';
  */
 
 // 2025-26 기준: 리그 전체 중앙 방송 수익 ~$4.65B → 팀당 ~$155M
-const CENTRAL_BROADCASTING_PER_TEAM = 155; // $M
+const CENTRAL_BROADCASTING_PER_TEAM = 155_000_000;
 
-/** 기준값에 ±pct% 범위의 노이즈 ($M, 소수점 6자리 = 1달러 단위) */
+/** 기준값에 ±pct% 범위의 노이즈 (달러 정수) */
 function jitter(base: number, pct: number = 3): number {
     const noise = base * (pct / 100) * (Math.random() * 2 - 1);
-    return Math.round((base + noise) * 1_000_000) / 1_000_000;
+    return Math.round(base + noise);
 }
 
 export function calculateFixedRevenue(
@@ -26,7 +26,7 @@ export function calculateFixedRevenue(
 ): Pick<TeamFinance['revenue'], 'broadcasting' | 'localMedia' | 'sponsorship'> {
     const finData = TEAM_FINANCE_DATA[teamId];
     if (!finData) {
-        return { broadcasting: CENTRAL_BROADCASTING_PER_TEAM, localMedia: 30, sponsorship: 30 };
+        return { broadcasting: CENTRAL_BROADCASTING_PER_TEAM, localMedia: 30_000_000, sponsorship: 30_000_000 };
     }
 
     const { market } = finData;
@@ -41,7 +41,7 @@ export function calculateFixedRevenue(
     const winPctBonus = prevSeasonWinPct !== undefined
         ? 1 + (prevSeasonWinPct - 0.5) * 0.3  // 70% 승률 → ×1.06, 30% → ×0.94
         : 1.0;
-    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus * 10) / 10);
+    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus));
 
     return { broadcasting, localMedia, sponsorship };
 }
@@ -62,7 +62,7 @@ export function calculateFixedExpenses(
 
     // 운영비: 경기장 좌석수 기반 (좌석당 $3,000 연간 운영비 가정)
     const arenaCapacity = finData?.market.arenaCapacity ?? 18000;
-    const operations = jitter(Math.round(arenaCapacity * 3000 / 1_000_000 * 10) / 10); // ~$54~63M
+    const operations = jitter(arenaCapacity * 3000); // ~$54~63M
 
     // 선수 연봉 합계
     const payroll = roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
@@ -75,48 +75,48 @@ export function calculateFixedExpenses(
 }
 
 /**
- * 시즌 기타 수익 추정 ($M)
+ * 시즌 기타 수익 추정 (달러)
  * 마켓 티어별 기타 수익 (주차, 구장 이벤트 등)
  */
 const OTHER_REVENUE: Record<number, number> = {
-    1: 45,
-    2: 30,
-    3: 20,
-    4: 15,
+    1: 45_000_000,
+    2: 30_000_000,
+    3: 20_000_000,
+    4: 15_000_000,
 };
 
 export function calculateOtherRevenue(teamId: string): number {
     const finData = TEAM_FINANCE_DATA[teamId];
-    if (!finData) return jitter(20);
-    return jitter(OTHER_REVENUE[finData.market.marketTier] ?? 20);
+    if (!finData) return jitter(20_000_000);
+    return jitter(OTHER_REVENUE[finData.market.marketTier] ?? 20_000_000);
 }
 
 /**
- * 스카우팅/선수 개발비 ($M)
+ * 스카우팅/선수 개발비 (달러)
  * 마켓 티어별 기본값 + jitter — 시설, 트레이닝 스태프, 스카우트 인력
  */
-const SCOUTING_BASE: Record<number, number> = { 1: 28, 2: 25, 3: 22, 4: 20 };
+const SCOUTING_BASE: Record<number, number> = { 1: 28_000_000, 2: 25_000_000, 3: 22_000_000, 4: 20_000_000 };
 
 export function calculateScoutingExpense(teamId: string): number {
     const finData = TEAM_FINANCE_DATA[teamId];
-    if (!finData) return jitter(24);
-    return jitter(SCOUTING_BASE[finData.market.marketTier] ?? 24);
+    if (!finData) return jitter(24_000_000);
+    return jitter(SCOUTING_BASE[finData.market.marketTier] ?? 24_000_000);
 }
 
 /**
- * 마케팅/홍보비 ($M)
+ * 마케팅/홍보비 (달러)
  * 마켓 티어별 기본값 + 슈퍼스타(OVR 90+) 기하급수 증가
- *   0명 → +$0M, 1명 → +$5M, 2명 → +$15M, 3명 → +$30M, 4명+ → +$50M
+ *   0명 → +$0, 1명 → +$5M, 2명 → +$15M, 3명 → +$30M, 4명+ → +$50M
  */
-const MARKETING_BASE: Record<number, number> = { 1: 25, 2: 18, 3: 12, 4: 8 };
-const STAR_MARKETING_BONUS = [0, 5, 15, 30, 50];
+const MARKETING_BASE: Record<number, number> = { 1: 25_000_000, 2: 18_000_000, 3: 12_000_000, 4: 8_000_000 };
+const STAR_MARKETING_BONUS = [0, 5_000_000, 15_000_000, 30_000_000, 50_000_000];
 
 export function calculateMarketingExpense(
     teamId: string,
     roster?: Team['roster'],
 ): number {
     const finData = TEAM_FINANCE_DATA[teamId];
-    const base = finData ? (MARKETING_BASE[finData.market.marketTier] ?? 15) : 15;
+    const base = finData ? (MARKETING_BASE[finData.market.marketTier] ?? 15_000_000) : 15_000_000;
 
     let starBonus = 0;
     if (roster) {
@@ -128,18 +128,18 @@ export function calculateMarketingExpense(
 }
 
 /**
- * 일반 관리비 ($M) — 프런트오피스 + 원정 경비 + 보험/법무
+ * 일반 관리비 (달러) — 프런트오피스 + 원정 경비 + 보험/법무
  *
  * 원정 경비 산출 근거:
  *   41 원정 × ~$300K/경기 (전세기 $200K + 호텔 $70K + 식비·이동 $30K) ≈ $12.3M
  * 프런트오피스/보험/기타: 마켓 티어별 $18~28M
  */
-const ADMIN_BASE: Record<number, number> = { 1: 28, 2: 24, 3: 21, 4: 18 };
+const ADMIN_BASE: Record<number, number> = { 1: 28_000_000, 2: 24_000_000, 3: 21_000_000, 4: 18_000_000 };
 
 export function calculateAdministrationExpense(teamId: string): number {
     const finData = TEAM_FINANCE_DATA[teamId];
-    const adminBase = finData ? (ADMIN_BASE[finData.market.marketTier] ?? 22) : 22;
-    const travelExpense = jitter(12.3, 8); // 41 games × ~$300K (±8%)
+    const adminBase = finData ? (ADMIN_BASE[finData.market.marketTier] ?? 22_000_000) : 22_000_000;
+    const travelExpense = jitter(12_300_000, 8); // 41 games × ~$300K (±8%)
     return jitter(adminBase) + travelExpense;
 }
 
@@ -204,5 +204,5 @@ function calculateBudget(teamId: string, estimatedRevenue: number): number {
     const multiplier = 0.75 + (spendingWillingness - 1) * (0.75 / 9);
     // 1→0.75, 5→1.08, 7→1.25, 10→1.50
 
-    return Math.round(estimatedRevenue * multiplier * 10) / 10;
+    return Math.round(estimatedRevenue * multiplier);
 }

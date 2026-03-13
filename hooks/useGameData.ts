@@ -291,6 +291,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.seasonStartAttributes && { seasonStartAttributes: savedState.seasonStartAttributes }),
                                     ...(savedState.injuryHistory && { injuryHistory: savedState.injuryHistory }),
                                     ...(savedState.awards && { awards: savedState.awards }),
+                                    ...(savedState.contract && {
+                                        contract: savedState.contract,
+                                        salary: savedState.contract.years[savedState.contract.currentYear],
+                                        contractYears: savedState.contract.years.length - savedState.contract.currentYear,
+                                    }),
                                 };
                                 // snapshot 경로에서 이미 reapplyAttrDeltas를 호출했으므로 이중 적용 방지
                                 if (!snapshotUsed && restored.attrDeltas) reapplyAttrDeltas(restored);
@@ -366,7 +371,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const staffData = checkpoint.coaching_staff || coachingData;
                         if (staffData) {
                             for (const tid of Object.keys(staffData)) {
-                                coachSalaries[tid] = staffData[tid]?.headCoach?.contractSalary ?? 7;
+                                coachSalaries[tid] = staffData[tid]?.headCoach?.contractSalary ?? 7_000_000;
                             }
                         }
                         getBudgetManager().initializeSeason(loadedTeams, coachSalaries);
@@ -479,11 +484,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
                             const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
                             const hasAwards = p.awards && p.awards.length > 0;
+                            const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option);
                             const hasAnyGrowthData = hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart;
                             const needsGrowthBackup = snapshotBuildFailed && hasAnyGrowthData;
                             const needsExtraBackup = snapshotBuildFailed && (hasInjuryHistory || hasAwards);
 
-                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup) {
+                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup || hasContract) {
                                 const state: SavedPlayerState = {
                                     condition: p.condition || 100,
                                     health: p.health,
@@ -498,6 +504,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 }
                                 if (snapshotBuildFailed && hasInjuryHistory) state.injuryHistory = p.injuryHistory;
                                 if (snapshotBuildFailed && hasAwards) state.awards = p.awards;
+                                if (hasContract) state.contract = p.contract;
                                 rosterState[p.id] = state;
                             }
                         });
@@ -571,7 +578,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         const coachSalaries: Record<string, number> = {};
         if (newCoachingData) {
             for (const tid of teamIds) {
-                coachSalaries[tid] = newCoachingData[tid]?.headCoach?.contractSalary ?? 7;
+                coachSalaries[tid] = newCoachingData[tid]?.headCoach?.contractSalary ?? 7_000_000;
             }
         }
         getBudgetManager().initializeSeason(teams, coachSalaries);

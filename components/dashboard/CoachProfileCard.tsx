@@ -3,6 +3,7 @@ import React from 'react';
 import { HeadCoach } from '../../types/coaching';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PREF_AXES, PREF_ORDER, getAxisResult } from '../../views/CoachDetailView';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface HeadCoachTableProps {
     coach: HeadCoach | null | undefined;
@@ -85,7 +86,7 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
                         </span>
                     </TableCell>
                     <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
-                        <span className="text-xs font-mono text-emerald-400">${coach.contractSalary}M</span>
+                        <span className="text-xs font-mono text-emerald-400">{formatMoney(coach.contractSalary)}</span>
                     </TableCell>
                     <TableCell align="center" style={{ width: 50, minWidth: 50 }}>
                         <span className="text-xs font-mono text-slate-400">{coach.contractYears}년</span>

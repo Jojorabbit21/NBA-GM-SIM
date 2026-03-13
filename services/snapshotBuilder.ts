@@ -25,9 +25,10 @@ export const buildReplaySnapshot = (
             const hasSeasonStart = player.seasonStartAttributes && Object.keys(player.seasonStartAttributes).length > 0;
             const hasInjuryHistory = player.injuryHistory && player.injuryHistory.length > 0;
             const hasAwards = player.awards && player.awards.length > 0;
+            const hasContract = !!player.contract;
             const hasAnyGrowthData = hasGrowth || hasAttrDeltas || hasChangeLog || hasSeasonStart;
 
-            if (hasStats || hasAnyGrowthData || hasInjuryHistory || hasAwards) {
+            if (hasStats || hasAnyGrowthData || hasInjuryHistory || hasAwards || hasContract) {
                 const entry: any = {};
                 if (player.stats) entry.stats = player.stats;
                 if (player.playoffStats) entry.playoffStats = player.playoffStats;
@@ -41,6 +42,7 @@ export const buildReplaySnapshot = (
                 }
                 if (hasInjuryHistory) entry.injuryHistory = player.injuryHistory;
                 if (hasAwards) entry.awards = player.awards;
+                if (hasContract) entry.contract = player.contract;
                 roster_stats[player.id] = entry;
             }
         }
@@ -159,6 +161,11 @@ export const hydrateFromSnapshot = (
             }
             if ((pData as any).injuryHistory) player.injuryHistory = (pData as any).injuryHistory;
             if ((pData as any).awards) player.awards = (pData as any).awards;
+            if ((pData as any).contract) {
+                player.contract = (pData as any).contract;
+                player.salary = player.contract!.years[player.contract!.currentYear];
+                player.contractYears = player.contract!.years.length - player.contract!.currentYear;
+            }
         }
     }
 

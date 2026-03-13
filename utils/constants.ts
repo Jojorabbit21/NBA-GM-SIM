@@ -12,12 +12,12 @@ export const APP_FULL_NAME = `${APP_NAME} ${APP_YEAR}`;
 export const SEASON_START_DATE = '2025-10-20';
 export const TRADE_DEADLINE = '2026-02-06';
 
-// League Financial Constants ($M)
+// League Financial Constants (달러)
 export const LEAGUE_FINANCIALS = {
-    SALARY_CAP: 140,
-    TAX_LEVEL: 170,
-    FIRST_APRON: 178,
-    SECOND_APRON: 189
+    SALARY_CAP: 140_000_000,
+    TAX_LEVEL: 170_000_000,
+    FIRST_APRON: 178_000_000,
+    SECOND_APRON: 189_000_000,
 };
 
 // Calendar Events

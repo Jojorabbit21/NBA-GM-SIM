@@ -16,8 +16,8 @@ export interface MarketData {
     arenaCapacity: number;         // 좌석 수
     arenaName: string;             // 경기장 이름
     baseTicketPrice: number;       // 기본 입장료 ($)
-    localMediaDeal: number;        // 로컬 방송 계약 ($M/년)
-    sponsorshipBase: number;       // 기본 스폰서 수익 ($M/년)
+    localMediaDeal: number;        // 로컬 방송 계약 ($/년)
+    sponsorshipBase: number;       // 기본 스폰서 수익 ($/년)
 }
 
 // ── 팀 재정 정적 데이터 (meta_teams용) ──
@@ -29,24 +29,24 @@ export interface TeamFinanceStaticData {
 // ── 구단 재정 상태 (런타임) ──
 export interface TeamFinance {
     revenue: {
-        gate: number;              // 관중 입장료 수익 (경기별 누적, $M)
-        broadcasting: number;      // 중앙 방송 분배금 (시즌 초 확정, $M)
-        localMedia: number;        // 로컬 미디어 (시즌 초 확정, $M)
-        sponsorship: number;       // 스폰서십 (시즌 초 확정, $M)
-        merchandise: number;       // MD 수익 (경기별 누적, $M)
-        other: number;             // 기타 수익 ($M)
+        gate: number;              // 관중 입장료 수익 (경기별 누적, $)
+        broadcasting: number;      // 중앙 방송 분배금 (시즌 초 확정, $)
+        localMedia: number;        // 로컬 미디어 (시즌 초 확정, $)
+        sponsorship: number;       // 스폰서십 (시즌 초 확정, $)
+        merchandise: number;       // MD 수익 (경기별 누적, $)
+        other: number;             // 기타 수익 ($)
     };
     expenses: {
-        payroll: number;           // 선수 연봉 총액 ($M)
-        luxuryTax: number;         // 예상 택스 ($M, 시즌 종료 시 확정)
-        operations: number;        // 구장 운영비/스태프 등 고정비 ($M)
-        coachSalary: number;       // 감독/코치 연봉 ($M)
-        scouting: number;          // 스카우팅/선수 개발비 ($M)
-        marketing: number;         // 마케팅/홍보비 ($M)
-        administration: number;    // 일반 관리비 — 프런트오피스+원정경비+보험 ($M)
+        payroll: number;           // 선수 연봉 총액 ($)
+        luxuryTax: number;         // 예상 택스 ($, 시즌 종료 시 확정)
+        operations: number;        // 구장 운영비/스태프 등 고정비 ($)
+        coachSalary: number;       // 감독/코치 연봉 ($)
+        scouting: number;          // 스카우팅/선수 개발비 ($)
+        marketing: number;         // 마케팅/홍보비 ($)
+        administration: number;    // 일반 관리비 — 프런트오피스+원정경비+보험 ($)
     };
-    operatingIncome: number;       // 수익 - 지출 ($M)
-    budget: number;                // 시즌 지출 가능 예산 ($M, 구단주 승인)
+    operatingIncome: number;       // 수익 - 지출 ($)
+    budget: number;                // 시즌 지출 가능 예산 ($, 구단주 승인)
 }
 
 // ── 월별 관중 데이터 ──

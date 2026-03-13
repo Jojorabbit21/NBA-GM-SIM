@@ -6,6 +6,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface OfferCardProps {
   offer: TradeOffer;
@@ -64,7 +65,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, onAccept, onPlayerC
           <div className="space-y-3">
              <div className="flex justify-between items-center mb-1 px-1">
                 <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: teamColor !== '#000000' ? teamColor : '#94a3b8' }}>제안된 패키지 ({offer.players.length}인)</div>
-                <div className="text-[10px] font-mono font-black text-slate-500">합계: ${offer.players.reduce((s,p)=>s+p.salary,0).toFixed(1)}M</div>
+                <div className="text-[10px] font-mono font-black text-slate-500">합계: {formatMoney(offer.players.reduce((s,p)=>s+p.salary,0))}</div>
              </div>
              <div className="flex flex-col gap-2">
                 {offer.players.map(p => {
@@ -91,7 +92,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, onAccept, onPlayerC
                          <div className="text-[10px] text-slate-500 uppercase font-black tracking-tight">{p.position}</div>
                        </div>
                      </div>
-                     <div className="ml-4 text-sm font-mono font-black text-slate-300 flex-shrink-0">${p.salary.toFixed(1)}M</div>
+                     <div className="ml-4 text-sm font-mono font-black text-slate-300 flex-shrink-0">{formatMoney(p.salary)}</div>
                   </div>
                   );
                 })}

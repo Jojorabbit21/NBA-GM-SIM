@@ -1,8 +1,45 @@
 
 import { Team, Player, Game } from '../types';
+import { PlayerContract, ContractType } from '../types/player';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
 import { KNOWN_INJURIES } from '../utils/injuries'; // Import from dedicated file
 import { calculateOvr } from '../utils/ovrUtils';
+
+/** DB 연봉 값 정규화: $M 단위(< 1000)면 달러로 변환 */
+const normalizeSalary = (val: number): number => {
+    if (val < 1000) return Math.round(val * 1_000_000);
+    return Math.round(val);
+};
+
+/** 연봉/OVR/나이 기반 계약 타입 추론 (fallback용) */
+function inferContractType(salary: number, ovr: number, age: number): ContractType {
+    if (salary >= 35_000_000 && ovr >= 85) return 'max';
+    if (salary <= 2_000_000) return 'min';
+    if (age <= 24) return 'rookie';
+    return 'veteran';
+}
+
+/** JSONB contract 객체 또는 salary/contractYears에서 PlayerContract 생성 */
+function buildPlayerContract(baseAttrs: any, salary: number, contractYears: number, ovr: number, age: number): PlayerContract {
+    const rawContract = baseAttrs?.contract;
+    if (rawContract) {
+        // DB에 실제 계약 데이터 존재 — years 값도 정규화
+        const years = (rawContract.years as number[]).map((y: number) => normalizeSalary(y));
+        return {
+            years,
+            currentYear: rawContract.currentYear ?? 0,
+            type: rawContract.type ?? inferContractType(salary, ovr, age),
+            ...(rawContract.noTrade && { noTrade: true }),
+            ...(rawContract.option && { option: rawContract.option }),
+        };
+    }
+    // 레거시 fallback: salary/contractYears → 균등 배열
+    return {
+        years: Array(contractYears).fill(salary),
+        currentYear: 0,
+        type: inferContractType(salary, ovr, age),
+    };
+}
 
 // --- Helper: Flexible Column Getter ---
 const getCol = (item: any, keys: string[]) => {
@@ -44,9 +81,9 @@ export const mapPlayersToTeams = (playersData: any[]): Team[] => {
             division: t.division as 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest',
             wins: 0,
             losses: 0,
-            budget: 150,
-            salaryCap: 140,
-            luxuryTaxLine: 170,
+            budget: 150_000_000,
+            salaryCap: 140_000_000,
+            luxuryTaxLine: 170_000_000,
             roster: roster
         };
     });
@@ -255,15 +292,15 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         if (Object.keys(customOverrides).length === 0) customOverrides = undefined;
     }
 
-    return {
+    const player: Player = {
         id,
         name,
         position,
         age: Number(getCol(p, ['age', 'Age']) || 20),
         height: statsObj.height,
         weight: Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
-        salary: Number(getCol(p, ['salary', 'Salary']) || 5),
-        contractYears: Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1),
+        salary: 0,  // 아래에서 contract 기반으로 재설정
+        contractYears: 0,
 
         ovr,
         manualOvr: (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : undefined,
@@ -297,6 +334,16 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         // 올타임 드래프트 풀 포함 여부 (기본 true, false면 제외)
         includeAlltime: raw.include_alltime !== false,
     };
+
+    // 계약 데이터 구성 (JSONB contract 또는 salary/contractYears fallback)
+    const baseSalary = normalizeSalary(Number(getCol(p, ['salary', 'Salary']) || 5));
+    const baseYears = Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1);
+    const contract = buildPlayerContract(baseAttrs, baseSalary, baseYears, ovr, player.age);
+    player.contract = contract;
+    player.salary = contract.years[contract.currentYear] ?? baseSalary;
+    player.contractYears = contract.years.length - contract.currentYear;
+
+    return player;
 };
 
 /**

@@ -18,7 +18,7 @@ export interface HeadCoach {
     name: string;
     preferences: HeadCoachPreferences;
     contractYears: number;
-    contractSalary: number;        // 연봉 (백만 USD)
+    contractSalary: number;        // 연봉 (달러)
     contractYearsRemaining: number;
 }
 

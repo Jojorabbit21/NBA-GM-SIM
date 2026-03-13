@@ -69,7 +69,7 @@ export function calculateGameAttendance(
 }
 
 /**
- * 홈 경기 입장료 수익 ($M)
+ * 홈 경기 입장료 수익 (달러)
  */
 export function calculateGateRevenue(
     homeTeamId: string,
@@ -78,8 +78,7 @@ export function calculateGateRevenue(
     const finData = TEAM_FINANCE_DATA[homeTeamId];
     if (!finData) return 0;
 
-    const ticketRevenue = attendance * finData.market.baseTicketPrice;
-    return ticketRevenue / 1_000_000; // $M 단위
+    return attendance * finData.market.baseTicketPrice;
 }
 
 /**
@@ -109,5 +108,5 @@ export function calculateMerchandiseRevenue(
         mdSpend += Math.min(starCount * 2, 8);
     }
 
-    return (attendance * mdSpend) / 1_000_000; // $M 단위
+    return attendance * mdSpend;
 }
