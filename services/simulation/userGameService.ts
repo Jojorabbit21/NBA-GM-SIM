@@ -10,6 +10,7 @@ import { generateGameRecapNews } from '../geminiService';
 import { sendMessage, bulkSendMessages } from '../messageService';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
+import { getBudgetManager } from '../financeEngine';
 
 /** duration 문자열 → 일수 변환 */
 function durationToDays(dur: string): number {
@@ -111,7 +112,12 @@ export const applyUserGameResult = async (
     applyBoxToRoster(homeTeam, result.homeBox, isPlayoff);
     applyBoxToRoster(awayTeam, result.awayBox, isPlayoff);
 
-    // 1.5. 선수 성장/퇴화 (정규시즌만)
+    // 1.5. 홈 경기 수익 누적 (정규시즌만)
+    if (!isPlayoff) {
+        getBudgetManager().processHomeGame(homeTeam, awayTeam.id);
+    }
+
+    // 1.6. 선수 성장/퇴화 (정규시즌만)
     if (tendencySeed && !isPlayoff) {
         const growthRate = simSettings?.growthRate ?? 1.0;
         const declineRate = simSettings?.declineRate ?? 1.0;
