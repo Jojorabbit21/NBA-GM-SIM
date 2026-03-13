@@ -1,5 +1,5 @@
 
-import { TeamFinance, SavedTeamFinances } from '../../types/finance';
+import { TeamFinance, SavedTeamFinances, MonthlyAttendanceData } from '../../types/finance';
 import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
 import { Team } from '../../types/team';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
@@ -12,6 +12,8 @@ import { initializeTeamFinance } from './revenueCalculator';
 export class BudgetManager {
     private finances: Record<string, TeamFinance> = {};
     private gamesPlayed: Record<string, number> = {};
+    private totalAttendance: Record<string, number> = {};
+    private monthlyAttendance: Record<string, Record<string, MonthlyAttendanceData>> = {};
 
     /**
      * 시즌 시작 시 전팀 재정 초기화
@@ -28,13 +30,15 @@ export class BudgetManager {
                 team.roster,
             );
             this.gamesPlayed[team.id] = 0;
+            this.totalAttendance[team.id] = 0;
+            this.monthlyAttendance[team.id] = {};
         }
     }
 
     /**
      * 홈 경기 후 수익 누적
      */
-    processHomeGame(homeTeam: Team, awayTeamId: string): {
+    processHomeGame(homeTeam: Team, awayTeamId: string, gameDate?: string): {
         attendance: number;
         gateRevenue: number;
         mdRevenue: number;
@@ -51,6 +55,19 @@ export class BudgetManager {
         finance.revenue.gate += gateRevenue;
         finance.revenue.merchandise += mdRevenue;
         this.gamesPlayed[homeTeam.id] = (this.gamesPlayed[homeTeam.id] ?? 0) + 1;
+
+        // 관중 누적
+        this.totalAttendance[homeTeam.id] = (this.totalAttendance[homeTeam.id] ?? 0) + attendance;
+
+        // 월별 관중 누적
+        if (gameDate) {
+            const monthKey = gameDate.slice(0, 7); // "2025-10"
+            if (!this.monthlyAttendance[homeTeam.id]) this.monthlyAttendance[homeTeam.id] = {};
+            const monthly = this.monthlyAttendance[homeTeam.id];
+            if (!monthly[monthKey]) monthly[monthKey] = { games: 0, total: 0 };
+            monthly[monthKey].games += 1;
+            monthly[monthKey].total += attendance;
+        }
 
         this.recalculateIncome(homeTeam.id);
 
@@ -101,6 +118,31 @@ export class BudgetManager {
     }
 
     /**
+     * 관중 통계 조회
+     */
+    getAttendanceStats(teamId: string): {
+        totalAttendance: number;
+        averageAttendance: number;
+        averageOccupancy: number;
+        monthlyAttendance: Record<string, MonthlyAttendanceData>;
+    } {
+        const games = this.gamesPlayed[teamId] ?? 0;
+        const total = this.totalAttendance[teamId] ?? 0;
+        const avg = games > 0 ? Math.round(total / games) : 0;
+
+        const finData = TEAM_FINANCE_DATA[teamId];
+        const capacity = finData?.market.arenaCapacity ?? 18000;
+        const occupancy = games > 0 ? avg / capacity : 0;
+
+        return {
+            totalAttendance: total,
+            averageAttendance: avg,
+            averageOccupancy: occupancy,
+            monthlyAttendance: this.monthlyAttendance[teamId] ?? {},
+        };
+    }
+
+    /**
      * 저장용 데이터 생성
      */
     toSaveData(): SavedTeamFinances {
@@ -111,6 +153,8 @@ export class BudgetManager {
                 expenses: { ...finance.expenses },
                 budget: finance.budget,
                 gamesPlayed: this.gamesPlayed[teamId] ?? 0,
+                totalAttendance: this.totalAttendance[teamId] ?? 0,
+                monthlyAttendance: this.monthlyAttendance[teamId] ?? {},
             };
         }
         return result;
@@ -128,6 +172,8 @@ export class BudgetManager {
                 budget: saved.budget,
             };
             this.gamesPlayed[teamId] = saved.gamesPlayed;
+            this.totalAttendance[teamId] = saved.totalAttendance ?? 0;
+            this.monthlyAttendance[teamId] = saved.monthlyAttendance ?? {};
             this.recalculateIncome(teamId);
         }
     }

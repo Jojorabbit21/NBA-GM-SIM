@@ -46,6 +46,12 @@ export interface TeamFinance {
     budget: number;                // 시즌 지출 가능 예산 ($M, 구단주 승인)
 }
 
+// ── 월별 관중 데이터 ──
+export interface MonthlyAttendanceData {
+    games: number;
+    total: number;
+}
+
 // ── 저장용 팀 재정 상태 (saves 테이블) ──
 export interface SavedTeamFinances {
     [teamId: string]: {
@@ -53,5 +59,7 @@ export interface SavedTeamFinances {
         expenses: TeamFinance['expenses'];
         budget: number;
         gamesPlayed: number;
+        totalAttendance?: number;
+        monthlyAttendance?: Record<string, MonthlyAttendanceData>;
     };
 }

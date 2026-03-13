@@ -12,7 +12,6 @@ import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 import { RosterGrid } from '../components/roster/RosterGrid';
-import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { ScheduleView } from './ScheduleView';
 
 interface DashboardViewProps {
@@ -36,7 +35,7 @@ interface DashboardViewProps {
   onCoachClick?: (teamId: string) => void;
 }
 
-export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule' | 'coaching';
+export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
@@ -130,13 +129,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     >
                         <span>상대 전력 분석</span>
                     </button>
-                    <button
-                        onClick={() => setActiveTab('coaching')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'coaching' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
-                    >
-                        <span>코칭 스태프</span>
-                    </button>
-                    <button
+<button
                         onClick={() => setActiveTab('schedule')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'schedule' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
@@ -196,13 +189,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
               )}
 
-              {activeTab === 'coaching' && (
-                  <div className="animate-in fade-in duration-500 h-full">
-                    <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
-                  </div>
-              )}
-
-              {activeTab === 'schedule' && userId && onViewGameResult && (
+{activeTab === 'schedule' && userId && onViewGameResult && (
                   <div className="animate-in fade-in duration-500 h-full">
                     <ScheduleView
                         schedule={schedule}

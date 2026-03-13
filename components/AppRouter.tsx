@@ -380,6 +380,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams}
                     currentSimDate={gameData.currentSimDate}
                     myTeamId={gameData.myTeamId!}
+                    coachingData={gameData.coachingData}
+                    onCoachClick={handleViewCoach}
                 />
             );
         default:
