@@ -6,20 +6,25 @@ export type { SeasonAwardsContent } from '../utils/awardVoting';
 
 export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
 
-export type MessageFilterCategory = 'ALL' | 'GAME' | 'TRANSACTION' | 'LEAGUE' | 'SYSTEM';
+export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
-export const MESSAGE_FILTER_MAP: Record<Exclude<MessageFilterCategory, 'ALL'>, MessageType[]> = {
-    GAME: ['GAME_RECAP'],
-    TRANSACTION: ['TRADE_ALERT', 'INJURY_REPORT', 'SUSPENSION'],
-    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'PLAYOFF_STAGE_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'SCOUT_REPORT'],
+export const MESSAGE_FILTER_CATEGORIES: MessageFilterCategory[] = ['GAME', 'TRADE', 'INJURY', 'SCOUT', 'LEAGUE', 'SYSTEM'];
+
+export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = {
+    GAME: ['GAME_RECAP', 'PLAYOFF_STAGE_REVIEW'],
+    TRADE: ['TRADE_ALERT'],
+    INJURY: ['INJURY_REPORT', 'SUSPENSION'],
+    SCOUT: ['SCOUT_REPORT'],
+    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION'],
     SYSTEM: ['SYSTEM'],
 };
 
 export const MESSAGE_FILTER_LABELS: Record<MessageFilterCategory, string> = {
-    ALL: '전체',
-    GAME: '경기결과',
-    TRANSACTION: '거래·부상',
-    LEAGUE: '리그',
+    GAME: '경기',
+    TRADE: '트레이드',
+    INJURY: '부상',
+    SCOUT: '스카우트',
+    LEAGUE: '리그 소식',
     SYSTEM: '시스템',
 };
 
