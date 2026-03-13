@@ -260,6 +260,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
+        <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
         <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />
         <NavItem active={currentView === 'Standings'} icon={<Trophy size={20}/>} label="순위표" onClick={() => onNavigate('Standings')} {...navProps} />
@@ -269,7 +270,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         )}
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
-        <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
 
         {/* 시즌 전체 진행 */}
