@@ -127,7 +127,9 @@ fightChance = FIGHT_BASE_CHANCE × (1 + (temperament - 0.5) × FIGHT_TEMPERAMENT
 - 싸움 건 선수 (defender): 2 테크니컬 자동 부여, 1~5경기 출장정지
 - 상대 (공격팀 랜덤): 1 테크니컬, 1~2경기 출장정지 (temperament >= 0.3이면 2경기)
 - 출장정지: 기존 부상 시스템 경로 활용 (`injuryType='출장정지 (싸움)'`)
-- **메시지**: SUSPENSION 타입으로 받은 메시지함에 부단장 서신 형태 도착
+- **메시지**:
+  - 내 팀 선수 연루: `SUSPENSION` 타입 — 부단장 서신 형태
+  - 타 팀 싸움: `LEAGUE_NEWS` 타입 — NBA League Office 공식 공지 형태
 
 ### 출장정지 경기 수 결정
 - 싸움 건 선수: `temperament`에 비례 (0.5 → 1~2경기, 1.0 → 3~5경기)
@@ -139,7 +141,7 @@ fightChance = FIGHT_BASE_CHANCE × (1 + (temperament - 0.5) × FIGHT_TEMPERAMENT
 
 | 항목 | 이전 | 현재 |
 |------|------|------|
-| FF 발동 | 슈팅 파울의 5% 전환 | 독립 이벤트 (base 0.3%) |
+| FF 발동 | 슈팅 파울의 5% 전환 | 독립 이벤트 (base 0.04%) |
 | FF 대상 | 현재 defender 고정 | 수비팀 전원 가중 랜덤 |
 | FF 텐던시 반영 | 없음 | foulProneness(70%) + temperament(30%) |
 | TF 대상 | 현재 defender 고정 | 수비팀 전원 가중 랜덤 |
@@ -158,7 +160,9 @@ fightChance = FIGHT_BASE_CHANCE × (1 + (temperament - 0.5) × FIGHT_TEMPERAMENT
 | `services/game/engine/pbp/pbpTypes.ts` | SuspensionEvent, PossessionResult.fight 타입 |
 | `services/game/engine/pbp/liveEngine.ts` | suspensions[] 초기화 + 결과 전파 |
 | `services/game/engine/commentary/textGenerator.ts` | TF/FF 해설 텍스트 |
-| `services/simulation/batchSeasonService.ts` | SUSPENSION 메시지 생성 |
-| `components/inbox/MessageContentRenderer.tsx` | SUSPENSION 메시지 렌더링 (부단장 서신) |
-| `types/message.ts` | SUSPENSION MessageType + SuspensionContent |
+| `services/simulation/batchSeasonService.ts` | SUSPENSION + LEAGUE_NEWS 메시지 생성 |
+| `services/simulation/userGameService.ts` | SUSPENSION 메시지 생성 (단건 시뮬) |
+| `services/simulationService.ts` | CpuGameResult에 suspensions 전파 |
+| `components/inbox/MessageContentRenderer.tsx` | SUSPENSION (부단장 서신) + LEAGUE_NEWS (리그 공지) 렌더링 |
+| `types/message.ts` | SUSPENSION, LEAGUE_NEWS MessageType + SuspensionContent, LeagueNewsContent |
 | `utils/hiddenTendencies.ts` | temperament, foulProneness 생성 |

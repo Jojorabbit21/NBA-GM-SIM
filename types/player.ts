@@ -92,7 +92,7 @@ export interface AttributeChangeEvent {
 
 // [New] 수상 내역 (멀티시즌 대비 배열 구조)
 export type PlayerAwardType =
-    | 'MVP' | 'DPOY' | 'FINALS_MVP' | 'CHAMPION'
+    | 'MVP' | 'DPOY' | 'FINALS_MVP' | 'CHAMPION' | 'REG_SEASON_CHAMPION'
     | 'ALL_NBA_1' | 'ALL_NBA_2' | 'ALL_NBA_3'
     | 'ALL_DEF_1' | 'ALL_DEF_2';
 

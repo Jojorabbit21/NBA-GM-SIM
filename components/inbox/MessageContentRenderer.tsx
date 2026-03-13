@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
-import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
+import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -561,6 +561,47 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     <div className="pt-4">
                         <p className="text-white font-bold">부단장</p>
                         <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'LEAGUE_NEWS': {
+            const news = content as LeagueNewsContent;
+            const fighterTeamData = TEAM_DATA[news.fighterTeamId];
+            const oppTeamData = TEAM_DATA[news.opponentTeamId];
+            return (
+                <div className="space-y-8 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-red-400/80 uppercase tracking-widest">LEAGUE BULLETIN</p>
+                    <p>
+                        {fighterTeamData?.city ?? ''} {news.fighterTeamName}의{' '}
+                        <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(news.fighterPlayerId)}>
+                            {news.fighterPlayerName}
+                        </button>{' '}
+                        선수가 {oppTeamData?.city ?? ''} {news.opponentTeamName}의{' '}
+                        <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(news.opponentPlayerId)}>
+                            {news.opponentPlayerName}
+                        </button>{' '}
+                        선수와 경기 도중 물리적 충돌을 일으켜 양 선수 모두 퇴장 조치되었다.
+                    </p>
+                    <p>
+                        리그 사무국은 해당 사건을 검토한 결과 다음과 같은 징계를 내렸다.
+                    </p>
+                    <div className="pl-3 space-y-2 text-sm">
+                        <div className="flex items-center gap-3">
+                            <TeamLogo teamId={news.fighterTeamId} size="sm" />
+                            <span className="text-white font-bold">{news.fighterPlayerName}</span>
+                            <span className="text-red-400 font-black">{news.fighterSuspensionGames}경기 출장정지</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <TeamLogo teamId={news.opponentTeamId} size="sm" />
+                            <span className="text-white font-bold">{news.opponentPlayerName}</span>
+                            <span className="text-red-400 font-black">{news.opponentSuspensionGames}경기 출장정지</span>
+                        </div>
+                    </div>
+                    <div className="pt-4">
+                        <p className="text-white font-bold">NBA League Office</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>
                     </div>
                 </div>
             );

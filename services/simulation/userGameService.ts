@@ -262,6 +262,38 @@ export const applyUserGameResult = async (
             }
         }
 
+        // 유저 팀 선수 출장정지 보고서 (싸움)
+        if (result.suspensions && result.suspensions.length > 0) {
+            for (const susp of result.suspensions) {
+                const isMyFighter = susp.teamId === myTeamId;
+                const isMyOpponent = susp.opponentTeamId === myTeamId;
+                if (isMyFighter || isMyOpponent) {
+                    const myPlayerId = isMyFighter ? susp.playerId : susp.opponentPlayerId;
+                    const myPlayerName = isMyFighter ? susp.playerName : susp.opponentPlayerName;
+                    const mySusp = isMyFighter ? susp.suspensionGames : susp.opponentSuspensionGames;
+                    const oppTeamId = isMyFighter ? susp.opponentTeamId : susp.teamId;
+                    const oppName = isMyFighter ? susp.opponentPlayerName : susp.playerName;
+                    const oppTeam = [homeTeam, awayTeam].find(t => t.id === oppTeamId);
+                    const returnDate = computeReturnDate(currentSimDate, `${mySusp * 2}일`);
+
+                    await sendMessage(userId, myTeamId, currentSimDate, 'SUSPENSION',
+                        `[출장정지] ${myPlayerName} — ${mySusp}경기 출장정지`,
+                        {
+                            playerId: myPlayerId,
+                            playerName: myPlayerName,
+                            teamId: myTeamId,
+                            opponentPlayerId: isMyFighter ? susp.opponentPlayerId : susp.playerId,
+                            opponentPlayerName: oppName,
+                            opponentTeamId: oppTeamId,
+                            opponentTeamName: oppTeam?.name || '',
+                            suspensionGames: mySusp,
+                            returnDate,
+                        }
+                    );
+                }
+            }
+        }
+
         refreshUnreadCount();
     }
 
