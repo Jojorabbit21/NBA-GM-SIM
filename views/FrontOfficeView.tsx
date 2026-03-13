@@ -129,7 +129,7 @@ const ClubTab: React.FC<{
     ];
 
     // 우측 컬럼 border 클래스 (중앙 구분선 — 밝은 색)
-    const rL = "border-l-2 border-slate-400/60";
+    const rL = "border-l-2 border-slate-400";
 
     return (
         <div className="border-b-2 border-b-slate-500">
