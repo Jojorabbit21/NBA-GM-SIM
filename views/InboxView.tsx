@@ -148,8 +148,6 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                   });
                   setPage(0);
                   setMessages([]);
-                  setSelectedMessage(null);
-                  setSelectedContent(null);
               }}
               onSelectMessage={handleSelectMessage}
               onMarkAllRead={handleMarkAllRead}
