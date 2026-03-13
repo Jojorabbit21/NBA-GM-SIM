@@ -5,20 +5,20 @@ import { Team } from '../../types/team';
 /**
  * 관중 모델 — 매 홈 경기 관중 수 / 점유율 계산
  *
- * 기본 점유율 (마켓 티어별):
- *   Tier 1: 95%  |  Tier 2: 88%  |  Tier 3: 82%  |  Tier 4: 78%
+ * 기본 점유율 (마켓 티어별, 낮은 베이스):
+ *   Tier 1: 60%  |  Tier 2: 50%  |  Tier 3: 40%  |  Tier 4: 30%
  *
- * 보정 요소:
- *   1. 팀 승률 — 50% 기준 ±
- *   2. 스타 선수 — OVR 90+ 보유 시 +3~5%
- *   3. 상대팀 인기도 — 빅마켓 원정 시 +2~5%
+ * 보정 요소 (대폭 강화):
+ *   1. 팀 승률 — 50% 기준 ±30% (승률이 관중의 핵심 요인)
+ *   2. 스타 선수 — OVR 90+ 보유 시 최대 +20%
+ *   3. 상대팀 인기도 — 빅마켓 원정 시 +5%
  */
 
 const BASE_OCCUPANCY: Record<number, number> = {
-    1: 0.95,
-    2: 0.88,
-    3: 0.82,
-    4: 0.78,
+    1: 0.60,
+    2: 0.50,
+    3: 0.40,
+    4: 0.30,
 };
 
 const BIG_MARKET_TEAMS = new Set([
@@ -37,30 +37,32 @@ export function calculateGameAttendance(
     const { market } = finData;
     let occupancy = BASE_OCCUPANCY[market.marketTier] ?? 0.85;
 
-    // 1. 승률 보정 (50% 기준)
+    // 1. 승률 보정 (50% 기준, 최대 ±30%)
     const totalGames = homeTeam.wins + homeTeam.losses;
     if (totalGames > 0) {
         const winPct = homeTeam.wins / totalGames;
-        // 승률 70% → +8%, 승률 30% → -12%
-        const winBonus = (winPct - 0.5) * 0.4;
+        // 승률 80% → +24%, 승률 50% → 0%, 승률 20% → -24%
+        const winBonus = (winPct - 0.5) * 0.8;
         occupancy += winBonus;
     }
 
-    // 2. 스타 선수 보정 (OVR 90+)
+    // 2. 스타 선수 보정 (OVR 90+, 최대 +20%)
     const starCount = homeTeam.roster.filter(p => p.ovr >= 90).length;
-    if (starCount >= 2) {
-        occupancy += 0.05;
+    if (starCount >= 3) {
+        occupancy += 0.20;
+    } else if (starCount === 2) {
+        occupancy += 0.15;
     } else if (starCount === 1) {
-        occupancy += 0.03;
+        occupancy += 0.08;
     }
 
     // 3. 상대팀 인기도 보정
     if (BIG_MARKET_TEAMS.has(awayTeamId)) {
-        occupancy += 0.03;
+        occupancy += 0.05;
     }
 
-    // 최소 60%, 최대 100%
-    occupancy = Math.max(0.60, Math.min(1.0, occupancy));
+    // 최소 25%, 최대 100%
+    occupancy = Math.max(0.25, Math.min(1.0, occupancy));
 
     const attendance = Math.round(market.arenaCapacity * occupancy);
     return { attendance, occupancyRate: occupancy };
