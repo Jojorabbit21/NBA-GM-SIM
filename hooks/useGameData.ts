@@ -19,7 +19,9 @@ import { DraftPoolType } from '../types';
 import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { LeagueCoachingData } from '../types/coaching';
+import { SavedTeamFinances } from '../types/finance';
 import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
+import { getBudgetManager, resetBudgetManager } from '../services/financeEngine';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -45,6 +47,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [hofId, setHofId] = useState<string | null>(null); // HoF 제출용 세이브 식별자
     const [simSettings, setSimSettings] = useState<SimSettings>(DEFAULT_SIM_SETTINGS);
     const [coachingData, setCoachingData] = useState<LeagueCoachingData | null>(null);
+    const [teamFinances, setTeamFinances] = useState<SavedTeamFinances | null>(null);
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -353,6 +356,23 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
                     }
 
+                    // 팀 재정 로드 (저장된 값 우선, 없으면 초기화)
+                    if (checkpoint.team_finances) {
+                        setTeamFinances(checkpoint.team_finances);
+                        getBudgetManager().loadFromSaveData(checkpoint.team_finances);
+                    } else if (loadedTeams) {
+                        resetBudgetManager();
+                        const coachSalaries: Record<string, number> = {};
+                        const staffData = checkpoint.coaching_staff || coachingData;
+                        if (staffData) {
+                            for (const tid of Object.keys(staffData)) {
+                                coachSalaries[tid] = staffData[tid]?.headCoach?.contractSalary ?? 7;
+                            }
+                        }
+                        getBudgetManager().initializeSeason(loadedTeams, coachSalaries);
+                        setTeamFinances(getBudgetManager().toSaveData());
+                    }
+
                     if (checkpoint.hof_id) {
                         setHofId(checkpoint.hof_id);
                     }
@@ -493,7 +513,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const _saveStart = performance.now();
                     const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
                     const coaching = ov?.coachingData || gameStateRef.current.coachingData;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching);
+                    const finances = getBudgetManager().toSaveData();
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -760,6 +781,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         hofId,
         simSettings, setSimSettings,
         coachingData, setCoachingData,
+        teamFinances,
         news, setNews,
         
         isBaseDataLoading,

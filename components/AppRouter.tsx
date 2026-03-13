@@ -21,6 +21,7 @@ import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
 import { CoachDetailView } from '../views/CoachDetailView';
 import { HallOfFameView } from '../views/HallOfFameView';
+import { FrontOfficeView } from '../views/FrontOfficeView';
 import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
 
@@ -370,6 +371,15 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 <DraftHistoryView
                     myTeamId={gameData.myTeamId!}
                     draftPicks={gameData.draftPicks}
+                />
+            );
+        case 'FrontOffice':
+            return (
+                <FrontOfficeView
+                    team={myTeam!}
+                    teams={gameData.teams}
+                    currentSimDate={gameData.currentSimDate}
+                    myTeamId={gameData.myTeamId!}
                 />
             );
         default:

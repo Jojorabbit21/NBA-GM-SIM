@@ -5,6 +5,7 @@ import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { getBudgetManager } from '../financeEngine';
 
 export interface ProcessedCpuResults {
     gameResultsToSave: any[];
@@ -43,6 +44,11 @@ export const processCpuGames = (
             updateTeamStats(home, away, res.homeScore, res.awayScore, isPlayoff);
             if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home, isPlayoff);
             if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away, isPlayoff);
+
+            // 홈 경기 수익 누적
+            if (!isPlayoff) {
+                getBudgetManager().processHomeGame(home, away.id);
+            }
 
             // 선수 성장/퇴화 (정규시즌만)
             if (tendencySeed && !isPlayoff && res.boxScore?.home && res.boxScore?.away) {
