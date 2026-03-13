@@ -67,8 +67,8 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
 
 // ── 공통 엑셀 그리드 스타일 ──
 const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
-const tdClass = "py-1.5 px-2 text-xs font-medium text-slate-300 whitespace-nowrap border-b border-slate-700/60";
-const tdValClass = "py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60 text-right";
+const tdClass = "py-1.5 px-2 text-xs font-medium whitespace-nowrap border-b border-slate-700/60";
+const tdValClass = "py-1.5 px-2 text-xs font-medium font-mono tabular-nums whitespace-nowrap border-b border-slate-700/60 text-right";
 
 // ── 구단주 성향 자연어 변환 ──
 function getSpendingLabel(v: number): string {
@@ -117,7 +117,7 @@ const ClubTab: React.FC<{
     return (
         <div className="grid grid-cols-2">
             {/* ── 좌측: 재정 현황 ── */}
-            <div className="border-r border-slate-700/60">
+            <div className="border-r border-slate-600">
                 <table className="w-full border-collapse text-xs">
                         <thead>
                             <tr>
