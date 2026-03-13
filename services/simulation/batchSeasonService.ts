@@ -566,6 +566,11 @@ function applyGameResultInPlace(
     applyBoxToRoster(homeTeam, result.homeBox, isPlayoff);
     applyBoxToRoster(awayTeam, result.awayBox, isPlayoff);
 
+    // 홈 경기 수익 누적 (정규시즌만)
+    if (!isPlayoff) {
+        getBudgetManager().processHomeGame(homeTeam, awayTeam.id, date);
+    }
+
     // 로스터 업데이트 (체력/부상)
     if (result.rosterUpdates) {
         [homeTeam, awayTeam].forEach(t => {
