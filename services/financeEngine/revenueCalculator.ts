@@ -92,6 +92,58 @@ export function calculateOtherRevenue(teamId: string): number {
 }
 
 /**
+ * 스카우팅/선수 개발비 ($M)
+ * 마켓 티어별 기본값 + jitter — 시설, 트레이닝 스태프, 스카우트 인력
+ */
+const SCOUTING_BASE: Record<number, number> = { 1: 28, 2: 25, 3: 22, 4: 20 };
+
+export function calculateScoutingExpense(teamId: string): number {
+    const finData = TEAM_FINANCE_DATA[teamId];
+    if (!finData) return jitter(24);
+    return jitter(SCOUTING_BASE[finData.market.marketTier] ?? 24);
+}
+
+/**
+ * 마케팅/홍보비 ($M)
+ * 마켓 티어별 기본값 + 슈퍼스타(OVR 90+) 기하급수 증가
+ *   0명 → +$0M, 1명 → +$5M, 2명 → +$15M, 3명 → +$30M, 4명+ → +$50M
+ */
+const MARKETING_BASE: Record<number, number> = { 1: 25, 2: 18, 3: 12, 4: 8 };
+const STAR_MARKETING_BONUS = [0, 5, 15, 30, 50];
+
+export function calculateMarketingExpense(
+    teamId: string,
+    roster?: Team['roster'],
+): number {
+    const finData = TEAM_FINANCE_DATA[teamId];
+    const base = finData ? (MARKETING_BASE[finData.market.marketTier] ?? 15) : 15;
+
+    let starBonus = 0;
+    if (roster) {
+        const starCount = roster.filter(p => p.ovr >= 90).length;
+        starBonus = STAR_MARKETING_BONUS[Math.min(starCount, STAR_MARKETING_BONUS.length - 1)];
+    }
+
+    return jitter(base + starBonus);
+}
+
+/**
+ * 일반 관리비 ($M) — 프런트오피스 + 원정 경비 + 보험/법무
+ *
+ * 원정 경비 산출 근거:
+ *   41 원정 × ~$300K/경기 (전세기 $200K + 호텔 $70K + 식비·이동 $30K) ≈ $12.3M
+ * 프런트오피스/보험/기타: 마켓 티어별 $18~28M
+ */
+const ADMIN_BASE: Record<number, number> = { 1: 28, 2: 24, 3: 21, 4: 18 };
+
+export function calculateAdministrationExpense(teamId: string): number {
+    const finData = TEAM_FINANCE_DATA[teamId];
+    const adminBase = finData ? (ADMIN_BASE[finData.market.marketTier] ?? 22) : 22;
+    const travelExpense = jitter(12.3, 8); // 41 games × ~$300K (±8%)
+    return jitter(adminBase) + travelExpense;
+}
+
+/**
  * 초기 TeamFinance 생성 (시즌 시작 시)
  */
 export function initializeTeamFinance(
@@ -103,6 +155,9 @@ export function initializeTeamFinance(
     const fixed = calculateFixedRevenue(teamId, prevSeasonWinPct);
     const expenses = calculateFixedExpenses(teamId, coachSalary, roster);
     const otherRev = calculateOtherRevenue(teamId);
+    const scouting = calculateScoutingExpense(teamId);
+    const marketing = calculateMarketingExpense(teamId, roster);
+    const administration = calculateAdministrationExpense(teamId);
 
     const revenue: TeamFinance['revenue'] = {
         gate: 0,
@@ -113,12 +168,20 @@ export function initializeTeamFinance(
         other: otherRev,
     };
 
+    const allExpenses: TeamFinance['expenses'] = {
+        ...expenses,
+        luxuryTax: 0,
+        scouting,
+        marketing,
+        administration,
+    };
+
     const totalRevenue = Object.values(revenue).reduce((s, v) => s + v, 0);
-    const totalExpenses = Object.values(expenses).reduce((s, v) => s + v, 0);
+    const totalExpenses = Object.values(allExpenses).reduce((s, v) => s + v, 0);
 
     return {
         revenue,
-        expenses: { ...expenses, luxuryTax: 0 },
+        expenses: allExpenses,
         operatingIncome: totalRevenue - totalExpenses,
         budget: calculateBudget(teamId, totalRevenue),
     };
