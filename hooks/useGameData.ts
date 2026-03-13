@@ -566,6 +566,17 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         // 시즌 시작: 모든 선수 성장 초기화 (catPot, seasonStartAttributes, fractionalGrowth)
         teams.forEach(t => initializeSeasonGrowth(t.roster));
 
+        // 재정 초기화: 이전 세이브 싱글턴 클리어 → 새 시즌 재정 세팅
+        resetBudgetManager();
+        const coachSalaries: Record<string, number> = {};
+        if (newCoachingData) {
+            for (const tid of teamIds) {
+                coachSalaries[tid] = newCoachingData[tid]?.headCoach?.contractSalary ?? 7;
+            }
+        }
+        getBudgetManager().initializeSeason(teams, coachSalaries);
+        setTeamFinances(getBudgetManager().toSaveData());
+
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
