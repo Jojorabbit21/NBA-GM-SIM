@@ -68,7 +68,7 @@ export const saveCheckpoint = async (
     const { data, error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id' })
-        .select();
+        .select('hof_id');
     
     if (error) {
         console.error("❌ [Supabase] Save Failed:", error);

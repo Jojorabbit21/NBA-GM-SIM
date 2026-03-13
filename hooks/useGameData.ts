@@ -54,12 +54,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
-    
+    const pendingSaveRef = useRef<any>(null);
+    const isSavingRef = useRef(false);
+
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -228,6 +230,28 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLoadingProgress(90);
                         await new Promise(r => setTimeout(r, 0));
 
+                        // ★ 기존 스냅샷에서 성장 데이터 복원 (스냅샷 버전 미스매치 등으로 full replay 시)
+                        if (snapshot?.teams_data) {
+                            for (const team of loadedTeams) {
+                                const teamData = snapshot.teams_data[team.id];
+                                if (!teamData?.roster_stats) continue;
+                                for (const player of team.roster) {
+                                    const pData = teamData.roster_stats[player.id];
+                                    if (!pData) continue;
+                                    const gs = (pData as any).growthState;
+                                    if (gs) {
+                                        if (gs.fractionalGrowth) player.fractionalGrowth = gs.fractionalGrowth;
+                                        if (gs.attrDeltas) player.attrDeltas = gs.attrDeltas;
+                                        if (gs.changeLog) player.changeLog = gs.changeLog;
+                                        if (gs.seasonStartAttributes) player.seasonStartAttributes = gs.seasonStartAttributes;
+                                        if (gs.attrDeltas) reapplyAttrDeltas(player);
+                                    }
+                                    if ((pData as any).injuryHistory) player.injuryHistory = (pData as any).injuryHistory;
+                                    if ((pData as any).awards) player.awards = (pData as any).awards;
+                                }
+                            }
+                        }
+
                         // Build & save snapshot for next load
                         try {
                             const counts = await countUserData(userId);
@@ -385,81 +409,99 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     const forceSave = useCallback(async (overrides?: any) => {
         if (!session?.user || isGuestMode) return;
-        
+
+        pendingSaveRef.current = overrides ?? {};
+        if (isSavingRef.current) return; // 이미 저장 중 → 완료 후 pending 실행됨
+
+        isSavingRef.current = true;
         setIsSaving(true);
         try {
-            const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
-            const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
-            const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
-            const depthChart = overrides?.depthChart || gameStateRef.current.depthChart; 
-            
-            // [NEW] Capture Full Roster State (Condition + Injury)
-            const currentTeams = overrides?.teams || gameStateRef.current.teams;
-            const rosterState: Record<string, SavedPlayerState> = {};
-            
-            if (currentTeams) {
-                currentTeams.forEach((t: Team) => {
-                    t.roster.forEach((p: Player) => {
-                        const isInjured = p.health !== 'Healthy';
-                        const isFatigued = p.condition !== undefined && p.condition < 100;
-                        const hasGrowth = p.fractionalGrowth && Object.keys(p.fractionalGrowth).length > 0;
-                        const hasChangeLog = p.changeLog && p.changeLog.length > 0;
-                        const hasAttrDeltas = p.attrDeltas && Object.keys(p.attrDeltas).length > 0;
-                        const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
-                        const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
-                        const hasAwards = p.awards && p.awards.length > 0;
+            while (pendingSaveRef.current !== null) {
+                const ov = pendingSaveRef.current;
+                pendingSaveRef.current = null; // 소비
 
-                        if (isInjured || isFatigued || hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart || hasInjuryHistory || hasAwards) {
-                            const state: SavedPlayerState = {
-                                condition: p.condition || 100,
-                                health: p.health,
-                                injuryType: p.injuryType,
-                                returnDate: p.returnDate,
-                            };
-                            if (hasGrowth) state.fractionalGrowth = p.fractionalGrowth;
-                            if (hasAttrDeltas) state.attrDeltas = p.attrDeltas;
-                            if (hasChangeLog) state.changeLog = p.changeLog;
-                            if (hasSeasonStart) state.seasonStartAttributes = p.seasonStartAttributes;
-                            if (hasInjuryHistory) state.injuryHistory = p.injuryHistory;
-                            if (hasAwards) state.awards = p.awards;
-                            rosterState[p.id] = state;
-                        }
+                const teamId = ov?.myTeamId || gameStateRef.current.myTeamId;
+                const date = ov?.currentSimDate || gameStateRef.current.currentSimDate;
+                const tactics = ov?.userTactics || gameStateRef.current.userTactics;
+                const dc = ov?.depthChart || gameStateRef.current.depthChart;
+                const currentTeams = ov?.teams || gameStateRef.current.teams;
+                const currentSchedule = ov?.schedule || gameStateRef.current.schedule;
+
+                // Build snapshot if requested
+                let snapshot: ReplaySnapshot | undefined;
+                let snapshotBuildFailed = false;
+                if (ov?.withSnapshot && teamId) {
+                    try {
+                        // 스케줄에서 직접 카운트 계산 (countUserData DB 호출 제거)
+                        const txLen = (gameStateRef.current as any).transactions?.length || 0;
+                        const counts = {
+                            games: currentSchedule.filter((g: Game) => g.played && !g.isPlayoff).length,
+                            playoffs: currentSchedule.filter((g: Game) => g.played && g.isPlayoff).length,
+                            transactions: txLen,
+                        };
+                        snapshot = buildReplaySnapshot(currentTeams, currentSchedule, counts);
+                    } catch (e) {
+                        console.warn("⚠️ Snapshot build failed (non-critical):", e);
+                        snapshotBuildFailed = true;
+                    }
+                }
+
+                // Roster State: 정상 시 condition/health/injury만, 스냅샷 실패 시 성장 데이터 폴백 포함
+                const rosterState: Record<string, SavedPlayerState> = {};
+                if (currentTeams) {
+                    currentTeams.forEach((t: Team) => {
+                        t.roster.forEach((p: Player) => {
+                            const isInjured = p.health !== 'Healthy';
+                            const isFatigued = p.condition !== undefined && p.condition < 100;
+                            const hasGrowth = p.fractionalGrowth && Object.keys(p.fractionalGrowth).length > 0;
+                            const hasChangeLog = p.changeLog && p.changeLog.length > 0;
+                            const hasAttrDeltas = p.attrDeltas && Object.keys(p.attrDeltas).length > 0;
+                            const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
+                            const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
+                            const hasAwards = p.awards && p.awards.length > 0;
+                            const hasAnyGrowthData = hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart;
+                            const needsGrowthBackup = snapshotBuildFailed && hasAnyGrowthData;
+                            const needsExtraBackup = snapshotBuildFailed && (hasInjuryHistory || hasAwards);
+
+                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup) {
+                                const state: SavedPlayerState = {
+                                    condition: p.condition || 100,
+                                    health: p.health,
+                                    injuryType: p.injuryType,
+                                    returnDate: p.returnDate,
+                                };
+                                if (needsGrowthBackup) {
+                                    if (hasGrowth) state.fractionalGrowth = p.fractionalGrowth;
+                                    if (hasAttrDeltas) state.attrDeltas = p.attrDeltas;
+                                    if (hasChangeLog) state.changeLog = p.changeLog;
+                                    if (hasSeasonStart) state.seasonStartAttributes = p.seasonStartAttributes;
+                                }
+                                if (snapshotBuildFailed && hasInjuryHistory) state.injuryHistory = p.injuryHistory;
+                                if (snapshotBuildFailed && hasAwards) state.awards = p.awards;
+                                rosterState[p.id] = state;
+                            }
+                        });
                     });
-                });
-            }
+                }
 
-            // 드래프트 결과: 새로 전달되면 ref에 저장
-            if (overrides?.draftPicks) {
-                draftPicksRef.current = overrides.draftPicks;
-            }
+                if (ov?.draftPicks) {
+                    draftPicksRef.current = ov.draftPicks;
+                }
+                const seed = ov?.tendencySeed || gameStateRef.current.tendencySeed;
 
-            // tendencySeed: override에서 전달되면 우선 사용, 아니면 ref에서 가져옴
-            const seed = overrides?.tendencySeed || gameStateRef.current.tendencySeed;
-
-            // Build snapshot if requested (after game results)
-            let snapshot: ReplaySnapshot | undefined;
-            if (overrides?.withSnapshot && teamId) {
-                try {
-                    const currentSchedule = overrides?.schedule || gameStateRef.current.schedule;
-                    const counts = await countUserData(session.user.id);
-                    snapshot = buildReplaySnapshot(currentTeams, currentSchedule, counts);
-                } catch (e) {
-                    console.warn("⚠️ Snapshot build failed (non-critical):", e);
+                if (teamId && date) {
+                    const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
+                    const coaching = ov?.coachingData || gameStateRef.current.coachingData;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching);
+                    if (result?.[0]?.hof_id) {
+                        setHofId(result[0].hof_id);
+                    }
                 }
             }
-
-            if (teamId && date) {
-                const currentSimSettings = overrides?.simSettings || gameStateRef.current.simSettings;
-                const coaching = overrides?.coachingData || gameStateRef.current.coachingData;
-                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching);
-                // hofId를 DB 응답에서 동기화 (최초 세이브 시 DB가 gen_random_uuid()로 생성)
-                if (result?.[0]?.hof_id) {
-                    setHofId(result[0].hof_id);
-                }
-            }
-        } catch (e: any) {
-            console.error("Save Failed:", e);
+        } catch (err) {
+            console.warn("Save error:", err);
         } finally {
+            isSavingRef.current = false;
             setIsSaving(false);
         }
     }, [session, isGuestMode]);
