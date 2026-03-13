@@ -218,6 +218,7 @@ const App: React.FC = () => {
                     onSim: sim.handleExecuteSim,
                     onLiveSim: sim.handleStartLiveGame,
                     isSimulating: sim.isSimulating,
+                    simProgress: sim.simProgress,
                     playoffSeries: gameData.playoffSeries,
                     userTactics: gameData.userTactics
                 }}
