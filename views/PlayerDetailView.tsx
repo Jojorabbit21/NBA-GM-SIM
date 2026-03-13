@@ -938,79 +938,93 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <span className="text-slate-500 text-sm">계약 정보가 없습니다</span>
                                 </div>
                             ) : (
-                                <div className="p-4 space-y-4">
-                                    {/* 계약 요약 */}
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-400">계약 유형</span>
-                                            <span className="text-xs font-bold text-white uppercase tracking-wider bg-indigo-600/40 px-2 py-0.5 rounded">
-                                                {player.contract.type}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-400">총 계약 기간</span>
-                                            <span className="text-xs font-mono font-medium text-white">{player.contract.years.length}년</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-400">잔여 기간</span>
-                                            <span className="text-xs font-mono font-medium text-emerald-400">{player.contract.years.length - player.contract.currentYear}년</span>
-                                        </div>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <TableHead>
+                                        {['항목', '내용'].map((h, i) => (
+                                            <TableHeaderCell
+                                                key={h}
+                                                align="center"
+                                                className={`text-xs ${i < 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                            >
+                                                {h}
+                                            </TableHeaderCell>
+                                        ))}
+                                    </TableHead>
+                                    <TableBody>
+                                        <TableRow className="h-10">
+                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">계약 유형</span>
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{player.contract.type}</span>
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow className="h-10">
+                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">총 계약 기간</span>
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{player.contract.years.length}년</span>
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow className="h-10">
+                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">잔여 기간</span>
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{player.contract.years.length - player.contract.currentYear}년</span>
+                                            </TableCell>
+                                        </TableRow>
                                         {player.contract.noTrade && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-slate-400">NTC</span>
-                                                <span className="text-xs font-bold text-red-400">No-Trade Clause</span>
-                                            </div>
+                                            <TableRow className="h-10">
+                                                <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-slate-300">NTC</span>
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-white">No-Trade Clause</span>
+                                                </TableCell>
+                                            </TableRow>
                                         )}
                                         {player.contract.option && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-slate-400">옵션</span>
-                                                <span className="text-xs font-bold text-amber-400">
-                                                    {player.contract.option.type === 'player' ? 'Player Option' : 'Team Option'} (Year {player.contract.option.year + 1})
-                                                </span>
-                                            </div>
+                                            <TableRow className="h-10">
+                                                <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-slate-300">옵션</span>
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-white">
+                                                        {player.contract.option.type === 'player' ? 'Player Option' : 'Team Option'} (Year {player.contract.option.year + 1})
+                                                    </span>
+                                                </TableCell>
+                                            </TableRow>
                                         )}
-                                    </div>
-                                    {/* 연도별 연봉 */}
-                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                        <TableHead>
-                                            {['연차', '연봉', ''].map((h, i) => (
-                                                <TableHeaderCell
-                                                    key={i}
-                                                    align="center"
-                                                    className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                >
-                                                    {h}
-                                                </TableHeaderCell>
-                                            ))}
-                                        </TableHead>
-                                        <TableBody>
-                                            {player.contract.years.map((yearSalary, idx) => {
-                                                const isCurrent = idx === player.contract!.currentYear;
-                                                const isPast = idx < player.contract!.currentYear;
-                                                const isOption = player.contract!.option && idx === player.contract!.option.year;
-                                                return (
-                                                    <TableRow key={idx} className={`h-10 ${isCurrent ? 'bg-indigo-500/10' : ''}`}>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-indigo-300 font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
-                                                                Year {idx + 1}{isCurrent ? ' *' : ''}
-                                                            </span>
-                                                        </TableCell>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-white font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
-                                                                {formatSalary(yearSalary)}
-                                                            </span>
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-amber-400">
-                                                                {isOption ? (player.contract!.option!.type === 'player' ? 'PO' : 'TO') : ''}
-                                                            </span>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                                        {/* 구분선 역할의 빈 행 */}
+                                        <TableRow className="h-2">
+                                            <TableCell align="center" className="!p-0 border-r border-r-slate-800/30 bg-slate-900" />
+                                            <TableCell align="center" className="!p-0 bg-slate-900" />
+                                        </TableRow>
+                                        {/* 연차별 연봉 */}
+                                        {player.contract.years.map((yearSalary, idx) => {
+                                            const isCurrent = idx === player.contract!.currentYear;
+                                            const isPast = idx < player.contract!.currentYear;
+                                            const isOption = player.contract!.option && idx === player.contract!.option.year;
+                                            const optionLabel = isOption ? (player.contract!.option!.type === 'player' ? ' (PO)' : ' (TO)') : '';
+                                            return (
+                                                <TableRow key={idx} className={`h-10 ${isCurrent ? 'bg-indigo-500/10' : ''}`}>
+                                                    <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-indigo-300 font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
+                                                            Year {idx + 1}{isCurrent ? ' *' : ''}{optionLabel}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-white font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
+                                                            {formatSalary(yearSalary)}
+                                                        </span>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
                             )}
                             </div>
                         </div>
