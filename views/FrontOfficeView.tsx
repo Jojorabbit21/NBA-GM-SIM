@@ -116,10 +116,9 @@ const ClubTab: React.FC<{
     ];
 
     return (
-        <div className="p-6 space-y-6">
-            {/* Row 1: 재정 현황 (left) + 구단주 (right) */}
+        <div className="p-6">
             <div className="grid grid-cols-2 gap-6">
-                {/* 재정 현황 */}
+                {/* ── 좌측: 재정 현황 ── */}
                 <div className={gridFrame}>
                     <table className="w-full border-collapse text-xs">
                         <thead>
@@ -128,51 +127,77 @@ const ClubTab: React.FC<{
                             </tr>
                         </thead>
                         <tbody>
+                            {/* 수익 */}
                             <tr className="bg-slate-800/30">
-                                <td className={tdClass}>총 수익</td>
+                                <td className={`${tdClass} font-bold text-emerald-400`}>총 수익</td>
                                 <td className={`${tdValClass} text-emerald-400 font-bold`}>{fmtFull(totalRevenue)}</td>
                             </tr>
                             <tr>
-                                <td className={tdClass}>총 지출</td>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>관중 입장료</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.gate)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={`${tdClass} pl-4 text-slate-400`}>중앙 방송 분배금</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.broadcasting)}</td>
+                            </tr>
+                            <tr>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>로컬 미디어</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.localMedia)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={`${tdClass} pl-4 text-slate-400`}>스폰서십</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.sponsorship)}</td>
+                            </tr>
+                            <tr>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>MD 판매</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.merchandise)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={`${tdClass} pl-4 text-slate-400`}>기타</td>
+                                <td className={tdValClass}>{fmtFull(finance.revenue.other)}</td>
+                            </tr>
+
+                            {/* 지출 */}
+                            <tr>
+                                <td className={`${tdClass} font-bold text-red-400`}>총 지출</td>
                                 <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
                             </tr>
                             <tr className="bg-slate-800/30">
-                                <td className={`${tdClass} font-bold text-slate-200`}>영업 수입</td>
-                                <td className={`${tdValClass} font-black ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>선수 연봉</td>
+                                <td className={tdValClass}>{fmtFull(finance.expenses.payroll)}</td>
+                            </tr>
+                            <tr>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>럭셔리 택스</td>
+                                <td className={`${tdValClass} ${finance.expenses.luxuryTax > 0 ? 'text-orange-400' : ''}`}>{fmtFull(finance.expenses.luxuryTax)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={`${tdClass} pl-4 text-slate-400`}>경기장 운영비</td>
+                                <td className={tdValClass}>{fmtFull(finance.expenses.operations)}</td>
+                            </tr>
+                            <tr>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>코칭 스태프</td>
+                                <td className={tdValClass}>{fmtFull(finance.expenses.coachSalary)}</td>
+                            </tr>
+
+                            {/* 손익 */}
+                            <tr className="bg-slate-800/50">
+                                <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>영업 수입</td>
+                                <td className={`${tdValClass} font-black border-t border-slate-600 ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                     {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
                                 </td>
                             </tr>
                             <tr>
-                                <td className={tdClass}>시즌 예산</td>
+                                <td className={`${tdClass} font-bold text-slate-200`}>시즌 예산</td>
                                 <td className={`${tdValClass} text-indigo-400 font-bold`}>{fmtFull(finance.budget)}</td>
-                            </tr>
-                            <tr className="bg-slate-800/30">
-                                <td className={tdClass}>선수 연봉 (Payroll)</td>
-                                <td className={`${tdValClass} font-bold`}>{fmtFull(finance.expenses.payroll)}</td>
-                            </tr>
-                            <tr>
-                                <td className={tdClass}>럭셔리 택스</td>
-                                <td className={`${tdValClass} font-bold ${finance.expenses.luxuryTax > 0 ? 'text-orange-400' : 'text-slate-500'}`}>{fmtFull(finance.expenses.luxuryTax)}</td>
-                            </tr>
-                            <tr className="bg-slate-800/30">
-                                <td className={tdClass}>경기장 운영비</td>
-                                <td className={`${tdValClass} font-bold`}>{fmtFull(finance.expenses.operations)}</td>
-                            </tr>
-                            <tr>
-                                <td className={tdClass}>로컬 미디어 수입</td>
-                                <td className={`${tdValClass} font-bold`}>{fmtFull(market.localMediaDeal)}<span className="text-slate-500">/년</span></td>
-                            </tr>
-                            <tr className="bg-slate-800/30">
-                                <td className={tdClass}>스폰서 기본 수입</td>
-                                <td className={`${tdValClass} font-bold`}>{fmtFull(market.sponsorshipBase)}<span className="text-slate-500">/년</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                {/* 구단주 */}
+                {/* ── 우측: 구단주 / 경기장 / 연고지 (연결된 3개 섹션) ── */}
                 <div className={gridFrame}>
                     <table className="w-full border-collapse text-xs">
+                        {/* 구단주 */}
                         <thead>
                             <tr>
                                 <th colSpan={2} className={`${thClass} text-left`}>구단주</th>
@@ -194,45 +219,50 @@ const ClubTab: React.FC<{
                                 </tr>
                             ))}
                         </tbody>
+
+                        {/* 경기장 */}
+                        <thead>
+                            <tr>
+                                <th colSpan={2} className={`${thClass} text-left`}>경기장</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>경기장명</td>
+                                <td className={`${tdValClass} font-bold text-white`}>{market.arenaName}</td>
+                            </tr>
+                            <tr>
+                                <td className={tdClass}>좌석 수</td>
+                                <td className={`${tdValClass} font-bold`}>{market.arenaCapacity.toLocaleString()}석</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>평균 입장료</td>
+                                <td className={`${tdValClass} font-bold`}>${market.baseTicketPrice}</td>
+                            </tr>
+                        </tbody>
+
+                        {/* 연고지 */}
+                        <thead>
+                            <tr>
+                                <th colSpan={2} className={`${thClass} text-left`}>연고지</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>도시</td>
+                                <td className={`${tdValClass} font-bold text-white`}>{TEAM_DATA[myTeamId]?.city}</td>
+                            </tr>
+                            <tr>
+                                <td className={tdClass}>광역 인구</td>
+                                <td className={`${tdValClass} font-bold`}>{(market.metroPopulation / 100).toFixed(1)}M</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>마켓 티어</td>
+                                <td className={`${tdValClass} font-bold`}>Tier {market.marketTier} <span className="text-slate-500">{tierLabels[market.marketTier]}</span></td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
-            </div>
-
-            {/* Row 2: 경기장 & 연고지 (단일 컬럼) */}
-            <div className={gridFrame}>
-                <table className="w-full border-collapse text-xs">
-                    <thead>
-                        <tr>
-                            <th colSpan={2} className={`${thClass} text-left`}>경기장 & 연고지</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr className="bg-slate-800/30">
-                            <td className={tdClass}>경기장명</td>
-                            <td className={`${tdValClass} font-bold text-white`}>{market.arenaName}</td>
-                        </tr>
-                        <tr>
-                            <td className={tdClass}>좌석 수</td>
-                            <td className={`${tdValClass} font-bold`}>{market.arenaCapacity.toLocaleString()}석</td>
-                        </tr>
-                        <tr className="bg-slate-800/30">
-                            <td className={tdClass}>평균 입장료</td>
-                            <td className={`${tdValClass} font-bold`}>${market.baseTicketPrice}</td>
-                        </tr>
-                        <tr>
-                            <td className={tdClass}>도시</td>
-                            <td className={`${tdValClass} font-bold text-white`}>{TEAM_DATA[myTeamId]?.city}</td>
-                        </tr>
-                        <tr className="bg-slate-800/30">
-                            <td className={tdClass}>광역 인구</td>
-                            <td className={`${tdValClass} font-bold`}>{(market.metroPopulation / 100).toFixed(1)}M</td>
-                        </tr>
-                        <tr>
-                            <td className={tdClass}>마켓 티어</td>
-                            <td className={`${tdValClass} font-bold`}>Tier {market.marketTier} <span className="text-slate-500">{tierLabels[market.marketTier]}</span></td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
         </div>
     );
