@@ -117,7 +117,7 @@ export const HeaderAwardTrophies: React.FC<{ awards: PlayerAwardEntry[] }> = ({ 
 export const PlayerAwardList: React.FC<{ awards?: PlayerAwardEntry[] }> = ({ awards }) => {
     if (!awards || awards.length === 0) {
         return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center h-[400px]">
                 <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
             </div>
         );
