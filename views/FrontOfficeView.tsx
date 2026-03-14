@@ -588,7 +588,7 @@ const DraftPicksTab: React.FC<{
                                             </td>
                                             <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
                                                 {r1.notes.map((note, i) => (
-                                                    <div key={i} className="text-[10px] text-slate-400 leading-tight">{note}</div>
+                                                    <div key={i} className="text-xs text-slate-400 leading-tight">{note}</div>
                                                 ))}
                                             </td>
                                         </>
@@ -605,7 +605,7 @@ const DraftPicksTab: React.FC<{
                                             </td>
                                             <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
                                                 {r2.notes.map((note, i) => (
-                                                    <div key={i} className="text-[10px] text-slate-400 leading-tight">{note}</div>
+                                                    <div key={i} className="text-xs text-slate-400 leading-tight">{note}</div>
                                                 ))}
                                             </td>
                                         </>
