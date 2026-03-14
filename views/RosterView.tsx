@@ -85,18 +85,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               <div className="h-full overflow-y-auto custom-scrollbar">
                   {/* GM */}
                   {isMyTeam ? (
-                      <div className="flex items-center px-6 py-3 bg-slate-900 border-b border-slate-800">
-                          <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-600/20 ring-1 ring-indigo-500/30 flex items-center justify-center">
-                                  <span className="text-xs font-black text-indigo-400">GM</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold text-slate-200 ko-normal">단장</span>
-                                  <span className="text-xs font-black text-indigo-400">{userNickname || 'You'}</span>
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">사용자</span>
-                              </div>
-                          </div>
-                      </div>
+                      <GMProfileCard userNickname={userNickname || 'You'} />
                   ) : (
                       <GMProfileCard
                           gmProfile={leagueGMProfiles?.[selectedTeam.id]}
