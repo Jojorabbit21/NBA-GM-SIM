@@ -169,22 +169,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             {activeTab === 'Block' && (
                 <TradeBlockTab
                     team={team}
-                    teams={teams}
-                    blockSelectedIds={blockSelectedIds}
-                    blockOffers={blockOffers}
-                    blockIsProcessing={blockIsProcessing}
-                    blockSearchPerformed={blockSearchPerformed}
-                    targetPositions={targetPositions}
                     isTradeDeadlinePassed={isTradeDeadlinePassed}
-                    toggleBlockPlayer={toggleBlockPlayer}
                     handleViewPlayer={handleViewPlayerClick}
-                    toggleTargetPosition={toggleTargetPosition}
-                    handleSearchBlockOffers={handleSearchBlockOffers}
-                    onAcceptOffer={(offer) => setPendingTrade({
-                        userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)),
-                        targetAssets: offer.players,
-                        targetTeam: teams.find(t => t.id === offer.teamId)!
-                    })}
                     sortedUserRoster={sortedUserRoster}
                     userBlockEntries={userBlockEntries}
                     togglePersistentBlockPlayer={togglePersistentBlockPlayer}
