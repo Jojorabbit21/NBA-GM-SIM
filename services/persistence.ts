@@ -92,12 +92,27 @@ export const saveCheckpoint = async (
     }
 
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id' })
         .select('hof_id');
-    
+
     if (error) {
+        // 새 컬럼이 DB에 없을 수 있음 → 해당 필드 제거 후 재시도
+        if (payload.league_trade_blocks !== undefined || payload.league_trade_offers !== undefined) {
+            console.warn('⚠️ [saveCheckpoint] Save failed, retrying without trade columns:', error.message);
+            delete payload.league_trade_blocks;
+            delete payload.league_trade_offers;
+            const retry = await supabase
+                .from('saves')
+                .upsert(payload, { onConflict: 'user_id' })
+                .select('hof_id');
+            if (retry.error) {
+                console.error("❌ [Supabase] Save Failed (retry):", retry.error);
+                throw retry.error;
+            }
+            return retry.data;
+        }
         console.error("❌ [Supabase] Save Failed:", error);
         throw error;
     }
@@ -106,13 +121,24 @@ export const saveCheckpoint = async (
 
 // 2. Load Metadata
 export const loadCheckpoint = async (userId: string) => {
+    // 먼저 새 컬럼 포함 시도, 실패 시 기존 컬럼만으로 폴백
     const { data, error } = await supabase
         .from('saves')
         .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers')
         .eq('user_id', userId)
         .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+        // 새 컬럼(league_trade_blocks/offers)이 DB에 없으면 → 기존 컬럼만으로 재시도
+        console.warn('⚠️ [loadCheckpoint] Query failed, retrying without trade columns:', error.message);
+        const { data: fallbackData, error: fallbackError } = await supabase
+            .from('saves')
+            .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (fallbackError) throw fallbackError;
+        return fallbackData;
+    }
     return data;
 };
 
