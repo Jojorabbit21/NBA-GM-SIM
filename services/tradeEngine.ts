@@ -2,6 +2,7 @@
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks } from '../types/trade';
+import { LeagueGMProfiles } from '../types/gm';
 import { generateOffers } from './tradeEngine/offerGenerator';
 import { generateCounters } from './tradeEngine/counterGenerator';
 import { runCPUTradeRound } from './tradeEngine/cpuTradeSimulator';
@@ -29,7 +30,8 @@ export async function simulateCPUTrades(
     myTeamId: string | null,
     currentDate: string,
     leaguePickAssets?: LeaguePickAssets,
-    leagueTradeBlocks?: LeagueTradeBlocks
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leagueGMProfiles?: LeagueGMProfiles
 ): Promise<{ updatedTeams: Team[]; transactions: Transaction[] } | null> {
-    return runCPUTradeRound(allTeams, myTeamId, currentDate, leaguePickAssets, leagueTradeBlocks);
+    return runCPUTradeRound(allTeams, myTeamId, currentDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles);
 }

@@ -1,6 +1,8 @@
 import { Team, Game, PlayoffSeries, Transaction, RegSeasonChampionContent } from '../../types';
 import { LeaguePickAssets } from '../../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
+import { LeagueGMProfiles } from '../../types/gm';
+import { updateTeamDirections } from '../../services/tradeEngine/gmProfiler';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
 import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
@@ -23,7 +25,8 @@ export const handleSeasonEvents = async (
     tendencySeed?: string,
     leagueTradeBlocks?: LeagueTradeBlocks,
     leaguePickAssets?: LeaguePickAssets,
-    leagueTradeOffers?: LeagueTradeOffers
+    leagueTradeOffers?: LeagueTradeOffers,
+    leagueGMProfiles?: LeagueGMProfiles
 ) => {
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
@@ -78,13 +81,18 @@ export const handleSeasonEvents = async (
     // 2. CPU Trades & Trade Block Evaluation
     // Only during Regular Season (Empty Playoffs)
     if (updatedSeries.length === 0) {
+        // 2-0. GM 노선 업데이트
+        if (leagueGMProfiles) {
+            updateTeamDirections(teams, leagueGMProfiles, currentSimDate);
+        }
+
         // 2-1. CPU 트레이드 블록 동기화
         if (leagueTradeBlocks && leaguePickAssets) {
-            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate);
+            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate, leagueGMProfiles);
         }
 
         // 2-2. CPU-CPU 트레이드
-        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks);
+        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 const cpuTx = { ...tx, date: currentSimDate };
@@ -101,7 +109,7 @@ export const handleSeasonEvents = async (
         // 2-3. CPU가 유저 블록 평가 → 오퍼 생성
         if (leagueTradeBlocks && leaguePickAssets && leagueTradeOffers) {
             newTradeOffers = evaluateUserTradeBlock(
-                myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate
+                myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate, leagueGMProfiles
             );
 
             // 오퍼 수신 메시지 발송
@@ -126,7 +134,7 @@ export const handleSeasonEvents = async (
             }
 
             // 2-4. 유저가 보낸 제안에 CPU 응답
-            const proposals = evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate);
+            const proposals = evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate, leagueGMProfiles);
             acceptedProposals = proposals.accepted;
             rejectedProposals = proposals.rejected;
 
@@ -187,7 +195,8 @@ export const handleSeasonEventsSync = (
     tendencySeed?: string,
     leagueTradeBlocks?: LeagueTradeBlocks,
     leaguePickAssets?: LeaguePickAssets,
-    leagueTradeOffers?: LeagueTradeOffers
+    leagueTradeOffers?: LeagueTradeOffers,
+    leagueGMProfiles?: LeagueGMProfiles
 ) => {
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
@@ -224,13 +233,18 @@ export const handleSeasonEventsSync = (
 
     // 2. CPU Trades & Trade Block Evaluation (동기 — Gemini 뉴스 생략)
     if (updatedSeries.length === 0) {
+        // 2-0. GM 노선 업데이트
+        if (leagueGMProfiles) {
+            updateTeamDirections(teams, leagueGMProfiles, currentSimDate);
+        }
+
         // 2-1. CPU 트레이드 블록 동기화
         if (leagueTradeBlocks && leaguePickAssets) {
-            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate);
+            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate, leagueGMProfiles);
         }
 
         // 2-2. CPU-CPU 트레이드
-        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks);
+        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 newTransactions.push({ ...tx, date: currentSimDate });
@@ -239,8 +253,8 @@ export const handleSeasonEventsSync = (
 
         // 2-3~5. 유저 블록 평가 + 제안 응답 + 만료 (배치에서는 메시지 생략)
         if (leagueTradeBlocks && leaguePickAssets && leagueTradeOffers) {
-            evaluateUserTradeBlock(myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate);
-            evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate);
+            evaluateUserTradeBlock(myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate, leagueGMProfiles);
+            evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate, leagueGMProfiles);
             expireOldOffers(leagueTradeOffers, currentSimDate);
         }
     }

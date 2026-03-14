@@ -4,6 +4,7 @@ import { ArrowLeftRight, Loader2 } from 'lucide-react';
 import { Team, Player, Transaction, GameTactics } from '../types';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
+import { LeagueGMProfiles } from '../types/gm';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
@@ -38,6 +39,7 @@ interface TransactionsViewProps {
   setLeagueTradeOffers?: React.Dispatch<React.SetStateAction<LeagueTradeOffers>>;
   leaguePickAssets?: LeaguePickAssets;
   setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets>>;
+  leagueGMProfiles?: LeagueGMProfiles;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
@@ -46,7 +48,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     userTactics, setUserTactics,
     leagueTradeBlocks, setLeagueTradeBlocks,
     leagueTradeOffers, setLeagueTradeOffers,
-    leaguePickAssets, setLeaguePickAssets
+    leaguePickAssets, setLeaguePickAssets,
+    leagueGMProfiles
 }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Offers' | 'Proposal' | 'History'>('Block');
 
@@ -176,6 +179,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     togglePersistentBlockPlayer={togglePersistentBlockPlayer}
                     togglePersistentBlockPick={togglePersistentBlockPick}
                     userPicks={userPicks}
+                    leagueGMProfiles={leagueGMProfiles}
                 />
             )}
 
@@ -219,6 +223,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     userTeam={team}
                     userPicks={userPicks}
                     leaguePickAssets={leaguePickAssets}
+                    leagueGMProfiles={leagueGMProfiles}
                  />
             )}
 

@@ -18,6 +18,8 @@ import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { getPickTradeValue } from './pickValueEngine';
 import { checkTradeLegality, checkNTCViolation } from './salaryRules';
 import { checkStepienRule } from './stepienRule';
+import { LeagueGMProfiles } from '../../types/gm';
+import { getDirectionParams } from './gmProfiler';
 
 // ──────────────────────────────────────────────
 // 1. CPU 트레이드 블록 동기화
@@ -32,7 +34,8 @@ export function syncCPUTradeBlocks(
     leagueTradeBlocks: LeagueTradeBlocks,
     leaguePickAssets: LeaguePickAssets,
     myTeamId: string,
-    currentDate: string
+    currentDate: string,
+    leagueGMProfiles?: LeagueGMProfiles
 ): void {
     const CC = C.CPU_TRADE;
     const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -46,6 +49,9 @@ export function syncCPUTradeBlocks(
             continue;
         }
 
+        const gmProfile = leagueGMProfiles?.[team.id];
+        const needs = analyzeTeamSituation(team, gmProfile);
+        const dirParams = getDirectionParams(needs.direction);
         const entries: TradeBlockEntry[] = [];
 
         // 포지션별 뎁스 맵
@@ -58,12 +64,17 @@ export function syncCPUTradeBlocks(
 
         const sortedByOvr = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
-        // 선수 블록 판단
+        // 선수 블록 판단 — direction에 따른 보호 수준
         roster.forEach(p => {
             const ovr = calculatePlayerOvr(p);
             if (ovr >= CC.UNTOUCHABLE_OVR) return;
             if (p.health === 'Injured') return;
             if (p.contract?.noTrade) return;
+
+            const ovrRank = sortedByOvr.findIndex(s => s.id === p.id);
+
+            // direction에 따른 보호: top N은 블록에 올리지 않음
+            if (ovrRank < dirParams.protectedCount) return;
 
             let willingness = 0;
 
@@ -76,22 +87,30 @@ export function syncCPUTradeBlocks(
             }
 
             if (ovr < CC.LOW_VALUE_DUMP_OVR && p.salary > CC.BAD_CONTRACT_SALARY_FLOOR) willingness += 4;
-
-            const ovrRank = sortedByOvr.findIndex(s => s.id === p.id);
             if (ovrRank >= 12) willingness += 2;
+
+            // seller/tanking: 베테랑 적극 방출
+            if (dirParams.willDumpVeterans && p.age >= 28) willingness += 3;
 
             if (willingness > 0) {
                 entries.push({ type: 'player', playerId: p.id, addedDate: currentDate });
             }
         });
 
-        // 픽 블록: 2라운드 픽이나 먼 미래 1라운드 픽은 블록에 올림
+        // 픽 블록: direction에 따른 픽 방출 의향
         const teamPicks = leaguePickAssets[team.id] || [];
-        const needs = analyzeTeamSituation(team);
 
         for (const pick of teamPicks) {
-            // 컨텐더: 먼 미래 픽 내놓기 가능
+            // 컨텐더(winNow/buyer): 먼 미래 픽 내놓기 가능
             if (needs.isContender && pick.round === 1 && pick.season >= new Date(currentDate).getFullYear() + 3) {
+                entries.push({
+                    type: 'pick',
+                    pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
+                    addedDate: currentDate,
+                });
+            }
+            // winNow: 가까운 미래 1라운드도 내놓음
+            if (needs.direction === 'winNow' && pick.round === 1 && pick.season >= new Date(currentDate).getFullYear() + 1) {
                 entries.push({
                     type: 'pick',
                     pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
@@ -135,7 +154,8 @@ export function evaluateUserTradeBlock(
     leagueTradeBlocks: LeagueTradeBlocks,
     leaguePickAssets: LeaguePickAssets,
     leagueTradeOffers: LeagueTradeOffers,
-    currentDate: string
+    currentDate: string,
+    leagueGMProfiles?: LeagueGMProfiles
 ): PersistentTradeOffer[] {
     const TB = C.TRADE_BLOCK;
     const userBlock = leagueTradeBlocks[myTeamId];
@@ -170,7 +190,7 @@ export function evaluateUserTradeBlock(
         );
         if (hasPending) continue;
 
-        const offer = tryGenerateOffer(cpuTeam, userTeam, userBlock, leagueTradeBlocks, leaguePickAssets, currentDate);
+        const offer = tryGenerateOffer(cpuTeam, userTeam, userBlock, leagueTradeBlocks, leaguePickAssets, currentDate, leagueGMProfiles);
 
         // 평가 완료 → 쓰로틀 타이머 갱신 (오퍼 성공 여부 무관)
         if (leagueTradeBlocks[cpuTeam.id]) {
@@ -195,13 +215,20 @@ function tryGenerateOffer(
     userBlock: TeamTradeBlock,
     leagueTradeBlocks: LeagueTradeBlocks,
     leaguePickAssets: LeaguePickAssets,
-    currentDate: string
+    currentDate: string,
+    leagueGMProfiles?: LeagueGMProfiles
 ): PersistentTradeOffer | null {
-    const cpuNeeds = analyzeTeamSituation(cpuTeam);
+    const gmProfile = leagueGMProfiles?.[cpuTeam.id];
+    const cpuNeeds = analyzeTeamSituation(cpuTeam, gmProfile);
+    const dirParams = getDirectionParams(cpuNeeds.direction);
 
-    // 유저 블록에서 CPU 니즈에 맞는 자산 찾기
+    // 유저 블록에서 CPU가 관심을 가질 수 있는 자산 찾기
     const desiredPlayers: Player[] = [];
     const desiredPicks: DraftPickAsset[] = [];
+
+    // CPU 로스터 분석
+    const cpuSorted = [...cpuTeam.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    const cpuWorstStarter = cpuSorted.length >= 5 ? calculatePlayerOvr(cpuSorted[4]) : 0;
 
     for (const entry of userBlock.entries) {
         if (entry.type === 'player' && entry.playerId) {
@@ -209,13 +236,27 @@ function tryGenerateOffer(
             if (!player) continue;
             const ovr = calculatePlayerOvr(player);
 
-            // CPU 니즈 매칭
             let matched = false;
+
+            // 1. 약한 포지션 보강 (기존)
             for (const weak of cpuNeeds.weakPositions) {
-                if (player.position.includes(weak) && ovr >= 70) { matched = true; break; }
+                if (player.position.includes(weak) && ovr >= 68) { matched = true; break; }
             }
-            if (!matched && cpuNeeds.isContender && ovr >= 78) matched = true;
-            if (!matched && cpuNeeds.isSeller && player.age <= 25) matched = true;
+
+            // 2. 컨텐더: 즉전력 보강
+            if (!matched && cpuNeeds.isContender && ovr >= 76) matched = true;
+
+            // 3. 셀러: 젊은 자산 확보
+            if (!matched && cpuNeeds.isSeller && player.age <= 26) matched = true;
+
+            // 4. 일반 업그레이드: CPU 5번째 스타터보다 좋은 선수면 관심
+            if (!matched && ovr >= cpuWorstStarter + 2 && ovr >= 72) matched = true;
+
+            // 5. 포지션 뎁스 개선: CPU 해당 포지션 뎁스가 얇으면
+            if (!matched && ovr >= 70) {
+                const posDepth = cpuTeam.roster.filter(p => p.position.includes(player.position));
+                if (posDepth.length <= 2) matched = true;
+            }
 
             if (matched) desiredPlayers.push(player);
         }
@@ -241,22 +282,27 @@ function tryGenerateOffer(
     const cpuBlock = leagueTradeBlocks[cpuTeam.id];
     const cpuBlockPlayerIds = new Set((cpuBlock?.entries || []).filter(e => e.type === 'player' && e.playerId).map(e => e.playerId!));
 
-    // 블록에 있는 선수 + 벤치 끝자리 선수
+    // CPU가 내놓을 수 있는 선수: 블록 선수 + 로스터 하위권 (top 3 제외)
     const cpuOfferable = cpuTeam.roster
         .filter(p => {
             if (p.contract?.noTrade) return false;
             if (p.health === 'Injured') return false;
             const ovr = calculatePlayerOvr(p);
             if (ovr >= C.CPU_TRADE.UNTOUCHABLE_OVR) return false;
-            return cpuBlockPlayerIds.has(p.id) || ovr < 80;
+            // 블록에 올라간 선수는 언제나 내놓을 수 있음
+            if (cpuBlockPlayerIds.has(p.id)) return true;
+            // direction에 따른 보호 수준
+            const rank = cpuSorted.findIndex(s => s.id === p.id);
+            if (rank < dirParams.protectedCount) return false;
+            return true;
         })
         .sort((a, b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
 
-    // 가치 매칭: CPU 선수 조합으로 requestedValue의 85~120%에 도달
+    // 가치 매칭: direction에 따른 가치 비율 적용
     const offeredPlayers: Player[] = [];
     let offeredValue = 0;
-    const targetMin = totalRequestedValue * 0.85;
-    const targetMax = totalRequestedValue * 1.20;
+    const targetMin = totalRequestedValue * dirParams.valueRatioMin;
+    const targetMax = totalRequestedValue * 1.30;
 
     for (const p of cpuOfferable) {
         if (offeredPlayers.length >= C.DEPTH.MAX_PACKAGE_SIZE) break;
@@ -320,8 +366,8 @@ function tryGenerateOffer(
 
     const analysis: string[] = [];
     if (cpuNeeds.weakPositions.length > 0) analysis.push(`${cpuTeam.name}: ${cpuNeeds.weakPositions.join(',')} 포지션 보강 필요`);
-    if (cpuNeeds.isContender) analysis.push(`${cpuTeam.name}: 플레이오프 경쟁력 강화 목적`);
-    if (cpuNeeds.isSeller) analysis.push(`${cpuTeam.name}: 리빌딩 자산 확보`);
+    const dirLabel = { winNow: '올인 모드', buyer: '전력 보강', standPat: '기회 트레이드', seller: '리빌딩 자산 확보', tanking: '전력 해체' }[cpuNeeds.direction];
+    analysis.push(`${cpuTeam.name}: ${dirLabel}`);
 
     return {
         id: offerId,
@@ -358,7 +404,8 @@ export function evaluateUserProposals(
     teams: Team[],
     leaguePickAssets: LeaguePickAssets,
     leagueTradeOffers: LeagueTradeOffers,
-    currentDate: string
+    currentDate: string,
+    leagueGMProfiles?: LeagueGMProfiles
 ): { accepted: PersistentTradeOffer[]; rejected: PersistentTradeOffer[] } {
     const accepted: PersistentTradeOffer[] = [];
     const rejected: PersistentTradeOffer[] = [];
@@ -398,9 +445,11 @@ export function evaluateUserProposals(
         const receivedTotal = receivedPlayerValue + receivedPickValue;
         const sentTotal = sentPlayerValue + sentPickValue;
 
-        // CPU 수락 기준: 받는 가치가 보내는 가치의 90% 이상
-        const cpuNeeds = analyzeTeamSituation(cpuTeam);
-        const valueThreshold = cpuNeeds.isSeller ? 0.80 : 0.90;
+        // CPU 수락 기준: direction에 따른 가치 비율 적용
+        const gmProfile = leagueGMProfiles?.[cpuTeam.id];
+        const cpuNeeds = analyzeTeamSituation(cpuTeam, gmProfile);
+        const dirParams = getDirectionParams(cpuNeeds.direction);
+        const valueThreshold = dirParams.valueRatioMin;
 
         if (receivedTotal >= sentTotal * valueThreshold) {
             proposal.status = 'accepted';
