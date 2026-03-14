@@ -38,11 +38,17 @@
 - 저장 형태: Boolean[48] (000111000... 형태)
 - PBP 엔진에서 현재 분에 따라 in/out 결정
 
+## 트레이드 시스템 (현행)
+- **통합 트레이드 엔진**: 선수 + 드래프트 픽 거래 지원
+- **영속 트레이드 블록**: 유저/CPU 팀 모두 블록 보유, `saves.league_trade_blocks`에 영속
+- **비동기 오퍼 파이프라인**: 시뮬 진행 시 CPU가 유저 블록 평가 → 오퍼 생성 → 인박스 수신
+- **CBA 규칙 구현**: 샐러리 매칭(125%/110%/100%), 스테피언 룰, NTC
+- **상세 문서**: `docs/engine/trade-system.md` 참조
+- **주요 파일**: `services/tradeEngine/tradeExecutor.ts`(통합실행), `tradeBlockManager.ts`(블록관리), `pickValueEngine.ts`(픽밸류)
+
 ## 비활성화된 기능들
 - **Gemini AI**: Quota 문제로 전부 비활성화 (geminiService.ts 코드는 있음)
 - **Draft 기능**: DraftView.tsx 존재하나 현재 미동작 → 멀티플레이어에서 활성화 예정
-- **Trade Engine API**: api/trade-engine.ts가 스텁(stub) 상태 (랜덤 10% 확률)
-  - 멀티플레이어(유저↔유저 트레이드)로 가면 AI 로직 불필요해질 예정
 
 ## 로드맵 (목표)
 1. 현재: 싱글플레이어 단일시즌 모드
@@ -72,7 +78,7 @@
 - `docs/domain/nba-trade-salary.md` : NBA 트레이드 & 샐러리 캡 규칙 정리
   - 샐러리 캡/럭셔리 택스/에이프런 구조, 125% 매칭 룰
   - 선수 트레이드 가치 산정 공식 (OVR × 샐러리효율 × 나이 × 희소성)
-  - **드래프트 픽은 트레이드 대상 아님 (선수만)**
+  - 드래프트 픽 거래 구현 완료 (보호/스왑/스테피언 룰 포함)
 
 ## 에이전트 모델 정책
 서브에이전트(Task tool) 실행 시 모든 에이전트를 `sonnet`으로 실행할 것.
