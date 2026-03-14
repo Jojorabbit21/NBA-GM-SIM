@@ -88,12 +88,12 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
     const cpuBlockTeams = useMemo(() => {
         if (!leagueTradeBlocks) return [];
         return Object.entries(leagueTradeBlocks)
-            .filter(([id, block]) => id !== team.id && block.entries.length > 0)
+            .filter(([id, block]) => id !== team.id && block.entries.some(e => e.type === 'player'))
             .map(([id, block]) => {
                 const t = teams.find(t => t.id === id);
                 return { teamId: id, team: t, block, gmProfile: leagueGMProfiles?.[id] };
             })
-            .sort((a, b) => (b.block.entries.length) - (a.block.entries.length));
+            .sort((a, b) => b.block.entries.filter(e => e.type === 'player').length - a.block.entries.filter(e => e.type === 'player').length);
     }, [leagueTradeBlocks, teams, team.id, leagueGMProfiles]);
 
     const handleStartNegotiation = (teamId: string, playerIds: string[] = []) => {
@@ -244,7 +244,6 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
                         <div className="p-4 space-y-3">
                             {cpuBlockTeams.map(({ teamId, team: cpuTeam, block, gmProfile }) => {
                                 const playerEntries = block.entries.filter(e => e.type === 'player');
-                                const pickEntries = block.entries.filter(e => e.type === 'pick');
                                 const direction = gmProfile?.direction;
 
                                 return (
@@ -292,19 +291,6 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
                                                         <span className="text-[10px] font-bold text-slate-500 uppercase w-8 text-center">{p.position}</span>
                                                         <span className="text-[10px] font-mono text-slate-500 w-6 text-center">{p.age}</span>
                                                         <span className="text-[10px] font-mono text-slate-400 w-14 text-right">{formatMoney(p.salary)}</span>
-                                                    </div>
-                                                );
-                                            })}
-                                            {pickEntries.map(entry => {
-                                                const pick = entry.pick!;
-                                                return (
-                                                    <div key={`${pick.season}-${pick.round}-${pick.originalTeamId}`} className="flex items-center gap-2 px-4 py-2">
-                                                        <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                                            pick.round === 1 ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-400'
-                                                        }`}>
-                                                            R{pick.round}
-                                                        </div>
-                                                        <span className="text-xs font-bold text-slate-200">{pick.season} {pick.round === 1 ? '1라운드' : '2라운드'}</span>
                                                     </div>
                                                 );
                                             })}
