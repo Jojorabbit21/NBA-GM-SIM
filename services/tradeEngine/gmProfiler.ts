@@ -87,9 +87,11 @@ function clampSlider(value: number): number {
 export function generateLeagueGMProfiles(
     teamIds: string[],
     tendencySeed: string,
+    myTeamId?: string,
 ): LeagueGMProfiles {
     const profiles: LeagueGMProfiles = {};
     for (const teamId of teamIds) {
+        if (teamId === myTeamId) continue; // 사용자 팀은 CPU GM 생성 제외
         profiles[teamId] = generateGMProfile(teamId, tendencySeed);
     }
     return profiles;
