@@ -956,7 +956,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 <span className="font-mono font-medium tabular-nums text-xs text-slate-300">계약 유형</span>
                                             </TableCell>
                                             <TableCell align="center">
-                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{player.contract.type}</span>
+                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}</span>
                                             </TableCell>
                                         </TableRow>
                                         <TableRow className="h-10">
@@ -978,10 +978,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {player.contract.noTrade && (
                                             <TableRow className="h-10">
                                                 <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                    <span className="font-mono font-medium tabular-nums text-xs text-slate-300">NTC</span>
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-slate-300">트레이드 제한</span>
                                                 </TableCell>
                                                 <TableCell align="center">
-                                                    <span className="font-mono font-medium tabular-nums text-xs text-white">No-Trade Clause</span>
+                                                    <span className="font-mono font-medium tabular-nums text-xs text-white">트레이드 거부권 보유</span>
                                                 </TableCell>
                                             </TableRow>
                                         )}
@@ -992,7 +992,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 </TableCell>
                                                 <TableCell align="center">
                                                     <span className="font-mono font-medium tabular-nums text-xs text-white">
-                                                        {player.contract.option.type === 'player' ? 'Player Option' : 'Team Option'} (Year {player.contract.option.year + 1})
+                                                        {player.contract.option.type === 'player' ? '선수 옵션' : '팀 옵션'} ({2025 - player.contract.currentYear + player.contract.option.year}-{String(2026 - player.contract.currentYear + player.contract.option.year).slice(-2)})
                                                     </span>
                                                 </TableCell>
                                             </TableRow>
@@ -1007,7 +1007,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             const seasonStart = 2025 - player.contract!.currentYear + idx;
                                             const seasonLabel = `${seasonStart}-${String(seasonStart + 1).slice(-2)}`;
                                             const isOption = player.contract!.option && idx === player.contract!.option.year;
-                                            const optionLabel = isOption ? (player.contract!.option!.type === 'player' ? ' (PO)' : ' (TO)') : '';
+                                            const optionLabel = isOption ? (player.contract!.option!.type === 'player' ? ' (선수옵션)' : ' (팀옵션)') : '';
                                             return (
                                                 <TableRow key={idx} className="h-10">
                                                     <TableCell align="center" className="border-r border-r-slate-800/30">
