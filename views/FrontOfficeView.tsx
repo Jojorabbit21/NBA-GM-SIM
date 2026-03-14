@@ -353,7 +353,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
                 </colgroup>
                 <thead className="sticky top-0 z-10">
                     <tr>
-                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap w-0`}>선수</th>
+                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap w-0 border-r border-slate-600`}>선수</th>
                         {seasonColumns.map(col => (
                             <th key={col} className={`${thClass} text-right border-l border-slate-600`}>{col}</th>
                         ))}
@@ -365,7 +365,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
                     ))}
                     {/* 합계 행 */}
                     <tr className="bg-slate-700">
-                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-700 z-10`}>합계</td>
+                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-700 z-10 border-r border-slate-600`}>합계</td>
                         {totals.map((t, i) => (
                             <td key={i} className={`${tdValClass} font-bold text-white border-l border-slate-600`}>
                                 {t > 0 ? fmtSalary(t) : ''}
@@ -397,7 +397,7 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
 
     return (
         <tr className="hover:bg-slate-800/40">
-            <td className={`${tdClass} text-slate-200 sticky left-0 bg-slate-900 z-10`}>{player.name}</td>
+            <td className={`${tdClass} text-slate-200 sticky left-0 bg-slate-900 z-10 border-r border-slate-600`}>{player.name}</td>
             {cells.map((cell, i) => (
                 <td key={i} className={`${tdValClass} border-l border-slate-600 ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}
