@@ -1,7 +1,8 @@
 
 import React, { useMemo } from 'react';
-import { Briefcase, AlertCircle, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
+import { Briefcase, AlertCircle, CheckCircle2, ShieldAlert, Info, AlertTriangle } from 'lucide-react';
 import { Player, Team } from '../../types';
+import { PersistentPickRef } from '../../types/trade';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr, LEAGUE_FINANCIALS } from '../../utils/constants';
 import { Modal } from '../common/Modal';
@@ -11,38 +12,38 @@ import { formatMoney } from '../../utils/formatMoney';
 const { TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
 const getCapStatus = (cap: number) => {
-  if (cap >= SECOND_APRON) return { 
-      label: '2차 에이프런 초과 (Second Apron)', 
-      msg: '가장 강력한 제재가 적용됩니다. 샐러리 집계(Aggregation) 불가, 현금 트레이드 불가, 100% 샐러리 매칭 필수.', 
-      color: 'text-red-500', 
-      bg: 'bg-red-500/10', 
+  if (cap >= SECOND_APRON) return {
+      label: '2차 에이프런 초과 (Second Apron)',
+      msg: '가장 강력한 제재가 적용됩니다. 샐러리 집계(Aggregation) 불가, 현금 트레이드 불가, 100% 샐러리 매칭 필수.',
+      color: 'text-red-500',
+      bg: 'bg-red-500/10',
       border: 'border-red-500/50',
       bar: 'bg-red-500',
       iconBg: 'bg-red-500/20'
   };
-  if (cap >= FIRST_APRON) return { 
-      label: '1차 에이프런 초과 (First Apron)', 
-      msg: '들어오는 연봉이 나가는 연봉보다 클 수 없습니다 (100% 매칭 제한). 바이아웃 시장 영입 제한.', 
-      color: 'text-orange-500', 
-      bg: 'bg-orange-500/10', 
+  if (cap >= FIRST_APRON) return {
+      label: '1차 에이프런 초과 (First Apron)',
+      msg: '들어오는 연봉이 나가는 연봉보다 클 수 없습니다 (100% 매칭 제한). 바이아웃 시장 영입 제한.',
+      color: 'text-orange-500',
+      bg: 'bg-orange-500/10',
       border: 'border-orange-500/50',
       bar: 'bg-orange-500',
       iconBg: 'bg-orange-500/20'
   };
-  if (cap >= TAX_LEVEL) return { 
-      label: '사치세 납부 대상 (Luxury Tax)', 
-      msg: '사치세 구간입니다. 트레이드 시 110% 샐러리 매칭 룰이 적용됩니다.', 
-      color: 'text-amber-400', 
-      bg: 'bg-amber-400/10', 
+  if (cap >= TAX_LEVEL) return {
+      label: '사치세 납부 대상 (Luxury Tax)',
+      msg: '사치세 구간입니다. 트레이드 시 110% 샐러리 매칭 룰이 적용됩니다.',
+      color: 'text-amber-400',
+      bg: 'bg-amber-400/10',
       border: 'border-amber-400/50',
       bar: 'bg-amber-400',
       iconBg: 'bg-amber-400/20'
   };
-  return { 
-      label: '샐러리캡 여유 (Healthy)', 
-      msg: '재정 상태가 건전합니다. 트레이드 시 125% 샐러리 매칭 룰이 적용됩니다.', 
-      color: 'text-emerald-400', 
-      bg: 'bg-emerald-500/10', 
+  return {
+      label: '샐러리캡 여유 (Healthy)',
+      msg: '재정 상태가 건전합니다. 트레이드 시 125% 샐러리 매칭 룰이 적용됩니다.',
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10',
       border: 'border-emerald-400/50',
       bar: 'bg-emerald-400',
       iconBg: 'bg-emerald-500/20'
@@ -61,24 +62,40 @@ interface TradeConfirmModalProps {
   targetAssets: Player[];
   userTeam: Team;
   targetTeam: Team;
+  userPicks?: PersistentPickRef[];
+  targetPicks?: PersistentPickRef[];
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({ 
-  userAssets, targetAssets, userTeam, targetTeam, onConfirm, onCancel 
+export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
+  userAssets, targetAssets, userTeam, targetTeam,
+  userPicks, targetPicks,
+  onConfirm, onCancel
 }) => {
   const userSalaryOut = userAssets.reduce((sum, p) => sum + p.salary, 0);
   const userSalaryIn = targetAssets.reduce((sum, p) => sum + p.salary, 0);
   const salaryDiff = userSalaryIn - userSalaryOut;
   const currentTotalCap = (userTeam?.roster || []).reduce((sum, p) => sum + p.salary, 0);
   const postTradeTotalCap = currentTotalCap - userSalaryOut + userSalaryIn;
-  
-  const status = getCapStatus(currentTotalCap); // Check status based on PRE-TRADE salary
+
+  const status = getCapStatus(currentTotalCap);
   const visualWidth = getVisualPercentage(postTradeTotalCap);
+
+  const hasPicks = (userPicks && userPicks.length > 0) || (targetPicks && targetPicks.length > 0);
+
+  // NTC 체크
+  const ntcPlayers = useMemo(() => {
+      return userAssets.filter(p => p.contract?.noTrade);
+  }, [userAssets]);
 
   // --- Trade Validation Logic (CBA Rules) ---
   const validationResult = useMemo(() => {
+      // NTC 위반
+      if (ntcPlayers.length > 0) {
+          return { valid: false, reason: `노트레이드 조항(NTC) 선수 포함: ${ntcPlayers.map(p => p.name).join(', ')}. 해당 선수는 트레이드할 수 없습니다.` };
+      }
+
       // 1. Second Apron Rules
       if (currentTotalCap >= SECOND_APRON) {
           if (userAssets.length > 1 && targetAssets.length === 1) {
@@ -96,21 +113,21 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
       }
       // 3. Taxpayer Rules
       else if (currentTotalCap >= TAX_LEVEL) {
-          const limit = userSalaryOut * 1.10; // Simplified
+          const limit = userSalaryOut * 1.10;
           if (userSalaryIn > limit) {
               return { valid: false, reason: `사치세 납부 팀은 나가는 연봉의 110%(${formatMoney(limit)})까지만 받을 수 있습니다.` };
           }
       }
       // 4. Non-Taxpayer Rules
       else {
-          const limit = (userSalaryOut * 1.25) + 0.25; // +250k simplified
+          const limit = (userSalaryOut * 1.25) + 0.25;
           if (userSalaryIn > limit) {
               return { valid: false, reason: `샐러리 매칭 실패: 나가는 연봉의 125%(${formatMoney(limit)})를 초과하여 받을 수 없습니다.` };
           }
       }
 
       return { valid: true, reason: null };
-  }, [currentTotalCap, userAssets, targetAssets, userSalaryIn, userSalaryOut]);
+  }, [currentTotalCap, userAssets, targetAssets, userSalaryIn, userSalaryOut, ntcPlayers]);
 
   const header = (
       <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 tracking-tight">
@@ -121,12 +138,12 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
   const footer = (
     <div className="flex justify-end gap-6 w-full">
         <button onClick={onCancel} className="px-10 py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-800 uppercase text-xs tracking-widest transition-all">협상 취소</button>
-        <button 
-          onClick={onConfirm} 
+        <button
+          onClick={onConfirm}
           disabled={!validationResult.valid}
           className={`px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] flex items-center gap-4 text-lg transition-all ${
-              validationResult.valid 
-              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_10px_40px_rgba(79,70,229,0.4)] active:scale-95' 
+              validationResult.valid
+              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_10px_40px_rgba(79,70,229,0.4)] active:scale-95'
               : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
           }`}
         >
@@ -136,11 +153,11 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
   );
 
   return (
-    <Modal 
-        isOpen={true} 
-        onClose={onCancel} 
-        title={header} 
-        footer={footer} 
+    <Modal
+        isOpen={true}
+        onClose={onCancel}
+        title={header}
+        footer={footer}
         size="xl"
     >
         <div className="p-8 space-y-8">
@@ -149,19 +166,27 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                     <TableHead>
                         <TableHeaderCell align="left" className="px-6 py-4">유형</TableHeaderCell>
                         <TableHeaderCell align="left" className="px-2 py-4">구단</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2 py-4">선수</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 py-4">자산</TableHeaderCell>
                         <TableHeaderCell align="center" className="px-2 py-4">OVR</TableHeaderCell>
                         <TableHeaderCell align="center" className="px-2 py-4">POS</TableHeaderCell>
                         <TableHeaderCell align="right" className="px-6 py-4">샐러리</TableHeaderCell>
                     </TableHead>
                     <TableBody>
+                        {/* User OUT — Players */}
                         {userAssets.map(p => {
                             const ovr = calculatePlayerOvr(p);
                             return (
                             <TableRow key={p.id} className="border-b border-slate-800/30 hover:bg-red-500/5 transition-colors group">
                                 <TableCell className="px-6 py-3"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></TableCell>
                                 <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{userTeam.name}</TableCell>
-                                <TableCell className="px-2 py-3 text-sm font-black text-slate-200">{p.name}</TableCell>
+                                <TableCell className="px-2 py-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-black text-slate-200">{p.name}</span>
+                                        {p.contract?.noTrade && (
+                                            <span className="px-1 py-0.5 rounded text-[8px] font-black bg-red-500/20 text-red-400">NTC</span>
+                                        )}
+                                    </div>
+                                </TableCell>
                                 <TableCell align="center" className="px-2 py-3">
                                     <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
                                 </TableCell>
@@ -170,6 +195,30 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                             </TableRow>
                             );
                         })}
+                        {/* User OUT — Picks */}
+                        {userPicks && userPicks.map((pick, i) => (
+                            <TableRow key={`up-${i}`} className="border-b border-slate-800/30 hover:bg-red-500/5 transition-colors">
+                                <TableCell className="px-6 py-3"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></TableCell>
+                                <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{userTeam.name}</TableCell>
+                                <TableCell className="px-2 py-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                            pick.round === 1 ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-400'
+                                        }`}>
+                                            R{pick.round}
+                                        </span>
+                                        <span className="text-sm font-black text-slate-200">{pick.season} {pick.round === 1 ? '1라운드' : '2라운드'} 픽</span>
+                                        {pick.protection && (
+                                            <span className="text-[9px] font-bold text-orange-400">{pick.protection}</span>
+                                        )}
+                                    </div>
+                                </TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] text-slate-600">-</TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] text-slate-600">PICK</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs text-slate-600">-</TableCell>
+                            </TableRow>
+                        ))}
+                        {/* Target IN — Players */}
                         {targetAssets.map(p => {
                             const ovr = calculatePlayerOvr(p);
                             return (
@@ -185,10 +234,36 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                             </TableRow>
                             );
                         })}
+                        {/* Target IN — Picks */}
+                        {targetPicks && targetPicks.map((pick, i) => (
+                            <TableRow key={`tp-${i}`} className="border-b border-slate-800/30 hover:bg-emerald-500/5 transition-colors">
+                                <TableCell className="px-6 py-3"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-black rounded uppercase">IN</span></TableCell>
+                                <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{targetTeam.name}</TableCell>
+                                <TableCell className="px-2 py-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                            pick.round === 1 ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-400'
+                                        }`}>
+                                            R{pick.round}
+                                        </span>
+                                        <span className="text-sm font-black text-slate-200">{pick.season} {pick.round === 1 ? '1라운드' : '2라운드'} 픽</span>
+                                        {pick.protection && (
+                                            <span className="text-[9px] font-bold text-orange-400">{pick.protection}</span>
+                                        )}
+                                    </div>
+                                </TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] text-slate-600">-</TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] text-slate-600">PICK</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs text-slate-600">-</TableCell>
+                            </TableRow>
+                        ))}
                     </TableBody>
                     <tfoot>
                         <tr className="bg-slate-900/80 font-black">
-                            <td colSpan={5} className="py-4 px-6 text-xs text-slate-400 uppercase tracking-widest">총 자산 변동 합계</td>
+                            <td colSpan={5} className="py-4 px-6 text-xs text-slate-400 uppercase tracking-widest">
+                                총 자산 변동 합계
+                                {hasPicks && <span className="ml-2 text-amber-400 text-[10px]">+ 드래프트 픽</span>}
+                            </td>
                             <td className={`py-4 px-6 text-right font-mono text-base ${salaryDiff >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                                 {salaryDiff > 0 ? '+' : ''}{formatMoney(salaryDiff)}
                             </td>
@@ -202,9 +277,22 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 <div className="flex items-center gap-2 text-slate-400 uppercase font-black text-[10px] tracking-widest">
                     <AlertCircle size={14} /> 샐러리 캡 예측 및 상태 분석
                 </div>
-                
+
+                {/* NTC Warning */}
+                {ntcPlayers.length > 0 && (
+                    <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-5 flex items-start gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <AlertTriangle className="text-orange-500 flex-shrink-0 mt-0.5" size={24} />
+                        <div>
+                            <h4 className="text-sm font-black text-orange-400 uppercase tracking-tight mb-1">No-Trade Clause (노트레이드 조항)</h4>
+                            <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                                {ntcPlayers.map(p => p.name).join(', ')} 선수에게 노트레이드 조항이 있어 트레이드할 수 없습니다.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Validation Error Message */}
-                {!validationResult.valid && (
+                {!validationResult.valid && ntcPlayers.length === 0 && (
                     <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 flex items-start gap-4 animate-in slide-in-from-top-2 duration-300">
                         <ShieldAlert className="text-red-500 flex-shrink-0 mt-0.5" size={24} />
                         <div>

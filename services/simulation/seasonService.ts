@@ -1,7 +1,10 @@
 import { Team, Game, PlayoffSeries, Transaction, RegSeasonChampionContent } from '../../types';
+import { LeaguePickAssets } from '../../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
 import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
+import { syncCPUTradeBlocks, evaluateUserTradeBlock, evaluateUserProposals, expireOldOffers } from '../../services/tradeEngine/tradeBlockManager';
 import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
 import { runAwardVoting, SeasonAwardsContent } from '../../utils/awardVoting';
@@ -17,12 +20,18 @@ export const handleSeasonEvents = async (
     myTeamId: string,
     userId: string | undefined,
     isGuestMode: boolean,
-    tendencySeed?: string
+    tendencySeed?: string,
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leaguePickAssets?: LeaguePickAssets,
+    leagueTradeOffers?: LeagueTradeOffers
 ) => {
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
     let tradeToast: string | null = null;
     let updatedSeries = [...playoffSeries]; // Clone for modification
+    let newTradeOffers: import('../../types/trade').PersistentTradeOffer[] = [];
+    let acceptedProposals: import('../../types/trade').PersistentTradeOffer[] = [];
+    let rejectedProposals: import('../../types/trade').PersistentTradeOffer[] = [];
 
     // 1. Playoffs
     if (updatedSeries.length > 0) {
@@ -66,10 +75,16 @@ export const handleSeasonEvents = async (
         }
     }
 
-    // 2. CPU Trades
+    // 2. CPU Trades & Trade Block Evaluation
     // Only during Regular Season (Empty Playoffs)
     if (updatedSeries.length === 0) {
-        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate);
+        // 2-1. CPU 트레이드 블록 동기화
+        if (leagueTradeBlocks && leaguePickAssets) {
+            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate);
+        }
+
+        // 2-2. CPU-CPU 트레이드
+        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 const cpuTx = { ...tx, date: currentSimDate };
@@ -81,6 +96,58 @@ export const handleSeasonEvents = async (
                     if (!tradeToast) tradeToast = `[TRADE] ${news[0]}`;
                 }
             }
+        }
+
+        // 2-3. CPU가 유저 블록 평가 → 오퍼 생성
+        if (leagueTradeBlocks && leaguePickAssets && leagueTradeOffers) {
+            newTradeOffers = evaluateUserTradeBlock(
+                myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate
+            );
+
+            // 오퍼 수신 메시지 발송
+            if (!isGuestMode && userId) {
+                for (const offer of newTradeOffers) {
+                    const fromTeam = teams.find(t => t.id === offer.fromTeamId);
+                    const offeredSummary = [
+                        ...offer.offeredPlayers.map(p => p.playerName),
+                        ...offer.offeredPicks.map(p => `${p.season} R${p.round}`),
+                    ].join(', ');
+                    await sendMessage(userId, myTeamId, currentSimDate, 'TRADE_OFFER_RECEIVED',
+                        `[트레이드 제안] ${fromTeam?.name ?? ''}이(가) 트레이드를 제안했습니다`,
+                        {
+                            offerId: offer.id,
+                            fromTeamId: offer.fromTeamId,
+                            fromTeamName: fromTeam?.name ?? '',
+                            offeredSummary,
+                            analysis: offer.analysis || [],
+                        }
+                    );
+                }
+            }
+
+            // 2-4. 유저가 보낸 제안에 CPU 응답
+            const proposals = evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate);
+            acceptedProposals = proposals.accepted;
+            rejectedProposals = proposals.rejected;
+
+            // 응답 메시지 발송
+            if (!isGuestMode && userId) {
+                for (const p of [...acceptedProposals, ...rejectedProposals]) {
+                    const toTeam = teams.find(t => t.id === p.toTeamId);
+                    await sendMessage(userId, myTeamId, currentSimDate, 'TRADE_OFFER_RESPONSE',
+                        `[트레이드 응답] ${toTeam?.name ?? ''}이(가) 제안을 ${p.status === 'accepted' ? '수락' : '거절'}했습니다`,
+                        {
+                            offerId: p.id,
+                            fromTeamId: p.toTeamId,
+                            fromTeamName: toTeam?.name ?? '',
+                            accepted: p.status === 'accepted',
+                        }
+                    );
+                }
+            }
+
+            // 2-5. 만료 오퍼 정리
+            expireOldOffers(leagueTradeOffers, currentSimDate);
         }
     }
 
@@ -100,7 +167,10 @@ export const handleSeasonEvents = async (
         updatedPlayoffSeries: updatedSeries,
         newTransactions,
         newsItems,
-        tradeToast
+        tradeToast,
+        newTradeOffers,
+        acceptedProposals,
+        rejectedProposals,
     };
 };
 
@@ -114,7 +184,10 @@ export const handleSeasonEventsSync = (
     playoffSeries: PlayoffSeries[],
     currentSimDate: string,
     myTeamId: string,
-    tendencySeed?: string
+    tendencySeed?: string,
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leaguePickAssets?: LeaguePickAssets,
+    leagueTradeOffers?: LeagueTradeOffers
 ) => {
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
@@ -149,13 +222,26 @@ export const handleSeasonEventsSync = (
         }
     }
 
-    // 2. CPU Trades (동기 — Gemini 뉴스 생략)
+    // 2. CPU Trades & Trade Block Evaluation (동기 — Gemini 뉴스 생략)
     if (updatedSeries.length === 0) {
-        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate);
+        // 2-1. CPU 트레이드 블록 동기화
+        if (leagueTradeBlocks && leaguePickAssets) {
+            syncCPUTradeBlocks(teams, leagueTradeBlocks, leaguePickAssets, myTeamId, currentSimDate);
+        }
+
+        // 2-2. CPU-CPU 트레이드
+        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 newTransactions.push({ ...tx, date: currentSimDate });
             }
+        }
+
+        // 2-3~5. 유저 블록 평가 + 제안 응답 + 만료 (배치에서는 메시지 생략)
+        if (leagueTradeBlocks && leaguePickAssets && leagueTradeOffers) {
+            evaluateUserTradeBlock(myTeamId, teams, leagueTradeBlocks, leaguePickAssets, leagueTradeOffers, currentSimDate);
+            evaluateUserProposals(myTeamId, teams, leaguePickAssets, leagueTradeOffers, currentSimDate);
+            expireOldOffers(leagueTradeOffers, currentSimDate);
         }
     }
 

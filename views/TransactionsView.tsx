@@ -2,6 +2,8 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeftRight, Loader2 } from 'lucide-react';
 import { Team, Player, Transaction, GameTactics } from '../types';
+import { LeaguePickAssets } from '../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
@@ -11,6 +13,7 @@ import { useTradeSystem } from '../hooks/useTradeSystem';
 import { TradeBlockTab } from '../components/transactions/tabs/TradeBlockTab';
 import { TradeProposalTab } from '../components/transactions/tabs/TradeProposalTab';
 import { TradeHistoryTab } from '../components/transactions/tabs/TradeHistoryTab';
+import { IncomingOffersTab } from '../components/transactions/tabs/IncomingOffersTab';
 
 interface TransactionsViewProps {
   team: Team;
@@ -28,14 +31,24 @@ interface TransactionsViewProps {
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   userTactics?: GameTactics;
   setUserTactics?: React.Dispatch<React.SetStateAction<GameTactics | null>>;
+  // 새 영속 트레이드 시스템 props
+  leagueTradeBlocks?: LeagueTradeBlocks;
+  setLeagueTradeBlocks?: React.Dispatch<React.SetStateAction<LeagueTradeBlocks>>;
+  leagueTradeOffers?: LeagueTradeOffers;
+  setLeagueTradeOffers?: React.Dispatch<React.SetStateAction<LeagueTradeOffers>>;
+  leaguePickAssets?: LeaguePickAssets;
+  setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets>>;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
     team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions,
     onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed, onViewPlayer,
-    userTactics, setUserTactics
+    userTactics, setUserTactics,
+    leagueTradeBlocks, setLeagueTradeBlocks,
+    leagueTradeOffers, setLeagueTradeOffers,
+    leaguePickAssets, setLeaguePickAssets
 }) => {
-  const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
+  const [activeTab, setActiveTab] = useState<'Block' | 'Offers' | 'Proposal' | 'History'>('Block');
 
   // Use Custom Hook for Business Logic
   const tradeSystem = useTradeSystem(
@@ -43,7 +56,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       userId,
       onAddTransaction, onForceSave, onShowToast,
       refreshUnreadCount,
-      userTactics, setUserTactics
+      userTactics, setUserTactics,
+      // 새 영속 트레이드 파라미터
+      leagueTradeBlocks, setLeagueTradeBlocks,
+      leagueTradeOffers, setLeagueTradeOffers,
+      leaguePickAssets, setLeaguePickAssets as any
   );
 
   const {
@@ -52,8 +69,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       proposalTargetTeamId, setProposalTargetTeamId, proposalSelectedIds, setProposalSelectedIds, proposalRequirements, setProposalRequirements,
       proposalIsProcessing, proposalSearchPerformed, setProposalSearchPerformed, toggleProposalPlayer, handleRequestRequirements,
       pendingTrade, setPendingTrade, isExecutingTrade, executeTrade,
-      dailyTradeAttempts, isTradeLimitReached, isTradeDeadlinePassed, MAX_DAILY_TRADES
+      dailyTradeAttempts, isTradeLimitReached, isTradeDeadlinePassed, MAX_DAILY_TRADES,
+      // 새 시스템
+      userBlockEntries, togglePersistentBlockPlayer, togglePersistentBlockPick,
+      incomingOffers, outgoingOffers, acceptIncomingOffer, rejectIncomingOffer,
+      sendPersistentProposal,
   } = tradeSystem;
+
+  // 수신 오퍼 카운트 (탭 뱃지용)
+  const pendingIncomingCount = incomingOffers.length;
 
   const TradeLimitText = () => (
       <span className={`text-xs font-bold ${isTradeLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
@@ -70,7 +94,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       }
       onViewPlayer(fullPlayer || partialPlayer, foundTeam?.id, foundTeam?.name);
   };
-  
+
   // Memoize Rosters
   const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [team?.roster]);
   const targetTeamRoster = useMemo(() => {
@@ -81,15 +105,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   // Memoize Team List for Dropdown
   const allOtherTeamsSorted = useMemo(() => {
     if (!team) return [];
-    return teams.filter(t => t.id !== team.id); 
+    return teams.filter(t => t.id !== team.id);
   }, [teams, team?.id]);
+
+  // 유저 보유 픽 (PickSelector용)
+  const userPicks = useMemo(() => {
+    if (!leaguePickAssets || !team) return [];
+    return leaguePickAssets[team.id] || [];
+  }, [leaguePickAssets, team]);
 
   if (!team) return null;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal">
-       {/* Player detail is now handled via onViewPlayer → AppRouter */}
-       
        {pendingTrade && (
          <div className="relative z-[200]">
              {isExecutingTrade && (
@@ -99,17 +127,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                      <p className="text-xs text-slate-400 font-bold mt-2">리그 사무국 승인 및 데이터 저장 중입니다.</p>
                  </div>
              )}
-             <TradeConfirmModal 
-                userAssets={pendingTrade.userAssets} 
-                targetAssets={pendingTrade.targetAssets} 
-                userTeam={team} 
-                targetTeam={pendingTrade.targetTeam} 
-                onConfirm={executeTrade} 
-                onCancel={() => setPendingTrade(null)} 
+             <TradeConfirmModal
+                userAssets={pendingTrade.userAssets}
+                targetAssets={pendingTrade.targetAssets}
+                userTeam={team}
+                targetTeam={pendingTrade.targetTeam}
+                userPicks={pendingTrade.userPicks}
+                targetPicks={pendingTrade.targetPicks}
+                onConfirm={executeTrade}
+                onCancel={() => setPendingTrade(null)}
              />
          </div>
        )}
-       
+
        <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
            <div className="flex items-center gap-3">
                <ArrowLeftRight size={16} className="text-slate-500" />
@@ -119,6 +149,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                <TradeLimitText />
                <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-sm">
                    <button onClick={() => setActiveTab('Block')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>트레이드 블록</button>
+                   <button onClick={() => setActiveTab('Offers')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === 'Offers' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
+                       수신 오퍼
+                       {pendingIncomingCount > 0 && activeTab !== 'Offers' && (
+                           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                               {pendingIncomingCount}
+                           </span>
+                       )}
+                   </button>
                    <button onClick={() => setActiveTab('Proposal')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>직접 제안</button>
                    <button onClick={() => setActiveTab('History')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>이력</button>
                </div>
@@ -126,10 +164,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
        </div>
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-         
+
          <div className="flex-1 overflow-hidden relative">
             {activeTab === 'Block' && (
-                <TradeBlockTab 
+                <TradeBlockTab
                     team={team}
                     teams={teams}
                     blockSelectedIds={blockSelectedIds}
@@ -148,11 +186,28 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         targetTeam: teams.find(t => t.id === offer.teamId)!
                     })}
                     sortedUserRoster={sortedUserRoster}
+                    userBlockEntries={userBlockEntries}
+                    togglePersistentBlockPlayer={togglePersistentBlockPlayer}
+                    togglePersistentBlockPick={togglePersistentBlockPick}
+                    userPicks={userPicks}
+                />
+            )}
+
+            {activeTab === 'Offers' && (
+                <IncomingOffersTab
+                    team={team}
+                    teams={teams}
+                    incomingOffers={incomingOffers}
+                    outgoingOffers={outgoingOffers}
+                    onAcceptOffer={acceptIncomingOffer}
+                    onRejectOffer={rejectIncomingOffer}
+                    handleViewPlayer={handleViewPlayerClick}
+                    currentSimDate={currentSimDate}
                 />
             )}
 
             {activeTab === 'Proposal' && (
-                 <TradeProposalTab 
+                 <TradeProposalTab
                     teams={teams}
                     proposalTargetTeamId={proposalTargetTeamId}
                     proposalSelectedIds={proposalSelectedIds}
@@ -174,11 +229,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     })}
                     targetTeamRoster={targetTeamRoster}
                     allOtherTeamsSorted={allOtherTeamsSorted}
+                    sendPersistentProposal={sendPersistentProposal}
+                    userTeam={team}
+                    userPicks={userPicks}
+                    leaguePickAssets={leaguePickAssets}
                  />
             )}
 
             {activeTab === 'History' && (
-                <TradeHistoryTab 
+                <TradeHistoryTab
                     transactions={transactions || []}
                     teamId={team.id}
                     teams={teams}

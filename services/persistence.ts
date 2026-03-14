@@ -4,6 +4,7 @@ import { Transaction, GameTactics, DepthChart, SavedPlayerState, ReplaySnapshot 
 import { SimSettings } from '../types/simSettings';
 import { SavedTeamFinances } from '../types/finance';
 import { LeaguePickAssets } from '../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -19,7 +20,9 @@ export const saveCheckpoint = async (
     simSettings?: SimSettings | null, // [New] User simulation settings
     coachingStaff?: Record<string, any> | null, // [New] League coaching staff data
     teamFinances?: SavedTeamFinances | null, // [New] Team finance state
-    leaguePickAssets?: LeaguePickAssets | null // [New] League-wide draft pick assets
+    leaguePickAssets?: LeaguePickAssets | null, // [New] League-wide draft pick assets
+    leagueTradeBlocks?: LeagueTradeBlocks | null, // [New] Persistent trade blocks
+    leagueTradeOffers?: LeagueTradeOffers | null  // [New] Persistent trade offers
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -78,6 +81,16 @@ export const saveCheckpoint = async (
         payload.league_pick_assets = leaguePickAssets;
     }
 
+    // league_trade_blocks: 값이 있을 때만 저장
+    if (leagueTradeBlocks !== undefined) {
+        payload.league_trade_blocks = leagueTradeBlocks;
+    }
+
+    // league_trade_offers: 값이 있을 때만 저장
+    if (leagueTradeOffers !== undefined) {
+        payload.league_trade_offers = leagueTradeOffers;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
@@ -95,7 +108,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers')
         .eq('user_id', userId)
         .maybeSingle();
 
