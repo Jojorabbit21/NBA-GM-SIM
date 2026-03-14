@@ -81,7 +81,10 @@ const App: React.FC = () => {
         gameData.hofId,
         () => setHasSubmittedHof(true),
         gameData.simSettings,
-        gameData.coachingData
+        gameData.coachingData,
+        gameData.leagueTradeBlocks,
+        gameData.leagueTradeOffers,
+        gameData.leaguePickAssets
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(

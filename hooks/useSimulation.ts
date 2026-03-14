@@ -3,6 +3,8 @@ import { useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
+import { LeaguePickAssets } from '../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
@@ -43,7 +45,10 @@ export const useSimulation = (
     hofId?: string | null,
     onHofSubmitted?: () => void,
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leagueTradeOffers?: LeagueTradeOffers,
+    leaguePickAssets?: LeaguePickAssets | null
 ) => {
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
@@ -386,7 +391,7 @@ export const useSimulation = (
                     setSimProgress({ percent: 80, label: '시즌 이벤트...' });
                     await yieldToUI();
                     _ft1 = performance.now();
-                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers);
                     _fPerf['2_seasonEvents'] = performance.now() - _ft1;
 
                     if (seasonEvents.updatedPlayoffSeries) {
@@ -518,7 +523,7 @@ export const useSimulation = (
                 setSimProgress({ percent: 60, label: '시즌 이벤트...' });
                 await yieldToUI();
                 _t1 = performance.now();
-                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers);
                 _perf['7_seasonEvents'] = performance.now() - _t1;
 
                 if (seasonEvents.updatedPlayoffSeries) {
