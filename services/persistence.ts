@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 import { Transaction, GameTactics, DepthChart, SavedPlayerState, ReplaySnapshot } from '../types';
 import { SimSettings } from '../types/simSettings';
 import { SavedTeamFinances } from '../types/finance';
+import { LeaguePickAssets } from '../types/draftAssets';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -17,7 +18,8 @@ export const saveCheckpoint = async (
     replaySnapshot?: ReplaySnapshot | null, // [New] Cached replay state
     simSettings?: SimSettings | null, // [New] User simulation settings
     coachingStaff?: Record<string, any> | null, // [New] League coaching staff data
-    teamFinances?: SavedTeamFinances | null // [New] Team finance state
+    teamFinances?: SavedTeamFinances | null, // [New] Team finance state
+    leaguePickAssets?: LeaguePickAssets | null // [New] League-wide draft pick assets
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -71,6 +73,11 @@ export const saveCheckpoint = async (
         payload.team_finances = teamFinances;
     }
 
+    // league_pick_assets: 값이 있을 때만 저장
+    if (leaguePickAssets !== undefined) {
+        payload.league_pick_assets = leaguePickAssets;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
@@ -88,7 +95,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets')
         .eq('user_id', userId)
         .maybeSingle();
 

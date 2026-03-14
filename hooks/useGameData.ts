@@ -22,6 +22,8 @@ import { LeagueCoachingData } from '../types/coaching';
 import { SavedTeamFinances } from '../types/finance';
 import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 import { getBudgetManager, resetBudgetManager } from '../services/financeEngine';
+import { LeaguePickAssets } from '../types/draftAssets';
+import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -48,6 +50,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [simSettings, setSimSettings] = useState<SimSettings>(DEFAULT_SIM_SETTINGS);
     const [coachingData, setCoachingData] = useState<LeagueCoachingData | null>(null);
     const [teamFinances, setTeamFinances] = useState<SavedTeamFinances | null>(null);
+    const [leaguePickAssets, setLeaguePickAssets] = useState<LeaguePickAssets | null>(null);
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -61,10 +64,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const isSavingRef = useRef(false);
 
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, transactions });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, transactions]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, transactions };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, transactions]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -378,6 +381,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setTeamFinances(getBudgetManager().toSaveData());
                     }
 
+                    // 드래프트 픽 자산 로드 (저장된 값 우선, 없으면 초기화)
+                    if (checkpoint.league_pick_assets) {
+                        setLeaguePickAssets(checkpoint.league_pick_assets);
+                    } else {
+                        const newPickAssets = initializeLeaguePickAssets();
+                        setLeaguePickAssets(newPickAssets);
+                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newPickAssets);
+                    }
+
                     if (checkpoint.hof_id) {
                         setHofId(checkpoint.hof_id);
                     }
@@ -521,7 +534,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
                     const coaching = ov?.coachingData || gameStateRef.current.coachingData;
                     const finances = getBudgetManager().toSaveData();
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances);
+                    const pickAssets = ov?.leaguePickAssets || gameStateRef.current.leaguePickAssets;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -584,6 +598,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         getBudgetManager().initializeSeason(teams, coachSalaries);
         setTeamFinances(getBudgetManager().toSaveData());
 
+        // 드래프트 픽 자산 초기화
+        const newPickAssets = initializeLeaguePickAssets();
+        setLeaguePickAssets(newPickAssets);
+
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
@@ -593,6 +611,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             userTactics: newTactics,
             tendencySeed: newSeed,
             coachingData: newCoachingData,
+            leaguePickAssets: newPickAssets,
             teams,
         });
 
@@ -642,6 +661,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setDepthChart(null);
             setTendencySeed(null);
             setCoachingData(null);
+            setLeaguePickAssets(null);
             setHofId(null);
             hasInitialLoadRef.current = false;
 
@@ -774,6 +794,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setHofId(null);
          setSimSettings(DEFAULT_SIM_SETTINGS);
          setCoachingData(null);
+         setLeaguePickAssets(null);
          setNews([]);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
@@ -799,6 +820,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         hofId,
         simSettings, setSimSettings,
         coachingData, setCoachingData,
+        leaguePickAssets, setLeaguePickAssets,
         teamFinances,
         news, setNews,
         

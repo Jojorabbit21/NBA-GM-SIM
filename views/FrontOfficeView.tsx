@@ -3,12 +3,14 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player } from '../types';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
+import { LeaguePickAssets, DraftPickAsset } from '../types/draftAssets';
+import { PICK_SEASONS } from '../services/draftAssets/pickInitializer';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { getBudgetManager } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 
-type FrontOfficeTab = 'club' | 'payroll' | 'coaching';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -17,10 +19,11 @@ interface FrontOfficeViewProps {
     myTeamId: string;
     coachingData?: LeagueCoachingData | null;
     onCoachClick?: (teamId: string) => void;
+    leaguePickAssets?: LeaguePickAssets | null;
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
-    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick,
+    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, leaguePickAssets,
 }) => {
     const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
 
@@ -49,6 +52,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <button onClick={() => setActiveTab('coaching')} className={tabClass('coaching')}>
                             <span>코칭 스태프</span>
                         </button>
+                        <button onClick={() => setActiveTab('draftPicks')} className={tabClass('draftPicks')}>
+                            <span>드래프트 픽</span>
+                        </button>
                     </div>
                 </div>
 
@@ -65,6 +71,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
                         </div>
                     )}
+                    {activeTab === 'draftPicks' && (
+                        <DraftPicksTab myTeamId={myTeamId} leaguePickAssets={leaguePickAssets} />
+                    )}
                     {!finData && activeTab === 'club' && (
                         <div className="text-center text-slate-500 py-20">
                             재정 데이터를 불러올 수 없습니다.
@@ -77,7 +86,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
 };
 
 // ── 공통 엑셀 그리드 스타일 ──
-const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
+const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800";
 const tdClass = "py-1.5 px-2 text-xs font-medium whitespace-nowrap border-b border-slate-700/60";
 const tdValClass = "py-1.5 px-2 text-xs font-medium font-mono tabular-nums whitespace-nowrap border-b border-slate-700/60 text-right";
 
@@ -404,6 +413,97 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
                 </td>
             ))}
         </tr>
+    );
+};
+
+// ── 드래프트 픽 탭 ──
+
+const DraftPicksTab: React.FC<{
+    myTeamId: string;
+    leaguePickAssets?: LeaguePickAssets | null;
+}> = ({ myTeamId, leaguePickAssets }) => {
+    const myPicks = leaguePickAssets?.[myTeamId] ?? [];
+
+    // season-round → pick 매핑
+    const pickMap = useMemo(() => {
+        const map = new Map<string, DraftPickAsset>();
+        myPicks.forEach(p => {
+            map.set(`${p.season}-${p.round}`, p);
+        });
+        return map;
+    }, [myPicks]);
+
+    const seasonColumns = PICK_SEASONS.map(y => `${y}-${String(y + 1).slice(-2)}`);
+
+    // 보호 조건 라벨
+    const getProtectionLabel = (pick: DraftPickAsset): string | null => {
+        if (!pick.protection) return null;
+        if (pick.protection.type === 'top' && pick.protection.threshold) {
+            return `Top ${pick.protection.threshold} protected`;
+        }
+        if (pick.protection.type === 'lottery') return 'Lottery protected';
+        return null;
+    };
+
+    return (
+        <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
+            <table className="w-full border-collapse text-xs table-fixed">
+                <colgroup>
+                    <col style={{ width: '100px' }} />
+                    {PICK_SEASONS.map(y => <col key={y} />)}
+                </colgroup>
+                <thead className="sticky top-0 z-10">
+                    <tr>
+                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 border-r border-slate-600`}>라운드</th>
+                        {seasonColumns.map(col => (
+                            <th key={col} className={`${thClass} text-center border-l border-slate-600`}>{col}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {([1, 2] as const).map(round => (
+                        <tr key={round} className="hover:bg-slate-800/40">
+                            <td className={`${tdClass} font-bold text-slate-200 sticky left-0 bg-slate-900 z-10 border-r border-slate-600`}>
+                                {round}라운드
+                            </td>
+                            {PICK_SEASONS.map(season => {
+                                const pick = pickMap.get(`${season}-${round}`);
+                                const isOwn = pick ? pick.originalTeamId === myTeamId : false;
+                                const hasSwap = pick?.swapRight != null;
+                                const protectionLabel = pick ? getProtectionLabel(pick) : null;
+
+                                let label: string;
+                                let cellColor: string;
+                                if (!pick) {
+                                    // 해당 픽을 보유하지 않음 (트레이드로 넘김)
+                                    label = '—';
+                                    cellColor = 'text-slate-700';
+                                } else if (isOwn) {
+                                    label = 'OWN';
+                                    cellColor = 'text-indigo-400 font-bold';
+                                } else {
+                                    // 타팀에서 획득한 픽
+                                    label = (TEAM_DATA[pick.originalTeamId]?.name || pick.originalTeamId).toUpperCase();
+                                    cellColor = 'text-emerald-400 font-bold';
+                                }
+
+                                return (
+                                    <td key={season} className={`py-1.5 px-2 text-xs font-mono text-center border-b border-slate-700/60 border-l border-slate-600 ${cellColor}`}>
+                                        <div>{label}</div>
+                                        {hasSwap && (
+                                            <div className="text-[10px] text-amber-400/70 mt-0.5">↔ {pick.swapRight!.originTeamId.toUpperCase()}</div>
+                                        )}
+                                        {protectionLabel && (
+                                            <div className="text-[10px] text-slate-500 mt-0.5">{protectionLabel}</div>
+                                        )}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 };
 
