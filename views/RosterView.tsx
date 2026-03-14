@@ -51,28 +51,17 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-      {/* Header Bar */}
-      <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center justify-between" style={{ backgroundColor: theme.bg }}>
+      {/* Header Bar — 팀 정보만 */}
+      <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center" style={{ backgroundColor: theme.bg }}>
           <div className="flex items-center gap-3">
               <TeamLogo teamId={selectedTeam.id} size="sm" />
               <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
               <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
-              {headCoach && tab !== 'frontOffice' && (
-                  <>
-                      <span className="text-slate-500 text-[10px]">|</span>
-                      <span className="text-[10px] tracking-wider font-bold ko-normal" style={{ color: theme.accent, opacity: 0.6 }}>헤드코치</span>
-                      <span
-                          className="text-xs font-semibold cursor-pointer transition-opacity hover:opacity-80"
-                          style={{ color: theme.text }}
-                          onClick={() => onCoachClick?.(selectedTeam.id)}
-                      >
-                          {headCoach.name}
-                      </span>
-                  </>
-              )}
           </div>
-          <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>
+
+      {/* Tab Navigation — FrontOfficeView 스타일 */}
+      <RosterTabs activeTab={tab} onTabChange={setTab} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -92,11 +81,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   userId={userId}
               />
           )}
-          {tab === 'frontOffice' && (
+          {tab === 'coaching' && (
               <div className="h-full overflow-y-auto custom-scrollbar">
                   {/* GM */}
                   {isMyTeam ? (
-                      <div className="flex items-center justify-between px-6 py-3 bg-slate-900 border-b border-slate-800">
+                      <div className="flex items-center px-6 py-3 bg-slate-900 border-b border-slate-800">
                           <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-indigo-600/20 ring-1 ring-indigo-500/30 flex items-center justify-center">
                                   <span className="text-xs font-black text-indigo-400">GM</span>
@@ -120,11 +109,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                       coach={headCoach}
                       onCoachClick={() => onCoachClick?.(selectedTeam.id)}
                   />
-
-                  {/* Draft Picks */}
-                  <div className="mt-2">
-                      <DraftPicksPanel teamId={selectedTeam.id} leaguePickAssets={leaguePickAssets} />
-                  </div>
+              </div>
+          )}
+          {tab === 'draftPicks' && (
+              <div className="h-full overflow-y-auto custom-scrollbar">
+                  <DraftPicksPanel teamId={selectedTeam.id} leaguePickAssets={leaguePickAssets} />
               </div>
           )}
       </div>

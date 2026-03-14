@@ -1,36 +1,38 @@
 
 import React from 'react';
 
-export type RosterTab = 'roster' | 'records' | 'frontOffice';
+export type RosterTab = 'roster' | 'records' | 'coaching' | 'draftPicks';
 
 interface RosterTabsProps {
     activeTab: RosterTab;
     onTabChange: (tab: RosterTab) => void;
 }
 
-export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
-    const tabs = [
-        { id: 'roster', label: '능력치' },
-        { id: 'records', label: '경기 기록' },
-        { id: 'frontOffice', label: '프론트 오피스' },
-    ];
+const TABS: { id: RosterTab; label: string }[] = [
+    { id: 'roster', label: '로스터' },
+    { id: 'records', label: '경기 기록' },
+    { id: 'coaching', label: '코칭 스태프' },
+    { id: 'draftPicks', label: '드래프트 픽' },
+];
 
+export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
     return (
-        <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 w-fit shadow-sm">
-            {tabs.map((t) => (
-                <button
-                    key={t.id}
-                    onClick={() => onTabChange(t.id as RosterTab)}
-                    className={`
-                        px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ko-normal
-                        ${activeTab === t.id
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'text-slate-500 hover:text-slate-300'}
-                    `}
-                >
-                    {t.label}
-                </button>
-            ))}
+        <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center h-12 flex-shrink-0">
+            <div className="flex items-center gap-8 h-full">
+                {TABS.map(t => (
+                    <button
+                        key={t.id}
+                        onClick={() => onTabChange(t.id)}
+                        className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
+                            activeTab === t.id
+                                ? 'text-indigo-400 border-indigo-400'
+                                : 'text-slate-500 hover:text-slate-300 border-transparent'
+                        }`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
         </div>
     );
 };
