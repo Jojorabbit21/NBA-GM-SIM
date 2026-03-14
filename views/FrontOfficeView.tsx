@@ -355,7 +355,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
                     <tr>
                         <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap w-0`}>선수</th>
                         {seasonColumns.map(col => (
-                            <th key={col} className={`${thClass} text-right`}>{col}</th>
+                            <th key={col} className={`${thClass} text-right border-l border-slate-600`}>{col}</th>
                         ))}
                     </tr>
                 </thead>
@@ -367,7 +367,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
                     <tr className="bg-slate-700">
                         <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-700 z-10`}>합계</td>
                         {totals.map((t, i) => (
-                            <td key={i} className={`${tdValClass} font-bold text-white`}>
+                            <td key={i} className={`${tdValClass} font-bold text-white border-l border-slate-600`}>
                                 {t > 0 ? fmtSalary(t) : ''}
                             </td>
                         ))}
@@ -387,7 +387,7 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
             if (colIdx >= 0 && colIdx < seasonColumns.length) {
                 let label = fmtSalary(player.contract.years[i]);
                 if (player.contract.option && i === player.contract.option.year) {
-                    label += player.contract.option.type === 'player' ? ' (선수옵션)' : ' (팀옵션)';
+                    label += player.contract.option.type === 'player' ? ' (PO)' : ' (TO)';
                 }
                 result[colIdx] = label;
             }
@@ -399,7 +399,7 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
         <tr className="hover:bg-slate-800/40">
             <td className={`${tdClass} text-slate-200 sticky left-0 bg-slate-900 z-10`}>{player.name}</td>
             {cells.map((cell, i) => (
-                <td key={i} className={`${tdValClass} ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
+                <td key={i} className={`${tdValClass} border-l border-slate-600 ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}
                 </td>
             ))}
