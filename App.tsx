@@ -83,6 +83,7 @@ const App: React.FC = () => {
         gameData.simSettings,
         gameData.coachingData,
         gameData.leagueTradeBlocks,
+        gameData.setLeagueTradeBlocks,
         gameData.leagueTradeOffers,
         gameData.leaguePickAssets,
         gameData.leagueGMProfiles

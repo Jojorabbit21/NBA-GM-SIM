@@ -48,6 +48,7 @@ export const useSimulation = (
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
     leagueTradeBlocks?: LeagueTradeBlocks,
+    setLeagueTradeBlocks?: React.Dispatch<React.SetStateAction<LeagueTradeBlocks>>,
     leagueTradeOffers?: LeagueTradeOffers,
     leaguePickAssets?: LeaguePickAssets | null,
     leagueGMProfiles?: LeagueGMProfiles
@@ -411,6 +412,11 @@ export const useSimulation = (
                         setToastMessage(seasonEvents.tradeToast);
                     }
 
+                    // CPU 트레이드 블록 변경을 React 상태에 반영
+                    if (leagueTradeBlocks && setLeagueTradeBlocks) {
+                        setLeagueTradeBlocks({ ...leagueTradeBlocks });
+                    }
+
                     // 시즌/플레이오프 리뷰 메시지 자동 발송
                     _ft1 = performance.now();
                     await sendReviewMessages(
@@ -540,6 +546,11 @@ export const useSimulation = (
                 }
                 if (seasonEvents.tradeToast) {
                     setToastMessage(seasonEvents.tradeToast);
+                }
+
+                // CPU 트레이드 블록 변경을 React 상태에 반영
+                if (leagueTradeBlocks && setLeagueTradeBlocks) {
+                    setLeagueTradeBlocks({ ...leagueTradeBlocks });
                 }
 
                 // 시즌/플레이오프 리뷰 메시지 자동 발송
@@ -735,6 +746,11 @@ export const useSimulation = (
             }
             if (seasonEvents.tradeToast) {
                 setToastMessage(seasonEvents.tradeToast);
+            }
+
+            // CPU 트레이드 블록 변경을 React 상태에 반영
+            if (leagueTradeBlocks && setLeagueTradeBlocks) {
+                setLeagueTradeBlocks({ ...leagueTradeBlocks });
             }
 
             // 시즌/플레이오프 리뷰 메시지 자동 발송
