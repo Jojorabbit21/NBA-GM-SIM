@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
+import { TradeOfferReceivedContent, TradeOfferResponseContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -602,6 +603,102 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     <div className="pt-4">
                         <p className="text-white font-bold">NBA League Office</p>
                         <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'TRADE_OFFER_RECEIVED': {
+            const offer = content as TradeOfferReceivedContent;
+            const offerTeamData = TEAM_DATA[offer.fromTeamId];
+            return (
+                <div className="space-y-8 text-slate-300 leading-relaxed">
+                    <p>단장님,</p>
+                    <p>
+                        <span className="font-black text-white">{offerTeamData?.city ?? ''} {offer.fromTeamName}</span>에서
+                        트레이드 제안이 접수되었음을 보고드립니다.
+                    </p>
+
+                    <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+                        <div className="px-5 py-3 bg-slate-950/60 flex items-center gap-3">
+                            <TeamLogo teamId={offer.fromTeamId} size="sm" />
+                            <span className="text-sm font-black uppercase tracking-tight text-white">{offer.fromTeamName}</span>
+                        </div>
+                        <div className="px-5 py-4">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">제안 내용</div>
+                            <p className="text-sm font-bold text-slate-200">{offer.offeredSummary}</p>
+                        </div>
+                        {offer.analysis && offer.analysis.length > 0 && (
+                            <div className="px-5 py-3 border-t border-slate-800/50">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">분석</div>
+                                <ul className="space-y-1">
+                                    {offer.analysis.map((a, i) => (
+                                        <li key={i} className="text-xs text-slate-400">{a}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+
+                    <p className="text-sm text-indigo-400/80 font-bold">
+                        트레이드 센터 &gt; 수신 오퍼 탭에서 수락 또는 거절할 수 있습니다.
+                    </p>
+
+                    <div className="pt-4">
+                        <p className="text-white font-bold">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'TRADE_OFFER_RESPONSE': {
+            const resp = content as TradeOfferResponseContent;
+            const respTeamData = TEAM_DATA[resp.fromTeamId];
+            return (
+                <div className="space-y-8 text-slate-300 leading-relaxed">
+                    <p>단장님,</p>
+                    <p>
+                        <span className="font-black text-white">{respTeamData?.city ?? ''} {resp.fromTeamName}</span>에
+                        보낸 트레이드 제안에 대한 응답이 도착했습니다.
+                    </p>
+
+                    <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+                        <div className="px-5 py-3 bg-slate-950/60 flex items-center gap-3">
+                            <TeamLogo teamId={resp.fromTeamId} size="sm" />
+                            <span className="text-sm font-black uppercase tracking-tight text-white">{resp.fromTeamName}</span>
+                        </div>
+                        <div className="px-5 py-4 flex items-center gap-3">
+                            <span className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase ${
+                                resp.accepted
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                                {resp.accepted ? '수락' : '거절'}
+                            </span>
+                            <span className="text-sm font-bold text-slate-200">
+                                {resp.accepted
+                                    ? '상대 구단이 제안을 수락했습니다.'
+                                    : '상대 구단이 제안을 거절했습니다.'}
+                            </span>
+                        </div>
+                        {resp.reason && (
+                            <div className="px-5 py-3 border-t border-slate-800/50">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">사유</div>
+                                <p className="text-xs text-slate-400">{resp.reason}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {resp.accepted && (
+                        <p className="text-sm text-emerald-400/80 font-bold">
+                            트레이드가 완료되었습니다. 로스터를 확인해주세요.
+                        </p>
+                    )}
+
+                    <div className="pt-4">
+                        <p className="text-white font-bold">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
                     </div>
                 </div>
             );
