@@ -382,6 +382,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     myTeamId={gameData.myTeamId!}
                     coachingData={gameData.coachingData}
                     onCoachClick={handleViewCoach}
+                    leaguePickAssets={gameData.leaguePickAssets}
                 />
             );
         default:
