@@ -3,10 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { Check, Package, ArrowLeft, Info, Handshake } from 'lucide-react';
 import { Player, Team, TradeOffer } from '../../../types';
 import { DraftPickAsset, LeaguePickAssets } from '../../../types/draftAssets';
-import { TradeBlockEntry, TradePickRef, LeagueTradeBlocks, PersistentTradeOffer, PersistentPickRef } from '../../../types/trade';
+import { TradeBlockEntry, LeagueTradeBlocks, PersistentTradeOffer, PersistentPickRef } from '../../../types/trade';
 import { OvrBadge } from '../../common/OvrBadge';
 import { TeamLogo } from '../../common/TeamLogo';
-import { PickSelector } from '../PickSelector';
 import { OfferInboxPanel } from '../OfferInboxPanel';
 import { TradeNegotiationBuilder } from '../TradeNegotiationBuilder';
 import { calculatePlayerOvr, getTeamLogoUrl } from '../../../utils/constants';
@@ -33,7 +32,6 @@ interface LeagueBlockTabProps {
     // 영속 블록 시스템
     userBlockEntries: TradeBlockEntry[];
     togglePersistentBlockPlayer: (playerId: string) => void;
-    togglePersistentBlockPick: (pickRef: TradePickRef) => void;
     userPicks: DraftPickAsset[];
     leaguePickAssets?: LeaguePickAssets;
     leagueGMProfiles?: LeagueGMProfiles;
@@ -68,7 +66,6 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
     sortedUserRoster,
     userBlockEntries,
     togglePersistentBlockPlayer,
-    togglePersistentBlockPick,
     userPicks,
     leaguePickAssets,
     leagueGMProfiles,
@@ -78,17 +75,14 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
     onRejectOffer,
     sendPersistentProposal,
 }) => {
-    const [showPickSelector, setShowPickSelector] = useState(false);
     const [subView, setSubView] = useState<'block' | 'negotiate'>('block');
     const [negotiationTarget, setNegotiationTarget] = useState<NegotiationTarget | null>(null);
 
-    // 영속 블록에 등록된 선수/픽 ID 세트
+    // 영속 블록에 등록된 선수 ID 세트
     const persistentPlayerIds = new Set(
         userBlockEntries.filter(e => e.type === 'player').map(e => e.playerId!)
     );
-    const persistentPickRefs = userBlockEntries.filter(e => e.type === 'pick').map(e => e.pick!);
-    const persistentBlockCount = userBlockEntries.length;
-    const pickBlockCount = persistentPickRefs.length;
+    const persistentBlockCount = userBlockEntries.filter(e => e.type === 'player').length;
 
     // CPU 블록 팀 데이터
     const cpuBlockTeams = useMemo(() => {
@@ -148,42 +142,16 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
     // ── 메인 블록 뷰 ──
     return (
         <div className="flex flex-1 min-h-0 h-full">
-            {/* Left: My Roster + Picks */}
+            {/* Left: My Roster */}
             <div className="w-[380px] lg:w-[420px] border-r border-slate-700 flex flex-col flex-shrink-0">
                 <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800">
                     <span className="text-xs font-bold uppercase text-slate-500">내 로스터</span>
-                    <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold uppercase ${persistentBlockCount > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
-                            {persistentBlockCount}개 등록
-                        </span>
-                        <button
-                            onClick={() => setShowPickSelector(!showPickSelector)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
-                                showPickSelector
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-                            }`}
-                        >
-                            <Package size={10} className="inline mr-1" />
-                            픽 {pickBlockCount > 0 ? `(${pickBlockCount})` : ''}
-                        </button>
-                    </div>
+                    <span className={`text-xs font-bold uppercase ${persistentBlockCount > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
+                        {persistentBlockCount}명 등록
+                    </span>
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
-                    {/* Pick Selector */}
-                    {showPickSelector && (
-                        <div className="border-b border-slate-700">
-                            <PickSelector
-                                picks={userPicks}
-                                selectedPicks={persistentPickRefs}
-                                onTogglePick={togglePersistentBlockPick}
-                                disabled={isTradeDeadlinePassed}
-                                maxSelections={3}
-                            />
-                        </div>
-                    )}
-
                     {/* Player Table */}
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead className="bg-slate-800 sticky top-0 z-10">
