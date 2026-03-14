@@ -51,6 +51,37 @@ export const TRADE_CONFIG = {
         PREMIUM_POTENTIAL: 88,
         MAX_PACKAGE_SIZE: 4,
     },
+    PICK_VALUE: {
+        // 연도 할인: 미래 픽일수록 가치 감소
+        YEAR_DISCOUNT_RATE: 0.88,
+        // 2라운드 픽은 1라운드의 25% 가치
+        ROUND_2_DISCOUNT: 0.25,
+        // 보호 조건 발동 확률 기본값 (팀 전력이 보호 경계선 근처일 때)
+        PROTECTED_CONVEYANCE_BASE: 0.6,
+        // 스왑 권리 보너스 계수
+        SWAP_SPREAD_BONUS: 0.15,
+        // 드래프트 슬롯별 가치 커브 (1순위=1.0 ~ 30순위)
+        SLOT_VALUE_CURVE: [
+            1.00, 0.88, 0.78, 0.70, 0.63,  // 1-5
+            0.57, 0.52, 0.47, 0.43, 0.40,  // 6-10
+            0.37, 0.34, 0.32, 0.30, 0.28,  // 11-15 (lottery)
+            0.26, 0.24, 0.22, 0.21, 0.20,  // 16-20
+            0.19, 0.18, 0.17, 0.16, 0.15,  // 21-25
+            0.14, 0.13, 0.12, 0.11, 0.10,  // 26-30
+        ],
+        // 픽 가치를 선수 가치 스케일에 맞추기 위한 승수
+        PLAYER_VALUE_SCALE: 5000,
+    },
+    TRADE_BLOCK: {
+        // CPU 팀 블록 평가 간격 (시뮬 일)
+        CPU_EVAL_INTERVAL_DAYS: 3,
+        // 유저에게 하루 최대 오퍼 수
+        MAX_OFFERS_PER_DAY: 1,
+        // 오퍼 만료 일수
+        OFFER_EXPIRY_DAYS: 7,
+        // 유저 블록 최대 항목 수
+        MAX_USER_BLOCK_ENTRIES: 8,
+    },
     CPU_TRADE: {
         // 점진적 확률 곡선 — 데드라인 근처에서 폭발적 증가 (실제 NBA 패턴)
         BASE_PROBABILITY: 0.08,

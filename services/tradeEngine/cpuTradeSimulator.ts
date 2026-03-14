@@ -1,11 +1,15 @@
 
 import { Player, Team, Transaction } from '../../types';
+import { LeaguePickAssets, DraftPickAsset } from '../../types/draftAssets';
+import { LeagueTradeBlocks, PersistentPickRef } from '../../types/trade';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { SEASON_START_DATE, TRADE_DEADLINE } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
+import { getPickTradeValue } from './pickValueEngine';
 import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
 import { checkTradeLegality } from './salaryRules';
+import { executeTrade, TradeExecutionPayload } from './tradeExecutor';
 import { formatMoney } from '../../utils/formatMoney';
 
 // ──────────────────────────────────────────────
@@ -40,6 +44,12 @@ interface ScoredAsset {
     reasons: string[];
 }
 
+interface ScoredPickAsset {
+    pick: DraftPickAsset;
+    tradeValue: number;
+    willingness: number;
+}
+
 interface AcquisitionTarget {
     position: string;
     minOvr: number;
@@ -51,12 +61,15 @@ interface TeamTradeProfile {
     team: Team;
     needs: TeamNeeds;
     tradeableAssets: ScoredAsset[];
+    tradeablePicks: ScoredPickAsset[];
     acquisitionPriorities: AcquisitionTarget[];
 }
 
 interface TradePackage {
     teamAPlayers: Player[];
     teamBPlayers: Player[];
+    teamAPicks: ScoredPickAsset[];
+    teamBPicks: ScoredPickAsset[];
     teamAValue: number;
     teamBValue: number;
     teamAImprovement: number;
@@ -85,16 +98,21 @@ function calculateTradeChance(currentDate: string): number {
 // 2. 팀 프로필 생성
 // ──────────────────────────────────────────────
 
-function buildTeamTradeProfile(team: Team): TeamTradeProfile {
+function buildTeamTradeProfile(
+    team: Team,
+    leaguePickAssets?: LeaguePickAssets,
+    currentDate?: string
+): TeamTradeProfile {
     const needs = analyzeTeamSituation(team);
     const roster = team.roster;
     const CC = C.CPU_TRADE;
 
     // ── 내놓을 수 있는 선수 판별 ──
     const tradeableAssets: ScoredAsset[] = [];
+    const tradeablePicks: ScoredPickAsset[] = [];
 
     if (roster.length <= C.DEPTH.MIN_ROSTER_SIZE) {
-        return { team, needs, tradeableAssets: [], acquisitionPriorities: [] };
+        return { team, needs, tradeableAssets: [], tradeablePicks: [], acquisitionPriorities: [] };
     }
 
     const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -217,7 +235,41 @@ function buildTeamTradeProfile(team: Team): TeamTradeProfile {
         }
     });
 
-    return { team, needs, tradeableAssets, acquisitionPriorities };
+    // ── 내놓을 수 있는 픽 판별 ──
+    if (leaguePickAssets && currentDate) {
+        const teamPicks = leaguePickAssets[team.id] || [];
+        const currentYear = new Date(currentDate).getFullYear();
+
+        for (const pick of teamPicks) {
+            let willingness = 0;
+
+            // 2라운드 픽: 누구나 내놓을 수 있음
+            if (pick.round === 2) {
+                willingness = 3;
+            }
+            // 컨텐더: 먼 미래(3년+) 1라운드 내놓기
+            else if (needs.isContender && pick.round === 1 && pick.season >= currentYear + 3) {
+                willingness = 2;
+            }
+            // 셀러: 다른 팀 원래 픽 1라운드도 내놓음
+            else if (needs.isSeller && pick.round === 1 && pick.originalTeamId !== team.id) {
+                willingness = 2;
+            }
+
+            if (willingness > 0) {
+                tradeablePicks.push({
+                    pick,
+                    tradeValue: getPickTradeValue(pick, [team], currentDate),
+                    willingness,
+                });
+            }
+        }
+
+        // 가치 내림차순
+        tradeablePicks.sort((a, b) => b.tradeValue - a.tradeValue);
+    }
+
+    return { team, needs, tradeableAssets, tradeablePicks, acquisitionPriorities };
 }
 
 // ──────────────────────────────────────────────
@@ -367,6 +419,35 @@ function constructTradePackage(
     if (teamA.roster.length - aToB.length + bToA.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
     if (teamB.roster.length - bToA.length + aToB.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
 
+    // ── 2.5단계: 픽으로 가치 차이 보완 ──
+    const aToBPlayerValue = calculatePackageTrueValue(aToB);
+    const bToAPlayerValue = calculatePackageTrueValue(bToA);
+    const valueDiff = aToBPlayerValue - bToAPlayerValue;
+    const aToBPicks: ScoredPickAsset[] = [];
+    const bToAPicks: ScoredPickAsset[] = [];
+
+    // 가치 차이가 크면 열세팀이 픽을 추가하여 보완
+    if (Math.abs(valueDiff) > aToBPlayerValue * 0.15) {
+        const deficit = valueDiff; // +면 A→B가 더 가치 있음 → B가 픽을 추가해야
+        if (deficit > 0 && profileB.tradeablePicks.length > 0) {
+            let addedPickValue = 0;
+            for (const sp of profileB.tradeablePicks) {
+                if (addedPickValue >= deficit * 0.8) break;
+                if (bToAPicks.length >= 2) break;
+                bToAPicks.push(sp);
+                addedPickValue += sp.tradeValue;
+            }
+        } else if (deficit < 0 && profileA.tradeablePicks.length > 0) {
+            let addedPickValue = 0;
+            for (const sp of profileA.tradeablePicks) {
+                if (addedPickValue >= Math.abs(deficit) * 0.8) break;
+                if (aToBPicks.length >= 2) break;
+                aToBPicks.push(sp);
+                addedPickValue += sp.tradeValue;
+            }
+        }
+    }
+
     // ── 3단계: 팀력 개선도 체크 (seller 완화) ──
     const improvA = calculateTeamImprovement(teamA, bToA, aToB);
     const improvB = calculateTeamImprovement(teamB, aToB, bToA);
@@ -374,7 +455,11 @@ function constructTradePackage(
     const threshA = profileA.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
     const threshB = profileB.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
 
-    if (improvA < threshA || improvB < threshB) return null;
+    // 픽 수신 팀은 improvement가 부족해도 픽 가치로 보완 가능
+    const pickBonusA = bToAPicks.reduce((sum, sp) => sum + sp.tradeValue, 0) * 0.0001;
+    const pickBonusB = aToBPicks.reduce((sum, sp) => sum + sp.tradeValue, 0) * 0.0001;
+
+    if ((improvA + pickBonusA) < threshA || (improvB + pickBonusB) < threshB) return null;
 
     // 분석 메시지 생성
     const analysis: string[] = [];
@@ -386,12 +471,19 @@ function constructTradePackage(
         const asset = profileB.tradeableAssets.find(a => a.player.id === p.id);
         if (asset) analysis.push(...asset.reasons.slice(0, 1));
     });
+    if (aToBPicks.length > 0) analysis.push(`${teamA.name}: 드래프트 픽 ${aToBPicks.length}건 포함`);
+    if (bToAPicks.length > 0) analysis.push(`${teamB.name}: 드래프트 픽 ${bToAPicks.length}건 포함`);
+
+    const totalAValue = aToBPlayerValue + aToBPicks.reduce((s, p) => s + p.tradeValue, 0);
+    const totalBValue = bToAPlayerValue + bToAPicks.reduce((s, p) => s + p.tradeValue, 0);
 
     return {
         teamAPlayers: aToB,
         teamBPlayers: bToA,
-        teamAValue: calculatePackageTrueValue(aToB),
-        teamBValue: calculatePackageTrueValue(bToA),
+        teamAPicks: aToBPicks,
+        teamBPicks: bToAPicks,
+        teamAValue: totalAValue,
+        teamBValue: totalBValue,
         teamAImprovement: improvA,
         teamBImprovement: improvB,
         analysis: [...new Set(analysis)],
@@ -550,7 +642,9 @@ function executeRosterSwap(
 export function runCPUTradeRound(
     teams: Team[],
     myTeamId: string | null,
-    currentDate: string
+    currentDate: string,
+    leaguePickAssets?: LeaguePickAssets,
+    leagueTradeBlocks?: LeagueTradeBlocks
 ): { updatedTeams: Team[]; transactions: Transaction[] } | null {
     // 데드라인 체크
     if (new Date(currentDate) > new Date(TRADE_DEADLINE)) {
@@ -569,7 +663,7 @@ export function runCPUTradeRound(
 
     // CPU 팀 프로필 구축 (유저 팀 제외)
     const cpuTeams = teams.filter(t => t.id !== myTeamId);
-    let profiles = cpuTeams.map(t => buildTeamTradeProfile(t));
+    let profiles = cpuTeams.map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate));
 
     // 팀 쌍 호환성 계산
     const pairs: { a: TeamTradeProfile; b: TeamTradeProfile; score: number }[] = [];
@@ -611,22 +705,52 @@ export function runCPUTradeRound(
         const pkg = constructTradePackage(pair.a, pair.b);
         if (!pkg) continue;
 
-        // 트레이드 실행
-        executeRosterSwap(pair.a.team, pair.b.team, pkg.teamAPlayers, pkg.teamBPlayers);
-        const tx = createTradeTransaction(
-            pair.a.team, pair.b.team,
-            pkg.teamAPlayers, pkg.teamBPlayers,
-            pkg.analysis
-        );
-        transactions.push(tx);
-        tradedTeamIds.add(pair.a.team.id);
-        tradedTeamIds.add(pair.b.team.id);
+        // 픽 자산이 있으면 tradeExecutor 경유, 없으면 기존 로직
+        if (leaguePickAssets && (pkg.teamAPicks.length > 0 || pkg.teamBPicks.length > 0)) {
+            const payload: TradeExecutionPayload = {
+                teamAId: pair.a.team.id,
+                teamBId: pair.b.team.id,
+                teamASentPlayers: pkg.teamAPlayers.map(p => p.id),
+                teamASentPicks: pkg.teamAPicks.map(sp => ({
+                    season: sp.pick.season,
+                    round: sp.pick.round,
+                    originalTeamId: sp.pick.originalTeamId,
+                    currentTeamId: pair.a.team.id,
+                })),
+                teamBSentPlayers: pkg.teamBPlayers.map(p => p.id),
+                teamBSentPicks: pkg.teamBPicks.map(sp => ({
+                    season: sp.pick.season,
+                    round: sp.pick.round,
+                    originalTeamId: sp.pick.originalTeamId,
+                    currentTeamId: pair.b.team.id,
+                })),
+                date: currentDate,
+                isUserTrade: false,
+            };
+            const result = executeTrade(payload, teams, leaguePickAssets, leagueTradeBlocks);
+            if (result.success && result.transaction) {
+                transactions.push(result.transaction);
+                tradedTeamIds.add(pair.a.team.id);
+                tradedTeamIds.add(pair.b.team.id);
+            }
+        } else {
+            // 선수만 트레이드 (기존 로직 — 픽 자산 미사용 시)
+            executeRosterSwap(pair.a.team, pair.b.team, pkg.teamAPlayers, pkg.teamBPlayers);
+            const tx = createTradeTransaction(
+                pair.a.team, pair.b.team,
+                pkg.teamAPlayers, pkg.teamBPlayers,
+                pkg.analysis
+            );
+            transactions.push(tx);
+            tradedTeamIds.add(pair.a.team.id);
+            tradedTeamIds.add(pair.b.team.id);
+        }
 
         // 멀티 트레이드 시 프로필 재구축 (로스터 변경 반영)
         if (candidatePairs.length > 0) {
             profiles = cpuTeams
                 .filter(t => !tradedTeamIds.has(t.id))
-                .map(t => buildTeamTradeProfile(t));
+                .map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate));
         }
     }
 

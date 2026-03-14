@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
 
 export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
@@ -12,7 +12,7 @@ export const MESSAGE_FILTER_CATEGORIES: MessageFilterCategory[] = ['GAME', 'TRAD
 
 export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = {
     GAME: ['GAME_RECAP', 'PLAYOFF_STAGE_REVIEW'],
-    TRADE: ['TRADE_ALERT'],
+    TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE'],
     INJURY: ['INJURY_REPORT', 'SUSPENSION'],
     SCOUT: ['SCOUT_REPORT'],
     LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION'],
@@ -366,6 +366,24 @@ export interface ScoutReportContent {
     teamName: string;
     players: ScoutReportPlayerEntry[];
     hasAnyChanges: boolean;
+}
+
+/** CPU가 유저에게 트레이드 오퍼를 보낼 때 */
+export interface TradeOfferReceivedContent {
+    offerId: string;
+    fromTeamId: string;
+    fromTeamName: string;
+    offeredSummary: string;     // "선수 A, B → 선수 C + 2027 1R 픽"
+    analysis: string[];
+}
+
+/** CPU가 유저의 카운터/제안에 응답할 때 */
+export interface TradeOfferResponseContent {
+    offerId: string;
+    fromTeamId: string;
+    fromTeamName: string;
+    accepted: boolean;
+    reason?: string;
 }
 
 export interface PlayoffChampionContent {

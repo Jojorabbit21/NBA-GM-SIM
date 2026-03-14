@@ -300,6 +300,12 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onViewPlayer={handleViewPlayer}
                     userTactics={gameData.userTactics ?? undefined}
                     setUserTactics={gameData.setUserTactics}
+                    leagueTradeBlocks={gameData.leagueTradeBlocks}
+                    setLeagueTradeBlocks={gameData.setLeagueTradeBlocks}
+                    leagueTradeOffers={gameData.leagueTradeOffers}
+                    setLeagueTradeOffers={gameData.setLeagueTradeOffers}
+                    leaguePickAssets={gameData.leaguePickAssets ?? undefined}
+                    setLeaguePickAssets={gameData.setLeaguePickAssets}
                 />
             );
         case 'Playoffs':

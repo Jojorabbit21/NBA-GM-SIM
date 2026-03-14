@@ -31,3 +31,12 @@ export function checkTradeLegality(team: Team, incoming: Player[], outgoing: Pla
 
     return true;
 }
+
+/**
+ * NTC (No-Trade Clause) 위반 검사.
+ * 트레이드로 내보내려는 선수 중 noTrade 플래그가 있는 선수 목록을 반환.
+ * 반환 배열이 비어있으면 위반 없음.
+ */
+export function checkNTCViolation(players: Player[]): Player[] {
+    return players.filter(p => p.contract?.noTrade === true);
+}
