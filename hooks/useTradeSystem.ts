@@ -89,10 +89,10 @@ export const useTradeSystem = (
     // 영속 트레이드 블록 관리
     // ══════════════════════════════════════
 
-    /** 유저 블록의 현재 엔트리 */
+    /** 유저 블록의 현재 엔트리 (선수만 — 픽은 블록 대상 아님) */
     const userBlockEntries = useMemo<TradeBlockEntry[]>(() => {
         if (!leagueTradeBlocks || !team) return [];
-        return leagueTradeBlocks[team.id]?.entries || [];
+        return (leagueTradeBlocks[team.id]?.entries || []).filter(e => e.type === 'player');
     }, [leagueTradeBlocks, team]);
 
     /** 유저 블록에 선수 추가/제거 */
@@ -105,15 +105,19 @@ export const useTradeSystem = (
             if (existing >= 0) {
                 newEntries = block.entries.filter((_, i) => i !== existing);
             } else {
-                if (block.entries.length >= C.TRADE_BLOCK.MAX_USER_BLOCK_ENTRIES) {
-                    onShowToast?.(`트레이드 블록은 최대 ${C.TRADE_BLOCK.MAX_USER_BLOCK_ENTRIES}개까지 등록 가능합니다.`);
+                // 선수 항목만 카운트 (픽은 블록 대상 아님)
+                const playerCount = block.entries.filter(e => e.type === 'player').length;
+                if (playerCount >= C.TRADE_BLOCK.MAX_USER_BLOCK_ENTRIES) {
+                    onShowToast?.(`트레이드 블록은 최대 ${C.TRADE_BLOCK.MAX_USER_BLOCK_ENTRIES}명까지 등록 가능합니다.`);
                     return prev;
                 }
                 newEntries = [...block.entries, { type: 'player', playerId, addedDate: currentSimDate }];
             }
             return { ...prev, [team.id]: { ...block, entries: newEntries } };
         });
-    }, [team, setLeagueTradeBlocks, currentSimDate, onShowToast]);
+        // 블록 변경 즉시 저장 (state 업데이트 + gameStateRef 반영 후)
+        if (onForceSave) setTimeout(() => onForceSave(), 0);
+    }, [team, setLeagueTradeBlocks, currentSimDate, onShowToast, onForceSave]);
 
     /** 유저 블록에 픽 추가/제거 */
     const togglePersistentBlockPick = useCallback((pickRef: TradePickRef) => {
