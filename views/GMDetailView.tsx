@@ -15,7 +15,10 @@ interface GMDetailViewProps {
     teamId: string;
     teams: Team[];
     leagueGMProfiles: LeagueGMProfiles;
+    myTeamId?: string;
+    userNickname?: string;
     onBack: () => void;
+    onViewGM?: (teamId: string) => void;
 }
 
 const SLIDER_KEYS: (keyof GMSliders)[] = [
@@ -32,7 +35,7 @@ const SLIDER_COLORS: Record<keyof GMSliders, string> = {
 
 const DIRECTION_ORDER: TeamDirection[] = ['winNow', 'buyer', 'standPat', 'seller', 'tanking'];
 
-export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, teams, leagueGMProfiles, onBack }) => {
+export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, teams, leagueGMProfiles, myTeamId, userNickname, onBack, onViewGM }) => {
     const teamInfo = TEAM_DATA[teamId];
     const teamColors = teamInfo?.colors || null;
     const theme = getTeamTheme(teamId, teamColors);
@@ -156,6 +159,21 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                         <span className="text-xs font-black text-white uppercase tracking-widest">리그 노선 현황</span>
                     </div>
                     <div className="p-4 space-y-3">
+                        {/* 사용자 팀 표시 */}
+                        {myTeamId && (
+                            <div className="flex items-start gap-3">
+                                <div className="w-20 flex-shrink-0 pt-0.5">
+                                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full border bg-indigo-500/15 text-indigo-300 border-indigo-500/30 ko-normal">사용자</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ko-normal bg-indigo-600/15 border-indigo-500/30 text-indigo-300">
+                                        <img src={getTeamLogoUrl(myTeamId)} className="w-3 h-3 object-contain" alt="" />
+                                        {TEAM_DATA[myTeamId]?.name || myTeamId.toUpperCase()}
+                                        <span className="text-[9px] text-indigo-400 font-bold ml-1">({userNickname || 'You'})</span>
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                         {directionGroups.map(({ direction, teamIds: groupTeamIds }) => (
                             <div key={direction} className="flex items-start gap-3">
                                 <div className="w-20 flex-shrink-0 pt-0.5">
@@ -167,14 +185,21 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                                     ) : (
                                         groupTeamIds.map(id => {
                                             const info = TEAM_DATA[id];
+                                            const isCurrent = id === teamId;
                                             return (
-                                                <span
+                                                <button
                                                     key={id}
-                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800/60 border border-slate-700/50 text-xs text-slate-300 ko-normal"
+                                                    onClick={() => onViewGM?.(id)}
+                                                    disabled={isCurrent}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ko-normal transition-colors ${
+                                                        isCurrent
+                                                            ? 'bg-indigo-600/15 border-indigo-500/30 text-indigo-300'
+                                                            : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700/60 hover:text-white cursor-pointer'
+                                                    }`}
                                                 >
                                                     <img src={getTeamLogoUrl(id)} className="w-3 h-3 object-contain" alt="" />
                                                     {info?.name || id.toUpperCase()}
-                                                </span>
+                                                </button>
                                             );
                                         })
                                     )}

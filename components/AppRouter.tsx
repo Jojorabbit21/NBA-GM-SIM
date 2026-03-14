@@ -263,10 +263,13 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         teamId={viewGMTeamId}
                         teams={gameData.teams}
                         leagueGMProfiles={gameData.leagueGMProfiles}
+                        myTeamId={gameData.myTeamId}
+                        userNickname={session?.user?.email?.split('@')[0]}
                         onBack={() => {
                             setViewGMTeamId(null);
                             setView(previousViewRef.current);
                         }}
+                        onViewGM={(id) => setViewGMTeamId(id)}
                     />
                 );
             }
@@ -419,6 +422,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onGMClick={handleViewGM}
                     leaguePickAssets={gameData.leaguePickAssets}
                     leagueGMProfiles={gameData.leagueGMProfiles}
+                    userNickname={session?.user?.email?.split('@')[0]}
                 />
             );
         default:

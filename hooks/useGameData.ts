@@ -626,7 +626,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         setLeagueTradeBlocks({});
         setLeagueTradeOffers({ offers: [] });
         // GM 프로필 생성 (tendencySeed 기반)
-        const gmProfiles = generateLeagueGMProfiles(teamIds, newSeed);
+        const gmProfiles = generateLeagueGMProfiles(teamIds, newSeed, teamId);
         setLeagueGMProfiles(gmProfiles);
 
         setMyTeamId(teamId);
