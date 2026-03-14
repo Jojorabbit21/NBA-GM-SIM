@@ -276,7 +276,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
             setView('Dashboard');
             return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} coachingData={gameData.coachingData} onCoachClick={(coachTeamId) => { handleViewCoach(coachTeamId); }} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} coachingData={gameData.coachingData} onCoachClick={(coachTeamId) => { handleViewCoach(coachTeamId); }} onGMClick={handleViewGM} leaguePickAssets={gameData.leaguePickAssets} leagueGMProfiles={gameData.leagueGMProfiles} userNickname={session?.user?.email?.split('@')[0]} />;
         case 'Schedule':
             return (
                 <ScheduleView

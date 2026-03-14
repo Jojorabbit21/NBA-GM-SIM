@@ -2,10 +2,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Team, Player, Game } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
+import { LeaguePickAssets } from '../types/draftAssets';
+import { LeagueGMProfiles } from '../types/gm';
 import { RosterGrid } from '../components/roster/RosterGrid';
-import { RosterTabs } from '../components/roster/RosterTabs';
+import { RosterTabs, RosterTab } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
+import { GMProfileCard } from '../components/dashboard/GMProfileCard';
+import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
 import { getTeamTheme } from '../utils/teamTheme';
 import { TEAM_DATA } from '../data/teamData';
 
@@ -20,11 +25,15 @@ interface RosterViewProps {
   userId?: string;
   coachingData?: LeagueCoachingData | null;
   onCoachClick?: (teamId: string) => void;
+  onGMClick?: (teamId: string) => void;
+  leaguePickAssets?: LeaguePickAssets | null;
+  leagueGMProfiles?: LeagueGMProfiles | null;
+  userNickname?: string;
 }
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'records'>('roster');
+  const [tab, setTab] = useState<RosterTab>('roster');
 
   useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);
 
@@ -36,6 +45,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const theme = getTeamTheme(selectedTeam?.id, teamColors);
 
   const headCoach = coachingData?.[selectedTeam?.id]?.headCoach;
+  const isMyTeam = selectedTeam?.id === myTeamId;
 
   if (!selectedTeam) return null;
 
@@ -47,7 +57,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               <TeamLogo teamId={selectedTeam.id} size="sm" />
               <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
               <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
-              {headCoach && (
+              {headCoach && tab !== 'frontOffice' && (
                   <>
                       <span className="text-slate-500 text-[10px]">|</span>
                       <span className="text-[10px] tracking-wider font-bold ko-normal" style={{ color: theme.accent, opacity: 0.6 }}>헤드코치</span>
@@ -81,6 +91,41 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   onViewGameResult={onViewGameResult}
                   userId={userId}
               />
+          )}
+          {tab === 'frontOffice' && (
+              <div className="h-full overflow-y-auto custom-scrollbar">
+                  {/* GM */}
+                  {isMyTeam ? (
+                      <div className="flex items-center justify-between px-6 py-3 bg-slate-900 border-b border-slate-800">
+                          <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-600/20 ring-1 ring-indigo-500/30 flex items-center justify-center">
+                                  <span className="text-xs font-black text-indigo-400">GM</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-200 ko-normal">단장</span>
+                                  <span className="text-xs font-black text-indigo-400">{userNickname || 'You'}</span>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">사용자</span>
+                              </div>
+                          </div>
+                      </div>
+                  ) : (
+                      <GMProfileCard
+                          gmProfile={leagueGMProfiles?.[selectedTeam.id]}
+                          onGMClick={() => onGMClick?.(selectedTeam.id)}
+                      />
+                  )}
+
+                  {/* Coach */}
+                  <HeadCoachTable
+                      coach={headCoach}
+                      onCoachClick={() => onCoachClick?.(selectedTeam.id)}
+                  />
+
+                  {/* Draft Picks */}
+                  <div className="mt-2">
+                      <DraftPicksPanel teamId={selectedTeam.id} leaguePickAssets={leaguePickAssets} />
+                  </div>
+              </div>
           )}
       </div>
     </div>
