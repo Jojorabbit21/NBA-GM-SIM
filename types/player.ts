@@ -104,7 +104,7 @@ export interface PlayerAwardEntry {
 }
 
 // ── 선수 계약 구조 ──
-export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension' | 'sign-and-trade';
+export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension';
 
 export interface ContractOption {
     type: 'player' | 'team';
