@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Team } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Team, Player } from '../types';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
@@ -8,7 +8,7 @@ import { TEAM_DATA } from '../data/teamData';
 import { getBudgetManager } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 
-type FrontOfficeTab = 'club' | 'coaching';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -43,6 +43,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <button onClick={() => setActiveTab('club')} className={tabClass('club')}>
                             <span>구단</span>
                         </button>
+                        <button onClick={() => setActiveTab('payroll')} className={tabClass('payroll')}>
+                            <span>선수 급여</span>
+                        </button>
                         <button onClick={() => setActiveTab('coaching')} className={tabClass('coaching')}>
                             <span>코칭 스태프</span>
                         </button>
@@ -53,6 +56,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {activeTab === 'club' && finData && finance && (
                         <ClubTab finData={finData} finance={finance} team={team} teams={teams} myTeamId={myTeamId} />
+                    )}
+                    {activeTab === 'payroll' && (
+                        <PayrollTab team={team} />
                     )}
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
@@ -308,6 +314,106 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
         </div>
     );
 };
+
+// ── 선수 급여 탭 ──
+const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
+    const { players, seasonColumns, totals } = useMemo(() => {
+        // OVR 내림차순 정렬
+        const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
+
+        // 시즌 범위 계산: 모든 선수의 계약 중 가장 먼 시즌까지
+        let maxEndYear = 2026; // 최소 2025-26
+        for (const p of sorted) {
+            if (p.contract) {
+                const endYear = 2025 - p.contract.currentYear + p.contract.years.length;
+                if (endYear > maxEndYear) maxEndYear = endYear;
+            }
+        }
+        const cols: string[] = [];
+        for (let y = 2025; y < maxEndYear; y++) {
+            cols.push(`${y}-${String(y + 1).slice(-2)}`);
+        }
+
+        // 시즌별 합계
+        const colTotals = new Array(cols.length).fill(0);
+        for (const p of sorted) {
+            if (!p.contract) continue;
+            for (let i = 0; i < p.contract.years.length; i++) {
+                const colIdx = i - p.contract.currentYear; // 2025-26 기준 offset
+                if (colIdx >= 0 && colIdx < cols.length) {
+                    colTotals[colIdx] += p.contract.years[i];
+                }
+            }
+        }
+
+        return { players: sorted, seasonColumns: cols, totals: colTotals };
+    }, [team.roster]);
+
+    return (
+        <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
+            <table className="w-full border-collapse text-xs">
+                <thead className="sticky top-0 z-10">
+                    <tr>
+                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20`}>선수</th>
+                        {seasonColumns.map(col => (
+                            <th key={col} className={`${thClass} text-right`}>{col}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {players.map(p => (
+                        <PayrollRow key={p.id} player={p} seasonColumns={seasonColumns} />
+                    ))}
+                    {/* 합계 행 */}
+                    <tr className="border-t-2 border-slate-500">
+                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-900 z-10`}>합계</td>
+                        {totals.map((t, i) => (
+                            <td key={i} className={`${tdValClass} font-bold text-white`}>
+                                {t > 0 ? fmtSalary(t) : ''}
+                            </td>
+                        ))}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ player, seasonColumns }) => {
+    const cells = useMemo(() => {
+        const result: (string | null)[] = new Array(seasonColumns.length).fill(null);
+        if (!player.contract) return result;
+        for (let i = 0; i < player.contract.years.length; i++) {
+            const colIdx = i - player.contract.currentYear;
+            if (colIdx >= 0 && colIdx < seasonColumns.length) {
+                let label = fmtSalary(player.contract.years[i]);
+                if (player.contract.option && i === player.contract.option.year) {
+                    label += player.contract.option.type === 'player' ? ' (선수옵션)' : ' (팀옵션)';
+                }
+                result[colIdx] = label;
+            }
+        }
+        return result;
+    }, [player, seasonColumns.length]);
+
+    return (
+        <tr className="hover:bg-slate-800/40">
+            <td className={`${tdClass} text-slate-200 sticky left-0 bg-slate-900 z-10`}>{player.name}</td>
+            {cells.map((cell, i) => (
+                <td key={i} className={`${tdValClass} ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
+                    {cell ?? '-'}
+                </td>
+            ))}
+        </tr>
+    );
+};
+
+/** 달러 → $M / $K 표기 */
+function fmtSalary(v: number): string {
+    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+    return `$${v}`;
+}
 
 // ── 유틸 ──
 
