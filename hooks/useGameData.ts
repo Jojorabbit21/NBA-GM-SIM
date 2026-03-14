@@ -404,8 +404,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     if (checkpoint.league_trade_offers) {
                         setLeagueTradeOffers(checkpoint.league_trade_offers);
                     }
-                    if (checkpoint.league_gm_profiles) {
+                    if (checkpoint.league_gm_profiles && Object.keys(checkpoint.league_gm_profiles).length > 0) {
                         setLeagueGMProfiles(checkpoint.league_gm_profiles);
+                    } else {
+                        // 기존 세이브에 GM 프로필이 없으면 새로 생성
+                        const seed = checkpoint.tendency_seed || tendencySeed;
+                        if (seed && loadedTeams) {
+                            const teamIds = loadedTeams.map(t => t.id);
+                            const gmProfiles = generateLeagueGMProfiles(teamIds, seed, checkpoint.team_id);
+                            setLeagueGMProfiles(gmProfiles);
+                        }
                     }
 
                     if (checkpoint.hof_id) {
