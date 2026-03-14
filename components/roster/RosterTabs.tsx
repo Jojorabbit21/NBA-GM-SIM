@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-type RosterTab = 'roster' | 'records';
+export type RosterTab = 'roster' | 'records' | 'frontOffice';
 
 interface RosterTabsProps {
     activeTab: RosterTab;
@@ -12,6 +12,7 @@ export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }
     const tabs = [
         { id: 'roster', label: '능력치' },
         { id: 'records', label: '경기 기록' },
+        { id: 'frontOffice', label: '프론트 오피스' },
     ];
 
     return (
@@ -19,9 +20,9 @@ export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }
             {tabs.map((t) => (
                 <button
                     key={t.id}
-                    onClick={() => onTabChange(t.id as any)}
+                    onClick={() => onTabChange(t.id as RosterTab)}
                     className={`
-                        px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all
+                        px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ko-normal
                         ${activeTab === t.id
                             ? 'bg-indigo-600 text-white shadow-md'
                             : 'text-slate-500 hover:text-slate-300'}

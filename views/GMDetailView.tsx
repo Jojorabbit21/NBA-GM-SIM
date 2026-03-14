@@ -58,7 +58,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
 
-                {/* HEADER */}
+                {/* ═══ HEADER ═══ */}
                 <div className="border-b border-white/5 relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
                     <div className="absolute inset-0 bg-black/40 pointer-events-none" />
 
@@ -74,21 +74,14 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                         </button>
                     </div>
 
-                    {/* GM name + badges */}
+                    {/* GM name */}
                     <div className="px-6 pt-1 pb-4 relative z-10 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center">
                             <span className="text-xl font-black" style={{ color: theme.accent }}>GM</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-3xl font-black uppercase tracking-tight" style={{ color: theme.text }}>
-                                {gmProfile.name}
-                            </h2>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 border border-white/15"
-                                style={{ color: theme.text }}>
-                                {GM_PERSONALITY_LABELS[gmProfile.personalityType]}
-                            </span>
-                            <DirectionBadge direction={gmProfile.direction} />
-                        </div>
+                        <h2 className="text-3xl font-black uppercase tracking-tight" style={{ color: theme.text }}>
+                            {gmProfile.name}
+                        </h2>
                     </div>
 
                     <div className="mx-6" />
@@ -123,10 +116,10 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                     <div className="h-6" />
                 </div>
 
-                {/* BODY */}
+                {/* ═══ BODY ═══ */}
                 <div className="bg-slate-950">
 
-                    {/* GM 성향 슬라이더 */}
+                    {/* ═══ GM 성향 ═══ */}
                     <div className="px-4 py-2.5 bg-slate-800 border-b border-slate-700">
                         <span className="text-xs font-black text-white uppercase tracking-widest">GM 성향</span>
                     </div>
@@ -154,7 +147,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                         </TableBody>
                     </Table>
 
-                    {/* 리그 노선 현황 */}
+                    {/* ═══ 리그 노선 현황 ═══ */}
                     <div className="px-4 py-2.5 bg-slate-800 border-y border-slate-700">
                         <span className="text-xs font-black text-white uppercase tracking-widest">리그 노선 현황</span>
                     </div>
