@@ -116,7 +116,8 @@ export function syncCPUTradeBlocks(
             }
         }
 
-        leagueTradeBlocks[team.id] = { teamId: team.id, entries, lastEvaluated: currentDate };
+        const prevLastEvaluated = leagueTradeBlocks[team.id]?.lastEvaluated;
+        leagueTradeBlocks[team.id] = { teamId: team.id, entries, lastEvaluated: prevLastEvaluated };
     }
 }
 
@@ -170,6 +171,12 @@ export function evaluateUserTradeBlock(
         if (hasPending) continue;
 
         const offer = tryGenerateOffer(cpuTeam, userTeam, userBlock, leagueTradeBlocks, leaguePickAssets, currentDate);
+
+        // 평가 완료 → 쓰로틀 타이머 갱신 (오퍼 성공 여부 무관)
+        if (leagueTradeBlocks[cpuTeam.id]) {
+            leagueTradeBlocks[cpuTeam.id].lastEvaluated = currentDate;
+        }
+
         if (offer) {
             newOffers.push(offer);
             leagueTradeOffers.offers.push(offer);

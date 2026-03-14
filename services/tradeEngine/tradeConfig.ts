@@ -76,7 +76,7 @@ export const TRADE_CONFIG = {
         // CPU 팀 블록 평가 간격 (시뮬 일)
         CPU_EVAL_INTERVAL_DAYS: 3,
         // 유저에게 하루 최대 오퍼 수
-        MAX_OFFERS_PER_DAY: 1,
+        MAX_OFFERS_PER_DAY: 3,
         // 오퍼 만료 일수
         OFFER_EXPIRY_DAYS: 7,
         // 유저 블록 최대 항목 수
