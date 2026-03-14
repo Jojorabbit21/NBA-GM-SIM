@@ -5,6 +5,7 @@ import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets, DraftPickAsset } from '../types/draftAssets';
 import { PICK_SEASONS } from '../services/draftAssets/pickInitializer';
+import { TRADED_FIRST_ROUND_PICKS, SWAP_RIGHTS } from '../data/draftPickTrades';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { getBudgetManager } from '../services/financeEngine';
@@ -424,86 +425,314 @@ const DraftPicksTab: React.FC<{
 }> = ({ myTeamId, leaguePickAssets }) => {
     const myPicks = leaguePickAssets?.[myTeamId] ?? [];
 
-    // season-round → pick 매핑
+    // season-round → pick[] 매핑 (복수 픽 지원)
     const pickMap = useMemo(() => {
-        const map = new Map<string, DraftPickAsset>();
+        const map = new Map<string, DraftPickAsset[]>();
         myPicks.forEach(p => {
-            map.set(`${p.season}-${p.round}`, p);
+            const key = `${p.season}-${p.round}`;
+            const arr = map.get(key) || [];
+            arr.push(p);
+            map.set(key, arr);
         });
         return map;
     }, [myPicks]);
 
-    const seasonColumns = PICK_SEASONS.map(y => `${y}-${String(y + 1).slice(-2)}`);
+    // 내 원래 픽을 누가 가져갔는지 역방향 조회 (season-round → 현재 보유팀)
+    const tradedAwayMap = useMemo(() => {
+        const map = new Map<string, DraftPickAsset>();
+        if (!leaguePickAssets) return map;
+        for (const teamId of Object.keys(leaguePickAssets)) {
+            if (teamId === myTeamId) continue;
+            for (const pick of leaguePickAssets[teamId]) {
+                if (pick.originalTeamId === myTeamId) {
+                    map.set(`${pick.season}-${pick.round}`, pick);
+                }
+            }
+        }
+        return map;
+    }, [leaguePickAssets, myTeamId]);
+
+    const teamName = (id: string) => TEAM_DATA[id]?.name || id.toUpperCase();
 
     // 보호 조건 라벨
     const getProtectionLabel = (pick: DraftPickAsset): string | null => {
         if (!pick.protection) return null;
-        if (pick.protection.type === 'top' && pick.protection.threshold) {
-            return `Top ${pick.protection.threshold} protected`;
+        const p = pick.protection;
+        if (p.type === 'none') return '보호 없음';
+        if (p.type === 'top' && p.threshold) {
+            const fallback = p.fallbackSeason ? ` → ${p.fallbackSeason} ${p.fallbackRound === 1 ? '1라운드' : '2라운드'}로 전환` : '';
+            return `상위 ${p.threshold}순위 보호${fallback}`;
         }
-        if (pick.protection.type === 'lottery') return 'Lottery protected';
+        if (p.type === 'lottery') return '로터리 보호';
         return null;
     };
+
+    // 스왑 권리 라벨
+    const getSwapLabel = (pick: DraftPickAsset): string | null => {
+        if (!pick.swapRight) return null;
+        const other = pick.swapRight.beneficiaryTeamId === myTeamId
+            ? pick.swapRight.originTeamId
+            : pick.swapRight.beneficiaryTeamId;
+        const direction = pick.swapRight.beneficiaryTeamId === myTeamId ? '스왑 권리 보유' : '스왑 권리 피대상';
+        return `↔ ${teamName(other)} (${direction})`;
+    };
+
+    // 픽 하나의 비고 텍스트
+    const getPickNotes = (pick: DraftPickAsset): string[] => {
+        const notes: string[] = [];
+        const prot = getProtectionLabel(pick);
+        if (prot) notes.push(prot);
+        const swap = getSwapLabel(pick);
+        if (swap) notes.push(swap);
+        return notes;
+    };
+
+    // 라운드별 행 엔트리 생성 — 각 픽이 1행씩 차지
+    interface RowEntry {
+        label: string;
+        color: string;
+        notes: string[];
+    }
+
+    const buildRoundEntries = (picks: DraftPickAsset[], round: 1 | 2, season: number): RowEntry[] => {
+        const entries: RowEntry[] = [];
+        const tradedPick = tradedAwayMap.get(`${season}-${round}`);
+        const hasOwnPick = picks.some(p => p.originalTeamId === myTeamId);
+
+        // 자기 픽 보유
+        if (hasOwnPick) {
+            const ownPick = picks.find(p => p.originalTeamId === myTeamId)!;
+            entries.push({ label: '보유', color: 'text-indigo-400 font-bold', notes: getPickNotes(ownPick) });
+        }
+
+        // 자기 픽을 넘긴 경우
+        if (!hasOwnPick && tradedPick) {
+            entries.push({
+                label: `→ ${teamName(tradedPick.currentTeamId)}`,
+                color: 'text-red-400/70',
+                notes: getPickNotes(tradedPick),
+            });
+        }
+
+        // 타팀에서 획득한 픽 (각각 1행)
+        for (const p of picks) {
+            if (p.originalTeamId === myTeamId) continue;
+            entries.push({
+                label: `${teamName(p.originalTeamId)} 픽 획득`,
+                color: 'text-emerald-400 font-bold',
+                notes: getPickNotes(p),
+            });
+        }
+
+        // 엔트리가 없으면 빈 행
+        if (entries.length === 0) {
+            entries.push({ label: '보유', color: 'text-indigo-400 font-bold', notes: [] });
+        }
+
+        return entries;
+    };
+
+    // 시즌별 행 데이터 생성
+    const seasonRows = useMemo(() => {
+        return PICK_SEASONS.map(season => {
+            const r1Picks = pickMap.get(`${season}-1`) || [];
+            const r2Picks = pickMap.get(`${season}-2`) || [];
+            const r1Entries = buildRoundEntries(r1Picks, 1, season);
+            const r2Entries = buildRoundEntries(r2Picks, 2, season);
+            const rowCount = Math.max(r1Entries.length, r2Entries.length);
+            return { season, r1Entries, r2Entries, rowCount };
+        });
+    }, [pickMap, tradedAwayMap, myTeamId]);
 
     return (
         <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
             <table className="w-full border-collapse text-xs table-fixed">
                 <colgroup>
-                    <col style={{ width: '100px' }} />
-                    {PICK_SEASONS.map(y => <col key={y} />)}
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '130px' }} />
+                    <col />
+                    <col style={{ width: '130px' }} />
+                    <col />
                 </colgroup>
                 <thead className="sticky top-0 z-10">
                     <tr>
-                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 border-r border-slate-600`}>라운드</th>
-                        {seasonColumns.map(col => (
-                            <th key={col} className={`${thClass} text-center border-l border-slate-600`}>{col}</th>
-                        ))}
+                        <th className={`${thClass} text-center`}>시즌</th>
+                        <th className={`${thClass} text-center border-l border-slate-600`}>1라운드</th>
+                        <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
+                        <th className={`${thClass} text-center border-l border-slate-600`}>2라운드</th>
+                        <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {([1, 2] as const).map(round => (
-                        <tr key={round} className="hover:bg-slate-800/40">
-                            <td className={`${tdClass} font-bold text-slate-200 sticky left-0 bg-slate-900 z-10 border-r border-slate-600`}>
-                                {round}라운드
-                            </td>
-                            {PICK_SEASONS.map(season => {
-                                const pick = pickMap.get(`${season}-${round}`);
-                                const isOwn = pick ? pick.originalTeamId === myTeamId : false;
-                                const hasSwap = pick?.swapRight != null;
-                                const protectionLabel = pick ? getProtectionLabel(pick) : null;
+                    {seasonRows.map(({ season, r1Entries, r2Entries, rowCount }) =>
+                        Array.from({ length: rowCount }, (_, rowIdx) => {
+                            const r1 = r1Entries[rowIdx];
+                            const r2 = r2Entries[rowIdx];
+                            const isFirstRow = rowIdx === 0;
+                            const borderClass = rowIdx < rowCount - 1 ? 'border-b border-slate-700/30' : 'border-b border-slate-700/60';
 
-                                let label: string;
-                                let cellColor: string;
-                                if (!pick) {
-                                    // 해당 픽을 보유하지 않음 (트레이드로 넘김)
-                                    label = '—';
-                                    cellColor = 'text-slate-700';
-                                } else if (isOwn) {
-                                    label = 'OWN';
-                                    cellColor = 'text-indigo-400 font-bold';
-                                } else {
-                                    // 타팀에서 획득한 픽
-                                    label = (TEAM_DATA[pick.originalTeamId]?.name || pick.originalTeamId).toUpperCase();
-                                    cellColor = 'text-emerald-400 font-bold';
-                                }
-
-                                return (
-                                    <td key={season} className={`py-1.5 px-2 text-xs font-mono text-center border-b border-slate-700/60 border-l border-slate-600 ${cellColor}`}>
-                                        <div>{label}</div>
-                                        {hasSwap && (
-                                            <div className="text-[10px] text-amber-400/70 mt-0.5">↔ {pick.swapRight!.originTeamId.toUpperCase()}</div>
-                                        )}
-                                        {protectionLabel && (
-                                            <div className="text-[10px] text-slate-500 mt-0.5">{protectionLabel}</div>
-                                        )}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    ))}
+                            return (
+                                <tr key={`${season}-${rowIdx}`} className="hover:bg-slate-800/40">
+                                    {isFirstRow && (
+                                        <td
+                                            rowSpan={rowCount}
+                                            className={`${tdClass} text-center font-bold text-slate-200 border-b border-slate-700/60`}
+                                        >
+                                            {season}-{String(season + 1).slice(-2)}
+                                        </td>
+                                    )}
+                                    {r1 ? (
+                                        <>
+                                            <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r1.color}`}>
+                                                {r1.label}
+                                            </td>
+                                            <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
+                                                {r1.notes.map((note, i) => (
+                                                    <div key={i} className="text-[10px] text-slate-400 leading-tight">{note}</div>
+                                                ))}
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                        </>
+                                    )}
+                                    {r2 ? (
+                                        <>
+                                            <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r2.color}`}>
+                                                {r2.label}
+                                            </td>
+                                            <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
+                                                {r2.notes.map((note, i) => (
+                                                    <div key={i} className="text-[10px] text-slate-400 leading-tight">{note}</div>
+                                                ))}
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                        </>
+                                    )}
+                                </tr>
+                            );
+                        })
+                    )}
                 </tbody>
             </table>
+
+            {/* ── 드래프트 픽 거래 기록 ── */}
+            <h3 className="text-sm font-bold text-slate-300 mt-6 mb-2 px-2">거래 기록</h3>
+            <PickTradeHistory myTeamId={myTeamId} />
         </div>
+    );
+};
+
+/** 드래프트 픽 거래 기록 테이블 */
+const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
+    const teamName = (id: string) => TEAM_DATA[id]?.name || id.toUpperCase();
+
+    // 내 팀과 관련된 거래만 필터링
+    const relevantTrades = useMemo(() => {
+        const trades: { season: number; round: number; type: '픽 이동' | '스왑 권리'; description: string; direction: 'in' | 'out' | 'swap' }[] = [];
+
+        for (const t of TRADED_FIRST_ROUND_PICKS) {
+            if (t.originalTeamId === myTeamId) {
+                // 내 픽을 넘긴 거래
+                let protLabel = '';
+                if (t.protection) {
+                    if (t.protection.type === 'none') protLabel = ' (보호 없음)';
+                    else if (t.protection.type === 'top' && t.protection.threshold) {
+                        protLabel = ` (상위 ${t.protection.threshold}순위 보호`;
+                        if (t.protection.fallbackSeason) protLabel += ` → ${t.protection.fallbackSeason} ${t.protection.fallbackRound === 1 ? '1라운드' : '2라운드'}로 전환`;
+                        protLabel += ')';
+                    } else if (t.protection.type === 'lottery') protLabel = ' (로터리 보호)';
+                }
+                trades.push({
+                    season: t.season,
+                    round: t.round,
+                    type: '픽 이동',
+                    description: `${t.season} ${t.round}라운드 픽 → ${teamName(t.currentTeamId)}${protLabel}`,
+                    direction: 'out',
+                });
+            } else if (t.currentTeamId === myTeamId) {
+                // 타팀 픽을 획득한 거래
+                let protLabel = '';
+                if (t.protection) {
+                    if (t.protection.type === 'none') protLabel = ' (보호 없음)';
+                    else if (t.protection.type === 'top' && t.protection.threshold) {
+                        protLabel = ` (상위 ${t.protection.threshold}순위 보호`;
+                        if (t.protection.fallbackSeason) protLabel += ` → ${t.protection.fallbackSeason} ${t.protection.fallbackRound === 1 ? '1라운드' : '2라운드'}로 전환`;
+                        protLabel += ')';
+                    } else if (t.protection.type === 'lottery') protLabel = ' (로터리 보호)';
+                }
+                trades.push({
+                    season: t.season,
+                    round: t.round,
+                    type: '픽 이동',
+                    description: `${teamName(t.originalTeamId)}의 ${t.season} ${t.round}라운드 픽 획득${protLabel}`,
+                    direction: 'in',
+                });
+            }
+        }
+
+        for (const s of SWAP_RIGHTS) {
+            if (s.beneficiaryTeamId === myTeamId) {
+                trades.push({
+                    season: s.season,
+                    round: s.round,
+                    type: '스왑 권리',
+                    description: `${s.season} ${s.round}라운드 — ${teamName(s.originTeamId)}과 스왑 권리 보유`,
+                    direction: 'swap',
+                });
+            } else if (s.originTeamId === myTeamId) {
+                trades.push({
+                    season: s.season,
+                    round: s.round,
+                    type: '스왑 권리',
+                    description: `${s.season} ${s.round}라운드 — ${teamName(s.beneficiaryTeamId)}에 스왑 권리 제공`,
+                    direction: 'swap',
+                });
+            }
+        }
+
+        trades.sort((a, b) => a.season - b.season || a.round - b.round);
+        return trades;
+    }, [myTeamId]);
+
+    if (relevantTrades.length === 0) {
+        return <div className="text-xs text-slate-500 px-2 pb-4">관련 거래 기록이 없습니다.</div>;
+    }
+
+    return (
+        <table className="w-full border-collapse text-xs table-fixed">
+            <colgroup>
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '80px' }} />
+                <col />
+            </colgroup>
+            <thead className="sticky top-0 z-10">
+                <tr>
+                    <th className={`${thClass} text-center`}>유형</th>
+                    <th className={`${thClass} text-center border-l border-slate-600`}>방향</th>
+                    <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>내용</th>
+                </tr>
+            </thead>
+            <tbody>
+                {relevantTrades.map((t, i) => (
+                    <tr key={i} className="hover:bg-slate-800/40">
+                        <td className={`${tdClass} text-center text-slate-300`}>{t.type}</td>
+                        <td className={`${tdClass} text-center border-l border-slate-600 font-bold ${
+                            t.direction === 'in' ? 'text-emerald-400' : t.direction === 'out' ? 'text-red-400/70' : 'text-amber-400/70'
+                        }`}>
+                            {t.direction === 'in' ? '획득' : t.direction === 'out' ? '양도' : '스왑'}
+                        </td>
+                        <td className={`${tdClass} text-left border-l border-slate-600 pl-3 text-slate-300`}>{t.description}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     );
 };
 
