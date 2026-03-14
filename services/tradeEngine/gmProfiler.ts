@@ -8,31 +8,52 @@ import {
     LeagueGMProfiles, GM_PERSONALITY_TYPES, GM_SLIDER_PRESETS,
 } from '../../types/gm';
 
-// ── Seeded Random Helpers (coachGenerator 패턴) ──
+// ── DB에서 로드된 GM 데이터 싱글턴 (single source of truth) ──
+
+let GM_DATA: Record<string, { name: string; personalityType: GMPersonalityType; sliders: GMSliders }> = {};
+
+/**
+ * meta_gms DB 데이터로 싱글턴 교체
+ * queries.ts의 useBaseData()에서 앱 시작 시 호출
+ */
+export function populateGMData(rows: { team_id: string; gm_name: string; personality_type: string; sliders: GMSliders | string }[]): void {
+    const newData: Record<string, { name: string; personalityType: GMPersonalityType; sliders: GMSliders }> = {};
+    for (const row of rows) {
+        const sliders = typeof row.sliders === 'string' ? JSON.parse(row.sliders) : row.sliders;
+        newData[row.team_id] = {
+            name: row.gm_name,
+            personalityType: row.personality_type as GMPersonalityType,
+            sliders,
+        };
+    }
+    GM_DATA = newData;
+}
+
+// ── Seeded Random Helpers (DB에 없는 팀용 fallback) ──
 
 function seededRandom(seed: number): number {
     const x = Math.sin(seed) * 10000;
     return x - Math.floor(x);
 }
 
-// ── GM 이름 풀 ──
+// ── GM 이름 풀 — fallback용 (한글 음차) ──
 
 const GM_FIRST_NAMES = [
-    'Sam', 'Rob', 'Daryl', 'Pat', 'Bob', 'Danny', 'Mitch', 'Elton',
-    'Neil', 'Jeff', 'Koby', 'Monte', 'Calvin', 'Nico', 'Brad',
-    'Rafael', 'Leon', 'James', 'Troy', 'David', 'Scott', 'Dennis',
-    'Rich', 'Arturas', 'Zach', 'Tim', 'Lawrence', 'Marc', 'Trajan',
-    'Chris', 'Will', 'Sean', 'Ted', 'Brian', 'Glen', 'Matt',
-    'Wes', 'Mike', 'Ryan', 'John',
+    '샘', '롭', '대릴', '팻', '밥', '대니', '미치', '엘튼',
+    '닐', '제프', '코비', '몬테', '캘빈', '니코', '브래드',
+    '라파엘', '레온', '제임스', '트로이', '데이비드', '스콧', '데니스',
+    '리치', '아르투라스', '잭', '팀', '로렌스', '마크', '트레이잔',
+    '크리스', '윌', '숀', '테드', '브라이언', '글렌', '맷',
+    '웨스', '마이크', '라이언', '존',
 ];
 
 const GM_LAST_NAMES = [
-    'Presti', 'Pelinka', 'Morey', 'Riley', 'Myers', 'Ainge', 'Kupchak',
-    'Brand', 'Olshey', 'Weltman', 'Altman', 'Morris', 'Booth', 'Harrison',
-    'Stevens', 'Stone', 'Rose', 'Jones', 'Weaver', 'Griffin', 'Perry',
-    'Lindsey', 'Cho', 'Frank', 'Karnisovas', 'Lowe', 'Connelly', 'Eversley',
-    'Bartelstein', 'Wallace', 'Hardy', 'Marks', 'Stefanski', 'Wheeler',
-    'Grier', 'Sullivan', 'Langdon', 'Webster', 'McDonough', 'Babcock',
+    '프레스티', '펠린카', '모리', '라일리', '마이어스', '에인지', '쿠프착',
+    '브랜드', '올시', '웰트먼', '올트먼', '모리스', '부스', '해리슨',
+    '스티븐스', '스톤', '로즈', '존스', '위버', '그리핀', '페리',
+    '린지', '조', '프랭크', '카르니소바스', '로우', '코넬리', '에버슬리',
+    '바텔스타인', '월러스', '하디', '마크스', '스테판스키', '윌러',
+    '그리어', '설리번', '랭던', '웹스터', '맥도너', '밥콕',
 ];
 
 function generateGMName(seed: number): string {
@@ -43,14 +64,29 @@ function generateGMName(seed: number): string {
 
 // ── 프로필 생성 ──
 
+/**
+ * 팀 ID 기반 GM 프로필 조회
+ * DB 데이터에 있으면 반환, 없으면 시드 기반 랜덤 생성 (fallback)
+ */
 function generateGMProfile(teamId: string, tendencySeed: string): GMProfile {
+    // DB 데이터 우선
+    if (GM_DATA[teamId]) {
+        const db = GM_DATA[teamId];
+        return {
+            teamId,
+            name: db.name,
+            personalityType: db.personalityType,
+            sliders: { ...db.sliders },
+            direction: 'standPat',
+        };
+    }
+
+    // fallback: 시드 기반 랜덤 생성 (DB 미로드 또는 커스텀 팀)
     const baseSeed = stringToHash(tendencySeed + ':gm:' + teamId);
 
-    // 성격 타입 결정
     const typeIndex = Math.floor(seededRandom(baseSeed) * GM_PERSONALITY_TYPES.length);
     const personalityType = GM_PERSONALITY_TYPES[typeIndex];
 
-    // 프리셋 슬라이더에 ±1 변동 적용
     const preset = GM_SLIDER_PRESETS[personalityType];
     const sliders: GMSliders = {
         aggressiveness: clampSlider(preset.aggressiveness + sliderJitter(baseSeed + 1)),
@@ -67,7 +103,7 @@ function generateGMProfile(teamId: string, tendencySeed: string): GMProfile {
         name,
         personalityType,
         sliders,
-        direction: 'standPat', // 시즌 시작 시 기본값
+        direction: 'standPat',
     };
 }
 
@@ -90,9 +126,17 @@ export function generateLeagueGMProfiles(
     myTeamId?: string,
 ): LeagueGMProfiles {
     const profiles: LeagueGMProfiles = {};
-    for (const teamId of teamIds) {
-        if (teamId === myTeamId) continue; // 사용자 팀은 CPU GM 생성 제외
+    // DB에 로드된 데이터 우선 반영
+    for (const teamId of Object.keys(GM_DATA)) {
+        if (teamId === myTeamId) continue;
         profiles[teamId] = generateGMProfile(teamId, tendencySeed);
+    }
+    // 누락된 팀은 시드 기반 생성
+    for (const teamId of teamIds) {
+        if (teamId === myTeamId) continue;
+        if (!profiles[teamId]) {
+            profiles[teamId] = generateGMProfile(teamId, tendencySeed);
+        }
     }
     return profiles;
 }

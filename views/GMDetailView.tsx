@@ -1,24 +1,17 @@
 
 import React, { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { Team } from '../types';
-import { GMProfile, GMSliders, GM_PERSONALITY_LABELS, LeagueGMProfiles, DIRECTION_LABELS, TeamDirection } from '../types/gm';
+import { GMProfile, GMSliders, GM_PERSONALITY_LABELS, DIRECTION_LABELS } from '../types/gm';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
 import { getGMSliderResult, getGMSliderLabel } from '../services/tradeEngine/gmProfiler';
-import { DirectionBadge } from '../components/common/DirectionBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface GMDetailViewProps {
     gmProfile: GMProfile;
     teamId: string;
-    teams: Team[];
-    leagueGMProfiles: LeagueGMProfiles;
-    myTeamId?: string;
-    userNickname?: string;
     onBack: () => void;
-    onViewGM?: (teamId: string) => void;
 }
 
 const SLIDER_KEYS: (keyof GMSliders)[] = [
@@ -33,9 +26,7 @@ const SLIDER_COLORS: Record<keyof GMSliders, string> = {
     pickWillingness: 'text-purple-400',
 };
 
-const DIRECTION_ORDER: TeamDirection[] = ['winNow', 'buyer', 'standPat', 'seller', 'tanking'];
-
-export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, teams, leagueGMProfiles, myTeamId, userNickname, onBack, onViewGM }) => {
+export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, onBack }) => {
     const teamInfo = TEAM_DATA[teamId];
     const teamColors = teamInfo?.colors || null;
     const theme = getTeamTheme(teamId, teamColors);
@@ -45,14 +36,6 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
     }, [onBack]);
-
-    // 리그 노선 현황 — 노선별로 팀 그룹핑
-    const directionGroups = DIRECTION_ORDER.map(dir => {
-        const teamIds = Object.entries(leagueGMProfiles)
-            .filter(([, p]) => p.direction === dir)
-            .map(([id]) => id);
-        return { direction: dir, teamIds };
-    });
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
@@ -146,60 +129,6 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({ gmProfile, teamId, t
                             })}
                         </TableBody>
                     </Table>
-
-                    {/* ═══ 리그 노선 현황 ═══ */}
-                    <div className="px-4 py-2.5 bg-slate-800 border-y border-slate-700">
-                        <span className="text-xs font-black text-white uppercase tracking-widest">리그 노선 현황</span>
-                    </div>
-                    <div className="p-4 space-y-3">
-                        {/* 사용자 팀 표시 */}
-                        {myTeamId && (
-                            <div className="flex items-start gap-3">
-                                <div className="w-20 flex-shrink-0 pt-0.5">
-                                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full border bg-indigo-500/15 text-indigo-300 border-indigo-500/30 ko-normal">사용자</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ko-normal bg-indigo-600/15 border-indigo-500/30 text-indigo-300">
-                                        <img src={getTeamLogoUrl(myTeamId)} className="w-3 h-3 object-contain" alt="" />
-                                        {TEAM_DATA[myTeamId]?.name || myTeamId.toUpperCase()}
-                                        <span className="text-[9px] text-indigo-400 font-bold ml-1">({userNickname || 'You'})</span>
-                                    </span>
-                                </div>
-                            </div>
-                        )}
-                        {directionGroups.map(({ direction, teamIds: groupTeamIds }) => (
-                            <div key={direction} className="flex items-start gap-3">
-                                <div className="w-20 flex-shrink-0 pt-0.5">
-                                    <DirectionBadge direction={direction} size="sm" />
-                                </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {groupTeamIds.length === 0 ? (
-                                        <span className="text-xs text-slate-600 ko-normal">-</span>
-                                    ) : (
-                                        groupTeamIds.map(id => {
-                                            const info = TEAM_DATA[id];
-                                            const isCurrent = id === teamId;
-                                            return (
-                                                <button
-                                                    key={id}
-                                                    onClick={() => onViewGM?.(id)}
-                                                    disabled={isCurrent}
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ko-normal transition-colors ${
-                                                        isCurrent
-                                                            ? 'bg-indigo-600/15 border-indigo-500/30 text-indigo-300'
-                                                            : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700/60 hover:text-white cursor-pointer'
-                                                    }`}
-                                                >
-                                                    <img src={getTeamLogoUrl(id)} className="w-3 h-3 object-contain" alt="" />
-                                                    {info?.name || id.toUpperCase()}
-                                                </button>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             </div>
         </div>

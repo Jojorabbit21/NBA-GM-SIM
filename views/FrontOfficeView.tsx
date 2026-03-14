@@ -74,29 +74,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
                             {team.id === myTeamId ? (
-                                <div className="flex items-center justify-between px-6 py-3 bg-slate-900 border-b border-slate-800">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-indigo-600/20 ring-1 ring-indigo-500/30 flex items-center justify-center">
-                                            <span className="text-xs font-black text-indigo-400">GM</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-slate-200 ko-normal">단장</span>
-                                            <span className="text-xs font-black text-indigo-400">{userNickname || 'You'}</span>
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">사용자</span>
-                                        </div>
-                                    </div>
-                                    {leagueGMProfiles && Object.keys(leagueGMProfiles).length > 0 && (
-                                        <button
-                                            onClick={() => {
-                                                const firstCpuTeamId = Object.keys(leagueGMProfiles)[0];
-                                                if (firstCpuTeamId) onGMClick?.(firstCpuTeamId);
-                                            }}
-                                            className="text-[10px] font-bold text-slate-500 hover:text-indigo-400 transition-colors uppercase tracking-wider ko-normal"
-                                        >
-                                            리그 단장 보기 →
-                                        </button>
-                                    )}
-                                </div>
+                                <GMProfileCard userNickname={userNickname || 'You'} />
                             ) : (
                                 <GMProfileCard gmProfile={leagueGMProfiles?.[team.id]} onGMClick={() => onGMClick?.(team.id)} />
                             )}

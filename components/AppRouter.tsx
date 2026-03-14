@@ -261,15 +261,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     <GMDetailView
                         gmProfile={gameData.leagueGMProfiles[viewGMTeamId]}
                         teamId={viewGMTeamId}
-                        teams={gameData.teams}
-                        leagueGMProfiles={gameData.leagueGMProfiles}
-                        myTeamId={gameData.myTeamId}
-                        userNickname={session?.user?.email?.split('@')[0]}
                         onBack={() => {
                             setViewGMTeamId(null);
                             setView(previousViewRef.current);
                         }}
-                        onViewGM={(id) => setViewGMTeamId(id)}
                     />
                 );
             }
