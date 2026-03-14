@@ -78,7 +78,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       proposalIsProcessing, proposalSearchPerformed, setProposalSearchPerformed, handleRequestRequirements,
       pendingTrade, setPendingTrade, isExecutingTrade, executeTrade,
       dailyTradeAttempts, isTradeLimitReached, isTradeDeadlinePassed, MAX_DAILY_TRADES,
-      userBlockEntries, togglePersistentBlockPlayer, togglePersistentBlockPick,
+      userBlockEntries, togglePersistentBlockPlayer,
       incomingOffers, outgoingOffers, acceptIncomingOffer, rejectIncomingOffer,
       sendPersistentProposal,
   } = tradeSystem;
@@ -206,7 +206,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     sortedUserRoster={sortedUserRoster}
                     userBlockEntries={userBlockEntries}
                     togglePersistentBlockPlayer={togglePersistentBlockPlayer}
-                    togglePersistentBlockPick={togglePersistentBlockPick}
                     userPicks={userPicks}
                     leaguePickAssets={leaguePickAssets}
                     leagueGMProfiles={leagueGMProfiles}
