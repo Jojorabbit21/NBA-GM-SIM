@@ -344,10 +344,16 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
 
     return (
         <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
-            <table className="w-full border-collapse text-xs">
+            <table className="w-full border-collapse text-xs table-fixed">
+                <colgroup>
+                    <col className="w-0" />
+                    {seasonColumns.map(col => (
+                        <col key={col} />
+                    ))}
+                </colgroup>
                 <thead className="sticky top-0 z-10">
                     <tr>
-                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20`}>선수</th>
+                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap w-0`}>선수</th>
                         {seasonColumns.map(col => (
                             <th key={col} className={`${thClass} text-right`}>{col}</th>
                         ))}
@@ -401,11 +407,9 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
     );
 };
 
-/** 달러 → $M / $K 표기 */
+/** 달러 → $00,000,000 표기 */
 function fmtSalary(v: number): string {
-    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
-    return `$${v}`;
+    return `$${Math.round(v).toLocaleString()}`;
 }
 
 // ── 유틸 ──
