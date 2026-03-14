@@ -997,11 +997,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 </TableCell>
                                             </TableRow>
                                         )}
-                                        {/* 구분선 역할의 빈 행 */}
-                                        <TableRow className="h-2">
-                                            <TableCell align="center" className="!p-0 border-r border-r-slate-800/30 bg-slate-900" />
-                                            <TableCell align="center" className="!p-0 bg-slate-900" />
-                                        </TableRow>
                                         {/* 연차별 연봉 */}
                                         {player.contract.years.map((yearSalary, idx) => {
                                             const seasonStart = 2025 - player.contract!.currentYear + idx;
