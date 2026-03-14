@@ -80,7 +80,7 @@ export const TRADE_CONFIG = {
         // 오퍼 만료 일수
         OFFER_EXPIRY_DAYS: 7,
         // 유저 블록 최대 항목 수
-        MAX_USER_BLOCK_ENTRIES: 8,
+        MAX_USER_BLOCK_ENTRIES: 20,
     },
     CPU_TRADE: {
         // 점진적 확률 곡선 — 데드라인 근처에서 폭발적 증가 (실제 NBA 패턴)
