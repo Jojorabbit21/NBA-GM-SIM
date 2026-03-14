@@ -576,7 +576,7 @@ const DraftPicksTab: React.FC<{
                                     {isFirstRow && (
                                         <td
                                             rowSpan={rowCount}
-                                            className={`${tdClass} text-center font-bold text-slate-200 border-b border-slate-700/60`}
+                                            className={`${tdClass} text-center font-bold text-slate-200 bg-slate-800 border-b border-slate-700/60`}
                                         >
                                             {season}-{String(season + 1).slice(-2)}
                                         </td>
@@ -588,7 +588,7 @@ const DraftPicksTab: React.FC<{
                                             </td>
                                             <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
                                                 {r1.notes.map((note, i) => (
-                                                    <div key={i} className="text-xs text-slate-400 leading-tight">{note}</div>
+                                                    <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
                                                 ))}
                                             </td>
                                         </>
@@ -605,7 +605,7 @@ const DraftPicksTab: React.FC<{
                                             </td>
                                             <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
                                                 {r2.notes.map((note, i) => (
-                                                    <div key={i} className="text-xs text-slate-400 leading-tight">{note}</div>
+                                                    <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
                                                 ))}
                                             </td>
                                         </>
@@ -635,7 +635,7 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
 
     // 내 팀과 관련된 거래만 필터링
     const relevantTrades = useMemo(() => {
-        const trades: { season: number; round: number; type: '픽 이동' | '스왑 권리'; description: string; direction: 'in' | 'out' | 'swap' }[] = [];
+        const trades: { date: string; season: number; round: number; type: '픽 이동' | '스왑 권리'; description: string; direction: 'in' | 'out' | 'swap' }[] = [];
 
         for (const t of TRADED_FIRST_ROUND_PICKS) {
             if (t.originalTeamId === myTeamId) {
@@ -650,6 +650,7 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
                     } else if (t.protection.type === 'lottery') protLabel = ' (로터리 보호)';
                 }
                 trades.push({
+                    date: '시즌 개시 전',
                     season: t.season,
                     round: t.round,
                     type: '픽 이동',
@@ -668,6 +669,7 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
                     } else if (t.protection.type === 'lottery') protLabel = ' (로터리 보호)';
                 }
                 trades.push({
+                    date: '시즌 개시 전',
                     season: t.season,
                     round: t.round,
                     type: '픽 이동',
@@ -680,6 +682,7 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
         for (const s of SWAP_RIGHTS) {
             if (s.beneficiaryTeamId === myTeamId) {
                 trades.push({
+                    date: '시즌 개시 전',
                     season: s.season,
                     round: s.round,
                     type: '스왑 권리',
@@ -688,6 +691,7 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
                 });
             } else if (s.originTeamId === myTeamId) {
                 trades.push({
+                    date: '시즌 개시 전',
                     season: s.season,
                     round: s.round,
                     type: '스왑 권리',
@@ -708,13 +712,15 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
     return (
         <table className="w-full border-collapse text-xs table-fixed">
             <colgroup>
+                <col style={{ width: '100px' }} />
                 <col style={{ width: '80px' }} />
-                <col style={{ width: '80px' }} />
+                <col style={{ width: '60px' }} />
                 <col />
             </colgroup>
             <thead className="sticky top-0 z-10">
                 <tr>
-                    <th className={`${thClass} text-center`}>유형</th>
+                    <th className={`${thClass} text-center`}>거래 일자</th>
+                    <th className={`${thClass} text-center border-l border-slate-600`}>유형</th>
                     <th className={`${thClass} text-center border-l border-slate-600`}>방향</th>
                     <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>내용</th>
                 </tr>
@@ -722,7 +728,8 @@ const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
             <tbody>
                 {relevantTrades.map((t, i) => (
                     <tr key={i} className="hover:bg-slate-800/40">
-                        <td className={`${tdClass} text-center text-slate-300`}>{t.type}</td>
+                        <td className={`${tdClass} text-center text-slate-400`}>{t.date}</td>
+                        <td className={`${tdClass} text-center border-l border-slate-600 text-slate-300`}>{t.type}</td>
                         <td className={`${tdClass} text-center border-l border-slate-600 font-bold ${
                             t.direction === 'in' ? 'text-emerald-400' : t.direction === 'out' ? 'text-red-400/70' : 'text-amber-400/70'
                         }`}>
