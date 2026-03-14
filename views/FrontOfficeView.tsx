@@ -321,16 +321,9 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
         // OVR 내림차순 정렬
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
 
-        // 시즌 범위 계산: 모든 선수의 계약 중 가장 먼 시즌까지
-        let maxEndYear = 2026; // 최소 2025-26
-        for (const p of sorted) {
-            if (p.contract) {
-                const endYear = 2025 - p.contract.currentYear + p.contract.years.length;
-                if (endYear > maxEndYear) maxEndYear = endYear;
-            }
-        }
+        // 고정 6시즌 (2025-26 ~ 2030-31)
         const cols: string[] = [];
-        for (let y = 2025; y < maxEndYear; y++) {
+        for (let y = 2025; y < 2031; y++) {
             cols.push(`${y}-${String(y + 1).slice(-2)}`);
         }
 
@@ -365,8 +358,8 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
                         <PayrollRow key={p.id} player={p} seasonColumns={seasonColumns} />
                     ))}
                     {/* 합계 행 */}
-                    <tr className="border-t-2 border-slate-500">
-                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-900 z-10`}>합계</td>
+                    <tr className="bg-slate-700">
+                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-700 z-10`}>합계</td>
                         {totals.map((t, i) => (
                             <td key={i} className={`${tdValClass} font-bold text-white`}>
                                 {t > 0 ? fmtSalary(t) : ''}
