@@ -796,139 +796,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     </div>
 
-                    {/* ── SECTION 4: 부상 이력 + 수상 내역 + 계약 정보 (3분할) ── */}
+                    {/* ── SECTION 4: 계약 정보 + 수상 내역 + 부상 이력 (3분할) ── */}
                     <div className="border-t-2 border-slate-700 grid grid-cols-3">
-                        {/* 좌측: 부상 이력 */}
+                        {/* 좌측: 계약 정보 */}
                         <div>
-                            <div className="px-6 py-3 bg-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
-                            </div>
-                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
-                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
-                                <div className="flex items-center justify-center h-[400px]">
-                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
-                                </div>
-                            ) : (
-                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                        <TableHead>
-                                            {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
-                                                <TableHeaderCell
-                                                    key={h}
-                                                    align="center"
-                                                    className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                >
-                                                    {h}
-                                                </TableHeaderCell>
-                                            ))}
-                                        </TableHead>
-                                        <TableBody>
-                                            {[...player.injuryHistory]
-                                                .sort((a, b) => b.date.localeCompare(a.date))
-                                                .map((entry, idx) => {
-                                                    const dateStr = entry.date.slice(5).replace('-', '/');
-                                                    const severityColor =
-                                                        entry.severity === 'Season-Ending' ? 'text-red-400' :
-                                                        entry.severity === 'Major' ? 'text-amber-400' :
-                                                        'text-white';
-                                                    return (
-                                                        <TableRow key={idx} className="h-10">
-                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
-                                                            </TableCell>
-                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
-                                                            </TableCell>
-                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
-                                                            </TableCell>
-                                                            <TableCell align="center">
-                                                                <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
-                                                                    {entry.isTraining ? '훈련' : '경기'}
-                                                                </span>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })}
-                                        </TableBody>
-                                    </Table>
-                            )}
-                            </div>
-                        </div>
-                        {/* 우측: 수상 내역 */}
-                        <div className="border-l border-slate-600">
-                            <div className="px-6 py-3 bg-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
-                            </div>
-                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
-                            {!player.awards || player.awards.length === 0 ? (
-                                <div className="flex items-center justify-center h-[400px]">
-                                    <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
-                                </div>
-                            ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead>
-                                        {['시즌', '이름', '내용'].map((h, i) => (
-                                            <TableHeaderCell
-                                                key={h}
-                                                align="center"
-                                                className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
-                                            >
-                                                {h}
-                                            </TableHeaderCell>
-                                        ))}
-                                    </TableHead>
-                                    <TableBody>
-                                        {[...player.awards]
-                                            .sort((a, b) => {
-                                                const sc = b.season.localeCompare(a.season);
-                                                if (sc !== 0) return sc;
-                                                const orderMap: Record<string, number> = {
-                                                    CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
-                                                    ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
-                                                };
-                                                return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
-                                            })
-                                            .map((entry, idx) => {
-                                                const nameMap: Record<string, string> = {
-                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: '올해의 선수',
-                                                    FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
-                                                    ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
-                                                    ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
-                                                };
-                                                const detailMap: Record<string, string> = {
-                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승',
-                                                    FINALS_MVP: '수상',
-                                                    ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
-                                                    ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
-                                                };
-                                                // MVP/DPOY: rank 기반 표시
-                                                let detail: string;
-                                                if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
-                                                    detail = entry.rank === 1 ? '1위 (수상)' : `${entry.rank}위`;
-                                                } else {
-                                                    detail = detailMap[entry.type] ?? '-';
-                                                }
-                                                return (
-                                                    <TableRow key={idx} className="h-10">
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{nameMap[entry.type] ?? entry.type}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                    </TableBody>
-                                </Table>
-                            )}
-                            </div>
-                        </div>
-                        {/* 우측: 계약 정보 */}
-                        <div className="border-l border-slate-600">
                             <div className="px-6 py-3 bg-slate-700">
                                 <span className="text-xs font-black text-white uppercase tracking-widest">계약 정보</span>
                             </div>
@@ -1020,6 +891,135 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         })}
                                     </TableBody>
                                 </Table>
+                            )}
+                            </div>
+                        </div>
+                        {/* 중앙: 수상 내역 */}
+                        <div className="border-l border-slate-600">
+                            <div className="px-6 py-3 bg-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            {!player.awards || player.awards.length === 0 ? (
+                                <div className="flex items-center justify-center h-[400px]">
+                                    <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
+                                </div>
+                            ) : (
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <TableHead>
+                                        {['시즌', '이름', '내용'].map((h, i) => (
+                                            <TableHeaderCell
+                                                key={h}
+                                                align="center"
+                                                className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
+                                            >
+                                                {h}
+                                            </TableHeaderCell>
+                                        ))}
+                                    </TableHead>
+                                    <TableBody>
+                                        {[...player.awards]
+                                            .sort((a, b) => {
+                                                const sc = b.season.localeCompare(a.season);
+                                                if (sc !== 0) return sc;
+                                                const orderMap: Record<string, number> = {
+                                                    CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
+                                                    ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
+                                                };
+                                                return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
+                                            })
+                                            .map((entry, idx) => {
+                                                const nameMap: Record<string, string> = {
+                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: '올해의 선수',
+                                                    FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
+                                                    ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
+                                                    ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
+                                                };
+                                                const detailMap: Record<string, string> = {
+                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승',
+                                                    FINALS_MVP: '수상',
+                                                    ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
+                                                    ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
+                                                };
+                                                // MVP/DPOY: rank 기반 표시
+                                                let detail: string;
+                                                if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
+                                                    detail = entry.rank === 1 ? '1위 (수상)' : `${entry.rank}위`;
+                                                } else {
+                                                    detail = detailMap[entry.type] ?? '-';
+                                                }
+                                                return (
+                                                    <TableRow key={idx} className="h-10">
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{nameMap[entry.type] ?? entry.type}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                    </TableBody>
+                                </Table>
+                            )}
+                            </div>
+                        </div>
+                        {/* 우측: 부상 이력 */}
+                        <div className="border-l border-slate-600">
+                            <div className="px-6 py-3 bg-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
+                                <div className="flex items-center justify-center h-[400px]">
+                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
+                                </div>
+                            ) : (
+                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                        <TableHead>
+                                            {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
+                                                <TableHeaderCell
+                                                    key={h}
+                                                    align="center"
+                                                    className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                >
+                                                    {h}
+                                                </TableHeaderCell>
+                                            ))}
+                                        </TableHead>
+                                        <TableBody>
+                                            {[...player.injuryHistory]
+                                                .sort((a, b) => b.date.localeCompare(a.date))
+                                                .map((entry, idx) => {
+                                                    const dateStr = entry.date.slice(5).replace('-', '/');
+                                                    const severityColor =
+                                                        entry.severity === 'Season-Ending' ? 'text-red-400' :
+                                                        entry.severity === 'Major' ? 'text-amber-400' :
+                                                        'text-white';
+                                                    return (
+                                                        <TableRow key={idx} className="h-10">
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
+                                                            </TableCell>
+                                                            <TableCell align="center">
+                                                                <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
+                                                                    {entry.isTraining ? '훈련' : '경기'}
+                                                                </span>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                        </TableBody>
+                                    </Table>
                             )}
                             </div>
                         </div>
