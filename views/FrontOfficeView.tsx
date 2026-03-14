@@ -346,14 +346,14 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
         <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
             <table className="w-full border-collapse text-xs table-fixed">
                 <colgroup>
-                    <col className="w-0" />
+                    <col style={{ width: '140px' }} />
                     {seasonColumns.map(col => (
                         <col key={col} />
                     ))}
                 </colgroup>
                 <thead className="sticky top-0 z-10">
                     <tr>
-                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap w-0 border-r border-slate-600`}>선수</th>
+                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap border-r border-slate-600`}>선수</th>
                         {seasonColumns.map(col => (
                             <th key={col} className={`${thClass} text-right border-l border-slate-600`}>{col}</th>
                         ))}
