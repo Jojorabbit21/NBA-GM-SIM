@@ -8,6 +8,8 @@ import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { getPickTradeValue } from './pickValueEngine';
 import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
+import { LeagueGMProfiles } from '../../types/gm';
+import { getDirectionParams } from './gmProfiler';
 import { checkTradeLegality } from './salaryRules';
 import { executeTrade, TradeExecutionPayload } from './tradeExecutor';
 import { formatMoney } from '../../utils/formatMoney';
@@ -101,9 +103,11 @@ function calculateTradeChance(currentDate: string): number {
 function buildTeamTradeProfile(
     team: Team,
     leaguePickAssets?: LeaguePickAssets,
-    currentDate?: string
+    currentDate?: string,
+    leagueGMProfiles?: LeagueGMProfiles
 ): TeamTradeProfile {
-    const needs = analyzeTeamSituation(team);
+    const gmProfile = leagueGMProfiles?.[team.id];
+    const needs = analyzeTeamSituation(team, gmProfile);
     const roster = team.roster;
     const CC = C.CPU_TRADE;
 
@@ -452,8 +456,10 @@ function constructTradePackage(
     const improvA = calculateTeamImprovement(teamA, bToA, aToB);
     const improvB = calculateTeamImprovement(teamB, aToB, bToA);
 
-    const threshA = profileA.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
-    const threshB = profileB.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
+    const dirParamsA = getDirectionParams(profileA.needs.direction);
+    const dirParamsB = getDirectionParams(profileB.needs.direction);
+    const threshA = dirParamsA.improvementThreshold;
+    const threshB = dirParamsB.improvementThreshold;
 
     // 픽 수신 팀은 improvement가 부족해도 픽 가치로 보완 가능
     const pickBonusA = bToAPicks.reduce((sum, sp) => sum + sp.tradeValue, 0) * 0.0001;
@@ -644,7 +650,8 @@ export function runCPUTradeRound(
     myTeamId: string | null,
     currentDate: string,
     leaguePickAssets?: LeaguePickAssets,
-    leagueTradeBlocks?: LeagueTradeBlocks
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leagueGMProfiles?: LeagueGMProfiles
 ): { updatedTeams: Team[]; transactions: Transaction[] } | null {
     // 데드라인 체크
     if (new Date(currentDate) > new Date(TRADE_DEADLINE)) {
@@ -655,7 +662,22 @@ export function runCPUTradeRound(
     }
 
     // 확률 계산 & 주사위
-    const chance = calculateTradeChance(currentDate);
+    const baseChance = calculateTradeChance(currentDate);
+
+    // GM 노선 기반 확률 보정 — 활발한 노선 팀이 많을수록 거래 확률 증가
+    let directionMultiplier = 1.0;
+    if (leagueGMProfiles) {
+        const cpuIds = teams.filter(t => t.id !== myTeamId).map(t => t.id);
+        const multipliers = cpuIds
+            .map(id => leagueGMProfiles[id])
+            .filter(Boolean)
+            .map(p => getDirectionParams(p.direction).tradeChanceMultiplier);
+        if (multipliers.length > 0) {
+            directionMultiplier = multipliers.reduce((s, m) => s + m, 0) / multipliers.length;
+        }
+    }
+    const chance = baseChance * directionMultiplier;
+
     const roll = Math.random();
     if (roll > chance) return null;
 
@@ -663,7 +685,7 @@ export function runCPUTradeRound(
 
     // CPU 팀 프로필 구축 (유저 팀 제외)
     const cpuTeams = teams.filter(t => t.id !== myTeamId);
-    let profiles = cpuTeams.map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate));
+    let profiles = cpuTeams.map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles));
 
     // 팀 쌍 호환성 계산
     const pairs: { a: TeamTradeProfile; b: TeamTradeProfile; score: number }[] = [];
@@ -750,7 +772,7 @@ export function runCPUTradeRound(
         if (candidatePairs.length > 0) {
             profiles = cpuTeams
                 .filter(t => !tradedTeamIds.has(t.id))
-                .map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate));
+                .map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles));
         }
     }
 

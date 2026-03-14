@@ -84,7 +84,8 @@ const App: React.FC = () => {
         gameData.coachingData,
         gameData.leagueTradeBlocks,
         gameData.leagueTradeOffers,
-        gameData.leaguePickAssets
+        gameData.leaguePickAssets,
+        gameData.leagueGMProfiles
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(

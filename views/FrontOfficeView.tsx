@@ -10,6 +10,8 @@ import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { getBudgetManager } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
+import { GMProfileCard } from '../components/dashboard/GMProfileCard';
+import { LeagueGMProfiles } from '../types/gm';
 
 type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
 
@@ -20,11 +22,13 @@ interface FrontOfficeViewProps {
     myTeamId: string;
     coachingData?: LeagueCoachingData | null;
     onCoachClick?: (teamId: string) => void;
+    onGMClick?: (teamId: string) => void;
     leaguePickAssets?: LeaguePickAssets | null;
+    leagueGMProfiles?: LeagueGMProfiles | null;
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
-    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, leaguePickAssets,
+    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles,
 }) => {
     const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
 
@@ -69,6 +73,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     )}
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
+                            <GMProfileCard gmProfile={leagueGMProfiles?.[team.id]} onGMClick={() => onGMClick?.(team.id)} />
                             <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
                         </div>
                     )}

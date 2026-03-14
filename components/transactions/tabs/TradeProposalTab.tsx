@@ -10,6 +10,8 @@ import { OvrBadge } from '../../common/OvrBadge';
 import { PickSelector } from '../PickSelector';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { formatMoney } from '../../../utils/formatMoney';
+import { LeagueGMProfiles } from '../../../types/gm';
+import { DirectionBadge } from '../../common/DirectionBadge';
 
 interface TradeProposalTabProps {
     teams: Team[];
@@ -45,6 +47,7 @@ interface TradeProposalTabProps {
     userTeam: Team;
     userPicks: DraftPickAsset[];
     leaguePickAssets?: LeaguePickAssets;
+    leagueGMProfiles?: LeagueGMProfiles;
 }
 
 export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
@@ -69,6 +72,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
     userTeam,
     userPicks,
     leaguePickAssets,
+    leagueGMProfiles,
 }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -150,6 +154,9 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                 <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <span className="text-xs font-bold uppercase text-slate-500">상대 로스터</span>
+                        {selectedTargetTeam && leagueGMProfiles?.[selectedTargetTeam.id] && (
+                            <DirectionBadge direction={leagueGMProfiles[selectedTargetTeam.id].direction} size="sm" />
+                        )}
                         {selectedTargetTeam && (
                             <span className={`text-xs font-bold uppercase ${proposalSelectedIds.size > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
                                 {proposalSelectedIds.size}명 선택

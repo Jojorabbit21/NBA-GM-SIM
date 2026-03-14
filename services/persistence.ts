@@ -5,6 +5,7 @@ import { SimSettings } from '../types/simSettings';
 import { SavedTeamFinances } from '../types/finance';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
+import { LeagueGMProfiles } from '../types/gm';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -22,7 +23,8 @@ export const saveCheckpoint = async (
     teamFinances?: SavedTeamFinances | null, // [New] Team finance state
     leaguePickAssets?: LeaguePickAssets | null, // [New] League-wide draft pick assets
     leagueTradeBlocks?: LeagueTradeBlocks | null, // [New] Persistent trade blocks
-    leagueTradeOffers?: LeagueTradeOffers | null  // [New] Persistent trade offers
+    leagueTradeOffers?: LeagueTradeOffers | null,  // [New] Persistent trade offers
+    leagueGMProfiles?: LeagueGMProfiles | null  // [New] GM profiles
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -91,6 +93,11 @@ export const saveCheckpoint = async (
         payload.league_trade_offers = leagueTradeOffers;
     }
 
+    // league_gm_profiles: 값이 있을 때만 저장
+    if (leagueGMProfiles !== undefined) {
+        payload.league_gm_profiles = leagueGMProfiles;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     let { data, error } = await supabase
         .from('saves')
@@ -103,6 +110,7 @@ export const saveCheckpoint = async (
             console.warn('⚠️ [saveCheckpoint] Save failed, retrying without trade columns:', error.message);
             delete payload.league_trade_blocks;
             delete payload.league_trade_offers;
+            delete payload.league_gm_profiles;
             const retry = await supabase
                 .from('saves')
                 .upsert(payload, { onConflict: 'user_id' })
@@ -124,7 +132,7 @@ export const loadCheckpoint = async (userId: string) => {
     // 먼저 새 컬럼 포함 시도, 실패 시 기존 컬럼만으로 폴백
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers, league_gm_profiles')
         .eq('user_id', userId)
         .maybeSingle();
 

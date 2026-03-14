@@ -5,6 +5,7 @@ import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, 
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
+import { LeagueGMProfiles } from '../types/gm';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
@@ -48,7 +49,8 @@ export const useSimulation = (
     coachingData?: LeagueCoachingData | null,
     leagueTradeBlocks?: LeagueTradeBlocks,
     leagueTradeOffers?: LeagueTradeOffers,
-    leaguePickAssets?: LeaguePickAssets | null
+    leaguePickAssets?: LeaguePickAssets | null,
+    leagueGMProfiles?: LeagueGMProfiles
 ) => {
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
@@ -391,7 +393,7 @@ export const useSimulation = (
                     setSimProgress({ percent: 80, label: '시즌 이벤트...' });
                     await yieldToUI();
                     _ft1 = performance.now();
-                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers);
+                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles);
                     _fPerf['2_seasonEvents'] = performance.now() - _ft1;
 
                     if (seasonEvents.updatedPlayoffSeries) {
@@ -523,7 +525,7 @@ export const useSimulation = (
                 setSimProgress({ percent: 60, label: '시즌 이벤트...' });
                 await yieldToUI();
                 _t1 = performance.now();
-                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers);
+                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles);
                 _perf['7_seasonEvents'] = performance.now() - _t1;
 
                 if (seasonEvents.updatedPlayoffSeries) {
@@ -718,7 +720,8 @@ export const useSimulation = (
 
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)
             const seasonEvents = await handleSeasonEvents(
-                newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed
+                newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed,
+                leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles
             );
 
             if (seasonEvents.updatedPlayoffSeries) {

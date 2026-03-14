@@ -20,6 +20,7 @@ import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
 import { CoachDetailView } from '../views/CoachDetailView';
+import { GMDetailView } from '../views/GMDetailView';
 import { HallOfFameView } from '../views/HallOfFameView';
 import { FrontOfficeView } from '../views/FrontOfficeView';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -45,6 +46,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
     const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
     const [viewCoachData, setViewCoachData] = useState<{ coach: any; teamId: string } | null>(null);
+    const [viewGMTeamId, setViewGMTeamId] = useState<string | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
     const leaderboardStateRef = useRef<LeaderboardFilterState | null>(null);
@@ -63,6 +65,14 @@ const AppRouter: React.FC<AppRouterProps> = ({
         previousViewRef.current = view;
         setView('CoachDetail');
     }, [view, setView, gameData.coachingData]);
+
+    const handleViewGM = useCallback((teamId: string) => {
+        const gm = gameData.leagueGMProfiles?.[teamId];
+        if (!gm) return;
+        setViewGMTeamId(teamId);
+        previousViewRef.current = view;
+        setView('GMDetail');
+    }, [view, setView, gameData.leagueGMProfiles]);
 
     // Reset selected team when leaving Roster view (preserve when navigating to GameResult/PlayerDetail so back works)
     useEffect(() => {
@@ -245,6 +255,23 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             setView('Dashboard');
             return null;
+        case 'GMDetail':
+            if (viewGMTeamId && gameData.leagueGMProfiles?.[viewGMTeamId]) {
+                return (
+                    <GMDetailView
+                        gmProfile={gameData.leagueGMProfiles[viewGMTeamId]}
+                        teamId={viewGMTeamId}
+                        teams={gameData.teams}
+                        leagueGMProfiles={gameData.leagueGMProfiles}
+                        onBack={() => {
+                            setViewGMTeamId(null);
+                            setView(previousViewRef.current);
+                        }}
+                    />
+                );
+            }
+            setView('Dashboard');
+            return null;
         case 'Roster':
             return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} coachingData={gameData.coachingData} onCoachClick={(coachTeamId) => { handleViewCoach(coachTeamId); }} />;
         case 'Schedule':
@@ -306,6 +333,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     setLeagueTradeOffers={gameData.setLeagueTradeOffers}
                     leaguePickAssets={gameData.leaguePickAssets ?? undefined}
                     setLeaguePickAssets={gameData.setLeaguePickAssets}
+                    leagueGMProfiles={gameData.leagueGMProfiles}
                 />
             );
         case 'Playoffs':
@@ -388,7 +416,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     myTeamId={gameData.myTeamId!}
                     coachingData={gameData.coachingData}
                     onCoachClick={handleViewCoach}
+                    onGMClick={handleViewGM}
                     leaguePickAssets={gameData.leaguePickAssets}
+                    leagueGMProfiles={gameData.leagueGMProfiles}
                 />
             );
         default:
