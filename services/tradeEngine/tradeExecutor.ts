@@ -9,7 +9,7 @@ import {
     LeagueTradeBlocks,
 } from '../../types/trade';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { checkTradeLegality, checkNTCViolation } from './salaryRules';
+import { checkTradeLegality, checkTradeLegalityDetailed, checkNTCViolation } from './salaryRules';
 import { checkStepienRule } from './stepienRule';
 import { TRADE_CONFIG as C } from './tradeConfig';
 
@@ -103,11 +103,13 @@ function validateTrade(
     }
 
     // 샐러리 체크 (A 입장: incoming=bSentPlayers, outgoing=aSentPlayers)
-    if (!checkTradeLegality(teamA, bSentPlayers, aSentPlayers)) {
-        errors.push({ type: 'salary', message: `${teamA.name}: CBA 샐러리 매칭 규정 위반`, teamId: payload.teamAId });
+    const salaryA = checkTradeLegalityDetailed(teamA, bSentPlayers, aSentPlayers);
+    if (!salaryA.valid) {
+        errors.push({ type: 'salary', message: `${teamA.name}: ${salaryA.reason}`, teamId: payload.teamAId });
     }
-    if (!checkTradeLegality(teamB, aSentPlayers, bSentPlayers)) {
-        errors.push({ type: 'salary', message: `${teamB.name}: CBA 샐러리 매칭 규정 위반`, teamId: payload.teamBId });
+    const salaryB = checkTradeLegalityDetailed(teamB, aSentPlayers, bSentPlayers);
+    if (!salaryB.valid) {
+        errors.push({ type: 'salary', message: `${teamB.name}: ${salaryB.reason}`, teamId: payload.teamBId });
     }
 
     // 로스터 최소 인원 체크

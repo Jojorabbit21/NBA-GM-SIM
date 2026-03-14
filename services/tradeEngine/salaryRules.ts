@@ -2,7 +2,22 @@
 import { Player, Team } from '../../types';
 import { TRADE_CONFIG as C } from './tradeConfig';
 
+function formatSalary(v: number): string {
+    if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+    return `$${v}`;
+}
+
 export function checkTradeLegality(team: Team, incoming: Player[], outgoing: Player[]): boolean {
+    return checkTradeLegalityDetailed(team, incoming, outgoing).valid;
+}
+
+export interface SalaryCheckResult {
+    valid: boolean;
+    reason?: string;
+}
+
+export function checkTradeLegalityDetailed(team: Team, incoming: Player[], outgoing: Player[]): SalaryCheckResult {
     const currentCap = team.roster.reduce((sum, p) => sum + p.salary, 0);
     const inSalary = incoming.reduce((sum, p) => sum + p.salary, 0);
     const outSalary = outgoing.reduce((sum, p) => sum + p.salary, 0);
@@ -10,26 +25,54 @@ export function checkTradeLegality(team: Team, incoming: Player[], outgoing: Pla
     // Cap space team: can absorb up to remaining cap space
     if (currentCap < C.SALARY.CAP_LINE) {
         const remainingCap = C.SALARY.CAP_LINE - currentCap;
-        // Can take back outgoing salary + remaining cap space
-        if (inSalary > outSalary + remainingCap) return false;
-        return true;
+        if (inSalary > outSalary + remainingCap) {
+            return {
+                valid: false,
+                reason: `캡 스페이스 초과 — 수신 ${formatSalary(inSalary)} > 송신 ${formatSalary(outSalary)} + 잔여 캡 ${formatSalary(remainingCap)}`,
+            };
+        }
+        return { valid: true };
     }
 
     if (currentCap >= C.SALARY.APRON_2) {
-        // Aggregation ban: can't send multiple players for one
-        if (outgoing.length > 1 && incoming.length === 1) return false;
-        // 100% salary match
-        if (inSalary > outSalary) return false;
+        if (outgoing.length > 1 && incoming.length === 1) {
+            return {
+                valid: false,
+                reason: `2차 에이프런 팀 — 복수 선수 합산(aggregation) 트레이드 불가`,
+            };
+        }
+        if (inSalary > outSalary) {
+            return {
+                valid: false,
+                reason: `2차 에이프런 — 수신 연봉 ${formatSalary(inSalary)} > 송신 연봉 ${formatSalary(outSalary)} (100% 매칭 필요)`,
+            };
+        }
     } else if (currentCap >= C.SALARY.APRON_1) {
-        if (inSalary > outSalary) return false;
+        if (inSalary > outSalary) {
+            return {
+                valid: false,
+                reason: `1차 에이프런 — 수신 연봉 ${formatSalary(inSalary)} > 송신 연봉 ${formatSalary(outSalary)} (100% 매칭 필요)`,
+            };
+        }
     } else if (currentCap >= C.SALARY.TAX_LINE) {
-        if (inSalary > outSalary * 1.10) return false;
+        const maxIn = outSalary * 1.10;
+        if (inSalary > maxIn) {
+            return {
+                valid: false,
+                reason: `택스 라인 초과 — 수신 연봉 ${formatSalary(inSalary)} > 허용 한도 ${formatSalary(maxIn)} (송신의 110%)`,
+            };
+        }
     } else {
-        // Above cap but below tax: 125% + padding
-        if (inSalary > (outSalary * 1.25) + 250_000) return false;
+        const maxIn = (outSalary * 1.25) + 250_000;
+        if (inSalary > maxIn) {
+            return {
+                valid: false,
+                reason: `캡 초과 — 수신 연봉 ${formatSalary(inSalary)} > 허용 한도 ${formatSalary(maxIn)} (송신의 125% + $250K)`,
+            };
+        }
     }
 
-    return true;
+    return { valid: true };
 }
 
 /**
