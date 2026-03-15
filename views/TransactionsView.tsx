@@ -144,9 +144,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">트레이드 센터</span>
            </div>
            <div className="flex items-center gap-6">
-               <span className={`text-xs font-bold ${isTradeLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
-                   일일 제안 한도: {dailyTradeAttempts}/{MAX_DAILY_TRADES}
-               </span>
                {isTradeDeadlinePassed && (
                    <span className="text-[10px] font-black uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded">데드라인 마감</span>
                )}

@@ -95,7 +95,10 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
             {/* Left Panel */}
             <div className="w-[380px] lg:w-[420px] border-r border-slate-700 flex flex-col flex-shrink-0">
                 {/* Header */}
-                <div className="px-6 py-3 border-b border-slate-700 flex justify-end items-center bg-slate-800">
+                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+                    <span className={`text-xs font-bold ${isTradeLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
+                        일일 한도: {dailyTradeAttempts}/{maxDailyTrades}
+                    </span>
                     <button
                         onClick={handleSearch}
                         disabled={totalSelected === 0 || isProcessing || isTradeDeadlinePassed}
@@ -110,7 +113,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                 <div className="flex border-b border-slate-700 bg-slate-800">
                     <button
                         onClick={() => setLeftTab('roster')}
-                        className={`flex-1 py-2 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
+                        className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
                             leftTab === 'roster'
                                 ? 'text-indigo-400 border-indigo-400'
                                 : 'text-slate-500 hover:text-slate-300 border-transparent'
@@ -120,7 +123,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                     </button>
                     <button
                         onClick={() => setLeftTab('picks')}
-                        className={`flex-1 py-2 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
+                        className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
                             leftTab === 'picks'
                                 ? 'text-indigo-400 border-indigo-400'
                                 : 'text-slate-500 hover:text-slate-300 border-transparent'
