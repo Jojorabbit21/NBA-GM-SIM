@@ -95,10 +95,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
             {/* Left Panel */}
             <div className="w-[380px] lg:w-[420px] border-r border-slate-700 flex flex-col flex-shrink-0">
                 {/* Header */}
-                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800">
-                    <span className={`text-xs font-bold ${isTradeLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
-                        일일 한도: {dailyTradeAttempts}/{maxDailyTrades}
-                    </span>
+                <div className="px-6 py-3 border-b border-slate-700 flex justify-end items-center bg-slate-800">
                     <button
                         onClick={handleSearch}
                         disabled={totalSelected === 0 || isProcessing || isTradeDeadlinePassed}
@@ -110,7 +107,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                 </div>
 
                 {/* Carousel Tabs */}
-                <div className="flex border-b border-slate-700 bg-slate-800/50">
+                <div className="flex border-b border-slate-700 bg-slate-800">
                     <button
                         onClick={() => setLeftTab('roster')}
                         className={`flex-1 py-2 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
