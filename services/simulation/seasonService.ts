@@ -325,7 +325,7 @@ export function checkAndStartNextSeason(
 
     // 선수 시즌 스탯 리셋
     for (const team of teams) {
-        for (const player of team.players) {
+        for (const player of team.roster) {
             player.stats = INITIAL_STATS();
             player.playoffStats = undefined;
         }

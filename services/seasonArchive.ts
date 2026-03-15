@@ -56,7 +56,7 @@ export async function archiveCurrentSeason(
     // 모든 선수의 시즌 스탯 수집
     const playerStats: Record<string, PlayerStats> = {};
     for (const team of allTeams) {
-        for (const player of team.players) {
+        for (const player of team.roster) {
             if (player.stats && player.stats.g > 0) {
                 playerStats[player.id] = { ...player.stats };
             }
@@ -66,7 +66,7 @@ export async function archiveCurrentSeason(
     // 선수 상태 스냅샷 (추후 크로스시즌 성장 베이스라인)
     const playerOverrides: Record<string, PlayerOverrideSnapshot> = {};
     for (const team of allTeams) {
-        for (const player of team.players) {
+        for (const player of team.roster) {
             playerOverrides[player.id] = {
                 age: player.age,
                 ovr: player.ovr,
