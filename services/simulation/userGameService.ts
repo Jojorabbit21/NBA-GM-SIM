@@ -101,6 +101,7 @@ export const applyUserGameResult = async (
     refreshUnreadCount: () => void,
     tendencySeed?: string,
     simSettings?: SimSettings,
+    season?: string,
 ) => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -188,7 +189,8 @@ export const applyUserGameResult = async (
         shot_events: result.pbpShotEvents,
         is_playoff: userGame.isPlayoff || false,
         series_id: userGame.seriesId,
-        rotation_data: result.rotationData
+        rotation_data: result.rotationData,
+        ...(season && { season }),
     };
 
     if (!isGuestMode) {

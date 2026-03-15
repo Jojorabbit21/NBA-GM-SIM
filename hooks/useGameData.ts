@@ -225,10 +225,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id);
                         }
                         setLoadingProgress(40);
-                        const history = await loadUserHistory(userId);
+                        const savedSeason = checkpoint.current_season as string | undefined;
+                        const history = await loadUserHistory(userId, savedSeason);
                         txList = history.transactions;
                         setLoadingProgress(50);
-                        const rawPlayoffResults = playoffBracketState ? await loadPlayoffGameResults(userId) : [];
+                        const rawPlayoffResults = playoffBracketState ? await loadPlayoffGameResults(userId, savedSeason) : [];
                         setLoadingProgress(65);
                         await new Promise(r => setTimeout(r, 0));
                         const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
@@ -241,7 +242,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             baseData.schedule,
                             txList,
                             allGameResults,
-                            checkpoint.sim_date
+                            checkpoint.sim_date,
+                            savedSeason,
                         );
                         loadedTeams = replayedState.teams;
                         loadedSchedule = replayedState.schedule;
@@ -687,6 +689,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 supabase.from('user_transactions').delete().eq('user_id', userId),
                 supabase.from('user_playoffs').delete().eq('user_id', userId),
                 supabase.from('user_playoffs_results').delete().eq('user_id', userId),
+                supabase.from('user_season_history').delete().eq('user_id', userId),
                 supabase.from('user_messages').delete().eq('user_id', userId),
                 supabase.from('user_tactics').delete().eq('user_id', userId)
             ]);

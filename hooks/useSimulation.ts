@@ -117,6 +117,7 @@ export const useSimulation = (
                     pbp_logs: result.pbpLogs,
                     shot_events: result.pbpShotEvents,
                     rotation_data: result.rotationData,
+                    ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
                 }]);
             }
 
@@ -340,7 +341,7 @@ export const useSimulation = (
             await yieldToUI();
             _t1 = performance.now();
             const excludeGameId = userGame?.id || spectateGameId;
-            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings, coachingData);
+            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings, coachingData, seasonConfig?.seasonLabel);
             _perf['4_cpuGames(' + cpuData.gameResultsToSave.length + '+' + cpuData.playoffResultsToSave.length + ')'] = performance.now() - _t1;
 
             // [Fix] Save CPU Game Results to DB
@@ -390,7 +391,7 @@ export const useSimulation = (
                     await applyUserGameResult(
                         result, userGame, newTeams, newSchedule, newPlayoffSeries,
                         currentSimDate, session?.user?.id, myTeamId, userTactics, isGuestMode, refreshUnreadCount,
-                        tendencySeed, simSettings,
+                        tendencySeed, simSettings, seasonConfig?.seasonLabel,
                     );
                     _fPerf['1_applyUserGameResult'] = performance.now() - _ft1;
 
@@ -710,7 +711,7 @@ export const useSimulation = (
             await yieldToUI();
             const cpuData = processCpuGames(
                 newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame.id, session?.user?.id,
-                tendencySeed, simSettings,
+                tendencySeed, simSettings, undefined, seasonConfig?.seasonLabel,
             );
 
             if (!isGuestMode) {
@@ -774,7 +775,7 @@ export const useSimulation = (
             await applyUserGameResult(
                 result, userGame, newTeams, newSchedule, newPlayoffSeries,
                 currentSimDate, session?.user?.id, myTeamId, liveUserTactics, isGuestMode, refreshUnreadCount,
-                tendencySeed, simSettings,
+                tendencySeed, simSettings, seasonConfig?.seasonLabel,
             );
 
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)

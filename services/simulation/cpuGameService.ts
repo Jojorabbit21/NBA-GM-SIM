@@ -24,6 +24,7 @@ export const processCpuGames = (
     tendencySeed?: string,
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
+    season?: string,
 ): ProcessedCpuResults => {
     const growthRate = simSettings?.growthRate ?? 1.0;
     const declineRate = simSettings?.declineRate ?? 1.0;
@@ -82,8 +83,9 @@ export const processCpuGames = (
                 box_score: res.boxScore,
                 tactics: res.tactics,
                 rotation_data: res.rotationData, 
-                shot_events: res.pbpShotEvents,  
-                is_playoff: res.isPlayoff || false
+                shot_events: res.pbpShotEvents,
+                is_playoff: res.isPlayoff || false,
+                ...(season && { season }),
             } : null;
 
             // Handle Playoff Series

@@ -138,7 +138,8 @@ export async function runBatchSeason(
         // 1. CPU 경기 처리 (in-place)
         const cpuPayloads = processCpuGamesInPlace(
             teams, schedule, playoffSeries, date, userGame?.id, userId,
-            tendencySeed, simSettings?.growthRate ?? 1.0, simSettings?.declineRate ?? 1.0, simSettings, coachingData
+            tendencySeed, simSettings?.growthRate ?? 1.0, simSettings?.declineRate ?? 1.0, simSettings, coachingData,
+            seasonConfig?.seasonLabel
         );
         allGameResultsToSave.push(...cpuPayloads.regular);
         allPlayoffResultsToSave.push(...cpuPayloads.playoff);
@@ -183,6 +184,7 @@ export async function runBatchSeason(
                 shot_events: result.pbpShotEvents,
                 rotation_data: result.rotationData,
                 is_playoff: false,
+                ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
             };
             allGameResultsToSave.push(payload);
 
@@ -447,7 +449,8 @@ function processCpuGamesInPlace(
     growthRate: number = 1.0,
     declineRate: number = 1.0,
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    season?: string,
 ): { regular: any[]; playoff: any[]; suspensions: { susp: any; homeTeamId: string; awayTeamId: string }[] } {
     const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings, coachingData);
     const regular: any[] = [];
@@ -537,6 +540,7 @@ function processCpuGamesInPlace(
             rotation_data: res.rotationData,
             shot_events: res.pbpShotEvents,
             is_playoff: res.isPlayoff || false,
+            ...(season && { season }),
         } : null;
 
         if (res.isPlayoff && res.seriesId) {

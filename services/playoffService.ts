@@ -74,6 +74,7 @@ export const savePlayoffGameResult = async (result: any) => {
         box_score: result.box_score,
         tactics: result.tactics,
         rotation_data: result.rotation_data,
+        ...(result.season && { season: result.season }),
     };
 
     const { error } = await supabase
@@ -119,12 +120,13 @@ export const fetchPlayoffSeriesResults = async (seriesId: string, userId: string
  * Loads all playoff games for the current user/team.
  * Used to replay state on load.
  */
-export const loadPlayoffGameResults = async (userId: string) => {
-    const { data, error } = await supabase
+export const loadPlayoffGameResults = async (userId: string, season?: string) => {
+    let query = supabase
         .from('user_playoffs_results')
-        .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, series_id, round_number, game_number')
-        .eq('user_id', userId)
-        .order('date', { ascending: true });
+        .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, series_id, round_number, game_number, season')
+        .eq('user_id', userId);
+    if (season) query = query.eq('season', season);
+    const { data, error } = await query.order('date', { ascending: true });
 
     if (error) {
         console.error("❌ Failed to load playoff results:", error);
