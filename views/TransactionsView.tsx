@@ -176,13 +176,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
          <div className="flex-1 overflow-hidden relative">
-            {activeTab === 'Explore' && (
+            <div className={`absolute inset-0 flex flex-col ${activeTab === 'Explore' ? '' : 'hidden'}`}>
                 <ExploreOffersTab
                     team={team}
                     teams={teams}
                     userPicks={userPicks}
                     isTradeDeadlinePassed={isTradeDeadlinePassed}
                     handleViewPlayer={handleViewPlayerClick}
+                    dailyTradeAttempts={dailyTradeAttempts}
+                    maxDailyTrades={MAX_DAILY_TRADES}
+                    isTradeLimitReached={isTradeLimitReached}
                     onAcceptOffer={(offer, selectedUserPlayers) => {
                         const targetTeam = teams.find(t => t.id === offer.teamId);
                         if (targetTeam) {
@@ -194,9 +197,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         }
                     }}
                 />
-            )}
+            </div>
 
-            {activeTab === 'Block' && (
+            <div className={`absolute inset-0 flex flex-col ${activeTab === 'Block' ? '' : 'hidden'}`}>
                 <LeagueBlockTab
                     team={team}
                     teams={teams}
@@ -215,9 +218,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     onRejectOffer={rejectIncomingOffer}
                     sendPersistentProposal={sendPersistentProposal}
                 />
-            )}
+            </div>
 
-            {activeTab === 'Scout' && (
+            <div className={`absolute inset-0 flex flex-col ${activeTab === 'Scout' ? '' : 'hidden'}`}>
                 <ScoutProposalTab
                     teams={teams}
                     userTeam={team}
@@ -244,16 +247,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     })}
                     outgoingOffers={outgoingOffers}
                 />
-            )}
+            </div>
 
-            {activeTab === 'History' && (
+            <div className={`absolute inset-0 flex flex-col ${activeTab === 'History' ? '' : 'hidden'}`}>
                 <TradeHistoryTab
                     transactions={transactions || []}
                     teamId={team.id}
                     teams={teams}
                     currentSimDate={currentSimDate}
                 />
-            )}
+            </div>
          </div>
       </div>
     </div>
