@@ -102,7 +102,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                     <button
                         onClick={handleSearch}
                         disabled={totalSelected === 0 || isProcessing || isTradeDeadlinePassed}
-                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold uppercase text-[10px] tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold uppercase text-xs tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
                         {isProcessing ? <Loader2 className="animate-spin" size={12} /> : <SearchIcon size={12} />}
                         오퍼 탐색
@@ -113,7 +113,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                 <div className="flex border-b border-slate-700 bg-slate-800/50">
                     <button
                         onClick={() => setLeftTab('roster')}
-                        className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 ${
+                        className={`flex-1 py-2 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
                             leftTab === 'roster'
                                 ? 'text-indigo-400 border-indigo-400'
                                 : 'text-slate-500 hover:text-slate-300 border-transparent'
@@ -123,7 +123,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                     </button>
                     <button
                         onClick={() => setLeftTab('picks')}
-                        className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 ${
+                        className={`flex-1 py-2 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${
                             leftTab === 'picks'
                                 ? 'text-indigo-400 border-indigo-400'
                                 : 'text-slate-500 hover:text-slate-300 border-transparent'
@@ -175,7 +175,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                                         {p.name}
                                                     </span>
                                                     {p.health !== 'Healthy' && (
-                                                        <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                        <span className={`px-1 py-0.5 rounded text-xs font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
                                                             {p.health === 'Injured' ? 'OUT' : 'DTD'}
                                                         </span>
                                                     )}
@@ -239,11 +239,11 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                                 <div className="flex items-center gap-2.5">
                                                     <TeamLogo teamId={offer.teamId} size="xs" />
                                                     <span className="text-xs font-black uppercase text-slate-200 tracking-tight">{teamName}</span>
-                                                    <span className="text-[10px] font-mono text-slate-500">{offer.players.length}명</span>
+                                                    <span className="text-xs font-mono text-slate-500">{offer.players.length}명</span>
                                                 </div>
                                                 <button
                                                     onClick={() => onAcceptOffer(offer, team.roster.filter(p => selectedIds.has(p.id)))}
-                                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1"
+                                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1"
                                                 >
                                                     수락 <ChevronRight size={12} />
                                                 </button>
@@ -251,7 +251,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                             {/* Players Table */}
                                             <table className="w-full text-left border-separate border-spacing-0">
                                                 <thead>
-                                                    <tr className="text-slate-600 text-[10px] font-bold uppercase bg-slate-800/60">
+                                                    <tr className="text-slate-600 text-xs font-bold uppercase bg-slate-800/60">
                                                         <th className="py-1.5 px-2 w-10 text-center border-b border-slate-800">OVR</th>
                                                         <th className="py-1.5 px-3 border-b border-slate-800">선수</th>
                                                         <th className="py-1.5 px-2 w-10 text-center border-b border-slate-800">POS</th>
@@ -280,23 +280,23 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                                                             {p.name}
                                                                         </span>
                                                                         {p.health !== 'Healthy' && (
-                                                                            <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                                            <span className={`px-1 py-0.5 rounded text-xs font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
                                                                                 {p.health === 'Injured' ? 'OUT' : 'DTD'}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                 </td>
-                                                                <td className="py-2 px-2 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
+                                                                <td className="py-2 px-2 text-center text-xs font-bold text-slate-400 uppercase">{p.position}</td>
                                                                 {STAT_KEYS.map(s => {
                                                                     const v = (p as any)[s.key] as number;
                                                                     return (
-                                                                        <td key={s.key} className={`py-2 px-1 text-center text-[11px] font-mono font-bold ${statColor(v)}`}>
+                                                                        <td key={s.key} className={`py-2 px-1 text-center text-xs font-mono font-bold ${statColor(v)}`}>
                                                                             {v}
                                                                         </td>
                                                                     );
                                                                 })}
-                                                                <td className="py-2 px-2 text-center text-[10px] font-mono text-slate-400">{p.age}</td>
-                                                                <td className="py-2 px-3 text-right text-[10px] font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
+                                                                <td className="py-2 px-2 text-center text-xs font-mono text-slate-400">{p.age}</td>
+                                                                <td className="py-2 px-3 text-right text-xs font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -326,7 +326,7 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                 좌측에서 내놓을 선수/픽을 선택하고<br/>
                                 &quot;오퍼 탐색&quot; 버튼을 눌러주세요.
                             </p>
-                            <p className="text-[10px] font-bold text-indigo-400/60 text-center mt-2">
+                            <p className="text-xs font-bold text-indigo-400/60 text-center mt-2">
                                 CPU 팀들이 즉시 오퍼를 제시합니다.<br/>
                                 수락만 가능하며, 추가 협상은 불가합니다.
                             </p>
