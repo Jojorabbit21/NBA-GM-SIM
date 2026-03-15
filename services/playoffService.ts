@@ -24,17 +24,18 @@ export const loadPlayoffState = async (userId: string, teamId: string): Promise<
  * Initializes or Updates the Playoff Bracket State in DB.
  */
 export const savePlayoffState = async (
-    userId: string, 
-    teamId: string, 
-    bracketData: PlayoffSeries[], 
+    userId: string,
+    teamId: string,
+    bracketData: PlayoffSeries[],
     currentRound: number = 0,
     isFinished: boolean = false,
-    championId?: string
+    championId?: string,
+    seasonLabel?: string
 ) => {
     const payload = {
         user_id: userId,
         team_id: teamId,
-        season: '2025-2026',
+        season: seasonLabel ?? '2025-2026',
         bracket_data: { series: bracketData }, // Wrap in object for JSONB
         current_round: currentRound,
         is_finished: isFinished,

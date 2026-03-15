@@ -27,6 +27,7 @@ import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
+import { buildSeasonConfig, SeasonConfig } from '../utils/seasonConfig';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -70,10 +71,15 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const isSavingRef = useRef(false);
 
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions });
+    const [seasonNumber, setSeasonNumber] = useState<number>(1);
+    const [currentSeason, setCurrentSeason] = useState<string>('2025-2026');
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason]);
+
+    // --- Season Config (derived from seasonNumber) ---
+    const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -317,6 +323,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     setTeams(loadedTeams!);
                     setSchedule(loadedSchedule!);
                     setCurrentSimDate(checkpoint.sim_date || INITIAL_DATE);
+
+                    // 시즌 번호/라벨 복원
+                    if (checkpoint.season_number) {
+                        setSeasonNumber(checkpoint.season_number);
+                    }
+                    if (checkpoint.current_season) {
+                        setCurrentSeason(checkpoint.current_season);
+                    }
 
                     if (checkpoint.tactics) {
                         const tactics = { ...checkpoint.tactics };
@@ -563,7 +577,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const tradeBlocks = ov?.leagueTradeBlocks || gameStateRef.current.leagueTradeBlocks;
                     const tradeOffers = ov?.leagueTradeOffers || gameStateRef.current.leagueTradeOffers;
                     const gmProfiles = ov?.leagueGMProfiles || gameStateRef.current.leagueGMProfiles;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles);
+                    const savSeasonNum = ov?.seasonNumber || gameStateRef.current.seasonNumber;
+                    const savCurrentSeason = ov?.currentSeason || gameStateRef.current.currentSeason;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -701,6 +717,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setLeagueTradeOffers({ offers: [] });
             setLeagueGMProfiles({});
             setHofId(null);
+            setSeasonNumber(1);
+            setCurrentSeason('2025-2026');
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -833,6 +851,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setSimSettings(DEFAULT_SIM_SETTINGS);
          setCoachingData(null);
          setLeaguePickAssets(null);
+         setSeasonNumber(1);
+         setCurrentSeason('2025-2026');
          setNews([]);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
@@ -863,6 +883,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         leagueTradeOffers, setLeagueTradeOffers,
         leagueGMProfiles, setLeagueGMProfiles,
         teamFinances,
+        seasonNumber, setSeasonNumber,
+        currentSeason, setCurrentSeason,
+        seasonConfig,
         news, setNews,
         
         isBaseDataLoading,

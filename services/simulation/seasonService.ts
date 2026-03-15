@@ -2,6 +2,7 @@ import { Team, Game, PlayoffSeries, Transaction, RegSeasonChampionContent } from
 import { LeaguePickAssets } from '../../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
 import { LeagueGMProfiles } from '../../types/gm';
+import { SeasonConfig } from '../../utils/seasonConfig';
 import { updateTeamDirections } from '../../services/tradeEngine/gmProfiler';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
@@ -26,8 +27,10 @@ export const handleSeasonEvents = async (
     leagueTradeBlocks?: LeagueTradeBlocks,
     leaguePickAssets?: LeaguePickAssets,
     leagueTradeOffers?: LeagueTradeOffers,
-    leagueGMProfiles?: LeagueGMProfiles
+    leagueGMProfiles?: LeagueGMProfiles,
+    seasonConfig?: SeasonConfig
 ) => {
+    const seasonShort = seasonConfig?.seasonShort ?? '2025-26';
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
     let tradeToast: string | null = null;
@@ -64,15 +67,15 @@ export const handleSeasonEvents = async (
             // ★ 정규시즌 어워드 투표 → 선수에 stamp
             {
                 const awardResult = runAwardVoting(teams, tendencySeed);
-                stampSeasonAwards(teams, awardResult, '2025-26');
+                stampSeasonAwards(teams, awardResult, seasonShort);
                 const championContent = buildRegSeasonChampionContent(teams, schedule);
-                stampRegSeasonChampion(teams, '2025-26', championContent.championTeamId);
+                stampRegSeasonChampion(teams, seasonShort, championContent.championTeamId);
                 if (!isGuestMode && userId) {
                     await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
-                        '[공식] 2025-26 정규시즌 어워드 투표 결과', awardResult);
+                        `[공식] ${seasonShort} 정규시즌 어워드 투표 결과`, awardResult);
                     // ★ 정규시즌 우승팀 보고서 발송
                     await sendMessage(userId, myTeamId, currentSimDate, 'REG_SEASON_CHAMPION',
-                        `[속보] 2025-26 정규시즌 우승: ${championContent.championTeamName}`, championContent);
+                        `[속보] ${seasonShort} 정규시즌 우승: ${championContent.championTeamName}`, championContent);
                 }
             }
         }
@@ -196,8 +199,10 @@ export const handleSeasonEventsSync = (
     leagueTradeBlocks?: LeagueTradeBlocks,
     leaguePickAssets?: LeaguePickAssets,
     leagueTradeOffers?: LeagueTradeOffers,
-    leagueGMProfiles?: LeagueGMProfiles
+    leagueGMProfiles?: LeagueGMProfiles,
+    seasonConfig?: SeasonConfig
 ) => {
+    const seasonShort = seasonConfig?.seasonShort ?? '2025-26';
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
     let awardContent: SeasonAwardsContent | null = null;
@@ -227,7 +232,7 @@ export const handleSeasonEventsSync = (
             stampSeasonAwards(teams, awardContent, '2025-26');
             // ★ 정규시즌 우승팀 보고서 (배치 — 반환) → 선수에 stamp
             championContent = buildRegSeasonChampionContent(teams, schedule);
-            stampRegSeasonChampion(teams, '2025-26', championContent.championTeamId);
+            stampRegSeasonChampion(teams, seasonShort, championContent.championTeamId);
         }
     }
 
@@ -265,3 +270,73 @@ export const handleSeasonEventsSync = (
 
     return { newTransactions, awardContent, championContent };
 };
+
+// ── 시즌 전환 감지 ──
+
+import { buildSeasonConfig } from '../../utils/seasonConfig';
+import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
+import { INITIAL_STATS } from '../../utils/constants';
+import { Game } from '../../types';
+
+export interface SeasonTransitionResult {
+    transitioned: boolean;
+    newSchedule?: Game[];
+    newSeasonNumber?: number;
+    newSeasonConfig?: SeasonConfig;
+}
+
+/**
+ * 파이널 종료 감지 → 다음 시즌으로 심리스 전환.
+ * handleSeasonEvents 또는 날짜 진행 루프에서 호출.
+ *
+ * 중복 방지: 현재 seasonNumber의 파이널이 끝났을 때만 전환.
+ * 전환 후 seasonNumber가 증가하므로 다시 트리거되지 않음.
+ */
+export function checkAndStartNextSeason(
+    teams: Team[],
+    schedule: Game[],
+    playoffSeries: PlayoffSeries[],
+    currentSeasonNumber: number,
+): SeasonTransitionResult {
+    // 파이널(round 4) 종료 여부 확인
+    const finalsFinished = playoffSeries.some(s => s.round === 4 && s.finished);
+    if (!finalsFinished) {
+        return { transitioned: false };
+    }
+
+    const nextSeasonNumber = currentSeasonNumber + 1;
+    const nextConfig = buildSeasonConfig(nextSeasonNumber);
+
+    // 새 시즌 일정 생성
+    const scheduleConfig: ScheduleConfig = {
+        seasonYear: nextConfig.startYear,
+        seasonStart: nextConfig.startDate,
+        regularSeasonEnd: nextConfig.regularSeasonEnd,
+        allStarStart: nextConfig.allStarStart,
+        allStarEnd: nextConfig.allStarEnd,
+    };
+    const newSchedule = generateSeasonSchedule(scheduleConfig);
+
+    // 팀 W/L 리셋
+    for (const team of teams) {
+        team.wins = 0;
+        team.losses = 0;
+    }
+
+    // 선수 시즌 스탯 리셋
+    for (const team of teams) {
+        for (const player of team.players) {
+            player.stats = INITIAL_STATS();
+            player.playoffStats = undefined;
+        }
+    }
+
+    console.log(`🔄 Season transition: ${currentSeasonNumber} → ${nextSeasonNumber} (${nextConfig.seasonLabel})`);
+
+    return {
+        transitioned: true,
+        newSchedule,
+        newSeasonNumber: nextSeasonNumber,
+        newSeasonConfig: nextConfig,
+    };
+}

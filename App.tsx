@@ -61,6 +61,8 @@ const App: React.FC = () => {
         gameData.setCurrentSimDate(newDate);
         if (overrides.teams) gameData.setTeams(overrides.teams);
         if (overrides.schedule) gameData.setSchedule(overrides.schedule);
+        if (overrides.seasonNumber) gameData.setSeasonNumber(overrides.seasonNumber);
+        if (overrides.currentSeason) gameData.setCurrentSeason(overrides.currentSeason);
     }, [gameData]);
 
     const refreshUnreadCount = useCallback(async () => {
@@ -86,7 +88,8 @@ const App: React.FC = () => {
         gameData.setLeagueTradeBlocks,
         gameData.leagueTradeOffers,
         gameData.leaguePickAssets,
-        gameData.leagueGMProfiles
+        gameData.leagueGMProfiles,
+        gameData.seasonConfig
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -100,7 +103,8 @@ const App: React.FC = () => {
         gameData.hofId,
         () => setHasSubmittedHof(true),
         gameData.simSettings,
-        gameData.coachingData
+        gameData.coachingData,
+        gameData.seasonConfig
     );
 
     // 인증 및 라우팅 상태 감시

@@ -5,12 +5,16 @@ import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
 import { editorLogoUrls } from './editorManager';
 
+import { DEFAULT_SEASON_CONFIG } from './seasonConfig';
+
 export const APP_NAME = 'Basketball GM Simulator';
-export const APP_YEAR = '2026';
+export const APP_YEAR = String(DEFAULT_SEASON_CONFIG.endYear);
 export const APP_FULL_NAME = `${APP_NAME} ${APP_YEAR}`;
 
-export const SEASON_START_DATE = '2025-10-20';
-export const TRADE_DEADLINE = '2026-02-06';
+/** @deprecated buildSeasonConfig(n) 사용 권장 */
+export const SEASON_START_DATE = DEFAULT_SEASON_CONFIG.startDate;
+/** @deprecated buildSeasonConfig(n) 사용 권장 */
+export const TRADE_DEADLINE = DEFAULT_SEASON_CONFIG.tradeDeadline;
 
 // League Financial Constants (달러)
 export const LEAGUE_FINANCIALS = {
@@ -20,10 +24,10 @@ export const LEAGUE_FINANCIALS = {
     SECOND_APRON: 189_000_000,
 };
 
-// Calendar Events
+/** @deprecated buildSeasonConfig(n) 사용 권장 */
 export const CALENDAR_EVENTS = {
-    ALL_STAR_START: '2026-02-13',
-    ALL_STAR_END: '2026-02-18'
+    ALL_STAR_START: DEFAULT_SEASON_CONFIG.allStarStart,
+    ALL_STAR_END: DEFAULT_SEASON_CONFIG.allStarEnd
 };
 
 // Adapter for existing code using TEAM_OWNERS

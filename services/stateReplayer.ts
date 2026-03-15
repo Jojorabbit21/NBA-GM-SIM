@@ -12,7 +12,9 @@ export const replayGameState = (
     baseSchedule: Game[],
     transactions: any[],
     gameResults: any[],
-    savedSimDate: string | null
+    savedSimDate: string | null,
+    seasonFilter?: string,
+    defaultStartDate?: string
 ) => {
     const teams: Team[] = JSON.parse(JSON.stringify(baseTeams));
     let schedule: Game[] = JSON.parse(JSON.stringify(baseSchedule));
@@ -29,7 +31,11 @@ export const replayGameState = (
         }
     });
 
-    const sortedResults = [...gameResults].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // 시즌 필터: 지정된 시즌의 결과만 리플레이
+    const filteredResults = seasonFilter
+        ? gameResults.filter((r: any) => r.season === seasonFilter)
+        : gameResults;
+    const sortedResults = [...filteredResults].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     sortedResults.forEach((res) => {
         const gameIdx = schedule.findIndex(g => g.id === res.game_id);
@@ -87,7 +93,7 @@ export const replayGameState = (
     return {
         teams,
         schedule,
-        currentSimDate: savedSimDate || '2025-10-20'
+        currentSimDate: savedSimDate || defaultStartDate || '2025-10-20'
     };
 };
 

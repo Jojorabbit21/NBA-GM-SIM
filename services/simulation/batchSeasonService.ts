@@ -15,6 +15,7 @@ import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { buildScoutReportContent } from '../reportGenerator';
 import { getBudgetManager } from '../financeEngine';
+import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../../utils/seasonConfig';
 
 export interface BatchMessagePayload {
     user_id: string;
@@ -54,8 +55,10 @@ export async function runBatchSeason(
     onProgress: (current: number, total: number, date: string) => void,
     cancelToken: { cancelled: boolean },
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    seasonConfig?: SeasonConfig
 ): Promise<BatchSeasonResult> {
+    const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const allGameResultsToSave: any[] = [];
     const allPlayoffResultsToSave: any[] = [];
     const allMessages: BatchMessagePayload[] = [];
@@ -342,7 +345,7 @@ export async function runBatchSeason(
         }
 
         // 3. 시즌 이벤트 (동기)
-        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed);
+        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed, undefined, undefined, undefined, undefined, seasonConfig);
         if (events.newTransactions.length > 0) {
             allTransactions.push(...events.newTransactions);
         }
@@ -352,7 +355,7 @@ export async function runBatchSeason(
                 team_id: myTeamId,
                 date,
                 type: 'SEASON_AWARDS',
-                title: '[공식] 2025-26 정규시즌 어워드 투표 결과',
+                title: `[공식] ${seasonShort} 정규시즌 어워드 투표 결과`,
                 content: events.awardContent,
             });
         }
@@ -362,7 +365,7 @@ export async function runBatchSeason(
                 team_id: myTeamId,
                 date,
                 type: 'REG_SEASON_CHAMPION',
-                title: `[속보] 2025-26 정규시즌 우승: ${events.championContent.championTeamName}`,
+                title: `[속보] ${seasonShort} 정규시즌 우승: ${events.championContent.championTeamName}`,
                 content: events.championContent,
             });
         }

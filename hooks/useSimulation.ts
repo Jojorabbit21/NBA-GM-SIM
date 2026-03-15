@@ -10,7 +10,8 @@ import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult, processInjuryRecovery, computeReturnDate } from '../services/simulation/userGameService';
-import { handleSeasonEvents } from '../services/simulation/seasonService';
+import { handleSeasonEvents, checkAndStartNextSeason } from '../services/simulation/seasonService';
+import { archiveCurrentSeason } from '../services/seasonArchive';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
@@ -22,6 +23,7 @@ import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../ut
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent, FinalsMvpContent } from '../types/message';
 import { stampPlayoffAwards } from '../utils/awardStamper';
+import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 export const useSimulation = (
     teams: Team[],
@@ -51,8 +53,10 @@ export const useSimulation = (
     setLeagueTradeBlocks?: React.Dispatch<React.SetStateAction<LeagueTradeBlocks>>,
     leagueTradeOffers?: LeagueTradeOffers,
     leaguePickAssets?: LeaguePickAssets | null,
-    leagueGMProfiles?: LeagueGMProfiles
+    leagueGMProfiles?: LeagueGMProfiles,
+    seasonConfig?: SeasonConfig
 ) => {
+    const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
     const [simProgress, setSimProgress] = useState<{ percent: number; label: string } | null>(null);
@@ -166,7 +170,7 @@ export const useSimulation = (
                 nextDay.setDate(nextDay.getDate() + 1);
                 const reviewDate = nextDay.toISOString().split('T')[0];
                 const content = buildSeasonReviewContent(myTeam, newTeams, allTransactions, newSchedule);
-                await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', '[시즌 보고서] 2025-26 정규시즌 리뷰', content);
+                await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', `[시즌 보고서] ${seasonShort} 정규시즌 리뷰`, content);
                 const ownerLetter = buildOwnerLetterContent(myTeam, newTeams, newSchedule);
                 await sendMessage(userId, myTeamId, reviewDate, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
                 refreshUnreadCount();
@@ -259,11 +263,11 @@ export const useSimulation = (
                     if (champTeam) {
                         const champContent = buildPlayoffChampionContent(champTeam, newTeams, newSchedule, newPlayoffSeries);
                         await sendMessage(userId, myTeamId, date, 'PLAYOFF_CHAMPION',
-                            `[속보] 2025-26 플레이오프 우승: ${champTeam.name}`, champContent);
+                            `[속보] ${seasonShort} 플레이오프 우승: ${champTeam.name}`, champContent);
                     }
                 }
                 // ★ 챔피언 + 파이널 MVP stamp (게스트 포함)
-                stampPlayoffAwards(newTeams, '2025-26', series.winnerId, finalsMvpPlayerId);
+                stampPlayoffAwards(newTeams, seasonShort, series.winnerId, finalsMvpPlayerId);
             }
             refreshUnreadCount();
         }
@@ -394,7 +398,7 @@ export const useSimulation = (
                     setSimProgress({ percent: 80, label: '시즌 이벤트...' });
                     await yieldToUI();
                     _ft1 = performance.now();
-                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles);
+                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles, seasonConfig);
                     _fPerf['2_seasonEvents'] = performance.now() - _ft1;
 
                     if (seasonEvents.updatedPlayoffSeries) {
@@ -531,7 +535,7 @@ export const useSimulation = (
                 setSimProgress({ percent: 60, label: '시즌 이벤트...' });
                 await yieldToUI();
                 _t1 = performance.now();
-                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles);
+                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles, seasonConfig);
                 _perf['7_seasonEvents'] = performance.now() - _t1;
 
                 if (seasonEvents.updatedPlayoffSeries) {
@@ -562,6 +566,50 @@ export const useSimulation = (
                     newPlayoffSeries, newTeams, currentSimDate, transactions
                 );
                 _perf['8_reviewMessages'] = performance.now() - _t1;
+
+                // ★ 심리스 시즌 전환: 파이널 종료 감지 → 다음 시즌 자동 시작
+                const currentSeasonNumber = seasonConfig?.seasonNumber ?? 1;
+                const transition = checkAndStartNextSeason(newTeams, newSchedule, newPlayoffSeries, currentSeasonNumber);
+                if (transition.transitioned && transition.newSchedule && transition.newSeasonNumber && transition.newSeasonConfig) {
+                    // 현재 시즌 아카이브
+                    const myTeam = newTeams.find(t => t.id === myTeamId);
+                    if (!isGuestMode && session?.user?.id && myTeam && seasonConfig) {
+                        archiveCurrentSeason(session.user.id, seasonConfig, myTeam, newTeams, newPlayoffSeries)
+                            .catch(e => console.warn('⚠️ Season archive failed (non-critical):', e));
+                    }
+
+                    // 새 시즌으로 교체 (checkAndStartNextSeason이 이미 teams W/L, stats 리셋함)
+                    newSchedule = transition.newSchedule;
+                    newPlayoffSeries = [];
+
+                    // 오프시즌 스킵: 다음 경기일로 점프 (디버깅용, 추후 오프시즌 콘텐츠 추가 시 제거)
+                    const firstGameDate = newSchedule.find(g => !g.played)?.date;
+                    if (firstGameDate) {
+                        const jumpDate = firstGameDate;
+                        // Commit Updates
+                        setSimProgress({ percent: 95, label: `시즌 ${transition.newSeasonNumber} 시작...` });
+                        setTeams([...newTeams]);
+                        setSchedule(newSchedule);
+                        setPlayoffSeries([]);
+                        advanceDate(jumpDate, {
+                            seasonNumber: transition.newSeasonNumber,
+                            currentSeason: transition.newSeasonConfig.seasonLabel,
+                        });
+                        setSimProgress(null);
+                        setIsSimulating(false);
+                        if (!isGuestMode) {
+                            forceSave({
+                                currentSimDate: jumpDate,
+                                teams: newTeams,
+                                schedule: newSchedule,
+                                withSnapshot: false,
+                                seasonNumber: transition.newSeasonNumber,
+                                currentSeason: transition.newSeasonConfig.seasonLabel,
+                            });
+                        }
+                        return;
+                    }
+                }
 
                 // Commit Updates
                 setSimProgress({ percent: 95, label: '마무리...' });
@@ -732,7 +780,7 @@ export const useSimulation = (
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)
             const seasonEvents = await handleSeasonEvents(
                 newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed,
-                leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles
+                leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles, seasonConfig
             );
 
             if (seasonEvents.updatedPlayoffSeries) {

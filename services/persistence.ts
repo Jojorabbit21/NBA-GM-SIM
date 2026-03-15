@@ -24,7 +24,9 @@ export const saveCheckpoint = async (
     leaguePickAssets?: LeaguePickAssets | null, // [New] League-wide draft pick assets
     leagueTradeBlocks?: LeagueTradeBlocks | null, // [New] Persistent trade blocks
     leagueTradeOffers?: LeagueTradeOffers | null,  // [New] Persistent trade offers
-    leagueGMProfiles?: LeagueGMProfiles | null  // [New] GM profiles
+    leagueGMProfiles?: LeagueGMProfiles | null,  // [New] GM profiles
+    seasonNumber?: number,      // [Multi-Season] 현재 시즌 번호
+    currentSeason?: string      // [Multi-Season] 현재 시즌 라벨 (e.g. '2025-2026')
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -34,6 +36,14 @@ export const saveCheckpoint = async (
         sim_date: simDate,
         updated_at: new Date().toISOString()
     };
+
+    // season 정보: 값이 있을 때만 저장
+    if (seasonNumber !== undefined) {
+        payload.season_number = seasonNumber;
+    }
+    if (currentSeason !== undefined) {
+        payload.current_season = currentSeason;
+    }
 
     if (tactics) {
         payload.tactics = tactics;
@@ -132,7 +142,7 @@ export const loadCheckpoint = async (userId: string) => {
     // 먼저 새 컬럼 포함 시도, 실패 시 기존 컬럼만으로 폴백
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers, league_gm_profiles')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers, league_gm_profiles, season_number, current_season')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -151,15 +161,19 @@ export const loadCheckpoint = async (userId: string) => {
 };
 
 // 3. Load History Logs (Source of Truth)
-export const loadUserHistory = async (userId: string) => {
-    const [gamesRes, txRes] = await Promise.all([
-        supabase.from('user_game_results')
-            .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, is_playoff, series_id')
-            .eq('user_id', userId).order('date', { ascending: true }),
-        supabase.from('user_transactions')
-            .select('id, date, type, team_id, description, details')
-            .eq('user_id', userId).order('date', { ascending: true })
-    ]);
+export const loadUserHistory = async (userId: string, season?: string) => {
+    let gamesQuery = supabase.from('user_game_results')
+        .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, is_playoff, series_id, season')
+        .eq('user_id', userId);
+    if (season) gamesQuery = gamesQuery.eq('season', season);
+    gamesQuery = gamesQuery.order('date', { ascending: true });
+
+    let txQuery = supabase.from('user_transactions')
+        .select('id, date, type, team_id, description, details')
+        .eq('user_id', userId);
+    txQuery = txQuery.order('date', { ascending: true });
+
+    const [gamesRes, txRes] = await Promise.all([gamesQuery, txQuery]);
 
     return {
         games: gamesRes.data || [],
@@ -168,12 +182,14 @@ export const loadUserHistory = async (userId: string) => {
 };
 
 // 3-1. Count user data for snapshot validation (HEAD request, no body)
-export const countUserData = async (userId: string) => {
-    const [gamesCount, playoffCount, txCount] = await Promise.all([
-        supabase.from('user_game_results').select('game_id', { count: 'exact', head: true }).eq('user_id', userId),
-        supabase.from('user_playoffs_results').select('game_id', { count: 'exact', head: true }).eq('user_id', userId),
-        supabase.from('user_transactions').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-    ]);
+export const countUserData = async (userId: string, season?: string) => {
+    let gamesQ = supabase.from('user_game_results').select('game_id', { count: 'exact', head: true }).eq('user_id', userId);
+    if (season) gamesQ = gamesQ.eq('season', season);
+    let playoffQ = supabase.from('user_playoffs_results').select('game_id', { count: 'exact', head: true }).eq('user_id', userId);
+    if (season) playoffQ = playoffQ.eq('season', season);
+    const txQ = supabase.from('user_transactions').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+
+    const [gamesCount, playoffCount, txCount] = await Promise.all([gamesQ, playoffQ, txQ]);
     return {
         games: gamesCount.count || 0,
         playoffs: playoffCount.count || 0,

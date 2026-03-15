@@ -16,6 +16,7 @@ import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/r
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent } from '../types/message';
+import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -47,7 +48,9 @@ export const useFullSeasonSim = (
     onHofSubmitted?: () => void,
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
+    seasonConfig?: SeasonConfig,
 ) => {
+    const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
     const cancelTokenRef = useRef({ cancelled: false });
 
@@ -115,7 +118,7 @@ export const useFullSeasonSim = (
                                 team_id: myTeamId,
                                 date: result.finalDate,
                                 type: 'SEASON_REVIEW',
-                                title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
+                                title: `[시즌 보고서] ${seasonShort} 정규시즌 리뷰`,
                                 content,
                             });
                             const ownerLetter = buildOwnerLetterContent(myTeam, result.finalTeams, result.finalSchedule);
