@@ -3,6 +3,7 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { DraftPickAsset } from '../../types/draftAssets';
 import { TradePickRef } from '../../types/trade';
+import { TEAM_DATA } from '../../data/teamData';
 
 interface PickSelectorProps {
     picks: DraftPickAsset[];
@@ -46,8 +47,8 @@ export const PickSelector: React.FC<PickSelectorProps> = ({
         <div className="space-y-2">
             {seasons.map(season => (
                 <div key={season}>
-                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-800/50">
-                        {season} Draft
+                    <div className="px-3 py-1.5 text-xs font-black tracking-widest text-slate-500 bg-slate-800/50">
+                        {season} 드래프트
                     </div>
                     <div className="divide-y divide-slate-800/30">
                         {grouped[season]
@@ -60,6 +61,28 @@ export const PickSelector: React.FC<PickSelectorProps> = ({
                                     originalTeamId: pick.originalTeamId,
                                 };
                                 const isOwn = pick.originalTeamId === pick.currentTeamId;
+                                const originalTeam = TEAM_DATA[pick.originalTeamId];
+                                const originalTeamName = originalTeam ? `${originalTeam.city} ${originalTeam.name}` : pick.originalTeamId;
+
+                                // 픽 조건 설명 조합
+                                const conditions: string[] = [];
+                                if (!isOwn) {
+                                    conditions.push(`${originalTeamName} 소유 픽`);
+                                }
+                                if (pick.protection) {
+                                    if (pick.protection.type === 'top' && pick.protection.threshold) {
+                                        conditions.push(`상위 ${pick.protection.threshold}순위 보호`);
+                                    } else if (pick.protection.type === 'lottery') {
+                                        conditions.push('로터리 보호');
+                                    } else {
+                                        conditions.push('보호 조건 있음');
+                                    }
+                                }
+                                if (pick.swapRight) {
+                                    const swapBeneficiary = TEAM_DATA[pick.swapRight.beneficiaryTeamId];
+                                    const swapName = swapBeneficiary ? `${swapBeneficiary.city} ${swapBeneficiary.name}` : pick.swapRight.beneficiaryTeamId;
+                                    conditions.push(`${swapName} 스왑 권리`);
+                                }
 
                                 return (
                                     <div
@@ -75,40 +98,16 @@ export const PickSelector: React.FC<PickSelectorProps> = ({
                                             {selected && <Check size={12} className="text-white" strokeWidth={3} />}
                                         </div>
 
-                                        <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                            pick.round === 1
-                                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                                                : 'bg-slate-700/50 text-slate-400 border border-slate-600/50'
-                                        }`}>
-                                            R{pick.round}
-                                        </div>
-
                                         <div className="flex-1 min-w-0">
-                                            <span className="text-xs font-bold text-slate-200">
+                                            <span className={`text-xs font-bold ${pick.round === 1 ? 'text-amber-400' : 'text-slate-200'}`}>
                                                 {pick.season} {pick.round === 1 ? '1라운드' : '2라운드'}
                                             </span>
-                                            {!isOwn && (
-                                                <span className="ml-1.5 text-[10px] text-slate-500">
-                                                    (via {pick.originalTeamId.slice(0, 3).toUpperCase()})
+                                            {conditions.length > 0 && (
+                                                <span className="ml-1.5 text-xs text-slate-500">
+                                                    ({conditions.join(' · ')})
                                                 </span>
                                             )}
                                         </div>
-
-                                        {pick.protection && (
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                                                {pick.protection.type === 'top' && pick.protection.threshold
-                                                    ? `Top ${pick.protection.threshold} 보호`
-                                                    : pick.protection.type === 'lottery'
-                                                    ? '로터리 보호'
-                                                    : '보호'}
-                                            </span>
-                                        )}
-
-                                        {pick.swapRight && (
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                                SWAP
-                                            </span>
-                                        )}
                                     </div>
                                 );
                             })}
