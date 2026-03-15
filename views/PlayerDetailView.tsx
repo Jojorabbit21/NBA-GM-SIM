@@ -24,6 +24,7 @@ interface PlayerDetailViewProps {
     teamId?: string;
     allTeams?: Team[];
     tendencySeed?: string;
+    seasonShort?: string;
     onBack: () => void;
 }
 
@@ -365,7 +366,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, onBack }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
     const theme = getTeamTheme(teamId || null, teamColors);
     const calculatedOvr = calculatePlayerOvr(player);
@@ -607,7 +608,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">
-                                {showPlayoffStats ? '플레이오프 스탯' : '2025-26 시즌 스탯'}
+                                {showPlayoffStats ? '플레이오프 스탯' : `${seasonShort} 시즌 스탯`}
                             </span>
                             {hasPlayoffs && (
                                 <div

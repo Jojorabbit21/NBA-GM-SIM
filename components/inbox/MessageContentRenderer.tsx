@@ -27,9 +27,10 @@ interface MessageContentRendererProps {
     onViewGameResult: (result: any) => void;
     userId: string;
     onNavigateToHof: () => void;
+    seasonShort?: string;
 }
 
-export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof }) => {
+export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, seasonShort = '2025-26' }) => {
 
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -361,6 +362,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     content={content as SeasonAwardsContent}
                     teams={teams}
                     onPlayerClick={onPlayerClick}
+                    seasonShort={seasonShort}
                 />
             );
 
@@ -425,7 +427,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                             <span className="font-black text-white">{fm.mvpPlayerName}</span>이(가)&nbsp;
                             <span className="font-black text-white">{fm.mvpTeamName}</span>을(를) 시리즈 전적&nbsp;
                             <span className="font-black text-amber-400">{fm.seriesScore}</span>의 우승으로 이끌며&nbsp;
-                            <span className="font-black text-amber-400">2025-26 시즌 파이널 MVP</span>로 선정되었다.
+                            <span className="font-black text-amber-400">{seasonShort} 시즌 파이널 MVP</span>로 선정되었다.
                         </p>
                         <p className="text-slate-400 leading-relaxed text-sm">
                             {fm.mvpPlayerName}은(는) 파이널 {mvpGp}경기 동안 평균 {mvpAvg(fm.stats.pts)}득점 {mvpAvg(fm.stats.reb)}리바운드 {mvpAvg(fm.stats.ast)}어시스트를 기록하며

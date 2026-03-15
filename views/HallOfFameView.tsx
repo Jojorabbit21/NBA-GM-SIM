@@ -12,6 +12,7 @@ interface HallOfFameViewProps {
     currentUserId?: string;
     currentHofId?: string | null;
     onBack: () => void;
+    seasonShort?: string;
 }
 
 // --- Playoff tier → 한국어 텍스트 ---
@@ -33,7 +34,7 @@ function getRankStyle(rank: number): { color: string; icon?: React.ReactNode } {
     return { color: 'text-slate-500' };
 }
 
-export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, currentHofId, onBack }) => {
+export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, currentHofId, onBack, seasonShort = '2025-26' }) => {
     const [entries, setEntries] = useState<HallOfFameEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [rosterModal, setRosterModal] = useState<{ entry: HallOfFameEntry } | null>(null);
@@ -98,7 +99,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, c
                     className="w-[160px] object-contain"
                 />
                 <h1 className="mt-4 text-2xl font-bold text-slate-300 tracking-widest uppercase ko-tight">
-                    2025-26 시즌 명예의 전당
+                    {seasonShort} 시즌 명예의 전당
                 </h1>
             </div>
 

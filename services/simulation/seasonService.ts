@@ -229,7 +229,7 @@ export const handleSeasonEventsSync = (
 
             // ★ 정규시즌 어워드 투표 (배치 — sendMessage 생략, 반환) → 선수에 stamp
             awardContent = runAwardVoting(teams, tendencySeed);
-            stampSeasonAwards(teams, awardContent, '2025-26');
+            stampSeasonAwards(teams, awardContent, seasonShort);
             // ★ 정규시즌 우승팀 보고서 (배치 — 반환) → 선수에 stamp
             championContent = buildRegSeasonChampionContent(teams, schedule);
             stampRegSeasonChampion(teams, seasonShort, championContent.championTeamId);

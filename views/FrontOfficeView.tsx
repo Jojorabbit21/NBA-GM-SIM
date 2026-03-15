@@ -25,10 +25,11 @@ interface FrontOfficeViewProps {
     leaguePickAssets?: LeaguePickAssets | null;
     leagueGMProfiles?: LeagueGMProfiles | null;
     userNickname?: string;
+    seasonShort?: string;
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
-    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname,
+    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
 }) => {
     const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
 
@@ -340,9 +341,10 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
         // OVR 내림차순 정렬
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
 
-        // 고정 6시즌 (2025-26 ~ 2030-31)
+        // 현재 시즌부터 6시즌 표시
+        const baseYear = seasonShort ? parseInt(seasonShort) : 2025;
         const cols: string[] = [];
-        for (let y = 2025; y < 2031; y++) {
+        for (let y = baseYear; y < baseYear + 6; y++) {
             cols.push(`${y}-${String(y + 1).slice(-2)}`);
         }
 
@@ -351,7 +353,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
         for (const p of sorted) {
             if (!p.contract) continue;
             for (let i = 0; i < p.contract.years.length; i++) {
-                const colIdx = i - p.contract.currentYear; // 2025-26 기준 offset
+                const colIdx = i - p.contract.currentYear; // 현재 시즌 기준 offset
                 if (colIdx >= 0 && colIdx < cols.length) {
                     colTotals[colIdx] += p.contract.years[i];
                 }

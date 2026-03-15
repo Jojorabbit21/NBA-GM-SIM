@@ -184,7 +184,7 @@ const App: React.FC = () => {
         // 2단계: 커스텀 모드 → 드래프트풀 선택
         if (rosterMode === 'custom' && !draftPoolType) return <DraftPoolSelectView onSelectPool={setDraftPoolType} onBack={() => setRosterMode(null)} />;
         // 3단계: 팀 선택
-        return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
+        return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} seasonShort={gameData.seasonConfig?.seasonShort ?? '2025-26'} />;
     }
 
     const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
@@ -193,7 +193,7 @@ const App: React.FC = () => {
     if ((view as string) === 'Onboarding' && myTeam) {
         return (
             <div className="fixed inset-0 z-[500]">
-                <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} />
+                <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} seasonShort={gameData.seasonConfig?.seasonShort ?? '2025-26'} />
             </div>
         );
     }

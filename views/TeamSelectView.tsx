@@ -14,6 +14,7 @@ interface TeamSelectViewProps {
   onSelectTeam: (id: string) => void;
   onReload?: () => void;
   dataSource?: 'DB' | 'CSV';
+  seasonShort?: string;
 }
 
 const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
@@ -33,7 +34,7 @@ const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: 
   </button>
 );
 
-export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam, onReload, dataSource = 'DB' }) => {
+export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam, onReload, dataSource = 'DB', seasonShort = '2025-26' }) => {
   const eastTeams = useMemo(() => teams.filter(t => t.conference === 'East'), [teams]);
   const westTeams = useMemo(() => teams.filter(t => t.conference === 'West'), [teams]);
   const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
@@ -129,7 +130,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
       </div>
       
       <div className="flex-shrink-0 h-8 bg-slate-950 border-t border-slate-900 flex items-center justify-between px-6 text-[10px] font-bold text-slate-600 uppercase tracking-widest z-20 relative">
-        <span>Season 2025-26 &bull; Korean Translation Database Active</span>
+        <span>Season {seasonShort} &bull; Korean Translation Database Active</span>
         <div className={`flex items-center gap-2 ${isSupabaseConfigured ? 'text-emerald-500' : 'text-red-500'}`}>
             {isSupabaseConfigured ? <Wifi size={12} /> : <WifiOff size={12} />}
             <span>{isSupabaseConfigured ? 'SERVER CONNECTED' : 'SERVER DISCONNECTED'}</span>

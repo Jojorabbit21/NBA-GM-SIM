@@ -16,9 +16,10 @@ interface InboxViewProps {
   onViewGameResult: (result: any) => void;
   onNavigateToHof: () => void;
   currentSimDate?: string;
+  seasonShort?: string;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26' }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -182,6 +183,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                                     onViewGameResult={onViewGameResult}
                                     userId={userId}
                                     onNavigateToHof={onNavigateToHof}
+                                    seasonShort={seasonShort}
                                 />
                            ) : (
                                <div className="text-slate-600 text-sm">내용을 불러올 수 없습니다.</div>

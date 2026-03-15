@@ -10,9 +10,10 @@ interface AwardsReportViewerProps {
     content: SeasonAwardsContent;
     teams: Team[];
     onPlayerClick: (id: string) => void;
+    seasonShort?: string;
 }
 
-export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content, teams, onPlayerClick }) => {
+export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content, teams, onPlayerClick, seasonShort = '2025-26' }) => {
     const [showBallots, setShowBallots] = useState(false);
 
     const formatStat = (v: number | undefined, decimals = 1) => (v ?? 0).toFixed(decimals);
@@ -70,7 +71,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {mvpWinner && (
                     <div className="text-center space-y-3">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">MVP 2025-26</p>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">MVP {seasonShort}</p>
                         <img src="/images/mvp.png" alt="MVP Trophy" className="mx-auto h-32 object-contain" />
                         <div className="flex items-center justify-center gap-2">
                             <span className="text-lg font-black text-white">{mvpWinner.playerName}</span>
@@ -86,7 +87,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                 )}
                 {dpoyWinner && (
                     <div className="text-center space-y-3">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">DPOY 2025-26</p>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">DPOY {seasonShort}</p>
                         <img src="/images/dpoy.png" alt="DPOY Trophy" className="mx-auto h-32 object-contain" />
                         <div className="flex items-center justify-center gap-2">
                             <span className="text-lg font-black text-white">{dpoyWinner.playerName}</span>

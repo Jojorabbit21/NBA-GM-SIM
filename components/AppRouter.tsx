@@ -42,6 +42,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
     view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage, draftPoolType
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
+    const seasonShort: string = gameData.seasonConfig?.seasonShort ?? '2025-26';
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
     const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
@@ -121,6 +122,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     currentUserId={session?.user?.id}
                     currentHofId={gameData.hofId}
                     onBack={() => setView(previousViewRef.current)}
+                    seasonShort={seasonShort}
                 />
             </div>
         );
@@ -231,6 +233,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         teamId={viewPlayerData.teamId}
                         allTeams={gameData.teams}
                         tendencySeed={gameData.tendencySeed || undefined}
+                        seasonShort={seasonShort}
                         onBack={() => {
                             setViewPlayerData(null);
                             setView(previousViewRef.current);
@@ -358,6 +361,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onUpdateUnreadCount={refreshUnreadCount}
                     tendencySeed={gameData.tendencySeed || undefined}
                     currentSimDate={gameData.currentSimDate}
+                    seasonShort={seasonShort}
                     onViewPlayer={handleViewPlayer}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Inbox';
@@ -412,6 +416,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams}
                     currentSimDate={gameData.currentSimDate}
                     myTeamId={gameData.myTeamId!}
+                    seasonShort={seasonShort}
                     coachingData={gameData.coachingData}
                     onCoachClick={handleViewCoach}
                     onGMClick={handleViewGM}
