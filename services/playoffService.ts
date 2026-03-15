@@ -5,13 +5,14 @@ import { PlayoffSeries, PlayoffStateDB, PlayoffGameResultDB } from '../types';
 /**
  * Loads the current state of the playoffs from DB.
  */
-export const loadPlayoffState = async (userId: string, teamId: string): Promise<PlayoffStateDB | null> => {
-    const { data, error } = await supabase
+export const loadPlayoffState = async (userId: string, teamId: string, season?: string): Promise<PlayoffStateDB | null> => {
+    let query = supabase
         .from('user_playoffs')
         .select('*')
         .eq('user_id', userId)
-        .eq('team_id', teamId)
-        .maybeSingle();
+        .eq('team_id', teamId);
+    if (season) query = query.eq('season', season);
+    const { data, error } = await query.order('updated_at', { ascending: false }).limit(1).maybeSingle();
     
     if (error) {
         console.error("❌ Failed to load playoff state:", error);

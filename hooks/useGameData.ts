@@ -28,6 +28,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 import { buildSeasonConfig, SeasonConfig } from '../utils/seasonConfig';
+import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -189,12 +190,31 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     let loadedSchedule: Game[];
                     let txList: any[] = [];
                     let playoffBracketState: any = null;
+                    const savedSeason = (checkpoint as any).current_season as string | undefined;
+                    const savedSeasonNumber = (checkpoint as any).season_number as number | undefined;
+
+                    // 시즌 2+ 이면 해당 시즌의 스케줄을 동적 생성 (baseData.schedule은 시즌 1 전용)
+                    let baseSchedule: Game[];
+                    if (savedSeasonNumber && savedSeasonNumber > 1) {
+                        const sc = buildSeasonConfig(savedSeasonNumber);
+                        const schedCfg: ScheduleConfig = {
+                            seasonYear: sc.startYear,
+                            seasonStart: sc.startDate,
+                            regularSeasonEnd: sc.regularSeasonEnd,
+                            allStarStart: sc.allStarStart,
+                            allStarEnd: sc.allStarEnd,
+                        };
+                        baseSchedule = generateSeasonSchedule(schedCfg);
+                        console.log(`📅 Generated season ${savedSeasonNumber} schedule: ${baseSchedule.length} games`);
+                    } else {
+                        baseSchedule = baseData.schedule;
+                    }
 
                     // Playoff bracket + snapshot validation + transactions 병렬 로드
                     if (snapshot && snapshot.version === CURRENT_SNAPSHOT_VERSION) {
                         setLoadingProgress(30);
                         const [pbState, counts, txData] = await Promise.all([
-                            loadPlayoffState(userId, checkpoint.team_id),
+                            loadPlayoffState(userId, checkpoint.team_id, savedSeason),
                             countUserData(userId),
                             loadUserTransactions(userId),
                         ]);
@@ -210,7 +230,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             txList = txData;
                             setLoadingProgress(70);
                             await new Promise(r => setTimeout(r, 0));
-                            const hydrated = hydrateFromSnapshot(teamsForReplay, baseData.schedule, snapshot, txList);
+                            const hydrated = hydrateFromSnapshot(teamsForReplay, baseSchedule, snapshot, txList);
                             loadedTeams = hydrated.teams;
                             loadedSchedule = hydrated.schedule;
                             snapshotUsed = true;
@@ -222,10 +242,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     if (!snapshotUsed) {
                         console.log("🔄 Full replay — snapshot not available or invalid");
                         if (!playoffBracketState) {
-                            playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id);
+                            playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id, savedSeason);
                         }
                         setLoadingProgress(40);
-                        const savedSeason = checkpoint.current_season as string | undefined;
                         const history = await loadUserHistory(userId, savedSeason);
                         txList = history.transactions;
                         setLoadingProgress(50);
@@ -239,7 +258,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         await new Promise(r => setTimeout(r, 0));
                         const replayedState = replayGameState(
                             teamsForReplay,
-                            baseData.schedule,
+                            baseSchedule,
                             txList,
                             allGameResults,
                             checkpoint.sim_date,
