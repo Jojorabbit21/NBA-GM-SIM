@@ -172,14 +172,29 @@ export const DraftPicksPanel: React.FC<{
         return null;
     };
 
-    // 스왑 권리 라벨
-    const getSwapLabel = (pick: DraftPickAsset): string | null => {
-        if (!pick.swapRight) return null;
-        const other = pick.swapRight.beneficiaryTeamId === teamId
-            ? pick.swapRight.originTeamId
-            : pick.swapRight.beneficiaryTeamId;
-        const direction = pick.swapRight.beneficiaryTeamId === teamId ? '스왑 권리 보유' : '스왑 권리 피대상';
-        return `↔ ${teamName(other)} (${direction})`;
+    // 특정 픽과 관련된 스왑 권리를 SWAP_RIGHTS 정적 데이터에서 직접 조회
+    // (세이브 데이터의 swapRight 필드는 단일 객체라 복수 스왑을 누락할 수 있음)
+    const getSwapLabels = (pick: DraftPickAsset): string[] => {
+        const labels: string[] = [];
+        for (const s of SWAP_RIGHTS) {
+            if (s.season !== pick.season || s.round !== pick.round) continue;
+            // 이 픽의 originalTeamId가 스왑의 originTeamId와 일치하는 경우
+            if (s.originTeamId === pick.originalTeamId) {
+                if (s.beneficiaryTeamId === teamId) {
+                    labels.push(`↔ ${teamName(s.originTeamId)} (스왑 권리 보유)`);
+                } else if (pick.currentTeamId === teamId || pick.originalTeamId === teamId) {
+                    labels.push(`↔ ${teamName(s.beneficiaryTeamId)} (스왑 권리 피대상)`);
+                }
+            }
+            // 이 픽의 originalTeamId가 스왑의 beneficiaryTeamId와 일치하는 경우
+            // (내 픽에 대해 상대가 스왑 권리를 가진 경우)
+            if (s.beneficiaryTeamId === pick.originalTeamId && s.originTeamId !== pick.originalTeamId) {
+                if (pick.currentTeamId === teamId || pick.originalTeamId === teamId) {
+                    labels.push(`↔ ${teamName(s.originTeamId)} (스왑 권리 보유)`);
+                }
+            }
+        }
+        return labels;
     };
 
     // 픽 하나의 비고 텍스트
@@ -187,8 +202,8 @@ export const DraftPicksPanel: React.FC<{
         const notes: string[] = [];
         const prot = getProtectionLabel(pick);
         if (prot) notes.push(prot);
-        const swap = getSwapLabel(pick);
-        if (swap) notes.push(swap);
+        const swapLabels = getSwapLabels(pick);
+        notes.push(...swapLabels);
         return notes;
     };
 
