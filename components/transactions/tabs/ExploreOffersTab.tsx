@@ -229,21 +229,17 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                         </div>
                     ) : searchPerformed ? (
                         offers.length > 0 ? (
-                            <div>
+                            <div className="divide-y divide-slate-700">
                                 {offers.map((offer, idx) => {
                                     const teamName = offer.teamName;
                                     return (
-                                        <div key={idx} className="border-b border-slate-800">
+                                        <div key={idx}>
                                             {/* Offer Header */}
-                                            <div className="px-4 py-2 bg-slate-800/40 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
+                                            <div className="px-4 py-2.5 bg-slate-950 flex items-center justify-between border-b border-slate-800">
+                                                <div className="flex items-center gap-2.5">
                                                     <TeamLogo teamId={offer.teamId} size="xs" />
-                                                    <span className="text-xs font-black uppercase text-slate-300 tracking-tight">{teamName}</span>
-                                                    <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
-                                                        offer.diffValue >= 0 ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-500 bg-slate-800'
-                                                    }`}>
-                                                        {offer.diffValue >= 0 ? 'VALUE+' : 'BALANCED'}
-                                                    </span>
+                                                    <span className="text-xs font-black uppercase text-slate-200 tracking-tight">{teamName}</span>
+                                                    <span className="text-[10px] font-mono text-slate-500">{offer.players.length}명</span>
                                                 </div>
                                                 <button
                                                     onClick={() => onAcceptOffer(offer, team.roster.filter(p => selectedIds.has(p.id)))}
@@ -255,26 +251,27 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                             {/* Players Table */}
                                             <table className="w-full text-left border-separate border-spacing-0">
                                                 <thead>
-                                                    <tr className="text-slate-600 text-[10px] font-bold uppercase">
-                                                        <th className="py-1.5 px-2 w-10 text-center">OVR</th>
-                                                        <th className="py-1.5 px-3">선수</th>
-                                                        <th className="py-1.5 px-2 w-10 text-center">POS</th>
+                                                    <tr className="text-slate-600 text-[10px] font-bold uppercase bg-slate-800/60">
+                                                        <th className="py-1.5 px-2 w-10 text-center border-b border-slate-800">OVR</th>
+                                                        <th className="py-1.5 px-3 border-b border-slate-800">선수</th>
+                                                        <th className="py-1.5 px-2 w-10 text-center border-b border-slate-800">POS</th>
                                                         {STAT_KEYS.map(s => (
-                                                            <th key={s.key} className="py-1.5 px-1 w-9 text-center">{s.label}</th>
+                                                            <th key={s.key} className="py-1.5 px-1 w-9 text-center border-b border-slate-800">{s.label}</th>
                                                         ))}
-                                                        <th className="py-1.5 px-2 w-10 text-center">AGE</th>
-                                                        <th className="py-1.5 px-3 w-16 text-right">연봉</th>
+                                                        <th className="py-1.5 px-2 w-10 text-center border-b border-slate-800">AGE</th>
+                                                        <th className="py-1.5 px-3 w-16 text-right border-b border-slate-800">연봉</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {offer.players.map(p => {
+                                                    {offer.players.map((p, pIdx) => {
                                                         const ovr = calculatePlayerOvr(p);
+                                                        const rowBg = pIdx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-900/50';
                                                         return (
-                                                            <tr key={p.id} className="hover:bg-white/5 transition-colors">
-                                                                <td className="py-2 px-2 border-t border-slate-800/30 text-center">
+                                                            <tr key={p.id} className={`${rowBg} hover:bg-white/5 transition-colors`}>
+                                                                <td className="py-2 px-2 text-center">
                                                                     <OvrBadge value={ovr} size="sm" />
                                                                 </td>
-                                                                <td className="py-2 px-3 border-t border-slate-800/30">
+                                                                <td className="py-2 px-3">
                                                                     <div className="flex items-center gap-2 min-w-0">
                                                                         <span
                                                                             className="text-xs font-bold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
@@ -289,30 +286,22 @@ export const ExploreOffersTab: React.FC<ExploreOffersTabProps> = ({
                                                                         )}
                                                                     </div>
                                                                 </td>
-                                                                <td className="py-2 px-2 border-t border-slate-800/30 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
+                                                                <td className="py-2 px-2 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
                                                                 {STAT_KEYS.map(s => {
                                                                     const v = (p as any)[s.key] as number;
                                                                     return (
-                                                                        <td key={s.key} className={`py-2 px-1 border-t border-slate-800/30 text-center text-[11px] font-mono font-bold ${statColor(v)}`}>
+                                                                        <td key={s.key} className={`py-2 px-1 text-center text-[11px] font-mono font-bold ${statColor(v)}`}>
                                                                             {v}
                                                                         </td>
                                                                     );
                                                                 })}
-                                                                <td className="py-2 px-2 border-t border-slate-800/30 text-center text-[10px] font-mono text-slate-400">{p.age}</td>
-                                                                <td className="py-2 px-3 border-t border-slate-800/30 text-right text-[10px] font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
+                                                                <td className="py-2 px-2 text-center text-[10px] font-mono text-slate-400">{p.age}</td>
+                                                                <td className="py-2 px-3 text-right text-[10px] font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
                                                             </tr>
                                                         );
                                                     })}
                                                 </tbody>
                                             </table>
-                                            {/* Analysis */}
-                                            {offer.analysis && offer.analysis.length > 0 && (
-                                                <div className="px-4 py-2 flex gap-2 flex-wrap">
-                                                    {offer.analysis.map((log, i) => (
-                                                        <span key={i} className="text-[10px] font-mono text-slate-500">{log}</span>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })}
