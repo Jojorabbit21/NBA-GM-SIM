@@ -1,7 +1,7 @@
 
 import { TEAM_DATA } from '../../data/teamData';
 import { DraftPickAsset, LeaguePickAssets } from '../../types/draftAssets';
-import { TRADED_FIRST_ROUND_PICKS, SWAP_RIGHTS } from '../../data/draftPickTrades';
+import { TRADED_FIRST_ROUND_PICKS, TRADED_SECOND_ROUND_PICKS, SWAP_RIGHTS } from '../../data/draftPickTrades';
 
 export const PICK_SEASONS = [2026, 2027, 2028, 2029, 2030, 2031, 2032];
 const ROUNDS: (1 | 2)[] = [1, 2];
@@ -28,7 +28,8 @@ export function initializeLeaguePickAssets(): LeaguePickAssets {
     }
 
     // 2단계: 실제 NBA 거래 반영 — 픽을 원래 소유팀에서 제거하고 현재 보유팀에 추가
-    for (const trade of TRADED_FIRST_ROUND_PICKS) {
+    const allTradedPicks = [...TRADED_FIRST_ROUND_PICKS, ...TRADED_SECOND_ROUND_PICKS];
+    for (const trade of allTradedPicks) {
         const { season, round, originalTeamId, currentTeamId, protection } = trade;
 
         // 원래 소유팀에서 해당 픽 제거
