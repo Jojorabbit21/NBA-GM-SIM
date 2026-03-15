@@ -68,6 +68,21 @@ export async function runBatchSeason(
 
     // 남은 게임데이 목록 생성 (정규시즌 + 플레이오프 포함)
     const unplayedDates = getUnplayedGameDates(schedule, myTeamId);
+
+    // 플레이오프 진행 중인데 남은 경기가 없을 수 있음 (다음 라운드 게임이 아직 생성 안 된 경우)
+    // → currentSimDate부터 시드하여 handleSeasonEventsSync가 다음 라운드 게임을 생성하도록 함
+    if (unplayedDates.length === 0 && playoffSeries.length > 0) {
+        const finalsAlreadyDone = playoffSeries.some(s => s.round === 4 && s.finished);
+        if (!finalsAlreadyDone) {
+            // 현재 날짜부터 시작해 handleSeasonEventsSync에서 새 게임 생성 유도
+            const currentDate = schedule
+                .filter(g => g.played)
+                .sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+            const seedDate = currentDate || new Date().toISOString().split('T')[0];
+            unplayedDates.push(seedDate);
+        }
+    }
+
     let total = unplayedDates.length;
     let current = 0;
     let lastDate = unplayedDates[unplayedDates.length - 1] ?? '';
@@ -430,9 +445,16 @@ export async function runBatchSeason(
     }
 
     // 최종 날짜를 하루 뒤로 (기존 파이프라인과 동일)
-    const d = new Date(lastDate);
-    d.setDate(d.getDate() + 1);
-    const finalDate = d.toISOString().split('T')[0];
+    let finalDate: string;
+    if (lastDate) {
+        const d = new Date(lastDate);
+        d.setDate(d.getDate() + 1);
+        finalDate = d.toISOString().split('T')[0];
+    } else {
+        // 날짜가 없으면 현재 시뮬 날짜 유지 (fallback)
+        finalDate = schedule.filter(g => g.played).sort((a, b) => b.date.localeCompare(a.date))[0]?.date
+            || new Date().toISOString().split('T')[0];
+    }
 
     return {
         finalTeams: teams,

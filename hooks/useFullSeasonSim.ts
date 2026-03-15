@@ -91,7 +91,8 @@ export const useFullSeasonSim = (
                 },
                 cancelTokenRef.current,
                 simSettings,
-                coachingData
+                coachingData,
+                seasonConfig
             );
 
             // 3. DB 저장
@@ -228,7 +229,7 @@ export const useFullSeasonSim = (
         teams, schedule, playoffSeries, myTeamId, currentSimDate,
         userTactics, depthChart, tendencySeed, session, isGuestMode,
         setTeams, setSchedule, setPlayoffSeries, setCurrentSimDate,
-        setTransactions, forceSave, hofId, onHofSubmitted, simSettings,
+        setTransactions, forceSave, hofId, onHofSubmitted, simSettings, seasonConfig,
     ]);
 
     const handleCancelBatch = useCallback(() => {
