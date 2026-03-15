@@ -203,7 +203,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             )}
 
             {/* Right: Simulation Action — flush to top/bottom/right edges */}
-            {!isSeasonOver && (
+            {(
             <div className="self-stretch flex flex-col w-[220px] shrink-0 ml-auto"
                  style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                 {isGameToday && onAutoSimClick ? (
