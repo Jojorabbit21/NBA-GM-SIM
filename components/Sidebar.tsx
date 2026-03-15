@@ -272,22 +272,22 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
 
-        {/* 시즌 전체 진행 */}
-        {!isRegularSeasonOver && onSimulateSeason && (
+        {/* 시즌 전체 진행 (정규시즌) / 플레이오프 자동 진행 */}
+        {!isPostseasonOver && onSimulateSeason && (
           <button
             onClick={() => setShowBatchConfirm(true)}
             disabled={isBatchRunning}
             className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
               isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
             } opacity-60 hover:opacity-90 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed`}
-            title={isCollapsed ? '시즌 전체 진행' : undefined}
+            title={isCollapsed ? (isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행') : undefined}
           >
             <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
               <span className="shrink-0"><FastForward size={20} /></span>
               <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
                 isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
               }`}>
-                시즌 전체 진행
+                {isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행'}
               </span>
             </div>
           </button>
@@ -319,9 +319,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     {showBatchConfirm && (
       <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[2000]">
         <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
-          <h3 className="text-lg font-black text-slate-100 uppercase tracking-wide mb-4">시즌 전체 진행</h3>
+          <h3 className="text-lg font-black text-slate-100 uppercase tracking-wide mb-4">
+            {isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행'}
+          </h3>
           <p className="text-sm text-slate-400 leading-relaxed mb-6">
-            현재 전술로 남은 정규시즌을 자동 시뮬레이션합니다.<br />
+            {isRegularSeasonOver
+              ? '현재 전술로 남은 플레이오프를 자동 시뮬레이션합니다.'
+              : '현재 전술로 남은 정규시즌과 플레이오프를 자동 시뮬레이션합니다.'
+            }<br />
             경기 중 전술 변경은 불가능합니다. 계속하시겠습니까?
           </p>
           <div className="flex gap-3 justify-end">

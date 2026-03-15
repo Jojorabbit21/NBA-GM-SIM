@@ -66,18 +66,23 @@ export async function runBatchSeason(
     let userGameCount = 0;
     let userWins = 0;
 
-    // 남은 게임데이 목록 생성 (정규시즌만)
+    // 남은 게임데이 목록 생성 (정규시즌 + 플레이오프 포함)
     const unplayedDates = getUnplayedGameDates(schedule, myTeamId);
-    const total = unplayedDates.length;
+    let total = unplayedDates.length;
     let current = 0;
     let lastDate = unplayedDates[unplayedDates.length - 1] ?? '';
+
+    // 플레이오프 진행 중에는 동적으로 날짜 추가 (playoff 경기는 handleSeasonEventsSync에서 schedule에 push됨)
+    let dateIndex = 0;
 
     // 월간 스카우트 보고서 트래킹
     let prevMonthKey = unplayedDates.length > 0
         ? new Date(unplayedDates[0]).getFullYear() * 100 + new Date(unplayedDates[0]).getMonth()
         : -1;
 
-    for (const date of unplayedDates) {
+    while (dateIndex < unplayedDates.length) {
+        const date = unplayedDates[dateIndex];
+        dateIndex++;
         if (cancelToken.cancelled) {
             lastDate = date;
             break;
@@ -129,9 +134,9 @@ export async function runBatchSeason(
             }
         }
 
-        // 유저 경기 찾기
+        // 유저 경기 찾기 (정규시즌 + 플레이오프 모두)
         const userGame = schedule.find(g =>
-            !g.played && g.date === date && !g.isPlayoff &&
+            !g.played && g.date === date &&
             (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
         );
 
@@ -170,6 +175,7 @@ export async function runBatchSeason(
             }
 
             // DB 페이로드 누적 (PBP 로그 포함)
+            const isPlayoffGame = !!userGame.isPlayoff;
             const payload: any = {
                 user_id: userId || 'guest',
                 game_id: userGame.id,
@@ -183,10 +189,19 @@ export async function runBatchSeason(
                 pbp_logs: result.pbpLogs,
                 shot_events: result.pbpShotEvents,
                 rotation_data: result.rotationData,
-                is_playoff: false,
+                is_playoff: isPlayoffGame,
                 ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
             };
-            allGameResultsToSave.push(payload);
+            if (isPlayoffGame && userGame.seriesId) {
+                allPlayoffResultsToSave.push({
+                    ...payload,
+                    series_id: userGame.seriesId,
+                    round_number: 0,
+                    game_number: 0,
+                });
+            } else {
+                allGameResultsToSave.push(payload);
+            }
 
             userGameCount++;
             const isHome = userGame.homeTeamId === myTeamId;
@@ -372,7 +387,42 @@ export async function runBatchSeason(
             });
         }
 
-        // 4. 진행 상황 보고 + UI yield
+        // 4. 플레이오프 경기 동적 추가 감지
+        // handleSeasonEventsSync가 schedule에 push한 새 플레이오프 경기의 날짜 + 사이 휴식일을 unplayedDates에 추가
+        if (playoffSeries.length > 0) {
+            // 파이널 종료 체크
+            const finalsFinished = playoffSeries.some(s => s.round === 4 && s.finished);
+            if (finalsFinished) {
+                lastDate = date;
+                break;
+            }
+
+            const existingDateSet = new Set(unplayedDates);
+            const newPlayoffDates: string[] = [];
+            for (const g of schedule) {
+                if (!g.played && g.isPlayoff && !existingDateSet.has(g.date)) {
+                    newPlayoffDates.push(g.date);
+                }
+            }
+            if (newPlayoffDates.length > 0) {
+                // 현재 날짜 다음날 ~ 새 플레이오프 경기 중 가장 먼 날짜까지 모든 날짜 추가 (휴식일 포함)
+                const maxNewDate = newPlayoffDates.sort().pop()!;
+                const nextDay = new Date(date);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const endDay = new Date(maxNewDate);
+                for (let d = new Date(nextDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+                    const ds = d.toISOString().split('T')[0];
+                    if (!existingDateSet.has(ds)) {
+                        unplayedDates.push(ds);
+                        existingDateSet.add(ds);
+                    }
+                }
+                unplayedDates.sort();
+                total = unplayedDates.length;
+            }
+        }
+
+        // 5. 진행 상황 보고 + UI yield
         current++;
         lastDate = date;
         onProgress(current, total, date);
@@ -400,13 +450,13 @@ export async function runBatchSeason(
 
 // ── 헬퍼 함수들 ──
 
-/** 남은 미플레이 날짜 목록 (정규시즌, 중복 제거, 정렬) */
+/** 남은 미플레이 날짜 목록 (정규시즌 + 플레이오프, 중복 제거, 정렬) */
 function getUnplayedGameDates(schedule: Game[], myTeamId: string): string[] {
     const dateSet = new Set<string>();
 
-    // 유저 팀의 남은 정규시즌 마지막 날짜 찾기
+    // 유저 팀의 남은 경기 (정규시즌 + 플레이오프 모두) 마지막 날짜 찾기
     const myUnplayed = schedule.filter(g =>
-        !g.played && !g.isPlayoff &&
+        !g.played &&
         (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
     );
     const lastMyGameDate = myUnplayed.length > 0
@@ -415,9 +465,9 @@ function getUnplayedGameDates(schedule: Game[], myTeamId: string): string[] {
 
     if (!lastMyGameDate) return [];
 
-    // 해당 날짜까지의 모든 미플레이 정규시즌 날짜
+    // 해당 날짜까지의 모든 미플레이 날짜 (정규시즌 + 플레이오프)
     for (const g of schedule) {
-        if (!g.played && !g.isPlayoff && g.date <= lastMyGameDate) {
+        if (!g.played && g.date <= lastMyGameDate) {
             dateSet.add(g.date);
         }
     }
