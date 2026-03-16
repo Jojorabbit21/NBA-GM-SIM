@@ -248,7 +248,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
         {hasProspects && (
-          <NavItem active={currentView === 'DraftBoard'} icon={<UserPlus size={20}/>} label="드래프트 보드" onClick={() => onNavigate('DraftBoard')} {...navProps} />
+          <NavItem active={currentView === 'DraftBoard'} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => onNavigate('DraftBoard')} {...navProps} />
         )}
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
 

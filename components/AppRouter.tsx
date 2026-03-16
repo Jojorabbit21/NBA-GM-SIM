@@ -419,7 +419,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'DraftBoard':
-            // 인시즌 드래프트 보드 열람 모드
+            // 드래프트 보드 + 로터리 결과 통합 뷰
             if (gameData.prospects?.length > 0) {
                 return (
                     <DraftView
@@ -427,6 +427,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         onDraft={() => {}}
                         team={myTeam!}
                         readOnly
+                        lotteryResult={gameData.lotteryResult}
+                        teams={gameData.teams}
+                        myTeamId={gameData.myTeamId || undefined}
                     />
                 );
             }
