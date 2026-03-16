@@ -10,7 +10,7 @@ import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation, processInjuryRecovery, computeReturnDate } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
-import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore } from '../../utils/simulationUtils';
+import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { buildScoutReportContent } from '../reportGenerator';
@@ -198,6 +198,9 @@ export async function runBatchSeason(
 
             // DB 페이로드 누적 (PBP 로그 포함)
             const isPlayoffGame = !!userGame.isPlayoff;
+            const userQS = result.pbpLogs?.length
+                ? extractQuarterScores(result.pbpLogs, userGame.homeTeamId, result.homeScore, result.awayScore)
+                : undefined;
             const payload: any = {
                 user_id: userId || 'guest',
                 game_id: userGame.id,
@@ -212,6 +215,7 @@ export async function runBatchSeason(
                 shot_events: result.pbpShotEvents,
                 rotation_data: result.rotationData,
                 is_playoff: isPlayoffGame,
+                ...(userQS && { quarter_scores: userQS }),
                 ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
             };
             if (isPlayoffGame && userGame.seriesId) {
@@ -606,6 +610,10 @@ function processCpuGamesInPlace(
             if (res.boxScore?.away) (schedule[gameIdx] as any).awayStats = sumTeamBoxScore(res.boxScore.away);
         }
 
+        const quarterScores = res.pbpLogs?.length
+            ? extractQuarterScores(res.pbpLogs, res.homeTeamId, res.homeScore, res.awayScore)
+            : undefined;
+
         const resultData = userId ? {
             user_id: userId,
             game_id: res.gameId,
@@ -619,6 +627,7 @@ function processCpuGamesInPlace(
             rotation_data: res.rotationData,
             shot_events: res.pbpShotEvents,
             is_playoff: res.isPlayoff || false,
+            ...(quarterScores && { quarter_scores: quarterScores }),
             ...(season && { season }),
         } : null;
 

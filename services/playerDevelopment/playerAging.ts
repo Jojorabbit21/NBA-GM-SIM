@@ -89,11 +89,22 @@ export interface OptionDecisionInfo {
     salary: number;
 }
 
+export interface PendingTeamOptionInfo {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    ovr: number;
+    position: string;
+    age: number;
+    salary: number;
+}
+
 export interface OffseasonResult {
     players: OffseasonPlayerEntry[];
     retiredPlayers: RetiredPlayerInfo[];
     expiredPlayers: ExpiredPlayerInfo[];
     optionDecisions: OptionDecisionInfo[];
+    pendingTeamOptions: PendingTeamOptionInfo[];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -738,12 +749,14 @@ export function processOffseason(
     teams: Team[],
     tendencySeed: string,
     _seasonNumber: number,
+    userTeamId?: string,
 ): OffseasonResult {
     const result: OffseasonResult = {
         players: [],
         retiredPlayers: [],
         expiredPlayers: [],
         optionDecisions: [],
+        pendingTeamOptions: [],
     };
 
     // ── 1단계: 은퇴 판정 (전 리그 확률 롤, 최대 8명 캡) ──
@@ -819,30 +832,48 @@ export function processOffseason(
                     const optionSalary = player.contract.currentYear < player.contract.years.length
                         ? player.contract.years[player.contract.currentYear]
                         : player.salary;
-                    const exercised = decideOption(player, optionSalary);
 
-                    entry.optionDecision = { type: player.contract.option.type, exercised };
-                    result.optionDecisions.push({
-                        playerId: player.id,
-                        playerName: player.name,
-                        teamId: team.id,
-                        optionType: player.contract.option.type,
-                        exercised,
-                        salary: optionSalary,
-                    });
+                    // 유저팀 팀옵션: 결정 보류 → pendingTeamOptions에 추가
+                    const isUserTeamOption = userTeamId && team.id === userTeamId
+                        && player.contract.option.type === 'team';
 
-                    if (!exercised) {
-                        // 옵션 거부 → 계약 만료 처리
-                        entry.contractExpired = true;
-                        result.expiredPlayers.push({
+                    if (isUserTeamOption) {
+                        result.pendingTeamOptions.push({
                             playerId: player.id,
                             playerName: player.name,
                             teamId: team.id,
-                            age: newAge,
                             ovr: player.ovr,
                             position: player.position,
-                            lastSalary: optionSalary,
+                            age: newAge,
+                            salary: optionSalary,
                         });
+                        // 로스터 잔류, 결정은 인박스에서 유저가 직접 처리
+                    } else {
+                        const exercised = decideOption(player, optionSalary);
+
+                        entry.optionDecision = { type: player.contract.option.type, exercised };
+                        result.optionDecisions.push({
+                            playerId: player.id,
+                            playerName: player.name,
+                            teamId: team.id,
+                            optionType: player.contract.option.type,
+                            exercised,
+                            salary: optionSalary,
+                        });
+
+                        if (!exercised) {
+                            // 옵션 거부 → 계약 만료 처리
+                            entry.contractExpired = true;
+                            result.expiredPlayers.push({
+                                playerId: player.id,
+                                playerName: player.name,
+                                teamId: team.id,
+                                age: newAge,
+                                ovr: player.ovr,
+                                position: player.position,
+                                lastSalary: optionSalary,
+                            });
+                        }
                     }
                 }
 

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { MessageListItem, Team, Player, MessageFilterCategory, MESSAGE_FILTER_MAP, MESSAGE_FILTER_CATEGORIES, MessageType } from '../types';
-import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
+import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead, patchMessageContent } from '../services/messageService';
 import { MessageList } from '../components/inbox/MessageList';
 import { MessageContentRenderer } from '../components/inbox/MessageContentRenderer';
 
@@ -17,9 +17,11 @@ interface InboxViewProps {
   onNavigateToHof: () => void;
   currentSimDate?: string;
   seasonShort?: string;
+  onTeamOptionExecuted?: (playerId: string, exercised: boolean) => void;
+  onNavigateToDraft?: () => void;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26' }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -29,6 +31,27 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const [totalCount, setTotalCount] = useState(0);
   const [activeFilters, setActiveFilters] = useState<Set<MessageFilterCategory>>(() => new Set(MESSAGE_FILTER_CATEGORIES));
   const contentCache = useRef<Map<string, any>>(new Map());
+
+  const handleTeamOptionDecide = useCallback(async (playerId: string, exercised: boolean) => {
+      if (!selectedMessage || !selectedContent?.pendingTeamOptions) return;
+
+      // content의 pendingTeamOptions에서 해당 선수 decision 업데이트
+      const updatedOptions = selectedContent.pendingTeamOptions.map((opt: any) =>
+          opt.playerId === playerId
+              ? { ...opt, decision: exercised ? 'exercised' : 'declined' }
+              : opt
+      );
+      const newContent = { ...selectedContent, pendingTeamOptions: updatedOptions };
+
+      // 낙관적 업데이트: UI 먼저 반영
+      contentCache.current.set(selectedMessage.id, newContent);
+      setSelectedContent(newContent);
+      onTeamOptionExecuted?.(playerId, exercised);
+
+      // DB 저장 (백그라운드)
+      patchMessageContent(selectedMessage.id, newContent)
+          .catch(e => console.warn('⚠️ Team option decision save failed:', e));
+  }, [selectedMessage, selectedContent, onTeamOptionExecuted]);
 
   const handleSelectMessage = useCallback(async (msg: MessageListItem) => {
       setSelectedMessage(msg);
@@ -184,6 +207,8 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                                     userId={userId}
                                     onNavigateToHof={onNavigateToHof}
                                     seasonShort={seasonShort}
+                                    onTeamOptionDecide={handleTeamOptionDecide}
+                                    onNavigateToDraft={onNavigateToDraft}
                                 />
                            ) : (
                                <div className="text-slate-600 text-sm">내용을 불러올 수 없습니다.</div>

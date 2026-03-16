@@ -184,6 +184,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           homeTactics: raw.tactics?.home, awayTactics: raw.tactics?.away,
           pbpLogs: raw.pbp_logs || [], pbpShotEvents: raw.shot_events || [],
           rotationData: raw.rotation_data,
+          quarterScoresData: raw.quarter_scores,
           otherGames: [], date: raw.date, recap: []
         };
         if (homeTeam && awayTeam) onViewGameResult(mappedResult);

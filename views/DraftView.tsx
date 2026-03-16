@@ -12,9 +12,10 @@ interface DraftViewProps {
   prospects: Player[];
   onDraft: (player: Player) => void;
   team: Team;
+  readOnly?: boolean;
 }
 
-export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }) => {
+export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team, readOnly }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -111,12 +112,14 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                     </div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => onDraft(selectedProspect)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center gap-3 border border-emerald-400/30"
-                >
-                  <UserPlus size={20} /> 지명하기 (Draft)
-                </button>
+                {!readOnly && (
+                  <button
+                    onClick={() => onDraft(selectedProspect)}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center gap-3 border border-emerald-400/30"
+                  >
+                    <UserPlus size={20} /> 지명하기 (Draft)
+                  </button>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8">

@@ -23,6 +23,7 @@ interface MainLayoutProps {
         onEditorClick: () => void;
         onSimSettingsClick: () => void;
         onLogout: () => void;
+        hasProspects: boolean;
         onSimulateSeason?: () => void;
         onSkipToDate?: (targetDate: string, label: string) => void;
         keyDates?: SeasonKeyDates;

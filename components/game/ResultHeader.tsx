@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { Team, PbpLog } from '../../types';
+import { Team, PbpLog, QuarterScores } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
 
@@ -11,14 +11,22 @@ interface ResultHeaderProps {
     awayScore: number;
     isWin: boolean;
     pbpLogs?: PbpLog[];
+    quarterScoresData?: QuarterScores;
 }
 
-export const ResultHeader: React.FC<ResultHeaderProps> = ({ 
-    homeTeam, awayTeam, homeScore, awayScore, isWin, pbpLogs 
+export const ResultHeader: React.FC<ResultHeaderProps> = ({
+    homeTeam, awayTeam, homeScore, awayScore, isWin, pbpLogs, quarterScoresData
 }) => {
-    
-    // Calculate Quarter Scores from PbpLogs
+
+    // Calculate Quarter Scores: pre-computed data 우선, 없으면 pbpLogs에서 계산
     const quarterScores = useMemo(() => {
+        if (quarterScoresData) {
+            return {
+                home: { 1: quarterScoresData.home[0], 2: quarterScoresData.home[1], 3: quarterScoresData.home[2], 4: quarterScoresData.home[3] },
+                away: { 1: quarterScoresData.away[0], 2: quarterScoresData.away[1], 3: quarterScoresData.away[2], 4: quarterScoresData.away[3] },
+            };
+        }
+
         const scores = {
             home: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 },
             away: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 }
@@ -28,10 +36,8 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
         pbpLogs.forEach(log => {
             if (log.type === 'score' || log.type === 'freethrow') {
-                // [SSOT Fix] Use explicit points property.
-                // Do NOT guess points based on text, as it leads to drift on missed FTs (0 points).
                 const points = log.points ?? 0;
-                
+
                 const q = Math.min(4, log.quarter) as 1|2|3|4;
                 const isHome = log.teamId === homeTeam.id;
 
@@ -44,17 +50,15 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                 }
             }
         });
-        
-        // Sync total with actual final score (in case of buzzer beaters or engine quirks)
-        // We distribute the difference to Q4 to ensure totals match visual
+
         const homeDiff = homeScore - scores.home.total;
         const awayDiff = awayScore - scores.away.total;
-        
+
         if (homeDiff !== 0) scores.home[4] += homeDiff;
         if (awayDiff !== 0) scores.away[4] += awayDiff;
 
         return scores;
-    }, [pbpLogs, homeTeam.id, homeScore, awayScore]);
+    }, [pbpLogs, quarterScoresData, homeTeam.id, homeScore, awayScore]);
     
     const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#ffffff';
     const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#ffffff';

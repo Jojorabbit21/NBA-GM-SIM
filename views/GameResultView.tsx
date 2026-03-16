@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
+import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent, QuarterScores } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { ShieldAlert, Clock, ChevronLeft } from 'lucide-react'; 
-import { CpuGameResult } from '../services/simulationService'; // [New] Import Type
+import { CpuGameResult } from '../services/simulationService';
+import { extractQuarterScores } from '../utils/simulationUtils';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
@@ -46,8 +47,9 @@ export const GameResultView: React.FC<{
     myTeamId: string;
     pbpLogs?: PbpLog[];
     rotationData?: RotationData;
-    pbpShotEvents?: ShotEvent[]; 
-    injuries?: InjuryEvent[]; 
+    pbpShotEvents?: ShotEvent[];
+    injuries?: InjuryEvent[];
+    quarterScoresData?: QuarterScores;
   };
   myTeamId: string;
   teams: Team[];
@@ -85,8 +87,11 @@ export const GameResultView: React.FC<{
           const aTeam = teams.find(t => t.id === targetGame.awayTeamId);
           if (!hTeam || !aTeam) return;
 
+          const cpuQS = targetGame.pbpLogs?.length
+              ? extractQuarterScores(targetGame.pbpLogs, targetGame.homeTeamId, targetGame.homeScore, targetGame.awayScore)
+              : undefined;
           const mappedResult = {
-              ...initialResult, // Inherit base properties (like otherGames list)
+              ...initialResult,
               home: hTeam,
               away: aTeam,
               homeScore: targetGame.homeScore,
@@ -95,10 +100,11 @@ export const GameResultView: React.FC<{
               awayBox: targetGame.boxScore.away,
               homeTactics: targetGame.tactics.home,
               awayTactics: targetGame.tactics.away,
-              rotationData: targetGame.rotationData, // [New] Now available
-              pbpShotEvents: targetGame.pbpShotEvents, // [New] Now available
-              pbpLogs: [], // CPU games don't have PBP
-              injuries: [], // CPU injuries not detailed in this view structure usually
+              rotationData: targetGame.rotationData,
+              pbpShotEvents: targetGame.pbpShotEvents,
+              pbpLogs: targetGame.pbpLogs ?? [],
+              injuries: [],
+              quarterScoresData: cpuQS,
           };
           setActiveResult(mappedResult);
           setActiveTab('BoxScore'); // Reset tab
@@ -110,7 +116,7 @@ export const GameResultView: React.FC<{
       setActiveTab('BoxScore');
   };
 
-  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames, pbpShotEvents, injuries } = activeResult;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames, pbpShotEvents, injuries, quarterScoresData } = activeResult;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
@@ -151,7 +157,8 @@ export const GameResultView: React.FC<{
             homeScore={homeScore}
             awayScore={awayScore}
             isWin={isUserGame ? isWin : (homeScore > awayScore)} // For CPU games, just show result color
-            pbpLogs={pbpLogs} // Might be empty for CPU games
+            pbpLogs={pbpLogs}
+            quarterScoresData={quarterScoresData}
           />
 
           {/* 2. Navigation Tabs (Centered & Reverted Style) */}

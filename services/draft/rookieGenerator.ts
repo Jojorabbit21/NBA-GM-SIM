@@ -6,10 +6,12 @@
  * mapRawPlayerToRuntimePlayer() 파이프라인과 완전 호환.
  *
  * 생성 로직:
- * 1. 포지션 분배 (PG 6, SG 6, SF 6, PF 6, C 6 = 30명 기본)
- * 2. 능력치 프로파일: 순위(rank)에 따른 기본 능력치 → 포지션별 편향 적용
- * 3. 포텐셜: 상위 픽 후보일수록 높은 pot
- * 4. 계약: 루키 스케일 (슬롯별 고정 금액)
+ * 1. 클래스 품질(classGrade) 결정 — 풍작/흉작 변동
+ * 2. 포지션 분배 — 불균형 (시드에 따라 8~16명)
+ * 3. 능력치 프로파일: 순위(rank)에 따른 기본 능력치 → 포지션별 편향 적용
+ * 4. 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 초희귀 롤
+ * 5. 이름: 다문화 풀 (~180개 이름/성)
+ * 6. 계약: 루키 스케일 (슬롯별 고정 금액)
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
@@ -58,45 +60,140 @@ const ROOKIE_SALARIES: number[] = [
 
 /** 키 범위 (cm) — 포지션별 */
 const HEIGHT_RANGES: Record<string, [number, number]> = {
-    PG: [180, 193],
-    SG: [190, 200],
-    SF: [196, 206],
+    PG: [178, 198],
+    SG: [183, 203],
+    SF: [195, 205],
     PF: [200, 211],
-    C: [206, 218],
+    C: [206, 225],
 };
 
 /** 몸무게 범위 (kg) — 포지션별 */
 const WEIGHT_RANGES: Record<string, [number, number]> = {
-    PG: [77, 93],
-    SG: [84, 100],
+    PG: [77, 98],
+    SG: [77, 100],
     SF: [93, 109],
     PF: [100, 116],
     C: [107, 125],
 };
 
-// ── 이름 생성 데이터 ──
+// ── 다문화 이름 풀 (~180 first / ~180 last) ──
 
-const FIRST_NAMES = [
-    'James', 'Marcus', 'Jaylen', 'Darius', 'Isaiah', 'Malik', 'Tre', 'DeAndre',
-    'Jordan', 'Cameron', 'Brandon', 'Tyrese', 'Jalen', 'Coby', 'Keldon',
-    'Anfernee', 'Immanuel', 'Desmond', 'Keegan', 'Jabari', 'Chet', 'Paolo',
-    'Scoot', 'Victor', 'Amen', 'Ausar', 'Zach', 'Donovan', 'Jarace', 'Reed',
-    'AJ', 'Cason', 'Keyonte', 'Kobe', 'Dereck', 'Gradey', 'Tari', 'Leonard',
-    'Nikola', 'Yves', 'Bilal', 'Terquavion', 'Taylor', 'Kris', 'Brandin',
-    'Andre', 'Dariq', 'Maxwell', 'Jett', 'Trayce', 'Colby', 'Sidy', 'Jaylin',
-    'Mouhamed', 'Kel\'el', 'Jalen', 'Toumani', 'Brice', 'Noah', 'Julian',
-];
+interface NamePool {
+    first: string[];
+    last: string[];
+    weight: number; // 선택 가중치 (합계 = 1.0)
+}
 
-const LAST_NAMES = [
-    'Williams', 'Johnson', 'Brown', 'Smith', 'Davis', 'Thompson', 'Harris',
-    'Robinson', 'Walker', 'Mitchell', 'Carter', 'Jackson', 'Young', 'Green',
-    'Murray', 'Henderson', 'Wallace', 'Bridges', 'Washington', 'Cunningham',
-    'Holmgren', 'Banchero', 'Wembanyama', 'Thompson', 'Howard', 'Miller',
-    'Griffin', 'Sensabaugh', 'Sheppard', 'Whitmore', 'Hendricks', 'Eason',
-    'Missi', 'Coulibaly', 'Ware', 'Edey', 'Risacher', 'Castle', 'Clingan',
-    'Topic', 'Buzelis', 'Filipowski', 'Dick', 'Hood-Schifino', 'Podziemski',
-    'Lewis', 'Whitehead', 'Jones', 'Clark', 'Dillingham', 'Walter', 'Cissoko',
-    'Diallo', 'Gueye', 'Ware', 'Camara', 'Salaun', 'Clowney', 'Phillips',
+const NAME_POOLS: NamePool[] = [
+    // 아프리칸 아메리칸 (~40%) — first ~72, last ~72
+    // 일반적인 흑인 이름/성 (실존 NBA 선수와 겹치지 않도록 가상 조합)
+    {
+        weight: 0.40,
+        first: [
+            '데릭', '저메인', '마르셀', '타이론', '앙투안', '라숀', '디언',
+            '자보리스', '트레본', '케샤드', '라마르', '타이릭', '디마커스', '마키스',
+            '자리우스', '케드릭', '라퀸', '트레바', '디온테', '마르텔',
+            '자콰리', '안타비어스', '드웨인', '케온', '라본', '타이셔',
+            '디마리오', '잘릴', '트레일', '케몬트', '안토니오', '드루',
+            '마이카', '자메인', '라셀', '키드', '트레메인', '디앤젤로',
+            '마르케스', '자린', '라토니', '케이난', '트리스탄', '디마르',
+            '칼릴', '안타완', '라마이클', '타이리', '제본', '마르쿠스',
+            '케이쇼', '드렐', '자이릭', '라다리우스', '트레비우스', '키몬',
+            '안타니', '디셔', '마르비스', '자브릴', '라킨', '타이번',
+            '케이던', '드라몬', '잘라드', '라니어', '트레언', '마카이',
+            '디론', '자이엘', '케이시', '라몬트', '타이릭', '안도니',
+        ],
+        last: [
+            '페리', '커밍스', '배넌', '크로포드', '레인', '파우더스',
+            '벨포드', '하먼', '크리든', '맥피', '스탠포드', '블레이크리',
+            '콜드웰', '하스킨스', '프레즐리', '마운트', '셀던', '로이스턴',
+            '타운즈리', '배링턴', '플레밍', '크레인', '하켓', '밀번',
+            '스탠턴', '볼드윈', '프리먼', '켄달', '하우저', '맥카시',
+            '스코필드', '베닝턴', '프레임', '코너', '하이타워', '메이슨',
+            '스파이비', '블랜차드', '포틀랜드', '클레이본', '허친슨', '맥그래스',
+            '실즈', '뱅크스', '펀더벅', '카펜터', '에버렛', '매킨리',
+            '셀비', '바이넘', '프라이어', '크로스비', '해밀턴', '모건필드',
+            '시어러', '블랙웰', '파슨스', '클링턴', '헤이즈먼', '맥도웰',
+            '소머빌', '보더스', '플래너건', '콜맨', '허드슨', '메이필드',
+            '스톤', '밴더빌트', '펠튼', '커닝스', '엘우드', '뉴섬',
+        ],
+    },
+    // 유럽 (동유럽/서유럽/발칸) (~20%) — first ~36, last ~36
+    {
+        weight: 0.20,
+        first: [
+            '밀란', '드라간', '스테판', '마르코', '알렉산다르', '블라디미르', '이반',
+            '토마시', '야쿠프', '아담', '미로슬라프', '바츨라프', '줄리앙', '마티유',
+            '피에르', '앙투안', '마테오', '로렌초', '엔리코', '줄리오',
+            '빌헬름', '하인츠', '프리드리히', '카를', '에밀', '라르스',
+            '스벤', '에릭', '요한', '클라우스', '안드레이', '세르게이',
+            '드미트리', '파벨', '일리야', '아르템',
+        ],
+        last: [
+            '코바체비치', '페트로비치', '밀로셰비치', '스토야코비치', '라도비치', '쿠즈마노비치',
+            '드라기치', '토도로비치', '시모노비치', '브라노비치', '마르코비치', '칼리니치',
+            '노바첵', '드보르작', '코발스키', '라디체비치', '벨린스키', '푸소',
+            '가르시아', '몬테로', '브루니', '콘테', '쉰들러', '한센',
+            '크리스텐센', '볼트', '벡스트롬', '칼손', '코즐로프', '모로조프',
+            '레베데프', '소콜로프', '바실리예프', '셰르바코프', '마체크', '보고슬라프스키',
+        ],
+    },
+    // 히스패닉/라틴 (~10%) — first ~18, last ~18
+    {
+        weight: 0.10,
+        first: [
+            '에밀리아노', '마테오', '로드리고', '페르난도', '에스테반', '알바로', '이그나시오',
+            '루시아노', '에두아르도', '마르코스', '엔리케', '발렌틴', '카밀로',
+            '레오나르도', '호나우두', '라미로', '곤살로', '다미안',
+        ],
+        last: [
+            '카스티요', '몬토야', '에스코바르', '아길라르', '세르반테스', '카마초', '델가도',
+            '피게로아', '갈레고스', '이바라', '라미레즈', '나바로', '오르테가', '팔렌시아',
+            '킨타나', '리베라', '솔리스', '발데즈',
+        ],
+    },
+    // 아프리칸 (서/동아프리카) (~10%) — first ~18, last ~18
+    {
+        weight: 0.10,
+        first: [
+            '이브라힘', '아마두', '오마르', '유수프', '이사', '알리우', '카디',
+            '살리우', '마마두', '압둘라이', '모디보', '바카리', '코나테', '아부',
+            '치디', '은나디', '오비나', '에메카',
+        ],
+        last: [
+            '투레', '시소코', '카네', '바', '시세', '키타', '드라메',
+            '사노', '상가레', '콘데', '잔코', '디우프', '사르', '디아뉴',
+            '오누', '에제', '우구아', '오비',
+        ],
+    },
+    // 아시안/퍼시픽 (~5%) — first ~9, last ~9
+    {
+        weight: 0.05,
+        first: [
+            '다이키', '소라', '히로토', '류타', '켄토', '타쿠미', '유마',
+            '하루키', '코이치',
+        ],
+        last: [
+            '나카무라', '사사키', '이토', '오카다', '모리', '후지타',
+            '마츠모토', '하야시', '야마시타',
+        ],
+    },
+    // 앵글로/기타 백인 (~15%) — first ~27, last ~27
+    {
+        weight: 0.15,
+        first: [
+            '브렌던', '콜턴', '트래비스', '가렛', '딜런', '웨슬리', '닐',
+            '랜든', '프레스턴', '코너', '대런', '커티스', '스펜서', '와이어트',
+            '매튜', '네이선', '배럿', '카슨', '세스', '저스틴', '재러드',
+            '스카일러', '마일스', '블레이크', '로건', '피어스', '대시엘',
+        ],
+        last: [
+            '크로스', '하트', '피셔', '랜드', '셰퍼드', '칼라일', '번스',
+            '웹스터', '워필드', '클레이턴', '마샬', '프랭클린', '하몬드', '벡스터',
+            '펄킨스', '머레이', '브래드포드', '서머스', '월턴', '챈들러', '아처',
+            '필딩', '커크', '래드포드', '엘리엇', '가필드', '엘스워스',
+        ],
+    },
 ];
 
 // ── PRNG (시드 기반) ──
@@ -144,6 +241,17 @@ class SeededRandom {
         }
         return result;
     }
+
+    /** 가중 확률 선택 (weights 합 = 1.0) */
+    weightedIndex(weights: number[]): number {
+        const r = this.next();
+        let cumulative = 0;
+        for (let i = 0; i < weights.length; i++) {
+            cumulative += weights[i];
+            if (r < cumulative) return i;
+        }
+        return weights.length - 1;
+    }
 }
 
 // ── 핵심 함수 ──
@@ -166,47 +274,38 @@ export function generateDraftClass(
     const rng = new SeededRandom(`${seed}_draft_${seasonNumber}`);
     const players: GeneratedPlayerRow[] = [];
 
-    // 포지션 배분: 균등 분배 + 나머지 랜덤
-    const positionPool: string[] = [];
-    const perPos = Math.floor(count / POSITIONS.length);
-    for (const pos of POSITIONS) {
-        for (let i = 0; i < perPos; i++) positionPool.push(pos);
-    }
-    const remaining = count - positionPool.length;
-    for (let i = 0; i < remaining; i++) {
-        positionPool.push(POSITIONS[rng.intRange(0, POSITIONS.length - 1)]);
-    }
+    // ── 클래스 품질 결정 ──
+    const classGrade = rng.normal(0, 1); // 표준정규분포: >1.5 풍작, <-1.5 흉작
+    const potOffset = clamp(Math.round(classGrade * 3), -5, 5);
+
+    // ── 포지션 분배: 불균형 ──
+    const positionPool = buildPositionPool(rng, count);
     const shuffledPositions = rng.shuffle(positionPool);
 
-    // 이름 풀 셔플
-    const firstNames = rng.shuffle([...FIRST_NAMES]);
-    const lastNames = rng.shuffle([...LAST_NAMES]);
+    // ── 이름 풀 문화권별 셔플 ──
+    const poolWeights = NAME_POOLS.map(p => p.weight);
 
     for (let i = 0; i < count; i++) {
         const position = shuffledPositions[i];
         const rank = i + 1; // 1 = 가장 높은 재능
 
-        // 이름 생성 (중복 허용하되 최대한 다양하게)
-        const firstName = firstNames[i % firstNames.length];
-        const lastName = lastNames[i % lastNames.length];
-        const name = `${firstName} ${lastName}`;
+        // 이름 생성 (문화권 가중 선택 → 해당 풀에서 랜덤)
+        const name = generateName(rng, poolWeights);
 
         // 나이: 19~23, 상위 픽은 19~20이 많음
         const ageBias = rank <= 10 ? 0 : rank <= 20 ? 1 : 2;
         const age = Math.min(23, Math.max(19, 19 + ageBias + (rng.next() < 0.4 ? 1 : 0)));
 
         // 키/몸무게
-        const [hMin, hMax] = HEIGHT_RANGES[position];
+        const height = generateHeight(rng, position);
         const [wMin, wMax] = WEIGHT_RANGES[position];
-        const height = rng.intRange(hMin, hMax);
         const weight = rng.intRange(wMin, wMax);
 
         // 능력치 생성
         const attrs = generateAttributes(rng, position, rank, count);
 
-        // 포텐셜: 상위 순위일수록 높은 pot
-        const potBase = rank <= 5 ? 88 : rank <= 14 ? 82 : rank <= 30 ? 76 : 70;
-        const pot = clamp(Math.round(rng.normal(potBase, 4)), 65, 98);
+        // 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 롤
+        const pot = generatePotential(rng, rank, potOffset);
 
         // 연봉
         const salarySlot = Math.min(rank, 30) - 1;
@@ -257,6 +356,83 @@ export function generateDraftClass(
 }
 
 // ── 내부 함수 ──
+
+/**
+ * 불균형 포지션 풀 생성
+ * 포지션별 인원을 정규분포로 결정 (8~16), 합계를 count에 맞춤
+ */
+function buildPositionPool(rng: SeededRandom, count: number): string[] {
+    const base = Math.floor(count / POSITIONS.length); // 12
+    const counts: number[] = [];
+
+    // 각 포지션 인원: 정규분포(base, 2.5), 8~16 clamp
+    for (let i = 0; i < POSITIONS.length; i++) {
+        counts.push(clamp(Math.round(rng.normal(base, 2.5)), 8, 16));
+    }
+
+    // 합계 보정: count에 맞추기
+    let sum = counts.reduce((a, b) => a + b, 0);
+    while (sum !== count) {
+        if (sum > count) {
+            // 가장 많은 포지션에서 1명 제거
+            const maxIdx = counts.indexOf(Math.max(...counts));
+            if (counts[maxIdx] > 8) { counts[maxIdx]--; sum--; }
+            else break;
+        } else {
+            // 가장 적은 포지션에 1명 추가
+            const minIdx = counts.indexOf(Math.min(...counts));
+            if (counts[minIdx] < 16) { counts[minIdx]++; sum++; }
+            else break;
+        }
+    }
+
+    const pool: string[] = [];
+    for (let i = 0; i < POSITIONS.length; i++) {
+        for (let j = 0; j < counts[i]; j++) {
+            pool.push(POSITIONS[i]);
+        }
+    }
+    return pool;
+}
+
+/**
+ * 키 생성 — 센터는 좌편향 분포 (큰 키일수록 희귀)
+ */
+function generateHeight(rng: SeededRandom, position: string): number {
+    const [hMin, hMax] = HEIGHT_RANGES[position];
+    if (position === 'C') {
+        // 지수적 감소: hMin 근처 밀집, hMax에 가까울수록 급격히 희귀
+        const raw = hMin + (hMax - hMin) * (1 - Math.pow(rng.next(), 2.5));
+        return clamp(Math.round(raw), hMin, hMax);
+    }
+    return rng.intRange(hMin, hMax);
+}
+
+/**
+ * 포텐셜 생성
+ * classGrade 기반 오프셋 + 제너레이셔널 탤런트 초희귀 롤
+ */
+function generatePotential(rng: SeededRandom, rank: number, potOffset: number): number {
+    // 제너레이셔널 탤런트: 1~5픽 한정, 3% 확률
+    if (rank <= 5 && rng.next() < 0.03) {
+        return rng.intRange(95, 99);
+    }
+
+    const potBase = rank <= 5 ? 82 : rank <= 14 ? 76 : rank <= 30 ? 70 : 65;
+    return clamp(Math.round(rng.normal(potBase + potOffset, 4)), 55, 99);
+}
+
+/**
+ * 다문화 이름 생성
+ * 문화권을 가중 확률로 선택 → 해당 풀에서 이름/성 랜덤 선택
+ */
+function generateName(rng: SeededRandom, poolWeights: number[]): string {
+    const poolIdx = rng.weightedIndex(poolWeights);
+    const pool = NAME_POOLS[poolIdx];
+    const first = pool.first[Math.floor(rng.next() * pool.first.length)];
+    const last = pool.last[Math.floor(rng.next() * pool.last.length)];
+    return `${first} ${last}`;
+}
 
 /**
  * 능력치 생성

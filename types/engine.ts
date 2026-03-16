@@ -48,6 +48,11 @@ export interface PbpLog {
     awayScore?: number;   // 이 이벤트 시점의 원정팀 누적 점수
 }
 
+export interface QuarterScores {
+    home: [number, number, number, number]; // Q1, Q2, Q3, Q4
+    away: [number, number, number, number];
+}
+
 export type RotationData = Record<string, { in: number, out: number }[]>;
 
 export interface ShotEvent {

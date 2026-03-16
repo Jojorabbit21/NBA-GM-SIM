@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT' | 'PROSPECT_REVEAL';
 
 export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
@@ -14,7 +14,7 @@ export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = 
     GAME: ['GAME_RECAP', 'PLAYOFF_STAGE_REVIEW'],
     TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE'],
     INJURY: ['INJURY_REPORT', 'SUSPENSION'],
-    SCOUT: ['SCOUT_REPORT'],
+    SCOUT: ['SCOUT_REPORT', 'PROSPECT_REVEAL'],
     LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'OFFSEASON_REPORT'],
     SYSTEM: ['SYSTEM'],
 };
@@ -430,9 +430,37 @@ export interface PlayoffChampionContent {
     }[];
 }
 
+export interface TeamOptionEntry {
+    playerId: string;
+    playerName: string;
+    ovr: number;
+    position: string;
+    age: number;
+    salary: number;
+    decision?: 'exercised' | 'declined';
+}
+
 export interface OffseasonReportContent {
     retired: { playerId: string; playerName: string; age: number; ovr: number; position: string }[];
     expired: { playerId: string; playerName: string; age: number; ovr: number; position: string; lastSalary: number }[];
     optionDecisions: { playerId: string; playerName: string; optionType: 'player' | 'team'; exercised: boolean; salary: number }[];
     leagueRetired?: { playerId: string; playerName: string; age: number; ovr: number; position: string; teamId: string }[];
+    pendingTeamOptions?: TeamOptionEntry[];
+}
+
+export interface ProspectRevealEntry {
+    rank: number;
+    name: string;
+    position: string;
+    age: number;
+    ovr: number;
+    height: number;
+}
+
+export interface ProspectRevealContent {
+    scoutName: string;
+    draftYear: number;
+    classGrade: string;       // '풍작', '보통', '흉작' 등
+    totalCount: number;
+    top10: ProspectRevealEntry[];
 }

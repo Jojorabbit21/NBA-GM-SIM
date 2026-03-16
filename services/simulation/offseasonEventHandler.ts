@@ -41,6 +41,46 @@ export interface OffseasonEventResult {
 
 const NO_EVENT: OffseasonEventResult = { fired: false, blocked: false };
 
+// ── 인시즌: 드래프트 풀 공개 감지 ──
+
+export interface ProspectRevealParams {
+    currentDate: string;
+    prospectRevealDate: string;
+    currentSeasonNumber: number;
+    tendencySeed: string;
+    userId?: string;
+    hasProspects: boolean;  // 이미 생성된 prospects가 있으면 스킵
+}
+
+/**
+ * prospectReveal 날짜 도달 시 드래프트 클래스를 생성한다.
+ * 인시즌 이벤트이므로 offseasonPhase와 무관하게 동작.
+ */
+export function checkProspectReveal(params: ProspectRevealParams): OffseasonEventResult {
+    const { currentDate, prospectRevealDate, currentSeasonNumber, tendencySeed, userId, hasProspects } = params;
+
+    if (hasProspects) return NO_EVENT;  // 이미 생성됨
+    if (currentDate < prospectRevealDate) return NO_EVENT;  // 아직 공개일 아님
+
+    // 다음 시즌용 드래프트 클래스 생성 (현재 시즌 오프시즌에 드래프트될 클래스)
+    const nextSeasonNumber = currentSeasonNumber + 1;
+    const draftClass = userId
+        ? generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60)
+        : [];
+
+    if (draftClass.length > 0) {
+        console.log(`📋 Prospect reveal: generated ${draftClass.length} prospects for ${nextSeasonNumber} draft`);
+    }
+
+    return {
+        fired: true,
+        blocked: false,
+        updates: {
+            generatedDraftClass: draftClass.length > 0 ? draftClass : undefined,
+        },
+    };
+}
+
 // ── 파이널 종료 감지 ──
 
 /**
@@ -76,6 +116,8 @@ export interface DispatchParams {
     currentSeasonNumber: number;
     tendencySeed: string;
     userId?: string;  // 생성 선수 저장용
+    userTeamId?: string;  // 유저팀 팀옵션 보류용
+    hasProspects?: boolean;  // prospectReveal에서 이미 생성됨
 }
 
 /**
@@ -83,7 +125,7 @@ export interface DispatchParams {
  * 각 이벤트는 offseasonPhase로 멱등성 보장.
  */
 export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventResult {
-    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId } = params;
+    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId, userTeamId } = params;
 
     // Phase가 null이면 인시즌 — 오프시즌 이벤트 불필요
     if (offseasonPhase === null) return NO_EVENT;
@@ -104,16 +146,17 @@ export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventRe
         };
     }
 
-    // ── rookieDraft: 드래프트 클래스 생성 + 드래프트 뷰 이동 ──
+    // ── rookieDraft: 드래프트 뷰 이동 (클래스는 prospectReveal에서 이미 생성됨) ──
     if (currentDate >= keyDates.rookieDraft && offseasonPhase === 'POST_LOTTERY') {
-        // 다음 시즌(currentSeasonNumber + 1)용 드래프트 클래스 생성
+        // prospectReveal에서 이미 생성되지 않은 경우에만 fallback 생성
         const nextSeasonNumber = currentSeasonNumber + 1;
-        const draftClass = userId
-            ? generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60)
-            : [];
-
-        if (draftClass.length > 0) {
-            console.log(`📝 Generated draft class: ${draftClass.length} rookies for season ${nextSeasonNumber}`);
+        let draftClass: GeneratedPlayerRow[] | undefined;
+        if (userId && !params.hasProspects) {
+            const generated = generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60);
+            if (generated.length > 0) {
+                console.log(`📝 Generated draft class (fallback): ${generated.length} rookies for season ${nextSeasonNumber}`);
+                draftClass = generated;
+            }
         }
 
         // TODO: DraftRoom 뷰 구현 시 blocked: true, navigateTo: 'DraftRoom'으로 변경
@@ -122,14 +165,14 @@ export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventRe
             blocked: false,
             updates: {
                 offseasonPhase: 'POST_DRAFT',
-                generatedDraftClass: draftClass.length > 0 ? draftClass : undefined,
+                generatedDraftClass: draftClass,
             },
         };
     }
 
     // ── moratoriumStart: 에이징/은퇴/계약만료/옵션 처리 ──
     if (currentDate >= keyDates.moratoriumStart && offseasonPhase === 'POST_DRAFT') {
-        return handleMoratoriumStart(teams, currentSeasonNumber, tendencySeed);
+        return handleMoratoriumStart(teams, currentSeasonNumber, tendencySeed, userTeamId);
     }
 
     // ── openingNight: 새 시즌 개막 ──
@@ -146,8 +189,9 @@ function handleMoratoriumStart(
     teams: Team[],
     currentSeasonNumber: number,
     tendencySeed: string,
+    userTeamId?: string,
 ): OffseasonEventResult {
-    const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber);
+    const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber, userTeamId);
 
     // 제거 대상 집합
     const removeIds = new Set<string>();

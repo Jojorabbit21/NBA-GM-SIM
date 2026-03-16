@@ -32,7 +32,8 @@ import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerat
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
-import { fetchUserGeneratedPlayers } from '../services/draft/rookieRepository';
+import { fetchUserGeneratedPlayers, fetchDraftClass } from '../services/draft/rookieRepository';
+import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
 
@@ -66,6 +67,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [news, setNews] = useState<any[]>([]);
     const [lotteryResult, setLotteryResult] = useState<LotteryResult | null>(null);
     const [leagueFAPool, setLeagueFAPool] = useState<LeagueFAPool | null>(null);
+    const [generatedFreeAgents, setGeneratedFreeAgents] = useState<Player[]>([]);
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -122,9 +124,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // --- Custom Mode: freeAgents에 적용 ---
     const effectiveFreeAgents = useMemo(() => {
         const fa = baseData?.freeAgents || [];
-        if (rosterMode !== 'custom') return fa;
-        return fa.map(applyCustomMode);
-    }, [baseData?.freeAgents, rosterMode, applyCustomMode]);
+        const base = rosterMode === 'custom' ? fa.map(applyCustomMode) : fa;
+        // 생성 FA 선수 병합
+        if (generatedFreeAgents.length === 0) return base;
+        return [...base, ...generatedFreeAgents];
+    }, [baseData?.freeAgents, rosterMode, applyCustomMode, generatedFreeAgents]);
 
     // --- Custom Mode: teams에 적용 ---
     useEffect(() => {
@@ -478,11 +482,56 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const genPlayers = await fetchUserGeneratedPlayers(userId);
                             if (genPlayers.length > 0) {
                                 console.log(`📋 Loaded ${genPlayers.length} generated players`);
-                                // TODO: mapRawPlayerToRuntimePlayer 통과 → teams/freeAgents에 병합
-                                // 드래프트 구현 시 완성 예정
+
+                                const faIds = new Set(savedFAPool?.generatedIds || []);
+                                const genFA: Player[] = [];
+
+                                for (const row of genPlayers) {
+                                    if (row.status === 'retired') continue;
+
+                                    // base_attributes → Player 변환
+                                    const player = mapRawPlayerToRuntimePlayer({
+                                        id: row.id,
+                                        base_attributes: row.base_attributes,
+                                    });
+
+                                    if (row.status === 'drafted' && row.draft_team_id) {
+                                        // 드래프트된 선수 → 해당 팀 roster에 주입
+                                        const team = loadedTeams!.find(t => t.id === row.draft_team_id);
+                                        if (team && !team.roster.some(p => p.id === row.id)) {
+                                            team.roster.push(player);
+                                        }
+                                    } else if (row.status === 'fa' && faIds.has(row.id)) {
+                                        // FA 풀에 있는 생성 선수
+                                        genFA.push(player);
+                                    }
+                                }
+
+                                if (genFA.length > 0) {
+                                    setGeneratedFreeAgents(genFA);
+                                    console.log(`🏀 Injected ${genFA.length} generated FA, ${genPlayers.length - genFA.length} drafted/other`);
+                                }
                             }
                         } catch (e) {
                             console.warn('⚠️ Failed to load generated players (non-critical):', e);
+                        }
+                    }
+
+                    // 드래프트 풀 복원: prospectReveal 이후면 DB에서 prospects 로드
+                    const currentSeasonCfg = savedSeasonNumber ? buildSeasonConfig(savedSeasonNumber) : DEFAULT_SEASON_CONFIG;
+                    if (checkpoint.sim_date >= currentSeasonCfg.keyDates.prospectReveal) {
+                        try {
+                            const nextSeason = (savedSeasonNumber ?? 1) + 1;
+                            const draftClassRows = await fetchDraftClass(userId, nextSeason);
+                            if (draftClassRows.length > 0) {
+                                const prospectPlayers = draftClassRows
+                                    .filter(r => r.status === 'fa')
+                                    .map(r => mapRawPlayerToRuntimePlayer({ id: r.id, base_attributes: r.base_attributes }));
+                                setProspects(prospectPlayers);
+                                console.log(`📋 Restored ${prospectPlayers.length} draft prospects`);
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Failed to load draft prospects (non-critical):', e);
                         }
                     }
 
@@ -979,6 +1028,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         draftPicks: draftPicksRef.current,
         lotteryResult, setLotteryResult,
         leagueFAPool, setLeagueFAPool,
+        generatedFreeAgents, setGeneratedFreeAgents,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current

@@ -86,7 +86,9 @@ const App: React.FC = () => {
         gameData.setOffseasonPhase,
         useCallback((targetView: string) => {
             setView(targetView as any);
-        }, [])
+        }, []),
+        gameData.prospects,
+        gameData.setProspects,
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -210,6 +212,7 @@ const App: React.FC = () => {
                     isGuestMode,
                     unreadMessagesCount: unreadCount,
                     userEmail: session?.user?.email,
+                    hasProspects: (gameData.prospects?.length ?? 0) > 0,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,

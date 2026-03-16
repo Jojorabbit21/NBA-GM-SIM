@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
+import { formatMoney } from '../../utils/formatMoney';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 import { GameRecapViewer } from './GameRecapViewer';
@@ -27,10 +28,12 @@ interface MessageContentRendererProps {
     onViewGameResult: (result: any) => void;
     userId: string;
     onNavigateToHof: () => void;
+    onNavigateToDraft?: () => void;
     seasonShort?: string;
+    onTeamOptionDecide?: (playerId: string, exercised: boolean) => void;
 }
 
-export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, seasonShort = '2025-26' }) => {
+export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, onNavigateToDraft, seasonShort = '2025-26', onTeamOptionDecide }) => {
 
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -65,12 +68,13 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     awayBox: raw.box_score?.away || [],
                     homeTactics: raw.tactics?.home,
                     awayTactics: raw.tactics?.away,
-                    pbpLogs: raw.pbp_logs || [], // Safety fallback
-                    pbpShotEvents: raw.shot_events || [], // Safety fallback
+                    pbpLogs: raw.pbp_logs || [],
+                    pbpShotEvents: raw.shot_events || [],
                     rotationData: raw.rotation_data,
-                    otherGames: [], // Can't easily fetch full other games context here, leave empty
+                    quarterScoresData: raw.quarter_scores,
+                    otherGames: [],
                     date: raw.date,
-                    recap: [] // Optional
+                    recap: []
                 };
 
                 if (homeTeam && awayTeam) {
@@ -708,9 +712,10 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
 
         case 'OFFSEASON_REPORT': {
             const report = content as OffseasonReportContent;
-            const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0;
+            const hasPendingTeamOptions = (report.pendingTeamOptions?.length ?? 0) > 0;
+            const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0 || hasPendingTeamOptions;
             const hasLeagueRetired = (report.leagueRetired?.length ?? 0) > 0;
-            const formatSalary = (v: number) => `$${(v / 1_000_000).toFixed(1)}M`;
+
 
             return (
                 <div className="space-y-6 text-slate-300 leading-relaxed">
@@ -746,7 +751,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                             {p.playerName}
                                         </button>
                                         <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
-                                        <span className="text-xs text-slate-600 ml-auto">{formatSalary(p.lastSalary)}</span>
+                                        <span className="text-xs text-slate-600 ml-auto">{formatMoney(p.lastSalary)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -771,9 +776,59 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                         <span className="text-xs text-slate-500">
                                             {p.exercised ? '행사 (잔류)' : '거부 (FA 전환)'}
                                         </span>
-                                        <span className="text-xs text-slate-600 ml-auto">{formatSalary(p.salary)}</span>
+                                        <span className="text-xs text-slate-600 ml-auto">{formatMoney(p.salary)}</span>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 유저 팀옵션 결정 */}
+                    {hasPendingTeamOptions && (
+                        <div>
+                            <h4 className="text-sm font-bold text-cyan-400 mb-2">팀 옵션 결정 대기</h4>
+                            <p className="text-xs text-slate-400 mb-3">아래 선수들의 팀 옵션을 행사할지 결정해 주세요.</p>
+                            <div className="space-y-2">
+                                {report.pendingTeamOptions!.map(opt => {
+                                    const decided = !!opt.decision;
+                                    const exercised = opt.decision === 'exercised';
+                                    return (
+                                        <div key={opt.playerId} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800/60">
+                                            <OvrBadge value={opt.ovr} size="sm" />
+                                            <button onClick={() => onPlayerClick(opt.playerId)} className="text-sm font-bold text-white hover:text-indigo-400 transition-colors">
+                                                {opt.playerName}
+                                            </button>
+                                            <span className="text-xs text-slate-500">{opt.position} · {opt.age}세</span>
+                                            <span className="text-xs text-slate-500">{formatMoney(opt.salary)}</span>
+                                            <div className="ml-auto flex items-center gap-1.5">
+                                                {decided ? (
+                                                    <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                                                        exercised
+                                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                                            : 'bg-red-500/20 text-red-400'
+                                                    }`}>
+                                                        {exercised ? '행사 완료' : '거부 완료'}
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => onTeamOptionDecide?.(opt.playerId, true)}
+                                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600/30 text-emerald-400 hover:bg-emerald-600/50 transition-colors"
+                                                        >
+                                                            옵션 행사
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onTeamOptionDecide?.(opt.playerId, false)}
+                                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-600/30 text-red-400 hover:bg-red-600/50 transition-colors"
+                                                        >
+                                                            행사하지 않음
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -809,6 +864,66 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         <p className="text-slate-400 text-sm">Best regards,</p>
                         <p className="text-white font-bold mt-1">부단장</p>
                         <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'PROSPECT_REVEAL': {
+            const pr = content as ProspectRevealContent;
+            return (
+                <div className="space-y-6">
+                    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5">
+                        <p className="text-slate-300 text-sm leading-relaxed">
+                            단장님, <span className="text-white font-bold">{pr.draftYear}년 드래프트 클래스</span> 스카우팅 보고서를 제출합니다.
+                            올해 클래스는 총 <span className="text-white font-bold">{pr.totalCount}명</span>의 유망주가 등록되어 있으며,
+                            전체적인 등급은 <span className={`font-black ${pr.classGrade === '풍작' ? 'text-emerald-400' : pr.classGrade === '흉작' ? 'text-red-400' : 'text-amber-400'}`}>"{pr.classGrade}"</span>으로 평가됩니다.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Top 10 유망주</h4>
+                        <Table>
+                            <TableHead>
+                                <TableRow>
+                                    <TableHeaderCell className="w-10 text-center">#</TableHeaderCell>
+                                    <TableHeaderCell>이름</TableHeaderCell>
+                                    <TableHeaderCell className="text-center">포지션</TableHeaderCell>
+                                    <TableHeaderCell className="text-center">나이</TableHeaderCell>
+                                    <TableHeaderCell className="text-center">신장</TableHeaderCell>
+                                    <TableHeaderCell className="text-center">OVR</TableHeaderCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {pr.top10.map(p => (
+                                    <TableRow key={p.rank}>
+                                        <TableCell className="text-center font-black text-slate-500">{p.rank}</TableCell>
+                                        <TableCell className="font-bold text-white">{p.name}</TableCell>
+                                        <TableCell className="text-center text-slate-400 text-xs font-bold">{p.position}</TableCell>
+                                        <TableCell className="text-center text-slate-400">{p.age}세</TableCell>
+                                        <TableCell className="text-center text-slate-400">{p.height}cm</TableCell>
+                                        <TableCell className="text-center">
+                                            <OvrBadge value={p.ovr} size="sm" />
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    {onNavigateToDraft && (
+                        <button
+                            onClick={onNavigateToDraft}
+                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-2xl font-black uppercase tracking-widest text-sm transition-all active:scale-[0.98]"
+                        >
+                            드래프트 보드 전체보기
+                        </button>
+                    )}
+
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">Respectfully,</p>
+                        <p className="text-white font-bold mt-1">{pr.scoutName}</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Director of Scouting</p>
                     </div>
                 </div>
             );

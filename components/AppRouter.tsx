@@ -16,6 +16,7 @@ import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
+import { DraftView } from '../views/DraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
@@ -375,6 +376,28 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         previousViewRef.current = 'Inbox';
                         setView('HallOfFame');
                     }}
+                    onNavigateToDraft={() => {
+                        previousViewRef.current = 'Inbox';
+                        setView('DraftRoom');
+                    }}
+                    onTeamOptionExecuted={(playerId, exercised) => {
+                        const newTeams = gameData.teams.map(t => {
+                            if (t.id !== gameData.myTeamId) return t;
+                            if (exercised) {
+                                // 행사: 옵션 필드 제거 (다음 시즌 중복 체크 방지)
+                                return { ...t, roster: t.roster.map(p =>
+                                    p.id === playerId && p.contract?.option
+                                        ? { ...p, contract: { ...p.contract, option: undefined } }
+                                        : p
+                                ) };
+                            } else {
+                                // 거부: 로스터에서 제거
+                                return { ...t, roster: t.roster.filter(p => p.id !== playerId) };
+                            }
+                        });
+                        gameData.setTeams(newTeams);
+                        gameData.forceSave({ teams: newTeams, withSnapshot: true });
+                    }}
                 />
             );
         case 'DraftLottery':
@@ -395,6 +418,17 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'DraftRoom':
+            // 인시즌 드래프트 보드 열람 모드 (prospects 존재 시)
+            if (gameData.prospects?.length > 0 && !draftOrder && !gameData.draftPicks?.order) {
+                return (
+                    <DraftView
+                        prospects={gameData.prospects}
+                        onDraft={() => {}}
+                        team={myTeam!}
+                        readOnly
+                    />
+                );
+            }
             return (
                 <div className="fixed inset-0 z-[9999] bg-slate-950">
                     <FantasyDraftView

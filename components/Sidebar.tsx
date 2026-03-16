@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
-  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
+  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus,
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
@@ -22,6 +22,7 @@ interface SidebarProps {
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
   isPostseasonOver: boolean;
+  hasProspects: boolean;
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -87,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   unreadMessagesCount,
   isRegularSeasonOver,
   isPostseasonOver,
+  hasProspects,
   userEmail,
   isCollapsed,
   onToggleCollapse,
@@ -245,6 +247,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         )}
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
+        {hasProspects && (
+          <NavItem active={currentView === 'DraftRoom'} icon={<UserPlus size={20}/>} label="드래프트 보드" onClick={() => onNavigate('DraftRoom')} {...navProps} />
+        )}
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
 
         <div className="mt-auto" />

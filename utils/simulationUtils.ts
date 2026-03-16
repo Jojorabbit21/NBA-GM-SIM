@@ -1,5 +1,5 @@
 
-import { Team, PlayoffSeries, PlayerBoxScore } from '../types';
+import { Team, PlayoffSeries, PlayerBoxScore, PbpLog, QuarterScores } from '../types';
 import { INITIAL_STATS } from './constants';
 
 /**
@@ -141,4 +141,38 @@ export const updateSeriesState = (
         series.finished = true;
         series.winnerId = series.lowerSeedId;
     }
+};
+
+/**
+ * pbpLogs에서 쿼터별 득점을 추출한다.
+ * OT는 Q4에 합산. homeScore/awayScore로 최종 보정.
+ */
+export const extractQuarterScores = (
+    pbpLogs: PbpLog[],
+    homeTeamId: string,
+    homeScore: number,
+    awayScore: number,
+): QuarterScores => {
+    const home: [number, number, number, number] = [0, 0, 0, 0];
+    const away: [number, number, number, number] = [0, 0, 0, 0];
+
+    for (const log of pbpLogs) {
+        if (log.type !== 'score' && log.type !== 'freethrow') continue;
+        const pts = log.points ?? 0;
+        if (pts === 0) continue;
+        const qi = Math.min(3, log.quarter - 1); // Q1→0, Q2→1, Q3→2, Q4+OT→3
+        if (log.teamId === homeTeamId) {
+            home[qi] += pts;
+        } else {
+            away[qi] += pts;
+        }
+    }
+
+    // 최종 스코어 보정 (엔진 quirk 대비) → Q4에 차이 반영
+    const homeDiff = homeScore - (home[0] + home[1] + home[2] + home[3]);
+    const awayDiff = awayScore - (away[0] + away[1] + away[2] + away[3]);
+    if (homeDiff !== 0) home[3] += homeDiff;
+    if (awayDiff !== 0) away[3] += awayDiff;
+
+    return { home, away };
 };

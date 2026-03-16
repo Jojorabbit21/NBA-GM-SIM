@@ -202,11 +202,10 @@ export const saveGameResults = async (results: any[]) => {
         // 2. Fallback: If error is due to missing columns, retry without heavy logs
         // Postgres error code 42703 is "undefined_column", but Supabase/Postgrest message checking is safer
         if (error.message && (error.message.includes('column') || error.message.includes('does not exist'))) {
-            console.warn("⚠️ DB Schema mismatch detected. Retrying save WITHOUT 'pbp_logs' and 'shot_events'. PLEASE RUN SQL MIGRATION.");
-            
+            console.warn("⚠️ DB Schema mismatch detected. Retrying save WITHOUT 'pbp_logs', 'shot_events', 'quarter_scores'. PLEASE RUN SQL MIGRATION.");
+
             const safeResults = results.map(r => {
-                // Destructure to exclude the problematic columns
-                const { pbp_logs, shot_events, ...rest } = r;
+                const { pbp_logs, shot_events, quarter_scores, ...rest } = r;
                 return rest;
             });
             

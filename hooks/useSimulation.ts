@@ -11,7 +11,8 @@ import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult, processInjuryRecovery, computeReturnDate } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
-import { detectFinalsEnd, dispatchOffseasonEvent } from '../services/simulation/offseasonEventHandler';
+import { detectFinalsEnd, dispatchOffseasonEvent, checkProspectReveal } from '../services/simulation/offseasonEventHandler';
+import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { OffseasonPhase } from '../types/app';
 import { archiveCurrentSeason, updateSeasonArchiveLottery } from '../services/seasonArchive';
 import { insertDraftClass } from '../services/draft/rookieRepository';
@@ -19,8 +20,9 @@ import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
-import { applyBoxToRoster, updateTeamStats, sumTeamBoxScore } from '../utils/simulationUtils';
+import { applyBoxToRoster, updateTeamStats, sumTeamBoxScore, extractQuarterScores } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
+import { calculatePlayerOvr } from '../utils/constants';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
@@ -61,7 +63,9 @@ export const useSimulation = (
     lotteryResult?: any | null,
     offseasonPhase?: OffseasonPhase,
     setOffseasonPhase?: (phase: OffseasonPhase) => void,
-    onOffseasonEvent?: (view: string) => void
+    onOffseasonEvent?: (view: string) => void,
+    prospects?: any[],
+    setProspects?: React.Dispatch<React.SetStateAction<any[]>>,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -111,6 +115,9 @@ export const useSimulation = (
 
             // DB 저장
             if (!isGuestMode && session?.user?.id) {
+                const qs = result.pbpLogs?.length
+                    ? extractQuarterScores(result.pbpLogs, spectateGame.homeTeamId, result.homeScore, result.awayScore)
+                    : undefined;
                 await saveGameResults([{
                     user_id: session.user.id,
                     game_id: spectateGame.id,
@@ -124,6 +131,7 @@ export const useSimulation = (
                     pbp_logs: result.pbpLogs,
                     shot_events: result.pbpShotEvents,
                     rotation_data: result.rotationData,
+                    ...(qs && { quarter_scores: qs }),
                     ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
                 }]);
             }
@@ -608,6 +616,64 @@ export const useSimulation = (
                 }
                 _perf['9_scoutReport'] = performance.now() - _t1;
 
+                // ★ 인시즌: 드래프트 풀 공개 감지
+                if (seasonConfig?.keyDates && (offseasonPhase ?? null) === null) {
+                    const prospectResult = checkProspectReveal({
+                        currentDate: nextDate,
+                        prospectRevealDate: seasonConfig.keyDates.prospectReveal,
+                        currentSeasonNumber,
+                        tendencySeed: tendencySeed || '',
+                        userId: session?.user?.id,
+                        hasProspects: (prospects?.length ?? 0) > 0,
+                    });
+                    if (prospectResult.fired && prospectResult.updates?.generatedDraftClass) {
+                        const dc = prospectResult.updates.generatedDraftClass;
+                        // GeneratedPlayerRow[] → Player[] 변환
+                        const players = dc.map(row => mapRawPlayerToRuntimePlayer(row));
+                        setProspects?.(players);
+                        if (!isGuestMode) {
+                            insertDraftClass(dc)
+                                .catch(e => console.warn('⚠️ Prospect class insert failed (non-critical):', e));
+                        }
+
+                        // 인박스 메시지: 드래프트 풀 공개 알림
+                        if (!isGuestMode && session?.user?.id && myTeamId) {
+                            const sorted = [...players].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+                            const top10 = sorted.slice(0, 10).map((p, i) => ({
+                                rank: i + 1,
+                                name: p.name,
+                                position: p.position,
+                                age: p.age,
+                                ovr: calculatePlayerOvr(p),
+                                height: p.height,
+                            }));
+                            const avgOvr = sorted.reduce((s, p) => s + calculatePlayerOvr(p), 0) / sorted.length;
+                            const classGrade = avgOvr >= 68 ? '풍작' : avgOvr >= 62 ? '보통' : '흉작';
+                            const nextSeason = currentSeasonNumber + 1;
+                            const scoutNames = ['김태영', '박준혁', '이승우', '최동현', '장민수'];
+                            const scoutName = scoutNames[nextSeason % scoutNames.length];
+
+                            const prospectContent: import('../types/message').ProspectRevealContent = {
+                                scoutName,
+                                draftYear: nextSeason,
+                                classGrade,
+                                totalCount: players.length,
+                                top10,
+                            };
+
+                            sendMessage(
+                                session.user.id,
+                                myTeamId,
+                                nextDate,
+                                'PROSPECT_REVEAL',
+                                `[스카우팅] ${nextSeason}년 드래프트 클래스 보고서`,
+                                prospectContent,
+                            ).then(() => refreshUnreadCount())
+                             .catch(e => console.warn('⚠️ Prospect reveal message failed:', e));
+                        }
+                    }
+                }
+
                 // ★ 오프시즌 Key Date 이벤트 디스패처
                 const currentPhase = finalsDetection.updates?.offseasonPhase ?? offseasonPhase ?? null;
                 if (currentPhase !== null && seasonConfig?.keyDates) {
@@ -621,6 +687,8 @@ export const useSimulation = (
                         currentSeasonNumber,
                         tendencySeed: tendencySeed || '',
                         userId: session?.user?.id,
+                        userTeamId: myTeamId || undefined,
+                        hasProspects: (prospects?.length ?? 0) > 0,
                     });
 
                     if (offseasonEvent.fired && offseasonEvent.updates) {
@@ -689,13 +757,17 @@ export const useSimulation = (
                                 const myExpired = op.expiredPlayers.filter(p => p.teamId === myTeamId);
                                 const myOptions = op.optionDecisions.filter(p => p.teamId === myTeamId);
                                 const leagueRetired = op.retiredPlayers.filter(p => p.teamId !== myTeamId);
+                                const myPendingTeamOptions = op.pendingTeamOptions;
 
-                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || leagueRetired.length > 0) {
+                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || leagueRetired.length > 0 || myPendingTeamOptions.length > 0) {
                                     const reportContent = {
                                         retired: myRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position })),
                                         expired: myExpired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, lastSalary: p.lastSalary })),
                                         optionDecisions: myOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, optionType: p.optionType, exercised: p.exercised, salary: p.salary })),
                                         leagueRetired: leagueRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, teamId: p.teamId })),
+                                        pendingTeamOptions: myPendingTeamOptions.length > 0
+                                            ? myPendingTeamOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, ovr: p.ovr, position: p.position, age: p.age, salary: p.salary }))
+                                            : undefined,
                                     };
                                     sendMessage(session.user.id, myTeamId, nextDate, 'OFFSEASON_REPORT', '오프시즌 로스터 변동 보고서', reportContent)
                                         .then(() => refreshUnreadCount())

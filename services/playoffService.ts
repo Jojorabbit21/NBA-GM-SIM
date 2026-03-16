@@ -77,6 +77,7 @@ export const savePlayoffGameResult = async (result: any) => {
         box_score: result.box_score,
         tactics: result.tactics,
         rotation_data: result.rotation_data,
+        ...(result.quarter_scores && { quarter_scores: result.quarter_scores }),
         ...(result.season && { season: result.season }),
     };
 

@@ -50,6 +50,7 @@ export interface SeasonKeyDates {
     rosterDeadline: string;      // 10월 3번째 월요일
     // 정규시즌
     openingNight: string;        // 10월 3번째 화요일
+    prospectReveal: string;      // 1월 1번째 월요일 — 드래프트 풀 공개
     christmasDay: string;        // 12월 25일 (고정)
     tradeDeadline: string;       // 2월 1번째 목요일
     allStarStart: string;        // 2월 3번째 금요일
@@ -101,6 +102,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     const openingNight    = nthDayOfMonth(startYear, 9, 2, 3);                // 10월 3번째 화요일
 
     // ── 정규시즌 (endYear 기준) ──
+    const prospectReveal   = nthDayOfMonth(endYear, 0, 1, 1);                 // 1월 1번째 월요일 (드래프트 풀 공개)
     const tradeDeadline    = nthDayOfMonth(endYear, 1, 4, 1);                 // 2월 1번째 목요일
     const allStarStart     = nthDayOfMonth(endYear, 1, 5, 3);                 // 2월 3번째 금요일
     const allStarEnd       = addDays(allStarStart, 3);                        // +3일 (월요일)
@@ -127,6 +129,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
         rosterDeadline: fmt(rosterDeadline),
         // 정규시즌
         openingNight: fmt(openingNight),
+        prospectReveal: fmt(prospectReveal),
         christmasDay: `${startYear}-12-25`,
         tradeDeadline: fmt(tradeDeadline),
         allStarStart: fmt(allStarStart),

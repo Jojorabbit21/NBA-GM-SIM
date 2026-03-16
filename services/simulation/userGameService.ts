@@ -3,7 +3,7 @@ import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } 
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateGame } from '../gameEngine';
-import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
@@ -175,6 +175,9 @@ export const applyUserGameResult = async (
     }
 
     // 5. DB Save & Messages
+    const userQS = result.pbpLogs?.length
+        ? extractQuarterScores(result.pbpLogs, homeTeam.id, result.homeScore, result.awayScore)
+        : undefined;
     const resultPayload = {
         user_id: userId || 'guest',
         game_id: userGame.id,
@@ -190,6 +193,7 @@ export const applyUserGameResult = async (
         is_playoff: userGame.isPlayoff || false,
         series_id: userGame.seriesId,
         rotation_data: result.rotationData,
+        ...(userQS && { quarter_scores: userQS }),
         ...(season && { season }),
     };
 

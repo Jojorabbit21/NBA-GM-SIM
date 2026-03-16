@@ -178,6 +178,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 homeTactics: raw.tactics?.home, awayTactics: raw.tactics?.away,
                 pbpLogs: raw.pbp_logs || [], pbpShotEvents: raw.shot_events || [],
                 rotationData: raw.rotation_data,
+                quarterScoresData: raw.quarter_scores,
                 otherGames: [], date: raw.date, recap: []
             });
         } finally {

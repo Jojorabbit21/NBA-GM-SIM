@@ -119,6 +119,22 @@ export const fetchMessageContent = async (messageId: string): Promise<any | null
 };
 
 /**
+ * Update a message's content JSONB (e.g., team option decisions)
+ */
+export const patchMessageContent = async (messageId: string, content: any): Promise<boolean> => {
+    const { error } = await supabase
+        .from('user_messages')
+        .update({ content })
+        .eq('id', messageId);
+
+    if (error) {
+        console.error("Error patching message content:", error);
+        return false;
+    }
+    return true;
+};
+
+/**
  * Mark a single message as read
  */
 export const markMessageAsRead = async (messageId: string) => {
