@@ -458,7 +458,7 @@ export interface ProspectRevealEntry {
 }
 
 export interface ProspectRevealContent {
-    scoutName: string;
+    teamId: string;
     draftYear: number;
     classGrade: string;       // '풍작', '보통', '흉작' 등
     totalCount: number;

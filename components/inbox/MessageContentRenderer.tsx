@@ -871,6 +871,8 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
 
         case 'PROSPECT_REVEAL': {
             const pr = content as ProspectRevealContent;
+            const prTeamData = TEAM_DATA[pr.teamId];
+            const prTeamFullName = prTeamData ? `${prTeamData.city} ${prTeamData.name}` : pr.teamId;
             return (
                 <div className="space-y-6">
                     <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5">
@@ -883,32 +885,32 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
 
                     <div>
                         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Top 10 유망주</h4>
-                        <Table>
-                            <TableHead>
-                                <TableRow>
-                                    <TableHeaderCell className="w-10 text-center">#</TableHeaderCell>
-                                    <TableHeaderCell>이름</TableHeaderCell>
-                                    <TableHeaderCell className="text-center">포지션</TableHeaderCell>
-                                    <TableHeaderCell className="text-center">나이</TableHeaderCell>
-                                    <TableHeaderCell className="text-center">신장</TableHeaderCell>
-                                    <TableHeaderCell className="text-center">OVR</TableHeaderCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="border-b border-slate-700/50">
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold w-8">#</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">이름</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">포지션</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">나이</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">신장</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">OVR</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 {pr.top10.map(p => (
-                                    <TableRow key={p.rank}>
-                                        <TableCell className="text-center font-black text-slate-500">{p.rank}</TableCell>
-                                        <TableCell className="font-bold text-white">{p.name}</TableCell>
-                                        <TableCell className="text-center text-slate-400 text-xs font-bold">{p.position}</TableCell>
-                                        <TableCell className="text-center text-slate-400">{p.age}세</TableCell>
-                                        <TableCell className="text-center text-slate-400">{p.height}cm</TableCell>
-                                        <TableCell className="text-center">
+                                    <tr key={p.rank} className="border-b border-slate-800/50">
+                                        <td className="py-2 px-2 text-slate-500 font-black">{p.rank}</td>
+                                        <td className="py-2 px-2 text-white font-bold">{p.name}</td>
+                                        <td className="py-2 px-2 text-center text-slate-400 font-bold">{p.position}</td>
+                                        <td className="py-2 px-2 text-center text-slate-400">{p.age}세</td>
+                                        <td className="py-2 px-2 text-center text-slate-400">{p.height}cm</td>
+                                        <td className="py-2 px-2 text-center">
                                             <OvrBadge value={p.ovr} size="sm" />
-                                        </TableCell>
-                                    </TableRow>
+                                        </td>
+                                    </tr>
                                 ))}
-                            </TableBody>
-                        </Table>
+                            </tbody>
+                        </table>
                     </div>
 
                     {onNavigateToDraft && (
@@ -921,9 +923,8 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     )}
 
                     <div className="pt-4">
-                        <p className="text-slate-400 text-sm">Respectfully,</p>
-                        <p className="text-white font-bold mt-1">{pr.scoutName}</p>
-                        <p className="text-slate-500 text-xs mt-0.5">Director of Scouting</p>
+                        <p className="text-white font-bold">{prTeamFullName} 스카우팅 담당자</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Head of Scouting</p>
                     </div>
                 </div>
             );

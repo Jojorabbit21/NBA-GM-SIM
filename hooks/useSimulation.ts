@@ -30,8 +30,6 @@ import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent } from
 import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
-const SCOUT_NAMES = ['김태영', '박준혁', '이승우', '최동현', '장민수'];
-
 export const useSimulation = (
     teams: Team[],
     setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
@@ -654,10 +652,10 @@ export const useSimulation = (
                             const avgOvr = withOvr.reduce((s, e) => s + e.ovr, 0) / withOvr.length;
                             const classGrade = avgOvr >= 68 ? '풍작' : avgOvr >= 62 ? '보통' : '흉작';
                             const nextSeason = currentSeasonNumber + 1;
-                            const scoutName = SCOUT_NAMES[nextSeason % SCOUT_NAMES.length];
+                            const draftSeasonLabel = seasonConfig?.seasonLabel || `${nextSeason}년`;
 
                             const prospectContent: ProspectRevealContent = {
-                                scoutName,
+                                teamId: myTeamId,
                                 draftYear: nextSeason,
                                 classGrade,
                                 totalCount: players.length,
@@ -669,7 +667,7 @@ export const useSimulation = (
                                 myTeamId,
                                 nextDate,
                                 'PROSPECT_REVEAL',
-                                `[스카우팅] ${nextSeason}년 드래프트 클래스 보고서`,
+                                `[스카우팅] ${draftSeasonLabel} 드래프트 클래스 보고서`,
                                 prospectContent,
                             ).then(() => refreshUnreadCount())
                              .catch(e => console.warn('⚠️ Prospect reveal message failed:', e));
