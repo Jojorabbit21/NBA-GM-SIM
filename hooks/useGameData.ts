@@ -83,7 +83,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
 
     // --- Base Data Query ---
-    const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData();
+    const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData(!!session || isGuestMode);
 
     // --- Custom Mode: 부상 제거 + override 머지 + OVR 재계산 ---
     const applyCustomMode = useCallback((player: Player): Player => {

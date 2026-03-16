@@ -10,9 +10,10 @@ import { populateGMData } from './tradeEngine/gmProfiler';
 import { rebuildDerivedConstants } from '../utils/constants';
 
 // --- Fetch Base Data (Static Initial State) ---
-export const useBaseData = () => {
+export const useBaseData = (enabled: boolean = true) => {
     return useQuery({
         queryKey: ['baseData'],
+        enabled,
         queryFn: async () => {
             console.log("🔄 Fetching Base Data from Supabase...");
 
