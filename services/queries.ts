@@ -47,25 +47,13 @@ export const useBaseData = () => {
                 console.warn("⚠️ 'meta_gms' empty/error, using fallback seed-based generation", gmsRes.error);
             }
 
-            // 2. meta_players
-            let playersData: any[] = [];
-            if (!playersRes.error && playersRes.data && playersRes.data.length > 0) {
-                playersData = playersRes.data;
-            } else {
-                console.warn("⚠️ 'meta_players' empty/error, trying fallback...", playersRes.error);
-                const { data: backupPlayers } = await supabase.from('players').select('*');
-                if (backupPlayers) playersData = backupPlayers;
-            }
+            // 2. meta_players — 핵심 테이블, 실패 시 throw
+            if (playersRes.error) throw new Error(`선수 데이터 로드 실패: ${playersRes.error.message}`);
+            const playersData = playersRes.data || [];
 
-            // 3. meta_schedule
-            let scheduleData: any[] = [];
-            if (!scheduleRes.error && scheduleRes.data && scheduleRes.data.length > 0) {
-                scheduleData = scheduleRes.data;
-            } else {
-                console.warn("⚠️ 'meta_schedule' empty/error, trying fallback...", scheduleRes.error);
-                const { data: backupSchedule } = await supabase.from('schedule').select('*');
-                if (backupSchedule) scheduleData = backupSchedule;
-            }
+            // 3. meta_schedule — 핵심 테이블, 실패 시 throw
+            if (scheduleRes.error) throw new Error(`일정 데이터 로드 실패: ${scheduleRes.error.message}`);
+            const scheduleData = scheduleRes.data || [];
 
             const teams: Team[] = mapPlayersToTeams(playersData);
             const freeAgents: Player[] = mapFreeAgents(playersData);
@@ -145,8 +133,12 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
     return useQuery({
         queryKey: ['playerGameLog', playerId, teamId],
         queryFn: async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            const userId = session?.user?.id;
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError) {
+                console.warn('⚠️ [usePlayerGameLog] Session error:', sessionError.message);
+                return [];
+            }
+            const userId = sessionData.session?.user?.id;
             if (!userId || !teamId) return [];
 
             const [regularRes, playoffRes] = await Promise.all([
@@ -163,6 +155,9 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
                     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
                     .order('date', { ascending: false }),
             ]);
+
+            if (regularRes.error) console.warn('⚠️ [usePlayerGameLog] Regular games error:', regularRes.error);
+            if (playoffRes.error) console.warn('⚠️ [usePlayerGameLog] Playoff games error:', playoffRes.error);
 
             const allGames = [
                 ...(regularRes.data || []).map(g => ({ ...g, isPlayoff: false })),
@@ -215,9 +210,10 @@ export const saveGameResults = async (results: any[]) => {
             });
             
             const { error: retryError } = await supabase.from('user_game_results').insert(safeResults);
-            
+
             if (retryError) {
                 console.error("❌ Save Fallback Failed:", retryError);
+                throw retryError;
             } else {
                 console.log("✅ Saved game results (Partial Data - Logs Dropped) to DB.");
             }
@@ -230,11 +226,22 @@ export const saveGameResults = async (results: any[]) => {
 /** 배치 시뮬레이션용: 대량 결과를 50건씩 청크로 나눠 저장 */
 export const bulkSaveGameResults = async (results: any[], chunkSize = 50) => {
     if (!results || results.length === 0) return;
+    let failedChunks = 0;
     for (let i = 0; i < results.length; i += chunkSize) {
         const chunk = results.slice(i, i + chunkSize);
-        await saveGameResults(chunk);
+        try {
+            await saveGameResults(chunk);
+        } catch (e) {
+            failedChunks++;
+            console.error(`❌ Chunk ${Math.floor(i / chunkSize) + 1} save failed, continuing...`, e);
+        }
     }
-    console.log(`✅ Bulk saved ${results.length} game results in ${Math.ceil(results.length / chunkSize)} chunks.`);
+    const totalChunks = Math.ceil(results.length / chunkSize);
+    if (failedChunks > 0) {
+        console.warn(`⚠️ Bulk save: ${failedChunks}/${totalChunks} chunks failed.`);
+    } else {
+        console.log(`✅ Bulk saved ${results.length} game results in ${totalChunks} chunks.`);
+    }
 };
 
 export const saveUserTransaction = async (userId: string, tx: Transaction) => {

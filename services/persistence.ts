@@ -175,6 +175,11 @@ export const loadUserHistory = async (userId: string, season?: string) => {
 
     const [gamesRes, txRes] = await Promise.all([gamesQuery, txQuery]);
 
+    // 게임 기록은 state replay의 source of truth — 실패 시 throw
+    if (gamesRes.error) throw gamesRes.error;
+    // 트랜잭션은 비핵심 — 실패 시 경고 후 빈 배열
+    if (txRes.error) console.warn('⚠️ [loadUserHistory] Transactions fetch failed:', txRes.error);
+
     return {
         games: gamesRes.data || [],
         transactions: txRes.data || []
@@ -191,9 +196,9 @@ export const countUserData = async (userId: string, season?: string) => {
 
     const [gamesCount, playoffCount, txCount] = await Promise.all([gamesQ, playoffQ, txQ]);
     return {
-        games: gamesCount.count || 0,
-        playoffs: playoffCount.count || 0,
-        transactions: txCount.count || 0,
+        games: gamesCount.error ? -1 : (gamesCount.count ?? 0),
+        playoffs: playoffCount.error ? -1 : (playoffCount.count ?? 0),
+        transactions: txCount.error ? -1 : (txCount.count ?? 0),
     };
 };
 
@@ -210,12 +215,15 @@ export const loadUserTransactions = async (userId: string) => {
 
 // 4. Write Logs
 export const writeGameResult = async (result: any) => {
-    // result object now contains shot_events, assuming the backend can handle it
-    await supabase.from('user_game_results').insert(result);
+    const res = await supabase.from('user_game_results').insert(result);
+    if (res.error) {
+        console.error('❌ [writeGameResult]:', res.error);
+        throw res.error;
+    }
 };
 
 export const writeTransaction = async (userId: string, tx: Transaction) => {
-    await supabase.from('user_transactions').insert({
+    const res = await supabase.from('user_transactions').insert({
         id: tx.id,
         user_id: userId,
         date: tx.date,
@@ -224,4 +232,8 @@ export const writeTransaction = async (userId: string, tx: Transaction) => {
         description: tx.description,
         details: tx.details
     });
+    if (res.error) {
+        console.error('❌ [writeTransaction]:', res.error);
+        throw res.error;
+    }
 };

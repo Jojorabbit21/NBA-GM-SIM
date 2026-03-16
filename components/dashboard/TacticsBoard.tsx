@@ -32,10 +32,18 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
     // Initial Load
     useEffect(() => {
         const init = async () => {
-            const { data } = await supabase.auth.getUser();
-            if (data.user) {
-                setUserId(data.user.id);
-                loadPresets(data.user.id);
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (error) {
+                    console.warn('⚠️ [TacticsBoard] getUser failed:', error.message);
+                    return;
+                }
+                if (data.user) {
+                    setUserId(data.user.id);
+                    loadPresets(data.user.id);
+                }
+            } catch (e) {
+                console.warn('⚠️ [TacticsBoard] init error:', e);
             }
         };
         init();

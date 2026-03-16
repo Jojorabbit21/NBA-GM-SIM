@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
 import { useSimulation } from './hooks/useSimulation';
@@ -25,7 +26,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 // 신규 생성된 모듈 모듈 임포트
-import FullScreenLoader from './components/FullScreenLoader';
+import FullScreenLoader, { DatabaseErrorView } from './components/FullScreenLoader';
 import SkeletonLoader from './components/SkeletonLoader';
 import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
@@ -37,6 +38,7 @@ import { ModeSelectView } from './views/ModeSelectView';
 import { DraftPoolSelectView } from './views/DraftPoolSelectView';
 
 const App: React.FC = () => {
+    const queryClient = useQueryClient();
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
     const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
     const gameData = useGameData(session, isGuestMode, rosterMode);
@@ -172,6 +174,8 @@ const App: React.FC = () => {
     if (authLoading) return <FullScreenLoader message="잠시만 기다려주세요..." />;
     // 2. 미로그인: 인증 화면 (랜덤 메세지가 뜨지 않도록 isSaveLoading보다 먼저)
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
+    // 2-1. Supabase 서버 연결 실패: 에러 화면 + 재시도 버튼
+    if (gameData.isBaseDataError) return <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} />;
     // 3. 로그인 후 게임 데이터 로딩: 스켈레톤 UI + 프로그레스
     if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} />;
     if (!gameData.myTeamId) {

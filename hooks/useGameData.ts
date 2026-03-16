@@ -83,7 +83,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
 
     // --- Base Data Query ---
-    const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
+    const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData();
 
     // --- Custom Mode: 부상 제거 + override 머지 + OVR 재계산 ---
     const applyCustomMode = useCallback((player: Player): Player => {
@@ -219,7 +219,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             loadUserTransactions(userId),
                         ]);
                         playoffBracketState = pbState;
-                        const isValid =
+                        // count가 -1이면 DB 에러 — 스냅샷 검증 불가, full replay로 fallback
+                        const countsReliable = counts.games >= 0 && counts.playoffs >= 0 && counts.transactions >= 0;
+                        if (!countsReliable) console.warn('⚠️ countUserData returned errors, falling back to full replay');
+                        const isValid = countsReliable &&
                             snapshot.game_count === counts.games &&
                             snapshot.playoff_game_count === counts.playoffs &&
                             snapshot.transaction_count === counts.transactions;
@@ -702,7 +705,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         isResettingRef.current = true;
         try {
             const userId = session.user.id;
-            await Promise.all([
+            const deleteResults = await Promise.all([
                 supabase.from('saves').delete().eq('user_id', userId),
                 supabase.from('user_game_results').delete().eq('user_id', userId),
                 supabase.from('user_transactions').delete().eq('user_id', userId),
@@ -712,6 +715,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 supabase.from('user_messages').delete().eq('user_id', userId),
                 supabase.from('user_tactics').delete().eq('user_id', userId)
             ]);
+            const deleteErrors = deleteResults.filter(r => r.error).map(r => r.error!.message);
+            if (deleteErrors.length > 0) {
+                console.error('❌ [handleResetData] Partial failure:', deleteErrors);
+            }
             
             queryClient.removeQueries({ predicate: q => q.queryKey[0] !== 'baseData' });
             
@@ -911,6 +918,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         news, setNews,
         
         isBaseDataLoading,
+        isBaseDataError,
         isSaveLoading,
         loadingProgress,
         isSaving,

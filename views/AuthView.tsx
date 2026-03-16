@@ -69,14 +69,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
   }, [resendCooldown > 0]);
 
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
-    const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+    const { data, error: selectError } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (selectError) {
+        console.warn('⚠️ [ensureProfileExists] Profile check failed:', selectError.message);
+        return;
+    }
     if (!data) {
-        await supabase.from('profiles').insert({
+        const { error: insertError } = await supabase.from('profiles').insert({
             id: userId,
             email: userEmail,
             nickname: userEmail ? userEmail.split('@')[0] : 'GM',
             created_at: new Date().toISOString()
         });
+        if (insertError) console.warn('⚠️ [ensureProfileExists] Profile insert failed:', insertError.message);
     }
   };
 
@@ -180,6 +185,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
             }
             setOtp('');
           }
+        }).catch((e: any) => {
+          console.error('⚠️ [verifyOtp] Error:', e);
+          setMessage({ type: 'error', text: '인증 처리 중 오류가 발생했습니다.' });
         }).finally(() => setLoading(false));
       }, 100);
     }

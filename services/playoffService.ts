@@ -50,6 +50,7 @@ export const savePlayoffState = async (
 
     if (error) {
         console.error("❌ Failed to save playoff state:", error);
+        throw error;
     } else {
         console.log("✅ Playoff Bracket Saved.");
     }
@@ -84,6 +85,7 @@ export const savePlayoffGameResult = async (result: any) => {
 
     if (error) {
         console.error("❌ Failed to save playoff game result:", error);
+        throw error;
     }
 };
 

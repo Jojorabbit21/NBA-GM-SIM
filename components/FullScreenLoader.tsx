@@ -46,3 +46,17 @@ const FullScreenLoader: React.FC<FullScreenLoaderProps> = ({ message }) => {
 };
 
 export default FullScreenLoader;
+
+/** Supabase 서버 연결 실패 시 표시되는 에러 화면 */
+export const DatabaseErrorView: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
+    <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[1000] gap-6">
+        <p className="text-2xl font-black pretendard text-red-400">서버 연결에 실패했습니다</p>
+        <p className="text-slate-400 text-sm">Supabase 서비스에 접근할 수 없습니다. 잠시 후 다시 시도해주세요.</p>
+        <button
+            onClick={onRetry}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl transition-all"
+        >
+            다시 시도
+        </button>
+    </div>
+);
