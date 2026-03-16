@@ -345,13 +345,19 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         const showReel = isSpinning && reel.length > 0;
         const showResult = sp === 'revealed' || isRevealed;
         const isFirstPick = pickNum === 1;
-        // 1픽 reveal 직후 강조 애니메이션 (ready → revealed, 릴 없음)
-        const isFirstPickRevealing = isFirstPick && sp === 'ready';
+        // 1픽 ready 단계: 금색 배경 → revealed 단계: 팀 색상으로 트랜지션
+        const isFirstPickReady = isFirstPick && sp === 'ready';
+        const isFirstPickRevealed = isFirstPick && showResult;
 
         // 릴 translateY 계산
         const reelOffset = sp === 'spinning'
             ? -(reel.length - 1) * REEL_ITEM_HEIGHT
             : 0;
+
+        // 1픽 배경색 결정: ready → 금색, revealed → 팀색상
+        const slotBgColor = isFirstPickReady
+            ? '#d4a017'
+            : showResult ? teamColor : 'rgba(30,41,59,0.4)';
 
         return (
             <div
@@ -360,28 +366,25 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                     showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
                 } ${isSpinning && !isFirstPick ? 'ring-2 ring-amber-400/60' : ''} ${
                     showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
-                } ${isFirstPickRevealing ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
+                } ${isFirstPickReady ? 'ring-2 ring-amber-400' : ''}`}
                 style={{
-                    backgroundColor: showResult ? teamColor : 'rgba(30,41,59,0.4)',
+                    backgroundColor: slotBgColor,
                     height: REEL_ITEM_HEIGHT + 40,
-                    transition: `background-color 0.5s ease`,
-                    ...(showResult && isFirstPick ? {
+                    transition: `background-color 0.8s ease`,
+                    ...(isFirstPickReady ? {
+                        boxShadow: `0 0 40px rgba(212, 160, 23, 0.6), 0 0 80px rgba(212, 160, 23, 0.3)`,
+                    } : {}),
+                    ...(isFirstPickRevealed ? {
                         boxShadow: `0 0 30px ${teamColor}80, 0 0 60px ${teamColor}40`,
                     } : {}),
                 }}
             >
                 {/* 픽 번호 뱃지 */}
-                <div className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black ${
-                    showResult ? 'bg-black/30 text-white' : isFirstPickRevealing ? 'bg-amber-500/30 text-amber-400' : 'bg-slate-800/60 text-slate-600'
+                <div className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black transition-all duration-500 ${
+                    showResult ? 'bg-black/30 text-white' : isFirstPickReady ? 'bg-black/20 text-white' : 'bg-slate-800/60 text-slate-600'
                 }`}>
                     {pickNum}
                 </div>
-
-                {/* 1픽 강조 글로우 */}
-                {showResult && isFirstPick && (
-                    <div className="absolute inset-0 z-10 pointer-events-none rounded-2xl animate-pulse"
-                        style={{ boxShadow: `inset 0 0 20px ${teamColor}40` }} />
-                )}
 
                 {/* 릴 윈도우 */}
                 <div
@@ -432,10 +435,10 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                                 )}
                             </div>
                         </div>
-                    ) : isFirstPickRevealing ? (
-                        /* 1픽 대기 중 — 깜빡이는 효과 */
-                        <div className="flex items-center justify-center h-full animate-pulse">
-                            <span className="text-amber-400 text-lg font-black">1ST PICK</span>
+                    ) : isFirstPickReady ? (
+                        /* 1픽 대기 중 — 금색 배경 (텍스트 없음, 배경색만 금색으로 채움) */
+                        <div className="flex items-center justify-center h-full">
+                            <div className="w-16 h-16 rounded-full bg-white/10 animate-pulse" />
                         </div>
                     ) : (
                         /* 빈 슬롯 */
@@ -468,7 +471,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                     className={`absolute inset-0 w-full h-full object-cover blur-md transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}
                 />
-                <div className="absolute inset-0 bg-slate-950/88" />
+                <div className="absolute inset-0 bg-slate-950/90" />
             </div>
 
             {/* Title */}
