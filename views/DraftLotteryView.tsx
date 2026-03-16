@@ -366,7 +366,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                     showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
                 } ${isSpinning ? 'ring-2 ring-amber-400/60' : ''} ${
                     showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
-                } ${isFirstPickReady ? 'ring-2 ring-amber-400' : ''}`}
+                } ${isFirstPickReady || isFirstPickRevealed ? 'ring-2 ring-amber-400' : ''}`}
                 style={{
                     backgroundColor: slotBgColor,
                     height: REEL_ITEM_HEIGHT + 40,
@@ -375,7 +375,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                         boxShadow: `0 0 40px rgba(212, 160, 23, 0.6), 0 0 80px rgba(212, 160, 23, 0.3)`,
                     } : {}),
                     ...(isFirstPickRevealed ? {
-                        boxShadow: `0 0 30px ${teamColor}80, 0 0 60px ${teamColor}40`,
+                        boxShadow: `0 0 30px rgba(212, 160, 23, 0.5), 0 0 60px ${teamColor}40`,
                     } : {}),
                 }}
             >
@@ -466,7 +466,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             {/* Background Image */}
             <div className="absolute inset-0 pointer-events-none">
                 <img
-                    src="/images/lottery.png"
+                    src="/images/lottery2.png"
                     alt=""
                     className={`absolute inset-0 w-full h-full object-cover blur-md transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}
