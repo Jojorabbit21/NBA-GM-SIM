@@ -418,6 +418,19 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                 />
             );
+        case 'DraftBoard':
+            // 인시즌 드래프트 보드 열람 모드
+            if (gameData.prospects?.length > 0) {
+                return (
+                    <DraftView
+                        prospects={gameData.prospects}
+                        onDraft={() => {}}
+                        team={myTeam!}
+                        readOnly
+                    />
+                );
+            }
+            return null;
         case 'DraftRoom':
             // 오프시즌 루키 드래프트 (prospects + lotteryResult 존재 시)
             if (gameData.prospects?.length > 0 && gameData.lotteryResult) {
@@ -434,17 +447,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             }}
                         />
                     </div>
-                );
-            }
-            // 인시즌 드래프트 보드 열람 모드 (prospects 존재, 로터리 미완료)
-            if (gameData.prospects?.length > 0 && !draftOrder && !gameData.draftPicks?.order) {
-                return (
-                    <DraftView
-                        prospects={gameData.prospects}
-                        onDraft={() => {}}
-                        team={myTeam!}
-                        readOnly
-                    />
                 );
             }
             // 판타지 드래프트 (게임 시작 시 커스텀 모드)
