@@ -121,8 +121,12 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         ? JSON.parse(raw.tendencies)
         : (raw.tendencies || undefined);
         
-    // raw 데이터와 baseAttrs 병합 (baseAttrs가 우선순위 높음)
-    const p = { ...raw, ...baseAttrs };
+    // raw 데이터와 baseAttrs 병합 (baseAttrs가 우선순위 높음, 단 row-level 컬럼은 최종 우선)
+    // row-level name/position 등이 base_attributes 안의 동명 필드보다 우선하도록 재적용
+    const rowOverrides: Record<string, any> = {};
+    if (raw.name) rowOverrides.name = raw.name;
+    if (raw.position) rowOverrides.position = raw.position;
+    const p = { ...raw, ...baseAttrs, ...rowOverrides };
 
     // 1. Categories (Defaults to 70 if missing to allow OVR calc to function)
     const ins = Number(getCol(p, ['ins', 'INS', 'Inside']) || 70);
