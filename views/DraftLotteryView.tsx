@@ -364,7 +364,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 key={pickNum}
                 className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
                     showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isSpinning && !isFirstPick ? 'ring-2 ring-amber-400/60' : ''} ${
+                } ${isSpinning ? 'ring-2 ring-amber-400/60' : ''} ${
                     showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
                 } ${isFirstPickReady ? 'ring-2 ring-amber-400' : ''}`}
                 style={{
