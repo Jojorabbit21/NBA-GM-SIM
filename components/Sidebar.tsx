@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown, Settings, Briefcase,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -30,9 +30,6 @@ interface SidebarProps {
   onEditorClick: () => void;
   onSimSettingsClick: () => void;
   onLogout: () => void;
-  onSimulateSeason?: () => void;
-  isBatchRunning?: boolean;
-  onEndSeasonClick?: () => void;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -98,12 +95,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onEditorClick,
   onSimSettingsClick,
   onLogout,
-  onSimulateSeason,
-  isBatchRunning,
-  onEndSeasonClick,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
@@ -239,24 +232,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       </div>
 
-      {/* 시즌 종료 버튼 — 팀 정보 하단 */}
-      {isPostseasonOver && onEndSeasonClick && (
-        <div className={`border-b border-white/10 transition-all duration-500 ${isCollapsed ? 'px-4 py-3' : 'px-6 py-4'}`}>
-          <button
-            onClick={onEndSeasonClick}
-            className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest transition-all ${
-              isCollapsed ? 'px-2 py-2.5 text-[10px]' : 'px-4 py-3 text-base'
-            }`}
-            title={isCollapsed ? '시즌 종료' : undefined}
-          >
-            <span className={`whitespace-nowrap overflow-hidden transition-all duration-500 ${
-              isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px]'
-            }`}>
-              시즌 종료
-            </span>
-          </button>
-        </div>
-      )}
 
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
@@ -268,30 +243,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         {isRegularSeasonOver && (
           <NavItem active={currentView === 'Playoffs'} icon={<Swords size={20}/>} label="플레이오프" onClick={() => onNavigate('Playoffs')} {...navProps} />
         )}
-        <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="일정" onClick={() => onNavigate('Schedule')} {...navProps} />
+        <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
-
-        {/* 시즌 전체 진행 (정규시즌) / 플레이오프 자동 진행 */}
-        {!isPostseasonOver && onSimulateSeason && (
-          <button
-            onClick={() => setShowBatchConfirm(true)}
-            disabled={isBatchRunning}
-            className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
-              isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
-            } opacity-60 hover:opacity-90 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed`}
-            title={isCollapsed ? (isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행') : undefined}
-          >
-            <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
-              <span className="shrink-0"><FastForward size={20} /></span>
-              <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
-                isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
-              }`}>
-                {isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행'}
-              </span>
-            </div>
-          </button>
-        )}
 
         <div className="mt-auto" />
       </nav>
@@ -315,37 +269,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </div>
     </aside>
 
-    {/* 시즌 전체 진행 확인 다이얼로그 (aside 밖 — 스태킹 컨텍스트 탈출) */}
-    {showBatchConfirm && (
-      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[2000]">
-        <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
-          <h3 className="text-lg font-black text-slate-100 uppercase tracking-wide mb-4">
-            {isRegularSeasonOver ? '플레이오프 자동 진행' : '시즌 전체 진행'}
-          </h3>
-          <p className="text-sm text-slate-400 leading-relaxed mb-6">
-            {isRegularSeasonOver
-              ? '현재 전술로 남은 플레이오프를 자동 시뮬레이션합니다.'
-              : '현재 전술로 남은 정규시즌과 플레이오프를 자동 시뮬레이션합니다.'
-            }<br />
-            경기 중 전술 변경은 불가능합니다. 계속하시겠습니까?
-          </p>
-          <div className="flex gap-3 justify-end">
-            <button
-              onClick={() => setShowBatchConfirm(false)}
-              className="px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition-all"
-            >
-              취소
-            </button>
-            <button
-              onClick={() => { setShowBatchConfirm(false); onSimulateSeason?.(); }}
-              className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all"
-            >
-              시작
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
     <LegalModal
       isOpen={showTermsModal}
       onClose={() => setShowTermsModal(false)}

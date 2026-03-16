@@ -56,7 +56,8 @@ export async function runBatchSeason(
     cancelToken: { cancelled: boolean },
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
-    seasonConfig?: SeasonConfig
+    seasonConfig?: SeasonConfig,
+    stopDate?: string
 ): Promise<BatchSeasonResult> {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const allGameResultsToSave: any[] = [];
@@ -100,6 +101,12 @@ export async function runBatchSeason(
         dateIndex++;
         if (cancelToken.cancelled) {
             lastDate = date;
+            break;
+        }
+
+        // stopDate 이후면 중단 (해당 날짜까지만 진행)
+        if (stopDate && date > stopDate) {
+            lastDate = unplayedDates[dateIndex - 2] ?? date;
             break;
         }
 

@@ -33,6 +33,7 @@ interface DashboardViewProps {
   coachingData?: LeagueCoachingData | null;
   initialTab?: DashboardTab;
   onCoachClick?: (teamId: string) => void;
+  seasonStartYear?: number;
 }
 
 export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule';
@@ -41,7 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
-  userId, onViewGameResult, coachingData, initialTab, onCoachClick
+  userId, onViewGameResult, coachingData, initialTab, onCoachClick, seasonStartYear
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'rotation');
 
@@ -199,6 +200,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         userId={userId}
                         onViewGameResult={onViewGameResult}
                         calendarOnly
+                        seasonStartYear={seasonStartYear}
                     />
                   </div>
               )}

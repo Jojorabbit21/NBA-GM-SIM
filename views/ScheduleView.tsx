@@ -20,10 +20,8 @@ interface ScheduleViewProps {
   onStartUserGame?: () => void;
   isSimulating?: boolean;
   playoffSeries?: PlayoffSeries[];
+  seasonStartYear?: number;
 }
-
-const MIN_MONTH = new Date(2025, 9, 1);  // October 2025
-const MAX_MONTH = new Date(2026, 5, 1);  // June 2026
 
 interface CalendarCell {
   day: number;
@@ -33,14 +31,17 @@ interface CalendarCell {
   month: number;        // 0-indexed
 }
 
-export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult, calendarOnly = false, onSpectateGame, onStartUserGame, isSimulating = false, playoffSeries = [] }) => {
+export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult, calendarOnly = false, onSpectateGame, onStartUserGame, isSimulating = false, playoffSeries = [], seasonStartYear = 2025 }) => {
+  const MIN_MONTH = useMemo(() => new Date(seasonStartYear, 9, 1), [seasonStartYear]);   // October
+  const MAX_MONTH = useMemo(() => new Date(seasonStartYear + 1, 5, 1), [seasonStartYear]); // June
+
   const [currentDate, setCurrentDate] = useState(() => {
     if (initialMonth) return new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1);
     if (currentSimDate) {
       const d = new Date(currentSimDate);
       return new Date(d.getFullYear(), d.getMonth(), 1);
     }
-    return new Date(2025, 9, 1);
+    return new Date(seasonStartYear, 9, 1);
   });
   const showLeagueSchedule = !calendarOnly;
   const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);

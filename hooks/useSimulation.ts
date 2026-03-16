@@ -583,33 +583,32 @@ export const useSimulation = (
                     newSchedule = transition.newSchedule;
                     newPlayoffSeries = [];
 
-                    // 오프시즌 스킵: 다음 경기일로 점프 (디버깅용, 추후 오프시즌 콘텐츠 추가 시 제거)
-                    const firstGameDate = newSchedule.find(g => !g.played)?.date;
-                    if (firstGameDate) {
-                        const jumpDate = firstGameDate;
-                        // Commit Updates
-                        setSimProgress({ percent: 95, label: `시즌 ${transition.newSeasonNumber} 시작...` });
-                        setTeams([...newTeams]);
-                        setSchedule(newSchedule);
-                        setPlayoffSeries([]);
-                        advanceDate(jumpDate, {
+                    // 시즌 전환: 다음날로 진행 (오프시즌 Key Dates를 순서대로 경험)
+                    const d2 = new Date(currentSimDate);
+                    d2.setDate(d2.getDate() + 1);
+                    const nextSeasonDate = d2.toISOString().split('T')[0];
+
+                    setSimProgress({ percent: 95, label: `시즌 ${transition.newSeasonNumber} 시작...` });
+                    setTeams([...newTeams]);
+                    setSchedule(newSchedule);
+                    setPlayoffSeries([]);
+                    advanceDate(nextSeasonDate, {
+                        seasonNumber: transition.newSeasonNumber,
+                        currentSeason: transition.newSeasonConfig.seasonLabel,
+                    });
+                    setSimProgress(null);
+                    setIsSimulating(false);
+                    if (!isGuestMode) {
+                        forceSave({
+                            currentSimDate: nextSeasonDate,
+                            teams: newTeams,
+                            schedule: newSchedule,
+                            withSnapshot: false,
                             seasonNumber: transition.newSeasonNumber,
                             currentSeason: transition.newSeasonConfig.seasonLabel,
                         });
-                        setSimProgress(null);
-                        setIsSimulating(false);
-                        if (!isGuestMode) {
-                            forceSave({
-                                currentSimDate: jumpDate,
-                                teams: newTeams,
-                                schedule: newSchedule,
-                                withSnapshot: false,
-                                seasonNumber: transition.newSeasonNumber,
-                                currentSeason: transition.newSeasonConfig.seasonLabel,
-                            });
-                        }
-                        return;
                     }
+                    return;
                 }
 
                 // Commit Updates

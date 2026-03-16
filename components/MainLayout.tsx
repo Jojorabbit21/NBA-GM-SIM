@@ -2,6 +2,7 @@
 import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
+import { SeasonKeyDates } from '../utils/seasonConfig';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -23,8 +24,8 @@ interface MainLayoutProps {
         onSimSettingsClick: () => void;
         onLogout: () => void;
         onSimulateSeason?: () => void;
-        isBatchRunning?: boolean;
-        onEndSeasonClick?: () => void;
+        onSkipToDate?: (targetDate: string, label: string) => void;
+        keyDates?: SeasonKeyDates;
     };
     gameHeaderProps: {
         schedule: Game[];
@@ -138,6 +139,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         streak={streak}
                         conferenceName={conferenceName}
                         isSeasonOver={isPostseasonOver}
+                        keyDates={sidebarProps.keyDates}
+                        onSkipToDate={sidebarProps.onSkipToDate}
+                        onSimulateFullSeason={sidebarProps.onSimulateSeason}
                     />
                 )}
 

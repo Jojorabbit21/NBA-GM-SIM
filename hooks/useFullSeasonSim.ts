@@ -54,7 +54,7 @@ export const useFullSeasonSim = (
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
     const cancelTokenRef = useRef({ cancelled: false });
 
-    const handleSimulateSeason = useCallback(async () => {
+    const handleSimulateSeason = useCallback(async (stopDate?: string) => {
         if (!myTeamId || !userTactics) return;
 
         cancelTokenRef.current = { cancelled: false };
@@ -92,7 +92,8 @@ export const useFullSeasonSim = (
                 cancelTokenRef.current,
                 simSettings,
                 coachingData,
-                seasonConfig
+                seasonConfig,
+                stopDate
             );
 
             // 3. DB 저장

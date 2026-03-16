@@ -1,12 +1,14 @@
 
-import React, { useState } from 'react';
-import { Loader2, Play, ChevronRight, FastForward } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Loader2, Play, ChevronRight, FastForward, ChevronDown, ChevronUp } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
+import { SeasonKeyDates } from '../../utils/seasonConfig';
+import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -19,18 +21,22 @@ interface DashboardHeaderProps {
   isSimulating?: boolean;
   simProgress?: { percent: number; label: string } | null;
   onSimClick: () => void;
-  onAutoSimClick?: () => void; // New prop
+  onAutoSimClick?: () => void;
   currentSeries?: PlayoffSeries;
   currentSimDate?: string;
   conferenceRank?: number;
   streak?: string;
   conferenceName?: string;
   isSeasonOver?: boolean;
+  keyDates?: SeasonKeyDates;
+  onSkipToDate?: (targetDate: string, label: string) => void;
+  onSimulateFullSeason?: () => void;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
-  currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver
+  currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver,
+  keyDates, onSkipToDate, onSimulateFullSeason
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -39,6 +45,19 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
+
+  const handleSkipToDate = useCallback((targetDate: string, label: string) => {
+      if (!onSkipToDate) return;
+      const ok = window.confirm(`${label} (${targetDate})까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?`);
+      if (ok) onSkipToDate(targetDate, label);
+  }, [onSkipToDate]);
+
+  const handleSimulateFullSeason = useCallback(() => {
+      if (!onSimulateFullSeason) return;
+      const ok = window.confirm('시즌 끝까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?');
+      if (ok) onSimulateFullSeason();
+  }, [onSimulateFullSeason]);
 
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
@@ -126,11 +145,27 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <div className="absolute inset-0 bg-black/10 pointer-events-none" />
         <div className="pl-8 pr-0 py-0 flex items-center gap-8 h-20 relative z-10">
             {/* Date + Team Status */}
-            <div className="flex-1 flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold" style={{ color: theme.text }}>현재 날짜 :</span>
-                    <span className="text-sm font-semibold" style={{ color: theme.text }}>{currentSimDate}</span>
-                </div>
+            <div className="flex-1 flex flex-col gap-1.5 relative">
+                {keyDates && currentSimDate && onSkipToDate ? (
+                    <button
+                        onClick={() => setIsSkipDropdownOpen(prev => !prev)}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                        <span className="text-sm font-semibold" style={{ color: theme.text }}>
+                            {formatDateKorean(currentSimDate)}
+                        </span>
+                        {isSkipDropdownOpen
+                            ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                            : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                        }
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold" style={{ color: theme.text }}>
+                            {currentSimDate ? formatDateKorean(currentSimDate) : ''}
+                        </span>
+                    </div>
+                )}
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>{conferenceName} {conferenceRank}위</span>
                     <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
@@ -138,6 +173,19 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
                     </span>
                 </div>
+                {/* Skip Dropdown */}
+                {keyDates && currentSimDate && (
+                    <DateSkipDropdown
+                        isOpen={isSkipDropdownOpen}
+                        onClose={() => setIsSkipDropdownOpen(false)}
+                        currentSimDate={currentSimDate}
+                        keyDates={keyDates}
+                        onSkipToDate={handleSkipToDate}
+                        onSimulateFullSeason={handleSimulateFullSeason}
+                        isSimulating={!!isSimulating}
+                        themeText={theme.text}
+                    />
+                )}
             </div>
 
             {/* Matchup — absolute center */}

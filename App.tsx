@@ -32,7 +32,6 @@ import AppRouter from './components/AppRouter';
 import { ResetDataModal } from './components/ResetDataModal';
 import { EditorModal } from './components/EditorModal';
 import { SimSettingsModal } from './components/SimSettingsModal';
-import { EndSeasonModal } from './components/EndSeasonModal';
 import { OnboardingView } from './views/OnboardingView';
 import { ModeSelectView } from './views/ModeSelectView';
 import { DraftPoolSelectView } from './views/DraftPoolSelectView';
@@ -47,7 +46,6 @@ const App: React.FC = () => {
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
-    const [isEndSeasonModalOpen, setIsEndSeasonModalOpen] = useState(false);
     const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
     const updateAvailable = useUpdateChecker();
@@ -217,9 +215,9 @@ const App: React.FC = () => {
                         setRosterMode(null);
                         setDraftPoolType(null);
                     }),
-                    onSimulateSeason: handleSimulateSeason,
-                    isBatchRunning: batchProgress?.isRunning ?? false,
-                    onEndSeasonClick: () => setIsEndSeasonModalOpen(true),
+                    onSimulateSeason: () => handleSimulateSeason(),
+                    onSkipToDate: (targetDate: string) => handleSimulateSeason(targetDate),
+                    keyDates: gameData.seasonConfig?.keyDates,
                 }}
                 gameHeaderProps={{
                     schedule: gameData.schedule,
@@ -255,19 +253,6 @@ const App: React.FC = () => {
                     onClose={() => setIsSimSettingsOpen(false)}
                     simSettings={gameData.simSettings}
                     onUpdate={gameData.setSimSettings}
-                />
-                <EndSeasonModal
-                    isOpen={isEndSeasonModalOpen}
-                    isLoading={isResetting}
-                    onClose={() => setIsEndSeasonModalOpen(false)}
-                    onReset={async () => {
-                        setIsResetting(true);
-                        await gameData.handleResetData();
-                        setRosterMode(null);
-                        setDraftPoolType(null);
-                        setIsResetting(false);
-                        setIsEndSeasonModalOpen(false);
-                    }}
                 />
             </MainLayout>
             {/* 시즌 전체 시뮬레이션 프로그레스 모달 — MainLayout 바깥에서 렌더링하여 stacking context 회피 */}

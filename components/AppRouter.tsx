@@ -214,6 +214,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         coachingData={gameData.coachingData}
                         initialTab={dashboardInitialTab}
                         onCoachClick={handleViewCoach}
+                        seasonStartYear={gameData.seasonConfig?.startYear}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
@@ -302,6 +303,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                     isSimulating={sim.isSimulating}
                     playoffSeries={gameData.playoffSeries}
+                    seasonStartYear={gameData.seasonConfig?.startYear}
                 />
             );
         case 'Standings':
