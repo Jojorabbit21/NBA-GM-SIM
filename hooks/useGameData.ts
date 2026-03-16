@@ -802,7 +802,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 supabase.from('user_playoffs_results').delete().eq('user_id', userId),
                 supabase.from('user_season_history').delete().eq('user_id', userId),
                 supabase.from('user_messages').delete().eq('user_id', userId),
-                supabase.from('user_tactics').delete().eq('user_id', userId)
+                supabase.from('user_tactics').delete().eq('user_id', userId),
+                supabase.from('user_generated_players').delete().eq('user_id', userId)
             ]);
             const deleteErrors = deleteResults.filter(r => r.error).map(r => r.error!.message);
             if (deleteErrors.length > 0) {
@@ -839,6 +840,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setSeasonNumber(1);
             setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
             setOffseasonPhase(null);
+            setProspects([]);
             hasInitialLoadRef.current = false;
 
             return { success: true };

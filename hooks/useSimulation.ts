@@ -15,7 +15,7 @@ import { detectFinalsEnd, dispatchOffseasonEvent, checkProspectReveal } from '..
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { OffseasonPhase } from '../types/app';
 import { archiveCurrentSeason, updateSeasonArchiveLottery } from '../services/seasonArchive';
-import { insertDraftClass } from '../services/draft/rookieRepository';
+import { insertDraftClass, deleteDraftClass } from '../services/draft/rookieRepository';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
@@ -632,8 +632,11 @@ export const useSimulation = (
                         // GeneratedPlayerRow[] → Player[] 변환
                         const players = dc.map(row => mapRawPlayerToRuntimePlayer(row));
                         setProspects?.(players);
-                        if (!isGuestMode) {
-                            insertDraftClass(dc)
+                        if (!isGuestMode && session?.user?.id) {
+                            // 기존 생성 선수 데이터 삭제 후 새 데이터 삽입 (중복 방지)
+                            const seasonNum = dc[0]?.season_number ?? currentSeasonNumber + 1;
+                            deleteDraftClass(session.user.id, seasonNum)
+                                .then(() => insertDraftClass(dc))
                                 .catch(e => console.warn('⚠️ Prospect class insert failed (non-critical):', e));
                         }
 
@@ -779,9 +782,11 @@ export const useSimulation = (
                             }
                         }
 
-                        // 생성된 드래프트 클래스를 DB에 저장
-                        if (u.generatedDraftClass && u.generatedDraftClass.length > 0 && !isGuestMode) {
-                            insertDraftClass(u.generatedDraftClass)
+                        // 생성된 드래프트 클래스를 DB에 저장 (기존 데이터 삭제 후 삽입)
+                        if (u.generatedDraftClass && u.generatedDraftClass.length > 0 && !isGuestMode && session?.user?.id) {
+                            const seasonNum = u.generatedDraftClass[0]?.season_number ?? currentSeasonNumber + 1;
+                            deleteDraftClass(session.user.id, seasonNum)
+                                .then(() => insertDraftClass(u.generatedDraftClass!))
                                 .catch(e => console.warn('⚠️ Draft class insert failed (non-critical):', e));
                         }
 

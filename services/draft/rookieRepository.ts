@@ -57,6 +57,25 @@ export async function fetchGeneratedFreeAgents(userId: string): Promise<Generate
     return (data ?? []).map(mapRow);
 }
 
+// ── 삭제 ──
+
+/** 특정 시즌의 드래프트 클래스 삭제 (재생성/교체 전 정리용) */
+export async function deleteDraftClass(userId: string, seasonNumber: number): Promise<boolean> {
+    const { error } = await supabase
+        .from('user_generated_players')
+        .delete()
+        .eq('user_id', userId)
+        .eq('season_number', seasonNumber);
+
+    if (error) {
+        console.error('❌ [rookieRepo] Failed to delete draft class:', error);
+        return false;
+    }
+
+    console.log(`🗑️ [rookieRepo] Deleted existing draft class for season ${seasonNumber}`);
+    return true;
+}
+
 // ── 저장 ──
 
 /** 드래프트 클래스 일괄 삽입 (rookieGenerator 결과) */
