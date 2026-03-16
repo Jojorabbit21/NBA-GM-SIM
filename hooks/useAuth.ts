@@ -12,47 +12,44 @@ export const useAuth = () => {
     useEffect(() => {
         let mounted = true;
 
-        // 1. 초기 세션 확인 (안전하게 처리)
+        // 1. 인증 상태 변화 감지 (getSession보다 먼저 등록)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (!mounted) return;
+
+            if (event === 'SIGNED_IN' && session) {
+                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
+                setAuthLoading(false);
+            } else if (event === 'SIGNED_OUT') {
+                setSession(null);
+                setAuthLoading(false);
+            } else if (event === 'TOKEN_REFRESHED' && session) {
+                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
+            }
+        });
+
+        // 2. 초기 세션 확인 (안전하게 처리)
         const initSession = async () => {
             try {
                 const { data, error } = await supabase.auth.getSession();
                 if (error) {
                     console.error("Auth Session Error:", error.message);
                     // Force signOut if refresh token is invalid
-                    if (error.message.includes("Refresh Token") || error.status === 400) {
-                        await supabase.auth.signOut();
-                        setSession(null);
+                    if (error.message?.includes("Refresh Token") || (error as any).status === 400) {
+                        await supabase.auth.signOut().catch(() => {});
+                        if (mounted) setSession(null);
                     }
-                    throw error;
-                }
-                
-                if (mounted) {
-                    if (data.session) {
-                        setSession(data.session);
-                    }
+                } else if (mounted && data.session) {
+                    setSession(data.session);
                 }
             } catch (e) {
-                console.error("Auth init error:", e);
+                // Supabase core.js 내부 에러 (payload undefined 등) 무시
+                console.warn("Auth init warning:", e);
             } finally {
                 if (mounted) setAuthLoading(false);
             }
         };
 
         initSession();
-
-        // 2. 인증 상태 변화 감지
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (!mounted) return;
-            
-            if (event === 'SIGNED_IN' && session) {
-                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
-            } else if (event === 'SIGNED_OUT') {
-                setSession(null);
-            } else if (event === 'TOKEN_REFRESHED' && session) {
-                // 토큰 갱신은 같은 유저 → 객체 참조만 바뀜 → 기존 참조 유지
-                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
-            }
-        });
 
         return () => {
             mounted = false;
