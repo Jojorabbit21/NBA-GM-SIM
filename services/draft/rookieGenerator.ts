@@ -445,9 +445,9 @@ function generateAttributes(
     totalCount: number
 ): Record<string, number> {
     // rank → 기본 능력치 레벨 (상위 픽일수록 높음)
-    // rank 1 → baseLevel ~72, rank 30 → ~55, rank 60 → ~45
+    // rank 1 → baseLevel ~65, rank 30 → ~51, rank 60 → ~43
     const t = (rank - 1) / (totalCount - 1); // 0~1, 0=최고
-    const baseLevel = Math.round(72 - t * 27); // 72 → 45
+    const baseLevel = Math.round(65 - t * 22); // 65 → 43
 
     const attrs: Record<string, number> = {};
     const biases = POSITION_SKILL_BIAS[position] ?? {};
