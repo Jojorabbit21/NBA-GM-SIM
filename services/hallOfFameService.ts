@@ -1,6 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { HallOfFameScoreBreakdown, RosterSnapshotPlayer } from '../utils/hallOfFameScorer';
+import { DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 export interface HallOfFameEntry {
     id: string;
@@ -18,7 +19,7 @@ export interface HallOfFameEntry {
 /**
  * Fetch all hall of fame entries, ordered by total_score DESC.
  */
-export const fetchHallOfFameEntries = async (season = '2025-2026'): Promise<HallOfFameEntry[]> => {
+export const fetchHallOfFameEntries = async (season = DEFAULT_SEASON_CONFIG.seasonLabel): Promise<HallOfFameEntry[]> => {
     const { data, error } = await supabase
         .from('hall_of_fame')
         .select('*')
@@ -63,7 +64,7 @@ export const submitHallOfFameEntry = async (
     breakdown: HallOfFameScoreBreakdown,
     rosterSnapshot: RosterSnapshotPlayer[],
     userEmail?: string,
-    season = '2025-2026'
+    season = DEFAULT_SEASON_CONFIG.seasonLabel
 ): Promise<{ success: boolean; alreadySubmitted: boolean }> => {
     const payload = {
         user_id: userId,

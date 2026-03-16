@@ -2,7 +2,7 @@ import { Team, Game, PlayoffSeries, Transaction, RegSeasonChampionContent } from
 import { LeaguePickAssets } from '../../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
 import { LeagueGMProfiles } from '../../types/gm';
-import { SeasonConfig } from '../../utils/seasonConfig';
+import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../../utils/seasonConfig';
 import { updateTeamDirections } from '../../services/tradeEngine/gmProfiler';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
@@ -30,7 +30,7 @@ export const handleSeasonEvents = async (
     leagueGMProfiles?: LeagueGMProfiles,
     seasonConfig?: SeasonConfig
 ) => {
-    const seasonShort = seasonConfig?.seasonShort ?? '2025-26';
+    const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
     let tradeToast: string | null = null;
@@ -202,7 +202,7 @@ export const handleSeasonEventsSync = (
     leagueGMProfiles?: LeagueGMProfiles,
     seasonConfig?: SeasonConfig
 ) => {
-    const seasonShort = seasonConfig?.seasonShort ?? '2025-26';
+    const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
     let awardContent: SeasonAwardsContent | null = null;
@@ -275,6 +275,7 @@ export const handleSeasonEventsSync = (
 
 import { buildSeasonConfig } from '../../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
+import { processOffseason } from '../playerDevelopment/playerAging';
 import { INITIAL_STATS } from '../../utils/constants';
 import { Game } from '../../types';
 
@@ -307,6 +308,11 @@ export function checkAndStartNextSeason(
     const nextSeasonNumber = currentSeasonNumber + 1;
     const nextConfig = buildSeasonConfig(nextSeasonNumber);
 
+    // ★ 오프시즌 처리: 나이 +1, 계약 진행, 성장 필드 리셋
+    const allPlayers = teams.flatMap(t => t.roster);
+    processOffseason(allPlayers, '', currentSeasonNumber);
+    console.log(`📋 Offseason processed: ${allPlayers.length} players aged`);
+
     // 새 시즌 일정 생성
     const scheduleConfig: ScheduleConfig = {
         seasonYear: nextConfig.startYear,
@@ -323,7 +329,7 @@ export function checkAndStartNextSeason(
         team.losses = 0;
     }
 
-    // 선수 시즌 스탯 리셋
+    // 선수 시즌 스탯 리셋 (processOffseason이 성장 필드를 이미 리셋했으므로 박스스코어 스탯만)
     for (const team of teams) {
         for (const player of team.roster) {
             player.stats = INITIAL_STATS();

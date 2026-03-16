@@ -27,10 +27,10 @@ import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
-import { buildSeasonConfig, SeasonConfig } from '../utils/seasonConfig';
+import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
 
-export const INITIAL_DATE = '2025-10-20';
+export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
 
 export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null) => {
     const queryClient = useQueryClient();
@@ -73,7 +73,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     // Refs to avoid stale closures in callbacks
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
-    const [currentSeason, setCurrentSeason] = useState<string>('2025-2026');
+    const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason });
     useEffect(() => {
         gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason };
@@ -747,7 +747,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setLeagueGMProfiles({});
             setHofId(null);
             setSeasonNumber(1);
-            setCurrentSeason('2025-2026');
+            setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -881,7 +881,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setCoachingData(null);
          setLeaguePickAssets(null);
          setSeasonNumber(1);
-         setCurrentSeason('2025-2026');
+         setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
          setNews([]);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;

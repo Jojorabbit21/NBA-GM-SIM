@@ -1,6 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { PlayoffSeries, PlayoffStateDB, PlayoffGameResultDB } from '../types';
+import { DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 /**
  * Loads the current state of the playoffs from DB.
@@ -36,7 +37,7 @@ export const savePlayoffState = async (
     const payload = {
         user_id: userId,
         team_id: teamId,
-        season: seasonLabel ?? '2025-2026',
+        season: seasonLabel ?? DEFAULT_SEASON_CONFIG.seasonLabel,
         bracket_data: { series: bracketData }, // Wrap in object for JSONB
         current_round: currentRound,
         is_finished: isFinished,
