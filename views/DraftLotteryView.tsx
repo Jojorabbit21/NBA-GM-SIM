@@ -364,18 +364,22 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 key={pickNum}
                 className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
                     showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isSpinning ? 'ring-2 ring-amber-400/60' : ''} ${
-                    showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
-                } ${isFirstPickReady || isFirstPickRevealed ? 'ring-2 ring-amber-400' : ''}`}
+                } ${isSpinning && !isFirstPick ? 'ring-2 ring-amber-400/60' : ''} ${
+                    showResult && isTop4Winner && !isFirstPick ? 'ring-1 ring-amber-400/60' : ''
+                }`}
                 style={{
                     backgroundColor: slotBgColor,
                     height: REEL_ITEM_HEIGHT + 40,
-                    transition: `background-color 0.8s ease`,
+                    transition: `background-color 0.8s ease, outline-color 0.8s ease, box-shadow 0.8s ease`,
+                    ...((isFirstPickReady || isFirstPickRevealed) ? {
+                        outline: '3px solid #f59e0b',
+                        outlineOffset: '-1px',
+                    } : {}),
                     ...(isFirstPickReady ? {
                         boxShadow: `0 0 40px rgba(212, 160, 23, 0.6), 0 0 80px rgba(212, 160, 23, 0.3)`,
                     } : {}),
                     ...(isFirstPickRevealed ? {
-                        boxShadow: `0 0 30px rgba(212, 160, 23, 0.5), 0 0 60px ${teamColor}40`,
+                        boxShadow: `0 0 30px rgba(212, 160, 23, 0.5), 0 0 60px rgba(212, 160, 23, 0.3)`,
                     } : {}),
                 }}
             >
@@ -468,7 +472,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 <img
                     src="/images/lottery2.png"
                     alt=""
-                    className={`absolute inset-0 w-full h-full object-cover blur-md transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}
                 />
                 <div className="absolute inset-0 bg-slate-950/90" />
