@@ -34,6 +34,12 @@ export default defineConfig(({ mode }) => {
       outDir: 'build', // Match CRA output directory for convenience
       chunkSizeWarningLimit: 1000, // Increase limit to 1000KB to reduce noise for intentional large chunks
       rollupOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === 'CIRCULAR_DEPENDENCY' && !warning.message.includes('node_modules')) {
+            throw new Error(`Circular dependency detected:\n${warning.message}`);
+          }
+          warn(warning);
+        },
         output: {
           manualChunks(id) {
             // Split node_modules
