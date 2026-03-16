@@ -73,7 +73,7 @@ export interface SeasonConfig {
     seasonNumber: number;      // 1, 2, 3...
     startYear: number;         // 2025
     endYear: number;           // 2026
-    startDate: string;         // 개막일 (= keyDates.openingNight)
+    startDate: string;         // 이 시즌 개막일 (keyDates.openingNight은 다음 시즌 개막)
     regularSeasonEnd: string;  // 정규시즌 종료
     tradeDeadline: string;     // 트레이드 데드라인
     allStarStart: string;      // 올스타 브레이크 시작
@@ -92,14 +92,18 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     const startYear = 2024 + seasonNumber;   // season 1 → 2025
     const endYear = startYear + 1;           // season 1 → 2026
 
-    // ── 오프시즌 (startYear 기준 — 이전 시즌 종료 직후) ──
-    const draftLottery    = nthDayOfMonth(startYear, 4, 2, 2);                // 5월 2번째 화요일
-    const rookieDraft     = nthDayOfMonth(startYear, 5, 4, 4);                // 6월 4번째 목요일
-    const freeAgencyOpen  = addDays(nthDayOfMonth(startYear, 6, 0, 1), 1);    // 7월 1번째 일요일 +1일(월요일)
-    const freeAgencyClose = nthDayOfMonth(startYear, 8, 5, 2);                // 9월 2번째 금요일
-    const trainingCamp    = lastDayOfWeekInMonth(startYear, 8, 2);            // 9월 마지막 화요일
-    const rosterDeadline  = nthDayOfMonth(startYear, 9, 1, 3);                // 10월 3번째 월요일
-    const openingNight    = nthDayOfMonth(startYear, 9, 2, 3);                // 10월 3번째 화요일
+    // ── 시즌 시작일 (startYear 기준) ──
+    const seasonStart     = nthDayOfMonth(startYear, 9, 2, 3);                // 10월 3번째 화요일
+
+    // ── 오프시즌 (finalsEndTarget 기준 상대 오프셋 — 파이널 종료 후 순차 진행) ──
+    const draftLottery    = addDays(finalsEndTarget, 3);                      // 파이널 종료 +3일
+    const rookieDraft     = addDays(draftLottery, 14);                        // 로터리 +14일
+    const moratoriumStart = addDays(rookieDraft, 5);                          // 드래프트 +5일
+    const freeAgencyOpen  = addDays(moratoriumStart, 7);                      // 모라토리엄 +7일
+    const freeAgencyClose = nthDayOfMonth(endYear, 8, 5, 2);                  // 9월 2번째 금요일
+    const trainingCamp    = lastDayOfWeekInMonth(endYear, 8, 2);              // 9월 마지막 화요일
+    const rosterDeadline  = nthDayOfMonth(endYear, 9, 1, 3);                  // 10월 3번째 월요일
+    const openingNight    = nthDayOfMonth(endYear, 9, 2, 3);                  // 10월 3번째 화요일 (다음 시즌 개막)
 
     // ── 정규시즌 (endYear 기준) ──
     const prospectReveal   = nthDayOfMonth(endYear, 0, 1, 1);                 // 1월 1번째 월요일 (드래프트 풀 공개)
@@ -122,7 +126,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
         // 오프시즌
         draftLottery: fmt(draftLottery),
         rookieDraft: fmt(rookieDraft),
-        moratoriumStart: `${startYear}-06-30`,
+        moratoriumStart: fmt(moratoriumStart),
         freeAgencyOpen: fmt(freeAgencyOpen),
         freeAgencyClose: fmt(freeAgencyClose),
         trainingCamp: fmt(trainingCamp),
@@ -152,8 +156,8 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
         seasonNumber,
         startYear,
         endYear,
-        // 기존 필드 = keyDates에서 참조 (하위 호환)
-        startDate: keyDates.openingNight,
+        // startDate = 이 시즌의 개막일 (keyDates.openingNight은 다음 시즌 개막)
+        startDate: fmt(seasonStart),
         regularSeasonEnd: keyDates.regularSeasonEnd,
         tradeDeadline: keyDates.tradeDeadline,
         allStarStart: keyDates.allStarStart,

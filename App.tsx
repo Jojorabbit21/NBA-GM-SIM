@@ -116,16 +116,16 @@ const App: React.FC = () => {
         }
     }, [authLoading, session, isGuestMode, gameData.myTeamId, view]);
 
-    // 리로드 시 미완료 드래프트 감지 (추첨 완료 + 드래프트 미완료)
+    // 리로드 시 미완료 드래프트 감지 — 게임 시작 직후 커스텀 모드에서만 자동 이동
+    // (오프시즌 로터리/드래프트는 offseasonEventHandler가 날짜 기반으로 처리)
     useEffect(() => {
-        if (gameData.myTeamId && gameData.draftPicks?.order && !gameData.draftPicks?.teams) {
+        if (gameData.myTeamId && gameData.draftPicks?.order && !gameData.draftPicks?.teams && rosterMode === 'custom') {
             setView('DraftLottery');
-            setRosterMode('custom');
             if (gameData.draftPicks.poolType) {
                 setDraftPoolType(gameData.draftPicks.poolType);
             }
         }
-    }, [gameData.myTeamId, gameData.draftPicks]);
+    }, [gameData.myTeamId, gameData.draftPicks, rosterMode]);
 
     // HOF 제출 여부 확인 (hof_id 기반)
     useEffect(() => {

@@ -10,7 +10,7 @@ import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
-import { savePlayoffState } from '../services/playoffService';
+import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
 import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
@@ -122,7 +122,7 @@ export const useFullSeasonSim = (
                     await bulkSaveGameResults(result.allGameResultsToSave);
                 }
                 if (result.allPlayoffResultsToSave.length > 0) {
-                    await bulkSaveGameResults(result.allPlayoffResultsToSave);
+                    await Promise.all(result.allPlayoffResultsToSave.map(r => savePlayoffGameResult(r)));
                 }
                 // 유저 팀 82경기 완료 시 시즌 리뷰 메시지 추가
                 const myRegGames = result.finalSchedule.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));

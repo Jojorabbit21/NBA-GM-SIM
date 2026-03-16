@@ -205,7 +205,7 @@ export const saveGameResults = async (results: any[]) => {
             console.warn("⚠️ DB Schema mismatch detected. Retrying save WITHOUT 'pbp_logs', 'shot_events', 'quarter_scores'. PLEASE RUN SQL MIGRATION.");
 
             const safeResults = results.map(r => {
-                const { pbp_logs, shot_events, quarter_scores, ...rest } = r;
+                const { pbp_logs, shot_events, quarter_scores, game_number, series_id, round_number, ...rest } = r;
                 return rest;
             });
             

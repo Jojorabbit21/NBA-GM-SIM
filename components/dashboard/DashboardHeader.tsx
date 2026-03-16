@@ -184,6 +184,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         onSimulateFullSeason={handleSimulateFullSeason}
                         isSimulating={!!isSimulating}
                         themeText={theme.text}
+                        isOffseason={isSeasonOver}
                     />
                 )}
             </div>

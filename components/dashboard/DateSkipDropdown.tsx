@@ -66,6 +66,7 @@ interface DateSkipDropdownProps {
     onSimulateFullSeason: () => void;
     isSimulating: boolean;
     themeText: string;
+    isOffseason?: boolean;
 }
 
 export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
@@ -77,6 +78,7 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     onSimulateFullSeason,
     isSimulating,
     themeText,
+    isOffseason,
 }) => {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -202,17 +204,19 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
                 )}
             </div>
 
-            {/* 시즌 끝까지 시뮬 */}
-            <div className="border-t border-white/5">
-                <button
-                    onClick={() => { onClose(); onSimulateFullSeason(); }}
-                    disabled={isSimulating}
-                    className="w-full px-4 py-3 hover:bg-white/5 transition-colors text-left flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                    <FastForward size={14} className="text-amber-400 shrink-0" />
-                    <span className="text-sm font-semibold text-amber-400">시즌 끝까지 시뮬레이션</span>
-                </button>
-            </div>
+            {/* 시즌 끝까지 시뮬 — 오프시즌에서는 숨김 (개막일 스킵으로 대체) */}
+            {!isOffseason && (
+                <div className="border-t border-white/5">
+                    <button
+                        onClick={() => { onClose(); onSimulateFullSeason(); }}
+                        disabled={isSimulating}
+                        className="w-full px-4 py-3 hover:bg-white/5 transition-colors text-left flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <FastForward size={14} className="text-amber-400 shrink-0" />
+                        <span className="text-sm font-semibold text-amber-400">시즌 끝까지 시뮬레이션</span>
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

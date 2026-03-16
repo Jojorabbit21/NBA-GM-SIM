@@ -35,7 +35,7 @@ import { LeagueFAPool } from '../types/generatedPlayer';
 import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 
-export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
+export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.startDate;
 
 export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null) => {
     const queryClient = useQueryClient();
