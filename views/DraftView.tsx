@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, UserPlus, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Team, Player } from '../types';
-import { OvrBadge } from '../components/common/OvrBadge';
-import { PageHeader } from '../components/common/PageHeader';
 import { calculatePlayerOvr } from '../utils/constants';
-import { ATTR_GROUPS, ATTR_LABEL, ATTR_AVG_KEYS } from '../data/attributeConfig';
+import { OvrBadge } from '../components/common/OvrBadge';
+import { Table, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { ATTR_GROUPS, ATTR_LABEL, ATTR_AVG_KEYS, ATTR_NAME_MAP } from '../data/attributeConfig';
 
 // ── 스카우팅 한줄 평가 생성 ──
 
@@ -31,90 +31,47 @@ function getScoutComment(p: Player): string {
     return '';
 }
 
-// ── 능력치 히트맵 색상 (25~90 범위 기준) ──
+// ── 상수 ──
 
-function getAttrColor(value: number): React.CSSProperties | undefined {
-    const min = 25, max = 90;
-    const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
-    if (ratio > 0.5) {
-        const opacity = (ratio - 0.5) * 2 * 0.45;
-        return { backgroundColor: `rgba(16, 185, 129, ${opacity})` };
-    } else {
-        const opacity = (0.5 - ratio) * 2 * 0.45;
-        if (opacity < 0.05) return undefined;
-        return { backgroundColor: `rgba(239, 68, 68, ${opacity})` };
-    }
-}
+const GROUP_LABEL_KR: Record<string, string> = {
+    INSIDE: '인사이드 스코어링', OUTSIDE: '아웃사이드 스코어링', PLAYMAKING: '플레이메이킹',
+    DEFENSE: '수비능력', REBOUND: '리바운드', ATHLETIC: '운동능력',
+};
 
-// ── 컬럼 정의 ──
+const WIDTHS = {
+    RANK: 44,
+    NAME: 160,
+    POS: 54,
+    AGE: 44,
+    HT: 50,
+    WT: 50,
+    OVR: 56,
+    POT: 50,
+    ATTR: 54,
+    SCOUT: 280,
+};
 
-interface ColDef {
-    key: string;
-    label: string;
-    width: number;
-    sortable?: boolean;
-    group?: string;       // 능력치 그룹 헤더
-    isAttr?: boolean;     // 능력치 컬럼
-    isAvg?: boolean;      // 카테고리 평균
-    stickyLeft?: number;
-    stickyShadow?: boolean;
-}
+// ── 능력치 키 (AVG 제외) ──
 
-function buildColumns(): ColDef[] {
-    const cols: ColDef[] = [
-        { key: 'rank', label: '#', width: 44, stickyLeft: 0 },
-        { key: 'name', label: '이름', width: 160, sortable: true, stickyLeft: 44 },
-        { key: 'position', label: 'POS', width: 48, sortable: true, stickyLeft: 204 },
-        { key: 'ovr', label: 'OVR', width: 48, sortable: true, stickyLeft: 252, stickyShadow: true },
-        { key: 'pot', label: 'POT', width: 48, sortable: true },
-        { key: 'age', label: 'AGE', width: 44, sortable: true },
-        { key: 'height', label: 'HT', width: 48, sortable: true },
-        { key: 'weight', label: 'WT', width: 48, sortable: true },
-    ];
+const ATTR_COLS = ATTR_GROUPS.flatMap(g => g.keys.filter(k => !ATTR_AVG_KEYS.has(k)));
 
-    for (const group of ATTR_GROUPS) {
-        for (const key of group.keys) {
-            const isAvg = ATTR_AVG_KEYS.has(key);
-            cols.push({
-                key,
-                label: ATTR_LABEL[key] || key,
-                width: 42,
-                sortable: true,
-                group: group.label,
-                isAttr: true,
-                isAvg,
-            });
-        }
-    }
+type SortConfig = { key: string; direction: 'asc' | 'desc'; };
 
-    cols.push({ key: 'scout', label: '스카우팅 코멘트', width: 280 });
-    return cols;
-}
+// ── Sticky 위치 계산 ──
 
-const COLUMNS = buildColumns();
+const LEFT_NAME = WIDTHS.RANK;
+const LEFT_POS = WIDTHS.RANK + WIDTHS.NAME;
+const LEFT_OVR = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS;
 
-// ── 그룹 헤더 행 계산 ──
-
-interface GroupSpan { label: string; colSpan: number; }
-
-function buildGroupSpans(): GroupSpan[] {
-    const spans: GroupSpan[] = [];
-    const nonAttrCount = COLUMNS.filter(c => !c.isAttr && c.key !== 'scout').length;
-    spans.push({ label: '', colSpan: nonAttrCount });
-
-    for (const group of ATTR_GROUPS) {
-        spans.push({ label: group.label, colSpan: group.keys.length });
-    }
-
-    spans.push({ label: '', colSpan: 1 }); // scout column
-    return spans;
-}
-
-const GROUP_SPANS = buildGroupSpans();
-
-// ── 정렬 타입 ──
-
-interface SortConfig { key: string; dir: 'asc' | 'desc'; }
+const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
+    left,
+    width,
+    minWidth: width,
+    maxWidth: width,
+    position: 'sticky' as const,
+    zIndex: 30,
+    borderRight: isLast ? undefined : 'none',
+});
 
 // ── 메인 컴포넌트 ──
 
@@ -125,235 +82,228 @@ interface DraftViewProps {
     readOnly?: boolean;
 }
 
-export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team, readOnly }) => {
+export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', dir: 'desc' });
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
     const [posFilter, setPosFilter] = useState<string>('ALL');
 
-    // 정렬 + 필터 + OVR 계산
-    const sortedProspects = useMemo(() => {
-        let list = prospects.map(p => ({
-            player: p,
-            ovr: calculatePlayerOvr(p),
-            pot: p.potential,
-        }));
+    const handleSort = (key: string) => {
+        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
+    };
 
-        // 검색 필터
+    const getSortValue = (p: Player, key: string): number | string => {
+        if (key === 'name') return p.name;
+        if (key === 'position') return p.position;
+        if (key === 'age') return p.age;
+        if (key === 'ovr') return calculatePlayerOvr(p);
+        if (key === 'pot') return p.potential;
+        if (key === 'height') return p.height;
+        if (key === 'weight') return p.weight;
+        if (key in p) return (p as any)[key];
+        return 0;
+    };
+
+    const sortedProspects = useMemo(() => {
+        let list = [...prospects];
+
         if (searchTerm) {
             const q = searchTerm.toLowerCase();
-            list = list.filter(e => e.player.name.toLowerCase().includes(q));
+            list = list.filter(p => p.name.toLowerCase().includes(q));
         }
-
-        // 포지션 필터
         if (posFilter !== 'ALL') {
-            list = list.filter(e => e.player.position === posFilter);
+            list = list.filter(p => p.position === posFilter);
         }
 
-        // 정렬
-        const { key, dir } = sortConfig;
         list.sort((a, b) => {
-            let va: number, vb: number;
-            if (key === 'ovr') { va = a.ovr; vb = b.ovr; }
-            else if (key === 'pot') { va = a.pot; vb = b.pot; }
-            else if (key === 'name') {
-                return dir === 'asc' ? a.player.name.localeCompare(b.player.name) : b.player.name.localeCompare(a.player.name);
+            const aVal = getSortValue(a, sortConfig.key);
+            const bVal = getSortValue(b, sortConfig.key);
+            if (typeof aVal === 'string' && typeof bVal === 'string') {
+                return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
             }
-            else if (key === 'position') {
-                return dir === 'asc' ? a.player.position.localeCompare(b.player.position) : b.player.position.localeCompare(a.player.position);
-            }
-            else { va = (a.player as any)[key] ?? 0; vb = (b.player as any)[key] ?? 0; }
-            return dir === 'desc' ? (vb! - va!) : (va! - vb!);
+            return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
         });
 
         return list;
     }, [prospects, searchTerm, posFilter, sortConfig]);
 
-    const handleSort = (key: string) => {
-        setSortConfig(prev =>
-            prev.key === key
-                ? { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' }
-                : { key, dir: 'desc' }
-        );
-    };
-
-    const totalWidth = COLUMNS.reduce((s, c) => s + c.width, 0);
+    // 그룹별 colSpan 계산 (AVG 키 제외)
+    const groupColSpans = ATTR_GROUPS.map(g => ({
+        label: GROUP_LABEL_KR[g.label] || g.label,
+        colSpan: g.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length,
+    }));
 
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-4">
-            <PageHeader
-                title="드래프트 보드"
-                icon={<UserPlus size={24} />}
-                actions={
-                    <div className="flex items-center gap-3">
-                        {/* 포지션 필터 */}
-                        <div className="flex items-center gap-1">
-                            {['ALL', 'PG', 'SG', 'SF', 'PF', 'C'].map(pos => (
-                                <button
-                                    key={pos}
-                                    onClick={() => setPosFilter(pos)}
-                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                                        posFilter === pos
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                                    }`}
-                                >
-                                    {pos}
-                                </button>
-                            ))}
-                        </div>
-                        {/* 검색 */}
-                        <div className="relative w-60">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                            <input
-                                type="text"
-                                placeholder="유망주 검색..."
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 transition-all"
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                        <span className="text-xs font-bold text-slate-500 tabular-nums">{sortedProspects.length}명</span>
-                    </div>
-                }
-            />
-
-            {/* 테이블 */}
-            <div className="flex-1 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                <div className="h-full overflow-auto custom-scrollbar">
-                    <table className="text-xs border-collapse" style={{ minWidth: totalWidth }}>
-                        {/* 그룹 헤더 (능력치 카테고리) */}
-                        <thead className="sticky top-0 z-30">
-                            <tr className="bg-slate-950">
-                                {GROUP_SPANS.map((gs, i) => (
-                                    <th
-                                        key={i}
-                                        colSpan={gs.colSpan}
-                                        className={`py-1 text-[9px] font-black uppercase tracking-widest text-center border-b border-slate-800 ${
-                                            gs.label ? 'text-indigo-400/70 border-x border-slate-800/50' : 'text-transparent'
-                                        }`}
-                                    >
-                                        {gs.label || '\u00A0'}
-                                    </th>
-                                ))}
-                            </tr>
-                            {/* 컬럼 헤더 */}
-                            <tr className="bg-slate-950 border-b border-slate-700/50">
-                                {COLUMNS.map(col => {
-                                    const isSorted = sortConfig.key === col.key;
-                                    const stickyStyle: React.CSSProperties = col.stickyLeft !== undefined
-                                        ? { position: 'sticky', left: col.stickyLeft, zIndex: 20 }
-                                        : {};
-
-                                    return (
-                                        <th
-                                            key={col.key}
-                                            style={{ width: col.width, minWidth: col.width, ...stickyStyle }}
-                                            className={`py-2 px-1 font-black text-center whitespace-nowrap select-none bg-slate-950 ${
-                                                col.sortable ? 'cursor-pointer hover:text-white' : ''
-                                            } ${col.isAvg ? 'text-indigo-400/80' : 'text-slate-500'} ${
-                                                col.stickyShadow ? 'shadow-[2px_0_5px_rgba(0,0,0,0.5)]' : ''
-                                            } ${col.key === 'name' || col.key === 'scout' ? 'text-left' : ''}`}
-                                            onClick={() => col.sortable && handleSort(col.key)}
-                                        >
-                                            <span className="inline-flex items-center gap-0.5">
-                                                {col.label}
-                                                {isSorted && (
-                                                    sortConfig.dir === 'desc'
-                                                        ? <ChevronDown size={10} className="text-indigo-400" />
-                                                        : <ChevronUp size={10} className="text-indigo-400" />
-                                                )}
-                                            </span>
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            {sortedProspects.map((entry, idx) => {
-                                const p = entry.player;
-                                const rank = idx + 1;
-                                const rankColor = rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
-
-                                return (
-                                    <tr key={p.id} className="border-b border-slate-800/40 hover:bg-white/[0.03] transition-colors">
-                                        {COLUMNS.map(col => {
-                                            const stickyStyle: React.CSSProperties = col.stickyLeft !== undefined
-                                                ? { position: 'sticky', left: col.stickyLeft, zIndex: 10 }
-                                                : {};
-                                            const bgClass = col.stickyLeft !== undefined ? 'bg-slate-900' : '';
-
-                                            let content: React.ReactNode;
-                                            let cellStyle: React.CSSProperties | undefined;
-                                            let align = 'text-center';
-
-                                            switch (col.key) {
-                                                case 'rank':
-                                                    content = <span className={`font-black ${rankColor}`}>{rank}</span>;
-                                                    break;
-                                                case 'name':
-                                                    align = 'text-left';
-                                                    content = <span className="font-bold text-white truncate block">{p.name}</span>;
-                                                    break;
-                                                case 'position':
-                                                    content = <span className="font-bold text-slate-400">{p.position}</span>;
-                                                    break;
-                                                case 'ovr':
-                                                    content = <OvrBadge value={entry.ovr} size="sm" />;
-                                                    break;
-                                                case 'pot':
-                                                    content = <span className="font-bold text-amber-400/80 tabular-nums">{entry.pot}</span>;
-                                                    break;
-                                                case 'age':
-                                                    content = <span className="text-slate-400 tabular-nums">{p.age}</span>;
-                                                    break;
-                                                case 'height':
-                                                    content = <span className="text-slate-400 tabular-nums">{p.height}</span>;
-                                                    break;
-                                                case 'weight':
-                                                    content = <span className="text-slate-400 tabular-nums">{p.weight}</span>;
-                                                    break;
-                                                case 'scout':
-                                                    align = 'text-left';
-                                                    content = <span className="text-slate-500 italic truncate block">{getScoutComment(p)}</span>;
-                                                    break;
-                                                default:
-                                                    if (col.isAttr) {
-                                                        const val = (p as any)[col.key] as number;
-                                                        cellStyle = getAttrColor(val);
-                                                        content = (
-                                                            <span className={`tabular-nums font-mono ${col.isAvg ? 'font-black text-white' : 'text-slate-300'}`}>
-                                                                {val ?? '-'}
-                                                            </span>
-                                                        );
-                                                    }
-                                                    break;
-                                            }
-
-                                            return (
-                                                <td
-                                                    key={col.key}
-                                                    style={{ width: col.width, minWidth: col.width, ...stickyStyle, ...cellStyle }}
-                                                    className={`py-1.5 px-1 ${align} ${bgClass} ${
-                                                        col.stickyShadow ? 'shadow-[2px_0_5px_rgba(0,0,0,0.3)]' : ''
-                                                    }`}
-                                                >
-                                                    {content}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-
-                    {sortedProspects.length === 0 && (
-                        <div className="flex items-center justify-center h-40 text-slate-600 font-bold text-sm">
-                            검색 결과가 없습니다.
-                        </div>
-                    )}
+        <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
+            {/* Header Bar */}
+            <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center justify-between bg-slate-900/80">
+                <div className="flex items-center gap-3">
+                    <span className="text-sm font-black uppercase tracking-wide text-white">드래프트 보드</span>
+                    <span className="text-xs font-bold text-slate-500 tabular-nums">{sortedProspects.length}명</span>
                 </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex-shrink-0 px-6 py-2.5 border-b border-white/10 flex items-center gap-4 bg-slate-950/60">
+                {/* 포지션 필터 */}
+                <div className="flex items-center gap-1">
+                    {['ALL', 'PG', 'SG', 'SF', 'PF', 'C'].map(pos => (
+                        <button
+                            key={pos}
+                            onClick={() => setPosFilter(pos)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                                posFilter === pos
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                        >
+                            {pos}
+                        </button>
+                    ))}
+                </div>
+                {/* 검색 */}
+                <div className="relative w-56">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                    <input
+                        type="text"
+                        placeholder="유망주 검색..."
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-1.5 pl-9 pr-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 transition-all"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="flex-1 min-h-0">
+                <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
+                    <colgroup>
+                        <col style={{ width: WIDTHS.RANK }} />
+                        <col style={{ width: WIDTHS.NAME }} />
+                        <col style={{ width: WIDTHS.POS }} />
+                        <col style={{ width: WIDTHS.OVR }} />
+                        <col style={{ width: WIDTHS.POT }} />
+                        <col style={{ width: WIDTHS.AGE }} />
+                        <col style={{ width: WIDTHS.HT }} />
+                        <col style={{ width: WIDTHS.WT }} />
+                        {ATTR_COLS.map((k) => <col key={k} style={{ width: WIDTHS.ATTR }} />)}
+                        <col style={{ width: WIDTHS.SCOUT }} />
+                    </colgroup>
+                    <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                        {/* Header Row 1: Groups */}
+                        <tr className="h-10">
+                            <th colSpan={8} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
+                                </div>
+                            </th>
+                            {groupColSpans.map((g, i) => (
+                                <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                                    <div className="h-full flex items-center justify-center">
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">{g.label}</span>
+                                    </div>
+                                </th>
+                            ))}
+                            <th colSpan={1} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">스카우팅</span>
+                                </div>
+                            </th>
+                        </tr>
+                        {/* Header Row 2: Labels */}
+                        <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                            <TableHeaderCell
+                                style={{ ...getStickyStyle(0, WIDTHS.RANK), zIndex: 50 }}
+                                className="bg-slate-950"
+                            >#</TableHeaderCell>
+                            <TableHeaderCell
+                                style={{ ...getStickyStyle(LEFT_NAME, WIDTHS.NAME), zIndex: 50 }}
+                                align="left" className="pl-4 bg-slate-950"
+                                sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
+                            >이름</TableHeaderCell>
+                            <TableHeaderCell
+                                style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }}
+                                className="bg-slate-950"
+                                sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
+                            >포지션</TableHeaderCell>
+                            <TableHeaderCell
+                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50 }}
+                                className="bg-slate-950 border-r border-slate-800"
+                                sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
+                            >OVR</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.POT} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('pot')} sortDirection={sortConfig.key === 'pot' ? sortConfig.direction : null}
+                            >POT</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.AGE} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
+                            >나이</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.HT} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('height')} sortDirection={sortConfig.key === 'height' ? sortConfig.direction : null}
+                            >키</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.WT} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('weight')} sortDirection={sortConfig.key === 'weight' ? sortConfig.direction : null}
+                            >몸무게</TableHeaderCell>
+                            {ATTR_COLS.map(k => (
+                                <TableHeaderCell
+                                    key={k}
+                                    width={WIDTHS.ATTR}
+                                    className="border-r border-slate-800"
+                                    sortable
+                                    onSort={() => handleSort(k)}
+                                    sortDirection={sortConfig.key === k ? sortConfig.direction : null}
+                                    title={ATTR_NAME_MAP[k] || k}
+                                >
+                                    {ATTR_LABEL[k] || k}
+                                </TableHeaderCell>
+                            ))}
+                            <TableHeaderCell width={WIDTHS.SCOUT} align="left" className="pl-3">코멘트</TableHeaderCell>
+                        </tr>
+                    </thead>
+                    <TableBody>
+                        {sortedProspects.map((p, idx) => {
+                            const rank = idx + 1;
+                            const ovr = calculatePlayerOvr(p);
+                            return (
+                                <TableRow key={p.id} className="group">
+                                    <TableCell style={getStickyStyle(0, WIDTHS.RANK)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                                        <span className={`font-black text-xs ${rank <= 3 ? 'text-amber-400' : 'text-slate-600'}`}>{rank}</span>
+                                    </TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_NAME, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                        <span className="text-xs font-semibold text-slate-200 truncate">{p.name}</span>
+                                    </TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
+                                    <TableCell
+                                        style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true) }}
+                                        className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
+                                    >
+                                        <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
+                                    </TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30">
+                                        <span className="font-mono font-black text-xs tabular-nums text-amber-400/80">{p.potential}</span>
+                                    </TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.age}</TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.height}</TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.weight}</TableCell>
+                                    {ATTR_COLS.map(k => (
+                                        <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
+                                    ))}
+                                    <TableCell align="left" className="pl-3">
+                                        <span className="text-slate-500 italic text-xs truncate block">{getScoutComment(p)}</span>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+
+                {sortedProspects.length === 0 && (
+                    <div className="flex items-center justify-center h-40 text-slate-600 font-bold text-sm">
+                        검색 결과가 없습니다.
+                    </div>
+                )}
             </div>
         </div>
     );
