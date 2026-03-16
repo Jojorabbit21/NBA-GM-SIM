@@ -83,7 +83,7 @@ export interface DispatchParams {
  * 각 이벤트는 offseasonPhase로 멱등성 보장.
  */
 export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventResult {
-    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed } = params;
+    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId } = params;
 
     // Phase가 null이면 인시즌 — 오프시즌 이벤트 불필요
     if (offseasonPhase === null) return NO_EVENT;

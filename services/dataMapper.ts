@@ -110,7 +110,7 @@ export const mapFreeAgents = (playersData: any[]): Player[] => {
 /**
  * 개별 선수 데이터 변환 (Raw DB Object -> Player Object)
  */
-const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
+export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     // DB의 base_attributes 컬럼 파싱 (JSON or Object)
     const baseAttrs = typeof raw.base_attributes === 'string' 
         ? JSON.parse(raw.base_attributes) 
