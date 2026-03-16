@@ -12,6 +12,7 @@ import { AppView } from '../../types/app';
 import { runLotteryEngine, LotteryResult } from '../draft/lotteryEngine';
 import { generateDraftClass } from '../draft/rookieGenerator';
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
+import { fetchPredefinedDraftClass } from '../queries';
 import { buildSeasonConfig } from '../../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
 import { INITIAL_STATS } from '../../utils/constants';
@@ -52,24 +53,50 @@ export interface ProspectRevealParams {
     hasProspects: boolean;  // 이미 생성된 prospects가 있으면 스킵
 }
 
+/** 첫 시즌 드래프트 클래스의 draft_year (meta_players에서 fetch) */
+const FIRST_SEASON_DRAFT_YEAR = '2026';
+
 /**
- * prospectReveal 날짜 도달 시 드래프트 클래스를 생성한다.
+ * prospectReveal 날짜 도달 시 드래프트 클래스를 로드/생성한다.
+ * - 시즌 1: meta_players에서 draft_year=2026 선수를 fetch (사전 입력 데이터)
+ * - 시즌 2+: generateDraftClass로 자동 생성
  * 인시즌 이벤트이므로 offseasonPhase와 무관하게 동작.
  */
-export function checkProspectReveal(params: ProspectRevealParams): OffseasonEventResult {
+export async function checkProspectReveal(params: ProspectRevealParams): Promise<OffseasonEventResult> {
     const { currentDate, prospectRevealDate, currentSeasonNumber, tendencySeed, userId, hasProspects } = params;
 
     if (hasProspects) return NO_EVENT;  // 이미 생성됨
     if (currentDate < prospectRevealDate) return NO_EVENT;  // 아직 공개일 아님
 
-    // 다음 시즌용 드래프트 클래스 생성 (현재 시즌 오프시즌에 드래프트될 클래스)
-    const nextSeasonNumber = currentSeasonNumber + 1;
-    const draftClass = userId
-        ? generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60)
-        : [];
+    let draftClass: GeneratedPlayerRow[] = [];
 
-    if (draftClass.length > 0) {
-        console.log(`📋 Prospect reveal: generated ${draftClass.length} prospects for ${nextSeasonNumber} draft`);
+    if (currentSeasonNumber === 1) {
+        // 첫 시즌: meta_players에서 사전 입력된 루키 데이터 fetch
+        const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
+        draftClass = rawRows.map((row: any) => ({
+            id: String(row.id),
+            user_id: userId || '',
+            season_number: 2,
+            draft_pick: null,
+            draft_team_id: null,
+            status: 'fa' as const,
+            base_attributes: typeof row.base_attributes === 'string'
+                ? JSON.parse(row.base_attributes)
+                : row.base_attributes,
+            age_at_draft: Number(row.base_attributes?.age ?? 19),
+        }));
+        if (draftClass.length > 0) {
+            console.log(`📋 Prospect reveal: loaded ${draftClass.length} predefined prospects from meta_players (draft_year=${FIRST_SEASON_DRAFT_YEAR})`);
+        }
+    } else {
+        // 시즌 2+: 자동 생성
+        const nextSeasonNumber = currentSeasonNumber + 1;
+        draftClass = userId
+            ? generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60)
+            : [];
+        if (draftClass.length > 0) {
+            console.log(`📋 Prospect reveal: generated ${draftClass.length} prospects for season ${nextSeasonNumber} draft`);
+        }
     }
 
     return {
@@ -124,7 +151,7 @@ export interface DispatchParams {
  * 현재 날짜가 오프시즌 Key Date에 해당하면 이벤트 실행.
  * 각 이벤트는 offseasonPhase로 멱등성 보장.
  */
-export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventResult {
+export async function dispatchOffseasonEvent(params: DispatchParams): Promise<OffseasonEventResult> {
     const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId, userTeamId } = params;
 
     // Phase가 null이면 인시즌 — 오프시즌 이벤트 불필요
@@ -148,14 +175,32 @@ export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventRe
 
     // ── rookieDraft: 드래프트 뷰 이동 (클래스는 prospectReveal에서 이미 생성됨) ──
     if (currentDate >= keyDates.rookieDraft && offseasonPhase === 'POST_LOTTERY') {
-        // prospectReveal에서 이미 생성되지 않은 경우에만 fallback 생성
+        // prospectReveal에서 이미 로드/생성되지 않은 경우에만 fallback
         const nextSeasonNumber = currentSeasonNumber + 1;
         let draftClass: GeneratedPlayerRow[] | undefined;
         if (userId && !params.hasProspects) {
-            const generated = generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60);
-            if (generated.length > 0) {
-                console.log(`📝 Generated draft class (fallback): ${generated.length} rookies for season ${nextSeasonNumber}`);
-                draftClass = generated;
+            if (currentSeasonNumber === 1) {
+                // 첫 시즌 fallback: meta_players에서 fetch
+                const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
+                draftClass = rawRows.map((row: any) => ({
+                    id: String(row.id),
+                    user_id: userId,
+                    season_number: 2,
+                    draft_pick: null,
+                    draft_team_id: null,
+                    status: 'fa' as const,
+                    base_attributes: typeof row.base_attributes === 'string'
+                        ? JSON.parse(row.base_attributes)
+                        : row.base_attributes,
+                    age_at_draft: Number(row.base_attributes?.age ?? 19),
+                }));
+                console.log(`📝 Draft class fallback: loaded ${draftClass.length} predefined prospects`);
+            } else {
+                const generated = generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60);
+                if (generated.length > 0) {
+                    console.log(`📝 Generated draft class (fallback): ${generated.length} rookies for season ${nextSeasonNumber}`);
+                    draftClass = generated;
+                }
             }
         }
 

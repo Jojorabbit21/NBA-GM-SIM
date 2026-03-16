@@ -619,7 +619,7 @@ export const useSimulation = (
 
                 // ★ 인시즌: 드래프트 풀 공개 감지
                 if (seasonConfig?.keyDates && (offseasonPhase ?? null) === null) {
-                    const prospectResult = checkProspectReveal({
+                    const prospectResult = await checkProspectReveal({
                         currentDate: nextDate,
                         prospectRevealDate: seasonConfig.keyDates.prospectReveal,
                         currentSeasonNumber,
@@ -679,7 +679,7 @@ export const useSimulation = (
                 // ★ 오프시즌 Key Date 이벤트 디스패처
                 const currentPhase = finalsDetection.updates?.offseasonPhase ?? offseasonPhase ?? null;
                 if (currentPhase !== null && seasonConfig?.keyDates) {
-                    const offseasonEvent = dispatchOffseasonEvent({
+                    const offseasonEvent = await dispatchOffseasonEvent({
                         currentDate: nextDate,
                         keyDates: seasonConfig.keyDates,
                         offseasonPhase: currentPhase,

@@ -20,7 +20,7 @@ export const useBaseData = (enabled: boolean = true) => {
             // 4개 meta 테이블 병렬 fetch
             const [teamsRes, playersRes, scheduleRes, coachesRes, gmsRes] = await Promise.all([
                 supabase.from('meta_teams').select('*'),
-                supabase.from('meta_players').select('*'),
+                supabase.from('meta_players').select('*').or('draft_year.is.null,draft_year.neq.2026'),
                 supabase.from('meta_schedule').select('*'),
                 supabase.from('meta_coaches').select('*'),
                 supabase.from('meta_gms').select('*'),
@@ -97,6 +97,20 @@ export const useMonthlySchedule = (userId?: string, year?: number, month?: numbe
         enabled: !!userId && year !== undefined && month !== undefined,
         staleTime: 60 * 1000 // 1 minute
     });
+};
+
+// --- Fetch Predefined Draft Class from meta_players (by draft_year) ---
+export const fetchPredefinedDraftClass = async (draftYear: string): Promise<any[]> => {
+    const { data, error } = await supabase
+        .from('meta_players')
+        .select('*')
+        .eq('draft_year', draftYear);
+
+    if (error) {
+        console.error(`❌ Failed to fetch draft class for ${draftYear}:`, error);
+        return [];
+    }
+    return data || [];
 };
 
 // --- Single Game Result for Inbox Detail ---

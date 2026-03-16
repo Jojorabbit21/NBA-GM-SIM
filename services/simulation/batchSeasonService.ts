@@ -504,9 +504,16 @@ function getUnplayedGameDates(schedule: Game[], myTeamId: string): string[] {
 
     if (!lastMyGameDate) return [];
 
+    // ★ 정규시즌 마지막 날짜까지 확장: 유저 경기가 끝났어도 다른 팀의 정규시즌 경기가
+    // 남아있으면 checkAndInitPlayoffs가 트리거되지 않으므로, 정규시즌 끝날짜까지 포함
+    const lastRegularDate = schedule
+        .filter(g => !g.played && !g.isPlayoff)
+        .reduce((max, g) => g.date > max ? g.date : max, '');
+    const endDate = lastRegularDate > lastMyGameDate ? lastRegularDate : lastMyGameDate;
+
     // 해당 날짜까지의 모든 미플레이 날짜 (정규시즌 + 플레이오프)
     for (const g of schedule) {
-        if (!g.played && g.date <= lastMyGameDate) {
+        if (!g.played && g.date <= endDate) {
             dateSet.add(g.date);
         }
     }
@@ -517,7 +524,7 @@ function getUnplayedGameDates(schedule: Game[], myTeamId: string): string[] {
 
     const allDates: string[] = [];
     const start = new Date(sortedDates[0]);
-    const end = new Date(lastMyGameDate);
+    const end = new Date(endDate);
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         allDates.push(d.toISOString().split('T')[0]);

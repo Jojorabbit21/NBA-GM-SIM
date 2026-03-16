@@ -12,7 +12,8 @@ import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchS
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
 import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildOwnerLetterContent, selectFinalsMvp, buildPlayoffChampionContent } from '../services/reportGenerator';
+import { FinalsMvpContent } from '../types/message';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent } from '../types/message';
@@ -188,6 +189,59 @@ export const useFullSeasonSim = (
                                     });
                                 }
                             }
+                        }
+                    }
+                }
+
+                // 파이널 MVP + 플레이오프 우승 보고서
+                const finalsSeries = result.finalPlayoffSeries.find(s => s.round === 4 && s.finished && s.winnerId);
+                if (finalsSeries) {
+                    const alreadyFmvp = await hasMessageOfType(session.user.id, myTeamId, 'FINALS_MVP');
+                    if (!alreadyFmvp) {
+                        const finalsGames = result.allPlayoffResultsToSave.filter(r => r.series_id === finalsSeries.id);
+                        if (finalsGames.length > 0) {
+                            const mvpResult = selectFinalsMvp(finalsGames, finalsSeries.winnerId!);
+                            if (mvpResult) {
+                                const winnerTeam = result.finalTeams.find(t => t.id === finalsSeries.winnerId);
+                                const loserId = finalsSeries.winnerId === finalsSeries.higherSeedId ? finalsSeries.lowerSeedId : finalsSeries.higherSeedId;
+                                const loserTeam = result.finalTeams.find(t => t.id === loserId);
+                                const winnerWins = finalsSeries.winnerId === finalsSeries.higherSeedId ? finalsSeries.higherSeedWins : finalsSeries.lowerSeedWins;
+                                const loserWins = finalsSeries.winnerId === finalsSeries.higherSeedId ? finalsSeries.lowerSeedWins : finalsSeries.higherSeedWins;
+                                const fmvpContent: FinalsMvpContent = {
+                                    mvpPlayerId: mvpResult.mvp.playerId,
+                                    mvpPlayerName: mvpResult.mvp.playerName,
+                                    mvpTeamId: finalsSeries.winnerId!,
+                                    mvpTeamName: winnerTeam?.name || 'Unknown',
+                                    opponentTeamId: loserId,
+                                    opponentTeamName: loserTeam?.name || 'Unknown',
+                                    seriesScore: `${winnerWins}-${loserWins}`,
+                                    stats: mvpResult.mvp,
+                                    leaderboard: mvpResult.leaderboard,
+                                };
+                                result.allMessages.push({
+                                    user_id: session.user.id,
+                                    team_id: myTeamId,
+                                    date: result.finalDate,
+                                    type: 'FINALS_MVP',
+                                    title: `[속보] 파이널 MVP 발표`,
+                                    content: fmvpContent,
+                                });
+                            }
+                        }
+                    }
+                    const alreadyChamp = await hasMessageOfType(session.user.id, myTeamId, 'PLAYOFF_CHAMPION');
+                    if (!alreadyChamp) {
+                        const champTeam = result.finalTeams.find(t => t.id === finalsSeries.winnerId);
+                        if (champTeam) {
+                            const champContent = buildPlayoffChampionContent(champTeam, result.finalTeams, result.finalSchedule, result.finalPlayoffSeries);
+                            result.allMessages.push({
+                                user_id: session.user.id,
+                                team_id: myTeamId,
+                                date: result.finalDate,
+                                type: 'PLAYOFF_CHAMPION',
+                                title: `[속보] ${seasonShort} 플레이오프 우승: ${champTeam.name}`,
+                                content: champContent,
+                            });
                         }
                     }
                 }
