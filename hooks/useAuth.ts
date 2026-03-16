@@ -12,13 +12,17 @@ export const useAuth = () => {
     useEffect(() => {
         let mounted = true;
 
-        // 1. 초기 세션 확인 (안전하게 처리)
+        // 1. 초기 세션 확인 (타임아웃 포함 — 토큰 갱신 hang 방지)
         const initSession = async () => {
             try {
-                const { data, error } = await supabase.auth.getSession();
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Auth timeout')), 5000)
+                );
+
+                const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
                 if (error) {
                     console.error("Auth Session Error:", error.message);
-                    // Force signOut if refresh token is invalid
                     if (error.message?.includes("Refresh Token") || (error as any).status === 400) {
                         await supabase.auth.signOut().catch(() => {});
                         if (mounted) setSession(null);
@@ -26,9 +30,17 @@ export const useAuth = () => {
                 } else if (mounted && data.session) {
                     setSession(data.session);
                 }
-            } catch (e) {
-                // Supabase core.js 내부 에러 (payload undefined 등) 무시
-                console.warn("Auth init warning:", e);
+            } catch (e: any) {
+                console.warn("Auth init warning:", e?.message || e);
+                // 타임아웃 또는 내부 에러 → 만료된 세션 정리 후 로그인 화면으로
+                try {
+                    // localStorage에 남은 만료 토큰 제거
+                    Object.keys(localStorage)
+                        .filter(k => k.startsWith('sb-'))
+                        .forEach(k => localStorage.removeItem(k));
+                    await supabase.auth.signOut().catch(() => {});
+                } catch { /* ignore */ }
+                if (mounted) setSession(null);
             } finally {
                 if (mounted) setAuthLoading(false);
             }
