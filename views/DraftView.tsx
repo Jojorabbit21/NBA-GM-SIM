@@ -89,7 +89,29 @@ interface LotteryResultsTableProps {
     myTeamId?: string;
 }
 
+/** 승률 기반 색상: 5할 미만=빨강(낮을수록 밝은), 5할 이상=초록(높을수록 밝은) */
+const getWinPctColor = (winPct: number): string => {
+    if (winPct >= 0.700) return 'text-emerald-300';
+    if (winPct >= 0.600) return 'text-emerald-400';
+    if (winPct >= 0.500) return 'text-emerald-500';
+    if (winPct >= 0.400) return 'text-red-500';
+    if (winPct >= 0.300) return 'text-red-400';
+    return 'text-red-300';
+};
+
 const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult, teams, myTeamId }) => {
+    // 리그 순위 계산 (승률 내림차순)
+    const leagueRankMap = useMemo(() => {
+        const sorted = [...teams].sort((a, b) => {
+            const aPct = a.wins + a.losses > 0 ? a.wins / (a.wins + a.losses) : 0;
+            const bPct = b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : 0;
+            return bPct - aPct || b.wins - a.wins;
+        });
+        const map = new Map<string, number>();
+        sorted.forEach((t, i) => map.set(t.id, i + 1));
+        return map;
+    }, [teams]);
+
     const teamMap = useMemo(() => {
         const map = new Map<string, Team>();
         teams.forEach(t => map.set(t.id, t));
@@ -101,27 +123,30 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
         const pick = idx + 1;
         const movement = lotteryResult.pickMovements.find(m => m.teamId === teamId);
         const lotteryEntry = lotteryResult.lotteryTeams.find(lt => lt.teamId === teamId);
-        const isLottery = pick <= 14;
         const isTop4 = lotteryResult.top4Drawn.includes(teamId);
         const isMyTeam = teamId === myTeamId;
+        const leagueRank = leagueRankMap.get(teamId) ?? 0;
+        const winPct = team && (team.wins + team.losses) > 0 ? team.wins / (team.wins + team.losses) : 0;
 
-        return { teamId, team, pick, movement, lotteryEntry, isLottery, isTop4, isMyTeam };
+        return { teamId, team, pick, movement, lotteryEntry, isTop4, isMyTeam, leagueRank, winPct };
     });
 
     return (
         <div className="flex-1 min-h-0">
             <Table fullHeight className="!rounded-none !border-x-0 !border-t-0 text-xs">
                 <TableHead>
-                    <TableHeaderCell width={60} align="center">순위</TableHeaderCell>
+                    <TableHeaderCell width={70} align="center">지명순위</TableHeaderCell>
                     <TableHeaderCell align="left" className="pl-4">팀</TableHeaderCell>
-                    <TableHeaderCell width={60} align="center">성적</TableHeaderCell>
-                    <TableHeaderCell width={70} align="center">승률</TableHeaderCell>
+                    <TableHeaderCell width={50} align="center">순위</TableHeaderCell>
+                    <TableHeaderCell width={70} align="center">성적</TableHeaderCell>
+                    <TableHeaderCell width={60} align="center">승률</TableHeaderCell>
                     <TableHeaderCell width={80} align="center">로터리 확률</TableHeaderCell>
                     <TableHeaderCell width={80} align="center">순위 변동</TableHeaderCell>
                 </TableHead>
                 <TableBody>
                     {rows.map(r => {
                         const diff = r.movement ? r.movement.preLotteryPosition - r.movement.finalPosition : 0;
+                        const pctColor = getWinPctColor(r.winPct);
                         return (
                             <TableRow key={r.teamId} className={r.isMyTeam ? 'bg-indigo-950/30' : ''}>
                                 <TableCell align="center">
@@ -135,14 +160,17 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
                                         <span className={`font-semibold ${r.isMyTeam ? 'text-indigo-400' : 'text-slate-200'}`}>
                                             {r.team ? `${r.team.city} ${r.team.name}` : r.teamId}
                                         </span>
-                                        {r.isTop4 && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[9px] font-black">LOTTERY</span>}
+                                        {r.isTop4 && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-xs font-black">LOTTERY</span>}
                                     </div>
                                 </TableCell>
-                                <TableCell align="center" className="text-slate-500 font-semibold tabular-nums">
-                                    {r.lotteryEntry ? `${r.lotteryEntry.wins}-${r.lotteryEntry.losses}` : '-'}
+                                <TableCell align="center" className="font-black text-slate-400 tabular-nums">
+                                    {r.leagueRank}
                                 </TableCell>
-                                <TableCell align="center" className="text-slate-500 font-mono tabular-nums">
-                                    {r.lotteryEntry ? `.${(r.lotteryEntry.winPct * 1000).toFixed(0).padStart(3, '0')}` : '-'}
+                                <TableCell align="center" className={`font-semibold tabular-nums ${pctColor}`}>
+                                    {r.team ? `${r.team.wins}-${r.team.losses}` : '-'}
+                                </TableCell>
+                                <TableCell align="center" className={`font-mono tabular-nums ${pctColor}`}>
+                                    {r.team ? `.${(r.winPct * 1000).toFixed(0).padStart(3, '0')}` : '-'}
                                 </TableCell>
                                 <TableCell align="center" className="font-mono tabular-nums">
                                     {r.lotteryEntry
@@ -235,27 +263,20 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-            {/* Header Bar */}
-            <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center justify-between bg-slate-900/80">
-                <div className="flex items-center gap-3">
-                    <span className="text-sm font-black uppercase tracking-wide text-white">드래프트</span>
-                    {activeTab === 'board' && (
-                        <span className="text-xs font-bold text-slate-500 tabular-nums">{sortedProspects.length}명</span>
-                    )}
-                </div>
-                {/* Tabs */}
-                <div className="flex items-center gap-1">
+            {/* Tab Navigation — RosterTabs 스타일 */}
+            <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center h-12 flex-shrink-0">
+                <div className="flex items-center gap-8 h-full">
                     <button
                         onClick={() => setActiveTab('board')}
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
-                            activeTab === 'board' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                        className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
+                            activeTab === 'board' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'
                         }`}
                     >드래프트 보드</button>
                     {hasLottery && (
                         <button
                             onClick={() => setActiveTab('lottery')}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
-                                activeTab === 'lottery' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                            className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
+                                activeTab === 'lottery' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'
                             }`}
                         >로터리 결과</button>
                     )}
@@ -266,6 +287,8 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                 <>
                     {/* Filter Bar */}
                     <div className="flex-shrink-0 px-6 py-2.5 border-b border-white/10 flex items-center gap-4 bg-slate-950/60">
+                        {/* 인원수 */}
+                        <span className="text-xs font-black text-white tabular-nums">{sortedProspects.length}명</span>
                         {/* 포지션 필터 */}
                         <div className="flex items-center gap-1">
                             {['ALL', 'PG', 'SG', 'SF', 'PF', 'C'].map(pos => (
@@ -275,7 +298,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                                     className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
                                         posFilter === pos
                                             ? 'bg-indigo-600 text-white'
-                                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                                            : 'bg-slate-800 text-white/70 hover:text-white'
                                     }`}
                                 >
                                     {pos}
