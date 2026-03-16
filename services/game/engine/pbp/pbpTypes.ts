@@ -1,7 +1,7 @@
 
 import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies } from '../../../../types';
 import { SimSettings } from '../../../../types/simSettings';
-import { ArchetypeRatings } from './archetypeSystem';
+import type { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
     // Current runtime attributes

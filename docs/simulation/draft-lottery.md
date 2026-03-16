@@ -10,8 +10,9 @@ NBA 2019+ 로터리 확률 시스템 구현.
 | 파일 | 역할 |
 |------|------|
 | `services/draft/lotteryEngine.ts` | 순수 함수 로터리 엔진 (React/DB 의존 없음) |
-| `services/simulation/offseasonEventHandler.ts` | draftLottery 날짜 도달 시 로터리 실행 + DraftLotteryView 진입 |
+| `services/simulation/offseasonEventHandler.ts` | draftLottery 날짜 도달 시 로터리 실행 + DraftLotteryView 진입, rookieDraft 날짜 도달 시 RookieDraftView 진입 |
 | `views/DraftLotteryView.tsx` | 로터리 결과 애니메이션 UI (30→1 역순 공개) |
+| `views/RookieDraftView.tsx` | 2라운드 루키 드래프트 UI (DraftBoard/PlayerPool 등 공유 컴포넌트 재사용) |
 | `services/seasonArchive.ts` | `updateSeasonArchiveLottery()` — 시즌 아카이브에 로터리 결과 기록 |
 | `utils/tiebreaker.ts` | 동률 팀 순위 결정 (로터리 역순위 정렬에 사용) |
 
@@ -119,6 +120,20 @@ DraftLotteryView
   → 30→1 역순 애니메이션 (400ms 간격)
   → 확률%, 순위 변동(▲/▼), WINNER 뱃지 표시
   → "확인" 클릭 → Dashboard 복귀
+
+오프시즌 날짜 계속 진행
+  → currentDate >= keyDates.rookieDraft && offseasonPhase === 'POST_LOTTERY'
+  → blocked: true, navigateTo: 'DraftRoom'
+  → AppRouter: prospects + lotteryResult 존재 → RookieDraftView 렌더링
+
+RookieDraftView (2라운드 × 30팀 = 60픽)
+  → lotteryResult.finalOrder 기반 스네이크 드래프트
+  → CPU: BPA 자동픽 (600ms 딜레이), 유저: 수동 + 30초 타이머
+  → "확인" 클릭 → handleRookieDraftComplete()
+    → DB: markAsDrafted() (각 픽)
+    → 런타임: 루키 → 팀 로스터 추가, 미드래프트 → FA 풀
+    → offseasonPhase = 'POST_DRAFT'
+    → Dashboard 복귀
 ```
 
 ---

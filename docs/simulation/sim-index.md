@@ -25,6 +25,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | [schedule-generator.md](schedule-generator.md) | 시즌 일정 자동생성 (82경기 × 30팀) | scheduleGenerator.ts |
 | [playoff-system.md](playoff-system.md) | 플레이오프 브래킷/타이브레이커/일정 생성 | playoffLogic.ts, tiebreaker.ts, seasonService.ts |
 | [draft-lottery.md](draft-lottery.md) | NBA 2019+ 드래프트 로터리 추첨 시스템 | lotteryEngine.ts, offseasonEventHandler.ts |
+| [rookie-generator.md](rookie-generator.md) | 루키 생성 알고리즘 (60명 드래프트 클래스) | rookieGenerator.ts, rookieRepository.ts |
 
 ---
 
@@ -43,7 +44,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | 파일 | 문서 |
 |------|------|
 | seasonService.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
-| offseasonEventHandler.ts | [draft-lottery.md](draft-lottery.md) |
+| offseasonEventHandler.ts | [draft-lottery.md](draft-lottery.md), [rookie-generator.md](rookie-generator.md) |
 | batchSeasonService.ts | [sim-structure.md](sim-structure.md) |
 | userGameService.ts | [sim-structure.md](sim-structure.md) |
 | cpuGameService.ts | [sim-structure.md](sim-structure.md) |
@@ -52,6 +53,8 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | 파일 | 문서 |
 |------|------|
 | lotteryEngine.ts | [draft-lottery.md](draft-lottery.md) |
+| rookieGenerator.ts | [rookie-generator.md](rookie-generator.md) |
+| rookieRepository.ts | [rookie-generator.md](rookie-generator.md) |
 
 ### 트레이드 (`services/tradeEngine/`)
 | 파일 | 문서 |
