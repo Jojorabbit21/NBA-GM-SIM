@@ -10,8 +10,10 @@ import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult, processInjuryRecovery, computeReturnDate } from '../services/simulation/userGameService';
-import { handleSeasonEvents, checkAndStartNextSeason } from '../services/simulation/seasonService';
-import { archiveCurrentSeason } from '../services/seasonArchive';
+import { handleSeasonEvents } from '../services/simulation/seasonService';
+import { detectFinalsEnd, dispatchOffseasonEvent } from '../services/simulation/offseasonEventHandler';
+import { OffseasonPhase } from '../types/app';
+import { archiveCurrentSeason, updateSeasonArchiveLottery } from '../services/seasonArchive';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
@@ -54,7 +56,11 @@ export const useSimulation = (
     leagueTradeOffers?: LeagueTradeOffers,
     leaguePickAssets?: LeaguePickAssets | null,
     leagueGMProfiles?: LeagueGMProfiles,
-    seasonConfig?: SeasonConfig
+    seasonConfig?: SeasonConfig,
+    lotteryResult?: any | null,
+    offseasonPhase?: OffseasonPhase,
+    setOffseasonPhase?: (phase: OffseasonPhase) => void,
+    onOffseasonEvent?: (view: string) => void
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -568,47 +574,17 @@ export const useSimulation = (
                 );
                 _perf['8_reviewMessages'] = performance.now() - _t1;
 
-                // ★ 심리스 시즌 전환: 파이널 종료 감지 → 다음 시즌 자동 시작
+                // ★ 파이널 종료 감지 → 오프시즌 진입
                 const currentSeasonNumber = seasonConfig?.seasonNumber ?? 1;
-                const transition = checkAndStartNextSeason(newTeams, newSchedule, newPlayoffSeries, currentSeasonNumber);
-                if (transition.transitioned && transition.newSchedule && transition.newSeasonNumber && transition.newSeasonConfig) {
+                const finalsDetection = detectFinalsEnd(newPlayoffSeries, offseasonPhase ?? null);
+                if (finalsDetection.fired && finalsDetection.updates?.offseasonPhase) {
                     // 현재 시즌 아카이브
                     const myTeam = newTeams.find(t => t.id === myTeamId);
                     if (!isGuestMode && session?.user?.id && myTeam && seasonConfig) {
                         archiveCurrentSeason(session.user.id, seasonConfig, myTeam, newTeams, newPlayoffSeries)
                             .catch(e => console.warn('⚠️ Season archive failed (non-critical):', e));
                     }
-
-                    // 새 시즌으로 교체 (checkAndStartNextSeason이 이미 teams W/L, stats 리셋함)
-                    newSchedule = transition.newSchedule;
-                    newPlayoffSeries = [];
-
-                    // 시즌 전환: 다음날로 진행 (오프시즌 Key Dates를 순서대로 경험)
-                    const d2 = new Date(currentSimDate);
-                    d2.setDate(d2.getDate() + 1);
-                    const nextSeasonDate = d2.toISOString().split('T')[0];
-
-                    setSimProgress({ percent: 95, label: `시즌 ${transition.newSeasonNumber} 시작...` });
-                    setTeams([...newTeams]);
-                    setSchedule(newSchedule);
-                    setPlayoffSeries([]);
-                    advanceDate(nextSeasonDate, {
-                        seasonNumber: transition.newSeasonNumber,
-                        currentSeason: transition.newSeasonConfig.seasonLabel,
-                    });
-                    setSimProgress(null);
-                    setIsSimulating(false);
-                    if (!isGuestMode) {
-                        forceSave({
-                            currentSimDate: nextSeasonDate,
-                            teams: newTeams,
-                            schedule: newSchedule,
-                            withSnapshot: false,
-                            seasonNumber: transition.newSeasonNumber,
-                            currentSeason: transition.newSeasonConfig.seasonLabel,
-                        });
-                    }
-                    return;
+                    setOffseasonPhase?.(finalsDetection.updates.offseasonPhase);
                 }
 
                 // Commit Updates
@@ -630,6 +606,82 @@ export const useSimulation = (
                     }
                 }
                 _perf['9_scoutReport'] = performance.now() - _t1;
+
+                // ★ 오프시즌 Key Date 이벤트 디스패처
+                const currentPhase = finalsDetection.updates?.offseasonPhase ?? offseasonPhase ?? null;
+                if (currentPhase !== null && seasonConfig?.keyDates) {
+                    const offseasonEvent = dispatchOffseasonEvent({
+                        currentDate: nextDate,
+                        keyDates: seasonConfig.keyDates,
+                        offseasonPhase: currentPhase,
+                        teams: newTeams,
+                        schedule: newSchedule,
+                        playoffSeries: newPlayoffSeries,
+                        currentSeasonNumber,
+                    });
+
+                    if (offseasonEvent.fired && offseasonEvent.updates) {
+                        const u = offseasonEvent.updates;
+                        if (u.offseasonPhase !== undefined) setOffseasonPhase?.(u.offseasonPhase);
+
+                        // openingNight 핸들러 결과: 새 시즌 시작
+                        if (u.newSchedule && u.newSeasonNumber && u.newSeasonConfig) {
+                            newSchedule = u.newSchedule;
+                            newPlayoffSeries = [];
+                            setTeams([...newTeams]);
+                            setSchedule(newSchedule);
+                            setPlayoffSeries([]);
+                            advanceDate(nextDate, {
+                                seasonNumber: u.newSeasonNumber,
+                                currentSeason: u.newSeasonConfig.seasonLabel,
+                            });
+                            setSimProgress(null);
+                            setIsSimulating(false);
+                            if (!isGuestMode) {
+                                forceSave({
+                                    currentSimDate: nextDate,
+                                    teams: newTeams,
+                                    schedule: newSchedule,
+                                    withSnapshot: false,
+                                    seasonNumber: u.newSeasonNumber,
+                                    currentSeason: u.newSeasonConfig.seasonLabel,
+                                    offseasonPhase: u.offseasonPhase,
+                                    lotteryResult: u.lotteryResult || null,
+                                });
+                            }
+                            return;
+                        }
+
+                        // blocking 이벤트 (draftLottery 등): 뷰 전환 후 중단
+                        if (offseasonEvent.blocked && offseasonEvent.navigateTo) {
+                            advanceDate(nextDate, {});
+                            setSimProgress(null);
+                            setIsSimulating(false);
+                            if (!isGuestMode) {
+                                forceSave({
+                                    currentSimDate: nextDate,
+                                    teams: newTeams,
+                                    schedule: newSchedule,
+                                    withSnapshot: true,
+                                    offseasonPhase: u.offseasonPhase,
+                                    lotteryResult: u.lotteryResult || null,
+                                });
+                                // 로터리 결과를 시즌 아카이브에도 기록
+                                if (u.lotteryResult && session?.user?.id && seasonConfig) {
+                                    updateSeasonArchiveLottery(session.user.id, seasonConfig.seasonLabel, u.lotteryResult)
+                                        .catch(e => console.warn('⚠️ Lottery archive update failed (non-critical):', e));
+                                }
+                            }
+                            onOffseasonEvent?.(offseasonEvent.navigateTo);
+                            return;
+                        }
+
+                        // 비-blocking 이벤트: phase 업데이트만 저장
+                        if (u.offseasonPhase !== undefined && !isGuestMode) {
+                            forceSave({ offseasonPhase: u.offseasonPhase });
+                        }
+                    }
+                }
 
                 // 리그 일정에서 참관 요청 시 — 날짜 진행 보류, LiveGameView에서 경기 진행
                 _t1 = performance.now();

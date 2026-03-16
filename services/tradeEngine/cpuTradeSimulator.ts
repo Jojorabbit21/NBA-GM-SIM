@@ -4,6 +4,7 @@ import { LeaguePickAssets, DraftPickAsset } from '../../types/draftAssets';
 import { LeagueTradeBlocks, PersistentPickRef } from '../../types/trade';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { SEASON_START_DATE, TRADE_DEADLINE } from '../../utils/constants';
+import { SeasonConfig } from '../../utils/seasonConfig';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { getPickTradeValue } from './pickValueEngine';
@@ -83,10 +84,10 @@ interface TradePackage {
 // 1. 점진적 확률 계산
 // ──────────────────────────────────────────────
 
-function calculateTradeChance(currentDate: string): number {
+function calculateTradeChance(currentDate: string, seasonStart: string, tradeDeadline: string): number {
     const current = new Date(currentDate).getTime();
-    const start = new Date(SEASON_START_DATE).getTime();
-    const deadline = new Date(TRADE_DEADLINE).getTime();
+    const start = new Date(seasonStart).getTime();
+    const deadline = new Date(tradeDeadline).getTime();
 
     if (current > deadline || current < start) return 0;
 
@@ -651,18 +652,21 @@ export function runCPUTradeRound(
     currentDate: string,
     leaguePickAssets?: LeaguePickAssets,
     leagueTradeBlocks?: LeagueTradeBlocks,
-    leagueGMProfiles?: LeagueGMProfiles
+    leagueGMProfiles?: LeagueGMProfiles,
+    seasonConfig?: SeasonConfig
 ): { updatedTeams: Team[]; transactions: Transaction[] } | null {
     // 데드라인 체크
-    if (new Date(currentDate) > new Date(TRADE_DEADLINE)) {
+    const tradeDeadline = seasonConfig?.tradeDeadline ?? TRADE_DEADLINE;
+    const seasonStart = seasonConfig?.startDate ?? SEASON_START_DATE;
+    if (new Date(currentDate) > new Date(tradeDeadline)) {
         return null;
     }
-    if (new Date(currentDate) < new Date(SEASON_START_DATE)) {
+    if (new Date(currentDate) < new Date(seasonStart)) {
         return null;
     }
 
     // 확률 계산 & 주사위
-    const baseChance = calculateTradeChance(currentDate);
+    const baseChance = calculateTradeChance(currentDate, seasonStart, tradeDeadline);
 
     // GM 노선 기반 확률 보정 — 활발한 노선 팀이 많을수록 거래 확률 증가
     let directionMultiplier = 1.0;

@@ -13,6 +13,7 @@ import {
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { executeTrade as executeTradeViaExecutor, validateTradeOnly, TradeExecutionPayload } from '../services/tradeEngine/tradeExecutor';
 import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
+import { SeasonConfig } from '../utils/seasonConfig';
 import { TRADE_CONFIG as C } from '../services/tradeEngine/tradeConfig';
 import { logEvent } from '../services/analytics';
 import { saveUserTransaction } from '../services/queries';
@@ -38,7 +39,8 @@ export const useTradeSystem = (
     leagueTradeOffers?: LeagueTradeOffers,
     setLeagueTradeOffers?: React.Dispatch<React.SetStateAction<LeagueTradeOffers>>,
     leaguePickAssets?: LeaguePickAssets,
-    setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets>>
+    setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets>>,
+    seasonConfig?: SeasonConfig
 ) => {
     // ══════════════════════════════════════
     // Legacy Local State (기존 즉시 오퍼 시스템 — 하위호환)
@@ -83,7 +85,7 @@ export const useTradeSystem = (
     };
 
     const isTradeLimitReached = dailyTradeAttempts >= MAX_DAILY_TRADES;
-    const isTradeDeadlinePassed = new Date(currentSimDate) > new Date(TRADE_DEADLINE);
+    const isTradeDeadlinePassed = new Date(currentSimDate) > new Date(seasonConfig?.tradeDeadline ?? TRADE_DEADLINE);
 
     // ══════════════════════════════════════
     // 영속 트레이드 블록 관리

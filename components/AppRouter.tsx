@@ -337,6 +337,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     leaguePickAssets={gameData.leaguePickAssets ?? undefined}
                     setLeaguePickAssets={gameData.setLeaguePickAssets}
                     leagueGMProfiles={gameData.leagueGMProfiles}
+                    seasonConfig={gameData.seasonConfig ?? undefined}
                 />
             );
         case 'Playoffs':
@@ -380,10 +381,16 @@ const AppRouter: React.FC<AppRouterProps> = ({
             return (
                 <DraftLotteryView
                     myTeamId={gameData.myTeamId!}
-                    savedOrder={gameData.draftPicks?.order || null}
+                    savedOrder={gameData.lotteryResult?.finalOrder || gameData.draftPicks?.order || null}
+                    lotteryMetadata={gameData.lotteryResult || null}
                     onComplete={(order) => {
                         setDraftOrder(order);
-                        setView('DraftRoom');
+                        // 오프시즌 로터리 (판타지 드래프트가 아닌 경우) → 대시보드로 복귀
+                        if (!gameData.draftPicks?.order) {
+                            setView('Dashboard');
+                        } else {
+                            setView('DraftRoom');
+                        }
                     }}
                 />
             );

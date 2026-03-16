@@ -17,6 +17,7 @@ import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../ut
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent } from '../types/message';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
+import { OffseasonPhase } from '../types/app';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -49,6 +50,7 @@ export const useFullSeasonSim = (
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
     seasonConfig?: SeasonConfig,
+    offseasonPhase?: OffseasonPhase,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
@@ -56,6 +58,23 @@ export const useFullSeasonSim = (
 
     const handleSimulateSeason = useCallback(async (stopDate?: string) => {
         if (!myTeamId || !userTactics) return;
+
+        // ★ blocking Key Date 클리핑: 오프시즌 중 로터리/드래프트 날짜 전에 자동 정지
+        let effectiveStopDate = stopDate;
+        if (offseasonPhase !== null && offseasonPhase !== undefined && seasonConfig?.keyDates) {
+            const blockingDates: string[] = [];
+            if (offseasonPhase === 'POST_FINALS') blockingDates.push(seasonConfig.keyDates.draftLottery);
+            if (offseasonPhase === 'POST_LOTTERY') blockingDates.push(seasonConfig.keyDates.rookieDraft);
+
+            for (const blockDate of blockingDates) {
+                const dayBefore = new Date(blockDate);
+                dayBefore.setDate(dayBefore.getDate() - 1);
+                const clipDate = dayBefore.toISOString().split('T')[0];
+                if (!effectiveStopDate || clipDate < effectiveStopDate) {
+                    effectiveStopDate = clipDate;
+                }
+            }
+        }
 
         cancelTokenRef.current = { cancelled: false };
         setBatchProgress({
@@ -93,7 +112,7 @@ export const useFullSeasonSim = (
                 simSettings,
                 coachingData,
                 seasonConfig,
-                stopDate
+                effectiveStopDate
             );
 
             // 3. DB 저장

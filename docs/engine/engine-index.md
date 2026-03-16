@@ -1,19 +1,19 @@
 # Engine Documentation Index
 
-## 엔진 문서 전체 목록
+## PBP 경기 엔진 문서
 
-PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
-코드를 수정하기 전에 관련 문서를 먼저 참조할 것.
+PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
+포세션 처리, 슈팅 확률, 선수 선택, 수비 매치업, 체력, 리바운드, 파울, 해설 등.
+
+> 시즌 운영 시스템 (일정 생성, 플레이오프, 트레이드, 드래프트, 재정 등)은 [sim-index.md](../simulation/sim-index.md) 참조.
 
 ---
 
-## 아키텍처 & 파이프라인
+## 핵심 구조
 
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
-| [sim-structure.md](sim-structure.md) | 전체 파이프라인 개요 (Hook→Service→Engine) | useSimulation.ts, gameEngine.ts, main.ts |
 | [pbp-engine.md](pbp-engine.md) | PBP 엔진 내부 구조 (포세션 8단계) | possessionHandler.ts, flowEngine.ts, playTypes.ts |
-| [playoff-system.md](playoff-system.md) | 플레이오프 브래킷/타이브레이커/일정 생성 | playoffLogic.ts, tiebreaker.ts, seasonService.ts |
 
 ---
 
@@ -24,6 +24,7 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 | [player-usage.md](player-usage.md) | USG% 현실화, 액터 선택 확률 | playTypes.ts, usageWeights.ts, usageSystem.ts |
 | [hidden-archetypes.md](hidden-archetypes.md) | 12종 히든 아키타입 (공격/수비/유틸리티) | constants.ts, flowEngine.ts, possessionHandler.ts |
 | [shot-distribution.md](shot-distribution.md) | 10존 슈팅 분배, 텐던시/아키타입 기반 | shotDistribution.ts (pbp/, engine/) |
+| [shot-hit-rate.md](shot-hit-rate.md) | 슈팅 적중률 계산 | flowEngine.ts |
 | [hot-cold-streak.md](hot-cold-streak.md) | 핫/콜드 스트릭 시스템 | statsMappers.ts |
 | [clutch-mechanic.md](clutch-mechanic.md) | 클러치 상황 보정 | flowEngine.ts |
 
@@ -35,6 +36,7 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 |------|------|----------|
 | [ace-stopper.md](ace-stopper.md) | 에이스 스토퍼 매치업 효과 (-50%~+40%) | aceStopperSystem.ts |
 | [foul-trouble.md](foul-trouble.md) | 파울 트러블 심리 (파울 확률/수비 페널티) | possessionHandler.ts, constants.ts |
+| [tf-ff-system.md](tf-ff-system.md) | 턴오버/자유투 시스템 | possessionHandler.ts |
 
 ---
 
@@ -59,20 +61,23 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 
 ---
 
-## 일정 & 시즌
-
-| 문서 | 설명 | 핵심 파일 |
-|------|------|----------|
-| [schedule-generator.md](schedule-generator.md) | 시즌 일정 자동생성 (82경기 × 30팀) | scheduleGenerator.ts |
-
----
-
 ## 데이터 처리 & UI
 
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
 | [stat-handlers.md](stat-handlers.md) | 스탯 기록 파이프라인, ±, 샷 차트 | statsMappers.ts, statUtils.ts, visUtils.ts |
 | [commentary.md](commentary.md) | 한국어 PBP 해설 생성 (~110종) | textGenerator.ts |
+
+---
+
+## 선수 성장/퇴화
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [development/pipeline.md](development/pipeline.md) | 성장/퇴화 파이프라인 | playerAging.ts |
+| [development/growth-system.md](development/growth-system.md) | 성장 시스템 상세 | playerAging.ts |
+| [development/decline-system.md](development/decline-system.md) | 퇴화 시스템 상세 | playerAging.ts |
+| [development/attr-config.md](development/attr-config.md) | 능력치별 성장/퇴화 설정 | playerAging.ts |
 
 ---
 
@@ -92,8 +97,8 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 ### PBP 엔진 (`services/game/engine/pbp/`)
 | 파일 | 문서 |
 |------|------|
-| main.ts | [sim-structure.md](sim-structure.md) |
-| liveEngine.ts | [sim-structure.md](sim-structure.md) |
+| main.ts | [sim-structure.md](../simulation/sim-structure.md) |
+| liveEngine.ts | [sim-structure.md](../simulation/sim-structure.md) |
 | possessionHandler.ts | [pbp-engine.md](pbp-engine.md) |
 | flowEngine.ts | [pbp-engine.md](pbp-engine.md), [hidden-archetypes.md](hidden-archetypes.md) |
 | playTypes.ts | [pbp-engine.md](pbp-engine.md), [player-usage.md](player-usage.md) |
@@ -104,24 +109,12 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 | stateUpdater.ts | [fatigue-system.md](fatigue-system.md) |
 | statsMappers.ts | [stat-handlers.md](stat-handlers.md) |
 | shotDistribution.ts | [shot-distribution.md](shot-distribution.md) |
-| initializer.ts | [sim-structure.md](sim-structure.md) |
+| initializer.ts | [sim-structure.md](../simulation/sim-structure.md) |
 | pbpTypes.ts | [pbp-engine.md](pbp-engine.md) |
 | rotationLogic.ts | [rotation-algorithm.md](rotation-algorithm.md) |
 | substitutionSystem.ts | [rotation-algorithm.md](rotation-algorithm.md) |
 | handlers/statUtils.ts | [stat-handlers.md](stat-handlers.md) |
 | handlers/visUtils.ts | [stat-handlers.md](stat-handlers.md) |
-
-### 플레이오프 & 유틸리티 (`utils/`)
-| 파일 | 문서 |
-|------|------|
-| playoffLogic.ts | [playoff-system.md](playoff-system.md) |
-| tiebreaker.ts | [playoff-system.md](playoff-system.md) |
-| simulationUtils.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
-
-### 일정 생성 (`utils/`)
-| 파일 | 문서 |
-|------|------|
-| scheduleGenerator.ts | [schedule-generator.md](schedule-generator.md) |
 
 ### 외부 엔진 파일
 | 파일 | 문서 |

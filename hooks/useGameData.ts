@@ -29,6 +29,8 @@ import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
+import { LotteryResult } from '../services/draft/lotteryEngine';
+import { OffseasonPhase } from '../types/app';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
 
@@ -60,6 +62,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [leagueTradeOffers, setLeagueTradeOffers] = useState<LeagueTradeOffers>({ offers: [] });
     const [leagueGMProfiles, setLeagueGMProfiles] = useState<LeagueGMProfiles>({});
     const [news, setNews] = useState<any[]>([]);
+    const [lotteryResult, setLotteryResult] = useState<LotteryResult | null>(null);
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -74,10 +77,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // Refs to avoid stale closures in callbacks
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
     const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason });
+    const [offseasonPhase, setOffseasonPhase] = useState<OffseasonPhase>(null);
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase]);
 
     // --- Season Config (derived from seasonNumber) ---
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
@@ -454,6 +458,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }
                     }
 
+                    // 로터리 결과 복원
+                    if (checkpoint.lottery_result) {
+                        setLotteryResult(checkpoint.lottery_result);
+                    }
+
+                    // 오프시즌 단계 복원
+                    if (checkpoint.offseason_phase) {
+                        setOffseasonPhase(checkpoint.offseason_phase);
+                    }
+
                     if (checkpoint.hof_id) {
                         setHofId(checkpoint.hof_id);
                     }
@@ -603,7 +617,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const gmProfiles = ov?.leagueGMProfiles || gameStateRef.current.leagueGMProfiles;
                     const savSeasonNum = ov?.seasonNumber || gameStateRef.current.seasonNumber;
                     const savCurrentSeason = ov?.currentSeason || gameStateRef.current.currentSeason;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason);
+                    const savLotteryResult = ov?.lotteryResult !== undefined ? ov.lotteryResult : gameStateRef.current.lotteryResult;
+                    const savOffseasonPhase = ov?.offseasonPhase !== undefined ? ov.offseasonPhase : (gameStateRef.current as any).offseasonPhase;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -736,6 +752,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
             draftPicksRef.current = null;
+            setLotteryResult(null);
             setPlayoffSeries([]);
             setUserTactics(null);
             setDepthChart(null);
@@ -748,6 +765,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setHofId(null);
             setSeasonNumber(1);
             setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
+            setOffseasonPhase(null);
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -882,7 +900,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setLeaguePickAssets(null);
          setSeasonNumber(1);
          setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
+         setOffseasonPhase(null);
          setNews([]);
+         setLotteryResult(null);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
          isInitialSimSettingsLoad.current = true;
@@ -914,6 +934,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         teamFinances,
         seasonNumber, setSeasonNumber,
         currentSeason, setCurrentSeason,
+        offseasonPhase, setOffseasonPhase,
         seasonConfig,
         news, setNews,
         
@@ -932,6 +953,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         
         freeAgents: effectiveFreeAgents,
         draftPicks: draftPicksRef.current,
+        lotteryResult, setLotteryResult,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current

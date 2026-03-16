@@ -1,0 +1,82 @@
+# Simulation Documentation Index
+
+## 시뮬레이션 시스템 전체 목록
+
+PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
+시즌 흐름, 일정 생성, 플레이오프, 트레이드, 드래프트, 재정, 영속성 등.
+
+> PBP 경기 엔진 내부 (포세션, 슈팅, 수비 등)는 [engine-index.md](../engine/engine-index.md) 참조.
+
+---
+
+## 아키텍처 & 파이프라인
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [sim-structure.md](sim-structure.md) | 전체 파이프라인 개요 (Hook→Service→Engine) | useSimulation.ts, gameEngine.ts, main.ts |
+| [snapshot-caching.md](snapshot-caching.md) | 스냅샷 캐싱/복원 시스템 (v4, growthState 포함) | persistence.ts, stateReplayer.ts |
+
+---
+
+## 시즌 운영
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [schedule-generator.md](schedule-generator.md) | 시즌 일정 자동생성 (82경기 × 30팀) | scheduleGenerator.ts |
+| [playoff-system.md](playoff-system.md) | 플레이오프 브래킷/타이브레이커/일정 생성 | playoffLogic.ts, tiebreaker.ts, seasonService.ts |
+| [draft-lottery.md](draft-lottery.md) | NBA 2019+ 드래프트 로터리 추첨 시스템 | lotteryEngine.ts, offseasonEventHandler.ts |
+
+---
+
+## 트레이드 & 재정
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [trade-system.md](trade-system.md) | 트레이드 엔진 (블록, 오퍼, CBA, 픽 밸류) | tradeExecutor.ts, tradeBlockManager.ts, pickValueEngine.ts |
+| [finance-system.md](finance-system.md) | 예산/수익/지출 시뮬레이션 | financeEngine.ts |
+
+---
+
+## 파일 ↔ 문서 매핑
+
+### 시뮬레이션 서비스 (`services/simulation/`)
+| 파일 | 문서 |
+|------|------|
+| seasonService.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
+| offseasonEventHandler.ts | [draft-lottery.md](draft-lottery.md) |
+| batchSeasonService.ts | [sim-structure.md](sim-structure.md) |
+| userGameService.ts | [sim-structure.md](sim-structure.md) |
+| cpuGameService.ts | [sim-structure.md](sim-structure.md) |
+
+### 드래프트 (`services/draft/`)
+| 파일 | 문서 |
+|------|------|
+| lotteryEngine.ts | [draft-lottery.md](draft-lottery.md) |
+
+### 트레이드 (`services/tradeEngine/`)
+| 파일 | 문서 |
+|------|------|
+| tradeExecutor.ts | [trade-system.md](trade-system.md) |
+| tradeBlockManager.ts | [trade-system.md](trade-system.md) |
+| pickValueEngine.ts | [trade-system.md](trade-system.md) |
+
+### 유틸리티 (`utils/`)
+| 파일 | 문서 |
+|------|------|
+| scheduleGenerator.ts | [schedule-generator.md](schedule-generator.md) |
+| playoffLogic.ts | [playoff-system.md](playoff-system.md) |
+| tiebreaker.ts | [playoff-system.md](playoff-system.md), [draft-lottery.md](draft-lottery.md) |
+| seasonConfig.ts | [sim-structure.md](sim-structure.md), [draft-lottery.md](draft-lottery.md) |
+
+### 훅 (`hooks/`)
+| 파일 | 문서 |
+|------|------|
+| useSimulation.ts | [sim-structure.md](sim-structure.md) |
+| useFullSeasonSim.ts | [sim-structure.md](sim-structure.md) |
+| useGameData.ts | [snapshot-caching.md](snapshot-caching.md) |
+
+### 영속성 (`services/`)
+| 파일 | 문서 |
+|------|------|
+| persistence.ts | [snapshot-caching.md](snapshot-caching.md) |
+| seasonArchive.ts | [draft-lottery.md](draft-lottery.md) |

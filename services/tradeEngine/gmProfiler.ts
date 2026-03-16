@@ -200,8 +200,9 @@ export function updateTeamDirections(
     teams: Team[],
     profiles: LeagueGMProfiles,
     currentDate: string,
+    tradeDeadline?: string,
 ): void {
-    const deadlineDate = new Date(TRADE_DEADLINE);
+    const deadlineDate = new Date(tradeDeadline ?? TRADE_DEADLINE);
     const lockDate = new Date(deadlineDate);
     lockDate.setDate(lockDate.getDate() - 14); // 데드라인 2주 전
     const current = new Date(currentDate);

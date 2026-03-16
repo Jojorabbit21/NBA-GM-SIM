@@ -86,7 +86,7 @@ export const handleSeasonEvents = async (
     if (updatedSeries.length === 0) {
         // 2-0. GM 노선 업데이트
         if (leagueGMProfiles) {
-            updateTeamDirections(teams, leagueGMProfiles, currentSimDate);
+            updateTeamDirections(teams, leagueGMProfiles, currentSimDate, seasonConfig?.tradeDeadline);
         }
 
         // 2-1. CPU 트레이드 블록 동기화
@@ -95,7 +95,7 @@ export const handleSeasonEvents = async (
         }
 
         // 2-2. CPU-CPU 트레이드
-        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles);
+        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles, seasonConfig);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 const cpuTx = { ...tx, date: currentSimDate };
@@ -240,7 +240,7 @@ export const handleSeasonEventsSync = (
     if (updatedSeries.length === 0) {
         // 2-0. GM 노선 업데이트
         if (leagueGMProfiles) {
-            updateTeamDirections(teams, leagueGMProfiles, currentSimDate);
+            updateTeamDirections(teams, leagueGMProfiles, currentSimDate, seasonConfig?.tradeDeadline);
         }
 
         // 2-1. CPU 트레이드 블록 동기화
@@ -249,7 +249,7 @@ export const handleSeasonEventsSync = (
         }
 
         // 2-2. CPU-CPU 트레이드
-        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles);
+        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles, seasonConfig);
         if (tradeResults && tradeResults.transactions.length > 0) {
             for (const tx of tradeResults.transactions) {
                 newTransactions.push({ ...tx, date: currentSimDate });
@@ -271,78 +271,7 @@ export const handleSeasonEventsSync = (
     return { newTransactions, awardContent, championContent };
 };
 
-// ── 시즌 전환 감지 ──
-
-import { buildSeasonConfig } from '../../utils/seasonConfig';
-import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
-import { processOffseason } from '../playerDevelopment/playerAging';
-import { INITIAL_STATS } from '../../utils/constants';
-import { Game } from '../../types';
-
-export interface SeasonTransitionResult {
-    transitioned: boolean;
-    newSchedule?: Game[];
-    newSeasonNumber?: number;
-    newSeasonConfig?: SeasonConfig;
-}
-
-/**
- * 파이널 종료 감지 → 다음 시즌으로 심리스 전환.
- * handleSeasonEvents 또는 날짜 진행 루프에서 호출.
- *
- * 중복 방지: 현재 seasonNumber의 파이널이 끝났을 때만 전환.
- * 전환 후 seasonNumber가 증가하므로 다시 트리거되지 않음.
- */
-export function checkAndStartNextSeason(
-    teams: Team[],
-    schedule: Game[],
-    playoffSeries: PlayoffSeries[],
-    currentSeasonNumber: number,
-): SeasonTransitionResult {
-    // 파이널(round 4) 종료 여부 확인
-    const finalsFinished = playoffSeries.some(s => s.round === 4 && s.finished);
-    if (!finalsFinished) {
-        return { transitioned: false };
-    }
-
-    const nextSeasonNumber = currentSeasonNumber + 1;
-    const nextConfig = buildSeasonConfig(nextSeasonNumber);
-
-    // ★ 오프시즌 처리: 나이 +1, 계약 진행, 성장 필드 리셋
-    const allPlayers = teams.flatMap(t => t.roster);
-    processOffseason(allPlayers, '', currentSeasonNumber);
-    console.log(`📋 Offseason processed: ${allPlayers.length} players aged`);
-
-    // 새 시즌 일정 생성
-    const scheduleConfig: ScheduleConfig = {
-        seasonYear: nextConfig.startYear,
-        seasonStart: nextConfig.startDate,
-        regularSeasonEnd: nextConfig.regularSeasonEnd,
-        allStarStart: nextConfig.allStarStart,
-        allStarEnd: nextConfig.allStarEnd,
-    };
-    const newSchedule = generateSeasonSchedule(scheduleConfig);
-
-    // 팀 W/L 리셋
-    for (const team of teams) {
-        team.wins = 0;
-        team.losses = 0;
-    }
-
-    // 선수 시즌 스탯 리셋 (processOffseason이 성장 필드를 이미 리셋했으므로 박스스코어 스탯만)
-    for (const team of teams) {
-        for (const player of team.roster) {
-            player.stats = INITIAL_STATS();
-            player.playoffStats = undefined;
-        }
-    }
-
-    console.log(`🔄 Season transition: ${currentSeasonNumber} → ${nextSeasonNumber} (${nextConfig.seasonLabel})`);
-
-    return {
-        transitioned: true,
-        newSchedule,
-        newSeasonNumber: nextSeasonNumber,
-        newSeasonConfig: nextConfig,
-    };
-}
+// ── 시즌 전환 감지 (offseasonEventHandler로 이관) ──
+// detectFinalsEnd + dispatchOffseasonEvent 는 offseasonEventHandler.ts에서 export
+export { detectFinalsEnd, dispatchOffseasonEvent } from './offseasonEventHandler';
+export type { OffseasonEventResult } from './offseasonEventHandler';

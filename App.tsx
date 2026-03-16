@@ -16,15 +16,6 @@ import { checkUserHasSubmitted } from './services/hallOfFameService';
 import { useUpdateChecker } from './hooks/useUpdateChecker';
 import { UpdateToast } from './components/UpdateToast';
 
-function shuffleArray<T>(arr: T[]): T[] {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-}
-
 // 신규 생성된 모듈 모듈 임포트
 import FullScreenLoader, { DatabaseErrorView } from './components/FullScreenLoader';
 import SkeletonLoader from './components/SkeletonLoader';
@@ -89,7 +80,13 @@ const App: React.FC = () => {
         gameData.leagueTradeOffers,
         gameData.leaguePickAssets,
         gameData.leagueGMProfiles,
-        gameData.seasonConfig
+        gameData.seasonConfig,
+        gameData.lotteryResult,
+        gameData.offseasonPhase,
+        gameData.setOffseasonPhase,
+        useCallback((targetView: string) => {
+            setView(targetView as any);
+        }, [])
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -104,7 +101,8 @@ const App: React.FC = () => {
         () => setHasSubmittedHof(true),
         gameData.simSettings,
         gameData.coachingData,
-        gameData.seasonConfig
+        gameData.seasonConfig,
+        gameData.offseasonPhase
     );
 
     // 인증 및 라우팅 상태 감시
@@ -152,12 +150,14 @@ const App: React.FC = () => {
 
     const handleSelectTeamAndOnboard = useCallback(async (teamId: string) => {
         if (rosterMode === 'custom') {
-            // 커스텀 모드: 순서 생성 + DB 저장을 완료한 후 DraftLottery 진입
-            // setView를 먼저 해서 FullScreenLoader 표시 (myTeamId가 아직 null이므로)
+            // 커스텀 모드: 단순 셔플 (로터리는 첫 시즌 이후 오프시즌부터 가동)
             setView('DraftLottery');
-            const order = shuffleArray(Object.keys(TEAM_DATA));
-            await gameData.saveDraftOrder(order, draftPoolType || 'alltime', teamId);
-            // DB 저장 완료 후 로컬 상태 설정 → DraftLotteryView 마운트 (savedOrder 보장)
+            const teamIds = Object.keys(TEAM_DATA);
+            for (let i = teamIds.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [teamIds[i], teamIds[j]] = [teamIds[j], teamIds[i]];
+            }
+            await gameData.saveDraftOrder(teamIds, draftPoolType || 'alltime', teamId);
             gameData.setMyTeamId(teamId);
             return true;
         }

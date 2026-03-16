@@ -5,6 +5,7 @@ import { Team, Player, Transaction, GameTactics } from '../types';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
+import { SeasonConfig } from '../utils/seasonConfig';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
@@ -49,6 +50,7 @@ interface TransactionsViewProps {
   leaguePickAssets?: LeaguePickAssets;
   setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets>>;
   leagueGMProfiles?: LeagueGMProfiles;
+  seasonConfig?: SeasonConfig;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
@@ -58,7 +60,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     leagueTradeBlocks, setLeagueTradeBlocks,
     leagueTradeOffers, setLeagueTradeOffers,
     leaguePickAssets, setLeaguePickAssets,
-    leagueGMProfiles
+    leagueGMProfiles,
+    seasonConfig
 }) => {
   const [activeTab, setActiveTab] = useState<TradeTabId>('Explore');
 
@@ -70,7 +73,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       userTactics, setUserTactics,
       leagueTradeBlocks, setLeagueTradeBlocks,
       leagueTradeOffers, setLeagueTradeOffers,
-      leaguePickAssets, setLeaguePickAssets as any
+      leaguePickAssets, setLeaguePickAssets as any,
+      seasonConfig
   );
 
   const {

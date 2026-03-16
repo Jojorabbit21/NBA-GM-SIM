@@ -8,6 +8,7 @@
 import { supabase } from './supabaseClient';
 import { Team, Player, PlayoffSeries, PlayerStats } from '../types';
 import { SeasonConfig } from '../utils/seasonConfig';
+import { LotteryResult } from './draft/lotteryEngine';
 
 // ── 타입 정의 ──
 
@@ -21,6 +22,7 @@ export interface SeasonArchiveEntry {
     playerStats: Record<string, PlayerStats>;
     playerOverrides: Record<string, PlayerOverrideSnapshot> | null;
     awards: any | null;
+    lotteryResult: LotteryResult | null;
 }
 
 export interface PlayerOverrideSnapshot {
@@ -88,6 +90,7 @@ export async function archiveCurrentSeason(
         player_stats: playerStats,
         player_overrides: playerOverrides,
         awards: null, // 추후 오프시즌 어워드 콘텐츠에서 채움
+        lottery_result: null, // 로터리 날짜 도달 시 updateSeasonArchiveLottery로 업데이트
     };
 
     const { error } = await supabase
@@ -98,6 +101,28 @@ export async function archiveCurrentSeason(
         console.error('❌ [seasonArchive] Failed to archive season:', error);
     } else {
         console.log(`✅ Season ${seasonConfig.seasonLabel} archived.`);
+    }
+}
+
+/**
+ * 시즌 아카이브에 로터리 결과를 업데이트.
+ * 로터리 추첨 시점에 호출 (아카이브는 파이널 종료 시 먼저 생성됨).
+ */
+export async function updateSeasonArchiveLottery(
+    userId: string,
+    seasonLabel: string,
+    lotteryResult: LotteryResult
+): Promise<void> {
+    const { error } = await supabase
+        .from('user_season_history')
+        .update({ lottery_result: lotteryResult })
+        .eq('user_id', userId)
+        .eq('season', seasonLabel);
+
+    if (error) {
+        console.error('❌ [seasonArchive] Failed to update lottery result:', error);
+    } else {
+        console.log(`✅ Lottery result archived for season ${seasonLabel}.`);
     }
 }
 
@@ -152,6 +177,7 @@ export async function loadSeasonHistory(userId: string): Promise<SeasonArchiveEn
         playerStats: row.player_stats,
         playerOverrides: row.player_overrides,
         awards: row.awards,
+        lotteryResult: row.lottery_result ?? null,
     }));
 }
 
