@@ -123,6 +123,34 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         const pickIdx = 3 - slotIdx;
         const actualTeamId = savedOrder[pickIdx];
 
+        // ── 1픽: 남은 팀이 하나뿐이므로 릴 없이 강조 reveal ──
+        if (slotIdx === 3) {
+            setActiveSlotIdx(slotIdx);
+            setSlotPhases(prev => {
+                const next = [...prev];
+                next[slotIdx] = 'ready';
+                return next;
+            });
+
+            slotTimerRef.current = setTimeout(() => {
+                if (!isMountedRef.current) return;
+                setSlotPhases(prev => {
+                    const next = [...prev];
+                    next[slotIdx] = 'revealed';
+                    return next;
+                });
+
+                slotTimerRef.current = setTimeout(() => {
+                    if (!isMountedRef.current) return;
+                    setTop4RevealedCount(prev => prev + 1);
+                    setActiveSlotIdx(-1);
+                }, SLOT_FINAL_PAUSE + 500);
+            }, SLOT_PAUSE_BEFORE + 500);
+            return;
+        }
+
+        // ── 4~2픽: 릴 슬롯머신 ──
+
         // 미공개 팀 목록 계산
         const currentRevealed = new Set<number>();
         for (let i = 0; i < revealedCount && i < listRevealOrder.length; i++) {
@@ -315,8 +343,10 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         const reel = slotReels[slotIdx];
         const isSpinning = sp === 'ready' || sp === 'spinning';
         const showReel = isSpinning && reel.length > 0;
-        // revealed 상태이거나 revealedIndices에 포함되면 확정 표시 (? 깜빡임 방지)
         const showResult = sp === 'revealed' || isRevealed;
+        const isFirstPick = pickNum === 1;
+        // 1픽 reveal 직후 강조 애니메이션 (ready → revealed, 릴 없음)
+        const isFirstPickRevealing = isFirstPick && sp === 'ready';
 
         // 릴 translateY 계산
         const reelOffset = sp === 'spinning'
@@ -328,28 +358,37 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 key={pickNum}
                 className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
                     showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isSpinning ? 'ring-2 ring-amber-400/60' : ''} ${
+                } ${isSpinning && !isFirstPick ? 'ring-2 ring-amber-400/60' : ''} ${
                     showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
-                }`}
+                } ${isFirstPickRevealing ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
                 style={{
                     backgroundColor: showResult ? teamColor : 'rgba(30,41,59,0.4)',
                     height: REEL_ITEM_HEIGHT + 40,
                     transition: `background-color 0.5s ease`,
+                    ...(showResult && isFirstPick ? {
+                        boxShadow: `0 0 30px ${teamColor}80, 0 0 60px ${teamColor}40`,
+                    } : {}),
                 }}
             >
                 {/* 픽 번호 뱃지 */}
                 <div className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black ${
-                    showResult ? 'bg-black/30 text-white' : 'bg-slate-800/60 text-slate-600'
+                    showResult ? 'bg-black/30 text-white' : isFirstPickRevealing ? 'bg-amber-500/30 text-amber-400' : 'bg-slate-800/60 text-slate-600'
                 }`}>
                     {pickNum}
                 </div>
+
+                {/* 1픽 강조 글로우 */}
+                {showResult && isFirstPick && (
+                    <div className="absolute inset-0 z-10 pointer-events-none rounded-2xl animate-pulse"
+                        style={{ boxShadow: `inset 0 0 20px ${teamColor}40` }} />
+                )}
 
                 {/* 릴 윈도우 */}
                 <div
                     className="absolute inset-0 overflow-hidden"
                     style={{ top: 16, bottom: 16 }}
                 >
-                    {showReel ? (
+                    {showReel && !isFirstPick ? (
                         /* 릴 스트립 — CSS transition으로 스크롤 */
                         <div
                             style={{
@@ -363,9 +402,13 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                         </div>
                     ) : showResult ? (
                         /* 확정 결과 */
-                        <div className="flex flex-col items-center justify-center h-full gap-1">
-                            <TeamLogo teamId={actualTeamId} size="custom" className="w-14 h-14" />
-                            <span className="text-[11px] font-bold text-white truncate max-w-[130px] text-center leading-tight">
+                        <div className={`flex flex-col items-center justify-center h-full gap-1 ${
+                            isFirstPick ? 'animate-in zoom-in-50 duration-700' : ''
+                        }`}>
+                            <TeamLogo teamId={actualTeamId} size="custom" className={isFirstPick ? 'w-16 h-16' : 'w-14 h-14'} />
+                            <span className={`font-bold text-white truncate max-w-[130px] text-center leading-tight ${
+                                isFirstPick ? 'text-xs' : 'text-[11px]'
+                            }`}>
                                 {TEAM_DATA[actualTeamId] ? `${TEAM_DATA[actualTeamId].city} ${TEAM_DATA[actualTeamId].name}` : actualTeamId}
                             </span>
                             <div className="flex items-center gap-1 flex-wrap justify-center">
@@ -388,6 +431,11 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                                     </span>
                                 )}
                             </div>
+                        </div>
+                    ) : isFirstPickRevealing ? (
+                        /* 1픽 대기 중 — 깜빡이는 효과 */
+                        <div className="flex items-center justify-center h-full animate-pulse">
+                            <span className="text-amber-400 text-lg font-black">1ST PICK</span>
                         </div>
                     ) : (
                         /* 빈 슬롯 */
@@ -417,10 +465,10 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 <img
                     src="/images/lottery.png"
                     alt=""
-                    className={`absolute inset-0 w-full h-full object-cover blur-sm transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    className={`absolute inset-0 w-full h-full object-cover blur-md transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}
                 />
-                <div className="absolute inset-0 bg-slate-950/80" />
+                <div className="absolute inset-0 bg-slate-950/88" />
             </div>
 
             {/* Title */}
