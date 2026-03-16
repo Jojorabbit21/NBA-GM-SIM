@@ -32,7 +32,7 @@ import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerat
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
-import { fetchUserGeneratedPlayers, fetchDraftClass } from '../services/draft/rookieRepository';
+import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
@@ -914,6 +914,50 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         });
     }, [teams, myTeamId, effectiveFreeAgents, forceSave]);
 
+    // ── 루키 드래프트 완료 핸들러 ──
+    const handleRookieDraftComplete = useCallback(async (picks: BoardPick[]) => {
+        // 1. DB 업데이트: 각 픽의 선수를 drafted로 마킹
+        const markPromises = picks.map((pick, idx) =>
+            markAsDrafted(pick.playerId, idx + 1, pick.teamId)
+        );
+        await Promise.all(markPromises);
+
+        // 2. 런타임 로스터에 루키 추가
+        const prospectMap = new Map<string, Player>();
+        prospects.forEach(p => prospectMap.set(p.id, p));
+
+        const newTeams = teams.map(team => {
+            const teamPicks = picks.filter(p => p.teamId === team.id);
+            if (teamPicks.length === 0) return team;
+            const rookies = teamPicks.map(p => prospectMap.get(p.playerId)).filter(Boolean) as Player[];
+            return { ...team, roster: [...team.roster, ...rookies] };
+        });
+        setTeams(newTeams);
+
+        // 3. 미드래프트 선수(undrafted)를 FA 풀로 이동
+        const draftedIds = new Set(picks.map(p => p.playerId));
+        const undrafted = prospects.filter(p => !draftedIds.has(p.id));
+        if (undrafted.length > 0) {
+            setGeneratedFreeAgents(prev => [...prev, ...undrafted]);
+            const newPool: LeagueFAPool = {
+                generatedIds: [...(leagueFAPool?.generatedIds || []), ...undrafted.map(p => p.id)],
+            };
+            setLeagueFAPool(newPool);
+        }
+
+        // 4. prospects 초기화 + offseasonPhase 진행
+        setProspects([]);
+        setOffseasonPhase('POST_DRAFT');
+
+        // 5. 저장
+        await forceSave({
+            teams: newTeams,
+            withSnapshot: true,
+        });
+
+        console.log(`🎓 Rookie draft complete: ${picks.length} picks, ${undrafted.length} undrafted → FA`);
+    }, [teams, prospects, leagueFAPool, forceSave]);
+
     // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
     const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isInitialTacticsLoad = useRef(true);
@@ -1020,6 +1064,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         handleSelectTeam,
         handleResetData,
         handleDraftComplete,
+        handleRookieDraftComplete,
         saveDraftOrder,
         forceSave,
         cleanupData,

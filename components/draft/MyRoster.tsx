@@ -6,14 +6,19 @@ import { calculatePlayerOvr } from '../../utils/constants';
 
 interface MyRosterProps {
     players: Player[];
+    existingRoster?: Player[];  // 루키 드래프트용: 기존 로스터 선수 표시
 }
 
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const RESERVES = 10;
 
-export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
+export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) => {
+    // 루키 드래프트 모드: 기존 로스터 + 새 드래프트 픽 합산
+    const allPlayers = existingRoster ? [...existingRoster, ...players] : players;
+    const newPickIds = existingRoster ? new Set(players.map(p => p.id)) : null;
+
     const grouped: Record<string, Player[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
-    players.forEach(p => {
+    allPlayers.forEach(p => {
         if (grouped[p.position]) grouped[p.position].push(p);
         else grouped['SF'].push(p);
     });
@@ -29,11 +34,11 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
         }
     });
 
-    const reserves: (Player | null)[] = players.filter(p => !used.has(p.id));
+    const reserves: (Player | null)[] = allPlayers.filter(p => !used.has(p.id));
     while (reserves.length < RESERVES) reserves.push(null);
 
     const posCounts: Record<string, number> = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0 };
-    players.forEach(p => {
+    allPlayers.forEach(p => {
         if (posCounts[p.position] !== undefined) posCounts[p.position]++;
         else posCounts['SF']++;
     });
@@ -51,7 +56,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                         </span>
                     ))}
                     <span className="text-slate-600 text-xs">·</span>
-                    <span className="text-xs font-mono text-slate-500">총 {players.length}</span>
+                    <span className="text-xs font-mono text-slate-500">총 {allPlayers.length}</span>
                 </div>
             </div>
 
@@ -63,10 +68,11 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                 </div>
                 {POSITION_ORDER.map((pos, i) => {
                     const player = starters[i];
+                    const isNewPick = player && newPickIds?.has(player.id);
                     return (
                         <div
                             key={`starter-${pos}`}
-                            className="h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5"
+                            className={`h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5 ${isNewPick ? 'bg-emerald-500/10' : ''}`}
                         >
                             <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
                                 {pos}
@@ -74,7 +80,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                             {player ? (
                                 <>
                                     <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
-                                    <span className="text-xs font-semibold text-slate-200 truncate">{player.name}</span>
+                                    <span className={`text-xs font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
                                 </>
                             ) : (
                                 <span className="text-xs text-slate-700 italic">비어있음</span>
@@ -87,27 +93,30 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                 <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
                     <span className="text-xs font-black uppercase tracking-wider text-slate-500">RESERVES</span>
                 </div>
-                {reserves.slice(0, RESERVES).map((player, i) => (
-                    <div
-                        key={`res-${i}`}
-                        className="h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5"
-                    >
-                        {player ? (
-                            <>
-                                <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
-                                    {player.position}
-                                </span>
-                                <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
-                                <span className="text-xs font-semibold text-slate-200 truncate">{player.name}</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="text-xs font-bold w-8 shrink-0 text-slate-700">—</span>
-                                <span className="text-xs text-slate-700 italic">비어있음</span>
-                            </>
-                        )}
-                    </div>
-                ))}
+                {reserves.map((player, i) => {
+                    const isNewPick = player && newPickIds?.has(player.id);
+                    return (
+                        <div
+                            key={`res-${i}`}
+                            className={`h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5 ${isNewPick ? 'bg-emerald-500/10' : ''}`}
+                        >
+                            {player ? (
+                                <>
+                                    <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
+                                        {player.position}
+                                    </span>
+                                    <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                    <span className={`text-xs font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-xs font-bold w-8 shrink-0 text-slate-700">—</span>
+                                    <span className="text-xs text-slate-700 italic">비어있음</span>
+                                </>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

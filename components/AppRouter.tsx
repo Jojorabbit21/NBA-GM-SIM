@@ -16,6 +16,7 @@ import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
+import { RookieDraftView } from '../views/RookieDraftView';
 import { DraftView } from '../views/DraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
@@ -418,7 +419,24 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'DraftRoom':
-            // 인시즌 드래프트 보드 열람 모드 (prospects 존재 시)
+            // 오프시즌 루키 드래프트 (prospects + lotteryResult 존재 시)
+            if (gameData.prospects?.length > 0 && gameData.lotteryResult) {
+                return (
+                    <div className="fixed inset-0 z-[9999] bg-slate-950">
+                        <RookieDraftView
+                            teams={gameData.teams}
+                            myTeamId={gameData.myTeamId!}
+                            draftOrder={gameData.lotteryResult.finalOrder}
+                            draftClass={gameData.prospects}
+                            onComplete={(picks) => {
+                                gameData.handleRookieDraftComplete(picks);
+                                setView('Dashboard');
+                            }}
+                        />
+                    </div>
+                );
+            }
+            // 인시즌 드래프트 보드 열람 모드 (prospects 존재, 로터리 미완료)
             if (gameData.prospects?.length > 0 && !draftOrder && !gameData.draftPicks?.order) {
                 return (
                     <DraftView
@@ -429,6 +447,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     />
                 );
             }
+            // 판타지 드래프트 (게임 시작 시 커스텀 모드)
             return (
                 <div className="fixed inset-0 z-[9999] bg-slate-950">
                     <FantasyDraftView

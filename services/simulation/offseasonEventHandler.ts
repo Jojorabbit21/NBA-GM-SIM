@@ -159,12 +159,12 @@ export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventRe
             }
         }
 
-        // TODO: DraftRoom 뷰 구현 시 blocked: true, navigateTo: 'DraftRoom'으로 변경
+        // 루키 드래프트 뷰로 이동 — offseasonPhase는 드래프트 완료 시 handleRookieDraftComplete에서 변경
         return {
             fired: true,
-            blocked: false,
+            blocked: true,
+            navigateTo: 'DraftRoom',
             updates: {
-                offseasonPhase: 'POST_DRAFT',
                 generatedDraftClass: draftClass,
             },
         };

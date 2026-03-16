@@ -26,9 +26,11 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
-import { HofQualificationContent, FinalsMvpContent } from '../types/message';
+import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent } from '../types/message';
 import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
+
+const SCOUT_NAMES = ['김태영', '박준혁', '이승우', '최동현', '장민수'];
 
 export const useSimulation = (
     teams: Team[],
@@ -638,22 +640,23 @@ export const useSimulation = (
 
                         // 인박스 메시지: 드래프트 풀 공개 알림
                         if (!isGuestMode && session?.user?.id && myTeamId) {
-                            const sorted = [...players].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-                            const top10 = sorted.slice(0, 10).map((p, i) => ({
+                            // OVR을 한 번만 계산하여 재사용
+                            const withOvr = players.map(p => ({ player: p, ovr: calculatePlayerOvr(p) }));
+                            withOvr.sort((a, b) => b.ovr - a.ovr);
+                            const top10 = withOvr.slice(0, 10).map((e, i) => ({
                                 rank: i + 1,
-                                name: p.name,
-                                position: p.position,
-                                age: p.age,
-                                ovr: calculatePlayerOvr(p),
-                                height: p.height,
+                                name: e.player.name,
+                                position: e.player.position,
+                                age: e.player.age,
+                                ovr: e.ovr,
+                                height: e.player.height,
                             }));
-                            const avgOvr = sorted.reduce((s, p) => s + calculatePlayerOvr(p), 0) / sorted.length;
+                            const avgOvr = withOvr.reduce((s, e) => s + e.ovr, 0) / withOvr.length;
                             const classGrade = avgOvr >= 68 ? '풍작' : avgOvr >= 62 ? '보통' : '흉작';
                             const nextSeason = currentSeasonNumber + 1;
-                            const scoutNames = ['김태영', '박준혁', '이승우', '최동현', '장민수'];
-                            const scoutName = scoutNames[nextSeason % scoutNames.length];
+                            const scoutName = SCOUT_NAMES[nextSeason % SCOUT_NAMES.length];
 
-                            const prospectContent: import('../types/message').ProspectRevealContent = {
+                            const prospectContent: ProspectRevealContent = {
                                 scoutName,
                                 draftYear: nextSeason,
                                 classGrade,
