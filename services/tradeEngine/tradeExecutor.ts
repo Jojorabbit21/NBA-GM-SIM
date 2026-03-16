@@ -285,7 +285,7 @@ function buildTransaction(
     aSentPlayers: Player[],
     bSentPlayers: Player[]
 ): Transaction {
-    const id = `trade-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = crypto.randomUUID();
 
     const aPlayerRefs: TradePlayerRef[] = aSentPlayers.map(p => ({ playerId: p.id, playerName: p.name }));
     const bPlayerRefs: TradePlayerRef[] = bSentPlayers.map(p => ({ playerId: p.id, playerName: p.name }));

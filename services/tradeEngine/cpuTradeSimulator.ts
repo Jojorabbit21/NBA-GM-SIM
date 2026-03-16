@@ -609,7 +609,7 @@ function createTradeTransaction(
     teamAPlayers: Player[], teamBPlayers: Player[],
     analysis: string[]
 ): Transaction {
-    const id = `cpu-trade-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = crypto.randomUUID();
 
     return {
         id,
