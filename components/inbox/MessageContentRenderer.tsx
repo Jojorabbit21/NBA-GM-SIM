@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -925,6 +925,68 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     <div className="pt-4">
                         <p className="text-white font-bold">{prTeamFullName} 스카우팅 담당자</p>
                         <p className="text-slate-500 text-xs mt-0.5">Head of Scouting</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'LOTTERY_RESULT': {
+            const lr = content as LotteryResultContent;
+            return (
+                <div className="space-y-6 text-slate-300 leading-relaxed">
+                    <p>
+                        단장님, 드래프트 로터리 추첨이 완료되었습니다.
+                        우리 팀의 드래프트 순위는 <span className="text-white font-black">{lr.myTeamPick}픽</span>입니다.
+                    </p>
+
+                    <div>
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">드래프트 순서</h4>
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="border-b border-slate-700/50">
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold w-8">픽</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">팀</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">성적</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">확률</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">변동</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {lr.entries.map(e => {
+                                    const isMyTeam = e.teamId === myTeamId;
+                                    return (
+                                        <tr key={e.pick} className={`border-b border-slate-800/50 ${isMyTeam ? 'bg-indigo-500/10' : ''}`}>
+                                            <td className={`py-2 px-2 font-black ${isMyTeam ? 'text-indigo-400' : 'text-slate-500'}`}>{e.pick}</td>
+                                            <td className="py-2 px-2">
+                                                <div className="flex items-center gap-2">
+                                                    <TeamLogo teamId={e.teamId} size="custom" className="w-5 h-5 shrink-0" />
+                                                    <span className={`font-bold ${isMyTeam ? 'text-indigo-300' : 'text-white'}`}>{e.teamName}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-2 px-2 text-center text-slate-400">{e.wins}-{e.losses}</td>
+                                            <td className="py-2 px-2 text-center text-slate-400">
+                                                {e.isLotteryTeam ? `${(e.odds * 100).toFixed(1)}%` : '-'}
+                                            </td>
+                                            <td className="py-2 px-2 text-center">
+                                                {e.movement !== 0 && e.isLotteryTeam ? (
+                                                    <span className={`font-black ${e.movement > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                        {e.movement > 0 ? `▲${e.movement}` : `▼${Math.abs(e.movement)}`}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-600">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">Best regards,</p>
+                        <p className="text-white font-bold mt-1">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
                     </div>
                 </div>
             );

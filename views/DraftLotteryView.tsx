@@ -361,28 +361,42 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             ? '#d4a017'
             : showResult ? teamColor : 'rgba(30,41,59,0.4)';
 
+        // 보더/글로우 inline style 계산 (Tailwind ring 충돌 방지)
+        const borderStyle: React.CSSProperties = (() => {
+            if (showResult && isMyTeam) {
+                return { outline: '2px solid #6366f1', outlineOffset: '-1px' };
+            }
+            if (isFirstPickReady || isFirstPickRevealed) {
+                return {
+                    outline: '2px solid #f59e0b',
+                    outlineOffset: '-1px',
+                    boxShadow: isFirstPickReady
+                        ? '0 0 40px rgba(245,158,11,0.7), 0 0 80px rgba(245,158,11,0.4)'
+                        : '0 0 30px rgba(245,158,11,0.6), 0 0 60px rgba(245,158,11,0.35)',
+                };
+            }
+            if (isSpinning && !isFirstPick) {
+                return { outline: '2px solid rgba(251,191,36,0.6)', outlineOffset: '-1px' };
+            }
+            if (showResult && isTop4Winner) {
+                return {
+                    outline: '2px solid rgba(251,191,36,0.6)',
+                    outlineOffset: '-1px',
+                    boxShadow: '0 0 20px rgba(251,191,36,0.3)',
+                };
+            }
+            return {};
+        })();
+
         return (
             <div
                 key={pickNum}
-                className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
-                    showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isSpinning && !isFirstPick ? 'ring-2 ring-amber-400/60' : ''} ${
-                    showResult && isTop4Winner && !isFirstPick ? 'ring-1 ring-amber-400/60' : ''
-                }`}
+                className="relative rounded-2xl overflow-hidden transition-all duration-700"
                 style={{
                     backgroundColor: slotBgColor,
                     height: REEL_ITEM_HEIGHT + 40,
-                    transition: `background-color 0.8s ease, outline-color 0.8s ease, box-shadow 0.8s ease`,
-                    ...((isFirstPickReady || isFirstPickRevealed) ? {
-                        outline: '3px solid #f59e0b',
-                        outlineOffset: '-1px',
-                    } : {}),
-                    ...(isFirstPickReady ? {
-                        boxShadow: `0 0 40px rgba(212, 160, 23, 0.6), 0 0 80px rgba(212, 160, 23, 0.3)`,
-                    } : {}),
-                    ...(isFirstPickRevealed ? {
-                        boxShadow: `0 0 30px rgba(212, 160, 23, 0.5), 0 0 60px rgba(212, 160, 23, 0.3)`,
-                    } : {}),
+                    transition: `background-color 0.8s ease, box-shadow 0.8s ease`,
+                    ...borderStyle,
                 }}
             >
                 {/* 픽 번호 뱃지 */}
@@ -442,10 +456,8 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                             </div>
                         </div>
                     ) : isFirstPickReady ? (
-                        /* 1픽 대기 중 — 금색 배경 (텍스트 없음, 배경색만 금색으로 채움) */
-                        <div className="flex items-center justify-center h-full">
-                            <div className="w-16 h-16 rounded-full bg-white/10 animate-pulse" />
-                        </div>
+                        /* 1픽 대기 중 — 금색 배경이 가득 차도록 빈 상태 유지 */
+                        <div className="flex items-center justify-center h-full" />
                     ) : (
                         /* 빈 슬롯 */
                         <div className="flex items-center justify-center h-full">
@@ -477,7 +489,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                     className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}
                 />
-                <div className="absolute inset-0 bg-slate-950/90" />
+                <div className="absolute inset-0 bg-slate-950/85" />
             </div>
 
             {/* Title */}

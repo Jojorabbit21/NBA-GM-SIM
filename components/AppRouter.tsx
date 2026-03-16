@@ -379,7 +379,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                     onNavigateToDraft={() => {
                         previousViewRef.current = 'Inbox';
-                        setView('DraftRoom');
+                        setView('DraftBoard');
                     }}
                     onTeamOptionExecuted={(playerId, exercised) => {
                         const newTeams = gameData.teams.map(t => {
@@ -412,6 +412,12 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         setDraftOrder(order);
                         // 오프시즌 로터리 (판타지 드래프트가 아닌 경우) → 대시보드로 복귀
                         if (!gameData.draftPicks?.order) {
+                            // 로터리 확인 완료 → viewed 플래그 저장 (새로고침 시 재진입 방지)
+                            if (gameData.lotteryResult) {
+                                const updatedResult = { ...gameData.lotteryResult, viewed: true };
+                                gameData.setLotteryResult(updatedResult);
+                                gameData.forceSave({ lotteryResult: updatedResult });
+                            }
                             setView('Dashboard');
                         } else {
                             setView('DraftRoom');

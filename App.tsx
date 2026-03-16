@@ -129,8 +129,9 @@ const App: React.FC = () => {
     }, [gameData.myTeamId, gameData.draftPicks, rosterMode]);
 
     // 리로드 시 오프시즌 POST_LOTTERY 상태면 로터리 뷰로 복원
+    // (viewed 플래그가 true면 이미 확인한 것이므로 재진입 방지)
     useEffect(() => {
-        if (gameData.myTeamId && gameData.offseasonPhase === 'POST_LOTTERY' && gameData.lotteryResult) {
+        if (gameData.myTeamId && gameData.offseasonPhase === 'POST_LOTTERY' && gameData.lotteryResult && !gameData.lotteryResult.viewed) {
             setView('DraftLottery');
         }
     }, [gameData.myTeamId, gameData.offseasonPhase, gameData.lotteryResult]);

@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT' | 'PROSPECT_REVEAL';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT' | 'PROSPECT_REVEAL' | 'LOTTERY_RESULT';
 
 export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
@@ -15,7 +15,7 @@ export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = 
     TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE'],
     INJURY: ['INJURY_REPORT', 'SUSPENSION'],
     SCOUT: ['SCOUT_REPORT', 'PROSPECT_REVEAL'],
-    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'OFFSEASON_REPORT'],
+    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'OFFSEASON_REPORT', 'LOTTERY_RESULT'],
     SYSTEM: ['SYSTEM'],
 };
 
@@ -446,6 +446,22 @@ export interface OffseasonReportContent {
     optionDecisions: { playerId: string; playerName: string; optionType: 'player' | 'team'; exercised: boolean; salary: number }[];
     leagueRetired?: { playerId: string; playerName: string; age: number; ovr: number; position: string; teamId: string }[];
     pendingTeamOptions?: TeamOptionEntry[];
+}
+
+export interface LotteryResultEntry {
+    pick: number;
+    teamId: string;
+    teamName: string;
+    wins: number;
+    losses: number;
+    odds: number;          // 0~1 (로터리 팀만, 비로터리 팀은 0)
+    movement: number;      // 순위 변동 (양수=상승, 음수=하락)
+    isLotteryTeam: boolean;
+}
+
+export interface LotteryResultContent {
+    myTeamPick: number;
+    entries: LotteryResultEntry[];
 }
 
 export interface ProspectRevealEntry {

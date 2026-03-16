@@ -26,8 +26,9 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
-import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent } from '../types/message';
+import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent, LotteryResultContent, LotteryResultEntry } from '../types/message';
 import { stampPlayoffAwards } from '../utils/awardStamper';
+import { TEAM_DATA } from '../data/teamData';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 export const useSimulation = (
@@ -747,6 +748,36 @@ export const useSimulation = (
                                 if (u.lotteryResult && session?.user?.id && seasonConfig) {
                                     updateSeasonArchiveLottery(session.user.id, seasonConfig.seasonLabel, u.lotteryResult)
                                         .catch(e => console.warn('⚠️ Lottery archive update failed (non-critical):', e));
+                                }
+                                // 로터리 결과 인박스 발송
+                                if (u.lotteryResult && session?.user?.id && myTeamId) {
+                                    const lr = u.lotteryResult;
+                                    const lotteryTeamMap = new Map(lr.lotteryTeams.map((lt: any) => [lt.teamId, lt]));
+                                    const movementMap = new Map(lr.pickMovements.map((pm: any) => [pm.teamId, pm]));
+                                    const myPick = lr.finalOrder.indexOf(myTeamId) + 1;
+                                    const entries: LotteryResultEntry[] = lr.finalOrder.map((teamId: string, i: number) => {
+                                        const pick = i + 1;
+                                        const team = newTeams.find(t => t.id === teamId);
+                                        const td = TEAM_DATA[teamId];
+                                        const lt = lotteryTeamMap.get(teamId);
+                                        const mv = movementMap.get(teamId);
+                                        return {
+                                            pick,
+                                            teamId,
+                                            teamName: td ? `${td.city} ${td.name}` : teamId,
+                                            wins: team?.wins ?? 0,
+                                            losses: team?.losses ?? 0,
+                                            odds: lt ? lt.odds : 0,
+                                            movement: mv ? (mv.preLotteryPosition - mv.finalPosition) : 0,
+                                            isLotteryTeam: !!lt,
+                                        };
+                                    });
+                                    const lotteryContent: LotteryResultContent = { myTeamPick: myPick, entries };
+                                    const lotteryMsgTitle = seasonConfig?.seasonLabel
+                                        ? `${seasonConfig.seasonLabel} 드래프트 로터리 추첨 결과`
+                                        : '드래프트 로터리 추첨 결과';
+                                    sendMessage(session.user.id, myTeamId, nextDate, 'LOTTERY_RESULT', lotteryMsgTitle, lotteryContent)
+                                        .catch(e => console.warn('⚠️ Lottery result message failed:', e));
                                 }
                             }
                             onOffseasonEvent?.(offseasonEvent.navigateTo);

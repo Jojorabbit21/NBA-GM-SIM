@@ -38,6 +38,7 @@ export interface LotteryResult {
     playoffTeamIds: string[];          // 16팀 ID (15~30픽)
     pickMovements: PickMovement[];     // 순위 변동 정보 (UI용)
     top4Drawn: string[];               // 추첨으로 결정된 상위 4팀
+    viewed?: boolean;                  // 유저가 로터리 추첨 화면을 확인했는지 여부
 }
 
 // ═══════════════════════════════════════════════════════════════
