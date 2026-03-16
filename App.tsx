@@ -82,6 +82,7 @@ const App: React.FC = () => {
         gameData.leagueGMProfiles,
         gameData.seasonConfig,
         gameData.lotteryResult,
+        gameData.setLotteryResult,
         gameData.offseasonPhase,
         gameData.setOffseasonPhase,
         useCallback((targetView: string) => {

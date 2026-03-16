@@ -61,6 +61,7 @@ export const useSimulation = (
     leagueGMProfiles?: LeagueGMProfiles,
     seasonConfig?: SeasonConfig,
     lotteryResult?: any | null,
+    setLotteryResult?: (result: any) => void,
     offseasonPhase?: OffseasonPhase,
     setOffseasonPhase?: (phase: OffseasonPhase) => void,
     onOffseasonEvent?: (view: string) => void,
@@ -727,6 +728,7 @@ export const useSimulation = (
                         // blocking 이벤트 (draftLottery 등): 뷰 전환 후 중단
                         if (offseasonEvent.blocked && offseasonEvent.navigateTo) {
                             advanceDate(nextDate, {});
+                            if (u.lotteryResult) setLotteryResult?.(u.lotteryResult);
                             setSimProgress(null);
                             setIsSimulating(false);
                             if (!isGuestMode) {
