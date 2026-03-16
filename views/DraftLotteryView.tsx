@@ -34,6 +34,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 }) => {
     const [phase, setPhase] = useState<Phase>('waiting');
     const [revealedCount, setRevealedCount] = useState(0);
+    const [bgLoaded, setBgLoaded] = useState(false);
 
     // 슬롯 릴 데이터
     const [slotReels, setSlotReels] = useState<string[][]>([[], [], [], []]);
@@ -411,10 +412,15 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 
     return (
         <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center">
-            {/* Background */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
-                <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
+            {/* Background Image */}
+            <div className="absolute inset-0 pointer-events-none">
+                <img
+                    src="/images/lottery.png"
+                    alt=""
+                    className={`absolute inset-0 w-full h-full object-cover blur-sm transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    onLoad={() => setBgLoaded(true)}
+                />
+                <div className="absolute inset-0 bg-slate-950/80" />
             </div>
 
             {/* Title */}
