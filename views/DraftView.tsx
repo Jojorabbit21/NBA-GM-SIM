@@ -39,7 +39,6 @@ const GROUP_LABEL_KR: Record<string, string> = {
 };
 
 const WIDTHS = {
-    RANK: 44,
     NAME: 160,
     POS: 54,
     AGE: 44,
@@ -59,9 +58,8 @@ type SortConfig = { key: string; direction: 'asc' | 'desc'; };
 
 // ── Sticky 위치 계산 ──
 
-const LEFT_NAME = WIDTHS.RANK;
-const LEFT_POS = WIDTHS.RANK + WIDTHS.NAME;
-const LEFT_OVR = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS;
+const LEFT_NAME = 0;
+const LEFT_POS = WIDTHS.NAME;
 
 const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
     left,
@@ -84,7 +82,7 @@ interface DraftViewProps {
 
 export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'pot', direction: 'desc' });
     const [posFilter, setPosFilter] = useState<string>('ALL');
 
     const handleSort = (key: string) => {
@@ -177,21 +175,20 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
             <div className="flex-1 min-h-0">
                 <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
                     <colgroup>
-                        <col style={{ width: WIDTHS.RANK }} />
                         <col style={{ width: WIDTHS.NAME }} />
                         <col style={{ width: WIDTHS.POS }} />
-                        <col style={{ width: WIDTHS.OVR }} />
-                        <col style={{ width: WIDTHS.POT }} />
                         <col style={{ width: WIDTHS.AGE }} />
                         <col style={{ width: WIDTHS.HT }} />
                         <col style={{ width: WIDTHS.WT }} />
+                        <col style={{ width: WIDTHS.OVR }} />
+                        <col style={{ width: WIDTHS.POT }} />
                         {ATTR_COLS.map((k) => <col key={k} style={{ width: WIDTHS.ATTR }} />)}
                         <col style={{ width: WIDTHS.SCOUT }} />
                     </colgroup>
                     <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                         {/* Header Row 1: Groups */}
                         <tr className="h-10">
-                            <th colSpan={8} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
+                            <th colSpan={7} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-xs font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
                                 </div>
@@ -212,28 +209,15 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
                         {/* Header Row 2: Labels */}
                         <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                             <TableHeaderCell
-                                style={{ ...getStickyStyle(0, WIDTHS.RANK), zIndex: 50 }}
-                                className="bg-slate-950"
-                            >#</TableHeaderCell>
-                            <TableHeaderCell
                                 style={{ ...getStickyStyle(LEFT_NAME, WIDTHS.NAME), zIndex: 50 }}
                                 align="left" className="pl-4 bg-slate-950"
                                 sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
                             >이름</TableHeaderCell>
                             <TableHeaderCell
-                                style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }}
-                                className="bg-slate-950"
+                                style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS, true), zIndex: 50 }}
+                                className="bg-slate-950 border-r border-slate-800"
                                 sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
                             >포지션</TableHeaderCell>
-                            <TableHeaderCell
-                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50 }}
-                                className="bg-slate-950 border-r border-slate-800"
-                                sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
-                            >OVR</TableHeaderCell>
-                            <TableHeaderCell
-                                width={WIDTHS.POT} className="border-r border-slate-800"
-                                sortable onSort={() => handleSort('pot')} sortDirection={sortConfig.key === 'pot' ? sortConfig.direction : null}
-                            >POT</TableHeaderCell>
                             <TableHeaderCell
                                 width={WIDTHS.AGE} className="border-r border-slate-800"
                                 sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
@@ -246,6 +230,14 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
                                 width={WIDTHS.WT} className="border-r border-slate-800"
                                 sortable onSort={() => handleSort('weight')} sortDirection={sortConfig.key === 'weight' ? sortConfig.direction : null}
                             >몸무게</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.OVR} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
+                            >OVR</TableHeaderCell>
+                            <TableHeaderCell
+                                width={WIDTHS.POT} className="border-r border-slate-800"
+                                sortable onSort={() => handleSort('pot')} sortDirection={sortConfig.key === 'pot' ? sortConfig.direction : null}
+                            >POT</TableHeaderCell>
                             {ATTR_COLS.map(k => (
                                 <TableHeaderCell
                                     key={k}
@@ -263,30 +255,23 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects }) => {
                         </tr>
                     </thead>
                     <TableBody>
-                        {sortedProspects.map((p, idx) => {
-                            const rank = idx + 1;
+                        {sortedProspects.map((p) => {
                             const ovr = calculatePlayerOvr(p);
                             return (
                                 <TableRow key={p.id} className="group">
-                                    <TableCell style={getStickyStyle(0, WIDTHS.RANK)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
-                                        <span className={`font-black text-xs ${rank <= 3 ? 'text-amber-400' : 'text-slate-600'}`}>{rank}</span>
-                                    </TableCell>
                                     <TableCell style={getStickyStyle(LEFT_NAME, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                         <span className="text-xs font-semibold text-slate-200 truncate">{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                                    <TableCell
-                                        style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true) }}
-                                        className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
-                                    >
+                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS, true)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center border-r border-slate-800">{p.position}</TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.age}</TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.height}</TableCell>
+                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.weight}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30">
                                         <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
                                     <TableCell align="center" className="border-r border-slate-800/30">
                                         <span className="font-mono font-black text-xs tabular-nums text-amber-400/80">{p.potential}</span>
                                     </TableCell>
-                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.age}</TableCell>
-                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.height}</TableCell>
-                                    <TableCell align="center" className="text-slate-500 font-semibold text-xs border-r border-slate-800/30">{p.weight}</TableCell>
                                     {ATTR_COLS.map(k => (
                                         <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                                     ))}
