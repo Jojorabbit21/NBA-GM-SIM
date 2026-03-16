@@ -15,12 +15,16 @@ interface DraftLotteryViewProps {
 // ── 타이밍 상수 ──
 const LIST_REVEAL_INTERVAL = 250;
 const SLOT_PAUSE_BEFORE = 1000;
-const SLOT_INITIAL_SPEED = 60;
-const SLOT_STEP_COUNT = 22;
-const SLOT_SPEED_INCREMENT = 18;
-const SLOT_FINAL_PAUSE = 1000;
+const SLOT_FINAL_PAUSE = 1200;
+
+// ── 릴 상수 ──
+const REEL_ITEM_HEIGHT = 80;       // 릴 아이템 1개 높이 (px)
+const REEL_LENGTH = 30;            // 릴에 포함될 팀 수 (마지막이 정답)
+const SPIN_DURATION = 3500;        // CSS transition 시간 (ms)
+const SPIN_EASING = 'cubic-bezier(0.15, 0.6, 0.25, 1)'; // 빠른 시작 → 자연스러운 감속
 
 type Phase = 'waiting' | 'list' | 'slot' | 'done';
+type SlotPhase = 'idle' | 'ready' | 'spinning' | 'revealed';
 
 export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     myTeamId,
@@ -30,13 +34,13 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 }) => {
     const [phase, setPhase] = useState<Phase>('waiting');
     const [revealedCount, setRevealedCount] = useState(0);
-    // 슬롯머신: 현재 표시 중인 팀 ID (top-4 각 슬롯)
-    const [slotDisplayIds, setSlotDisplayIds] = useState<(string | null)[]>([null, null, null, null]);
-    // 슬롯머신: 현재 스핀 중인 top-4 인덱스 (0=4픽, 1=3픽, 2=2픽, 3=1픽)
-    const [currentSlotIdx, setCurrentSlotIdx] = useState(-1);
-    const [slotSpinning, setSlotSpinning] = useState(false);
+
+    // 슬롯 릴 데이터
+    const [slotReels, setSlotReels] = useState<string[][]>([[], [], [], []]);
+    const [slotPhases, setSlotPhases] = useState<SlotPhase[]>(['idle', 'idle', 'idle', 'idle']);
     // top-4 중 reveal 완료된 개수
     const [top4RevealedCount, setTop4RevealedCount] = useState(0);
+    const [activeSlotIdx, setActiveSlotIdx] = useState(-1);
 
     const slotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMountedRef = useRef(true);
@@ -68,7 +72,6 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     }, [lotteryMetadata]);
 
     // ── 리스트 구간 (5~30픽) 역순 공개 순서 ──
-    // savedOrder[4..29] → 29, 28, ..., 4 순으로 reveal
     const listRevealOrder = useMemo(() => {
         if (!savedOrder) return [];
         const indices: number[] = [];
@@ -78,17 +81,16 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         return indices;
     }, [savedOrder]);
 
-    const listCount = listRevealOrder.length; // 26개
+    const listCount = listRevealOrder.length;
 
-    // 현재까지 공개된 인덱스 Set (5~30픽)
+    // 현재까지 공개된 인덱스 Set
     const revealedIndices = useMemo(() => {
         const set = new Set<number>();
         for (let i = 0; i < revealedCount; i++) {
             if (i < listRevealOrder.length) set.add(listRevealOrder[i]);
         }
-        // top-4 공개분
         for (let i = 0; i < top4RevealedCount; i++) {
-            set.add(3 - i); // 4픽(idx 3), 3픽(idx 2), 2픽(idx 1), 1픽(idx 0)
+            set.add(3 - i);
         }
         return set;
     }, [revealedCount, listRevealOrder, top4RevealedCount]);
@@ -106,22 +108,21 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         return () => clearTimeout(timer);
     }, [phase, savedOrder, revealedCount, listCount]);
 
-    // ── Phase: slot (4~1픽 슬롯머신 공개) ──
-    // 슬롯 애니메이션을 명령형 setTimeout 체인으로 처리하여 cleanup 버그 방지
+    // ── Phase: slot (4~1픽 릴 슬롯머신) ──
     useEffect(() => {
         if (phase !== 'slot' || !savedOrder) return;
         if (top4RevealedCount >= 4) {
             setPhase('done');
             return;
         }
-        if (slotSpinning) return;
+        // 이미 스핀 중이면 무시
+        if (slotPhases[top4RevealedCount] !== 'idle') return;
 
-        // 다음 슬롯 시작 (4픽 → 3픽 → 2픽 → 1픽)
         const slotIdx = top4RevealedCount; // 0=4픽, 1=3픽, 2=2픽, 3=1픽
-        const pickIdx = 3 - slotIdx; // savedOrder 인덱스
+        const pickIdx = 3 - slotIdx;
         const actualTeamId = savedOrder[pickIdx];
 
-        // 아직 공개 안 된 팀들 (현 시점 기준)
+        // 미공개 팀 목록 계산
         const currentRevealed = new Set<number>();
         for (let i = 0; i < revealedCount && i < listRevealOrder.length; i++) {
             currentRevealed.add(listRevealOrder[i]);
@@ -131,50 +132,54 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         }
         const unrevealedTeams = savedOrder.filter((_, i) => !currentRevealed.has(i));
 
-        setSlotSpinning(true);
-        setCurrentSlotIdx(slotIdx);
+        // 릴 생성: 랜덤 팀 (REEL_LENGTH - 1)개 + 정답 1개
+        const reel: string[] = [];
+        for (let i = 0; i < REEL_LENGTH - 1; i++) {
+            reel.push(unrevealedTeams[Math.floor(Math.random() * unrevealedTeams.length)]);
+        }
+        reel.push(actualTeamId);
 
-        // 재귀 setTimeout 체인으로 점점 느려지는 애니메이션
-        const runSpin = (step: number) => {
+        // 릴 데이터 세팅
+        setSlotReels(prev => {
+            const next = [...prev];
+            next[slotIdx] = reel;
+            return next;
+        });
+        setSlotPhases(prev => {
+            const next = [...prev];
+            next[slotIdx] = 'ready';
+            return next;
+        });
+        setActiveSlotIdx(slotIdx);
+
+        // ready → spinning (1프레임 후, CSS transition 발동을 위해)
+        slotTimerRef.current = setTimeout(() => {
             if (!isMountedRef.current) return;
-
-            if (step >= SLOT_STEP_COUNT) {
-                // 최종 결과 표시
-                setSlotDisplayIds(prev => {
-                    const next = [...prev];
-                    next[slotIdx] = actualTeamId;
-                    return next;
-                });
-                // 잠시 후 확정
-                slotTimerRef.current = setTimeout(() => {
-                    if (!isMountedRef.current) return;
-                    setTop4RevealedCount(prev => prev + 1);
-                    setSlotSpinning(false);
-                    setCurrentSlotIdx(-1);
-                }, SLOT_FINAL_PAUSE);
-                return;
-            }
-
-            // 랜덤 팀 표시
-            const randomTeam = unrevealedTeams[Math.floor(Math.random() * unrevealedTeams.length)];
-            setSlotDisplayIds(prev => {
+            setSlotPhases(prev => {
                 const next = [...prev];
-                next[slotIdx] = randomTeam;
+                next[slotIdx] = 'spinning';
                 return next;
             });
 
-            const delay = SLOT_INITIAL_SPEED + step * SLOT_SPEED_INCREMENT;
-            slotTimerRef.current = setTimeout(() => runSpin(step + 1), delay);
-        };
+            // spinning 완료 → revealed
+            slotTimerRef.current = setTimeout(() => {
+                if (!isMountedRef.current) return;
+                setSlotPhases(prev => {
+                    const next = [...prev];
+                    next[slotIdx] = 'revealed';
+                    return next;
+                });
 
-        // 시작 전 대기
-        slotTimerRef.current = setTimeout(() => {
-            if (!isMountedRef.current) return;
-            runSpin(0);
+                // 잠시 후 다음 슬롯
+                slotTimerRef.current = setTimeout(() => {
+                    if (!isMountedRef.current) return;
+                    setTop4RevealedCount(prev => prev + 1);
+                    setActiveSlotIdx(-1);
+                }, SLOT_FINAL_PAUSE);
+            }, SPIN_DURATION + 100);
         }, SLOT_PAUSE_BEFORE);
 
-        // cleanup 없음 — unmount 시 isMountedRef로 방어
-    }, [phase, savedOrder, top4RevealedCount, slotSpinning]);
+    }, [phase, savedOrder, top4RevealedCount, slotPhases]);
 
     // unmount cleanup
     useEffect(() => {
@@ -194,21 +199,15 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     }, [savedOrder, onComplete]);
 
     const userPickNumber = savedOrder ? savedOrder.indexOf(myTeamId) + 1 : 0;
-
-    // 현재 슬롯머신 대상 픽 번호
-    const currentSlotPickNum = currentSlotIdx >= 0 ? 4 - currentSlotIdx : 0;
+    const currentSlotPickNum = activeSlotIdx >= 0 ? 4 - activeSlotIdx : 0;
 
     if (!savedOrder) return null;
 
     // ── 레이아웃 분할 ──
-    // top4: savedOrder[0..3] = 1~4픽
-    // leftColumn: savedOrder[4..16] = 5~17픽 (13개)
-    // rightColumn: savedOrder[17..29] = 18~30픽 (13개)
-    const top4Teams = savedOrder.slice(0, 4);
-    const leftColumn = savedOrder.slice(4, 17);
-    const rightColumn = savedOrder.slice(17, 30);
+    const leftColumn = savedOrder.slice(4, 17);   // 5~17픽 (13개)
+    const rightColumn = savedOrder.slice(17, 30);  // 18~30픽 (13개)
 
-    // ── 카드 렌더러 (5~30픽) ──
+    // ── 5~30픽 카드 렌더러 ──
     const renderListCard = (teamId: string, idx: number) => {
         const pickNum = idx + 1;
         const isRevealed = revealedIndices.has(idx);
@@ -275,104 +274,135 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                                 {Math.abs(moveDiff)}
                             </span>
                         )}
-                        {isTop4Winner && isLotteryPick && movement?.jumped && (
-                            <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 px-1 py-0.5 rounded">
-                                LOTTERY
-                            </span>
-                        )}
                     </div>
                 )}
             </div>
         );
     };
 
-    // ── Top-4 슬롯 카드 렌더러 ──
+    // ── 릴 아이템 렌더러 ──
+    const renderReelItem = (teamId: string, i: number) => {
+        const teamInfo = TEAM_DATA[teamId];
+        return (
+            <div
+                key={i}
+                className="flex flex-col items-center justify-center gap-1 shrink-0"
+                style={{ height: REEL_ITEM_HEIGHT }}
+            >
+                <TeamLogo teamId={teamId} size="custom" className="w-14 h-14" />
+                <span className="text-[11px] font-bold text-white/80 truncate max-w-[130px] text-center leading-tight">
+                    {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId}
+                </span>
+            </div>
+        );
+    };
+
+    // ── Top-4 슬롯 렌더러 ──
     const renderTop4Slot = (slotIdx: number) => {
-        const pickIdx = 3 - slotIdx; // 0=4픽 → idx 3, 1=3픽 → idx 2, ...
+        const pickIdx = 3 - slotIdx;
         const pickNum = pickIdx + 1;
         const isRevealed = revealedIndices.has(pickIdx);
-        const displayTeamId = slotDisplayIds[slotIdx];
         const actualTeamId = savedOrder[pickIdx];
-        const isSpinning = currentSlotIdx === slotIdx && slotSpinning;
         const isMyTeam = actualTeamId === myTeamId;
-        const teamInfo = isRevealed ? TEAM_DATA[actualTeamId] : (displayTeamId ? TEAM_DATA[displayTeamId] : null);
-        const teamColor = isRevealed ? (TEAM_DATA[actualTeamId]?.colors.primary || '#6366f1') : 'transparent';
+        const teamColor = TEAM_DATA[actualTeamId]?.colors.primary || '#6366f1';
         const isTop4Winner = top4Set.has(actualTeamId);
         const lotteryEntry = lotteryTeamMap?.get(actualTeamId);
         const movement = movementMap?.get(actualTeamId);
         const moveDiff = movement?.diff ?? 0;
 
-        // 아직 활성화 안 된 슬롯
-        const isActive = phase === 'slot' || phase === 'done';
-        const showPlaceholder = !isActive || (!isRevealed && !isSpinning);
+        const sp = slotPhases[slotIdx];
+        const reel = slotReels[slotIdx];
+        const isActive = sp === 'ready' || sp === 'spinning';
+        const showReel = isActive && reel.length > 0;
+
+        // 릴 translateY 계산
+        const reelOffset = sp === 'spinning'
+            ? -(reel.length - 1) * REEL_ITEM_HEIGHT
+            : 0;
 
         return (
             <div
                 key={pickNum}
-                className={`relative flex-1 rounded-2xl overflow-hidden transition-all duration-500 ${
+                className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
                     isRevealed && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isSpinning ? 'ring-2 ring-amber-400/60 animate-pulse' : ''} ${
+                } ${isActive ? 'ring-2 ring-amber-400/60' : ''} ${
                     isRevealed && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
                 }`}
                 style={{
                     backgroundColor: isRevealed ? teamColor : 'rgba(30,41,59,0.4)',
-                    minHeight: 88,
+                    height: REEL_ITEM_HEIGHT + 32,
+                    transition: `background-color 0.5s ease`,
                 }}
             >
                 {/* 픽 번호 뱃지 */}
-                <div className={`absolute top-2 left-2 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black ${
+                <div className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black ${
                     isRevealed ? 'bg-black/30 text-white' : 'bg-slate-800/60 text-slate-600'
                 }`}>
                     {pickNum}
                 </div>
 
-                {showPlaceholder ? (
-                    // 빈 슬롯
-                    <div className="flex items-center justify-center h-full py-6">
-                        <span className="text-slate-700 text-sm font-black">?</span>
-                    </div>
-                ) : isSpinning && displayTeamId ? (
-                    // 스핀 중
-                    <div className="flex flex-col items-center justify-center py-3 gap-1">
-                        <TeamLogo teamId={displayTeamId} size="custom" className="w-10 h-10" />
-                        <span className="text-xs font-bold text-white/80 truncate max-w-[140px] text-center">
-                            {TEAM_DATA[displayTeamId] ? `${TEAM_DATA[displayTeamId].city} ${TEAM_DATA[displayTeamId].name}` : displayTeamId}
-                        </span>
-                    </div>
-                ) : isRevealed ? (
-                    // 확정
-                    <div className="flex flex-col items-center justify-center py-3 gap-1">
-                        <TeamLogo teamId={actualTeamId} size="custom" className="w-10 h-10" />
-                        <span className="text-xs font-bold text-white truncate max-w-[140px] text-center">
-                            {TEAM_DATA[actualTeamId] ? `${TEAM_DATA[actualTeamId].city} ${TEAM_DATA[actualTeamId].name}` : actualTeamId}
-                        </span>
-                        <div className="flex items-center gap-1">
-                            {lotteryEntry && (
-                                <span className="text-[10px] text-white/50">
-                                    {lotteryEntry.wins}-{lotteryEntry.losses}
-                                </span>
-                            )}
-                            {lotteryEntry && (
-                                <span className="text-[10px] font-bold text-white/40">
-                                    {(lotteryEntry.odds * 100).toFixed(1)}%
-                                </span>
-                            )}
-                            {moveDiff !== 0 && (
-                                <span className={`flex items-center gap-0.5 text-[10px] font-black ${
-                                    moveDiff > 0 ? 'text-emerald-400' : 'text-red-400'
-                                }`}>
-                                    {moveDiff > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                                    {Math.abs(moveDiff)}
-                                </span>
-                            )}
+                {/* 릴 윈도우 */}
+                <div
+                    className="absolute inset-0 overflow-hidden"
+                    style={{ top: 16, bottom: 16 }}
+                >
+                    {showReel ? (
+                        /* 릴 스트립 — CSS transition으로 스크롤 */
+                        <div
+                            style={{
+                                transform: `translateY(${reelOffset}px)`,
+                                transition: sp === 'spinning'
+                                    ? `transform ${SPIN_DURATION}ms ${SPIN_EASING}`
+                                    : 'none',
+                            }}
+                        >
+                            {reel.map((teamId, i) => renderReelItem(teamId, i))}
                         </div>
-                        {isTop4Winner && movement?.jumped && (
-                            <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
-                                LOTTERY
+                    ) : isRevealed ? (
+                        /* 확정 결과 */
+                        <div className="flex flex-col items-center justify-center h-full gap-1">
+                            <TeamLogo teamId={actualTeamId} size="custom" className="w-14 h-14" />
+                            <span className="text-[11px] font-bold text-white truncate max-w-[130px] text-center leading-tight">
+                                {TEAM_DATA[actualTeamId] ? `${TEAM_DATA[actualTeamId].city} ${TEAM_DATA[actualTeamId].name}` : actualTeamId}
                             </span>
-                        )}
-                    </div>
-                ) : null}
+                            <div className="flex items-center gap-1 flex-wrap justify-center">
+                                {lotteryEntry && (
+                                    <span className="text-[10px] text-white/50">
+                                        {lotteryEntry.wins}-{lotteryEntry.losses}
+                                    </span>
+                                )}
+                                {lotteryEntry && (
+                                    <span className="text-[10px] font-bold text-white/40">
+                                        {(lotteryEntry.odds * 100).toFixed(1)}%
+                                    </span>
+                                )}
+                                {moveDiff !== 0 && (
+                                    <span className={`flex items-center gap-0.5 text-[10px] font-black ${
+                                        moveDiff > 0 ? 'text-emerald-400' : 'text-red-400'
+                                    }`}>
+                                        {moveDiff > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                        {Math.abs(moveDiff)}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        /* 빈 슬롯 */
+                        <div className="flex items-center justify-center h-full">
+                            <span className="text-slate-700 text-xl font-black">?</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* 릴 상하 그라데이션 마스크 (스핀 중만) */}
+                {showReel && (
+                    <>
+                        <div className="absolute top-0 left-0 right-0 h-6 z-10 pointer-events-none"
+                            style={{ background: 'linear-gradient(to bottom, rgba(15,23,42,0.9), transparent)' }} />
+                        <div className="absolute bottom-0 left-0 right-0 h-6 z-10 pointer-events-none"
+                            style={{ background: 'linear-gradient(to top, rgba(15,23,42,0.9), transparent)' }} />
+                    </>
+                )}
             </div>
         );
     };
@@ -430,7 +460,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 <div className="relative z-10 w-full max-w-3xl px-4 flex flex-col gap-3">
                     {/* Top-4 슬롯 (수평 배치) */}
                     <div className="grid grid-cols-4 gap-2">
-                        {[0, 1, 2, 3].map(slotIdx => renderTop4Slot(slotIdx))}
+                        {[3, 2, 1, 0].map(slotIdx => renderTop4Slot(slotIdx))}
                     </div>
 
                     {/* 5~30픽 리스트 (2컬럼, 각 13개) */}
