@@ -114,10 +114,8 @@ export const getTeamLogoUrl = (teamId: string): string => {
     return `/logos/${id}.svg`;
 };
 
-// [Critical] Import OVR calc from logic file to ensure consistency
-// manualOvr(base_attributes.ovr) 가 있으면 우선 사용, 없으면 능력치 기반 재계산
+// [Critical] 항상 능력치 기반으로 OVR 동적 계산 (성장/퇴화 반영)
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
-    if (p.manualOvr && p.manualOvr > 0) return p.manualOvr;
     return calculateOvr(p, position || p.position);
 };
 

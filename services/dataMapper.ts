@@ -240,11 +240,11 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb + statsObj.boxOut) / 3);
     const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
 
-    // 3. Determine OVR — manual override from base_attributes.ovr takes priority
+    // 3. Determine OVR — 항상 능력치 기반 동적 계산 (성장/퇴화 반영)
     const manualOvr = Number(getCol(p, ['ovr', 'OVR']));
     const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
     const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
-    const ovr = (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : calculateOvr(ovrInput, position);
+    const ovr = calculateOvr(ovrInput, position);
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI
