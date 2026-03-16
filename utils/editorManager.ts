@@ -1,6 +1,7 @@
 
 import { TEAM_DATA } from '../data/teamData';
 import { rebuildDerivedConstants } from './constants';
+import { editorLogoUrls } from './editorState';
 
 export interface TeamEditorEntry {
     name?: string;
@@ -17,8 +18,7 @@ for (const [id, team] of Object.entries(TEAM_DATA)) {
     ORIGINAL_NAMES[id] = team.name;
 }
 
-/** 에디터로 설정된 로고 URL 인메모리 맵 (getTeamLogoUrl에서 참조) */
-export const editorLogoUrls: Map<string, string> = new Map();
+export { editorLogoUrls };
 
 /** localStorage에서 에디터 데이터 로드 */
 export function loadEditorData(): UserEditorData | null {

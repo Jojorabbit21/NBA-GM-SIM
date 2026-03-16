@@ -3,7 +3,7 @@ import { Game, Player, Team } from '../types';
 import { calculateOvr } from './ovrUtils';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
-import { editorLogoUrls } from './editorManager';
+import { editorLogoUrls } from './editorState';
 
 import { DEFAULT_SEASON_CONFIG } from './seasonConfig';
 
