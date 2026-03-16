@@ -407,6 +407,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     myTeamId={gameData.myTeamId!}
                     savedOrder={gameData.lotteryResult?.finalOrder || gameData.draftPicks?.order || null}
                     lotteryMetadata={gameData.lotteryResult || null}
+                    seasonShort={seasonShort}
                     onComplete={(order) => {
                         setDraftOrder(order);
                         // 오프시즌 로터리 (판타지 드래프트가 아닌 경우) → 대시보드로 복귀

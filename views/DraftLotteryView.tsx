@@ -9,6 +9,7 @@ interface DraftLotteryViewProps {
     myTeamId: string;
     savedOrder: string[] | null;
     lotteryMetadata?: LotteryResult | null;
+    seasonShort?: string;
     onComplete: (order: string[]) => void;
 }
 
@@ -30,6 +31,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     myTeamId,
     savedOrder,
     lotteryMetadata,
+    seasonShort = '2025-26',
     onComplete,
 }) => {
     const [phase, setPhase] = useState<Phase>('waiting');
@@ -481,7 +483,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             {/* Title */}
             <div className="relative z-10 text-center mb-4">
                 <h1 className="text-3xl font-black text-white uppercase tracking-wider mb-1">
-                    드래프트 로터리
+                    {seasonShort} 드래프트 로터리 추첨
                 </h1>
                 {phase === 'waiting' && (
                     <p className="text-slate-500 text-sm font-bold ko-tight">
