@@ -128,6 +128,13 @@ const App: React.FC = () => {
         }
     }, [gameData.myTeamId, gameData.draftPicks, rosterMode]);
 
+    // 리로드 시 오프시즌 POST_LOTTERY 상태면 로터리 뷰로 복원
+    useEffect(() => {
+        if (gameData.myTeamId && gameData.offseasonPhase === 'POST_LOTTERY' && gameData.lotteryResult) {
+            setView('DraftLottery');
+        }
+    }, [gameData.myTeamId, gameData.offseasonPhase, gameData.lotteryResult]);
+
     // HOF 제출 여부 확인 (hof_id 기반)
     useEffect(() => {
         if (gameData.hofId) {
