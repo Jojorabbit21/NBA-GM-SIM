@@ -14,6 +14,7 @@ import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { detectFinalsEnd, dispatchOffseasonEvent } from '../services/simulation/offseasonEventHandler';
 import { OffseasonPhase } from '../types/app';
 import { archiveCurrentSeason, updateSeasonArchiveLottery } from '../services/seasonArchive';
+import { insertDraftClass } from '../services/draft/rookieRepository';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
@@ -618,6 +619,8 @@ export const useSimulation = (
                         schedule: newSchedule,
                         playoffSeries: newPlayoffSeries,
                         currentSeasonNumber,
+                        tendencySeed: tendencySeed || '',
+                        userId: session?.user?.id,
                     });
 
                     if (offseasonEvent.fired && offseasonEvent.updates) {
@@ -676,9 +679,44 @@ export const useSimulation = (
                             return;
                         }
 
+                        // moratoriumStart 결과: 에이징/은퇴/계약만료/옵션 처리
+                        if (u.offseasonProcessed) {
+                            setTeams([...newTeams]); // roster mutation 반영
+                            // 인박스 발송: 유저팀 변동 + 리그 전체 은퇴
+                            if (!isGuestMode && session?.user?.id && myTeamId) {
+                                const op = u.offseasonProcessed;
+                                const myRetired = op.retiredPlayers.filter(p => p.teamId === myTeamId);
+                                const myExpired = op.expiredPlayers.filter(p => p.teamId === myTeamId);
+                                const myOptions = op.optionDecisions.filter(p => p.teamId === myTeamId);
+                                const leagueRetired = op.retiredPlayers.filter(p => p.teamId !== myTeamId);
+
+                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || leagueRetired.length > 0) {
+                                    const reportContent = {
+                                        retired: myRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position })),
+                                        expired: myExpired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, lastSalary: p.lastSalary })),
+                                        optionDecisions: myOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, optionType: p.optionType, exercised: p.exercised, salary: p.salary })),
+                                        leagueRetired: leagueRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, teamId: p.teamId })),
+                                    };
+                                    sendMessage(session.user.id, myTeamId, nextDate, 'OFFSEASON_REPORT', '오프시즌 로스터 변동 보고서', reportContent)
+                                        .then(() => refreshUnreadCount())
+                                        .catch(e => console.warn('⚠️ Offseason report message failed:', e));
+                                }
+                            }
+                        }
+
+                        // 생성된 드래프트 클래스를 DB에 저장
+                        if (u.generatedDraftClass && u.generatedDraftClass.length > 0 && !isGuestMode) {
+                            insertDraftClass(u.generatedDraftClass)
+                                .catch(e => console.warn('⚠️ Draft class insert failed (non-critical):', e));
+                        }
+
                         // 비-blocking 이벤트: phase 업데이트만 저장
                         if (u.offseasonPhase !== undefined && !isGuestMode) {
-                            forceSave({ offseasonPhase: u.offseasonPhase });
+                            forceSave({
+                                offseasonPhase: u.offseasonPhase,
+                                teams: u.offseasonProcessed ? newTeams : undefined,
+                                withSnapshot: !!u.offseasonProcessed,
+                            });
                         }
                     }
                 }

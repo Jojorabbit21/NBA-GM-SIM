@@ -10,9 +10,12 @@ import { SeasonKeyDates, SeasonConfig } from '../../utils/seasonConfig';
 import { OffseasonPhase } from '../../types/app';
 import { AppView } from '../../types/app';
 import { runLotteryEngine, LotteryResult } from '../draft/lotteryEngine';
+import { generateDraftClass } from '../draft/rookieGenerator';
+import { GeneratedPlayerRow } from '../../types/generatedPlayer';
 import { buildSeasonConfig } from '../../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
 import { INITIAL_STATS } from '../../utils/constants';
+import { processOffseason, OffseasonResult } from '../playerDevelopment/playerAging';
 
 // ── 결과 타입 ──
 
@@ -27,10 +30,12 @@ export interface OffseasonEventResult {
     updates?: {
         offseasonPhase?: OffseasonPhase;
         lotteryResult?: LotteryResult;
+        generatedDraftClass?: GeneratedPlayerRow[];  // 생성된 드래프트 클래스
         newSchedule?: Game[];
         newSeasonNumber?: number;
         newSeasonConfig?: SeasonConfig;
         teamsReset?: boolean;  // W/L + 스탯 리셋 수행됨
+        offseasonProcessed?: OffseasonResult;  // 에이징/은퇴/계약만료/옵션 결과
     };
 }
 
@@ -69,6 +74,8 @@ export interface DispatchParams {
     schedule: Game[];
     playoffSeries: PlayoffSeries[];
     currentSeasonNumber: number;
+    tendencySeed: string;
+    userId?: string;  // 생성 선수 저장용
 }
 
 /**
@@ -76,7 +83,7 @@ export interface DispatchParams {
  * 각 이벤트는 offseasonPhase로 멱등성 보장.
  */
 export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventResult {
-    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber } = params;
+    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed } = params;
 
     // Phase가 null이면 인시즌 — 오프시즌 이벤트 불필요
     if (offseasonPhase === null) return NO_EVENT;
@@ -97,27 +104,99 @@ export function dispatchOffseasonEvent(params: DispatchParams): OffseasonEventRe
         };
     }
 
-    // ── rookieDraft: 신인 드래프트 강제 이동 (Phase 3에서 구현 예정) ──
-    // if (currentDate >= keyDates.rookieDraft && offseasonPhase === 'POST_LOTTERY') {
-    //     return { fired: true, blocked: true, navigateTo: 'DraftRoom', updates: { offseasonPhase: 'POST_DRAFT' } };
-    // }
-
-    // POST_LOTTERY 상태에서 rookieDraft 미구현 → 자동으로 POST_DRAFT로 전환
+    // ── rookieDraft: 드래프트 클래스 생성 + 드래프트 뷰 이동 ──
     if (currentDate >= keyDates.rookieDraft && offseasonPhase === 'POST_LOTTERY') {
-        console.log('📝 Rookie draft date reached (not yet implemented) — skipping to POST_DRAFT');
+        // 다음 시즌(currentSeasonNumber + 1)용 드래프트 클래스 생성
+        const nextSeasonNumber = currentSeasonNumber + 1;
+        const draftClass = userId
+            ? generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60)
+            : [];
+
+        if (draftClass.length > 0) {
+            console.log(`📝 Generated draft class: ${draftClass.length} rookies for season ${nextSeasonNumber}`);
+        }
+
+        // TODO: DraftRoom 뷰 구현 시 blocked: true, navigateTo: 'DraftRoom'으로 변경
         return {
             fired: true,
             blocked: false,
-            updates: { offseasonPhase: 'POST_DRAFT' },
+            updates: {
+                offseasonPhase: 'POST_DRAFT',
+                generatedDraftClass: draftClass.length > 0 ? draftClass : undefined,
+            },
         };
     }
 
+    // ── moratoriumStart: 에이징/은퇴/계약만료/옵션 처리 ──
+    if (currentDate >= keyDates.moratoriumStart && offseasonPhase === 'POST_DRAFT') {
+        return handleMoratoriumStart(teams, currentSeasonNumber, tendencySeed);
+    }
+
     // ── openingNight: 새 시즌 개막 ──
-    if (currentDate >= keyDates.openingNight && (offseasonPhase === 'POST_DRAFT' || offseasonPhase === 'FA_OPEN' || offseasonPhase === 'PRE_SEASON')) {
+    if (currentDate >= keyDates.openingNight && (offseasonPhase === 'FA_OPEN' || offseasonPhase === 'PRE_SEASON')) {
         return handleOpeningNight(teams, currentSeasonNumber);
     }
 
     return NO_EVENT;
+}
+
+// ── moratoriumStart 핸들러 ──
+
+function handleMoratoriumStart(
+    teams: Team[],
+    currentSeasonNumber: number,
+    tendencySeed: string,
+): OffseasonEventResult {
+    const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber);
+
+    // 제거 대상 집합
+    const removeIds = new Set<string>();
+    for (const p of offseasonResult.retiredPlayers) removeIds.add(p.playerId);
+    for (const p of offseasonResult.expiredPlayers) removeIds.add(p.playerId);
+
+    // 팀별 로스터 최소 인원(8명) 보장: 만료 선수 중 OVR 최고를 제거 대상에서 제외
+    const MIN_ROSTER = 8;
+    for (const team of teams) {
+        const retainedCount = team.roster.filter(p => !removeIds.has(p.id)).length;
+        if (retainedCount < MIN_ROSTER) {
+            const needed = MIN_ROSTER - retainedCount;
+            // 은퇴 선수는 복원 불가 — 만료 선수만 OVR 내림차순으로 복원
+            const teamExpired = offseasonResult.expiredPlayers
+                .filter(ep => ep.teamId === team.id && !offseasonResult.retiredPlayers.some(r => r.playerId === ep.playerId))
+                .sort((a, b) => b.ovr - a.ovr);
+
+            let restored = 0;
+            for (const ep of teamExpired) {
+                if (restored >= needed) break;
+                removeIds.delete(ep.playerId);
+                // min 계약 부여
+                const player = team.roster.find(p => p.id === ep.playerId);
+                if (player) {
+                    player.salary = 1_500_000;
+                    player.contractYears = 1;
+                    player.contract = { years: [1_500_000], currentYear: 0, type: 'min' };
+                }
+                restored++;
+                console.log(`🔄 Auto re-signed ${ep.playerName} (${team.id}) on min deal for roster minimum`);
+            }
+        }
+    }
+
+    // 최종 제거
+    for (const team of teams) {
+        team.roster = team.roster.filter(p => !removeIds.has(p.id));
+    }
+
+    console.log(`📋 Moratorium: ${offseasonResult.retiredPlayers.length} retired, ${offseasonResult.expiredPlayers.length} expired, ${offseasonResult.optionDecisions.length} option decisions`);
+
+    return {
+        fired: true,
+        blocked: false,
+        updates: {
+            offseasonPhase: 'FA_OPEN',
+            offseasonProcessed: offseasonResult,
+        },
+    };
 }
 
 // ── openingNight 핸들러 ──

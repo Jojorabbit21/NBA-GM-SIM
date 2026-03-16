@@ -1,5 +1,6 @@
 
 import { Player, AttributeChangeEvent } from '../../types/player';
+import { Team } from '../../types/team';
 import { PlayerBoxScore } from '../../types/engine';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { calculateOvr } from '../../utils/ovrUtils';
@@ -49,12 +50,50 @@ export interface LeagueAverages {
     mpStd: number; tovStd: number; pfStd: number; fgPctStd: number;
 }
 
+export interface OffseasonPlayerEntry {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    newAge: number;
+    seasonTotalDeltas: Partial<Record<SkillAttribute, number>>;
+    retired?: boolean;
+    contractExpired?: boolean;
+    optionDecision?: { type: 'player' | 'team'; exercised: boolean };
+}
+
+export interface RetiredPlayerInfo {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    age: number;
+    ovr: number;
+    position: string;
+}
+
+export interface ExpiredPlayerInfo {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    age: number;
+    ovr: number;
+    position: string;
+    lastSalary: number;
+}
+
+export interface OptionDecisionInfo {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    optionType: 'player' | 'team';
+    exercised: boolean;
+    salary: number;
+}
+
 export interface OffseasonResult {
-    players: Array<{
-        playerId: string;
-        newAge: number;
-        seasonTotalDeltas: Partial<Record<SkillAttribute, number>>;
-    }>;
+    players: OffseasonPlayerEntry[];
+    retiredPlayers: RetiredPlayerInfo[];
+    expiredPlayers: ExpiredPlayerInfo[];
+    optionDecisions: OptionDecisionInfo[];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -651,49 +690,207 @@ export function calculatePerGameDevelopment(
 // 오프시즌 처리
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * 은퇴 확률 계산.
+ * age < 35 → 0%, age >= 42 → 100%, 35~41은 나이/OVR/신체능력 기반.
+ */
+export function retirementProbability(player: Player): number {
+    if (player.age < 35) return 0;
+    if (player.age >= 42) return 1;
+
+    const athAvg = (player.speed + player.agility + player.strength + player.vertical + player.stamina) / 5;
+
+    let prob = 0.05;
+    prob += ((player.age - 35) / 7) * 0.40;                       // 나이 (최대 +40%)
+    prob -= Math.max(0, (player.ovr - 75) / 20) * 0.15;           // OVR 높으면 감소
+    prob += Math.max(0, (70 - player.ovr) / 30) * 0.10;           // OVR 낮으면 증가
+    prob += Math.max(0, (65 - athAvg) / 30) * 0.10;               // 신체 노화
+
+    return Math.max(0, Math.min(1, prob));
+}
+
+/**
+ * 옵션 시장가치 추정 (간이).
+ */
+function estimateMarketValue(player: Player): number {
+    const agePenalty = Math.max(0, (player.age - 30) * 2_000_000);
+    return Math.max(1_500_000, player.ovr * 500_000 - agePenalty);
+}
+
+/**
+ * 옵션 행사 여부 결정 (CPU 자동).
+ * 플레이어옵션: 시장가 > 옵션연봉 × 1.1 → 거부(FA)
+ * 팀옵션: 옵션연봉 ≤ 시장가 × 1.05 → 행사(잔류)
+ */
+function decideOption(player: Player, optionSalary: number): boolean {
+    const marketValue = estimateMarketValue(player);
+
+    if (player.contract!.option!.type === 'player') {
+        // 플레이어옵션: 시장가치가 옵션 연봉보다 충분히 높으면 거부 (FA 진출)
+        return marketValue <= optionSalary * 1.1; // true = 행사(잔류)
+    } else {
+        // 팀옵션: 옵션 연봉이 시장가치 대비 합리적이면 행사
+        return optionSalary <= marketValue * 1.05; // true = 행사(잔류)
+    }
+}
+
 export function processOffseason(
-    players: Player[],
-    _tendencySeed: string,
+    teams: Team[],
+    tendencySeed: string,
     _seasonNumber: number,
 ): OffseasonResult {
-    const result: OffseasonResult = { players: [] };
+    const result: OffseasonResult = {
+        players: [],
+        retiredPlayers: [],
+        expiredPlayers: [],
+        optionDecisions: [],
+    };
 
-    for (const player of players) {
-        // 시즌 delta 계산 (changeLog에서 집계)
-        const seasonTotalDeltas: Partial<Record<SkillAttribute, number>> = {};
-        if (player.changeLog) {
-            for (const evt of player.changeLog) {
-                const key = evt.attribute as SkillAttribute;
-                seasonTotalDeltas[key] = (seasonTotalDeltas[key] || 0) + evt.delta;
+    // ── 1단계: 은퇴 판정 (전 리그 확률 롤, 최대 8명 캡) ──
+    const retirementCandidates: Array<{ player: Player; teamId: string; prob: number }> = [];
+    for (const team of teams) {
+        for (const player of team.roster) {
+            const prob = retirementProbability(player);
+            if (prob > 0) {
+                retirementCandidates.push({ player, teamId: team.id, prob });
             }
         }
+    }
 
-        // age +1
-        const newAge = player.age + 1;
-        player.age = newAge;
+    // 확률 내림차순 정렬 후 롤
+    retirementCandidates.sort((a, b) => b.prob - a.prob);
+    const retiredIds = new Set<string>();
+    const hash = stringToHash(tendencySeed + '-retirement');
+    let rollSeed = hash;
 
-        // 계약 연차 진행
-        if (player.contract) {
-            player.contract.currentYear += 1;
-            if (player.contract.currentYear < player.contract.years.length) {
-                player.salary = player.contract.years[player.contract.currentYear];
-            }
-            player.contractYears = player.contract.years.length - player.contract.currentYear;
-        } else {
-            if (player.contractYears > 0) player.contractYears -= 1;
+    for (const cand of retirementCandidates) {
+        if (retiredIds.size >= 8) break;
+        // 간이 PRNG (결정론적)
+        rollSeed = (rollSeed * 1664525 + 1013904223) >>> 0;
+        const roll = (rollSeed & 0xffff) / 0x10000;
+        if (roll < cand.prob) {
+            retiredIds.add(cand.player.id);
         }
+    }
 
-        // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)
-        player.fractionalGrowth = {};
-        player.attrDeltas = {};
-        player.changeLog = [];
-        player.seasonStartAttributes = undefined;
+    // ── 2단계: 선수별 오프시즌 처리 ──
+    for (const team of teams) {
+        for (const player of team.roster) {
+            // 시즌 delta 계산 (changeLog에서 집계)
+            const seasonTotalDeltas: Partial<Record<SkillAttribute, number>> = {};
+            if (player.changeLog) {
+                for (const evt of player.changeLog) {
+                    const key = evt.attribute as SkillAttribute;
+                    seasonTotalDeltas[key] = (seasonTotalDeltas[key] || 0) + evt.delta;
+                }
+            }
 
-        result.players.push({
-            playerId: player.id,
-            newAge,
-            seasonTotalDeltas,
-        });
+            // age +1
+            const newAge = player.age + 1;
+            player.age = newAge;
+
+            const entry: OffseasonPlayerEntry = {
+                playerId: player.id,
+                playerName: player.name,
+                teamId: team.id,
+                newAge,
+                seasonTotalDeltas,
+            };
+
+            // 은퇴 판정
+            if (retiredIds.has(player.id)) {
+                entry.retired = true;
+                result.retiredPlayers.push({
+                    playerId: player.id,
+                    playerName: player.name,
+                    teamId: team.id,
+                    age: newAge,
+                    ovr: player.ovr,
+                    position: player.position,
+                });
+            }
+
+            // 계약 연차 진행 + 만료/옵션 판정
+            if (player.contract && !entry.retired) {
+                player.contract.currentYear += 1;
+
+                // 옵션 체크 (currentYear 진행 후)
+                if (player.contract.option && player.contract.option.year === player.contract.currentYear) {
+                    const optionSalary = player.contract.currentYear < player.contract.years.length
+                        ? player.contract.years[player.contract.currentYear]
+                        : player.salary;
+                    const exercised = decideOption(player, optionSalary);
+
+                    entry.optionDecision = { type: player.contract.option.type, exercised };
+                    result.optionDecisions.push({
+                        playerId: player.id,
+                        playerName: player.name,
+                        teamId: team.id,
+                        optionType: player.contract.option.type,
+                        exercised,
+                        salary: optionSalary,
+                    });
+
+                    if (!exercised) {
+                        // 옵션 거부 → 계약 만료 처리
+                        entry.contractExpired = true;
+                        result.expiredPlayers.push({
+                            playerId: player.id,
+                            playerName: player.name,
+                            teamId: team.id,
+                            age: newAge,
+                            ovr: player.ovr,
+                            position: player.position,
+                            lastSalary: optionSalary,
+                        });
+                    }
+                }
+
+                // 일반 계약 만료 체크
+                if (!entry.contractExpired && player.contract.currentYear >= player.contract.years.length) {
+                    entry.contractExpired = true;
+                    result.expiredPlayers.push({
+                        playerId: player.id,
+                        playerName: player.name,
+                        teamId: team.id,
+                        age: newAge,
+                        ovr: player.ovr,
+                        position: player.position,
+                        lastSalary: player.salary,
+                    });
+                }
+
+                // 연봉/잔여 연차 업데이트 (만료/은퇴가 아닌 경우)
+                if (!entry.contractExpired) {
+                    if (player.contract.currentYear < player.contract.years.length) {
+                        player.salary = player.contract.years[player.contract.currentYear];
+                    }
+                    player.contractYears = player.contract.years.length - player.contract.currentYear;
+                }
+            } else if (!player.contract && !entry.retired) {
+                if (player.contractYears > 0) player.contractYears -= 1;
+                if (player.contractYears <= 0) {
+                    entry.contractExpired = true;
+                    result.expiredPlayers.push({
+                        playerId: player.id,
+                        playerName: player.name,
+                        teamId: team.id,
+                        age: newAge,
+                        ovr: player.ovr,
+                        position: player.position,
+                        lastSalary: player.salary,
+                    });
+                }
+            }
+
+            // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)
+            player.fractionalGrowth = {};
+            player.attrDeltas = {};
+            player.changeLog = [];
+            player.seasonStartAttributes = undefined;
+
+            result.players.push(entry);
+        }
     }
 
     return result;

@@ -7,3 +7,4 @@ export * from './types/game';
 export * from './types/engine';
 export * from './types/trade';
 export * from './types/message';
+export * from './types/generatedPlayer';

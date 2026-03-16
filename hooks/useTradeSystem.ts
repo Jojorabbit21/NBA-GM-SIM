@@ -16,7 +16,7 @@ import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 import { SeasonConfig } from '../utils/seasonConfig';
 import { TRADE_CONFIG as C } from '../services/tradeEngine/tradeConfig';
 import { logEvent } from '../services/analytics';
-import { saveUserTransaction } from '../services/queries';
+import { writeTransaction } from '../services/persistence';
 import { sendMessage } from '../services/messageService';
 
 const MAX_DAILY_TRADES = 5;
@@ -390,7 +390,7 @@ export const useTradeSystem = (
                 if (result.transaction) {
                     if (onAddTransaction) onAddTransaction(result.transaction);
                     if (userId) {
-                        await saveUserTransaction(userId, result.transaction);
+                        await writeTransaction(userId, result.transaction);
                     }
                 }
 
@@ -426,7 +426,7 @@ export const useTradeSystem = (
                 if (onAddTransaction) onAddTransaction(newTransaction);
 
                 if (userId) {
-                    await saveUserTransaction(userId, newTransaction);
+                    await writeTransaction(userId, newTransaction);
                 }
 
                 // Roster Update

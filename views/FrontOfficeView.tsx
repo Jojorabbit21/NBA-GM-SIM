@@ -70,7 +70,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <ClubTab finData={finData} finance={finance} team={team} teams={teams} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'payroll' && (
-                        <PayrollTab team={team} />
+                        <PayrollTab team={team} seasonShort={seasonShort} />
                     )}
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
@@ -336,7 +336,7 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
 };
 
 // ── 선수 급여 탭 ──
-const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
+const PayrollTab: React.FC<{ team: Team; seasonShort: string }> = ({ team, seasonShort }) => {
     const { players, seasonColumns, totals } = useMemo(() => {
         // OVR 내림차순 정렬
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
@@ -361,7 +361,7 @@ const PayrollTab: React.FC<{ team: Team }> = ({ team }) => {
         }
 
         return { players: sorted, seasonColumns: cols, totals: colTotals };
-    }, [team.roster]);
+    }, [team.roster, seasonShort]);
 
     return (
         <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">

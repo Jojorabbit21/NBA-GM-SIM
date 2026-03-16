@@ -31,6 +31,8 @@ import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils
 import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
+import { LeagueFAPool } from '../types/generatedPlayer';
+import { fetchUserGeneratedPlayers } from '../services/draft/rookieRepository';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.keyDates.openingNight;
 
@@ -63,6 +65,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [leagueGMProfiles, setLeagueGMProfiles] = useState<LeagueGMProfiles>({});
     const [news, setNews] = useState<any[]>([]);
     const [lotteryResult, setLotteryResult] = useState<LotteryResult | null>(null);
+    const [leagueFAPool, setLeagueFAPool] = useState<LeagueFAPool | null>(null);
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -78,10 +81,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
     const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
     const [offseasonPhase, setOffseasonPhase] = useState<OffseasonPhase>(null);
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool]);
 
     // --- Season Config (derived from seasonNumber) ---
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
@@ -463,6 +466,26 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLotteryResult(checkpoint.lottery_result);
                     }
 
+                    // 생성 FA 풀 복원
+                    const savedFAPool = (checkpoint as any).league_fa_pool as LeagueFAPool | null;
+                    if (savedFAPool) {
+                        setLeagueFAPool(savedFAPool);
+                    }
+
+                    // 생성 선수 로드 (시즌 2+ 또는 league_fa_pool 존재 시)
+                    if (savedFAPool || (savedSeasonNumber && savedSeasonNumber > 1)) {
+                        try {
+                            const genPlayers = await fetchUserGeneratedPlayers(userId);
+                            if (genPlayers.length > 0) {
+                                console.log(`📋 Loaded ${genPlayers.length} generated players`);
+                                // TODO: mapRawPlayerToRuntimePlayer 통과 → teams/freeAgents에 병합
+                                // 드래프트 구현 시 완성 예정
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Failed to load generated players (non-critical):', e);
+                        }
+                    }
+
                     // 오프시즌 단계 복원
                     if (checkpoint.offseason_phase) {
                         setOffseasonPhase(checkpoint.offseason_phase);
@@ -619,7 +642,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savCurrentSeason = ov?.currentSeason || gameStateRef.current.currentSeason;
                     const savLotteryResult = ov?.lotteryResult !== undefined ? ov.lotteryResult : gameStateRef.current.lotteryResult;
                     const savOffseasonPhase = ov?.offseasonPhase !== undefined ? ov.offseasonPhase : (gameStateRef.current as any).offseasonPhase;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase);
+                    const savFAPool = ov?.leagueFAPool !== undefined ? ov.leagueFAPool : gameStateRef.current.leagueFAPool;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -954,6 +978,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         freeAgents: effectiveFreeAgents,
         draftPicks: draftPicksRef.current,
         lotteryResult, setLotteryResult,
+        leagueFAPool, setLeagueFAPool,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current

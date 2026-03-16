@@ -31,6 +31,7 @@ export interface PlayerOverrideSnapshot {
     contractYears: number;
     position: string;
     teamId: string;
+    isGenerated?: boolean;  // gen_ 접두사 선수 식별
 }
 
 export interface CareerSeasonLine {
@@ -75,6 +76,7 @@ export async function archiveCurrentSeason(
                 contractYears: player.contractYears,
                 position: player.position,
                 teamId: team.id,
+                ...(player.id.startsWith('gen_') && { isGenerated: true }),
             };
         }
     }

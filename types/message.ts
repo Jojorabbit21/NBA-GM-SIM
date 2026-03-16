@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT';
 
 export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
@@ -15,7 +15,7 @@ export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = 
     TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE'],
     INJURY: ['INJURY_REPORT', 'SUSPENSION'],
     SCOUT: ['SCOUT_REPORT'],
-    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION'],
+    LEAGUE: ['LEAGUE_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'OFFSEASON_REPORT'],
     SYSTEM: ['SYSTEM'],
 };
 
@@ -428,4 +428,11 @@ export interface PlayoffChampionContent {
         ftPct: number;
         pm: number;
     }[];
+}
+
+export interface OffseasonReportContent {
+    retired: { playerId: string; playerName: string; age: number; ovr: number; position: string }[];
+    expired: { playerId: string; playerName: string; age: number; ovr: number; position: string; lastSalary: number }[];
+    optionDecisions: { playerId: string; playerName: string; optionType: 'player' | 'team'; exercised: boolean; salary: number }[];
+    leagueRetired?: { playerId: string; playerName: string; age: number; ovr: number; position: string; teamId: string }[];
 }

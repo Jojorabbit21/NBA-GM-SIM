@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -700,6 +700,114 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
 
                     <div className="pt-4">
                         <p className="text-white font-bold">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'OFFSEASON_REPORT': {
+            const report = content as OffseasonReportContent;
+            const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0;
+            const hasLeagueRetired = (report.leagueRetired?.length ?? 0) > 0;
+            const formatSalary = (v: number) => `$${(v / 1_000_000).toFixed(1)}M`;
+
+            return (
+                <div className="space-y-6 text-slate-300 leading-relaxed">
+                    <p>단장님, 오프시즌 로스터 변동 사항을 보고드립니다.</p>
+
+                    {/* 유저팀 은퇴 */}
+                    {report.retired.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-bold text-red-400 mb-2">은퇴 선수</h4>
+                            <div className="space-y-1.5">
+                                {report.retired.map(p => (
+                                    <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60">
+                                        <OvrBadge value={p.ovr} size="sm" />
+                                        <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-white hover:text-indigo-400 transition-colors">
+                                            {p.playerName}
+                                        </button>
+                                        <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 계약 만료 */}
+                    {report.expired.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-bold text-amber-400 mb-2">계약 만료 (FA 전환)</h4>
+                            <div className="space-y-1.5">
+                                {report.expired.map(p => (
+                                    <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60">
+                                        <OvrBadge value={p.ovr} size="sm" />
+                                        <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-white hover:text-indigo-400 transition-colors">
+                                            {p.playerName}
+                                        </button>
+                                        <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
+                                        <span className="text-xs text-slate-600 ml-auto">{formatSalary(p.lastSalary)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 옵션 결정 */}
+                    {report.optionDecisions.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-bold text-indigo-400 mb-2">계약 옵션 결정</h4>
+                            <div className="space-y-1.5">
+                                {report.optionDecisions.map(p => (
+                                    <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60">
+                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                                            p.exercised ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                                        }`}>
+                                            {p.optionType === 'player' ? 'PO' : 'TO'}
+                                        </span>
+                                        <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-white hover:text-indigo-400 transition-colors">
+                                            {p.playerName}
+                                        </button>
+                                        <span className="text-xs text-slate-500">
+                                            {p.exercised ? '행사 (잔류)' : '거부 (FA 전환)'}
+                                        </span>
+                                        <span className="text-xs text-slate-600 ml-auto">{formatSalary(p.salary)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 리그 전체 은퇴 (타팀) */}
+                    {hasLeagueRetired && (
+                        <div>
+                            <h4 className="text-sm font-bold text-slate-400 mb-2">리그 은퇴 소식</h4>
+                            <div className="space-y-1.5">
+                                {report.leagueRetired!.map(p => {
+                                    const teamInfo = TEAM_DATA[p.teamId];
+                                    return (
+                                        <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40">
+                                            <TeamLogo teamId={p.teamId} size="custom" className="w-5 h-5 shrink-0" />
+                                            <OvrBadge value={p.ovr} size="sm" />
+                                            <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-slate-300 hover:text-indigo-400 transition-colors">
+                                                {p.playerName}
+                                            </button>
+                                            <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
+                                            <span className="text-xs text-slate-600 ml-auto">{teamInfo ? teamInfo.name : p.teamId}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {!hasMyTeamChanges && !hasLeagueRetired && (
+                        <p className="text-slate-500">이번 오프시즌에는 별다른 로스터 변동이 없었습니다.</p>
+                    )}
+
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">Best regards,</p>
+                        <p className="text-white font-bold mt-1">부단장</p>
                         <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
                     </div>
                 </div>
