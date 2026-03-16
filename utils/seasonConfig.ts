@@ -95,16 +95,6 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     // ── 시즌 시작일 (startYear 기준) ──
     const seasonStart     = nthDayOfMonth(startYear, 9, 2, 3);                // 10월 3번째 화요일
 
-    // ── 오프시즌 (finalsEndTarget 기준 상대 오프셋 — 파이널 종료 후 순차 진행) ──
-    const draftLottery    = addDays(finalsEndTarget, 3);                      // 파이널 종료 +3일
-    const rookieDraft     = addDays(draftLottery, 14);                        // 로터리 +14일
-    const moratoriumStart = addDays(rookieDraft, 5);                          // 드래프트 +5일
-    const freeAgencyOpen  = addDays(moratoriumStart, 7);                      // 모라토리엄 +7일
-    const freeAgencyClose = nthDayOfMonth(endYear, 8, 5, 2);                  // 9월 2번째 금요일
-    const trainingCamp    = lastDayOfWeekInMonth(endYear, 8, 2);              // 9월 마지막 화요일
-    const rosterDeadline  = nthDayOfMonth(endYear, 9, 1, 3);                  // 10월 3번째 월요일
-    const openingNight    = nthDayOfMonth(endYear, 9, 2, 3);                  // 10월 3번째 화요일 (다음 시즌 개막)
-
     // ── 정규시즌 (endYear 기준) ──
     const prospectReveal   = nthDayOfMonth(endYear, 0, 1, 1);                 // 1월 1번째 월요일 (드래프트 풀 공개)
     const tradeDeadline    = nthDayOfMonth(endYear, 1, 4, 1);                 // 2월 1번째 목요일
@@ -121,6 +111,16 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     const conferenceFinals = addDays(playoffsR2Start, 14);
     const finalsStart      = addDays(conferenceFinals, 14);
     const finalsEndTarget  = addDays(finalsStart, 18);
+
+    // ── 오프시즌 (finalsEndTarget 기준 상대 오프셋 — 파이널 종료 후 순차 진행) ──
+    const draftLottery    = addDays(finalsEndTarget, 3);                      // 파이널 종료 +3일
+    const rookieDraft     = addDays(draftLottery, 14);                        // 로터리 +14일
+    const moratoriumStart = addDays(rookieDraft, 5);                          // 드래프트 +5일
+    const freeAgencyOpen  = addDays(moratoriumStart, 7);                      // 모라토리엄 +7일
+    const freeAgencyClose = nthDayOfMonth(endYear, 8, 5, 2);                  // 9월 2번째 금요일
+    const trainingCamp    = lastDayOfWeekInMonth(endYear, 8, 2);              // 9월 마지막 화요일
+    const rosterDeadline  = nthDayOfMonth(endYear, 9, 1, 3);                  // 10월 3번째 월요일
+    const openingNight    = nthDayOfMonth(endYear, 9, 2, 3);                  // 10월 3번째 화요일 (다음 시즌 개막)
 
     const keyDates: SeasonKeyDates = {
         // 오프시즌
