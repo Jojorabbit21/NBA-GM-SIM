@@ -4,7 +4,7 @@
  * 각 투표인은 시드 기반 노이즈로 개인차가 있어 자연스러운 득표 분포를 만듦.
  */
 
-import { Team, Player } from '../types';
+import type { Team, Player } from '../types';
 import { calculatePlayerOvr } from './constants';
 
 // ── 타입 ──
