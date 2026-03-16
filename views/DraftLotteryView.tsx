@@ -18,7 +18,7 @@ const SLOT_PAUSE_BEFORE = 1000;
 const SLOT_FINAL_PAUSE = 1200;
 
 // ── 릴 상수 ──
-const REEL_ITEM_HEIGHT = 80;       // 릴 아이템 1개 높이 (px)
+const REEL_ITEM_HEIGHT = 96;       // 릴 아이템 1개 높이 (px)
 const REEL_LENGTH = 30;            // 릴에 포함될 팀 수 (마지막이 정답)
 const SPIN_DURATION = 3500;        // CSS transition 시간 (ms)
 const SPIN_EASING = 'cubic-bezier(0.15, 0.6, 0.25, 1)'; // 빠른 시작 → 자연스러운 감속
@@ -312,8 +312,10 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 
         const sp = slotPhases[slotIdx];
         const reel = slotReels[slotIdx];
-        const isActive = sp === 'ready' || sp === 'spinning';
-        const showReel = isActive && reel.length > 0;
+        const isSpinning = sp === 'ready' || sp === 'spinning';
+        const showReel = isSpinning && reel.length > 0;
+        // revealed 상태이거나 revealedIndices에 포함되면 확정 표시 (? 깜빡임 방지)
+        const showResult = sp === 'revealed' || isRevealed;
 
         // 릴 translateY 계산
         const reelOffset = sp === 'spinning'
@@ -324,19 +326,19 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             <div
                 key={pickNum}
                 className={`relative rounded-2xl overflow-hidden transition-all duration-700 ${
-                    isRevealed && isMyTeam ? 'ring-2 ring-indigo-500' : ''
-                } ${isActive ? 'ring-2 ring-amber-400/60' : ''} ${
-                    isRevealed && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
+                    showResult && isMyTeam ? 'ring-2 ring-indigo-500' : ''
+                } ${isSpinning ? 'ring-2 ring-amber-400/60' : ''} ${
+                    showResult && isTop4Winner ? 'ring-1 ring-amber-400/60' : ''
                 }`}
                 style={{
-                    backgroundColor: isRevealed ? teamColor : 'rgba(30,41,59,0.4)',
-                    height: REEL_ITEM_HEIGHT + 32,
+                    backgroundColor: showResult ? teamColor : 'rgba(30,41,59,0.4)',
+                    height: REEL_ITEM_HEIGHT + 40,
                     transition: `background-color 0.5s ease`,
                 }}
             >
                 {/* 픽 번호 뱃지 */}
                 <div className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black ${
-                    isRevealed ? 'bg-black/30 text-white' : 'bg-slate-800/60 text-slate-600'
+                    showResult ? 'bg-black/30 text-white' : 'bg-slate-800/60 text-slate-600'
                 }`}>
                     {pickNum}
                 </div>
@@ -358,7 +360,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                         >
                             {reel.map((teamId, i) => renderReelItem(teamId, i))}
                         </div>
-                    ) : isRevealed ? (
+                    ) : showResult ? (
                         /* 확정 결과 */
                         <div className="flex flex-col items-center justify-center h-full gap-1">
                             <TeamLogo teamId={actualTeamId} size="custom" className="w-14 h-14" />
