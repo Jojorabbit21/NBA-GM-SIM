@@ -5,8 +5,10 @@ import {
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus,
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
+  Sparkles, Dices,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
+import { OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
 import { Dropdown } from './common/Dropdown';
@@ -23,6 +25,8 @@ interface SidebarProps {
   isRegularSeasonOver: boolean;
   isPostseasonOver: boolean;
   hasProspects: boolean;
+  offseasonPhase: OffseasonPhase;
+  hasLotteryResult: boolean;
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -89,6 +93,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isRegularSeasonOver,
   isPostseasonOver,
   hasProspects,
+  offseasonPhase,
+  hasLotteryResult,
   userEmail,
   isCollapsed,
   onToggleCollapse,
@@ -237,6 +243,19 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
+        {/* 오프시즌 이벤트 버튼 — 최상단 */}
+        {offseasonPhase === 'POST_LOTTERY' && hasLotteryResult && !hasProspects && (
+          <>
+            <NavItem active={currentView === 'DraftLottery'} icon={<Dices size={20}/>} label="로터리 추첨 결과" onClick={() => onNavigate('DraftLottery')} {...navProps} />
+            <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />
+          </>
+        )}
+        {offseasonPhase === 'POST_LOTTERY' && hasProspects && hasLotteryResult && (
+          <>
+            <NavItem active={currentView === 'DraftRoom'} icon={<Sparkles size={20}/>} label="신인 드래프트" onClick={() => onNavigate('DraftRoom')} {...navProps} />
+            <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />
+          </>
+        )}
         <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
         <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />

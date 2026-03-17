@@ -8,6 +8,7 @@ import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
+import { OffseasonPhase } from '../../types/app';
 import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
 
 interface DashboardHeaderProps {
@@ -28,6 +29,7 @@ interface DashboardHeaderProps {
   streak?: string;
   conferenceName?: string;
   isSeasonOver?: boolean;
+  offseasonPhase?: OffseasonPhase;
   keyDates?: SeasonKeyDates;
   onSkipToDate?: (targetDate: string, label: string) => void;
   onSimulateFullSeason?: () => void;
@@ -36,7 +38,7 @@ interface DashboardHeaderProps {
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
   currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver,
-  keyDates, onSkipToDate, onSimulateFullSeason
+  offseasonPhase, keyDates, onSkipToDate, onSimulateFullSeason
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -255,7 +257,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             {(
             <div className="self-stretch flex flex-col w-[220px] shrink-0 ml-auto"
                  style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                {isGameToday && onAutoSimClick ? (
+                {offseasonPhase === 'POST_LOTTERY' ? (
+                    /* 오프시즌: 로터리/드래프트 완료 전 시뮬 차단 */
+                    <div className="flex-1 flex items-center justify-center px-4">
+                        <span className="text-xs text-amber-400/80 font-semibold text-center leading-relaxed ko-tight">
+                            사이드바에서 오프시즌<br/>이벤트를 완료해주세요
+                        </span>
+                    </div>
+                ) : isGameToday && onAutoSimClick ? (
                     <>
                         {/* 경기 시작 — 60% */}
                         <button

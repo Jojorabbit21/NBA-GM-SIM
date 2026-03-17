@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode, ReplaySnapshot } from '../types';
-import { useBaseData } from '../services/queries';
+import { useBaseData, fetchPredefinedDraftClass } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, loadUserTransactions, saveCheckpoint, countUserData } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
@@ -528,10 +528,22 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         try {
                             const nextSeason = (savedSeasonNumber ?? 1) + 1;
                             const draftClassRows = await fetchDraftClass(userId, nextSeason);
+                            let prospectPlayers: Player[] = [];
                             if (draftClassRows.length > 0) {
-                                const prospectPlayers = draftClassRows
+                                prospectPlayers = draftClassRows
                                     .filter(r => r.status === 'fa')
                                     .map(r => mapRawPlayerToRuntimePlayer({ id: r.id, base_attributes: r.base_attributes }));
+                            }
+                            // DB에 없으면 meta_players에서 직접 로드 (이전 버전 세이브 호환)
+                            const phase = (checkpoint as any).offseason_phase as string | undefined;
+                            if (prospectPlayers.length === 0 && phase && phase !== 'POST_DRAFT') {
+                                const rawRows = await fetchPredefinedDraftClass('2026');
+                                if (rawRows.length > 0) {
+                                    prospectPlayers = rawRows.map((r: any) => mapRawPlayerToRuntimePlayer({ id: String(r.id), base_attributes: r.base_attributes }));
+                                    console.log(`📋 Fallback: loaded ${prospectPlayers.length} prospects from meta_players`);
+                                }
+                            }
+                            if (prospectPlayers.length > 0) {
                                 setProspects(prospectPlayers);
                                 console.log(`📋 Restored ${prospectPlayers.length} draft prospects`);
                             }

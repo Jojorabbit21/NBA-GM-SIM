@@ -2,6 +2,7 @@
 import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
+import { OffseasonPhase } from '../types/app';
 import { SeasonKeyDates } from '../utils/seasonConfig';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
@@ -24,6 +25,8 @@ interface MainLayoutProps {
         onSimSettingsClick: () => void;
         onLogout: () => void;
         hasProspects: boolean;
+        offseasonPhase: OffseasonPhase;
+        hasLotteryResult: boolean;
         onSimulateSeason?: () => void;
         onSkipToDate?: (targetDate: string, label: string) => void;
         keyDates?: SeasonKeyDates;
@@ -140,6 +143,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         streak={streak}
                         conferenceName={conferenceName}
                         isSeasonOver={isPostseasonOver}
+                        offseasonPhase={sidebarProps.offseasonPhase}
                         keyDates={sidebarProps.keyDates}
                         onSkipToDate={sidebarProps.onSkipToDate}
                         onSimulateFullSeason={sidebarProps.onSimulateSeason}

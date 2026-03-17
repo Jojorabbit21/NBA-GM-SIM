@@ -444,23 +444,27 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             return null;
         case 'DraftRoom':
-            // 오프시즌 루키 드래프트 (prospects + lotteryResult 존재 시)
-            if (gameData.prospects?.length > 0 && gameData.lotteryResult) {
-                return (
-                    <div className="fixed inset-0 z-[9999] bg-slate-950">
-                        <RookieDraftView
-                            teams={gameData.teams}
-                            myTeamId={gameData.myTeamId!}
-                            draftOrder={gameData.lotteryResult.finalOrder}
-                            resolvedDraftOrder={gameData.resolvedDraftOrder || null}
-                            draftClass={gameData.prospects}
-                            onComplete={(picks) => {
-                                gameData.handleRookieDraftComplete(picks);
-                                setView('Dashboard');
-                            }}
-                        />
-                    </div>
-                );
+            // 오프시즌 루키 드래프트 (lotteryResult 존재 = 루키 드래프트 모드)
+            if (gameData.lotteryResult) {
+                if (gameData.prospects?.length > 0) {
+                    return (
+                        <div className="fixed inset-0 z-[9999] bg-slate-950">
+                            <RookieDraftView
+                                teams={gameData.teams}
+                                myTeamId={gameData.myTeamId!}
+                                draftOrder={gameData.lotteryResult.finalOrder}
+                                resolvedDraftOrder={gameData.resolvedDraftOrder || null}
+                                draftClass={gameData.prospects}
+                                onComplete={(picks) => {
+                                    gameData.handleRookieDraftComplete(picks);
+                                    setView('Dashboard');
+                                }}
+                            />
+                        </div>
+                    );
+                }
+                // prospects 미로드 → 대시보드로 복귀
+                return null;
             }
             // 판타지 드래프트 (게임 시작 시 커스텀 모드)
             return (

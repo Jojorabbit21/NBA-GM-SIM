@@ -130,13 +130,7 @@ const App: React.FC = () => {
         }
     }, [gameData.myTeamId, gameData.draftPicks, rosterMode]);
 
-    // 리로드 시 오프시즌 POST_LOTTERY 상태면 로터리 뷰로 복원
-    // (viewed 플래그가 true면 이미 확인한 것이므로 재진입 방지)
-    useEffect(() => {
-        if (gameData.myTeamId && gameData.offseasonPhase === 'POST_LOTTERY' && gameData.lotteryResult && !gameData.lotteryResult.viewed) {
-            setView('DraftLottery');
-        }
-    }, [gameData.myTeamId, gameData.offseasonPhase, gameData.lotteryResult]);
+    // 리로드 시 오프시즌 POST_LOTTERY 상태 → 사이드바 버튼으로 진입 (자동 전환 제거)
 
     // HOF 제출 여부 확인 (hof_id 기반)
     useEffect(() => {
@@ -224,6 +218,8 @@ const App: React.FC = () => {
                     unreadMessagesCount: unreadCount,
                     userEmail: session?.user?.email,
                     hasProspects: (gameData.prospects?.length ?? 0) > 0,
+                    offseasonPhase: gameData.offseasonPhase,
+                    hasLotteryResult: !!gameData.lotteryResult,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,
