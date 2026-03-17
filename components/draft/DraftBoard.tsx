@@ -3,6 +3,7 @@ import React, { useRef, useEffect } from 'react';
 import { TEAM_DATA } from '../../data/teamData';
 
 export interface BoardPick {
+    pickNumber?: number;  // 루키 드래프트: 1~60 (슬롯 매핑용)
     round: number;
     teamId: string;
     playerId: string;

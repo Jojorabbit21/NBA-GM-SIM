@@ -3,7 +3,8 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Team, Player } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 import { DraftHeader, PICK_TIME_LIMIT } from '../components/draft/DraftHeader';
-import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
+import { BoardPick } from '../components/draft/DraftBoard';
+import { RookieDraftBoard } from '../components/draft/RookieDraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
 import { PlayerPool } from '../components/draft/PlayerPool';
 import { MyRoster } from '../components/draft/MyRoster';
@@ -28,13 +29,22 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
     const allPlayers = useMemo(() => {
         return [...draftClass].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     }, [draftClass]);
+    // resolvedPicks: RookieDraftBoard에 전달할 슬롯 정보 (fallback 포함)
+    const resolvedPicks = useMemo(() => {
+        if (resolved?.picks?.length) return resolved.picks;
+        const order = generateSnakeDraftOrder(teamOrder, TOTAL_ROUNDS);
+        return order.map((teamId, i) => ({
+            pickNumber: i + 1,
+            round: (Math.floor(i / teamOrder.length) + 1) as 1 | 2,
+            originalTeamId: teamId,
+            currentTeamId: teamId,
+        }));
+    }, [resolved, teamOrder]);
+
     // resolvedDraftOrder가 있으면 60픽 currentTeamId 배열 사용, 없으면 snake order 생성
     const draftOrder = useMemo(() => {
-        if (resolved?.picks && resolved.picks.length > 0) {
-            return resolved.picks.map(p => p.currentTeamId);
-        }
-        return generateSnakeDraftOrder(teamOrder, TOTAL_ROUNDS);
-    }, [resolved, teamOrder]);
+        return resolvedPicks.map(p => p.currentTeamId);
+    }, [resolvedPicks]);
 
     // ── Draft State ──
     const [picks, setPicks] = useState<BoardPick[]>([]);
@@ -109,6 +119,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
                 const teamId = draftOrder[currentPickIndex];
                 const player = pool[0]; // BPA
                 return [...prevPicks, {
+                    pickNumber: currentPickIndex + 1,
                     round: Math.floor(currentPickIndex / teamOrder.length) + 1,
                     teamId,
                     playerId: player.id,
@@ -136,6 +147,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
     const handleDraft = useCallback((player: Player) => {
         if (!isUserTurn) return;
         const newPick: BoardPick = {
+            pickNumber: currentPickIndex + 1,
             round: currentRound,
             teamId: myTeamId,
             playerId: player.id,
@@ -162,6 +174,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             const player = pool[poolIdx++];
             used.add(player.id);
             newPicks.push({
+                pickNumber: idx + 1,
                 round: Math.floor(idx / teamOrder.length) + 1,
                 teamId: tid,
                 playerId: player.id,
@@ -197,12 +210,11 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             {/* Draft Board — 2라운드이므로 shrink-0 고정 높이 (드래그 디바이더 불필요) */}
             <div className="shrink-0 overflow-hidden px-1.5 pt-1.5">
                 <div className="bg-slate-900/60 overflow-hidden">
-                    <DraftBoard
-                        teamIds={teamOrder}
+                    <RookieDraftBoard
+                        resolvedPicks={resolvedPicks}
                         totalRounds={TOTAL_ROUNDS}
                         picks={picks}
                         currentPickIndex={currentPickIndex}
-                        draftOrder={draftOrder}
                         userTeamId={myTeamId}
                         positionColors={POSITION_COLORS}
                     />
