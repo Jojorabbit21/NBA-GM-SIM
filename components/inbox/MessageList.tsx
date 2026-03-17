@@ -167,6 +167,20 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <div className="px-3 py-1.5 border-b border-slate-800/50 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-400">총 {totalCount}개</span>
                     <div className="flex items-center gap-0.5">
+                        <button
+                            onClick={onMarkAllRead}
+                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                            title="모두 읽음 처리"
+                        >
+                            <CheckCircle2 size={13} />
+                        </button>
+                        <button
+                            onClick={onRefresh}
+                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                            title="새로고침"
+                        >
+                            <RefreshCw size={13} />
+                        </button>
                         {/* Filter dropdown */}
                         <div className="relative" ref={dropdownRef}>
                             <button
@@ -186,7 +200,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                                 )}
                             </button>
                             {dropdownOpen && (
-                                <div className="absolute top-full right-0 mt-1 w-44 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                                <div className="absolute top-full left-0 mt-1 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
                                     {MESSAGE_FILTER_CATEGORIES.map((cat) => {
                                         const checked = activeFilters.has(cat);
                                         return (
@@ -220,24 +234,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                         {/* 비우기 */}
                         <button
                             onClick={handleClearAll}
-                            className="p-1.5 hover:bg-red-900/30 rounded-lg text-slate-500 hover:text-red-400 transition-colors"
+                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
                             title="비우기"
                         >
                             <Trash2 size={13} />
-                        </button>
-                        <button
-                            onClick={onMarkAllRead}
-                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
-                            title="모두 읽음 처리"
-                        >
-                            <CheckCircle2 size={13} />
-                        </button>
-                        <button
-                            onClick={onRefresh}
-                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
-                            title="새로고침"
-                        >
-                            <RefreshCw size={13} />
                         </button>
                     </div>
                 </div>
