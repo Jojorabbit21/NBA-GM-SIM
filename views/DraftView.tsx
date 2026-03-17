@@ -193,29 +193,29 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
                                 </TableCell>
                                 <TableCell align="left">
                                     {r.pickNote ? (
-                                        <span className="text-amber-300/80">{r.pickNote}</span>
+                                        <span className="text-amber-400">{r.pickNote}</span>
                                     ) : (
                                         <span className="text-slate-600">-</span>
                                     )}
                                 </TableCell>
-                                <TableCell align="center" className="font-black text-slate-400 tabular-nums">
+                                <TableCell align="center" className="font-mono font-black text-xs text-slate-400 tabular-nums">
                                     {r.leagueRank}
                                 </TableCell>
-                                <TableCell align="center" className={`font-semibold tabular-nums ${pctColor}`}>
+                                <TableCell align="center" className={`font-mono font-black text-xs tabular-nums ${pctColor}`}>
                                     {r.team ? `${r.team.wins}-${r.team.losses}` : '-'}
                                 </TableCell>
-                                <TableCell align="center" className={`font-mono tabular-nums ${pctColor}`}>
+                                <TableCell align="center" className={`font-mono font-black text-xs tabular-nums ${pctColor}`}>
                                     {r.team ? `.${(r.winPct * 1000).toFixed(0).padStart(3, '0')}` : '-'}
                                 </TableCell>
-                                <TableCell align="center" className="font-mono tabular-nums">
+                                <TableCell align="center" className="font-mono font-black text-xs tabular-nums">
                                     {r.lotteryEntry
                                         ? <span className="text-slate-400">{(r.lotteryEntry.odds * 100).toFixed(1)}%</span>
                                         : <span className="text-slate-600">-</span>
                                     }
                                 </TableCell>
-                                <TableCell align="center">
+                                <TableCell align="center" className="font-mono font-black text-xs tabular-nums">
                                     {diff !== 0 ? (
-                                        <span className={`font-black tabular-nums ${diff > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        <span className={diff > 0 ? 'text-emerald-400' : 'text-red-400'}>
                                             {diff > 0 ? `+${diff}` : diff}
                                         </span>
                                     ) : (

@@ -78,7 +78,7 @@ export const Table = ({ children, className = '', fullHeight = true, style, tabl
 export const TableHead = ({ children, className = '', noRow = false, ...props }: TableHeadProps) => (
     <thead className={`bg-slate-950 sticky top-0 z-40 border-b border-slate-800 shadow-sm ${className}`} {...props}>
         {noRow ? children : (
-            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+            <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
                 {children}
             </tr>
         )}
