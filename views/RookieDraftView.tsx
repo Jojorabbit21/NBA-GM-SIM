@@ -105,9 +105,9 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         return () => window.removeEventListener('beforeunload', handler);
     }, [isDraftComplete]);
 
-    // ── Timer: countdown on every turn ──
+    // ── Timer: countdown on every turn (delayed until announcement clears) ──
     useEffect(() => {
-        if (isDraftComplete) return;
+        if (isDraftComplete || announcement) return;
         setTimeRemaining(PICK_TIME_LIMIT);
         const interval = setInterval(() => {
             setTimeRemaining(prev => {
@@ -116,7 +116,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             });
         }, 1000);
         return () => clearInterval(interval);
-    }, [currentPickIndex, isDraftComplete]);
+    }, [currentPickIndex, isDraftComplete, announcement]);
 
     // ── Auto-pick on timeout (user: BPA, CPU: BPA) ──
     useEffect(() => {

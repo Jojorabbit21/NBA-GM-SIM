@@ -165,10 +165,10 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                             <td
                                                 key={rp.pickNumber}
                                                 ref={isCurrent ? currentCellRef : undefined}
-                                                className="p-[3px] text-center"
+                                                className="relative p-0 text-center"
                                             >
                                                 <div
-                                                    className="h-full rounded-md"
+                                                    className="absolute inset-[3px] rounded-md"
                                                     style={{
                                                         ...(bp
                                                             ? { backgroundColor: isUserSlot ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }

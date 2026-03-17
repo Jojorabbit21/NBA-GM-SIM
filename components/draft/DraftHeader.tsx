@@ -65,8 +65,11 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     announcement,
     onBack,
 }) => {
+    // Announcement 중에는 픽한 팀의 배경/로고 유지
+    const displayTeamId = announcement ? announcement.teamId : currentTeamId;
+    const displayTeamData = TEAM_DATA[displayTeamId];
+    const displayTeamColor = displayTeamData?.colors.primary || '#6366f1';
     const currentTeamData = TEAM_DATA[currentTeamId];
-    const currentTeamColor = currentTeamData?.colors.primary || '#6366f1';
     const timerStr = `00:${String(Math.max(0, timeRemaining)).padStart(2, '0')}`;
     const timerPct = (Math.max(0, timeRemaining) / PICK_TIME_LIMIT) * 100;
 
@@ -93,14 +96,14 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     const nextTeamData = nextPickTeamId ? TEAM_DATA[nextPickTeamId] : null;
 
     return (
-        <div className="shrink-0 relative z-30" style={{ backgroundColor: currentTeamColor }}>
+        <div className="shrink-0 relative z-30" style={{ backgroundColor: displayTeamColor }}>
             {/* Dark overlay for text readability */}
             <div className="absolute inset-0 bg-black/40" />
 
             {/* Background team logo watermark */}
             <div className="absolute inset-0 overflow-hidden flex items-center justify-center pointer-events-none">
                 <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
-                    <TeamLogo teamId={currentTeamId} size="3xl" />
+                    <TeamLogo teamId={displayTeamId} size="3xl" />
                 </div>
             </div>
 
