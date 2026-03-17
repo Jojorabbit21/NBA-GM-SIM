@@ -150,18 +150,31 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             {/* Date + Team Status */}
             <div className="flex-1 flex flex-col gap-1.5 relative">
                 {keyDates && currentSimDate && onSkipToDate ? (
-                    <button
-                        onClick={() => setIsSkipDropdownOpen(prev => !prev)}
-                        className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                    >
-                        <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                            {formatDateKorean(currentSimDate)}
-                        </span>
-                        {isSkipDropdownOpen
-                            ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                            : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                        }
-                    </button>
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsSkipDropdownOpen(prev => !prev)}
+                            className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                        >
+                            <span className="text-sm font-semibold" style={{ color: theme.text }}>
+                                {formatDateKorean(currentSimDate)}
+                            </span>
+                            {isSkipDropdownOpen
+                                ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                                : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                            }
+                        </button>
+                        <DateSkipDropdown
+                            isOpen={isSkipDropdownOpen}
+                            onClose={() => setIsSkipDropdownOpen(false)}
+                            currentSimDate={currentSimDate}
+                            keyDates={keyDates}
+                            onSkipToDate={handleSkipToDate}
+                            onSimulateFullSeason={handleSimulateFullSeason}
+                            isSimulating={!!isSimulating}
+                            themeText={theme.text}
+                            isOffseason={isSeasonOver}
+                        />
+                    </div>
                 ) : (
                     <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold" style={{ color: theme.text }}>
@@ -176,20 +189,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
                     </span>
                 </div>
-                {/* Skip Dropdown */}
-                {keyDates && currentSimDate && (
-                    <DateSkipDropdown
-                        isOpen={isSkipDropdownOpen}
-                        onClose={() => setIsSkipDropdownOpen(false)}
-                        currentSimDate={currentSimDate}
-                        keyDates={keyDates}
-                        onSkipToDate={handleSkipToDate}
-                        onSimulateFullSeason={handleSimulateFullSeason}
-                        isSimulating={!!isSimulating}
-                        themeText={theme.text}
-                        isOffseason={isSeasonOver}
-                    />
-                )}
             </div>
 
             {/* Matchup — absolute center */}
