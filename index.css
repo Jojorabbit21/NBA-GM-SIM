@@ -39,6 +39,12 @@ body {
     animation: btn-breathe 2.5s ease-in-out infinite;
 }
 
+/* Draft announcement flash */
+@keyframes draft-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
 .text-shadow-ovr { text-shadow: 0px 1.5px 3px rgba(0, 0, 0, 0.5); }
 .ko-tight { letter-spacing: -0.025em; }
 .ko-normal { letter-spacing: -0.01em; }

@@ -70,7 +70,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
         <div
             ref={scrollContainerRef}
             className="h-full overflow-auto"
-            style={{ scrollbarWidth: 'none' } as React.CSSProperties}
+            style={{ scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' } as React.CSSProperties}
         >
             <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px', margin: '-2px' }}>
                 {picksByRound.map((roundPicks, roundIdx) => {
@@ -136,7 +136,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                     {/* 라운드 라벨 (sticky left) */}
                                     <td
                                         className={`sticky left-0 px-2 py-1 z-10 text-center ${
-                                            isCurrentRound ? 'bg-indigo-950/80' : 'bg-slate-950'
+                                            isCurrentRound ? 'bg-indigo-950' : 'bg-slate-950'
                                         }`}
                                         style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
                                     >
@@ -165,40 +165,44 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                             <td
                                                 key={rp.pickNumber}
                                                 ref={isCurrent ? currentCellRef : undefined}
-                                                className="p-0 text-center rounded-lg"
-                                                style={{
-                                                    ...(bp
-                                                        ? { backgroundColor: isUserSlot ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
-                                                        : isCurrent
-                                                            ? { backgroundColor: 'rgba(16,185,129,0.10)', boxShadow: 'inset 0 0 0 2px rgba(16,185,129,0.6)' }
-                                                            : isUserSlot
-                                                                ? { backgroundColor: 'rgba(245,158,11,0.08)' }
-                                                                : {}
-                                                    ),
-                                                }}
+                                                className="p-[3px] text-center"
                                             >
-                                                {bp ? (
-                                                    <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
-                                                        <span
-                                                            className="text-xs font-bold uppercase opacity-60"
-                                                            style={{ color: posColor }}
-                                                        >
-                                                            {bp.position}
-                                                        </span>
-                                                        <span
-                                                            className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
-                                                            style={{ color: posColor }}
-                                                        >
-                                                            {bp.playerName}
-                                                        </span>
-                                                    </div>
-                                                ) : isCurrent ? (
-                                                    <div className="h-full flex items-center justify-center animate-pulse">
-                                                        <span className="text-[11px] font-bold text-emerald-400">
-                                                            선택 중...
-                                                        </span>
-                                                    </div>
-                                                ) : null}
+                                                <div
+                                                    className="h-full rounded-md"
+                                                    style={{
+                                                        ...(bp
+                                                            ? { backgroundColor: isUserSlot ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
+                                                            : isCurrent
+                                                                ? { backgroundColor: 'rgba(16,185,129,0.10)', boxShadow: 'inset 0 0 0 2px rgba(16,185,129,0.6)' }
+                                                                : isUserSlot
+                                                                    ? { backgroundColor: 'rgba(245,158,11,0.08)' }
+                                                                    : {}
+                                                        ),
+                                                    }}
+                                                >
+                                                    {bp ? (
+                                                        <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
+                                                            <span
+                                                                className="text-xs font-bold uppercase opacity-60"
+                                                                style={{ color: posColor }}
+                                                            >
+                                                                {bp.position}
+                                                            </span>
+                                                            <span
+                                                                className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
+                                                                style={{ color: posColor }}
+                                                            >
+                                                                {bp.playerName}
+                                                            </span>
+                                                        </div>
+                                                    ) : isCurrent ? (
+                                                        <div className="h-full flex items-center justify-center animate-pulse">
+                                                            <span className="text-[11px] font-bold text-emerald-400">
+                                                                선택 중...
+                                                            </span>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
                                             </td>
                                         );
                                     })}

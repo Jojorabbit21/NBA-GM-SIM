@@ -121,10 +121,14 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     </span>
                 </div>
 
-                {/* Center: Announcement or Timer + Round/Pick */}
-                <div className="text-center min-w-[160px]">
+                {/* Center: Announcement or Timer + Round/Pick — fixed height */}
+                <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
                     {announcement ? (
-                        <div className="pretendard font-black text-sm text-white leading-snug tracking-wide max-w-[400px]">
+                        <div
+                            className="pretendard font-black text-sm text-white leading-snug tracking-wide max-w-[400px]"
+                            style={{ animation: 'draft-flash 0.6s ease-in-out 2' }}
+                            key={announcement.pickNumber}
+                        >
                             {getAnnouncementText(announcement, TEAM_DATA[announcement.teamId]?.name || announcement.teamId.toUpperCase())}
                         </div>
                     ) : (
@@ -170,7 +174,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             {/* Primary action: advance one pick */}
                             <button
                                 onClick={onAdvanceOnePick}
-                                className="px-3 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
+                                className="px-3 py-2 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
                             >
                                 <Play size={10} fill="currentColor" />
                                 다음 픽(#{nextPickNumber}, {nextTeamData?.abbr || nextPickTeamId?.toUpperCase()}) 진행하기
@@ -179,7 +183,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             {/* Chevron trigger: opens dropdown */}
                             <button
                                 onClick={() => setDropdownOpen(v => !v)}
-                                className="px-2 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10 border-l-white/5"
+                                className="px-2 py-2 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10 border-l-white/5"
                             >
                                 <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
