@@ -457,6 +457,9 @@ export interface LotteryResultEntry {
     odds: number;          // 0~1 (로터리 팀만, 비로터리 팀은 0)
     movement: number;      // 순위 변동 (양수=상승, 음수=하락)
     isLotteryTeam: boolean;
+    currentTeamId?: string;     // 실제 지명권자 (originalTeamId와 다를 때만)
+    currentTeamName?: string;
+    pickNote?: string;          // "OKC 소유 (트레이드)", "보호 발동 → 2027 1R", "스왑 ↔ CLE"
 }
 
 export interface LotteryResultContent {
@@ -471,6 +474,7 @@ export interface ProspectRevealEntry {
     age: number;
     ovr: number;
     height: number;
+    weight?: number;
 }
 
 export interface ProspectRevealContent {

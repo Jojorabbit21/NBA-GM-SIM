@@ -68,6 +68,8 @@ export const useSimulation = (
     onOffseasonEvent?: (view: string) => void,
     prospects?: any[],
     setProspects?: React.Dispatch<React.SetStateAction<any[]>>,
+    setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets | null>>,
+    setResolvedDraftOrder?: (result: any) => void,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -653,6 +655,7 @@ export const useSimulation = (
                                 age: e.player.age,
                                 ovr: e.ovr,
                                 height: e.player.height,
+                                weight: e.player.weight,
                             }));
                             const avgOvr = withOvr.reduce((s, e) => s + e.ovr, 0) / withOvr.length;
                             const classGrade = avgOvr >= 68 ? '풍작' : avgOvr >= 62 ? '보통' : '흉작';
@@ -695,6 +698,7 @@ export const useSimulation = (
                         userId: session?.user?.id,
                         userTeamId: myTeamId || undefined,
                         hasProspects: (prospects?.length ?? 0) > 0,
+                        leaguePickAssets: leaguePickAssets ?? undefined,
                     });
 
                     if (offseasonEvent.fired && offseasonEvent.updates) {
@@ -733,25 +737,34 @@ export const useSimulation = (
                         if (offseasonEvent.blocked && offseasonEvent.navigateTo) {
                             advanceDate(nextDate, {});
                             if (u.lotteryResult) setLotteryResult?.(u.lotteryResult);
+                            // resolvedDraftOrder + updatedPickAssets 반영
+                            if (u.resolvedDraftOrder) setResolvedDraftOrder?.(u.resolvedDraftOrder);
+                            if (u.updatedPickAssets) setLeaguePickAssets?.(u.updatedPickAssets);
                             setSimProgress(null);
                             setIsSimulating(false);
                             if (!isGuestMode) {
+                                // resolvedDraftOrder를 lotteryResult에 embed하여 저장 (별도 DB 컬럼 불필요)
+                                const lotteryForSave = u.lotteryResult
+                                    ? { ...u.lotteryResult, resolvedDraftOrder: u.resolvedDraftOrder || undefined }
+                                    : null;
                                 forceSave({
                                     currentSimDate: nextDate,
                                     teams: newTeams,
                                     schedule: newSchedule,
                                     withSnapshot: true,
                                     offseasonPhase: u.offseasonPhase,
-                                    lotteryResult: u.lotteryResult || null,
+                                    lotteryResult: lotteryForSave,
+                                    leaguePickAssets: u.updatedPickAssets || undefined,
                                 });
                                 // 로터리 결과를 시즌 아카이브에도 기록
                                 if (u.lotteryResult && session?.user?.id && seasonConfig) {
                                     updateSeasonArchiveLottery(session.user.id, seasonConfig.seasonLabel, u.lotteryResult)
                                         .catch(e => console.warn('⚠️ Lottery archive update failed (non-critical):', e));
                                 }
-                                // 로터리 결과 인박스 발송
+                                // 로터리 결과 인박스 발송 (resolvedDraftOrder 포함)
                                 if (u.lotteryResult && session?.user?.id && myTeamId) {
                                     const lr = u.lotteryResult;
+                                    const resolved = u.resolvedDraftOrder;
                                     const lotteryTeamMap = new Map(lr.lotteryTeams.map((lt: any) => [lt.teamId, lt]));
                                     const movementMap = new Map(lr.pickMovements.map((pm: any) => [pm.teamId, pm]));
                                     const myPick = lr.finalOrder.indexOf(myTeamId) + 1;
@@ -761,6 +774,10 @@ export const useSimulation = (
                                         const td = TEAM_DATA[teamId];
                                         const lt = lotteryTeamMap.get(teamId);
                                         const mv = movementMap.get(teamId);
+                                        // resolvedDraftOrder에서 해당 픽의 소유권/노트 가져오기
+                                        const resolvedPick = resolved?.picks.find(p => p.pickNumber === pick);
+                                        const currentOwner = resolvedPick && resolvedPick.currentTeamId !== teamId ? resolvedPick.currentTeamId : undefined;
+                                        const currentOwnerTd = currentOwner ? TEAM_DATA[currentOwner] : undefined;
                                         return {
                                             pick,
                                             teamId,
@@ -770,6 +787,9 @@ export const useSimulation = (
                                             odds: lt ? lt.odds : 0,
                                             movement: mv ? (mv.preLotteryPosition - mv.finalPosition) : 0,
                                             isLotteryTeam: !!lt,
+                                            currentTeamId: currentOwner,
+                                            currentTeamName: currentOwnerTd ? `${currentOwnerTd.city} ${currentOwnerTd.name}` : currentOwner,
+                                            pickNote: resolvedPick?.note,
                                         };
                                     });
                                     const lotteryContent: LotteryResultContent = { myTeamPick: myPick, entries };

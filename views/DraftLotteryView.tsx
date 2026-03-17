@@ -4,11 +4,13 @@ import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { LotteryResult } from '../services/draft/lotteryEngine';
+import type { ResolvedDraftOrder } from '../types/draftAssets';
 
 interface DraftLotteryViewProps {
     myTeamId: string;
     savedOrder: string[] | null;
     lotteryMetadata?: LotteryResult | null;
+    resolvedDraftOrder?: ResolvedDraftOrder | null;
     seasonShort?: string;
     onComplete: (order: string[]) => void;
 }
@@ -31,6 +33,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     myTeamId,
     savedOrder,
     lotteryMetadata,
+    resolvedDraftOrder,
     seasonShort = '2025-26',
     onComplete,
 }) => {
@@ -251,6 +254,11 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         const movement = movementMap?.get(teamId);
         const moveDiff = movement?.diff ?? 0;
 
+        // resolvedDraftOrder에서 해당 픽의 소유권/노트 가져오기
+        const resolvedPick = resolvedDraftOrder?.picks.find(p => p.pickNumber === pickNum);
+        const hasOwnershipChange = resolvedPick && resolvedPick.currentTeamId !== resolvedPick.originalTeamId;
+        const ownerTeamInfo = hasOwnershipChange ? TEAM_DATA[resolvedPick!.currentTeamId] : null;
+
         return (
             <div
                 key={teamId}
@@ -276,14 +284,26 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 />
                 <div className="flex-1 min-w-0">
                     {isRevealed ? (
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-white truncate">
-                                {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
-                            </span>
-                            {lotteryEntry && isLotteryPick && (
-                                <span className="text-[10px] text-white/50 shrink-0">
-                                    {lotteryEntry.wins}-{lotteryEntry.losses}
+                        <div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white truncate">
+                                    {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
                                 </span>
+                                {lotteryEntry && isLotteryPick && (
+                                    <span className="text-[10px] text-white/50 shrink-0">
+                                        {lotteryEntry.wins}-{lotteryEntry.losses}
+                                    </span>
+                                )}
+                            </div>
+                            {hasOwnershipChange && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                    <span className="text-[9px] text-amber-300 font-bold">
+                                        → {ownerTeamInfo ? ownerTeamInfo.name : resolvedPick!.currentTeamId.toUpperCase()}
+                                    </span>
+                                    {resolvedPick?.note && (
+                                        <span className="text-[9px] text-white/40">{resolvedPick.note}</span>
+                                    )}
+                                </div>
                             )}
                         </div>
                     ) : (

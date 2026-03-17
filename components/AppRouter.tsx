@@ -407,6 +407,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     myTeamId={gameData.myTeamId!}
                     savedOrder={gameData.lotteryResult?.finalOrder || gameData.draftPicks?.order || null}
                     lotteryMetadata={gameData.lotteryResult || null}
+                    resolvedDraftOrder={gameData.resolvedDraftOrder || null}
                     seasonShort={seasonShort}
                     onComplete={(order) => {
                         setDraftOrder(order);
@@ -450,6 +451,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             teams={gameData.teams}
                             myTeamId={gameData.myTeamId!}
                             draftOrder={gameData.lotteryResult.finalOrder}
+                            resolvedDraftOrder={gameData.resolvedDraftOrder || null}
                             draftClass={gameData.prospects}
                             onComplete={(picks) => {
                                 gameData.handleRookieDraftComplete(picks);

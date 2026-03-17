@@ -9,6 +9,7 @@ import { PlayerPool } from '../components/draft/PlayerPool';
 import { MyRoster } from '../components/draft/MyRoster';
 import { POSITION_COLORS } from './FantasyDraftView';
 import { CheckCircle } from 'lucide-react';
+import type { ResolvedDraftOrder } from '../types/draftAssets';
 
 const TOTAL_ROUNDS = 2;
 const CPU_PICK_DELAY = 600;
@@ -17,6 +18,7 @@ interface RookieDraftViewProps {
     teams: Team[];
     myTeamId: string;
     draftOrder: string[];         // lotteryResult.finalOrder (30팀)
+    resolvedDraftOrder?: ResolvedDraftOrder | null;  // 보호/스왑 반영된 60픽 오더
     draftClass: Player[];         // 생성된 60명 루키 (이미 Player[]로 변환됨)
     onComplete: (picks: BoardPick[]) => void;
 }
@@ -31,12 +33,18 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
     return order;
 }
 
-export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, draftClass, onComplete }) => {
+export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, resolvedDraftOrder: resolved, draftClass, onComplete }) => {
     const teamIds = useMemo(() => teamOrder, [teamOrder]);
     const allPlayers = useMemo(() => {
         return [...draftClass].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     }, [draftClass]);
-    const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds]);
+    // resolvedDraftOrder가 있으면 60픽 currentTeamId 배열 사용, 없으면 snake order 생성
+    const draftOrder = useMemo(() => {
+        if (resolved?.picks && resolved.picks.length > 0) {
+            return resolved.picks.map(p => p.currentTeamId);
+        }
+        return generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS);
+    }, [resolved, teamIds]);
 
     // ── Draft State ──
     const [picks, setPicks] = useState<BoardPick[]>([]);

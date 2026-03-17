@@ -469,7 +469,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                         <TableHeaderCell align="center">+/-</TableHeaderCell>
                                     </TableHead>
                                     <TableBody>
-                                        {lb.map((p, idx) => {
+                                        {lb.map((p, _idx) => {
                                             const gp = p.gp || 1;
                                             const avg = (v: number) => (v / gp).toFixed(1);
                                             const pct = (m: number, a: number) => a > 0 ? (m / a * 100).toFixed(1) : '-';
@@ -875,16 +875,14 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
             const prTeamFullName = prTeamData ? `${prTeamData.city} ${prTeamData.name}` : pr.teamId;
             return (
                 <div className="space-y-6">
-                    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5">
-                        <p className="text-slate-300 text-sm leading-relaxed">
-                            단장님, <span className="text-white font-bold">{pr.draftYear}년 드래프트 클래스</span> 스카우팅 보고서를 제출합니다.
-                            올해 클래스는 총 <span className="text-white font-bold">{pr.totalCount}명</span>의 유망주가 등록되어 있으며,
-                            전체적인 등급은 <span className={`font-black ${pr.classGrade === '풍작' ? 'text-emerald-400' : pr.classGrade === '흉작' ? 'text-red-400' : 'text-amber-400'}`}>"{pr.classGrade}"</span>으로 평가됩니다.
-                        </p>
-                    </div>
+                    <p className="text-slate-300 leading-relaxed">
+                        단장님, <span className="text-white font-bold">{pr.draftYear}년 드래프트 클래스</span> 스카우팅 보고서를 제출합니다.
+                        올해 클래스는 총 <span className="text-white font-bold">{pr.totalCount}명</span>의 유망주가 등록되어 있으며,
+                        전체적인 등급은 <span className={`font-black ${pr.classGrade === '풍작' ? 'text-emerald-400' : pr.classGrade === '흉작' ? 'text-red-400' : 'text-amber-400'}`}>"{pr.classGrade}"</span>으로 평가됩니다.
+                    </p>
 
                     <div>
-                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Top 10 유망주</h4>
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">탑 10 프로스펙트</h4>
                         <table className="w-full text-xs">
                             <thead>
                                 <tr className="border-b border-slate-700/50">
@@ -893,6 +891,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">포지션</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">나이</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">신장</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">체중</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">OVR</th>
                                 </tr>
                             </thead>
@@ -904,6 +903,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                         <td className="py-2 px-2 text-center text-slate-400 font-bold">{p.position}</td>
                                         <td className="py-2 px-2 text-center text-slate-400">{p.age}세</td>
                                         <td className="py-2 px-2 text-center text-slate-400">{p.height}cm</td>
+                                        <td className="py-2 px-2 text-center text-slate-400">{p.weight ? `${p.weight}kg` : '-'}</td>
                                         <td className="py-2 px-2 text-center">
                                             <OvrBadge value={p.ovr} size="sm" />
                                         </td>
@@ -946,6 +946,8 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                 <tr className="border-b border-slate-700/50">
                                     <th className="py-2 px-2 text-left text-slate-500 font-bold w-8">픽</th>
                                     <th className="py-2 px-2 text-left text-slate-500 font-bold">팀</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">권리행사</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">변동사항</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">성적</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">확률</th>
                                     <th className="py-2 px-2 text-center text-slate-500 font-bold">변동</th>
@@ -954,6 +956,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                             <tbody>
                                 {lr.entries.map(e => {
                                     const isMyTeam = e.teamId === myTeamId;
+                                    const hasOwnershipChange = e.currentTeamId && e.currentTeamId !== e.teamId;
                                     return (
                                         <tr key={e.pick} className={`border-b border-slate-800/50 ${isMyTeam ? 'bg-indigo-500/10' : ''}`}>
                                             <td className={`py-2 px-2 font-black ${isMyTeam ? 'text-indigo-400' : 'text-slate-500'}`}>{e.pick}</td>
@@ -962,6 +965,23 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                                     <TeamLogo teamId={e.teamId} size="custom" className="w-5 h-5 shrink-0" />
                                                     <span className={`font-bold ${isMyTeam ? 'text-indigo-300' : 'text-white'}`}>{e.teamName}</span>
                                                 </div>
+                                            </td>
+                                            <td className="py-2 px-2">
+                                                {hasOwnershipChange ? (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <TeamLogo teamId={e.currentTeamId!} size="custom" className="w-4 h-4 shrink-0" />
+                                                        <span className="font-bold text-amber-400">{e.currentTeamName}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-600">-</span>
+                                                )}
+                                            </td>
+                                            <td className="py-2 px-2">
+                                                {e.pickNote ? (
+                                                    <span className="text-amber-300/80">{e.pickNote}</span>
+                                                ) : (
+                                                    <span className="text-slate-600">-</span>
+                                                )}
                                             </td>
                                             <td className="py-2 px-2 text-center text-slate-400">{e.wins}-{e.losses}</td>
                                             <td className="py-2 px-2 text-center text-slate-400">

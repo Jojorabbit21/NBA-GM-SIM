@@ -104,13 +104,12 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   }, [loadMessages]);
 
   // 시뮬레이션 날짜 변경 시 (배치 시뮬 완료 등) 메시지 목록 새로고침
+  // selectedMessage는 유지 — 초기화하면 깜빡임 발생
   const prevSimDateRef = useRef(currentSimDate);
   useEffect(() => {
     if (currentSimDate && currentSimDate !== prevSimDateRef.current) {
       prevSimDateRef.current = currentSimDate;
       setPage(0);
-      setSelectedMessage(null);
-      setSelectedContent(null);
       contentCache.current.clear();
       loadMessages();
     }

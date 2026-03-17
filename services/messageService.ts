@@ -163,15 +163,21 @@ export const markAllMessagesAsRead = async (userId: string, teamId: string) => {
 /**
  * Check if a message of the given type already exists for this user/team
  */
-export const hasMessageOfType = async (userId: string, teamId: string, type: MessageType): Promise<boolean> => {
+export const hasMessageOfType = async (userId: string, teamId: string, type: MessageType, since?: string): Promise<boolean> => {
     if (!userId || !teamId) return false;
 
-    const { count, error } = await supabase
+    let query = supabase
         .from('user_messages')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('team_id', teamId)
         .eq('type', type);
+
+    if (since) {
+        query = query.gte('date', since);
+    }
+
+    const { count, error } = await query;
 
     if (error) {
         console.error("Error checking message existence:", error);

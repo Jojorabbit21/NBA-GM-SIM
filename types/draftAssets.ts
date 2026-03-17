@@ -34,3 +34,43 @@ export interface DraftPickAsset {
  * - 매 홀수 연도에 최소 하나의 1라운드 픽 보유 필요
  */
 export type LeaguePickAssets = Record<string, DraftPickAsset[]>;
+
+// ── resolveDraftOrder 결과 타입 ──
+
+/** 최종 드래프트 오더의 개별 픽 */
+export interface ResolvedPick {
+    pickNumber: number;       // 1~60
+    round: 1 | 2;
+    originalTeamId: string;   // 이 슬롯을 결정한 팀 (전적 기준)
+    currentTeamId: string;    // 실제 지명권자
+    note?: string;            // 변동사항 ("OKC 소유 (트레이드)" 등)
+}
+
+/** 보호 조건 판정 결과 */
+export interface ProtectionResult {
+    round: 1 | 2;
+    originalTeamId: string;
+    currentTeamId: string;
+    slot: number;
+    protection: PickProtection;
+    triggered: boolean;
+    fallbackAction?: string;  // "2027 1R로 이관" 등
+}
+
+/** 스왑 권리 실행 결과 */
+export interface SwapResult {
+    round: 1 | 2;
+    beneficiaryTeamId: string;
+    originTeamId: string;
+    beneficiarySlot: number;
+    originSlot: number;
+    swapped: boolean;
+}
+
+/** resolveDraftOrder() 전체 결과 */
+export interface ResolvedDraftOrder {
+    picks: ResolvedPick[];           // 60개
+    protectionResults: ProtectionResult[];
+    swapResults: SwapResult[];
+    updatedPickAssets: LeaguePickAssets;  // fallback 이관 반영된 새 자산
+}

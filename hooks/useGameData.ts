@@ -66,6 +66,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [leagueGMProfiles, setLeagueGMProfiles] = useState<LeagueGMProfiles>({});
     const [news, setNews] = useState<any[]>([]);
     const [lotteryResult, setLotteryResult] = useState<LotteryResult | null>(null);
+    const [resolvedDraftOrder, setResolvedDraftOrder] = useState<any | null>(null);
     const [leagueFAPool, setLeagueFAPool] = useState<LeagueFAPool | null>(null);
     const [generatedFreeAgents, setGeneratedFreeAgents] = useState<Player[]>([]);
 
@@ -468,6 +469,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     // 로터리 결과 복원
                     if (checkpoint.lottery_result) {
                         setLotteryResult(checkpoint.lottery_result);
+                        // resolvedDraftOrder가 lottery_result 안에 embed되어 있으면 복원
+                        if (checkpoint.lottery_result.resolvedDraftOrder) {
+                            setResolvedDraftOrder(checkpoint.lottery_result.resolvedDraftOrder);
+                        }
                     }
 
                     // 생성 FA 풀 복원
@@ -1074,6 +1079,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         freeAgents: effectiveFreeAgents,
         draftPicks: draftPicksRef.current,
         lotteryResult, setLotteryResult,
+        resolvedDraftOrder, setResolvedDraftOrder,
         leagueFAPool, setLeagueFAPool,
         generatedFreeAgents, setGeneratedFreeAgents,
 

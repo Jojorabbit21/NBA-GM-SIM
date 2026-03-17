@@ -17,6 +17,8 @@ import { buildSeasonConfig } from '../../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
 import { INITIAL_STATS } from '../../utils/constants';
 import { processOffseason, OffseasonResult } from '../playerDevelopment/playerAging';
+import { resolveDraftOrder } from '../draft/draftOrderResolver';
+import type { LeaguePickAssets, ResolvedDraftOrder } from '../../types/draftAssets';
 
 // ── 결과 타입 ──
 
@@ -31,6 +33,8 @@ export interface OffseasonEventResult {
     updates?: {
         offseasonPhase?: OffseasonPhase;
         lotteryResult?: LotteryResult;
+        resolvedDraftOrder?: ResolvedDraftOrder;    // 보호/스왑/소유권 반영된 드래프트 오더
+        updatedPickAssets?: LeaguePickAssets;       // fallback 이관 반영된 픽 자산
         generatedDraftClass?: GeneratedPlayerRow[];  // 생성된 드래프트 클래스
         newSchedule?: Game[];
         newSeasonNumber?: number;
@@ -153,6 +157,7 @@ export interface DispatchParams {
     userId?: string;  // 생성 선수 저장용
     userTeamId?: string;  // 유저팀 팀옵션 보류용
     hasProspects?: boolean;  // prospectReveal에서 이미 생성됨
+    leaguePickAssets?: LeaguePickAssets;  // 픽 자산 (보호/스왑 해석용)
 }
 
 /**
@@ -160,15 +165,25 @@ export interface DispatchParams {
  * 각 이벤트는 offseasonPhase로 멱등성 보장.
  */
 export async function dispatchOffseasonEvent(params: DispatchParams): Promise<OffseasonEventResult> {
-    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId, userTeamId } = params;
+    const { currentDate, keyDates, offseasonPhase, teams, schedule, playoffSeries, currentSeasonNumber, tendencySeed, userId, userTeamId, leaguePickAssets } = params;
 
     // Phase가 null이면 인시즌 — 오프시즌 이벤트 불필요
     if (offseasonPhase === null) return NO_EVENT;
 
-    // ── draftLottery: 로터리 추첨 + DraftLotteryView 강제 이동 ──
+    // ── draftLottery: 로터리 추첨 + 보호/스왑 해석 + DraftLotteryView 강제 이동 ──
     if (currentDate >= keyDates.draftLottery && offseasonPhase === 'POST_FINALS') {
         const lotteryResult = runLotteryEngine(teams, schedule, playoffSeries);
         console.log(`🎰 Lottery drawn: #1 pick → ${lotteryResult.finalOrder[0]}`);
+
+        // 보호/스왑/소유권 해석
+        const draftSeason = currentSeasonNumber + 1; // season 1 → 2026 드래프트
+        let resolvedOrder: ResolvedDraftOrder | undefined;
+        let updatedAssets: LeaguePickAssets | undefined;
+        if (leaguePickAssets) {
+            resolvedOrder = resolveDraftOrder(lotteryResult.finalOrder, leaguePickAssets, draftSeason);
+            updatedAssets = resolvedOrder.updatedPickAssets;
+            console.log(`📋 Draft order resolved: ${resolvedOrder.protectionResults.filter(p => p.triggered).length} protections triggered, ${resolvedOrder.swapResults.filter(s => s.swapped).length} swaps executed`);
+        }
 
         return {
             fired: true,
@@ -177,6 +192,8 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
             updates: {
                 offseasonPhase: 'POST_LOTTERY',
                 lotteryResult,
+                resolvedDraftOrder: resolvedOrder,
+                updatedPickAssets: updatedAssets,
             },
         };
     }
