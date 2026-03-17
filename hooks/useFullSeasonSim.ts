@@ -12,7 +12,7 @@ import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchS
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
 import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildOwnerLetterContent, selectFinalsMvp, buildPlayoffChampionContent, buildPlayoffStageContent, computeAllTeamsStats, buildRosterStats } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildOwnerLetterContent, selectFinalsMvp, buildPlayoffChampionContent, buildPlayoffStageContent, aggregateSeriesBoxScores, computeAllTeamsStats, buildRosterStats } from '../services/reportGenerator';
 import { FinalsMvpContent } from '../types/message';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
@@ -125,12 +125,39 @@ export const useFullSeasonSim = (
                 if (result.allPlayoffResultsToSave.length > 0) {
                     await Promise.all(result.allPlayoffResultsToSave.map(r => savePlayoffGameResult(r)));
                 }
-                // 유저 팀 82경기 완료 시 시즌 리뷰 메시지 추가
+                // 중복 방지용 사전 계산 (병렬 DB 쿼리)
                 const myRegGames = result.finalSchedule.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
                 const isMySeasonDone = myRegGames.length > 0 && myRegGames.every(g => g.played);
+                const finalsSeries = result.finalPlayoffSeries.find(s => s.round === 4 && s.finished && s.winnerId);
+                const myPlayoffSeries = result.finalPlayoffSeries.filter(s =>
+                    s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)
+                );
+                const firstPlayoffGame = result.finalSchedule
+                    .filter(g => g.isPlayoff && g.played)
+                    .sort((a, b) => a.date.localeCompare(b.date))[0];
+                const playoffSince = firstPlayoffGame?.date ?? result.finalDate;
+
+                const [
+                    alreadySentAward, alreadySentRegChamp, alreadySentSeasonReview,
+                    alreadyFmvp, alreadyChamp, alreadyStageReview,
+                ] = await Promise.all([
+                    hasMessageOfType(session.user.id, myTeamId, 'SEASON_AWARDS'),
+                    hasMessageOfType(session.user.id, myTeamId, 'REG_SEASON_CHAMPION'),
+                    hasMessageOfType(session.user.id, myTeamId, 'SEASON_REVIEW'),
+                    finalsSeries ? hasMessageOfType(session.user.id, myTeamId, 'FINALS_MVP') : Promise.resolve(false),
+                    finalsSeries ? hasMessageOfType(session.user.id, myTeamId, 'PLAYOFF_CHAMPION') : Promise.resolve(false),
+                    myPlayoffSeries.length > 0 ? hasMessageOfType(session.user.id, myTeamId, 'PLAYOFF_STAGE_REVIEW', playoffSince) : Promise.resolve(false),
+                ]);
+
+                // SEASON_AWARDS / REG_SEASON_CHAMPION 중복 방지 필터 (각각 독립적으로 체크)
+                result.allMessages = result.allMessages.filter(m =>
+                    (m.type !== 'SEASON_AWARDS' || !alreadySentAward) &&
+                    (m.type !== 'REG_SEASON_CHAMPION' || !alreadySentRegChamp)
+                );
+
+                // 유저 팀 82경기 완료 시 시즌 리뷰 메시지 추가
                 if (isMySeasonDone) {
-                    const alreadySent = await hasMessageOfType(session.user.id, myTeamId, 'SEASON_REVIEW');
-                    if (!alreadySent) {
+                    if (!alreadySentSeasonReview) {
                         const myTeam = result.finalTeams.find(t => t.id === myTeamId);
                         if (myTeam) {
                             // 정규시즌 종료일을 날짜로 사용 (플레이오프까지 진행해도 정규시즌 리뷰는 정규시즌 마지막 경기 날짜에 도착)
@@ -207,9 +234,7 @@ export const useFullSeasonSim = (
                 }
 
                 // 파이널 MVP + 플레이오프 우승 보고서
-                const finalsSeries = result.finalPlayoffSeries.find(s => s.round === 4 && s.finished && s.winnerId);
                 if (finalsSeries) {
-                    const alreadyFmvp = await hasMessageOfType(session.user.id, myTeamId, 'FINALS_MVP');
                     if (!alreadyFmvp) {
                         const finalsGames = result.allPlayoffResultsToSave.filter(r => r.series_id === finalsSeries.id);
                         if (finalsGames.length > 0) {
@@ -242,7 +267,6 @@ export const useFullSeasonSim = (
                             }
                         }
                     }
-                    const alreadyChamp = await hasMessageOfType(session.user.id, myTeamId, 'PLAYOFF_CHAMPION');
                     if (!alreadyChamp) {
                         const champTeam = result.finalTeams.find(t => t.id === finalsSeries.winnerId);
                         if (champTeam) {
@@ -260,35 +284,29 @@ export const useFullSeasonSim = (
                 }
 
                 // 플레이오프 라운드별 리뷰 메시지
-                const myPlayoffSeries = result.finalPlayoffSeries.filter(s =>
-                    s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)
-                );
-                if (myPlayoffSeries.length > 0) {
-                    // 현재 시즌 플레이오프 첫 경기 날짜를 기준으로 중복 체크 (이전 시즌 메시지와 구분)
-                    const firstPlayoffGame = result.finalSchedule
-                        .filter(g => g.isPlayoff && g.played)
-                        .sort((a, b) => a.date.localeCompare(b.date))[0];
-                    const playoffSince = firstPlayoffGame?.date ?? result.finalDate;
-                    const alreadyStageReview = await hasMessageOfType(session.user.id, myTeamId, 'PLAYOFF_STAGE_REVIEW', playoffSince);
-                    if (!alreadyStageReview) {
-                        const myTeamForStage = result.finalTeams.find(t => t.id === myTeamId);
-                        if (myTeamForStage) {
-                            const sortedSeries = [...myPlayoffSeries].sort((a, b) => a.round - b.round);
-                            for (const series of sortedSeries) {
-                                const lastSeriesGame = result.finalSchedule
-                                    .filter(g => g.seriesId === series.id && g.played)
-                                    .sort((a, b) => b.date.localeCompare(a.date))[0];
-                                const stageDate = lastSeriesGame?.date ?? result.finalDate;
-                                const content = buildPlayoffStageContent(myTeamForStage, result.finalTeams, series, result.finalSchedule, result.finalPlayoffSeries);
-                                result.allMessages.push({
-                                    user_id: session.user.id,
-                                    team_id: myTeamId,
-                                    date: stageDate,
-                                    type: 'PLAYOFF_STAGE_REVIEW',
-                                    title: `[플레이오프 보고서] ${content.roundName}`,
-                                    content,
-                                });
+                if (myPlayoffSeries.length > 0 && !alreadyStageReview) {
+                    const myTeamForStage = result.finalTeams.find(t => t.id === myTeamId);
+                    if (myTeamForStage) {
+                        const sortedSeries = [...myPlayoffSeries].sort((a, b) => a.round - b.round);
+                        for (const series of sortedSeries) {
+                            const lastSeriesGame = result.finalSchedule
+                                .filter(g => g.seriesId === series.id && g.played)
+                                .sort((a, b) => b.date.localeCompare(a.date))[0];
+                            const stageDate = lastSeriesGame?.date ?? result.finalDate;
+                            const content = buildPlayoffStageContent(myTeamForStage, result.finalTeams, series, result.finalSchedule, result.finalPlayoffSeries);
+                            // 시리즈 통합 스탯 — allPlayoffResultsToSave에서 메모리 내 필터링 (DB 재조회 불필요)
+                            const seriesResults = result.allPlayoffResultsToSave.filter(r => r.series_id === series.id);
+                            if (seriesResults.length > 0) {
+                                content.seriesPlayerStats = aggregateSeriesBoxScores(seriesResults, myTeamId);
                             }
+                            result.allMessages.push({
+                                user_id: session.user.id,
+                                team_id: myTeamId,
+                                date: stageDate,
+                                type: 'PLAYOFF_STAGE_REVIEW',
+                                title: `[플레이오프 보고서] ${content.roundName}`,
+                                content,
+                            });
                         }
                     }
                 }

@@ -5,6 +5,7 @@ import { Team, Player } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableHead } from '../components/common/Table';
+import { TabBar } from '../components/common/TabBar';
 import { ATTR_GROUPS, ATTR_LABEL, ATTR_AVG_KEYS, ATTR_NAME_MAP } from '../data/attributeConfig';
 import { LotteryResult } from '../services/draft/lotteryEngine';
 
@@ -263,25 +264,15 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-            {/* Tab Navigation — RosterTabs 스타일 */}
-            <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center h-12 flex-shrink-0">
-                <div className="flex items-center gap-8 h-full">
-                    <button
-                        onClick={() => setActiveTab('board')}
-                        className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
-                            activeTab === 'board' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'
-                        }`}
-                    >드래프트 보드</button>
-                    {hasLottery && (
-                        <button
-                            onClick={() => setActiveTab('lottery')}
-                            className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
-                                activeTab === 'lottery' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'
-                            }`}
-                        >로터리 결과</button>
-                    )}
-                </div>
-            </div>
+            {/* Tab Navigation */}
+            <TabBar
+                tabs={[
+                    { id: 'board' as DraftTab, label: '드래프트 보드' },
+                    ...(hasLottery ? [{ id: 'lottery' as DraftTab, label: '로터리 결과' }] : []),
+                ]}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+            />
 
             {activeTab === 'board' && (
                 <>

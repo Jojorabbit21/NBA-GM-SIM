@@ -18,10 +18,6 @@ import {
 } from '../../types/draftAssets';
 // ── 헬퍼 ──
 
-function teamAbbr(teamId: string): string {
-    return teamId.toUpperCase();
-}
-
 /** pickAssets를 deep clone (mutation 방지) */
 function cloneAssets(assets: LeaguePickAssets): LeaguePickAssets {
     const clone: LeaguePickAssets = {};
@@ -36,10 +32,10 @@ function allPicks(assets: LeaguePickAssets): DraftPickAsset[] {
     return Object.values(assets).flat();
 }
 
-/** 특정 시즌/라운드의 거래된 픽 (originalTeamId ≠ currentTeamId) 찾기 */
+/** 특정 시즌/라운드의 거래된 픽 (originalTeamId ≠ currentTeamId) 찾기 — 보호 유무 불문 */
 function findTradedPicks(assets: LeaguePickAssets, season: number, round: 1 | 2): DraftPickAsset[] {
     return allPicks(assets).filter(
-        p => p.season === season && p.round === round && p.originalTeamId !== p.currentTeamId && p.protection,
+        p => p.season === season && p.round === round && p.originalTeamId !== p.currentTeamId,
     );
 }
 
@@ -96,7 +92,20 @@ export function resolveDraftOrder(
             const slot = order.indexOf(pick.originalTeamId) + 1; // 1-based
             if (slot === 0) continue; // 해당 라운드에 없는 팀 (불가능하지만 방어)
 
-            const protection = pick.protection!;
+            // 보호 조건이 없는 픽 → 무조건 conveyed (protectionResults에 기록만)
+            if (!pick.protection) {
+                protectionResults.push({
+                    round,
+                    originalTeamId: pick.originalTeamId,
+                    currentTeamId: pick.currentTeamId,
+                    slot,
+                    protection: { type: 'none' },
+                    triggered: false,
+                });
+                continue;
+            }
+
+            const protection = pick.protection;
             const triggered = isProtectionTriggered(protection, slot);
 
             const result: ProtectionResult = {
@@ -110,7 +119,6 @@ export function resolveDraftOrder(
 
             if (triggered) {
                 // 보호 발동 → 픽이 원래 팀에 잔류
-                // pickAssets에서 해당 픽의 currentTeamId를 원래 팀으로 되돌림
                 revertPickOwnership(assets, pick);
 
                 // fallback 처리
@@ -123,8 +131,6 @@ export function resolveDraftOrder(
                 } else {
                     result.fallbackAction = '픽 소멸';
                 }
-            } else {
-                // 보호 미발동 → conveyed (currentTeamId 유지)
             }
 
             protectionResults.push(result);
@@ -220,9 +226,7 @@ function addFallbackPick(
         round: fallbackRound,
         originalTeamId: originalPick.originalTeamId,
         currentTeamId: originalPick.currentTeamId,
-        protection: originalPick.protection?.fallbackSeason
-            ? undefined // fallback 픽은 기본적으로 무보호 (원본 보호 조건의 fallback 체인은 draftPickTrades에서 별도 정의)
-            : undefined,
+        protection: undefined, // fallback 픽은 무보호 (체인 보호는 draftPickTrades에서 별도 정의)
         tradedDate: originalPick.tradedDate,
     };
 
@@ -323,7 +327,7 @@ function buildNote(
         const otherTeam = swapResult.beneficiaryTeamId === originalTeamId
             ? swapResult.originTeamId
             : swapResult.beneficiaryTeamId;
-        return `스왑 ↔ ${teamAbbr(otherTeam)} (${swapResult.originSlot}↔${swapResult.beneficiarySlot})`;
+        return `스왑 ↔ ${otherTeam.toUpperCase()} (${swapResult.originSlot}↔${swapResult.beneficiarySlot})`;
     }
 
     // 보호 미발동 (conveyed)
@@ -331,12 +335,12 @@ function buildNote(
         p => p.round === round && p.originalTeamId === originalTeamId && !p.triggered,
     );
     if (conveyedResult) {
-        return `${teamAbbr(currentTeamId)} 소유 (트레이드)`;
+        return `${currentTeamId.toUpperCase()} 소유 (트레이드)`;
     }
 
     // 단순 트레이드 (보호 없이 거래된 픽)
     if (originalTeamId !== currentTeamId) {
-        return `${teamAbbr(currentTeamId)} 소유 (트레이드)`;
+        return `${currentTeamId.toUpperCase()} 소유 (트레이드)`;
     }
 
     return undefined;

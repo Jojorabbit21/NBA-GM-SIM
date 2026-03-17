@@ -60,6 +60,27 @@ export interface ProspectRevealParams {
 /** 첫 시즌 드래프트 클래스의 draft_year (meta_players에서 fetch) */
 const FIRST_SEASON_DRAFT_YEAR = '2026';
 
+/** meta_players raw row → GeneratedPlayerRow 변환 */
+function mapRawRowToGeneratedPlayer(row: any, userId: string): GeneratedPlayerRow {
+    const attrs = typeof row.base_attributes === 'string'
+        ? JSON.parse(row.base_attributes)
+        : { ...(row.base_attributes || {}) };
+    if (row.name) attrs.name = row.name;
+    if (row.position) attrs.position = row.position;
+    if (row.height) attrs.height = row.height;
+    if (row.weight) attrs.weight = row.weight;
+    return {
+        id: String(row.id),
+        user_id: userId,
+        season_number: 2,
+        draft_pick: null,
+        draft_team_id: null,
+        status: 'fa' as const,
+        base_attributes: attrs,
+        age_at_draft: Number(attrs.age ?? 19),
+    };
+}
+
 /**
  * prospectReveal 날짜 도달 시 드래프트 클래스를 로드/생성한다.
  * - 시즌 1: meta_players에서 draft_year=2026 선수를 fetch (사전 입력 데이터)
@@ -77,26 +98,7 @@ export async function checkProspectReveal(params: ProspectRevealParams): Promise
     if (currentSeasonNumber === 1) {
         // 첫 시즌: meta_players에서 사전 입력된 루키 데이터 fetch
         const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
-        draftClass = rawRows.map((row: any) => {
-            const attrs = typeof row.base_attributes === 'string'
-                ? JSON.parse(row.base_attributes)
-                : { ...(row.base_attributes || {}) };
-            // row-level 컬럼을 base_attributes에 동기화 (DB에서 직접 수정한 값 반영)
-            if (row.name) attrs.name = row.name;
-            if (row.position) attrs.position = row.position;
-            if (row.height) attrs.height = row.height;
-            if (row.weight) attrs.weight = row.weight;
-            return {
-                id: String(row.id),
-                user_id: userId || '',
-                season_number: 2,
-                draft_pick: null,
-                draft_team_id: null,
-                status: 'fa' as const,
-                base_attributes: attrs,
-                age_at_draft: Number(attrs.age ?? 19),
-            };
-        });
+        draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId || ''));
         if (draftClass.length > 0) {
             console.log(`📋 Prospect reveal: loaded ${draftClass.length} predefined prospects from meta_players (draft_year=${FIRST_SEASON_DRAFT_YEAR})`);
         }
@@ -176,7 +178,7 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
         console.log(`🎰 Lottery drawn: #1 pick → ${lotteryResult.finalOrder[0]}`);
 
         // 보호/스왑/소유권 해석
-        const draftSeason = currentSeasonNumber + 1; // season 1 → 2026 드래프트
+        const draftSeason = 2024 + currentSeasonNumber + 1; // season 1 → 2026, season 2 → 2027
         let resolvedOrder: ResolvedDraftOrder | undefined;
         let updatedAssets: LeaguePickAssets | undefined;
         if (leaguePickAssets) {
@@ -207,25 +209,7 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
             if (currentSeasonNumber === 1) {
                 // 첫 시즌 fallback: meta_players에서 fetch
                 const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
-                draftClass = rawRows.map((row: any) => {
-                    const attrs = typeof row.base_attributes === 'string'
-                        ? JSON.parse(row.base_attributes)
-                        : { ...(row.base_attributes || {}) };
-                    if (row.name) attrs.name = row.name;
-                    if (row.position) attrs.position = row.position;
-                    if (row.height) attrs.height = row.height;
-                    if (row.weight) attrs.weight = row.weight;
-                    return {
-                        id: String(row.id),
-                        user_id: userId,
-                        season_number: 2,
-                        draft_pick: null,
-                        draft_team_id: null,
-                        status: 'fa' as const,
-                        base_attributes: attrs,
-                        age_at_draft: Number(attrs.age ?? 19),
-                    };
-                });
+                draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId));
                 console.log(`📝 Draft class fallback: loaded ${draftClass.length} predefined prospects`);
             } else {
                 const generated = generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60);

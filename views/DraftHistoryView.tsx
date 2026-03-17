@@ -3,19 +3,11 @@ import React, { useMemo } from 'react';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { POSITION_COLORS } from './FantasyDraftView';
 import { TEAM_DATA } from '../data/teamData';
+import { generateSnakeDraftOrder } from '../utils/draftUtils';
 
 interface DraftHistoryViewProps {
     myTeamId: string;
     draftPicks: { order?: string[]; teams: Record<string, string[]>; picks: BoardPick[] } | null;
-}
-
-function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
-    const order: string[] = [];
-    for (let r = 0; r < rounds; r++) {
-        const ids = r % 2 === 0 ? [...teamIds] : [...teamIds].reverse();
-        order.push(...ids);
-    }
-    return order;
 }
 
 export const DraftHistoryView: React.FC<DraftHistoryViewProps> = ({ myTeamId, draftPicks }) => {

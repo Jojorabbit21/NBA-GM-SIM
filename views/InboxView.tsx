@@ -21,7 +21,7 @@ interface InboxViewProps {
   onNavigateToDraft?: () => void;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -105,15 +105,20 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
   // 시뮬레이션 날짜 변경 시 (배치 시뮬 완료 등) 메시지 목록 새로고침
   // selectedMessage는 유지 — 초기화하면 깜빡임 발생
+  // page > 0 이면 setPage(0)만 → loadMessages 재생성 → useEffect([loadMessages]) 가 단 1회 호출
+  // page == 0 이면 직접 호출 (setPage(0) no-op 이라 useEffect 체인 안 탐)
   const prevSimDateRef = useRef(currentSimDate);
   useEffect(() => {
     if (currentSimDate && currentSimDate !== prevSimDateRef.current) {
       prevSimDateRef.current = currentSimDate;
-      setPage(0);
       contentCache.current.clear();
-      loadMessages();
+      if (page !== 0) {
+        setPage(0);
+      } else {
+        loadMessages();
+      }
     }
-  }, [currentSimDate, loadMessages]);
+  }, [currentSimDate, loadMessages, page]);
 
   const handleMarkAllRead = async () => {
       await markAllMessagesAsRead(userId, myTeamId);

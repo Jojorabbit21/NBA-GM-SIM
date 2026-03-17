@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team, Game } from '../types';
-import { Loader2, Trophy } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { TabBar } from '../components/common/TabBar';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { computeStandingsStats, StandingsRecord } from '../utils/standingsStats';
@@ -18,11 +19,11 @@ type StandingsMode = 'League' | 'Conference' | 'Division';
 
 const DIVISIONS = ['Atlantic', 'Central', 'Southeast', 'Northwest', 'Pacific', 'Southwest'];
 
-const MODE_LABELS: Record<StandingsMode, string> = {
-    League: '리그',
-    Conference: '컨퍼런스',
-    Division: '디비전',
-};
+const MODE_TABS: { id: StandingsMode; label: string }[] = [
+    { id: 'League', label: '리그' },
+    { id: 'Conference', label: '컨퍼런스' },
+    { id: 'Division', label: '디비전' },
+];
 
 interface RankedTeam {
     team: Team;
@@ -295,27 +296,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
             {/* Header Bar */}
-            <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Trophy size={16} className="text-slate-500" />
-                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">리그 순위표</span>
-                </div>
-                <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
-                    {(['League', 'Conference', 'Division'] as StandingsMode[]).map(m => (
-                        <button
-                            key={m}
-                            onClick={() => setMode(m)}
-                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                                mode === m
-                                    ? 'bg-indigo-600 text-white shadow-md'
-                                    : 'text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            {MODE_LABELS[m]}
-                        </button>
-                    ))}
-                </div>
-            </div>
+            <TabBar tabs={MODE_TABS} activeTab={mode} onTabChange={setMode} />
 
             {/* Table */}
             <div className="flex-1 min-h-0">

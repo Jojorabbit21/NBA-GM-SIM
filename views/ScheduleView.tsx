@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, Play, FileText, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Play, FileText, Eye } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
@@ -326,17 +326,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-      {/* Header Bar — only shown for league schedule mode */}
-      {!calendarOnly && (
-      <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-              <Calendar size={16} className="text-slate-500" />
-              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">리그 전체 일정</span>
-              {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={14} />}
-          </div>
-      </div>
-      )}
-
       {/* Shared Month Navigation */}
       <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-700 bg-slate-800">
         <button

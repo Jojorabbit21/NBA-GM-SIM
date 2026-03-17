@@ -10,6 +10,7 @@ import { MyRoster } from '../components/draft/MyRoster';
 import { POSITION_COLORS } from './FantasyDraftView';
 import { CheckCircle } from 'lucide-react';
 import type { ResolvedDraftOrder } from '../types/draftAssets';
+import { generateSnakeDraftOrder } from '../utils/draftUtils';
 
 const TOTAL_ROUNDS = 2;
 const CPU_PICK_DELAY = 600;
@@ -23,18 +24,7 @@ interface RookieDraftViewProps {
     onComplete: (picks: BoardPick[]) => void;
 }
 
-// ── Snake Draft Order Generator ──
-function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
-    const order: string[] = [];
-    for (let r = 0; r < rounds; r++) {
-        const ids = r % 2 === 0 ? [...teamIds] : [...teamIds].reverse();
-        order.push(...ids);
-    }
-    return order;
-}
-
 export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, resolvedDraftOrder: resolved, draftClass, onComplete }) => {
-    const teamIds = useMemo(() => teamOrder, [teamOrder]);
     const allPlayers = useMemo(() => {
         return [...draftClass].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     }, [draftClass]);
@@ -43,8 +33,8 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         if (resolved?.picks && resolved.picks.length > 0) {
             return resolved.picks.map(p => p.currentTeamId);
         }
-        return generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS);
-    }, [resolved, teamIds]);
+        return generateSnakeDraftOrder(teamOrder, TOTAL_ROUNDS);
+    }, [resolved, teamOrder]);
 
     // ── Draft State ──
     const [picks, setPicks] = useState<BoardPick[]>([]);
@@ -60,9 +50,9 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
 
     // Current pick info
     const isDraftComplete = currentPickIndex >= draftOrder.length;
-    const currentTeamId = draftOrder[currentPickIndex] || teamIds[0];
-    const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
-    const currentPickInRound = (currentPickIndex % teamIds.length) + 1;
+    const currentTeamId = draftOrder[currentPickIndex] || teamOrder[0];
+    const currentRound = Math.floor(currentPickIndex / teamOrder.length) + 1;
+    const currentPickInRound = (currentPickIndex % teamOrder.length) + 1;
     const isUserTurn = !isDraftComplete && currentTeamId === myTeamId;
 
     // My drafted players (루키만)
@@ -119,7 +109,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
                 const teamId = draftOrder[currentPickIndex];
                 const player = pool[0]; // BPA
                 return [...prevPicks, {
-                    round: Math.floor(currentPickIndex / teamIds.length) + 1,
+                    round: Math.floor(currentPickIndex / teamOrder.length) + 1,
                     teamId,
                     playerId: player.id,
                     playerName: player.name,
@@ -131,7 +121,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         }, CPU_PICK_DELAY);
 
         return () => clearTimeout(timer);
-    }, [currentPickIndex, isUserTurn, draftOrder, allPlayers, teamIds.length]);
+    }, [currentPickIndex, isUserTurn, draftOrder, allPlayers, teamOrder.length]);
 
     // ── User auto-pick on timeout ──
     useEffect(() => {
@@ -172,7 +162,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             const player = pool[poolIdx++];
             used.add(player.id);
             newPicks.push({
-                round: Math.floor(idx / teamIds.length) + 1,
+                round: Math.floor(idx / teamOrder.length) + 1,
                 teamId: tid,
                 playerId: player.id,
                 playerName: player.name,
@@ -186,7 +176,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             setPicks(prev => [...prev, ...newPicks]);
             setCurrentPickIndex(idx);
         }
-    }, [picks, currentPickIndex, draftOrder, myTeamId, allPlayers, teamIds.length]);
+    }, [picks, currentPickIndex, draftOrder, myTeamId, allPlayers, teamOrder.length]);
 
     const showSkip = !isUserTurn && currentPickIndex < draftOrder.length;
 
@@ -208,7 +198,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             <div className="shrink-0 overflow-hidden px-1.5 pt-1.5">
                 <div className="bg-slate-900/60 overflow-hidden">
                     <DraftBoard
-                        teamIds={teamIds}
+                        teamIds={teamOrder}
                         totalRounds={TOTAL_ROUNDS}
                         picks={picks}
                         currentPickIndex={currentPickIndex}

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ArrowLeftRight, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Team, Player, Transaction, GameTactics } from '../types';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
@@ -18,6 +18,8 @@ import { ScoutProposalTab } from '../components/transactions/tabs/ScoutProposalT
 import { TradeHistoryTab } from '../components/transactions/tabs/TradeHistoryTab';
 
 type TradeTabId = 'Explore' | 'Block' | 'Scout' | 'History';
+
+const TAB_IDS: TradeTabId[] = ['Explore', 'Block', 'Scout', 'History'];
 
 const TAB_LABELS: Record<TradeTabId, string> = {
     Explore: '즉시 탐색',
@@ -115,8 +117,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   if (!team) return null;
 
-  const TAB_IDS: TradeTabId[] = ['Explore', 'Block', 'Scout', 'History'];
-
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal">
        {pendingTrade && (
@@ -141,38 +141,37 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
          </div>
        )}
 
-       {/* ── 탭 네비게이션 (FrontOfficeView-style 밑줄 탭) ── */}
-       <div className="flex-shrink-0 px-6 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-           <div className="flex items-center gap-3 py-3">
-               <ArrowLeftRight size={16} className="text-slate-500" />
-               <span className="text-xs font-black text-slate-300 uppercase tracking-widest">트레이드 센터</span>
-           </div>
-           <div className="flex items-center gap-6">
-               {isTradeDeadlinePassed && (
-                   <span className="text-[10px] font-black uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded">데드라인 마감</span>
-               )}
-               <div className="flex items-center gap-0">
-                   {TAB_IDS.map(tabId => (
-                       <button
-                           key={tabId}
-                           onClick={() => setActiveTab(tabId)}
-                           className={`relative px-4 py-3 text-sm font-black uppercase tracking-tight transition-colors border-b-2 ${
-                               activeTab === tabId
-                                   ? 'text-indigo-400 border-indigo-400'
-                                   : 'text-slate-500 hover:text-slate-300 border-transparent'
-                           }`}
-                       >
-                           {TAB_LABELS[tabId]}
-                           {/* 수신 오퍼 뱃지 — Block 탭에 표시 */}
-                           {tabId === 'Block' && pendingIncomingCount > 0 && activeTab !== 'Block' && (
-                               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
-                                   {pendingIncomingCount}
-                               </span>
-                           )}
-                       </button>
-                   ))}
-               </div>
-           </div>
+       {/* ── 탭 네비게이션 ── */}
+       <div className="flex-shrink-0 px-8 bg-slate-950 border-b border-slate-800 flex items-center gap-8 h-12">
+           {TAB_IDS.map(tabId => (
+               <button
+                   key={tabId}
+                   onClick={() => setActiveTab(tabId)}
+                   className={`relative flex items-center transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ko-normal ${
+                       activeTab === tabId
+                           ? 'text-indigo-400 border-indigo-400'
+                           : 'text-slate-500 hover:text-slate-300 border-transparent'
+                   }`}
+               >
+                   {TAB_LABELS[tabId]}
+                   {/* 수신 오퍼 뱃지 — Block 탭에 표시 */}
+                   {tabId === 'Block' && pendingIncomingCount > 0 && activeTab !== 'Block' && (
+                       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                           {pendingIncomingCount}
+                       </span>
+                   )}
+               </button>
+           ))}
+           <div className="flex-1" />
+           {isTradeDeadlinePassed ? (
+               <span className="text-[10px] font-black uppercase text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-lg">
+                   데드라인 마감
+               </span>
+           ) : seasonConfig?.tradeDeadline ? (
+               <span className="text-[10px] font-black uppercase text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                   트레이드 데드라인 {seasonConfig.tradeDeadline}
+               </span>
+           ) : null}
        </div>
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">

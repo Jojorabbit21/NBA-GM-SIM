@@ -12,7 +12,7 @@ import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
 import { runAwardVoting, SeasonAwardsContent } from '../../utils/awardVoting';
 import { stampSeasonAwards, stampRegSeasonChampion } from '../../utils/awardStamper';
-import { sendMessage } from '../../services/messageService';
+import { sendMessage, hasMessageOfType } from '../../services/messageService';
 import { buildRegSeasonChampionContent } from '../../services/reportGenerator';
 
 export const handleSeasonEvents = async (
@@ -71,11 +71,19 @@ export const handleSeasonEvents = async (
                 const championContent = buildRegSeasonChampionContent(teams, schedule);
                 stampRegSeasonChampion(teams, seasonShort, championContent.championTeamId);
                 if (!isGuestMode && userId) {
-                    await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
-                        `[공식] ${seasonShort} 정규시즌 어워드 투표 결과`, awardResult);
+                    const [alreadySentAward, alreadySentChamp] = await Promise.all([
+                        hasMessageOfType(userId, myTeamId, 'SEASON_AWARDS'),
+                        hasMessageOfType(userId, myTeamId, 'REG_SEASON_CHAMPION'),
+                    ]);
+                    if (!alreadySentAward) {
+                        await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
+                            `[공식] ${seasonShort} 정규시즌 어워드 투표 결과`, awardResult);
+                    }
                     // ★ 정규시즌 우승팀 보고서 발송
-                    await sendMessage(userId, myTeamId, currentSimDate, 'REG_SEASON_CHAMPION',
-                        `[속보] ${seasonShort} 정규시즌 우승: ${championContent.championTeamName}`, championContent);
+                    if (!alreadySentChamp) {
+                        await sendMessage(userId, myTeamId, currentSimDate, 'REG_SEASON_CHAMPION',
+                            `[속보] ${seasonShort} 정규시즌 우승: ${championContent.championTeamName}`, championContent);
+                    }
                 }
             }
         }

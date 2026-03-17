@@ -77,6 +77,14 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         return new Set(lotteryMetadata.top4Drawn);
     }, [lotteryMetadata]);
 
+    // resolvedDraftOrder picks를 pickNumber로 빠르게 조회하기 위한 맵
+    const resolvedPickMap = useMemo(() => {
+        if (!resolvedDraftOrder?.picks) return null;
+        const map = new Map<number, typeof resolvedDraftOrder.picks[0]>();
+        for (const p of resolvedDraftOrder.picks) map.set(p.pickNumber, p);
+        return map;
+    }, [resolvedDraftOrder]);
+
     // ── 리스트 구간 (5~30픽) 역순 공개 순서 ──
     const listRevealOrder = useMemo(() => {
         if (!savedOrder) return [];
@@ -255,7 +263,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
         const moveDiff = movement?.diff ?? 0;
 
         // resolvedDraftOrder에서 해당 픽의 소유권/노트 가져오기
-        const resolvedPick = resolvedDraftOrder?.picks.find(p => p.pickNumber === pickNum);
+        const resolvedPick = resolvedPickMap?.get(pickNum);
         const hasOwnershipChange = resolvedPick && resolvedPick.currentTeamId !== resolvedPick.originalTeamId;
         const ownerTeamInfo = hasOwnershipChange ? TEAM_DATA[resolvedPick!.currentTeamId] : null;
 

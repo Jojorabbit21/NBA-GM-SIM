@@ -9,6 +9,7 @@ import { PickHistory } from '../components/draft/PickHistory';
 import { PlayerPool } from '../components/draft/PlayerPool';
 import { MyRoster } from '../components/draft/MyRoster';
 import { GripHorizontal, CheckCircle } from 'lucide-react';
+import { generateSnakeDraftOrder } from '../utils/draftUtils';
 
 // ── Position Color System ──
 export const POSITION_COLORS: Record<string, string> = {
@@ -25,16 +26,6 @@ interface FantasyDraftViewProps {
     draftTeamOrder?: string[];
     onBack: () => void;
     onComplete?: (picks: BoardPick[]) => void;
-}
-
-// ── Snake Draft Order Generator ──
-function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
-    const order: string[] = [];
-    for (let r = 0; r < rounds; r++) {
-        const ids = r % 2 === 0 ? [...teamIds] : [...teamIds].reverse();
-        order.push(...ids);
-    }
-    return order;
 }
 
 // ── Collect all players from all teams (+ free agents for alltime) as the "draft pool" ──

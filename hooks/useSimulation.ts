@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
-import { LeaguePickAssets } from '../types/draftAssets';
+import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
 import { SimSettings } from '../types/simSettings';
@@ -69,7 +69,7 @@ export const useSimulation = (
     prospects?: any[],
     setProspects?: React.Dispatch<React.SetStateAction<any[]>>,
     setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets | null>>,
-    setResolvedDraftOrder?: (result: any) => void,
+    setResolvedDraftOrder?: (result: ResolvedDraftOrder | null) => void,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -767,6 +767,9 @@ export const useSimulation = (
                                     const resolved = u.resolvedDraftOrder;
                                     const lotteryTeamMap = new Map(lr.lotteryTeams.map((lt: any) => [lt.teamId, lt]));
                                     const movementMap = new Map(lr.pickMovements.map((pm: any) => [pm.teamId, pm]));
+                                    const resolvedPickMap = resolved?.picks
+                                        ? new Map(resolved.picks.map((p) => [p.pickNumber, p]))
+                                        : null;
                                     const myPick = lr.finalOrder.indexOf(myTeamId) + 1;
                                     const entries: LotteryResultEntry[] = lr.finalOrder.map((teamId: string, i: number) => {
                                         const pick = i + 1;
@@ -775,7 +778,7 @@ export const useSimulation = (
                                         const lt = lotteryTeamMap.get(teamId);
                                         const mv = movementMap.get(teamId);
                                         // resolvedDraftOrder에서 해당 픽의 소유권/노트 가져오기
-                                        const resolvedPick = resolved?.picks.find(p => p.pickNumber === pick);
+                                        const resolvedPick = resolvedPickMap?.get(pick);
                                         const currentOwner = resolvedPick && resolvedPick.currentTeamId !== teamId ? resolvedPick.currentTeamId : undefined;
                                         const currentOwnerTd = currentOwner ? TEAM_DATA[currentOwner] : undefined;
                                         return {

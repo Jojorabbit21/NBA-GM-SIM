@@ -22,7 +22,7 @@ import { LeagueCoachingData } from '../types/coaching';
 import { SavedTeamFinances } from '../types/finance';
 import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 import { getBudgetManager, resetBudgetManager } from '../services/financeEngine';
-import { LeaguePickAssets } from '../types/draftAssets';
+import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
@@ -66,7 +66,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [leagueGMProfiles, setLeagueGMProfiles] = useState<LeagueGMProfiles>({});
     const [news, setNews] = useState<any[]>([]);
     const [lotteryResult, setLotteryResult] = useState<LotteryResult | null>(null);
-    const [resolvedDraftOrder, setResolvedDraftOrder] = useState<any | null>(null);
+    const [resolvedDraftOrder, setResolvedDraftOrder] = useState<ResolvedDraftOrder | null>(null);
     const [leagueFAPool, setLeagueFAPool] = useState<LeagueFAPool | null>(null);
     const [generatedFreeAgents, setGeneratedFreeAgents] = useState<Player[]>([]);
 
