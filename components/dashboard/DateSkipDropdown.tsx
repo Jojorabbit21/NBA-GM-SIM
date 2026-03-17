@@ -104,10 +104,10 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     };
 
     return (
-        <div ref={dropdownRef} className="absolute top-full left-0 mt-1 z-[200] w-[320px] bg-slate-200 border border-slate-300 rounded-2xl shadow-2xl overflow-hidden">
+        <div ref={dropdownRef} className="absolute top-full left-0 mt-1 z-[200] w-[320px] bg-slate-700 border border-slate-600 rounded-2xl shadow-2xl overflow-hidden">
             {/* 헤더 */}
-            <div className="px-4 py-3 border-b border-slate-300">
-                <div className="flex items-center gap-2 text-sm font-semibold text-indigo-600">
+            <div className="px-4 py-3 border-b border-slate-600">
+                <div className="flex items-center gap-2 text-sm font-semibold text-indigo-400">
                     스킵 옵션
                 </div>
             </div>
@@ -116,20 +116,20 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
             <div className="max-h-[60vh] overflow-y-auto">
                 {futureDates.map((item, idx) => (
                     <React.Fragment key={item.key}>
-                        {idx > 0 && <div className="border-t border-slate-300" />}
+                        {idx > 0 && <div className="border-t border-slate-600" />}
                         <button
                             onClick={() => handleSkip(item.date, item.name)}
                             disabled={isSimulating}
-                            className="w-full px-4 py-2.5 hover:bg-slate-300 transition-colors text-left flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="w-full px-4 py-2.5 hover:bg-slate-600 transition-colors text-left flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            <span className="text-sm font-medium text-slate-700">{item.name}</span>
-                            <span className="text-sm font-medium text-slate-700 shrink-0">{item.date}</span>
+                            <span className="text-sm font-medium text-slate-300">{item.name}</span>
+                            <span className="text-sm font-medium text-slate-400 shrink-0">{item.date}</span>
                         </button>
                     </React.Fragment>
                 ))}
 
                 {futureDates.length === 0 && (
-                    <div className="px-4 py-6 text-center text-sm text-slate-500">
+                    <div className="px-4 py-6 text-center text-sm text-slate-400">
                         남은 Key Date가 없습니다
                     </div>
                 )}
@@ -137,14 +137,14 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
 
             {/* 시즌 끝까지 시뮬 — 오프시즌에서는 숨김 (개막일 스킵으로 대체) */}
             {!isOffseason && (
-                <div className="border-t border-slate-300">
+                <div className="border-t border-slate-600">
                     <button
                         onClick={() => { onClose(); onSimulateFullSeason(); }}
                         disabled={isSimulating}
-                        className="w-full px-4 py-3 hover:bg-slate-300 transition-colors text-left flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 hover:bg-slate-600 transition-colors text-left flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                        <FastForward size={14} className="text-amber-600 shrink-0" />
-                        <span className="text-sm font-semibold text-amber-600">시즌 끝까지 시뮬레이션</span>
+                        <FastForward size={14} className="text-amber-400 shrink-0" />
+                        <span className="text-sm font-semibold text-amber-400">시즌 끝까지 시뮬레이션</span>
                     </button>
                 </div>
             )}
