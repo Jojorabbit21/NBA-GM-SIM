@@ -758,18 +758,19 @@ export const useSimulation = (
                             setIsSimulating(false);
                             if (!isGuestMode) {
                                 // resolvedDraftOrder를 lotteryResult에 embed하여 저장 (별도 DB 컬럼 불필요)
-                                const lotteryForSave = u.lotteryResult
-                                    ? { ...u.lotteryResult, resolvedDraftOrder: u.resolvedDraftOrder || undefined }
-                                    : null;
-                                forceSave({
+                                const saveOverrides: any = {
                                     currentSimDate: nextDate,
                                     teams: newTeams,
                                     schedule: newSchedule,
                                     withSnapshot: true,
                                     offseasonPhase: u.offseasonPhase,
-                                    lotteryResult: lotteryForSave,
                                     leaguePickAssets: u.updatedPickAssets || undefined,
-                                });
+                                };
+                                // lotteryResult가 있을 때만 저장 (없으면 기존 값 유지 — rookieDraft 이벤트에서 덮어쓰기 방지)
+                                if (u.lotteryResult) {
+                                    saveOverrides.lotteryResult = { ...u.lotteryResult, resolvedDraftOrder: u.resolvedDraftOrder || undefined };
+                                }
+                                forceSave(saveOverrides);
                                 // 로터리 결과를 시즌 아카이브에도 기록
                                 if (u.lotteryResult && session?.user?.id && seasonConfig) {
                                     updateSeasonArchiveLottery(session.user.id, seasonConfig.seasonLabel, u.lotteryResult)
