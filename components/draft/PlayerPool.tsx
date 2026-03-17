@@ -82,7 +82,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
         <div className="flex flex-col h-full">
             {/* Toolbar */}
             <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50 bg-slate-800/30">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">선수 풀</span>
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-400 shrink-0">선수 풀</span>
                 <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -141,13 +141,13 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             {/* Table */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 <table className="w-full border-collapse text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-800/15 backdrop-blur-sm">
-                        <tr className="text-xs font-black uppercase text-slate-500">
+                    <thead className="sticky top-0 z-10 bg-slate-900">
+                        <tr className="text-xs font-black uppercase text-slate-500 border-b border-slate-700/50">
                             <th className="w-6 px-1 py-1.5"></th>
                             <th className="px-2 py-1.5 text-left">NAME</th>
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
                             <SortHeader label="OVR" field="ovr" className="w-12" />
-                            {showPotential && <SortHeader label="POT" field="pot" className="w-12" />}
+                            {showPotential && <SortHeader label="POT" field="pot" className="w-8" />}
                             <SortHeader label="AGE" field="age" className="w-8" />
                             <th className="px-1 py-1.5 text-center w-10 text-slate-500">HT</th>
                             <th className="px-1 py-1.5 text-center w-10 text-slate-500">WT</th>
@@ -191,8 +191,8 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                         <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
                                     </td>
                                     {showPotential && (
-                                        <td className="px-2 py-0.5">
-                                            <OvrBadge value={player.potential} size="sm" />
+                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.potential)}`}>
+                                            {player.potential}
                                         </td>
                                     )}
                                     <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>

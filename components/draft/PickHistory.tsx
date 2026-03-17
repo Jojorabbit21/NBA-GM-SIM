@@ -29,7 +29,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500">드래프트 기록</span>
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-400">드래프트 기록</span>
                 {/* Round Filter Dropdown */}
                 <div className="relative">
                     <button
@@ -71,9 +71,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                     <div className="px-2 py-4 text-xs text-slate-600 italic text-center">아직 픽이 없습니다</div>
                 )}
                 {filtered.map((pick, idx) => {
-                    const overallPick = roundFilter !== null
-                        ? picks.filter(p => p.round === roundFilter).length - idx
-                        : picks.length - idx;
+                    const overallPick = filtered.length - idx;
                     const isLatest = idx === 0 && roundFilter === null;
                     const isUserPick = pick.teamId === userTeamId;
 
@@ -81,7 +79,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                         <div
                             key={pick.pickNumber ?? idx}
                             className={`px-2.5 py-2 border-b border-slate-700/50 flex items-center gap-0 transition-colors ${
-                                isLatest ? 'bg-indigo-500/5' : isUserPick ? 'bg-amber-500/[0.04]' : ''
+                                isLatest ? 'bg-amber-500/10' : isUserPick ? 'bg-amber-500/[0.04]' : ''
                             }`}
                         >
                             {/* Pick number */}

@@ -47,7 +47,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">내 로스터</span>
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-400 shrink-0">내 로스터</span>
                 <div className="flex items-center gap-1.5">
                     {POSITION_ORDER.map(pos => (
                         <span key={pos} className="flex items-center gap-0.5">
@@ -64,7 +64,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 {/* Starters */}
                 <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
-                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">STARTERS</span>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">선발</span>
                 </div>
                 {POSITION_ORDER.map((pos, i) => {
                     const player = starters[i];
@@ -91,7 +91,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
 
                 {/* Reserves */}
                 <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
-                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">RESERVES</span>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">벤치</span>
                 </div>
                 {reserves.map((player, i) => {
                     const isNewPick = player && newPickIds?.has(player.id);

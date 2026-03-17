@@ -70,7 +70,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
         <div
             ref={scrollContainerRef}
             className="h-full overflow-auto"
-            style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
+            style={{ scrollbarWidth: 'none' } as React.CSSProperties}
         >
             <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px', margin: '-2px' }}>
                 {picksByRound.map((roundPicks, roundIdx) => {
@@ -82,6 +82,12 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
 
                     return (
                         <React.Fragment key={round}>
+                            {/* 라운드 간 구분 간격 */}
+                            {roundIdx > 0 && (
+                                <tbody>
+                                    <tr><td colSpan={roundPicks.length + 1} className="h-3 bg-slate-950" /></tr>
+                                </tbody>
+                            )}
                             {/* 라운드별 독립 헤더 */}
                             <thead className={`${roundIdx === 0 ? 'sticky top-0' : ''} z-20 bg-slate-950`}>
                                 <tr>
@@ -100,7 +106,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                         return (
                                             <th
                                                 key={rp.pickNumber}
-                                                className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center font-bold uppercase rounded-t-lg"
+                                                className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center font-bold uppercase"
                                                 style={{
                                                     backgroundColor: teamColor,
                                                     color: teamTextColor,
@@ -129,16 +135,18 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                 <tr className="h-[76px]">
                                     {/* 라운드 라벨 (sticky left) */}
                                     <td
-                                        className="sticky left-0 bg-slate-950 px-2 py-1 z-10 text-center"
+                                        className={`sticky left-0 px-2 py-1 z-10 text-center ${
+                                            isCurrentRound ? 'bg-indigo-950/80' : 'bg-slate-950'
+                                        }`}
                                         style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
                                     >
-                                        <div className="flex items-center justify-center gap-1">
-                                            <span className={`text-xs font-bold whitespace-nowrap ${
-                                                isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className={`text-[11px] font-black whitespace-nowrap ${
+                                                isCurrentRound ? 'text-indigo-300' : isPast ? 'text-slate-600' : 'text-slate-500'
                                             }`}>
-                                                {round}라운드
+                                                R{round}
                                             </span>
-                                            <span className={`text-xs ${
+                                            <span className={`text-[10px] ${
                                                 isCurrentRound ? 'text-indigo-400/70' : 'text-slate-600'
                                             }`}>
                                                 {isEvenRound ? '→' : '←'}
@@ -162,7 +170,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                                     ...(bp
                                                         ? { backgroundColor: isUserSlot ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
                                                         : isCurrent
-                                                            ? { backgroundColor: `${currentTeamColor}15`, boxShadow: `inset 0 0 0 2px ${currentTeamColor}` }
+                                                            ? { backgroundColor: 'rgba(16,185,129,0.10)', boxShadow: 'inset 0 0 0 2px rgba(16,185,129,0.6)' }
                                                             : isUserSlot
                                                                 ? { backgroundColor: 'rgba(245,158,11,0.08)' }
                                                                 : {}
@@ -185,9 +193,9 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                                         </span>
                                                     </div>
                                                 ) : isCurrent ? (
-                                                    <div className="h-full flex items-center justify-center">
-                                                        <span className="text-sm animate-pulse font-bold" style={{ color: currentTeamColor }}>
-                                                            ···
+                                                    <div className="h-full flex items-center justify-center animate-pulse">
+                                                        <span className="text-[11px] font-bold text-emerald-400">
+                                                            선택 중...
                                                         </span>
                                                     </div>
                                                 ) : null}

@@ -6,6 +6,32 @@ import { TEAM_DATA } from '../../data/teamData';
 
 export const PICK_TIME_LIMIT = 30;
 
+// Commissioner-style announcement templates
+// {pick} = pick number, {team} = team name, {player} = player name, {pos} = position
+const ANNOUNCEMENT_TEMPLATES = [
+    '{year} 드래프트 {pick}픽, {team}의 선택은... {player}!',
+    '{team}, {pick}번째 픽으로 {pos} {player} 선수를 지명합니다!',
+    '{pick}픽 {team}! {pos} 포지션 {player}를 선택했습니다!',
+    '{team}이 {pick}픽으로 {player}를 선택합니다!',
+    '드래프트 {pick}순위, {team}의 지명 선수는 {player}입니다!',
+    '{year} 드래프트 {pick}번 지명권, {team} — {player}!',
+    '{team}, {pos} {player}를 {pick}픽으로 낙점!',
+    '{pick}번 지명! {team}이 {player}를 선택합니다!',
+] as const;
+
+const DRAFT_YEAR = new Date().getFullYear();
+
+function getAnnouncementText(a: { pickNumber: number; teamId: string; playerName: string; position: string }, teamName: string): string {
+    const template = ANNOUNCEMENT_TEMPLATES[a.pickNumber % ANNOUNCEMENT_TEMPLATES.length];
+    const year = DRAFT_YEAR;
+    return template
+        .replace('{year}', String(year))
+        .replace('{pick}', String(a.pickNumber))
+        .replace('{team}', teamName)
+        .replace('{player}', a.playerName)
+        .replace('{pos}', a.position);
+}
+
 interface DraftHeaderProps {
     currentRound: number;
     currentPickInRound: number;
@@ -67,7 +93,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     const nextTeamData = nextPickTeamId ? TEAM_DATA[nextPickTeamId] : null;
 
     return (
-        <div className="shrink-0 relative" style={{ backgroundColor: currentTeamColor }}>
+        <div className="shrink-0 relative z-30" style={{ backgroundColor: currentTeamColor }}>
             {/* Dark overlay for text readability */}
             <div className="absolute inset-0 bg-black/40" />
 
@@ -98,14 +124,9 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                 {/* Center: Announcement or Timer + Round/Pick */}
                 <div className="text-center min-w-[160px]">
                     {announcement ? (
-                        <>
-                            <div className="pretendard font-black text-lg text-white leading-none tracking-wide">
-                                {announcement.playerName}
-                            </div>
-                            <div className="text-[11px] text-white/50 font-bold mt-0.5">
-                                #{announcement.pickNumber}픽 · {TEAM_DATA[announcement.teamId]?.name || announcement.teamId.toUpperCase()} · {announcement.position}
-                            </div>
-                        </>
+                        <div className="pretendard font-black text-sm text-white leading-snug tracking-wide max-w-[400px]">
+                            {getAnnouncementText(announcement, TEAM_DATA[announcement.teamId]?.name || announcement.teamId.toUpperCase())}
+                        </div>
                     ) : (
                         <>
                             <div className="pretendard font-black text-xl tracking-wider text-white leading-none">
