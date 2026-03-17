@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { MessageListItem, Team, Player, MessageFilterCategory, MESSAGE_FILTER_MAP, MESSAGE_FILTER_CATEGORIES, MessageType } from '../types';
-import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead, patchMessageContent } from '../services/messageService';
+import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead, patchMessageContent, deleteMessages, clearAllMessages } from '../services/messageService';
 import { MessageList } from '../components/inbox/MessageList';
 import { MessageContentRenderer } from '../components/inbox/MessageContentRenderer';
 
@@ -31,6 +31,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const [totalCount, setTotalCount] = useState(0);
   const [activeFilters, setActiveFilters] = useState<Set<MessageFilterCategory>>(() => new Set(MESSAGE_FILTER_CATEGORIES));
   const contentCache = useRef<Map<string, any>>(new Map());
+  const silentRefreshRef = useRef(false);
 
   const handleTeamOptionDecide = useCallback(async (playerId: string, exercised: boolean) => {
       if (!selectedMessage || !selectedContent?.pendingTeamOptions) return;
@@ -77,7 +78,9 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   }, [onUpdateUnreadCount]);
 
   const loadMessages = useCallback(async () => {
-    setLoading(true);
+    const silent = silentRefreshRef.current;
+    silentRefreshRef.current = false;
+    if (!silent) setLoading(true);
     const allActive = activeFilters.size === MESSAGE_FILTER_CATEGORIES.length;
     const typeFilter: MessageType[] | undefined = allActive
         ? undefined
@@ -112,6 +115,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     if (currentSimDate && currentSimDate !== prevSimDateRef.current) {
       prevSimDateRef.current = currentSimDate;
       contentCache.current.clear();
+      silentRefreshRef.current = true;
       if (page !== 0) {
         setPage(0);
       } else {
@@ -123,6 +127,26 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const handleMarkAllRead = async () => {
       await markAllMessagesAsRead(userId, myTeamId);
       setMessages(prev => prev.map(m => ({ ...m, is_read: true })));
+      await onUpdateUnreadCount();
+  };
+
+  const handleDeleteMessages = async (ids: string[]) => {
+      await deleteMessages(ids);
+      setMessages(prev => prev.filter(m => !ids.includes(m.id)));
+      setTotalCount(prev => Math.max(0, prev - ids.length));
+      if (selectedMessage && ids.includes(selectedMessage.id)) {
+          setSelectedMessage(null);
+          setSelectedContent(null);
+      }
+      await onUpdateUnreadCount();
+  };
+
+  const handleClearAll = async () => {
+      await clearAllMessages(userId, myTeamId);
+      setMessages([]);
+      setTotalCount(0);
+      setSelectedMessage(null);
+      setSelectedContent(null);
       await onUpdateUnreadCount();
   };
 
@@ -181,6 +205,8 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
               onMarkAllRead={handleMarkAllRead}
               onRefresh={() => { setPage(0); setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
               onLoadMore={() => { setPage(p => p + 1); }}
+              onDeleteMessages={handleDeleteMessages}
+              onClearAll={handleClearAll}
           />
 
           {/* Right: Message Detail */}

@@ -160,6 +160,26 @@ export const markAllMessagesAsRead = async (userId: string, teamId: string) => {
     if (error) console.error("Error marking all as read:", error);
 };
 
+export const deleteMessages = async (messageIds: string[]): Promise<boolean> => {
+    if (messageIds.length === 0) return true;
+    const { error } = await supabase
+        .from('user_messages')
+        .delete()
+        .in('id', messageIds);
+    if (error) { console.error('Error deleting messages:', error); return false; }
+    return true;
+};
+
+export const clearAllMessages = async (userId: string, teamId: string): Promise<boolean> => {
+    const { error } = await supabase
+        .from('user_messages')
+        .delete()
+        .eq('user_id', userId)
+        .eq('team_id', teamId);
+    if (error) { console.error('Error clearing messages:', error); return false; }
+    return true;
+};
+
 /**
  * Check if a message of the given type already exists for this user/team
  */

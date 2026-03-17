@@ -8,7 +8,7 @@ import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
-import { OffseasonPhase } from '../../types/app';
+import { PendingOffseasonAction } from '../../types/app';
 import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
 
 interface DashboardHeaderProps {
@@ -29,7 +29,7 @@ interface DashboardHeaderProps {
   streak?: string;
   conferenceName?: string;
   isSeasonOver?: boolean;
-  offseasonPhase?: OffseasonPhase;
+  pendingOffseasonAction?: PendingOffseasonAction;
   keyDates?: SeasonKeyDates;
   onSkipToDate?: (targetDate: string, label: string) => void;
   onSimulateFullSeason?: () => void;
@@ -38,7 +38,7 @@ interface DashboardHeaderProps {
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
   currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver,
-  offseasonPhase, keyDates, onSkipToDate, onSimulateFullSeason
+  pendingOffseasonAction, keyDates, onSkipToDate, onSimulateFullSeason
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -47,7 +47,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-  const isOffseasonBlocked = offseasonPhase === 'POST_LOTTERY';
+  const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
   const handleSkipToDate = useCallback((targetDate: string, label: string) => {

@@ -26,9 +26,8 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
-import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent, LotteryResultContent, LotteryResultEntry } from '../types/message';
+import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent } from '../types/message';
 import { stampPlayoffAwards } from '../utils/awardStamper';
-import { TEAM_DATA } from '../data/teamData';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
 /** 생성된 드래프트 클래스를 React 상태 + DB에 반영하는 공통 헬퍼 */
@@ -776,47 +775,7 @@ export const useSimulation = (
                                     updateSeasonArchiveLottery(session.user.id, seasonConfig.seasonLabel, u.lotteryResult)
                                         .catch(e => console.warn('⚠️ Lottery archive update failed (non-critical):', e));
                                 }
-                                // 로터리 결과 인박스 발송 (resolvedDraftOrder 포함)
-                                if (u.lotteryResult && session?.user?.id && myTeamId) {
-                                    const lr = u.lotteryResult;
-                                    const resolved = u.resolvedDraftOrder;
-                                    const lotteryTeamMap = new Map(lr.lotteryTeams.map((lt: any) => [lt.teamId, lt]));
-                                    const movementMap = new Map(lr.pickMovements.map((pm: any) => [pm.teamId, pm]));
-                                    const resolvedPickMap = resolved?.picks
-                                        ? new Map(resolved.picks.map((p) => [p.pickNumber, p]))
-                                        : null;
-                                    const myPick = lr.finalOrder.indexOf(myTeamId) + 1;
-                                    const entries: LotteryResultEntry[] = lr.finalOrder.map((teamId: string, i: number) => {
-                                        const pick = i + 1;
-                                        const team = newTeams.find(t => t.id === teamId);
-                                        const td = TEAM_DATA[teamId];
-                                        const lt = lotteryTeamMap.get(teamId);
-                                        const mv = movementMap.get(teamId);
-                                        // resolvedDraftOrder에서 해당 픽의 소유권/노트 가져오기
-                                        const resolvedPick = resolvedPickMap?.get(pick);
-                                        const currentOwner = resolvedPick && resolvedPick.currentTeamId !== teamId ? resolvedPick.currentTeamId : undefined;
-                                        const currentOwnerTd = currentOwner ? TEAM_DATA[currentOwner] : undefined;
-                                        return {
-                                            pick,
-                                            teamId,
-                                            teamName: td ? `${td.city} ${td.name}` : teamId,
-                                            wins: team?.wins ?? 0,
-                                            losses: team?.losses ?? 0,
-                                            odds: lt ? lt.odds : 0,
-                                            movement: mv ? (mv.preLotteryPosition - mv.finalPosition) : 0,
-                                            isLotteryTeam: !!lt,
-                                            currentTeamId: currentOwner,
-                                            currentTeamName: currentOwnerTd ? `${currentOwnerTd.city} ${currentOwnerTd.name}` : currentOwner,
-                                            pickNote: resolvedPick?.note,
-                                        };
-                                    });
-                                    const lotteryContent: LotteryResultContent = { myTeamPick: myPick, entries };
-                                    const lotteryMsgTitle = seasonConfig?.seasonLabel
-                                        ? `${seasonConfig.seasonLabel} 드래프트 로터리 추첨 결과`
-                                        : '드래프트 로터리 추첨 결과';
-                                    sendMessage(session.user.id, myTeamId, nextDate, 'LOTTERY_RESULT', lotteryMsgTitle, lotteryContent)
-                                        .catch(e => console.warn('⚠️ Lottery result message failed:', e));
-                                }
+                                // 로터리 결과 인박스 발송은 DraftLotteryView onComplete에서 수행 (스포일러 방지)
                             }
                             // rookieDraft blocking 이벤트: 생성된 드래프트 클래스를 React 상태 + DB에 반영
                             if (u.generatedDraftClass && u.generatedDraftClass.length > 0) {

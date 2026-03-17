@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
@@ -8,6 +8,7 @@ import { TeamSelectView } from './views/TeamSelectView';
 import { AuthView } from './views/AuthView';
 import { Toast } from './components/SharedComponents';
 import { AppView, RosterMode, DraftPoolType } from './types';
+import { PendingOffseasonAction } from './types/app';
 import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
@@ -109,6 +110,17 @@ const App: React.FC = () => {
         gameData.seasonConfig,
         gameData.offseasonPhase
     );
+
+    // 오프시즌 이벤트 상태 계산: 사이드바 버튼 + 시뮬 차단 결정
+    const pendingOffseasonAction = useMemo<PendingOffseasonAction>(() => {
+        if (gameData.offseasonPhase !== 'POST_LOTTERY') return null;
+        // 로터리 결과가 아직 viewed되지 않았으면 로터리 확인 필요
+        if (gameData.lotteryResult && !gameData.lotteryResult.viewed) return 'lottery';
+        // 로터리 확인 완료 + 드래프트 날짜 도래 → 신인 드래프트
+        const rookieDraftDate = gameData.seasonConfig?.keyDates?.rookieDraft;
+        if (gameData.prospects?.length > 0 && rookieDraftDate && gameData.currentSimDate >= rookieDraftDate) return 'draft';
+        return null;
+    }, [gameData.offseasonPhase, gameData.lotteryResult, gameData.prospects, gameData.seasonConfig, gameData.currentSimDate]);
 
     // 인증 및 라우팅 상태 감시
     useEffect(() => {
@@ -217,9 +229,8 @@ const App: React.FC = () => {
                     isGuestMode,
                     unreadMessagesCount: unreadCount,
                     userEmail: session?.user?.email,
+                    pendingOffseasonAction,
                     hasProspects: (gameData.prospects?.length ?? 0) > 0,
-                    offseasonPhase: gameData.offseasonPhase,
-                    hasLotteryResult: !!gameData.lotteryResult,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,

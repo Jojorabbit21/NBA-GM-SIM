@@ -12,3 +12,6 @@ export type OffseasonPhase =
     | 'POST_DRAFT'      // 드래프트 완료 → FA 대기
     | 'FA_OPEN'         // FA 시장 개방
     | 'PRE_SEASON';     // 트레이닝 캠프 이후 → 개막 대기
+
+/** 사이드바/헤더에서 대기 중인 오프시즌 액션 (null = 차단 없음) */
+export type PendingOffseasonAction = 'lottery' | 'draft' | null;

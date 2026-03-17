@@ -8,7 +8,7 @@ import {
   Sparkles, Dices,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
-import { OffseasonPhase } from '../types/app';
+import { PendingOffseasonAction } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
 import { Dropdown } from './common/Dropdown';
@@ -24,9 +24,8 @@ interface SidebarProps {
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
   isPostseasonOver: boolean;
+  pendingOffseasonAction: PendingOffseasonAction;
   hasProspects: boolean;
-  offseasonPhase: OffseasonPhase;
-  hasLotteryResult: boolean;
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -92,9 +91,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   unreadMessagesCount,
   isRegularSeasonOver,
   isPostseasonOver,
+  pendingOffseasonAction,
   hasProspects,
-  offseasonPhase,
-  hasLotteryResult,
   userEmail,
   isCollapsed,
   onToggleCollapse,
@@ -243,19 +241,32 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
-        {/* 오프시즌 이벤트 버튼 — 최상단 */}
-        {offseasonPhase === 'POST_LOTTERY' && hasLotteryResult && !hasProspects && (
-          <>
-            <NavItem active={currentView === 'DraftLottery'} icon={<Dices size={20}/>} label="로터리 추첨 결과" onClick={() => onNavigate('DraftLottery')} {...navProps} />
-            <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />
-          </>
-        )}
-        {offseasonPhase === 'POST_LOTTERY' && hasProspects && (
-          <>
-            <NavItem active={currentView === 'DraftRoom'} icon={<Sparkles size={20}/>} label="신인 드래프트" onClick={() => onNavigate('DraftRoom')} {...navProps} />
-            <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />
-          </>
-        )}
+        {/* 오프시즌 이벤트 프라이머리 버튼 — 최상단 */}
+        {pendingOffseasonAction && (() => {
+          const cfg = pendingOffseasonAction === 'lottery'
+            ? { view: 'DraftLottery' as AppView, icon: <Dices size={18} />, label: '로터리 추첨 결과' }
+            : { view: 'DraftRoom' as AppView, icon: <Sparkles size={18} />, label: '신인 드래프트' };
+          return (
+            <>
+              <button
+                onClick={() => onNavigate(cfg.view)}
+                title={isCollapsed ? cfg.label : undefined}
+                className={`w-full flex items-center justify-center gap-2.5 font-bold text-white rounded-2xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.97] select-none ${
+                  isCollapsed ? 'p-3' : 'px-5 py-3.5'
+                }`}
+                style={{
+                  backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 45%, transparent 50%, rgba(0,0,0,0.1) 100%)',
+                  backgroundColor: '#059669',
+                  boxShadow: '0 4px 20px rgba(5,150,105,0.4), 0 0 40px rgba(5,150,105,0.15), inset 0 1px 0 rgba(255,255,255,0.25)',
+                }}
+              >
+                {cfg.icon}
+                {!isCollapsed && <span className="text-sm tracking-tight ko-tight">{cfg.label}</span>}
+              </button>
+              <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-2`} />
+            </>
+          );
+        })()}
         <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
         <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />
