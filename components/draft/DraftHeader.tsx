@@ -19,6 +19,7 @@ interface DraftHeaderProps {
     showAdvance: boolean;
     nextPickNumber?: number;
     nextPickTeamId?: string;
+    announcement?: { pickNumber: number; teamId: string; playerName: string; position: string } | null;
     onBack?: () => void;
 }
 
@@ -35,6 +36,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     showAdvance,
     nextPickNumber,
     nextPickTeamId,
+    announcement,
     onBack,
 }) => {
     const currentTeamData = TEAM_DATA[currentTeamId];
@@ -65,12 +67,12 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     const nextTeamData = nextPickTeamId ? TEAM_DATA[nextPickTeamId] : null;
 
     return (
-        <div className="shrink-0 relative overflow-hidden" style={{ backgroundColor: currentTeamColor }}>
+        <div className="shrink-0 relative" style={{ backgroundColor: currentTeamColor }}>
             {/* Dark overlay for text readability */}
             <div className="absolute inset-0 bg-black/40" />
 
             {/* Background team logo watermark */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 overflow-hidden flex items-center justify-center pointer-events-none">
                 <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
                     <TeamLogo teamId={currentTeamId} size="3xl" />
                 </div>
@@ -93,14 +95,27 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     </span>
                 </div>
 
-                {/* Center: Timer + Round/Pick */}
-                <div className="text-center min-w-[120px]">
-                    <div className="pretendard font-black text-xl tracking-wider text-white leading-none">
-                        {timerStr}
-                    </div>
-                    <div className="text-xs text-white/60 font-bold mt-0.5">
-                        {currentRound}라운드 #{currentPickInRound}픽
-                    </div>
+                {/* Center: Announcement or Timer + Round/Pick */}
+                <div className="text-center min-w-[160px]">
+                    {announcement ? (
+                        <>
+                            <div className="pretendard font-black text-lg text-white leading-none tracking-wide">
+                                {announcement.playerName}
+                            </div>
+                            <div className="text-[11px] text-white/50 font-bold mt-0.5">
+                                #{announcement.pickNumber}픽 · {TEAM_DATA[announcement.teamId]?.name || announcement.teamId.toUpperCase()} · {announcement.position}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="pretendard font-black text-xl tracking-wider text-white leading-none">
+                                {timerStr}
+                            </div>
+                            <div className="text-xs text-white/60 font-bold mt-0.5">
+                                {currentRound}라운드 #{currentPickInRound}픽
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Right: Current team + user turn info + advance control */}
@@ -130,11 +145,11 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                     {/* Split Dropdown Button — visible when !isUserTurn */}
                     {showAdvance && nextPickTeamId && (
-                        <div ref={dropdownRef} className="relative flex items-center">
+                        <div ref={dropdownRef} className="relative flex items-stretch">
                             {/* Primary action: advance one pick */}
                             <button
                                 onClick={onAdvanceOnePick}
-                                className="shrink-0 px-3 py-1.5 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
+                                className="px-3 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
                             >
                                 <Play size={10} fill="currentColor" />
                                 다음 픽(#{nextPickNumber}, {nextTeamData?.abbr || nextPickTeamId?.toUpperCase()}) 진행하기
@@ -143,7 +158,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             {/* Chevron trigger: opens dropdown */}
                             <button
                                 onClick={() => setDropdownOpen(v => !v)}
-                                className="shrink-0 px-2 py-1.5 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10"
+                                className="px-2 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10 border-l-white/5"
                             >
                                 <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                             </button>

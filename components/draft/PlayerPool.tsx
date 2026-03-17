@@ -11,11 +11,12 @@ interface PlayerPoolProps {
     isUserTurn: boolean;
     onDraft: (player: Player) => void;
     positionColors: Record<string, string>;
+    showPotential?: boolean;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
 
-type SortKey = 'ovr' | 'age' | 'ins' | 'out' | 'ath' | 'plm' | 'def' | 'reb';
+type SortKey = 'ovr' | 'pot' | 'age' | 'ins' | 'out' | 'ath' | 'plm' | 'def' | 'reb';
 
 const getStatColor = (val: number): string => {
     if (val >= 90) return 'text-fuchsia-400';
@@ -31,6 +32,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
     isUserTurn,
     onDraft,
     positionColors,
+    showPotential = false,
 }) => {
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
@@ -47,8 +49,8 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             result = result.filter(p => p.name.toLowerCase().includes(q));
         }
         result = [...result].sort((a, b) => {
-            const av = sortKey === 'ovr' ? calculatePlayerOvr(a) : (a as any)[sortKey] ?? 0;
-            const bv = sortKey === 'ovr' ? calculatePlayerOvr(b) : (b as any)[sortKey] ?? 0;
+            const av = sortKey === 'ovr' ? calculatePlayerOvr(a) : sortKey === 'pot' ? a.potential : (a as any)[sortKey] ?? 0;
+            const bv = sortKey === 'ovr' ? calculatePlayerOvr(b) : sortKey === 'pot' ? b.potential : (b as any)[sortKey] ?? 0;
             return sortAsc ? av - bv : bv - av;
         });
         return result;
@@ -142,9 +144,10 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                     <thead className="sticky top-0 z-10 bg-slate-800/15 backdrop-blur-sm">
                         <tr className="text-xs font-black uppercase text-slate-500">
                             <th className="w-6 px-1 py-1.5"></th>
-                            <SortHeader label="OVR" field="ovr" className="px-2 text-left w-12" />
-                            <th className="px-1 py-1.5 text-center w-8">POS</th>
                             <th className="px-2 py-1.5 text-left">NAME</th>
+                            <th className="px-1 py-1.5 text-center w-8">POS</th>
+                            <SortHeader label="OVR" field="ovr" className="w-12" />
+                            {showPotential && <SortHeader label="POT" field="pot" className="w-12" />}
                             <SortHeader label="AGE" field="age" className="w-8" />
                             <th className="px-1 py-1.5 text-center w-10 text-slate-500">HT</th>
                             <th className="px-1 py-1.5 text-center w-10 text-slate-500">WT</th>
@@ -180,13 +183,18 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                             className="w-3.5 h-3.5 cursor-pointer align-middle appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
                                         />
                                     </td>
-                                    <td className="px-2 py-0.5">
-                                        <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
-                                    </td>
+                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
                                     <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>
-                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
+                                    <td className="px-2 py-0.5">
+                                        <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                    </td>
+                                    {showPotential && (
+                                        <td className="px-2 py-0.5">
+                                            <OvrBadge value={player.potential} size="sm" />
+                                        </td>
+                                    )}
                                     <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.height}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.weight}</td>

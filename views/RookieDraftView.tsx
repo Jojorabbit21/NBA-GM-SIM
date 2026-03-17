@@ -53,6 +53,18 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
     // ── Timer State ──
     const [timeRemaining, setTimeRemaining] = useState(PICK_TIME_LIMIT);
 
+    // ── Announcement State (커미셔너 콜) ──
+    const [announcement, setAnnouncement] = useState<{
+        pickNumber: number; teamId: string; playerName: string; position: string;
+    } | null>(null);
+
+    // Auto-clear announcement after 3 seconds
+    useEffect(() => {
+        if (!announcement) return;
+        const timer = setTimeout(() => setAnnouncement(null), 3000);
+        return () => clearTimeout(timer);
+    }, [announcement]);
+
     // Available players (not yet picked)
     const pickedIds = useMemo(() => new Set(picks.map(p => p.playerId)), [picks]);
     const availablePlayers = useMemo(() => allPlayers.filter(p => !pickedIds.has(p.id)), [allPlayers, pickedIds]);
@@ -93,8 +105,9 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         return () => window.removeEventListener('beforeunload', handler);
     }, [isDraftComplete]);
 
-    // ── Timer: countdown, resets on each new pick ──
+    // ── Timer: countdown on every turn ──
     useEffect(() => {
+        if (isDraftComplete) return;
         setTimeRemaining(PICK_TIME_LIMIT);
         const interval = setInterval(() => {
             setTimeRemaining(prev => {
@@ -103,16 +116,24 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             });
         }, 1000);
         return () => clearInterval(interval);
-    }, [currentPickIndex]);
+    }, [currentPickIndex, isDraftComplete]);
 
-    // ── User auto-pick on timeout ──
+    // ── Auto-pick on timeout (user: BPA, CPU: BPA) ──
     useEffect(() => {
-        if (timeRemaining !== 0 || !isUserTurn) return;
-        if (availablePlayers.length > 0) {
+        if (timeRemaining !== 0 || isDraftComplete) return;
+        if (availablePlayers.length === 0) return;
+        if (isUserTurn) {
             handleDraft(availablePlayers[0]);
+        } else {
+            // CPU auto-pick at timer expiry
+            const teamId = draftOrder[currentPickIndex];
+            const player = availablePlayers[0];
+            setPicks(prev => [...prev, makePick(currentPickIndex, teamId, player)]);
+            setCurrentPickIndex(prev => prev + 1);
+            setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [timeRemaining, isUserTurn]);
+    }, [timeRemaining, isDraftComplete]);
 
     // ── BoardPick helper ──
     const makePick = useCallback((idx: number, teamId: string, player: Player): BoardPick => ({
@@ -131,6 +152,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         setPicks(prev => [...prev, makePick(currentPickIndex, myTeamId, player)]);
         setCurrentPickIndex(prev => prev + 1);
         setSelectedPlayerId(null);
+        setAnnouncement({ pickNumber: currentPickIndex + 1, teamId: myTeamId, playerName: player.name, position: player.position });
     }, [isUserTurn, currentPickIndex, myTeamId, makePick]);
 
     // ── Batch-simulate picks until stopCondition returns true ──
@@ -161,8 +183,10 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         if (isUserTurn || currentPickIndex >= draftOrder.length) return;
         if (availablePlayers.length === 0) return;
         const teamId = draftOrder[currentPickIndex];
-        setPicks(prev => [...prev, makePick(currentPickIndex, teamId, availablePlayers[0])]);
+        const player = availablePlayers[0];
+        setPicks(prev => [...prev, makePick(currentPickIndex, teamId, player)]);
         setCurrentPickIndex(prev => prev + 1);
+        setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
     }, [isUserTurn, currentPickIndex, draftOrder, availablePlayers, makePick]);
 
     const showAdvance = !isUserTurn && !isDraftComplete;
@@ -183,6 +207,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
                 showAdvance={showAdvance}
                 nextPickNumber={currentPickIndex + 1}
                 nextPickTeamId={draftOrder[currentPickIndex]}
+                announcement={announcement}
             />
 
             {/* Draft Board — 2라운드이므로 shrink-0 고정 높이 (드래그 디바이더 불필요) */}
@@ -215,6 +240,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
                         isUserTurn={isUserTurn}
                         onDraft={handleDraft}
                         positionColors={POSITION_COLORS}
+                        showPotential
                     />
                 </div>
 
