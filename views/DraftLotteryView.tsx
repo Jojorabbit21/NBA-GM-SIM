@@ -292,26 +292,19 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 />
                 <div className="flex-1 min-w-0">
                     {isRevealed ? (
-                        <div>
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-white truncate">
-                                    {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-white truncate">
+                                {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
+                            </span>
+                            {lotteryEntry && isLotteryPick && (
+                                <span className="text-[10px] text-white/50 shrink-0">
+                                    {lotteryEntry.wins}-{lotteryEntry.losses}
                                 </span>
-                                {lotteryEntry && isLotteryPick && (
-                                    <span className="text-[10px] text-white/50 shrink-0">
-                                        {lotteryEntry.wins}-{lotteryEntry.losses}
-                                    </span>
-                                )}
-                            </div>
+                            )}
                             {hasOwnershipChange && (
-                                <div className="flex items-center gap-1 mt-0.5">
-                                    <span className="text-[9px] text-amber-300 font-bold">
-                                        → {ownerTeamInfo ? ownerTeamInfo.name : resolvedPick!.currentTeamId.toUpperCase()}
-                                    </span>
-                                    {resolvedPick?.note && (
-                                        <span className="text-[9px] text-white/40">{resolvedPick.note}</span>
-                                    )}
-                                </div>
+                                <span className="text-[9px] text-amber-300 font-bold shrink-0" title={resolvedPick?.note}>
+                                    → {ownerTeamInfo ? ownerTeamInfo.name : resolvedPick!.currentTeamId.toUpperCase()}
+                                </span>
                             )}
                         </div>
                     ) : (
