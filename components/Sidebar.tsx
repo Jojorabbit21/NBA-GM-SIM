@@ -263,7 +263,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 {cfg.icon}
                 {!isCollapsed && <span className="text-sm tracking-tight ko-tight">{cfg.label}</span>}
               </button>
-              <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-2`} />
             </>
           );
         })()}
