@@ -34,6 +34,8 @@ import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
 import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
+import { TEAM_DATA } from '../data/teamData';
+import type { DraftResultContent, DraftResultEntry } from '../types/message';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.startDate;
 
@@ -968,14 +970,47 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         setProspects([]);
         setOffseasonPhase('POST_DRAFT');
 
-        // 5. 저장
+        // 5. 드래프트 결과 메세지 발송
+        const userId = session?.user?.id;
+        if (userId && myTeamId) {
+            const draftYear = new Date().getFullYear();
+            const myPickCount = picks.filter(p => p.teamId === myTeamId).length;
+            const entries: DraftResultEntry[] = picks.map(pick => {
+                const player = prospectMap.get(pick.playerId);
+                return {
+                    pickNumber: pick.pickNumber ?? 0,
+                    teamId: pick.teamId,
+                    teamName: TEAM_DATA[pick.teamId]?.name || pick.teamId.toUpperCase(),
+                    playerId: pick.playerId,
+                    playerName: pick.playerName,
+                    position: pick.position,
+                    age: player?.age ?? 0,
+                    height: player?.height ?? 0,
+                    weight: player?.weight ?? 0,
+                    ovr: player?.ovr ?? 0,
+                    potential: player?.potential ?? 0,
+                    ins: player?.ins ?? 0,
+                    out: player?.out ?? 0,
+                    plm: player?.plm ?? 0,
+                    def: player?.def ?? 0,
+                    reb: player?.reb ?? 0,
+                    ath: player?.ath ?? 0,
+                    salary: player?.salary ?? 0,
+                    isUserPick: pick.teamId === myTeamId,
+                };
+            });
+            const draftContent: DraftResultContent = { draftYear, myTeamId, myPickCount, entries };
+            sendMessage(userId, myTeamId, gameStateRef.current.currentSimDate, 'DRAFT_RESULT', `[서신] ${draftYear} 신인 드래프트 결과 보고`, draftContent);
+        }
+
+        // 6. 저장
         await forceSave({
             teams: newTeams,
             withSnapshot: true,
         });
 
         console.log(`🎓 Rookie draft complete: ${picks.length} picks, ${undrafted.length} undrafted → FA`);
-    }, [teams, prospects, leagueFAPool, forceSave]);
+    }, [teams, prospects, leagueFAPool, forceSave, session, myTeamId]);
 
     // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
     const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

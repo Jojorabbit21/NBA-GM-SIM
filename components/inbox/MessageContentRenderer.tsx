@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -29,11 +29,12 @@ interface MessageContentRendererProps {
     userId: string;
     onNavigateToHof: () => void;
     onNavigateToDraft?: () => void;
+    onNavigateToDraftLottery?: () => void;
     seasonShort?: string;
     onTeamOptionDecide?: (playerId: string, exercised: boolean) => void;
 }
 
-export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, onNavigateToDraft, seasonShort = '2025-26', onTeamOptionDecide }) => {
+export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, onNavigateToDraft, onNavigateToDraftLottery, seasonShort = '2025-26', onTeamOptionDecide }) => {
 
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -996,6 +997,100 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                                     <span className="text-slate-600">-</span>
                                                 )}
                                             </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {onNavigateToDraftLottery && (
+                        <button
+                            onClick={onNavigateToDraftLottery}
+                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-2xl font-black uppercase tracking-widest text-sm transition-all active:scale-[0.98]"
+                        >
+                            드래프트 로터리 결과 보기
+                        </button>
+                    )}
+
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">Best regards,</p>
+                        <p className="text-white font-bold mt-1">부단장</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'DRAFT_RESULT': {
+            const dr = content as DraftResultContent;
+            const getDraftAttrColor = (val: number) => {
+                if (val >= 90) return 'text-fuchsia-400';
+                if (val >= 80) return 'text-emerald-400';
+                if (val >= 70) return 'text-amber-400';
+                return 'text-slate-500';
+            };
+            return (
+                <div className="space-y-6 text-slate-300 leading-relaxed">
+                    <p>
+                        단장님, <span className="text-white font-black">{dr.draftYear}</span>년 신인 드래프트가 완료되었습니다.
+                        우리 팀은 총 <span className="text-white font-black">{dr.myPickCount}명</span>의 신인을 지명했습니다.
+                    </p>
+
+                    <div>
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">전체 드래프트 결과</h4>
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="border-b border-slate-700/50">
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold w-8">픽</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">팀</th>
+                                    <th className="py-2 px-2 text-left text-slate-500 font-bold">선수</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">나이</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">키</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">OVR</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">POT</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">INS</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">OUT</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">PLM</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">DEF</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">REB</th>
+                                    <th className="py-2 px-2 text-center text-slate-500 font-bold">ATH</th>
+                                    <th className="py-2 px-2 text-right text-slate-500 font-bold">연봉</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dr.entries.map(e => {
+                                    const isMyPick = e.isUserPick;
+                                    return (
+                                        <tr key={e.pickNumber} className={`border-b border-slate-800/50 ${isMyPick ? 'bg-emerald-500/10' : ''}`}>
+                                            <td className={`py-2 px-2 font-black ${isMyPick ? 'text-emerald-400' : 'text-slate-500'}`}>{e.pickNumber}</td>
+                                            <td className="py-2 px-2">
+                                                <div className="flex items-center gap-2">
+                                                    <TeamLogo teamId={e.teamId} size="custom" className="w-5 h-5 shrink-0" />
+                                                    <span className={`font-bold ${isMyPick ? 'text-emerald-300' : 'text-white'}`}>{e.teamName}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-2 px-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-slate-500 font-bold">{e.position}</span>
+                                                    <button onClick={() => onPlayerClick(e.playerId)} className={`font-bold hover:underline ${isMyPick ? 'text-emerald-300' : 'text-slate-200'}`}>
+                                                        {e.playerName}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td className="py-2 px-2 text-center text-slate-400">{e.age}</td>
+                                            <td className="py-2 px-2 text-center text-slate-400">{e.height}cm</td>
+                                            <td className="py-2 px-2 text-center">
+                                                <OvrBadge value={e.ovr} size="sm" />
+                                            </td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.potential)}`}>{e.potential}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.ins)}`}>{e.ins}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.out)}`}>{e.out}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.plm)}`}>{e.plm}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.def)}`}>{e.def}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.reb)}`}>{e.reb}</td>
+                                            <td className={`py-2 px-2 text-center font-bold tabular-nums ${getDraftAttrColor(e.ath)}`}>{e.ath}</td>
+                                            <td className="py-2 px-2 text-right text-slate-400">{formatMoney(e.salary)}</td>
                                         </tr>
                                     );
                                 })}

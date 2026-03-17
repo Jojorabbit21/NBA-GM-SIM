@@ -979,7 +979,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
                                 </div>
                             ) : (
-                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-auto" fullHeight={false}>
                                         <TableHead>
                                             {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
                                                 <TableHeaderCell

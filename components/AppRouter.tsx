@@ -384,6 +384,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         previousViewRef.current = 'Inbox';
                         setView('DraftBoard');
                     }}
+                    onNavigateToDraftLottery={() => {
+                        previousViewRef.current = 'Inbox';
+                        setView('DraftLottery');
+                    }}
                     onTeamOptionExecuted={(playerId, exercised) => {
                         const newTeams = gameData.teams.map(t => {
                             if (t.id !== gameData.myTeamId) return t;
@@ -457,8 +461,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
                                     });
                                     const lotteryContent: LotteryResultContent = { myTeamPick: myPick, entries };
                                     const lotteryMsgTitle = gameData.seasonConfig?.seasonLabel
-                                        ? `${gameData.seasonConfig.seasonLabel} 드래프트 로터리 추첨 결과`
-                                        : '드래프트 로터리 추첨 결과';
+                                        ? `[리그 소식] ${gameData.seasonConfig.seasonLabel} 드래프트 로터리 추첨 결과`
+                                        : '[리그 소식] 드래프트 로터리 추첨 결과';
                                     sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate, 'LOTTERY_RESULT', lotteryMsgTitle, lotteryContent)
                                         .then(() => refreshUnreadCount())
                                         .catch(e => console.warn('⚠️ Lottery result message failed:', e));
