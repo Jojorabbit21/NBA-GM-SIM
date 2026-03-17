@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { FastForward, ArrowLeft } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play } from 'lucide-react';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 
@@ -13,8 +13,12 @@ interface DraftHeaderProps {
     isUserTurn: boolean;
     picksUntilUser: number;
     timeRemaining: number;
+    onAdvanceOnePick?: () => void;
     onSkipToMyTurn?: () => void;
-    showSkip: boolean;
+    onAutoCompleteAll?: () => void;
+    showAdvance: boolean;
+    nextPickNumber?: number;
+    nextPickTeamId?: string;
     onBack?: () => void;
 }
 
@@ -25,14 +29,40 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     isUserTurn,
     picksUntilUser,
     timeRemaining,
+    onAdvanceOnePick,
     onSkipToMyTurn,
-    showSkip,
+    onAutoCompleteAll,
+    showAdvance,
+    nextPickNumber,
+    nextPickTeamId,
     onBack,
 }) => {
     const currentTeamData = TEAM_DATA[currentTeamId];
     const currentTeamColor = currentTeamData?.colors.primary || '#6366f1';
     const timerStr = `00:${String(Math.max(0, timeRemaining)).padStart(2, '0')}`;
     const timerPct = (Math.max(0, timeRemaining) / PICK_TIME_LIMIT) * 100;
+
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        if (!dropdownOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [dropdownOpen]);
+
+    // Close dropdown when user turn arrives
+    useEffect(() => {
+        if (isUserTurn) setDropdownOpen(false);
+    }, [isUserTurn]);
+
+    const nextTeamData = nextPickTeamId ? TEAM_DATA[nextPickTeamId] : null;
 
     return (
         <div className="shrink-0 relative overflow-hidden" style={{ backgroundColor: currentTeamColor }}>
@@ -73,7 +103,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     </div>
                 </div>
 
-                {/* Right: Current team + user turn info */}
+                {/* Right: Current team + user turn info + advance control */}
                 <div className="flex items-center justify-end gap-3">
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
@@ -87,27 +117,60 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     {/* Separator */}
                     <div className="w-px h-5 bg-white/20" />
 
-                    {/* User turn info or skip */}
+                    {/* User turn info */}
                     {isUserTurn ? (
                         <span className="text-xs font-bold text-emerald-300 animate-pulse">
                             내 차례입니다!
                         </span>
                     ) : picksUntilUser > 0 ? (
-                        <>
-                            <span className="text-xs text-white/70">
-                                <span className="font-bold text-white">{picksUntilUser}</span>픽 후 내 차례입니다
-                            </span>
-                            {showSkip && (
-                                <button
-                                    onClick={onSkipToMyTurn}
-                                    className="shrink-0 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10"
-                                >
-                                    <FastForward size={12} />
-                                    내 차례까지 건너뛰기
-                                </button>
-                            )}
-                        </>
+                        <span className="text-xs text-white/70">
+                            <span className="font-bold text-white">{picksUntilUser}</span>픽 후 내 차례입니다
+                        </span>
                     ) : null}
+
+                    {/* Split Dropdown Button — visible when !isUserTurn */}
+                    {showAdvance && nextPickTeamId && (
+                        <div ref={dropdownRef} className="relative flex items-center">
+                            {/* Primary action: advance one pick */}
+                            <button
+                                onClick={onAdvanceOnePick}
+                                className="shrink-0 px-3 py-1.5 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
+                            >
+                                <Play size={10} fill="currentColor" />
+                                다음 픽(#{nextPickNumber}, {nextTeamData?.abbr || nextPickTeamId?.toUpperCase()}) 진행하기
+                            </button>
+
+                            {/* Chevron trigger: opens dropdown */}
+                            <button
+                                onClick={() => setDropdownOpen(v => !v)}
+                                className="shrink-0 px-2 py-1.5 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10"
+                            >
+                                <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Dropdown panel */}
+                            {dropdownOpen && (
+                                <div className="absolute top-full right-0 mt-1 w-56 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50">
+                                    <div className="p-1">
+                                        <button
+                                            onClick={() => { onSkipToMyTurn?.(); setDropdownOpen(false); }}
+                                            className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all flex items-center gap-2"
+                                        >
+                                            <FastForward size={12} />
+                                            내 차례까지 자동 드래프트
+                                        </button>
+                                        <button
+                                            onClick={() => { onAutoCompleteAll?.(); setDropdownOpen(false); }}
+                                            className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all flex items-center gap-2"
+                                        >
+                                            <ChevronsRight size={12} />
+                                            전체 드래프트 자동 진행
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

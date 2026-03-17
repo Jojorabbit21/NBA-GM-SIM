@@ -237,7 +237,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 picksUntilUser={picksUntilUser}
                 timeRemaining={timeRemaining}
                 onSkipToMyTurn={handleSkipToMyTurn}
-                showSkip={showSkip}
+                showAdvance={showSkip}
                 onBack={onComplete ? undefined : onBack}
             />
 

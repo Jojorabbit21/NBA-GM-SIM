@@ -79,7 +79,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
 
                     return (
                         <div
-                            key={`${pick.teamId}-${pick.round}`}
+                            key={pick.pickNumber ?? idx}
                             className={`px-2.5 py-2 border-b border-slate-700/50 flex items-center gap-0 transition-colors ${
                                 isLatest ? 'bg-indigo-500/5' : isUserPick ? 'bg-amber-500/[0.04]' : ''
                             }`}

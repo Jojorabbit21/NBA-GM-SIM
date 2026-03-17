@@ -14,7 +14,6 @@ import type { ResolvedDraftOrder } from '../types/draftAssets';
 import { generateSnakeDraftOrder } from '../utils/draftUtils';
 
 const TOTAL_ROUNDS = 2;
-const CPU_PICK_DELAY = 600;
 
 interface RookieDraftViewProps {
     teams: Team[];
@@ -106,34 +105,6 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         return () => clearInterval(interval);
     }, [currentPickIndex]);
 
-    // ── CPU auto-pick: one pick at a time after short delay ──
-    useEffect(() => {
-        if (isUserTurn || currentPickIndex >= draftOrder.length) return;
-
-        const timer = setTimeout(() => {
-            setPicks(prevPicks => {
-                const used = new Set(prevPicks.map(p => p.playerId));
-                const pool = allPlayers.filter(p => !used.has(p.id));
-                if (pool.length === 0) return prevPicks;
-
-                const teamId = draftOrder[currentPickIndex];
-                const player = pool[0]; // BPA
-                return [...prevPicks, {
-                    pickNumber: currentPickIndex + 1,
-                    round: Math.floor(currentPickIndex / teamOrder.length) + 1,
-                    teamId,
-                    playerId: player.id,
-                    playerName: player.name,
-                    ovr: calculatePlayerOvr(player),
-                    position: player.position,
-                }];
-            });
-            setCurrentPickIndex(prev => prev + 1);
-        }, CPU_PICK_DELAY);
-
-        return () => clearTimeout(timer);
-    }, [currentPickIndex, isUserTurn, draftOrder, allPlayers, teamOrder.length]);
-
     // ── User auto-pick on timeout ──
     useEffect(() => {
         if (timeRemaining !== 0 || !isUserTurn) return;
@@ -143,45 +114,36 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [timeRemaining, isUserTurn]);
 
+    // ── BoardPick helper ──
+    const makePick = useCallback((idx: number, teamId: string, player: Player): BoardPick => ({
+        pickNumber: idx + 1,
+        round: Math.floor(idx / teamOrder.length) + 1,
+        teamId,
+        playerId: player.id,
+        playerName: player.name,
+        ovr: calculatePlayerOvr(player),
+        position: player.position,
+    }), [teamOrder.length]);
+
     // ── Draft action (user pick) ──
     const handleDraft = useCallback((player: Player) => {
         if (!isUserTurn) return;
-        const newPick: BoardPick = {
-            pickNumber: currentPickIndex + 1,
-            round: currentRound,
-            teamId: myTeamId,
-            playerId: player.id,
-            playerName: player.name,
-            ovr: calculatePlayerOvr(player),
-            position: player.position,
-        };
-        setPicks(prev => [...prev, newPick]);
+        setPicks(prev => [...prev, makePick(currentPickIndex, myTeamId, player)]);
         setCurrentPickIndex(prev => prev + 1);
         setSelectedPlayerId(null);
-    }, [isUserTurn, currentRound, myTeamId]);
+    }, [isUserTurn, currentPickIndex, myTeamId, makePick]);
 
-    // ── Skip to my turn: all CPU picks at once ──
-    const handleSkipToMyTurn = useCallback(() => {
+    // ── Batch-simulate picks until stopCondition returns true ──
+    const simulatePicks = useCallback((stopCondition?: (teamId: string) => boolean) => {
         const newPicks: BoardPick[] = [];
-        const used = new Set(picks.map(p => p.playerId));
         let idx = currentPickIndex;
-        const pool = allPlayers.filter(p => !used.has(p.id));
+        const pool = [...availablePlayers];
         let poolIdx = 0;
 
         while (idx < draftOrder.length && poolIdx < pool.length) {
             const tid = draftOrder[idx];
-            if (tid === myTeamId) break;
-            const player = pool[poolIdx++];
-            used.add(player.id);
-            newPicks.push({
-                pickNumber: idx + 1,
-                round: Math.floor(idx / teamOrder.length) + 1,
-                teamId: tid,
-                playerId: player.id,
-                playerName: player.name,
-                ovr: calculatePlayerOvr(player),
-                position: player.position,
-            });
+            if (stopCondition?.(tid)) break;
+            newPicks.push(makePick(idx, tid, pool[poolIdx++]));
             idx++;
         }
 
@@ -189,9 +151,21 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             setPicks(prev => [...prev, ...newPicks]);
             setCurrentPickIndex(idx);
         }
-    }, [picks, currentPickIndex, draftOrder, myTeamId, allPlayers, teamOrder.length]);
+    }, [currentPickIndex, availablePlayers, draftOrder, makePick]);
 
-    const showSkip = !isUserTurn && currentPickIndex < draftOrder.length;
+    const handleSkipToMyTurn = useCallback(() => simulatePicks(tid => tid === myTeamId), [simulatePicks, myTeamId]);
+    const handleAutoCompleteAll = useCallback(() => simulatePicks(), [simulatePicks]);
+
+    // ── Advance one CPU pick ──
+    const handleAdvanceOnePick = useCallback(() => {
+        if (isUserTurn || currentPickIndex >= draftOrder.length) return;
+        if (availablePlayers.length === 0) return;
+        const teamId = draftOrder[currentPickIndex];
+        setPicks(prev => [...prev, makePick(currentPickIndex, teamId, availablePlayers[0])]);
+        setCurrentPickIndex(prev => prev + 1);
+    }, [isUserTurn, currentPickIndex, draftOrder, availablePlayers, makePick]);
+
+    const showAdvance = !isUserTurn && !isDraftComplete;
 
     return (
         <div className="pretendard flex flex-col h-full bg-slate-950 relative">
@@ -203,8 +177,12 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
                 isUserTurn={isUserTurn}
                 picksUntilUser={picksUntilUser}
                 timeRemaining={timeRemaining}
+                onAdvanceOnePick={handleAdvanceOnePick}
                 onSkipToMyTurn={handleSkipToMyTurn}
-                showSkip={showSkip}
+                onAutoCompleteAll={handleAutoCompleteAll}
+                showAdvance={showAdvance}
+                nextPickNumber={currentPickIndex + 1}
+                nextPickTeamId={draftOrder[currentPickIndex]}
             />
 
             {/* Draft Board — 2라운드이므로 shrink-0 고정 높이 (드래그 디바이더 불필요) */}

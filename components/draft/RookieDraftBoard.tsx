@@ -121,19 +121,18 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                             >
                                                 <div className="flex flex-col items-center gap-0.5">
                                                     <span className="text-[9px] text-slate-600">#{rp.pickNumber}</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <TeamLogo teamId={rp.originalTeamId} size="custom" className="w-4 h-4" />
-                                                        <span className={isTraded ? 'text-slate-500 line-through' : ''}>
-                                                            {rp.originalTeamId.toUpperCase()}
-                                                        </span>
-                                                    </div>
-                                                    {isTraded && (
-                                                        <div className="flex items-center gap-1">
+                                                    {isTraded ? (
+                                                        <div className="flex items-center gap-0.5">
+                                                            <TeamLogo teamId={rp.originalTeamId} size="custom" className="w-3.5 h-3.5" />
+                                                            <span className="text-[9px] text-slate-500 line-through">{rp.originalTeamId.toUpperCase()}</span>
                                                             <span className="text-[9px] text-slate-600">→</span>
                                                             <TeamLogo teamId={rp.currentTeamId} size="custom" className="w-3.5 h-3.5" />
-                                                            <span className="text-amber-400 font-black">
-                                                                {rp.currentTeamId.toUpperCase()}
-                                                            </span>
+                                                            <span className="text-[9px] text-amber-400 font-black">{rp.currentTeamId.toUpperCase()}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1">
+                                                            <TeamLogo teamId={rp.originalTeamId} size="custom" className="w-4 h-4" />
+                                                            <span>{rp.originalTeamId.toUpperCase()}</span>
                                                         </div>
                                                     )}
                                                 </div>
