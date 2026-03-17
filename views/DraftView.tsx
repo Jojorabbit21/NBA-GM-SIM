@@ -8,6 +8,9 @@ import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableHead } fro
 import { TabBar } from '../components/common/TabBar';
 import { ATTR_GROUPS, ATTR_LABEL, ATTR_AVG_KEYS, ATTR_NAME_MAP } from '../data/attributeConfig';
 import { LotteryResult } from '../services/draft/lotteryEngine';
+import { ResolvedDraftOrder } from '../types/draftAssets';
+import { TEAM_DATA } from '../data/teamData';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 // ── 스카우팅 한줄 평가 생성 ──
 
@@ -88,6 +91,7 @@ interface LotteryResultsTableProps {
     lotteryResult: LotteryResult;
     teams: Team[];
     myTeamId?: string;
+    resolvedDraftOrder?: ResolvedDraftOrder | null;
 }
 
 /** 승률 기반 색상: 5할 미만=빨강(낮을수록 밝은), 5할 이상=초록(높을수록 밝은) */
@@ -100,7 +104,7 @@ const getWinPctColor = (winPct: number): string => {
     return 'text-red-300';
 };
 
-const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult, teams, myTeamId }) => {
+const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult, teams, myTeamId, resolvedDraftOrder }) => {
     // 리그 순위 계산 (승률 내림차순)
     const leagueRankMap = useMemo(() => {
         const sorted = [...teams].sort((a, b) => {
@@ -119,6 +123,13 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
         return map;
     }, [teams]);
 
+    const resolvedPickMap = useMemo(() => {
+        if (!resolvedDraftOrder?.picks) return null;
+        const map = new Map<number, typeof resolvedDraftOrder.picks[0]>();
+        for (const p of resolvedDraftOrder.picks) map.set(p.pickNumber, p);
+        return map;
+    }, [resolvedDraftOrder]);
+
     const rows = lotteryResult.finalOrder.map((teamId, idx) => {
         const team = teamMap.get(teamId);
         const pick = idx + 1;
@@ -129,7 +140,11 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
         const leagueRank = leagueRankMap.get(teamId) ?? 0;
         const winPct = team && (team.wins + team.losses) > 0 ? team.wins / (team.wins + team.losses) : 0;
 
-        return { teamId, team, pick, movement, lotteryEntry, isTop4, isMyTeam, leagueRank, winPct };
+        const resolvedPick = resolvedPickMap?.get(pick);
+        const currentOwner = resolvedPick && resolvedPick.currentTeamId !== teamId ? resolvedPick.currentTeamId : undefined;
+        const currentOwnerTd = currentOwner ? TEAM_DATA[currentOwner] : undefined;
+
+        return { teamId, team, pick, movement, lotteryEntry, isTop4, isMyTeam, leagueRank, winPct, currentOwner, currentOwnerName: currentOwnerTd ? `${currentOwnerTd.city} ${currentOwnerTd.name}` : currentOwner, pickNote: resolvedPick?.note };
     });
 
     return (
@@ -138,6 +153,8 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
                 <TableHead>
                     <TableHeaderCell width={70} align="center">지명순위</TableHeaderCell>
                     <TableHeaderCell align="left" className="pl-4">팀</TableHeaderCell>
+                    <TableHeaderCell width={140} align="left">권리행사</TableHeaderCell>
+                    <TableHeaderCell width={180} align="left">변동사항</TableHeaderCell>
                     <TableHeaderCell width={50} align="center">순위</TableHeaderCell>
                     <TableHeaderCell width={70} align="center">성적</TableHeaderCell>
                     <TableHeaderCell width={60} align="center">승률</TableHeaderCell>
@@ -163,6 +180,23 @@ const LotteryResultsTable: React.FC<LotteryResultsTableProps> = ({ lotteryResult
                                         </span>
                                         {r.isTop4 && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-xs font-black">LOTTERY</span>}
                                     </div>
+                                </TableCell>
+                                <TableCell align="left">
+                                    {r.currentOwner ? (
+                                        <div className="flex items-center gap-1.5">
+                                            <TeamLogo teamId={r.currentOwner} size="custom" className="w-4 h-4 shrink-0" />
+                                            <span className="font-bold text-amber-400">{r.currentOwnerName}</span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-slate-600">-</span>
+                                    )}
+                                </TableCell>
+                                <TableCell align="left">
+                                    {r.pickNote ? (
+                                        <span className="text-amber-300/80">{r.pickNote}</span>
+                                    ) : (
+                                        <span className="text-slate-600">-</span>
+                                    )}
                                 </TableCell>
                                 <TableCell align="center" className="font-black text-slate-400 tabular-nums">
                                     {r.leagueRank}
@@ -205,11 +239,12 @@ interface DraftViewProps {
     team: Team;
     readOnly?: boolean;
     lotteryResult?: LotteryResult | null;
+    resolvedDraftOrder?: ResolvedDraftOrder | null;
     teams?: Team[];
     myTeamId?: string;
 }
 
-export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, teams, myTeamId }) => {
+export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, resolvedDraftOrder, teams, myTeamId }) => {
     const [activeTab, setActiveTab] = useState<DraftTab>('board');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'pot', direction: 'desc' });
@@ -437,7 +472,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
             )}
 
             {activeTab === 'lottery' && hasLottery && (
-                <LotteryResultsTable lotteryResult={lotteryResult!} teams={teams!} myTeamId={myTeamId} />
+                <LotteryResultsTable lotteryResult={lotteryResult!} teams={teams!} myTeamId={myTeamId} resolvedDraftOrder={resolvedDraftOrder} />
             )}
         </div>
     );

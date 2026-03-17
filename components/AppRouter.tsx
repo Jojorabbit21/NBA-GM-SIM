@@ -436,6 +436,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         team={myTeam!}
                         readOnly
                         lotteryResult={gameData.lotteryResult}
+                        resolvedDraftOrder={gameData.resolvedDraftOrder || null}
                         teams={gameData.teams}
                         myTeamId={gameData.myTeamId || undefined}
                     />
