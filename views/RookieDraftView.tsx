@@ -27,7 +27,7 @@ interface RookieDraftViewProps {
 
 export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, resolvedDraftOrder: resolved, draftClass, onComplete }) => {
     const allPlayers = useMemo(() => {
-        return [...draftClass].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
+        return [...draftClass].sort((a, b) => b.potential - a.potential || calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     }, [draftClass]);
     // resolvedPicks: RookieDraftBoard에 전달할 슬롯 정보 (fallback 포함)
     const resolvedPicks = useMemo(() => {

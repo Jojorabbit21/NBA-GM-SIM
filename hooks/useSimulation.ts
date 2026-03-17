@@ -31,6 +31,29 @@ import { stampPlayoffAwards } from '../utils/awardStamper';
 import { TEAM_DATA } from '../data/teamData';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 
+/** 생성된 드래프트 클래스를 React 상태 + DB에 반영하는 공통 헬퍼 */
+function applyDraftClass(
+    dc: Parameters<typeof insertDraftClass>[0],
+    opts: {
+        setProspects?: (players: any[]) => void;
+        isGuestMode: boolean;
+        userId?: string;
+        currentSeasonNumber: number;
+    },
+) {
+    const players = opts.setProspects
+        ? dc.map(row => mapRawPlayerToRuntimePlayer(row))
+        : undefined;
+    if (players) opts.setProspects!(players);
+    if (!opts.isGuestMode && opts.userId) {
+        const seasonNum = dc[0]?.season_number ?? opts.currentSeasonNumber + 1;
+        deleteDraftClass(opts.userId, seasonNum)
+            .then(() => insertDraftClass(dc))
+            .catch(e => console.warn('⚠️ Draft class insert failed (non-critical):', e));
+    }
+    return players;
+}
+
 export const useSimulation = (
     teams: Team[],
     setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
@@ -632,16 +655,7 @@ export const useSimulation = (
                     });
                     if (prospectResult.fired && prospectResult.updates?.generatedDraftClass) {
                         const dc = prospectResult.updates.generatedDraftClass;
-                        // GeneratedPlayerRow[] → Player[] 변환
-                        const players = dc.map(row => mapRawPlayerToRuntimePlayer(row));
-                        setProspects?.(players);
-                        if (!isGuestMode && session?.user?.id) {
-                            // 기존 생성 선수 데이터 삭제 후 새 데이터 삽입 (중복 방지)
-                            const seasonNum = dc[0]?.season_number ?? currentSeasonNumber + 1;
-                            deleteDraftClass(session.user.id, seasonNum)
-                                .then(() => insertDraftClass(dc))
-                                .catch(e => console.warn('⚠️ Prospect class insert failed (non-critical):', e));
-                        }
+                        const players = applyDraftClass(dc, { setProspects, isGuestMode, userId: session?.user?.id, currentSeasonNumber })!;
 
                         // 인박스 메시지: 드래프트 풀 공개 알림
                         if (!isGuestMode && session?.user?.id && myTeamId) {
@@ -803,6 +817,10 @@ export const useSimulation = (
                                         .catch(e => console.warn('⚠️ Lottery result message failed:', e));
                                 }
                             }
+                            // rookieDraft blocking 이벤트: 생성된 드래프트 클래스를 React 상태 + DB에 반영
+                            if (u.generatedDraftClass && u.generatedDraftClass.length > 0) {
+                                applyDraftClass(u.generatedDraftClass, { setProspects, isGuestMode, userId: session?.user?.id, currentSeasonNumber });
+                            }
                             onOffseasonEvent?.(offseasonEvent.navigateTo);
                             return;
                         }
@@ -837,11 +855,8 @@ export const useSimulation = (
                         }
 
                         // 생성된 드래프트 클래스를 DB에 저장 (기존 데이터 삭제 후 삽입)
-                        if (u.generatedDraftClass && u.generatedDraftClass.length > 0 && !isGuestMode && session?.user?.id) {
-                            const seasonNum = u.generatedDraftClass[0]?.season_number ?? currentSeasonNumber + 1;
-                            deleteDraftClass(session.user.id, seasonNum)
-                                .then(() => insertDraftClass(u.generatedDraftClass!))
-                                .catch(e => console.warn('⚠️ Draft class insert failed (non-critical):', e));
+                        if (u.generatedDraftClass && u.generatedDraftClass.length > 0) {
+                            applyDraftClass(u.generatedDraftClass, { isGuestMode, userId: session?.user?.id, currentSeasonNumber });
                         }
 
                         // 비-blocking 이벤트: phase 업데이트만 저장
