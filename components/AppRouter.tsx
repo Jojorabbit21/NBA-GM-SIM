@@ -444,27 +444,25 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             return null;
         case 'DraftRoom':
-            // 오프시즌 루키 드래프트 (lotteryResult 존재 = 루키 드래프트 모드)
-            if (gameData.lotteryResult) {
-                if (gameData.prospects?.length > 0) {
-                    return (
-                        <div className="fixed inset-0 z-[9999] bg-slate-950">
-                            <RookieDraftView
-                                teams={gameData.teams}
-                                myTeamId={gameData.myTeamId!}
-                                draftOrder={gameData.lotteryResult.finalOrder}
-                                resolvedDraftOrder={gameData.resolvedDraftOrder || null}
-                                draftClass={gameData.prospects}
-                                onComplete={(picks) => {
-                                    gameData.handleRookieDraftComplete(picks);
-                                    setView('Dashboard');
-                                }}
-                            />
-                        </div>
-                    );
-                }
-                // prospects 미로드 → 대시보드로 복귀
-                return null;
+            // 오프시즌 루키 드래프트 (prospects 존재 = 루키 드래프트 모드)
+            if (gameData.prospects?.length > 0) {
+                // lotteryResult 없으면 팀 ID 배열을 기본 순서로 사용 (RookieDraftView가 snake order fallback 처리)
+                const draftTeamOrder = gameData.lotteryResult?.finalOrder || gameData.teams.map((t: Team) => t.id);
+                return (
+                    <div className="fixed inset-0 z-[9999] bg-slate-950">
+                        <RookieDraftView
+                            teams={gameData.teams}
+                            myTeamId={gameData.myTeamId!}
+                            draftOrder={draftTeamOrder}
+                            resolvedDraftOrder={gameData.resolvedDraftOrder || null}
+                            draftClass={gameData.prospects}
+                            onComplete={(picks) => {
+                                gameData.handleRookieDraftComplete(picks);
+                                setView('Dashboard');
+                            }}
+                        />
+                    </div>
+                );
             }
             // 판타지 드래프트 (게임 시작 시 커스텀 모드)
             return (

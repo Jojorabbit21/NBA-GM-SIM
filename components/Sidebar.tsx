@@ -250,7 +250,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />
           </>
         )}
-        {offseasonPhase === 'POST_LOTTERY' && hasProspects && hasLotteryResult && (
+        {offseasonPhase === 'POST_LOTTERY' && hasProspects && (
           <>
             <NavItem active={currentView === 'DraftRoom'} icon={<Sparkles size={20}/>} label="신인 드래프트" onClick={() => onNavigate('DraftRoom')} {...navProps} />
             <div className={`border-b border-white/10 ${isCollapsed ? 'mx-2' : 'mx-3'} my-1`} />

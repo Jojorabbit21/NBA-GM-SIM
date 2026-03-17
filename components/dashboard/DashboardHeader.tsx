@@ -47,6 +47,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const isOffseasonBlocked = offseasonPhase === 'POST_LOTTERY';
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
   const handleSkipToDate = useCallback((targetDate: string, label: string) => {
@@ -257,21 +258,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             {(
             <div className="self-stretch flex flex-col w-[220px] shrink-0 ml-auto"
                  style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                {offseasonPhase === 'POST_LOTTERY' ? (
-                    /* 오프시즌: 로터리/드래프트 완료 전 시뮬 차단 */
-                    <div className="flex-1 flex items-center justify-center px-4">
-                        <span className="text-xs text-amber-400/80 font-semibold text-center leading-relaxed ko-tight">
-                            사이드바에서 오프시즌<br/>이벤트를 완료해주세요
-                        </span>
-                    </div>
-                ) : isGameToday && onAutoSimClick ? (
+                {isGameToday && onAutoSimClick ? (
                     <>
                         {/* 경기 시작 — 60% */}
                         <button
                             onClick={onSimClick}
-                            disabled={isSimulating}
+                            disabled={isSimulating || isOffseasonBlocked}
                             {...primaryBtn('sim')}
-                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
+                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating && !isOffseasonBlocked ? 'animate-btn-breathe' : ''}`}
                         >
                             {simProgress ? (
                                 <><Loader2 size={18} className="animate-spin" /> {simProgress.label}</>
@@ -286,7 +280,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         {/* 자동 진행 — 40% */}
                         <button
                             onClick={onAutoSimClick}
-                            disabled={isSimulating}
+                            disabled={isSimulating || isOffseasonBlocked}
                             {...primaryBtn('auto')}
                             className="flex-[4] flex items-center justify-center gap-2 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                         >
@@ -298,7 +292,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     /* 내일로 이동 — full height */
                     <button
                         onClick={onSimClick}
-                        disabled={isSimulating}
+                        disabled={isSimulating || isOffseasonBlocked}
                         {...primaryBtn('sim')}
                         className="flex-1 flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                     >
