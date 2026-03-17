@@ -85,10 +85,52 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                             {/* 라운드별 독립 헤더 */}
                             <thead className={`${roundIdx === 0 ? 'sticky top-0' : ''} z-20 bg-slate-950`}>
                                 <tr>
-                                    {/* 라운드 라벨 (sticky left) */}
+                                    {/* 빈 라벨 셀 (sticky left) */}
                                     <th
-                                        className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-center font-bold text-slate-500 text-xs"
+                                        className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2"
                                         style={{ boxShadow: '1px 0 0 0 rgb(2,6,23), 0 1px 0 0 rgb(2,6,23)' }}
+                                    />
+
+                                    {/* 슬롯별 헤더 셀 — 최종 권리 팀 컬러 */}
+                                    {roundPicks.map(rp => {
+                                        const teamData = TEAM_DATA[rp.currentTeamId];
+                                        const teamColor = teamData?.colors.primary || '#6366f1';
+                                        const teamTextColor = teamData?.colors.text || '#FFFFFF';
+                                        const isUserSlot = rp.currentTeamId === userTeamId;
+                                        return (
+                                            <th
+                                                key={rp.pickNumber}
+                                                className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center font-bold uppercase rounded-t-lg"
+                                                style={{
+                                                    backgroundColor: teamColor,
+                                                    color: teamTextColor,
+                                                    boxShadow: isUserSlot
+                                                        ? `inset 0 0 0 2px rgba(245,158,11,0.7), 1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)`
+                                                        : '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
+                                                }}
+                                            >
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <span className="text-[10px] opacity-70">#{rp.pickNumber}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <TeamLogo teamId={rp.currentTeamId} size="custom" className="w-5 h-5" />
+                                                        <span className="text-xs font-black tracking-wide">
+                                                            {rp.currentTeamId.toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+
+                            {/* 라운드별 셀 행 */}
+                            <tbody>
+                                <tr className="h-[76px]">
+                                    {/* 라운드 라벨 (sticky left) */}
+                                    <td
+                                        className="sticky left-0 bg-slate-950 px-2 py-1 z-10 text-center"
+                                        style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
                                     >
                                         <div className="flex items-center justify-center gap-1">
                                             <span className={`text-xs font-bold whitespace-nowrap ${
@@ -102,54 +144,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                                 {isEvenRound ? '→' : '←'}
                                             </span>
                                         </div>
-                                    </th>
-
-                                    {/* 슬롯별 헤더 셀 */}
-                                    {roundPicks.map(rp => {
-                                        const isTraded = rp.originalTeamId !== rp.currentTeamId;
-                                        const isUserSlot = rp.currentTeamId === userTeamId;
-                                        return (
-                                            <th
-                                                key={rp.pickNumber}
-                                                className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center text-[10px] font-bold uppercase ${
-                                                    isUserSlot ? 'text-white' : 'text-slate-400'
-                                                }`}
-                                                style={{
-                                                    ...(isUserSlot ? { backgroundColor: 'rgba(245,158,11,0.12)' } : {}),
-                                                    boxShadow: '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
-                                                }}
-                                            >
-                                                <div className="flex flex-col items-center gap-0.5">
-                                                    <span className="text-[9px] text-slate-600">#{rp.pickNumber}</span>
-                                                    {isTraded ? (
-                                                        <div className="flex items-center gap-0.5">
-                                                            <TeamLogo teamId={rp.originalTeamId} size="custom" className="w-3.5 h-3.5" />
-                                                            <span className="text-[9px] text-slate-500 line-through">{rp.originalTeamId.toUpperCase()}</span>
-                                                            <span className="text-[9px] text-slate-600">→</span>
-                                                            <TeamLogo teamId={rp.currentTeamId} size="custom" className="w-3.5 h-3.5" />
-                                                            <span className="text-[9px] text-amber-400 font-black">{rp.currentTeamId.toUpperCase()}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-1">
-                                                            <TeamLogo teamId={rp.originalTeamId} size="custom" className="w-4 h-4" />
-                                                            <span>{rp.originalTeamId.toUpperCase()}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </th>
-                                        );
-                                    })}
-                                </tr>
-                            </thead>
-
-                            {/* 라운드별 셀 행 */}
-                            <tbody>
-                                <tr className="h-[76px]">
-                                    {/* 라운드 빈 셀 (sticky left) */}
-                                    <td
-                                        className="sticky left-0 bg-slate-950 px-2 py-1 z-10"
-                                        style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
-                                    />
+                                    </td>
 
                                     {/* 슬롯별 셀 */}
                                     {roundPicks.map(rp => {
