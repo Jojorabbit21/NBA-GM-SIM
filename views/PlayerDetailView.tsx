@@ -1065,7 +1065,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         {/* 중앙: 수상 내역 */}
                         <div className="border-l border-slate-800">
                             <SectionHeader title="수상 내역" style={sectionBg} />
-                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            <div className="overflow-auto custom-scrollbar min-h-[440px] max-h-[600px]">
                             {(() => {
                                 const historicalAwards = player.career_history?.flatMap(s =>
                                     (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
