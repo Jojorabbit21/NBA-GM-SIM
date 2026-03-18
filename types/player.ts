@@ -261,6 +261,9 @@ export interface Player {
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
     popularity?: PlayerPopularity;          // 런타임, 저장 경로: SavedPlayerState
     morale?: PlayerMorale;                  // 런타임, 저장 경로: SavedPlayerState
+    // OVR 엔진 계산값 (dataMapper.ts 로드 시 배치 세팅, 저장 안 함 — 항상 동적 계산)
+    rawOvr?: number;      // 리그 분포 보정 전 원시 OVR (트레이드 내부 계산용)
+    futureOvr?: number;   // potential 기반 미래 OVR
 }
 
 // 과거 시즌 커리어 스탯 (meta_players.career_history JSONB, NBA Stats API에서 수집)

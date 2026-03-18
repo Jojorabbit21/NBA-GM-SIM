@@ -1,9 +1,12 @@
 
 export type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 
-// Modern NBA Weighted Formula (2025-26 Season Standard)
-// Only Weights Configuration here. Logic is in ovrUtils.ts
-// Scale compression (0.6x + 40) is applied in ovrUtils — weights represent pure skill importance
+/**
+ * @deprecated POSITION_WEIGHTS is no longer used for OVR calculation.
+ * OVR is now computed by the new engine in utils/ovrEngine.ts.
+ * This table is kept only as a reference / legacy fallback.
+ * Do NOT add potential weight here — potential is excluded from currentOVR by design.
+ */
 export const POSITION_WEIGHTS: Record<PositionType, Record<string, number>> = {
   PG: {
       // 슈팅 & 득점 효율

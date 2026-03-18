@@ -8,121 +8,31 @@ import type {
     PlayerArchetypeState,
     ArchetypeDisplayInfo,
 } from '../../types/archetype';
+import { calculateModules } from '../../utils/ovrEngine';
+import { adaptPlayerToInput } from '../../utils/ovrUtils';
 
 // ─────────────────────────────────────────────────────────────
-// Step 1: 10+1 Module Score Calculation (player attrs → 0~100)
+// Step 1: Module Score Calculation
+// 공식 출처: utils/ovrEngine.ts (calculateModules) — 단일 소스
 // ─────────────────────────────────────────────────────────────
 
 export function calcModuleScores(player: Player): ArchetypeModuleScores {
-    const p = player;
+    const input = adaptPlayerToInput(player);
+    const mod   = calculateModules(input.ratings, input.primaryPosition);
 
-    const rimFinishing =
-        p.layup      * 0.26 +
-        p.dunk       * 0.18 +
-        p.closeShot  * 0.12 +
-        p.drawFoul   * 0.12 +
-        p.hands      * 0.08 +
-        p.spdBall    * 0.08 +
-        p.vertical   * 0.08 +
-        p.agility    * 0.08;
-
-    const postCraft =
-        p.postPlay   * 0.34 +
-        p.closeShot  * 0.18 +
-        p.strength   * 0.16 +
-        p.drawFoul   * 0.10 +
-        p.hands      * 0.10 +
-        p.shotIq     * 0.06 +
-        p.offConsist * 0.06;
-
-    const spotUpShooting =
-        p.threeCorner * 0.30 +
-        p.three45     * 0.24 +
-        p.threeTop    * 0.18 +
-        p.ft          * 0.12 +
-        p.shotIq      * 0.08 +
-        p.offConsist  * 0.08;
-
-    const shotCreation =
-        p.midRange   * 0.26 +
-        p.threeTop   * 0.16 +
-        p.three45    * 0.10 +
-        p.handling   * 0.18 +
-        p.spdBall    * 0.12 +
-        p.drawFoul   * 0.10 +
-        p.shotIq     * 0.08;
-
-    const playmaking =
-        p.passVision      * 0.28 +
-        p.passAcc         * 0.24 +
-        p.passIq          * 0.18 +
-        p.handling        * 0.14 +
-        p.spdBall         * 0.10 +
-        p.offBallMovement * 0.06;
-
-    // offballAttack uses spotUpShooting module score
-    const offballAttack =
-        p.offBallMovement * 0.28 +
-        spotUpShooting    * 0.20 +
-        p.layup           * 0.12 +
-        p.speed           * 0.10 +
-        p.agility         * 0.10 +
-        p.shotIq          * 0.10 +
-        p.offConsist      * 0.10;
-
-    const poaDefense =
-        p.perDef     * 0.30 +
-        p.steal      * 0.14 +
-        p.agility    * 0.12 +
-        p.speed      * 0.10 +
-        p.passPerc   * 0.12 +
-        p.helpDefIq  * 0.10 +
-        p.defConsist * 0.12;
-
-    const teamDefense =
-        p.helpDefIq  * 0.20 +
-        p.passPerc   * 0.18 +
-        p.perDef     * 0.16 +
-        p.intDef     * 0.14 +
-        p.steal      * 0.08 +
-        p.blk        * 0.08 +
-        p.boxOut     * 0.08 +
-        p.defConsist * 0.08;
-
-    const rimProtection =
-        p.intDef     * 0.34 +
-        p.blk        * 0.24 +
-        p.helpDefIq  * 0.12 +
-        p.strength   * 0.10 +
-        p.vertical   * 0.10 +
-        p.defConsist * 0.10;
-
-    const rebounding =
-        p.offReb   * 0.24 +
-        p.defReb   * 0.34 +
-        p.boxOut   * 0.24 +
-        p.strength * 0.10 +
-        p.hustle   * 0.08;
-
-    const motorAvailability =
-        p.stamina    * 0.26 +
-        p.hustle     * 0.24 +
-        p.durability * 0.30 +
-        p.offConsist * 0.10 +
-        p.defConsist * 0.10;
-
+    // ovrEngine의 ModuleScores → ArchetypeModuleScores (athleticism, sizeFit 제외)
     return {
-        rimFinishing,
-        postCraft,
-        spotUpShooting,
-        shotCreation,
-        playmaking,
-        offballAttack,
-        poaDefense,
-        teamDefense,
-        rimProtection,
-        rebounding,
-        motorAvailability,
+        rimFinishing:     mod.rimFinishing,
+        postCraft:        mod.postCraft,
+        spotUpShooting:   mod.spotUpShooting,
+        shotCreation:     mod.shotCreation,
+        playmaking:       mod.playmaking,
+        offballAttack:    mod.offballAttack,
+        poaDefense:       mod.poaDefense,
+        teamDefense:      mod.teamDefense,
+        rimProtection:    mod.rimProtection,
+        rebounding:       mod.rebounding,
+        motorAvailability: mod.motorAvailability,
     };
 }
 

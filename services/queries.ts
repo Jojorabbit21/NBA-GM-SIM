@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
-import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
+import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame, postProcessAllPlayersOVR } from './dataMapper';
 import { populateTeamData } from '../data/teamData';
 import { populateCoachData } from './coachingStaff/coachGenerator';
 import { populateGMData } from './tradeEngine/gmProfiler';
@@ -58,6 +58,10 @@ export const useBaseData = (enabled: boolean = true) => {
 
             const teams: Team[] = mapPlayersToTeams(playersData);
             const freeAgents: Player[] = mapFreeAgents(playersData);
+
+            // 전체 선수 로드 완료 → 리그 분포 기반 OVR / futureOvr 최종 보정
+            postProcessAllPlayersOVR(teams, freeAgents);
+
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);

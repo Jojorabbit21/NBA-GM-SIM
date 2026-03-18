@@ -1083,7 +1083,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 key={h}
                                                 align="center"
                                                 className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                style={subHeaderTextStyle}
+                                                style={{ ...subHeaderTextStyle, ...subHeaderBg }}
                                             >
                                                 {h}
                                             </TableHeaderCell>

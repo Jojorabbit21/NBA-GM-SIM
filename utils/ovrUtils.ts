@@ -1,78 +1,156 @@
 
-import { POSITION_WEIGHTS, PositionType } from './overallWeights';
+import type { Player } from '../types';
+import {
+  evaluatePlayerRawOVR,
+  mapRawOVRToDisplayOVR,
+  calculateFutureOVR,
+  type PlayerInput,
+  type PlayerRatings,
+  type LeagueDistribution,
+  type OvrPosition,
+} from './ovrEngine';
+
+// ─── League Distribution Cache ───────────────────────────────────────────────
+// Initialised to a reasonable fallback so OVR is usable before all players load.
+// Call setLeagueDistribution() once after the full roster is available.
+
+let _leagueDist: LeagueDistribution = { meanRawOVR: 75.0, stdRawOVR: 7.0 };
+
+export function setLeagueDistribution(dist: LeagueDistribution): void {
+  _leagueDist = dist;
+}
+
+export function getLeagueDistribution(): LeagueDistribution {
+  return _leagueDist;
+}
+
+// ─── Player → PlayerInput Adapter ────────────────────────────────────────────
+
+function resolvePosition(position: string): OvrPosition {
+  if (position.startsWith('PG')) return 'PG';
+  if (position.startsWith('SG')) return 'SG';
+  if (position.startsWith('SF')) return 'SF';
+  if (position.startsWith('PF')) return 'PF';
+  if (position.startsWith('C'))  return 'C';
+  // Multi-position string: pick first segment
+  const first = position.split('/')[0].trim();
+  if (first === 'PG') return 'PG';
+  if (first === 'SG') return 'SG';
+  if (first === 'SF') return 'SF';
+  if (first === 'PF') return 'PF';
+  if (first === 'C')  return 'C';
+  return 'SF'; // safe fallback
+}
+
+export function adaptPlayerToInput(p: Player | any, positionOverride?: string): PlayerInput {
+  const pos = resolvePosition(positionOverride ?? p.position ?? 'SF');
+
+  // Height: DB stores cm, engine needs inches
+  const heightCm: number = p.height ?? 200;
+  const heightInches = Math.round(heightCm / 2.54);
+
+  const ratings: PlayerRatings = {
+    // Inside Scoring
+    closeShot:  p.closeShot  ?? p.ins ?? 70,
+    layup:      p.layup      ?? p.ins ?? 70,
+    dunk:       p.dunk       ?? p.ins ?? 70,
+    postPlay:   p.postPlay   ?? p.ins ?? 70,
+    drawFoul:   p.drawFoul   ?? p.ins ?? 70,
+    hands:      p.hands      ?? p.ins ?? 70,
+
+    // Outside Scoring (field name mapping: Player uses abbreviated names)
+    midRange:             p.midRange    ?? p.out ?? 70,
+    cornerThree:          p.threeCorner ?? p.out ?? 70,
+    fortyFiveThree:       p.three45     ?? p.out ?? 70,
+    topThree:             p.threeTop    ?? p.out ?? 70,
+    freeThrow:            p.ft          ?? p.out ?? 70,
+    shotIQ:               p.shotIq      ?? p.out ?? 70,
+    offensiveConsistency: p.offConsist  ?? p.out ?? 70,
+
+    // Playmaking
+    passAccuracy:   p.passAcc         ?? p.plm ?? 70,
+    ballHandling:   p.handling        ?? p.plm ?? 70,
+    speedWithBall:  p.spdBall         ?? p.plm ?? 70,
+    passVision:     p.passVision      ?? p.plm ?? 70,
+    passIQ:         p.passIq          ?? p.plm ?? 70,
+    offballMovement: p.offBallMovement ?? p.plm ?? 70,
+
+    // Defense
+    interiorDefense:   p.intDef     ?? p.def ?? 70,
+    perimeterDefense:  p.perDef     ?? p.def ?? 70,
+    steal:             p.steal      ?? p.def ?? 70,
+    block:             p.blk        ?? p.def ?? 70,
+    helpDefenseIQ:     p.helpDefIq  ?? p.def ?? 70,
+    passPerception:    p.passPerc   ?? p.def ?? 70,
+    defensiveConsistency: p.defConsist ?? p.def ?? 70,
+
+    // Rebounds
+    offensiveRebounds: p.offReb ?? p.reb ?? 70,
+    defensiveRebounds: p.defReb ?? p.reb ?? 70,
+    boxout:            p.boxOut ?? p.reb ?? 70,
+
+    // Athleticism
+    speed:      p.speed      ?? p.ath ?? 70,
+    agility:    p.agility    ?? p.ath ?? 70,
+    strength:   p.strength   ?? p.ath ?? 70,
+    vertical:   p.vertical   ?? p.ath ?? 70,
+    stamina:    p.stamina     ?? p.ath ?? 70,
+    hustle:     p.hustle      ?? p.ath ?? 70,
+    durability: p.durability  ?? p.ath ?? 70,
+
+    // Intangible & meta
+    intangible:   p.intangibles ?? 70,
+    heightInches,
+  };
+
+  return {
+    id:              String(p.id ?? 'unknown'),
+    primaryPosition: pos,
+    age:             p.age ?? 25,
+    potential:       p.potential ?? 70,
+    ratings,
+  };
+}
+
+// ─── Public OVR APIs ─────────────────────────────────────────────────────────
 
 /**
- * Calculates the Overall Rating (OVR) dynamically based on attributes.
- * This is a Pure Function - it does not rely on stored state.
+ * Calculates displayCurrentOVR for a single player.
+ * Uses cached league distribution (updated by setLeagueDistribution after full load).
+ *
+ * This is a Pure Function from the perspective of caller code.
+ * (It reads module-level distribution cache, but that is stable after startup.)
  */
-export const calculateOvr = (attributes: any, position: string): number => {
-    // 1. Position Resolution
-    let posKey = position as PositionType;
-    
-    // Handle multi-position strings (e.g. "PG/SG") or fallback
-    if (!POSITION_WEIGHTS[posKey]) {
-        if (position.includes('PG')) posKey = 'PG';
-        else if (position.includes('SG')) posKey = 'SG';
-        else if (position.includes('SF')) posKey = 'SF';
-        else if (position.includes('PF')) posKey = 'PF';
-        else if (position.includes('C')) posKey = 'C';
-        else posKey = 'SF'; // Default fallback
-    }
+export const calculateOvr = (attributes: Player | any, position?: string): number => {
+  const input = adaptPlayerToInput(attributes, position);
+  const raw   = evaluatePlayerRawOVR(input);
+  return mapRawOVRToDisplayOVR(raw.rawCurrentOVR, _leagueDist);
+};
 
-    const weights = POSITION_WEIGHTS[posKey];
-    let totalScore = 0;
-    let totalWeight = 0;
+/**
+ * Returns raw (pre-distribution) OVR.
+ * Useful for internal calculations (trade value, award voting) that should not
+ * shift when league mean changes.
+ */
+export const calculateRawOvr = (attributes: Player | any, position?: string): number => {
+  const input = adaptPlayerToInput(attributes, position);
+  return evaluatePlayerRawOVR(input).rawCurrentOVR;
+};
 
-    // 2. Derive Average 3PT for calculation if needed
-    const tC = attributes.threeCorner ?? attributes.out ?? 70;
-    const t45 = attributes.three45 ?? attributes.out ?? 70;
-    const tT = attributes.threeTop ?? attributes.out ?? 70;
-    const threeAvg = Math.round((tC + t45 + tT) / 3);
-    
-    // 3. Prepare calculation object with all possible keys and fallbacks
-    // Use category averages as fallbacks for specific stats
-    const ins = attributes.ins ?? 70;
-    const out = attributes.out ?? 70;
-    const def = attributes.def ?? 70;
-    const reb = attributes.reb ?? 70;
-    const ath = attributes.ath ?? 70;
-    const plm = attributes.plm ?? 70;
-
-    const calcAttrs: Record<string, number> = { 
-        ...attributes, 
-        threeAvg,
-        // Ensure categories exist
-        ins, out, def, reb, ath, plm
-    };
-
-    // 4. Weighted Sum
-    for (const [key, weight] of Object.entries(weights)) {
-        let val = calcAttrs[key];
-        
-        // Fallback for missing specific stats using category averages
-        if (val === undefined || val === null || isNaN(val)) {
-             if (['closeShot','midRange','threeAvg','ft','shotIq','offConsist'].includes(key)) val = out;
-             else if (['layup','dunk','postPlay','drawFoul','hands'].includes(key)) val = ins;
-             else if (['intDef','perDef','steal','blk','helpDefIq','passPerc','defConsist'].includes(key)) val = def;
-             else if (['speed','agility','strength','vertical','stamina','hustle','durability'].includes(key)) val = ath;
-             else if (['passAcc','handling','spdBall','passVision','passIq','offBallMovement'].includes(key)) val = plm;
-             else if (['offReb','defReb','boxOut'].includes(key)) val = reb;
-             else val = 70; 
-        }
-        
-        totalScore += val * weight;
-        totalWeight += weight;
-    }
-
-    // Scale compression: 0.6x + 40 (maps raw ~50→70, ~85→91, ~95→97)
-    const rawAvg = totalWeight > 0 ? totalScore / totalWeight : 50;
-    return Math.min(99, Math.max(40, Math.round(rawAvg * 0.6 + 40)));
+/**
+ * Calculates futureOVR (potential-based, separate from current OVR).
+ */
+export const calculateFutureOvr = (p: Player | any, position?: string): number => {
+  const input         = adaptPlayerToInput(p, position);
+  const raw           = evaluatePlayerRawOVR(input);
+  const displayOvr    = mapRawOVRToDisplayOVR(raw.rawCurrentOVR, _leagueDist);
+  return calculateFutureOVR(displayOvr, input.potential, input.age);
 };
 
 /**
  * OVR → 별점 변환 (0.5 ~ 5.0, 0.5 단위)
  *
- * 선형 매핑: OVR 60 → 0.5★, OVR 97 → 5.0★
+ * 리그 상대 displayOVR 기준 매핑:
  * | OVR   | Stars | Tier              |
  * |-------|-------|-------------------|
  * | 97+   | 5.0★  | MVP 슈퍼스타       |
@@ -87,6 +165,10 @@ export const calculateOvr = (attributes: any, position: string): number => {
  * | <64   | 0.5★  | 리플레이스먼트 이하  |
  */
 export const getPlayerStarRating = (ovr: number): number => {
-    const raw = (ovr - 60) / 37 * 4.5 + 0.5;
-    return Math.round(Math.max(0.5, Math.min(5.0, raw)) * 2) / 2;
+  const raw = (ovr - 60) / 37 * 4.5 + 0.5;
+  return Math.round(Math.max(0.5, Math.min(5.0, raw)) * 2) / 2;
 };
+
+// Re-export engine types that callers may need
+export type { LeagueDistribution, OvrPosition } from './ovrEngine';
+export { calculateLeagueDistribution } from './ovrEngine';

@@ -3,7 +3,15 @@ import { Team, Player, Game } from '../types';
 import { PlayerContract, ContractType } from '../types/player';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
 import { KNOWN_INJURIES } from '../utils/injuries'; // Import from dedicated file
-import { calculateOvr } from '../utils/ovrUtils';
+import {
+    calculateOvr,
+    calculateRawOvr,
+    calculateFutureOvr,
+    setLeagueDistribution,
+    calculateLeagueDistribution,
+    adaptPlayerToInput,
+} from '../utils/ovrUtils';
+import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
 
 /** DB 연봉 값 정규화: $M 단위(< 1000)면 달러로 변환 */
 const normalizeSalary = (val: number): number => {
@@ -354,6 +362,40 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     player.contractYears = contract.years.length - contract.currentYear;
 
     return player;
+};
+
+/**
+ * 전체 선수 로드 후 1회 호출: 리그 분포 기반 OVR 재계산
+ *
+ * 이유: calculateOvr()는 mapRawPlayerToRuntimePlayer() 내에서 모듈 캐시 분포로 먼저
+ * 계산되므로, 전체 선수가 모인 후 정확한 리그 평균/표준편차로 OVR을 보정해야 한다.
+ */
+export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): void => {
+    // 1. 전체 선수 수집
+    const allPlayers: Player[] = [
+        ...teams.flatMap(t => t.roster),
+        ...freeAgents,
+    ];
+
+    if (allPlayers.length === 0) return;
+
+    // 2. 모든 선수의 rawOvr 계산 → 리그 분포 산출
+    const rawValues: number[] = allPlayers.map(p => {
+        const input = adaptPlayerToInput(p);
+        return evaluatePlayerRawOVR(input).rawCurrentOVR;
+    });
+
+    const dist = calculateLeagueDistribution(rawValues);
+    setLeagueDistribution(dist);
+
+    console.log(`[OVR Engine] 리그 분포 세팅: mean=${dist.meanRawOVR.toFixed(1)}, std=${dist.stdRawOVR.toFixed(1)}, 선수 수=${allPlayers.length}`);
+
+    // 3. 분포 반영 후 ovr / rawOvr / futureOvr 업데이트
+    for (const p of allPlayers) {
+        p.ovr = calculateOvr(p);
+        p.rawOvr = calculateRawOvr(p);
+        p.futureOvr = calculateFutureOvr(p);
+    }
 };
 
 /**
