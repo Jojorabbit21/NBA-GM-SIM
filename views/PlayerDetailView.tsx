@@ -382,12 +382,12 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                     <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
                                 {processedRows.slice(startIdx, endIdx).map((cells, vi) => (
-                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT, ...(((startIdx + vi) % 2 !== 0) ? rowAltStyle : rowBaseStyle) }}>
+                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT }}>
                                         {cells.map((cell, ci) => (
                                             <td
                                                 key={ci}
                                                 className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r' : ''}`}
-                                                style={(ci < cells.length - 1 && dividerColor) ? { borderRightColor: dividerColor } : undefined}
+                                                style={{ ...((startIdx + vi) % 2 !== 0 ? rowAltStyle : rowBaseStyle), ...(ci < cells.length - 1 && dividerColor ? { borderRightColor: dividerColor } : undefined) }}
                                             >
                                                 <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
                                                     {cell.val}
@@ -414,13 +414,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const theme = getTeamTheme(teamId || null, teamColors);
     const tintColor = getEffectiveTintColor(theme);
     const isLight = luminance(tintColor) > 0.5;
-    const sectionBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.18 : 0.70) }; // L5: SectionHeader
-    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.09 : 0.35) }; // L4: thead / AVG
-    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.05 : 0.12) }; // L3: odd rows
-    const rowBaseBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.02 : 0.06) }; // L2: even rows
-    const dividerColor = hexAlpha(tintColor, isLight ? 0.15 : 0.30);
-    const heavyDividerColor = hexAlpha(tintColor, isLight ? 0.22 : 0.45);
-    const subHeaderTextStyle = { color: hexAlpha(theme.text, 0.65) };
+    const sectionBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.07 : 0.70) }; // L5: SectionHeader
+    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.04 : 0.35) }; // L4: thead / AVG
+    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.02 : 0.12) }; // L3: odd rows
+    const rowBaseBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.008 : 0.06) }; // L2: even rows
+    const dividerColor = hexAlpha(tintColor, isLight ? 0.08 : 0.30);
+    const heavyDividerColor = hexAlpha(tintColor, isLight ? 0.12 : 0.45);
+    const subHeaderTextStyle = { color: hexAlpha(theme.text, isLight ? 0.45 : 0.65) };
     const dropdownStyle = {
         backgroundColor: hexAlpha(tintColor, isLight ? 0.08 : 0.25),
         borderColor: hexAlpha(tintColor, isLight ? 0.30 : 0.55),
@@ -696,12 +696,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
-                                        <tr style={subHeaderBg}>
+                                        <tr>
                                             {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
                                                 <th
                                                     key={col.key}
                                                     className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b ${i === 0 ? 'sticky left-0 z-10' : ''}`}
-                                                    style={{ ...(i === 0 ? subHeaderBg : undefined), borderBottomColor: dividerColor, ...subHeaderTextStyle }}
+                                                    style={{ ...subHeaderBg, borderBottomColor: dividerColor, ...subHeaderTextStyle }}
                                                 >
                                                     {col.label}
                                                 </th>
@@ -716,7 +716,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             return rows.map((row, ri) => {
                                                 const isCurrentSeason = String((row as any).season) === seasonShort;
                                                 return (
-                                                    <tr key={ri} style={ri % 2 !== 0 ? rowAltBg : rowBaseBg}>
+                                                    <tr key={ri}>
                                                         {cols.map((col, ci) => {
                                                             const raw = (row as any)[col.key];
                                                             let display: string;
@@ -745,7 +745,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                                             ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'}`
                                                                             : 'text-white'
                                                                     }`}
-                                                                    style={{ ...(ci === 0 ? (ri % 2 !== 0 ? rowAltBg : rowBaseBg) : (ri % 2 !== 0 ? rowAltBg : rowBaseBg)), borderBottomColor: dividerColor }}
+                                                                    style={{ ...(ri % 2 !== 0 ? rowAltBg : rowBaseBg), borderBottomColor: dividerColor }}
                                                                 >
                                                                     {display}
                                                                 </td>

@@ -112,11 +112,26 @@ executeTrade()        → 검증 + 실행
   1. CBA 샐러리 매칭 검증
   2. NTC 선수 검출
   3. 스테피언 룰 검증 (1라운드 픽 거래 시)
-  4. 로스터 최소 인원 검증
+  4. 로스터 최소 인원 검증 (MIN_ROSTER_SIZE = 13)
   5. 선수 로스터 스왑
   6. 픽 currentTeamId 이전
   7. 블록에서 거래 자산 제거
   8. Transaction 레코드 생성
+  9. 로스터 초과 팀 감지 → overflowTeams?: string[] 반환
+```
+
+#### 로스터 overflow 처리
+
+트레이드 후 `MAX_ROSTER_SIZE(15)` 초과 시 자동 처리:
+
+| 경로 | 처리 방식 |
+|------|---------|
+| **CPU-CPU 트레이드** (`cpuTradeSimulator.ts`) | `trimOverflowRosters()` — 스타 보호(OVR 88+ && age ≤ 33) 후 최저 OVR 선수 즉시 컷 |
+| **유저 트레이드** (`useTradeSystem.ts`) | 토스트 경고 발생 → 유저가 FA 뷰에서 직접 방출 |
+
+```ts
+// TradeExecutionResult
+overflowTeams?: string[];  // 초과 팀 ID 목록
 ```
 
 ---

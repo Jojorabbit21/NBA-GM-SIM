@@ -615,10 +615,11 @@ export type ReleaseType = 'waive' | 'buyout' | 'stretch';
 export interface DeadMoneyEntry {
     playerId: string;
     playerName: string;
-    amount: number;           // 이번 시즌 데드캡 (달러)
-    season: string;           // 발생 시즌 라벨
+    amount: number;              // 이번 시즌 데드캡 (달러)
+    season: string;              // 발생 시즌 라벨
     releaseType: ReleaseType;
-    stretchYearsTotal?: number; // 스트레치인 경우 분산 연수
+    stretchYearsTotal?: number;     // 스트레치: 총 분산 연수 (= 2n-1)
+    stretchYearsRemaining?: number; // 스트레치: 남은 분산 연수 (매 오프시즌 -1)
 }
 ```
 
@@ -677,11 +678,22 @@ $187.5M   $18.0M   캡 초과   없음
 * 데드캡이 있을 때만 표시
 ```
 
-### 소멸 시점
+### 소멸 시점 (`offseasonEventHandler.ts` — `handleMoratoriumStart`)
 
-현재: 시즌 간 자동 소멸 로직 미구현 (누적됨).
-향후: `processOffseason()` 또는 새 시즌 시작 시 `team.deadMoney = []` 초기화 예정.
-멀티시즌 구현 시: 스트레치의 경우 `stretchYearsTotal` 기반으로 잔여 연수를 추적해야 함.
+매 오프시즌 `moratoriumStart` 처리 시 다음 규칙으로 정리:
+
+```ts
+team.deadMoney = (team.deadMoney ?? [])
+    .filter(e => e.releaseType === 'stretch')          // waive / buyout: 1회성 → 제거
+    .map(e => ({ ...e, stretchYearsRemaining: (e.stretchYearsRemaining ?? 1) - 1 }))
+    .filter(e => (e.stretchYearsRemaining ?? 0) > 0); // 0이 되면 제거
+```
+
+| 방식 | 소멸 규칙 |
+|------|---------|
+| **waive** | 1회성. 다음 오프시즌에 제거 |
+| **buyout** | 1회성. 다음 오프시즌에 제거 |
+| **stretch** | `stretchYearsRemaining`이 0이 될 때까지 매 시즌 `amount`씩 캡 산정 후 제거 |
 
 ---
 
@@ -717,8 +729,12 @@ $187.5M   $18.0M   캡 초과   없음
 | 웨이브/바이아웃/스트레치 방출 방식 선택 모달 | `views/FAView.tsx` | ✅ 완료 |
 | 방출 방식별 데드캡 계산 (`onReleasePlayer`) | `components/AppRouter.tsx` | ✅ 완료 |
 | FA_RELEASE 메시지에 방출 방식 + 데드캡 금액 표시 | `MessageContentRenderer.tsx` | ✅ 완료 |
-| 데드캡 오프시즌 초기화 | `offseasonEventHandler.ts` `handleMoratoriumStart` | ✅ 완료 |
-| 스트레치 다시즌 추적 (잔여 stretch 연수) | — | ❌ 미구현 (멀티시즌 필요) |
+| 데드캡 오프시즌 정리 (waive/buyout 제거, stretch 차감) | `offseasonEventHandler.ts` | ✅ 완료 |
+| 스트레치 다시즌 추적 (`stretchYearsRemaining`) | `types/team.ts` + `offseasonEventHandler.ts` | ✅ 완료 |
+| CPU 팀 자동 웨이버 엔진 (`simulateCPUWaivers`) | `services/fa/cpuWaiverEngine.ts` | ✅ 완료 |
+| CPU 웨이버 moratoriumStart 조기 실행 (Phase 1+3) | `hooks/useSimulation.ts` | ✅ 완료 |
+| CPU 웨이버 rosterDeadline 실행 (Phase 1+2+3) | `hooks/useSimulation.ts` | ✅ 완료 |
+| 트레이드 우선 필터 (`preferTradeBlock`) | `services/fa/cpuWaiverEngine.ts` | ✅ 완료 |
 
 ---
 
@@ -732,11 +748,10 @@ $187.5M   $18.0M   캡 초과   없음
 | 데릭 로즈 룰 | 복잡도 대비 가치 낮음 |
 | 루키 스케일 고정액 | 루키 드래프트에서 별도 처리 |
 | 보장/비보장 계약 | 현재 전액 보장 계약만. `guaranteedSalary` 필드 추후 추가 예정 |
-| 스트레치 다시즌 추적 | 멀티시즌 환경에서 잔여 stretch 연수 관리 필요 |
-| 데드캡 오프시즌 소멸 | 현재 누적됨 — processOffseason에서 `team.deadMoney = []` 예정 |
 
 ---
 
 ## 15. 향후 작업 예정
 
-1. **스트레치 다시즌 추적**: 멀티시즌 환경에서 `stretchYearsTotal`과 잔여 분산 연수 추적
+1. **보장/비보장 계약**: `guaranteedSalary` 필드 추가. 부분 보장 계약 방출 시 보장액만 데드캡으로 처리
+2. **Room Exception / Bi-Annual Exception**: 복잡도 대비 우선순위 낮음 (멀티시즌 준비 시 검토)
