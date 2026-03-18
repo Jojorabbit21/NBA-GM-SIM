@@ -136,6 +136,7 @@ export interface SavedPlayerState {
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
     contract?: PlayerContract;
+    age?: number;         // 오프시즌 age+1 후 덮어쓰기용 (base_attributes.age는 불변이므로)
     teamTenure?: number;  // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
 }
@@ -263,6 +264,8 @@ export interface CareerSeasonStat {
     blk_pct?: number;
     // 플레이오프 여부 (true면 playoff 기록, 없으면 정규시즌)
     playoff?: boolean;
+    // 해당 시즌 수상 내역 (BBRef 기반 과거 이력, 시뮬 수상은 Player.awards에 별도 저장)
+    awards?: PlayerAwardEntry[];
 }
 
 export interface RosterUpdate {

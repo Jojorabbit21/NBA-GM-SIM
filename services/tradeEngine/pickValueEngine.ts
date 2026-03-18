@@ -2,6 +2,8 @@
 import { DraftPickAsset } from '../../types/draftAssets';
 import { Team } from '../../types';
 import { TRADE_CONFIG as C } from './tradeConfig';
+import type { GMProfile } from '../../types/gm';
+import type { TeamTradeState } from '../../types/trade';
 
 /**
  * 팀의 예상 드래프트 순위를 투영 (승률 기반).
@@ -116,6 +118,39 @@ export function getPickTradeValue(
 
     // 6. 선수 가치 스케일 변환
     return Math.max(1, Math.floor(value * PV.PLAYER_VALUE_SCALE));
+}
+
+/**
+ * GM 성격과 팀 상태를 반영한 픽 가치.
+ * 유스편향 높을수록 픽 선호, 픽방출 높을수록 픽 낮게 평가, 컨텐더는 미래 픽 할인.
+ */
+export function getPickValueToGM(
+    pick: DraftPickAsset,
+    teams: Team[],
+    currentDate: string,
+    gmProfile: GMProfile,
+    teamState: TeamTradeState,
+): number {
+    const baseValue = getPickTradeValue(pick, teams, currentDate);
+    const sliders = gmProfile.sliders;
+
+    let modifier = 1.0;
+
+    // 유스 편향: 픽 선호 증가 (최대 +20%)
+    modifier += (sliders.youthBias / 10) * 0.20;
+
+    // 픽 방출: 픽 가치 하락 (최대 -15%)
+    modifier -= (sliders.pickWillingness / 10) * 0.15;
+
+    // 컨텐더는 미래 픽 할인 (당장이 중요)
+    if (teamState.phase === 'winNow') modifier *= 0.75;
+    else if (teamState.phase === 'buyer') modifier *= 0.90;
+
+    // 리빌더는 미래 픽 프리미엄
+    if (teamState.phase === 'tanking') modifier *= 1.20;
+    else if (teamState.phase === 'seller') modifier *= 1.10;
+
+    return Math.max(1, Math.floor(baseValue * Math.max(0.3, modifier)));
 }
 
 /**

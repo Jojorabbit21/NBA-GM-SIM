@@ -13,13 +13,14 @@ import {
 } from '../../types/trade';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
-import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
+import { analyzeTeamSituation, buildTeamTradeState, TeamNeeds } from './teamAnalysis';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { getPickTradeValue } from './pickValueEngine';
 import { checkTradeLegality, checkNTCViolation } from './salaryRules';
 import { checkStepienRule } from './stepienRule';
 import { LeagueGMProfiles } from '../../types/gm';
 import { getDirectionParams } from './gmProfiler';
+import { calculateAcceptScore } from './tradeUtilityEngine';
 
 // ──────────────────────────────────────────────
 // 1. CPU 트레이드 블록 동기화
@@ -445,13 +446,44 @@ export function evaluateUserProposals(
         const receivedTotal = receivedPlayerValue + receivedPickValue;
         const sentTotal = sentPlayerValue + sentPickValue;
 
-        // CPU 수락 기준: direction에 따른 가치 비율 적용
+        // CPU 수락 기준: AcceptScore 기반 (팀별 가치 + 목표 달성 + RegretCost)
         const gmProfile = leagueGMProfiles?.[cpuTeam.id];
         const cpuNeeds = analyzeTeamSituation(cpuTeam, gmProfile);
-        const dirParams = getDirectionParams(cpuNeeds.direction);
-        const valueThreshold = dirParams.valueRatioMin;
 
-        if (receivedTotal >= sentTotal * valueThreshold) {
+        let shouldAccept = false;
+        if (gmProfile) {
+            const cpuState = buildTeamTradeState(cpuTeam, gmProfile);
+            const myTeam = teams.find(t => t.id === proposal.fromTeamId);
+
+            // 실제 Player/DraftPickAsset 객체 구성
+            const incomingPlayers = proposal.offeredPlayers
+                .map(ref => myTeam?.roster.find(r => r.id === ref.playerId))
+                .filter(Boolean) as Player[];
+            const incomingPicks = proposal.offeredPicks
+                .map(ref => (leaguePickAssets[proposal.fromTeamId] || [])
+                    .find(p => p.season === ref.season && p.round === ref.round && p.originalTeamId === ref.originalTeamId))
+                .filter(Boolean) as DraftPickAsset[];
+            const outgoingPlayers = proposal.requestedPlayers
+                .map(ref => cpuTeam.roster.find(r => r.id === ref.playerId))
+                .filter(Boolean) as Player[];
+            const outgoingPicks = proposal.requestedPicks
+                .map(ref => (leaguePickAssets[cpuTeam.id] || [])
+                    .find(p => p.season === ref.season && p.round === ref.round && p.originalTeamId === ref.originalTeamId))
+                .filter(Boolean) as DraftPickAsset[];
+
+            const acceptResult = calculateAcceptScore(
+                incomingPlayers, incomingPicks,
+                outgoingPlayers, outgoingPicks,
+                cpuState, gmProfile, teams, currentDate
+            );
+            shouldAccept = acceptResult.shouldAccept;
+        } else {
+            // GM 프로필 없으면 기존 가치비율 방식 fallback
+            const dirParams = getDirectionParams(cpuNeeds.direction);
+            shouldAccept = receivedTotal >= sentTotal * dirParams.valueRatioMin;
+        }
+
+        if (shouldAccept) {
             proposal.status = 'accepted';
             accepted.push(proposal);
         } else {

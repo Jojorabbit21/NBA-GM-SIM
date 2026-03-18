@@ -509,9 +509,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </span>
                             )}
                         </div>
-                        {player.awards && player.awards.length > 0 && (
-                            <HeaderAwardTrophies awards={player.awards} />
-                        )}
+                        {(() => {
+                            const allAwards = [
+                                ...(player.career_history?.flatMap(s => s.awards ?? []) ?? []),
+                                ...(player.awards ?? []),
+                            ];
+                            return allAwards.length > 0 ? <HeaderAwardTrophies awards={allAwards} /> : null;
+                        })()}
                     </div>
 
                     {/* Spacer */}
@@ -957,7 +961,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         <div className="border-l border-slate-800">
                             <SectionHeader title="수상 내역" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
-                            {!player.awards || player.awards.length === 0 ? (
+                            {(() => {
+                                const historicalAwards = player.career_history?.flatMap(s => s.awards ?? []) ?? [];
+                                const allAwards = [...historicalAwards, ...(player.awards ?? [])];
+                                return allAwards.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
                                     <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
                                 </div>
@@ -976,7 +983,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         ))}
                                     </TableHead>
                                     <TableBody>
-                                        {[...player.awards]
+                                        {[...allAwards]
                                             .sort((a, b) => {
                                                 const sc = b.season.localeCompare(a.season);
                                                 if (sc !== 0) return sc;
@@ -1022,7 +1029,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             })}
                                     </TableBody>
                                 </Table>
-                            )}
+                            );
+                            })()}
                             </div>
                         </div>
                         {/* 우측: 부상 이력 */}

@@ -49,13 +49,18 @@ LeagueTradeOffers { offers: PersistentTradeOffer[] }
 |---|---|
 | `tradeExecutor.ts` | **통합 실행기** — 사전검증(CBA/NTC/Stepien/로스터) → 로스터 스왑 → 픽 이전 → 블록 정리 → Transaction 생성 |
 | `tradeBlockManager.ts` | CPU 블록 동기화 + 유저 블록 평가 → 오퍼 생성 + 유저 제안 CPU 응답 + 만료 처리 |
-| `pickValueEngine.ts` | 드래프트 픽 가치 산정 (슬롯커브 × 연도할인 × 라운드할인 × 보호할인 × 스왑보너스) |
+| `pickValueEngine.ts` | 드래프트 픽 가치 산정 (슬롯커브 × 연도할인 × 라운드할인 × 보호할인 × 스왑보너스) + `getPickValueToGM()` (GM 성격 반영) |
 | `stepienRule.ts` | 스테피언 룰 검증 (연속 2년 자기 1라운드 픽 0개 금지) |
 | `salaryRules.ts` | CBA 샐러리 매칭 + NTC 체크 |
-| `cpuTradeSimulator.ts` | CPU↔CPU 트레이드 (블록 기반, 픽 포함 패키지) |
-| `tradeValue.ts` | 선수 트레이드 가치 |
+| `cpuTradeSimulator.ts` | CPU↔CPU 트레이드 — 5단계 고도화 파이프라인 + 기존 호환성 방식 폴백 |
+| `tradeValue.ts` | 선수 트레이드 가치 — 시장가치(`getPlayerMarketValue`) + GM 성격 반영 팀별 가치(`getPlayerValueToTeam`) |
 | `tradeConfig.ts` | 상수 체계 (`PICK_VALUE`, `TRADE_BLOCK` 설정 포함) |
-| `teamAnalysis.ts` | 팀 상황 분석 (contender/seller 판별) |
+| `teamAnalysis.ts` | 팀 상황 분석 — `analyzeTeamSituation()` (하위호환) + `buildTeamTradeState()` (고도화 엔진용) |
+| `tradeParticipation.ts` | **[신규]** 시장 참가 점수 계산 (`calculateParticipationScore`) |
+| `tradeGoalEngine.ts` | **[신규]** 트레이드 목표 생성 (`generateTradeGoal`, 8종) |
+| `assetAvailability.ts` | **[신규]** 선수별 가용성 점수 (`getPlayerAvailability`, 0~1) |
+| `tradeTargetFinder.ts` | **[신규]** 목표 기반 타깃 탐색 (`findTradeTargets`) |
+| `tradeUtilityEngine.ts` | **[신규]** 유틸리티 평가 (`calculateTradeUtility`, `calculateAcceptScore`, `calculateRegretCost`) |
 
 ### UI 컴포넌트 (`components/transactions/`)
 | 파일 | 설명 |
@@ -180,6 +185,8 @@ finalValue = baseValue × roundDiscount × yearDiscount × protectionDiscount + 
 
 ## CPU 트레이드 로직
 
+> **상세 문서**: `docs/simulation/cpu-trade-engine.md` 참조
+
 ### 블록 동기화 (`syncCPUTradeBlocks`)
 - 팀 상황(contender/seller) 분석 → 트레이드 가능 선수/픽 선별
 - 3일 간격 쓰로틀, 최대 엔트리 수 제한
@@ -189,13 +196,25 @@ finalValue = baseValue × roundDiscount × yearDiscount × protectionDiscount + 
 - CPU 팀당 3일 간격, 하루 최대 1건
 - 호환 시 PersistentTradeOffer 생성 + TRADE_OFFER_RECEIVED 메시지
 
-### CPU↔CPU 트레이드 (`cpuTradeSimulator.ts`)
-- `ScoredPickAsset` 타입으로 픽도 트레이드 자산에 포함
-- 가치 차이 >15% 시 픽으로 보상 (최대 2개)
+### CPU↔CPU 트레이드 (`cpuTradeSimulator.ts`) — 고도화 파이프라인
+
+5단계 파이프라인 + 호환성 기반 폴백으로 구성:
+
+```
+1. 전 팀 TeamTradeState 계산 (buildTeamTradeState)
+2. ParticipationScore ≥ 0.35인 팀만 참가 (calculateParticipationScore)
+3. 참가 팀별 TradeGoal 생성 (generateTradeGoal)
+4. 목표 기반 타깃 탐색 (findTradeTargets — availability, 팀별 가치 기반)
+5. TradeUtility 양팀 검증 → 임계값 통과 시 executeTrade() 실행
+   폴백: 타깃 미발견 또는 FUTURE_ASSETS 목표 → 기존 호환성 스캔
+```
+
+- `ScoredPickAsset`으로 픽 포함 패키지 구성 (가치 차이 >15% 시 픽 보완)
 - 픽 포함 시 `tradeExecutor` 경유, 미포함 시 레거시 `executeRosterSwap`
 
 ### 유저 제안 응답 (`evaluateUserProposals`)
-- pending 상태 유저 제안 평가 → accepted/rejected
+- `gmProfile` 있으면 `calculateAcceptScore()` 기반 평가 (direction별 utility 임계값)
+- `gmProfile` 없으면 기존 `valueRatioMin` 기반 폴백
 - TRADE_OFFER_RESPONSE 메시지 발송
 
 ---

@@ -43,7 +43,10 @@ export const buildReplaySnapshot = (
                 }
                 if (hasInjuryHistory) entry.injuryHistory = player.injuryHistory;
                 if (hasAwards) entry.awards = player.awards;
-                if (hasContract) entry.contract = player.contract;
+                if (hasContract) {
+                    entry.contract = player.contract;
+                    entry.age = player.age;
+                }
                 if (hasArchetypeState) entry.archetypeState = player.archetypeState;
                 roster_stats[player.id] = entry;
             }
@@ -164,6 +167,7 @@ export const hydrateFromSnapshot = (
             if ((pData as any).injuryHistory) player.injuryHistory = (pData as any).injuryHistory;
             if ((pData as any).awards) player.awards = (pData as any).awards;
             if ((pData as any).archetypeState) player.archetypeState = (pData as any).archetypeState;
+            if ((pData as any).age !== undefined) player.age = (pData as any).age;
             if ((pData as any).contract) {
                 player.contract = (pData as any).contract;
                 player.salary = player.contract!.years[player.contract!.currentYear];

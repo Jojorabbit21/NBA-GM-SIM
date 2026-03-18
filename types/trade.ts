@@ -1,6 +1,8 @@
 
 import { Player } from './player';
 import { PickProtection } from './draftAssets';
+import type { FARole } from './fa';
+import type { TeamDirection } from './gm';
 
 // ──────────────────────────────────────────────
 // 기본 참조 타입
@@ -102,6 +104,36 @@ export interface PersistentTradeOffer {
 /** 리그 전체 활성 오퍼 */
 export interface LeagueTradeOffers {
     offers: PersistentTradeOffer[];
+}
+
+// ──────────────────────────────────────────────
+// CPU 트레이드 엔진 — 팀 상태 & 목표 타입
+// ──────────────────────────────────────────────
+
+/** 트레이드 목표 유형 — CPU 단장이 이번 거래에서 무엇을 원하는가 */
+export type TradeGoalType =
+    | 'STAR_UPGRADE'       // 스타 1명 확보
+    | 'STARTER_UPGRADE'    // 주전 1자리 업그레이드
+    | 'ROLE_ADD'           // 특정 FA롤 보강
+    | 'DEPTH_ADD'          // 뎁스 보강
+    | 'FUTURE_ASSETS'      // 미래 자산 확보 (픽/유망주)
+    | 'SALARY_RELIEF'      // 연봉 정리
+    | 'SURPLUS_CLEAR'      // 중복 자원 방출
+    | 'EXPIRING_LEVERAGE'; // 만기 계약 활용
+
+/** 팀 트레이드 상태 — 즉석 계산, 저장 안 함 */
+export interface TeamTradeState {
+    phase: TeamDirection;
+    strengthNow: number;        // 현재 로스터 OVR 기반 전력 (0~100)
+    strengthFuture: number;     // 미래 전력 (젊은 자산 가중)
+    timelineAge: number;        // 주전 8인 가중 평균 나이
+    financialPressure: number;  // 페이롤 압박 (0~1, 1 = 럭셔리택스 초과)
+    winPct: number;             // 시즌 승률
+    needs: Partial<Record<FARole, number>>;  // 롤별 필요도 (0~1)
+    surpluses: Record<string, number>;       // 포지션별 과잉 선수 수
+    picksOwnedScore: number;    // 보유 픽 가치 합계
+    openRosterFlex: number;     // 로스터 빈자리 (15 - roster.length)
+    tradeGoal?: TradeGoalType;  // 이번 사이클 목표
 }
 
 // ──────────────────────────────────────────────

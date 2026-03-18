@@ -1,19 +1,24 @@
 
 import { Player, Team, Transaction } from '../../types';
 import { LeaguePickAssets, DraftPickAsset } from '../../types/draftAssets';
-import { LeagueTradeBlocks, PersistentPickRef } from '../../types/trade';
+import { LeagueTradeBlocks, PersistentPickRef, TeamTradeState } from '../../types/trade';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { SEASON_START_DATE, TRADE_DEADLINE } from '../../utils/constants';
 import { SeasonConfig } from '../../utils/seasonConfig';
 import { TRADE_CONFIG as C } from './tradeConfig';
-import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
+import { getPlayerTradeValue, calculatePackageTrueValue, getPlayerValueToTeam } from './tradeValue';
 import { getPickTradeValue } from './pickValueEngine';
-import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
+import { analyzeTeamSituation, buildTeamTradeState, TeamNeeds } from './teamAnalysis';
 import { LeagueGMProfiles } from '../../types/gm';
 import { getDirectionParams } from './gmProfiler';
 import { checkTradeLegality } from './salaryRules';
 import { executeTrade, TradeExecutionPayload, MAX_ROSTER_SIZE } from './tradeExecutor';
 import { formatMoney } from '../../utils/formatMoney';
+import { calculateParticipationScore, PARTICIPATION_THRESHOLD } from './tradeParticipation';
+import { generateTradeGoal } from './tradeGoalEngine';
+import { getPlayerAvailability } from './assetAvailability';
+import { findTradeTargets } from './tradeTargetFinder';
+import { calculateTradeUtility } from './tradeUtilityEngine';
 
 // ──────────────────────────────────────────────
 // 인접 포지션 매핑 (SG↔SF, PF↔C 등)
@@ -658,137 +663,258 @@ export function runCPUTradeRound(
     // 데드라인 체크
     const tradeDeadline = seasonConfig?.tradeDeadline ?? TRADE_DEADLINE;
     const seasonStart = seasonConfig?.startDate ?? SEASON_START_DATE;
-    if (new Date(currentDate) > new Date(tradeDeadline)) {
-        return null;
-    }
-    if (new Date(currentDate) < new Date(seasonStart)) {
-        return null;
-    }
+    if (new Date(currentDate) > new Date(tradeDeadline)) return null;
+    if (new Date(currentDate) < new Date(seasonStart)) return null;
 
-    // 확률 계산 & 주사위
-    const baseChance = calculateTradeChance(currentDate, seasonStart, tradeDeadline);
-
-    // GM 노선 기반 확률 보정 — 활발한 노선 팀이 많을수록 거래 확률 증가
-    let directionMultiplier = 1.0;
-    if (leagueGMProfiles) {
-        const cpuIds = teams.filter(t => t.id !== myTeamId).map(t => t.id);
-        const multipliers = cpuIds
-            .map(id => leagueGMProfiles[id])
-            .filter(Boolean)
-            .map(p => getDirectionParams(p.direction).tradeChanceMultiplier);
-        if (multipliers.length > 0) {
-            directionMultiplier = multipliers.reduce((s, m) => s + m, 0) / multipliers.length;
-        }
-    }
-    const chance = baseChance * directionMultiplier;
-
-    const roll = Math.random();
-    if (roll > chance) return null;
+    // 데드라인까지 남은 일수
+    const daysToDeadline = Math.max(0,
+        (new Date(tradeDeadline).getTime() - new Date(currentDate).getTime()) / 86400000
+    );
 
     const CC = C.CPU_TRADE;
-
-    // CPU 팀 프로필 구축 (유저 팀 제외)
     const cpuTeams = teams.filter(t => t.id !== myTeamId);
-    let profiles = cpuTeams.map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles));
 
-    // 팀 쌍 호환성 계산
-    const pairs: { a: TeamTradeProfile; b: TeamTradeProfile; score: number }[] = [];
-    for (let i = 0; i < profiles.length; i++) {
-        for (let j = i + 1; j < profiles.length; j++) {
-            // 트레이드 가능 자산이 없으면 스킵
-            if (profiles[i].tradeableAssets.length === 0 || profiles[j].tradeableAssets.length === 0) continue;
+    // ── Step 1: 전체 팀 트레이드 상태 계산 ──
+    const teamStates: Record<string, TeamTradeState> = {};
+    for (const team of cpuTeams) {
+        const gmProfile = leagueGMProfiles?.[team.id];
+        if (!gmProfile) continue;
+        teamStates[team.id] = buildTeamTradeState(team, gmProfile, leaguePickAssets, currentDate);
+    }
 
-            const score = calculateCompatibility(profiles[i], profiles[j]);
-            if (score > 0) {
-                pairs.push({ a: profiles[i], b: profiles[j], score });
-            }
+    // ── Step 2: 참가 점수로 참가 팀 선정 ──
+    // 기존 확률 곡선도 병용 (데드라인 근접 시 자연스러운 트레이드 빈도 증가)
+    const baseChance = calculateTradeChance(currentDate, seasonStart, tradeDeadline);
+    if (Math.random() > baseChance * 1.5) return null; // 빠른 bail-out
+
+    const participatingTeams = cpuTeams.filter(team => {
+        const gmProfile = leagueGMProfiles?.[team.id];
+        const state = teamStates[team.id];
+        if (!gmProfile || !state) return false;
+        const score = calculateParticipationScore(state, gmProfile, 99, daysToDeadline);
+        return score >= PARTICIPATION_THRESHOLD;
+    });
+
+    if (participatingTeams.length < 2) return null;
+
+    // ── Step 3: 목표 생성 ──
+    const teamGoals: Record<string, ReturnType<typeof generateTradeGoal>> = {};
+    for (const team of participatingTeams) {
+        const gmProfile = leagueGMProfiles?.[team.id];
+        const state = teamStates[team.id];
+        if (gmProfile && state) {
+            teamGoals[team.id] = generateTradeGoal(state, gmProfile, team);
         }
     }
 
-    if (pairs.length === 0) return null;
-
-    // 호환성 내림차순 + 약간의 랜덤성 (상위 쌍만 무조건 성사되지 않도록)
-    pairs.sort((x, y) => y.score - x.score);
-    const candidatePairs = pairs.slice(0, CC.MAX_CANDIDATE_PAIRS);
-
-    // 후보 쌍에 랜덤 셔플 적용 (상위 5개 중에서 랜덤 선택 효과)
-    for (let i = candidatePairs.length - 1; i > 0; i--) {
-        // 인접 원소만 스왑 (부분 셔플 — 순위 우선 유지하되 약간의 무작위성)
-        if (Math.random() < 0.3) {
-            const j = Math.max(0, i - 1);
-            [candidatePairs[i], candidatePairs[j]] = [candidatePairs[j], candidatePairs[i]];
-        }
-    }
-
+    // ── Step 4~6: 목표 기반 타깃 탐색 → 패키지 구성 → 유틸리티 체크 ──
     const transactions: Transaction[] = [];
     const tradedTeamIds = new Set<string>();
+    let profiles = cpuTeams.map(t =>
+        buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles)
+    );
 
-    for (const pair of candidatePairs) {
+    // 구매자 팀 기준으로 타깃 탐색
+    for (const buyerTeam of participatingTeams) {
+        if (tradedTeamIds.has(buyerTeam.id)) continue;
+        const buyerProfile = leagueGMProfiles?.[buyerTeam.id];
+        const buyerState = teamStates[buyerTeam.id];
+        const goal = teamGoals[buyerTeam.id];
+        if (!buyerProfile || !buyerState || !goal) continue;
 
-        // 이미 오늘 트레이드한 팀은 건너뜀
-        if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
+        // 미래 자산 목표이면 픽 탐색이지 선수 탐색 아님 → 기존 호환성 방식으로 fallback
+        if (goal === 'FUTURE_ASSETS') {
+            const sellerProfiles = profiles.filter(p =>
+                p.team.id !== buyerTeam.id && !tradedTeamIds.has(p.team.id)
+            );
+            const buyerProf = profiles.find(p => p.team.id === buyerTeam.id);
+            if (!buyerProf) continue;
 
-        const pkg = constructTradePackage(pair.a, pair.b);
-        if (!pkg) continue;
-
-        // 픽 자산이 있으면 tradeExecutor 경유, 없으면 기존 로직
-        if (leaguePickAssets && (pkg.teamAPicks.length > 0 || pkg.teamBPicks.length > 0)) {
-            const payload: TradeExecutionPayload = {
-                teamAId: pair.a.team.id,
-                teamBId: pair.b.team.id,
-                teamASentPlayers: pkg.teamAPlayers.map(p => p.id),
-                teamASentPicks: pkg.teamAPicks.map(sp => ({
-                    season: sp.pick.season,
-                    round: sp.pick.round,
-                    originalTeamId: sp.pick.originalTeamId,
-                    currentTeamId: pair.a.team.id,
-                })),
-                teamBSentPlayers: pkg.teamBPlayers.map(p => p.id),
-                teamBSentPicks: pkg.teamBPicks.map(sp => ({
-                    season: sp.pick.season,
-                    round: sp.pick.round,
-                    originalTeamId: sp.pick.originalTeamId,
-                    currentTeamId: pair.b.team.id,
-                })),
-                date: currentDate,
-                isUserTrade: false,
-            };
-            const result = executeTrade(payload, teams, leaguePickAssets, leagueTradeBlocks);
-            if (result.success && result.transaction) {
-                transactions.push(result.transaction);
-                tradedTeamIds.add(pair.a.team.id);
-                tradedTeamIds.add(pair.b.team.id);
-                // 트레이드 후 로스터 초과 즉시 정리
-                if (result.overflowTeams) {
-                    trimOverflowRosters(teams, result.overflowTeams);
+            for (const sellerProf of sellerProfiles) {
+                if (tradedTeamIds.has(sellerProf.team.id)) continue;
+                const score = calculateCompatibility(buyerProf, sellerProf);
+                if (score <= 0) continue;
+                const pkg = constructTradePackage(buyerProf, sellerProf);
+                if (!pkg) continue;
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+                    break;
                 }
             }
-        } else {
-            // 선수만 트레이드 (기존 로직 — 픽 자산 미사용 시)
-            executeRosterSwap(pair.a.team, pair.b.team, pkg.teamAPlayers, pkg.teamBPlayers);
-            const tx = createTradeTransaction(
-                pair.a.team, pair.b.team,
-                pkg.teamAPlayers, pkg.teamBPlayers,
-                pkg.analysis
-            );
-            transactions.push(tx);
-            tradedTeamIds.add(pair.a.team.id);
-            tradedTeamIds.add(pair.b.team.id);
-            // 레거시 경로도 overflow 정리
-            trimOverflowRosters(teams, [pair.a.team.id, pair.b.team.id]);
+            continue;
         }
 
-        // 멀티 트레이드 시 프로필 재구축 (로스터 변경 반영)
-        if (candidatePairs.length > 0) {
-            profiles = cpuTeams
-                .filter(t => !tradedTeamIds.has(t.id))
-                .map(t => buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles));
+        // 목표 기반 타깃 탐색
+        if (!leagueGMProfiles) continue;
+        const targets = findTradeTargets(
+            buyerTeam, buyerState, buyerProfile, goal,
+            teams.filter(t => t.id !== myTeamId),
+            leagueGMProfiles, teamStates
+        );
+
+        for (const target of targets) {
+            if (tradedTeamIds.has(target.sellerTeamId)) continue;
+
+            const sellerProfile = profiles.find(p => p.team.id === target.sellerTeamId);
+            const buyerProf = profiles.find(p => p.team.id === buyerTeam.id);
+            if (!sellerProfile || !buyerProf) continue;
+
+            // 타깃 선수를 포함한 패키지 구성 시도
+            // sellerProf의 tradeableAssets에서 타깃 선수를 최우선으로 선택
+            const reorderedSeller = reorderAssetsWithTarget(sellerProfile, target.player.id);
+            const pkg = constructTradePackage(buyerProf, reorderedSeller);
+            if (!pkg) continue;
+
+            // ── TradeUtility 체크 (양팀 모두 수락 가능해야) ──
+            const sellerState = teamStates[target.sellerTeamId];
+            const sellerGMProfile = leagueGMProfiles?.[target.sellerTeamId];
+            if (!sellerState || !sellerGMProfile) continue;
+
+            const buyerUtil = calculateTradeUtility(
+                pkg.teamBPlayers, pkg.teamBPicks.map(sp => sp.pick),
+                pkg.teamAPlayers, pkg.teamAPicks.map(sp => sp.pick),
+                buyerState, buyerProfile, teams, currentDate, goal
+            );
+            const sellerUtil = calculateTradeUtility(
+                pkg.teamAPlayers, pkg.teamAPicks.map(sp => sp.pick),
+                pkg.teamBPlayers, pkg.teamBPicks.map(sp => sp.pick),
+                sellerState, sellerGMProfile, teams, currentDate, teamGoals[target.sellerTeamId]
+            );
+
+            const buyerThreshold = getPhaseUtilityThreshold(buyerState.phase);
+            const sellerThreshold = getPhaseUtilityThreshold(sellerState.phase);
+
+            if (buyerUtil.utility < buyerThreshold || sellerUtil.utility < sellerThreshold) {
+                continue; // 양팀 모두 수락 가능해야 트레이드 성사
+            }
+
+            if (executePkg(pkg, buyerProf, sellerProfile, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+                break; // 이 구매자에 대해 하나 성사 → 다음 팀으로
+            }
+        }
+
+        // 타깃 탐색으로 못 찾으면 기존 호환성 방식 fallback
+        if (!tradedTeamIds.has(buyerTeam.id)) {
+            const buyerProf = profiles.find(p => p.team.id === buyerTeam.id);
+            if (!buyerProf || buyerProf.tradeableAssets.length === 0) continue;
+
+            const compatiblePairs = profiles
+                .filter(p => p.team.id !== buyerTeam.id && !tradedTeamIds.has(p.team.id) && p.tradeableAssets.length > 0)
+                .map(sellerProf => ({
+                    sellerProf,
+                    score: calculateCompatibility(buyerProf, sellerProf),
+                }))
+                .filter(x => x.score > 0)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3);
+
+            for (const { sellerProf } of compatiblePairs) {
+                if (tradedTeamIds.has(sellerProf.team.id)) continue;
+                const pkg = constructTradePackage(buyerProf, sellerProf);
+                if (!pkg) continue;
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    // 참가 팀이 아닌 팀끼리의 기존 방식도 한 번 더 시도 (소형딜)
+    if (transactions.length === 0) {
+        const remainingProfiles = profiles.filter(p => !tradedTeamIds.has(p.team.id));
+        const pairs: { a: TeamTradeProfile; b: TeamTradeProfile; score: number }[] = [];
+        for (let i = 0; i < remainingProfiles.length; i++) {
+            for (let j = i + 1; j < remainingProfiles.length; j++) {
+                if (remainingProfiles[i].tradeableAssets.length === 0 || remainingProfiles[j].tradeableAssets.length === 0) continue;
+                const score = calculateCompatibility(remainingProfiles[i], remainingProfiles[j]);
+                if (score > 0) pairs.push({ a: remainingProfiles[i], b: remainingProfiles[j], score });
+            }
+        }
+        pairs.sort((x, y) => y.score - x.score);
+        for (const pair of pairs.slice(0, CC.MAX_CANDIDATE_PAIRS)) {
+            if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
+            const pkg = constructTradePackage(pair.a, pair.b);
+            if (!pkg) continue;
+            executePkg(pkg, pair.a, pair.b, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds);
         }
     }
 
     if (transactions.length === 0) return null;
-
     return { updatedTeams: teams, transactions };
+}
+
+// ── 패키지 실행 헬퍼 (중복 제거용) ──
+function executePkg(
+    pkg: TradePackage,
+    profileA: TeamTradeProfile,
+    profileB: TeamTradeProfile,
+    teams: Team[],
+    leaguePickAssets: LeaguePickAssets | undefined,
+    leagueTradeBlocks: LeagueTradeBlocks | undefined,
+    currentDate: string,
+    transactions: Transaction[],
+    tradedTeamIds: Set<string>,
+): boolean {
+    if (leaguePickAssets && (pkg.teamAPicks.length > 0 || pkg.teamBPicks.length > 0)) {
+        const payload: TradeExecutionPayload = {
+            teamAId: profileA.team.id,
+            teamBId: profileB.team.id,
+            teamASentPlayers: pkg.teamAPlayers.map(p => p.id),
+            teamASentPicks: pkg.teamAPicks.map(sp => ({
+                season: sp.pick.season,
+                round: sp.pick.round,
+                originalTeamId: sp.pick.originalTeamId,
+                currentTeamId: profileA.team.id,
+            })),
+            teamBSentPlayers: pkg.teamBPlayers.map(p => p.id),
+            teamBSentPicks: pkg.teamBPicks.map(sp => ({
+                season: sp.pick.season,
+                round: sp.pick.round,
+                originalTeamId: sp.pick.originalTeamId,
+                currentTeamId: profileB.team.id,
+            })),
+            date: currentDate,
+            isUserTrade: false,
+        };
+        const result = executeTrade(payload, teams, leaguePickAssets, leagueTradeBlocks);
+        if (result.success && result.transaction) {
+            transactions.push(result.transaction);
+            tradedTeamIds.add(profileA.team.id);
+            tradedTeamIds.add(profileB.team.id);
+            if (result.overflowTeams) trimOverflowRosters(teams, result.overflowTeams);
+            return true;
+        }
+    } else {
+        executeRosterSwap(profileA.team, profileB.team, pkg.teamAPlayers, pkg.teamBPlayers);
+        const tx = createTradeTransaction(
+            profileA.team, profileB.team, pkg.teamAPlayers, pkg.teamBPlayers, pkg.analysis
+        );
+        transactions.push(tx);
+        tradedTeamIds.add(profileA.team.id);
+        tradedTeamIds.add(profileB.team.id);
+        trimOverflowRosters(teams, [profileA.team.id, profileB.team.id]);
+        return true;
+    }
+    return false;
+}
+
+// ── 타깃 선수를 최우선으로 배치한 프로필 복사본 생성 ──
+function reorderAssetsWithTarget(profile: TeamTradeProfile, targetPlayerId: string): TeamTradeProfile {
+    const target = profile.tradeableAssets.find(a => a.player.id === targetPlayerId);
+    if (!target) return profile;
+    const rest = profile.tradeableAssets.filter(a => a.player.id !== targetPlayerId);
+    return { ...profile, tradeableAssets: [target, ...rest] };
+}
+
+// ── direction별 최소 utility ──
+function getPhaseUtilityThreshold(phase: string): number {
+    const thresholds: Record<string, number> = {
+        winNow: -0.08,
+        buyer: -0.02,
+        standPat: 0.04,
+        seller: -0.12,
+        tanking: -0.15,
+    };
+    return thresholds[phase] ?? 0;
 }
 
 /**

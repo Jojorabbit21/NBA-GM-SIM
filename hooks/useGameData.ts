@@ -350,6 +350,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.injuryHistory && { injuryHistory: savedState.injuryHistory }),
                                     ...(savedState.awards && { awards: savedState.awards }),
                                     ...(savedState.archetypeState && { archetypeState: savedState.archetypeState }),
+                                    ...(savedState.age !== undefined && { age: savedState.age }),
                                     ...(savedState.contract && {
                                         contract: savedState.contract,
                                         salary: savedState.contract.years[savedState.contract.currentYear],
@@ -724,7 +725,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 }
                                 if (snapshotBuildFailed && hasInjuryHistory) state.injuryHistory = p.injuryHistory;
                                 if (snapshotBuildFailed && hasAwards) state.awards = p.awards;
-                                if (hasContract) state.contract = p.contract;
+                                if (hasContract) {
+                                    state.contract = p.contract;
+                                    state.age = p.age;
+                                }
                                 if (hasArchetypeState) state.archetypeState = p.archetypeState;
                                 rosterState[p.id] = state;
                             }

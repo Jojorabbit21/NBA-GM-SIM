@@ -34,6 +34,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
 | [trade-system.md](trade-system.md) | 트레이드 엔진 (블록, 오퍼, CBA, 픽 밸류) | tradeExecutor.ts, tradeBlockManager.ts, pickValueEngine.ts |
+| [cpu-trade-engine.md](cpu-trade-engine.md) | CPU 트레이드 AI 아키텍처 (5단계 파이프라인, GM 슬라이더, TradeUtility) | cpuTradeSimulator.ts, tradeGoalEngine.ts, tradeUtilityEngine.ts |
 | [finance-system.md](finance-system.md) | 예산/수익/지출 시뮬레이션 | financeEngine.ts |
 
 ---
@@ -62,6 +63,13 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | tradeExecutor.ts | [trade-system.md](trade-system.md) |
 | tradeBlockManager.ts | [trade-system.md](trade-system.md) |
 | pickValueEngine.ts | [trade-system.md](trade-system.md) |
+| cpuTradeSimulator.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| tradeGoalEngine.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| tradeParticipation.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| assetAvailability.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| tradeTargetFinder.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| tradeUtilityEngine.ts | [cpu-trade-engine.md](cpu-trade-engine.md) |
+| teamAnalysis.ts | [cpu-trade-engine.md](cpu-trade-engine.md), [trade-system.md](trade-system.md) |
 
 ### 유틸리티 (`utils/`)
 | 파일 | 문서 |
