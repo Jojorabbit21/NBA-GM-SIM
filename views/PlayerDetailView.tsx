@@ -1101,35 +1101,45 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
                                             })
                                             .map((entry, idx) => {
-                                                const nameMap: Record<string, string> = {
-                                                    // 시뮬 어워드 타입
-                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: '올해의 선수',
-                                                    FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
+                                                const BASE_NAME: Record<string, string> = {
+                                                    // 시뮬 타입
+                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승',
+                                                    MVP: '올해의 선수', FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
                                                     ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
                                                     ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
                                                     // BBRef 코드
                                                     CHM: '챔피언', FMVP: '파이널 MVP',
-                                                    ...Object.fromEntries([2,3,4,5,6,7,8,9,10].map(n => [`MVP-${n}`, '올해의 선수'])),
-                                                    ...Object.fromEntries([2,3,4,5].map(n => [`DPOY-${n}`, '올해의 수비수'])),
+                                                    MVP: '올해의 선수', DPOY: '올해의 수비수',
                                                     NBA1: '올-오펜시브 팀', NBA2: '올-오펜시브 팀', NBA3: '올-오펜시브 팀',
                                                     DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
+                                                    ROY: '올해의 신인', CPOY: '올해의 클러치 플레이어',
+                                                    MIP: '최고 발전 선수', '6MOY': '식스맨', SMOY: '식스맨',
                                                 };
-                                                const detailMap: Record<string, string> = {
+                                                const BASE_DETAIL: Record<string, string> = {
                                                     CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승',
                                                     FINALS_MVP: '수상', FMVP: '수상',
                                                     ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
                                                     ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
                                                     NBA1: '1st', NBA2: '2nd', NBA3: '3rd',
                                                     DEF1: '1st', DEF2: '2nd',
-                                                    ...Object.fromEntries([2,3,4,5,6,7,8,9,10].map(n => [`MVP-${n}`, `${n}위`])),
-                                                    ...Object.fromEntries([2,3,4,5].map(n => [`DPOY-${n}`, `${n}위`])),
                                                 };
-                                                // MVP/DPOY: rank 기반 표시 (시뮬 어워드만)
+                                                const toOrdinal = (n: number) =>
+                                                    n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+
+                                                // 코드-숫자 패턴 파싱 (MVP-2, CPOY-4, ROY-2 등)
+                                                const ranked = entry.type?.match(/^(.+)-(\d+)$/);
+                                                const baseCode = ranked ? ranked[1] : entry.type;
+                                                const rankNum  = ranked ? parseInt(ranked[2]) : null;
+
+                                                const displayName = BASE_NAME[baseCode] ?? baseCode;
+
                                                 let detail: string;
-                                                if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
-                                                    detail = entry.rank === 1 ? '1위 (수상)' : `${entry.rank}위`;
+                                                if (rankNum !== null) {
+                                                    detail = toOrdinal(rankNum);
+                                                } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
+                                                    detail = entry.rank === 1 ? '1st (수상)' : toOrdinal(entry.rank);
                                                 } else {
-                                                    detail = detailMap[entry.type] ?? (entry.label ? '' : '-');
+                                                    detail = BASE_DETAIL[entry.type] ?? (entry.label ? '' : '-');
                                                 }
                                                 return (
                                                     <TableRow key={idx} className="h-10">
@@ -1137,7 +1147,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                             <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
                                                         </TableCell>
                                                         <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{nameMap[entry.type] ?? entry.type}</span>
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{displayName}</span>
                                                         </TableCell>
                                                         <TableCell align="center">
                                                             <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
