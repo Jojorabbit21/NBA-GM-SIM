@@ -256,6 +256,19 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 }
 
 // ── Hex color → rgba string ──
+// BBRef award code → 시뮬 PlayerAwardType 변환 (배지/헤더 표시용)
+const BREF_CODE_TO_SIM_TYPE: Record<string, string> = {
+    CHM: 'CHAMPION', FMVP: 'FINALS_MVP',
+    MVP: 'MVP', DPOY: 'DPOY',
+    NBA1: 'ALL_NBA_1', NBA2: 'ALL_NBA_2', NBA3: 'ALL_NBA_3',
+    DEF1: 'ALL_DEF_1', DEF2: 'ALL_DEF_2',
+};
+function normalizeBrefAward(a: any, parentSeason: string) {
+    const code = a.code ?? a.type ?? '';
+    const simType = BREF_CODE_TO_SIM_TYPE[code];
+    return simType ? { type: simType, season: a.season ?? parentSeason, label: a.label } : null;
+}
+
 function hexAlpha(hex: string, alpha: number): string {
     const n = parseInt(hex.replace('#', ''), 16);
     return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
@@ -557,7 +570,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         {(() => {
                             const allAwards = [
                                 ...(player.career_history?.flatMap(s =>
-                                    (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
+                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
                                 ) ?? []),
                                 ...(player.awards ?? []),
                             ];
