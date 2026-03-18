@@ -447,8 +447,8 @@ export function runAwardVoting(teams: Team[], seed?: string): SeasonAwardsConten
     }
 
     // 집계
-    const mvpRanking = tallyPointVoting(ballots, candidateMap, 'mvp', MVP_POINTS, 10);
-    const dpoyRanking = tallyPointVoting(ballots, candidateMap, 'dpoy', DPOY_POINTS, 5);
+    const mvpRanking = tallyPointVoting(ballots, candidateMap, 'mvp', MVP_POINTS, 5);
+    const dpoyRanking = tallyPointVoting(ballots, candidateMap, 'dpoy', DPOY_POINTS, 3);
     const allNbaTeams = tallyAllTeams(allNbaBallots, candidateMap, 3);
     const allDefTeams = tallyAllTeams(allDefBallots, candidateMap, 2);
 

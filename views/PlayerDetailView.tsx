@@ -556,7 +556,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {(() => {
                             const allAwards = [
-                                ...(player.career_history?.flatMap(s => s.awards ?? []) ?? []),
+                                ...(player.career_history?.flatMap(s =>
+                                    (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
+                                ) ?? []),
                                 ...(player.awards ?? []),
                             ];
                             return allAwards.length > 0 ? <HeaderAwardTrophies awards={allAwards} /> : null;
@@ -1052,7 +1054,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <SectionHeader title="수상 내역" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {(() => {
-                                const historicalAwards = player.career_history?.flatMap(s => s.awards ?? []) ?? [];
+                                const historicalAwards = player.career_history?.flatMap(s =>
+                                    (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
+                                ) ?? [];
                                 const allAwards = [...historicalAwards, ...(player.awards ?? [])];
                                 return allAwards.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
@@ -1085,23 +1089,34 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             })
                                             .map((entry, idx) => {
                                                 const nameMap: Record<string, string> = {
+                                                    // 시뮬 어워드 타입
                                                     CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: '올해의 선수',
                                                     FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
                                                     ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
                                                     ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
+                                                    // BBRef 코드
+                                                    CHM: '챔피언', FMVP: '파이널 MVP',
+                                                    ...Object.fromEntries([2,3,4,5,6,7,8,9,10].map(n => [`MVP-${n}`, '올해의 선수'])),
+                                                    ...Object.fromEntries([2,3,4,5].map(n => [`DPOY-${n}`, '올해의 수비수'])),
+                                                    NBA1: '올-오펜시브 팀', NBA2: '올-오펜시브 팀', NBA3: '올-오펜시브 팀',
+                                                    DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
                                                 };
                                                 const detailMap: Record<string, string> = {
-                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승',
-                                                    FINALS_MVP: '수상',
+                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승',
+                                                    FINALS_MVP: '수상', FMVP: '수상',
                                                     ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
                                                     ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
+                                                    NBA1: '1st', NBA2: '2nd', NBA3: '3rd',
+                                                    DEF1: '1st', DEF2: '2nd',
+                                                    ...Object.fromEntries([2,3,4,5,6,7,8,9,10].map(n => [`MVP-${n}`, `${n}위`])),
+                                                    ...Object.fromEntries([2,3,4,5].map(n => [`DPOY-${n}`, `${n}위`])),
                                                 };
-                                                // MVP/DPOY: rank 기반 표시
+                                                // MVP/DPOY: rank 기반 표시 (시뮬 어워드만)
                                                 let detail: string;
                                                 if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
                                                     detail = entry.rank === 1 ? '1위 (수상)' : `${entry.rank}위`;
                                                 } else {
-                                                    detail = detailMap[entry.type] ?? '-';
+                                                    detail = detailMap[entry.type] ?? (entry.label ? '' : '-');
                                                 }
                                                 return (
                                                     <TableRow key={idx} className="h-10">
