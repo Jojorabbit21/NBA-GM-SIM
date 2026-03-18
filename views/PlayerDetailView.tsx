@@ -589,8 +589,35 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="mx-6" />
 
                     {/* Scout Report */}
-                    {(archetypes.length > 0 || scoutReport.length > 0) && (
-                        <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-2">
+                    {(archetypes.length > 0 || scoutReport.length > 0 || playerArchetypeState) && (
+                        <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-3">
+                            {/* Archetype identity line */}
+                            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs">
+                                <span className="font-black uppercase tracking-wide" style={{ color: theme.accent }}>
+                                    {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
+                                </span>
+                                {playerArchetypeState.secondary && (
+                                    <>
+                                        <span style={{ color: theme.text }}>,</span>
+                                        <span className="font-bold uppercase tracking-wide" style={{ color: theme.text }}>
+                                            {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
+                                        </span>
+                                    </>
+                                )}
+                                {playerArchetypeState.tags.length > 0 && (
+                                    <>
+                                        <span className="mx-0.5" style={{ color: theme.text }}>·</span>
+                                        {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
+                                            <React.Fragment key={tag}>
+                                                {i > 0 && <span style={{ color: theme.text }}>,</span>}
+                                                <span className="font-semibold" style={{ color: theme.text }}>
+                                                    {getTraitTagDisplayInfo(tag).label}
+                                                </span>
+                                            </React.Fragment>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
                             {scoutReport.length > 0 && (
                                 <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
                                     "{scoutReport}"
@@ -608,47 +635,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                     )}
                 </div>
-
-                {/* ═══ Player Archetype Identity ═══ */}
-                {(() => {
-                    const primaryInfo = getArchetypeDisplayInfo(playerArchetypeState.primary);
-                    const secondaryInfo = playerArchetypeState.secondary
-                        ? getArchetypeDisplayInfo(playerArchetypeState.secondary)
-                        : null;
-                    return (
-                        <div className="px-6 pt-2 pb-4 relative z-10 flex flex-col gap-2">
-                            {/* Archetype badges */}
-                            <div className="flex flex-wrap items-center gap-2">
-                                {/* Primary */}
-                                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-${primaryInfo.color}-900/60 text-${primaryInfo.color}-300 border border-${primaryInfo.color}-600/50`}>
-                                    {primaryInfo.label}
-                                </span>
-                                {/* Secondary */}
-                                {secondaryInfo && (
-                                    <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-slate-800/60 text-slate-400 border border-slate-600/50">
-                                        / {secondaryInfo.label}
-                                    </span>
-                                )}
-                            </div>
-                            {/* Trait Tags */}
-                            {playerArchetypeState.tags.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                    {playerArchetypeState.tags.slice(0, 4).map(tag => {
-                                        const tagInfo = getTraitTagDisplayInfo(tag);
-                                        return (
-                                            <span
-                                                key={tag}
-                                                className={`px-2 py-0.5 rounded text-[10px] font-bold bg-${tagInfo.color}-900/40 text-${tagInfo.color}-400 border border-${tagInfo.color}-700/40`}
-                                            >
-                                                {tagInfo.label}
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })()}
 
                 {/* ═══ BODY — 3 sections ═══ */}
                 <div className="text-xs bg-slate-950">
