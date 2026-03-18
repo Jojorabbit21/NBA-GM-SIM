@@ -73,6 +73,51 @@ const CAREER_ADV_COLS = [
     { key: 'orb_pct', label: 'ORB%' }, { key: 'drb_pct', label: 'DRB%' }, { key: 'trb_pct', label: 'TRB%' },
 ];
 
+// ── Career table helpers ──
+const PCT_COLS = new Set(['fg_pct','fg3_pct','ft_pct','ts_pct','efg_pct','fg3a_rate','fta_rate']);
+const RATE_COLS = new Set(['usg_pct','ast_pct','orb_pct','drb_pct','trb_pct','stl_pct','blk_pct','tov_pct']);
+const INT_COLS  = new Set(['age','gp','gs']);
+
+function formatCareerCell(key: string, raw: any): string {
+    if (raw == null || raw === '') return '-';
+    if (PCT_COLS.has(key))  return (Number(raw) * 100).toFixed(1);
+    if (RATE_COLS.has(key)) return Number(raw).toFixed(1);
+    if (key === 'season' || key === 'team') return String(raw);
+    if (INT_COLS.has(key))  return String(Math.round(Number(raw)));
+    return Number(raw).toFixed(1);
+}
+
+function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
+    // 2TM 합산 행 제외, gp>0인 행만
+    const valid = rows.filter(r => r.team !== '2TM' && (r.gp ?? 0) > 0);
+    if (valid.length === 0) return {};
+    const totalGP = valid.reduce((s, r) => s + (r.gp ?? 0), 0);
+    const wavg = (key: string) =>
+        valid.reduce((s, r) => s + ((r[key] ?? 0) * (r.gp ?? 0)), 0) / totalGP;
+    // 슈팅% 는 성분 스탯에서 재계산
+    const tot = (key: string) => valid.reduce((s, r) => s + ((r[key] ?? 0) * (r.gp ?? 0)), 0);
+    const fga = tot('fga'); const fg3a = tot('fg3a'); const fta = tot('fta');
+    return {
+        season: `${valid.length}시즌`, team: teamLabel, age: null,
+        gp: totalGP,
+        gs: valid.reduce((s, r) => s + (r.gs ?? 0), 0),
+        min: wavg('min'), pts: wavg('pts'),
+        oreb: wavg('oreb'), dreb: wavg('dreb'), reb: wavg('reb'),
+        ast: wavg('ast'), stl: wavg('stl'), blk: wavg('blk'),
+        tov: wavg('tov'), pf: wavg('pf'),
+        fgm: wavg('fgm'), fga: wavg('fga'),
+        fg_pct: fga > 0 ? tot('fgm') / fga : null,
+        fg3m: wavg('fg3m'), fg3a: wavg('fg3a'),
+        fg3_pct: fg3a > 0 ? tot('fg3m') / fg3a : null,
+        ftm: wavg('ftm'), fta: wavg('fta'),
+        ft_pct: fta > 0 ? tot('ftm') / fta : null,
+        ts_pct: wavg('ts_pct'), efg_pct: wavg('efg_pct'), tov_pct: wavg('tov_pct'),
+        fg3a_rate: wavg('fg3a_rate'), fta_rate: wavg('fta_rate'),
+        usg_pct: wavg('usg_pct'), ast_pct: wavg('ast_pct'),
+        orb_pct: wavg('orb_pct'), drb_pct: wavg('drb_pct'), trb_pct: wavg('trb_pct'),
+    };
+}
+
 // ── Zone stat key mapping (for shot chart SVG) ──
 const ZONE_TABLE = [
     { key: 'rim', label: 'RIM', keyM: 'zone_rim_m', keyA: 'zone_rim_a' },
@@ -717,41 +762,46 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
                                             const isPlayoffMode = careerMode === 'playoff';
                                             const rows = isPlayoffMode ? careerPlayoff : careerRegular;
+                                            // 다중 팀 시즌 감지: 2TM 행이 있는 시즌 집합
+                                            const multiTeamSeasons = new Set(
+                                                rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season)
+                                            );
+                                            // 그룹별 교차 배경색: 2TM 행의 인덱스 기준으로 그룹 색상 결정
+                                            let groupIdx = -1;
                                             return rows.map((row, ri) => {
                                                 const isCurrentSeason = String((row as any).season) === seasonShort;
+                                                const team = (row as any).team;
+                                                const season = (row as any).season;
+                                                const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
+                                                const isSummaryRow = team === '2TM';
+                                                // 그룹 인덱스: 2TM 행(또는 단일팀 행)마다 증가
+                                                if (!isSubRow) groupIdx++;
+                                                const rowBg = groupIdx % 2 !== 0 ? rowAltBg : rowBaseBg;
                                                 return (
                                                     <tr key={ri}>
                                                         {cols.map((col, ci) => {
                                                             const raw = (row as any)[col.key];
-                                                            let display: string;
-                                                            if (raw == null || raw === '') {
-                                                                display = '-';
-                                                            } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
-                                                                       col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate') {
-                                                                display = (Number(raw) * 100).toFixed(1);
-                                                            } else if (col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
-                                                                       col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
-                                                                display = Number(raw).toFixed(1);
-                                                            } else if (col.key === 'tov_pct') {
-                                                                display = Number(raw).toFixed(1);
-                                                            } else if (col.key === 'season' || col.key === 'team') {
-                                                                display = String(raw);
-                                                            } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
-                                                                display = String(Number(raw));
-                                                            } else {
-                                                                display = Number(raw).toFixed(1);
-                                                            }
+                                                            const display = (isSubRow && col.key === 'season')
+                                                                ? ''
+                                                                : formatCareerCell(col.key, raw);
+                                                            const isSticky = ci === 0;
+                                                            const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
                                                             return (
                                                                 <td
                                                                     key={col.key}
                                                                     className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b ${
-                                                                        ci === 0
-                                                                            ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'}`
-                                                                            : 'text-white'
-                                                                    }`}
-                                                                    style={{ ...(ri % 2 !== 0 ? rowAltBg : rowBaseBg), borderBottomColor: dividerColor }}
+                                                                        isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''
+                                                                    } ${isSubRow ? 'opacity-60' : ''}`}
+                                                                    style={{
+                                                                        ...rowBg,
+                                                                        borderBottomColor: dividerColor,
+                                                                        ...(isSubRow && isSticky ? { borderLeft: `2px solid ${dividerColor}`, paddingLeft: '20px' } : {}),
+                                                                        color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined,
+                                                                    }}
                                                                 >
-                                                                    {display}
+                                                                    {isSummaryRow && col.key === 'team' ? (
+                                                                        <span className="font-black">{display}</span>
+                                                                    ) : display}
                                                                 </td>
                                                             );
                                                         })}
@@ -760,6 +810,46 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             });
                                         })()}
                                     </tbody>
+                                    <tfoot>
+                                        {(() => {
+                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                            const rows = careerMode === 'playoff' ? careerPlayoff : careerRegular;
+                                            const nonTm = rows.filter(r => (r as any).team !== '2TM');
+                                            // 팀별 평균: 각 팀에서 뛴 시즌만, 등장 순서(최신→오래된)로 정렬
+                                            const teamOrder: string[] = [];
+                                            nonTm.forEach(r => {
+                                                const t = (r as any).team;
+                                                if (!teamOrder.includes(t)) teamOrder.push(t);
+                                            });
+                                            const avgRows = [
+                                                ...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)),
+                                                computeCareerAvg(nonTm, '커리어'),
+                                            ].filter(r => r.team);
+                                            return avgRows.map((avgRow, ai) => {
+                                                const isCareer = avgRow.team === '커리어';
+                                                return (
+                                                    <tr key={ai} style={isCareer ? subHeaderBg : { ...subHeaderBg, opacity: 0.75 }}>
+                                                        {cols.map((col, ci) => (
+                                                            <td
+                                                                key={col.key}
+                                                                className={`px-3 py-1.5 font-mono tabular-nums whitespace-nowrap border-t ${
+                                                                    ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'
+                                                                }`}
+                                                                style={{
+                                                                    ...subHeaderBg,
+                                                                    borderTopColor: isCareer ? heavyDividerColor : dividerColor,
+                                                                    ...subHeaderTextStyle,
+                                                                    ...(isCareer && ci !== 0 ? { color: 'white' } : {}),
+                                                                }}
+                                                            >
+                                                                {formatCareerCell(col.key, avgRow[col.key])}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                );
+                                            });
+                                        })()}
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
