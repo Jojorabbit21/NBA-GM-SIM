@@ -309,7 +309,7 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
 const ROW_HEIGHT = 40; // h-10 = 40px
 const OVERSCAN = 5;
 
-const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle, rowAltStyle }) => {
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties; rowBaseStyle?: React.CSSProperties; dividerColor?: string; subHeaderTextStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle, rowAltStyle, rowBaseStyle, dividerColor, subHeaderTextStyle }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
@@ -366,7 +366,8 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                     {GAME_LOG_COLS.map((c, i) => (
                                         <th
                                             key={c.key}
-                                            className={`py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center ${i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                            className={`py-3 px-1.5 whitespace-nowrap border-b text-center ${i < GAME_LOG_COLS.length - 1 ? 'border-r' : ''}`}
+                                            style={{ ...(dividerColor ? { borderBottomColor: dividerColor, borderRightColor: dividerColor } : undefined), ...subHeaderTextStyle }}
                                         >
                                             <div className="flex items-center gap-1 justify-center">
                                                 <span className="truncate min-w-0">{c.label}</span>
@@ -381,11 +382,12 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                     <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
                                 {processedRows.slice(startIdx, endIdx).map((cells, vi) => (
-                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT, ...(((startIdx + vi) % 2 !== 0) ? rowAltStyle : undefined) }}>
+                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT, ...(((startIdx + vi) % 2 !== 0) ? rowAltStyle : rowBaseStyle) }}>
                                         {cells.map((cell, ci) => (
                                             <td
                                                 key={ci}
-                                                className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r' : ''}`}
+                                                style={(ci < cells.length - 1 && dividerColor) ? { borderRightColor: dividerColor } : undefined}
                                             >
                                                 <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
                                                     {cell.val}
@@ -412,9 +414,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const theme = getTeamTheme(teamId || null, teamColors);
     const tintColor = getEffectiveTintColor(theme);
     const isLight = luminance(tintColor) > 0.5;
-    const sectionBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.13 : 0.50) }; // L5: SectionHeader
-    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.07 : 0.20) }; // L4: thead / AVG
-    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.03 : 0.08) }; // L3: odd rows
+    const sectionBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.18 : 0.70) }; // L5: SectionHeader
+    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.09 : 0.35) }; // L4: thead / AVG
+    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.05 : 0.12) }; // L3: odd rows
+    const rowBaseBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.02 : 0.06) }; // L2: even rows
+    const dividerColor = hexAlpha(tintColor, isLight ? 0.15 : 0.30);
+    const subHeaderTextStyle = { color: hexAlpha(theme.text, 0.65) };
+    const dropdownStyle = {
+        backgroundColor: hexAlpha(tintColor, isLight ? 0.08 : 0.25),
+        borderColor: hexAlpha(tintColor, isLight ? 0.30 : 0.55),
+        color: 'white',
+    };
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -508,9 +518,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* Player info table */}
                     <div className="px-6 py-3 relative z-10">
-                        <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
+                        <table className="text-sm" style={{ color: theme.text }}>
                             <thead>
-                                <tr className="text-xs uppercase tracking-wider border-b border-white/15" style={{ opacity: 0.5 }}>
+                                <tr className="text-xs uppercase tracking-wider border-b border-white/15">
                                     <th className="pr-5 pb-2 text-left font-bold">팀</th>
                                     <th className="pr-5 pb-2 text-left font-bold">포지션</th>
                                     <th className="pr-5 pb-2 text-left font-bold">나이</th>
@@ -666,7 +676,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 <select
                                     value={careerMode}
                                     onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
-                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none"
+                                    style={dropdownStyle}
                                 >
                                     <option value="regular">정규시즌</option>
                                     {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
@@ -674,7 +685,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 <select
                                     value={careerTab}
                                     onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')}
-                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none"
+                                    style={dropdownStyle}
                                 >
                                     <option value="trad">기본</option>
                                     <option value="adv">어드밴스드</option>
@@ -687,8 +699,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
                                                 <th
                                                     key={col.key}
-                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 z-10' : ''}`}
-                                                    style={i === 0 ? subHeaderBg : undefined}
+                                                    className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b ${i === 0 ? 'sticky left-0 z-10' : ''}`}
+                                                    style={{ ...(i === 0 ? subHeaderBg : undefined), borderBottomColor: dividerColor, ...subHeaderTextStyle }}
                                                 >
                                                     {col.label}
                                                 </th>
@@ -703,7 +715,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             return rows.map((row, ri) => {
                                                 const isCurrentSeason = String((row as any).season) === seasonShort;
                                                 return (
-                                                    <tr key={ri} style={ri % 2 !== 0 ? rowAltBg : undefined}>
+                                                    <tr key={ri} style={ri % 2 !== 0 ? rowAltBg : rowBaseBg}>
                                                         {cols.map((col, ci) => {
                                                             const raw = (row as any)[col.key];
                                                             let display: string;
@@ -727,12 +739,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                             return (
                                                                 <td
                                                                     key={col.key}
-                                                                    className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
+                                                                    className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b ${
                                                                         ci === 0
                                                                             ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'}`
                                                                             : 'text-white'
                                                                     }`}
-                                                                    style={ci === 0 ? (ri % 2 !== 0 ? rowAltBg : { backgroundColor: '#020617' }) : undefined}
+                                                                    style={{ ...(ci === 0 ? (ri % 2 !== 0 ? rowAltBg : rowBaseBg) : (ri % 2 !== 0 ? rowAltBg : rowBaseBg)), borderBottomColor: dividerColor }}
                                                                 >
                                                                     {display}
                                                                 </td>
@@ -835,6 +847,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             teamId={teamId}
                             subHeaderStyle={subHeaderBg}
                             rowAltStyle={rowAltBg}
+                            rowBaseStyle={rowBaseBg}
+                            dividerColor={dividerColor}
+                            subHeaderTextStyle={subHeaderTextStyle}
                         />
 
                     </div>
@@ -857,6 +872,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 key={h}
                                                 align="center"
                                                 className={`text-xs ${i < 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                style={subHeaderTextStyle}
                                             >
                                                 {h}
                                             </TableHeaderCell>
@@ -951,6 +967,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 key={h}
                                                 align="center"
                                                 className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                style={subHeaderTextStyle}
                                             >
                                                 {h}
                                             </TableHeaderCell>
@@ -1022,6 +1039,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                     key={h}
                                                     align="center"
                                                     className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                    style={subHeaderTextStyle}
                                                 >
                                                     {h}
                                                 </TableHeaderCell>
