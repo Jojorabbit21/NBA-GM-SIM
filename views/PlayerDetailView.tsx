@@ -55,15 +55,17 @@ const ADVANCED_COLS = [
 
 // ── Career History Columns ──
 const CAREER_TRAD_COLS = [
-    { key: 'season', label: 'SEASON' }, { key: 'team', label: 'TEAM' }, { key: 'age', label: 'AGE' },
+    { key: 'season', label: '시즌' }, { key: 'team', label: '팀' }, { key: 'age', label: '나이' },
     { key: 'gp', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'min', label: 'MIN' },
     { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
     { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
     { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
-    { key: 'fg_pct', label: 'FG%' }, { key: 'fg3_pct', label: '3P%' }, { key: 'ft_pct', label: 'FT%' },
+    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg_pct', label: 'FG%' },
+    { key: 'fg3m', label: '3PM' }, { key: 'fg3a', label: '3PA' }, { key: 'fg3_pct', label: '3P%' },
+    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft_pct', label: 'FT%' },
 ];
 const CAREER_ADV_COLS = [
-    { key: 'season', label: 'SEASON' }, { key: 'team', label: 'TEAM' }, { key: 'age', label: 'AGE' },
+    { key: 'season', label: '시즌' }, { key: 'team', label: '팀' }, { key: 'age', label: '나이' },
     { key: 'ts_pct', label: 'TS%' }, { key: 'efg_pct', label: 'eFG%' }, { key: 'tov_pct', label: 'TOV%' },
     { key: 'fg3a_rate', label: '3PAr' }, { key: 'fta_rate', label: 'FTr' },
     { key: 'usg_pct', label: 'USG%' }, { key: 'ast_pct', label: 'AST%' },
@@ -652,138 +654,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 {/* ═══ BODY — 3 sections ═══ */}
                 <div className="text-xs bg-slate-950">
 
-                    {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
-                    <div className="border-b-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">
-                                {showPlayoffStats ? '플레이오프 스탯' : `${seasonShort} 시즌 스탯`}
-                            </span>
-                            {hasPlayoffs && (
-                                <div
-                                    className="flex items-center gap-2.5 cursor-pointer select-none"
-                                    onClick={() => setShowPlayoffStats(prev => !prev)}
-                                >
-                                    <span className={`text-xs font-bold transition-colors ${!showPlayoffStats ? 'text-white' : 'text-slate-500'}`}>
-                                        정규시즌
-                                    </span>
-                                    <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showPlayoffStats ? 'bg-indigo-600' : 'bg-slate-600'}`}>
-                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showPlayoffStats ? 'right-0.5' : 'left-0.5'}`} />
-                                    </div>
-                                    <span className={`text-xs font-bold transition-colors ${showPlayoffStats ? 'text-white' : 'text-slate-500'}`}>
-                                        플레이오프
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <StatsSubTable key={showPlayoffStats ? 'trad-p' : 'trad-r'} cols={TRAD_COLS} stats={displayStats} />
-                            <StatsSubTable key={showPlayoffStats ? 'adv-p' : 'adv-r'} cols={ADVANCED_COLS} stats={displayStats} />
-                        </div>
-                    </div>
-
-                    {/* ═══ SECTION 1.5: 커리어 스탯 ═══ */}
-                    {player.career_history && player.career_history.length > 0 && (
-                        <div className="border-b-2 border-slate-700">
-                            <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-black text-slate-300 uppercase tracking-widest">커리어 스탯</span>
-                                    {hasCareerPlayoff && (
-                                        <div className="flex gap-1">
-                                            {(['regular', 'playoff'] as const).map(mode => (
-                                                <button
-                                                    key={mode}
-                                                    onClick={() => setCareerMode(mode)}
-                                                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded border transition-colors ${
-                                                        careerMode === mode
-                                                            ? mode === 'playoff'
-                                                                ? 'bg-amber-600 border-amber-500 text-white'
-                                                                : 'bg-indigo-600 border-indigo-500 text-white'
-                                                            : 'bg-slate-600 border-slate-500 text-slate-300 hover:bg-slate-500'
-                                                    }`}
-                                                >
-                                                    {mode === 'regular' ? '정규시즌' : '🏆 플레이오프'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex gap-1">
-                                    {(['trad', 'adv'] as const).map(tab => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setCareerTab(tab)}
-                                            className={`px-3 py-1 text-[10px] font-bold rounded-lg border transition-colors ${
-                                                careerTab === tab
-                                                    ? 'bg-indigo-600 border-indigo-500 text-white'
-                                                    : 'bg-slate-600 border-slate-500 text-slate-300 hover:bg-slate-500'
-                                            }`}
-                                        >
-                                            {tab === 'trad' ? 'Traditional' : 'Advanced'}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
-                                    <thead>
-                                        <tr className="bg-slate-900">
-                                            {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
-                                                <th
-                                                    key={col.key}
-                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 bg-slate-900 z-10' : ''}`}
-                                                >
-                                                    {col.label}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(careerMode === 'regular' ? careerRegular : careerPlayoff).map((row, ri) => {
-                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
-                                            const isPlayoffMode = careerMode === 'playoff';
-                                            return (
-                                                <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
-                                                    {cols.map((col, ci) => {
-                                                        const raw = (row as any)[col.key];
-                                                        let display: string;
-                                                        if (raw == null || raw === '') {
-                                                            display = '-';
-                                                        } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
-                                                                   col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate' ||
-                                                                   col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
-                                                                   col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
-                                                            display = (Number(raw) * 100).toFixed(1);
-                                                        } else if (col.key === 'tov_pct') {
-                                                            display = Number(raw).toFixed(1);
-                                                        } else if (col.key === 'season' || col.key === 'team') {
-                                                            display = String(raw);
-                                                        } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
-                                                            display = String(Number(raw));
-                                                        } else {
-                                                            display = Number(raw).toFixed(1);
-                                                        }
-                                                        return (
-                                                            <td
-                                                                key={col.key}
-                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
-                                                                    ci === 0
-                                                                        ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : 'text-indigo-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
-                                                                        : 'text-white'
-                                                                }`}
-                                                            >
-                                                                {display}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 flex items-center">
@@ -855,6 +725,94 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         })()}
                     </div>
 
+                    {/* ═══ SECTION 1.5: 기록 ═══ */}
+                    {player.career_history && player.career_history.length > 0 && (
+                        <div className="border-b-2 border-slate-700">
+                            <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">기록</span>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={careerMode}
+                                        onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
+                                        className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="regular">정규시즌</option>
+                                        {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
+                                    </select>
+                                    <select
+                                        value={careerTab}
+                                        onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')}
+                                        className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="trad">기본</option>
+                                        <option value="adv">어드밴스드</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-900">
+                                            {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
+                                                <th
+                                                    key={col.key}
+                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 bg-slate-900 z-10' : ''}`}
+                                                >
+                                                    {col.label}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(careerMode === 'regular' ? careerRegular : careerPlayoff).map((row, ri) => {
+                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                            const isPlayoffMode = careerMode === 'playoff';
+                                            return (
+                                                <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
+                                                    {cols.map((col, ci) => {
+                                                        const raw = (row as any)[col.key];
+                                                        let display: string;
+                                                        if (raw == null || raw === '') {
+                                                            display = '-';
+                                                        } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
+                                                                   col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate') {
+                                                            // Stored as decimal (0.xxx) → multiply by 100
+                                                            display = (Number(raw) * 100).toFixed(1);
+                                                        } else if (col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
+                                                                   col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
+                                                            // Stored as percentage already (xx.x) → display as-is
+                                                            display = Number(raw).toFixed(1);
+                                                        } else if (col.key === 'tov_pct') {
+                                                            display = Number(raw).toFixed(1);
+                                                        } else if (col.key === 'season' || col.key === 'team') {
+                                                            display = String(raw);
+                                                        } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
+                                                            display = String(Number(raw));
+                                                        } else {
+                                                            display = Number(raw).toFixed(1);
+                                                        }
+                                                        const isCurrentSeason = col.key === 'season' && String(raw) === seasonShort;
+                                                        return (
+                                                            <td
+                                                                key={col.key}
+                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
+                                                                    ci === 0
+                                                                        ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
+                                                                        : 'text-white'
+                                                                }`}
+                                                            >
+                                                                {display}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율, 헤더 행 공유 ═══ */}
                     <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>
