@@ -210,9 +210,15 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     return { display: val, color };
 }
 
+// ── Hex color → rgba string ──
+function hexAlpha(hex: string, alpha: number): string {
+    const n = parseInt(hex.replace('#', ''), 16);
+    return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
+}
+
 // ── Section Header ──
-const SectionHeader: React.FC<{ title: string; className?: string; children?: React.ReactNode }> = ({ title, className, children }) => (
-    <div className={`px-6 py-3 bg-slate-700 flex items-center justify-between${className ? ` ${className}` : ''}`}>
+const SectionHeader: React.FC<{ title: string; className?: string; style?: React.CSSProperties; children?: React.ReactNode }> = ({ title, className, style, children }) => (
+    <div className={`px-6 py-3 flex items-center justify-between${className ? ` ${className}` : ''}`} style={style}>
         <span className="text-sm font-black text-slate-300 uppercase tracking-widest">{title}</span>
         {children && <div className="flex items-center gap-2">{children}</div>}
     </div>
@@ -220,7 +226,7 @@ const SectionHeader: React.FC<{ title: string; className?: string; children?: Re
 
 // ── Reusable: Stats sub-table (header + single data row), uses common Table ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
-    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
         <TableHead>
             {cols.map((c, i) => (
                 <TableHeaderCell
@@ -292,7 +298,7 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
 const ROW_HEIGHT = 40; // h-10 = 40px
 const OVERSCAN = 5;
 
-const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string }> = React.memo(({ gameLog, gameLogLoading, teamId }) => {
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
@@ -344,7 +350,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
                         <table className="w-full text-left border-separate border-spacing-0">
-                            <thead className="bg-slate-900 sticky top-0 z-40 border-b border-slate-800 shadow-sm">
+                            <thead className="sticky top-0 z-40 border-b border-slate-800 shadow-sm" style={subHeaderStyle}>
                                 <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
                                     {GAME_LOG_COLS.map((c, i) => (
                                         <th
@@ -393,6 +399,8 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
     const theme = getTeamTheme(teamId || null, teamColors);
+    const sectionBg = { backgroundColor: hexAlpha(theme.bg, 0.55) };    // L4: SectionHeader
+    const subHeaderBg = { backgroundColor: hexAlpha(theme.bg, 0.22) };  // L3: group headers / thead / AVG
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -573,7 +581,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="border-b-2 border-slate-700">
-                        <SectionHeader title="능력치" />
+                        <SectionHeader title="능력치" style={sectionBg} />
                         {(() => {
                             const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
                             return (
@@ -586,7 +594,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         return (
                                             <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
                                                 {/* Group header */}
-                                                <div className="bg-slate-900 h-10 flex items-center justify-center border-b border-slate-800">
+                                                <div className="h-10 flex items-center justify-center border-b border-slate-800" style={subHeaderBg}>
                                                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                                 </div>
                                                 {/* Attribute rows */}
@@ -628,7 +636,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                     <div key={`empty-${i}`} className="h-9 border-b border-slate-800/50" />
                                                 ))}
                                                 {/* AVG row */}
-                                                <div className={`flex items-center justify-between px-3 h-10 bg-slate-900 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
+                                                <div className={`flex items-center justify-between px-3 h-10 border-t border-slate-800 ${getAttrBg(avgVal)}`} style={subHeaderBg}>
                                                     <span className="text-xs font-black text-slate-500 uppercase tracking-widest">종합</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                                 </div>
@@ -643,7 +651,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* ═══ SECTION 1.5: 기록 ═══ */}
                     {player.career_history && player.career_history.length > 0 && (
                         <div className="border-b-2 border-slate-700">
-                            <SectionHeader title="기록">
+                            <SectionHeader title="기록" style={sectionBg}>
                                 <select
                                     value={careerMode}
                                     onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
@@ -664,11 +672,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
-                                        <tr className="bg-slate-900">
+                                        <tr style={subHeaderBg}>
                                             {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
                                                 <th
                                                     key={col.key}
-                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 bg-slate-900 z-10' : ''}`}
+                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 z-10' : ''}`}
+                                                    style={i === 0 ? subHeaderBg : undefined}
                                                 >
                                                     {col.label}
                                                 </th>
@@ -731,7 +740,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>
 
                         {/* Row 1, Col 1: 샷 차트 헤더 */}
-                        <SectionHeader title="샷 차트" className="border-r border-slate-800">
+                        <SectionHeader title="샷 차트" className="border-r border-slate-800" style={sectionBg}>
                             <button
                                 onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
                                 className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-600 bg-slate-600 text-white transition-colors hover:bg-slate-500"
@@ -741,7 +750,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </SectionHeader>
 
                         {/* Row 1, Col 2: 최근 경기 헤더 */}
-                        <SectionHeader title="최근 경기" />
+                        <SectionHeader title="최근 경기" style={sectionBg} />
 
                         {/* Row 2, Col 1: 샷 차트 본문 */}
                         <div className="border-r border-slate-800 p-4">
@@ -812,6 +821,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             gameLog={gameLog}
                             gameLogLoading={gameLogLoading}
                             teamId={teamId}
+                            subHeaderStyle={subHeaderBg}
                         />
 
                     </div>
@@ -820,15 +830,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="border-t-2 border-slate-700 grid grid-cols-3">
                         {/* 좌측: 계약 정보 */}
                         <div>
-                            <SectionHeader title="계약 정보" />
+                            <SectionHeader title="계약 정보" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.contract || player.contract.years.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
                                     <span className="text-slate-500 text-sm">계약 정보가 없습니다</span>
                                 </div>
                             ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <TableHead style={subHeaderBg}>
                                         {['항목', '내용'].map((h, i) => (
                                             <TableHeaderCell
                                                 key={h}
@@ -914,15 +924,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {/* 중앙: 수상 내역 */}
                         <div className="border-l border-slate-600">
-                            <SectionHeader title="수상 내역" />
+                            <SectionHeader title="수상 내역" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.awards || player.awards.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
                                     <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
                                 </div>
                             ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
+                                    <TableHead style={subHeaderBg}>
                                         {['시즌', '이름', '내용'].map((h, i) => (
                                             <TableHeaderCell
                                                 key={h}
@@ -985,15 +995,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {/* 우측: 부상 이력 */}
                         <div className="border-l border-slate-600">
-                            <SectionHeader title="부상 이력" />
+                            <SectionHeader title="부상 이력" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
                                     <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
                                 </div>
                             ) : (
-                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-auto" fullHeight={false}>
-                                        <TableHead>
+                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-auto" fullHeight={false}>
+                                        <TableHead style={subHeaderBg}>
                                             {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
                                                 <TableHeaderCell
                                                     key={h}
