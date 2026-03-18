@@ -643,7 +643,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             amount: deadAmount,
                             season: gameData.currentSeason ?? '',
                             releaseType,
-                            ...(stretchYearsTotal !== undefined && { stretchYearsTotal }),
+                            ...(stretchYearsTotal !== undefined && {
+                                stretchYearsTotal,
+                                stretchYearsRemaining: stretchYearsTotal,
+                            }),
                         };
 
                         const newTeams = gameData.teams.map((t: Team) =>

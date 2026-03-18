@@ -404,6 +404,15 @@ export const useTradeSystem = (
                     }));
                 }
 
+                // 유저 팀 로스터 초과 경고 (FA 뷰에서 방출 필요)
+                if (result.overflowTeams?.includes(team.id)) {
+                    const overCount = teams.find(t => t.id === team.id)?.roster.length ?? 0;
+                    onShowToast?.(
+                        `트레이드 완료. 로스터가 ${overCount}명으로 초과되었습니다. ` +
+                        `FA 뷰 → 내 로스터 탭에서 선수를 방출해 15명으로 맞춰주세요.`
+                    );
+                }
+
                 // teams는 executeTrade가 이미 in-place로 수정했으므로 새 참조로 갱신
                 setTeams([...teams]);
 

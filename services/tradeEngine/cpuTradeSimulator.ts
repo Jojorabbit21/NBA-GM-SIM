@@ -12,7 +12,7 @@ import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
 import { LeagueGMProfiles } from '../../types/gm';
 import { getDirectionParams } from './gmProfiler';
 import { checkTradeLegality } from './salaryRules';
-import { executeTrade, TradeExecutionPayload } from './tradeExecutor';
+import { executeTrade, TradeExecutionPayload, MAX_ROSTER_SIZE } from './tradeExecutor';
 import { formatMoney } from '../../utils/formatMoney';
 
 // ──────────────────────────────────────────────
@@ -758,6 +758,10 @@ export function runCPUTradeRound(
                 transactions.push(result.transaction);
                 tradedTeamIds.add(pair.a.team.id);
                 tradedTeamIds.add(pair.b.team.id);
+                // 트레이드 후 로스터 초과 즉시 정리
+                if (result.overflowTeams) {
+                    trimOverflowRosters(teams, result.overflowTeams);
+                }
             }
         } else {
             // 선수만 트레이드 (기존 로직 — 픽 자산 미사용 시)
@@ -770,6 +774,8 @@ export function runCPUTradeRound(
             transactions.push(tx);
             tradedTeamIds.add(pair.a.team.id);
             tradedTeamIds.add(pair.b.team.id);
+            // 레거시 경로도 overflow 정리
+            trimOverflowRosters(teams, [pair.a.team.id, pair.b.team.id]);
         }
 
         // 멀티 트레이드 시 프로필 재구축 (로스터 변경 반영)
@@ -783,4 +789,25 @@ export function runCPUTradeRound(
     if (transactions.length === 0) return null;
 
     return { updatedTeams: teams, transactions };
+}
+
+/**
+ * 트레이드 후 로스터가 MAX_ROSTER_SIZE 초과한 CPU 팀을 정리.
+ * 스타(OVR 88+ && age 33 이하)는 보호 → 최저 OVR 비스타 선수를 순서대로 컷.
+ * (인시즌 트레이드라 FA 시장이 닫혀 있으므로 단순 로스터 제거만 수행)
+ */
+function trimOverflowRosters(teams: Team[], teamIds: string[]): void {
+    for (const teamId of teamIds) {
+        const team = teams.find(t => t.id === teamId);
+        if (!team) continue;
+        while (team.roster.length > MAX_ROSTER_SIZE) {
+            const candidates = team.roster
+                .filter(p => !(p.ovr >= 88 && p.age <= 33))
+                .sort((a, b) => a.ovr - b.ovr);
+            const cut = candidates[0];
+            if (!cut) break;  // 스타만 남은 경우 overflow 허용
+            team.roster = team.roster.filter(p => p.id !== cut.id);
+            console.log(`✂️ Roster trim (overflow): ${cut.name} cut from ${teamId}`);
+        }
+    }
 }

@@ -532,10 +532,11 @@ export const FAView: React.FC<FAViewProps> = ({
                 <>
                     {!market ? (
                         <div className="flex-1 flex items-center justify-center text-slate-500">
-                            <div className="text-center">
+                            <div className="text-center space-y-2">
                                 <div className="text-4xl mb-3">🏀</div>
-                                <div className="font-bold text-slate-400">FA 시장이 아직 열리지 않았습니다.</div>
-                                <div className="text-sm mt-1">오프시즌 드래프트 이후 FA 시장이 개설됩니다.</div>
+                                <div className="font-bold text-slate-400">FA 풀이 비어 있습니다.</div>
+                                <div className="text-sm text-slate-500">내 로스터 탭에서 선수를 방출하면 즉시 이곳에 등록됩니다.</div>
+                                <div className="text-sm text-slate-600">오프시즌에는 계약 만료 선수들이 자동으로 추가됩니다.</div>
                             </div>
                         </div>
                     ) : (

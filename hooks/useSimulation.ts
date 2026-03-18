@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
-import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
+import { LeagueTradeBlocks, LeagueTradeOffers, TeamTradeBlock } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
@@ -31,6 +31,27 @@ import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { LeagueFAMarket } from '../types/fa';
 import { openFAMarket, simulateCPUSigning } from '../services/fa/faMarketBuilder';
+import { simulateCPUWaivers } from '../services/fa/cpuWaiverEngine';
+
+/**
+ * preferTradeBlock 목록을 leagueTradeBlocks에 중복 없이 반영한 새 객체 반환.
+ * (moratoriumStart / rosterDeadline 두 지점에서 공통 사용)
+ */
+function applyPreferTradeBlock(
+    blocks: LeagueTradeBlocks,
+    candidates: Array<{ teamId: string; playerId: string }>,
+    addedDate: string,
+): LeagueTradeBlocks {
+    const updated = { ...blocks };
+    for (const { teamId, playerId } of candidates) {
+        const block: TeamTradeBlock = { ...(updated[teamId] ?? { teamId, entries: [] }) };
+        if (!block.entries.some(e => e.type === 'player' && e.playerId === playerId)) {
+            block.entries = [...block.entries, { type: 'player', playerId, addedDate }];
+        }
+        updated[teamId] = block;
+    }
+    return updated;
+}
 
 /** 생성된 드래프트 클래스를 React 상태 + DB에 반영하는 공통 헬퍼 */
 function applyDraftClass(
@@ -856,18 +877,76 @@ export const useSimulation = (
                             );
                             // players 배열 포함 (faPlayerMap 재구성용)
                             newMarket.players = u.expiredPlayerObjects;
-                            setLeagueFAMarket(newMarket);
-                            forceSave({ leagueFAMarket: newMarket });
+
+                            // FA 개막 조기 웨이버: Phase 1+3만 실행 (로스터 overflow + 캡 초과)
+                            // → 방출된 선수가 FA 시장 초기 풀에 포함됨
+                            let openingMarket: LeagueFAMarket = newMarket;
+                            if (leagueGMProfiles) {
+                                const earlyWaiverSeasonYear  = new Date(nextDate).getFullYear();
+                                const earlyWaiverSeasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+                                const earlyResult = simulateCPUWaivers(
+                                    newTeams,
+                                    openingMarket,
+                                    myTeamId ?? '',
+                                    leagueGMProfiles,
+                                    tendencySeed ?? '',
+                                    earlyWaiverSeasonYear,
+                                    earlyWaiverSeasonLabel,
+                                    { skipVoluntary: true },
+                                );
+                                newTeams      = [...earlyResult.teams];
+                                openingMarket = earlyResult.market;
+
+                                // 트레이드 가치 있는 선수 → 트레이드 블록 추가
+                                if (leagueTradeBlocks && setLeagueTradeBlocks && earlyResult.preferTradeBlock.length > 0) {
+                                    setLeagueTradeBlocks(
+                                        applyPreferTradeBlock(leagueTradeBlocks, earlyResult.preferTradeBlock, nextDate),
+                                    );
+                                }
+                            }
+
+                            setLeagueFAMarket(openingMarket);
+                            forceSave({ teams: newTeams, leagueFAMarket: openingMarket });
                         }
 
-                        // FA 시장 마감: rosterDeadline → CPU 자동 서명 + FA_LEAGUE_NEWS
+                        // FA 시장 마감: rosterDeadline → CPU 웨이버 → CPU 자동 서명 + FA_LEAGUE_NEWS
                         if (u.faMarketClosed && leagueFAMarket && setLeagueFAMarket) {
-                            const faPlayerMap = Object.fromEntries(
-                                (leagueFAMarket.players ?? []).map((p: any) => [p.id, p])
-                            );
                             const seasonYear = new Date(nextDate).getFullYear();
+                            const seasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+
+                            // ① CPU 팀 웨이버 (GM 성격 기반 로스터 정리) — full Phase 1+2+3
+                            let activeMarket = leagueFAMarket;
+                            let rosterDeadlineTradeBlocks = leagueTradeBlocks ? { ...leagueTradeBlocks } : undefined;
+                            if (leagueGMProfiles) {
+                                const waiverResult = simulateCPUWaivers(
+                                    newTeams,
+                                    activeMarket,
+                                    myTeamId ?? '',
+                                    leagueGMProfiles,
+                                    tendencySeed ?? '',
+                                    seasonYear,
+                                    seasonLabel,
+                                );
+                                newTeams     = [...waiverResult.teams];
+                                activeMarket = waiverResult.market;
+
+                                // 트레이드 가치 있는 웨이버 후보 → 트레이드 블록 추가 (시즌 초기 블록 세팅)
+                                if (rosterDeadlineTradeBlocks && setLeagueTradeBlocks && waiverResult.preferTradeBlock.length > 0) {
+                                    rosterDeadlineTradeBlocks = applyPreferTradeBlock(
+                                        rosterDeadlineTradeBlocks, waiverResult.preferTradeBlock, `${seasonYear}-10-01`,
+                                    );
+                                    setLeagueTradeBlocks(rosterDeadlineTradeBlocks);
+                                }
+                            }
+
+                            // ② faPlayerMap 재구성 (웨이버로 추가된 선수 포함)
+                            const faPlayerMap = Object.fromEntries(
+                                (activeMarket.players ?? []).map((p: any) => [p.id, p])
+                            );
+
+                            // ③ CPU 자동 서명
                             const cpuResult = simulateCPUSigning(
-                                leagueFAMarket,
+                                activeMarket,
                                 newTeams,
                                 faPlayerMap,
                                 myTeamId ?? '',
@@ -898,7 +977,11 @@ export const useSimulation = (
                                 sendMessage(session.user.id, myTeamId, nextDate,
                                     'FA_LEAGUE_NEWS', '[리그 소식] FA 시장 마감 — 주요 계약 소식', newsContent);
                             }
-                            forceSave({ teams: newTeams, leagueFAMarket: null });
+                            forceSave({
+                                teams: newTeams,
+                                leagueFAMarket: null,
+                                leagueTradeBlocks: rosterDeadlineTradeBlocks,
+                            });
                         }
 
                         // 생성된 드래프트 클래스를 DB에 저장 (기존 데이터 삭제 후 삽입)

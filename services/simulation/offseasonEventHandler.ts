@@ -314,10 +314,15 @@ function handleMoratoriumStart(
         }
     }
 
-    // 최종 제거 + 데드캡 초기화 (새 시즌 시작)
+    // 최종 제거 + 데드캡 오프시즌 처리
     for (const team of teams) {
         team.roster = team.roster.filter(p => !removeIds.has(p.id));
-        team.deadMoney = [];
+        // waive/buyout: 1회성 → 제거
+        // stretch: stretchYearsRemaining 차감, 0이 되면 제거
+        team.deadMoney = (team.deadMoney ?? [])
+            .filter(e => e.releaseType === 'stretch')
+            .map(e => ({ ...e, stretchYearsRemaining: (e.stretchYearsRemaining ?? 1) - 1 }))
+            .filter(e => (e.stretchYearsRemaining ?? 0) > 0);
     }
 
     console.log(`📋 Moratorium: ${offseasonResult.retiredPlayers.length} retired, ${offseasonResult.expiredPlayers.length} expired, ${offseasonResult.optionDecisions.length} option decisions`);

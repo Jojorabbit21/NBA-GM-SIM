@@ -13,10 +13,16 @@ export interface DeadMoneyEntry {
     /** 방출 방식 */
     releaseType: ReleaseType;
     /**
-     * 스트레치 웨이브인 경우 연간 분산액과 남은 지급 연수
-     * stretchYearsTotal = 2 × remainingYears - 1
+     * 스트레치 웨이브인 경우 총 분산 연수 (= 2 × remainingYears - 1)
+     * 분산 기간 동안 매 시즌 amount씩 캡에 산정됨
      */
     stretchYearsTotal?: number;
+    /**
+     * 스트레치 웨이브인 경우 남은 분산 연수.
+     * 생성 시 stretchYearsTotal과 동일, 매 오프시즌마다 1씩 차감.
+     * 0이 되면 deadMoney 목록에서 제거됨.
+     */
+    stretchYearsRemaining?: number;
 }
 
 export interface TacticStatRecord {

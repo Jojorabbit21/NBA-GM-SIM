@@ -419,6 +419,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.05 : 0.12) }; // L3: odd rows
     const rowBaseBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.02 : 0.06) }; // L2: even rows
     const dividerColor = hexAlpha(tintColor, isLight ? 0.15 : 0.30);
+    const heavyDividerColor = hexAlpha(tintColor, isLight ? 0.22 : 0.45);
     const subHeaderTextStyle = { color: hexAlpha(theme.text, 0.65) };
     const dropdownStyle = {
         backgroundColor: hexAlpha(tintColor, isLight ? 0.08 : 0.25),
@@ -601,7 +602,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="text-xs bg-slate-950">
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
-                    <div className="border-b-2 border-slate-700">
+                    <div className="border-b-2" style={{ borderBottomColor: heavyDividerColor }}>
                         <SectionHeader title="능력치" style={sectionBg} />
                         {(() => {
                             const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
@@ -613,10 +614,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         const isLastCol = gi === ATTR_GROUPS.length - 1;
                                         const emptyRows = maxRows - attrKeys.length;
                                         return (
-                                            <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
+                                            <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r' : ''}`} style={!isLastCol ? { borderRightColor: dividerColor } : undefined}>
                                                 {/* Group header */}
-                                                <div className="h-10 flex items-center justify-center border-b border-slate-800" style={subHeaderBg}>
-                                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
+                                                <div className="h-10 flex items-center justify-center border-b" style={{ ...subHeaderBg, borderBottomColor: dividerColor }}>
+                                                    <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                                 </div>
                                                 {/* Attribute rows */}
                                                 {attrKeys.map((k) => {
@@ -628,7 +629,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                         ? player.changeLog.filter(e => e.attribute === k)
                                                         : [];
                                                     return (
-                                                        <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
+                                                        <div key={k} className={`flex items-center justify-between px-3 h-9 border-b transition-colors hover:bg-white/5 ${getAttrBg(val)}`} style={{ borderBottomColor: dividerColor }}>
                                                             <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                             <div className="flex items-center gap-3 shrink-0">
                                                                 {seasonDelta !== 0 && (
@@ -654,11 +655,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 })}
                                                 {/* Empty rows with dividers to align columns */}
                                                 {Array.from({ length: emptyRows }).map((_, i) => (
-                                                    <div key={`empty-${i}`} className="h-9 border-b border-slate-800/50" />
+                                                    <div key={`empty-${i}`} className="h-9 border-b" style={{ borderBottomColor: dividerColor }} />
                                                 ))}
                                                 {/* AVG row */}
-                                                <div className={`flex items-center justify-between px-3 h-10 border-t border-slate-800 ${getAttrBg(avgVal)}`} style={subHeaderBg}>
-                                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">종합</span>
+                                                <div className={`flex items-center justify-between px-3 h-10 border-t ${getAttrBg(avgVal)}`} style={{ ...subHeaderBg, borderTopColor: dividerColor }}>
+                                                    <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>종합</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                                 </div>
                                             </div>
@@ -671,7 +672,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1.5: 기록 ═══ */}
                     {player.career_history && player.career_history.length > 0 && (
-                        <div className="border-b-2 border-slate-700">
+                        <div className="border-b-2" style={{ borderBottomColor: heavyDividerColor }}>
                             <SectionHeader title="기록" style={sectionBg}>
                                 <select
                                     value={careerMode}
@@ -767,7 +768,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         <SectionHeader title="샷 차트" className="border-r border-slate-800" style={sectionBg}>
                             <button
                                 onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
-                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-600 bg-slate-600 text-white transition-colors hover:bg-slate-500"
+                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border text-white transition-colors"
+                                style={dropdownStyle}
                             >
                                 {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
                             </button>
@@ -855,7 +857,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* ── SECTION 4: 계약 정보 + 수상 내역 + 부상 이력 (3분할) ── */}
-                    <div className="border-t-2 border-slate-700 grid grid-cols-3">
+                    <div className="border-t-2 grid grid-cols-3" style={{ borderTopColor: heavyDividerColor }}>
                         {/* 좌측: 계약 정보 */}
                         <div>
                             <SectionHeader title="계약 정보" style={sectionBg} />

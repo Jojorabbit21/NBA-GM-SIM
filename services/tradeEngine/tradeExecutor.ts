@@ -35,11 +35,15 @@ export interface TradeValidationError {
     players?: Player[];  // NTC 위반 선수 목록
 }
 
+export const MAX_ROSTER_SIZE = 15;
+
 export interface TradeExecutionResult {
     success: boolean;
     errors: TradeValidationError[];
     transaction?: Transaction;
     updatedPickAssets?: LeaguePickAssets;
+    /** 트레이드 후 MAX_ROSTER_SIZE 초과 팀 ID 목록 */
+    overflowTeams?: string[];
 }
 
 // ──────────────────────────────────────────────
@@ -208,11 +212,17 @@ export function executeTrade(
     // 5. Transaction 레코드 생성
     const transaction = buildTransaction(payload, teamA, teamB, aSentPlayers, bSentPlayers);
 
+    // 로스터 초과 팀 검출
+    const overflowTeams: string[] = [];
+    if (teamA.roster.length > MAX_ROSTER_SIZE) overflowTeams.push(teamA.id);
+    if (teamB.roster.length > MAX_ROSTER_SIZE) overflowTeams.push(teamB.id);
+
     return {
         success: true,
         errors: [],
         transaction,
         updatedPickAssets,
+        ...(overflowTeams.length > 0 && { overflowTeams }),
     };
 }
 
