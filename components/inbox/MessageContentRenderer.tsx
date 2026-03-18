@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent, RetirementNewsContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent, RetirementNewsContent, FASigningContent, FAReleaseContent, FALeagueNewsContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -1107,6 +1107,115 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                             );
                         })}
                     </div>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">NBA League Office</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'FA_SIGNING': {
+            const c = content as FASigningContent;
+            return (
+                <div className="space-y-4 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-emerald-400/80 uppercase tracking-widest">FA Signing</p>
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-800/60 border border-emerald-500/20">
+                        <OvrBadge value={c.ovr} size="md" />
+                        <div className="flex-1">
+                            <button onClick={() => onPlayerClick(c.playerId)} className="font-bold text-white hover:text-indigo-400 transition-colors">
+                                {c.playerName}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-0.5">{c.position} · OVR {c.ovr}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm font-bold text-emerald-400">{formatMoney(c.salary)}</p>
+                            <p className="text-xs text-slate-500">{c.years}년 계약</p>
+                        </div>
+                    </div>
+                    <p className="text-sm text-slate-400">
+                        계약 방식: <span className="text-slate-300 font-medium">{c.signingType}</span>
+                    </p>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">구단 프런트</p>
+                        <p className="text-slate-500 text-xs mt-0.5">FA 서명 완료 보고</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'FA_RELEASE': {
+            const c = content as FAReleaseContent;
+            return (
+                <div className="space-y-4 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Player Release</p>
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-800/60 border border-amber-500/20">
+                        <OvrBadge value={c.ovr} size="md" />
+                        <div className="flex-1">
+                            <button onClick={() => onPlayerClick(c.playerId)} className="font-bold text-white hover:text-indigo-400 transition-colors">
+                                {c.playerName}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-0.5">{c.position} · OVR {c.ovr}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm text-slate-500 line-through">{formatMoney(c.prevSalary)}</p>
+                            <p className="text-xs text-amber-400">FA 전환</p>
+                        </div>
+                    </div>
+                    <p className="text-sm text-slate-400">해당 선수는 이제 FA 시장에서 영입 가능합니다.</p>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">구단 프런트</p>
+                        <p className="text-slate-500 text-xs mt-0.5">방출 처리 완료 보고</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'FA_LEAGUE_NEWS': {
+            const c = content as FALeagueNewsContent;
+            return (
+                <div className="space-y-4 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-indigo-400/80 uppercase tracking-widest">FA Market Closed</p>
+                    <p className="text-sm">FA 시장이 마감됐습니다. 이번 오프시즌 주요 계약 내역입니다.</p>
+                    {c.signings.length === 0 ? (
+                        <p className="text-slate-500 text-sm">이번 시즌 FA 계약은 없었습니다.</p>
+                    ) : (
+                        <div className="overflow-x-auto rounded-2xl">
+                            <Table>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableHeaderCell>팀</TableHeaderCell>
+                                        <TableHeaderCell>선수</TableHeaderCell>
+                                        <TableHeaderCell>포지션</TableHeaderCell>
+                                        <TableHeaderCell align="center">OVR</TableHeaderCell>
+                                        <TableHeaderCell align="right">연봉</TableHeaderCell>
+                                        <TableHeaderCell align="center">연수</TableHeaderCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {c.signings.map((s, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <TeamLogo teamId={s.teamId} size="custom" className="w-5 h-5" />
+                                                    <span className="text-xs text-slate-400">{s.teamName}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <button onClick={() => onPlayerClick(s.playerId)} className="font-medium text-slate-300 hover:text-indigo-400 transition-colors text-sm">
+                                                    {s.playerName}
+                                                </button>
+                                            </TableCell>
+                                            <TableCell><span className="text-xs text-slate-400">{s.position}</span></TableCell>
+                                            <TableCell align="center"><OvrBadge value={s.ovr} size="sm" /></TableCell>
+                                            <TableCell align="right"><span className="text-xs font-mono text-emerald-400">{formatMoney(s.salary)}</span></TableCell>
+                                            <TableCell align="center"><span className="text-xs text-slate-400">{s.years}년</span></TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
                     <div className="pt-4">
                         <p className="text-slate-400 text-sm">NBA League Office</p>
                         <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>

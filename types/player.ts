@@ -225,10 +225,42 @@ export interface Player {
     seasonStartAttributes?: Record<string, number>;  // 시즌 시작 시 속성 스냅샷 (delta 표시용)
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
+    career_history?: CareerSeasonStat[];
     contract?: PlayerContract;
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
     teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
+}
+
+// 과거 시즌 커리어 스탯 (meta_players.career_history JSONB, NBA Stats API에서 수집)
+export interface CareerSeasonStat {
+    season:   string;  // "2023-24"
+    team:     string;  // "DEN"
+    age:      number;
+    // Traditional per game
+    gp:  number;  gs:  number;
+    min: number;  pts: number;
+    oreb: number; dreb: number; reb: number;
+    ast: number;  stl: number;  blk: number;
+    tov: number;  pf:  number;
+    fgm: number;  fga: number;
+    fg3m: number; fg3a: number;
+    ftm: number;  fta: number;
+    fg_pct:  number;  fg3_pct: number; ft_pct: number;
+    // Advanced (locally calculated from totals)
+    ts_pct:    number;
+    efg_pct:   number;
+    tov_pct:   number;
+    fg3a_rate: number;
+    fta_rate:  number;
+    // Advanced (team-context, from LeagueDashPlayerStats)
+    usg_pct?: number;
+    ast_pct?: number;
+    orb_pct?: number;
+    drb_pct?: number;
+    trb_pct?: number;
+    stl_pct?: number;
+    blk_pct?: number;
 }
 
 export interface RosterUpdate {

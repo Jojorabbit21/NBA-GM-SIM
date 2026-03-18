@@ -25,11 +25,13 @@ import { CoachDetailView } from '../views/CoachDetailView';
 import { GMDetailView } from '../views/GMDetailView';
 import { HallOfFameView } from '../views/HallOfFameView';
 import { FrontOfficeView } from '../views/FrontOfficeView';
+import { FAView } from '../views/FAView';
 import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
 import { sendMessage } from '../services/messageService';
 import { TEAM_DATA } from '../data/teamData';
-import { LotteryResultContent, LotteryResultEntry } from '../types/message';
+import { LotteryResultContent, LotteryResultEntry, FASigningContent, FAReleaseContent } from '../types/message';
+import { releasePlayerToMarket } from '../services/fa/faMarketBuilder';
 
 interface AppRouterProps {
     view: AppView;
@@ -553,6 +555,111 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     userNickname={session?.user?.email?.split('@')[0]}
                 />
             );
+        case 'FAMarket': {
+            const currentSeasonYear = new Date(gameData.currentSimDate).getFullYear();
+            return (
+                <FAView
+                    leagueFAMarket={gameData.leagueFAMarket ?? null}
+                    faPlayerMap={gameData.faPlayerMap ?? {}}
+                    myTeam={myTeam!}
+                    teams={gameData.teams}
+                    tendencySeed={gameData.tendencySeed || ''}
+                    currentSeasonYear={currentSeasonYear}
+                    currentSeason={seasonShort}
+                    onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
+                        const faPlayer = gameData.faPlayerMap?.[playerId];
+                        if (!faPlayer) return;
+                        const salary = contract.years[contract.currentYear] ?? contract.years[0];
+                        const signedPlayer = {
+                            ...faPlayer,
+                            contract,
+                            salary,
+                            contractYears: contract.years.length,
+                            teamTenure: 0,
+                        };
+                        const newTeams = gameData.teams.map((t: Team) =>
+                            t.id === gameData.myTeamId
+                                ? { ...t, roster: [...t.roster, signedPlayer] }
+                                : t
+                        );
+                        gameData.setTeams(newTeams);
+                        // players 배열 유지 (faPlayerMap 재구성용)
+                        const marketWithPlayers = { ...updatedMarket, players: gameData.leagueFAMarket?.players };
+                        gameData.setLeagueFAMarket(marketWithPlayers);
+                        gameData.forceSave({ teams: newTeams, leagueFAMarket: marketWithPlayers });
+                        // FA_SIGNING 서신 발송
+                        if (session?.user?.id && gameData.myTeamId) {
+                            const signingContent: FASigningContent = {
+                                playerId,
+                                playerName: faPlayer.name,
+                                position: faPlayer.position,
+                                ovr: faPlayer.ovr,
+                                salary,
+                                years: contract.years.length,
+                                signingType,
+                            };
+                            sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
+                                'FA_SIGNING', `[FA 서명] ${faPlayer.name} 영입 완료`, signingContent);
+                        }
+                        // 트랜잭션 기록
+                        gameData.setTransactions((prev: any) => [{
+                            id: `fa_${playerId}_${Date.now()}`,
+                            date: gameData.currentSimDate,
+                            type: 'fa_signing',
+                            teamId: gameData.myTeamId,
+                            description: `FA 서명: ${faPlayer.name} (${signingType})`,
+                            details: null,
+                        }, ...prev]);
+                    }}
+                    onReleasePlayer={(playerId) => {
+                        const player = myTeam?.roster.find((p: Player) => p.id === playerId);
+                        if (!player) return;
+                        const newTeams = gameData.teams.map((t: Team) =>
+                            t.id === gameData.myTeamId
+                                ? { ...t, roster: t.roster.filter((p: Player) => p.id !== playerId) }
+                                : t
+                        );
+                        gameData.setTeams(newTeams);
+                        const allPlayers = newTeams.flatMap((t: Team) => t.roster);
+                        const updatedMarket = releasePlayerToMarket(
+                            gameData.leagueFAMarket ?? null,
+                            player,
+                            allPlayers,
+                            newTeams,
+                            gameData.currentSimDate,
+                            gameData.tendencySeed ?? '',
+                            currentSeasonYear,
+                            seasonShort,
+                        );
+                        gameData.setLeagueFAMarket(updatedMarket);
+                        // FA_RELEASE 서신 발송
+                        if (session?.user?.id && gameData.myTeamId) {
+                            const prevSalary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                            const releaseContent: FAReleaseContent = {
+                                playerId,
+                                playerName: player.name,
+                                position: player.position,
+                                ovr: player.ovr,
+                                prevSalary,
+                            };
+                            sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
+                                'FA_RELEASE', `[방출] ${player.name} 방출 완료`, releaseContent);
+                        }
+                        // 트랜잭션 기록
+                        gameData.setTransactions((prev: any) => [{
+                            id: `rel_${playerId}_${Date.now()}`,
+                            date: gameData.currentSimDate,
+                            type: 'fa_release',
+                            teamId: gameData.myTeamId,
+                            description: `방출: ${player.name}`,
+                            details: null,
+                        }, ...prev]);
+                        gameData.forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
+                    }}
+                    onViewPlayer={handleViewPlayer}
+                />
+            );
+        }
         default:
             return null;
     }

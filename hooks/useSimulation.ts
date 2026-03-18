@@ -26,9 +26,11 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
-import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent } from '../types/message';
+import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent, FALeagueNewsContent } from '../types/message';
 import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
+import { LeagueFAMarket } from '../types/fa';
+import { openFAMarket, simulateCPUSigning } from '../services/fa/faMarketBuilder';
 
 /** 생성된 드래프트 클래스를 React 상태 + DB에 반영하는 공통 헬퍼 */
 function applyDraftClass(
@@ -94,6 +96,8 @@ export const useSimulation = (
     setResolvedDraftOrder?: (result: ResolvedDraftOrder | null) => void,
     retiredPlayerIds?: string[],
     setRetiredPlayerIds?: React.Dispatch<React.SetStateAction<string[]>>,
+    setLeagueFAMarket?: React.Dispatch<React.SetStateAction<LeagueFAMarket | null>>,
+    leagueFAMarket?: LeagueFAMarket | null,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -832,6 +836,70 @@ export const useSimulation = (
                             }
                         }
 
+                        // FA 시장 개설: moratorium 후 만료 선수 → LeagueFAMarket
+                        if (u.expiredPlayerObjects && u.expiredPlayerObjects.length > 0 && setLeagueFAMarket) {
+                            const openDate = nextDate;
+                            const closeDate = seasonConfig?.keyDates?.openingNight ?? nextDate;
+                            const seasonYear = new Date(nextDate).getFullYear();
+                            const seasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+                            const allPlayers = newTeams.flatMap((t: any) => t.roster);
+                            const newMarket = openFAMarket(
+                                u.expiredPlayerObjects,
+                                allPlayers,
+                                newTeams,
+                                openDate,
+                                closeDate,
+                                seasonYear,
+                                seasonLabel,
+                                tendencySeed ?? '',
+                            );
+                            // players 배열 포함 (faPlayerMap 재구성용)
+                            newMarket.players = u.expiredPlayerObjects;
+                            setLeagueFAMarket(newMarket);
+                            forceSave({ leagueFAMarket: newMarket });
+                        }
+
+                        // FA 시장 마감: rosterDeadline → CPU 자동 서명 + FA_LEAGUE_NEWS
+                        if (u.faMarketClosed && leagueFAMarket && setLeagueFAMarket) {
+                            const faPlayerMap = Object.fromEntries(
+                                (leagueFAMarket.players ?? []).map((p: any) => [p.id, p])
+                            );
+                            const seasonYear = new Date(nextDate).getFullYear();
+                            const cpuResult = simulateCPUSigning(
+                                leagueFAMarket,
+                                newTeams,
+                                faPlayerMap,
+                                myTeamId ?? '',
+                                tendencySeed ?? '',
+                                seasonYear,
+                            );
+                            newTeams = [...cpuResult.teams];
+                            setTeams(newTeams);
+                            setLeagueFAMarket(null);
+
+                            if (!isGuestMode && session?.user?.id && myTeamId && cpuResult.signings.length > 0) {
+                                const newsContent: FALeagueNewsContent = {
+                                    signings: cpuResult.signings.map((s: any) => {
+                                        const player = faPlayerMap[s.playerId];
+                                        const team = cpuResult.teams.find((t: any) => t.id === s.teamId);
+                                        return {
+                                            teamId: s.teamId,
+                                            teamName: team ? `${team.city} ${team.name}` : s.teamId,
+                                            playerId: s.playerId,
+                                            playerName: player?.name ?? s.playerId,
+                                            position: player?.position ?? '',
+                                            ovr: player?.ovr ?? 0,
+                                            salary: s.salary,
+                                            years: s.years,
+                                        };
+                                    }),
+                                };
+                                sendMessage(session.user.id, myTeamId, nextDate,
+                                    'FA_LEAGUE_NEWS', '[리그 소식] FA 시장 마감 — 주요 계약 소식', newsContent);
+                            }
+                            forceSave({ teams: newTeams, leagueFAMarket: null });
+                        }
+
                         // 생성된 드래프트 클래스를 DB에 저장 (기존 데이터 삭제 후 삽입)
                         if (u.generatedDraftClass && u.generatedDraftClass.length > 0) {
                             applyDraftClass(u.generatedDraftClass, { isGuestMode, userId: session?.user?.id, currentSeasonNumber });
@@ -883,7 +951,7 @@ export const useSimulation = (
             setIsSimulating(false);
             setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
         }
-    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed, transactions, sendReviewMessages, simSettings]);
+    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed, transactions, sendReviewMessages, simSettings, leagueFAMarket]);
 
     const clearLastGameResult = () => setLastGameResult(null);
     const loadSavedGameResult = (result: any) => setLastGameResult(result);

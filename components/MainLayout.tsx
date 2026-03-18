@@ -2,7 +2,7 @@
 import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
-import { PendingOffseasonAction } from '../types/app';
+import { PendingOffseasonAction, OffseasonPhase } from '../types/app';
 import { SeasonKeyDates } from '../utils/seasonConfig';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
@@ -26,6 +26,7 @@ interface MainLayoutProps {
         onLogout: () => void;
         pendingOffseasonAction: PendingOffseasonAction;
         hasProspects: boolean;
+        offseasonPhase?: OffseasonPhase | null;
         onSimulateSeason?: () => void;
         onSkipToDate?: (targetDate: string, label: string) => void;
         keyDates?: SeasonKeyDates;
@@ -110,7 +111,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
     }, [team, teams, schedule]);
 
     const isFullHeightView = sidebarProps.currentView === 'DraftRoom' || sidebarProps.currentView === 'DraftHistory' || sidebarProps.currentView === 'DraftLottery';
-    const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions' || sidebarProps.currentView === 'PlayerDetail' || sidebarProps.currentView === 'CoachDetail' || sidebarProps.currentView === 'GMDetail' || sidebarProps.currentView === 'Playoffs' || sidebarProps.currentView === 'FrontOffice' || sidebarProps.currentView === 'DraftBoard';
+    const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions' || sidebarProps.currentView === 'PlayerDetail' || sidebarProps.currentView === 'CoachDetail' || sidebarProps.currentView === 'GMDetail' || sidebarProps.currentView === 'Playoffs' || sidebarProps.currentView === 'FrontOffice' || sidebarProps.currentView === 'DraftBoard' || sidebarProps.currentView === 'FAMarket';
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">

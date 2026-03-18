@@ -148,6 +148,8 @@ C   → post_scoring_big, rim_runner_big, stretch_big,
 | rimA/g ≥ 6 && FTA/g ≥ 5 | `slashing_wing` +5, `rim_runner_big` +4 |
 | blk/g ≥ 2.5 && reb/g ≥ 9 | `rim_protector_anchor` +5 |
 | ast/g ≥ 4 && pts/g < 14 | `connector_forward` +4, `playmaking_big` +3 |
+| pts/g ≥ 22 && ast/g < 5 | `scoring_combo_guard` +5, `shot_creator_wing` +3 |
+| pts/g ≥ 18 && fga/g ≥ 14 && ast/g < 5 | `scoring_combo_guard` +3, `shot_creator_wing` +2 |
 
 ---
 

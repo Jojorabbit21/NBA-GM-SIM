@@ -53,6 +53,23 @@ const ADVANCED_COLS = [
     { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
 ];
 
+// ── Career History Columns ──
+const CAREER_TRAD_COLS = [
+    { key: 'season', label: 'SEASON' }, { key: 'team', label: 'TEAM' }, { key: 'age', label: 'AGE' },
+    { key: 'gp', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'min', label: 'MIN' },
+    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
+    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
+    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+    { key: 'fg_pct', label: 'FG%' }, { key: 'fg3_pct', label: '3P%' }, { key: 'ft_pct', label: 'FT%' },
+];
+const CAREER_ADV_COLS = [
+    { key: 'season', label: 'SEASON' }, { key: 'team', label: 'TEAM' }, { key: 'age', label: 'AGE' },
+    { key: 'ts_pct', label: 'TS%' }, { key: 'efg_pct', label: 'eFG%' }, { key: 'tov_pct', label: 'TOV%' },
+    { key: 'fg3a_rate', label: '3PAr' }, { key: 'fta_rate', label: 'FTr' },
+    { key: 'usg_pct', label: 'USG%' }, { key: 'ast_pct', label: 'AST%' },
+    { key: 'orb_pct', label: 'ORB%' }, { key: 'drb_pct', label: 'DRB%' }, { key: 'trb_pct', label: 'TRB%' },
+];
+
 // ── Zone stat key mapping (for shot chart SVG) ──
 const ZONE_TABLE = [
     { key: 'rim', label: 'RIM', keyM: 'zone_rim_m', keyA: 'zone_rim_a' },
@@ -408,6 +425,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
     const [showPlayoffStats, setShowPlayoffStats] = useState(false);
     const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
+    const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
     const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
     const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
 
@@ -658,6 +676,83 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <StatsSubTable key={showPlayoffStats ? 'adv-p' : 'adv-r'} cols={ADVANCED_COLS} stats={displayStats} />
                         </div>
                     </div>
+
+                    {/* ═══ SECTION 1.5: 커리어 스탯 ═══ */}
+                    {player.career_history && player.career_history.length > 0 && (
+                        <div className="border-b-2 border-slate-700">
+                            <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">커리어 스탯</span>
+                                <div className="flex gap-1">
+                                    {(['trad', 'adv'] as const).map(tab => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setCareerTab(tab)}
+                                            className={`px-3 py-1 text-[10px] font-bold rounded-lg border transition-colors ${
+                                                careerTab === tab
+                                                    ? 'bg-indigo-600 border-indigo-500 text-white'
+                                                    : 'bg-slate-600 border-slate-500 text-slate-300 hover:bg-slate-500'
+                                            }`}
+                                        >
+                                            {tab === 'trad' ? 'Traditional' : 'Advanced'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-900">
+                                            {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
+                                                <th
+                                                    key={col.key}
+                                                    className={`px-3 py-2 font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-700 ${i === 0 ? 'sticky left-0 bg-slate-900 z-10' : ''}`}
+                                                >
+                                                    {col.label}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {player.career_history.map((row, ri) => {
+                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                            return (
+                                                <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
+                                                    {cols.map((col, ci) => {
+                                                        const raw = (row as any)[col.key];
+                                                        let display: string;
+                                                        if (raw == null || raw === '') {
+                                                            display = '-';
+                                                        } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
+                                                                   col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate' ||
+                                                                   col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
+                                                                   col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
+                                                            display = (Number(raw) * 100).toFixed(1);
+                                                        } else if (col.key === 'tov_pct') {
+                                                            display = Number(raw).toFixed(1);
+                                                        } else if (col.key === 'season' || col.key === 'team') {
+                                                            display = String(raw);
+                                                        } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
+                                                            display = String(Number(raw));
+                                                        } else {
+                                                            display = Number(raw).toFixed(1);
+                                                        }
+                                                        return (
+                                                            <td
+                                                                key={col.key}
+                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap text-white border-b border-slate-800/30 ${ci === 0 ? 'sticky left-0 z-10 font-bold text-indigo-300 ' + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60') : ''}`}
+                                                            >
+                                                                {display}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="border-b-2 border-slate-700">

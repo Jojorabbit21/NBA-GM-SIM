@@ -276,6 +276,17 @@ export function calcStatStyleFit(stats: PlayerStats): Partial<Record<ArchetypeTy
         bonuses['playmaking_big'] = 3;
     }
 
+    // High scoring + low assists → scoring combo guard
+    const ptsPG = stats.pts / g;
+    const fgaPG = stats.fga / g;
+    if (ptsPG >= 22 && astPG < 5) {
+        bonuses['scoring_combo_guard'] = 5;
+        bonuses['shot_creator_wing'] = 3;
+    } else if (ptsPG >= 18 && fgaPG >= 14 && astPG < 5) {
+        bonuses['scoring_combo_guard'] = 3;
+        bonuses['shot_creator_wing'] = 2;
+    }
+
     return bonuses;
 }
 

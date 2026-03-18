@@ -95,6 +95,8 @@ const App: React.FC = () => {
         gameData.setResolvedDraftOrder,
         gameData.retiredPlayerIds,
         gameData.setRetiredPlayerIds,
+        gameData.setLeagueFAMarket,
+        gameData.leagueFAMarket,
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -233,6 +235,7 @@ const App: React.FC = () => {
                     userEmail: session?.user?.email,
                     pendingOffseasonAction,
                     hasProspects: (gameData.prospects?.length ?? 0) > 0,
+                    offseasonPhase: gameData.offseasonPhase,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,

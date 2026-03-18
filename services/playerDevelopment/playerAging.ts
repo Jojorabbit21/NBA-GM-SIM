@@ -928,6 +928,17 @@ export function processOffseason(
                 );
             }
 
+            // teamTenure 갱신 (Bird Rights 판별용)
+            if (!entry.retired) {
+                if (entry.contractExpired) {
+                    // FA 자격 획득 → 이적 가능성 있으므로 0으로 리셋
+                    player.teamTenure = 0;
+                } else {
+                    // 같은 팀 재계약 → +1
+                    player.teamTenure = (player.teamTenure ?? 0) + 1;
+                }
+            }
+
             // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)
             player.fractionalGrowth = {};
             player.attrDeltas = {};

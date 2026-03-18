@@ -3,12 +3,12 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
-  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus,
+  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus, Users,
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
   Sparkles, Dices,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
-import { PendingOffseasonAction } from '../types/app';
+import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
 import { Dropdown } from './common/Dropdown';
@@ -26,6 +26,7 @@ interface SidebarProps {
   isPostseasonOver: boolean;
   pendingOffseasonAction: PendingOffseasonAction;
   hasProspects: boolean;
+  offseasonPhase?: OffseasonPhase | null;
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -45,8 +46,9 @@ const NavItem: React.FC<{
   onClick: () => void;
   activeColor: string;
   badge?: number;
+  textBadge?: string;
   isCollapsed: boolean;
-}> = ({ active, icon, label, onClick, activeColor, badge, isCollapsed }) => (
+}> = ({ active, icon, label, onClick, activeColor, badge, textBadge, isCollapsed }) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
@@ -81,6 +83,13 @@ const NavItem: React.FC<{
            {badge > 9 ? '9+' : badge}
         </span>
     )}
+    {textBadge && (
+        <span className={`absolute z-10 flex items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm font-black transition-all duration-500 ${
+          isCollapsed ? '-top-0.5 -right-0.5 h-4 w-4 text-[6px]' : 'right-4 top-1/2 -translate-y-1/2 px-1.5 h-4 text-[8px]'
+        }`}>
+           {isCollapsed ? '!' : textBadge}
+        </span>
+    )}
   </button>
 );
 
@@ -93,6 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isPostseasonOver,
   pendingOffseasonAction,
   hasProspects,
+  offseasonPhase,
   userEmail,
   isCollapsed,
   onToggleCollapse,
@@ -276,6 +286,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         )}
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
+        <NavItem active={currentView === 'FAMarket'} icon={<Users size={20}/>} label="FA 시장" onClick={() => onNavigate('FAMarket')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} {...navProps} />
         {hasProspects && (
           <NavItem active={currentView === 'DraftBoard'} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => onNavigate('DraftBoard')} {...navProps} />
         )}

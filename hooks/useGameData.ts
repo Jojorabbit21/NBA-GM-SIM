@@ -17,6 +17,7 @@ import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
 import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
+import { assignArchetypes } from '../services/playerDevelopment/archetypeEvaluator';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { LeagueCoachingData } from '../types/coaching';
 import { SavedTeamFinances } from '../types/finance';
@@ -361,6 +362,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             })
                         }));
                     }
+
+                    // 초기 아키타입 배정: archetypeState가 없는 선수에게 일괄 배정
+                    const seasonLabel = checkpoint.current_season || '2025-26';
+                    loadedTeams = loadedTeams!.map(t => ({
+                        ...t,
+                        roster: t.roster.map(p => {
+                            if (p.archetypeState) return p;
+                            return { ...p, archetypeState: assignArchetypes(p, seasonLabel) };
+                        }),
+                    }));
 
                     setMyTeamId(checkpoint.team_id);
                     setTeams(loadedTeams!);
@@ -1105,6 +1116,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          });
     };
 
+    // FA 시장 선수 맵 (playerId → Player) — leagueFAMarket.players 기반
+    const faPlayerMap = useMemo<Record<string, Player>>(() => {
+        if (!leagueFAMarket?.players) return {};
+        return Object.fromEntries(leagueFAMarket.players.map(p => [p.id, p]));
+    }, [leagueFAMarket]);
+
     return {
         myTeamId, setMyTeamId,
         teams, setTeams,
@@ -1152,6 +1169,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         generatedFreeAgents, setGeneratedFreeAgents,
         retiredPlayerIds, setRetiredPlayerIds,
         leagueFAMarket, setLeagueFAMarket,
+        faPlayerMap,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current
