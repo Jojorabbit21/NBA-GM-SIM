@@ -426,6 +426,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const [showPlayoffStats, setShowPlayoffStats] = useState(false);
     const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
+    const [careerMode, setCareerMode] = useState<'regular' | 'playoff'>('regular');
+    const careerRegular = useMemo(() => player.career_history?.filter(r => !r.playoff) ?? [], [player.career_history]);
+    const careerPlayoff = useMemo(() => player.career_history?.filter(r => r.playoff) ?? [], [player.career_history]);
+    const hasCareerPlayoff = careerPlayoff.length > 0;
     const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
     const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
 
@@ -681,7 +685,28 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {player.career_history && player.career_history.length > 0 && (
                         <div className="border-b-2 border-slate-700">
                             <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">커리어 스탯</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-black text-slate-300 uppercase tracking-widest">커리어 스탯</span>
+                                    {hasCareerPlayoff && (
+                                        <div className="flex gap-1">
+                                            {(['regular', 'playoff'] as const).map(mode => (
+                                                <button
+                                                    key={mode}
+                                                    onClick={() => setCareerMode(mode)}
+                                                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded border transition-colors ${
+                                                        careerMode === mode
+                                                            ? mode === 'playoff'
+                                                                ? 'bg-amber-600 border-amber-500 text-white'
+                                                                : 'bg-indigo-600 border-indigo-500 text-white'
+                                                            : 'bg-slate-600 border-slate-500 text-slate-300 hover:bg-slate-500'
+                                                    }`}
+                                                >
+                                                    {mode === 'regular' ? '정규시즌' : '🏆 플레이오프'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex gap-1">
                                     {(['trad', 'adv'] as const).map(tab => (
                                         <button
@@ -713,8 +738,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {player.career_history.map((row, ri) => {
+                                        {(careerMode === 'regular' ? careerRegular : careerPlayoff).map((row, ri) => {
                                             const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                            const isPlayoffMode = careerMode === 'playoff';
                                             return (
                                                 <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
                                                     {cols.map((col, ci) => {
@@ -739,7 +765,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                         return (
                                                             <td
                                                                 key={col.key}
-                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap text-white border-b border-slate-800/30 ${ci === 0 ? 'sticky left-0 z-10 font-bold text-indigo-300 ' + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60') : ''}`}
+                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
+                                                                    ci === 0
+                                                                        ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : 'text-indigo-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
+                                                                        : 'text-white'
+                                                                }`}
                                                             >
                                                                 {display}
                                                             </td>

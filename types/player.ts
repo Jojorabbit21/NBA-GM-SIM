@@ -261,6 +261,8 @@ export interface CareerSeasonStat {
     trb_pct?: number;
     stl_pct?: number;
     blk_pct?: number;
+    // 플레이오프 여부 (true면 playoff 기록, 없으면 정규시즌)
+    playoff?: boolean;
 }
 
 export interface RosterUpdate {
