@@ -592,24 +592,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {(archetypes.length > 0 || scoutReport.length > 0 || playerArchetypeState) && (
                         <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-3">
                             {/* Archetype identity line */}
-                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-                                <span className="font-black uppercase tracking-wide" style={{ color: theme.accent }}>
-                                    {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
-                                </span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold" style={{ color: theme.text }}>
+                                <span>선수 유형 :</span>
+                                <span>{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
                                 {playerArchetypeState.secondary && (
                                     <>
-                                        <span style={{ color: theme.text }}>/</span>
-                                        <span className="font-bold uppercase tracking-wide" style={{ color: theme.text }}>
-                                            {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
-                                        </span>
+                                        <span>/</span>
+                                        <span>{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
                                     </>
                                 )}
                                 {playerArchetypeState.tags.slice(0, 4).map(tag => (
                                     <React.Fragment key={tag}>
-                                        <span style={{ color: theme.text }}>/</span>
-                                        <span className="font-semibold" style={{ color: theme.text }}>
-                                            {getTraitTagDisplayInfo(tag).label}
-                                        </span>
+                                        <span>/</span>
+                                        <span>{getTraitTagDisplayInfo(tag).label}</span>
                                     </React.Fragment>
                                 ))}
                             </div>
