@@ -1077,7 +1077,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             ) : (
                                 <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead style={subHeaderBg}>
+                                    <TableHead style={subHeaderBg} className="sticky top-0 z-10">
                                         {['시즌', '이름', '내용'].map((h, i) => (
                                             <TableHeaderCell
                                                 key={h}
