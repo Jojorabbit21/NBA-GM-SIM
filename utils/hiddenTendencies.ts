@@ -71,6 +71,7 @@ export const DEFAULT_TENDENCIES: SaveTendencies = {
     playStyle: 0,
     temperament: 0,
     ego: 0,
+    financialAmbition: 0.5,
 };
 
 /**
@@ -121,8 +122,9 @@ export function generateSaveTendencies(tendencySeed: string, playerId: string): 
         foulProneness:         seededNormal(baseSeed, 9,  0,   0.3,   -1.0, 1.0),
         playStyle:             seededNormal(baseSeed, 10, 0,   0.35,  -1.0, 1.0),
 
-        // 성격 (2)
+        // 성격 (3)
         temperament:           seededNormal(baseSeed, 11, 0,   0.35,  -1.0, 1.0),
         ego:                   seededNormal(baseSeed, 12, 0,   0.3,   -1.0, 1.0),
+        financialAmbition:     seededUniform(baseSeed, 13, 0.0, 1.0),
     };
 }

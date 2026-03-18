@@ -92,6 +92,8 @@ export const useSimulation = (
     setProspects?: React.Dispatch<React.SetStateAction<any[]>>,
     setLeaguePickAssets?: React.Dispatch<React.SetStateAction<LeaguePickAssets | null>>,
     setResolvedDraftOrder?: (result: ResolvedDraftOrder | null) => void,
+    retiredPlayerIds?: string[],
+    setRetiredPlayerIds?: React.Dispatch<React.SetStateAction<string[]>>,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -797,12 +799,11 @@ export const useSimulation = (
                                 const leagueRetired = op.retiredPlayers.filter(p => p.teamId !== myTeamId);
                                 const myPendingTeamOptions = op.pendingTeamOptions;
 
-                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || leagueRetired.length > 0 || myPendingTeamOptions.length > 0) {
+                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || myPendingTeamOptions.length > 0) {
                                     const reportContent = {
                                         retired: myRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position })),
                                         expired: myExpired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, lastSalary: p.lastSalary })),
                                         optionDecisions: myOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, optionType: p.optionType, exercised: p.exercised, salary: p.salary })),
-                                        leagueRetired: leagueRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, teamId: p.teamId })),
                                         pendingTeamOptions: myPendingTeamOptions.length > 0
                                             ? myPendingTeamOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, ovr: p.ovr, position: p.position, age: p.age, salary: p.salary }))
                                             : undefined,
@@ -810,6 +811,23 @@ export const useSimulation = (
                                     sendMessage(session.user.id, myTeamId, nextDate, 'OFFSEASON_REPORT', '오프시즌 로스터 변동 보고서', reportContent)
                                         .then(() => refreshUnreadCount())
                                         .catch(e => console.warn('⚠️ Offseason report message failed:', e));
+                                }
+                                if (leagueRetired.length > 0) {
+                                    const retirementContent = {
+                                        players: leagueRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, teamId: p.teamId })),
+                                    };
+                                    sendMessage(session.user.id, myTeamId, nextDate, 'RETIREMENT_NEWS', `[리그 소식] 오프시즌 은퇴 선수 명단`, retirementContent)
+                                        .catch(e => console.warn('⚠️ Retirement news message failed:', e));
+                                }
+
+                                // 은퇴 선수 ID 누적 저장
+                                const allNewlyRetired = op.retiredPlayers.map(p => p.playerId);
+                                if (allNewlyRetired.length > 0 && setRetiredPlayerIds) {
+                                    setRetiredPlayerIds(prev => {
+                                        const updated = [...new Set([...prev, ...allNewlyRetired])];
+                                        forceSave({ retiredPlayerIds: updated });
+                                        return updated;
+                                    });
                                 }
                             }
                         }

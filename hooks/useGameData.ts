@@ -32,6 +32,7 @@ import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerat
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
+import { LeagueFAMarket } from '../types/fa';
 import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { TEAM_DATA } from '../data/teamData';
@@ -71,6 +72,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [resolvedDraftOrder, setResolvedDraftOrder] = useState<ResolvedDraftOrder | null>(null);
     const [leagueFAPool, setLeagueFAPool] = useState<LeagueFAPool | null>(null);
     const [generatedFreeAgents, setGeneratedFreeAgents] = useState<Player[]>([]);
+    const [retiredPlayerIds, setRetiredPlayerIds] = useState<string[]>([]);
+    const [leagueFAMarket, setLeagueFAMarket] = useState<LeagueFAMarket | null>(null);
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -86,10 +89,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
     const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
     const [offseasonPhase, setOffseasonPhase] = useState<OffseasonPhase>(null);
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket]);
 
     // --- Season Config (derived from seasonNumber) ---
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
@@ -128,10 +131,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const effectiveFreeAgents = useMemo(() => {
         const fa = baseData?.freeAgents || [];
         const base = rosterMode === 'custom' ? fa.map(applyCustomMode) : fa;
-        // 생성 FA 선수 병합
-        if (generatedFreeAgents.length === 0) return base;
-        return [...base, ...generatedFreeAgents];
-    }, [baseData?.freeAgents, rosterMode, applyCustomMode, generatedFreeAgents]);
+        const retiredSet = retiredPlayerIds.length > 0 ? new Set(retiredPlayerIds) : null;
+        // 생성 FA 선수 병합 + 은퇴 선수 제외
+        const merged = generatedFreeAgents.length > 0 ? [...base, ...generatedFreeAgents] : base;
+        return retiredSet ? merged.filter(p => !retiredSet.has(p.id)) : merged;
+    }, [baseData?.freeAgents, rosterMode, applyCustomMode, generatedFreeAgents, retiredPlayerIds]);
 
     // --- Custom Mode: teams에 적용 ---
     useEffect(() => {
@@ -344,6 +348,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.seasonStartAttributes && { seasonStartAttributes: savedState.seasonStartAttributes }),
                                     ...(savedState.injuryHistory && { injuryHistory: savedState.injuryHistory }),
                                     ...(savedState.awards && { awards: savedState.awards }),
+                                    ...(savedState.archetypeState && { archetypeState: savedState.archetypeState }),
                                     ...(savedState.contract && {
                                         contract: savedState.contract,
                                         salary: savedState.contract.years[savedState.contract.currentYear],
@@ -481,6 +486,18 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savedFAPool = (checkpoint as any).league_fa_pool as LeagueFAPool | null;
                     if (savedFAPool) {
                         setLeagueFAPool(savedFAPool);
+                    }
+
+                    // 은퇴 선수 ID 목록 복원
+                    const savedRetiredIds = (checkpoint as any).retired_player_ids as string[] | null;
+                    if (savedRetiredIds && savedRetiredIds.length > 0) {
+                        setRetiredPlayerIds(savedRetiredIds);
+                    }
+
+                    // FA 시장 상태 복원
+                    const savedFAMarket = (checkpoint as any).league_fa_market as LeagueFAMarket | null;
+                    if (savedFAMarket) {
+                        setLeagueFAMarket(savedFAMarket);
                     }
 
                     // 생성 선수 로드 (시즌 2+ 또는 league_fa_pool 존재 시)
@@ -666,11 +683,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
                             const hasAwards = p.awards && p.awards.length > 0;
                             const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option);
+                            const hasArchetypeState = !!p.archetypeState;
                             const hasAnyGrowthData = hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart;
                             const needsGrowthBackup = snapshotBuildFailed && hasAnyGrowthData;
                             const needsExtraBackup = snapshotBuildFailed && (hasInjuryHistory || hasAwards);
 
-                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup || hasContract) {
+                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup || hasContract || hasArchetypeState) {
                                 const state: SavedPlayerState = {
                                     condition: p.condition || 100,
                                     health: p.health,
@@ -686,6 +704,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 if (snapshotBuildFailed && hasInjuryHistory) state.injuryHistory = p.injuryHistory;
                                 if (snapshotBuildFailed && hasAwards) state.awards = p.awards;
                                 if (hasContract) state.contract = p.contract;
+                                if (hasArchetypeState) state.archetypeState = p.archetypeState;
                                 rosterState[p.id] = state;
                             }
                         });
@@ -711,7 +730,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savLotteryResult = ov?.lotteryResult !== undefined ? ov.lotteryResult : gameStateRef.current.lotteryResult;
                     const savOffseasonPhase = ov?.offseasonPhase !== undefined ? ov.offseasonPhase : (gameStateRef.current as any).offseasonPhase;
                     const savFAPool = ov?.leagueFAPool !== undefined ? ov.leagueFAPool : gameStateRef.current.leagueFAPool;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool);
+                    const savRetiredIds = ov?.retiredPlayerIds !== undefined ? ov.retiredPlayerIds : gameStateRef.current.retiredPlayerIds;
+                    const savFAMarket = ov?.leagueFAMarket !== undefined ? ov.leagueFAMarket : gameStateRef.current.leagueFAMarket;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -1129,6 +1150,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         resolvedDraftOrder, setResolvedDraftOrder,
         leagueFAPool, setLeagueFAPool,
         generatedFreeAgents, setGeneratedFreeAgents,
+        retiredPlayerIds, setRetiredPlayerIds,
+        leagueFAMarket, setLeagueFAMarket,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current

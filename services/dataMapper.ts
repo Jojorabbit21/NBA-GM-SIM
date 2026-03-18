@@ -337,6 +337,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
 
         // 올타임 드래프트 풀 포함 여부 (기본 true, false면 제외)
         includeAlltime: raw.include_alltime !== false,
+
+        // FA 시스템: YOS 역산용 드래프트 연도 (meta_players.draft_year row-level 컬럼)
+        draftYear: raw.draft_year != null ? Number(raw.draft_year) : undefined,
     };
 
     // 계약 데이터 구성 (JSONB contract 또는 salary/contractYears fallback)

@@ -17,6 +17,8 @@ import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConf
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
 import { HeaderAwardTrophies } from '../components/common/PlayerAwardBadges';
+import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../services/playerDevelopment/archetypeEvaluator';
+import type { PlayerArchetypeState } from '../types/archetype';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -495,6 +497,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
     const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
+    // New player identity archetype system (UI display)
+    const playerArchetypeState = useMemo<PlayerArchetypeState>(() => {
+        if (player.archetypeState) return player.archetypeState;
+        return assignArchetypes(player, seasonShort || '2025-26');
+    }, [player, seasonShort]);
+
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
 
@@ -600,6 +608,47 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                     )}
                 </div>
+
+                {/* ═══ Player Archetype Identity ═══ */}
+                {(() => {
+                    const primaryInfo = getArchetypeDisplayInfo(playerArchetypeState.primary);
+                    const secondaryInfo = playerArchetypeState.secondary
+                        ? getArchetypeDisplayInfo(playerArchetypeState.secondary)
+                        : null;
+                    return (
+                        <div className="px-6 pt-2 pb-4 relative z-10 flex flex-col gap-2">
+                            {/* Archetype badges */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Primary */}
+                                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-${primaryInfo.color}-900/60 text-${primaryInfo.color}-300 border border-${primaryInfo.color}-600/50`}>
+                                    {primaryInfo.label}
+                                </span>
+                                {/* Secondary */}
+                                {secondaryInfo && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-slate-800/60 text-slate-400 border border-slate-600/50">
+                                        / {secondaryInfo.label}
+                                    </span>
+                                )}
+                            </div>
+                            {/* Trait Tags */}
+                            {playerArchetypeState.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {playerArchetypeState.tags.slice(0, 4).map(tag => {
+                                        const tagInfo = getTraitTagDisplayInfo(tag);
+                                        return (
+                                            <span
+                                                key={tag}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-bold bg-${tagInfo.color}-900/40 text-${tagInfo.color}-400 border border-${tagInfo.color}-700/40`}
+                                            >
+                                                {tagInfo.label}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* ═══ BODY — 3 sections ═══ */}
                 <div className="text-xs bg-slate-950">

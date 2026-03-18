@@ -4,6 +4,7 @@ import { Team } from '../../types/team';
 import { PlayerBoxScore } from '../../types/engine';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { calculateOvr } from '../../utils/ovrUtils';
+import { assignArchetypes } from './archetypeEvaluator';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -912,6 +913,19 @@ export function processOffseason(
                         lastSalary: player.salary,
                     });
                 }
+            }
+
+            // archetype 갱신 (은퇴/만료 선수는 제외)
+            if (!entry.retired && !entry.contractExpired) {
+                const startYear = 2024 + _seasonNumber;
+                const endYear = startYear + 1;
+                const seasonLabel = `${startYear}-${String(endYear).slice(-2)}`;
+                player.archetypeState = assignArchetypes(
+                    player,
+                    seasonLabel,
+                    player.archetypeState,
+                    player.stats,
+                );
             }
 
             // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)

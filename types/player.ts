@@ -1,4 +1,6 @@
 
+import type { PlayerArchetypeState } from './archetype';
+
 export interface PlayerStats {
     g: number;
     gs: number;
@@ -66,9 +68,10 @@ export interface SaveTendencies {
     foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
     playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
 
-    // 성격 (2)
+    // 성격 (3)
     temperament: number;             // -1.0(냉정)~+1.0(다혈질) 테크니컬 확률
     ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
+    financialAmbition: number;       // 0.0(겸손)~1.0(탐욕) FA 요구 연봉 및 오퍼 수락 기준
 }
 
 // [New] 부상 이력 기록 (부상 발생 시마다 push)
@@ -133,6 +136,8 @@ export interface SavedPlayerState {
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
     contract?: PlayerContract;
+    teamTenure?: number;  // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
+    archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
 }
 
 export interface Player {
@@ -221,6 +226,9 @@ export interface Player {
     injuryHistory?: InjuryHistoryEntry[];
     awards?: PlayerAwardEntry[];
     contract?: PlayerContract;
+    draftYear?: number;     // meta_players.draft_year (YOS 역산용)
+    teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
+    archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
 }
 
 export interface RosterUpdate {

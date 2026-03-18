@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent, RetirementNewsContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -715,7 +715,6 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
             const report = content as OffseasonReportContent;
             const hasPendingTeamOptions = (report.pendingTeamOptions?.length ?? 0) > 0;
             const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0 || hasPendingTeamOptions;
-            const hasLeagueRetired = (report.leagueRetired?.length ?? 0) > 0;
 
 
             return (
@@ -834,30 +833,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         </div>
                     )}
 
-                    {/* 리그 전체 은퇴 (타팀) */}
-                    {hasLeagueRetired && (
-                        <div>
-                            <h4 className="text-sm font-bold text-slate-400 mb-2">리그 은퇴 소식</h4>
-                            <div className="space-y-1.5">
-                                {report.leagueRetired!.map(p => {
-                                    const teamInfo = TEAM_DATA[p.teamId];
-                                    return (
-                                        <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40">
-                                            <TeamLogo teamId={p.teamId} size="custom" className="w-5 h-5 shrink-0" />
-                                            <OvrBadge value={p.ovr} size="sm" />
-                                            <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-slate-300 hover:text-indigo-400 transition-colors">
-                                                {p.playerName}
-                                            </button>
-                                            <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
-                                            <span className="text-xs text-slate-600 ml-auto">{teamInfo ? teamInfo.name : p.teamId}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {!hasMyTeamChanges && !hasLeagueRetired && (
+                    {!hasMyTeamChanges && (
                         <p className="text-slate-500">이번 오프시즌에는 별다른 로스터 변동이 없었습니다.</p>
                     )}
 
@@ -1102,6 +1078,38 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         <p className="text-slate-400 text-sm">Best regards,</p>
                         <p className="text-white font-bold mt-1">부단장</p>
                         <p className="text-slate-500 text-xs mt-0.5">Assistant General Manager</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'RETIREMENT_NEWS': {
+            const news = content as RetirementNewsContent;
+            return (
+                <div className="space-y-6 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-amber-400/80 uppercase tracking-widest">League Bulletin</p>
+                    <p>
+                        이번 오프시즌, 총 <span className="font-bold text-white">{news.players.length}명</span>의 선수가 현역 은퇴를 선언했습니다.
+                    </p>
+                    <div className="space-y-1.5">
+                        {news.players.map(p => {
+                            const teamInfo = TEAM_DATA[p.teamId];
+                            return (
+                                <div key={p.playerId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40">
+                                    <TeamLogo teamId={p.teamId} size="custom" className="w-5 h-5 shrink-0" />
+                                    <OvrBadge value={p.ovr} size="sm" />
+                                    <button onClick={() => onPlayerClick(p.playerId)} className="text-sm font-bold text-slate-300 hover:text-indigo-400 transition-colors">
+                                        {p.playerName}
+                                    </button>
+                                    <span className="text-xs text-slate-500">{p.position} · {p.age}세</span>
+                                    <span className="text-xs text-slate-600 ml-auto">{teamInfo ? teamInfo.name : p.teamId}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">NBA League Office</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>
                     </div>
                 </div>
             );

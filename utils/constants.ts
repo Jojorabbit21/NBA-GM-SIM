@@ -16,12 +16,20 @@ export const SEASON_START_DATE = DEFAULT_SEASON_CONFIG.startDate;
 /** @deprecated buildSeasonConfig(n) 사용 권장 */
 export const TRADE_DEADLINE = DEFAULT_SEASON_CONFIG.tradeDeadline;
 
-// League Financial Constants (달러)
+// League Financial Constants (달러) — 2025-26 실제 금액
 export const LEAGUE_FINANCIALS = {
-    SALARY_CAP: 140_000_000,
-    TAX_LEVEL: 170_000_000,
-    FIRST_APRON: 178_000_000,
-    SECOND_APRON: 189_000_000,
+    SALARY_FLOOR:   139_182_000,
+    SALARY_CAP:     154_647_000,
+    TAX_LEVEL:      187_895_000,
+    FIRST_APRON:    195_945_000,
+    SECOND_APRON:   207_824_000,
+};
+
+// Signing Exception Amounts (달러) — 2025-26
+export const SIGNING_EXCEPTIONS = {
+    NON_TAX_MLE:  14_104_000,  // Non-Taxpayer MLE (1차 에이프런 미만 팀, 최대 4년)
+    TAXPAYER_MLE:  5_685_000,  // Taxpayer MLE (1~2차 에이프런 사이 팀, 최대 2년)
+    // Room Exception, Bi-Annual Exception: 복잡도 대비 가치 낮음 → 미구현
 };
 
 /** @deprecated buildSeasonConfig(n) 사용 권장 */
