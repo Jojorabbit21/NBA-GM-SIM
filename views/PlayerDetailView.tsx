@@ -1065,7 +1065,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         {/* 중앙: 수상 내역 */}
                         <div className="border-l border-slate-800">
                             <SectionHeader title="수상 내역" style={sectionBg} />
-                            <div className="overflow-auto custom-scrollbar min-h-[440px] max-h-[600px]">
+                            <div className="custom-scrollbar min-h-[440px]">
                             {(() => {
                                 const historicalAwards = player.career_history?.flatMap(s =>
                                     (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
@@ -1076,8 +1076,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
                                 </div>
                             ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-                                    <TableHead style={subHeaderBg} className="sticky top-0 z-10">
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed max-h-[600px]" fullHeight={false}>
+                                    <TableHead style={subHeaderBg}>
                                         {['시즌', '이름', '내용'].map((h, i) => (
                                             <TableHeaderCell
                                                 key={h}
