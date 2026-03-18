@@ -340,6 +340,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
 
         // FA 시스템: YOS 역산용 드래프트 연도 (meta_players.draft_year row-level 컬럼)
         draftYear: raw.draft_year != null ? Number(raw.draft_year) : undefined,
+
+        // 커리어 스탯 (meta_players.career_history JSONB)
+        career_history: Array.isArray(raw.career_history) ? raw.career_history : undefined,
     };
 
     // 계약 데이터 구성 (JSONB contract 또는 salary/contractYears fallback)
