@@ -592,7 +592,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {(archetypes.length > 0 || scoutReport.length > 0 || playerArchetypeState) && (
                         <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-3">
                             {/* Archetype identity line */}
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold" style={{ color: theme.text }}>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold" style={{ color: theme.text }}>
                                 <span>선수 유형 :</span>
                                 <span>{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
                                 {playerArchetypeState.secondary && (
@@ -609,11 +609,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 ))}
                             </div>
                             {scoutReport.length > 0 && (
-                                <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
+                                <span className="text-sm leading-relaxed italic" style={{ color: theme.text }}>
                                     "{scoutReport}"
                                 </span>
                             )}
-                            {archetypes.length > 0 && (
+                            {/* Hidden archetypes — disabled, hidden until re-enabled */}
+                            {false && archetypes.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5">
                                     {archetypes.map((arch, i) => (
                                         <span key={i} className="px-2.5 py-0.5 rounded-full text-xs font-bold border" style={{ color: theme.accent, borderColor: theme.accent, opacity: 0.8 }}>
