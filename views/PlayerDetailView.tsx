@@ -474,10 +474,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                 {/* ═══ HEADER ═══ */}
                 <div className="border-b border-white/5 relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
-                    {/* Dark overlay — heavier tint than DashboardHeader */}
-                    <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-
-                    {/* Back button row */}
+                        {/* Back button row */}
                     <div className="px-6 pt-5 pb-4 relative z-10">
                         <button
                             onClick={onBack}
