@@ -27,9 +27,11 @@ export const buildReplaySnapshot = (
             const hasAwards = player.awards && player.awards.length > 0;
             const hasContract = !!player.contract;
             const hasArchetypeState = !!player.archetypeState;
+            const hasPopularity = !!player.popularity;
+            const hasMorale = !!player.morale;
             const hasAnyGrowthData = hasGrowth || hasAttrDeltas || hasChangeLog || hasSeasonStart;
 
-            if (hasStats || hasAnyGrowthData || hasInjuryHistory || hasAwards || hasContract || hasArchetypeState) {
+            if (hasStats || hasAnyGrowthData || hasInjuryHistory || hasAwards || hasContract || hasArchetypeState || hasPopularity || hasMorale) {
                 const entry: any = {};
                 if (player.stats) entry.stats = player.stats;
                 if (player.playoffStats) entry.playoffStats = player.playoffStats;
@@ -48,6 +50,8 @@ export const buildReplaySnapshot = (
                     entry.age = player.age;
                 }
                 if (hasArchetypeState) entry.archetypeState = player.archetypeState;
+                if (hasPopularity) entry.popularity = player.popularity;
+                if (hasMorale) entry.morale = player.morale;
                 roster_stats[player.id] = entry;
             }
         }

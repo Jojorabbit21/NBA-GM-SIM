@@ -2,6 +2,8 @@
 import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
 import { TeamFinance } from '../../types/finance';
 import { Team } from '../../types/team';
+import { Player } from '../../types/player';
+import { getNationalPopBonus } from '../playerPopularity';
 
 /**
  * 시즌 고정 수익 계산 (시즌 초 확정)
@@ -23,6 +25,7 @@ function jitter(base: number, pct: number = 3): number {
 export function calculateFixedRevenue(
     teamId: string,
     prevSeasonWinPct?: number,
+    roster?: Player[],
 ): Pick<TeamFinance['revenue'], 'broadcasting' | 'localMedia' | 'sponsorship'> {
     const finData = TEAM_FINANCE_DATA[teamId];
     if (!finData) {
@@ -37,11 +40,12 @@ export function calculateFixedRevenue(
     // 로컬 미디어: 팀별 계약 기반 + 노이즈
     const localMedia = jitter(market.localMediaDeal);
 
-    // 스폰서십: 기본값 × 성적 보정 (±15%) + 노이즈
+    // 스폰서십: 기본값 × 성적 보정 (±15%) × 인기도 보정 (최대 +15%) + 노이즈
     const winPctBonus = prevSeasonWinPct !== undefined
         ? 1 + (prevSeasonWinPct - 0.5) * 0.3  // 70% 승률 → ×1.06, 30% → ×0.94
         : 1.0;
-    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus));
+    const nationalPopBonus = roster ? getNationalPopBonus(roster) : 0;
+    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus * (1 + nationalPopBonus)));
 
     return { broadcasting, localMedia, sponsorship };
 }
@@ -152,7 +156,7 @@ export function initializeTeamFinance(
     roster: Team['roster'],
     prevSeasonWinPct?: number,
 ): TeamFinance {
-    const fixed = calculateFixedRevenue(teamId, prevSeasonWinPct);
+    const fixed = calculateFixedRevenue(teamId, prevSeasonWinPct, roster);
     const expenses = calculateFixedExpenses(teamId, coachSalary, roster);
     const otherRev = calculateOtherRevenue(teamId);
     const scouting = calculateScoutingExpense(teamId);

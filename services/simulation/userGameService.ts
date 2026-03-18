@@ -9,6 +9,8 @@ import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
 import { sendMessage, bulkSendMessages } from '../messageService';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { updatePopularityFromGame } from '../playerPopularity';
+import { updateMoraleFromGame } from '../moraleService';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { getBudgetManager } from '../financeEngine';
 
@@ -128,6 +130,23 @@ export const applyUserGameResult = async (
             result.homeBox, result.awayBox,
             tendencySeed, growthRate, declineRate, leagueAvg, currentSimDate,
         );
+    }
+
+    // 1.7. 선수 인기도 업데이트 (정규시즌 + 플레이오프)
+    {
+        const sortedByWins = [...teams].sort((a, b) =>
+            (b.wins / Math.max(1, b.wins + b.losses)) - (a.wins / Math.max(1, a.wins + a.losses))
+        );
+        const top8Ids = new Set(sortedByWins.slice(0, 8).map(t => t.id));
+        const isVsTopHome = top8Ids.has(awayTeam.id);
+        const isVsTopAway = top8Ids.has(homeTeam.id);
+        updatePopularityFromGame(homeTeam.roster, result.homeBox, isPlayoff, isVsTopHome);
+        updatePopularityFromGame(awayTeam.roster, result.awayBox, isPlayoff, isVsTopAway);
+
+        // 선수 기분 업데이트
+        const homeWon = result.homeScore > result.awayScore;
+        updateMoraleFromGame(homeTeam.roster, result.homeBox, homeWon, currentSimDate);
+        updateMoraleFromGame(awayTeam.roster, result.awayBox, !homeWon, currentSimDate);
     }
 
     // 2. Update Roster (Fatigue/Injury)

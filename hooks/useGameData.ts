@@ -350,6 +350,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.injuryHistory && { injuryHistory: savedState.injuryHistory }),
                                     ...(savedState.awards && { awards: savedState.awards }),
                                     ...(savedState.archetypeState && { archetypeState: savedState.archetypeState }),
+                                    ...(savedState.popularity && { popularity: savedState.popularity }),
+                                    ...(savedState.morale && { morale: savedState.morale }),
                                     ...(savedState.age !== undefined && { age: savedState.age }),
                                     ...(savedState.contract && {
                                         contract: savedState.contract,
@@ -706,11 +708,13 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const hasAwards = p.awards && p.awards.length > 0;
                             const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option);
                             const hasArchetypeState = !!p.archetypeState;
+                            const hasPopularity = !!p.popularity;
+                            const hasMorale = !!p.morale;
                             const hasAnyGrowthData = hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart;
                             const needsGrowthBackup = snapshotBuildFailed && hasAnyGrowthData;
                             const needsExtraBackup = snapshotBuildFailed && (hasInjuryHistory || hasAwards);
 
-                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup || hasContract || hasArchetypeState) {
+                            if (isInjured || isFatigued || needsGrowthBackup || needsExtraBackup || hasContract || hasArchetypeState || hasPopularity || hasMorale) {
                                 const state: SavedPlayerState = {
                                     condition: p.condition || 100,
                                     health: p.health,
@@ -730,6 +734,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     state.age = p.age;
                                 }
                                 if (hasArchetypeState) state.archetypeState = p.archetypeState;
+                                if (hasPopularity) state.popularity = p.popularity;
+                                if (hasMorale) state.morale = p.morale;
                                 rosterState[p.id] = state;
                             }
                         });

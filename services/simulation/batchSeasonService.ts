@@ -13,6 +13,8 @@ import { handleSeasonEventsSync } from './seasonService';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { updatePopularityFromGame } from '../playerPopularity';
+import { updateMoraleFromGame } from '../moraleService';
 import { buildScoutReportContent } from '../reportGenerator';
 import { getBudgetManager } from '../financeEngine';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../../utils/seasonConfig';
@@ -180,11 +182,11 @@ export async function runBatchSeason(
             // 결과 적용 (in-place, DB/메시지 생략)
             applyGameResultInPlace(result, userGame, teams, schedule, playoffSeries, date);
 
-            // 선수 성장/퇴화
-            if (tendencySeed) {
-                const homeT = teams.find(t => t.id === userGame.homeTeamId);
-                const awayT = teams.find(t => t.id === userGame.awayTeamId);
-                if (homeT && awayT) {
+            // 선수 성장/퇴화 + 인기도 + 기분 업데이트 (homeT/awayT 1회만 탐색)
+            const homeT = teams.find(t => t.id === userGame.homeTeamId);
+            const awayT = teams.find(t => t.id === userGame.awayTeamId);
+            if (homeT && awayT) {
+                if (tendencySeed) {
                     const gr = simSettings?.growthRate ?? 1.0;
                     const dr = simSettings?.declineRate ?? 1.0;
                     const leagueAvg = computeLeagueAverages(teams);
@@ -194,6 +196,19 @@ export async function runBatchSeason(
                         tendencySeed, gr, dr, leagueAvg, date,
                     );
                 }
+
+                const userTop8 = new Set(
+                    [...teams].sort((a, b) =>
+                        (b.wins / Math.max(1, b.wins + b.losses)) - (a.wins / Math.max(1, a.wins + a.losses))
+                    ).slice(0, 8).map(t => t.id)
+                );
+                const isPlayoffGame = !!userGame.isPlayoff;
+                updatePopularityFromGame(homeT.roster, result.homeBox, isPlayoffGame, userTop8.has(awayT.id));
+                updatePopularityFromGame(awayT.roster, result.awayBox, isPlayoffGame, userTop8.has(homeT.id));
+
+                const homeWon = result.homeScore > result.awayScore;
+                updateMoraleFromGame(homeT.roster, result.homeBox, homeWon, date);
+                updateMoraleFromGame(awayT.roster, result.awayBox, !homeWon, date);
             }
 
             // DB 페이로드 누적 (PBP 로그 포함)
@@ -553,6 +568,13 @@ function processCpuGamesInPlace(
     const playoff: any[] = [];
     const suspensions: { susp: any; homeTeamId: string; awayTeamId: string }[] = [];
 
+    // top8 계산: 루프 밖에서 1회만 (경기마다 재정렬 방지)
+    const top8Ids = new Set(
+        [...teams].sort((a, b) =>
+            (b.wins / Math.max(1, b.wins + b.losses)) - (a.wins / Math.max(1, a.wins + a.losses))
+        ).slice(0, 8).map(t => t.id)
+    );
+
     for (const res of results) {
         const home = teams.find(t => t.id === res.homeTeamId);
         const away = teams.find(t => t.id === res.awayTeamId);
@@ -576,6 +598,17 @@ function processCpuGamesInPlace(
                 res.boxScore.home, res.boxScore.away,
                 tendencySeed, growthRate, declineRate, leagueAvg, date,
             );
+        }
+
+        // 선수 인기도 업데이트 (정규시즌 + 플레이오프)
+        if (res.boxScore?.home && res.boxScore?.away) {
+            updatePopularityFromGame(home.roster, res.boxScore.home, isPlayoff, top8Ids.has(away.id));
+            updatePopularityFromGame(away.roster, res.boxScore.away, isPlayoff, top8Ids.has(home.id));
+
+            // 선수 기분 업데이트
+            const homeWon = res.homeScore > res.awayScore;
+            updateMoraleFromGame(home.roster, res.boxScore.home, homeWon, date);
+            updateMoraleFromGame(away.roster, res.boxScore.away, !homeWon, date);
         }
 
         // CPU 경기 로스터 업데이트 적용 (체력/부상)

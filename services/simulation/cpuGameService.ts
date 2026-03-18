@@ -5,6 +5,8 @@ import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { updatePopularityFromGame } from '../playerPopularity';
+import { updateMoraleFromGame } from '../moraleService';
 import { getBudgetManager } from '../financeEngine';
 
 export interface ProcessedCpuResults {
@@ -35,6 +37,13 @@ export const processCpuGames = (
     const playoffResultsToSave: any[] = [];
     const viewData: any[] = [];
 
+    // top8 계산: 루프 밖에서 1회만 (경기마다 재정렬 방지)
+    const top8Ids = new Set(
+        [...teams].sort((a, b) =>
+            (b.wins / Math.max(1, b.wins + b.losses)) - (a.wins / Math.max(1, a.wins + a.losses))
+        ).slice(0, 8).map(t => t.id)
+    );
+
     results.forEach(res => {
         const home = teams.find(t => t.id === res.homeTeamId);
         const away = teams.find(t => t.id === res.awayTeamId);
@@ -59,6 +68,17 @@ export const processCpuGames = (
                     res.boxScore.home, res.boxScore.away,
                     tendencySeed, growthRate, declineRate, leagueAvg, currentSimDate,
                 );
+            }
+
+            // 선수 인기도 업데이트 (정규시즌 + 플레이오프)
+            if (res.boxScore?.home && res.boxScore?.away) {
+                updatePopularityFromGame(home.roster, res.boxScore.home, isPlayoff, top8Ids.has(away.id));
+                updatePopularityFromGame(away.roster, res.boxScore.away, isPlayoff, top8Ids.has(home.id));
+
+                // 선수 기분 업데이트
+                const homeWon = res.homeScore > res.awayScore;
+                updateMoraleFromGame(home.roster, res.boxScore.home, homeWon, currentSimDate);
+                updateMoraleFromGame(away.roster, res.boxScore.away, !homeWon, currentSimDate);
             }
 
             // Update Schedule (Mutates schedule)

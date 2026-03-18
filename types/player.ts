@@ -51,6 +51,30 @@ export interface HiddenTendencies {
     lateralBias: number;
 }
 
+// 선수 인기도 (재정 시스템 연결)
+export interface PlayerPopularity {
+    local: number;    // 0~100, 연고지 인기 (관중/MD 직결)
+    national: number; // 0~100, 전국 인기 (스폰서십/MD)
+}
+
+// 선수 기분/사기 (퍼포먼스·트레이드 요청에 영향)
+export type MoraleEventType =
+    | 'TEAM_WIN' | 'TEAM_LOSS'
+    | 'MINUTES_HIGH' | 'MINUTES_LOW'
+    | 'GREAT_GAME' | 'BAD_GAME'
+    | 'STAR_IGNORED';
+
+export interface MoraleEvent {
+    type: MoraleEventType;
+    delta: number;
+    date: string;   // 경기 날짜 'YYYY-MM-DD'
+}
+
+export interface PlayerMorale {
+    score: number;              // 0~100, 50 = 중립
+    recentEvents: MoraleEvent[]; // 최근 10개 (UI 툴팁 표시용)
+}
+
 // [New] Save-seeded hidden tendencies (세이브별 랜덤 배정, 매 플레이스루 고유)
 export interface SaveTendencies {
     // 멘탈 (6)
@@ -68,10 +92,12 @@ export interface SaveTendencies {
     foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
     playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
 
-    // 성격 (3)
+    // 성격 (5)
     temperament: number;             // -1.0(냉정)~+1.0(다혈질) 테크니컬 확률
     ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
     financialAmbition: number;       // 0.0(겸손)~1.0(탐욕) FA 요구 연봉 및 오퍼 수락 기준
+    loyalty: number;                 // 0.0(이적 욕구)~1.0(팀 충성도) FA 재계약 수락 기준 완화
+    winDesire: number;               // 0.0(돈/역할 우선)~1.0(우승 욕구) 컨텐더 오퍼 수락 우대
 }
 
 // [New] 부상 이력 기록 (부상 발생 시마다 push)
@@ -139,6 +165,8 @@ export interface SavedPlayerState {
     age?: number;         // 오프시즌 age+1 후 덮어쓰기용 (base_attributes.age는 불변이므로)
     teamTenure?: number;  // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
+    popularity?: PlayerPopularity;          // 선수 인기도 (재정 시스템 연결)
+    morale?: PlayerMorale;                  // 선수 기분/사기 (퍼포먼스 연결)
 }
 
 export interface Player {
@@ -231,6 +259,8 @@ export interface Player {
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
     teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
+    popularity?: PlayerPopularity;          // 런타임, 저장 경로: SavedPlayerState
+    morale?: PlayerMorale;                  // 런타임, 저장 경로: SavedPlayerState
 }
 
 // 과거 시즌 커리어 스탯 (meta_players.career_history JSONB, NBA Stats API에서 수집)

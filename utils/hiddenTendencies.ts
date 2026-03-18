@@ -19,7 +19,7 @@ export function stringToHash(str: string): number {
 /**
  * Generates a pseudo-random number between 0 and 1 based on a seed.
  */
-function seededRandom(seed: number): number {
+export function seededRandom(seed: number): number {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 }
@@ -72,6 +72,8 @@ export const DEFAULT_TENDENCIES: SaveTendencies = {
     temperament: 0,
     ego: 0,
     financialAmbition: 0.5,
+    loyalty: 0.5,
+    winDesire: 0.5,
 };
 
 /**
@@ -122,9 +124,11 @@ export function generateSaveTendencies(tendencySeed: string, playerId: string): 
         foulProneness:         seededNormal(baseSeed, 9,  0,   0.3,   -1.0, 1.0),
         playStyle:             seededNormal(baseSeed, 10, 0,   0.35,  -1.0, 1.0),
 
-        // 성격 (3)
+        // 성격 (5)
         temperament:           seededNormal(baseSeed, 11, 0,   0.35,  -1.0, 1.0),
         ego:                   seededNormal(baseSeed, 12, 0,   0.3,   -1.0, 1.0),
         financialAmbition:     seededUniform(baseSeed, 13, 0.0, 1.0),
+        loyalty:               seededUniform(baseSeed, 14, 0.0, 1.0),
+        winDesire:             seededUniform(baseSeed, 15, 0.0, 1.0),
     };
 }

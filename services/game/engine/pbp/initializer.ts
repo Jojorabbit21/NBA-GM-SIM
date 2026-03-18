@@ -131,6 +131,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
             zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
             zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0,
+            // [New] Morale (기분/사기) — bonusHitRate 보정용
+            morale: p.morale?.score ?? 50,
             // [New] Hot/Cold Streak
             hotColdRating: 0,
             recentShots: [],

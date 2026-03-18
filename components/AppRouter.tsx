@@ -30,7 +30,7 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
 import { sendMessage } from '../services/messageService';
 import { TEAM_DATA } from '../data/teamData';
-import { LotteryResultContent, LotteryResultEntry, FASigningContent, FAReleaseContent } from '../types/message';
+import { LotteryResultContent, LotteryResultEntry, FASigningContent, FAReleaseContent, ExtensionSignedContent } from '../types/message';
 import { releasePlayerToMarket } from '../services/fa/faMarketBuilder';
 
 interface AppRouterProps {
@@ -705,6 +705,38 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             details: null,
                         }, ...prev]);
                         gameData.forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
+                    }}
+                    onExtensionOffer={(playerId, contract) => {
+                        const player = myTeam?.roster.find((p: Player) => p.id === playerId);
+                        if (!player) return;
+                        const newTeams = gameData.teams.map((t: Team) => {
+                            if (t.id !== gameData.myTeamId) return t;
+                            return {
+                                ...t,
+                                roster: t.roster.map((p: Player) =>
+                                    p.id !== playerId ? p : {
+                                        ...p,
+                                        contract,
+                                        salary: contract.years[0],
+                                        contractYears: contract.years.length,
+                                    }
+                                ),
+                            };
+                        });
+                        gameData.setTeams(newTeams);
+                        gameData.forceSave({ teams: newTeams });
+                        if (session?.user?.id && gameData.myTeamId) {
+                            const extContent: ExtensionSignedContent = {
+                                playerId,
+                                playerName: player.name,
+                                position: player.position,
+                                ovr: player.ovr,
+                                salary: contract.years[0],
+                                years: contract.years.length,
+                            };
+                            sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
+                                'EXTENSION_SIGNED', `[계약 익스텐션] ${player.name}과 연장 계약 체결`, extContent);
+                        }
                     }}
                     onTeamOptionDecide={(playerId, exercised) => {
                         const newTeams = gameData.teams.map((t: Team) => {

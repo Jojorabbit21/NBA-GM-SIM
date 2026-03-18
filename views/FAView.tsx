@@ -7,6 +7,12 @@ import { calcTeamPayroll, getAvailableSigningSlots } from '../services/fa/faMark
 import { processUserOffer } from '../services/fa/faMarketBuilder';
 import { getTeamTheme } from '../utils/teamTheme';
 import { TEAM_DATA } from '../data/teamData';
+import {
+    getExtensionCandidates,
+    initNegotiationState,
+    evaluateExtensionOffer,
+} from '../services/fa/extensionEngine';
+import type { NegotiationState, NegotiationResponse } from '../services/fa/extensionEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -28,6 +34,7 @@ interface FAViewProps {
     ) => void;
     onReleasePlayer: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onTeamOptionDecide: (playerId: string, exercised: boolean) => void;
+    onExtensionOffer: (playerId: string, contract: PlayerContract) => void;
     onViewPlayer?: (player: Player) => void;
 }
 
@@ -361,6 +368,220 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
+// ExtensionPanel — 익스텐션 협상 패널
+// ─────────────────────────────────────────────────────────────
+
+interface ExtensionPanelProps {
+    player: Player;
+    myTeam: Team;
+    allPlayers: Player[];
+    tendencySeed: string;
+    currentSeasonYear: number;
+    currentSeason: string;
+    contenderScore: number;
+    onExtensionSigned: (contract: PlayerContract) => void;
+    onViewPlayer?: (player: Player) => void;
+}
+
+const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
+    player, myTeam, allPlayers, tendencySeed,
+    currentSeasonYear, currentSeason, contenderScore,
+    onExtensionSigned, onViewPlayer,
+}) => {
+    // key={player.id}가 선수 변경 시 컴포넌트를 리마운트하므로 lazy initializer로 단순화
+    const [negState, setNegState] = useState<NegotiationState>(() =>
+        initNegotiationState(player, myTeam, allPlayers, tendencySeed, currentSeasonYear, currentSeason)
+    );
+    const [offerSalary, setOfferSalary] = useState(() => negState.demand.openingAsk);
+    const [offerYears, setOfferYears]   = useState(() => negState.demand.askingYears);
+    const [lastResponse, setLastResponse] = useState<NegotiationResponse | null>(null);
+
+    const { demand } = negState;
+    const sliderMin = Math.round(demand.insultThreshold * 0.9);
+    const sliderMax = Math.round(demand.openingAsk * 1.3);
+
+    const isBelowInsult = offerSalary < demand.insultThreshold;
+    const isBelowFloor  = offerSalary < demand.reservationFloor;
+    const isAboveTarget = offerSalary >= demand.targetAAV;
+
+    const salaryColor = isAboveTarget ? 'text-emerald-400' : isBelowInsult ? 'text-red-500' : isBelowFloor ? 'text-red-400' : 'text-amber-400';
+
+    const handleSubmit = () => {
+        if (negState.walkedAway || negState.signed) return;
+        const { response, updatedState } = evaluateExtensionOffer(
+            { years: offerYears, annualSalary: offerSalary, contenderScore },
+            negState,
+            tendencySeed,
+        );
+        setNegState(updatedState);
+        setLastResponse(response);
+        if (response.outcome === 'ACCEPT') {
+            onExtensionSigned(response.contract);
+        }
+    };
+
+    const isFinal = negState.walkedAway || negState.signed;
+
+    return (
+        <div className="flex flex-col h-full overflow-y-auto custom-scrollbar p-5 gap-5">
+            {/* 선수 정보 */}
+            <div>
+                <button
+                    onClick={() => onViewPlayer?.(player)}
+                    className="text-left hover:opacity-80 transition-opacity"
+                >
+                    <div className="text-lg font-black text-white ko-tight">{player.name}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                        {player.position} · {player.age}세 · OVR {player.ovr}
+                    </div>
+                </button>
+                <div className="flex gap-2 mt-2">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-violet-500/20 text-violet-400">
+                        CONTRACT EXT.
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                        잔여 {player.contractYears}년
+                    </span>
+                </div>
+            </div>
+
+            {/* 감정 상태 바 */}
+            <div className="bg-slate-800/60 rounded-xl p-3 space-y-2 border border-slate-700/50">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">선수 심리 상태</div>
+                <div className="space-y-1.5">
+                    {[
+                        { label: 'Respect', value: negState.respect, color: 'bg-indigo-500' },
+                        { label: 'Trust',   value: negState.trust,   color: 'bg-emerald-500' },
+                        { label: 'Frustration', value: negState.frustration, color: 'bg-red-500' },
+                    ].map(({ label, value, color }) => (
+                        <div key={label} className="flex items-center gap-2">
+                            <div className="w-20 text-[10px] text-slate-500 font-bold">{label}</div>
+                            <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-300 ${color}`}
+                                    style={{ width: `${Math.round(value * 100)}%` }}
+                                />
+                            </div>
+                            <div className="w-8 text-[10px] font-mono text-slate-500 text-right">
+                                {Math.round(value * 100)}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {negState.lowballCount > 0 && (
+                    <div className="text-[10px] text-amber-400 font-bold mt-1">
+                        ⚠ 저가 제안 경고 {negState.lowballCount}/3
+                    </div>
+                )}
+            </div>
+
+            {/* 선수 요구 조건 */}
+            <div className="bg-slate-800/60 rounded-xl p-4 space-y-2 border border-slate-700/50">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">선수 요구 조건</div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">요구 연봉</span>
+                    <span className="font-mono font-bold text-amber-400">{fmtM(negState.currentCounterAAV)} / yr</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">요구 연수</span>
+                    <span className="font-mono font-bold text-slate-300">{negState.currentCounterYears}년</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">협상 라운드</span>
+                    <span className="font-mono font-bold text-slate-300">{negState.roundsUsed}회</span>
+                </div>
+            </div>
+
+            {/* 연봉 슬라이더 */}
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
+                    <div className={`text-sm font-mono font-bold ${salaryColor}`}>{fmtM(offerSalary)}</div>
+                </div>
+                <input
+                    type="range"
+                    min={sliderMin}
+                    max={sliderMax}
+                    step={100_000}
+                    value={offerSalary}
+                    onChange={e => setOfferSalary(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                    disabled={isFinal}
+                />
+                <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-1">
+                    <span>{fmtM(sliderMin)}</span>
+                    <span className="text-amber-600">요구 {fmtM(negState.currentCounterAAV)}</span>
+                    <span>{fmtM(sliderMax)}</span>
+                </div>
+                <div className="mt-1.5 text-xs text-center">
+                    {isAboveTarget
+                        ? <span className="text-emerald-400">✓ 목표가 이상 — 높은 수락 가능성</span>
+                        : isBelowInsult
+                        ? <span className="text-red-500">✗ 모욕 수준 — 즉시 거절 + 감정 악화</span>
+                        : isBelowFloor
+                        ? <span className="text-red-400">✗ 최소 수용선 미달 — 거절 확정</span>
+                        : <span className="text-slate-500">협상 구간</span>
+                    }
+                </div>
+            </div>
+
+            {/* 연수 버튼 */}
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
+                    <div className="text-sm font-mono font-bold text-white">{offerYears}년</div>
+                </div>
+                <div className="flex gap-2">
+                    {[1, 2, 3, 4].map(y => (
+                        <button
+                            key={y}
+                            onClick={() => setOfferYears(y)}
+                            disabled={isFinal}
+                            className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition-all ${
+                                offerYears === y
+                                    ? 'border-violet-500 bg-violet-500/20 text-violet-300'
+                                    : 'border-slate-700 bg-slate-800/40 text-slate-500 hover:border-slate-600'
+                            }`}
+                        >
+                            {y}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* 응답 배너 */}
+            {lastResponse && (
+                <div className={`rounded-xl px-4 py-3 text-sm font-bold border ${
+                    lastResponse.outcome === 'ACCEPT'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                        : lastResponse.outcome === 'COUNTER'
+                        ? 'bg-violet-500/10 border-violet-500/40 text-violet-300'
+                        : lastResponse.outcome === 'WALKED_AWAY'
+                        ? 'bg-red-900/20 border-red-500/40 text-red-400'
+                        : 'bg-red-500/10 border-red-500/40 text-red-400'
+                }`}>
+                    {lastResponse.outcome === 'ACCEPT'    && '✓ 계약 체결!'}
+                    {lastResponse.outcome === 'COUNTER'   && `💬 ${lastResponse.message}`}
+                    {lastResponse.outcome === 'REJECT_HARD' && `✗ ${lastResponse.message}`}
+                    {lastResponse.outcome === 'WALKED_AWAY' && `🚪 ${lastResponse.message}`}
+                </div>
+            )}
+
+            {/* 제출 버튼 */}
+            {!isFinal && (
+                <button
+                    onClick={handleSubmit}
+                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
+                        bg-violet-600 hover:bg-violet-500 text-white"
+                >
+                    오퍼 제출
+                </button>
+            )}
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Main FAView
 // ─────────────────────────────────────────────────────────────
 
@@ -375,16 +596,20 @@ export const FAView: React.FC<FAViewProps> = ({
     onOfferAccepted,
     onReleasePlayer,
     onTeamOptionDecide,
+    onExtensionOffer,
     onViewPlayer,
 }) => {
-    const [activeTab, setActiveTab]       = useState<'market' | 'roster'>('market');
+    const [activeTab, setActiveTab]       = useState<'market' | 'roster' | 'extensions'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
     const [statusFilter, setStatusFilter] = useState<'available' | 'all'>('available');
     const [sortBy, setSortBy]             = useState<'ovr' | 'salary' | 'score'>('ovr');
     const [selectedId, setSelectedId]     = useState<string | null>(null);
     const [offerResult, setOfferResult]   = useState<{ accepted: boolean; reason?: string } | null>(null);
 
-    const handleTabChange = (tab: 'market' | 'roster') => {
+    // extensions 탭 전용 상태
+    const [extSelectedId, setExtSelectedId] = useState<string | null>(null);
+
+    const handleTabChange = (tab: 'market' | 'roster' | 'extensions') => {
         setActiveTab(tab);
         setSelectedId(null);
         setOfferResult(null);
@@ -487,6 +712,17 @@ export const FAView: React.FC<FAViewProps> = ({
     const availableCount = market?.entries.filter(e => e.status === 'available').length ?? 0;
     const signedCount    = market?.entries.filter(e => e.status === 'signed').length ?? 0;
 
+    // 익스텐션 전용
+    const allPlayers = useMemo(() => teams.flatMap(t => t.roster), [teams]);
+    const extensionCandidates = useMemo(() => getExtensionCandidates(myTeam), [myTeam.roster]);
+    const extSelectedPlayer = extSelectedId
+        ? extensionCandidates.find(p => p.id === extSelectedId) ?? null
+        : null;
+    const contenderScore = useMemo(() => {
+        const total = myTeam.wins + myTeam.losses;
+        return total > 0 ? Math.min(1, (myTeam.wins / total) * 1.5) : 0.5;
+    }, [myTeam.wins, myTeam.losses]);
+
     // 방출 확인 모달용 선수
     const releaseTarget = releaseConfirmId ? myTeam.roster.find(p => p.id === releaseConfirmId) ?? null : null;
 
@@ -519,6 +755,17 @@ export const FAView: React.FC<FAViewProps> = ({
                     {pendingTeamOptions.length > 0 && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
                             옵션 {pendingTeamOptions.length}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => handleTabChange('extensions')}
+                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'extensions' ? 'border-violet-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    익스텐션
+                    {extensionCandidates.length > 0 && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
+                            {extensionCandidates.length}
                         </span>
                     )}
                 </button>
@@ -742,6 +989,74 @@ export const FAView: React.FC<FAViewProps> = ({
                                 </div>
                             );
                         })
+                    )}
+                </div>
+            )}
+
+            {/* ── 익스텐션 탭 콘텐츠 ── */}
+            {activeTab === 'extensions' && (
+                <div className="flex-1 min-h-0 flex overflow-hidden">
+                    {/* 후보 선수 목록 */}
+                    <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${extSelectedPlayer ? 'border-r border-slate-800' : ''}`}>
+                        {/* 헤더 */}
+                        <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-4 py-2 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr] gap-2">
+                            {['선수', '포지션', '나이', '연봉', '잔여'].map(h => (
+                                <div key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{h}</div>
+                            ))}
+                        </div>
+                        {extensionCandidates.length === 0 ? (
+                            <div className="py-16 text-center text-slate-500 text-sm">
+                                <div className="text-3xl mb-3">📋</div>
+                                <div className="font-bold text-slate-400">익스텐션 가능한 선수가 없습니다.</div>
+                                <div className="text-xs text-slate-600 mt-1">계약 1~2년 남은 선수가 대상입니다.</div>
+                            </div>
+                        ) : (
+                            extensionCandidates.map(player => {
+                                const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                                const yearsLeft = player.contractYears ?? 0;
+                                const isSelected = extSelectedId === player.id;
+                                return (
+                                    <button
+                                        key={player.id}
+                                        onClick={() => setExtSelectedId(player.id)}
+                                        className={`w-full px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr] gap-2 items-center text-left border-b border-white/5 transition-all ${
+                                            isSelected
+                                                ? 'bg-violet-600/10 border-l-2 border-l-violet-500'
+                                                : 'hover:bg-slate-800/50'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="font-bold text-sm text-white truncate ko-tight">{player.name}</div>
+                                            <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
+                                        </div>
+                                        <div className="text-xs font-mono text-slate-400">{player.position}</div>
+                                        <div className="text-xs font-mono text-slate-400">{player.age}</div>
+                                        <div className="text-xs font-mono font-bold text-amber-400">{fmtM(salary)}</div>
+                                        <div className={`text-xs font-mono font-bold ${yearsLeft <= 1 ? 'text-red-400' : 'text-slate-300'}`}>
+                                            {yearsLeft}년
+                                        </div>
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* 협상 패널 */}
+                    {extSelectedPlayer && (
+                        <div className="w-80 flex-shrink-0 bg-slate-900/60">
+                            <ExtensionPanel
+                                key={extSelectedPlayer.id}
+                                player={extSelectedPlayer}
+                                myTeam={myTeam}
+                                allPlayers={allPlayers}
+                                tendencySeed={tendencySeed}
+                                currentSeasonYear={currentSeasonYear}
+                                currentSeason={currentSeason}
+                                contenderScore={contenderScore}
+                                onExtensionSigned={(contract) => onExtensionOffer(extSelectedPlayer.id, contract)}
+                                onViewPlayer={onViewPlayer}
+                            />
+                        </div>
                     )}
                 </div>
             )}

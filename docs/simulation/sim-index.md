@@ -36,6 +36,8 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | [trade-system.md](trade-system.md) | 트레이드 엔진 (블록, 오퍼, CBA, 픽 밸류) | tradeExecutor.ts, tradeBlockManager.ts, pickValueEngine.ts |
 | [cpu-trade-engine.md](cpu-trade-engine.md) | CPU 트레이드 AI 아키텍처 (5단계 파이프라인, GM 슬라이더, TradeUtility) | cpuTradeSimulator.ts, tradeGoalEngine.ts, tradeUtilityEngine.ts |
 | [finance-system.md](finance-system.md) | 예산/수익/지출 시뮬레이션 | financeEngine.ts |
+| [popularity-system.md](popularity-system.md) | 선수 인기도 시스템 (관중·MD·스폰서십 재정 연결) | playerPopularity.ts, attendanceModel.ts |
+| [morale-system.md](morale-system.md) | 선수 기분 시스템 (PBP 히트레이트 보정 ±1.8%p) | moraleService.ts, possessionHandler.ts |
 
 ---
 
@@ -91,3 +93,6 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 |------|------|
 | persistence.ts | [snapshot-caching.md](snapshot-caching.md) |
 | seasonArchive.ts | [draft-lottery.md](draft-lottery.md) |
+| playerPopularity.ts | [popularity-system.md](popularity-system.md) |
+| popularitySeeds.ts | [popularity-system.md](popularity-system.md) |
+| moraleService.ts | [morale-system.md](morale-system.md) |

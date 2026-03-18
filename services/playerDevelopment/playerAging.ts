@@ -5,6 +5,8 @@ import { PlayerBoxScore } from '../../types/engine';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { calculateOvr } from '../../utils/ovrUtils';
 import { assignArchetypes } from './archetypeEvaluator';
+import { decayPopularityOffseason } from '../playerPopularity';
+import { decayMoraleOffseason } from '../moraleService';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -944,6 +946,12 @@ export function processOffseason(
             player.attrDeltas = {};
             player.changeLog = [];
             player.seasonStartAttributes = undefined;
+
+            // 인기도 오프시즌 자연 감소
+            decayPopularityOffseason(player);
+
+            // 기분 오프시즌 중립 수렴
+            decayMoraleOffseason(player);
 
             result.players.push(entry);
         }

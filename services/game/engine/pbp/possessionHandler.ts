@@ -701,7 +701,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,

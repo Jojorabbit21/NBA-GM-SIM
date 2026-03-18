@@ -1,6 +1,8 @@
 
 import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
 import { Team } from '../../types/team';
+import { Player } from '../../types/player';
+import { getTeamLocalStarPower } from '../playerPopularity';
 
 /**
  * 관중 모델 — 매 홈 경기 관중 수 / 점유율 계산
@@ -46,15 +48,10 @@ export function calculateGameAttendance(
         occupancy += winBonus;
     }
 
-    // 2. 스타 선수 보정 (OVR 90+, 최대 +20%)
-    const starCount = homeTeam.roster.filter(p => p.ovr >= 90).length;
-    if (starCount >= 3) {
-        occupancy += 0.20;
-    } else if (starCount === 2) {
-        occupancy += 0.15;
-    } else if (starCount === 1) {
-        occupancy += 0.08;
-    }
+    // 2. 스타 인기도 보정 (localPopularity 기반, 최대 +18%)
+    const starPower = getTeamLocalStarPower(homeTeam.roster);
+    const popBonus = (starPower / 100) * 0.18;
+    occupancy += popBonus;
 
     // 3. 상대팀 인기도 보정
     if (BIG_MARKET_TEAMS.has(awayTeamId)) {
@@ -95,17 +92,20 @@ const MD_PER_CAPITA: Record<number, number> = {
 export function calculateMerchandiseRevenue(
     homeTeamId: string,
     attendance: number,
-    roster?: Team['roster'],
+    roster?: Player[],
 ): number {
     const finData = TEAM_FINANCE_DATA[homeTeamId];
     if (!finData) return 0;
 
     let mdSpend = MD_PER_CAPITA[finData.market.marketTier] ?? 7;
 
-    // 스타 선수 머천다이즈 보정: OVR 90+ 선수 1인당 +$2 (최대 +$8)
+    // 스타 선수 머천다이즈 보정: national popularity 기반 (최대 +10%)
     if (roster) {
-        const starCount = roster.filter(p => p.ovr >= 90).length;
-        mdSpend += Math.min(starCount * 2, 8);
+        const topNational = roster
+            .map(p => p.popularity?.national ?? 0)
+            .sort((a, b) => b - a)[0] ?? 0;
+        const mdMultiplier = 1 + (topNational / 1000); // national 100 → +10%
+        mdSpend = Math.round(mdSpend * mdMultiplier);
     }
 
     return attendance * mdSpend;

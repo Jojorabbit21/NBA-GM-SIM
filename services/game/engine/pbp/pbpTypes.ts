@@ -38,6 +38,9 @@ export interface LivePlayer extends PlayerBoxScore {
     // [New] Save-seeded hidden tendencies (세이브별 고유 성향)
     tendencies: SaveTendencies;
 
+    // [New] 선수 기분/사기 (0~100, 50 = 중립 → bonusHitRate 보정)
+    morale: number;
+
     // [New] 선수 DNA — 4존 선호도 (합계 = 1.0)
     zonePref: { ra: number; itp: number; mid: number; three: number };
 

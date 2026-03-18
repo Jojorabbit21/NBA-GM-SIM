@@ -1,7 +1,7 @@
 # 텐던시 시스템 (Tendency System)
 
 > 선수의 숨겨진 성격·플레이스타일·멘탈 특성을 정의하고 경기 시뮬레이션에 반영하는 시스템.
-> 세이브파일마다 고유 시드로 445명 선수에게 13개 히든 텐던시를 배정하여 매 플레이스루를 독특하게 만든다.
+> 세이브파일마다 고유 시드로 445명 선수에게 16개 히든 텐던시를 배정하여 매 플레이스루를 독특하게 만든다.
 
 ---
 
@@ -20,7 +20,7 @@
 │   → 모든 세이브에서 동일, 런타임 생성                          │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 3: SaveTendencies (tendency_seed + playerId 해시)     │
-│   13개 텐던시 (멘탈 6 + 플레이스타일 5 + 성격 2)              │
+│   16개 텐던시 (멘탈 6 + 플레이스타일 5 + 성격 5)              │
 │   → 세이브마다 다름, 런타임 생성, DB 저장 없음 (시드만 저장)    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -29,7 +29,7 @@
 
 - **결정론적 생성**: `stringToHash(seed + playerId)` → `seededRandom()` → Box-Muller 정규분포
 - **DB 저장 0**: 시드 1개(`tendency_seed TEXT`)만 `saves` 테이블에 저장
-- **445명 × 13개 = 5,785개** 텐던시를 시드 하나로 재구성
+- **445명 × 16개 = 7,120개** 텐던시를 시드 하나로 재구성
 - **하위호환**: 모든 접근에 `?.` + `?? defaultValue` → 레거시 세이브도 정상 동작
 
 ---
@@ -97,9 +97,12 @@ interface SaveTendencies {
     foulProneness: number;           // -1.0~+1.0  파울 확률 ±2%
     playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
 
-    // 성격 (2)
+    // 성격 (5)
     temperament: number;             // -1.0(냉정)~+1.0(다혈질)
     ego: number;                     // -1.0(겸손)~+1.0(자존심)
+    financialAmbition: number;       //  0.0(겸손)~1.0(탐욕) FA 요구 연봉 및 오퍼 수락 기준
+    loyalty: number;                 //  0.0(이적 욕구)~1.0(팀 충성도) FA 재계약 수락 기준 완화
+    winDesire: number;               //  0.0(돈/역할 우선)~1.0(우승 욕구) 컨텐더 오퍼 수락 우대
 }
 ```
 
@@ -165,6 +168,9 @@ function generateSaveTendencies(tendencySeed: string, playerId: string): SaveTen
         playStyle:             seededNormal(baseSeed, 10, 0,   0.35,  -1.0, 1.0),
         temperament:           seededNormal(baseSeed, 11, 0,   0.35,  -1.0, 1.0),
         ego:                   seededNormal(baseSeed, 12, 0,   0.3,   -1.0, 1.0),
+        financialAmbition:     seededUniform(baseSeed, 13, 0.0, 1.0),
+        loyalty:               seededUniform(baseSeed, 14, 0.0, 1.0),
+        winDesire:             seededUniform(baseSeed, 15, 0.0, 1.0),
     };
 }
 ```
@@ -176,7 +182,9 @@ const DEFAULT_TENDENCIES: SaveTendencies = {
     clutchGene: 0, consistency: 0.6, confidenceSensitivity: 1.0,
     composure: 0, motorIntensity: 1.0, focusDrift: 0.5,
     shotDiscipline: 0, defensiveMotor: 0, ballDominance: 1.0,
-    foulProneness: 0, playStyle: 0, temperament: 0, ego: 0,
+    foulProneness: 0, playStyle: 0,
+    temperament: 0, ego: 0,
+    financialAmbition: 0.5, loyalty: 0.5, winDesire: 0.5,
 };
 ```
 
@@ -214,7 +222,7 @@ LivePlayer.tendencies ← SaveTendencies 할당
 
 ---
 
-## 5. 엔진 효과 상세 (13개 텐던시)
+## 5. 엔진 효과 상세 (16개 텐던시)
 
 ### 5.1 멘탈 텐던시 (6개)
 
@@ -484,7 +492,7 @@ if (Math.random() < assistProb + assistMod) → 어시스트 기록
 
 ---
 
-### 5.3 성격 텐던시 (2개)
+### 5.3 성격 텐던시 (5개)
 
 #### temperament — 기질
 
@@ -546,6 +554,89 @@ ego가 낮은(겸손한) 선수는 어떤 역할이든 안정적.
 
 ---
 
+#### financialAmbition — 금전 야망
+
+| 속성 | 값 |
+|------|-----|
+| 범위 | 0.0(겸손) ~ 1.0(탐욕) |
+| 분포 | 균등 분포 |
+| 적용 파일 | `services/fa/faValuation.ts` |
+| 함수 | `calculateFADemand()` |
+
+**공식**:
+```
+// FA 요구 연봉 = 시장가 × (1 + financialAmbition * 0.30)
+// walkAway 급여 = 시장가 × (0.7 + financialAmbition * 0.20)
+```
+
+**효과**:
+- financialAmbition 1.0 → 시장가 대비 요구 연봉 +30%, walkAway 상승 → 오퍼 수락 기준 높음
+- financialAmbition 0.0 → 시장가보다 낮은 요구 연봉 → 오퍼 수락 기준 낮음
+
+**FA 시스템 연결**: `evaluateFAOffer()`에서 실제 오퍼 vs walkAway 비교 시 사용됨.
+
+**NBA 맥락**: 르브론 제임스 초기 클리블랜드 재계약(낮은 financialAmbition — 충성도 우선), 케빈 듀란트(1.0급 — 항상 최고 연봉 요구).
+
+---
+
+#### loyalty — 팀 충성도
+
+| 속성 | 값 |
+|------|-----|
+| 범위 | 0.0(이적 욕구) ~ 1.0(팀 충성도) |
+| 분포 | 균등 분포 |
+| 적용 파일 | `services/fa/faValuation.ts` (예정) |
+| 함수 | `evaluateFAOffer()` — isCurrentTeam=true 시 적용 |
+
+**공식 (구현 예정)**:
+```
+loyaltyDiscount = loyalty * 0.15
+effectiveWalkAway = walkAway * (1 - loyaltyDiscount)
+// isCurrentTeam=false이면 loyalty 효과 없음
+```
+
+| loyalty | walkAway 감소율 | 효과 |
+|---------|----------------|------|
+| 1.0 | -15% | 현재 팀 오퍼를 낮은 금액도 수락 |
+| 0.5 | -7.5% | 소폭 유연 |
+| 0.0 | 0% | 시장가 그대로 요구 |
+
+**현재 상태**: 타입 + 생성 완료. FA 엔진 연동은 향후 구현 예정.
+
+**NBA 맥락**: 팀 던컨(loyalty=1.0)은 매 시즌 스퍼스 재계약 시 시장가 이하 수락. 드마르 데로잔(0.3급)은 가장 좋은 오퍼를 좇아 팀을 떠남.
+
+---
+
+#### winDesire — 우승 욕구
+
+| 속성 | 값 |
+|------|-----|
+| 범위 | 0.0(돈/역할 우선) ~ 1.0(우승 욕구) |
+| 분포 | 균등 분포 |
+| 적용 파일 | `services/fa/faValuation.ts` (예정) |
+| 함수 | `evaluateFAOffer()` — 컨텐더 팀 오퍼 수락 확률 |
+
+**공식 (구현 예정)**:
+```
+// contenderScore: 팀 승률 기반 0~1
+// winPct ≤ 0.40 → 0 / winPct ≥ 0.70 → 1 / 중간은 선형 보간
+contenderScore = clamp((teamWinPct - 0.40) / 0.30, 0, 1)
+winBonus = winDesire * contenderScore * 0.25
+acceptProb = min(1.0, acceptProb + winBonus)
+```
+
+| winDesire | 팀 승률 70%+ | acceptProb 증가 |
+|-----------|-------------|----------------|
+| 1.0 | 1.0 (컨텐더) | +25%p |
+| 0.5 | 0.67 (60% 승률) | +8.4%p |
+| 0.0 | — | +0%p |
+
+**현재 상태**: 타입 + 생성 완료. FA 엔진 연동은 향후 구현 예정.
+
+**NBA 맥락**: 케빈 듀란트(winDesire=0.9)는 우승 위해 오클라호마에서 골든스테이트로 이적. 오토 포터 Jr(0.2급)은 우승보다 계약 조건 우선.
+
+---
+
 ## 6. 엔진 효과 요약표
 
 | 텐던시 | 파일 | 라인 | 함수 | 공식 | 최대 영향 |
@@ -563,6 +654,9 @@ ego가 낮은(겸손한) 선수는 어떤 역할이든 안정적.
 | playStyle | playTypes/statsMappers | 132/150 | pickWeightedActor/applyResult | ±20~30% 가중치 / ±10% 어시스트 | 복합 |
 | temperament | possessionHandler | 402 | simulatePossession | TF 가중 선택 + FF 30% + 싸움 | TF/FF/Fight 복합 |
 | ego | possessionHandler | 454 | simulatePossession | `val*((3-rank)/2)*0.015` | ±1.5% FG% |
+| financialAmbition | faValuation | — | calculateFADemand | 요구 연봉 × (1+val×0.30) | FA 요구 연봉 ±30% |
+| loyalty | faValuation | — | evaluateFAOffer (예정) | walkAway × (1-val×0.15) | 재계약 허용 -15% |
+| winDesire | faValuation | — | evaluateFAOffer (예정) | acceptProb += val×contender×0.25 | 컨텐더 수락 +25%p |
 
 ---
 
@@ -582,7 +676,7 @@ ego가 낮은(겸손한) 선수는 어떤 역할이든 안정적.
 - ballDominance, motorIntensity: 범위가 0.5~1.5 (중심=1.0)이므로 양극 개념 없음
 - consistency: 범위가 0.0~1.0 (중심=0.6)이므로 양극 개념 없음
 - confidenceSensitivity: 범위가 0.3~1.7 (중심=1.0)이므로 양극 개념 없음
-- focusDrift: 균등분포 0.0~1.0
+- focusDrift, financialAmbition, loyalty, winDesire: 균등분포 0.0~1.0 (평균=0.5)
 
 ---
 
