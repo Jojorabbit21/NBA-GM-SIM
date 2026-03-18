@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import type { Team, Player } from '../types';
+import React, { useState, useMemo, useCallback } from 'react';
+import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
 import { LEAGUE_FINANCIALS } from '../utils/constants';
@@ -26,7 +26,8 @@ interface FAViewProps {
         signingType: SigningType,
         updatedMarket: LeagueFAMarket,
     ) => void;
-    onReleasePlayer: (playerId: string) => void;
+    onReleasePlayer: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
+    onTeamOptionDecide: (playerId: string, exercised: boolean) => void;
     onViewPlayer?: (player: Player) => void;
 }
 
@@ -90,6 +91,7 @@ function statusBadge(status: FAMarketEntry['status']) {
 
 const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean> }> = ({ myTeam, usedMLE }) => {
     const payroll   = calcTeamPayroll(myTeam);
+    const deadTotal = (myTeam.deadMoney ?? []).reduce((s, d) => s + d.amount, 0);
     const cap       = LEAGUE_FINANCIALS.SALARY_CAP;
     const tax       = LEAGUE_FINANCIALS.TAX_LEVEL;
     const apron1    = LEAGUE_FINANCIALS.FIRST_APRON;
@@ -109,6 +111,12 @@ const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean> }> = 
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
                     <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
                 </div>
+                {deadTotal > 0 && (
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
+                        <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
+                    </div>
+                )}
                 <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
                     <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{remaining > 0 ? fmtM(remaining) : '캡 초과'}</div>
@@ -164,7 +172,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
     entry, player, myTeam, usedMLE, tendencySeed,
     currentSeasonYear, currentSeason, onOfferSubmit, offerResult, onViewPlayer,
 }) => {
-    const slots = getAvailableSigningSlots(myTeam, player, undefined, usedMLE);
+    const slots = getAvailableSigningSlots(myTeam, player, entry.prevTeamId, usedMLE);
     const [selectedSlot, setSelectedSlot] = useState<SigningType>(slots[0] ?? 'vet_min');
     const [offerSalary, setOfferSalary]   = useState<number>(entry.askingSalary);
     const [offerYears, setOfferYears]     = useState<number>(entry.askingYears);
@@ -366,6 +374,7 @@ export const FAView: React.FC<FAViewProps> = ({
     currentSeason,
     onOfferAccepted,
     onReleasePlayer,
+    onTeamOptionDecide,
     onViewPlayer,
 }) => {
     const [activeTab, setActiveTab]       = useState<'market' | 'roster'>('market');
@@ -381,6 +390,15 @@ export const FAView: React.FC<FAViewProps> = ({
         setOfferResult(null);
     };
     const [releaseConfirmId, setReleaseConfirmId] = useState<string | null>(null);
+    const [releaseMode, setReleaseMode] = useState<ReleaseType>('waive');
+    const [buyoutSlider, setBuyoutSlider] = useState<number>(0); // 0~100 (%)
+
+    // 방출 모달 열 때 초기화
+    const openReleaseModal = useCallback((playerId: string) => {
+        setReleaseConfirmId(playerId);
+        setReleaseMode('waive');
+        setBuyoutSlider(70); // 기본 바이아웃 제시액: 잔여의 70%
+    }, []);
 
     const market = leagueFAMarket;
     const usedMLE = market?.usedMLE ?? {};
@@ -413,6 +431,18 @@ export const FAView: React.FC<FAViewProps> = ({
         [myTeam.roster],
     );
 
+    // 팀 옵션 대기 선수 (로스터에 있는 선수 중 team option 보유 = 아직 미결정)
+    const pendingTeamOptions = useMemo(
+        () => myTeam.roster.filter(p => p.contract?.option?.type === 'team'),
+        [myTeam.roster],
+    );
+
+    // 일반 로스터 (팀 옵션 선수 제외)
+    const regularRoster = useMemo(
+        () => sortedRoster.filter(p => p.contract?.option?.type !== 'team'),
+        [sortedRoster],
+    );
+
     const handleOfferSubmit = (slot: SigningType, salary: number, years: number) => {
         if (!selectedEntry || !selectedPlayer || !market) return;
 
@@ -420,7 +450,7 @@ export const FAView: React.FC<FAViewProps> = ({
             market,
             myTeam,
             selectedPlayer,
-            undefined,
+            selectedEntry.prevTeamId,
             { salary, years, signingType: slot },
             tendencySeed,
             currentSeasonYear,
@@ -482,8 +512,16 @@ export const FAView: React.FC<FAViewProps> = ({
                 >FA 시장</button>
                 <button
                     onClick={() => handleTabChange('roster')}
-                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors ${activeTab === 'roster' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-                >내 로스터 <span className="text-xs text-slate-600 font-mono">({myTeam.roster.length})</span></button>
+                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'roster' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                    내 로스터
+                    <span className="text-xs text-slate-600 font-mono">({myTeam.roster.length})</span>
+                    {pendingTeamOptions.length > 0 && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
+                            옵션 {pendingTeamOptions.length}
+                        </span>
+                    )}
+                </button>
             </div>
 
             {/* ── 팀 캡 상황 ── */}
@@ -612,7 +650,57 @@ export const FAView: React.FC<FAViewProps> = ({
             {/* ── 내 로스터 탭 콘텐츠 ── */}
             {activeTab === 'roster' && (
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                    {/* 테이블 헤더 */}
+
+                    {/* ── 팀 옵션 결정 섹션 ── */}
+                    {pendingTeamOptions.length > 0 && (
+                        <div className="border-b-2 border-cyan-500/30 bg-cyan-500/5">
+                            <div className="px-4 py-2.5 flex items-center gap-2 border-b border-cyan-500/20">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">팀 옵션 결정 대기</span>
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">{pendingTeamOptions.length}</span>
+                                <span className="text-[10px] text-slate-500 ml-1">— 행사하지 않으면 선수가 FA로 이동합니다</span>
+                            </div>
+                            {pendingTeamOptions.map(player => {
+                                const optionSalary = player.contract!.years[player.contract!.option!.year] ?? 0;
+                                return (
+                                    <div
+                                        key={player.id}
+                                        className="px-4 py-3 flex items-center gap-3 border-b border-cyan-500/10"
+                                    >
+                                        {/* 선수 정보 */}
+                                        <div className="flex-1 min-w-0">
+                                            <button
+                                                onClick={() => onViewPlayer?.(player)}
+                                                className="font-bold text-sm text-white hover:text-cyan-400 transition-colors truncate ko-tight block"
+                                            >
+                                                {player.name}
+                                            </button>
+                                            <div className="text-[10px] text-slate-500 font-mono">
+                                                {player.position} · OVR {player.ovr} · Age {player.age}
+                                            </div>
+                                        </div>
+                                        {/* 옵션 연봉 */}
+                                        <div className="text-right">
+                                            <div className="text-xs font-mono font-bold text-cyan-300">{fmtM(optionSalary)}</div>
+                                            <div className="text-[9px] text-slate-500">옵션 연봉</div>
+                                        </div>
+                                        {/* 행사 / 거부 버튼 */}
+                                        <div className="flex gap-2 flex-shrink-0">
+                                            <button
+                                                onClick={() => onTeamOptionDecide(player.id, true)}
+                                                className="px-3 py-1.5 rounded-xl text-[10px] font-black bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 transition-colors"
+                                            >행사</button>
+                                            <button
+                                                onClick={() => onTeamOptionDecide(player.id, false)}
+                                                className="px-3 py-1.5 rounded-xl text-[10px] font-black bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                            >거부</button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* ── 일반 로스터 ── */}
                     <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-4 py-2 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr] gap-2">
                         {['선수', '포지션', '나이', '연봉', '잔여', ''].map(h => (
                             <div key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{h}</div>
@@ -620,66 +708,182 @@ export const FAView: React.FC<FAViewProps> = ({
                     </div>
                     {myTeam.roster.length === 0 ? (
                         <div className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</div>
+                    ) : regularRoster.length === 0 ? (
+                        <div className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</div>
                     ) : (
-                        sortedRoster.map(player => {
-                                const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
-                                const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
-                                return (
-                                    <div
-                                        key={player.id}
-                                        className="px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr] gap-2 items-center border-b border-white/5"
-                                    >
-                                        <div>
-                                            <button
-                                                onClick={() => onViewPlayer?.(player)}
-                                                className="font-bold text-sm text-white hover:text-indigo-400 transition-colors truncate ko-tight"
-                                            >
-                                                {player.name}
-                                            </button>
-                                            <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
-                                        </div>
-                                        <div className="text-xs font-mono text-slate-400">{player.position}</div>
-                                        <div className="text-xs font-mono text-slate-400">{player.age}</div>
-                                        <div className="text-xs font-mono font-bold text-amber-400">{fmtM(salary)}</div>
-                                        <div className="text-xs font-mono text-slate-400">{yearsLeft}년</div>
-                                        <div>
-                                            <button
-                                                onClick={() => setReleaseConfirmId(player.id)}
-                                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
-                                            >방출</button>
-                                        </div>
+                        regularRoster.map(player => {
+                            const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                            const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
+                            return (
+                                <div
+                                    key={player.id}
+                                    className="px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr] gap-2 items-center border-b border-white/5"
+                                >
+                                    <div>
+                                        <button
+                                            onClick={() => onViewPlayer?.(player)}
+                                            className="font-bold text-sm text-white hover:text-indigo-400 transition-colors truncate ko-tight"
+                                        >
+                                            {player.name}
+                                        </button>
+                                        <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
                                     </div>
-                                );
-                            })
+                                    <div className="text-xs font-mono text-slate-400">{player.position}</div>
+                                    <div className="text-xs font-mono text-slate-400">{player.age}</div>
+                                    <div className="text-xs font-mono font-bold text-amber-400">{fmtM(salary)}</div>
+                                    <div className="text-xs font-mono text-slate-400">{yearsLeft}년</div>
+                                    <div>
+                                        <button
+                                            onClick={() => openReleaseModal(player.id)}
+                                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                        >방출</button>
+                                    </div>
+                                </div>
+                            );
+                        })
                     )}
                 </div>
             )}
 
-            {/* ── 방출 확인 모달 ── */}
-            {releaseConfirmId && releaseTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-80 space-y-4">
-                        <h3 className="oswald font-black text-white text-lg uppercase tracking-widest">선수 방출</h3>
-                        <p className="text-slate-300 text-sm">
-                            <span className="font-bold text-white">{releaseTarget.name}</span>을(를) 방출하시겠습니까?<br />
-                            <span className="text-slate-500 text-xs">해당 선수는 FA 시장으로 이동합니다.</span>
-                        </p>
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                onClick={() => setReleaseConfirmId(null)}
-                                className="flex-1 py-2 rounded-2xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
-                            >취소</button>
-                            <button
-                                onClick={() => {
-                                    onReleasePlayer(releaseConfirmId);
-                                    setReleaseConfirmId(null);
-                                }}
-                                className="flex-1 py-2 rounded-2xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-colors"
-                            >방출 확정</button>
+            {/* ── 방출 모달 ── */}
+            {releaseConfirmId && releaseTarget && (() => {
+                const contract = releaseTarget.contract;
+                const remainingYears = contract
+                    ? contract.years.length - contract.currentYear
+                    : 1;
+                const totalRemaining = contract
+                    ? contract.years.slice(contract.currentYear).reduce((s, v) => s + v, 0)
+                    : (releaseTarget.salary ?? 0);
+
+                // 스트레치: totalRemaining / (2 * remainingYears - 1) per year
+                const stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
+                const stretchAnnual = totalRemaining / stretchYearsTotal;
+
+                // 바이아웃 최소 수락액 (OVR 기반: OVR 60→50%, OVR 80→65%, OVR 95→75%)
+                const minBuyoutPct = Math.round(
+                    Math.min(75, 50 + 25 * Math.max(0, (releaseTarget.ovr - 60) / 35))
+                );
+                const minBuyoutAmount = Math.round(totalRemaining * (minBuyoutPct / 100));
+                const buyoutAmount = Math.round(totalRemaining * (buyoutSlider / 100));
+                const buyoutAccepted = buyoutAmount >= minBuyoutAmount;
+
+                const deadCapPreview =
+                    releaseMode === 'waive'   ? totalRemaining :
+                    releaseMode === 'stretch' ? stretchAnnual  :
+                    buyoutAmount;
+
+                const MODE_INFO: Record<ReleaseType, { label: string; desc: string; color: string }> = {
+                    waive:   { label: '웨이브',         desc: '잔여 계약 전액이 즉시 데드캡으로 적용됩니다.',               color: 'border-red-500/50 bg-red-500/5' },
+                    stretch: { label: '스트레치 웨이브', desc: `잔여 금액을 ${stretchYearsTotal}년으로 분산해 캡 부담을 줄입니다.`, color: 'border-amber-500/50 bg-amber-500/5' },
+                    buyout:  { label: '바이아웃',        desc: '선수와 합의한 금액만 데드캡으로 적용됩니다.',                color: 'border-emerald-500/50 bg-emerald-500/5' },
+                };
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+                        <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-96 space-y-4">
+                            {/* 헤더 */}
+                            <div>
+                                <h3 className="oswald font-black text-white text-lg uppercase tracking-widest">선수 방출</h3>
+                                <p className="text-slate-400 text-sm mt-0.5">
+                                    <span className="font-bold text-white">{releaseTarget.name}</span>
+                                    <span className="text-slate-500 font-mono ml-2">{releaseTarget.position} · OVR {releaseTarget.ovr}</span>
+                                </p>
+                                <p className="text-slate-500 text-xs mt-1">
+                                    잔여 계약: <span className="text-amber-400 font-mono font-bold">{fmtM(totalRemaining)}</span>
+                                    {contract && <span className="ml-2">({remainingYears}년 잔여)</span>}
+                                </p>
+                            </div>
+
+                            {/* 방출 방식 선택 */}
+                            <div className="space-y-2">
+                                {(['waive', 'stretch', 'buyout'] as ReleaseType[]).map(mode => {
+                                    const info = MODE_INFO[mode];
+                                    const isSelected = releaseMode === mode;
+                                    // 잔여 계약이 1년 이하이면 스트레치 의미 없음
+                                    const disabled = mode === 'stretch' && remainingYears <= 1;
+                                    return (
+                                        <button
+                                            key={mode}
+                                            disabled={disabled}
+                                            onClick={() => !disabled && setReleaseMode(mode)}
+                                            className={`w-full text-left p-3 rounded-2xl border transition-all ${
+                                                disabled ? 'opacity-30 cursor-not-allowed border-slate-700 bg-transparent' :
+                                                isSelected ? info.color + ' border-opacity-100' :
+                                                'border-slate-700 bg-transparent hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                                                    {isSelected ? '● ' : '○ '}{info.label}
+                                                </span>
+                                                <span className="text-xs font-mono font-bold text-slate-400">
+                                                    데드캡{mode === 'stretch' ? `/년` : ''}: {' '}
+                                                    <span className={isSelected ? 'text-white' : ''}>
+                                                        {mode === 'waive'   ? fmtM(totalRemaining) :
+                                                         mode === 'stretch' ? `${fmtM(stretchAnnual)} × ${stretchYearsTotal}년` :
+                                                         fmtM(minBuyoutAmount) + '~'}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">{info.desc}</p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* 바이아웃 슬라이더 */}
+                            {releaseMode === 'buyout' && (
+                                <div className="bg-slate-800/60 rounded-2xl p-3 space-y-2">
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-slate-400">제시 금액</span>
+                                        <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {fmtM(buyoutAmount)} {buyoutAccepted ? '✓ 수락 예상' : '✗ 거절 예상'}
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={minBuyoutPct}
+                                        max={100}
+                                        value={buyoutSlider}
+                                        onChange={e => setBuyoutSlider(Number(e.target.value))}
+                                        className="w-full accent-emerald-500"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                                        <span>최소 {fmtM(minBuyoutAmount)} ({minBuyoutPct}%)</span>
+                                        <span>전액 {fmtM(totalRemaining)}</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500">
+                                        선수는 잔여 금액의 최소 {minBuyoutPct}%를 요구합니다.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* 데드캡 최종 확인 */}
+                            <div className="flex items-center justify-between bg-slate-800/40 rounded-2xl px-4 py-2.5">
+                                <span className="text-sm text-slate-400">이번 시즌 데드캡</span>
+                                <span className="text-sm font-mono font-bold text-red-400">{fmtM(deadCapPreview)}</span>
+                            </div>
+
+                            {/* 버튼 */}
+                            <div className="flex gap-3 pt-1">
+                                <button
+                                    onClick={() => setReleaseConfirmId(null)}
+                                    className="flex-1 py-2 rounded-2xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                                >취소</button>
+                                <button
+                                    disabled={releaseMode === 'buyout' && !buyoutAccepted}
+                                    onClick={() => {
+                                        const amount = releaseMode === 'buyout' ? buyoutAmount : undefined;
+                                        onReleasePlayer(releaseConfirmId, releaseMode, amount);
+                                        setReleaseConfirmId(null);
+                                    }}
+                                    className="flex-1 py-2 rounded-2xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >방출 확정</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 };

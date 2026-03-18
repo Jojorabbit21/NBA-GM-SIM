@@ -37,9 +37,9 @@
 | 6 | 2차 에이프런 합산 불가 | ✅ | 즉시 | 트레이드 조건 |
 | 6 | 하드캡 트리거 | ✅ | 즉시 | MLE 사용 시 1차 에이프런 하드캡 |
 | 7 | 루키 스케일 | ⚠️ | 드래프트 후 | 드래프트 엔진 |
-| 8 | 데드 머니 | ✅ | 즉시 | deadMoney 배열 |
-| 8 | 바이아웃 | ✅ | 즉시 | financialAmbition |
-| 8 | 스트레치 프로비전 | ⚠️ | 멀티시즌 | 다시즌 분산 |
+| 8 | 데드 머니 | ✅ **구현 완료** | — | `DeadMoneyEntry`, `Team.deadMoney[]`, `calcTeamPayroll` 합산, `team_finances` 저장 |
+| 8 | 바이아웃 | ✅ **구현 완료** | — | OVR 기반 최소 수락액, 슬라이더 협상 UI, FA_RELEASE 메시지 |
+| 8 | 스트레치 프로비전 | ✅ **구현 완료** | — | `2n-1`년 분산, 단시즌 캡 부담 감소, 다시즌 추적은 멀티시즌 때 |
 | 9 | NTC | ✅ | 즉시 | 서비스타임 + teamTenure |
 | 9 | 플로어 | ✅ | 즉시 | 단순 계산 |
 | 9 | 트레이드 제한 기간 | ✅ | 즉시 | signDate 저장 |
@@ -145,16 +145,16 @@ VET_MIN_CAP_HIT = 2.296;
 ## 구현 순서
 
 ### Phase 1 — 즉시 구현 (재정 시스템 완성 후)
-1. 캡 상수 업데이트 + 통합
+1. ✅ 캡 상수 업데이트 + 통합
 2. draftYear 매핑 + 서비스타임 유틸
 3. types/salary.ts + services/salaryCapEngine/
 4. 맥스 계약 + Vet Min + MLE
 5. 트레이드 매칭 4단계
-6. FA 영입/방출 트랜잭션 (stateReplayer)
-7. 데드 머니 + 바이아웃
+6. ✅ FA 영입/방출 트랜잭션 (메시지 + Transactions 기록)
+7. ✅ 데드 머니 + 바이아웃 + 스트레치 웨이브 (3종 방출 방식, OVR 기반 최소 수락액, `2n-1`년 분산, CapStatus UI)
 8. 럭셔리 택스 UI
 9. NTC / 트레이드 제한 / 플로어
-10. financialAmbition 텐던시
+10. ✅ financialAmbition 텐던시
 11. 스냅샷 v5
 
 ### Phase 2 — 멀티시즌

@@ -14,7 +14,9 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 export function calcTeamPayroll(team: Team): number {
-    return team.roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+    const rosterTotal = team.roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+    const deadTotal = (team.deadMoney ?? []).reduce((sum, d) => sum + d.amount, 0);
+    return rosterTotal + deadTotal;
 }
 
 function calcInterestedTeamIds(
@@ -133,6 +135,7 @@ export function openFAMarket(
     currentSeasonYear: number,
     currentSeason: string,
     tendencySeed: string,
+    prevTeamIdMap?: Record<string, string>,  // playerId → 계약 만료 직전 팀 ID (Bird Rights용)
 ): LeagueFAMarket {
     const marketConditions = buildMarketConditions(allPlayers, expiredPlayers, teams);
 
@@ -152,6 +155,7 @@ export function openFAMarket(
 
         entries.push({
             playerId:          player.id,
+            prevTeamId:        prevTeamIdMap?.[player.id],
             askingYears:       demand.askingYears,
             askingSalary:      demand.askingSalary,
             walkAwaySalary:    demand.walkAwaySalary,
@@ -183,6 +187,7 @@ export function releasePlayerToMarket(
     tendencySeed: string,
     currentSeasonYear: number,
     currentSeason: string,
+    prevTeamId?: string,  // 방출 직전 소속팀 ID (Bird Rights 재계약용)
 ): LeagueFAMarket {
     // market이 없으면 빈 시장 생성
     const baseMarket: LeagueFAMarket = market ?? {
@@ -212,6 +217,7 @@ export function releasePlayerToMarket(
 
     const newEntry: FAMarketEntry = {
         playerId:         player.id,
+        prevTeamId,
         askingYears:      demand.askingYears,
         askingSalary:     demand.askingSalary,
         walkAwaySalary:   demand.walkAwaySalary,

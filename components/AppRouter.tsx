@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppView, Team, Player, GameTactics, DraftPoolType } from '../types';
+import { AppView, Team, Player, GameTactics, DraftPoolType, DeadMoneyEntry, ReleaseType } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
@@ -611,12 +611,48 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             details: null,
                         }, ...prev]);
                     }}
-                    onReleasePlayer={(playerId) => {
+                    onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                         const player = myTeam?.roster.find((p: Player) => p.id === playerId);
                         if (!player) return;
+
+                        const contract = player.contract;
+                        const totalRemaining = contract && contract.years.length > 0
+                            ? contract.years.slice(contract.currentYear).reduce((s: number, v: number) => s + v, 0)
+                            : (player.salary ?? 0);
+                        const remainingYears = contract
+                            ? contract.years.length - contract.currentYear
+                            : 1;
+
+                        // 방출 방식별 데드캡 계산
+                        let deadAmount: number;
+                        let stretchYearsTotal: number | undefined;
+
+                        if (releaseType === 'waive') {
+                            deadAmount = totalRemaining;
+                        } else if (releaseType === 'stretch') {
+                            stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
+                            deadAmount = Math.round(totalRemaining / stretchYearsTotal);
+                        } else {
+                            // buyout: 협의된 금액 (최소값 보장)
+                            deadAmount = buyoutAmount ?? totalRemaining;
+                        }
+
+                        const newDeadEntry: DeadMoneyEntry = {
+                            playerId: player.id,
+                            playerName: player.name,
+                            amount: deadAmount,
+                            season: gameData.currentSeason ?? '',
+                            releaseType,
+                            ...(stretchYearsTotal !== undefined && { stretchYearsTotal }),
+                        };
+
                         const newTeams = gameData.teams.map((t: Team) =>
                             t.id === gameData.myTeamId
-                                ? { ...t, roster: t.roster.filter((p: Player) => p.id !== playerId) }
+                                ? {
+                                    ...t,
+                                    roster: t.roster.filter((p: Player) => p.id !== playerId),
+                                    deadMoney: [...(t.deadMoney ?? []), newDeadEntry],
+                                }
                                 : t
                         );
                         gameData.setTeams(newTeams);
@@ -630,20 +666,31 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             gameData.tendencySeed ?? '',
                             currentSeasonYear,
                             seasonShort,
+                            gameData.myTeamId ?? undefined,
                         );
                         gameData.setLeagueFAMarket(updatedMarket);
+
                         // FA_RELEASE 서신 발송
                         if (session?.user?.id && gameData.myTeamId) {
                             const prevSalary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                            const RELEASE_TYPE_LABELS: Record<ReleaseType, string> = {
+                                waive:   '웨이브',
+                                stretch: '스트레치 웨이브',
+                                buyout:  '바이아웃',
+                            };
                             const releaseContent: FAReleaseContent = {
                                 playerId,
                                 playerName: player.name,
                                 position: player.position,
                                 ovr: player.ovr,
                                 prevSalary,
+                                releaseType,
+                                deadCapAmount: deadAmount,
                             };
                             sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
-                                'FA_RELEASE', `[방출] ${player.name} 방출 완료`, releaseContent);
+                                'FA_RELEASE',
+                                `[${RELEASE_TYPE_LABELS[releaseType]}] ${player.name} 방출`,
+                                releaseContent);
                         }
                         // 트랜잭션 기록
                         gameData.setTransactions((prev: any) => [{
@@ -651,10 +698,28 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             date: gameData.currentSimDate,
                             type: 'fa_release',
                             teamId: gameData.myTeamId,
-                            description: `방출: ${player.name}`,
+                            description: `방출(${releaseType}): ${player.name} — 데드캡 ${(deadAmount / 1_000_000).toFixed(1)}M`,
                             details: null,
                         }, ...prev]);
                         gameData.forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
+                    }}
+                    onTeamOptionDecide={(playerId, exercised) => {
+                        const newTeams = gameData.teams.map((t: Team) => {
+                            if (t.id !== gameData.myTeamId) return t;
+                            if (exercised) {
+                                // 행사: 옵션 필드 제거 (다음 시즌 중복 체크 방지)
+                                return { ...t, roster: t.roster.map((p: Player) =>
+                                    p.id === playerId && p.contract?.option
+                                        ? { ...p, contract: { ...p.contract, option: undefined } }
+                                        : p
+                                ) };
+                            } else {
+                                // 거부: 로스터에서 제거 (FA로 이동)
+                                return { ...t, roster: t.roster.filter((p: Player) => p.id !== playerId) };
+                            }
+                        });
+                        gameData.setTeams(newTeams);
+                        gameData.forceSave({ teams: newTeams, withSnapshot: true });
                     }}
                     onViewPlayer={handleViewPlayer}
                 />

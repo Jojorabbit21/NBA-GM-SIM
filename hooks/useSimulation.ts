@@ -852,6 +852,7 @@ export const useSimulation = (
                                 seasonYear,
                                 seasonLabel,
                                 tendencySeed ?? '',
+                                u.prevTeamIdMap,
                             );
                             // players 배열 포함 (faPlayerMap 재구성용)
                             newMarket.players = u.expiredPlayerObjects;

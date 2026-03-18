@@ -42,6 +42,7 @@ export interface OffseasonEventResult {
         teamsReset?: boolean;  // W/L + 스탯 리셋 수행됨
         offseasonProcessed?: OffseasonResult;  // 에이징/은퇴/계약만료/옵션 결과
         expiredPlayerObjects?: Team['roster'];  // 계약 만료 선수 전체 Player 객체 (FA 시장 개설용)
+        prevTeamIdMap?: Record<string, string>; // playerId → 계약 만료 직전 팀 ID (Bird Rights 판정용)
         faMarketClosed?: boolean;               // FA 시장 마감 신호 (CPU 자동 서명 트리거)
     };
 }
@@ -303,17 +304,20 @@ function handleMoratoriumStart(
 
     // FA 선수 전체 객체 수집 (로스터 필터링 전 — FA 시장 개설 시 사용)
     const expiredPlayerObjects: Team['roster'] = [];
+    const prevTeamIdMap: Record<string, string> = {};
     for (const team of teams) {
         for (const player of team.roster) {
             if (removeIds.has(player.id) && !offseasonResult.retiredPlayers.some(r => r.playerId === player.id)) {
                 expiredPlayerObjects.push(player);
+                prevTeamIdMap[player.id] = team.id;
             }
         }
     }
 
-    // 최종 제거
+    // 최종 제거 + 데드캡 초기화 (새 시즌 시작)
     for (const team of teams) {
         team.roster = team.roster.filter(p => !removeIds.has(p.id));
+        team.deadMoney = [];
     }
 
     console.log(`📋 Moratorium: ${offseasonResult.retiredPlayers.length} retired, ${offseasonResult.expiredPlayers.length} expired, ${offseasonResult.optionDecisions.length} option decisions`);
@@ -325,6 +329,7 @@ function handleMoratoriumStart(
             offseasonPhase: 'FA_OPEN',
             offseasonProcessed: offseasonResult,
             expiredPlayerObjects,
+            prevTeamIdMap,
         },
     };
 }

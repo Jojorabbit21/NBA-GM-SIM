@@ -21,15 +21,28 @@ useSimulation (moratoriumStart 결과 처리)
         │  ⑤ openFAMarket() 호출 → LeagueFAMarket 생성
         │  ⑥ setLeagueFAMarket() + forceSave()
         ▼
-[FA_OPEN 단계 — 유저 FAMarket 뷰 진입 가능]
+[FA_OPEN 단계 — 유저 FAMarket 뷰 상시 접근 가능]
         │
-        ├─ 유저: FAView.tsx → processUserOffer() → onOfferAccepted()
-        │       → setTeams (로스터 추가) + setLeagueFAMarket + forceSave
+        ├─ 유저 FA 서명: FAView → processUserOffer() → onOfferAccepted()
+        │       → setTeams (로스터 추가) + setLeagueFAMarket
+        │       → sendMessage(FA_SIGNING) → Inbox 서신
+        │       → setTransactions('fa_signing') + forceSave
         │
-        └─ CPU 서명: simulateCPUSigning() — 미사용 (현재 수동 단계)
-                  (향후 FA 시장 마감 시 자동 실행 예정)
+        ├─ 유저 선수 방출: FAView(내 로스터 탭) → onReleasePlayer()
+        │       → setTeams (로스터 제거 + deadMoney 추가)
+        │       → releasePlayerToMarket() → setLeagueFAMarket
+        │       → sendMessage(FA_RELEASE) → Inbox 서신
+        │       → setTransactions('fa_release') + forceSave
+        │
+        └─ 날짜 진행 → rosterDeadline 도달
+                  │  offseasonEventHandler: FA_OPEN → PRE_SEASON, faMarketClosed: true
+                  ▼
+             useSimulation (rosterDeadline 처리)
+                  │  simulateCPUSigning(leagueFAMarket) → CPU 서명 완료
+                  │  setTeams(CPU 서명 반영) + setLeagueFAMarket(null)
+                  └─ sendMessage(FA_LEAGUE_NEWS) → Inbox 리그 소식
         ▼
-[PRE_SEASON / openingNight — FA 시장 자동 종료]
+[PRE_SEASON / openingNight — FA 시장 종료]
 ```
 
 ---
@@ -39,13 +52,19 @@ useSimulation (moratoriumStart 결과 처리)
 | 파일 | 역할 |
 |------|------|
 | `types/fa.ts` | FA 시스템 전용 타입 정의 |
+| `types/team.ts` | `DeadMoneyEntry`, `Team.deadMoney[]` |
+| `types/finance.ts` | `SavedTeamFinances[teamId].deadMoney[]` |
+| `types/message.ts` | `FA_SIGNING`, `FA_RELEASE`, `FA_LEAGUE_NEWS` 메시지 타입/콘텐츠 |
 | `services/fa/faValuation.ts` | 연봉 산정 엔진 (MarketValueScore → askingSalary) |
-| `services/fa/faMarketBuilder.ts` | 시장 개설, CPU 서명 시뮬, 유저 오퍼 처리 |
-| `views/FAView.tsx` | FA 시장 UI (선수 목록 + 협상 패널) |
-| `hooks/useGameData.ts` | `leagueFAMarket`, `faPlayerMap` 상태 관리 |
-| `services/persistence.ts` | `league_fa_market` 컬럼 저장/복원 |
-| `services/simulation/offseasonEventHandler.ts` | moratoriumStart 시 만료 선수 수집 + FA_OPEN 전환 |
-| `hooks/useSimulation.ts` | openFAMarket 호출 + setLeagueFAMarket |
+| `services/fa/faMarketBuilder.ts` | 시장 개설, CPU 서명 시뮬, 유저 오퍼 처리, `releasePlayerToMarket()` |
+| `views/FAView.tsx` | FA 시장 UI (FA 시장 탭 + 내 로스터 탭) + CapStatus(데드캡 표시) |
+| `hooks/useGameData.ts` | `leagueFAMarket`, `faPlayerMap`, deadMoney 로드/저장 |
+| `services/persistence.ts` | `league_fa_market` 컬럼, deadMoney → `team_finances` 저장 |
+| `services/simulation/offseasonEventHandler.ts` | moratoriumStart(FA_OPEN) + rosterDeadline(PRE_SEASON, faMarketClosed) |
+| `hooks/useSimulation.ts` | openFAMarket 호출 + rosterDeadline CPU 서명 트리거 |
+| `components/AppRouter.tsx` | `onOfferAccepted`(FA_SIGNING) + `onReleasePlayer`(FA_RELEASE + deadMoney 계산) |
+| `components/inbox/MessageContentRenderer.tsx` | FA_SIGNING/FA_RELEASE/FA_LEAGUE_NEWS 렌더러 |
+| `components/Sidebar.tsx` | FA 시장 NavItem (상시 표시, FA_OPEN 시 NEW 배지) |
 
 ---
 
@@ -449,16 +468,18 @@ if (u.expiredPlayerObjects?.length > 0 && setLeagueFAMarket) {
 ### 레이아웃
 
 ```
-┌─────────────────────────────────────────────────┐
-│ 헤더 (캡 상태 바: 페이롤 / 잔여캡 / MLE 상태)       │
-├──────────────┬──────────────────────────────────┤
-│ 필터/정렬 바  │                                   │
-├──────────────┤        협상 패널                   │
-│ FA 선수 목록  │  (슬롯 선택 / 연봉 슬라이더 / 오퍼)  │
-│ (역할 필터,   │                                   │
-│  상태 필터,   │                                   │
-│  정렬)        │                                   │
-└──────────────┴──────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ CapStatus (페이롤 / 데드캡* / 잔여캡 / MLE / 캡 바)    │
+├──────────────────────────────────────────────────────┤
+│         [ FA 시장 ]  [ 내 로스터 ]  탭                  │
+├──────────────┬───────────────────────────────────────┤
+│ 필터/정렬 바  │                                        │
+├──────────────┤        협상 패널 / 방출 모달             │
+│ FA 선수 목록  │  (슬롯 선택 / 연봉 슬라이더 / 오퍼)       │
+│  또는        │                                        │
+│ 내 로스터    │                                        │
+└──────────────┴───────────────────────────────────────┘
+* 데드캡 > 0일 때만 표시 (빨간색)
 ```
 
 ### Props
@@ -478,11 +499,12 @@ interface FAViewProps {
         signingType: SigningType,
         updatedMarket: LeagueFAMarket,
     ) => void;
+    onReleasePlayer: (playerId: string) => void;
     onViewPlayer?: (player: Player) => void;
 }
 ```
 
-### 협상 패널 UX
+### FA 시장 탭 UX
 
 1. 선수 클릭 → 우측 협상 패널 열림
 2. 슬롯 선택 (사용 불가 슬롯 비활성화 / Bird Rights 자팀 FA만 표시)
@@ -491,11 +513,19 @@ interface FAViewProps {
 5. 수락 확률 힌트 (walkAway~askingSalary 구간 표시)
 6. 오퍼 제출 → 수락/거절 결과
 
+### 내 로스터 탭 UX
+
+1. 자팀 로스터 전체 표시 (OVR 내림차순)
+2. 선수별 행: 이름·포지션·OVR·연봉·잔여 계약연수
+3. 방출 버튼 클릭 → 확인 모달
+4. 확인 시 `onReleasePlayer(playerId)` 호출
+
 ### AppRouter 연동 (`onOfferAccepted`)
 
 ```ts
 onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
     const faPlayer = gameData.faPlayerMap?.[playerId];
+    const salary = contract.years[contract.currentYear];
     const signedPlayer = { ...faPlayer, contract, salary, teamTenure: 0 };
     const newTeams = gameData.teams.map(t =>
         t.id === gameData.myTeamId ? { ...t, roster: [...t.roster, signedPlayer] } : t
@@ -503,13 +533,159 @@ onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
     gameData.setTeams(newTeams);
     const marketWithPlayers = { ...updatedMarket, players: gameData.leagueFAMarket?.players };
     gameData.setLeagueFAMarket(marketWithPlayers);
+    // FA_SIGNING 서신 발송
+    sendMessage(userId, myTeamId, date, 'FA_SIGNING', `[FA 서명] ${faPlayer.name} 영입 완료`, signingContent);
+    gameData.setTransactions(prev => [{ type: 'fa_signing', ... }, ...prev]);
     gameData.forceSave({ teams: newTeams, leagueFAMarket: marketWithPlayers });
+}}
+```
+
+### AppRouter 연동 (`onReleasePlayer`)
+
+```ts
+onReleasePlayer={(playerId) => {
+    const player = myTeam?.roster.find(p => p.id === playerId);
+    if (!player) return;
+
+    // 데드캡 계산: 현재 연차 포함 잔여 계약 전액
+    const contract = player.contract;
+    const deadAmount = contract
+        ? contract.years.slice(contract.currentYear).reduce((s, v) => s + v, 0)
+        : (player.salary ?? 0);
+    const newDeadEntry: DeadMoneyEntry = { playerId, playerName: player.name, amount: deadAmount, season: currentSeason };
+
+    // 로스터 제거 + deadMoney 추가
+    const newTeams = gameData.teams.map(t =>
+        t.id === gameData.myTeamId
+            ? { ...t, roster: t.roster.filter(p => p.id !== playerId), deadMoney: [...(t.deadMoney ?? []), newDeadEntry] }
+            : t
+    );
+    gameData.setTeams(newTeams);
+
+    // FA 시장에 추가 (null 시장 자동 생성)
+    const updatedMarket = releasePlayerToMarket(gameData.leagueFAMarket ?? null, player, ...);
+    gameData.setLeagueFAMarket(updatedMarket);
+
+    // FA_RELEASE 서신 발송
+    sendMessage(userId, myTeamId, date, 'FA_RELEASE', `[방출] ${player.name} 방출 완료`, releaseContent);
+    gameData.setTransactions(prev => [{ type: 'fa_release', ... }, ...prev]);
+    gameData.forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
 }}
 ```
 
 ---
 
-## 12. 구현 상태 체크리스트
+## 12. 데드캡 (Dead Money) 시스템
+
+방출된 선수의 잔여 보장 계약금이 샐러리캡에 산정되는 규칙.
+
+### 방출 방식 3종
+
+| 방식 | 데드캡 계산 | 선택 조건 | 특징 |
+|------|------------|---------|------|
+| **웨이브 (Waive)** | 잔여 계약 전액 | 항상 가능 | 즉시 처리, 단순 |
+| **스트레치 웨이브 (Stretch)** | `total / (2n-1)` per year | 잔여 2년 이상 | 연당 캡 부담 감소, 오래 지속 |
+| **바이아웃 (Buyout)** | 협상 금액 (최소값 이상) | 항상 가능 | 선수가 수락해야 성립 |
+
+#### 스트레치 공식 (NBA 규정)
+
+```ts
+// n = 잔여 계약 연수
+stretchYearsTotal = 2 * remainingYears - 1;
+stretchAnnual = totalRemaining / stretchYearsTotal;
+// 예: 잔여 3년 $90M → 5년 분산 → 연 $18M 데드캡
+```
+
+#### 바이아웃 최소 수락액
+
+```ts
+// OVR 기반 선형 보간 (OVR 60 → 50%, OVR 95 → 75%)
+const minBuyoutPct = Math.min(75, 50 + 25 * Math.max(0, (ovr - 60) / 35));
+const minBuyoutAmount = totalRemaining * (minBuyoutPct / 100);
+```
+
+유저는 슬라이더로 `minBuyoutAmount ~ totalRemaining` 범위에서 제시액을 설정한다.
+최소 수락액 미만 제시 시 방출 확정 버튼 비활성화.
+
+### 자료구조 (`types/team.ts`)
+
+```ts
+export type ReleaseType = 'waive' | 'buyout' | 'stretch';
+
+export interface DeadMoneyEntry {
+    playerId: string;
+    playerName: string;
+    amount: number;           // 이번 시즌 데드캡 (달러)
+    season: string;           // 발생 시즌 라벨
+    releaseType: ReleaseType;
+    stretchYearsTotal?: number; // 스트레치인 경우 분산 연수
+}
+```
+
+### 페이롤 합산 (`services/fa/faMarketBuilder.ts`)
+
+```ts
+export function calcTeamPayroll(team: Team): number {
+    const rosterTotal = team.roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+    const deadTotal = (team.deadMoney ?? []).reduce((sum, d) => sum + d.amount, 0);
+    return rosterTotal + deadTotal;
+}
+```
+
+모든 캡 계산이 `calcTeamPayroll()`을 통하므로 방출 방식에 무관하게 데드캡이 자동 반영됨.
+
+### 방출 모달 UX (`views/FAView.tsx`)
+
+```
+[선수 방출] LeBron James  SF · OVR 92
+잔여 계약: $90.0M (3년 잔여)
+
+● 웨이브            데드캡: $90.0M (전액)
+○ 스트레치 웨이브    데드캡: $18.0M × 5년
+○ 바이아웃           데드캡: $45.0M~ (협상)
+
+[바이아웃 선택 시]:
+  제시 금액: $54.0M  ✓ 수락 예상
+  [─────────────●──────] ($45M ~ $90M)
+  최소 50.0M (56%)    전액 $90.0M
+
+이번 시즌 데드캡: $18.0M
+[취소]  [방출 확정]
+```
+
+### 영속화 경로
+
+별도 DB 컬럼 없이 기존 `team_finances` JSONB에 포함:
+
+```ts
+// 저장 (forceSave 내부)
+finances[teamId].deadMoney = team.deadMoney;
+
+// 로드
+const dm = checkpoint.team_finances[teamId]?.deadMoney;
+if (dm?.length) team.deadMoney = dm;
+```
+
+`SavedTeamFinances[teamId].deadMoney?: DeadMoneyEntry[]` (`types/finance.ts`)
+
+### UI 표시 (`views/FAView.tsx` — CapStatus)
+
+데드캡 > 0인 경우에만 CapStatus 헤더에 빨간색으로 표시:
+```
+총 페이롤   데드캡*   잔여 캡   MLE
+$187.5M   $18.0M   캡 초과   없음
+* 데드캡이 있을 때만 표시
+```
+
+### 소멸 시점
+
+현재: 시즌 간 자동 소멸 로직 미구현 (누적됨).
+향후: `processOffseason()` 또는 새 시즌 시작 시 `team.deadMoney = []` 초기화 예정.
+멀티시즌 구현 시: 스트레치의 경우 `stretchYearsTotal` 기반으로 잔여 연수를 추적해야 함.
+
+---
+
+## 13. 구현 상태 체크리스트
 
 | 항목 | 파일 | 상태 |
 |------|------|------|
@@ -521,20 +697,32 @@ onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
 | `teamTenure` 오프시즌 갱신 | `services/playerDevelopment/playerAging.ts` | ✅ 완료 |
 | FA 연봉 산정 엔진 | `services/fa/faValuation.ts` | ✅ 완료 |
 | FA 시장 빌더 (개설/CPU서명/유저오퍼) | `services/fa/faMarketBuilder.ts` | ✅ 완료 |
+| `releasePlayerToMarket()` | `services/fa/faMarketBuilder.ts` | ✅ 완료 |
 | 오프시즌 만료 선수 객체 수집 | `offseasonEventHandler.ts` | ✅ 완료 |
+| `rosterDeadline` 이벤트 (FA_OPEN → PRE_SEASON) | `offseasonEventHandler.ts` | ✅ 완료 |
 | `openFAMarket` 자동 호출 | `hooks/useSimulation.ts` | ✅ 완료 |
+| `simulateCPUSigning` rosterDeadline 연동 | `hooks/useSimulation.ts` | ✅ 완료 |
 | `leagueFAMarket` 상태 + 복원 + 저장 | `hooks/useGameData.ts` | ✅ 완료 |
 | `faPlayerMap` 파생값 | `hooks/useGameData.ts` | ✅ 완료 |
-| FA 시장 뷰 (목록 + 협상 패널) | `views/FAView.tsx` | ✅ 완료 |
-| `onOfferAccepted` 로스터/마켓 연동 | `components/AppRouter.tsx` | ✅ 완료 |
+| FA 시장 뷰 (FA 시장 탭 + 내 로스터 탭) | `views/FAView.tsx` | ✅ 완료 |
+| CapStatus 데드캡 표시 | `views/FAView.tsx` | ✅ 완료 |
+| `onOfferAccepted` 로스터/마켓/메시지 연동 | `components/AppRouter.tsx` | ✅ 완료 |
+| `onReleasePlayer` 방출/데드캡/메시지 연동 | `components/AppRouter.tsx` | ✅ 완료 |
+| FA_SIGNING / FA_RELEASE / FA_LEAGUE_NEWS 메시지 | `types/message.ts` + renderer | ✅ 완료 |
+| 사이드바 FA Market 상시 표시 + NEW 배지 | `components/Sidebar.tsx` | ✅ 완료 |
 | DB 영속화 (`league_fa_market` 컬럼) | `services/persistence.ts` | ✅ 완료 |
-| CPU 팀 FA 서명 자동 시뮬 | `faMarketBuilder.simulateCPUSigning` | ⏳ 구현됨, 미연동 |
-| FA 시장 마감 시 미서명 선수 처리 | — | ❌ 미구현 |
-| 사이드바 FA 알림 배지 | `components/Sidebar.tsx` | ❌ 미구현 |
+| 데드캡 영속화 (`team_finances` JSONB 포함) | `hooks/useGameData.ts` | ✅ 완료 |
+| `ReleaseType`, `DeadMoneyEntry` 타입 + `Team.deadMoney[]` | `types/team.ts` | ✅ 완료 |
+| `calcTeamPayroll` 데드캡 합산 | `faMarketBuilder.ts` | ✅ 완료 |
+| 웨이브/바이아웃/스트레치 방출 방식 선택 모달 | `views/FAView.tsx` | ✅ 완료 |
+| 방출 방식별 데드캡 계산 (`onReleasePlayer`) | `components/AppRouter.tsx` | ✅ 완료 |
+| FA_RELEASE 메시지에 방출 방식 + 데드캡 금액 표시 | `MessageContentRenderer.tsx` | ✅ 완료 |
+| 데드캡 오프시즌 초기화 | `offseasonEventHandler.ts` `handleMoratoriumStart` | ✅ 완료 |
+| 스트레치 다시즌 추적 (잔여 stretch 연수) | — | ❌ 미구현 (멀티시즌 필요) |
 
 ---
 
-## 13. 미구현 / 제외 항목
+## 14. 미구현 / 제외 항목
 
 | 항목 | 사유 |
 |------|------|
@@ -544,12 +732,11 @@ onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
 | 데릭 로즈 룰 | 복잡도 대비 가치 낮음 |
 | 루키 스케일 고정액 | 루키 드래프트에서 별도 처리 |
 | 보장/비보장 계약 | 현재 전액 보장 계약만. `guaranteedSalary` 필드 추후 추가 예정 |
+| 스트레치 다시즌 추적 | 멀티시즌 환경에서 잔여 stretch 연수 관리 필요 |
+| 데드캡 오프시즌 소멸 | 현재 누적됨 — processOffseason에서 `team.deadMoney = []` 예정 |
 
 ---
 
-## 14. 향후 작업 예정
+## 15. 향후 작업 예정
 
-1. **CPU 팀 FA 서명 자동 시뮬**: FA 시장 마감일에 `simulateCPUSigning()` 호출 → 미서명 선수 자동 처리
-2. **FA 시장 마감**: `openingNight` 도달 시 `leagueFAMarket` 정리 + 미서명 선수 `generatedFreeAgents` 이동
-3. **사이드바 알림**: `offseasonPhase === 'FA_OPEN'` 시 사이드바 FA 링크에 배지 표시
-4. **직접 서명 이력**: `Transactions`에 FA 서명 기록 추가
+1. **스트레치 다시즌 추적**: 멀티시즌 환경에서 `stretchYearsTotal`과 잔여 분산 연수 추적

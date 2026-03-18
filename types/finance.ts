@@ -64,5 +64,7 @@ export interface SavedTeamFinances {
         gamesPlayed: number;
         totalAttendance?: number;
         monthlyAttendance?: Record<string, MonthlyAttendanceData>;
+        /** 방출 선수 잔여 계약금 (데드캡) */
+        deadMoney?: import('./team').DeadMoneyEntry[];
     };
 }

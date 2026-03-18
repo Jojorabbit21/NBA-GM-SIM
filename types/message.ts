@@ -534,6 +534,8 @@ export interface FAReleaseContent {
     position: string;
     ovr: number;
     prevSalary: number;
+    releaseType?: import('./team').ReleaseType;
+    deadCapAmount?: number;
 }
 
 export interface FALeagueNewsContent {

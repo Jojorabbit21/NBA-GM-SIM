@@ -3,6 +3,7 @@ import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react'
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
+import { formatMoney } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { OvrBadge } from '../components/common/OvrBadge';
@@ -114,12 +115,6 @@ const getAttrBg = (val: number) => {
     return '';
 };
 
-const formatSalary = (salary: number): string => {
-    if (salary >= 1_000_000) return `$${(salary / 1_000_000).toFixed(1)}M`;
-    if (salary >= 1_000) return `$${(salary / 1_000).toFixed(0)}k`;
-    return `$${salary}`;
-};
-
 // ── Hidden Archetypes ──
 function getHiddenArchetypes(p: Player): string[] {
     const list: string[] = [];
@@ -214,6 +209,14 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     }
     return { display: val, color };
 }
+
+// ── Section Header ──
+const SectionHeader: React.FC<{ title: string; className?: string; children?: React.ReactNode }> = ({ title, className, children }) => (
+    <div className={`px-6 py-3 bg-slate-700 flex items-center justify-between${className ? ` ${className}` : ''}`}>
+        <span className="text-sm font-black text-slate-300 uppercase tracking-widest">{title}</span>
+        {children && <div className="flex items-center gap-2">{children}</div>}
+    </div>
+);
 
 // ── Reusable: Stats sub-table (header + single data row), uses common Table ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
@@ -422,10 +425,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
             const a = sk ? ((s as any)[sk.keyA] || 0) : 0;
             return { ...z, m, a, avg: ZONE_AVG[z.avgKey] };
         }),
-    [s]);
+    [player.stats]);
 
-    const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
-    const [showPlayoffStats, setShowPlayoffStats] = useState(false);
     const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
     const [careerMode, setCareerMode] = useState<'regular' | 'playoff'>('regular');
@@ -434,90 +435,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const hasCareerPlayoff = careerPlayoff.length > 0;
     const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
     const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
-
-    // Compute advanced rate stats (USG%, AST%, ORB%, etc.) for display
-    // These are normally computed only in the leaderboard hook, not on the original stats objects.
-    const displayStats = useMemo(() => {
-        const rawStats = showPlayoffStats ? player.playoffStats! : s;
-        if (!rawStats || !allTeams || !teamId) return rawStats;
-
-        const team = allTeams.find(t => t.id === teamId);
-        if (!team) return rawStats;
-
-        const enriched = { ...rawStats } as any;
-        const mp = enriched.mp || 0;
-        if (mp === 0) return enriched;
-
-        // Compute team totals from roster
-        const getStats = (p: Player) => showPlayoffStats ? (p.playoffStats || { mp: 0, fga: 0, fta: 0, tov: 0, fgm: 0, offReb: 0, defReb: 0, reb: 0, stl: 0, blk: 0, p3a: 0 } as any) : p.stats;
-        const teamMin = team.roster.reduce((sum, p) => sum + (getStats(p).mp || 0), 0) || 1;
-        const teamFga = team.roster.reduce((sum, p) => sum + (getStats(p).fga || 0), 0);
-        const teamFta = team.roster.reduce((sum, p) => sum + (getStats(p).fta || 0), 0);
-        const teamTov = team.roster.reduce((sum, p) => sum + (getStats(p).tov || 0), 0);
-        const teamFgm = team.roster.reduce((sum, p) => sum + (getStats(p).fgm || 0), 0);
-        const teamOreb = team.roster.reduce((sum, p) => sum + (getStats(p).offReb || 0), 0);
-        const teamDreb = team.roster.reduce((sum, p) => sum + (getStats(p).defReb || 0), 0);
-        const teamReb = team.roster.reduce((sum, p) => sum + (getStats(p).reb || 0), 0);
-        const teamUsage = teamFga + 0.44 * teamFta + teamTov;
-
-        // USG%
-        const playerPoss = enriched.fga + 0.44 * enriched.fta + enriched.tov;
-        if (teamUsage > 0) {
-            enriched['usg%'] = (playerPoss * (teamMin / 5)) / (mp * teamUsage);
-        }
-
-        // AST%
-        const astDenom = ((mp / (teamMin / 5)) * teamFgm) - enriched.fgm;
-        enriched['ast%'] = astDenom > 0 ? enriched.ast / astDenom : 0;
-
-        // For opponent-dependent stats, approximate using league-wide averages
-        let leagueOreb = 0, leagueDreb = 0, leagueReb = 0, leagueFga = 0, leagueFta = 0, leagueTov = 0, leagueOrebAll = 0, league3pa = 0;
-        let playoffTeamCount = 0;
-        allTeams.forEach(t => {
-            let tOreb = 0, tDreb = 0, tReb = 0, tFga = 0, tFta = 0, tTov = 0, tOrebAll = 0, t3pa = 0, hasData = false;
-            t.roster.forEach(p => {
-                const ps = getStats(p);
-                if ((ps.g || 0) > 0) hasData = true;
-                tOreb += (ps.offReb || 0); tDreb += (ps.defReb || 0); tReb += (ps.reb || 0);
-                tFga += (ps.fga || 0); tFta += (ps.fta || 0); tTov += (ps.tov || 0);
-                tOrebAll += (ps.offReb || 0); t3pa += (ps.p3a || 0);
-            });
-            if (hasData) {
-                playoffTeamCount++;
-                leagueOreb += tOreb; leagueDreb += tDreb; leagueReb += tReb;
-                leagueFga += tFga; leagueFta += tFta; leagueTov += tTov;
-                leagueOrebAll += tOrebAll; league3pa += t3pa;
-            }
-        });
-
-        if (playoffTeamCount > 1) {
-            // Average opponent stats (exclude own team)
-            const oppDreb = (leagueDreb - teamDreb) / (playoffTeamCount - 1);
-            const oppOreb = (leagueOreb - teamOreb) / (playoffTeamCount - 1);
-            const oppReb = (leagueReb - teamReb) / (playoffTeamCount - 1);
-            const oppFga = (leagueFga - teamFga) / (playoffTeamCount - 1);
-            const oppFta = (leagueFta - teamFta) / (playoffTeamCount - 1);
-            const oppTov = (leagueTov - teamTov) / (playoffTeamCount - 1);
-            const oppOrebApprox = (leagueOrebAll - teamOreb) / (playoffTeamCount - 1);
-            const opp3pa = (league3pa - team.roster.reduce((sum, p) => sum + (getStats(p).p3a || 0), 0)) / (playoffTeamCount - 1);
-            const oppPoss = oppFga + 0.44 * oppFta + oppTov - oppOrebApprox;
-            const opp2pa = oppFga - opp3pa;
-
-            const totalOrebChances = teamOreb + oppDreb;
-            if (totalOrebChances > 0) enriched['orb%'] = ((enriched.offReb || 0) * (teamMin / 5)) / (mp * totalOrebChances);
-
-            const totalDrebChances = teamDreb + oppOreb;
-            if (totalDrebChances > 0) enriched['drb%'] = ((enriched.defReb || 0) * (teamMin / 5)) / (mp * totalDrebChances);
-
-            const totalRebChances = teamReb + oppReb;
-            if (totalRebChances > 0) enriched['trb%'] = (enriched.reb * (teamMin / 5)) / (mp * totalRebChances);
-
-            if (oppPoss > 0) enriched['stl%'] = (enriched.stl * (teamMin / 5)) / (mp * oppPoss);
-            if (opp2pa > 0) enriched['blk%'] = (enriched.blk * (teamMin / 5)) / (mp * opp2pa);
-        }
-
-        return enriched;
-    }, [player.stats, player.playoffStats, showPlayoffStats, allTeams, teamId]);
 
     const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
@@ -600,7 +517,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <td className="pr-5 pt-2">{player.age}세</td>
                                     <td className="pr-5 pt-2">{player.height}cm</td>
                                     <td className="pr-5 pt-2">{player.weight}kg</td>
-                                    <td className="pr-5 pt-2">{player.salary > 0 ? formatSalary(player.salary) : '-'}</td>
+                                    <td className="pr-5 pt-2">{player.salary > 0 ? formatMoney(player.salary) : '-'}</td>
                                     <td className="pr-5 pt-2">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</td>
                                     <td className="pr-5 pt-2"><StarRating ovr={calculatedOvr} size="md" /></td>
                                     <td className="pt-2">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</td>
@@ -656,9 +573,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="border-b-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">능력치</span>
-                        </div>
+                        <SectionHeader title="능력치" />
                         {(() => {
                             const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
                             return (
@@ -728,27 +643,24 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* ═══ SECTION 1.5: 기록 ═══ */}
                     {player.career_history && player.career_history.length > 0 && (
                         <div className="border-b-2 border-slate-700">
-                            <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">기록</span>
-                                <div className="flex items-center gap-2">
-                                    <select
-                                        value={careerMode}
-                                        onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
-                                        className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="regular">정규시즌</option>
-                                        {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
-                                    </select>
-                                    <select
-                                        value={careerTab}
-                                        onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')}
-                                        className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="trad">기본</option>
-                                        <option value="adv">어드밴스드</option>
-                                    </select>
-                                </div>
-                            </div>
+                            <SectionHeader title="기록">
+                                <select
+                                    value={careerMode}
+                                    onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
+                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="regular">정규시즌</option>
+                                    {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
+                                </select>
+                                <select
+                                    value={careerTab}
+                                    onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')}
+                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border border-slate-500 bg-slate-800 text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="trad">기본</option>
+                                    <option value="adv">어드밴스드</option>
+                                </select>
+                            </SectionHeader>
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
@@ -764,50 +676,51 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(careerMode === 'regular' ? careerRegular : careerPlayoff).map((row, ri) => {
+                                        {(() => {
                                             const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
                                             const isPlayoffMode = careerMode === 'playoff';
-                                            return (
-                                                <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
-                                                    {cols.map((col, ci) => {
-                                                        const raw = (row as any)[col.key];
-                                                        let display: string;
-                                                        if (raw == null || raw === '') {
-                                                            display = '-';
-                                                        } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
-                                                                   col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate') {
-                                                            // Stored as decimal (0.xxx) → multiply by 100
-                                                            display = (Number(raw) * 100).toFixed(1);
-                                                        } else if (col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
-                                                                   col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
-                                                            // Stored as percentage already (xx.x) → display as-is
-                                                            display = Number(raw).toFixed(1);
-                                                        } else if (col.key === 'tov_pct') {
-                                                            display = Number(raw).toFixed(1);
-                                                        } else if (col.key === 'season' || col.key === 'team') {
-                                                            display = String(raw);
-                                                        } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
-                                                            display = String(Number(raw));
-                                                        } else {
-                                                            display = Number(raw).toFixed(1);
-                                                        }
-                                                        const isCurrentSeason = col.key === 'season' && String(raw) === seasonShort;
-                                                        return (
-                                                            <td
-                                                                key={col.key}
-                                                                className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
-                                                                    ci === 0
-                                                                        ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
-                                                                        : 'text-white'
-                                                                }`}
-                                                            >
-                                                                {display}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })}
+                                            const rows = isPlayoffMode ? careerPlayoff : careerRegular;
+                                            return rows.map((row, ri) => {
+                                                const isCurrentSeason = String((row as any).season) === seasonShort;
+                                                return (
+                                                    <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
+                                                        {cols.map((col, ci) => {
+                                                            const raw = (row as any)[col.key];
+                                                            let display: string;
+                                                            if (raw == null || raw === '') {
+                                                                display = '-';
+                                                            } else if (col.key === 'fg_pct' || col.key === 'fg3_pct' || col.key === 'ft_pct' ||
+                                                                       col.key === 'ts_pct' || col.key === 'efg_pct' || col.key === 'fg3a_rate' || col.key === 'fta_rate') {
+                                                                display = (Number(raw) * 100).toFixed(1);
+                                                            } else if (col.key === 'usg_pct' || col.key === 'ast_pct' || col.key === 'orb_pct' ||
+                                                                       col.key === 'drb_pct' || col.key === 'trb_pct' || col.key === 'stl_pct' || col.key === 'blk_pct') {
+                                                                display = Number(raw).toFixed(1);
+                                                            } else if (col.key === 'tov_pct') {
+                                                                display = Number(raw).toFixed(1);
+                                                            } else if (col.key === 'season' || col.key === 'team') {
+                                                                display = String(raw);
+                                                            } else if (col.key === 'age' || col.key === 'gp' || col.key === 'gs') {
+                                                                display = String(Number(raw));
+                                                            } else {
+                                                                display = Number(raw).toFixed(1);
+                                                            }
+                                                            return (
+                                                                <td
+                                                                    key={col.key}
+                                                                    className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
+                                                                        ci === 0
+                                                                            ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
+                                                                            : 'text-white'
+                                                                    }`}
+                                                                >
+                                                                    {display}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                );
+                                            });
+                                        })()}
                                     </tbody>
                                 </table>
                             </div>
@@ -818,20 +731,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>
 
                         {/* Row 1, Col 1: 샷 차트 헤더 */}
-                        <div className="px-6 py-3 bg-slate-700 flex items-center justify-between border-r border-slate-800">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
+                        <SectionHeader title="샷 차트" className="border-r border-slate-800">
                             <button
                                 onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
                                 className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-600 bg-slate-600 text-white transition-colors hover:bg-slate-500"
                             >
                                 {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
                             </button>
-                        </div>
+                        </SectionHeader>
 
                         {/* Row 1, Col 2: 최근 경기 헤더 */}
-                        <div className="px-6 py-3 bg-slate-700 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
-                        </div>
+                        <SectionHeader title="최근 경기" />
 
                         {/* Row 2, Col 1: 샷 차트 본문 */}
                         <div className="border-r border-slate-800 p-4">
@@ -910,9 +820,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="border-t-2 border-slate-700 grid grid-cols-3">
                         {/* 좌측: 계약 정보 */}
                         <div>
-                            <div className="px-6 py-3 bg-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">계약 정보</span>
-                            </div>
+                            <SectionHeader title="계약 정보" />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.contract || player.contract.years.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
@@ -993,7 +901,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                     </TableCell>
                                                     <TableCell align="center">
                                                         <span className="font-mono font-medium tabular-nums text-xs text-slate-300">
-                                                            {formatSalary(yearSalary)}
+                                                            {formatMoney(yearSalary)}
                                                         </span>
                                                     </TableCell>
                                                 </TableRow>
@@ -1006,9 +914,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {/* 중앙: 수상 내역 */}
                         <div className="border-l border-slate-600">
-                            <div className="px-6 py-3 bg-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
-                            </div>
+                            <SectionHeader title="수상 내역" />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.awards || player.awards.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">
@@ -1079,9 +985,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {/* 우측: 부상 이력 */}
                         <div className="border-l border-slate-600">
-                            <div className="px-6 py-3 bg-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
-                            </div>
+                            <SectionHeader title="부상 이력" />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">

@@ -1146,9 +1146,21 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
 
         case 'FA_RELEASE': {
             const c = content as FAReleaseContent;
+            const RELEASE_LABELS: Record<string, string> = {
+                waive:   '웨이브',
+                stretch: '스트레치 웨이브',
+                buyout:  '바이아웃',
+            };
+            const RELEASE_DESC: Record<string, string> = {
+                waive:   '잔여 계약 전액이 데드캡으로 적용됩니다.',
+                stretch: '잔여 금액이 여러 시즌에 걸쳐 분산됩니다.',
+                buyout:  '협의된 금액만 데드캡으로 적용되며 선수는 FA가 됩니다.',
+            };
+            const releaseLabel = c.releaseType ? RELEASE_LABELS[c.releaseType] ?? '방출' : '방출';
+            const releaseDesc  = c.releaseType ? RELEASE_DESC[c.releaseType]  ?? '' : '';
             return (
                 <div className="space-y-4 text-slate-300 leading-relaxed">
-                    <p className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Player Release</p>
+                    <p className="text-xs font-black text-amber-400/80 uppercase tracking-widest">Player Release — {releaseLabel}</p>
                     <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-800/60 border border-amber-500/20">
                         <OvrBadge value={c.ovr} size="md" />
                         <div className="flex-1">
@@ -1159,9 +1171,16 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         </div>
                         <div className="text-right">
                             <p className="text-sm text-slate-500 line-through">{formatMoney(c.prevSalary)}</p>
-                            <p className="text-xs text-amber-400">FA 전환</p>
+                            {c.deadCapAmount !== undefined ? (
+                                <p className="text-xs text-red-400 font-mono font-bold">
+                                    데드캡 {(c.deadCapAmount / 1_000_000).toFixed(1)}M
+                                </p>
+                            ) : (
+                                <p className="text-xs text-amber-400">FA 전환</p>
+                            )}
                         </div>
                     </div>
+                    {releaseDesc && <p className="text-sm text-slate-400">{releaseDesc}</p>}
                     <p className="text-sm text-slate-400">해당 선수는 이제 FA 시장에서 영입 가능합니다.</p>
                     <div className="pt-4">
                         <p className="text-slate-400 text-sm">구단 프런트</p>

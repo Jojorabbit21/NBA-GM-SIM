@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode, ReplaySnapshot } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode, ReplaySnapshot, DeadMoneyEntry } from '../types';
 import { useBaseData, fetchPredefinedDraftClass } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, loadUserTransactions, saveCheckpoint, countUserData } from '../services/persistence';
@@ -373,6 +373,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }),
                     }));
 
+                    // 데드캡 복원: team_finances[teamId].deadMoney → Team.deadMoney
+                    if (checkpoint.team_finances) {
+                        loadedTeams = loadedTeams!.map(t => {
+                            const savedFinances = (checkpoint.team_finances as any)[t.id];
+                            const dm = savedFinances?.deadMoney as DeadMoneyEntry[] | undefined;
+                            if (dm && dm.length > 0) return { ...t, deadMoney: dm };
+                            return t;
+                        });
+                    }
+
                     setMyTeamId(checkpoint.team_id);
                     setTeams(loadedTeams!);
                     setSchedule(loadedSchedule!);
@@ -732,6 +742,15 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
                     const coaching = ov?.coachingData || gameStateRef.current.coachingData;
                     const finances = getBudgetManager().toSaveData();
+                    // 데드캡 정보를 finances에 포함 (별도 컬럼 없이 team_finances 활용)
+                    currentTeams?.forEach((t: Team) => {
+                        if (t.deadMoney && t.deadMoney.length > 0) {
+                            if (!finances[t.id]) {
+                                (finances as any)[t.id] = { revenue: { gate: 0, broadcasting: 0, localMedia: 0, sponsorship: 0, merchandise: 0, other: 0 }, expenses: { payroll: 0, luxuryTax: 0, operations: 0, coachSalary: 0, scouting: 0, marketing: 0, administration: 0 }, budget: 0, gamesPlayed: 0 };
+                            }
+                            (finances as any)[t.id].deadMoney = t.deadMoney;
+                        }
+                    });
                     const pickAssets = ov?.leaguePickAssets || gameStateRef.current.leaguePickAssets;
                     const tradeBlocks = ov?.leagueTradeBlocks || gameStateRef.current.leagueTradeBlocks;
                     const tradeOffers = ov?.leagueTradeOffers || gameStateRef.current.leagueTradeOffers;

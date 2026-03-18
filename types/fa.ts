@@ -45,6 +45,7 @@ export interface FAUserOffer {
 
 export interface FAMarketEntry {
     playerId: string;
+    prevTeamId?: string;   // FA 등록 직전 소속팀 ID (Bird Rights 판정용)
 
     // 선수 요구 조건 (FA 시장 개막 시 계산, 고정)
     askingYears: number;
