@@ -1075,7 +1075,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <TableBody>
                                         {[...allAwards]
                                             .sort((a, b) => {
-                                                const sc = b.season.localeCompare(a.season);
+                                                const sc = (b.season ?? '').localeCompare(a.season ?? '');
                                                 if (sc !== 0) return sc;
                                                 const orderMap: Record<string, number> = {
                                                     CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,

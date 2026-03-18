@@ -185,28 +185,68 @@ raw = hMin + (hMax - hMin) × (1 - pow(rng.next(), 2.5))
 
 ## 7. 계약 — 루키 스케일
 
-4년 루키 스케일 계약. 연차별 5% 인상:
+### 설계 원칙
 
+루키 계약은 **두 단계**로 결정된다.
+
+1. **생성 시 (임시)**: `generateDraftClass()`에서 `rank = i + 1` (생성 순서)를 기준으로 임시 계약을 부여. 선수의 능력치 프로파일이 순위를 반영하도록 하기 위한 값이며, 실제 픽 순번과 다를 수 있다.
+
+2. **드래프트 완료 시 (확정)**: `handleRookieDraftComplete()`에서 실제 픽 순번(`pick.pickNumber`)을 기준으로 `calcRookieContract(pickNumber)`를 호출하여 계약을 **재적용**한다. 이 시점에 `player.contract`, `player.salary`, `player.contractYears` 세 필드가 모두 확정된다.
+
+---
+
+### 계약 구조
+
+```typescript
+// 1라운드 (1~30픽): 4년 루키 스케일
+{
+    years: [salary, salary×1.05, salary×1.10, salary×1.15],
+    currentYear: 0,
+    type: 'rookie',
+}
+
+// 2라운드 (31~60픽): 2년 최저 연봉
+{
+    years: [1_500_000, 1_575_000],
+    currentYear: 0,
+    type: 'rookie',
+}
 ```
-years = [salary, salary×1.05, salary×1.10, salary×1.15]
-contract.type = 'rookie'
+
+---
+
+### 1라운드 슬롯 연봉 (`ROOKIE_SALARIES`)
+
+| 픽 | 1년차 ($) | 4년차 ($) |
+|----|----------|----------|
+| 1  | 12,000,000 | 13,800,000 |
+| 2  | 10,800,000 | 12,420,000 |
+| 3  | 9,700,000  | 11,155,000 |
+| 5  | 8,000,000  | 9,200,000  |
+| 10 | 5,000,000  | 5,750,000  |
+| 15 | 3,500,000  | 4,025,000  |
+| 20 | 2,500,000  | 2,875,000  |
+| 25 | 2,000,000  | 2,300,000  |
+| 30 | 1,700,000  | 1,955,000  |
+
+---
+
+### `calcRookieContract(pickNumber)` 함수
+
+파일: `services/draft/rookieGenerator.ts`
+
+```typescript
+export function calcRookieContract(pickNumber: number): PlayerContract
 ```
 
-### 슬롯별 연봉 (1라운드)
+드래프트 완료 시 호출. 픽 순번만 넣으면 올바른 `PlayerContract` 객체를 반환.
 
-| 픽 | 연봉 ($) |
-|----|---------|
-| 1 | 12,000,000 |
-| 2 | 10,800,000 |
-| 3 | 9,700,000 |
-| 5 | 8,000,000 |
-| 10 | 5,000,000 |
-| 15 | 3,500,000 |
-| 20 | 2,500,000 |
-| 25 | 2,000,000 |
-| 30 | 1,700,000 |
+| 픽 범위 | 계약 기간 | 연봉 기준 |
+|---------|---------|---------|
+| 1~30픽  | 4년 | `ROOKIE_SALARIES[pickNumber-1]`, 매년 5% 인상 |
+| 31~60픽 | 2년 | $1,500,000 고정, 매년 5% 인상 |
 
-2라운드(31~60픽)는 최소 슬롯(1,700,000)으로 통일.
+`pickNumber`가 `undefined`인 경우 fallback으로 30픽 슬롯 적용.
 
 ---
 
@@ -264,8 +304,10 @@ prospectRevealDate 도달
 rookieDraftDate 도달
   → RookieDraftView 진입 (blocked 이벤트)
   → 유저/CPU 드래프트 진행
-  → handleRookieDraftComplete()
-    → markAsDrafted() (각 픽: status='drafted', draft_pick, draft_team_id)
+  → handleRookieDraftComplete(picks: BoardPick[])
+    → markAsDrafted() (각 픽: status='drafted', draft_pick=pick.pickNumber, draft_team_id)
+    → 각 루키에 calcRookieContract(pick.pickNumber) 적용
+       → player.contract / salary / contractYears 재설정
     → 미드래프트 선수 → leagueFAPool에 추가
 ```
 

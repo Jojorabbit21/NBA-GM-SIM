@@ -35,6 +35,7 @@ import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
 import { LeagueFAMarket } from '../types/fa';
 import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
+import { calcRookieContract } from '../services/draft/rookieGenerator';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { TEAM_DATA } from '../data/teamData';
 import type { DraftResultContent, DraftResultEntry } from '../types/message';
@@ -999,19 +1000,30 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // ── 루키 드래프트 완료 핸들러 ──
     const handleRookieDraftComplete = useCallback(async (picks: BoardPick[]) => {
         // 1. DB 업데이트: 각 픽의 선수를 drafted로 마킹
-        const markPromises = picks.map((pick, idx) =>
-            markAsDrafted(pick.playerId, idx + 1, pick.teamId)
+        const markPromises = picks.map(pick =>
+            markAsDrafted(pick.playerId, pick.pickNumber ?? 0, pick.teamId)
         );
         await Promise.all(markPromises);
 
-        // 2. 런타임 로스터에 루키 추가
+        // 2. 런타임 로스터에 루키 추가 (픽 순번 기반 계약 재적용)
         const prospectMap = new Map<string, Player>();
         prospects.forEach(p => prospectMap.set(p.id, p));
 
         const newTeams = teams.map(team => {
             const teamPicks = picks.filter(p => p.teamId === team.id);
             if (teamPicks.length === 0) return team;
-            const rookies = teamPicks.map(p => prospectMap.get(p.playerId)).filter(Boolean) as Player[];
+            const rookies = teamPicks.map(pick => {
+                const player = prospectMap.get(pick.playerId);
+                if (!player) return null;
+                // 실제 픽 순번에 맞는 루키 계약 적용
+                const contract = calcRookieContract(pick.pickNumber ?? 30);
+                return {
+                    ...player,
+                    contract,
+                    salary: contract.years[0],
+                    contractYears: contract.years.length,
+                };
+            }).filter(Boolean) as Player[];
             return { ...team, roster: [...team.roster, ...rookies] };
         });
         setTeams(newTeams);

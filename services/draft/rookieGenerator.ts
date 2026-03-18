@@ -15,6 +15,7 @@
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
+import { PlayerContract } from '../../types/player';
 
 // ── 상수 ──
 
@@ -49,7 +50,7 @@ const POSITION_SKILL_PENALTY: Record<string, Partial<Record<typeof SKILL_KEYS[nu
 };
 
 /** 신인 연봉 슬롯 (1~30픽, 단위: $) — NBA 루키 스케일 기반 간소화 */
-const ROOKIE_SALARIES: number[] = [
+export const ROOKIE_SALARIES: number[] = [
     12_000_000, 10_800_000, 9_700_000, 8_800_000, 8_000_000,  // 1-5
     7_200_000,  6_500_000,  5_900_000, 5_400_000, 5_000_000,  // 6-10
     4_600_000,  4_300_000,  4_000_000, 3_700_000, 3_500_000,  // 11-15
@@ -353,6 +354,43 @@ export function generateDraftClass(
     }
 
     return players;
+}
+
+// ── 루키 계약 엔진 ──
+
+/** 2라운드 픽 최저 연봉 */
+const SECOND_ROUND_SALARY = 1_500_000;
+
+/**
+ * 픽 순번에 맞는 루키 계약을 생성한다.
+ * - 1라운드 (1~30픽): 4년 루키 스케일, 매년 5% 인상
+ * - 2라운드 (31~60픽): 2년 최저 연봉 계약
+ *
+ * 드래프트 완료 시 호출하여 생성 순서 기반 임시 계약을 실제 픽 순번 계약으로 교체한다.
+ */
+export function calcRookieContract(pickNumber: number): PlayerContract {
+    if (pickNumber <= 30) {
+        const salary = ROOKIE_SALARIES[pickNumber - 1] ?? ROOKIE_SALARIES[29];
+        return {
+            years: [
+                salary,
+                Math.round(salary * 1.05),
+                Math.round(salary * 1.10),
+                Math.round(salary * 1.15),
+            ],
+            currentYear: 0,
+            type: 'rookie',
+        };
+    }
+    // 2라운드: 2년 최저 연봉
+    return {
+        years: [
+            SECOND_ROUND_SALARY,
+            Math.round(SECOND_ROUND_SALARY * 1.05),
+        ],
+        currentYear: 0,
+        type: 'rookie',
+    };
 }
 
 // ── 내부 함수 ──

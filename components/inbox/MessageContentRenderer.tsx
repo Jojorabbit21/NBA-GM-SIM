@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SuspensionContent, LeagueNewsContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
-import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent, RetirementNewsContent, FASigningContent, FAReleaseContent, FALeagueNewsContent } from '../../types/message';
+import { TradeOfferReceivedContent, TradeOfferResponseContent, OffseasonReportContent, ProspectRevealContent, LotteryResultContent, DraftResultContent, RetirementNewsContent, FASigningContent, FAReleaseContent, FALeagueNewsContent, ExtensionSignedContent } from '../../types/message';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
 import { calculatePlayerOvr } from '../../utils/constants';
@@ -1185,6 +1185,35 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     <div className="pt-4">
                         <p className="text-slate-400 text-sm">구단 프런트</p>
                         <p className="text-slate-500 text-xs mt-0.5">방출 처리 완료 보고</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'EXTENSION_SIGNED': {
+            const c = content as ExtensionSignedContent;
+            return (
+                <div className="space-y-4 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-violet-400/80 uppercase tracking-widest">Contract Extension</p>
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-800/60 border border-violet-500/20">
+                        <OvrBadge value={c.ovr} size="md" />
+                        <div className="flex-1">
+                            <button onClick={() => onPlayerClick(c.playerId)} className="font-bold text-white hover:text-indigo-400 transition-colors">
+                                {c.playerName}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-0.5">{c.position} · OVR {c.ovr}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm font-bold text-violet-400">{formatMoney(c.salary)}</p>
+                            <p className="text-xs text-slate-500">{c.years}년 연장</p>
+                        </div>
+                    </div>
+                    <p className="text-sm text-slate-400">
+                        계약 연장이 성사됐습니다. FA 개막 전 잔류 확정.
+                    </p>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">구단 프런트</p>
+                        <p className="text-slate-500 text-xs mt-0.5">계약 익스텐션 체결 보고</p>
                     </div>
                 </div>
             );
