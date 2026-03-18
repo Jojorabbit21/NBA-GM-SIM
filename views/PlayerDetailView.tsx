@@ -216,10 +216,21 @@ function hexAlpha(hex: string, alpha: number): string {
     return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
 }
 
+// ── Relative luminance (0=black, 1=white) ──
+function luminance(hex: string): number {
+    const n = parseInt(hex.replace('#', ''), 16);
+    return (0.299 * ((n >> 16) & 0xff) + 0.587 * ((n >> 8) & 0xff) + 0.114 * (n & 0xff)) / 255;
+}
+
+// ── Pick tint color: use bg if it has enough luminance, else fall back to accent ──
+function getEffectiveTintColor(theme: { bg: string; accent: string }): string {
+    return luminance(theme.bg) >= 0.05 ? theme.bg : theme.accent;
+}
+
 // ── Section Header ──
 const SectionHeader: React.FC<{ title: string; className?: string; style?: React.CSSProperties; children?: React.ReactNode }> = ({ title, className, style, children }) => (
     <div className={`px-6 py-3 flex items-center justify-between${className ? ` ${className}` : ''}`} style={style}>
-        <span className="text-sm font-black text-slate-300 uppercase tracking-widest">{title}</span>
+        <span className="text-sm font-black text-white uppercase tracking-widest">{title}</span>
         {children && <div className="flex items-center gap-2">{children}</div>}
     </div>
 );
@@ -298,7 +309,7 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
 const ROW_HEIGHT = 40; // h-10 = 40px
 const OVERSCAN = 5;
 
-const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle }) => {
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle, rowAltStyle }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
@@ -370,7 +381,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                     <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
                                 {processedRows.slice(startIdx, endIdx).map((cells, vi) => (
-                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT }}>
+                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT, ...(((startIdx + vi) % 2 !== 0) ? rowAltStyle : undefined) }}>
                                         {cells.map((cell, ci) => (
                                             <td
                                                 key={ci}
@@ -399,8 +410,11 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
     const theme = getTeamTheme(teamId || null, teamColors);
-    const sectionBg = { backgroundColor: hexAlpha(theme.bg, 0.55) };    // L4: SectionHeader
-    const subHeaderBg = { backgroundColor: hexAlpha(theme.bg, 0.22) };  // L3: group headers / thead / AVG
+    const tintColor = getEffectiveTintColor(theme);
+    const isLight = luminance(tintColor) > 0.5;
+    const sectionBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.13 : 0.50) }; // L5: SectionHeader
+    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.07 : 0.20) }; // L4: thead / AVG
+    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.03 : 0.08) }; // L3: odd rows
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -692,7 +706,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             return rows.map((row, ri) => {
                                                 const isCurrentSeason = String((row as any).season) === seasonShort;
                                                 return (
-                                                    <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40'}>
+                                                    <tr key={ri} style={ri % 2 !== 0 ? rowAltBg : undefined}>
                                                         {cols.map((col, ci) => {
                                                             const raw = (row as any)[col.key];
                                                             let display: string;
@@ -718,9 +732,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                                     key={col.key}
                                                                     className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800/30 ${
                                                                         ci === 0
-                                                                            ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'} ` + (ri % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/60')
+                                                                            ? `sticky left-0 z-10 font-bold ${isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300'}`
                                                                             : 'text-white'
                                                                     }`}
+                                                                    style={ci === 0 ? (ri % 2 !== 0 ? rowAltBg : { backgroundColor: '#020617' }) : undefined}
                                                                 >
                                                                     {display}
                                                                 </td>
@@ -822,6 +837,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             gameLogLoading={gameLogLoading}
                             teamId={teamId}
                             subHeaderStyle={subHeaderBg}
+                            rowAltStyle={rowAltBg}
                         />
 
                     </div>
@@ -923,7 +939,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         </div>
                         {/* 중앙: 수상 내역 */}
-                        <div className="border-l border-slate-600">
+                        <div className="border-l border-slate-800">
                             <SectionHeader title="수상 내역" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.awards || player.awards.length === 0 ? (
@@ -994,7 +1010,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         </div>
                         {/* 우측: 부상 이력 */}
-                        <div className="border-l border-slate-600">
+                        <div className="border-l border-slate-800">
                             <SectionHeader title="부상 이력" style={sectionBg} />
                             <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
