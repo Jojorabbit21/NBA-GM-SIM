@@ -270,3 +270,21 @@ export const writeTransaction = async (userId: string, tx: Transaction) => {
         throw res.error;
     }
 };
+
+export const bulkWriteTransactions = async (userId: string, txList: Transaction[]) => {
+    if (txList.length === 0) return;
+    const rows = txList.map(tx => ({
+        id: tx.id,
+        user_id: userId,
+        date: tx.date,
+        type: tx.type,
+        team_id: tx.teamId,
+        description: tx.description,
+        details: tx.details,
+    }));
+    const res = await supabase.from('user_transactions').insert(rows);
+    if (res.error) {
+        console.error('❌ [bulkWriteTransactions]:', res.error);
+        throw res.error;
+    }
+};

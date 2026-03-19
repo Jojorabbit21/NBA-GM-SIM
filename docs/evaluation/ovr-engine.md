@@ -1,6 +1,6 @@
 # OVR 산출 엔진 (ovrEngine)
 
-> 최종 업데이트: 2026-03
+> 최종 업데이트: 2026-03 (튜닝 v2 — 아키타입 인플레 억제 + z-score 기반 티어 임계값)
 > 관련 파일: `utils/ovrEngine.ts`, `utils/ovrUtils.ts`
 
 ---
@@ -241,50 +241,101 @@ C_Base =
 
 소규모 직접 OVR 효과. 게임플레이(클러치, 접전)에서 더 크게 반영.
 ```
-IntangibleBonus = clamp((intangible - 50) / 50 × 2.5, -2.5, +2.5)
+IntangibleBonus = clamp((intangible - 50) / 50 × 1.0, -1.0, +1.0)
 ```
-intangible 50 → 0 / 80 → +1.5 / 95 → +2.25
+intangible 50 → 0 / 80 → +0.6 / 95 → +0.9
+*(v2: 캡 ±2.5 → ±1.0으로 축소, OVR 영향 최소화)*
+
+---
+
+### Step 8.5: Core Position Penalty (신규)
+
+포지션 필수 능력이 완전히 결여된 선수에 대한 추가 페널티. 최대 **-6.0**. `calcCorePositionPenalty()`:
+
+| 포지션 | 조건 | 페널티 |
+|--------|------|--------|
+| PG | playmaking < 74 또는 spotUpShooting < 70 | 부족분 비례 (최대 -7.5) |
+| SG | spotUpShooting < 72 AND shotCreation < 72 | -4.0 (고정) |
+| SF | spotUpShooting < 70 AND poaDefense < 72 AND teamDefense < 72 | -4.5 (고정) |
+| PF | rebounding < 72 또는 rimProtection < 70 | 부족분 비례 |
+| C | rebounding < 74 또는 rimProtection < 72 | 부족분 비례 (최대 -9.5) |
+
+> FatalWeaknessPenalty가 아키타입 기준이라면, CorePositionPenalty는 포지션 기준. 두 페널티는 독립 적용.
 
 ---
 
 ### Step 9: rawCurrentOVR 합산
 
+**v2 변경**: 아키타입 점수를 full 가중합이 아닌 `posBase` 대비 조정값으로 적용. 아키타입 인플레 억제.
+
 ```
+primaryAdj   = (primaryArchetypeScore - posBase) × 0.18
+secondaryAdj = (secondaryArchetypeScore - posBase) × 0.08
+
 rawCurrentOVR =
-  0.55 × PositionBase
-  + 0.25 × PrimaryArchetypeScore
-  + 0.10 × SecondaryArchetypeScore
+  posBase
+  + primaryAdj
+  + secondaryAdj
   + TagBonus
   + SignatureSkillBonus
   + RareComboBonus
   - FatalWeaknessPenalty
+  - CorePositionPenalty
   + IntangibleBonus
 
 범위: clamp(40, 99)
 ```
 
+**보너스 캡 (v2 축소):**
+| 항목 | 구버전 최대 | 현재 최대 |
+|------|-----------|---------|
+| TagBonus | +3.2 | +1.8 (감소 수익 적용) |
+| SignatureSkillBonus | +4.0 | +2.2 |
+| RareComboBonus | +4.5 | +2.5 |
+| IntangibleBonus | ±2.5 | **±1.0** |
+
 ---
 
 ### Step 10: displayOVR (리그 분포 보정)
 
+**v2 변경**: spread 확대(5.8→6.5) + 기저 조정(76→75) + z³ 계수 축소(1.0→0.35) + 압축 임계값 상향(93→95).
+
 ```
 z = (rawOVR - leagueMean) / leagueStd
-displayOVR = round(clamp(76 + 5.8×z + 1.0×z³, 50, 99))
+display = 75 + 6.5×z + 0.35×z³
+
+// 상위 압축 (99를 사실상 불가능하게)
+if display > 95:   display = 95 + (display - 95) × 0.55
+if display > 97.5: display = 97.5 + (display - 97.5) × 0.28
+
+displayOVR = round(clamp(display, 50, 99))
 ```
 
 - `leagueMean`, `leagueStd`: 전체 445명 rawOVR에서 산출 (게임 로드 시 1회)
-- **z³ 항**: 비선형 — 진짜 상위권은 더 벌어지고, 평균권은 집중
+- `leagueStd` 최솟값: 1.75 (소규모 리그 극단 방지, 구버전 1.5에서 상향)
+- 압축이 활성화되는 구간: z ≈ +3.1 이상 (445명 중 사실상 없음 → 의도적 예약)
+
+**z값별 예상 displayOVR (445명 리그 기준):**
+| z값 | 해당 순위(약) | displayOVR | 비고 |
+|-----|------------|-----------|------|
+| −1.0 | ~270위 | ~68 | 로스터 하위 |
+| 0.0 | ~223위 | 75 | 리그 평균 |
+| +0.35 | ~150위 | ~78 | 주전 수준 |
+| +1.1 | ~70위 | ~83 | 올스타급 |
+| +1.8 | ~20위 | ~88 | 슈퍼스타 |
+| +2.3 | ~5위 | ~94 | MVP급 |
+| +2.5 | ~2위 | ~96 | 리그 최정상 |
 
 **목표 분포:**
 | 백분위 | displayOVR |
 |--------|-----------|
-| 상위 0.5% | 98~99 |
-| 상위 2% | 95~97 |
-| 상위 7% | 91~94 |
-| 상위 15% | 87~90 |
-| 상위 30% | 82~86 |
-| 상위 55% | 77~81 |
-| 하위 45% | 50~76 |
+| 상위 0.5% | 97~99 |
+| 상위 2% | 93~96 |
+| 상위 7% | 88~92 |
+| 상위 15% | 83~87 |
+| 상위 30% | 78~82 |
+| 상위 55% | 73~77 |
+| 하위 45% | 50~72 |
 
 ---
 
@@ -330,6 +381,40 @@ futureOVR = displayOVR + max(0, (potential - displayOVR) × ageFactor × 0.55)
 | `getLeagueDistribution()` | 현재 분포 조회 | `LeagueDistribution` |
 | `adaptPlayerToInput(player, pos?)` | Player → PlayerInput 변환 | `PlayerInput` |
 | `getPlayerStarRating(ovr)` | OVR → 별점 (0.5~5.0) | `number` |
+| **`getOVRThreshold(tier)`** | **z-score 기반 티어 OVR 임계값** | **`number`** |
+
+### getOVRThreshold() — z-score 기반 티어 시스템 (신규)
+
+하드코딩된 절대값 임계값(예: `ovr >= 88`) 대신 리그 분포 기반 상대 임계값을 반환.
+OVR 공식이 바뀌어도 **퍼센타일 의미가 자동 유지**됨.
+
+```ts
+export type OvrTier = 'SUPERSTAR' | 'STAR' | 'STARTER' | 'ROLE' | 'FRINGE';
+
+// 내부 z-score 기준
+const OVR_TIER_Z = {
+  SUPERSTAR: 1.8,   // ~상위 8명 (MVP/All-NBA First)
+  STAR:      1.1,   // ~상위 23명 (올스타급)
+  STARTER:   0.35,  // ~상위 60명 (주전 수준)
+  ROLE:     -0.25,  // 로테이션
+  FRINGE:   -0.9,   // FA/컷 후보
+};
+
+getOVRThreshold('SUPERSTAR') // ≈ 88
+getOVRThreshold('STAR')      // ≈ 83
+getOVRThreshold('STARTER')   // ≈ 78
+getOVRThreshold('ROLE')      // ≈ 73
+getOVRThreshold('FRINGE')    // ≈ 69
+```
+
+> **주의**: `getOVRThreshold()`는 반드시 함수 내부에서 호출할 것.
+> 모듈 레벨 상수로 선언하면 `setLeagueDistribution()` 호출 전 폴백 분포를 캡처하여 잘못된 값을 반환함.
+> 예: `const STAR_OVR = getOVRThreshold('STAR')` — ❌ / 함수 내 인라인 호출 — ✅
+
+`utils/constants.ts`를 통해 re-export됨:
+```ts
+import { getOVRThreshold, OvrTier } from '../utils/constants';
+```
 
 ---
 
@@ -338,8 +423,9 @@ futureOVR = displayOVR + max(0, (potential - displayOVR) × ageFactor × 0.55)
 | 파일 | 역할 |
 |------|------|
 | `utils/ovrEngine.ts` | 엔진 핵심 로직 (순수 함수, Player 타입 미참조) |
-| `utils/ovrUtils.ts` | 어댑터 + 분포 캐시 + 공개 API |
-| `utils/overallWeights.ts` | **deprecated** — OVR 계산에 미사용, 레거시 참조용만 보존 |
+| `utils/ovrUtils.ts` | 어댑터 + 분포 캐시 + 공개 API + `getOVRThreshold()` |
+| `utils/constants.ts` | `getOVRThreshold`, `OvrTier` re-export |
+| ~~`utils/overallWeights.ts`~~ | **삭제됨** (2026-03) — 구버전 포지션 가중치, dead code |
 | `services/dataMapper.ts` | `postProcessAllPlayersOVR()` — 배치 분포 초기화 |
 | `services/queries.ts` | `postProcessAllPlayersOVR` 호출 진입점 |
 | `services/playerDevelopment/archetypeEvaluator.ts` | `calcModuleScores` → `ovrEngine.calculateModules` 재사용 |
@@ -352,8 +438,21 @@ futureOVR = displayOVR + max(0, (potential - displayOVR) × ageFactor × 0.55)
 
 새 데이터셋 추가 또는 분포가 맞지 않을 때 조정할 항목:
 
-1. **`mapRawOVRToDisplayOVR()` 상수** (`76`, `5.8`, `1.0`): 분포 폭 조정
-2. **`ARCHETYPE_CANDIDATES`**: 포지션별 후보 아키타입 추가/제거
-3. **`calcRareComboBonus()`**: 희귀 조합 임계값 및 보너스 크기
-4. **`calcFatalWeaknessPenalty()`**: 아키타입별 최소 능력치 기준
-5. **태그 임계값** (`calcTagBonus()`): 각 태그 획득 조건 수치
+1. **`mapRawOVRToDisplayOVR()` 상수** (`75`, `6.5`, `0.35`): 분포 폭 조정
+   - 현재: base=75, spread=6.5, z³ 계수=0.35, 1차 압축 임계=95, 2차=97.5
+2. **`OVR_TIER_Z`** (ovrUtils.ts): 각 티어의 z-score 기준 조정
+3. **`ARCHETYPE_CANDIDATES`**: 포지션별 후보 아키타입 추가/제거
+4. **`calcRareComboBonus()`**: 희귀 조합 임계값 및 보너스 크기 (max 2.5)
+5. **`calcFatalWeaknessPenalty()`**: 아키타입별 최소 능력치 기준 (max 9.0)
+6. **`calcCorePositionPenalty()`**: 포지션별 기본 요건 기준 (max 6.0)
+7. **태그 임계값** (`calcTagBonus()`): 각 태그 획득 조건 수치 (max +1.8)
+8. **아키타입 조정 계수** (`primaryAdj ×0.18`, `secondaryAdj ×0.08`): 아키타입 영향력 강도
+
+---
+
+## 8. 변경 이력
+
+| 버전 | 날짜 | 주요 변경 |
+|------|------|---------|
+| v1 (초기) | 2026-02 | 모듈/아키타입 기반 엔진 도입, `POSITION_WEIGHTS` 대체 |
+| v2 | 2026-03 | ① 아키타입-조정값 방식으로 전환 (인플레 억제) ② displayOVR 파라미터 재조정 (75+6.5z+0.35z³) ③ 보너스 캡 전면 축소 ④ `CorePositionPenalty` 신규 추가 ⑤ `getOVRThreshold()` z-score 기반 API 추가 ⑥ `overallWeights.ts` 삭제 |

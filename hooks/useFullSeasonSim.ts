@@ -14,6 +14,7 @@ import { LeagueFAMarket } from '../types/fa';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
+import { bulkWriteTransactions } from '../services/persistence';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
 import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildOwnerLetterContent, selectFinalsMvp, buildPlayoffChampionContent, buildPlayoffStageContent, aggregateSeriesBoxScores, computeAllTeamsStats, buildRosterStats } from '../services/reportGenerator';
@@ -144,6 +145,10 @@ export const useFullSeasonSim = (
                 }
                 if (result.allPlayoffResultsToSave.length > 0) {
                     await Promise.all(result.allPlayoffResultsToSave.map(r => savePlayoffGameResult(r)));
+                }
+                // CPU 트레이드 이력 DB 저장 (React state에만 있으면 다음 forceSave 시 snapshot count 불일치로 이력 소실)
+                if (result.transactions.length > 0) {
+                    await bulkWriteTransactions(session.user.id, result.transactions);
                 }
                 // 중복 방지용 사전 계산 (병렬 DB 쿼리)
                 const myRegGames = result.finalSchedule.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));

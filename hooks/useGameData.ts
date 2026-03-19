@@ -1050,6 +1050,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             const myPickCount = picks.filter(p => p.teamId === myTeamId).length;
             const entries: DraftResultEntry[] = picks.map(pick => {
                 const player = prospectMap.get(pick.playerId);
+                const rookieContract = calcRookieContract(pick.pickNumber ?? 30);
                 return {
                     pickNumber: pick.pickNumber ?? 0,
                     teamId: pick.teamId,
@@ -1068,7 +1069,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     def: player?.def ?? 0,
                     reb: player?.reb ?? 0,
                     ath: player?.ath ?? 0,
-                    salary: player?.salary ?? 0,
+                    salary: rookieContract.years[0],
                     isUserPick: pick.teamId === myTeamId,
                 };
             });

@@ -39,3 +39,4 @@ sql/
 public/patches/
 
 scripts/
+.claude/settings.local.json
