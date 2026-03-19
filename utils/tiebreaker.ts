@@ -164,8 +164,14 @@ export function createTiebreakerComparator(
         const diffDiff = db.diff - da.diff;
         if (Math.abs(diffDiff) > 0.1) return diffDiff;
 
-        // 5. 최종 폴백: 승수 내림차순
-        return b.wins - a.wins;
+        // 5. 승수 내림차순
+        const winsDiff = b.wins - a.wins;
+        if (winsDiff !== 0) return winsDiff;
+
+        // 6. 최종 폴백: 연고지 알파벳 오름차순, 동일 도시면 팀명 오름차순
+        const cityDiff = a.city.localeCompare(b.city, 'ko');
+        if (cityDiff !== 0) return cityDiff;
+        return a.name.localeCompare(b.name, 'ko');
     };
 }
 
