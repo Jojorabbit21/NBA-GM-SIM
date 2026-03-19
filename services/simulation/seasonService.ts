@@ -38,6 +38,7 @@ export const handleSeasonEvents = async (
     let newTradeOffers: import('../../types/trade').PersistentTradeOffer[] = [];
     let acceptedProposals: import('../../types/trade').PersistentTradeOffer[] = [];
     let rejectedProposals: import('../../types/trade').PersistentTradeOffer[] = [];
+    let overflowCutPlayers: import('../../types').Player[] = [];
 
     // 1. Playoffs
     if (updatedSeries.length > 0) {
@@ -104,16 +105,20 @@ export const handleSeasonEvents = async (
 
         // 2-2. CPU-CPU 트레이드
         const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles, seasonConfig);
-        if (tradeResults && tradeResults.transactions.length > 0) {
-            for (const tx of tradeResults.transactions) {
-                const cpuTx = { ...tx, date: currentSimDate };
-                newTransactions.push(cpuTx);
+        if (tradeResults) {
+            if (tradeResults.transactions.length > 0) {
+                for (const tx of tradeResults.transactions) {
+                    const cpuTx = { ...tx, date: currentSimDate };
+                    newTransactions.push(cpuTx);
 
-                const news = await generateCPUTradeNews(cpuTx);
-                if (news) {
-                    newsItems.push(...news);
-                    if (!tradeToast) tradeToast = `[TRADE] ${news[0]}`;
+                    const news = await generateCPUTradeNews(cpuTx);
+                    if (news) {
+                        newsItems.push(...news);
+                    }
                 }
+            }
+            if (tradeResults.overflowCutPlayers?.length > 0) {
+                overflowCutPlayers.push(...tradeResults.overflowCutPlayers);
             }
         }
 
@@ -190,6 +195,7 @@ export const handleSeasonEvents = async (
         newTradeOffers,
         acceptedProposals,
         rejectedProposals,
+        overflowCutPlayers,
     };
 };
 

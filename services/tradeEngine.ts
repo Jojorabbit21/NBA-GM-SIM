@@ -34,6 +34,6 @@ export async function simulateCPUTrades(
     leagueTradeBlocks?: LeagueTradeBlocks,
     leagueGMProfiles?: LeagueGMProfiles,
     seasonConfig?: SeasonConfig
-): Promise<{ updatedTeams: Team[]; transactions: Transaction[] } | null> {
+): Promise<{ updatedTeams: Team[]; transactions: Transaction[]; overflowCutPlayers: Player[] } | null> {
     return runCPUTradeRound(allTeams, myTeamId, currentDate, leaguePickAssets, leagueTradeBlocks, leagueGMProfiles, seasonConfig);
 }

@@ -30,7 +30,7 @@ import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent, FALea
 import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { LeagueFAMarket } from '../types/fa';
-import { openFAMarket, simulateCPUSigning } from '../services/fa/faMarketBuilder';
+import { openFAMarket, simulateCPUSigning, releasePlayerToMarket } from '../services/fa/faMarketBuilder';
 import { simulateCPUWaivers } from '../services/fa/cpuWaiverEngine';
 
 /**
@@ -481,10 +481,17 @@ export const useSimulation = (
                     if (seasonEvents.newsItems.length > 0) {
                          setNews(prev => [...prev, ...seasonEvents.newsItems.map(c => ({ type: 'text', content: c }))]);
                     }
-                    if (seasonEvents.tradeToast) {
-                        setToastMessage(seasonEvents.tradeToast);
+                    // CPU 트레이드 오버플로우 선수 FA 시장 추가
+                    if (seasonEvents.overflowCutPlayers?.length > 0 && setLeagueFAMarket) {
+                        const allPlayersList = newTeams.flatMap((t: any) => t.roster);
+                        const seasonYear = new Date(currentSimDate).getFullYear();
+                        const seasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+                        let updatedMarket = leagueFAMarket ?? null;
+                        for (const p of seasonEvents.overflowCutPlayers) {
+                            updatedMarket = releasePlayerToMarket(updatedMarket, p, allPlayersList, newTeams, currentSimDate, tendencySeed ?? 'default', seasonYear, seasonLabel);
+                        }
+                        setLeagueFAMarket(updatedMarket);
                     }
-
                     // CPU 트레이드 블록 변경을 React 상태에 반영
                     if (leagueTradeBlocks && setLeagueTradeBlocks) {
                         setLeagueTradeBlocks({ ...leagueTradeBlocks });
@@ -617,10 +624,17 @@ export const useSimulation = (
                 if (seasonEvents.newsItems.length > 0) {
                      setNews(prev => [...prev, ...seasonEvents.newsItems.map(c => ({ type: 'text', content: c }))]);
                 }
-                if (seasonEvents.tradeToast) {
-                    setToastMessage(seasonEvents.tradeToast);
+                // CPU 트레이드 오버플로우 선수 FA 시장 추가
+                if (seasonEvents.overflowCutPlayers?.length > 0 && setLeagueFAMarket) {
+                    const allPlayersList = newTeams.flatMap((t: any) => t.roster);
+                    const seasonYear = new Date(currentSimDate).getFullYear();
+                    const seasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+                    let updatedMarket = leagueFAMarket ?? null;
+                    for (const p of seasonEvents.overflowCutPlayers) {
+                        updatedMarket = releasePlayerToMarket(updatedMarket, p, allPlayersList, newTeams, currentSimDate, tendencySeed ?? 'default', seasonYear, seasonLabel);
+                    }
+                    setLeagueFAMarket(updatedMarket);
                 }
-
                 // CPU 트레이드 블록 변경을 React 상태에 반영
                 if (leagueTradeBlocks && setLeagueTradeBlocks) {
                     setLeagueTradeBlocks({ ...leagueTradeBlocks });
@@ -1161,10 +1175,17 @@ export const useSimulation = (
             if (seasonEvents.newsItems.length > 0) {
                 setNews(prev => [...prev, ...seasonEvents.newsItems.map((c: any) => ({ type: 'text', content: c }))]);
             }
-            if (seasonEvents.tradeToast) {
-                setToastMessage(seasonEvents.tradeToast);
+            // CPU 트레이드 오버플로우 선수 FA 시장 추가
+            if (seasonEvents.overflowCutPlayers?.length > 0 && setLeagueFAMarket) {
+                const allPlayersList = newTeams.flatMap((t: any) => t.roster);
+                const seasonYear = new Date(currentSimDate).getFullYear();
+                const seasonLabel = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
+                let updatedMarket = leagueFAMarket ?? null;
+                for (const p of seasonEvents.overflowCutPlayers) {
+                    updatedMarket = releasePlayerToMarket(updatedMarket, p, allPlayersList, newTeams, currentSimDate, tendencySeed ?? 'default', seasonYear, seasonLabel);
+                }
+                setLeagueFAMarket(updatedMarket);
             }
-
             // CPU 트레이드 블록 변경을 React 상태에 반영
             if (leagueTradeBlocks && setLeagueTradeBlocks) {
                 setLeagueTradeBlocks({ ...leagueTradeBlocks });

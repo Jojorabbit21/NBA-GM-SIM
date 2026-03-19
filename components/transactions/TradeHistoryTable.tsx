@@ -105,10 +105,17 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                             if (!t) return null;
 
                             const team1 = teams.find(it => it.id === t.teamId);
-                            const team2 = teams.find(pt => pt.id === t.details?.partnerTeamId);
+                            const partnerTeamId = t.details?.partnerTeamId || t.details?.counterpartTeamId;
+                            const team2 = teams.find(pt => pt.id === partnerTeamId);
 
                             const team1Name = team1?.name || t.teamId;
                             const team2Name = team2?.name || t.details?.partnerTeamName || 'Unknown';
+
+                            // 신포맷(players.received/sent) + 구포맷(acquired/traded) 모두 지원
+                            const inboundPlayers = t.details?.acquired
+                                || (t.details?.players?.received || []).map((p: any) => ({ id: p.playerId, name: p.playerName, ovr: undefined }));
+                            const outboundPlayers = t.details?.traded
+                                || (t.details?.players?.sent || []).map((p: any) => ({ id: p.playerId, name: p.playerName, ovr: undefined }));
 
                             return (
                             <tr key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
@@ -120,13 +127,13 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                         <TeamLogo teamId={t.teamId} size="sm" />
                                         <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
                                         <ArrowRightLeft size={12} className="text-slate-600 flex-shrink-0" />
-                                        <TeamLogo teamId={t.details?.partnerTeamId || ''} size="sm" />
-                                        <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
+                                        <TeamLogo teamId={partnerTeamId || ''} size="sm" />
+                                        <span className={`text-xs font-black uppercase ${partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                     </div>
                                 </td>
                                 <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="flex flex-col gap-2">
-                                        {(t.details?.acquired || []).map((p: any, i: number) => {
+                                        {(inboundPlayers || []).map((p: any, i: number) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
                                             return (
                                                 <div key={i} className="flex items-center gap-3">
@@ -136,12 +143,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                                 </div>
                                             );
                                         })}
-                                        {(t.details?.acquired || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
+                                        {(inboundPlayers || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
                                 </td>
                                 <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="flex flex-col gap-2">
-                                        {(t.details?.traded || []).map((p: any, i: number) => {
+                                        {(outboundPlayers || []).map((p: any, i: number) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
                                             return (
                                                 <div key={i} className="flex items-center gap-3">
@@ -151,7 +158,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                                 </div>
                                             );
                                         })}
-                                        {(t.details?.traded || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
+                                        {(outboundPlayers || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
                                 </td>
                             </tr>

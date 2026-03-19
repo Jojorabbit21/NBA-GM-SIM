@@ -659,7 +659,7 @@ export function runCPUTradeRound(
     leagueTradeBlocks?: LeagueTradeBlocks,
     leagueGMProfiles?: LeagueGMProfiles,
     seasonConfig?: SeasonConfig
-): { updatedTeams: Team[]; transactions: Transaction[] } | null {
+): { updatedTeams: Team[]; transactions: Transaction[]; overflowCutPlayers: Player[] } | null {
     // 데드라인 체크
     const tradeDeadline = seasonConfig?.tradeDeadline ?? TRADE_DEADLINE;
     const seasonStart = seasonConfig?.startDate ?? SEASON_START_DATE;
@@ -710,6 +710,7 @@ export function runCPUTradeRound(
     // ── Step 4~6: 목표 기반 타깃 탐색 → 패키지 구성 → 유틸리티 체크 ──
     const transactions: Transaction[] = [];
     const tradedTeamIds = new Set<string>();
+    const overflowCutPlayers: Player[] = [];
     let profiles = cpuTeams.map(t =>
         buildTeamTradeProfile(t, leaguePickAssets, currentDate, leagueGMProfiles)
     );
@@ -736,7 +737,7 @@ export function runCPUTradeRound(
                 if (score <= 0) continue;
                 const pkg = constructTradePackage(buyerProf, sellerProf);
                 if (!pkg) continue;
-                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
                     break;
                 }
             }
@@ -787,7 +788,7 @@ export function runCPUTradeRound(
                 continue; // 양팀 모두 수락 가능해야 트레이드 성사
             }
 
-            if (executePkg(pkg, buyerProf, sellerProfile, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+            if (executePkg(pkg, buyerProf, sellerProfile, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
                 break; // 이 구매자에 대해 하나 성사 → 다음 팀으로
             }
         }
@@ -811,7 +812,7 @@ export function runCPUTradeRound(
                 if (tradedTeamIds.has(sellerProf.team.id)) continue;
                 const pkg = constructTradePackage(buyerProf, sellerProf);
                 if (!pkg) continue;
-                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds)) {
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
                     break;
                 }
             }
@@ -834,12 +835,12 @@ export function runCPUTradeRound(
             if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
             const pkg = constructTradePackage(pair.a, pair.b);
             if (!pkg) continue;
-            executePkg(pkg, pair.a, pair.b, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds);
+            executePkg(pkg, pair.a, pair.b, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers);
         }
     }
 
     if (transactions.length === 0) return null;
-    return { updatedTeams: teams, transactions };
+    return { updatedTeams: teams, transactions, overflowCutPlayers };
 }
 
 // ── 패키지 실행 헬퍼 (중복 제거용) ──
@@ -853,6 +854,7 @@ function executePkg(
     currentDate: string,
     transactions: Transaction[],
     tradedTeamIds: Set<string>,
+    overflowCutPlayers: Player[],
 ): boolean {
     if (leaguePickAssets && (pkg.teamAPicks.length > 0 || pkg.teamBPicks.length > 0)) {
         const payload: TradeExecutionPayload = {
@@ -880,7 +882,7 @@ function executePkg(
             transactions.push(result.transaction);
             tradedTeamIds.add(profileA.team.id);
             tradedTeamIds.add(profileB.team.id);
-            if (result.overflowTeams) trimOverflowRosters(teams, result.overflowTeams);
+            if (result.overflowTeams) overflowCutPlayers.push(...trimOverflowRosters(teams, result.overflowTeams));
             return true;
         }
     } else {
@@ -891,7 +893,7 @@ function executePkg(
         transactions.push(tx);
         tradedTeamIds.add(profileA.team.id);
         tradedTeamIds.add(profileB.team.id);
-        trimOverflowRosters(teams, [profileA.team.id, profileB.team.id]);
+        overflowCutPlayers.push(...trimOverflowRosters(teams, [profileA.team.id, profileB.team.id]));
         return true;
     }
     return false;
@@ -920,9 +922,10 @@ function getPhaseUtilityThreshold(phase: string): number {
 /**
  * 트레이드 후 로스터가 MAX_ROSTER_SIZE 초과한 CPU 팀을 정리.
  * 스타(OVR 88+ && age 33 이하)는 보호 → 최저 OVR 비스타 선수를 순서대로 컷.
- * (인시즌 트레이드라 FA 시장이 닫혀 있으므로 단순 로스터 제거만 수행)
+ * 컷된 선수 목록을 반환하여 호출자가 FA 시장에 추가할 수 있도록 함.
  */
-function trimOverflowRosters(teams: Team[], teamIds: string[]): void {
+function trimOverflowRosters(teams: Team[], teamIds: string[]): Player[] {
+    const cutPlayers: Player[] = [];
     for (const teamId of teamIds) {
         const team = teams.find(t => t.id === teamId);
         if (!team) continue;
@@ -932,8 +935,10 @@ function trimOverflowRosters(teams: Team[], teamIds: string[]): void {
                 .sort((a, b) => a.ovr - b.ovr);
             const cut = candidates[0];
             if (!cut) break;  // 스타만 남은 경우 overflow 허용
+            cutPlayers.push(cut);
             team.roster = team.roster.filter(p => p.id !== cut.id);
             console.log(`✂️ Roster trim (overflow): ${cut.name} cut from ${teamId}`);
         }
     }
+    return cutPlayers;
 }
