@@ -855,7 +855,14 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                     <p className="text-slate-300 leading-relaxed">
                         단장님, <span className="text-white font-bold">{pr.draftYear}년 드래프트 클래스</span> 스카우팅 보고서를 제출합니다.
                         올해 클래스는 총 <span className="text-white font-bold">{pr.totalCount}명</span>의 유망주가 등록되어 있으며,
-                        전체적인 등급은 <span className={`font-black ${pr.classGrade === '풍작' ? 'text-emerald-400' : pr.classGrade === '흉작' ? 'text-red-400' : 'text-amber-400'}`}>"{pr.classGrade}"</span>으로 평가됩니다.
+                        그 중 눈여겨볼만한 유망주는{' '}
+                        {pr.top10.slice(0, 3).map((p, i, arr) => (
+                            <span key={p.rank}>
+                                <span className="text-white font-bold">{p.name}</span>
+                                {i < arr.length - 1 ? ', ' : ''}
+                            </span>
+                        ))}
+                        입니다.
                     </p>
 
                     <div>
@@ -881,8 +888,10 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                         <td className="py-2 px-2 text-center text-slate-400">{p.age}세</td>
                                         <td className="py-2 px-2 text-center text-slate-400">{p.height}cm</td>
                                         <td className="py-2 px-2 text-center text-slate-400">{p.weight ? `${p.weight}kg` : '-'}</td>
-                                        <td className="py-2 px-2 text-center">
-                                            <OvrBadge value={p.ovr} size="sm" />
+                                        <td className="py-2 px-2">
+                                            <div className="flex justify-center">
+                                                <OvrBadge value={p.ovr} size="sm" />
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
