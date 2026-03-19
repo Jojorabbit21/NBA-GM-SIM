@@ -257,16 +257,25 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 
 // ── Hex color → rgba string ──
 // BBRef award code → 시뮬 PlayerAwardType 변환 (배지/헤더 표시용)
-const BREF_CODE_TO_SIM_TYPE: Record<string, string> = {
+// BRef는 MVP-1(수상자), MVP-2(2위 후보) 형태로 순위를 코드에 포함
+const BREF_BASE_TO_SIM_TYPE: Record<string, string> = {
     CHM: 'CHAMPION', FMVP: 'FINALS_MVP',
-    MVP: 'MVP', DPOY: 'DPOY',
+    MVP: 'MVP', DPOY: 'DPOY', ROY: 'ROY',
     NBA1: 'ALL_NBA_1', NBA2: 'ALL_NBA_2', NBA3: 'ALL_NBA_3',
     DEF1: 'ALL_DEF_1', DEF2: 'ALL_DEF_2',
 };
 function normalizeBrefAward(a: any, parentSeason: string) {
     const code = a.code ?? a.type ?? '';
-    const simType = BREF_CODE_TO_SIM_TYPE[code];
-    return simType ? { type: simType, season: a.season ?? parentSeason, label: a.label } : null;
+    // 순위 없는 코드 (NBA1, DEF2 등)
+    const directType = BREF_BASE_TO_SIM_TYPE[code];
+    if (directType) return { type: directType, season: a.season ?? parentSeason, label: a.label };
+    // 순위 있는 코드: MVP-1, DPOY-2, ROY-1 등
+    const m = code.match(/^([A-Z0-9]+)-(\d+)$/);
+    if (m) {
+        const simType = BREF_BASE_TO_SIM_TYPE[m[1]];
+        if (simType) return { type: simType, season: a.season ?? parentSeason, label: a.label, rank: parseInt(m[2]) };
+    }
+    return null;
 }
 
 function hexAlpha(hex: string, alpha: number): string {

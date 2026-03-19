@@ -168,10 +168,10 @@ export function createTiebreakerComparator(
         const winsDiff = b.wins - a.wins;
         if (winsDiff !== 0) return winsDiff;
 
-        // 6. 최종 폴백: 연고지 알파벳 오름차순, 동일 도시면 팀명 오름차순
-        const cityDiff = a.city.localeCompare(b.city, 'ko');
+        // 6. 최종 폴백: 연고지 알파벳 오름차순 (ATL, BOS, ...), 동일 도시면 팀명 오름차순
+        const cityDiff = a.city.localeCompare(b.city, 'en');
         if (cityDiff !== 0) return cityDiff;
-        return a.name.localeCompare(b.name, 'ko');
+        return a.name.localeCompare(b.name, 'en');
     };
 }
 
