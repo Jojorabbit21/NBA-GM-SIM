@@ -7,6 +7,9 @@ import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from 
 import { MessageType } from '../../types/message';
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
+import { LeaguePickAssets } from '../../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
+import { LeagueGMProfiles } from '../../types/gm';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation, processInjuryRecovery, computeReturnDate } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
@@ -59,7 +62,11 @@ export async function runBatchSeason(
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
     seasonConfig?: SeasonConfig,
-    stopDate?: string
+    stopDate?: string,
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leaguePickAssets?: LeaguePickAssets | null,
+    leagueTradeOffers?: LeagueTradeOffers,
+    leagueGMProfiles?: LeagueGMProfiles,
 ): Promise<BatchSeasonResult> {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const allGameResultsToSave: any[] = [];
@@ -403,7 +410,7 @@ export async function runBatchSeason(
         }
 
         // 3. 시즌 이벤트 (동기)
-        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed, undefined, undefined, undefined, undefined, seasonConfig);
+        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed, leagueTradeBlocks, leaguePickAssets ?? undefined, leagueTradeOffers, leagueGMProfiles, seasonConfig);
         if (events.newTransactions.length > 0) {
             allTransactions.push(...events.newTransactions);
         }

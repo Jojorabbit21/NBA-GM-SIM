@@ -7,6 +7,9 @@ import { useState, useRef, useCallback } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
+import { LeaguePickAssets } from '../types/draftAssets';
+import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
+import { LeagueGMProfiles } from '../types/gm';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
@@ -52,6 +55,10 @@ export const useFullSeasonSim = (
     coachingData?: LeagueCoachingData | null,
     seasonConfig?: SeasonConfig,
     offseasonPhase?: OffseasonPhase,
+    leagueTradeBlocks?: LeagueTradeBlocks,
+    leaguePickAssets?: LeaguePickAssets | null,
+    leagueTradeOffers?: LeagueTradeOffers,
+    leagueGMProfiles?: LeagueGMProfiles,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
@@ -113,7 +120,11 @@ export const useFullSeasonSim = (
                 simSettings,
                 coachingData,
                 seasonConfig,
-                effectiveStopDate
+                effectiveStopDate,
+                leagueTradeBlocks,
+                leaguePickAssets,
+                leagueTradeOffers,
+                leagueGMProfiles,
             );
 
             // 3. DB 저장
