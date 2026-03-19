@@ -51,6 +51,7 @@ function aggregateAwards(awards: PlayerAwardEntry[]): AggregatedAward[] {
     }
     return Array.from(map.entries())
         .map(([type, data]) => ({ type, ...data }))
+        .filter(a => AWARD_META[a.type] != null)
         .sort((a, b) => AWARD_META[a.type].order - AWARD_META[b.type].order);
 }
 

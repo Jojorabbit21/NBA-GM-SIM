@@ -260,7 +260,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 // BRef는 MVP-1(수상자), MVP-2(2위 후보) 형태로 순위를 코드에 포함
 const BREF_BASE_TO_SIM_TYPE: Record<string, string> = {
     CHM: 'CHAMPION', FMVP: 'FINALS_MVP',
-    MVP: 'MVP', DPOY: 'DPOY', ROY: 'ROY',
+    MVP: 'MVP', DPOY: 'DPOY',
     NBA1: 'ALL_NBA_1', NBA2: 'ALL_NBA_2', NBA3: 'ALL_NBA_3',
     DEF1: 'ALL_DEF_1', DEF2: 'ALL_DEF_2',
 };
