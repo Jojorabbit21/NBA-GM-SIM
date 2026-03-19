@@ -656,15 +656,22 @@ export const FAView: React.FC<FAViewProps> = ({
         [myTeam.roster],
     );
 
-    // 팀 옵션 대기 선수 (로스터에 있는 선수 중 team option 보유 = 아직 미결정)
+    // 팀 옵션 대기 선수: team option이 있고 현재 연차(currentYear)가 option.year와 일치해야 함
+    // processOffseason()이 currentYear를 먼저 +1한 뒤 option.year와 비교하므로 동일한 조건 사용
     const pendingTeamOptions = useMemo(
-        () => myTeam.roster.filter(p => p.contract?.option?.type === 'team'),
+        () => myTeam.roster.filter(p =>
+            p.contract?.option?.type === 'team' &&
+            p.contract.option.year === p.contract.currentYear
+        ),
         [myTeam.roster],
     );
 
-    // 일반 로스터 (팀 옵션 선수 제외)
+    // 일반 로스터 (현재 결정해야 할 팀옵션 선수 제외)
     const regularRoster = useMemo(
-        () => sortedRoster.filter(p => p.contract?.option?.type !== 'team'),
+        () => sortedRoster.filter(p =>
+            p.contract?.option?.type !== 'team' ||
+            p.contract.option.year !== p.contract.currentYear
+        ),
         [sortedRoster],
     );
 
