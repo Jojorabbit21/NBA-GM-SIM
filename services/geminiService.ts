@@ -57,10 +57,14 @@ export async function generateScoutingReport(prospect: Player): Promise<string[]
 
 export async function generateCPUTradeNews(tx: Transaction): Promise<string[] | null> {
     if (!tx.details) return null;
-    const inPlayer = tx.details.acquired[0]?.name || "선수";
+    // 구포맷: acquired/partnerTeamName, 신포맷: players.received/counterpartTeamId
+    const inPlayer = tx.details.acquired?.[0]?.name
+        || tx.details.players?.received?.[0]?.playerName
+        || "선수";
+    const partnerTeamName = tx.details.partnerTeamName || "상대팀";
 
     return [
-        `[Woj] ${tx.details.partnerTeamName}와 ${tx.description.split(' ')[0].replace('[CPU]', '').trim()}간의 트레이드가 최종 합의되었습니다.`,
+        `[Woj] ${partnerTeamName}와 ${tx.description.split(' ')[0].replace('[CPU]', '').trim()}간의 트레이드가 최종 합의되었습니다.`,
         `[BREAKING] ${inPlayer}, 새로운 유니폼을 입게 되었습니다. 리그 판도 변화 예고.`,
         `[분석] 이번 트레이드는 양 팀의 니즈가 정확히 일치한 결과라는 평가입니다.`
     ];
