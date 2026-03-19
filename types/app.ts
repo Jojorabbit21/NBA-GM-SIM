@@ -1,5 +1,5 @@
 
-export type AppView = 'Auth' | 'TeamSelect' | 'Onboarding' | 'Dashboard' | 'Roster' | 'Schedule' | 'Standings' | 'Leaderboard' | 'Transactions' | 'Playoffs' | 'Help' | 'Inbox' | 'GameSim' | 'LiveGame' | 'GameResult' | 'DraftBoard' | 'DraftRoom' | 'DraftHistory' | 'DraftLottery' | 'ModeSelect' | 'DraftPoolSelect' | 'PlayerDetail' | 'CoachDetail' | 'GMDetail' | 'HallOfFame' | 'FrontOffice' | 'FAMarket';
+export type AppView = 'Auth' | 'TeamSelect' | 'Onboarding' | 'Home' | 'Dashboard' | 'Roster' | 'Schedule' | 'Standings' | 'Leaderboard' | 'Transactions' | 'Playoffs' | 'Help' | 'Inbox' | 'GameSim' | 'LiveGame' | 'GameResult' | 'DraftBoard' | 'DraftRoom' | 'DraftHistory' | 'DraftLottery' | 'ModeSelect' | 'DraftPoolSelect' | 'PlayerDetail' | 'CoachDetail' | 'GMDetail' | 'HallOfFame' | 'FrontOffice' | 'FAMarket';
 
 export type RosterMode = 'default' | 'custom';
 export type DraftPoolType = 'current' | 'alltime';

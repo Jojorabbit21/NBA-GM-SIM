@@ -426,11 +426,14 @@ export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
         const isPlayed = (homePts !== undefined && homePts !== null && homePts !== "") && 
                          (awayPts !== undefined && awayPts !== null && awayPts !== "");
 
+        const gameTime = getCol(r, ['game_time', 'time', 'Time']) || undefined;
+
         return {
             id: String(gid),
             homeTeamId,
             awayTeamId,
             date: dateStr,
+            time: gameTime ? String(gameTime) : undefined,
             homeScore: isPlayed ? Number(homePts) : undefined,
             awayScore: isPlayed ? Number(awayPts) : undefined,
             played: isPlayed,

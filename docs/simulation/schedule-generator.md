@@ -105,6 +105,50 @@ const result = validateSchedule(games, TEAM_DATA);
 - 이동 시 3-in-3 발생하지 않는지 검증
 - 최대 200회 반복
 
+### 6. 경기 시간 배정 (assignGameTimes)
+
+**핵심 원칙**: 홈팀 도시의 시간대 기준 현지 약 7:00 PM 시작을 ET(미국 동부 표준시)로 환산.
+모든 시간은 ET 기준 `'HH:MM'` 형식으로 `Game.time`에 저장.
+
+#### 팀별 기본 슬롯
+
+| 시간대 | 해당 팀 (홈) | ET 기준 슬롯 | 현지 시간 |
+|--------|-------------|-------------|----------|
+| ET (Eastern) | atl, bos, bkn, cha, cle, det, ind, mia, nyk, orl, phi, tor, was | **19:30** | 7:30 PM ET |
+| CT (Central) | chi, dal, hou, mem, mil, min, no, okc, sa | **20:00** | 7:00 PM CT |
+| MT (Mountain) | den, phx, uta | **21:00** | 7:00 PM MT |
+| PT (Pacific) | gs, law, lam, por, sac | **22:00** | 7:00 PM PT |
+
+#### 슬롯 충돌 처리 규칙
+
+같은 날 같은 슬롯에 여러 경기가 몰릴 수 있음 (NBA 실제로도 동시간대 복수 경기 진행).
+
+1. 날짜별 경기를 ET 빠른 순으로 정렬
+2. 동일 슬롯 **최대 3경기**까지 허용 (동시간대 중복 방송 허용)
+3. 초과 시 다음 허용 슬롯(`+30분`)으로 이동 → 그 슬롯도 꽉 찼으면 다시 다음 슬롯 탐색
+4. 허용 슬롯 범위: `19:00 ~ 22:30` (30분 단위, 총 8개 슬롯)
+
+```
+예시: 서부 원정팀 다수가 동부팀 홈 경기에 방문하는 날
+  19:30 → bos vs gs (bos 홈), phi vs lam (phi 홈), nyk vs sac (nyk 홈)   [3경기 허용]
+  20:00 → was vs por (was 홈), det vs den (det 홈) ...                    [슬롯 이동 없음]
+
+예시: PT 팀 홈경기 4개가 같은 날 겹칠 때
+  22:00 → gs vs okc, lam vs sa, sac vs dal                               [3경기]
+  22:30 → law vs hou                                                      [초과 → 다음 슬롯]
+```
+
+#### 처리 순서
+
+```
+generateSeasonSchedule()
+  → Step 7: 날짜순 정렬 + Game[] 변환
+  → Step 8: assignGameTimes(games)
+      ├── 날짜별 그룹핑
+      ├── 홈팀 기본 슬롯 기준 정렬 (ET 빠른 순)
+      └── 슬롯 카운트 추적 → 초과 시 다음 슬롯 탐색
+```
+
 ---
 
 ## 검증 시스템 (validateSchedule)
@@ -143,12 +187,31 @@ interface Game {
     homeTeamId: string;
     awayTeamId: string;
     date: string;         // 'YYYY-MM-DD'
+    time?: string;        // 'HH:MM' ET 기준 (예: '19:30', '22:00')
     played: false;
     isPlayoff: false;
 }
 ```
 
-기존 `meta_schedule` 테이블 및 `Game` 인터페이스와 완전 호환.
+`time` 필드는 항상 채워짐 (동적 생성 시 `assignGameTimes()` 자동 호출).
+`meta_schedule` DB 로드 시에는 `game_time` 컬럼 → `time` 필드로 매핑.
+
+### meta_schedule 테이블 구조 (현행)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | TEXT PK | `g_{home}_{away}_{YYYY-MM-DD}` |
+| `game_date` | DATE | 경기 날짜 |
+| `game_time` | TEXT | 경기 시작 시간 (ET 기준 `'HH:MM'`) |
+| `home_team_id` | TEXT | 홈팀 약어 |
+| `away_team_id` | TEXT | 원정팀 약어 |
+| `home_score` | INTEGER | 경기 전 NULL |
+| `away_score` | INTEGER | 경기 전 NULL |
+| `played` | BOOLEAN | |
+| `is_playoff` | BOOLEAN | |
+| `series_id` | TEXT | 플레이오프 시리즈 ID (정규시즌 NULL) |
+
+`game_time` 컬럼은 `scripts/migrate_game_time.sql`로 추가됨 (nullable, 기존 데이터 호환).
 
 ---
 
@@ -162,7 +225,7 @@ interface Game {
 
 ### 연동 시 수정 필요 사항
 
-**1. seasonConfig에서 ScheduleConfig 생성**
+**1. seasonConfig에서 ScheduleConfig 생성 (이미 완료)**
 
 ```typescript
 // utils/seasonConfig.ts (신규 예정)

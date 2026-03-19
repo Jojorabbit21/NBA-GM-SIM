@@ -547,7 +547,70 @@ function balanceBackToBacks(
     }
 }
 
-// ── Step 5: 검증 ──
+// ── Step 5: 경기 시간 배정 ──
+//
+// 홈팀 도시의 시간대를 기반으로 현지 약 7:00 PM 경기 시작을 ET로 환산.
+// 모든 시간은 ET(Eastern Time) 기준 'HH:MM' 형식으로 저장.
+
+const TEAM_TIME_SLOT: Record<string, string> = {
+    // ET (Eastern Time) — 19:30 ET (현지 7:30 PM)
+    atl: '19:30', bos: '19:30', bkn: '19:30', cha: '19:30',
+    cle: '19:30', det: '19:30', ind: '19:30', mia: '19:30',
+    nyk: '19:30', orl: '19:30', phi: '19:30', tor: '19:30', was: '19:30',
+    // CT (Central Time) — 20:00 ET (현지 7:00 PM CT)
+    chi: '20:00', dal: '20:00', hou: '20:00', mem: '20:00',
+    mil: '20:00', min: '20:00', no: '20:00', okc: '20:00', sa: '20:00',
+    // MT (Mountain Time) — 21:00 ET (현지 7:00 PM MT)
+    den: '21:00', phx: '21:00', uta: '21:00',
+    // PT (Pacific Time) — 22:00 ET (현지 7:00 PM PT)
+    gs: '22:00', law: '22:00', lam: '22:00', por: '22:00', sac: '22:00',
+};
+
+const DEFAULT_TIME_SLOT = '19:30';
+const TIME_SLOTS = ['19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30'];
+// 같은 슬롯에 배정 가능한 최대 경기 수 (NBA 실제: 동시간대 중복 방송 허용)
+const MAX_GAMES_PER_SLOT = 3;
+
+function assignGameTimes(games: Game[]): void {
+    // 날짜별 그룹핑
+    const byDate = new Map<string, Game[]>();
+    for (const g of games) {
+        if (!byDate.has(g.date)) byDate.set(g.date, []);
+        byDate.get(g.date)!.push(g);
+    }
+
+    for (const dayGames of byDate.values()) {
+        // 홈팀 기본 슬롯 기준으로 ET 빠른 순 정렬
+        dayGames.sort((a, b) => {
+            const ta = TEAM_TIME_SLOT[a.homeTeamId] ?? DEFAULT_TIME_SLOT;
+            const tb = TEAM_TIME_SLOT[b.homeTeamId] ?? DEFAULT_TIME_SLOT;
+            return ta.localeCompare(tb);
+        });
+
+        // 슬롯별 카운트 추적 — 동일 슬롯 MAX_GAMES_PER_SLOT 초과 시 다음 슬롯으로 밀기
+        const slotCount = new Map<string, number>();
+        for (const g of dayGames) {
+            let slot = TEAM_TIME_SLOT[g.homeTeamId] ?? DEFAULT_TIME_SLOT;
+            const count = slotCount.get(slot) ?? 0;
+            if (count >= MAX_GAMES_PER_SLOT) {
+                // 현재 슬롯이 꽉 찼으면 다음 허용 슬롯 탐색
+                let idx = TIME_SLOTS.indexOf(slot);
+                while (idx < TIME_SLOTS.length - 1) {
+                    idx++;
+                    const nextSlot = TIME_SLOTS[idx];
+                    if ((slotCount.get(nextSlot) ?? 0) < MAX_GAMES_PER_SLOT) {
+                        slot = nextSlot;
+                        break;
+                    }
+                }
+            }
+            slotCount.set(slot, (slotCount.get(slot) ?? 0) + 1);
+            g.time = slot;
+        }
+    }
+}
+
+// ── Step 6: 검증 ──
 
 export interface ScheduleValidation {
     totalGames: number;
@@ -698,6 +761,9 @@ export function generateSeasonSchedule(
         played: false,
         isPlayoff: false,
     }));
+
+    // 8. 경기 시간 배정 (홈팀 시간대 기반)
+    assignGameTimes(games);
 
     return games;
 }

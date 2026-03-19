@@ -34,7 +34,7 @@ const App: React.FC = () => {
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
     const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
     const gameData = useGameData(session, isGuestMode, rosterMode);
-    const [view, setView] = useState<AppView>('Dashboard');
+    const [view, setView] = useState<AppView>('Home');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -139,7 +139,7 @@ const App: React.FC = () => {
         if (!authLoading && !session && !isGuestMode) {
             setView('Auth' as any);
         } else if (gameData.myTeamId && view === ('Auth' as any)) {
-            setView('Dashboard');
+            setView('Home');
         }
     }, [authLoading, session, isGuestMode, gameData.myTeamId, view]);
 
@@ -226,7 +226,7 @@ const App: React.FC = () => {
     if ((view as string) === 'Onboarding' && myTeam) {
         return (
             <div className="fixed inset-0 z-[500]">
-                <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} seasonShort={gameData.seasonConfig?.seasonShort ?? '2025-26'} />
+                <OnboardingView team={myTeam} onComplete={() => setView('Home')} seasonShort={gameData.seasonConfig?.seasonShort ?? '2025-26'} />
             </div>
         );
     }

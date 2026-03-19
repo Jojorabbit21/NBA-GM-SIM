@@ -5,6 +5,7 @@ import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
 
+import { HomeView } from '../views/HomeView';
 import { DashboardView, DashboardTab } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
 import { ScheduleView } from '../views/ScheduleView';
@@ -199,6 +200,24 @@ const AppRouter: React.FC<AppRouterProps> = ({
     }
 
     switch (view) {
+        case 'Home':
+            if (myTeam) {
+                return (
+                    <HomeView
+                        team={myTeam}
+                        teams={gameData.teams}
+                        schedule={gameData.schedule}
+                        currentSimDate={gameData.currentSimDate}
+                        unreadCount={unreadCount}
+                        offseasonPhase={gameData.offseasonPhase}
+                        seasonShort={seasonShort}
+                        userId={session?.user?.id}
+                        onNavigate={setView}
+                        onViewPlayer={handleViewPlayer}
+                    />
+                );
+            }
+            return null;
         case 'Dashboard':
             if (myTeam && gameData.userTactics) {
                 return (

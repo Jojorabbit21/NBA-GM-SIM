@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import {
-  LayoutDashboard, Trophy, BarChart3, Swords,
+  Home, LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus, Users,
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
@@ -276,6 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             </>
           );
         })()}
+        <NavItem active={currentView === 'Home'} icon={<Home size={20}/>} label="홈" onClick={() => onNavigate('Home')} {...navProps} />
         <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
         <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />
