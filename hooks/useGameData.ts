@@ -921,6 +921,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setSeasonNumber(1);
             setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
             setOffseasonPhase(null);
+            setLeagueFAMarket(null);
+            setLeagueFAPool(null);
+            setGeneratedFreeAgents([]);
+            setRetiredPlayerIds([]);
             setProspects([]);
             hasInitialLoadRef.current = false;
 

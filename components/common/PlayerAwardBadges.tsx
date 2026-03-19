@@ -78,7 +78,7 @@ const HeaderTrophy: React.FC<{ award: AggregatedAward }> = ({ award }) => {
             </span>
             {/* Tooltip */}
             {hovered && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50
                     bg-slate-800 border border-slate-600 rounded-lg px-3 py-2
                     text-xs text-slate-200 whitespace-nowrap shadow-xl pointer-events-none">
                     <div className="font-bold text-white mb-1">{meta.name}{award.count >= 2 ? ` ×${award.count}` : ''}</div>
@@ -94,7 +94,7 @@ const HeaderTrophy: React.FC<{ award: AggregatedAward }> = ({ award }) => {
 // ── 헤더용 트로피 (주요 4종만, 이미지 중심) ──
 
 export const HeaderAwardTrophies: React.FC<{ awards: PlayerAwardEntry[] }> = ({ awards }) => {
-    const headerTypes: PlayerAwardType[] = ['CHAMPION', 'MVP', 'FINALS_MVP', 'DPOY'];
+    const headerTypes: PlayerAwardType[] = ['CHAMPION', 'REG_SEASON_CHAMPION', 'MVP', 'FINALS_MVP', 'DPOY'];
     // MVP/DPOY는 1위(수상)만 헤더 트로피에 표시 (후보 제외)
     const winnersOnly = awards.filter(a => {
         if (a.type === 'MVP' || a.type === 'DPOY') return a.rank === 1 || a.rank == null;
