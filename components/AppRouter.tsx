@@ -13,7 +13,6 @@ import { LeaderboardView, LeaderboardFilterState } from '../views/LeaderboardVie
 import { TransactionsView } from '../views/TransactionsView';
 import { PlayoffsView } from '../views/PlayoffsView';
 import { HelpView } from '../views/HelpView';
-import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
 import { RookieDraftView } from '../views/RookieDraftView';
@@ -360,8 +359,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
             />;
         case 'Help':
             return <HelpView onBack={() => setView('Dashboard')} />;
-        case 'OvrCalculator':
-            return <OvrCalculatorView teams={gameData.teams} freeAgents={gameData.freeAgents} />;
         case 'Inbox':
             return (
                 <InboxView

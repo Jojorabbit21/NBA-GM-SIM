@@ -1,6 +1,8 @@
 
 import { Game, Player, Team } from '../types';
-import { calculateOvr } from './ovrUtils';
+import { calculateOvr, getOVRThreshold } from './ovrUtils';
+export { getOVRThreshold } from './ovrUtils';
+export type { OvrTier } from './ovrUtils';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
 import { editorLogoUrls } from './editorState';

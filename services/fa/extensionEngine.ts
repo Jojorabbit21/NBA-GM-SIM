@@ -14,7 +14,7 @@ import type { FARole, FADemandResult, MarketCondition } from '../../types/fa';
 import { generateSaveTendencies, stringToHash } from '../../utils/hiddenTendencies';
 import { calcFADemand, determineFARole } from './faValuation';
 import { analyzeTeamSituation } from '../tradeEngine/teamAnalysis';
-import { LEAGUE_FINANCIALS } from '../../utils/constants';
+import { LEAGUE_FINANCIALS, getOVRThreshold } from '../../utils/constants';
 import { formatMoney } from '../../utils/formatMoney';
 
 // ─────────────────────────────────────────────────────────────
@@ -37,19 +37,12 @@ const NEUTRAL_MARKET: Record<FARole, MarketCondition> = {
     floor_big:    NEUTRAL_MARKET_CONDITION,
 };
 
-// OVR 기반 티어 하한 (염가 계약 버그 방지)
-const TIER_FLOORS: { minOvr: number; floor: number }[] = [
-    { minOvr: 90, floor: 30_000_000 },
-    { minOvr: 82, floor: 20_000_000 },
-    { minOvr: 74, floor: 9_000_000 },
-    { minOvr: 64, floor: 4_000_000 },
-    { minOvr:  0, floor: 1_100_000 },
-];
-
+// OVR 기반 연봉 하한 (염가 계약 버그 방지) — 티어 기준은 getOVRThreshold()로 동적 계산
 function getTierFloor(ovr: number): number {
-    for (const tier of TIER_FLOORS) {
-        if (ovr >= tier.minOvr) return tier.floor;
-    }
+    if (ovr >= getOVRThreshold('SUPERSTAR')) return 30_000_000;
+    if (ovr >= getOVRThreshold('STAR'))      return 20_000_000;
+    if (ovr >= getOVRThreshold('STARTER'))   return 9_000_000;
+    if (ovr >= getOVRThreshold('ROLE'))      return 4_000_000;
     return 1_100_000;
 }
 

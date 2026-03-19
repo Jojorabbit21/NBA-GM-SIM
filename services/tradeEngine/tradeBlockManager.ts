@@ -11,7 +11,7 @@ import {
     PersistentTradeOffer,
     LeagueTradeOffers,
 } from '../../types/trade';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import { analyzeTeamSituation, buildTeamTradeState, TeamNeeds } from './teamAnalysis';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
@@ -68,7 +68,7 @@ export function syncCPUTradeBlocks(
         // 선수 블록 판단 — direction에 따른 보호 수준
         roster.forEach(p => {
             const ovr = calculatePlayerOvr(p);
-            if (ovr >= CC.UNTOUCHABLE_OVR) return;
+            if (ovr >= getOVRThreshold('SUPERSTAR')) return;
             if (p.health === 'Injured') return;
             if (p.contract?.noTrade) return;
 
@@ -87,7 +87,7 @@ export function syncCPUTradeBlocks(
                 else if (depth.length >= CC.EXCESS_DEPTH_THRESHOLD && rank === depth.length - 1) willingness += 3;
             }
 
-            if (ovr < CC.LOW_VALUE_DUMP_OVR && p.salary > CC.BAD_CONTRACT_SALARY_FLOOR) willingness += 4;
+            if (ovr < getOVRThreshold('ROLE') && p.salary > CC.BAD_CONTRACT_SALARY_FLOOR) willingness += 4;
             if (ovrRank >= 12) willingness += 2;
 
             // seller/tanking: 베테랑 적극 방출
@@ -241,20 +241,20 @@ function tryGenerateOffer(
 
             // 1. 약한 포지션 보강 (기존)
             for (const weak of cpuNeeds.weakPositions) {
-                if (player.position.includes(weak) && ovr >= 68) { matched = true; break; }
+                if (player.position.includes(weak) && ovr >= getOVRThreshold('ROLE')) { matched = true; break; }
             }
 
             // 2. 컨텐더: 즉전력 보강
-            if (!matched && cpuNeeds.isContender && ovr >= 76) matched = true;
+            if (!matched && cpuNeeds.isContender && ovr >= getOVRThreshold('STARTER')) matched = true;
 
             // 3. 셀러: 젊은 자산 확보
             if (!matched && cpuNeeds.isSeller && player.age <= 26) matched = true;
 
             // 4. 일반 업그레이드: CPU 5번째 스타터보다 좋은 선수면 관심
-            if (!matched && ovr >= cpuWorstStarter + 2 && ovr >= 72) matched = true;
+            if (!matched && ovr >= cpuWorstStarter + 2 && ovr >= getOVRThreshold('ROLE')) matched = true;
 
             // 5. 포지션 뎁스 개선: CPU 해당 포지션 뎁스가 얇으면
-            if (!matched && ovr >= 70) {
+            if (!matched && ovr >= getOVRThreshold('ROLE')) {
                 const posDepth = cpuTeam.roster.filter(p => p.position.includes(player.position));
                 if (posDepth.length <= 2) matched = true;
             }
@@ -289,7 +289,7 @@ function tryGenerateOffer(
             if (p.contract?.noTrade) return false;
             if (p.health === 'Injured') return false;
             const ovr = calculatePlayerOvr(p);
-            if (ovr >= C.CPU_TRADE.UNTOUCHABLE_OVR) return false;
+            if (ovr >= getOVRThreshold('SUPERSTAR')) return false;
             // 블록에 올라간 선수는 언제나 내놓을 수 있음
             if (cpuBlockPlayerIds.has(p.id)) return true;
             // direction에 따른 보호 수준

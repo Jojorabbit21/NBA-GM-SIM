@@ -1,6 +1,7 @@
 
 import type { Player, PlayerMorale, MoraleEvent, MoraleEventType } from '../types/player';
 import type { PlayerBoxScore } from '../types/engine';
+import { getOVRThreshold } from '../utils/ovrUtils';
 
 // ─────────────────────────────────────────────────────────────
 // Player Morale (기분/사기) System
@@ -9,7 +10,6 @@ import type { PlayerBoxScore } from '../types/engine';
 // ─────────────────────────────────────────────────────────────
 
 const MAX_RECENT_EVENTS = 10;
-const STAR_OVR_THRESHOLD = 85;      // 스타 선수 기준 OVR
 const STAR_IGNORED_MP_THRESHOLD = 20; // 스타인데 20분 미만 출전 시 STAR_IGNORED
 
 /** 0~100 클램프 */
@@ -83,7 +83,7 @@ export function updateMoraleFromGame(
         if (isBad)   events.push({ type: 'BAD_GAME',   delta: -0.2, date });
 
         // ── 스타 무시 페널티 ──
-        const isStarIgnored = player.ovr >= STAR_OVR_THRESHOLD && mp < STAR_IGNORED_MP_THRESHOLD;
+        const isStarIgnored = player.ovr >= getOVRThreshold('STAR') && mp < STAR_IGNORED_MP_THRESHOLD;
         if (isStarIgnored) events.push({ type: 'STAR_IGNORED', delta: -0.3, date });
 
         // ── delta 합산 및 감쇠 적용 ──

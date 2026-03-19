@@ -1,5 +1,6 @@
 
 import { Player } from '../../types';
+import { getOVRThreshold } from '../../utils/ovrUtils';
 import type { DraftPickAsset } from '../../types/draftAssets';
 import type { TeamTradeState, TradeGoalType } from '../../types/trade';
 import type { GMProfile } from '../../types/gm';
@@ -177,9 +178,9 @@ function checkGoalFulfillment(
 ): boolean {
     switch (goal) {
         case 'STAR_UPGRADE':
-            return incoming.some(p => p.ovr >= 87);
+            return incoming.some(p => p.ovr >= getOVRThreshold('STAR'));
         case 'STARTER_UPGRADE':
-            return incoming.some(p => p.ovr >= 78);
+            return incoming.some(p => p.ovr >= getOVRThreshold('STARTER'));
         case 'ROLE_ADD': {
             const urgentRole = Object.entries(teamState.needs)
                 .filter(([, n]) => n >= 0.5)

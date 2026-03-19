@@ -2,7 +2,7 @@ import type { Team, DeadMoneyEntry, ReleaseType } from '../../types/team';
 import type { Player } from '../../types/player';
 import type { LeagueFAMarket } from '../../types/fa';
 import type { GMProfile, GMPersonalityType, TeamDirection, LeagueGMProfiles } from '../../types/gm';
-import { LEAGUE_FINANCIALS } from '../../utils/constants';
+import { LEAGUE_FINANCIALS, getOVRThreshold } from '../../utils/constants';
 import { releasePlayerToMarket, calcTeamPayroll } from './faMarketBuilder';
 import { determineFARole } from './faValuation';
 import { stringToHash } from '../../utils/hiddenTendencies';
@@ -126,7 +126,7 @@ function getTotalRemainingValue(player: Player): number {
 
 /** OVR 88+ && age <= 33 → 절대 방출 불가 스타 */
 function starProtected(player: Player): boolean {
-    return player.ovr >= 88 && player.age <= 33;
+    return player.ovr >= getOVRThreshold('STAR') && player.age <= 33;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -452,7 +452,7 @@ function chooseCPUReleaseType(
     }
 
     // 케이스 3: 잔여 2년+ && OVR 68 이상 → buyout (잔여의 70%)
-    if (remaining >= 2 && player.ovr >= 68) {
+    if (remaining >= 2 && player.ovr >= getOVRThreshold('FRINGE')) {
         const deadMoneyAmount = Math.round(totalRemaining * 0.70);
         return { type: 'buyout', deadMoneyAmount };
     }

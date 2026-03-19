@@ -10,6 +10,7 @@ import {
     setLeagueDistribution,
     calculateLeagueDistribution,
     adaptPlayerToInput,
+    getOVRThreshold,
 } from '../utils/ovrUtils';
 import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
 
@@ -21,7 +22,7 @@ const normalizeSalary = (val: number): number => {
 
 /** 연봉/OVR/나이 기반 계약 타입 추론 (fallback용) */
 function inferContractType(salary: number, ovr: number, age: number): ContractType {
-    if (salary >= 35_000_000 && ovr >= 85) return 'max';
+    if (salary >= 35_000_000 && ovr >= getOVRThreshold('STAR')) return 'max';
     if (salary <= 2_000_000) return 'min';
     if (age <= 24) return 'rookie';
     return 'veteran';

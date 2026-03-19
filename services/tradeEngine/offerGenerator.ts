@@ -1,6 +1,6 @@
 
 import { Player, Team, TradeOffer } from '../../types';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { analyzeTeamSituation } from './teamAnalysis';
@@ -50,7 +50,7 @@ export function generateOffers(
                 interestScore += 2;
                 interestReasons.push(`${p.name}: 리빌딩 코어 (유망주)`);
             }
-            if (needs.isContender && ovr >= 80) {
+            if (needs.isContender && ovr >= getOVRThreshold('STARTER')) {
                 interestScore += 2;
                 interestReasons.push(`${p.name}: 윈나우 조각 (즉시전력)`);
             }
@@ -68,7 +68,7 @@ export function generateOffers(
 
         // Build package from other team's tradeable players
         const tradeable = otherTeam.roster
-            .filter(p => calculatePlayerOvr(p) < C.OFFERS.SUPERSTAR_PROTECTION_OVR)
+            .filter(p => calculatePlayerOvr(p) < getOVRThreshold('SUPERSTAR'))
             .sort((a, b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
 
         const pkg: Player[] = [];

@@ -1,6 +1,6 @@
 
 import { Player, Team } from '../../types';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import type { TeamTradeState } from '../../types/trade';
 import type { GMProfile } from '../../types/gm';
 import { TRADE_CONFIG as C } from './tradeConfig';
@@ -23,7 +23,7 @@ export function getPlayerAvailability(
 
     // ── Hard Block (불가) ──
     if (player.contract?.noTrade) return 0;
-    if (ovr >= C.CPU_TRADE.UNTOUCHABLE_OVR) return 0;
+    if (ovr >= getOVRThreshold('SUPERSTAR')) return 0;
 
     let score = 0;
 
@@ -46,7 +46,7 @@ export function getPlayerAvailability(
     else if (surplus >= 1) score += 0.08;
 
     // 나쁜 만기 계약
-    if (player.contractYears <= 1 && ovr < 78 && player.salary > 12_000_000) {
+    if (player.contractYears <= 1 && ovr < getOVRThreshold('STARTER') && player.salary > 12_000_000) {
         score += 0.20;
     }
 
@@ -75,9 +75,9 @@ export function getPlayerAvailability(
     else if (rank < 5) score -= 0.20;
 
     // 스타 선수 보호
-    if (ovr >= 90) score -= 0.50;
-    else if (ovr >= 87) score -= 0.30;
-    else if (ovr >= 83) score -= 0.10;
+    if (ovr >= getOVRThreshold('SUPERSTAR')) score -= 0.50;
+    else if (ovr >= getOVRThreshold('STAR')) score -= 0.30;
+    else if (ovr >= getOVRThreshold('STARTER')) score -= 0.10;
 
     // 유스 편향 GM의 유망주 보호
     if (sliders.youthBias >= 8 && player.age <= 22) {
@@ -87,7 +87,7 @@ export function getPlayerAvailability(
     }
 
     // 스타의향 높은 GM의 스타 보호
-    if (sliders.starWillingness >= 8 && ovr >= 85) {
+    if (sliders.starWillingness >= 8 && ovr >= getOVRThreshold('STAR')) {
         score -= 0.30;
     }
 

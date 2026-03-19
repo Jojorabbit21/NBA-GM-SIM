@@ -1,6 +1,6 @@
 
 import { Player } from '../../types';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import type { TeamTradeState } from '../../types/trade';
 import type { GMProfile } from '../../types/gm';
@@ -13,8 +13,8 @@ export function getPlayerTradeValue(p: Player): number {
     let value = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
     // Superstar / Star premium
-    if (ovr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) value *= C.BASE.SUPERSTAR_MULTIPLIER;
-    else if (ovr >= 85) value *= C.BASE.STAR_MULTIPLIER;
+    if (ovr >= getOVRThreshold('SUPERSTAR')) value *= C.BASE.SUPERSTAR_MULTIPLIER;
+    else if (ovr >= getOVRThreshold('STAR')) value *= C.BASE.STAR_MULTIPLIER;
 
     // Age adjustment
     if (p.age <= C.AGE.YOUNG_PREMIUM_AGE && p.potential > ovr) {
@@ -25,7 +25,7 @@ export function getPlayerTradeValue(p: Player): number {
     }
 
     // Contract penalty
-    if (ovr < C.CONTRACT.BAD_CONTRACT_OVR && p.salary > C.CONTRACT.BAD_CONTRACT_SALARY) {
+    if (ovr < getOVRThreshold('STARTER') && p.salary > C.CONTRACT.BAD_CONTRACT_SALARY) {
         value *= C.CONTRACT.BAD_CONTRACT_PENALTY;
         if (p.contractYears >= 3) value *= C.CONTRACT.LONG_BAD_PENALTY;
     }
@@ -75,8 +75,8 @@ export function getPlayerValueToTeam(
     // 3. 스타 의향 보너스 (sliders 1~10)
     const starFactor = sliders.starWillingness / 10;
     if (starFactor > 0.6) {
-        if (ovr >= 87) value *= 1.0 + starFactor * 0.25;
-        else if (ovr >= 82) value *= 1.0 + starFactor * 0.12;
+        if (ovr >= getOVRThreshold('STAR')) value *= 1.0 + starFactor * 0.25;
+        else if (ovr >= getOVRThreshold('STARTER')) value *= 1.0 + starFactor * 0.12;
     }
 
     // 4. 유스 편향 보너스/패널티

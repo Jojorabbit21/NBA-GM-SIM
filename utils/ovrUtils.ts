@@ -10,6 +10,34 @@ import {
   type OvrPosition,
 } from './ovrEngine';
 
+// ─── OVR Tier Thresholds (percentile-based) ──────────────────────────────────
+// z-score 기반 리그 퍼센타일 정의. OVR 공식이 바뀌어도 z-score 의미는 불변.
+// 445명 리그 기준 대략적 해당 인원:
+//   SUPERSTAR: z=1.8  → ~상위 8명   (MVP/All-NBA First)
+//   STAR:      z=1.1  → ~상위 23명  (올스타급)
+//   STARTER:   z=0.35 → ~상위 60명  (주전 수준)
+//   ROLE:      z=-0.25 → 로테이션
+//   FRINGE:    z=-0.9  → FA/컷 후보
+const OVR_TIER_Z: Record<string, number> = {
+  SUPERSTAR: 1.8,
+  STAR:      1.1,
+  STARTER:   0.35,
+  ROLE:     -0.25,
+  FRINGE:   -0.9,
+};
+
+export type OvrTier = 'SUPERSTAR' | 'STAR' | 'STARTER' | 'ROLE' | 'FRINGE';
+
+/**
+ * 현재 리그 분포 기준으로 특정 티어의 display OVR 임계값을 반환한다.
+ * 초기화 전에는 fallback 분포(mean=75, std=7)로 계산되므로
+ * 게임 데이터 로드 완료 후 값이 자동으로 안정된다.
+ */
+export function getOVRThreshold(tier: OvrTier): number {
+  const rawOVR = _leagueDist.meanRawOVR + OVR_TIER_Z[tier] * _leagueDist.stdRawOVR;
+  return Math.round(mapRawOVRToDisplayOVR(rawOVR, _leagueDist));
+}
+
 // ─── League Distribution Cache ───────────────────────────────────────────────
 // Initialised to a reasonable fallback so OVR is usable before all players load.
 // Call setLeagueDistribution() once after the full roster is available.

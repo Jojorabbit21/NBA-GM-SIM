@@ -989,15 +989,6 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         </table>
                     </div>
 
-                    {onNavigateToDraftLottery && (
-                        <button
-                            onClick={onNavigateToDraftLottery}
-                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-2xl font-black uppercase tracking-widest text-sm transition-all active:scale-[0.98]"
-                        >
-                            드래프트 로터리 결과 보기
-                        </button>
-                    )}
-
                     <div className="pt-4">
                         <p className="text-slate-400 text-sm">Best regards,</p>
                         <p className="text-white font-bold mt-1">부단장</p>

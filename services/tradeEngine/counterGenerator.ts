@@ -1,6 +1,6 @@
 
 import { Player, Team, TradeOffer } from '../../types';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import { TRADE_CONFIG as C } from './tradeConfig';
 import { getPlayerTradeValue, calculatePackageTrueValue } from './tradeValue';
 import { analyzeTeamSituation } from './teamAnalysis';
@@ -24,7 +24,7 @@ export function generateCounters(
 
     // Star protection: if requesting OVR 88+, must offer premium asset
     const targetBestOvr = Math.max(...targetPlayers.map(p => calculatePlayerOvr(p)));
-    const requirePremiumAsset = targetBestOvr >= C.COUNTER.STAR_PROTECTION_OVR;
+    const requirePremiumAsset = targetBestOvr >= getOVRThreshold('STAR');
 
     const scoredAssets: ScoredAsset[] = myAssets.map(p => {
         const ovr = calculatePlayerOvr(p);
@@ -51,13 +51,13 @@ export function generateCounters(
             score += 2;
             reasons.push(`${p.name}: 리빌딩 코어 (유망주)`);
         }
-        if (needs.isContender && ovr >= 80) {
+        if (needs.isContender && ovr >= getOVRThreshold('STARTER')) {
             score += 2;
             reasons.push(`${p.name}: 윈나우 조각 (즉시전력)`);
         }
 
         // Penalize non-premium assets when star is requested
-        if (requirePremiumAsset && ovr < C.COUNTER.PREMIUM_ASSET_OVR && p.potential < C.COUNTER.PREMIUM_POTENTIAL) {
+        if (requirePremiumAsset && ovr < getOVRThreshold('STARTER') && p.potential < C.COUNTER.PREMIUM_POTENTIAL) {
             score -= 5;
         }
 
@@ -92,7 +92,7 @@ export function generateCounters(
             if (potentialVal > targetValue * C.COUNTER.OVERPAY_CEILING) continue;
 
             const ovr = calculatePlayerOvr(asset.player);
-            if (requirePremiumAsset && (ovr >= C.COUNTER.PREMIUM_ASSET_OVR || asset.player.potential >= C.COUNTER.PREMIUM_POTENTIAL)) {
+            if (requirePremiumAsset && (ovr >= getOVRThreshold('STARTER') || asset.player.potential >= C.COUNTER.PREMIUM_POTENTIAL)) {
                 hasPremiumAsset = true;
             }
 

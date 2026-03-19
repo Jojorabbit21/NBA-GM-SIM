@@ -2,7 +2,7 @@
 import { Player, Team } from '../../types';
 import type { TeamTradeState, TradeGoalType } from '../../types/trade';
 import type { GMProfile, LeagueGMProfiles } from '../../types/gm';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getOVRThreshold } from '../../utils/constants';
 import { getPlayerValueToTeam } from './tradeValue';
 import { getPlayerAvailability } from './assetAvailability';
 import { determineFARole } from '../fa/faValuation';
@@ -92,10 +92,10 @@ function matchesGoal(
 
     switch (goal) {
         case 'STAR_UPGRADE':
-            return ovr >= 85 && sliders.starWillingness >= 5;
+            return ovr >= getOVRThreshold('STAR') && sliders.starWillingness >= 5;
 
         case 'STARTER_UPGRADE':
-            return ovr >= 78;
+            return ovr >= getOVRThreshold('STARTER');
 
         case 'ROLE_ADD': {
             // 가장 시급한 롤 선수
@@ -106,26 +106,26 @@ function matchesGoal(
         }
 
         case 'DEPTH_ADD':
-            return ovr >= 68 && roleNeed >= 0.2;
+            return ovr >= getOVRThreshold('ROLE') && roleNeed >= 0.2;
 
         case 'FUTURE_ASSETS':
             // 미래 자산 목표일 때는 픽을 원하므로 선수 타깃은 젊은 선수 위주
-            return player.age <= 24 && ovr >= 65;
+            return player.age <= 24 && ovr >= getOVRThreshold('FRINGE');
 
         case 'EXPIRING_LEVERAGE':
             // 만기 계약 선수로 상대 팀의 자원 수집
-            return ovr >= 72 && player.contractYears <= 2;
+            return ovr >= getOVRThreshold('ROLE') && player.contractYears <= 2;
 
         case 'SALARY_RELIEF':
             // 연봉 정리 — 받는 선수는 저렴하면서 쓸만해야
-            return ovr >= 68 && player.salary < 12_000_000;
+            return ovr >= getOVRThreshold('ROLE') && player.salary < 12_000_000;
 
         case 'SURPLUS_CLEAR':
             // 중복 포지션 정리 — 상대가 원하는 선수 탐색 (구매자 관점에선 뭐든 ok)
-            return ovr >= 68;
+            return ovr >= getOVRThreshold('ROLE');
 
         default:
-            return ovr >= 70;
+            return ovr >= getOVRThreshold('ROLE');
     }
 }
 

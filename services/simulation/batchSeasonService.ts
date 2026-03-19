@@ -477,14 +477,18 @@ export async function runBatchSeason(
         d.setDate(d.getDate() + 1);
         finalDate = d.toISOString().split('T')[0];
     } else {
-        // 날짜가 없으면 (시즌 이미 종료) 마지막 플레이 날짜 +1일로 설정하여 과거로 돌아가지 않도록 함
-        const lastPlayedDate = schedule.filter(g => g.played).sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
-        if (lastPlayedDate) {
-            const d = new Date(lastPlayedDate);
-            d.setDate(d.getDate() + 1);
-            finalDate = d.toISOString().split('T')[0];
+        // 처리할 경기가 없으면 stopDate(유저가 선택한 목표 날짜) 우선 사용
+        if (stopDate) {
+            finalDate = stopDate;
         } else {
-            finalDate = new Date().toISOString().split('T')[0];
+            const lastPlayedDate = schedule.filter(g => g.played).sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+            if (lastPlayedDate) {
+                const d = new Date(lastPlayedDate);
+                d.setDate(d.getDate() + 1);
+                finalDate = d.toISOString().split('T')[0];
+            } else {
+                finalDate = new Date().toISOString().split('T')[0];
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 
 import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
+import { getOVRThreshold } from '../../utils/ovrUtils';
 import { TeamFinance } from '../../types/finance';
 import { Team } from '../../types/team';
 import { Player } from '../../types/player';
@@ -124,7 +125,7 @@ export function calculateMarketingExpense(
 
     let starBonus = 0;
     if (roster) {
-        const starCount = roster.filter(p => p.ovr >= 90).length;
+        const starCount = roster.filter(p => p.ovr >= getOVRThreshold('SUPERSTAR')).length;
         starBonus = STAR_MARKETING_BONUS[Math.min(starCount, STAR_MARKETING_BONUS.length - 1)];
     }
 

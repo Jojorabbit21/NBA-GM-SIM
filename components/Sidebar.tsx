@@ -290,8 +290,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         {hasProspects && (
           <NavItem active={currentView === 'DraftBoard'} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => onNavigate('DraftBoard')} {...navProps} />
         )}
-        {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
-
         <div className="mt-auto" />
       </nav>
 
