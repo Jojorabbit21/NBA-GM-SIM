@@ -117,6 +117,10 @@ const App: React.FC = () => {
         gameData.leaguePickAssets,
         gameData.leagueTradeOffers,
         gameData.leagueGMProfiles,
+        gameData.seasonNumber,
+        gameData.leagueFAMarket,
+        gameData.setOffseasonPhase,
+        gameData.setLeagueFAMarket,
     );
 
     // 오프시즌 이벤트 상태 계산: 사이드바 버튼 + 시뮬 차단 결정

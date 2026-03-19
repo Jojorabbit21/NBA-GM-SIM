@@ -3,13 +3,14 @@
  * 프로그레스 상태 관리 + 취소 토큰 + 배치 결과 커밋.
  */
 
-import { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
+import { LeagueFAMarket } from '../types/fa';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
@@ -59,6 +60,10 @@ export const useFullSeasonSim = (
     leaguePickAssets?: LeaguePickAssets | null,
     leagueTradeOffers?: LeagueTradeOffers,
     leagueGMProfiles?: LeagueGMProfiles,
+    currentSeasonNumber?: number,
+    leagueFAMarket?: LeagueFAMarket | null,
+    setOffseasonPhase?: React.Dispatch<React.SetStateAction<OffseasonPhase>>,
+    setLeagueFAMarket?: React.Dispatch<React.SetStateAction<LeagueFAMarket | null>>,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
@@ -125,6 +130,10 @@ export const useFullSeasonSim = (
                 leaguePickAssets,
                 leagueTradeOffers,
                 leagueGMProfiles,
+                currentSimDate,
+                offseasonPhase,
+                currentSeasonNumber,
+                leagueFAMarket,
             );
 
             // 3. DB 저장
@@ -348,15 +357,27 @@ export const useFullSeasonSim = (
             if (result.transactions.length > 0) {
                 setTransactions(prev => [...result.transactions, ...prev]);
             }
+            // 오프시즌 상태 반영
+            if (result.finalOffseasonPhase !== undefined && setOffseasonPhase) {
+                setOffseasonPhase(result.finalOffseasonPhase);
+            }
+            if (result.finalLeagueFAMarket !== undefined && setLeagueFAMarket) {
+                setLeagueFAMarket(result.finalLeagueFAMarket);
+            }
 
             // 5. 체크포인트 저장
             if (!isGuestMode) {
-                await forceSave({
+                const saveOverrides: any = {
                     currentSimDate: result.finalDate,
                     teams: result.finalTeams,
                     schedule: result.finalSchedule,
                     withSnapshot: true,
-                });
+                };
+                if (result.finalOffseasonPhase !== undefined) saveOverrides.offseasonPhase = result.finalOffseasonPhase;
+                if (result.finalLeagueFAMarket !== undefined) saveOverrides.leagueFAMarket = result.finalLeagueFAMarket;
+                if (result.newSeasonNumber !== undefined) saveOverrides.seasonNumber = result.newSeasonNumber;
+                if (result.newSeasonConfig !== undefined) saveOverrides.currentSeason = result.newSeasonConfig.seasonLabel;
+                await forceSave(saveOverrides);
             }
 
             setBatchProgress({

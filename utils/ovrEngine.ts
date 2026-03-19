@@ -835,15 +835,15 @@ export function calculateLeagueDistribution(rawValues: number[]): LeagueDistribu
 export function mapRawOVRToDisplayOVR(rawOVR: number, dist: LeagueDistribution): number {
   const z = (rawOVR - dist.meanRawOVR) / dist.stdRawOVR;
 
-  // Softer spread than before
-  let display = 77 + 5.2 * z + 0.18 * z * z * z;
+  // Spread calibrated for 445-player league: top player (z≈2.3) lands ~94
+  let display = 75 + 6.5 * z + 0.35 * z * z * z;
 
   // Top-end compression: makes 99 truly rare
-  if (display > 93) {
-    display = 93 + (display - 93) * 0.55;
+  if (display > 95) {
+    display = 95 + (display - 95) * 0.55;
   }
-  if (display > 96.5) {
-    display = 96.5 + (display - 96.5) * 0.28;
+  if (display > 97.5) {
+    display = 97.5 + (display - 97.5) * 0.28;
   }
 
   return clamp(Math.round(display), 50, 99);

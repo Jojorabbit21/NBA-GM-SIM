@@ -3,16 +3,19 @@
  * 엔진 밸런싱 검증을 위해 남은 정규시즌을 한 번에 시뮬레이션.
  */
 
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player } from '../../types';
 import { MessageType } from '../../types/message';
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { LeaguePickAssets } from '../../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../../types/trade';
 import { LeagueGMProfiles } from '../../types/gm';
+import { LeagueFAMarket } from '../../types/fa';
+import { OffseasonPhase } from '../../types/app';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation, processInjuryRecovery, computeReturnDate } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
+import { dispatchOffseasonEvent } from './offseasonEventHandler';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
@@ -21,6 +24,8 @@ import { updateMoraleFromGame } from '../moraleService';
 import { buildScoutReportContent } from '../reportGenerator';
 import { getBudgetManager } from '../financeEngine';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../../utils/seasonConfig';
+import { openFAMarket, simulateCPUSigning } from '../fa/faMarketBuilder';
+import { simulateCPUWaivers } from '../fa/cpuWaiverEngine';
 
 export interface BatchMessagePayload {
     user_id: string;
@@ -42,6 +47,11 @@ export interface BatchSeasonResult {
     transactions: Transaction[];
     userGameCount: number;
     userWins: number;
+    // 오프시즌 처리 결과
+    finalOffseasonPhase?: OffseasonPhase;
+    finalLeagueFAMarket?: LeagueFAMarket | null;
+    newSeasonNumber?: number;
+    newSeasonConfig?: SeasonConfig;
 }
 
 /**
@@ -67,6 +77,11 @@ export async function runBatchSeason(
     leaguePickAssets?: LeaguePickAssets | null,
     leagueTradeOffers?: LeagueTradeOffers,
     leagueGMProfiles?: LeagueGMProfiles,
+    // 오프시즌 처리용
+    currentSimDate?: string,
+    offseasonPhase?: OffseasonPhase,
+    currentSeasonNumber?: number,
+    leagueFAMarket?: LeagueFAMarket | null,
 ): Promise<BatchSeasonResult> {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const allGameResultsToSave: any[] = [];
@@ -477,6 +492,179 @@ export async function runBatchSeason(
         await new Promise<void>(r => setTimeout(r, 0));
     }
 
+    // ── 오프시즌 날짜 루프 ──
+    // 경기가 없는 오프시즌 구간에서 moratoriumStart / rosterDeadline / openingNight 이벤트 처리
+    let finalOffseasonPhase: OffseasonPhase = offseasonPhase ?? null;
+    let activeFAMarket: LeagueFAMarket | null = leagueFAMarket ?? null;
+    let newSeasonNumber: number | undefined;
+    let newSeasonConfig: SeasonConfig | undefined;
+
+    if (offseasonPhase !== null && offseasonPhase !== undefined && stopDate && seasonConfig) {
+        // 게임 루프에서 lastDate가 없으면 currentSimDate를 시작점으로 사용
+        const loopStart = lastDate
+            ? (() => { const d = new Date(lastDate); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })()
+            : (currentSimDate ?? stopDate);
+
+        const offseasonDates = generateDateRange(loopStart, stopDate);
+
+        for (const date of offseasonDates) {
+            if (cancelToken.cancelled) break;
+
+            const event = await dispatchOffseasonEvent({
+                currentDate: date,
+                keyDates: seasonConfig.keyDates,
+                offseasonPhase: finalOffseasonPhase,
+                teams,
+                schedule,
+                playoffSeries,
+                currentSeasonNumber: currentSeasonNumber ?? 1,
+                tendencySeed: tendencySeed ?? '',
+                userId,
+                userTeamId: myTeamId,
+                hasProspects: false,
+                leaguePickAssets: leaguePickAssets ?? undefined,
+            });
+
+            lastDate = date;
+            onProgress(current, total || 1, date);
+            await new Promise<void>(r => setTimeout(r, 0));
+
+            if (!event.fired) continue;
+
+            const u = event.updates!;
+            if (u.offseasonPhase !== undefined) finalOffseasonPhase = u.offseasonPhase;
+
+            // draftLottery / rookieDraft: blocked → 여기서 중단 (useFullSeasonSim의 effectiveStopDate가 막아줘야 하지만 방어적 처리)
+            if (event.blocked) break;
+
+            // moratoriumStart: 에이징/계약만료 처리 + FA 시장 개설 + 조기 웨이버
+            if (u.offseasonProcessed && u.expiredPlayerObjects) {
+                const closeDate = seasonConfig.keyDates.openingNight ?? date;
+                const seasonYear = new Date(date).getFullYear();
+                const seasonLabel = seasonConfig.seasonShort;
+                const allPlayers = teams.flatMap(t => t.roster);
+
+                activeFAMarket = openFAMarket(
+                    u.expiredPlayerObjects,
+                    allPlayers,
+                    teams,
+                    date,
+                    closeDate,
+                    seasonYear,
+                    seasonLabel,
+                    tendencySeed ?? '',
+                    u.prevTeamIdMap,
+                );
+                activeFAMarket.players = u.expiredPlayerObjects;
+
+                // 조기 CPU 웨이버 (Phase 1+3, skipVoluntary)
+                if (leagueGMProfiles) {
+                    const earlyResult = simulateCPUWaivers(
+                        teams,
+                        activeFAMarket,
+                        myTeamId,
+                        leagueGMProfiles,
+                        tendencySeed ?? '',
+                        seasonYear,
+                        seasonLabel,
+                        { skipVoluntary: true },
+                    );
+                    // simulateCPUWaivers는 새 배열을 반환 → teams 배열 in-place 교체
+                    teams.splice(0, teams.length, ...earlyResult.teams);
+                    activeFAMarket = earlyResult.market;
+                }
+
+                // 인박스 메시지: 은퇴 뉴스
+                if (userId && u.offseasonProcessed.retiredPlayers.length > 0) {
+                    allMessages.push({
+                        user_id: userId,
+                        team_id: myTeamId,
+                        date,
+                        type: 'RETIREMENT_NEWS',
+                        title: `[리그 소식] 오프시즌 은퇴 선수 명단`,
+                        content: {
+                            players: u.offseasonProcessed.retiredPlayers.map(p => ({
+                                playerId: p.playerId, playerName: p.playerName,
+                                age: p.age, ovr: p.ovr, position: p.position, teamId: p.teamId,
+                            })),
+                        },
+                    });
+                }
+            }
+
+            // rosterDeadline: FA 시장 마감 → 전체 웨이버 + CPU 자동 서명
+            if (u.faMarketClosed && activeFAMarket) {
+                const seasonYear = new Date(date).getFullYear();
+                const seasonLabel = seasonConfig.seasonShort;
+
+                if (leagueGMProfiles) {
+                    const waiverResult = simulateCPUWaivers(
+                        teams,
+                        activeFAMarket,
+                        myTeamId,
+                        leagueGMProfiles,
+                        tendencySeed ?? '',
+                        seasonYear,
+                        seasonLabel,
+                    );
+                    teams.splice(0, teams.length, ...waiverResult.teams);
+                    activeFAMarket = waiverResult.market;
+                }
+
+                const faPlayerMap: Record<string, Player> = Object.fromEntries(
+                    (activeFAMarket.players ?? []).map(p => [p.id, p])
+                );
+                const cpuResult = simulateCPUSigning(
+                    activeFAMarket,
+                    teams,
+                    faPlayerMap,
+                    myTeamId,
+                    tendencySeed ?? '',
+                    seasonYear,
+                );
+                teams.splice(0, teams.length, ...cpuResult.teams);
+                activeFAMarket = null;
+
+                if (userId && cpuResult.signings.length > 0) {
+                    allMessages.push({
+                        user_id: userId,
+                        team_id: myTeamId,
+                        date,
+                        type: 'FA_LEAGUE_NEWS',
+                        title: '[리그 소식] FA 시장 마감 — 주요 계약 소식',
+                        content: {
+                            signings: cpuResult.signings.map(s => {
+                                const player = faPlayerMap[s.playerId];
+                                const team = cpuResult.teams.find(t => t.id === s.teamId);
+                                return {
+                                    teamId: s.teamId,
+                                    teamName: team ? `${team.city} ${team.name}` : s.teamId,
+                                    playerId: s.playerId,
+                                    playerName: player?.name ?? s.playerId,
+                                    position: player?.position ?? '',
+                                    ovr: player?.ovr ?? 0,
+                                    salary: s.salary,
+                                    years: s.years,
+                                };
+                            }),
+                        },
+                    });
+                }
+            }
+
+            // openingNight: 새 시즌 개막 → 일정 교체 후 루프 종료
+            if (u.newSchedule && u.newSeasonNumber && u.newSeasonConfig) {
+                schedule.splice(0, schedule.length, ...u.newSchedule);
+                playoffSeries.splice(0, playoffSeries.length);
+                newSeasonNumber = u.newSeasonNumber;
+                newSeasonConfig = u.newSeasonConfig;
+                finalOffseasonPhase = null;
+                activeFAMarket = null;
+                break;
+            }
+        }
+    }
+
     // 최종 날짜를 하루 뒤로 (기존 파이프라인과 동일)
     let finalDate: string;
     if (lastDate) {
@@ -510,7 +698,21 @@ export async function runBatchSeason(
         transactions: allTransactions,
         userGameCount,
         userWins,
+        finalOffseasonPhase,
+        finalLeagueFAMarket: activeFAMarket,
+        newSeasonNumber,
+        newSeasonConfig,
     };
+}
+
+/** 두 ISO 날짜 사이의 모든 날짜 배열 생성 (startDate 포함, endDate 포함) */
+function generateDateRange(startDate: string, endDate: string): string[] {
+    const dates: string[] = [];
+    const end = new Date(endDate + 'T00:00:00');
+    for (let d = new Date(startDate + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
+        dates.push(d.toISOString().split('T')[0]);
+    }
+    return dates;
 }
 
 // ── 헬퍼 함수들 ──
