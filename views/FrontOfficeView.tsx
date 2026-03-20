@@ -545,7 +545,7 @@ const PayrollTab: React.FC<{
             <div className="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="border-collapse text-xs" style={{ width: `${160 + COL_W * seasonColumns.length}px` }}>
+                    <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length}px` }}>
                         <colgroup>
                             <col style={{ width: '160px' }} />
                             {seasonColumns.map(col => <col key={col} style={{ width: `${COL_W}px` }} />)}
