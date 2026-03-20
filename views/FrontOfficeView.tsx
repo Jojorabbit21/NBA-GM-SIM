@@ -70,7 +70,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <ClubTab finData={finData} finance={finance} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'payroll' && (
-                        <PayrollTab team={team} seasonShort={seasonShort} />
+                        <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
@@ -95,11 +95,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
         </div>
     );
 };
-
-// ── 공통 엑셀 그리드 스타일 ──
-const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800";
-const tdClass = "py-1.5 px-2 text-xs font-medium whitespace-nowrap border-b border-slate-700/60";
-const tdValClass = "py-1.5 px-2 text-xs font-medium font-mono tabular-nums whitespace-nowrap border-b border-slate-700/60 text-right";
 
 // ── 구단주 성향 자연어 변환 ──
 function getSpendingLabel(v: number): string {
@@ -287,24 +282,23 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
 };
 
 // ── 선수 급여 탭 ──
-const PayrollTab: React.FC<{ team: Team; seasonShort: string }> = ({ team, seasonShort }) => {
+const PayrollTab: React.FC<{ team: Team; seasonShort: string; myTeamId: string }> = ({ team, seasonShort, myTeamId }) => {
+    const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
+
     const { players, seasonColumns, totals } = useMemo(() => {
-        // OVR 내림차순 정렬
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
 
-        // 현재 시즌부터 6시즌 표시
         const baseYear = seasonShort ? parseInt(seasonShort) : 2025;
         const cols: string[] = [];
         for (let y = baseYear; y < baseYear + 6; y++) {
             cols.push(`${y}-${String(y + 1).slice(-2)}`);
         }
 
-        // 시즌별 합계
         const colTotals = new Array(cols.length).fill(0);
         for (const p of sorted) {
             if (!p.contract) continue;
             for (let i = 0; i < p.contract.years.length; i++) {
-                const colIdx = i - p.contract.currentYear; // 현재 시즌 기준 offset
+                const colIdx = i - p.contract.currentYear;
                 if (colIdx >= 0 && colIdx < cols.length) {
                     colTotals[colIdx] += p.contract.years[i];
                 }
@@ -315,37 +309,39 @@ const PayrollTab: React.FC<{ team: Team; seasonShort: string }> = ({ team, seaso
     }, [team.roster, seasonShort]);
 
     return (
-        <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
-            <table className="w-full border-collapse text-xs table-fixed">
-                <colgroup>
-                    <col style={{ width: '140px' }} />
-                    {seasonColumns.map(col => (
-                        <col key={col} />
-                    ))}
-                </colgroup>
-                <thead className="sticky top-0 z-10">
-                    <tr>
-                        <th className={`${thClass} text-left sticky left-0 bg-slate-800 z-20 whitespace-nowrap border-r border-slate-600`}>선수</th>
-                        {seasonColumns.map(col => (
-                            <th key={col} className={`${thClass} text-right border-l border-slate-600`}>{col}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {players.map(p => (
-                        <PayrollRow key={p.id} player={p} seasonColumns={seasonColumns} />
-                    ))}
-                    {/* 합계 행 */}
-                    <tr className="bg-slate-700">
-                        <td className={`${tdClass} font-bold text-white sticky left-0 bg-slate-700 z-10 border-r border-slate-600`}>합계</td>
-                        {totals.map((t, i) => (
-                            <td key={i} className={`${tdValClass} font-bold text-white border-l border-slate-600`}>
-                                {t > 0 ? fmtSalary(t) : ''}
-                            </td>
-                        ))}
-                    </tr>
-                </tbody>
-            </table>
+        <div className="p-4 animate-in fade-in duration-500">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                        <colgroup>
+                            <col style={{ width: '160px' }} />
+                            {seasonColumns.map(col => <col key={col} />)}
+                        </colgroup>
+                        <thead className="sticky top-0 z-10">
+                            <tr className="bg-slate-800/80 border-b border-slate-700">
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800/80 z-20">선수</th>
+                                {seasonColumns.map(col => (
+                                    <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {players.map(p => (
+                                <PayrollRow key={p.id} player={p} seasonColumns={seasonColumns} />
+                            ))}
+                            <tr className="bg-slate-800 border-t-2 border-slate-700">
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10">합계</td>
+                                {totals.map((t, i) => (
+                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white">
+                                        {t > 0 ? fmtSalary(t) : ''}
+                                    </td>
+                                ))}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 };
@@ -368,10 +364,10 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
     }, [player, seasonColumns.length]);
 
     return (
-        <tr className="hover:bg-slate-800/40">
-            <td className={`${tdClass} text-slate-200 sticky left-0 bg-slate-900 z-10 border-r border-slate-600`}>{player.name}</td>
+        <tr className="border-b border-slate-800 hover:bg-slate-800/40">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 z-10">{player.name}</td>
             {cells.map((cell, i) => (
-                <td key={i} className={`${tdValClass} border-l border-slate-600 ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
+                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}
                 </td>
             ))}
