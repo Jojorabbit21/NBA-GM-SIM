@@ -132,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   return (
     <>
       <aside
-        className="w-20 shrink-0 flex flex-col h-screen z-20 relative overflow-hidden"
+        className="w-20 shrink-0 flex flex-col h-screen z-20 relative"
         style={{
           backgroundColor: sidebarBg,
           borderRight: '1px solid rgba(255,255,255,0.2)',

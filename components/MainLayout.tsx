@@ -151,7 +151,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
     }, [team?.id, currentSimDate, schedule]);
 
     const isFullHeightView = pathname.startsWith('/draft/') || pathname.startsWith('/rookie-draft') || pathname.startsWith('/draft-history') || pathname.startsWith('/draft-lottery');
-    const isNoPaddingView = pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/inbox') || pathname.startsWith('/roster') || pathname.startsWith('/standings') || pathname.startsWith('/leaderboard') || pathname.startsWith('/schedule') || pathname.startsWith('/transactions') || pathname.startsWith('/player') || pathname.startsWith('/coach') || pathname.startsWith('/gm/') || pathname.startsWith('/playoffs') || pathname.startsWith('/front-office') || pathname.startsWith('/draft-board') || pathname.startsWith('/fa-market');
+    const isNoPaddingView = pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/inbox') || pathname.startsWith('/roster') || pathname.startsWith('/standings') || pathname.startsWith('/leaderboard') || pathname.startsWith('/schedule') || pathname.startsWith('/transactions') || pathname.startsWith('/player') || pathname.startsWith('/coach') || pathname.startsWith('/gm/') || pathname.startsWith('/playoffs') || pathname.startsWith('/front-office') || pathname.startsWith('/draft-board') || pathname.startsWith('/fa-market') || pathname.startsWith('/tactics');
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
