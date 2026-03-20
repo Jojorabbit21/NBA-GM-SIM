@@ -156,16 +156,18 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         ? '2px solid #6366f1'
         : isHovered
         ? '2px dashed #6366f1'
-        : '2px solid #4b5563';
+        : '2px solid #475569';
 
     return (
         <div ref={containerRef} className="relative w-[398px]">
             <div
                 className="flex items-center justify-between px-6 py-3 rounded-2xl transition-all duration-200 cursor-text"
                 style={{
-                    background: '#374151',
+                    background: isFocused ? '#0f172a' : '#334155',
                     border: borderStyle,
-                    boxShadow: 'inset 0px 2px 4px rgba(0,0,0,0.06)',
+                    boxShadow: isFocused
+                        ? '0 0 16px 0 rgba(99,102,241,0.4)'
+                        : 'inset 0px 2px 4px rgba(0,0,0,0.06)',
                 }}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
@@ -186,20 +188,21 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                         onClick={e => { e.stopPropagation(); setQuery(''); inputRef.current?.focus(); }}
                         className="flex-shrink-0 ml-2"
                     >
-                        <X size={16} className="text-gray-400 hover:text-gray-200 transition-colors" />
+                        <X size={16} className="text-slate-400 hover:text-gray-200 transition-colors" />
                     </button>
                 ) : (
-                    <Search size={18} className="text-gray-400 flex-shrink-0 ml-2" />
+                    <Search size={18} className="text-slate-400 flex-shrink-0 ml-2" />
                 )}
             </div>
 
             {/* 결과 드롭다운 */}
             {showDropdown && (
                 <div
-                    className="absolute left-0 top-full mt-1 w-full rounded-xl overflow-hidden shadow-2xl z-[200]"
+                    className="absolute left-0 top-full mt-1 w-full rounded-lg overflow-hidden z-[200]"
                     style={{
                         background: '#1e293b',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: '1px solid #334155',
+                        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
                     }}
                 >
                     {grouped.length === 0 ? (
@@ -209,8 +212,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                             {grouped.map(group => (
                                 <div key={group.type}>
                                     {/* 카테고리 헤더 */}
-                                    <div className="px-3 py-1.5 bg-slate-950/50">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                    <div
+                                        className="px-4 py-3"
+                                        style={{
+                                            backgroundImage: 'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(0,0,0,0.04) 100%), linear-gradient(#334155, #334155)',
+                                        }}
+                                    >
+                                        <span className="text-sm font-semibold text-white">
                                             {CATEGORY_LABELS[group.type]}
                                         </span>
                                     </div>
@@ -218,45 +226,40 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                                         <button
                                             key={i}
                                             onClick={() => handleSelect(result)}
-                                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-500/20 transition-colors text-left"
+                                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-500/20 transition-colors text-left"
                                         >
                                             {result.type === 'team' && (
                                                 <>
                                                     <TeamLogo teamId={result.teamId} size="sm" />
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <span className="text-sm font-semibold text-slate-100 truncate">{result.teamName}</span>
-                                                    </div>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.teamName}</span>
                                                 </>
                                             )}
                                             {result.type === 'player' && (
                                                 <>
                                                     <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-7 !h-7 !text-[10px] flex-shrink-0" />
-                                                    <div className="flex flex-col min-w-0 flex-1">
-                                                        <span className="text-sm font-semibold text-slate-100 truncate">{result.player.name}</span>
-                                                        <span className="text-xs text-slate-400 truncate">{result.player.position} · {result.teamName}</span>
-                                                    </div>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.player.name}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.teamName}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 shrink-0">{result.player.position}</span>
                                                 </>
                                             )}
                                             {result.type === 'gm' && (
                                                 <>
-                                                    <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                                                    <div className="w-7 h-7 rounded-full bg-slate-500 border-2 border-slate-400 flex items-center justify-center flex-shrink-0">
                                                         <span className="text-[10px] text-slate-300 font-bold">단</span>
                                                     </div>
-                                                    <div className="flex flex-col min-w-0 flex-1">
-                                                        <span className="text-sm font-semibold text-slate-100 truncate">{result.profile.name}</span>
-                                                        <span className="text-xs text-slate-400 truncate">{result.teamName} 단장</span>
-                                                    </div>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.profile.name}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.teamName}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 shrink-0">단장</span>
                                                 </>
                                             )}
                                             {result.type === 'coach' && (
                                                 <>
-                                                    <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                                                    <div className="w-7 h-7 rounded-full bg-slate-500 border-2 border-slate-400 flex items-center justify-center flex-shrink-0">
                                                         <span className="text-[10px] text-slate-300 font-bold">코</span>
                                                     </div>
-                                                    <div className="flex flex-col min-w-0 flex-1">
-                                                        <span className="text-sm font-semibold text-slate-100 truncate">{result.coach.name}</span>
-                                                        <span className="text-xs text-slate-400 truncate">{result.teamName} 코치</span>
-                                                    </div>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.coach.name}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 truncate">{result.teamName}</span>
+                                                    <span className="text-sm font-semibold text-slate-300 shrink-0">코치</span>
                                                 </>
                                             )}
                                         </button>

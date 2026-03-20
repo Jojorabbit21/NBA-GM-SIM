@@ -11,7 +11,7 @@ import {
 import { Team } from '../types';
 import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
-import { TeamLogo } from './common/TeamLogo';
+
 import { LegalModal } from './LegalModal';
 import { getTeamTheme } from '../utils/teamTheme';
 
@@ -42,10 +42,10 @@ const NavItem: React.FC<{
   <button
     onClick={onClick}
     title={label}
-    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 ${
+    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 outline outline-2 outline-transparent ${
       active
         ? 'bg-black/35'
-        : 'hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25'
+        : 'hover:bg-black/15 hover:outline-black/25'
     }`}
   >
     {React.cloneElement(icon as React.ReactElement<any>, {
@@ -109,17 +109,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           borderRight: '1px solid rgba(255,255,255,0.2)',
         }}
       >
-        {/* 상단 팀 로고 영역 */}
-        <div className="h-[122px] flex items-center justify-center shrink-0">
-          <TeamLogo
-            teamId={team?.id || ''}
-            size="custom"
-            className="w-12 h-12 drop-shadow-lg"
-          />
-        </div>
-
         {/* 메인 네비게이션 */}
-        <nav className="flex-1 flex flex-col gap-6 px-5 overflow-y-auto py-2 custom-scrollbar">
+        <nav className="flex-1 flex flex-col gap-2 px-5 pt-4 pb-2">
           {/* 오프시즌 이벤트 버튼 */}
           {pendingOffseasonAction && (() => {
             const cfg = pendingOffseasonAction === 'lottery'

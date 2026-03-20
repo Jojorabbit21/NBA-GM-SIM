@@ -8,6 +8,7 @@ import { GMProfile } from '../types/gm';
 import { SeasonKeyDates } from '../utils/seasonConfig';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
+import type { UpcomingGame } from './dashboard/DateSkipDropdown';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeStandingsStats } from '../utils/standingsStats';
 import { TEAM_DATA } from '../data/teamData';
@@ -113,31 +114,39 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         };
     }, [team, teams, schedule]);
 
-    // 오늘/내일 경기 상대 이름 계산
-    const { todayOpponentName, tomorrowDate, tomorrowOpponentName } = useMemo(() => {
-        if (!team?.id || !currentSimDate) return { todayOpponentName: undefined, tomorrowDate: undefined, tomorrowOpponentName: undefined };
+    // 오늘/내일 경기 + 미래 5경기 계산
+    const { todayOpponentName, tomorrowDate, tomorrowOpponentName, upcomingGames } = useMemo(() => {
+        if (!team?.id || !currentSimDate) {
+            return { todayOpponentName: undefined, tomorrowDate: undefined, tomorrowOpponentName: undefined, upcomingGames: [] as UpcomingGame[] };
+        }
 
         const nextDay = addDays(currentSimDate, 1);
 
-        const todayGame = schedule.find(g =>
-            (g.homeTeamId === team.id || g.awayTeamId === team.id) &&
-            g.date === currentSimDate && !g.played
-        );
-        const tomorrowGame = schedule.find(g =>
-            (g.homeTeamId === team.id || g.awayTeamId === team.id) &&
-            g.date === nextDay && !g.played
-        );
-
-        const getOpponentName = (game: Game) => {
+        const getOpponentName = (game: Game): string => {
             const oppId = game.homeTeamId === team.id ? game.awayTeamId : game.homeTeamId;
             const td = TEAM_DATA[oppId];
             return td ? td.name : oppId;
         };
 
+        const myUnplayed = schedule
+            .filter(g => (g.homeTeamId === team.id || g.awayTeamId === team.id) && !g.played)
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+        const todayGame = myUnplayed.find(g => g.date === currentSimDate);
+        const tomorrowGame = myUnplayed.find(g => g.date === nextDay);
+
+        // 미래 5경기 (오늘 포함, 최대 5개)
+        const upcoming: UpcomingGame[] = myUnplayed.slice(0, 5).map(g => ({
+            date: g.date,
+            opponentName: getOpponentName(g),
+            isToday: g.date === currentSimDate,
+        }));
+
         return {
             todayOpponentName: todayGame ? getOpponentName(todayGame) : undefined,
             tomorrowDate: nextDay,
             tomorrowOpponentName: tomorrowGame ? getOpponentName(tomorrowGame) : undefined,
+            upcomingGames: upcoming,
         };
     }, [team?.id, currentSimDate, schedule]);
 
@@ -186,6 +195,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         todayOpponentName={todayOpponentName}
                         tomorrowDate={tomorrowDate}
                         tomorrowOpponentName={tomorrowOpponentName}
+                        upcomingGames={upcomingGames}
                         allTeams={teams}
                         coachingData={coachingData}
                         leagueGMProfiles={leagueGMProfiles}

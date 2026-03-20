@@ -1,13 +1,13 @@
 
 import React, { useState, useCallback } from 'react';
-import { Loader2, Play, ChevronRight, FastForward, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { Team, Game, PlayoffSeries, Player } from '../../types';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
 import { PendingOffseasonAction } from '../../types/app';
-import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
+import { DateSkipDropdown, formatDateKorean, UpcomingGame } from './DateSkipDropdown';
 import { GlobalSearch } from './GlobalSearch';
 import { GMProfile } from '../../types/gm';
 
@@ -35,6 +35,8 @@ interface DashboardHeaderProps {
   todayOpponentName?: string;
   tomorrowDate?: string;
   tomorrowOpponentName?: string;
+  // 데이트 스키퍼 드롭다운용 미래 5경기
+  upcomingGames?: UpcomingGame[];
   // 검색 기능
   allTeams?: Team[];
   coachingData?: Record<string, { headCoach: any }>;
@@ -56,7 +58,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   onSimClick, onAutoSimClick, currentSeries, currentSimDate, conferenceRank,
   streak, conferenceName, isSeasonOver, pendingOffseasonAction, keyDates,
   onSkipToDate, onSimulateFullSeason,
-  todayOpponentName, tomorrowDate, tomorrowOpponentName,
+  todayOpponentName, tomorrowDate, tomorrowOpponentName, upcomingGames,
   allTeams, coachingData, leagueGMProfiles,
   onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
 }) => {
@@ -144,12 +146,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     <div
       className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
       style={{
-        backgroundColor: theme.bg,
-        borderBottom: '2px solid #374151',
+        backgroundColor: '#0f172a',
+        borderBottom: '2px solid #334155',
       }}
     >
-      {/* 어두운 오버레이 (가독성) */}
-      <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
       {/* ① 왼쪽: 팀 정보 */}
       <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
@@ -203,8 +203,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               onClick={() => setIsSkipDropdownOpen(prev => !prev)}
               className="flex items-center justify-between gap-4 px-4 py-2 rounded-lg transition-all duration-150 hover:brightness-110"
               style={{
-                background: '#111827',
-                border: '2px solid #4b5563',
+                background: '#0f172a',
+                border: '2px solid #475569',
                 minWidth: '260px',
               }}
             >
@@ -214,7 +214,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
                     오늘 {formatDateShort(currentSimDate)}
                   </span>
-                  <span className="text-sm font-semibold text-gray-100 whitespace-nowrap leading-5">
+                  <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
                     {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
                   </span>
                 </div>
@@ -223,12 +223,12 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
                     내일 {tomorrowDate ? formatDateShort(tomorrowDate) : ''}
                   </span>
-                  <span className="text-sm font-semibold text-gray-100 whitespace-nowrap leading-5">
+                  <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
                     {tomorrowOpponentName ? `vs ${tomorrowOpponentName}` : '일정 없음'}
                   </span>
                 </div>
               </div>
-              <div className="shrink-0 text-gray-400">
+              <div className="shrink-0 text-slate-400">
                 {isSkipDropdownOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </div>
             </button>
@@ -243,41 +243,52 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               isSimulating={!!isSimulating}
               themeText={theme.text}
               isOffseason={isSeasonOver}
+              upcomingGames={upcomingGames}
             />
           </div>
         )}
 
         {/* 액션 버튼 그룹 */}
         <div className="flex flex-col gap-2">
-          {/* 메인 버튼: 경기 시작 / 내일로 이동 */}
+          {/* 메인 버튼 */}
           <button
             onClick={onSimClick}
             disabled={isSimulating || isOffseasonBlocked}
             {...btnHandlers('sim')}
-            className="flex items-center justify-between rounded-lg h-9 disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden"
+            className={`rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden ${
+              isGameToday
+                ? 'flex items-center justify-between h-9'
+                : 'flex items-center h-[60px] px-3'
+            }`}
             style={{
               ...mainBtnStyle('sim'),
               border: '1px solid rgba(255,255,255,0.4)',
-              minWidth: '160px',
+              minWidth: '177px',
             }}
           >
-            {/* 텍스트 영역 */}
-            <span
-              className="flex items-center gap-2 px-3 text-base font-semibold text-white whitespace-nowrap h-full"
-              style={{ borderRight: '1px solid rgba(0,0,0,0.3)' }}
-            >
-              {(simProgress || isSimulating) ? (
-                <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
-              ) : isGameToday ? (
-                <><Play size={14} fill="currentColor" className="shrink-0" /> 경기 시작</>
-              ) : (
-                mainBtnLabel
-              )}
-            </span>
-            {/* 화살표 아이콘 영역 */}
-            <span className="flex items-center justify-center px-2 h-full">
-              <ChevronRight size={20} color="white" />
-            </span>
+            {isGameToday ? (
+              /* Case B: 이벤트 시작 — 좌측 텍스트 | 우측 chevron */
+              <>
+                <span
+                  className="flex items-center gap-2 px-3 text-base font-semibold text-white whitespace-nowrap h-full flex-1"
+                  style={{ borderRight: '1px solid rgba(0,0,0,0.3)' }}
+                >
+                  {(simProgress || isSimulating)
+                    ? <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
+                    : mainBtnLabel}
+                </span>
+                <span className="flex items-center justify-center px-2 h-full">
+                  <ChevronRight size={20} color="white" />
+                </span>
+              </>
+            ) : (
+              /* Case A: 날짜 이동 — 단순 텍스트 */
+              <span className="flex items-center gap-2 text-base font-semibold text-white whitespace-nowrap">
+                {(simProgress || isSimulating)
+                  ? <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
+                  : mainBtnLabel}
+              </span>
+            )}
           </button>
 
           {/* 서브 버튼: 코치에게 위임 (경기 당일에만) */}
@@ -287,7 +298,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               disabled={isSimulating || isOffseasonBlocked}
               className="flex items-center justify-center px-3 h-6 rounded text-xs font-bold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap transition-all hover:brightness-95"
               style={{
-                backgroundImage: 'linear-gradient(rgba(254,254,254,0) 0%, rgba(0,0,0,0.15) 100%), linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
+                backgroundImage: 'linear-gradient(rgba(254,254,254,0) 0%, rgba(0,0,0,0.3) 100%), linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
                 border: '1px solid white',
               }}
             >

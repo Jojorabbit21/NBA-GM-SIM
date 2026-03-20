@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useMemo } from 'react';
-import { FastForward } from 'lucide-react';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
 
 /** Key Date 한글 라벨 매핑 */
@@ -25,6 +24,7 @@ const KEY_DATE_LABELS: Record<keyof SeasonKeyDates, string> = {
     conferenceFinals: '컨퍼런스 파이널',
     finalsStart: 'NBA 파이널',
     finalsEndTarget: '시즌 종료',
+    prospectReveal: '프로스펙트 공개',
 };
 
 /** ISO 날짜 → 한글 포맷 */
@@ -34,11 +34,16 @@ export function formatDateKorean(isoDate: string): string {
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
 }
 
-/** 두 ISO 날짜 사이 일수 */
-function daysBetween(from: string, to: string): number {
-    const a = new Date(from + 'T00:00:00');
-    const b = new Date(to + 'T00:00:00');
-    return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+/** ISO 날짜 → 짧은 한글 포맷 (YYYY년 M월 D일) */
+function formatDateSimple(isoDate: string): string {
+    const d = new Date(isoDate + 'T00:00:00');
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+export interface UpcomingGame {
+    date: string;
+    opponentName: string;
+    isToday: boolean;
 }
 
 interface DateSkipDropdownProps {
@@ -51,7 +56,57 @@ interface DateSkipDropdownProps {
     isSimulating: boolean;
     themeText: string;
     isOffseason?: boolean;
+    upcomingGames?: UpcomingGame[];
 }
+
+/** 공통 아이템 행 배경 스타일 */
+const ITEM_BG = {
+    backgroundImage: [
+        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
+        'linear-gradient(90deg, #1e293b 0%, #1e293b 100%)',
+    ].join(', '),
+} as React.CSSProperties;
+
+/** 오늘 경기 강조 배경 스타일 */
+const ITEM_BG_TODAY = {
+    backgroundImage: [
+        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
+        'linear-gradient(90deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.15) 100%)',
+        'linear-gradient(90deg, #1e293b 0%, #1e293b 100%)',
+    ].join(', '),
+} as React.CSSProperties;
+
+/** 4px 구분선 */
+const Separator = () => (
+    <div style={{ height: '4px', background: '#475569', flexShrink: 0 }} />
+);
+
+/** 아이템 행 (날짜 좌 / 텍스트 우) */
+const EventRow: React.FC<{
+    date: string;
+    label: string;
+    isToday?: boolean;
+    onClick?: () => void;
+    disabled?: boolean;
+}> = ({ date, label, isToday, onClick, disabled }) => {
+    const Tag = onClick ? 'button' : 'div';
+    return (
+        <Tag
+            onClick={onClick}
+            disabled={onClick ? disabled : undefined}
+            className={`w-full flex items-center justify-between px-4 py-1.5 text-xs font-semibold shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+                onClick ? 'hover:brightness-125 transition-all' : ''
+            }`}
+            style={{
+                ...(isToday ? ITEM_BG_TODAY : ITEM_BG),
+                borderBottom: '1px solid #334155',
+            }}
+        >
+            <span className="text-slate-400 whitespace-nowrap">{date}</span>
+            <span className="text-slate-100 whitespace-nowrap ml-4">{label}</span>
+        </Tag>
+    );
+};
 
 export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     isOpen,
@@ -61,8 +116,8 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     onSkipToDate,
     onSimulateFullSeason,
     isSimulating,
-    themeText,
     isOffseason,
+    upcomingGames = [],
 }) => {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -78,23 +133,26 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
         return () => document.removeEventListener('mousedown', handler);
     }, [isOpen, onClose]);
 
-    // 미래 Key Dates 전체를 날짜순 정렬
+    // 미래 Key Dates 날짜순 정렬
     const futureDates = useMemo(() => {
-        const items: { key: keyof SeasonKeyDates; date: string; name: string; daysAway: number }[] = [];
+        const items: { key: keyof SeasonKeyDates; date: string; name: string }[] = [];
         for (const key of Object.keys(KEY_DATE_LABELS) as (keyof SeasonKeyDates)[]) {
-            const date = keyDates[key];
-            if (date > currentSimDate) {
-                items.push({
-                    key,
-                    date,
-                    name: KEY_DATE_LABELS[key],
-                    daysAway: daysBetween(currentSimDate, date),
-                });
+            const date = (keyDates as any)[key];
+            if (date && date > currentSimDate) {
+                items.push({ key, date, name: KEY_DATE_LABELS[key] });
             }
         }
         items.sort((a, b) => a.date.localeCompare(b.date));
         return items;
     }, [keyDates, currentSimDate]);
+
+    // 오프시즌 하단 텍스트 결정
+    const bottomLabel = useMemo(() => {
+        if (isOffseason) return null;
+        const finals = (keyDates as any).finalsStart;
+        if (finals && currentSimDate >= finals) return '플레이오프 종료까지';
+        return '정규시즌 종료까지';
+    }, [isOffseason, keyDates, currentSimDate]);
 
     if (!isOpen) return null;
 
@@ -103,50 +161,85 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
         onSkipToDate(date, label);
     };
 
+    const handleFullSeason = () => {
+        onClose();
+        onSimulateFullSeason();
+    };
+
     return (
-        <div ref={dropdownRef} className="absolute top-full left-0 mt-1 z-[200] w-[320px] bg-slate-700 border border-slate-600 rounded-2xl shadow-2xl overflow-hidden">
+        <div
+            ref={dropdownRef}
+            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden"
+            style={{
+                border: '1px solid #475569',
+                borderRadius: '8px',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                minWidth: '270px',
+                maxHeight: 'calc(100vh - 140px)',
+                overflowY: 'auto',
+            }}
+        >
             {/* 헤더 */}
-            <div className="px-4 py-3 border-b border-slate-600">
-                <div className="flex items-center gap-2 text-sm font-semibold text-indigo-400">
-                    스킵 옵션
+            <div
+                className="px-4 py-1.5 shrink-0 sticky top-0 z-10"
+                style={{
+                    backgroundImage: [
+                        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
+                        'linear-gradient(90deg, #475569 0%, #475569 100%)',
+                    ].join(', '),
+                }}
+            >
+                <span className="text-xs font-semibold text-white whitespace-nowrap">
+                    자동으로 시뮬레이션할 날짜 선택
+                </span>
+            </div>
+
+            {/* 섹션 1: 미래 5경기 */}
+            {upcomingGames.length > 0 && upcomingGames.map((game, i) => (
+                <EventRow
+                    key={`game-${i}`}
+                    date={formatDateSimple(game.date)}
+                    label={`vs ${game.opponentName}`}
+                    isToday={game.isToday}
+                    onClick={() => handleSkip(game.date, `vs ${game.opponentName}`)}
+                    disabled={isSimulating}
+                />
+            ))}
+
+            {/* 구분선 */}
+            {upcomingGames.length > 0 && futureDates.length > 0 && <Separator />}
+
+            {/* 섹션 2: 키 데이트 */}
+            {futureDates.map(item => (
+                <EventRow
+                    key={item.key}
+                    date={formatDateSimple(item.date)}
+                    label={item.name}
+                    onClick={() => handleSkip(item.date, item.name)}
+                    disabled={isSimulating}
+                />
+            ))}
+
+            {futureDates.length === 0 && upcomingGames.length === 0 && (
+                <div className="px-4 py-4 text-center text-xs text-slate-500" style={ITEM_BG}>
+                    남은 일정이 없습니다
                 </div>
-            </div>
+            )}
 
-            {/* Key Dates 리스트 (날짜순) */}
-            <div className="max-h-[60vh] overflow-y-auto">
-                {futureDates.map((item, idx) => (
-                    <React.Fragment key={item.key}>
-                        {idx > 0 && <div className="border-t border-slate-600" />}
-                        <button
-                            onClick={() => handleSkip(item.date, item.name)}
-                            disabled={isSimulating}
-                            className="w-full px-4 py-2.5 hover:bg-slate-600 transition-colors text-left flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <span className="text-sm font-medium text-slate-300">{item.name}</span>
-                            <span className="text-sm font-medium text-slate-400 shrink-0">{item.date}</span>
-                        </button>
-                    </React.Fragment>
-                ))}
-
-                {futureDates.length === 0 && (
-                    <div className="px-4 py-6 text-center text-sm text-slate-400">
-                        남은 Key Date가 없습니다
-                    </div>
-                )}
-            </div>
-
-            {/* 시즌 끝까지 시뮬 — 오프시즌에서는 숨김 (개막일 스킵으로 대체) */}
-            {!isOffseason && (
-                <div className="border-t border-slate-600">
+            {/* 구분선 + 시즌 종료까지 (오프시즌 제외) */}
+            {bottomLabel && (
+                <>
+                    <Separator />
                     <button
-                        onClick={() => { onClose(); onSimulateFullSeason(); }}
+                        onClick={handleFullSeason}
                         disabled={isSimulating}
-                        className="w-full px-4 py-3 hover:bg-slate-600 transition-colors text-left flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-full flex items-center justify-between px-4 py-1.5 text-xs font-semibold shrink-0 hover:brightness-125 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={ITEM_BG}
                     >
-                        <FastForward size={14} className="text-amber-400 shrink-0" />
-                        <span className="text-sm font-semibold text-amber-400">시즌 끝까지 시뮬레이션</span>
+                        <span className="text-slate-400">&nbsp;</span>
+                        <span className="text-slate-100">{bottomLabel}</span>
                     </button>
-                </div>
+                </>
             )}
         </div>
     );
