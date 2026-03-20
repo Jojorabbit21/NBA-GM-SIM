@@ -96,7 +96,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         </div>
                     )}
                     {activeTab === 'draftPicks' && (
-                        <DraftPicksPanel teamId={myTeamId} leaguePickAssets={leaguePickAssets} />
+                        <DraftPicksPanel teamId={myTeamId} leaguePickAssets={leaguePickAssets} primaryColor={primaryColor} />
                     )}
                     {!finData && activeTab === 'club' && (
                         <div className="text-center text-slate-500 py-20">

@@ -8,6 +8,12 @@ import { TEAM_DATA } from '../../data/teamData';
 const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800";
 const tdClass = "py-1.5 px-2 text-xs font-medium whitespace-nowrap border-b border-slate-700/60";
 
+const WidgetHeader: React.FC<{ title: string; primaryColor: string }> = ({ title, primaryColor }) => (
+    <div className="px-4 py-2 shrink-0" style={{ backgroundColor: primaryColor }}>
+        <span className="text-sm font-bold text-white">{title}</span>
+    </div>
+);
+
 /** 드래프트 픽 거래 기록 테이블 */
 export const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) => {
     const teamName = (id: string) => TEAM_DATA[id]?.name || id.toUpperCase();
@@ -85,40 +91,46 @@ export const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) =
     }, [myTeamId]);
 
     if (relevantTrades.length === 0) {
-        return <div className="text-xs text-slate-500 px-2 pb-4">관련 거래 기록이 없습니다.</div>;
+        return (
+            <div className="flex items-center justify-center py-8 text-xs text-slate-500">
+                관련 거래 기록이 없습니다.
+            </div>
+        );
     }
 
     return (
-        <table className="w-full border-collapse text-xs table-fixed">
-            <colgroup>
-                <col style={{ width: '100px' }} />
-                <col style={{ width: '80px' }} />
-                <col style={{ width: '60px' }} />
-                <col />
-            </colgroup>
-            <thead className="sticky top-0 z-10">
-                <tr>
-                    <th className={`${thClass} text-center`}>거래 일자</th>
-                    <th className={`${thClass} text-center border-l border-slate-600`}>유형</th>
-                    <th className={`${thClass} text-center border-l border-slate-600`}>방향</th>
-                    <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>내용</th>
-                </tr>
-            </thead>
-            <tbody>
-                {relevantTrades.map((t, i) => (
-                    <tr key={i} className="hover:bg-slate-800/40">
-                        <td className={`${tdClass} text-center text-slate-400`}>{t.date}</td>
-                        <td className={`${tdClass} text-center border-l border-slate-600 text-slate-300`}>{t.type}</td>
-                        <td className={`${tdClass} text-center border-l border-slate-600 font-bold ${
-                            t.direction === 'in' ? 'text-emerald-400' : t.direction === 'out' ? 'text-red-400/70' : 'text-amber-400/70'
-                        }`}>
-                            {t.direction === 'in' ? '획득' : t.direction === 'out' ? '양도' : '스왑'}
-                        </td>
-                        <td className={`${tdClass} text-left border-l border-slate-600 pl-3 text-slate-300`}>{t.description}</td>
+        <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs table-fixed">
+                <colgroup>
+                    <col style={{ width: '100px' }} />
+                    <col style={{ width: '80px' }} />
+                    <col style={{ width: '60px' }} />
+                    <col />
+                </colgroup>
+                <thead className="sticky top-0 z-10">
+                    <tr>
+                        <th className={`${thClass} text-center`}>거래 일자</th>
+                        <th className={`${thClass} text-center border-l border-slate-600`}>유형</th>
+                        <th className={`${thClass} text-center border-l border-slate-600`}>방향</th>
+                        <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>내용</th>
                     </tr>
-                ))}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {relevantTrades.map((t, i) => (
+                        <tr key={i} className="hover:bg-slate-800/40">
+                            <td className={`${tdClass} text-center text-slate-400`}>{t.date}</td>
+                            <td className={`${tdClass} text-center border-l border-slate-600 text-slate-300`}>{t.type}</td>
+                            <td className={`${tdClass} text-center border-l border-slate-600 font-bold ${
+                                t.direction === 'in' ? 'text-emerald-400' : t.direction === 'out' ? 'text-red-400/70' : 'text-amber-400/70'
+                            }`}>
+                                {t.direction === 'in' ? '획득' : t.direction === 'out' ? '양도' : '스왑'}
+                            </td>
+                            <td className={`${tdClass} text-left border-l border-slate-600 pl-3 text-slate-300`}>{t.description}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 };
 
@@ -127,7 +139,8 @@ export const PickTradeHistory: React.FC<{ myTeamId: string }> = ({ myTeamId }) =
 export const DraftPicksPanel: React.FC<{
     teamId: string;
     leaguePickAssets?: LeaguePickAssets | null;
-}> = ({ teamId, leaguePickAssets }) => {
+    primaryColor?: string;
+}> = ({ teamId, leaguePickAssets, primaryColor = '#4f46e5' }) => {
     const myPicks = leaguePickAssets?.[teamId] ?? [];
 
     // season-round → pick[] 매핑 (복수 픽 지원)
@@ -265,86 +278,94 @@ export const DraftPicksPanel: React.FC<{
     }, [pickMap, tradedAwayMap, teamId]);
 
     return (
-        <div className="animate-in fade-in duration-500 border-b-2 border-b-slate-500">
-            <table className="w-full border-collapse text-xs table-fixed">
-                <colgroup>
-                    <col style={{ width: '90px' }} />
-                    <col style={{ width: '130px' }} />
-                    <col />
-                    <col style={{ width: '130px' }} />
-                    <col />
-                </colgroup>
-                <thead className="sticky top-0 z-10">
-                    <tr>
-                        <th className={`${thClass} text-center`}>시즌</th>
-                        <th className={`${thClass} text-center border-l border-slate-600`}>1라운드</th>
-                        <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
-                        <th className={`${thClass} text-center border-l border-slate-600`}>2라운드</th>
-                        <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {seasonRows.map(({ season, r1Entries, r2Entries, rowCount }) =>
-                        Array.from({ length: rowCount }, (_, rowIdx) => {
-                            const r1 = r1Entries[rowIdx];
-                            const r2 = r2Entries[rowIdx];
-                            const isFirstRow = rowIdx === 0;
-                            const borderClass = rowIdx < rowCount - 1 ? 'border-b border-slate-700/30' : 'border-b border-slate-700/60';
+        <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
+            {/* ① 드래프트 픽 현황 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="드래프트 픽 현황" primaryColor={primaryColor} />
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs table-fixed">
+                        <colgroup>
+                            <col style={{ width: '90px' }} />
+                            <col style={{ width: '130px' }} />
+                            <col />
+                            <col style={{ width: '130px' }} />
+                            <col />
+                        </colgroup>
+                        <thead className="sticky top-0 z-10">
+                            <tr>
+                                <th className={`${thClass} text-center`}>시즌</th>
+                                <th className={`${thClass} text-center border-l border-slate-600`}>1라운드</th>
+                                <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
+                                <th className={`${thClass} text-center border-l border-slate-600`}>2라운드</th>
+                                <th className={`${thClass} text-left border-l border-slate-600 pl-3`}>비고</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {seasonRows.map(({ season, r1Entries, r2Entries, rowCount }) =>
+                                Array.from({ length: rowCount }, (_, rowIdx) => {
+                                    const r1 = r1Entries[rowIdx];
+                                    const r2 = r2Entries[rowIdx];
+                                    const isFirstRow = rowIdx === 0;
+                                    const borderClass = rowIdx < rowCount - 1 ? 'border-b border-slate-700/30' : 'border-b border-slate-700/60';
 
-                            return (
-                                <tr key={`${season}-${rowIdx}`} className="hover:bg-slate-800/40">
-                                    {isFirstRow && (
-                                        <td
-                                            rowSpan={rowCount}
-                                            className={`${tdClass} text-center font-bold text-slate-200 bg-slate-800 border-b border-slate-700/60`}
-                                        >
-                                            {season}-{String(season + 1).slice(-2)}
-                                        </td>
-                                    )}
-                                    {r1 ? (
-                                        <>
-                                            <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r1.color}`}>
-                                                {r1.label}
-                                            </td>
-                                            <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
-                                                {r1.notes.map((note, i) => (
-                                                    <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
-                                                ))}
-                                            </td>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
-                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
-                                        </>
-                                    )}
-                                    {r2 ? (
-                                        <>
-                                            <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r2.color}`}>
-                                                {r2.label}
-                                            </td>
-                                            <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
-                                                {r2.notes.map((note, i) => (
-                                                    <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
-                                                ))}
-                                            </td>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
-                                            <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
-                                        </>
-                                    )}
-                                </tr>
-                            );
-                        })
-                    )}
-                </tbody>
-            </table>
+                                    return (
+                                        <tr key={`${season}-${rowIdx}`} className="hover:bg-slate-800/40">
+                                            {isFirstRow && (
+                                                <td
+                                                    rowSpan={rowCount}
+                                                    className={`${tdClass} text-center font-bold text-slate-200 bg-slate-800 border-b border-slate-700/60`}
+                                                >
+                                                    {season}-{String(season + 1).slice(-2)}
+                                                </td>
+                                            )}
+                                            {r1 ? (
+                                                <>
+                                                    <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r1.color}`}>
+                                                        {r1.label}
+                                                    </td>
+                                                    <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
+                                                        {r1.notes.map((note, i) => (
+                                                            <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
+                                                        ))}
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                                    <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                                </>
+                                            )}
+                                            {r2 ? (
+                                                <>
+                                                    <td className={`py-1.5 px-2 text-xs text-center ${borderClass} border-l border-slate-600 ${r2.color}`}>
+                                                        {r2.label}
+                                                    </td>
+                                                    <td className={`py-1.5 px-2 text-left ${borderClass} border-l border-slate-600 pl-3`}>
+                                                        {r2.notes.map((note, i) => (
+                                                            <div key={i} className="text-xs text-slate-100 leading-tight">{note}</div>
+                                                        ))}
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                                    <td className={`py-1.5 px-2 ${borderClass} border-l border-slate-600`} />
+                                                </>
+                                            )}
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-            {/* ── 드래프트 픽 거래 기록 ── */}
-            <h3 className="text-sm font-bold text-slate-300 mt-6 mb-2 px-2">거래 기록</h3>
-            <PickTradeHistory myTeamId={teamId} />
+            {/* ② 거래 기록 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="거래 기록" primaryColor={primaryColor} />
+                <PickTradeHistory myTeamId={teamId} />
+            </div>
         </div>
     );
 };
