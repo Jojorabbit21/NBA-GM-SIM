@@ -1,6 +1,20 @@
 
 // Shared team color theme logic (used by Sidebar + DashboardHeader)
 
+// 사이드바 비선택 아이콘 색상 (Figma 기준)
+export const SIDEBAR_ICON_COLORS: Record<string, string> = {
+    'atl': '#FDB927', 'bos': '#BA9653', 'bkn': '#C6CED4',
+    'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#BC945C',
+    'dal': '#BBC4CA', 'den': '#FEC524', 'det': '#FFFFFF',
+    'gs':  '#FDB927', 'hou': '#FFFFFF', 'ind': '#FDBB30',
+    'law': '#C8102E', 'lam': '#FDB927', 'mem': '#FFFFFF',
+    'mia': '#F9A01B', 'mil': '#EEE1C6', 'min': '#79BC43',
+    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#FFFFFF',
+    'orl': '#FFFFFF', 'phi': '#C8102E', 'phx': '#E56020',
+    'por': '#FFFFFF', 'sac': '#FFFFFF', 'sa':  '#C4CED4',
+    'tor': '#FFFFFF', 'uta': '#7BA4DB', 'was': '#C4CED4',
+};
+
 export interface TeamTheme {
     bg: string;
     text: string;
@@ -24,54 +38,47 @@ function isLightColor(hex: string): boolean {
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
-// 팀별 버튼 색상 오버라이드 — 키('primary'|'secondary'|'text') 또는 '#hex' 직접 지정
-type ColorRef = 'primary' | 'secondary' | 'text' | `#${string}`;
+// 팀별 버튼 색상 오버라이드 — 기본값: bg=primary, text=white, glow=primary
+type ColorRef = 'primary' | 'secondary' | 'tertiary' | 'text' | `#${string}`;
 const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>> = {
-    // secondary가 black/near-black → text(흰) 배경 + primary 글로우
-    'atl': { bg: 'text', text: 'primary', glow: 'text' },
-    'bos': { bg: 'text', text: 'primary', glow: 'text' },
-    'cha': { bg: 'text', text: 'primary', glow: 'text' },
-    'chi': { bg: 'text', text: 'primary', glow: 'text' },
+    // Gold/bronze secondary as button bg
     'cle': { bg: 'secondary', text: '#000000', glow: 'secondary' },
-    'hou': { bg: 'text', text: 'primary', glow: 'text' },
-    'por': { bg: 'text', text: 'primary', glow: 'primary' },
-    // BG_SEC_ACCENT_TEXT: header bg=secondary → primary 버튼
-    'det': { bg: 'primary', text: 'text', glow: 'primary' },
     'ind': { bg: 'secondary', text: '#000000', glow: 'secondary' },
-    'mia': { bg: '#000000', text: 'secondary', glow: 'secondary' },
-    'mil': { bg: '#0057B7', text: 'text', glow: '#0057B7'},
-    'nyk': { bg: 'secondary', text: 'text', glow: 'secondary'},
-    'orl': { bg: '#FFFFFF', text: 'primary', glow: '#FFFFFF'},
-    'phi': { glow: 'secondary'},
-    'tor': { bg: '#753BBD', text: 'text', glow: '#753BBD' },
-    'dal': { bg: 'text', text: 'primary', glow: 'primary'},
-    'den': { bg: 'text', text: 'primary', glow: 'text'},
-    'gs': { bg: '#FFFFFF', text: 'primary', glow: 'primary'},
-    // INVERTED: header bg=secondary → primary 대비
-    'law': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
-    'min': { bg: '#78BE21', text: 'text', glow: '#78BE21' },
-    'sa': { bg: 'secondary', text: 'primary', glow: 'secondary' },
-    'sac': { bg: 'text', text: 'primary', glow: 'primary' },
-    // secondary 너무 어두워 글로우 안 보임
-    'mem': { bg: 'text', text: 'secondary', glow: 'primary' },
-    // secondary가 white → 글로우를 text로
-    'bkn': { glow: 'text' },
+    'no':  { bg: 'secondary', text: 'primary', glow: 'secondary' },
+    'nyk': { bg: 'secondary', text: 'text',    glow: 'secondary' },
+    // Secondary as button bg
+    'law': { bg: 'secondary', text: 'text',    glow: 'secondary' },
+    'phi': { bg: 'secondary', text: 'text',    glow: 'secondary' },
+    'phx': { bg: 'secondary', text: 'text',    glow: 'secondary' },
+    // Black primary → use silver secondary for visibility
+    'bkn': { bg: 'secondary', text: 'primary', glow: 'secondary' },
+    'sa':  { bg: 'secondary', text: 'primary', glow: 'secondary' },
+    // Tertiary as button bg
+    'min': { bg: 'tertiary',  text: 'text',    glow: 'tertiary'  },
+    'tor': { bg: '#753BBD',   text: 'text',    glow: '#753BBD'   },
+    // Gold/accent text on primary bg
+    'den': { text: 'tertiary' },
+    'gs':  { text: 'secondary' },
+    'lam': { text: 'secondary' },
+    'mia': { text: 'tertiary' },
 };
 
 export function getButtonTheme(
     teamId: string | null,
-    colors: { primary: string; secondary: string; text: string } | null
+    colors: { primary: string; secondary: string; tertiary?: string; text: string } | null
 ): ButtonTheme {
-    const c = colors || DEFAULT_COLORS;
-    const light = isLightColor(c.secondary);
+    const c = colors || { ...DEFAULT_COLORS, tertiary: undefined };
     const defaults: ButtonTheme = {
-        bg: c.secondary,
-        text: light ? c.primary : '#FFFFFF',
-        glow: light ? c.primary : c.secondary,
+        bg: c.primary,
+        text: '#FFFFFF',
+        glow: c.primary,
     };
     const o = teamId ? BTN_OVERRIDES[teamId] : undefined;
     if (!o) return defaults;
-    const r = (ref: ColorRef) => ref.startsWith('#') ? ref : c[ref as keyof typeof c];
+    const r = (ref: ColorRef): string => {
+        if (ref.startsWith('#')) return ref;
+        return (c as Record<string, string | undefined>)[ref] ?? '#FFFFFF';
+    };
     return {
         bg: o.bg ? r(o.bg) : defaults.bg,
         text: o.text ? r(o.text) : defaults.text,
@@ -100,17 +107,17 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     'sac': { accent: 'text' },
     'uta': { accent: 'text' },
     'was': { accent: 'text' },
-    // bg → secondary, accent → text
-    'det': { bg: 'secondary', accent: 'text' },
-    'tor': { bg: 'secondary', accent: 'text' },
+    // accent → text (continued)
+    'det': { accent: 'text' },
+    'tor': { accent: 'text' },
     // text → secondary
     'mem': { text: 'text' },
-    'nyk': { text: 'text'},
+    'nyk': { text: 'text' },
     'okc': { text: 'text', accent: 'text' },
-    // inverted
-    'law': { bg: 'secondary', text: 'text', accent: 'text' },
-    'min': { bg: 'primary', text: 'text', accent: '#78BE21' },
-    'sa': { bg: 'primary', text: 'text', accent: 'text' },
+    // misc
+    'law': { accent: 'text' },
+    'min': { accent: '#79BC43' },
+    'sa':  { accent: 'text' },
 };
 
 export function getTeamTheme(

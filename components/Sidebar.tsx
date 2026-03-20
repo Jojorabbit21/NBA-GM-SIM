@@ -13,7 +13,7 @@ import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 
 import { LegalModal } from './LegalModal';
-import { getTeamTheme } from '../utils/teamTheme';
+import { getTeamTheme, SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -38,19 +38,20 @@ const NavItem: React.FC<{
   onClick: () => void;
   badge?: number;
   textBadge?: string;
-}> = ({ active, icon, label, onClick, badge, textBadge }) => (
+  iconColor: string;
+  activeBg: string;
+}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeBg }) => (
   <button
     onClick={onClick}
     title={label}
     className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 outline outline-2 outline-transparent ${
-      active
-        ? 'bg-black/35'
-        : 'hover:bg-black/15 hover:outline-black/25'
+      active ? '' : 'hover:bg-black/15 hover:outline-black/25'
     }`}
+    style={active ? { backgroundColor: activeBg } : undefined}
   >
     {React.cloneElement(icon as React.ReactElement<any>, {
       size: 24,
-      color: 'white',
+      color: active ? '#ffffff' : iconColor,
     })}
     {badge !== undefined && badge > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
@@ -88,6 +89,24 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
 
+  // 사이드바 배경: 항상 팀 primary 색 (Figma 기준)
+  const sidebarBg = teamStatic?.colors?.primary ?? '#0f172a';
+
+  // 비선택 아이콘: Figma SIDEBAR_ICON_COLORS 기준
+  const iconColor = team ? (SIDEBAR_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
+
+  // 선택 버튼 배경: tertiary 우선, 없으면 배경 밝기로 계산
+  const activeBg = teamStatic?.colors?.tertiary ?? (() => {
+    const hex = sidebarBg.replace('#', '');
+    if (hex.length < 6) return '#000000';
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) < 60
+      ? 'rgba(255,255,255,0.2)'
+      : '#000000';
+  })();
+
   // 프로필 드롭다운 외부 클릭 닫기
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -100,17 +119,30 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     return () => document.removeEventListener('mousedown', handler);
   }, [isMenuOpen]);
 
+  // NavItem 래퍼 — iconColor/activeBg 자동 주입
+  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeBg'>) => (
+    <NavItem {...props} iconColor={iconColor} activeBg={activeBg} />
+  );
+
   return (
     <>
       <aside
-        className="w-20 shrink-0 flex flex-col h-screen z-20 relative"
+        className="w-20 shrink-0 flex flex-col h-screen z-20 relative overflow-hidden"
         style={{
-          backgroundColor: theme.bg,
+          backgroundColor: sidebarBg,
           borderRight: '1px solid rgba(255,255,255,0.2)',
         }}
       >
+        {/* 20% 불투명도 그라디언트 오버레이 */}
+        <div
+          className="absolute inset-0 pointer-events-none z-0"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.20) 0%, transparent 55%, rgba(0,0,0,0.15) 100%)',
+          }}
+        />
+
         {/* 메인 네비게이션 */}
-        <nav className="flex-1 flex flex-col gap-2 px-5 pt-4 pb-2">
+        <nav className="flex-1 flex flex-col gap-2 px-5 pt-4 pb-2 relative z-10">
           {/* 오프시즌 이벤트 버튼 */}
           {pendingOffseasonAction && (() => {
             const cfg = pendingOffseasonAction === 'lottery'
@@ -128,28 +160,28 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             );
           })()}
 
-          <NavItem active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
-          <NavItem active={pathname.startsWith('/inbox')} icon={<Mail />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
-          <NavItem active={pathname.startsWith('/front-office')} icon={<Briefcase />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
-          <NavItem active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/dashboard')} />
-          <NavItem active={pathname.startsWith('/standings')} icon={<Trophy />} label="순위표" onClick={() => navigate('/standings')} />
-          <NavItem active={pathname.startsWith('/leaderboard')} icon={<BarChart3 />} label="리더보드" onClick={() => navigate('/leaderboard')} />
-          <NavItem active={pathname.startsWith('/fa-market')} icon={<Users />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
-          <NavItem active={pathname.startsWith('/schedule')} icon={<CalendarIcon />} label="리그 일정" onClick={() => navigate('/schedule')} />
+          <Nav active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
+          <Nav active={pathname.startsWith('/inbox')} icon={<Mail />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
+          <Nav active={pathname.startsWith('/front-office')} icon={<Briefcase />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
+          <Nav active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/dashboard')} />
+          <Nav active={pathname.startsWith('/standings')} icon={<Trophy />} label="순위표" onClick={() => navigate('/standings')} />
+          <Nav active={pathname.startsWith('/leaderboard')} icon={<BarChart3 />} label="리더보드" onClick={() => navigate('/leaderboard')} />
+          <Nav active={pathname.startsWith('/fa-market')} icon={<Users />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
+          <Nav active={pathname.startsWith('/schedule')} icon={<CalendarIcon />} label="리그 일정" onClick={() => navigate('/schedule')} />
           {isRegularSeasonOver && (
-            <NavItem active={pathname.startsWith('/playoffs')} icon={<Swords />} label="플레이오프" onClick={() => navigate('/playoffs')} />
+            <Nav active={pathname.startsWith('/playoffs')} icon={<Swords />} label="플레이오프" onClick={() => navigate('/playoffs')} />
           )}
-          <NavItem active={false} icon={<SlidersHorizontal />} label="전술 (준비 중)" onClick={() => {}} />
-          <NavItem active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
-          <NavItem active={false} icon={<Dumbbell />} label="훈련 (준비 중)" onClick={() => {}} />
+          <Nav active={false} icon={<SlidersHorizontal />} label="전술 (준비 중)" onClick={() => {}} />
+          <Nav active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
+          <Nav active={false} icon={<Dumbbell />} label="훈련 (준비 중)" onClick={() => {}} />
           {hasProspects && (
-            <NavItem active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
+            <Nav active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
           )}
         </nav>
 
         {/* 하단 프로필/설정 영역 */}
         <div
-          className="flex flex-col gap-6 px-5 py-6 shrink-0"
+          className="flex flex-col gap-6 px-5 py-6 shrink-0 relative z-10"
           style={{ background: 'rgba(0,0,0,0.15)' }}
         >
           {/* 프로필 버튼 (드롭다운 위 방향 오픈) */}
@@ -157,13 +189,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             <button
               onClick={() => setIsMenuOpen(prev => !prev)}
               title={userEmail || '프로필'}
-              className={`w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 ${
-                isMenuOpen
-                  ? 'bg-black/35'
-                  : 'hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25'
+              className={`w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 outline outline-2 outline-transparent ${
+                isMenuOpen ? '' : 'hover:bg-black/15 hover:outline-black/25'
               }`}
+              style={isMenuOpen ? { backgroundColor: activeBg } : undefined}
             >
-              <User size={24} color="white" />
+              <User size={24} color={isMenuOpen ? '#ffffff' : iconColor} />
             </button>
 
             {/* 드롭다운 — 위쪽 방향 */}
@@ -243,9 +274,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           <button
             onClick={onSimSettingsClick}
             title="시뮬레이션 설정"
-            className="w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25"
+            className="w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 outline outline-2 outline-transparent hover:bg-black/15 hover:outline-black/25"
           >
-            <Settings size={24} color="white" />
+            <Settings size={24} color={iconColor} />
           </button>
         </div>
       </aside>

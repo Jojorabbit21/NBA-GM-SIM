@@ -169,7 +169,7 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     return (
         <div
             ref={dropdownRef}
-            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden"
+            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden custom-scrollbar-hide"
             style={{
                 border: '1px solid #475569',
                 borderRadius: '8px',

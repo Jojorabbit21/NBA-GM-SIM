@@ -151,11 +151,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
 
     const showDropdown = isOpen && query.trim().length > 0;
 
-    // 피그마 시안: 기본(#374151 bg, #4b5563 border), 호버(dashed border 변경), 포커스(인디고 border)
     const borderStyle = isFocused
         ? '2px solid #6366f1'
         : isHovered
-        ? '2px dashed #6366f1'
+        ? '2px solid #6366f1'
         : '2px solid #475569';
 
     return (

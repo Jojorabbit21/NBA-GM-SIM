@@ -258,7 +258,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             className={`rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden ${
               isGameToday
                 ? 'flex items-center justify-between h-9'
-                : 'flex items-center h-[60px] px-3'
+                : 'flex items-center justify-center h-[60px] px-3'
             }`}
             style={{
               ...mainBtnStyle('sim'),

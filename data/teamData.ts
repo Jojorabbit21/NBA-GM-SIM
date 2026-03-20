@@ -9,42 +9,43 @@ export interface TeamStaticData {
     colors: {
         primary: string;
         secondary: string;
+        tertiary?: string; // selected button bg (sidebar)
         text: string;
     };
 }
 
-// ── Team Colors (DB에 없으므로 클라이언트 static) ──
-export const TEAM_COLORS: Record<string, { primary: string; secondary: string; text: string }> = {
-    'atl': { primary: '#C8102E', secondary: '#FDB927', text: '#FFFFFF' },
+// ── Team Colors (Figma tokens 기준) ──
+export const TEAM_COLORS: Record<string, { primary: string; secondary: string; tertiary?: string; text: string }> = {
+    'atl': { primary: '#C8102E', secondary: '#FDB927', tertiary: '#000000', text: '#FFFFFF' },
     'bos': { primary: '#007A33', secondary: '#BA9653', text: '#FFFFFF' },
-    'bkn': { primary: '#000000', secondary: '#FFFFFF', text: '#FFFFFF' },
+    'bkn': { primary: '#000000', secondary: '#C6CED4', text: '#FFFFFF' },
     'cha': { primary: '#00788C', secondary: '#1D1160', text: '#FFFFFF' },
-    'chi': { primary: '#BA0C2F', secondary: '#000000', text: '#FFFFFF' },
-    'cle': { primary: '#6F263D', secondary: '#B9975B', text: '#FFFFFF' },
-    'dal': { primary: '#0050B5', secondary: '#9EA2A2', text: '#FFFFFF' },
-    'den': { primary: '#0E2240', secondary: '#8B2131', text: '#FEC524' },
-    'det': { primary: '#C8102E', secondary: '#1D42BA', text: '#FFFFFF' },
-    'gs':  { primary: '#1D428A', secondary: '#FFC72C', text: '#FFFFFF' },
-    'hou': { primary: '#CE1141', secondary: '#000000', text: '#FFFFFF' },
-    'ind': { primary: '#0C2340', secondary: '#FFCD00', text: '#FFFFFF' },
-    'law': { primary: '#C8102E', secondary: '#0C2340', text: '#FFFFFF' },
-    'lam': { primary: '#552583', secondary: '#FDB927', text: '#FFC72C' },
+    'chi': { primary: '#CE1141', secondary: '#000000', tertiary: '#FFFFFF', text: '#FFFFFF' },
+    'cle': { primary: '#860038', secondary: '#BC945C', text: '#FFFFFF' },
+    'dal': { primary: '#0064B1', secondary: '#00285E', tertiary: '#BBC4CA', text: '#FFFFFF' },
+    'den': { primary: '#0E2240', secondary: '#FDB927', tertiary: '#FEC524', text: '#FFFFFF' },
+    'det': { primary: '#C8102E', secondary: '#1D428A', text: '#FFFFFF' },
+    'gs':  { primary: '#1D428A', secondary: '#FDB927', text: '#FFFFFF' },
+    'hou': { primary: '#CE1141', secondary: '#010101', text: '#FFFFFF' },
+    'ind': { primary: '#002D62', secondary: '#FDBB30', text: '#FFFFFF' },
+    'law': { primary: '#12173F', secondary: '#C8102E', text: '#FFFFFF' },
+    'lam': { primary: '#31006F', secondary: '#FDB927', text: '#FFFFFF' },
     'mem': { primary: '#5D76A9', secondary: '#12173F', text: '#FFFFFF' },
-    'mia': { primary: '#98002E', secondary: '#F9A01B', text: '#FFFFFF' },
+    'mia': { primary: '#98002E', secondary: '#010101', tertiary: '#F9A01B', text: '#FFFFFF' },
     'mil': { primary: '#00471B', secondary: '#EEE1C6', text: '#FFFFFF' },
-    'min': { primary: '#0C2340', secondary: '#236192', text: '#FFFFFF' },
-    'no':  { primary: '#0C2340', secondary: '#B9975B', text: '#FFFFFF' },
-    'nyk': { primary: '#006BB6', secondary: '#F58426', text: '#FFFFFF' },
-    'okc': { primary: '#0072CE', secondary: '#F9423A', text: '#FFFFFF' },
-    'orl': { primary: '#0050B5', secondary: '#9EA2A2', text: '#FFFFFF' },
-    'phi': { primary: '#1D4289', secondary: '#C8102E', text: '#FFFFFF' },
-    'phx': { primary: '#1D1160', secondary: '#E56020', text: '#FFFFFF' },
-    'por': { primary: '#C8102E', secondary: '#010101', text: '#FFFFFF' },
-    'sac': { primary: '#5A2D81', secondary: '#63727A', text: '#FFFFFF' },
-    'sa':  { primary: '#000000', secondary: '#C4CED4', text: '#FFFFFF' },
-    'tor': { primary: '#BA0C2F', secondary: '#000000', text: '#FFFFFF' },
-    'uta': { primary: '#4E008E', secondary: '#79A3DC', text: '#FFFFFF' },
-    'was': { primary: '#002B5C', secondary: '#E31837', text: '#FFFFFF' },
+    'min': { primary: '#0C233F', secondary: '#236192', tertiary: '#79BC43', text: '#FFFFFF' },
+    'no':  { primary: '#002B5C', secondary: '#B4975A', text: '#FFFFFF' },
+    'nyk': { primary: '#1D428A', secondary: '#F58426', text: '#FFFFFF' },
+    'okc': { primary: '#EF3B24', secondary: '#FFFFFF', text: '#FFFFFF' },
+    'orl': { primary: '#0050B5', secondary: '#9EA2A2', tertiary: '#9EA2A2', text: '#FFFFFF' },
+    'phi': { primary: '#1D428A', secondary: '#C8102E', text: '#FFFFFF' },
+    'phx': { primary: '#1D1160', secondary: '#E56020', tertiary: '#F9A01B', text: '#FFFFFF' },
+    'por': { primary: '#CF0A2C', secondary: '#010101', tertiary: '#FFFFFF', text: '#FFFFFF' },
+    'sac': { primary: '#5B2C81', secondary: '#63727A', text: '#FFFFFF' },
+    'sa':  { primary: '#010101', secondary: '#C4CED4', text: '#FFFFFF' },
+    'tor': { primary: '#CE1141', secondary: '#000000', text: '#FFFFFF' },
+    'uta': { primary: '#330072', secondary: '#7BA4DB', text: '#FFFFFF' },
+    'was': { primary: '#E31837', secondary: '#002B5C', tertiary: '#C4CED4', text: '#FFFFFF' },
 };
 
 const DEFAULT_COLORS = { primary: '#6366f1', secondary: '#818cf8', text: '#FFFFFF' };
