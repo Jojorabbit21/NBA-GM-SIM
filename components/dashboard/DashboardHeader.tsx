@@ -194,7 +194,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <div className="flex flex-col gap-1 text-left">
                 {/* 오늘 */}
                 <div className="flex items-center gap-4">
-                  <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
+                  <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
                     오늘 {formatDateShort(currentSimDate)}
                   </span>
                   <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
@@ -203,7 +203,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 </div>
                 {/* 내일 */}
                 <div className="flex items-center gap-4">
-                  <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
+                  <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
                     내일 {tomorrowDate ? formatDateShort(tomorrowDate) : ''}
                   </span>
                   <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
@@ -238,11 +238,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             onClick={onSimClick}
             disabled={isSimulating || isOffseasonBlocked}
             {...btnHandlers('sim')}
-            className={`rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden ${
-              isGameToday
-                ? 'flex items-center justify-between h-9'
-                : 'flex items-center justify-center h-[60px] px-3'
-            }`}
+            className="flex items-center justify-between h-[60px] rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden"
             style={{
               ...mainBtnStyle('sim'),
               border: '1px solid rgba(255,255,255,0.4)',
@@ -260,13 +256,16 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     ? <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
                     : mainBtnLabel}
                 </span>
-                <span className="flex items-center justify-center px-2 h-full">
+                <span
+                  className="flex items-center justify-center px-2 h-full"
+                  style={{ borderLeft: '1px solid white' }}
+                >
                   <ChevronRight size={20} color="white" />
                 </span>
               </>
             ) : (
-              /* Case A: 날짜 이동 — 단순 텍스트 */
-              <span className="flex items-center gap-2 text-base font-semibold text-white whitespace-nowrap">
+              /* Case A: 날짜 이동 — 단순 텍스트 (전체 너비 중앙 정렬) */
+              <span className="flex items-center justify-center gap-2 text-base font-semibold text-white whitespace-nowrap w-full">
                 {(simProgress || isSimulating)
                   ? <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
                   : mainBtnLabel}

@@ -59,26 +59,15 @@ interface DateSkipDropdownProps {
     upcomingGames?: UpcomingGame[];
 }
 
-/** 공통 아이템 행 배경 스타일 */
-const ITEM_BG = {
-    backgroundImage: [
-        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
-        'linear-gradient(90deg, #1e293b 0%, #1e293b 100%)',
-    ].join(', '),
-} as React.CSSProperties;
+/** 공통 아이템 행 배경 */
+const ITEM_BG = { background: '#0f172a' } as React.CSSProperties;
 
-/** 오늘 경기 강조 배경 스타일 */
-const ITEM_BG_TODAY = {
-    backgroundImage: [
-        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
-        'linear-gradient(90deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.15) 100%)',
-        'linear-gradient(90deg, #1e293b 0%, #1e293b 100%)',
-    ].join(', '),
-} as React.CSSProperties;
+/** 오늘 경기 강조 배경 */
+const ITEM_BG_TODAY = { background: 'rgba(52,211,153,0.08)' } as React.CSSProperties;
 
-/** 4px 구분선 */
+/** 구분선 */
 const Separator = () => (
-    <div style={{ height: '4px', background: '#475569', flexShrink: 0 }} />
+    <div style={{ height: '1px', background: '#334155', flexShrink: 0 }} />
 );
 
 /** 아이템 행 (날짜 좌 / 텍스트 우) */
@@ -169,28 +158,21 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     return (
         <div
             ref={dropdownRef}
-            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden custom-scrollbar-hide"
+            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden"
             style={{
-                border: '1px solid #475569',
-                borderRadius: '8px',
-                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                background: '#0f172a',
+                border: '1px solid #334155',
+                borderRadius: '10px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
                 minWidth: '270px',
                 maxHeight: 'calc(100vh - 140px)',
                 overflowY: 'auto',
             }}
         >
             {/* 헤더 */}
-            <div
-                className="px-4 py-1.5 shrink-0 sticky top-0 z-10"
-                style={{
-                    backgroundImage: [
-                        'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(83,83,83,0.04) 100%)',
-                        'linear-gradient(90deg, #475569 0%, #475569 100%)',
-                    ].join(', '),
-                }}
-            >
-                <span className="text-xs font-semibold text-white whitespace-nowrap">
-                    자동으로 시뮬레이션할 날짜 선택
+            <div className="px-4 py-2 shrink-0 sticky top-0 z-10" style={{ background: '#1e293b', borderBottom: '1px solid #334155' }}>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                    날짜 이동
                 </span>
             </div>
 

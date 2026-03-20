@@ -151,22 +151,16 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
 
     const showDropdown = isOpen && query.trim().length > 0;
 
-    const borderStyle = isFocused
-        ? '2px solid #6366f1'
-        : isHovered
-        ? '2px solid #6366f1'
-        : '2px solid #475569';
+    const borderColor = isFocused || isHovered ? '#64748b' : '#334155';
 
     return (
         <div ref={containerRef} className="relative w-[398px]">
             <div
                 className="flex items-center justify-between px-6 py-3 rounded-2xl transition-all duration-200 cursor-text"
                 style={{
-                    background: isFocused ? '#0f172a' : '#334155',
-                    border: borderStyle,
-                    boxShadow: isFocused
-                        ? '0 0 16px 0 rgba(99,102,241,0.4)'
-                        : 'inset 0px 2px 4px rgba(0,0,0,0.06)',
+                    background: isFocused ? '#0f172a' : '#1e293b',
+                    border: `2px solid ${borderColor}`,
+                    boxShadow: 'inset 0px 2px 4px rgba(0,0,0,0.15)',
                 }}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
@@ -180,7 +174,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     onFocus={() => { setIsFocused(true); setIsOpen(true); }}
                     onBlur={() => setIsFocused(false)}
                     placeholder="팀, 선수, 코칭스태프 검색"
-                    className="bg-transparent border-none outline-none flex-1 text-sm font-bold text-gray-100 placeholder-gray-400 min-w-0"
+                    className="bg-transparent border-none outline-none flex-1 text-sm font-bold text-slate-100 placeholder-slate-500 min-w-0"
                 />
                 {query ? (
                     <button
@@ -197,11 +191,11 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
             {/* 결과 드롭다운 */}
             {showDropdown && (
                 <div
-                    className="absolute left-0 top-full mt-1 w-full rounded-lg overflow-hidden z-[200]"
+                    className="absolute left-0 top-full mt-1 w-full rounded-xl overflow-hidden z-[200]"
                     style={{
-                        background: '#1e293b',
+                        background: '#0f172a',
                         border: '1px solid #334155',
-                        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
                     }}
                 >
                     {grouped.length === 0 ? (
@@ -211,13 +205,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                             {grouped.map(group => (
                                 <div key={group.type}>
                                     {/* 카테고리 헤더 */}
-                                    <div
-                                        className="px-4 py-3"
-                                        style={{
-                                            backgroundImage: 'linear-gradient(rgba(127,127,127,0.04) 0%, rgba(254,254,254,0.06) 34.6%, rgba(0,0,0,0.04) 100%), linear-gradient(#334155, #334155)',
-                                        }}
-                                    >
-                                        <span className="text-sm font-semibold text-white">
+                                    <div className="px-4 py-2 bg-slate-800/80">
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                                             {CATEGORY_LABELS[group.type]}
                                         </span>
                                     </div>
@@ -225,7 +214,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                                         <button
                                             key={i}
                                             onClick={() => handleSelect(result)}
-                                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-500/20 transition-colors text-left"
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800 transition-colors text-left"
                                         >
                                             {result.type === 'team' && (
                                                 <>

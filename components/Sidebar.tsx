@@ -167,8 +167,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
           <Nav active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
           <Nav active={pathname.startsWith('/inbox')} icon={<Globe />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
+          <div className="mx-2 my-1 h-px" style={{ backgroundColor: iconColor, opacity: 0.25 }} />
           <Nav active={pathname.startsWith('/front-office')} icon={<Landmark />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
           <Nav active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/dashboard')} />
+          <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
+          <Nav active={false} icon={<TrafficCone />} label="훈련 (준비 중)" onClick={() => {}} />
+          <div className="mx-2 my-1 h-px" style={{ backgroundColor: iconColor, opacity: 0.25 }} />
           <Nav active={pathname.startsWith('/standings')} icon={<Table2 />} label="순위표" onClick={() => navigate('/standings')} />
           <Nav active={pathname.startsWith('/leaderboard')} icon={<PieChart />} label="리더보드" onClick={() => navigate('/leaderboard')} />
           <Nav active={pathname.startsWith('/fa-market')} icon={<Contact />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
@@ -176,9 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           {isRegularSeasonOver && (
             <Nav active={pathname.startsWith('/playoffs')} icon={<Trophy />} label="플레이오프" onClick={() => navigate('/playoffs')} />
           )}
-          <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
           <Nav active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
-          <Nav active={false} icon={<TrafficCone />} label="훈련 (준비 중)" onClick={() => {}} />
           {hasProspects && (
             <Nav active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
           )}
