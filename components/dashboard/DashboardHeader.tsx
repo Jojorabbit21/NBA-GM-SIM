@@ -191,25 +191,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 minWidth: '260px',
               }}
             >
-              <div className="flex flex-col gap-1 text-left">
-                {/* 오늘 */}
-                <div className="flex items-center gap-4">
-                  <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
-                    오늘 {formatDateShort(currentSimDate)}
-                  </span>
-                  <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
-                    {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
-                  </span>
-                </div>
-                {/* 내일 */}
-                <div className="flex items-center gap-4">
-                  <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
-                    내일 {tomorrowDate ? formatDateShort(tomorrowDate) : ''}
-                  </span>
-                  <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
-                    {tomorrowOpponentName ? `vs ${tomorrowOpponentName}` : '일정 없음'}
-                  </span>
-                </div>
+              <div className="flex items-center gap-4 text-left">
+                <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
+                  오늘 {formatDateShort(currentSimDate)}
+                </span>
+                <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
+                  {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
+                </span>
               </div>
               <div className="shrink-0 text-slate-400">
                 {isSkipDropdownOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}

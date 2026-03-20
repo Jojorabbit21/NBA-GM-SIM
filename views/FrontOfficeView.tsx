@@ -67,7 +67,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                 {/* Content */}
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {activeTab === 'club' && finData && finance && (
-                        <ClubTab finData={finData} finance={finance} team={team} teams={teams} myTeamId={myTeamId} />
+                        <ClubTab finData={finData} finance={finance} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'payroll' && (
                         <PayrollTab team={team} seasonShort={seasonShort} />
@@ -125,20 +125,44 @@ function getMarketingLabel(v: number): string {
     return '지역 사회에 환원';
 }
 
-// ── 구단 탭 (재정 현황 + 구단주 + 경기장 — 엑셀 그리드) ──
+// ── 구단 탭 공통 컴포넌트 ──
 const MONTH_LABELS: Record<string, string> = {
     '10': '10월', '11': '11월', '12': '12월',
     '01': '1월', '02': '2월', '03': '3월', '04': '4월',
 };
 
+const WidgetHeader: React.FC<{ title: string; primaryColor: string }> = ({ title, primaryColor }) => (
+    <div className="px-4 py-2 shrink-0" style={{ backgroundColor: primaryColor }}>
+        <span className="text-sm font-bold text-white">{title}</span>
+    </div>
+);
+
+const SubHeader: React.FC<{ label: string }> = ({ label }) => (
+    <div className="px-4 py-1 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-800 bg-slate-800/50">
+        {label}
+    </div>
+);
+
+const DataRow: React.FC<{
+    label: string;
+    value: React.ReactNode;
+    valueClass?: string;
+    indent?: boolean;
+}> = ({ label, value, valueClass = 'text-white', indent }) => (
+    <div className={`flex items-center justify-between py-1.5 text-xs border-b border-slate-800 last:border-0 ${indent ? 'pl-8 pr-4' : 'px-4'}`}>
+        <span className={indent ? 'text-slate-400' : 'text-slate-300'}>{label}</span>
+        <span className={`font-bold font-mono tabular-nums ${valueClass}`}>{value}</span>
+    </div>
+);
+
+// ── 구단 탭 ──
 const ClubTab: React.FC<{
     finData: (typeof TEAM_FINANCE_DATA)[string];
     finance: TeamFinance;
-    team: Team;
-    teams: Team[];
     myTeamId: string;
-}> = ({ finData, finance, team, teams, myTeamId }) => {
+}> = ({ finData, finance, myTeamId }) => {
     const { ownerProfile, market } = finData;
+    const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const tierLabels: Record<number, string> = { 1: '대도시', 2: '중대도시', 3: '중소도시', 4: '소도시' };
     const totalRevenue = Object.values(finance.revenue).reduce((s, v) => s + v, 0);
     const totalExpenses = Object.values(finance.expenses).reduce((s, v) => s + v, 0);
@@ -147,173 +171,97 @@ const ClubTab: React.FC<{
     const hasGames = attendanceStats.totalAttendance > 0;
     const monthKeys = Object.keys(attendanceStats.monthlyAttendance).sort();
 
-    const traitRows: { label: string; value: number; desc: string }[] = [
-        { label: '지출 의지', value: ownerProfile.spendingWillingness, desc: getSpendingLabel(ownerProfile.spendingWillingness) },
-        { label: '우승 의지', value: ownerProfile.winNowPriority, desc: getWinNowLabel(ownerProfile.winNowPriority) },
-        { label: '마케팅 중시', value: ownerProfile.marketingFocus, desc: getMarketingLabel(ownerProfile.marketingFocus) },
-        { label: '인내심', value: ownerProfile.patience, desc: getPatienceLabel(ownerProfile.patience) },
+    const traitRows = [
+        { label: '지출 의지', desc: getSpendingLabel(ownerProfile.spendingWillingness) },
+        { label: '우승 의지', desc: getWinNowLabel(ownerProfile.winNowPriority) },
+        { label: '마케팅 중시', desc: getMarketingLabel(ownerProfile.marketingFocus) },
+        { label: '인내심', desc: getPatienceLabel(ownerProfile.patience) },
     ];
 
-    // 우측 컬럼 border 클래스 (중앙 구분선 — 밝은 색)
-    const rL = "border-l-2 border-slate-400";
+    const occClass = (occ: number) =>
+        occ >= 0.85 ? 'text-emerald-400' : occ >= 0.70 ? 'text-yellow-400' : 'text-red-400';
 
     return (
-        <div className="border-b-2 border-b-slate-500">
-            <table className="w-full border-collapse text-xs">
-                <thead>
-                    <tr>
-                        <th colSpan={2} className={`${thClass} text-left`}>재정 현황</th>
-                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>구단주</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {/* Row 1: 시즌 예산 / 이름 */}
-                    <tr>
-                        <td className={`${tdClass} font-bold text-slate-200`}>시즌 예산</td>
-                        <td className={`${tdValClass} text-indigo-400 font-bold`}>{fmtFull(finance.budget)}</td>
-                        <td className={`${tdClass} ${rL}`}>이름</td>
-                        <td className={`${tdValClass} font-bold text-white`}>{ownerProfile.name}</td>
-                    </tr>
-                    {/* Row 2: 관중 입장료 / 순자산 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>관중 입장료</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.gate)}</td>
-                        <td className={`${tdClass} ${rL}`}>순자산</td>
-                        <td className={`${tdValClass} font-bold text-emerald-400`}>{fmtFullB(ownerProfile.netWorth)}</td>
-                    </tr>
-                    {/* Row 3: 중앙 방송 / 지출 의지 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>중앙 방송 분배금</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.broadcasting)}</td>
-                        <td className={`${tdClass} ${rL}`}>{traitRows[0].label}</td>
-                        <td className={`${tdValClass} font-bold text-indigo-400`}>{traitRows[0].desc}</td>
-                    </tr>
-                    {/* Row 4: 로컬 미디어 / 우승 의지 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>로컬 미디어</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.localMedia)}</td>
-                        <td className={`${tdClass} ${rL}`}>{traitRows[1].label}</td>
-                        <td className={`${tdValClass} font-bold text-indigo-400`}>{traitRows[1].desc}</td>
-                    </tr>
-                    {/* Row 5: 스폰서십 / 마케팅 중시 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>스폰서십</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.sponsorship)}</td>
-                        <td className={`${tdClass} ${rL}`}>{traitRows[2].label}</td>
-                        <td className={`${tdValClass} font-bold text-indigo-400`}>{traitRows[2].desc}</td>
-                    </tr>
-                    {/* Row 6: MD 판매 / 인내심 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>MD 판매</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.merchandise)}</td>
-                        <td className={`${tdClass} ${rL}`}>{traitRows[3].label}</td>
-                        <td className={`${tdValClass} font-bold text-indigo-400`}>{traitRows[3].desc}</td>
-                    </tr>
-                    {/* Row 7: 기타 / 경기장 헤더 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>기타</td>
-                        <td className={`${tdValClass} text-emerald-400`}>{fmtFull(finance.revenue.other)}</td>
-                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>경기장</th>
-                    </tr>
-                    {/* Row 8: 총 수익 / 경기장명 */}
-                    <tr>
-                        <td className={`${tdClass} font-bold`}>총 수익</td>
-                        <td className={`${tdValClass} text-emerald-400 font-bold`}>{fmtFull(totalRevenue)}</td>
-                        <td className={`${tdClass} ${rL}`}>경기장명</td>
-                        <td className={`${tdValClass} font-bold text-white`}>{market.arenaName}</td>
-                    </tr>
-                    {/* Row 9: 선수 연봉 / 좌석 수 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>선수 연봉</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.payroll)}</td>
-                        <td className={`${tdClass} ${rL}`}>좌석 수</td>
-                        <td className={`${tdValClass} font-bold`}>{market.arenaCapacity.toLocaleString()}석</td>
-                    </tr>
-                    {/* Row 10: 럭셔리 택스 / 평균 입장료 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>럭셔리 택스</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.luxuryTax)}</td>
-                        <td className={`${tdClass} ${rL}`}>평균 입장료</td>
-                        <td className={`${tdValClass} font-bold`}>${market.baseTicketPrice}</td>
-                    </tr>
-                    {/* Row 11: 경기장 운영비 / 연고지 헤더 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>경기장 운영비</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.operations)}</td>
-                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>연고지</th>
-                    </tr>
-                    {/* Row 12: 코칭 스태프 / 도시 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>코칭 스태프</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.coachSalary)}</td>
-                        <td className={`${tdClass} ${rL}`}>도시</td>
-                        <td className={`${tdValClass} font-bold text-white`}>{TEAM_DATA[myTeamId]?.city}</td>
-                    </tr>
-                    {/* Row 13: 스카우팅/선수 개발 / 광역 인구 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>스카우팅/선수 개발</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.scouting)}</td>
-                        <td className={`${tdClass} ${rL}`}>광역 인구</td>
-                        <td className={`${tdValClass} font-bold`}>{(market.metroPopulation * 10000).toLocaleString()}명</td>
-                    </tr>
-                    {/* Row 14: 마케팅/홍보 / 마켓 티어 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>마케팅/홍보</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.marketing)}</td>
-                        <td className={`${tdClass} ${rL}`}>마켓 티어</td>
-                        <td className={`${tdValClass} font-bold text-white`}>{tierLabels[market.marketTier]}</td>
-                    </tr>
-                    {/* Row 15: 일반 관리비 / 관중 통계 헤더 */}
-                    <tr>
-                        <td className={`${tdClass} pl-4 text-slate-400`}>일반 관리비</td>
-                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.administration)}</td>
-                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>관중 통계</th>
-                    </tr>
-                    {/* Row 16: 총 지출 / 시즌 총 관중 */}
-                    <tr>
-                        <td className={`${tdClass} font-bold`}>총 지출</td>
-                        <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
-                        <td className={`${tdClass} ${rL} text-slate-400`}>시즌 총 관중</td>
-                        <td className={`${tdValClass} font-bold text-white`}>
-                            {hasGames ? attendanceStats.totalAttendance.toLocaleString() + '명' : '-'}
-                        </td>
-                    </tr>
-                    {/* Row 17: 손익 / 경기당 평균 */}
-                    <tr>
-                        <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>손익</td>
-                        <td className={`${tdValClass} font-bold border-t border-slate-600 ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
-                        </td>
-                        <td className={`${tdClass} ${rL} text-slate-400`}>경기당 평균</td>
-                        <td className={`${tdValClass} font-bold text-white`}>
-                            {hasGames ? attendanceStats.averageAttendance.toLocaleString() + '명' : '-'}
-                        </td>
-                    </tr>
-                    {/* Row 18: (좌측 빈칸) / 평균 점유율 */}
-                    <tr>
-                        <td colSpan={2} className={`${tdClass}`} />
-                        <td className={`${tdClass} ${rL} text-slate-400`}>평균 점유율</td>
-                        <td className={`${tdValClass} font-bold ${hasGames ? (attendanceStats.averageOccupancy >= 0.85 ? 'text-emerald-400' : attendanceStats.averageOccupancy >= 0.70 ? 'text-yellow-400' : 'text-red-400') : 'text-white'}`}>
-                            {hasGames ? (attendanceStats.averageOccupancy * 100).toFixed(1) + '%' : '-'}
-                        </td>
-                    </tr>
-                    {/* 월별 관중 추이 (우측) */}
-                    {monthKeys.map((mk) => {
+        <div className="p-4 flex gap-4 items-start">
+            {/* 좌 컬럼: 재정 현황 */}
+            <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="재정 현황" primaryColor={primaryColor} />
+                <DataRow label="시즌 예산" value={fmtFull(finance.budget)} valueClass="text-indigo-400" />
+                <SubHeader label="수익" />
+                <DataRow label="관중 입장료" value={fmtFull(finance.revenue.gate)} valueClass="text-emerald-400" indent />
+                <DataRow label="중앙 방송 분배금" value={fmtFull(finance.revenue.broadcasting)} valueClass="text-emerald-400" indent />
+                <DataRow label="로컬 미디어" value={fmtFull(finance.revenue.localMedia)} valueClass="text-emerald-400" indent />
+                <DataRow label="스폰서십" value={fmtFull(finance.revenue.sponsorship)} valueClass="text-emerald-400" indent />
+                <DataRow label="MD 판매" value={fmtFull(finance.revenue.merchandise)} valueClass="text-emerald-400" indent />
+                <DataRow label="기타" value={fmtFull(finance.revenue.other)} valueClass="text-emerald-400" indent />
+                <DataRow label="총 수익" value={fmtFull(totalRevenue)} valueClass="text-emerald-400" />
+                <SubHeader label="지출" />
+                <DataRow label="선수 연봉" value={fmtFull(finance.expenses.payroll)} valueClass="text-red-400" indent />
+                <DataRow label="럭셔리 택스" value={fmtFull(finance.expenses.luxuryTax)} valueClass="text-red-400" indent />
+                <DataRow label="경기장 운영비" value={fmtFull(finance.expenses.operations)} valueClass="text-red-400" indent />
+                <DataRow label="코칭 스태프" value={fmtFull(finance.expenses.coachSalary)} valueClass="text-red-400" indent />
+                <DataRow label="스카우팅/선수 개발" value={fmtFull(finance.expenses.scouting)} valueClass="text-red-400" indent />
+                <DataRow label="마케팅/홍보" value={fmtFull(finance.expenses.marketing)} valueClass="text-red-400" indent />
+                <DataRow label="일반 관리비" value={fmtFull(finance.expenses.administration)} valueClass="text-red-400" indent />
+                <DataRow label="총 지출" value={fmtFull(totalExpenses)} valueClass="text-red-400" />
+                <DataRow
+                    label="손익"
+                    value={`${finance.operatingIncome >= 0 ? '+' : ''}${fmtFull(finance.operatingIncome)}`}
+                    valueClass={finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                />
+            </div>
+
+            {/* 우 컬럼: 구단주 + 경기장 + 연고지 + 관중 통계 */}
+            <div className="w-[280px] shrink-0 flex flex-col gap-4">
+                {/* 구단주 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="구단주" primaryColor={primaryColor} />
+                    <DataRow label="이름" value={ownerProfile.name} />
+                    <DataRow label="순자산" value={fmtFullB(ownerProfile.netWorth)} valueClass="text-emerald-400" />
+                    {traitRows.map(r => (
+                        <DataRow key={r.label} label={r.label} value={r.desc} valueClass="text-indigo-400" />
+                    ))}
+                </div>
+
+                {/* 경기장 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="경기장" primaryColor={primaryColor} />
+                    <DataRow label="경기장명" value={market.arenaName} />
+                    <DataRow label="좌석 수" value={`${market.arenaCapacity.toLocaleString()}석`} />
+                    <DataRow label="평균 입장료" value={`$${market.baseTicketPrice}`} />
+                </div>
+
+                {/* 연고지 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="연고지" primaryColor={primaryColor} />
+                    <DataRow label="도시" value={TEAM_DATA[myTeamId]?.city ?? ''} />
+                    <DataRow label="광역 인구" value={`${(market.metroPopulation * 10000).toLocaleString()}명`} />
+                    <DataRow label="마켓 티어" value={tierLabels[market.marketTier] ?? ''} />
+                </div>
+
+                {/* 관중 통계 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="관중 통계" primaryColor={primaryColor} />
+                    <DataRow label="시즌 총 관중" value={hasGames ? `${attendanceStats.totalAttendance.toLocaleString()}명` : '-'} />
+                    <DataRow label="경기당 평균" value={hasGames ? `${attendanceStats.averageAttendance.toLocaleString()}명` : '-'} />
+                    <DataRow
+                        label="평균 점유율"
+                        value={hasGames ? `${(attendanceStats.averageOccupancy * 100).toFixed(1)}%` : '-'}
+                        valueClass={hasGames ? occClass(attendanceStats.averageOccupancy) : 'text-white'}
+                    />
+                    {monthKeys.map(mk => {
                         const m = attendanceStats.monthlyAttendance[mk];
                         const avg = Math.round(m.total / m.games);
                         const occ = avg / market.arenaCapacity;
                         return (
-                            <tr key={mk}>
-                                <td colSpan={2} className={`${tdClass}`} />
-                                <td className={`${tdClass} ${rL} pl-4 text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
-                                <td className={`${tdValClass}`}>
-                                    <AttendanceBar occupancy={occ} avg={avg} />
-                                </td>
-                            </tr>
+                            <div key={mk} className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800 last:border-0">
+                                <span className="text-slate-400">{MONTH_LABELS[mk.slice(5)] ?? mk}</span>
+                                <AttendanceBar occupancy={occ} avg={avg} />
+                            </div>
                         );
                     })}
-                </tbody>
-            </table>
+                </div>
+            </div>
         </div>
     );
 };

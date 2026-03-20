@@ -3,7 +3,7 @@ import { Team, Game, PlayoffSeries } from '../../types';
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
-import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { updatePopularityFromGame } from '../playerPopularity';
 import { updateMoraleFromGame } from '../moraleService';
@@ -92,6 +92,9 @@ export const processCpuGames = (
             }
 
             // Common Result Data Payload for DB (snake_case)
+            const quarterScores = res.pbpLogs?.length
+                ? extractQuarterScores(res.pbpLogs, res.homeTeamId, res.homeScore, res.awayScore)
+                : undefined;
             const resultData = userId ? {
                 user_id: userId,
                 game_id: res.gameId,
@@ -102,9 +105,10 @@ export const processCpuGames = (
                 away_score: res.awayScore,
                 box_score: res.boxScore,
                 tactics: res.tactics,
-                rotation_data: res.rotationData, 
+                rotation_data: res.rotationData,
                 shot_events: res.pbpShotEvents,
                 is_playoff: res.isPlayoff || false,
+                ...(quarterScores && { quarter_scores: quarterScores }),
                 ...(season && { season }),
             } : null;
 
