@@ -183,8 +183,8 @@ const ClubTab: React.FC<{
 
     return (
         <div className="p-4 flex gap-4 items-start">
-            {/* 좌 컬럼: 재정 현황 */}
-            <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            {/* 1열 (4): 재정 현황 */}
+            <div className="flex-[4] bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="재정 현황" primaryColor={primaryColor} />
                 <DataRow label="시즌 예산" value={fmtFull(finance.budget)} valueClass="text-indigo-400" />
                 <SubHeader label="수익" />
@@ -211,32 +211,14 @@ const ClubTab: React.FC<{
                 />
             </div>
 
-            {/* 우 컬럼: 구단주 + 경기장 + 연고지 + 관중 통계 */}
-            <div className="w-[280px] shrink-0 flex flex-col gap-4">
-                {/* 구단주 */}
-                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                    <WidgetHeader title="구단주" primaryColor={primaryColor} />
-                    <DataRow label="이름" value={ownerProfile.name} />
-                    <DataRow label="순자산" value={fmtFullB(ownerProfile.netWorth)} valueClass="text-emerald-400" />
-                    {traitRows.map(r => (
-                        <DataRow key={r.label} label={r.label} value={r.desc} valueClass="text-indigo-400" />
-                    ))}
-                </div>
-
+            {/* 2열 (3): 경기장 + 관중 통계 */}
+            <div className="flex-[3] flex flex-col gap-4">
                 {/* 경기장 */}
                 <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                     <WidgetHeader title="경기장" primaryColor={primaryColor} />
                     <DataRow label="경기장명" value={market.arenaName} />
                     <DataRow label="좌석 수" value={`${market.arenaCapacity.toLocaleString()}석`} />
                     <DataRow label="평균 입장료" value={`$${market.baseTicketPrice}`} />
-                </div>
-
-                {/* 연고지 */}
-                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                    <WidgetHeader title="연고지" primaryColor={primaryColor} />
-                    <DataRow label="도시" value={TEAM_DATA[myTeamId]?.city ?? ''} />
-                    <DataRow label="광역 인구" value={`${(market.metroPopulation * 10000).toLocaleString()}명`} />
-                    <DataRow label="마켓 티어" value={tierLabels[market.marketTier] ?? ''} />
                 </div>
 
                 {/* 관중 통계 */}
@@ -260,6 +242,27 @@ const ClubTab: React.FC<{
                             </div>
                         );
                     })}
+                </div>
+            </div>
+
+            {/* 3열 (3): 구단주 + 연고지 */}
+            <div className="flex-[3] flex flex-col gap-4">
+                {/* 구단주 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="구단주" primaryColor={primaryColor} />
+                    <DataRow label="이름" value={ownerProfile.name} />
+                    <DataRow label="순자산" value={fmtFullB(ownerProfile.netWorth)} valueClass="text-emerald-400" />
+                    {traitRows.map(r => (
+                        <DataRow key={r.label} label={r.label} value={r.desc} valueClass="text-indigo-400" />
+                    ))}
+                </div>
+
+                {/* 연고지 */}
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="연고지" primaryColor={primaryColor} />
+                    <DataRow label="도시" value={TEAM_DATA[myTeamId]?.city ?? ''} />
+                    <DataRow label="광역 인구" value={`${(market.metroPopulation * 10000).toLocaleString()}명`} />
+                    <DataRow label="마켓 티어" value={tierLabels[market.marketTier] ?? ''} />
                 </div>
             </div>
         </div>
