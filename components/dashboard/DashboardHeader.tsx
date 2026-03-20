@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Loader2, Play, ChevronRight, FastForward, ChevronDown, ChevronUp } from 'lucide-react';
-import { Team, Game, PlayoffSeries } from '../../types';
+import { Team, Game, PlayoffSeries, Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
@@ -10,6 +10,8 @@ import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
 import { PendingOffseasonAction } from '../../types/app';
 import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
+import { GlobalSearch } from './GlobalSearch';
+import { GMProfile } from '../../types/gm';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -33,12 +35,21 @@ interface DashboardHeaderProps {
   keyDates?: SeasonKeyDates;
   onSkipToDate?: (targetDate: string, label: string) => void;
   onSimulateFullSeason?: () => void;
+  // 검색 기능
+  allTeams?: Team[];
+  coachingData?: Record<string, { headCoach: any }>;
+  leagueGMProfiles?: Record<string, GMProfile>;
+  onSearchViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
+  onSearchViewTeam?: (teamId: string) => void;
+  onSearchViewGM?: (teamId: string) => void;
+  onSearchViewCoach?: (teamId: string) => void;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
   currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver,
-  pendingOffseasonAction, keyDates, onSkipToDate, onSimulateFullSeason
+  pendingOffseasonAction, keyDates, onSkipToDate, onSimulateFullSeason,
+  allTeams, coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -147,48 +158,61 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-black/10 pointer-events-none" />
         <div className="pl-8 pr-0 py-0 flex items-center gap-8 h-20 relative z-10">
-            {/* Date + Team Status */}
+            {/* Date + Team Status + Search */}
             <div className="flex-1 flex flex-col gap-1.5 relative">
-                {keyDates && currentSimDate && onSkipToDate ? (
-                    <div className="relative">
-                        <button
-                            onClick={() => setIsSkipDropdownOpen(prev => !prev)}
-                            className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                        >
-                            <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                                {formatDateKorean(currentSimDate)}
-                            </span>
-                            {isSkipDropdownOpen
-                                ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                                : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                            }
-                        </button>
-                        <DateSkipDropdown
-                            isOpen={isSkipDropdownOpen}
-                            onClose={() => setIsSkipDropdownOpen(false)}
-                            currentSimDate={currentSimDate}
-                            keyDates={keyDates}
-                            onSkipToDate={handleSkipToDate}
-                            onSimulateFullSeason={handleSimulateFullSeason}
-                            isSimulating={!!isSimulating}
-                            themeText={theme.text}
-                            isOffseason={isSeasonOver}
-                        />
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2">
+                {/* Row 1: 날짜 드롭다운 + 컨퍼런스 순위/연승 */}
+                <div className="flex items-center gap-3">
+                    {keyDates && currentSimDate && onSkipToDate ? (
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsSkipDropdownOpen(prev => !prev)}
+                                className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                            >
+                                <span className="text-sm font-semibold" style={{ color: theme.text }}>
+                                    {formatDateKorean(currentSimDate)}
+                                </span>
+                                {isSkipDropdownOpen
+                                    ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                                    : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
+                                }
+                            </button>
+                            <DateSkipDropdown
+                                isOpen={isSkipDropdownOpen}
+                                onClose={() => setIsSkipDropdownOpen(false)}
+                                currentSimDate={currentSimDate}
+                                keyDates={keyDates}
+                                onSkipToDate={handleSkipToDate}
+                                onSimulateFullSeason={handleSimulateFullSeason}
+                                isSimulating={!!isSimulating}
+                                themeText={theme.text}
+                                isOffseason={isSeasonOver}
+                            />
+                        </div>
+                    ) : (
                         <span className="text-sm font-semibold" style={{ color: theme.text }}>
                             {currentSimDate ? formatDateKorean(currentSimDate) : ''}
                         </span>
-                    </div>
-                )}
-                <div className="flex items-center gap-2">
+                    )}
+                    <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>{conferenceName} {conferenceRank}위</span>
                     <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>
                         {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
                     </span>
                 </div>
+                {/* Row 2: 글로벌 검색 */}
+                {allTeams && onSearchViewPlayer && onSearchViewTeam && onSearchViewGM && onSearchViewCoach && (
+                    <GlobalSearch
+                        allTeams={allTeams}
+                        coachingData={coachingData}
+                        leagueGMProfiles={leagueGMProfiles}
+                        onViewPlayer={onSearchViewPlayer}
+                        onViewTeam={onSearchViewTeam}
+                        onViewGM={onSearchViewGM}
+                        onViewCoach={onSearchViewCoach}
+                        themeText={theme.text}
+                    />
+                )}
             </div>
 
             {/* Matchup — absolute center */}

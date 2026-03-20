@@ -259,7 +259,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 // BBRef award code → 시뮬 PlayerAwardType 변환 (배지/헤더 표시용)
 // BRef는 MVP-1(수상자), MVP-2(2위 후보) 형태로 순위를 코드에 포함
 const BREF_BASE_TO_SIM_TYPE: Record<string, string> = {
-    CHM: 'CHAMPION', FMVP: 'FINALS_MVP',
+    CHM: 'CHAMPION', RCHM: 'REG_SEASON_CHAMPION', FMVP: 'FINALS_MVP',
     MVP: 'MVP', DPOY: 'DPOY',
     NBA1: 'ALL_NBA_1', NBA2: 'ALL_NBA_2', NBA3: 'ALL_NBA_3',
     DEF1: 'ALL_DEF_1', DEF2: 'ALL_DEF_2',
@@ -577,7 +577,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             )}
                         </div>
                         {(() => {
-                            const allAwards = [
+                            const allAwards: any[] = [
                                 ...(player.career_history?.flatMap(s =>
                                     (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
                                 ) ?? []),
@@ -1117,15 +1117,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                     ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
                                                     ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
                                                     // BBRef 코드
-                                                    CHM: '챔피언', FMVP: '파이널 MVP',
-                                                    MVP: '올해의 선수', DPOY: '올해의 수비수',
+                                                    CHM: '챔피언', RCHM: '정규시즌 우승', FMVP: '파이널 MVP',
                                                     NBA1: '올-오펜시브 팀', NBA2: '올-오펜시브 팀', NBA3: '올-오펜시브 팀',
                                                     DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
                                                     ROY: '올해의 신인', CPOY: '올해의 클러치 플레이어',
                                                     MIP: '최고 발전 선수', '6MOY': '식스맨', SMOY: '식스맨',
                                                 };
                                                 const BASE_DETAIL: Record<string, string> = {
-                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승',
+                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승', RCHM: '우승',
                                                     FINALS_MVP: '수상', FMVP: '수상',
                                                     ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
                                                     ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
@@ -1145,10 +1144,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 let detail: string;
                                                 if (rankNum !== null) {
                                                     detail = toOrdinal(rankNum);
-                                                } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
-                                                    detail = entry.rank === 1 ? '1st (수상)' : toOrdinal(entry.rank);
+                                                } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && (entry as any).rank != null) {
+                                                    detail = (entry as any).rank === 1 ? '1st (수상)' : toOrdinal((entry as any).rank);
                                                 } else {
-                                                    detail = BASE_DETAIL[entry.type] ?? (entry.label ? '' : '-');
+                                                    detail = BASE_DETAIL[entry.type] ?? ((entry as any).label ? '' : '-');
                                                 }
                                                 return (
                                                     <TableRow key={idx} className="h-10">

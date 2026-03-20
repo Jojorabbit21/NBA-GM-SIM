@@ -1,8 +1,9 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
+import { AppView, Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
 import { PendingOffseasonAction, OffseasonPhase } from '../types/app';
+import { GMProfile } from '../types/gm';
 import { SeasonKeyDates } from '../utils/seasonConfig';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
@@ -40,12 +41,19 @@ interface MainLayoutProps {
         simProgress: { percent: number; label: string } | null;
         playoffSeries: PlayoffSeries[];
         userTactics: GameTactics | null;
+        coachingData?: Record<string, { headCoach: any }>;
+        leagueGMProfiles?: Record<string, GMProfile>;
+        onSearchViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
+        onSearchViewTeam?: (teamId: string) => void;
+        onSearchViewGM?: (teamId: string) => void;
+        onSearchViewCoach?: (teamId: string) => void;
     };
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { team, currentSimDate } = sidebarProps;
-    const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics } = gameHeaderProps;
+    const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics,
+            coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach } = gameHeaderProps;
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     // Common logic moved from DashboardView to Layout level
@@ -147,6 +155,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         keyDates={sidebarProps.keyDates}
                         onSkipToDate={sidebarProps.onSkipToDate}
                         onSimulateFullSeason={sidebarProps.onSimulateSeason}
+                        allTeams={teams}
+                        coachingData={coachingData}
+                        leagueGMProfiles={leagueGMProfiles}
+                        onSearchViewPlayer={onSearchViewPlayer}
+                        onSearchViewTeam={onSearchViewTeam}
+                        onSearchViewGM={onSearchViewGM}
+                        onSearchViewCoach={onSearchViewCoach}
                     />
                 )}
 

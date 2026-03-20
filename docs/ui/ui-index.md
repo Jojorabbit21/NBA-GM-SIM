@@ -12,3 +12,4 @@
 | [user-guide.md](user-guide.md) | 사용자 조작 가이드 | 기능 설명, 화면별 안내 |
 | [url-routing-plan.md](url-routing-plan.md) | URL 라우팅 설계 | 페이지 구조 변경 시 |
 | [inbox/inbox-index.md](inbox/inbox-index.md) | Inbox 시스템 구조 (13종 메시지, 15개 파일) | Inbox 수정/메시지 타입 추가 시 |
+| [global-search.md](global-search.md) | 헤더 글로벌 검색 기능 (팀/선수/단장/코치) | 검색 동작/레이아웃/데이터 흐름 수정 시 |

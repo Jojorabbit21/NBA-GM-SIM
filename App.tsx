@@ -7,7 +7,7 @@ import { useSimulation } from './hooks/useSimulation';
 import { TeamSelectView } from './views/TeamSelectView';
 import { AuthView } from './views/AuthView';
 import { Toast } from './components/SharedComponents';
-import { AppView, RosterMode, DraftPoolType } from './types';
+import { AppView, RosterMode, DraftPoolType, Player } from './types';
 import { PendingOffseasonAction } from './types/app';
 import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
@@ -36,6 +36,11 @@ const App: React.FC = () => {
     const gameData = useGameData(session, isGuestMode, rosterMode);
     const [view, setView] = useState<AppView>('Home');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    // 상세 뷰 상태 (App 레벨로 리프팅 — GlobalSearch에서도 네비게이션 가능)
+    const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
+    const [viewCoachData, setViewCoachData] = useState<{ coach: any; teamId: string } | null>(null);
+    const [viewGMTeamId, setViewGMTeamId] = useState<string | null>(null);
+    const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
@@ -44,6 +49,27 @@ const App: React.FC = () => {
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
     const updateAvailable = useUpdateChecker();
     const [updateDismissed, setUpdateDismissed] = useState(false);
+    // GlobalSearch 네비게이션 핸들러 (previousView 미추적 — 뒤로가기 시 Dashboard로)
+    const handleSearchViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
+        setViewPlayerData({ player, teamId, teamName });
+        setView('PlayerDetail');
+    }, []);
+    const handleSearchViewTeam = useCallback((teamId: string) => {
+        setSelectedTeamId(teamId);
+        setView('Roster');
+    }, []);
+    const handleSearchViewGM = useCallback((teamId: string) => {
+        if (!gameData.leagueGMProfiles?.[teamId]) return;
+        setViewGMTeamId(teamId);
+        setView('GMDetail');
+    }, [gameData.leagueGMProfiles]);
+    const handleSearchViewCoach = useCallback((teamId: string) => {
+        const coach = gameData.coachingData?.[teamId]?.headCoach;
+        if (!coach) return;
+        setViewCoachData({ coach, teamId });
+        setView('CoachDetail');
+    }, [gameData.coachingData]);
+
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
     const handleEditorClick = useCallback(() => setIsEditorModalOpen(true), []);
     const [isSimSettingsOpen, setIsSimSettingsOpen] = useState(false);
@@ -265,7 +291,13 @@ const App: React.FC = () => {
                     isSimulating: sim.isSimulating,
                     simProgress: sim.simProgress,
                     playoffSeries: gameData.playoffSeries,
-                    userTactics: gameData.userTactics
+                    userTactics: gameData.userTactics,
+                    coachingData: gameData.coachingData,
+                    leagueGMProfiles: gameData.leagueGMProfiles,
+                    onSearchViewPlayer: handleSearchViewPlayer,
+                    onSearchViewTeam: handleSearchViewTeam,
+                    onSearchViewGM: handleSearchViewGM,
+                    onSearchViewCoach: handleSearchViewCoach,
                 }}
             >
                 <AppRouter
@@ -273,6 +305,10 @@ const App: React.FC = () => {
                     sim={sim} session={session} unreadCount={unreadCount}
                     refreshUnreadCount={refreshUnreadCount} setToastMessage={setToastMessage}
                     draftPoolType={draftPoolType}
+                    viewPlayerData={viewPlayerData} setViewPlayerData={setViewPlayerData}
+                    viewCoachData={viewCoachData} setViewCoachData={setViewCoachData}
+                    viewGMTeamId={viewGMTeamId} setViewGMTeamId={setViewGMTeamId}
+                    selectedTeamId={selectedTeamId} setSelectedTeamId={setSelectedTeamId}
                 />
                 {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
 

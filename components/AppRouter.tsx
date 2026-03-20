@@ -43,18 +43,25 @@ interface AppRouterProps {
     refreshUnreadCount: () => void;
     setToastMessage: (msg: string | null) => void;
     draftPoolType?: DraftPoolType | null;
+    // 상세 뷰 상태 (App 레벨로 리프팅)
+    viewPlayerData: { player: Player; teamName?: string; teamId?: string } | null;
+    setViewPlayerData: (data: { player: Player; teamName?: string; teamId?: string } | null) => void;
+    viewCoachData: { coach: any; teamId: string } | null;
+    setViewCoachData: (data: { coach: any; teamId: string } | null) => void;
+    viewGMTeamId: string | null;
+    setViewGMTeamId: (id: string | null) => void;
+    selectedTeamId: string | null;
+    setSelectedTeamId: (id: string | null) => void;
 }
 
 const AppRouter: React.FC<AppRouterProps> = ({
-    view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage, draftPoolType
+    view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage, draftPoolType,
+    viewPlayerData, setViewPlayerData, viewCoachData, setViewCoachData,
+    viewGMTeamId, setViewGMTeamId, selectedTeamId, setSelectedTeamId,
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const seasonShort: string = gameData.seasonConfig?.seasonShort ?? '2025-26';
-    const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
-    const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
-    const [viewCoachData, setViewCoachData] = useState<{ coach: any; teamId: string } | null>(null);
-    const [viewGMTeamId, setViewGMTeamId] = useState<string | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
     const leaderboardStateRef = useRef<LeaderboardFilterState | null>(null);
