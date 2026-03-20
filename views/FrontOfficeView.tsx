@@ -22,6 +22,7 @@ interface FrontOfficeViewProps {
     coachingData?: LeagueCoachingData | null;
     onCoachClick?: (teamId: string) => void;
     onGMClick?: (teamId: string) => void;
+    onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
     leaguePickAssets?: LeaguePickAssets | null;
     leagueGMProfiles?: LeagueGMProfiles | null;
     userNickname?: string;
@@ -29,7 +30,7 @@ interface FrontOfficeViewProps {
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
-    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
+    team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
 }) => {
     const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
 
@@ -70,7 +71,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <ClubTab finData={finData} finance={finance} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'payroll' && (
-                        <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} />
+                        <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} onViewPlayer={onViewPlayer} />
                     )}
                     {activeTab === 'coaching' && (
                         <div className="animate-in fade-in duration-500 h-full">
@@ -282,8 +283,14 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
 };
 
 // ── 선수 급여 탭 ──
-const PayrollTab: React.FC<{ team: Team; seasonShort: string; myTeamId: string }> = ({ team, seasonShort, myTeamId }) => {
+const PayrollTab: React.FC<{
+    team: Team;
+    seasonShort: string;
+    myTeamId: string;
+    onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
+    const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
 
     const { players, seasonColumns, totals } = useMemo(() => {
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
@@ -308,19 +315,21 @@ const PayrollTab: React.FC<{ team: Team; seasonShort: string; myTeamId: string }
         return { players: sorted, seasonColumns: cols, totals: colTotals };
     }, [team.roster, seasonShort]);
 
+    const COL_W = 120;
+
     return (
         <div className="p-4 animate-in fade-in duration-500">
             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-xs">
+                    <table className="border-collapse text-xs" style={{ width: `${160 + COL_W * seasonColumns.length}px` }}>
                         <colgroup>
                             <col style={{ width: '160px' }} />
-                            {seasonColumns.map(col => <col key={col} />)}
+                            {seasonColumns.map(col => <col key={col} style={{ width: `${COL_W}px` }} />)}
                         </colgroup>
                         <thead className="sticky top-0 z-10">
-                            <tr className="bg-slate-800/80 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800/80 z-20">선수</th>
+                            <tr className="bg-slate-800 border-b border-slate-700">
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20">선수</th>
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
                                 ))}
@@ -328,7 +337,14 @@ const PayrollTab: React.FC<{ team: Team; seasonShort: string; myTeamId: string }
                         </thead>
                         <tbody>
                             {players.map(p => (
-                                <PayrollRow key={p.id} player={p} seasonColumns={seasonColumns} />
+                                <PayrollRow
+                                    key={p.id}
+                                    player={p}
+                                    seasonColumns={seasonColumns}
+                                    myTeamId={myTeamId}
+                                    teamName={teamName}
+                                    onViewPlayer={onViewPlayer}
+                                />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
                                 <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10">합계</td>
@@ -346,7 +362,13 @@ const PayrollTab: React.FC<{ team: Team; seasonShort: string; myTeamId: string }
     );
 };
 
-const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ player, seasonColumns }) => {
+const PayrollRow: React.FC<{
+    player: Player;
+    seasonColumns: string[];
+    myTeamId: string;
+    teamName: string;
+    onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
+}> = ({ player, seasonColumns, myTeamId, teamName, onViewPlayer }) => {
     const cells = useMemo(() => {
         const result: (string | null)[] = new Array(seasonColumns.length).fill(null);
         if (!player.contract) return result;
@@ -364,8 +386,17 @@ const PayrollRow: React.FC<{ player: Player; seasonColumns: string[] }> = ({ pla
     }, [player, seasonColumns.length]);
 
     return (
-        <tr className="border-b border-slate-800 hover:bg-slate-800/40">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 z-10">{player.name}</td>
+        <tr className="group border-b border-slate-800 hover:bg-slate-800">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10">
+                {onViewPlayer ? (
+                    <button
+                        onClick={() => onViewPlayer(player, myTeamId, teamName)}
+                        className="hover:text-white hover:underline transition-colors text-left"
+                    >
+                        {player.name}
+                    </button>
+                ) : player.name}
+            </td>
             {cells.map((cell, i) => (
                 <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}

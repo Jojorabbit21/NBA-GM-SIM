@@ -2,9 +2,10 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FrontOfficeView } from '../views/FrontOfficeView';
 import { useGame } from '../hooks/useGameContext';
+import { Player } from '../types';
 
 const FrontOfficePage: React.FC = () => {
-    const { session, gameData } = useGame();
+    const { session, gameData, setViewPlayerData } = useGame();
     const navigate = useNavigate();
 
     const myTeam = gameData.teams.find(t => t.id === gameData.myTeamId);
@@ -26,6 +27,10 @@ const FrontOfficePage: React.FC = () => {
             }}
             onGMClick={(teamId) => {
                 if (gameData.leagueGMProfiles?.[teamId]) navigate(`/gm/${teamId}`);
+            }}
+            onViewPlayer={(player: Player, teamId?: string, teamName?: string) => {
+                setViewPlayerData({ player, teamId, teamName });
+                navigate(`/player/${player.id}`, { state: { player, teamId, teamName } });
             }}
             leaguePickAssets={gameData.leaguePickAssets}
             leagueGMProfiles={gameData.leagueGMProfiles}
