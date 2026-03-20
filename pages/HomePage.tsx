@@ -21,8 +21,7 @@ const VIEW_TO_PATH: Record<string, string> = {
 };
 
 const HomePage: React.FC = () => {
-    const { session, gameData, unreadCount, setViewPlayerData } = useGame();
-    const navigate = useNavigate();
+    const { session, gameData, unreadCount, setViewPlayerData } = useGame();    const navigate = useNavigate();
 
     const myTeam = gameData.teams.find(t => t.id === gameData.myTeamId);
     if (!myTeam) return null;
@@ -40,6 +39,7 @@ const HomePage: React.FC = () => {
             seasonShort={seasonShort}
             userId={session?.user?.id}
             teamFinances={gameData.teamFinances}
+            depthChart={gameData.depthChart}
             onNavigate={(view, messageId) => {
                 const path = VIEW_TO_PATH[view];
                 if (!path) return;

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Team, Game, Player } from '../types';
+import { DepthChart } from '../types/tactics';
 import { OffseasonPhase } from '../types/app';
 import { MessageListItem } from '../types/message';
 import { SavedTeamFinances } from '../types/finance';
@@ -21,6 +22,7 @@ interface HomeViewProps {
     seasonShort?: string;
     userId?: string;
     teamFinances?: SavedTeamFinances | null;
+    depthChart?: DepthChart | null;
     onNavigate: (view: string, messageId?: string) => void;
     onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
@@ -53,6 +55,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     seasonShort,
     userId,
     teamFinances,
+    depthChart,
     onNavigate,
     onViewPlayer,
 }) => {
@@ -110,12 +113,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
             .slice(0, 10);
     }, [schedule, team.id]);
 
-    // 로스터 상위 10명 (OVR 기준)
+    // 뎁스차트에 등록된 선수 (포지션 순서 유지, 중복 제거)
     const topRoster = useMemo(() => {
-        return [...(team.roster ?? [])]
-            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))
-            .slice(0, 10);
-    }, [team.roster]);
+        const roster = team.roster ?? [];
+        if (!depthChart) {
+            return [...roster]
+                .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))
+                .slice(0, 10);
+        }
+        const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+        const seen = new Set<string>();
+        const orderedIds: string[] = [];
+        for (const pos of positions) {
+            for (const id of depthChart[pos]) {
+                if (id && !seen.has(id)) {
+                    seen.add(id);
+                    orderedIds.push(id);
+                }
+            }
+        }
+        const rosterMap = new Map(roster.map(p => [p.id, p]));
+        return orderedIds.map(id => rosterMap.get(id)).filter(Boolean) as Player[];
+    }, [team.roster, depthChart]);
 
     // 부상자
     const injuredPlayers = useMemo(() =>
