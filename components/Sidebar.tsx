@@ -6,7 +6,7 @@ import {
   CalendarDays, ArrowLeftRight,
   RotateCcw, LogOut, Globe, Gavel, CircleUser,
   BookOpen, FileText, Wand2, Crown, Settings, Landmark,
-  Sparkles, Dices, Contact, UserPlus, GitFork, Construction,
+  Sparkles, Dices, Contact, UserPlus, GitPullRequestClosed, TrafficCone,
   Table2,
 } from 'lucide-react';
 import { Team } from '../types';
@@ -176,9 +176,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           {isRegularSeasonOver && (
             <Nav active={pathname.startsWith('/playoffs')} icon={<Trophy />} label="플레이오프" onClick={() => navigate('/playoffs')} />
           )}
-          <Nav active={false} icon={<GitFork />} label="전술 (준비 중)" onClick={() => {}} />
+          <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
           <Nav active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
-          <Nav active={false} icon={<Construction />} label="훈련 (준비 중)" onClick={() => {}} />
+          <Nav active={false} icon={<TrafficCone />} label="훈련 (준비 중)" onClick={() => {}} />
           {hasProspects && (
             <Nav active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
           )}

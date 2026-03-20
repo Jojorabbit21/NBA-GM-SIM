@@ -2,15 +2,11 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Team, Game, Player, GameTactics, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
-import { getCoachPreferences } from '../services/coachingStaff/coachGenerator';
-import { generateAutoTactics } from '../services/gameEngine';
 import { calculatePlayerOvr } from '../utils/constants';
-import { computeDefensiveStats } from '../utils/defensiveStats';
 
 // Import sub-components
 import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
-import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { ScheduleView } from './ScheduleView';
 
@@ -36,7 +32,7 @@ interface DashboardViewProps {
   seasonStartYear?: number;
 }
 
-export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule';
+export type DashboardTab = 'rotation' | 'roster' | 'records' | 'opponent' | 'schedule';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
@@ -53,11 +49,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
       myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       return myGames.find(g => !g.played);
-  }, [schedule, team?.id]);
-
-  const defensiveStats = useMemo(() => {
-      if (!team?.id) return computeDefensiveStats([], '');
-      return computeDefensiveStats(schedule, team.id);
   }, [schedule, team?.id]);
 
   const effectiveRoster = team?.roster || [];
@@ -84,12 +75,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
 
-  const handleAutoSet = useCallback(() => {
-    const coachPrefs = getCoachPreferences(coachingData, team.id);
-    const autoTactics = generateAutoTactics({ ...team, roster: effectiveRoster }, coachPrefs);
-    onUpdateTactics(autoTactics);
-  }, [team, effectiveRoster, onUpdateTactics, coachingData]);
-
   if (!team) return null;
 
   const handlePlayerClick = useCallback((p: Player) => {
@@ -111,12 +96,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>뎁스차트 & 로테이션</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('tactics')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
-                    >
-                        <span>전술 관리</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('roster')}
@@ -151,21 +130,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onUpdateDepthChart={onUpdateDepthChart}
                       coachName={coachingData?.[team.id]?.headCoach?.name}
                   />
-              )}
-
-              {activeTab === 'tactics' && (
-                  <div className="animate-in fade-in duration-500 h-full">
-                    <TacticsBoard
-                        team={team}
-                        tactics={tactics}
-                        roster={effectiveRoster}
-                        onUpdateTactics={onUpdateTactics}
-                        onAutoSet={handleAutoSet}
-                        onForceSave={onForceSave}
-                        defensiveStats={defensiveStats}
-                        coachName={coachingData?.[team.id]?.headCoach?.name}
-                    />
-                  </div>
               )}
 
               {activeTab === 'roster' && (
