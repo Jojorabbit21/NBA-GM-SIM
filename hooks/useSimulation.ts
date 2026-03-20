@@ -124,7 +124,6 @@ export const useSimulation = (
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
     const [simProgress, setSimProgress] = useState<{ percent: number; label: string } | null>(null);
-    const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any | null>(null);
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
 
@@ -439,12 +438,7 @@ export const useSimulation = (
 
                 setTempSimulationResult(result);
 
-                // [UX Fix] Do NOT set activeGame if skipping animation to prevent flickering to Sim View.
-                if (!skipAnimation) {
-                    setActiveGame(userGame);
-                }
-
-                // Finalize Function (Called after animation or immediately)
+                // Finalize Function
                 finalizeSimRef.current = async () => {
                     if (isFinalizingRef.current) return;
                     isFinalizingRef.current = true;
@@ -528,6 +522,7 @@ export const useSimulation = (
 
                     // Set View Data
                     setLastGameResult({
+                        gameId: userGame.id,
                         home: newTeams.find(t => t.id === userGame.homeTeamId),
                         away: newTeams.find(t => t.id === userGame.awayTeamId),
                         homeScore: result.homeScore,
@@ -545,8 +540,6 @@ export const useSimulation = (
                         injuries: result.injuries
                     });
 
-                    setActiveGame(null);
-
                     _fPerf['TOTAL'] = performance.now() - _ft0;
                     console.log(`[PERF] finalizeSim (${currentSimDate})`, Object.entries(_fPerf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
                     } finally {
@@ -557,11 +550,9 @@ export const useSimulation = (
                 _perf['TOTAL_preFinalize'] = performance.now() - _t0;
                 console.log(`[PERF] handleExecuteSim:GAME (${currentSimDate})`, Object.entries(_perf).map(([k, v]) => `${k}: ${v.toFixed(1)}ms`).join(' | '));
 
-                if (skipAnimation) {
-                    await finalizeSimRef.current();
-                    setSimProgress(null);
-                    setIsSimulating(false);
-                }
+                await finalizeSimRef.current();
+                setSimProgress(null);
+                setIsSimulating(false);
 
             } else {
                 // No User Game - Advance Day Only
@@ -1217,6 +1208,7 @@ export const useSimulation = (
 
             // GameResultView용 데이터 세팅
             setLastGameResult({
+                gameId: userGame.id,
                 home: newTeams.find(t => t.id === userGame.homeTeamId),
                 away: newTeams.find(t => t.id === userGame.awayTeamId),
                 homeScore: result.homeScore,
@@ -1256,7 +1248,6 @@ export const useSimulation = (
         isSimulating,
         setIsSimulating,
         simProgress,
-        activeGame,
         lastGameResult,
         tempSimulationResult,
         finalizeSimRef,

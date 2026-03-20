@@ -4,7 +4,7 @@ import {
     LayoutDashboard, Mail, ArrowLeftRight, Users, Trophy,
     Briefcase, Heart, ChevronRight, TrendingUp,
 } from 'lucide-react';
-import { Team, Game, Player, AppView } from '../types';
+import { Team, Game, Player } from '../types';
 import { OffseasonPhase } from '../types/app';
 import { MessageListItem } from '../types/message';
 import { computeStandingsStats } from '../utils/standingsStats';
@@ -23,7 +23,7 @@ interface HomeViewProps {
     offseasonPhase?: OffseasonPhase | null;
     seasonShort?: string;
     userId?: string;
-    onNavigate: (view: AppView) => void;
+    onNavigate: (view: string) => void;
     onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
@@ -300,13 +300,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             <div className="text-xs font-black uppercase tracking-widest text-slate-400 oswald mb-4">빠른 액션</div>
                             <div className="grid grid-cols-2 gap-2">
                                 {([
-                                    { label: '라커룸', view: 'Dashboard' as AppView, icon: <LayoutDashboard size={18} /> },
-                                    { label: '프론트 오피스', view: 'FrontOffice' as AppView, icon: <Briefcase size={18} /> },
-                                    { label: '받은 메세지', view: 'Inbox' as AppView, icon: <Mail size={18} />, badge: unreadCount },
-                                    { label: '트레이드', view: 'Transactions' as AppView, icon: <ArrowLeftRight size={18} /> },
-                                    { label: 'FA 시장', view: 'FAMarket' as AppView, icon: <Users size={18} /> },
-                                    { label: '리그 순위', view: 'Standings' as AppView, icon: <Trophy size={18} /> },
-                                ] as { label: string; view: AppView; icon: React.ReactNode; badge?: number }[]).map(({ label, view, icon, badge }) => (
+                                    { label: '라커룸', view: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+                                    { label: '프론트 오피스', view: 'FrontOffice', icon: <Briefcase size={18} /> },
+                                    { label: '받은 메세지', view: 'Inbox', icon: <Mail size={18} />, badge: unreadCount },
+                                    { label: '트레이드', view: 'Transactions', icon: <ArrowLeftRight size={18} /> },
+                                    { label: 'FA 시장', view: 'FAMarket', icon: <Users size={18} /> },
+                                    { label: '리그 순위', view: 'Standings', icon: <Trophy size={18} /> },
+                                ] as { label: string; view: string; icon: React.ReactNode; badge?: number }[]).map(({ label, view, icon, badge }) => (
                                     <button
                                         key={view}
                                         onClick={() => onNavigate(view)}

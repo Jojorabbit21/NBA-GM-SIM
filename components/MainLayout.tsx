@@ -1,7 +1,8 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-import { AppView, Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
+import { Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
 import { PendingOffseasonAction, OffseasonPhase } from '../types/app';
 import { GMProfile } from '../types/gm';
 import { SeasonKeyDates } from '../utils/seasonConfig';
@@ -16,11 +17,9 @@ interface MainLayoutProps {
     sidebarProps: {
         team: Team | undefined;
         currentSimDate: string;
-        currentView: AppView;
         isGuestMode: boolean;
         unreadMessagesCount: number;
         userEmail?: string;
-        onNavigate: (view: AppView) => void;
         onResetClick: () => void;
         onEditorClick: () => void;
         onSimSettingsClick: () => void;
@@ -51,6 +50,7 @@ interface MainLayoutProps {
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
+    const { pathname } = useLocation();
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics,
             coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach } = gameHeaderProps;
@@ -118,8 +118,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         };
     }, [team, teams, schedule]);
 
-    const isFullHeightView = sidebarProps.currentView === 'DraftRoom' || sidebarProps.currentView === 'DraftHistory' || sidebarProps.currentView === 'DraftLottery';
-    const isNoPaddingView = sidebarProps.currentView === 'Home' || sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions' || sidebarProps.currentView === 'PlayerDetail' || sidebarProps.currentView === 'CoachDetail' || sidebarProps.currentView === 'GMDetail' || sidebarProps.currentView === 'Playoffs' || sidebarProps.currentView === 'FrontOffice' || sidebarProps.currentView === 'DraftBoard' || sidebarProps.currentView === 'FAMarket';
+    const isFullHeightView = pathname.startsWith('/draft/') || pathname.startsWith('/rookie-draft') || pathname.startsWith('/draft-history') || pathname.startsWith('/draft-lottery');
+    const isNoPaddingView = pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/inbox') || pathname.startsWith('/roster') || pathname.startsWith('/standings') || pathname.startsWith('/leaderboard') || pathname.startsWith('/schedule') || pathname.startsWith('/transactions') || pathname.startsWith('/player') || pathname.startsWith('/coach') || pathname.startsWith('/gm/') || pathname.startsWith('/playoffs') || pathname.startsWith('/front-office') || pathname.startsWith('/draft-board') || pathname.startsWith('/fa-market');
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">

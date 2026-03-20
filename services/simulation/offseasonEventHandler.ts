@@ -8,7 +8,6 @@
 import { Team, Game, PlayoffSeries } from '../../types';
 import { SeasonKeyDates, SeasonConfig } from '../../utils/seasonConfig';
 import { OffseasonPhase } from '../../types/app';
-import { AppView } from '../../types/app';
 import { runLotteryEngine, LotteryResult } from '../draft/lotteryEngine';
 import { generateDraftClass } from '../draft/rookieGenerator';
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
@@ -28,7 +27,7 @@ export interface OffseasonEventResult {
     /** true면 날짜 진행을 중단하고 뷰 전환 필요 */
     blocked: boolean;
     /** blocked일 때 이동할 뷰 */
-    navigateTo?: AppView;
+    navigateTo?: string;
     /** 상태 업데이트 */
     updates?: {
         offseasonPhase?: OffseasonPhase;

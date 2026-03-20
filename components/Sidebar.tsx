@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
@@ -7,7 +8,7 @@ import {
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
   Sparkles, Dices,
 } from 'lucide-react';
-import { Team, AppView } from '../types';
+import { Team } from '../types';
 import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
@@ -19,7 +20,6 @@ import { APP_NAME } from '../utils/constants';
 interface SidebarProps {
   team: Team | undefined;
   currentSimDate: string;
-  currentView: AppView;
   isGuestMode: boolean;
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
@@ -30,7 +30,6 @@ interface SidebarProps {
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  onNavigate: (view: AppView) => void;
   onResetClick: () => void;
   onEditorClick: () => void;
   onSimSettingsClick: () => void;
@@ -95,7 +94,6 @@ const NavItem: React.FC<{
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
-  currentView,
   isGuestMode,
   unreadMessagesCount,
   isRegularSeasonOver,
@@ -106,12 +104,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   userEmail,
   isCollapsed,
   onToggleCollapse,
-  onNavigate,
   onResetClick,
   onEditorClick,
   onSimSettingsClick,
   onLogout,
 }) => {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const teamStatic = team ? TEAM_DATA[team.id] : null;
@@ -161,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           >
             <div className="p-1.5 space-y-0.5">
               <button
-                onClick={() => { onNavigate('HallOfFame'); setIsMenuOpen(false); }}
+                onClick={() => { navigate('/hall-of-fame'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all text-left"
               >
                 <Crown size={15} />
@@ -169,7 +168,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button
-                onClick={() => { onNavigate('DraftHistory'); setIsMenuOpen(false); }}
+                onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
               >
                 <Gavel size={15} />
@@ -198,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 <span className="text-xs font-bold">데이터 초기화</span>
               </button>
               <button
-                onClick={() => { onNavigate('Help'); setIsMenuOpen(false); }}
+                onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
               >
                 <BookOpen size={15} />
@@ -254,12 +253,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         {/* 오프시즌 이벤트 프라이머리 버튼 — 최상단 */}
         {pendingOffseasonAction && (() => {
           const cfg = pendingOffseasonAction === 'lottery'
-            ? { view: 'DraftLottery' as AppView, icon: <Dices size={18} />, label: '로터리 추첨 결과' }
-            : { view: 'DraftRoom' as AppView, icon: <Sparkles size={18} />, label: '신인 드래프트' };
+            ? { path: '/draft-lottery', icon: <Dices size={18} />, label: '로터리 추첨 결과' }
+            : { path: '/draft/', icon: <Sparkles size={18} />, label: '신인 드래프트' };
           return (
             <>
               <button
-                onClick={() => onNavigate(cfg.view)}
+                onClick={() => navigate(cfg.path)}
                 title={isCollapsed ? cfg.label : undefined}
                 className={`w-full flex items-center justify-center gap-2.5 font-bold text-white rounded-2xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.97] select-none ${
                   isCollapsed ? 'p-3' : 'px-5 py-3.5'
@@ -276,20 +275,20 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             </>
           );
         })()}
-        <NavItem active={currentView === 'Home'} icon={<Home size={20}/>} label="홈" onClick={() => onNavigate('Home')} {...navProps} />
-        <NavItem active={currentView === 'FrontOffice'} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => onNavigate('FrontOffice')} {...navProps} />
-        <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
-        <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />
-        <NavItem active={currentView === 'Standings'} icon={<Trophy size={20}/>} label="순위표" onClick={() => onNavigate('Standings')} {...navProps} />
-        <NavItem active={currentView === 'Leaderboard'} icon={<BarChart3 size={20}/>} label="리더보드" onClick={() => onNavigate('Leaderboard')} {...navProps} />
+        <NavItem active={pathname === '/'} icon={<Home size={20}/>} label="홈" onClick={() => navigate('/')} {...navProps} />
+        <NavItem active={pathname.startsWith('/front-office')} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => navigate('/front-office')} {...navProps} />
+        <NavItem active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => navigate('/dashboard')} {...navProps} />
+        <NavItem active={pathname.startsWith('/inbox')} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} {...navProps} />
+        <NavItem active={pathname.startsWith('/standings')} icon={<Trophy size={20}/>} label="순위표" onClick={() => navigate('/standings')} {...navProps} />
+        <NavItem active={pathname.startsWith('/leaderboard')} icon={<BarChart3 size={20}/>} label="리더보드" onClick={() => navigate('/leaderboard')} {...navProps} />
         {isRegularSeasonOver && (
-          <NavItem active={currentView === 'Playoffs'} icon={<Swords size={20}/>} label="플레이오프" onClick={() => onNavigate('Playoffs')} {...navProps} />
+          <NavItem active={pathname.startsWith('/playoffs')} icon={<Swords size={20}/>} label="플레이오프" onClick={() => navigate('/playoffs')} {...navProps} />
         )}
-        <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => onNavigate('Schedule')} {...navProps} />
-        <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
-        <NavItem active={currentView === 'FAMarket'} icon={<Users size={20}/>} label="FA 시장" onClick={() => onNavigate('FAMarket')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} {...navProps} />
+        <NavItem active={pathname.startsWith('/schedule')} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => navigate('/schedule')} {...navProps} />
+        <NavItem active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => navigate('/transactions')} {...navProps} />
+        <NavItem active={pathname.startsWith('/fa-market')} icon={<Users size={20}/>} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} {...navProps} />
         {hasProspects && (
-          <NavItem active={currentView === 'DraftBoard'} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => onNavigate('DraftBoard')} {...navProps} />
+          <NavItem active={pathname.startsWith('/draft-board')} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => navigate('/draft-board')} {...navProps} />
         )}
         <div className="mt-auto" />
       </nav>

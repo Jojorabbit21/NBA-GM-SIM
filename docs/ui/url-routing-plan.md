@@ -185,7 +185,7 @@ props: {
 | context | `team`, `teams`, `schedule`, `currentSimDate`, `isSimulating`, `tactics`, `depthChart`, `tendencySeed`, `userId`, `coachingData`, `seasonStartYear` |
 | **URL query** | `initialTab` → `?tab=rotation` (6가지: rotation/tactics/roster/records/opponent/schedule) |
 | location.state | (없음) |
-| 콜백 | `onSim`, `onUpdateTactics`, `onUpdateDepthChart`, `onForceSave` → context / `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate('/result', { state })` / `onCoachClick` → `navigate('/coach/${id}')` |
+| 콜백 | `onSim`, `onUpdateTactics`, `onUpdateDepthChart`, `onForceSave` → context / `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate(`/result/${gameId}`, { state })` / `onCoachClick` → `navigate('/coach/${id}')` |
 
 ---
 
@@ -204,7 +204,7 @@ props: {
 | context | `allTeams`, `myTeamId`, `tendencySeed`, `schedule`, `userId`, `coachingData`, `leaguePickAssets`, `leagueGMProfiles`, `userNickname` |
 | **URL params** | `initialTeamId` → `:teamId` (없으면 myTeamId 기본값) |
 | location.state | (없음) |
-| 콜백 | `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate('/result', { state })` / `onCoachClick` → `navigate('/coach/${id}')` / `onGMClick` → `navigate('/gm/${id}')` |
+| 콜백 | `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate(`/result/${gameId}`, { state })` / `onCoachClick` → `navigate('/coach/${id}')` / `onGMClick` → `navigate('/gm/${id}')` |
 
 ---
 
@@ -223,7 +223,7 @@ props: {
 | context | `schedule`, `teamId` (=myTeamId), `teams`, `currentSimDate`, `userId`, `isSimulating`, `playoffSeries`, `seasonStartYear` |
 | **URL query** | `initialMonth` → `?month=YYYY-MM` |
 | location.state | (없음) |
-| 콜백 | `onViewGameResult` → `navigate('/result', { state })` / `onSpectateGame`, `onStartUserGame` → context sim 함수 |
+| 콜백 | `onViewGameResult` → `navigate(`/result/${gameId}`, { state })` / `onSpectateGame`, `onStartUserGame` → context sim 함수 |
 
 ---
 
@@ -294,7 +294,7 @@ props: {
 | context | `teams`, `schedule`, `series`, `myTeamId`, `userId` |
 | URL params | (없음) |
 | location.state | (없음) |
-| 콜백 | `setSeries`, `setSchedule` → context setter / `onViewGameResult` → `navigate('/result', { state })` |
+| 콜백 | `setSeries`, `setSchedule` → context setter / `onViewGameResult` → `navigate(`/result/${gameId}`, { state })` |
 
 ---
 
@@ -312,7 +312,7 @@ props: {
 | context | `myTeamId`, `userId`, `teams`, `currentSimDate`, `seasonShort`, `tendencySeed` |
 | URL params | (없음) |
 | location.state | (없음) |
-| 콜백 | `onUpdateUnreadCount` → context / `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate('/result', { state })` / `onNavigateToHof` → `navigate('/hall-of-fame')` / `onNavigateToDraft` → `navigate('/rookie-draft')` / `onNavigateToDraftLottery` → `navigate('/draft-lottery')` / `onTeamOptionExecuted` → context |
+| 콜백 | `onUpdateUnreadCount` → context / `onViewPlayer` → `navigate('/player/...')` / `onViewGameResult` → `navigate(`/result/${gameId}`, { state })` / `onNavigateToHof` → `navigate('/hall-of-fame')` / `onNavigateToDraft` → `navigate('/rookie-draft')` / `onNavigateToDraftLottery` → `navigate('/draft-lottery')` / `onTeamOptionExecuted` → context |
 
 ---
 
@@ -453,7 +453,7 @@ props: { homeTeam, awayTeam, userTeamId, userTactics?, isHomeB2B?, isAwayB2B?, h
 
 ---
 
-#### GameResultView (`/result`)
+#### GameResultView (`/result/:gameId`)
 ```typescript
 props: {
   result: {
@@ -468,11 +468,13 @@ props: {
 | 전달 방식 | props |
 |---|---|
 | context | `myTeamId`, `teams`, `coachingData` |
-| URL params | (없음 — 박스스코어는 URL에 부적합) |
-| **location.state** | `result` (박스스코어+PBP 대형 객체 — 필수) |
+| **URL params** | `gameId` → `:gameId` (필수) |
+| location.state | `result` (선택적 캐싱용 — 있으면 즉시 표시, 없으면 DB 조회) |
 | 콜백 | `onFinish` → `navigate('/')` |
 
-> **새로고침 처리**: `location.state` 없으면 `/` 리다이렉트.
+> **새로고침 처리**: `location.state` 있으면 즉시 렌더링. 없으면 `fetchFullGameResult(gameId, userId)`로 DB 재조회. `user_game_results`에 `game_id`, `pbp_logs`, `shot_events`가 모두 저장되어 있어 완전 복원 가능. gameId 없거나 조회 실패 시 `/` 리다이렉트.
+>
+> **이미 동일 패턴 사용 중**: ScheduleView, PlayoffsView, InboxView에서 DB raw 조회 → GameResultView 전달 패턴이 구현되어 있음.
 
 ---
 
@@ -565,7 +567,7 @@ props: { myTeamId, draftPicks }
 /draft-pool-select   → DraftPoolSelectView
 /select-team         → TeamSelectView
 /onboarding          → OnboardingView     [fixed z-500]
-/result              → GameResultView     (location.state 필수, 없으면 / 리다이렉트)
+/result/:gameId      → GameResultView     (location.state 캐시 우선, 없으면 DB 재조회)
 
 # 보호 라우트 메인 (ProtectedLayout)
 /                    → HomeView
@@ -621,7 +623,7 @@ props: { myTeamId, draftPicks }
 | PlayerDetail | `/player/:playerId` | `:playerId` (필수) | — | player 객체, teamId, teamName |
 | CoachDetail | `/coach/:coachId` | `:coachId` (필수) | — | — (context 재조회) |
 | GMDetail | `/gm/:teamId` | `:teamId` (필수) | — | — (context 재조회) |
-| GameResult | `/result` | — | — | result 객체 (필수) |
+| GameResult | `/result/:gameId` | `:gameId` (필수) | — | result 객체 (선택적 캐싱) |
 | DraftLottery | `/draft-lottery` | — | — | — |
 | FantasyDraft | `/draft/:poolType` | `:poolType` (필수) | — | draftTeamOrder |
 | RookieDraft | `/rookie-draft` | — | — | draftOrder, draftClass |
@@ -645,7 +647,7 @@ props: { myTeamId, draftPicks }
 |----|------|------|
 | GameSim | 상태 기반 오버레이 (URL 미변경) | 진행 중인 프로세스, URL 변경 시 깨짐 |
 | LiveGame | 상태 기반 오버레이 (URL 미변경) | 실시간 인터랙션 중, 중단 불가 |
-| GameResult | `/result` + location.state | 대형 결과 객체, 새로고침 필요 없음 |
+| GameResult | `/result/:gameId` + location.state(캐시) | gameId로 DB 재조회 가능 (`fetchFullGameResult`), state는 선택적 캐싱 |
 | DraftRoom | `/draft/:poolType` | poolType 딥링크 의미 있음 |
 | DraftLottery | `/draft-lottery` | 독립 풀스크린 |
 | RookieDraft | `/rookie-draft` | 독립 풀스크린 |
@@ -661,7 +663,7 @@ props: { myTeamId, draftPicks }
 | `/player/:playerId` | `location.state.player` → 없으면 teams+freeAgents에서 재조회 → 없으면 `navigate(-1)` |
 | `/coach/:coachId` | coachingData 전체 탐색으로 복원 가능, 어시스턴트 추가 시에도 동일 패턴 |
 | `/gm/:teamId` | `context.leagueGMProfiles[teamId]`로 완전 복원 가능 |
-| `/result` | `location.state` 없으면 `/` 리다이렉트 |
+| `/result/:gameId` | location.state 있으면 즉시 렌더링, 없으면 `fetchFullGameResult(gameId, userId)` DB 재조회. 실패 시 `/` 리다이렉트 |
 | `/rookie-draft` | `location.state` 없으면 context의 `lotteryResult` + `prospects`로 복원 시도 |
 
 ### Props Drilling 제거
@@ -686,7 +688,7 @@ BrowserRouter
 ├── /draft-pool-select             DraftPoolSelectView
 ├── /select-team                   TeamSelectView
 ├── /onboarding                    OnboardingView [fixed z-500]
-├── /result                        GameResultView (location.state 가드)
+├── /result/:gameId                GameResultView (state 캐시 우선 → DB 재조회 → / 리다이렉트)
 │
 └── /* ─── ProtectedLayout ─────── 인증 가드 + MainLayout
          │
@@ -751,7 +753,7 @@ BrowserRouter
 - 인증 가드: 세션 없으면 `/auth`, 팀 없으면 `/mode-select`
 - 미완료 드래프트 감지 → `/draft-lottery` 리다이렉트
 - GameSim/LiveGame 오버레이: `<Outlet>` 위에 렌더링
-- `sim.lastGameResult` 변경 시 `navigate('/result', { state })`
+- `sim.lastGameResult` 변경 시 `navigate(`/result/${gameId}`, { state })`
 - EditorModal, ResetDataModal 렌더링
 
 ### 5단계: pages/ 래퍼 생성
@@ -774,7 +776,7 @@ BrowserRouter
 | `PlayerDetailPage` | `useParams + useLocation().state` / 없으면 context 재조회 |
 | `CoachDetailPage` | `useParams<{ coachId }>` + coachingData 전체 탐색 재조회 |
 | `GMDetailPage` | `useParams<{ teamId }>` + context.leagueGMProfiles 재조회 |
-| `GameResultPage` | `location.state?.result` 없으면 `/` 리다이렉트 |
+| `GameResultPage` | `useParams<{ gameId }>` + `location.state?.result`(캐시) / 없으면 `fetchFullGameResult(gameId, userId)` / 실패 시 `/` 리다이렉트 |
 | `DraftLotteryPage` | `onComplete` → `navigate('/rookie-draft')` |
 | `FantasyDraftPage` | `useParams<{ poolType }>` / `location.state.draftTeamOrder` |
 | `RookieDraftPage` | `location.state`: draftOrder + draftClass / 없으면 context 복원 |
@@ -844,9 +846,9 @@ BrowserRouter
   /leaderboard         → 선수 클릭         → /player/:playerId (+ location.state)
   /leaderboard         → 팀 클릭           → /roster/:teamId
   /roster/:teamId      → 선수 클릭         → /player/:playerId (+ location.state)
-  /schedule            → 결과 보기         → /result (location.state)
-  /playoffs            → 결과 보기         → /result (location.state)
-  /inbox               → 결과 보기         → /result (location.state)
+  /schedule            → 결과 보기         → /result/:gameId (+ location.state 캐시)
+  /playoffs            → 결과 보기         → /result/:gameId (+ location.state 캐시)
+  /inbox               → 결과 보기         → /result/:gameId (+ location.state 캐시)
   /inbox               → HOF 이동          → /hall-of-fame
   /inbox               → 루키 드래프트      → /rookie-draft
   /inbox               → 드래프트 추첨      → /draft-lottery
@@ -864,8 +866,8 @@ BrowserRouter
   /draft/alltime → 올타임 커스텀 드래프트 완료 → /
 
 [시뮬레이션 (오버레이)]
-  현재 페이지 → sim 시작 → GameSim 오버레이 (URL 유지) → /result → /
-  현재 페이지 → 라이브    → LiveGame 오버레이 (URL 유지) → /result → /
+  현재 페이지 → sim 시작 → GameSim 오버레이 (URL 유지) → /result/:gameId → /
+  현재 페이지 → 라이브    → LiveGame 오버레이 (URL 유지) → /result/:gameId → /
 
 [리로드 시 미완료 드래프트 복원]
   ProtectedLayout 진입 → draftPicks.order 있고 teams 없음 → /draft-lottery 리다이렉트
@@ -878,7 +880,7 @@ BrowserRouter
 | 리스크 | 대응 |
 |--------|------|
 | GameSim/LiveGame 오버레이 URL 변경 시 깨짐 | 상태 기반 오버레이 유지, URL 미변경 |
-| `/result` 새로고침 | location.state 없으면 `/` 리다이렉트 |
+| `/result/:gameId` 새로고침 | location.state 없으면 `fetchFullGameResult(gameId, userId)`로 DB 재조회 |
 | `/player/:playerId` 새로고침 | playerId로 context teams+freeAgents 재조회, 실패 시 navigate(-1) |
 | `/rookie-draft` 새로고침 | location.state 없으면 context lotteryResult+prospects 복원 시도 |
 | Vercel 직접 URL 접속 시 404 | `vercel.json` catch-all rewrite |
@@ -895,7 +897,7 @@ BrowserRouter
 5. 새로고침 시 현재 뷰 유지
 6. GameSim → GameResult → Home 흐름
 7. `/standings` → `/roster/:teamId` URL 반영
-8. `/result` 직접 접속 → `/` 리다이렉트
+8. `/result/:gameId` 새로고침 → DB 재조회 후 박스스코어 복원
 9. 기본 모드 인증 플로우 정상 동작
 10. 커스텀 모드 인증 플로우 정상 동작
 11. 새로고침 시 미완료 드래프트 → `/draft-lottery` 자동 복원
