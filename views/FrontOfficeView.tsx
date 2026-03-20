@@ -1,16 +1,19 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team, Player } from '../types';
+import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
-import { getBudgetManager } from '../services/financeEngine';
+import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
 import { LeagueGMProfiles } from '../types/gm';
+import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
+import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
 type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
 
@@ -282,6 +285,225 @@ const AttendanceBar: React.FC<{ occupancy: number; avg: number }> = ({ occupancy
     );
 };
 
+// ── 달러 → 약식 M 표기 ──
+function fmtM(v: number): string {
+    return `$${(v / 1_000_000).toFixed(1)}M`;
+}
+
+// ── 캡 기준선 바 시각화 ──
+const CAP_BAR_MIN = 120_000_000;
+const CAP_BAR_MAX = 215_000_000;
+const toBarPct = (v: number) =>
+    Math.min(100, Math.max(0, ((v - CAP_BAR_MIN) / (CAP_BAR_MAX - CAP_BAR_MIN)) * 100));
+
+const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
+    const { SALARY_FLOOR, SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
+    const pct = toBarPct(payroll);
+
+    const barColor =
+        payroll < SALARY_FLOOR ? '#64748b'
+        : payroll < SALARY_CAP  ? '#10b981'
+        : payroll < TAX_LEVEL   ? '#f59e0b'
+        : payroll < FIRST_APRON ? '#f97316'
+        : payroll < SECOND_APRON ? '#ef4444'
+        : '#991b1b';
+
+    const thresholds = [
+        { v: SALARY_FLOOR, label: 'Floor', color: '#64748b' },
+        { v: SALARY_CAP,   label: 'Cap',   color: '#10b981' },
+        { v: TAX_LEVEL,    label: 'Tax',   color: '#f59e0b' },
+        { v: FIRST_APRON,  label: '1st',   color: '#f97316' },
+        { v: SECOND_APRON, label: '2nd',   color: '#ef4444' },
+    ];
+
+    return (
+        <div className="px-4 py-3">
+            {/* 바 트랙 */}
+            <div className="relative h-4 bg-slate-700 rounded-full overflow-visible mb-5">
+                {/* 채워진 바 */}
+                <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${pct}%`, backgroundColor: barColor }}
+                />
+                {/* 기준선 마커 */}
+                {thresholds.map(t => {
+                    const p = toBarPct(t.v);
+                    return (
+                        <div
+                            key={t.label}
+                            className="absolute top-0 h-full w-px"
+                            style={{ left: `${p}%`, backgroundColor: t.color, opacity: 0.8 }}
+                        />
+                    );
+                })}
+                {/* 현재 페이롤 커서 */}
+                <div
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-white bg-slate-900 z-10"
+                    style={{ left: `${pct}%` }}
+                />
+            </div>
+            {/* 기준선 레이블 */}
+            <div className="relative h-4">
+                {thresholds.map(t => {
+                    const p = toBarPct(t.v);
+                    return (
+                        <div
+                            key={t.label}
+                            className="absolute -translate-x-1/2 flex flex-col items-center gap-0.5"
+                            style={{ left: `${p}%` }}
+                        >
+                            <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: t.color }}>
+                                {t.label}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+            {/* 금액 범례 */}
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+                {thresholds.map(t => (
+                    <div key={t.label} className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                        <span className="text-[10px] text-slate-400 whitespace-nowrap">{t.label} {fmtM(t.v)}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// ── 캡 우측 위젯 전체 ──
+const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, primaryColor }) => {
+    const { SALARY_FLOOR, SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
+    const { NON_TAX_MLE, TAXPAYER_MLE } = SIGNING_EXCEPTIONS;
+
+    const payroll = calcTeamPayroll(team);
+    const luxTax = calculateLuxuryTax(payroll, TAX_LEVEL);
+    const deadMoney: DeadMoneyEntry[] = team.deadMoney ?? [];
+    const deadTotal = deadMoney.reduce((s, d) => s + d.amount, 0);
+
+    const capSpace    = SALARY_CAP - payroll;
+    const taxRoom     = TAX_LEVEL - payroll;
+    const apron1Room  = FIRST_APRON - payroll;
+    const apron2Room  = SECOND_APRON - payroll;
+    const floorShort  = SALARY_FLOOR - payroll;
+
+    // MLE 결정
+    const mleLabel  = payroll < FIRST_APRON  ? 'Non-Tax MLE'
+                    : payroll < SECOND_APRON ? 'Taxpayer MLE'
+                    : '없음 (2차 에이프런 초과)';
+    const mleAmount = payroll < FIRST_APRON  ? NON_TAX_MLE
+                    : payroll < SECOND_APRON ? TAXPAYER_MLE
+                    : 0;
+
+    // 현재 구간 라벨
+    const zoneLabel  = payroll < SALARY_FLOOR  ? '플로어 미달'
+                     : payroll < SALARY_CAP    ? '캡 스페이스'
+                     : payroll < TAX_LEVEL     ? '캡 초과 (비과세)'
+                     : payroll < FIRST_APRON   ? '럭셔리 택스 납부'
+                     : payroll < SECOND_APRON  ? '1차 에이프런 초과'
+                     : '2차 에이프런 초과';
+    const zoneColor  = payroll < SALARY_FLOOR  ? 'text-slate-400'
+                     : payroll < SALARY_CAP    ? 'text-emerald-400'
+                     : payroll < TAX_LEVEL     ? 'text-yellow-400'
+                     : payroll < FIRST_APRON   ? 'text-orange-400'
+                     : 'text-red-400';
+
+    const signVal = (v: number, pos = 'text-emerald-400', neg = 'text-red-400') =>
+        v >= 0
+            ? <span className={`font-bold font-mono tabular-nums ${pos}`}>+{fmtM(v)}</span>
+            : <span className={`font-bold font-mono tabular-nums ${neg}`}>{fmtM(v)}</span>;
+
+    const releaseLabel: Record<string, string> = {
+        waive: 'Waive', buyout: 'Buyout', stretch: 'Stretch',
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+
+            {/* ① 캡 현황 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="샐러리 캡 현황" primaryColor={primaryColor} />
+                <DataRow label="총 페이롤" value={<span className={`font-bold font-mono tabular-nums ${zoneColor}`}>{fmtM(payroll)}</span>} />
+                <DataRow label="구간" value={<span className={zoneColor}>{zoneLabel}</span>} />
+                <DataRow
+                    label="캡 스페이스"
+                    value={signVal(capSpace)}
+                />
+                <DataRow
+                    label="럭셔리 택스까지"
+                    value={signVal(taxRoom, 'text-emerald-400', 'text-orange-400')}
+                />
+                <DataRow
+                    label="1차 에이프런까지"
+                    value={signVal(apron1Room, 'text-emerald-400', 'text-red-400')}
+                />
+                <DataRow
+                    label="2차 에이프런까지"
+                    value={signVal(apron2Room, 'text-emerald-400', 'text-red-500')}
+                />
+                {payroll >= TAX_LEVEL && (
+                    <DataRow
+                        label="예상 럭셔리 택스"
+                        value={<span className="font-bold font-mono tabular-nums text-red-400">{fmtM(luxTax)}</span>}
+                    />
+                )}
+                {floorShort > 0 && (
+                    <DataRow
+                        label="플로어 미달"
+                        value={<span className="font-bold font-mono tabular-nums text-slate-400">+{fmtM(floorShort)}</span>}
+                    />
+                )}
+            </div>
+
+            {/* ② 기준선 시각화 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="기준선 시각화" primaryColor={primaryColor} />
+                <CapBar payroll={payroll} />
+            </div>
+
+            {/* ③ 서명 예외 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="서명 예외" primaryColor={primaryColor} />
+                <DataRow
+                    label="MLE"
+                    value={mleAmount > 0
+                        ? <span className="font-bold text-indigo-400">{mleLabel} ({fmtM(mleAmount)})</span>
+                        : <span className="text-slate-500">{mleLabel}</span>
+                    }
+                />
+                <DataRow
+                    label="샐러리 플로어"
+                    value={floorShort > 0
+                        ? <span className="font-bold text-slate-400">미달 ({fmtM(floorShort)} 부족)</span>
+                        : <span className="font-bold text-emerald-400">충족</span>
+                    }
+                />
+            </div>
+
+            {/* ④ 데드캡 내역 (있을 때만) */}
+            {deadMoney.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <WidgetHeader title="데드캡 내역" primaryColor={primaryColor} />
+                    <DataRow label="데드캡 총액" value={<span className="font-bold font-mono tabular-nums text-red-400">{fmtM(deadTotal)}</span>} />
+                    {deadMoney.map((d, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800 last:border-0">
+                            <div className="flex flex-col min-w-0">
+                                <span className="text-slate-200 truncate">{d.playerName}</span>
+                                <span className="text-slate-500">
+                                    {releaseLabel[d.releaseType] ?? d.releaseType}
+                                    {d.stretchYearsRemaining != null && ` · ${d.stretchYearsRemaining}년 잔여`}
+                                </span>
+                            </div>
+                            <span className="font-bold font-mono tabular-nums text-red-400 shrink-0 ml-4">{fmtM(d.amount)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ── 선수 급여 탭 ──
 const PayrollTab: React.FC<{
     team: Team;
@@ -318,8 +540,9 @@ const PayrollTab: React.FC<{
     const COL_W = 120;
 
     return (
-        <div className="p-4 animate-in fade-in duration-500">
-            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="p-4 animate-in fade-in duration-500 flex gap-4 items-start">
+            {/* 좌: 선수 급여 테이블 */}
+            <div className="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
                     <table className="border-collapse text-xs" style={{ width: `${160 + COL_W * seasonColumns.length}px` }}>
@@ -357,6 +580,10 @@ const PayrollTab: React.FC<{
                         </tbody>
                     </table>
                 </div>
+            </div>
+            {/* 우: 샐러리 캡 패널 */}
+            <div className="w-[280px] shrink-0">
+                <CapSidePanel team={team} primaryColor={primaryColor} />
             </div>
         </div>
     );
