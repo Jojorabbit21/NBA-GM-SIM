@@ -61,6 +61,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                 // Construct result object compatible with GameResultView
                 // [Fix] Ensure pbp_logs and shot_events are safe arrays
                 const mappedResult = {
+                    gameId,
                     home: homeTeam,
                     away: awayTeam,
                     homeScore: raw.home_score,

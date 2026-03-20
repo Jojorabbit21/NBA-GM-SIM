@@ -308,6 +308,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               return;
           }
           onViewGameResult({
+              gameId,
               home: homeTeam, away: awayTeam,
               homeScore: raw.home_score, awayScore: raw.away_score,
               homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],

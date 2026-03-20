@@ -172,6 +172,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
             const awayTeam = allTeams.find(t => t.id === raw.away_team_id);
             if (!homeTeam || !awayTeam) return;
             onViewGameResult({
+                gameId,
                 home: homeTeam, away: awayTeam,
                 homeScore: raw.home_score, awayScore: raw.away_score,
                 homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],

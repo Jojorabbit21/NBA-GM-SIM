@@ -178,6 +178,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
         const homeTeam = teams.find(t => t.id === raw.home_team_id);
         const awayTeam = teams.find(t => t.id === raw.away_team_id);
         const mappedResult = {
+          gameId,
           home: homeTeam, away: awayTeam,
           homeScore: raw.home_score, awayScore: raw.away_score,
           homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],
