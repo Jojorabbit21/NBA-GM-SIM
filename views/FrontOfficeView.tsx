@@ -542,7 +542,7 @@ const PayrollTab: React.FC<{
     return (
         <div className="p-4 animate-in fade-in duration-500 flex gap-4 items-start">
             {/* 좌: 선수 급여 테이블 */}
-            <div className="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            <div className="flex-[6] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length}px` }}>
@@ -582,7 +582,7 @@ const PayrollTab: React.FC<{
                 </div>
             </div>
             {/* 우: 샐러리 캡 패널 */}
-            <div className="w-[280px] shrink-0">
+            <div className="flex-[4] min-w-0">
                 <CapSidePanel team={team} primaryColor={primaryColor} />
             </div>
         </div>
