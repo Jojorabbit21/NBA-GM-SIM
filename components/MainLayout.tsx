@@ -50,11 +50,14 @@ interface MainLayoutProps {
     };
 }
 
-/** ISO 날짜에 N일을 더한 날짜 반환 */
+/** ISO 날짜에 N일을 더한 날짜 반환 (로컬 타임존 기준) */
 function addDays(isoDate: string, n: number): string {
     const d = new Date(isoDate + 'T00:00:00');
     d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
