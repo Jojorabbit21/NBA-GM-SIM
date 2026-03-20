@@ -1,5 +1,5 @@
 
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
@@ -49,14 +49,19 @@ interface MainLayoutProps {
     };
 }
 
+/** ISO 날짜에 N일을 더한 날짜 반환 */
+function addDays(isoDate: string, n: number): string {
+    const d = new Date(isoDate + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { pathname } = useLocation();
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics,
             coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach } = gameHeaderProps;
-    const [isCollapsed, setIsCollapsed] = useState(false);
 
-    // Common logic moved from DashboardView to Layout level
     const nextGame = useMemo(() => {
         if (!team?.id) return undefined;
         const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
@@ -89,16 +94,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         return playoffSeries.find(s => s.id === nextGame.seriesId);
     }, [nextGame, playoffSeries]);
 
-    const myOvr = useMemo(() => {
-        if (!team?.roster?.length) return 0;
-        return Math.round(team.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / team.roster.length);
-    }, [team?.roster]);
-
-    const opponentOvrValue = useMemo(() => {
-        if (!opponent?.roster?.length) return 0;
-        return Math.round(opponent.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / opponent.roster.length);
-    }, [opponent?.roster]);
-
     const { conferenceRank, streak, conferenceName } = useMemo(() => {
         if (!team) return { conferenceRank: 0, streak: '-', conferenceName: '' };
         const stats = computeStandingsStats(teams, schedule);
@@ -118,28 +113,61 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         };
     }, [team, teams, schedule]);
 
+    // 오늘/내일 경기 상대 이름 계산
+    const { todayOpponentName, tomorrowDate, tomorrowOpponentName } = useMemo(() => {
+        if (!team?.id || !currentSimDate) return { todayOpponentName: undefined, tomorrowDate: undefined, tomorrowOpponentName: undefined };
+
+        const nextDay = addDays(currentSimDate, 1);
+
+        const todayGame = schedule.find(g =>
+            (g.homeTeamId === team.id || g.awayTeamId === team.id) &&
+            g.date === currentSimDate && !g.played
+        );
+        const tomorrowGame = schedule.find(g =>
+            (g.homeTeamId === team.id || g.awayTeamId === team.id) &&
+            g.date === nextDay && !g.played
+        );
+
+        const getOpponentName = (game: Game) => {
+            const oppId = game.homeTeamId === team.id ? game.awayTeamId : game.homeTeamId;
+            const td = TEAM_DATA[oppId];
+            return td ? td.name : oppId;
+        };
+
+        return {
+            todayOpponentName: todayGame ? getOpponentName(todayGame) : undefined,
+            tomorrowDate: nextDay,
+            tomorrowOpponentName: tomorrowGame ? getOpponentName(tomorrowGame) : undefined,
+        };
+    }, [team?.id, currentSimDate, schedule]);
+
     const isFullHeightView = pathname.startsWith('/draft/') || pathname.startsWith('/rookie-draft') || pathname.startsWith('/draft-history') || pathname.startsWith('/draft-lottery');
     const isNoPaddingView = pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/inbox') || pathname.startsWith('/roster') || pathname.startsWith('/standings') || pathname.startsWith('/leaderboard') || pathname.startsWith('/schedule') || pathname.startsWith('/transactions') || pathname.startsWith('/player') || pathname.startsWith('/coach') || pathname.startsWith('/gm/') || pathname.startsWith('/playoffs') || pathname.startsWith('/front-office') || pathname.startsWith('/draft-board') || pathname.startsWith('/fa-market');
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
             <Sidebar
-                {...sidebarProps}
+                team={sidebarProps.team}
+                isGuestMode={sidebarProps.isGuestMode}
+                unreadMessagesCount={sidebarProps.unreadMessagesCount}
+                userEmail={sidebarProps.userEmail}
                 isRegularSeasonOver={isRegularSeasonOver}
                 isPostseasonOver={isPostseasonOver}
-                isCollapsed={isCollapsed}
-                onToggleCollapse={() => setIsCollapsed(prev => !prev)}
+                pendingOffseasonAction={sidebarProps.pendingOffseasonAction}
+                hasProspects={sidebarProps.hasProspects}
+                offseasonPhase={sidebarProps.offseasonPhase}
+                onResetClick={sidebarProps.onResetClick}
+                onEditorClick={sidebarProps.onEditorClick}
+                onSimSettingsClick={sidebarProps.onSimSettingsClick}
+                onLogout={sidebarProps.onLogout}
             />
             <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
-                {/* Global Game Header — hidden for full-height views only (DraftRoom) */}
                 {!isFullHeightView && team && (
                     <DashboardHeader
                         team={team}
                         nextGame={nextGame}
                         opponent={opponent}
                         isHome={isHome}
-                        myOvr={myOvr}
-                        opponentOvrValue={opponentOvrValue}
                         isGameToday={isGameToday}
                         isSimulating={isSimulating}
                         simProgress={simProgress}
@@ -155,6 +183,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         keyDates={sidebarProps.keyDates}
                         onSkipToDate={sidebarProps.onSkipToDate}
                         onSimulateFullSeason={sidebarProps.onSimulateSeason}
+                        todayOpponentName={todayOpponentName}
+                        tomorrowDate={tomorrowDate}
+                        tomorrowOpponentName={tomorrowOpponentName}
                         allTeams={teams}
                         coachingData={coachingData}
                         leagueGMProfiles={leagueGMProfiles}

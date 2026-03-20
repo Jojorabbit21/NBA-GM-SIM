@@ -1,25 +1,22 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
-  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal, UserPlus, Users,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
-  Sparkles, Dices,
+  RotateCcw, LogOut, Mail, Gavel, User,
+  BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
+  Sparkles, Dices, Users, UserPlus, SlidersHorizontal, Dumbbell,
 } from 'lucide-react';
 import { Team } from '../types';
 import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
-import { Dropdown } from './common/Dropdown';
 import { LegalModal } from './LegalModal';
 import { getTeamTheme } from '../utils/teamTheme';
-import { APP_NAME } from '../utils/constants';
 
 interface SidebarProps {
   team: Team | undefined;
-  currentSimDate: string;
   isGuestMode: boolean;
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
@@ -28,66 +25,42 @@ interface SidebarProps {
   hasProspects: boolean;
   offseasonPhase?: OffseasonPhase | null;
   userEmail?: string;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
   onResetClick: () => void;
   onEditorClick: () => void;
   onSimSettingsClick: () => void;
   onLogout: () => void;
 }
 
-// Team color theme — shared utility (utils/teamTheme.ts)
-
 const NavItem: React.FC<{
   active: boolean;
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
-  activeColor: string;
   badge?: number;
   textBadge?: string;
-  isCollapsed: boolean;
-}> = ({ active, icon, label, onClick, activeColor, badge, textBadge, isCollapsed }) => (
+}> = ({ active, icon, label, onClick, badge, textBadge }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
-      isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
-    } ${
+    title={label}
+    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 ${
       active
-        ? 'opacity-100'
-        : 'opacity-60 hover:opacity-90 hover:bg-white/10'
+        ? 'bg-black/35'
+        : 'hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25'
     }`}
-    style={active ? { color: activeColor } : {}}
-    title={isCollapsed ? label : undefined}
   >
-    <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
-        <span className="transition-colors shrink-0">
-          {React.cloneElement(icon as React.ReactElement<any>, {
-             color: active ? activeColor : 'currentColor',
-             size: 20
-          })}
-        </span>
-
-        <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
-          isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
-        }`}>
-          {label}
-        </span>
-    </div>
-
+    {React.cloneElement(icon as React.ReactElement<any>, {
+      size: 24,
+      color: 'white',
+    })}
     {badge !== undefined && badge > 0 && (
-        <span className={`absolute z-10 flex items-center justify-center rounded-full bg-red-500 text-white shadow-sm font-bold transition-all duration-500 ${
-          isCollapsed ? '-top-0.5 -right-0.5 h-4 w-4 text-[8px]' : 'right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[10px] ring-2 ring-white'
-        }`}>
-           {badge > 9 ? '9+' : badge}
-        </span>
+      <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
+        {badge > 9 ? '9+' : badge}
+      </span>
     )}
     {textBadge && (
-        <span className={`absolute z-10 flex items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm font-black transition-all duration-500 ${
-          isCollapsed ? '-top-0.5 -right-0.5 h-4 w-4 text-[6px]' : 'right-4 top-1/2 -translate-y-1/2 px-1.5 h-4 text-[8px]'
-        }`}>
-           {isCollapsed ? '!' : textBadge}
-        </span>
+      <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[6px] font-black shadow">
+        !
+      </span>
     )}
   </button>
 );
@@ -97,13 +70,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isGuestMode,
   unreadMessagesCount,
   isRegularSeasonOver,
-  isPostseasonOver,
   pendingOffseasonAction,
   hasProspects,
   offseasonPhase,
   userEmail,
-  isCollapsed,
-  onToggleCollapse,
   onResetClick,
   onEditorClick,
   onSimSettingsClick,
@@ -113,209 +83,186 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const { pathname } = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
 
-  const navProps = { activeColor: theme.accent, isCollapsed };
+  // 프로필 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isMenuOpen]);
 
   return (
     <>
-    <aside
-      className={`${isCollapsed ? 'w-20' : 'w-72'} border-r border-white/10 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500`}
-      style={{ backgroundColor: theme.bg, color: theme.text }}
-    >
-
-      {/* Profile Section */}
-      <div className="px-6 py-3 border-b border-white/10 flex items-center transition-all duration-500 bg-black/10">
-        <div className={`flex items-center flex-1 min-w-0 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-3'}`}>
-          <button
-            onClick={isCollapsed ? onToggleCollapse : undefined}
-            className={`w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0 opacity-70 transition-all duration-500 ${
-              isCollapsed ? 'hover:opacity-100 cursor-pointer' : 'cursor-default'
-            }`}
-            title={isCollapsed ? (userEmail || '프로필') : undefined}
-          >
-            <User size={16} />
-          </button>
-          <span className={`text-xs font-bold opacity-70 whitespace-nowrap overflow-hidden transition-all duration-500 ${
-            isCollapsed ? 'opacity-0 max-w-0' : 'max-w-[200px] delay-150'
-          }`}>
-            {userEmail || (isGuestMode ? '게스트 모드' : '로그인 필요')}
-          </span>
-        </div>
-        <div className={`shrink-0 overflow-hidden transition-all duration-500 ${isCollapsed ? 'opacity-0 pointer-events-none max-w-0' : 'opacity-100 max-w-[50px] ml-auto delay-150'}`}>
-          <Dropdown
-            isOpen={isMenuOpen}
-            onOpenChange={setIsMenuOpen}
-            width="w-56"
-            align="left"
-            trigger={
-              <button
-                onClick={() => setIsMenuOpen(prev => !prev)}
-                className="p-1.5 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition-all shrink-0"
-              >
-                <MoreHorizontal size={16} />
-              </button>
-            }
-          >
-            <div className="p-1.5 space-y-0.5">
-              <button
-                onClick={() => { navigate('/hall-of-fame'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all text-left"
-              >
-                <Crown size={15} />
-                <span className="text-xs font-bold">명예의 전당</span>
-              </button>
-              <div className="my-1 border-t border-slate-800" />
-              <button
-                onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <Gavel size={15} />
-                <span className="text-xs font-bold">드래프트 기록</span>
-              </button>
-              <button
-                onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <Wand2 size={15} />
-                <span className="text-xs font-bold">에디터</span>
-              </button>
-              <button
-                onClick={() => { onSimSettingsClick(); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <Settings size={15} />
-                <span className="text-xs font-bold">시뮬레이션 설정</span>
-              </button>
-              <div className="my-1 border-t border-slate-800" />
-              <button
-                onClick={() => { onResetClick(); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
-              >
-                <RotateCcw size={15} />
-                <span className="text-xs font-bold">데이터 초기화</span>
-              </button>
-              <button
-                onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <BookOpen size={15} />
-                <span className="text-xs font-bold">초보자 가이드</span>
-              </button>
-              <button
-                onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <FileText size={15} />
-                <span className="text-xs font-bold">이용약관</span>
-              </button>
-              <button
-                onClick={() => { onLogout(); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <LogOut size={15} />
-                <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>
-              </button>
-            </div>
-          </Dropdown>
-        </div>
-      </div>
-
-      {/* Team Profile Section */}
-      <div className="border-b border-white/10 relative overflow-hidden transition-all duration-500 bg-black/10">
-        <div className={`flex items-center relative z-10 transition-all duration-500 ${
-          isCollapsed ? 'px-5 py-3 gap-0' : 'p-8 gap-5'
-        }`}>
+      <aside
+        className="w-20 shrink-0 flex flex-col h-screen z-20 relative"
+        style={{
+          backgroundColor: theme.bg,
+          borderRight: '1px solid rgba(255,255,255,0.2)',
+        }}
+      >
+        {/* 상단 팀 로고 영역 */}
+        <div className="h-[122px] flex items-center justify-center shrink-0">
           <TeamLogo
             teamId={team?.id || ''}
             size="custom"
-            className={`drop-shadow-2xl filter brightness-110 shrink-0 transition-all duration-500 ${
-              isCollapsed ? 'w-10 h-10' : 'w-16 h-16 hover:scale-105'
-            }`}
+            className="w-12 h-12 drop-shadow-lg"
           />
-          <div className={`min-w-0 whitespace-nowrap overflow-hidden transition-all duration-500 ${
-            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
-          }`}>
-            <h2 className="font-black text-2xl leading-none uppercase truncate drop-shadow-md">
-              {team?.name || APP_NAME}
-            </h2>
-            <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-80">
-              {team?.wins || 0}W - {team?.losses || 0}L
-            </span>
-          </div>
         </div>
-      </div>
 
-
-      {/* Main Navigation */}
-      <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
-        {/* 오프시즌 이벤트 프라이머리 버튼 — 최상단 */}
-        {pendingOffseasonAction && (() => {
-          const cfg = pendingOffseasonAction === 'lottery'
-            ? { path: '/draft-lottery', icon: <Dices size={18} />, label: '로터리 추첨 결과' }
-            : { path: '/draft/', icon: <Sparkles size={18} />, label: '신인 드래프트' };
-          return (
-            <>
+        {/* 메인 네비게이션 */}
+        <nav className="flex-1 flex flex-col gap-6 px-5 overflow-y-auto py-2 custom-scrollbar">
+          {/* 오프시즌 이벤트 버튼 */}
+          {pendingOffseasonAction && (() => {
+            const cfg = pendingOffseasonAction === 'lottery'
+              ? { path: '/draft-lottery', icon: <Dices size={22} color="white" />, label: '로터리 추첨' }
+              : { path: '/draft/', icon: <Sparkles size={22} color="white" />, label: '신인 드래프트' };
+            return (
               <button
                 onClick={() => navigate(cfg.path)}
-                title={isCollapsed ? cfg.label : undefined}
-                className={`w-full flex items-center justify-center gap-2.5 font-bold text-white rounded-2xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.97] select-none ${
-                  isCollapsed ? 'p-3' : 'px-5 py-3.5'
-                }`}
-                style={{
-                  backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 45%, transparent 50%, rgba(0,0,0,0.1) 100%)',
-                  backgroundColor: '#059669',
-                  boxShadow: '0 4px 20px rgba(5,150,105,0.4), 0 0 40px rgba(5,150,105,0.15), inset 0 1px 0 rgba(255,255,255,0.25)',
-                }}
+                title={cfg.label}
+                className="w-full flex items-center justify-center p-2 rounded-[4px] bg-emerald-600/80 hover:bg-emerald-500/80 transition-all duration-150 relative"
               >
                 {cfg.icon}
-                {!isCollapsed && <span className="text-sm tracking-tight ko-tight">{cfg.label}</span>}
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
               </button>
-            </>
-          );
-        })()}
-        <NavItem active={pathname === '/'} icon={<Home size={20}/>} label="홈" onClick={() => navigate('/')} {...navProps} />
-        <NavItem active={pathname.startsWith('/front-office')} icon={<Briefcase size={20}/>} label="프론트 오피스" onClick={() => navigate('/front-office')} {...navProps} />
-        <NavItem active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => navigate('/dashboard')} {...navProps} />
-        <NavItem active={pathname.startsWith('/inbox')} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} {...navProps} />
-        <NavItem active={pathname.startsWith('/standings')} icon={<Trophy size={20}/>} label="순위표" onClick={() => navigate('/standings')} {...navProps} />
-        <NavItem active={pathname.startsWith('/leaderboard')} icon={<BarChart3 size={20}/>} label="리더보드" onClick={() => navigate('/leaderboard')} {...navProps} />
-        {isRegularSeasonOver && (
-          <NavItem active={pathname.startsWith('/playoffs')} icon={<Swords size={20}/>} label="플레이오프" onClick={() => navigate('/playoffs')} {...navProps} />
-        )}
-        <NavItem active={pathname.startsWith('/schedule')} icon={<CalendarIcon size={20}/>} label="리그 일정" onClick={() => navigate('/schedule')} {...navProps} />
-        <NavItem active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => navigate('/transactions')} {...navProps} />
-        <NavItem active={pathname.startsWith('/fa-market')} icon={<Users size={20}/>} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} {...navProps} />
-        {hasProspects && (
-          <NavItem active={pathname.startsWith('/draft-board')} icon={<UserPlus size={20}/>} label="드래프트" onClick={() => navigate('/draft-board')} {...navProps} />
-        )}
-        <div className="mt-auto" />
-      </nav>
+            );
+          })()}
 
-      {/* Collapse Toggle */}
-      <div className="p-4 border-t border-white/10 transition-all duration-500">
-        <button
-          onClick={onToggleCollapse}
-          className={`w-full flex items-center py-2.5 rounded-xl opacity-50 hover:opacity-80 hover:bg-white/10 transition-all duration-500 ${
-            isCollapsed ? 'px-3.5 gap-0' : 'px-4 gap-3'
-          }`}
-          title={isCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+          <NavItem active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
+          <NavItem active={pathname.startsWith('/inbox')} icon={<Mail />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
+          <NavItem active={pathname.startsWith('/front-office')} icon={<Briefcase />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
+          <NavItem active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/dashboard')} />
+          <NavItem active={pathname.startsWith('/standings')} icon={<Trophy />} label="순위표" onClick={() => navigate('/standings')} />
+          <NavItem active={pathname.startsWith('/leaderboard')} icon={<BarChart3 />} label="리더보드" onClick={() => navigate('/leaderboard')} />
+          <NavItem active={pathname.startsWith('/fa-market')} icon={<Users />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
+          <NavItem active={pathname.startsWith('/schedule')} icon={<CalendarIcon />} label="리그 일정" onClick={() => navigate('/schedule')} />
+          {isRegularSeasonOver && (
+            <NavItem active={pathname.startsWith('/playoffs')} icon={<Swords />} label="플레이오프" onClick={() => navigate('/playoffs')} />
+          )}
+          <NavItem active={false} icon={<SlidersHorizontal />} label="전술 (준비 중)" onClick={() => {}} />
+          <NavItem active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
+          <NavItem active={false} icon={<Dumbbell />} label="훈련 (준비 중)" onClick={() => {}} />
+          {hasProspects && (
+            <NavItem active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
+          )}
+        </nav>
+
+        {/* 하단 프로필/설정 영역 */}
+        <div
+          className="flex flex-col gap-6 px-5 py-6 shrink-0"
+          style={{ background: 'rgba(0,0,0,0.15)' }}
         >
-          <span className="shrink-0">
-            {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-          </span>
-          <span className={`text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden transition-all duration-500 ${
-            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[100px] delay-150'
-          }`}>접기</span>
-        </button>
-      </div>
-    </aside>
+          {/* 프로필 버튼 (드롭다운 위 방향 오픈) */}
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={() => setIsMenuOpen(prev => !prev)}
+              title={userEmail || '프로필'}
+              className={`w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 ${
+                isMenuOpen
+                  ? 'bg-black/35'
+                  : 'hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25'
+              }`}
+            >
+              <User size={24} color="white" />
+            </button>
 
-    <LegalModal
-      isOpen={showTermsModal}
-      onClose={() => setShowTermsModal(false)}
-    />
+            {/* 드롭다운 — 위쪽 방향 */}
+            {isMenuOpen && (
+              <div
+                className="absolute bottom-full left-0 mb-2 w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
+                style={{
+                  background: '#1e293b',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                {userEmail && (
+                  <div className="px-3 py-2.5 border-b border-slate-700">
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">계정</p>
+                    <p className="text-xs text-slate-300 font-medium truncate mt-0.5">{userEmail}</p>
+                  </div>
+                )}
+                <div className="p-1.5 space-y-0.5">
+                  <button
+                    onClick={() => { navigate('/hall-of-fame'); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all text-left"
+                  >
+                    <Crown size={14} />
+                    <span className="text-xs font-bold">명예의 전당</span>
+                  </button>
+                  <div className="my-1 border-t border-slate-700" />
+                  <button
+                    onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                  >
+                    <Gavel size={14} />
+                    <span className="text-xs font-bold">드래프트 기록</span>
+                  </button>
+                  <button
+                    onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                  >
+                    <Wand2 size={14} />
+                    <span className="text-xs font-bold">에디터</span>
+                  </button>
+                  <div className="my-1 border-t border-slate-700" />
+                  <button
+                    onClick={() => { onResetClick(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
+                  >
+                    <RotateCcw size={14} />
+                    <span className="text-xs font-bold">데이터 초기화</span>
+                  </button>
+                  <button
+                    onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                  >
+                    <BookOpen size={14} />
+                    <span className="text-xs font-bold">초보자 가이드</span>
+                  </button>
+                  <button
+                    onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                  >
+                    <FileText size={14} />
+                    <span className="text-xs font-bold">이용약관</span>
+                  </button>
+                  <div className="my-1 border-t border-slate-700" />
+                  <button
+                    onClick={() => { onLogout(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                  >
+                    <LogOut size={14} />
+                    <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 시뮬레이션 설정 버튼 */}
+          <button
+            onClick={onSimSettingsClick}
+            title="시뮬레이션 설정"
+            className="w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 hover:bg-black/15 hover:outline hover:outline-2 hover:outline-black/25"
+          >
+            <Settings size={24} color="white" />
+          </button>
+        </div>
+      </aside>
+
+      <LegalModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+      />
     </>
   );
 });

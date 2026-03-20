@@ -2,11 +2,9 @@
 import React, { useState, useCallback } from 'react';
 import { Loader2, Play, ChevronRight, FastForward, ChevronDown, ChevronUp } from 'lucide-react';
 import { Team, Game, PlayoffSeries, Player } from '../../types';
-import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
-import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
 import { PendingOffseasonAction } from '../../types/app';
 import { DateSkipDropdown, formatDateKorean } from './DateSkipDropdown';
@@ -18,8 +16,6 @@ interface DashboardHeaderProps {
   nextGame?: Game;
   opponent?: Team;
   isHome: boolean;
-  myOvr: number;
-  opponentOvrValue: number;
   isGameToday: boolean;
   isSimulating?: boolean;
   simProgress?: { percent: number; label: string } | null;
@@ -35,6 +31,10 @@ interface DashboardHeaderProps {
   keyDates?: SeasonKeyDates;
   onSkipToDate?: (targetDate: string, label: string) => void;
   onSimulateFullSeason?: () => void;
+  // 오늘/내일 경기 정보
+  todayOpponentName?: string;
+  tomorrowDate?: string;
+  tomorrowOpponentName?: string;
   // 검색 기능
   allTeams?: Team[];
   coachingData?: Record<string, { headCoach: any }>;
@@ -45,291 +45,257 @@ interface DashboardHeaderProps {
   onSearchViewCoach?: (teamId: string) => void;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
-  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, simProgress, onSimClick, onAutoSimClick,
-  currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver,
-  pendingOffseasonAction, keyDates, onSkipToDate, onSimulateFullSeason,
-  allTeams, coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
-}) => {
-  const homeTeam = isHome ? team : opponent;
-  const awayTeam = isHome ? opponent : team;
-  const homeOvr = isHome ? myOvr : opponentOvrValue;
-  const awayOvr = isHome ? opponentOvrValue : myOvr;
+/** ISO 날짜 → 간략 한글 포맷 (월 일) */
+function formatDateShort(isoDate: string): string {
+  const d = new Date(isoDate + 'T00:00:00');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
 
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
+  team, nextGame, opponent, isHome, isGameToday, isSimulating, simProgress,
+  onSimClick, onAutoSimClick, currentSeries, currentSimDate, conferenceRank,
+  streak, conferenceName, isSeasonOver, pendingOffseasonAction, keyDates,
+  onSkipToDate, onSimulateFullSeason,
+  todayOpponentName, tomorrowDate, tomorrowOpponentName,
+  allTeams, coachingData, leagueGMProfiles,
+  onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
+}) => {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
   const handleSkipToDate = useCallback((targetDate: string, label: string) => {
-      if (!onSkipToDate) return;
-      const ok = window.confirm(`${label} (${targetDate})까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?`);
-      if (ok) onSkipToDate(targetDate, label);
+    if (!onSkipToDate) return;
+    const ok = window.confirm(`${label} (${targetDate})까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?`);
+    if (ok) onSkipToDate(targetDate, label);
   }, [onSkipToDate]);
 
   const handleSimulateFullSeason = useCallback(() => {
-      if (!onSimulateFullSeason) return;
-      const ok = window.confirm('시즌 끝까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?');
-      if (ok) onSimulateFullSeason();
+    if (!onSimulateFullSeason) return;
+    const ok = window.confirm('시즌 끝까지 시뮬레이션을 진행합니다.\n계속하시겠습니까?');
+    if (ok) onSimulateFullSeason();
   }, [onSimulateFullSeason]);
 
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
   const btnTheme = getButtonTheme(team.id, teamColors);
-  const glowColor = btnTheme.glow;
 
-  // Primary button (경기 시작 / 내일로 이동) — glossy glass gradient
-  // 밝은 배경(흰색 등)은 black overlay, 어두운 배경은 white overlay
+  // 메인 버튼 글로시 스타일
   const isLightBg = (() => {
-      const hex = btnTheme.bg.replace('#', '');
-      if (hex.length < 6) return false;
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
+    const hex = btnTheme.bg.replace('#', '');
+    if (hex.length < 6) return false;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
   })();
 
-  const primaryBtn = (id: string) => {
-      const isPressed = pressedBtn === id;
-      const isHovered = hoveredBtn === id;
-      const hl = isLightBg ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
-      const hlMid = isLightBg ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
-      const shBot = isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.1)';
-
-      // 프로그레스 바 모드: 좌→우 채움 그라데이션
-      const progressGradient = simProgress
-          ? `linear-gradient(90deg, ${btnTheme.bg} 0%, ${btnTheme.bg} ${simProgress.percent}%, rgba(0,0,0,0.35) ${simProgress.percent + 0.5}%, rgba(0,0,0,0.25) 100%)`
-          : undefined;
-
-      return {
-          style: {
-              backgroundColor: btnTheme.bg,
-              backgroundImage: simProgress
-                  ? progressGradient
-                  : isPressed
-                      ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
-                      : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
-              color: btnTheme.text,
-              boxShadow: isPressed
-                  ? `inset 0 1px 2px rgba(0,0,0,0.2), 0 1px 4px ${glowColor}20`
-                  : isHovered
-                      ? `inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
-                      : undefined, // breathing animation handles idle via CSS var
-              '--glow-color': `${glowColor}50`,
-              '--glow-dim': `${glowColor}18`,
-              transform: isPressed ? 'scale(0.97)' : 'scale(1)',
-              transition: simProgress ? 'background-image 0.3s ease, all 0.15s ease' : 'all 0.15s ease',
-              filter: isHovered && !isPressed ? 'brightness(1.05)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
-          } as React.CSSProperties,
-          onMouseDown: () => !isSimulating && setPressedBtn(id),
-          onMouseUp: () => setPressedBtn(null),
-          onMouseEnter: () => !isSimulating && setHoveredBtn(id),
-          onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
-      };
+  const mainBtnStyle = (id: string): React.CSSProperties => {
+    const isPressed = pressedBtn === id;
+    const isHovered = hoveredBtn === id;
+    const hl = isLightBg ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
+    const hlMid = isLightBg ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+    const shBot = isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.1)';
+    const progressGradient = simProgress
+      ? `linear-gradient(90deg, ${btnTheme.bg} 0%, ${btnTheme.bg} ${simProgress.percent}%, rgba(0,0,0,0.35) ${simProgress.percent + 0.5}%, rgba(0,0,0,0.25) 100%)`
+      : undefined;
+    return {
+      backgroundColor: btnTheme.bg,
+      backgroundImage: simProgress
+        ? progressGradient
+        : isPressed
+        ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
+        : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
+      color: btnTheme.text,
+      transform: isPressed ? 'scale(0.97)' : 'scale(1)',
+      transition: 'all 0.15s ease',
+      filter: isHovered && !isPressed ? 'brightness(1.05)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
+    };
   };
 
-  // Secondary button (자동 진행)
-  const secondaryBtn = (id: string) => {
-      const isPressed = pressedBtn === id;
-      const isHovered = hoveredBtn === id;
-      return {
-          style: {
-              backgroundColor: isHovered ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.85)',
-              border: isHovered ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.12)',
-              boxShadow: isPressed ? 'none' : isHovered ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
-              transform: isPressed ? 'scale(0.97)' : 'scale(1)',
-              transition: 'all 0.15s ease',
-              backdropFilter: 'blur(8px)',
-          } as React.CSSProperties,
-          onMouseDown: () => !isSimulating && setPressedBtn(id),
-          onMouseUp: () => setPressedBtn(null),
-          onMouseEnter: () => !isSimulating && setHoveredBtn(id),
-          onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
-      };
-  };
+  const btnHandlers = (id: string) => ({
+    onMouseDown: () => !isSimulating && setPressedBtn(id),
+    onMouseUp: () => setPressedBtn(null),
+    onMouseEnter: () => !isSimulating && setHoveredBtn(id),
+    onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
+  });
 
-  const playoffRoundName = currentSeries
-      ? (currentSeries.round === 4 ? '' : `${CONF_NAMES[currentSeries.conference] || currentSeries.conference} `) + (ROUND_NAMES[currentSeries.round] || `${currentSeries.round}라운드`)
-      : null;
+  // 연승/연패 텍스트
+  const streakText = streak && streak !== '-'
+    ? `${streak.startsWith('W') ? '🔥' : '❄️'}${streak.replace('W', '').replace('L', '')}${streak.startsWith('W') ? '연승' : '연패'} 중`
+    : '';
+
+  // 메인 버튼 레이블
+  const mainBtnLabel = (() => {
+    if (simProgress) return simProgress.label;
+    if (isSimulating) return '처리 중';
+    if (isGameToday) return '경기 시작';
+    if (isSeasonOver) return '오프시즌';
+    return '내일로 이동';
+  })();
+
+  // 서브 버튼 (코치에게 위임) 레이블
+  const subBtnLabel = opponent
+    ? `코치에게 위임 (vs ${TEAM_DATA[opponent.id]?.name || opponent.name})`
+    : '코치에게 위임';
 
   return (
-    <div className="w-full backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative" style={{ backgroundColor: theme.bg, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-        {/* Dark overlay for readability */}
-        <div className="absolute inset-0 bg-black/10 pointer-events-none" />
-        <div className="pl-8 pr-0 py-0 flex items-center gap-8 h-20 relative z-10">
-            {/* Date + Team Status + Search */}
-            <div className="flex-1 flex flex-col gap-1.5 relative">
-                {/* Row 1: 날짜 드롭다운 + 컨퍼런스 순위/연승 */}
-                <div className="flex items-center gap-3">
-                    {keyDates && currentSimDate && onSkipToDate ? (
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsSkipDropdownOpen(prev => !prev)}
-                                className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                            >
-                                <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                                    {formatDateKorean(currentSimDate)}
-                                </span>
-                                {isSkipDropdownOpen
-                                    ? <ChevronUp size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                                    : <ChevronDown size={14} style={{ color: theme.text, opacity: 0.6 }} />
-                                }
-                            </button>
-                            <DateSkipDropdown
-                                isOpen={isSkipDropdownOpen}
-                                onClose={() => setIsSkipDropdownOpen(false)}
-                                currentSimDate={currentSimDate}
-                                keyDates={keyDates}
-                                onSkipToDate={handleSkipToDate}
-                                onSimulateFullSeason={handleSimulateFullSeason}
-                                isSimulating={!!isSimulating}
-                                themeText={theme.text}
-                                isOffseason={isSeasonOver}
-                            />
-                        </div>
-                    ) : (
-                        <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                            {currentSimDate ? formatDateKorean(currentSimDate) : ''}
-                        </span>
-                    )}
-                    <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
-                    <span className="text-sm font-semibold" style={{ color: theme.text }}>{conferenceName} {conferenceRank}위</span>
-                    <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
-                    <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                        {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
-                    </span>
-                </div>
-                {/* Row 2: 글로벌 검색 */}
-                {allTeams && onSearchViewPlayer && onSearchViewTeam && onSearchViewGM && onSearchViewCoach && (
-                    <GlobalSearch
-                        allTeams={allTeams}
-                        coachingData={coachingData}
-                        leagueGMProfiles={leagueGMProfiles}
-                        onViewPlayer={onSearchViewPlayer}
-                        onViewTeam={onSearchViewTeam}
-                        onViewGM={onSearchViewGM}
-                        onViewCoach={onSearchViewCoach}
-                        themeText={theme.text}
-                    />
-                )}
-            </div>
+    <div
+      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
+      style={{
+        backgroundColor: theme.bg,
+        borderBottom: '2px solid #374151',
+      }}
+    >
+      {/* 어두운 오버레이 (가독성) */}
+      <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
-            {/* Matchup — absolute center */}
-            {nextGame ? (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-8 z-20">
-                {/* Away Team */}
-                <div className="flex items-center gap-3">
-                    {awayTeam ? (
-                        <>
-                            <TeamLogo teamId={awayTeam.id} size="lg" />
-                            <div className="hidden sm:flex flex-col">
-                                <span className="text-sm font-bold leading-tight truncate max-w-[100px]" style={{ color: theme.text }}>{awayTeam.name}</span>
-                                <span className="text-xs font-bold" style={{ color: theme.text, opacity: 0.7 }}>{awayTeam.wins}W-{awayTeam.losses}L</span>
-                            </div>
-                            <OvrBadge value={awayOvr} size="md" className="!w-7 !h-7 !text-xs" />
-                        </>
-                    ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-800 animate-pulse"></div>
-                    )}
-                </div>
-
-                {/* Center: Match Info */}
-                <div className="flex flex-col items-center justify-center px-4 border-x border-white/5 min-w-[160px]">
-                    {currentSeries ? (
-                        <div className="flex flex-col items-center">
-                            <span className="text-xs font-semibold" style={{ color: theme.text }}>{playoffRoundName}</span>
-                            <span className="text-sm font-semibold" style={{ color: theme.text }}>
-                                {awayTeam?.name}{' '}
-                                {awayTeam?.id === currentSeries.higherSeedId ? currentSeries.higherSeedWins : currentSeries.lowerSeedWins}
-                                {' - '}
-                                {awayTeam?.id === currentSeries.higherSeedId ? currentSeries.lowerSeedWins : currentSeries.higherSeedWins}
-                                {' '}{homeTeam?.name}
-                            </span>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center">
-                            <span className="text-sm font-semibold" style={{ color: theme.text }}>다음 경기</span>
-                            <span className="text-sm font-semibold" style={{ color: theme.text }}>{nextGame?.date || 'SCHEDULED'}</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Home Team */}
-                <div className="flex items-center gap-3">
-                    {homeTeam ? (
-                        <>
-                            <OvrBadge value={homeOvr} size="md" className="!w-7 !h-7 !text-xs" />
-                            <div className="hidden sm:flex flex-col items-end">
-                                <span className="text-sm font-bold leading-tight truncate max-w-[100px]" style={{ color: theme.text }}>{homeTeam.name}</span>
-                                <span className="text-xs font-bold" style={{ color: theme.text, opacity: 0.7 }}>{homeTeam.wins}W-{homeTeam.losses}L</span>
-                            </div>
-                            <TeamLogo teamId={homeTeam.id} size="lg" />
-                        </>
-                    ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-800 animate-pulse"></div>
-                    )}
-                </div>
-            </div>
-            ) : (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                <span className="text-sm font-bold" style={{ color: theme.text, opacity: 0.5 }}>다음 일정 없음</span>
-            </div>
+      {/* ① 왼쪽: 팀 정보 */}
+      <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
+        <TeamLogo
+          teamId={team.id}
+          size="custom"
+          className="w-[60px] h-[60px] shrink-0 drop-shadow-lg"
+        />
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span
+            className="text-2xl font-semibold text-white leading-8 truncate"
+            style={{ fontFamily: 'Inter, "Noto Sans KR", sans-serif' }}
+          >
+            {TEAM_DATA[team.id] ? `${TEAM_DATA[team.id].city} ${TEAM_DATA[team.id].name}` : team.name}
+          </span>
+          <div className="flex items-center gap-3 text-sm font-bold leading-5 flex-wrap">
+            <span className="text-white whitespace-nowrap">
+              {conferenceName} 컨퍼런스 {conferenceRank}위
+            </span>
+            <span className="text-emerald-400 whitespace-nowrap">
+              {team.wins}W-{team.losses}L
+            </span>
+            {streakText && (
+              <span className="text-white whitespace-nowrap">{streakText}</span>
             )}
-
-            {/* Right: Simulation Action — flush to top/bottom/right edges */}
-            {(
-            <div className="self-stretch flex flex-col w-[220px] shrink-0 ml-auto"
-                 style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                {isGameToday && onAutoSimClick ? (
-                    <>
-                        {/* 경기 시작 — 60% */}
-                        <button
-                            onClick={onSimClick}
-                            disabled={isSimulating || isOffseasonBlocked}
-                            {...primaryBtn('sim')}
-                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating && !isOffseasonBlocked ? 'animate-btn-breathe' : ''}`}
-                        >
-                            {simProgress ? (
-                                <><Loader2 size={18} className="animate-spin" /> {simProgress.label}</>
-                            ) : isSimulating ? (
-                                <><Loader2 size={18} className="animate-spin" /> 처리 중</>
-                            ) : (
-                                <><Play size={16} fill="currentColor" /> 경기 시작</>
-                            )}
-                        </button>
-                        {/* 구분선 */}
-                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.25)' }} />
-                        {/* 자동 진행 — 40% */}
-                        <button
-                            onClick={onAutoSimClick}
-                            disabled={isSimulating || isOffseasonBlocked}
-                            {...primaryBtn('auto')}
-                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
-                        >
-                            <FastForward size={14} fill="currentColor" />
-                            자동 진행
-                        </button>
-                    </>
-                ) : (
-                    /* 내일로 이동 — full height */
-                    <button
-                        onClick={onSimClick}
-                        disabled={isSimulating || isOffseasonBlocked}
-                        {...primaryBtn('sim')}
-                        className="flex-1 flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
-                    >
-                        {simProgress ? (
-                            <><Loader2 size={18} className="animate-spin" /> {simProgress.label}</>
-                        ) : (
-                            <><ChevronRight size={18} /> 내일로 이동</>
-                        )}
-                    </button>
-                )}
-            </div>
-            )}
+          </div>
         </div>
+      </div>
+
+      {/* ② 가운데: 검색창 (절대 중앙) */}
+      <div className="absolute left-1/2 -translate-x-1/2 z-10">
+        {allTeams && onSearchViewPlayer && onSearchViewTeam && onSearchViewGM && onSearchViewCoach && (
+          <GlobalSearch
+            allTeams={allTeams}
+            coachingData={coachingData}
+            leagueGMProfiles={leagueGMProfiles}
+            onViewPlayer={onSearchViewPlayer}
+            onViewTeam={onSearchViewTeam}
+            onViewGM={onSearchViewGM}
+            onViewCoach={onSearchViewCoach}
+          />
+        )}
+      </div>
+
+      {/* ③ 오른쪽: 데이트 스키퍼 + 액션 버튼 */}
+      <div className="flex items-center gap-3 pr-4 shrink-0 relative z-10">
+        {/* 데이트 스키퍼 */}
+        {currentSimDate && keyDates && onSkipToDate && (
+          <div className="relative">
+            <button
+              onClick={() => setIsSkipDropdownOpen(prev => !prev)}
+              className="flex items-center justify-between gap-4 px-4 py-2 rounded-lg transition-all duration-150 hover:brightness-110"
+              style={{
+                background: '#111827',
+                border: '2px solid #4b5563',
+                minWidth: '260px',
+              }}
+            >
+              <div className="flex flex-col gap-1 text-left">
+                {/* 오늘 */}
+                <div className="flex items-center gap-4">
+                  <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
+                    오늘 {formatDateShort(currentSimDate)}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-100 whitespace-nowrap leading-5">
+                    {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
+                  </span>
+                </div>
+                {/* 내일 */}
+                <div className="flex items-center gap-4">
+                  <span className="text-xs font-semibold text-indigo-400 whitespace-nowrap leading-4">
+                    내일 {tomorrowDate ? formatDateShort(tomorrowDate) : ''}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-100 whitespace-nowrap leading-5">
+                    {tomorrowOpponentName ? `vs ${tomorrowOpponentName}` : '일정 없음'}
+                  </span>
+                </div>
+              </div>
+              <div className="shrink-0 text-gray-400">
+                {isSkipDropdownOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </div>
+            </button>
+
+            <DateSkipDropdown
+              isOpen={isSkipDropdownOpen}
+              onClose={() => setIsSkipDropdownOpen(false)}
+              currentSimDate={currentSimDate}
+              keyDates={keyDates}
+              onSkipToDate={handleSkipToDate}
+              onSimulateFullSeason={handleSimulateFullSeason}
+              isSimulating={!!isSimulating}
+              themeText={theme.text}
+              isOffseason={isSeasonOver}
+            />
+          </div>
+        )}
+
+        {/* 액션 버튼 그룹 */}
+        <div className="flex flex-col gap-2">
+          {/* 메인 버튼: 경기 시작 / 내일로 이동 */}
+          <button
+            onClick={onSimClick}
+            disabled={isSimulating || isOffseasonBlocked}
+            {...btnHandlers('sim')}
+            className="flex items-center justify-between rounded-lg h-9 disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden"
+            style={{
+              ...mainBtnStyle('sim'),
+              border: '1px solid rgba(255,255,255,0.4)',
+              minWidth: '160px',
+            }}
+          >
+            {/* 텍스트 영역 */}
+            <span
+              className="flex items-center gap-2 px-3 text-base font-semibold text-white whitespace-nowrap h-full"
+              style={{ borderRight: '1px solid rgba(0,0,0,0.3)' }}
+            >
+              {(simProgress || isSimulating) ? (
+                <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
+              ) : isGameToday ? (
+                <><Play size={14} fill="currentColor" className="shrink-0" /> 경기 시작</>
+              ) : (
+                mainBtnLabel
+              )}
+            </span>
+            {/* 화살표 아이콘 영역 */}
+            <span className="flex items-center justify-center px-2 h-full">
+              <ChevronRight size={20} color="white" />
+            </span>
+          </button>
+
+          {/* 서브 버튼: 코치에게 위임 (경기 당일에만) */}
+          {isGameToday && onAutoSimClick && (
+            <button
+              onClick={onAutoSimClick}
+              disabled={isSimulating || isOffseasonBlocked}
+              className="flex items-center justify-center px-3 h-6 rounded text-xs font-bold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap transition-all hover:brightness-95"
+              style={{
+                backgroundImage: 'linear-gradient(rgba(254,254,254,0) 0%, rgba(0,0,0,0.15) 100%), linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
+                border: '1px solid white',
+              }}
+            >
+              {subBtnLabel}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
-
