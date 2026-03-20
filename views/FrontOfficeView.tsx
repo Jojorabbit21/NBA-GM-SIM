@@ -37,6 +37,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
 
+    const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const finData = TEAM_FINANCE_DATA[myTeamId];
     const finance = getBudgetManager().getFinance(myTeamId);
 
@@ -77,13 +78,21 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} onViewPlayer={onViewPlayer} />
                     )}
                     {activeTab === 'coaching' && (
-                        <div className="animate-in fade-in duration-500 h-full">
-                            {team.id === myTeamId ? (
-                                <GMProfileCard userNickname={userNickname || 'You'} />
-                            ) : (
-                                <GMProfileCard gmProfile={leagueGMProfiles?.[team.id]} onGMClick={() => onGMClick?.(team.id)} />
-                            )}
-                            <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
+                        <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
+                            {/* 단장 */}
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <WidgetHeader title="단장" primaryColor={primaryColor} />
+                                {team.id === myTeamId ? (
+                                    <GMProfileCard userNickname={userNickname || 'You'} />
+                                ) : (
+                                    <GMProfileCard gmProfile={leagueGMProfiles?.[team.id]} onGMClick={() => onGMClick?.(team.id)} />
+                                )}
+                            </div>
+                            {/* 코칭 스태프 */}
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <WidgetHeader title="코칭 스태프" primaryColor={primaryColor} />
+                                <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
+                            </div>
                         </div>
                     )}
                     {activeTab === 'draftPicks' && (
@@ -340,8 +349,8 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
                     style={{ left: `${pct}%` }}
                 />
             </div>
-            {/* 기준선 티커: 트랙 바로 아래 mt-1 */}
-            <div className="relative h-4 mt-1">
+            {/* 기준선 티커 */}
+            <div className="relative h-4 mt-0.5">
                 {thresholds.map(t => (
                     <div
                         key={t.label}
@@ -355,7 +364,7 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
                 ))}
             </div>
             {/* 금액 범례 */}
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1">
                 {thresholds.map(t => (
                     <div key={t.label} className="flex items-center gap-1">
                         <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
@@ -434,15 +443,12 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, pr
                         : <span className="font-bold text-emerald-400">충족</span>
                     }
                 />
+                <div className="border-t border-slate-800">
+                    <CapBar payroll={payroll} />
+                </div>
             </div>
 
-            {/* ② 기준선 시각화 */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                <WidgetHeader title="기준선 시각화" primaryColor={primaryColor} />
-                <CapBar payroll={payroll} />
-            </div>
-
-            {/* ③ 데드캡 내역 (있을 때만) */}
+            {/* ② 데드캡 내역 (있을 때만) */}
             {deadMoney.length > 0 && (
                 <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                     <WidgetHeader title="데드캡 내역" primaryColor={primaryColor} />
