@@ -231,25 +231,26 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           </div>
         )}
 
-        {/* 액션 버튼 그룹 */}
-        <div className="flex flex-col gap-2">
-          {/* 메인 버튼 */}
+        {/* 액션 버튼 그룹 — 총 높이 68px */}
+        <div className="flex flex-col gap-2" style={{ width: '177px' }}>
+          {/* 메인 버튼 — Action: h-9(36px) + gap-2(8px) + sub h-6(24px) = 68px, NoAction: h-[68px] */}
           <button
             onClick={onSimClick}
             disabled={isSimulating || isOffseasonBlocked}
             {...btnHandlers('sim')}
-            className="flex items-center justify-between h-[60px] rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden"
+            className={`flex items-center justify-between rounded-lg disabled:opacity-40 disabled:cursor-not-allowed select-none overflow-hidden w-full ${
+              isGameToday ? 'h-9' : 'h-[68px]'
+            }`}
             style={{
               ...mainBtnStyle('sim'),
               border: '1px solid rgba(255,255,255,0.4)',
-              minWidth: '177px',
             }}
           >
             {isGameToday ? (
-              /* Case B: 이벤트 시작 — 좌측 텍스트 | 우측 chevron */
+              /* Case B: 경기 당일 — 좌측 텍스트 | 우측 chevron */
               <>
                 <span
-                  className="flex items-center gap-2 px-3 text-base font-semibold text-white whitespace-nowrap h-full flex-1"
+                  className="flex items-center gap-2 px-3 text-base font-semibold whitespace-nowrap h-full flex-1"
                   style={{ borderRight: '1px solid rgba(0,0,0,0.3)' }}
                 >
                   {(simProgress || isSimulating)
@@ -257,15 +258,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     : mainBtnLabel}
                 </span>
                 <span
-                  className="flex items-center justify-center px-2 h-full"
-                  style={{ borderLeft: '1px solid white' }}
+                  className="flex items-center justify-center p-2 h-full"
+                  style={{ borderLeft: '1px solid rgba(255,255,255,0.4)' }}
                 >
-                  <ChevronRight size={20} color="white" />
+                  <ChevronRight size={24} color="currentColor" />
                 </span>
               </>
             ) : (
-              /* Case A: 날짜 이동 — 단순 텍스트 (전체 너비 중앙 정렬) */
-              <span className="flex items-center justify-center gap-2 text-base font-semibold text-white whitespace-nowrap w-full">
+              /* Case A: 날짜 이동 — 단순 텍스트 중앙 정렬 */
+              <span className="flex items-center justify-center gap-2 text-base font-semibold whitespace-nowrap w-full">
                 {(simProgress || isSimulating)
                   ? <><Loader2 size={15} className="animate-spin shrink-0" /> {mainBtnLabel}</>
                   : mainBtnLabel}
@@ -273,12 +274,12 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             )}
           </button>
 
-          {/* 서브 버튼: 코치에게 위임 (경기 당일에만) */}
+          {/* 서브 버튼: 코치에게 위임 (경기 당일에만) h-6(24px) */}
           {isGameToday && onAutoSimClick && (
             <button
               onClick={onAutoSimClick}
               disabled={isSimulating || isOffseasonBlocked}
-              className="flex items-center justify-center px-3 h-6 rounded text-xs font-bold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap transition-all hover:brightness-95"
+              className="flex items-center justify-center px-3 h-6 rounded text-xs font-bold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap transition-all hover:brightness-95 w-full"
               style={{
                 backgroundImage: 'linear-gradient(rgba(254,254,254,0) 0%, rgba(0,0,0,0.3) 100%), linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
                 border: '1px solid white',
