@@ -54,10 +54,10 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                 <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14 flex-shrink-0">
                     <div className="flex items-center gap-8 h-full">
                         <button onClick={() => setActiveTab('club')} className={tabClass('club')}>
-                            <span>구단</span>
+                            <span>재정 및 구단 정보</span>
                         </button>
                         <button onClick={() => setActiveTab('payroll')} className={tabClass('payroll')}>
-                            <span>선수 급여</span>
+                            <span>샐러리</span>
                         </button>
                         <button onClick={() => setActiveTab('coaching')} className={tabClass('coaching')}>
                             <span>코칭 스태프</span>
@@ -301,7 +301,7 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
     const pct = toBarPct(payroll);
 
     const barColor =
-        payroll < SALARY_FLOOR ? '#64748b'
+        payroll < SALARY_FLOOR  ? '#64748b'
         : payroll < SALARY_CAP  ? '#10b981'
         : payroll < TAX_LEVEL   ? '#f59e0b'
         : payroll < FIRST_APRON ? '#f97316'
@@ -318,49 +318,44 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
 
     return (
         <div className="px-4 py-3">
-            {/* 바 트랙 */}
-            <div className="relative h-4 bg-slate-700 rounded-full overflow-visible mb-5">
-                {/* 채워진 바 */}
-                <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%`, backgroundColor: barColor }}
-                />
-                {/* 기준선 마커 */}
-                {thresholds.map(t => {
-                    const p = toBarPct(t.v);
-                    return (
+            {/* 바 트랙 + 커서를 감싸는 상대 레이어 */}
+            <div className="relative">
+                {/* overflow-hidden 트랙: fill 클리핑 */}
+                <div className="relative h-3 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, backgroundColor: barColor }}
+                    />
+                    {thresholds.map(t => (
                         <div
                             key={t.label}
-                            className="absolute top-0 h-full w-px"
-                            style={{ left: `${p}%`, backgroundColor: t.color, opacity: 0.8 }}
+                            className="absolute inset-y-0 w-px"
+                            style={{ left: `${toBarPct(t.v)}%`, backgroundColor: t.color, opacity: 0.9 }}
                         />
-                    );
-                })}
-                {/* 현재 페이롤 커서 */}
+                    ))}
+                </div>
+                {/* 커서: 트랙 바깥에서 absolute → fill 끝과 정확히 일치 */}
                 <div
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-white bg-slate-900 z-10"
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white bg-slate-900 z-10"
                     style={{ left: `${pct}%` }}
                 />
             </div>
-            {/* 기준선 레이블 */}
-            <div className="relative h-4">
-                {thresholds.map(t => {
-                    const p = toBarPct(t.v);
-                    return (
-                        <div
-                            key={t.label}
-                            className="absolute -translate-x-1/2 flex flex-col items-center gap-0.5"
-                            style={{ left: `${p}%` }}
-                        >
-                            <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: t.color }}>
-                                {t.label}
-                            </span>
-                        </div>
-                    );
-                })}
+            {/* 기준선 티커: 트랙 바로 아래 mt-1 */}
+            <div className="relative h-4 mt-1">
+                {thresholds.map(t => (
+                    <div
+                        key={t.label}
+                        className="absolute -translate-x-1/2"
+                        style={{ left: `${toBarPct(t.v)}%` }}
+                    >
+                        <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: t.color }}>
+                            {t.label}
+                        </span>
+                    </div>
+                ))}
             </div>
             {/* 금액 범례 */}
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                 {thresholds.map(t => (
                     <div key={t.label} className="flex items-center gap-1">
                         <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
@@ -375,44 +370,40 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
 // ── 캡 우측 위젯 전체 ──
 const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, primaryColor }) => {
     const { SALARY_FLOOR, SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
-    const { NON_TAX_MLE, TAXPAYER_MLE } = SIGNING_EXCEPTIONS;
 
     const payroll = calcTeamPayroll(team);
     const luxTax = calculateLuxuryTax(payroll, TAX_LEVEL);
     const deadMoney: DeadMoneyEntry[] = team.deadMoney ?? [];
     const deadTotal = deadMoney.reduce((s, d) => s + d.amount, 0);
 
-    const capSpace    = SALARY_CAP - payroll;
-    const taxRoom     = TAX_LEVEL - payroll;
-    const apron1Room  = FIRST_APRON - payroll;
-    const apron2Room  = SECOND_APRON - payroll;
-    const floorShort  = SALARY_FLOOR - payroll;
+    const capSpace   = SALARY_CAP - payroll;
+    const floorShort = SALARY_FLOOR - payroll;
 
-    // MLE 결정
-    const mleLabel  = payroll < FIRST_APRON  ? 'Non-Tax MLE'
-                    : payroll < SECOND_APRON ? 'Taxpayer MLE'
-                    : '없음 (2차 에이프런 초과)';
-    const mleAmount = payroll < FIRST_APRON  ? NON_TAX_MLE
-                    : payroll < SECOND_APRON ? TAXPAYER_MLE
-                    : 0;
+    // 현재 구간 라벨·색상
+    const zoneLabel = payroll < SALARY_FLOOR  ? '플로어 미달'
+                    : payroll < SALARY_CAP    ? '캡 스페이스'
+                    : payroll < TAX_LEVEL     ? '캡 초과 (비과세)'
+                    : payroll < FIRST_APRON   ? '럭셔리 택스 납부'
+                    : payroll < SECOND_APRON  ? '1차 에이프런 초과'
+                    : '2차 에이프런 초과';
+    const zoneColor = payroll < SALARY_FLOOR  ? 'text-slate-400'
+                    : payroll < SALARY_CAP    ? 'text-emerald-400'
+                    : payroll < TAX_LEVEL     ? 'text-yellow-400'
+                    : payroll < FIRST_APRON   ? 'text-orange-400'
+                    : 'text-red-400';
 
-    // 현재 구간 라벨
-    const zoneLabel  = payroll < SALARY_FLOOR  ? '플로어 미달'
-                     : payroll < SALARY_CAP    ? '캡 스페이스'
-                     : payroll < TAX_LEVEL     ? '캡 초과 (비과세)'
-                     : payroll < FIRST_APRON   ? '럭셔리 택스 납부'
-                     : payroll < SECOND_APRON  ? '1차 에이프런 초과'
-                     : '2차 에이프런 초과';
-    const zoneColor  = payroll < SALARY_FLOOR  ? 'text-slate-400'
-                     : payroll < SALARY_CAP    ? 'text-emerald-400'
-                     : payroll < TAX_LEVEL     ? 'text-yellow-400'
-                     : payroll < FIRST_APRON   ? 'text-orange-400'
-                     : 'text-red-400';
+    // 캡 스페이스: 양수=여유(초록), 음수=초과(빨강)
+    const capSpaceVal = capSpace >= 0
+        ? <span className="font-bold font-mono tabular-nums text-emerald-400">+{fmtM(capSpace)}</span>
+        : <span className="font-bold font-mono tabular-nums text-red-400">{fmtM(Math.abs(capSpace))} 초과</span>;
 
-    const signVal = (v: number, pos = 'text-emerald-400', neg = 'text-red-400') =>
-        v >= 0
-            ? <span className={`font-bold font-mono tabular-nums ${pos}`}>+{fmtM(v)}</span>
-            : <span className={`font-bold font-mono tabular-nums ${neg}`}>{fmtM(v)}</span>;
+    // 럭셔리 택스·에이프런: 미만=여유(초록), 초과=초과분(오렌지/빨강)
+    const thresholdVal = (threshold: number, overColor: string) => {
+        const diff = payroll - threshold;
+        return diff > 0
+            ? <span className={`font-bold font-mono tabular-nums ${overColor}`}>{fmtM(diff)} 초과</span>
+            : <span className="font-bold font-mono tabular-nums text-emerald-400">+{fmtM(-diff)}</span>;
+    };
 
     const releaseLabel: Record<string, string> = {
         waive: 'Waive', buyout: 'Buyout', stretch: 'Stretch',
@@ -426,34 +417,23 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, pr
                 <WidgetHeader title="샐러리 캡 현황" primaryColor={primaryColor} />
                 <DataRow label="총 페이롤" value={<span className={`font-bold font-mono tabular-nums ${zoneColor}`}>{fmtM(payroll)}</span>} />
                 <DataRow label="구간" value={<span className={zoneColor}>{zoneLabel}</span>} />
-                <DataRow
-                    label="캡 스페이스"
-                    value={signVal(capSpace)}
-                />
-                <DataRow
-                    label="럭셔리 택스까지"
-                    value={signVal(taxRoom, 'text-emerald-400', 'text-orange-400')}
-                />
-                <DataRow
-                    label="1차 에이프런까지"
-                    value={signVal(apron1Room, 'text-emerald-400', 'text-red-400')}
-                />
-                <DataRow
-                    label="2차 에이프런까지"
-                    value={signVal(apron2Room, 'text-emerald-400', 'text-red-500')}
-                />
+                <DataRow label="캡 스페이스" value={capSpaceVal} />
+                <DataRow label="럭셔리 택스" value={thresholdVal(TAX_LEVEL, 'text-orange-400')} />
+                <DataRow label="1차 에이프런" value={thresholdVal(FIRST_APRON, 'text-red-400')} />
+                <DataRow label="2차 에이프런" value={thresholdVal(SECOND_APRON, 'text-red-500')} />
                 {payroll >= TAX_LEVEL && (
                     <DataRow
                         label="예상 럭셔리 택스"
                         value={<span className="font-bold font-mono tabular-nums text-red-400">{fmtM(luxTax)}</span>}
                     />
                 )}
-                {floorShort > 0 && (
-                    <DataRow
-                        label="플로어 미달"
-                        value={<span className="font-bold font-mono tabular-nums text-slate-400">+{fmtM(floorShort)}</span>}
-                    />
-                )}
+                <DataRow
+                    label="샐러리 플로어"
+                    value={floorShort > 0
+                        ? <span className="font-bold font-mono tabular-nums text-slate-400">{fmtM(floorShort)} 미달</span>
+                        : <span className="font-bold text-emerald-400">충족</span>
+                    }
+                />
             </div>
 
             {/* ② 기준선 시각화 */}
@@ -462,26 +442,7 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, pr
                 <CapBar payroll={payroll} />
             </div>
 
-            {/* ③ 서명 예외 */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                <WidgetHeader title="서명 예외" primaryColor={primaryColor} />
-                <DataRow
-                    label="MLE"
-                    value={mleAmount > 0
-                        ? <span className="font-bold text-indigo-400">{mleLabel} ({fmtM(mleAmount)})</span>
-                        : <span className="text-slate-500">{mleLabel}</span>
-                    }
-                />
-                <DataRow
-                    label="샐러리 플로어"
-                    value={floorShort > 0
-                        ? <span className="font-bold text-slate-400">미달 ({fmtM(floorShort)} 부족)</span>
-                        : <span className="font-bold text-emerald-400">충족</span>
-                    }
-                />
-            </div>
-
-            {/* ④ 데드캡 내역 (있을 때만) */}
+            {/* ③ 데드캡 내역 (있을 때만) */}
             {deadMoney.length > 0 && (
                 <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                     <WidgetHeader title="데드캡 내역" primaryColor={primaryColor} />
@@ -542,7 +503,7 @@ const PayrollTab: React.FC<{
     return (
         <div className="p-4 animate-in fade-in duration-500 flex gap-4 items-start">
             {/* 좌: 선수 급여 테이블 */}
-            <div className="flex-[6] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length}px` }}>
@@ -582,7 +543,7 @@ const PayrollTab: React.FC<{
                 </div>
             </div>
             {/* 우: 샐러리 캡 패널 */}
-            <div className="flex-[4] min-w-0">
+            <div className="flex-[3] min-w-0">
                 <CapSidePanel team={team} primaryColor={primaryColor} />
             </div>
         </div>
