@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { GMProfile, GMSliders, GM_PERSONALITY_LABELS, DIRECTION_LABELS, TeamDirection } from '../../types/gm';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { getGMSliderResult, getGMSliderLabel } from '../../services/tradeEngine/gmProfiler';
 
 interface GMProfileCardProps {
@@ -31,127 +30,69 @@ const SLIDER_COLORS: Record<keyof GMSliders, string> = {
     pickWillingness: 'text-purple-400',
 };
 
+const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800 last:border-0">
+        <span className="text-slate-400">{label}</span>
+        <span className="font-bold">{children}</span>
+    </div>
+);
+
+const SubHeader: React.FC<{ label: string }> = ({ label }) => (
+    <div className="px-4 py-1 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-800 bg-slate-800/50">
+        {label}
+    </div>
+);
+
 export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMClick, userNickname }) => {
     // 사용자 팀
     if (userNickname !== undefined) {
         return (
-            <Table fullHeight={false} className="!rounded-none">
-                <TableHead noRow>
-                    <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell colSpan={3} align="center" className="bg-slate-950">
-                            기본 정보
-                        </TableHeaderCell>
-                    </tr>
-                    <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell align="center" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
-                            직책
-                        </TableHeaderCell>
-                        <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal px-3">
-                            이름
-                        </TableHeaderCell>
-                        <TableHeaderCell className="bg-slate-950 ko-normal" />
-                    </tr>
-                </TableHead>
-                <TableBody>
-                    <TableRow>
-                        <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
-                            <span className="text-xs font-bold text-slate-500 ko-normal">단장</span>
-                        </TableCell>
-                        <TableCell align="left" style={{ width: 180, minWidth: 180 }}>
-                            <span className="text-xs font-semibold text-indigo-400">
-                                {userNickname || 'You'}
-                            </span>
-                        </TableCell>
-                        <TableCell>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">사용자</span>
-                        </TableCell>
-                    </TableRow>
-                </TableBody>
-            </Table>
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 text-xs">
+                <span className="text-slate-400">단장</span>
+                <span className="font-semibold text-indigo-400">{userNickname || 'You'}</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">
+                    사용자
+                </span>
+            </div>
         );
     }
 
-    // CPU GM
+    // CPU GM 없음
     if (!gmProfile) {
         return (
-            <div className="flex items-center justify-center h-20">
-                <p className="text-slate-500 text-xs ko-normal">GM 데이터가 없습니다</p>
+            <div className="flex items-center justify-center h-20 text-slate-500 text-xs ko-normal">
+                GM 데이터가 없습니다
             </div>
         );
     }
 
     return (
-        <Table fullHeight={false} className="!rounded-none">
-            <TableHead noRow>
-                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
-                    <TableHeaderCell colSpan={4} align="center" className="bg-slate-950">
-                        기본 정보
-                    </TableHeaderCell>
-                    <TableHeaderCell colSpan={SLIDER_KEYS.length} className="border-l border-slate-800 bg-slate-950">
-                        GM 성향
-                    </TableHeaderCell>
-                </tr>
-                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
-                    <TableHeaderCell align="center" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
-                        직책
-                    </TableHeaderCell>
-                    <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal px-3">
-                        이름
-                    </TableHeaderCell>
-                    <TableHeaderCell style={{ width: 90, minWidth: 90 }} className="bg-slate-950 ko-normal">
-                        성격
-                    </TableHeaderCell>
-                    <TableHeaderCell style={{ width: 70, minWidth: 70 }} className="bg-slate-950 border-r border-slate-800 ko-normal">
-                        노선
-                    </TableHeaderCell>
-                    {SLIDER_KEYS.map((key, i) => (
-                        <TableHeaderCell
-                            key={key}
-                            align="center"
-                            className={`bg-slate-950 ko-normal ${i === 0 ? 'border-l border-slate-800' : ''}`}
-                        >
-                            {getGMSliderLabel(key)}
-                        </TableHeaderCell>
-                    ))}
-                </tr>
-            </TableHead>
-            <TableBody>
-                <TableRow>
-                    <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
-                        <span className="text-xs font-bold text-slate-500 ko-normal">단장</span>
-                    </TableCell>
-                    <TableCell align="left" style={{ width: 180, minWidth: 180 }}>
-                        <span
-                            className={`text-xs font-semibold text-slate-200 ${onGMClick ? 'hover:text-indigo-400 cursor-pointer transition-colors' : ''}`}
-                            onClick={onGMClick}
-                        >
-                            {gmProfile.name}
-                        </span>
-                    </TableCell>
-                    <TableCell align="center" style={{ width: 90, minWidth: 90 }}>
-                        <span className="text-xs font-bold text-indigo-400 ko-normal">
-                            {GM_PERSONALITY_LABELS[gmProfile.personalityType]}
-                        </span>
-                    </TableCell>
-                    <TableCell align="center" style={{ width: 70, minWidth: 70 }} className="border-r border-slate-800">
-                        <span className={`text-xs font-black ko-normal ${DIRECTION_COLORS[gmProfile.direction]}`}>
-                            {DIRECTION_LABELS[gmProfile.direction]}
-                        </span>
-                    </TableCell>
-                    {SLIDER_KEYS.map((key, i) => {
-                        const { tag } = getGMSliderResult(key, gmProfile.sliders[key]);
-                        return (
-                            <TableCell
-                                key={key}
-                                align="center"
-                                className={i === 0 ? 'border-l border-slate-800' : ''}
-                            >
-                                <span className={`text-xs font-black ko-normal ${SLIDER_COLORS[key]}`}>{tag}</span>
-                            </TableCell>
-                        );
-                    })}
-                </TableRow>
-            </TableBody>
-        </Table>
+        <div>
+            <Row label="이름">
+                <span
+                    className={`text-slate-200 ${onGMClick ? 'hover:text-indigo-400 cursor-pointer transition-colors' : ''}`}
+                    onClick={onGMClick}
+                >
+                    {gmProfile.name}
+                </span>
+            </Row>
+            <Row label="성격">
+                <span className="text-indigo-400 ko-normal">{GM_PERSONALITY_LABELS[gmProfile.personalityType]}</span>
+            </Row>
+            <Row label="노선">
+                <span className={`ko-normal ${DIRECTION_COLORS[gmProfile.direction]}`}>
+                    {DIRECTION_LABELS[gmProfile.direction]}
+                </span>
+            </Row>
+            <SubHeader label="GM 성향" />
+            {SLIDER_KEYS.map(key => {
+                const { tag } = getGMSliderResult(key, gmProfile.sliders[key]);
+                return (
+                    <Row key={key} label={getGMSliderLabel(key)}>
+                        <span className={`ko-normal ${SLIDER_COLORS[key]}`}>{tag}</span>
+                    </Row>
+                );
+            })}
+        </div>
     );
 };
