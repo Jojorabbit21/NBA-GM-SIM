@@ -39,9 +39,11 @@ const HomePage: React.FC = () => {
             offseasonPhase={gameData.offseasonPhase}
             seasonShort={seasonShort}
             userId={session?.user?.id}
-            onNavigate={(view) => {
+            teamFinances={gameData.teamFinances}
+            onNavigate={(view, messageId) => {
                 const path = VIEW_TO_PATH[view];
-                if (path) navigate(path);
+                if (!path) return;
+                navigate(messageId ? `${path}?msgId=${messageId}` : path);
             }}
             onViewPlayer={(player, teamId, teamName) => {
                 setViewPlayerData({ player, teamId, teamName });

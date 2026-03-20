@@ -1,11 +1,13 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { InboxView } from '../views/InboxView';
 import { useGame } from '../hooks/useGameContext';
 
 const InboxPage: React.FC = () => {
     const { session, gameData, refreshUnreadCount, setViewPlayerData } = useGame();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const initialMessageId = searchParams.get('msgId') ?? undefined;
 
     if (!session?.user?.id) return null;
 
@@ -15,6 +17,7 @@ const InboxPage: React.FC = () => {
         <InboxView
             myTeamId={gameData.myTeamId!}
             userId={session.user.id}
+            initialMessageId={initialMessageId}
             teams={gameData.teams}
             onUpdateUnreadCount={refreshUnreadCount}
             tendencySeed={gameData.tendencySeed || undefined}

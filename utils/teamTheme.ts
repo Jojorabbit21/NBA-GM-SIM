@@ -1,7 +1,7 @@
 
 // Shared team color theme logic (used by Sidebar + DashboardHeader)
 
-// 사이드바 비선택 아이콘 색상 (Figma 기준)
+// 사이드바 비선택 아이콘 색상 (Figma {TEAM}/secondary)
 export const SIDEBAR_ICON_COLORS: Record<string, string> = {
     'atl': '#FDB927', 'bos': '#BA9653', 'bkn': '#C6CED4',
     'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#BC945C',
@@ -13,6 +13,18 @@ export const SIDEBAR_ICON_COLORS: Record<string, string> = {
     'orl': '#FFFFFF', 'phi': '#C8102E', 'phx': '#E56020',
     'por': '#FFFFFF', 'sac': '#FFFFFF', 'sa':  '#C4CED4',
     'tor': '#FFFFFF', 'uta': '#7BA4DB', 'was': '#C4CED4',
+};
+
+// 사이드바 선택(active) 아이콘 색상 (Figma {TEAM}/accent) — 기본값 #ffffff
+export const SIDEBAR_SELECTED_ICON_COLORS: Record<string, string> = {
+    // 특수 accent 색상 팀
+    'bkn': '#C6CFD4', // silver (black primary → silver accent)
+    'den': '#FEC524', // gold (navy tertiary bg → gold accent)
+    // 흰색 tertiary bg → primary 색상으로 아이콘 표시
+    'chi': '#CE1141', // red
+    'por': '#C8102E', // red
+    'cha': '#1D1160', // purple
+    'okc': '#007AC1', // blue
 };
 
 export interface TeamTheme {

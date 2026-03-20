@@ -83,36 +83,19 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const theme = getTeamTheme(team.id, teamColors);
   const btnTheme = getButtonTheme(team.id, teamColors);
 
-  // 메인 버튼 글로시 스타일
-  const isLightBg = (() => {
-    const hex = btnTheme.bg.replace('#', '');
-    if (hex.length < 6) return false;
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
-  })();
-
   const mainBtnStyle = (id: string): React.CSSProperties => {
     const isPressed = pressedBtn === id;
     const isHovered = hoveredBtn === id;
-    const hl = isLightBg ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
-    const hlMid = isLightBg ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
-    const shBot = isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.1)';
     const progressGradient = simProgress
       ? `linear-gradient(90deg, ${btnTheme.bg} 0%, ${btnTheme.bg} ${simProgress.percent}%, rgba(0,0,0,0.35) ${simProgress.percent + 0.5}%, rgba(0,0,0,0.25) 100%)`
       : undefined;
     return {
       backgroundColor: btnTheme.bg,
-      backgroundImage: simProgress
-        ? progressGradient
-        : isPressed
-        ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
-        : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
+      backgroundImage: simProgress ? progressGradient : undefined,
       color: btnTheme.text,
       transform: isPressed ? 'scale(0.97)' : 'scale(1)',
       transition: 'all 0.15s ease',
-      filter: isHovered && !isPressed ? 'brightness(1.05)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
+      filter: isHovered && !isPressed ? 'brightness(1.08)' : isPressed ? 'brightness(0.88)' : 'brightness(1)',
     };
   };
 

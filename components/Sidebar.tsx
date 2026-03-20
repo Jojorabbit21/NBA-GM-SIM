@@ -2,18 +2,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Home, LayoutDashboard, Trophy, BarChart3, Swords,
-  Calendar as CalendarIcon, ArrowLeftRight,
-  RotateCcw, LogOut, Mail, Gavel, User,
-  BookOpen, FileText, Wand2, Crown, Settings, Briefcase,
-  Sparkles, Dices, Users, UserPlus, SlidersHorizontal, Dumbbell,
+  Home, LayoutDashboard, Trophy, PieChart,
+  CalendarDays, ArrowLeftRight,
+  RotateCcw, LogOut, Globe, Gavel, CircleUser,
+  BookOpen, FileText, Wand2, Crown, Settings, Landmark,
+  Sparkles, Dices, Contact, UserPlus, GitFork, Construction,
+  Table2,
 } from 'lucide-react';
 import { Team } from '../types';
 import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 
 import { LegalModal } from './LegalModal';
-import { getTeamTheme, SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
+import { getTeamTheme, SIDEBAR_ICON_COLORS, SIDEBAR_SELECTED_ICON_COLORS } from '../utils/teamTheme';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -39,8 +40,9 @@ const NavItem: React.FC<{
   badge?: number;
   textBadge?: string;
   iconColor: string;
+  activeIconColor: string;
   activeBg: string;
-}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeBg }) => (
+}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, activeBg }) => (
   <button
     onClick={onClick}
     title={label}
@@ -51,7 +53,7 @@ const NavItem: React.FC<{
   >
     {React.cloneElement(icon as React.ReactElement<any>, {
       size: 24,
-      color: active ? '#ffffff' : iconColor,
+      color: active ? activeIconColor : iconColor,
     })}
     {badge !== undefined && badge > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
@@ -92,8 +94,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   // 사이드바 배경: 항상 팀 primary 색 (Figma 기준)
   const sidebarBg = teamStatic?.colors?.primary ?? '#0f172a';
 
-  // 비선택 아이콘: Figma SIDEBAR_ICON_COLORS 기준
+  // 비선택 아이콘: Figma {TEAM}/secondary 기준
   const iconColor = team ? (SIDEBAR_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
+
+  // 선택(active) 아이콘: Figma {TEAM}/accent 기준, 기본 #ffffff
+  const activeIconColor = team ? (SIDEBAR_SELECTED_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
 
   // 선택 버튼 배경: tertiary 우선, 없으면 배경 밝기로 계산
   const activeBg = teamStatic?.colors?.tertiary ?? (() => {
@@ -119,9 +124,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     return () => document.removeEventListener('mousedown', handler);
   }, [isMenuOpen]);
 
-  // NavItem 래퍼 — iconColor/activeBg 자동 주입
-  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeBg'>) => (
-    <NavItem {...props} iconColor={iconColor} activeBg={activeBg} />
+  // NavItem 래퍼 — iconColor/activeIconColor/activeBg 자동 주입
+  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeIconColor' | 'activeBg'>) => (
+    <NavItem {...props} iconColor={iconColor} activeIconColor={activeIconColor} activeBg={activeBg} />
   );
 
   return (
@@ -133,11 +138,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           borderRight: '1px solid rgba(255,255,255,0.2)',
         }}
       >
-        {/* 20% 불투명도 그라디언트 오버레이 */}
+        {/* 그라디언트 오버레이: 좌(투명) → 우(약 12% 검정) */}
         <div
           className="absolute inset-0 pointer-events-none z-0"
           style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.20) 0%, transparent 55%, rgba(0,0,0,0.15) 100%)',
+            background: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.12) 100%)',
           }}
         />
 
@@ -161,19 +166,19 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           })()}
 
           <Nav active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
-          <Nav active={pathname.startsWith('/inbox')} icon={<Mail />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
-          <Nav active={pathname.startsWith('/front-office')} icon={<Briefcase />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
+          <Nav active={pathname.startsWith('/inbox')} icon={<Globe />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
+          <Nav active={pathname.startsWith('/front-office')} icon={<Landmark />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
           <Nav active={pathname.startsWith('/dashboard')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/dashboard')} />
-          <Nav active={pathname.startsWith('/standings')} icon={<Trophy />} label="순위표" onClick={() => navigate('/standings')} />
-          <Nav active={pathname.startsWith('/leaderboard')} icon={<BarChart3 />} label="리더보드" onClick={() => navigate('/leaderboard')} />
-          <Nav active={pathname.startsWith('/fa-market')} icon={<Users />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
-          <Nav active={pathname.startsWith('/schedule')} icon={<CalendarIcon />} label="리그 일정" onClick={() => navigate('/schedule')} />
+          <Nav active={pathname.startsWith('/standings')} icon={<Table2 />} label="순위표" onClick={() => navigate('/standings')} />
+          <Nav active={pathname.startsWith('/leaderboard')} icon={<PieChart />} label="리더보드" onClick={() => navigate('/leaderboard')} />
+          <Nav active={pathname.startsWith('/fa-market')} icon={<Contact />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
+          <Nav active={pathname.startsWith('/schedule')} icon={<CalendarDays />} label="리그 일정" onClick={() => navigate('/schedule')} />
           {isRegularSeasonOver && (
-            <Nav active={pathname.startsWith('/playoffs')} icon={<Swords />} label="플레이오프" onClick={() => navigate('/playoffs')} />
+            <Nav active={pathname.startsWith('/playoffs')} icon={<Trophy />} label="플레이오프" onClick={() => navigate('/playoffs')} />
           )}
-          <Nav active={false} icon={<SlidersHorizontal />} label="전술 (준비 중)" onClick={() => {}} />
+          <Nav active={false} icon={<GitFork />} label="전술 (준비 중)" onClick={() => {}} />
           <Nav active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
-          <Nav active={false} icon={<Dumbbell />} label="훈련 (준비 중)" onClick={() => {}} />
+          <Nav active={false} icon={<Construction />} label="훈련 (준비 중)" onClick={() => {}} />
           {hasProspects && (
             <Nav active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
           )}
@@ -194,7 +199,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               }`}
               style={isMenuOpen ? { backgroundColor: activeBg } : undefined}
             >
-              <User size={24} color={isMenuOpen ? '#ffffff' : iconColor} />
+              <CircleUser size={24} color={isMenuOpen ? '#ffffff' : iconColor} />
             </button>
 
             {/* 드롭다운 — 위쪽 방향 */}

@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { Team, Game, Player } from '../types';
 import { OffseasonPhase } from '../types/app';
 import { MessageListItem } from '../types/message';
+import { SavedTeamFinances } from '../types/finance';
 import { computeStandingsStats } from '../utils/standingsStats';
 import { calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
@@ -19,7 +20,8 @@ interface HomeViewProps {
     offseasonPhase?: OffseasonPhase | null;
     seasonShort?: string;
     userId?: string;
-    onNavigate: (view: string) => void;
+    teamFinances?: SavedTeamFinances | null;
+    onNavigate: (view: string, messageId?: string) => void;
     onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
@@ -50,6 +52,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     offseasonPhase,
     seasonShort,
     userId,
+    teamFinances,
     onNavigate,
     onViewPlayer,
 }) => {
@@ -57,7 +60,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
     useEffect(() => {
         if (!userId || !team?.id) return;
-        fetchMessageList(userId, team.id, 0, 10).then(setRecentMessages).catch(() => {});
+        fetchMessageList(userId, team.id, 0, 50)
+            .then(msgs => setRecentMessages(msgs.filter(m => !m.is_read)))
+            .catch(() => {});
     }, [userId, team?.id]);
 
     const teamData = TEAM_DATA[team.id];
@@ -105,30 +110,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
             .slice(0, 10);
     }, [schedule, team.id]);
 
-    // 로스터 상위 8명 (OVR 기준)
+    // 로스터 상위 10명 (OVR 기준)
     const topRoster = useMemo(() => {
         return [...(team.roster ?? [])]
             .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))
-            .slice(0, 8);
+            .slice(0, 10);
     }, [team.roster]);
 
     // 부상자
     const injuredPlayers = useMemo(() =>
         team.roster?.filter(p => p.health === 'Injured') ?? [], [team.roster]);
 
-    // OVR
-    const avgOvr = useMemo(() => {
-        if (!team.roster?.length) return 0;
-        return Math.round(team.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / team.roster.length);
-    }, [team.roster]);
+    // 팀 스탯 집계 (로스터 합산)
+    const getTeamStatAggregates = (t: Team) => {
+        const roster = t.roster ?? [];
+        const g = Math.max(...roster.map(p => p.stats?.g ?? 0), 1);
+        const pts  = roster.reduce((s, p) => s + (p.stats?.pts ?? 0), 0) / g;
+        const reb  = roster.reduce((s, p) => s + (p.stats?.reb ?? 0), 0) / g;
+        const ast  = roster.reduce((s, p) => s + (p.stats?.ast ?? 0), 0) / g;
+        const stl  = roster.reduce((s, p) => s + (p.stats?.stl ?? 0), 0) / g;
+        const blk  = roster.reduce((s, p) => s + (p.stats?.blk ?? 0), 0) / g;
+        const fgm  = roster.reduce((s, p) => s + (p.stats?.fgm ?? 0), 0);
+        const fga  = roster.reduce((s, p) => s + (p.stats?.fga ?? 0), 0);
+        const p3m  = roster.reduce((s, p) => s + (p.stats?.p3m ?? 0), 0);
+        const p3a  = roster.reduce((s, p) => s + (p.stats?.p3a ?? 0), 0);
+        return { pts, reb, ast, stl, blk, fgPct: fga > 0 ? fgm / fga : 0, p3Pct: p3a > 0 ? p3m / p3a : 0 };
+    };
 
-    const ovrRank = useMemo(() => {
-        const sorted = [...teams].sort((a, b) => {
-            const ao = a.roster?.length ? Math.round(a.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / a.roster.length) : 0;
-            const bo = b.roster?.length ? Math.round(b.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / b.roster.length) : 0;
-            return bo - ao;
-        });
-        return sorted.findIndex(t => t.id === team.id) + 1;
+    // 리그 순위 계산
+    const leagueStatRanks = useMemo(() => {
+        type StatKey = 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'fgPct' | 'p3Pct';
+        const allStats = teams.map(t => ({ id: t.id, ...getTeamStatAggregates(t) }));
+        const rank = (key: StatKey) => {
+            const sorted = [...allStats].sort((a, b) => b[key] - a[key]);
+            return sorted.findIndex(s => s.id === team.id) + 1;
+        };
+        const my = allStats.find(s => s.id === team.id)!;
+        return { my, pts: rank('pts'), reb: rank('reb'), ast: rank('ast'), stl: rank('stl'), blk: rank('blk'), fgPct: rank('fgPct'), p3Pct: rank('p3Pct') };
     }, [teams, team.id]);
 
     // 총 페이롤
@@ -141,12 +159,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
     // 유틸
     const formatDate = (d: string) => {
-        const dt = new Date(d + 'T00:00:00');
+        const datePart = d.slice(0, 10);
+        const dt = new Date(datePart + 'T00:00:00');
         return `${dt.getMonth() + 1}/${dt.getDate()}`;
     };
 
     const formatDateKo = (d: string) => {
-        const dt = new Date(d + 'T00:00:00');
+        const datePart = d.slice(0, 10);
+        const dt = new Date(datePart + 'T00:00:00');
         return `${dt.getFullYear()}년 ${dt.getMonth() + 1}월 ${dt.getDate()}일`;
     };
 
@@ -251,25 +271,31 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             action={{ label: '전체', onClick: () => onNavigate('Standings') }}
                         />
                         <div className="py-1">
-                            {conferenceTeams.map((t, i) => {
-                                const stats = standingsMap[t.id];
-                                const isMe = t.id === team.id;
-                                return (
-                                    <div
-                                        key={t.id}
-                                        className={`flex items-center gap-2 px-4 py-1.5 text-xs ${isMe ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                                    >
-                                        <span className={`w-4 font-mono font-bold shrink-0 text-center ${isMe ? 'text-white' : 'text-slate-500'}`}>{i + 1}</span>
-                                        <TeamLogo teamId={t.id} size="xs" />
-                                        <span className={`flex-1 font-bold truncate ${isMe ? 'text-white' : 'text-slate-300'}`}>
-                                            {TEAM_DATA[t.id]?.name ?? t.name}
-                                        </span>
-                                        <span className="font-mono text-slate-400 tabular-nums">
-                                            {stats ? `${stats.wins}-${stats.losses}` : `${t.wins}-${t.losses}`}
-                                        </span>
-                                    </div>
-                                );
-                            })}
+                            {(() => {
+                                const myIdx = conferenceTeams.findIndex(t => t.id === team.id);
+                                const start = Math.max(0, myIdx - 2);
+                                const end = Math.min(conferenceTeams.length, myIdx + 3);
+                                return conferenceTeams.slice(start, end).map((t, _, arr) => {
+                                    const i = conferenceTeams.indexOf(t);
+                                    const stats = standingsMap[t.id];
+                                    const isMe = t.id === team.id;
+                                    return (
+                                        <div
+                                            key={t.id}
+                                            className={`flex items-center gap-2 px-4 py-1.5 text-xs ${isMe ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                                        >
+                                            <span className={`w-4 font-mono font-bold shrink-0 text-center ${isMe ? 'text-white' : 'text-slate-500'}`}>{i + 1}</span>
+                                            <TeamLogo teamId={t.id} size="xs" />
+                                            <span className={`flex-1 font-bold truncate ${isMe ? 'text-white' : 'text-slate-300'}`}>
+                                                {TEAM_DATA[t.id]?.name ?? t.name}
+                                            </span>
+                                            <span className="font-mono text-slate-400 tabular-nums">
+                                                {stats ? `${stats.wins}-${stats.losses}` : `${t.wins}-${t.losses}`}
+                                            </span>
+                                        </div>
+                                    );
+                                });
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -292,7 +318,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     {recentMessages.map(msg => (
                                         <div
                                             key={msg.id}
-                                            onClick={() => onNavigate('Inbox')}
+                                            onClick={() => onNavigate('Inbox', msg.id)}
                                             className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
                                         >
                                             <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${msg.is_read ? 'bg-transparent' : 'bg-indigo-400'}`} />
@@ -319,8 +345,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 <tr className="border-b border-slate-800">
                                     <th className="text-left px-4 py-2 text-slate-500 font-bold">포지션</th>
                                     <th className="text-left px-4 py-2 text-slate-500 font-bold">이름</th>
-                                    <th className="text-right px-4 py-2 text-slate-500 font-bold">OVR</th>
-                                    <th className="text-right px-4 py-2 text-slate-500 font-bold">나이</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">나이</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">OVR</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">PTS</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">REB</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">AST</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">STL</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">BLK</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">FG%</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-bold">3P%</th>
                                     <th className="text-right px-4 py-2 text-slate-500 font-bold">연봉</th>
                                 </tr>
                             </thead>
@@ -329,6 +362,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     const ovr = calculatePlayerOvr(p);
                                     const salary = (p as any).contract?.salary ?? (p as any).salary ?? 0;
                                     const salaryStr = salary > 0 ? `$${(salary / 1_000_000).toFixed(1)}M` : '–';
+                                    const g = p.stats?.g ?? 0;
+                                    const pts = g > 0 ? (p.stats.pts / g).toFixed(1) : '–';
+                                    const reb = g > 0 ? (p.stats.reb / g).toFixed(1) : '–';
+                                    const ast = g > 0 ? (p.stats.ast / g).toFixed(1) : '–';
+                                    const stl = g > 0 ? (p.stats.stl / g).toFixed(1) : '–';
+                                    const blk = g > 0 ? (p.stats.blk / g).toFixed(1) : '–';
+                                    const fgPct = p.stats?.fga > 0 ? `${(p.stats.fgm / p.stats.fga * 100).toFixed(1)}` : '–';
+                                    const p3Pct = p.stats?.p3a > 0 ? `${(p.stats.p3m / p.stats.p3a * 100).toFixed(1)}` : '–';
                                     return (
                                         <tr
                                             key={p.id}
@@ -336,9 +377,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                             onClick={() => onViewPlayer(p, team.id, teamFullName)}
                                         >
                                             <td className="px-4 py-2 text-slate-400 font-bold">{p.position}</td>
-                                            <td className="px-4 py-2 text-white font-semibold">{p.name}</td>
-                                            <td className="px-4 py-2 text-right font-mono font-bold text-white">{ovr}</td>
-                                            <td className="px-4 py-2 text-right font-mono text-slate-400">{(p as any).age ?? '–'}</td>
+                                            <td className="px-4 py-2 text-white font-semibold whitespace-nowrap">{p.name}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{(p as any).age ?? '–'}</td>
+                                            <td className="px-2 py-2 text-right font-mono font-bold text-white">{ovr}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{pts}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{reb}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{ast}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{stl}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{blk}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{fgPct}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{p3Pct}</td>
                                             <td className="px-4 py-2 text-right font-mono text-slate-400">{salaryStr}</td>
                                         </tr>
                                     );
@@ -362,12 +410,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 { label: '최근 10경기', value: `${l10.w}승 ${l10.l}패` },
                                 { label: '홈 기록', value: myStats ? `${myStats.home.w}-${myStats.home.l}` : '–' },
                                 { label: '원정 기록', value: myStats ? `${myStats.away.w}-${myStats.away.l}` : '–' },
-                                { label: '평균 OVR', value: String(avgOvr) },
-                                { label: 'OVR 리그 순위', value: `${ovrRank}위` },
                             ] as { label: string; value: string }[]).map(({ label, value }) => (
                                 <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
                                     <span className="text-slate-400">{label}</span>
                                     <span className="text-white font-bold">{value}</span>
+                                </div>
+                            ))}
+                            {/* 리그 순위 스탯 */}
+                            {leagueStatRanks && ([
+                                { label: 'PTS', val: leagueStatRanks.my.pts.toFixed(1), rank: leagueStatRanks.pts },
+                                { label: 'REB', val: leagueStatRanks.my.reb.toFixed(1), rank: leagueStatRanks.reb },
+                                { label: 'AST', val: leagueStatRanks.my.ast.toFixed(1), rank: leagueStatRanks.ast },
+                                { label: 'STL', val: leagueStatRanks.my.stl.toFixed(1), rank: leagueStatRanks.stl },
+                                { label: 'BLK', val: leagueStatRanks.my.blk.toFixed(1), rank: leagueStatRanks.blk },
+                                { label: 'FG%', val: `${(leagueStatRanks.my.fgPct * 100).toFixed(1)}%`, rank: leagueStatRanks.fgPct },
+                                { label: '3P%', val: `${(leagueStatRanks.my.p3Pct * 100).toFixed(1)}%`, rank: leagueStatRanks.p3Pct },
+                            ]).map(({ label, val, rank }) => (
+                                <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
+                                    <span className="text-slate-400">{label}</span>
+                                    <span className="text-white font-bold">
+                                        {val}
+                                        <span className="ml-1.5 text-slate-500 font-normal">({rank}위)</span>
+                                    </span>
                                 </div>
                             ))}
                         </div>
@@ -406,24 +470,41 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             action={{ label: '프론트 오피스', onClick: () => onNavigate('FrontOffice') }}
                         />
                         <div className="divide-y divide-slate-800/50">
-                            {([
-                                {
-                                    label: '총 페이롤',
-                                    value: totalPayroll > 0 ? `$${(totalPayroll / 1_000_000).toFixed(1)}M` : '–',
-                                },
-                                { label: '로스터 인원', value: `${team.roster?.length ?? 0}명` },
-                                {
-                                    label: 'FA 시장',
-                                    value: offseasonPhase === 'FA_OPEN' ? '개방 중' : '비시즌',
-                                },
-                            ] as { label: string; value: string }[]).map(({ label, value }) => (
-                                <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
-                                    <span className="text-slate-400">{label}</span>
-                                    <span className={`font-bold ${label === 'FA 시장' && offseasonPhase === 'FA_OPEN' ? 'text-amber-400' : 'text-white'}`}>
-                                        {value}
-                                    </span>
-                                </div>
-                            ))}
+                            {(() => {
+                                const fin = teamFinances?.[team.id];
+                                const gate = fin?.revenue?.gate ?? 0;
+                                const merch = fin?.revenue?.merchandise ?? 0;
+                                return ([
+                                    {
+                                        label: '총 페이롤',
+                                        value: totalPayroll > 0 ? `$${(totalPayroll / 1_000_000).toFixed(1)}M` : '–',
+                                        highlight: false,
+                                    },
+                                    { label: '로스터 인원', value: `${team.roster?.length ?? 0}명`, highlight: false },
+                                    {
+                                        label: 'FA 시장',
+                                        value: offseasonPhase === 'FA_OPEN' ? '개방 중' : '비시즌',
+                                        highlight: offseasonPhase === 'FA_OPEN',
+                                    },
+                                    {
+                                        label: '티켓 수익',
+                                        value: gate > 0 ? `$${(gate / 1_000_000).toFixed(1)}M` : '–',
+                                        highlight: false,
+                                    },
+                                    {
+                                        label: 'MD 판매 수익',
+                                        value: merch > 0 ? `$${(merch / 1_000_000).toFixed(1)}M` : '–',
+                                        highlight: false,
+                                    },
+                                ] as { label: string; value: string; highlight: boolean }[]).map(({ label, value, highlight }) => (
+                                    <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
+                                        <span className="text-slate-400">{label}</span>
+                                        <span className={`font-bold ${highlight ? 'text-amber-400' : 'text-white'}`}>
+                                            {value}
+                                        </span>
+                                    </div>
+                                ));
+                            })()}
                         </div>
                     </div>
                 </div>

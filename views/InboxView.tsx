@@ -20,9 +20,10 @@ interface InboxViewProps {
   onTeamOptionExecuted?: (playerId: string, exercised: boolean) => void;
   onNavigateToDraft?: () => void;
   onNavigateToDraftLottery?: () => void;
+  initialMessageId?: string;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft, onNavigateToDraftLottery }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft, onNavigateToDraftLottery, initialMessageId }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -95,9 +96,12 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     const newMessages = page === 0 ? data : [...messages, ...data];
     setMessages(newMessages);
 
-    // Auto-select the first message (Latest) if none selected
+    // Auto-select: initialMessageId 지정 시 해당 메시지, 없으면 첫 번째
     if (page === 0 && data.length > 0 && !selectedMessage) {
-        handleSelectMessage(data[0]);
+        const target = initialMessageId
+            ? data.find(m => m.id === initialMessageId) ?? data[0]
+            : data[0];
+        handleSelectMessage(target);
     }
 
     setLoading(false);
