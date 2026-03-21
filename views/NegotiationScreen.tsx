@@ -71,11 +71,13 @@ function fmtM(val: number): string {
     return `$${(val / 1_000_000).toFixed(1)}M`;
 }
 
-function moraleBarColor(score: number): string {
-    if (score >= 70) return 'bg-emerald-500';
-    if (score >= 50) return 'bg-indigo-500';
-    if (score >= 30) return 'bg-amber-500';
-    return 'bg-red-500';
+function moraleEmoji(score: number): string {
+    if (score >= 88) return '😄';
+    if (score >= 72) return '🙂';
+    if (score >= 52) return '😐';
+    if (score >= 35) return '😕';
+    if (score >= 20) return '😠';
+    return '😤';
 }
 
 function moraleTextColor(score: number): string {
@@ -181,7 +183,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     }, [myTeam, faMaxAllowed, player.salary, vetMin]);
 
     const currentSlotMax = slotMaxMap[selectedSlot] ?? vetMin;
-    const faMaxYears     = selectedSlot === 'tax_mle' ? 2 : 5;
+
+    // NBA CBA 기준 슬롯별 최대 계약 연수
+    const SLOT_MAX_YEARS: Record<SigningType, number> = {
+        bird_full:   5,  // 풀 버드권 (자기 팀 재계약)
+        bird_early:  5,  // 얼리 버드권
+        bird_non:    4,  // 논버드
+        cap_space:   4,  // 캡 스페이스
+        non_tax_mle: 4,  // 논택스 MLE
+        tax_mle:     3,  // 택스페이어 MLE
+        vet_min:     2,  // 베테랑 미니멈
+    };
+    const faMaxYears = SLOT_MAX_YEARS[selectedSlot] ?? 4;
 
     // ─── Release State ───────────────────────────────────────
     const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
@@ -249,7 +262,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             negotiationType: negotiationType as NegotiationType,
         };
         const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
-        setChatMessages([{ id: nextId(), role: 'player', text: d }]);
+        // 익스텐션: 초기 요구 조건을 대화 subText로 간접 노출
+        const greetingSub = isExt && negState
+            ? `요구: ${fmtM(negState.demand.openingAsk)} / yr · ${negState.demand.askingYears}년`
+            : undefined;
+        setChatMessages([{ id: nextId(), role: 'player', text: d, subText: greetingSub }]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -388,7 +405,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0">
 
                 {/* ── 좌측: 선수 정보 ── */}
-                <div className="w-56 flex-shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <div className="flex-[2] min-w-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
 
                     {/* 선수 기본 정보 */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -448,18 +465,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
                             <span className="text-[10px] font-black uppercase tracking-widest text-white/80">선수 기분</span>
                         </div>
-                        <div className="p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className={`text-sm font-bold ${moraleTextColor(moraleScore)}`}>
+                        <div className="p-3 flex items-center gap-3">
+                            <span className="text-3xl leading-none">{moraleEmoji(moraleScore)}</span>
+                            <div>
+                                <div className={`text-xs font-bold ${moraleTextColor(moraleScore)}`}>
                                     {getMoraleLabel(moraleScore)}
-                                </span>
-                                <span className="text-xs font-mono text-slate-500">{Math.round(moraleScore)}</span>
-                            </div>
-                            <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                <div
-                                    className={`h-full rounded-full transition-all ${moraleBarColor(moraleScore)}`}
-                                    style={{ width: `${moraleScore}%` }}
-                                />
+                                </div>
+                                <div className="text-xs font-mono text-slate-500 mt-0.5">{Math.round(moraleScore)}</div>
                             </div>
                         </div>
                     </div>
@@ -477,20 +489,20 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
                                 ].map(({ label, value, color }) => (
                                     <div key={label} className="flex items-center gap-2">
-                                        <div className="w-14 text-[10px] font-bold text-slate-500">{label}</div>
+                                        <div className="w-14 text-xs font-bold text-slate-500">{label}</div>
                                         <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full transition-all duration-500 ${color}`}
                                                 style={{ width: `${Math.round(value * 100)}%` }}
                                             />
                                         </div>
-                                        <div className="w-7 text-[10px] font-mono text-right text-slate-500">
+                                        <div className="w-7 text-xs font-mono text-right text-slate-500">
                                             {Math.round(value * 100)}
                                         </div>
                                     </div>
                                 ))}
                                 {negState.lowballCount > 0 && (
-                                    <div className="text-[10px] text-amber-400 font-bold pt-1">
+                                    <div className="text-xs text-amber-400 font-bold pt-1">
                                         ⚠ 저가 경고 {negState.lowballCount}/3
                                     </div>
                                 )}
@@ -502,14 +514,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {isExt && negState && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
                             <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">협상 현황</div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">현재 요구</span>
-                                <span className="font-mono font-bold text-amber-400">{fmtM(negState.currentCounterAAV)} / yr</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">요구 연수</span>
-                                <span className="font-mono text-slate-300">{negState.currentCounterYears}년</span>
-                            </div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-500">최소 수용선</span>
                                 <span className="font-mono text-slate-400">{fmtM(negState.demand.reservationFloor)} / yr</span>
@@ -564,8 +568,80 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     )}
                 </div>
 
-                {/* ── 중앙: 오퍼 폼 ── */}
-                <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 min-w-0">
+                {/* ── 중앙: 채팅 패널 ── */}
+                <div className="flex-[3] min-w-0 border-r border-slate-800 flex flex-col">
+
+                    {/* 채팅 헤더 */}
+                    <div className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center gap-3">
+                        <div
+                            className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
+                            style={{ backgroundColor: accentColor }}
+                        >
+                            {player.name.charAt(0)}
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-white ko-tight">{player.name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">{player.position} · {player.age}세 · OVR {player.ovr}</div>
+                        </div>
+                    </div>
+
+                    {/* 메시지 목록 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                        {chatMessages.map(msg => {
+                            // 상태 배지
+                            if (msg.role === 'status') {
+                                return (
+                                    <div key={msg.id} className="flex justify-center">
+                                        <div className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
+                                            msg.isSuccess
+                                                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                                                : 'bg-red-500/20 border-red-500/30 text-red-400'
+                                        }`}>{msg.text}</div>
+                                    </div>
+                                );
+                            }
+
+                            // GM 오퍼 버블 (우측 정렬)
+                            if (msg.role === 'gm') {
+                                return (
+                                    <div key={msg.id} className="flex justify-end">
+                                        <div className="max-w-[85%] bg-indigo-600/15 border border-indigo-500/25 rounded-2xl rounded-tr-sm px-4 py-3">
+                                            <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">내 오퍼</div>
+                                            <div className="text-sm font-mono font-bold text-white">{msg.text}</div>
+                                            {msg.subText && (
+                                                <div className="text-[10px] text-slate-400 mt-0.5">{msg.subText}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // 선수 대사 버블 (좌측 정렬)
+                            return (
+                                <div key={msg.id} className="flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                    <div
+                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black text-white mt-0.5"
+                                        style={{ backgroundColor: accentColor }}
+                                    >
+                                        {player.name.charAt(0)}
+                                    </div>
+                                    <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
+                                        <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
+                                        {msg.subText && (
+                                            <p className="text-[10px] font-mono text-slate-400 mt-1.5 bg-slate-700/50 rounded px-2 py-1">
+                                                {msg.subText}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div ref={chatEndRef} />
+                    </div>
+                </div>
+
+                {/* ── 우측: 오퍼 폼 ── */}
+                <div className="flex-[4] min-w-0 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 border-l border-slate-800">
 
                     {/* FM 스타일 오퍼 요약 카드 */}
                     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
@@ -593,7 +669,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 setSelectedSlot(slot);
                                                 const newMax = slotMaxMap[slot] ?? vetMin;
                                                 setFaOfferSalary(prev => Math.min(prev, newMax));
-                                                setFaOfferYears(prev => Math.min(prev, slot === 'tax_mle' ? 2 : 5));
+                                                setFaOfferYears(prev => Math.min(prev, SLOT_MAX_YEARS[slot] ?? 4));
                                             }}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                                                 selectedSlot === slot
@@ -610,28 +686,36 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
-                            {/* 연봉 슬라이더 */}
-                            <div className="flex-shrink-0 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
-                                    <div className={`text-lg font-mono font-black ${
-                                        faIsAboveAsking ? 'text-emerald-400' : faIsBelowWalkaway ? 'text-red-400' : 'text-amber-400'
-                                    }`}>{fmtM(faOfferSalary)}</div>
+                            {/* 제시 연봉 인풋 */}
+                            <div className="flex-shrink-0 space-y-1.5">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
+                                <div className="relative flex items-center">
+                                    <span className="absolute left-3 text-sm font-mono font-bold text-slate-400 pointer-events-none">$</span>
+                                    <input
+                                        type="number"
+                                        min={vetMin}
+                                        max={Math.max(currentSlotMax, faEntry.askingSalary)}
+                                        step={100_000}
+                                        value={faOfferSalary}
+                                        onChange={e => {
+                                            const v = parseInt(e.target.value) || 0;
+                                            const max = Math.max(currentSlotMax, faEntry.askingSalary);
+                                            setFaOfferSalary(Math.max(vetMin, Math.min(v, max)));
+                                        }}
+                                        disabled={selectedSlot === 'vet_min'}
+                                        className={`w-full bg-slate-800 border rounded-lg pl-7 py-2.5 text-sm font-mono font-bold text-white focus:outline-none disabled:opacity-50 transition-colors ${
+                                            faIsAboveAsking
+                                                ? 'border-emerald-500/60 focus:border-emerald-400'
+                                                : faIsBelowWalkaway
+                                                ? 'border-red-500/60 focus:border-red-400'
+                                                : 'border-slate-700 focus:border-indigo-500'
+                                        }`}
+                                    />
                                 </div>
-                                <input
-                                    type="range"
-                                    min={vetMin}
-                                    max={Math.max(currentSlotMax, faEntry.askingSalary)}
-                                    step={100_000}
-                                    value={faOfferSalary}
-                                    onChange={e => setFaOfferSalary(Number(e.target.value))}
-                                    className="w-full accent-indigo-500"
-                                    disabled={selectedSlot === 'vet_min'}
-                                />
                                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                                    <span>{fmtM(vetMin)}</span>
-                                    <span className="text-amber-600">요구 {fmtM(faEntry.askingSalary)}</span>
-                                    <span>{fmtM(Math.max(currentSlotMax, faEntry.askingSalary))}</span>
+                                    <span>최소 {fmtM(vetMin)}</span>
+                                    <span className="text-amber-500">요구 {fmtM(faEntry.askingSalary)}</span>
+                                    <span>최대 {fmtM(Math.max(currentSlotMax, faEntry.askingSalary))}</span>
                                 </div>
                                 <div className="text-[10px] text-center">
                                     {faIsAboveAsking
@@ -645,23 +729,16 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
-                                    <div className="text-lg font-mono font-black text-white">{faOfferYears}년</div>
-                                </div>
-                                <div className="flex gap-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
+                                <select
+                                    value={faOfferYears}
+                                    onChange={e => setFaOfferYears(Number(e.target.value))}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                >
                                     {Array.from({ length: faMaxYears }, (_, i) => i + 1).map(y => (
-                                        <button
-                                            key={y}
-                                            onClick={() => setFaOfferYears(y)}
-                                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${
-                                                faOfferYears === y
-                                                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                                                    : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
-                                            }`}
-                                        >{y}</button>
+                                        <option key={y} value={y}>{y}년</option>
                                     ))}
-                                </div>
+                                </select>
                             </div>
 
                             {/* 거절 사유 */}
@@ -707,30 +784,38 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* ── Extension 컨트롤 ── */}
                     {isExt && negState && !isExtFinal && (
                         <>
-                            {/* 연봉 슬라이더 */}
-                            <div className="flex-shrink-0 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
-                                    <div className={`text-lg font-mono font-black ${
-                                        extOfferSalary >= negState.demand.targetAAV ? 'text-emerald-400' :
-                                        extOfferSalary < negState.demand.insultThreshold ? 'text-red-500' :
-                                        extOfferSalary < negState.demand.reservationFloor ? 'text-red-400' :
-                                        'text-amber-400'
-                                    }`}>{fmtM(extOfferSalary)}</div>
+                            {/* 제시 연봉 인풋 */}
+                            <div className="flex-shrink-0 space-y-1.5">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
+                                <div className="relative flex items-center">
+                                    <span className="absolute left-3 text-sm font-mono font-bold text-slate-400 pointer-events-none">$</span>
+                                    <input
+                                        type="number"
+                                        min={Math.round(negState.demand.insultThreshold * 0.9)}
+                                        max={Math.round(negState.demand.openingAsk * 1.3)}
+                                        step={100_000}
+                                        value={extOfferSalary}
+                                        onChange={e => {
+                                            const v = parseInt(e.target.value) || 0;
+                                            const min = Math.round(negState.demand.insultThreshold * 0.9);
+                                            const max = Math.round(negState.demand.openingAsk * 1.3);
+                                            setExtOfferSalary(Math.max(min, Math.min(v, max)));
+                                        }}
+                                        className={`w-full bg-slate-800 border rounded-lg pl-7 py-2.5 text-sm font-mono font-bold text-white focus:outline-none transition-colors ${
+                                            extOfferSalary >= negState.demand.targetAAV
+                                                ? 'border-emerald-500/60 focus:border-emerald-400'
+                                                : extOfferSalary < negState.demand.insultThreshold
+                                                ? 'border-red-600/60 focus:border-red-500'
+                                                : extOfferSalary < negState.demand.reservationFloor
+                                                ? 'border-red-500/60 focus:border-red-400'
+                                                : 'border-slate-700 focus:border-violet-500'
+                                        }`}
+                                    />
                                 </div>
-                                <input
-                                    type="range"
-                                    min={Math.round(negState.demand.insultThreshold * 0.9)}
-                                    max={Math.round(negState.demand.openingAsk * 1.3)}
-                                    step={100_000}
-                                    value={extOfferSalary}
-                                    onChange={e => setExtOfferSalary(Number(e.target.value))}
-                                    className="w-full accent-violet-500"
-                                />
                                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                                    <span>{fmtM(Math.round(negState.demand.insultThreshold * 0.9))}</span>
-                                    <span className="text-amber-600">요구 {fmtM(negState.currentCounterAAV)}</span>
-                                    <span>{fmtM(Math.round(negState.demand.openingAsk * 1.3))}</span>
+                                    <span>최소 {fmtM(Math.round(negState.demand.insultThreshold * 0.9))}</span>
+                                    <span className="text-amber-500">요구 {fmtM(negState.currentCounterAAV)}</span>
+                                    <span>최대 {fmtM(Math.round(negState.demand.openingAsk * 1.3))}</span>
                                 </div>
                                 <div className="text-[10px] text-center">
                                     {extOfferSalary >= negState.demand.targetAAV
@@ -746,29 +831,22 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
-                                    <div className="text-lg font-mono font-black text-white">{extOfferYears}년</div>
-                                </div>
-                                <div className="flex gap-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
+                                <select
+                                    value={extOfferYears}
+                                    onChange={e => setExtOfferYears(Number(e.target.value))}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+                                >
                                     {[1, 2, 3, 4].map(y => (
-                                        <button
-                                            key={y}
-                                            onClick={() => setExtOfferYears(y)}
-                                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${
-                                                extOfferYears === y
-                                                    ? 'border-violet-500 bg-violet-500/20 text-violet-300'
-                                                    : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
-                                            }`}
-                                        >{y}</button>
+                                        <option key={y} value={y}>{y}년</option>
                                     ))}
-                                </div>
+                                </select>
                             </div>
 
                             {/* 카운터 배너 */}
                             {lastExtResponse?.outcome === 'COUNTER' && (
                                 <div className="flex-shrink-0 bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-300">
-                                    카운터 오퍼: {fmtM(lastExtResponse.counterAAV)} / yr · {lastExtResponse.counterYears}년 — 오른쪽 채팅 확인
+                                    카운터 오퍼: {fmtM(lastExtResponse.counterAAV)} / yr · {lastExtResponse.counterYears}년 — 가운데 채팅 확인
                                 </div>
                             )}
 
@@ -893,77 +971,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     )}
                 </div>
 
-                {/* ── 우측: 채팅 패널 ── */}
-                <div className="w-80 flex-shrink-0 border-l border-slate-800 flex flex-col">
-
-                    {/* 채팅 헤더 */}
-                    <div className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center gap-3">
-                        <div
-                            className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
-                            style={{ backgroundColor: accentColor }}
-                        >
-                            {player.name.charAt(0)}
-                        </div>
-                        <div>
-                            <div className="text-sm font-bold text-white ko-tight">{player.name}</div>
-                            <div className="text-[10px] text-slate-500 font-mono">{player.position} · {player.age}세 · OVR {player.ovr}</div>
-                        </div>
-                    </div>
-
-                    {/* 메시지 목록 */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                        {chatMessages.map(msg => {
-                            // 상태 배지
-                            if (msg.role === 'status') {
-                                return (
-                                    <div key={msg.id} className="flex justify-center">
-                                        <div className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
-                                            msg.isSuccess
-                                                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-                                                : 'bg-red-500/20 border-red-500/30 text-red-400'
-                                        }`}>{msg.text}</div>
-                                    </div>
-                                );
-                            }
-
-                            // GM 오퍼 버블 (우측 정렬)
-                            if (msg.role === 'gm') {
-                                return (
-                                    <div key={msg.id} className="flex justify-end">
-                                        <div className="max-w-[85%] bg-indigo-600/15 border border-indigo-500/25 rounded-2xl rounded-tr-sm px-4 py-3">
-                                            <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">내 오퍼</div>
-                                            <div className="text-sm font-mono font-bold text-white">{msg.text}</div>
-                                            {msg.subText && (
-                                                <div className="text-[10px] text-slate-400 mt-0.5">{msg.subText}</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            // 선수 대사 버블 (좌측 정렬)
-                            return (
-                                <div key={msg.id} className="flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                                    <div
-                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black text-white mt-0.5"
-                                        style={{ backgroundColor: accentColor }}
-                                    >
-                                        {player.name.charAt(0)}
-                                    </div>
-                                    <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
-                                        <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
-                                        {msg.subText && (
-                                            <p className="text-[10px] font-mono text-slate-400 mt-1.5 bg-slate-700/50 rounded px-2 py-1">
-                                                {msg.subText}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        <div ref={chatEndRef} />
-                    </div>
-                </div>
             </div>
         </div>
     );
