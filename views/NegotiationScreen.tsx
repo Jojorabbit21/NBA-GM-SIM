@@ -889,58 +889,88 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
+
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 space-y-3">
+                            <div className="flex-shrink-0 space-y-4">
                                 <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
 
                                 {/* 계약 옵션 (2년 이상 시) */}
                                 {faOfferYears >= 2 && (
-                                    <div>
-                                        <div className="text-[10px] text-slate-500 mb-1.5">계약 옵션</div>
-                                        <div className="flex gap-1.5">
-                                            {(['none', 'team', 'player'] as const).map(opt => (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">계약 옵션</div>
+                                        {(['none', 'team', 'player'] as const).map(opt => {
+                                            const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
+                                            const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
+                                            const active = faContractOption === opt;
+                                            return (
                                                 <button key={opt} onClick={() => setFaContractOption(opt)}
-                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
-                                                        faContractOption === opt
-                                                            ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                                                            : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
+                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                        active ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
                                                     }`}>
-                                                    {opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션'}
+                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active ? 'border-indigo-400' : 'border-slate-600'}`}>
+                                                        {active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active ? 'text-indigo-300' : 'text-slate-400'}`}>{label}</div>
+                                                        {sub && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{sub}</div>}
+                                                    </div>
                                                 </button>
-                                            ))}
-                                        </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
                                 {/* 트레이드 키커 (vet_min 제외) */}
                                 {selectedSlot !== 'vet_min' && (
-                                    <div>
-                                        <div className="text-[10px] text-slate-500 mb-1.5">트레이드 키커</div>
-                                        <div className="flex gap-1.5">
-                                            {[0, 0.05, 0.10, 0.15].map(pct => (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">트레이드 키커</div>
+                                        {[0, 0.05, 0.10, 0.15].map(pct => {
+                                            const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
+                                            const sub = pct > 0 ? `트레이드 시 $${(faOfferAAV * pct / 1_000_000).toFixed(1)}M 추가 수령` : '';
+                                            const active = faTradeKicker === pct;
+                                            return (
                                                 <button key={pct} onClick={() => setFaTradeKicker(pct)}
-                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
-                                                        faTradeKicker === pct
-                                                            ? 'border-amber-500 bg-amber-500/20 text-amber-300'
-                                                            : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
+                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                        active ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
                                                     }`}>
-                                                    {pct === 0 ? '없음' : `${(pct * 100).toFixed(0)}%`}
+                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active ? 'border-amber-400' : 'border-slate-600'}`}>
+                                                        {active && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active ? 'text-amber-300' : 'text-slate-400'}`}>{label}</div>
+                                                        {sub && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{sub}</div>}
+                                                    </div>
                                                 </button>
-                                            ))}
-                                        </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
                                 {/* NTC (bird_full 전용) */}
                                 {selectedSlot === 'bird_full' && (
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-slate-500">무이적 조항 (NTC)</span>
-                                        <button onClick={() => setFaNoTrade(v => !v)}
-                                            className={`w-10 h-5 rounded-full border transition-all relative ${
-                                                faNoTrade ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-700 border-slate-600'
-                                            }`}>
-                                            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${faNoTrade ? 'left-5' : 'left-0.5'}`} />
-                                        </button>
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">무이적 조항 (NTC)</div>
+                                        {[false, true].map(val => {
+                                            const active = faNoTrade === val;
+                                            return (
+                                                <button key={String(val)} onClick={() => setFaNoTrade(val as boolean)}
+                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                        active && val ? 'border-rose-500/50 bg-rose-500/10'
+                                                        : active ? 'border-slate-700/50 bg-slate-800/50'
+                                                        : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
+                                                    }`}>
+                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active && val ? 'border-rose-400' : active ? 'border-slate-400' : 'border-slate-600'}`}>
+                                                        {active && <div className={`w-1.5 h-1.5 rounded-full ${val ? 'bg-rose-400' : 'bg-slate-400'}`} />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active && val ? 'text-rose-300' : active ? 'text-slate-300' : 'text-slate-400'}`}>
+                                                            {val ? '포함' : '미포함'}
+                                                        </div>
+                                                        {val && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">선수 동의 없이 트레이드 불가</div>}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -1074,16 +1104,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </tr>
                                     </tfoot>
                                 </table>
-                                <div className="text-[10px] text-center">
-                                    {extOfferAAV >= negState.demand.targetAAV
-                                        ? <span className="text-emerald-400">✓ 목표가 이상 — 높은 수락 가능성</span>
-                                        : extOfferAAV < negState.demand.insultThreshold
-                                        ? <span className="text-red-500">✗ 모욕 수준 — 즉시 거절</span>
-                                        : extOfferAAV < negState.demand.reservationFloor
-                                        ? <span className="text-red-400">✗ 최소 수용선 미달</span>
-                                        : <span className="text-slate-500">협상 구간 · 요구 {fmtM(negState.currentCounterAAV)}</span>
-                                    }
-                                </div>
                             </div>
 
                             {/* 카운터 배너 */}
@@ -1094,64 +1114,83 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             )}
 
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 space-y-3">
+                            <div className="flex-shrink-0 space-y-4">
                                 <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
 
                                 {/* 계약 옵션 (2년 이상일 때) */}
                                 {extOfferYears >= 2 && (
                                     <div className="space-y-1.5">
-                                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">계약 옵션</div>
-                                        <div className="flex gap-1.5">
-                                            {(['none', 'team', 'player'] as const).map(opt => (
-                                                <button
-                                                    key={opt}
-                                                    onClick={() => setExtContractOption(opt)}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
-                                                        extContractOption === opt
-                                                            ? 'bg-violet-500/25 border-violet-500/50 text-violet-300'
-                                                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
-                                                    }`}
-                                                >
-                                                    {opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션'}
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">계약 옵션</div>
+                                        {(['none', 'team', 'player'] as const).map(opt => {
+                                            const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
+                                            const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
+                                            const active = extContractOption === opt;
+                                            return (
+                                                <button key={opt} onClick={() => setExtContractOption(opt)}
+                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                        active ? 'border-violet-500/50 bg-violet-500/10' : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
+                                                    }`}>
+                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active ? 'border-violet-400' : 'border-slate-600'}`}>
+                                                        {active && <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active ? 'text-violet-300' : 'text-slate-400'}`}>{label}</div>
+                                                        {sub && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{sub}</div>}
+                                                    </div>
                                                 </button>
-                                            ))}
-                                        </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
                                 {/* 트레이드 키커 */}
                                 <div className="space-y-1.5">
-                                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">트레이드 키커</div>
-                                    <div className="flex gap-1.5">
-                                        {[0, 5, 10, 15].map(pct => (
-                                            <button
-                                                key={pct}
-                                                onClick={() => setExtTradeKicker(pct / 100)}
-                                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
-                                                    extTradeKicker === pct / 100
-                                                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
-                                                }`}
-                                            >
-                                                {pct === 0 ? '없음' : `+${pct}%`}
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">트레이드 키커</div>
+                                    {[0, 0.05, 0.10, 0.15].map(pct => {
+                                        const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
+                                        const sub = pct > 0 ? `트레이드 시 $${(extOfferAAV * pct / 1_000_000).toFixed(1)}M 추가 수령` : '';
+                                        const active = extTradeKicker === pct;
+                                        return (
+                                            <button key={pct} onClick={() => setExtTradeKicker(pct)}
+                                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                    active ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
+                                                }`}>
+                                                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active ? 'border-amber-400' : 'border-slate-600'}`}>
+                                                    {active && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active ? 'text-amber-300' : 'text-slate-400'}`}>{label}</div>
+                                                    {sub && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{sub}</div>}
+                                                </div>
                                             </button>
-                                        ))}
-                                    </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* NTC */}
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">무역 거부권 (NTC)</div>
-                                    <button
-                                        onClick={() => setExtNoTrade(v => !v)}
-                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
-                                            extNoTrade
-                                                ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
-                                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
-                                        }`}
-                                    >
-                                        {extNoTrade ? '포함' : '미포함'}
-                                    </button>
+                                <div className="space-y-1.5">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">무이적 조항 (NTC)</div>
+                                    {[false, true].map(val => {
+                                        const active = extNoTrade === val;
+                                        return (
+                                            <button key={String(val)} onClick={() => setExtNoTrade(val as boolean)}
+                                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                                                    active && val ? 'border-rose-500/50 bg-rose-500/10'
+                                                    : active ? 'border-slate-700/50 bg-slate-800/50'
+                                                    : 'border-slate-700/40 bg-slate-800/30 hover:border-slate-600/60'
+                                                }`}>
+                                                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${active && val ? 'border-rose-400' : active ? 'border-slate-400' : 'border-slate-600'}`}>
+                                                    {active && <div className={`w-1.5 h-1.5 rounded-full ${val ? 'bg-rose-400' : 'bg-slate-400'}`} />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className={`text-xs font-black uppercase tracking-wide transition-colors ${active && val ? 'text-rose-300' : active ? 'text-slate-300' : 'text-slate-400'}`}>
+                                                        {val ? '포함' : '미포함'}
+                                                    </div>
+                                                    {val && <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">선수 동의 없이 트레이드 불가</div>}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

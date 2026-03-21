@@ -11,10 +11,8 @@ import { PickSelector } from './PickSelector';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { formatMoney } from '../../utils/formatMoney';
 import { LeagueGMProfiles, DIRECTION_LABELS, TeamDirection } from '../../types/gm';
-import { calculatePackageTrueValue, getPlayerTradeValue } from '../../services/tradeEngine/tradeValue';
+import { calculatePackageTrueValue } from '../../services/tradeEngine/tradeValue';
 import { getPickTradeValue } from '../../services/tradeEngine/pickValueEngine';
-
-// ── 방향 색상 (노선 표시용) ──
 
 const DIRECTION_COLORS: Record<TeamDirection, string> = {
     winNow: 'text-red-400',
@@ -23,8 +21,6 @@ const DIRECTION_COLORS: Record<TeamDirection, string> = {
     seller: 'text-blue-400',
     tanking: 'text-purple-400',
 };
-
-// ── Props ──
 
 interface TradeNegotiationBuilderProps {
     teams: Team[];
@@ -37,7 +33,6 @@ interface TradeNegotiationBuilderProps {
 
     handleViewPlayer: (p: Player) => void;
 
-    // 비동기 제안 전송
     sendPersistentProposal: (
         targetTeamId: string,
         offeredPlayerIds: string[],
@@ -46,22 +41,18 @@ interface TradeNegotiationBuilderProps {
         requestedPicks: PersistentPickRef[]
     ) => void;
 
-    // 즉시 협상 (Tab 3에서만 사용)
     showInstantMode?: boolean;
     handleRequestRequirements?: () => void;
     proposalIsProcessing?: boolean;
 
-    // 즉시 협상 결과 표시
     proposalRequirements?: TradeOffer[];
     proposalSearchPerformed?: boolean;
     onAcceptRequirement?: (req: TradeOffer, targetTeam: Team) => void;
 
-    // Tab 2에서 사전 설정
     initialTargetTeamId?: string;
     initialRequestedPlayerIds?: Set<string>;
     initialOfferedPlayerIds?: Set<string>;
 
-    // 외부 상태 연동 (즉시 협상용 — Tab 3에서 useTradeSystem 상태와 동기화)
     externalTargetTeamId?: string;
     onTargetTeamChange?: (teamId: string) => void;
     externalSelectedIds?: Set<string>;
@@ -94,12 +85,9 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
     onSelectedIdsChange,
     onSearchPerformedReset,
 }) => {
-    // ── 내부 상태 ──
-
     const [internalTargetTeamId, setInternalTargetTeamId] = useState(initialTargetTeamId || '');
     const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(initialRequestedPlayerIds || new Set());
 
-    // 외부 상태가 있으면 외부, 없으면 내부 사용
     const targetTeamId = externalTargetTeamId ?? internalTargetTeamId;
     const setTargetTeamId = onTargetTeamChange ?? setInternalTargetTeamId;
     const requestedPlayerIds = externalSelectedIds ?? internalSelectedIds;
@@ -110,40 +98,31 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
     const [showMyPicks, setShowMyPicks] = useState(false);
     const [showTargetPicks, setShowTargetPicks] = useState(false);
 
-    // 보낼 자산 (내 선수 + 픽)
     const [myOfferedPlayerIds, setMyOfferedPlayerIds] = useState<Set<string>>(initialOfferedPlayerIds || new Set());
     const [myOfferedPicks, setMyOfferedPicks] = useState<TradePickRef[]>([]);
-
-    // 요청 자산 (상대 픽)
     const [requestedPicks, setRequestedPicks] = useState<TradePickRef[]>([]);
 
     const selectedTargetTeam = teams.find(t => t.id === targetTeamId);
 
-    // 상대 팀 보유 픽
     const targetPicks = useMemo(() => {
         if (!leaguePickAssets || !targetTeamId) return [];
         return leaguePickAssets[targetTeamId] || [];
     }, [leaguePickAssets, targetTeamId]);
 
-    // 상대 팀 로스터 (OVR 정렬)
     const targetTeamRoster = useMemo(() => {
         const t = teams.find(t => t.id === targetTeamId);
         return t ? [...t.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)) : [];
     }, [teams, targetTeamId]);
 
-    // 유저 로스터 (OVR 정렬)
     const sortedUserRoster = useMemo(() =>
         [...(userTeam?.roster || [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
         [userTeam?.roster]
     );
 
-    // 다른 팀 목록
     const allOtherTeamsSorted = useMemo(() => {
         if (!userTeam) return [];
         return teams.filter(t => t.id !== userTeam.id);
     }, [teams, userTeam?.id]);
-
-    // ── 핸들러 ──
 
     const handleTeamSelect = (id: string) => {
         setTargetTeamId(id);
@@ -189,7 +168,6 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
             Array.from(requestedPlayerIds),
             reqPicks
         );
-        // 리셋
         setMyOfferedPlayerIds(new Set());
         setMyOfferedPicks([]);
         setRequestedPicks([]);
@@ -197,8 +175,6 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
 
     const hasProposalContent = myOfferedPlayerIds.size > 0 || myOfferedPicks.length > 0 ||
         requestedPlayerIds.size > 0 || requestedPicks.length > 0;
-
-    // ── 가치 비교 계산 ──
 
     const myOfferedPlayers = useMemo(() =>
         sortedUserRoster.filter(p => myOfferedPlayerIds.has(p.id)),
@@ -213,11 +189,9 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
     const valueComparison = useMemo(() => {
         if (!hasProposalContent) return null;
 
-        // 선수 가치
         const myPlayerValue = myOfferedPlayers.length > 0 ? calculatePackageTrueValue(myOfferedPlayers) : 0;
         const targetPlayerValue = requestedPlayers.length > 0 ? calculatePackageTrueValue(requestedPlayers) : 0;
 
-        // 픽 가치
         let myPickValue = 0;
         for (const pickRef of myOfferedPicks) {
             const pickAsset = userPicks.find(p =>
@@ -241,24 +215,78 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
         return { myTotal, targetTotal, ratio };
     }, [myOfferedPlayers, requestedPlayers, myOfferedPicks, requestedPicks, userPicks, targetPicks, teams, currentSimDate, hasProposalContent]);
 
-    // ── 렌더링 ──
+    // ── 공통 플레이어 행 렌더 ──
+    const renderPlayerRow = (
+        p: Player,
+        isSelected: boolean,
+        disabled: boolean,
+        onClick: () => void,
+        onViewClick: (e: React.MouseEvent) => void,
+        accentColor: 'indigo' | 'emerald' = 'indigo'
+    ) => {
+        const ovr = calculatePlayerOvr(p);
+        const selectedBg = accentColor === 'emerald' ? 'bg-emerald-600/10 border border-emerald-500/25' : 'bg-indigo-600/10 border border-indigo-500/25';
+        const checkBg = accentColor === 'emerald' ? 'bg-emerald-500 border-emerald-400' : 'bg-indigo-500 border-indigo-400';
+        return (
+            <div
+                key={p.id}
+                onClick={() => !disabled && onClick()}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl mx-2 my-0.5 transition-all ${
+                    disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                } ${isSelected ? selectedBg : 'hover:bg-white/5 border border-transparent'}`}
+            >
+                {/* 체크박스 */}
+                <div className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                    isSelected ? checkBg : 'border-slate-700 bg-slate-900'
+                }`}>
+                    {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
+                </div>
+                {/* OVR */}
+                <OvrBadge value={ovr} size="sm" />
+                {/* 이름 */}
+                <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                    <span
+                        className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
+                        onClick={onViewClick}
+                    >
+                        {p.name}
+                    </span>
+                    {p.health !== 'Healthy' && (
+                        <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${
+                            p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'
+                        }`}>
+                            {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                        </span>
+                    )}
+                </div>
+                {/* 포지션 */}
+                <span className="text-[10px] font-black uppercase text-slate-500 w-8 text-center flex-shrink-0">{p.position}</span>
+                {/* 나이 */}
+                <span className="text-[10px] font-mono text-slate-500 w-6 text-center flex-shrink-0">{p.age}</span>
+                {/* 연봉 */}
+                <span className="text-xs font-mono font-bold text-slate-300 w-16 text-right flex-shrink-0">{formatMoney(p.salary)}</span>
+            </div>
+        );
+    };
 
     return (
-        <div className="flex flex-1 min-h-0 h-full">
-            {/* Left: Target Team Roster */}
-            <div className="flex-1 flex flex-col border-r border-slate-800 min-w-0">
-                {/* Left Panel Header */}
-                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800 flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold uppercase text-slate-500">상대 로스터</span>
+        <div className="flex flex-1 min-h-0 h-full gap-3 p-3">
+
+            {/* ── 좌측 카드: 상대 로스터 ── */}
+            <div className="flex-1 flex flex-col rounded-2xl border border-slate-800 overflow-hidden min-w-0 bg-slate-900">
+
+                {/* 헤더 */}
+                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/60 flex-shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">상대 로스터</span>
                         {selectedTargetTeam && leagueGMProfiles?.[selectedTargetTeam.id] && (
                             <span className={`text-[10px] font-black uppercase ${DIRECTION_COLORS[leagueGMProfiles[selectedTargetTeam.id].direction]}`}>
                                 {DIRECTION_LABELS[leagueGMProfiles[selectedTargetTeam.id].direction]}
                             </span>
                         )}
-                        {selectedTargetTeam && (
-                            <span className={`text-xs font-bold uppercase ${requestedPlayerIds.size > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
-                                {requestedPlayerIds.size}명 선택
+                        {selectedTargetTeam && requestedPlayerIds.size > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 text-[10px] font-black">
+                                {requestedPlayerIds.size}명
                             </span>
                         )}
                     </div>
@@ -320,13 +348,13 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                     </div>
                 </div>
 
-                {/* Left Panel Body */}
+                {/* 바디 */}
                 {selectedTargetTeam ? (
-                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
-                        {/* Target Pick Selector */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {/* 픽 요청 섹션 */}
                         {showTargetPicks && targetPicks.length > 0 && (
-                            <div className="border-b border-slate-700">
-                                <div className="px-4 py-1.5 bg-red-500/5 text-[10px] font-black uppercase tracking-widest text-red-400">
+                            <div className="mx-3 mt-3 mb-1 rounded-xl border border-red-500/20 bg-red-500/5 overflow-hidden">
+                                <div className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-400 border-b border-red-500/15">
                                     요청할 픽 선택
                                 </div>
                                 <PickSelector
@@ -349,81 +377,53 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                             </div>
                         )}
 
-                        <table className="w-full text-left border-separate border-spacing-0">
-                            <thead className="bg-slate-800 sticky top-0 z-10">
-                                <tr className="text-slate-500 text-xs font-bold uppercase">
-                                    <th className="py-2.5 px-3 w-8 border-b border-slate-700"></th>
-                                    <th className="py-2.5 px-1 w-10 border-b border-slate-700 text-center">OVR</th>
-                                    <th className="py-2.5 px-3 border-b border-slate-700">선수</th>
-                                    <th className="py-2.5 px-2 w-10 border-b border-slate-700 text-center">POS</th>
-                                    <th className="py-2.5 px-2 w-10 border-b border-slate-700 text-center">AGE</th>
-                                    <th className="py-2.5 px-3 w-16 border-b border-slate-700 text-right">연봉</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {targetTeamRoster.map(p => {
-                                    const isSelected = requestedPlayerIds.has(p.id);
-                                    const ovr = calculatePlayerOvr(p);
-                                    const disabled = isTradeDeadlinePassed;
-                                    return (
-                                        <tr
-                                            key={p.id}
-                                            onClick={() => !disabled && toggleTargetPlayer(p.id)}
-                                            className={`transition-colors ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${isSelected ? 'bg-indigo-600/10' : 'hover:bg-white/5'}`}
-                                        >
-                                            <td className="py-2 px-3 border-b border-slate-800/50">
-                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400' : 'border-slate-700 bg-slate-900'}`}>
-                                                    {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
-                                                </div>
-                                            </td>
-                                            <td className="py-2 px-1 border-b border-slate-800/50 text-center">
-                                                <OvrBadge value={ovr} size="sm" />
-                                            </td>
-                                            <td className="py-2 px-3 border-b border-slate-800/50">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <span
-                                                        className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
-                                                        onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}
-                                                    >
-                                                        {p.name}
-                                                    </span>
-                                                    {p.health !== 'Healthy' && (
-                                                        <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
-                                                            {p.health === 'Injured' ? 'OUT' : 'DTD'}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-bold text-slate-400 uppercase">{p.position}</td>
-                                            <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-mono text-slate-400">{p.age}</td>
-                                            <td className="py-2 px-3 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">{formatMoney(p.salary)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        {/* 컬럼 헤더 */}
+                        <div className="flex items-center gap-2.5 px-3 pt-3 pb-1 mx-2">
+                            <div className="w-[18px] flex-shrink-0" />
+                            <div className="w-8 flex-shrink-0 text-center text-[9px] font-black uppercase text-slate-600">OVR</div>
+                            <div className="flex-1 text-[9px] font-black uppercase text-slate-600">선수</div>
+                            <div className="w-8 text-center text-[9px] font-black uppercase text-slate-600">POS</div>
+                            <div className="w-6 text-center text-[9px] font-black uppercase text-slate-600">AGE</div>
+                            <div className="w-16 text-right text-[9px] font-black uppercase text-slate-600">연봉</div>
+                        </div>
+
+                        {/* 선수 목록 */}
+                        <div className="pb-3">
+                            {targetTeamRoster.map(p =>
+                                renderPlayerRow(
+                                    p,
+                                    requestedPlayerIds.has(p.id),
+                                    isTradeDeadlinePassed,
+                                    () => toggleTargetPlayer(p.id),
+                                    (e) => { e.stopPropagation(); handleViewPlayer(p); },
+                                    'indigo'
+                                )
+                            )}
+                        </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-600">
-                        <p className="text-xs font-bold uppercase tracking-widest">상대 팀을 먼저 선택해주세요</p>
+                    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-600">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+                            <Search size={20} className="text-slate-600" />
+                        </div>
+                        <p className="text-xs font-bold uppercase tracking-widest">상대 팀을 선택하세요</p>
                     </div>
                 )}
             </div>
 
-            {/* Right: My Offer + Actions */}
-            <div className="w-[420px] lg:w-[480px] flex flex-col flex-shrink-0 min-w-0">
-                {/* Right Panel Header */}
-                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800 flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold uppercase text-slate-500">
-                            내 제안 자산
-                        </span>
+            {/* ── 우측 카드: 내 제안 ── */}
+            <div className="w-[420px] lg:w-[480px] flex flex-col rounded-2xl border border-slate-800 overflow-hidden flex-shrink-0 min-w-0 bg-slate-900">
+
+                {/* 헤더 */}
+                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/60 flex-shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">내 제안 자산</span>
                         {userPicks.length > 0 && (
                             <button
                                 onClick={() => setShowMyPicks(!showMyPicks)}
                                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
                                     showMyPicks
-                                        ? 'bg-indigo-600 text-white'
+                                        ? 'bg-emerald-600 text-white'
                                         : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
                                 }`}
                             >
@@ -432,7 +432,6 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                         )}
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* 즉시 협상 (Tab 3에서만) */}
                         {showInstantMode && handleRequestRequirements && (
                             <button
                                 onClick={handleRequestRequirements}
@@ -443,7 +442,6 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                                 즉시 협상
                             </button>
                         )}
-                        {/* 비동기 제안 전송 */}
                         <button
                             onClick={handleSendProposal}
                             disabled={!targetTeamId || !hasProposalContent || isTradeDeadlinePassed}
@@ -455,12 +453,13 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                     </div>
                 </div>
 
-                {/* Right Panel Body */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
-                    {/* My Pick Selector */}
+                {/* 바디 */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                    {/* 픽 추가 섹션 */}
                     {showMyPicks && (
-                        <div className="border-b border-slate-700">
-                            <div className="px-4 py-1.5 bg-emerald-500/5 text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                        <div className="mx-3 mt-3 mb-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
+                            <div className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400 border-b border-emerald-500/15">
                                 보낼 픽 선택
                             </div>
                             <PickSelector
@@ -483,130 +482,108 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                         </div>
                     )}
 
-                    {/* My Players to Offer */}
+                    {/* 보낼 선수 섹션 */}
                     <div>
-                        <div className="px-4 py-1.5 bg-slate-800/50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                            보낼 선수 선택
+                        <div className="flex items-center gap-2.5 px-3 pt-3 pb-1 mx-2">
+                            <div className="text-[9px] font-black uppercase tracking-widest text-slate-600 flex-1">보낼 선수 선택</div>
+                            {myOfferedPlayerIds.size > 0 && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black">
+                                    {myOfferedPlayerIds.size}명
+                                </span>
+                            )}
                         </div>
-                        <table className="w-full text-left border-separate border-spacing-0">
-                            <tbody>
-                                {sortedUserRoster.map(p => {
-                                    const isSelected = myOfferedPlayerIds.has(p.id);
-                                    const ovr = calculatePlayerOvr(p);
-                                    return (
-                                        <tr
-                                            key={p.id}
-                                            onClick={() => toggleMyPlayer(p.id)}
-                                            className={`transition-colors cursor-pointer ${isSelected ? 'bg-indigo-600/10' : 'hover:bg-white/5'}`}
-                                        >
-                                            <td className="py-2 px-3 border-b border-slate-800/50 w-8">
-                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400' : 'border-slate-700 bg-slate-900'}`}>
-                                                    {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
-                                                </div>
-                                            </td>
-                                            <td className="py-2 px-1 border-b border-slate-800/50 w-10 text-center">
-                                                <OvrBadge value={ovr} size="sm" />
-                                            </td>
-                                            <td className="py-2 px-3 border-b border-slate-800/50">
-                                                <span
-                                                    className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 cursor-pointer"
-                                                    onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}
-                                                >
-                                                    {p.name}
-                                                </span>
-                                            </td>
-                                            <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-bold text-slate-400 uppercase w-10">{p.position}</td>
-                                            <td className="py-2 px-3 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300 w-16">{formatMoney(p.salary)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <div className="pb-1">
+                            {sortedUserRoster.map(p =>
+                                renderPlayerRow(
+                                    p,
+                                    myOfferedPlayerIds.has(p.id),
+                                    false,
+                                    () => toggleMyPlayer(p.id),
+                                    (e) => { e.stopPropagation(); handleViewPlayer(p); },
+                                    'emerald'
+                                )
+                            )}
+                        </div>
                     </div>
 
-                    {/* ── 가치 비교 위젯 ── */}
+                    {/* 가치 비교 위젯 */}
                     {valueComparison && (
-                        <div className="border-t border-slate-700">
-                            <div className="px-4 py-1.5 bg-slate-800/50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <div className="mx-3 mb-3 mt-2 rounded-xl border border-slate-700/60 bg-slate-800/40 overflow-hidden">
+                            <div className="px-4 py-2 border-b border-slate-700/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                 가치 비교
                             </div>
-                            <div className="px-5 py-3">
-                                <div className="flex items-center gap-3">
-                                    {/* 내 패키지 가치 */}
+                            <div className="px-4 py-3">
+                                <div className="flex items-center gap-3 mb-3">
                                     <div className="flex-1 text-center">
-                                        <div className="text-[10px] font-black uppercase text-slate-500 mb-1">내 자산</div>
+                                        <div className="text-[9px] font-black uppercase text-slate-600 mb-1">내 자산</div>
                                         <div className="text-sm font-black text-emerald-400">
                                             {Math.round(valueComparison.myTotal).toLocaleString()}
                                         </div>
                                     </div>
-                                    <ArrowRight size={14} className="text-slate-600" />
-                                    {/* 상대 패키지 가치 */}
+                                    <ArrowRight size={14} className="text-slate-700" />
                                     <div className="flex-1 text-center">
-                                        <div className="text-[10px] font-black uppercase text-slate-500 mb-1">상대 자산</div>
+                                        <div className="text-[9px] font-black uppercase text-slate-600 mb-1">상대 자산</div>
                                         <div className="text-sm font-black text-red-400">
                                             {Math.round(valueComparison.targetTotal).toLocaleString()}
                                         </div>
                                     </div>
                                 </div>
-                                {/* 비율 바 */}
-                                <div className="mt-2">
-                                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all ${
-                                                valueComparison.ratio >= 0.9
-                                                    ? 'bg-emerald-500'
-                                                    : valueComparison.ratio >= 0.7
-                                                        ? 'bg-amber-500'
-                                                        : 'bg-red-500'
-                                            }`}
-                                            style={{ width: `${Math.min(100, valueComparison.ratio * 100)}%` }}
-                                        />
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                        <span className={`text-[10px] font-black ${
+                                <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${
                                             valueComparison.ratio >= 0.9
-                                                ? 'text-emerald-400'
+                                                ? 'bg-emerald-500'
                                                 : valueComparison.ratio >= 0.7
-                                                    ? 'text-amber-400'
-                                                    : 'text-red-400'
-                                        }`}>
-                                            {valueComparison.ratio >= 0.9 ? '공정 거래' : valueComparison.ratio >= 0.7 ? '약간 부족' : '크게 부족'}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-500">
-                                            {(valueComparison.ratio * 100).toFixed(0)}%
-                                        </span>
-                                    </div>
+                                                    ? 'bg-amber-500'
+                                                    : 'bg-red-500'
+                                        }`}
+                                        style={{ width: `${Math.min(100, valueComparison.ratio * 100)}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between mt-1.5">
+                                    <span className={`text-[10px] font-black ${
+                                        valueComparison.ratio >= 0.9
+                                            ? 'text-emerald-400'
+                                            : valueComparison.ratio >= 0.7
+                                                ? 'text-amber-400'
+                                                : 'text-red-400'
+                                    }`}>
+                                        {valueComparison.ratio >= 0.9 ? '공정 거래' : valueComparison.ratio >= 0.7 ? '약간 부족' : '크게 부족'}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-500">
+                                        {(valueComparison.ratio * 100).toFixed(0)}%
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Legacy: Requirements Results (즉시 협상 — Tab 3) */}
+                    {/* 즉시 협상 결과 (Tab 3) */}
                     {showInstantMode && proposalSearchPerformed && (
-                        <div className="border-t border-slate-700">
-                            <div className="px-4 py-2 bg-slate-800/50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <div className="mx-3 mb-3 mt-2 rounded-xl border border-slate-700/60 overflow-hidden">
+                            <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
                                 즉시 협상 결과 {proposalRequirements.length > 0 && `(${proposalRequirements.length}건)`}
                             </div>
                             {proposalRequirements.length > 0 ? (
-                                <div className="p-4 space-y-4">
+                                <div className="p-3 space-y-3">
                                     {proposalRequirements.map((req, idx) => (
                                         <div key={idx} className="rounded-xl border border-slate-700/50 bg-slate-900 overflow-hidden">
-                                            <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between">
+                                            <div className="px-4 py-2.5 bg-slate-950/60 flex items-center justify-between">
                                                 <span className="text-xs font-black uppercase tracking-tight text-slate-300">
                                                     요구 자산 ({req.players.length}인)
                                                 </span>
                                                 <button
                                                     onClick={() => selectedTargetTeam && onAcceptRequirement?.(req, selectedTargetTeam)}
-                                                    className="px-4 py-2 rounded-xl font-bold text-xs uppercase text-white bg-indigo-600 hover:bg-indigo-500 transition-all active:scale-95"
+                                                    className="px-3 py-1.5 rounded-xl font-bold text-xs uppercase text-white bg-indigo-600 hover:bg-indigo-500 transition-all active:scale-95"
                                                 >
-                                                    제안 수락
+                                                    수락
                                                 </button>
                                             </div>
-                                            <div className="divide-y divide-slate-800/50">
+                                            <div className="divide-y divide-slate-800/50 px-1 py-1">
                                                 {req.players.map(p => {
                                                     const ovr = calculatePlayerOvr(p);
                                                     return (
-                                                        <div key={p.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 transition-colors">
+                                                        <div key={p.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">
                                                             <OvrBadge value={ovr} size="sm" />
                                                             <span
                                                                 className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 cursor-pointer flex-1"
@@ -614,7 +591,7 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                                                             >
                                                                 {p.name}
                                                             </span>
-                                                            <span className="text-xs font-bold text-slate-500 uppercase w-8 text-center">{p.position}</span>
+                                                            <span className="text-[10px] font-black uppercase text-slate-500 w-8 text-center">{p.position}</span>
                                                             <span className="text-xs font-mono font-bold text-slate-300 w-16 text-right">{formatMoney(p.salary)}</span>
                                                         </div>
                                                     );
@@ -624,30 +601,35 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                                     ))}
                                 </div>
                             ) : (
-                                <div className="py-8 flex flex-col items-center justify-center text-slate-600 space-y-3">
-                                    <div className="p-6 bg-red-500/10 rounded-full border border-red-500/20">
-                                        <X size={32} className="text-red-500/50" />
+                                <div className="py-8 flex flex-col items-center justify-center gap-3">
+                                    <div className="p-5 bg-red-500/10 rounded-2xl border border-red-500/20">
+                                        <X size={28} className="text-red-500/50" />
                                     </div>
                                     <div className="text-center">
                                         <p className="font-bold text-sm text-slate-500">협상 결렬</p>
-                                        <p className="text-xs mt-1">상대방이 트레이드에 관심이 없거나,<br/>샐러리 캡 조건을 맞출 수 없습니다.</p>
+                                        <p className="text-xs text-slate-600 mt-1">상대방이 트레이드에 관심이 없거나,<br/>샐러리 캡 조건을 맞출 수 없습니다.</p>
                                     </div>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* Empty state */}
+                    {/* 빈 상태 */}
                     {!proposalSearchPerformed && !showMyPicks && myOfferedPlayerIds.size === 0 && !valueComparison && (
-                        <div className="py-12 flex flex-col items-center justify-center text-slate-600 space-y-3">
-                            <p className="font-black text-sm text-slate-500 uppercase tracking-widest">제안 구성</p>
-                            <p className="text-xs font-bold text-slate-600 text-center">
-                                좌측에서 영입할 선수를 선택하고<br/>
-                                우측에서 보낼 자산을 구성하세요.
-                            </p>
-                            <p className="text-[10px] font-bold text-indigo-400/60 text-center mt-2">
-                                &quot;제안 전송&quot; 시 다음 시뮬에서 CPU가 응답합니다.
-                            </p>
+                        <div className="py-12 flex flex-col items-center justify-center gap-3">
+                            <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+                                <Send size={22} className="text-slate-600" />
+                            </div>
+                            <div className="text-center space-y-1">
+                                <p className="font-black text-sm text-slate-500 uppercase tracking-widest">제안 구성</p>
+                                <p className="text-xs text-slate-600">
+                                    좌측에서 영입할 선수를 선택하고<br/>
+                                    우측에서 보낼 자산을 구성하세요.
+                                </p>
+                                <p className="text-[10px] font-bold text-indigo-400/60 pt-1">
+                                    &quot;제안 전송&quot; 시 다음 시뮬에서 CPU가 응답합니다.
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>
