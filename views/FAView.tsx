@@ -181,7 +181,7 @@ export const FAView: React.FC<FAViewProps> = ({
     onExtensionOffer,
     onViewPlayer,
 }) => {
-    const [activeTab, setActiveTab]       = useState<'market' | 'roster' | 'extensions'>('market');
+    const [activeTab, setActiveTab]       = useState<'market' | 'roster'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
     const [statusFilter, setStatusFilter] = useState<'available' | 'all'>('available');
     const [sortBy, setSortBy]             = useState<'ovr' | 'salary' | 'score'>('ovr');
@@ -192,7 +192,7 @@ export const FAView: React.FC<FAViewProps> = ({
         playerId: string;
     } | null>(null);
 
-    const handleTabChange = (tab: 'market' | 'roster' | 'extensions') => {
+    const handleTabChange = (tab: 'market' | 'roster') => {
         setActiveTab(tab);
     };
 
@@ -284,17 +284,6 @@ export const FAView: React.FC<FAViewProps> = ({
                         {pendingTeamOptions.length > 0 && (
                             <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
                                 옵션 {pendingTeamOptions.length}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        onClick={() => handleTabChange('extensions')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'extensions' ? 'text-violet-400 border-violet-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
-                    >
-                        익스텐션
-                        {extensionCandidates.length > 0 && (
-                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
-                                {extensionCandidates.length}
                             </span>
                         )}
                     </button>
@@ -470,20 +459,29 @@ export const FAView: React.FC<FAViewProps> = ({
                         <table className="w-full border-collapse text-xs">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-slate-800 border-b border-slate-700">
-                                    {['선수', '포지션', '나이', '연봉', '잔여', ''].map(h => (
+                                    {['선수', '포지션', '나이', '능력치', '연봉', '잔여', ''].map(h => (
                                         <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {myTeam.roster.length === 0 ? (
-                                    <tr><td colSpan={6} className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</td></tr>
+                                    <tr><td colSpan={7} className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</td></tr>
                                 ) : regularRoster.length === 0 ? (
-                                    <tr><td colSpan={6} className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</td></tr>
+                                    <tr><td colSpan={7} className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</td></tr>
                                 ) : (
                                     regularRoster.map(player => {
                                         const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
                                         const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
+                                        const isExtCandidate = extensionCandidates.some(ec => ec.id === player.id);
+                                        const attrGroups = [
+                                            { label: '슛', val: Math.round(((player.closeShot ?? 50) + (player.midRange ?? 50) + (player.threeTop ?? 50)) / 3) },
+                                            { label: '패스', val: player.passIq ?? 50 },
+                                            { label: '수비', val: Math.round(((player.perDef ?? 50) + (player.intDef ?? 50)) / 2) },
+                                            { label: '리바', val: Math.round(((player.offReb ?? 50) + (player.defReb ?? 50)) / 2) },
+                                            { label: '속도', val: Math.round(((player.speed ?? 50) + (player.agility ?? 50)) / 2) },
+                                            { label: '피지컬', val: Math.round(((player.strength ?? 50) + (player.vertical ?? 50)) / 2) },
+                                        ];
                                         return (
                                             <tr key={player.id} className="group border-b border-slate-800">
                                                 <td className="px-4 py-2">
@@ -493,17 +491,34 @@ export const FAView: React.FC<FAViewProps> = ({
                                                     >
                                                         {player.name}
                                                     </button>
-                                                    <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
                                                 </td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
-                                                <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(salary)}</td>
+                                                <td className="px-4 py-2">
+                                                    <div className="grid grid-cols-3 gap-x-3 gap-y-0.5">
+                                                        {attrGroups.map(a => (
+                                                            <div key={a.label} className="flex items-center gap-1">
+                                                                <span className="text-[9px] text-slate-500 w-8">{a.label}</span>
+                                                                <span className="text-[10px] font-mono font-bold text-slate-300">{a.val}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-2 font-mono text-slate-400 whitespace-nowrap">{fmtM(salary)}</td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{yearsLeft}년</td>
                                                 <td className="px-4 py-2">
-                                                    <button
-                                                        onClick={() => setNegotiationTarget({ type: 'release', playerId: player.id })}
-                                                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
-                                                    >방출</button>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            onClick={() => setNegotiationTarget({ type: 'release', playerId: player.id })}
+                                                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                                        >방출</button>
+                                                        {isExtCandidate && (
+                                                            <button
+                                                                onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
+                                                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition-colors"
+                                                            >계약 연장</button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -515,54 +530,6 @@ export const FAView: React.FC<FAViewProps> = ({
                 </div>
             )}
 
-            {/* ── 익스텐션 탭 콘텐츠 ── */}
-            {activeTab === 'extensions' && (
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                    {extensionCandidates.length === 0 ? (
-                        <div className="py-16 text-center text-slate-500 text-sm">
-                            <div className="text-3xl mb-3">📋</div>
-                            <div className="font-bold text-slate-400">익스텐션 가능한 선수가 없습니다.</div>
-                            <div className="text-xs text-slate-600 mt-1">계약 1~2년 남은 선수가 대상입니다.</div>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-xs">
-                                <thead className="sticky top-0 z-10">
-                                    <tr className="bg-slate-800 border-b border-slate-700">
-                                        {['선수', '포지션', '나이', '연봉', '잔여'].map(h => (
-                                            <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {extensionCandidates.map(player => {
-                                        const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
-                                        const yearsLeft = player.contractYears ?? 0;
-                                        return (
-                                            <tr
-                                                key={player.id}
-                                                onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
-                                                className="group border-b border-slate-800 cursor-pointer transition-all hover:bg-slate-800"
-                                            >
-                                                <td className="px-4 py-2">
-                                                    <div className="font-bold text-white ko-tight">{player.name}</div>
-                                                    <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
-                                                </td>
-                                                <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
-                                                <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
-                                                <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(salary)}</td>
-                                                <td className={`px-4 py-2 font-mono font-bold ${yearsLeft <= 1 ? 'text-red-400' : 'text-slate-300'}`}>
-                                                    {yearsLeft}년
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* ── NegotiationScreen 오버레이 ── */}
             {negotiationTarget && ntPlayer && (

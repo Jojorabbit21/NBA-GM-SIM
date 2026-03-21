@@ -493,11 +493,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 {/* ── 좌측: 선수 정보 ── */}
                 <div className="flex-[2] min-w-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
 
-                    {/* 선수 기본 정보 */}
+                    {/* 통합 선수 카드 */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white/80">선수 정보</span>
+                            <span className="text-xs font-black uppercase tracking-widest text-white/80">선수 정보</span>
                         </div>
+
+                        {/* 기본 정보 */}
                         <div className="p-3 space-y-1.5">
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-500">현재 연봉</span>
@@ -528,92 +530,87 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </>
                             )}
                         </div>
+
+                        {/* 직전 계약 */}
+                        {player.contract && (
+                            <>
+                                <div className="border-t border-slate-700/60 mx-3" />
+                                <div className="px-3 pt-2.5 pb-3">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">직전 계약</div>
+                                    <table className="w-full text-xs border-collapse">
+                                        <tbody>
+                                            {player.contract.years.map((sal, i) => {
+                                                const isCurrent   = i === player.contract!.currentYear;
+                                                const isCompleted = i <  player.contract!.currentYear;
+                                                const opt = player.contract!.option;
+                                                const isOptionYear = opt && opt.year === i;
+                                                return (
+                                                    <tr key={i} className={isCompleted ? 'opacity-40' : ''}>
+                                                        <td className="py-0.5 text-slate-500 pr-3">
+                                                            {i + 1}년차
+                                                            {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400 uppercase">현재</span>}
+                                                        </td>
+                                                        <td className="py-0.5 text-right font-mono font-bold text-slate-200">{fmtM(sal)}</td>
+                                                        <td className="py-0.5 pl-2 text-right text-[9px] text-slate-500">
+                                                            {isOptionYear && (opt!.type === 'player' ? '선수옵션' : '팀옵션')}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            <tr><td colSpan={3}><div className="border-t border-slate-700 my-1" /></td></tr>
+                                            <tr>
+                                                <td className="text-slate-500">총액</td>
+                                                <td className="text-right font-mono font-black text-amber-300">
+                                                    {fmtM(player.contract.years.reduce((a, b) => a + b, 0))}
+                                                </td>
+                                                <td />
+                                            </tr>
+                                            <tr>
+                                                <td className="text-slate-500 pt-0.5">유형</td>
+                                                <td className="text-right font-mono text-slate-400 pt-0.5" colSpan={2}>
+                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
+                                                    {player.contract.noTrade && <span className="ml-1.5 text-[9px] font-black text-amber-400">NTC</span>}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        )}
+
+                        {/* 감정 상태 (Extension only) */}
+                        {isExt && negState && (
+                            <>
+                                <div className="border-t border-slate-700/60 mx-3" />
+                                <div className="px-3 pt-2.5 pb-3 space-y-2">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">협상 감정</div>
+                                    {[
+                                        { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
+                                        { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
+                                        { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
+                                    ].map(({ label, value, color }) => (
+                                        <div key={label} className="flex items-center gap-2">
+                                            <div className="w-14 text-xs font-bold text-slate-500">{label}</div>
+                                            <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${color}`}
+                                                    style={{ width: `${Math.round(value * 100)}%` }}
+                                                />
+                                            </div>
+                                            <div className="w-7 text-xs font-mono text-right text-slate-500">
+                                                {Math.round(value * 100)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
-
-
-                    {/* 직전 계약 테이블 */}
-                    {player.contract && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/80">직전 계약</span>
-                            </div>
-                            <div className="p-3">
-                                <table className="w-full text-xs border-collapse">
-                                    <tbody>
-                                        {player.contract.years.map((sal, i) => {
-                                            const isCurrent = i === player.contract!.currentYear;
-                                            const isCompleted = i < player.contract!.currentYear;
-                                            const opt = player.contract!.option;
-                                            const isOptionYear = opt && opt.year === i;
-                                            return (
-                                                <tr key={i} className={isCompleted ? 'opacity-40' : ''}>
-                                                    <td className="py-0.5 text-slate-500 pr-3">
-                                                        {i + 1}년차
-                                                        {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400 uppercase">현재</span>}
-                                                    </td>
-                                                    <td className="py-0.5 text-right font-mono font-bold text-slate-200">{fmtM(sal)}</td>
-                                                    <td className="py-0.5 pl-2 text-right text-[9px] text-slate-500">
-                                                        {isOptionYear && (opt!.type === 'player' ? '선수옵션' : '팀옵션')}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                        <tr>
-                                            <td colSpan={3}><div className="border-t border-slate-700 my-1.5" /></td>
-                                        </tr>
-                                        <tr>
-                                            <td className="text-slate-500">총액</td>
-                                            <td className="text-right font-mono font-black text-amber-300">
-                                                {fmtM(player.contract.years.reduce((a, b) => a + b, 0))}
-                                            </td>
-                                            <td />
-                                        </tr>
-                                        <tr>
-                                            <td className="text-slate-500 pt-1">유형</td>
-                                            <td className="text-right font-mono text-slate-400 pt-1" colSpan={2}>
-                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
-                                                {player.contract.noTrade && <span className="ml-1.5 text-[9px] font-black text-amber-400">NTC</span>}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Extension: 감정 상태 */}
-                    {isExt && negState && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/80">협상 감정 상태</span>
-                            </div>
-                            <div className="p-3 space-y-2">
-                                {[
-                                    { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
-                                    { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
-                                    { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
-                                ].map(({ label, value, color }) => (
-                                    <div key={label} className="flex items-center gap-2">
-                                        <div className="w-14 text-xs font-bold text-slate-500">{label}</div>
-                                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-500 ${color}`}
-                                                style={{ width: `${Math.round(value * 100)}%` }}
-                                            />
-                                        </div>
-                                        <div className="w-7 text-xs font-mono text-right text-slate-500">
-                                            {Math.round(value * 100)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Release: 데드캡 정보 */}
                     {isRel && releaseMode !== 'waive' && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">데드캡 정보</div>
+                            <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5">데드캡 정보</div>
                             {releaseMode === 'stretch' && (
                                 <div className="flex justify-between text-xs">
                                     <span className="text-slate-500">연간 데드캡</span>
@@ -733,7 +730,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                     {/* FM 스타일 오퍼 요약 카드 */}
                     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">현재 제안</div>
+                        <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">현재 제안</div>
                         <p className="text-sm text-slate-200 leading-relaxed">{offerSummaryText}</p>
                         {totalContractValue > 0 && (
                             <div className="mt-2 flex items-center justify-between text-[10px] font-mono">
@@ -748,7 +745,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <>
                             {/* 계약 슬롯 */}
                             <div className="flex-shrink-0">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">계약 슬롯</div>
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">계약 슬롯</div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {slots.map(slot => (
                                         <button
@@ -780,7 +777,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
                                 <select
                                     value={faOfferYears}
                                     onChange={e => {
@@ -799,7 +796,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {/* 연차별 연봉 입력 테이블 */}
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
+                                    <div className="text-xs font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
                                     <div className="text-[10px] font-mono text-slate-500">AAV <span className="text-amber-400">{fmtM(faOfferAAV)}</span></div>
                                 </div>
                                 {faIsDecliningSalary && (
@@ -914,7 +911,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <>
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
                                 <select
                                     value={extOfferYears}
                                     onChange={e => {
@@ -933,7 +930,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {/* 연차별 연봉 입력 테이블 */}
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
+                                    <div className="text-xs font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
                                     <div className="text-[10px] font-mono text-slate-500">AAV <span className="text-violet-400">{fmtM(extOfferAAV)}</span></div>
                                 </div>
                                 {extIsDecliningSalary && (
@@ -1059,7 +1056,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <>
                             {/* 방출 방식 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">방출 방식</div>
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">방출 방식</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['waive', 'stretch', 'buyout'] as ReleaseType[]).map(mode => {
                                         const labels: Record<ReleaseType, { name: string; desc: string }> = {
@@ -1094,7 +1091,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {releaseMode === 'buyout' && (
                                 <div className="flex-shrink-0 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 금액</div>
+                                        <div className="text-xs font-black uppercase tracking-widest text-slate-500">제시 금액</div>
                                         <div className={`text-lg font-mono font-black ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
                                             {fmtM(buyoutAmount)} {buyoutAccepted ? '✓ 수락 예상' : '✗ 거절 예상'}
                                         </div>
