@@ -514,39 +514,41 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0 p-3 gap-3">
 
                 {/* ── 좌측: 선수 정보 ── */}
-                <div className="flex-[2] min-w-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
 
-                    {/* 통합 선수 카드 */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                        <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
-                            <span className="text-xs font-black uppercase tracking-widest text-white/80">선수 정보</span>
-                        </div>
+                    {/* 위젯 헤더 */}
+                    <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-800 bg-slate-800/50">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">선수 정보</span>
+                    </div>
+
+                    {/* 스크롤 영역 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
 
                         {/* 기본 정보 */}
-                        <div className="p-3 space-y-1.5">
-                            <div className="flex justify-between text-xs">
+                        <div className="px-4 py-3 space-y-1.5">
+                            <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500">현재 연봉</span>
                                 <span className="font-mono font-bold text-amber-400">{fmtM(player.salary ?? 0)} / yr</span>
                             </div>
                             {isExt && negState && (
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">잔여 계약</span>
                                     <span className="font-mono text-slate-300">{player.contractYears}년</span>
                                 </div>
                             )}
                             {isFA && faEntry && (
-                                <div className="flex justify-between text-xs">
+                                <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">관심 팀</span>
                                     <span className="font-mono text-slate-300">{faEntry.interestedTeamIds.length}팀</span>
                                 </div>
                             )}
                             {isRel && (
                                 <>
-                                    <div className="flex justify-between text-xs">
+                                    <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">잔여 연수</span>
                                         <span className="font-mono text-slate-300">{remainingYears}년</span>
                                     </div>
-                                    <div className="flex justify-between text-xs">
+                                    <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">잔여 총액</span>
                                         <span className="font-mono font-bold text-amber-400">{fmtM(totalRemaining)}</span>
                                     </div>
@@ -557,46 +559,39 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         {/* 직전 계약 */}
                         {player.contract && (
                             <>
-                                <div className="border-t border-slate-700/60 mx-3" />
-                                <div className="px-3 pt-2.5 pb-3">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">직전 계약</div>
-                                    <table className="w-full text-xs border-collapse">
-                                        <tbody>
-                                            {player.contract.years.map((sal, i) => {
-                                                const isCurrent   = i === player.contract!.currentYear;
-                                                const isCompleted = i <  player.contract!.currentYear;
-                                                const opt = player.contract!.option;
-                                                const isOptionYear = opt && opt.year === i;
-                                                return (
-                                                    <tr key={i} className={isCompleted ? 'opacity-40' : ''}>
-                                                        <td className="py-0.5 text-slate-500 pr-3">
-                                                            {i + 1}년차
-                                                            {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400 uppercase">현재</span>}
-                                                        </td>
-                                                        <td className="py-0.5 text-right font-mono font-bold text-slate-200">{fmtM(sal)}</td>
-                                                        <td className="py-0.5 pl-2 text-right text-[9px] text-slate-500">
-                                                            {isOptionYear && (opt!.type === 'player' ? '선수옵션' : '팀옵션')}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                            <tr><td colSpan={3}><div className="border-t border-slate-700 my-1" /></td></tr>
-                                            <tr>
-                                                <td className="text-slate-500">총액</td>
-                                                <td className="text-right font-mono font-black text-amber-300">
-                                                    {fmtM(player.contract.years.reduce((a, b) => a + b, 0))}
-                                                </td>
-                                                <td />
-                                            </tr>
-                                            <tr>
-                                                <td className="text-slate-500 pt-0.5">유형</td>
-                                                <td className="text-right font-mono text-slate-400 pt-0.5" colSpan={2}>
-                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
-                                                    {player.contract.noTrade && <span className="ml-1.5 text-[9px] font-black text-amber-400">NTC</span>}
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                <div className="border-t border-slate-800" />
+                                <div className="px-4 py-3">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">직전 계약</div>
+                                    <div className="space-y-1">
+                                        {player.contract.years.map((sal, i) => {
+                                            const isCurrent   = i === player.contract!.currentYear;
+                                            const isCompleted = i <  player.contract!.currentYear;
+                                            const opt = player.contract!.option;
+                                            const isOptionYear = opt && opt.year === i;
+                                            return (
+                                                <div key={i} className={`flex justify-between items-center text-xs ${isCompleted ? 'opacity-35' : ''}`}>
+                                                    <span className="text-slate-500 shrink-0">
+                                                        {i + 1}년차
+                                                        {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400">현재</span>}
+                                                        {isOptionYear && <span className="ml-1 text-[9px] text-slate-600">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
+                                                    </span>
+                                                    <span className="font-mono font-bold text-slate-200">{fmtM(sal)}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="border-t border-slate-700/60 my-1" />
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">총액</span>
+                                            <span className="font-mono font-black text-amber-300">{fmtM(player.contract.years.reduce((a, b) => a + b, 0))}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">유형</span>
+                                            <span className="font-mono text-slate-400 flex items-center gap-1">
+                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
+                                                {player.contract.noTrade && <span className="text-[9px] font-black text-amber-400">NTC</span>}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </>
                         )}
@@ -604,8 +599,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         {/* 감정 상태 (Extension only) */}
                         {isExt && negState && (
                             <>
-                                <div className="border-t border-slate-700/60 mx-3" />
-                                <div className="px-3 pt-2.5 pb-3 space-y-2">
+                                <div className="border-t border-slate-800" />
+                                <div className="px-4 py-3 space-y-2">
                                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">협상 감정</div>
                                     {[
                                         { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
@@ -613,49 +608,45 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
                                     ].map(({ label, value, color }) => (
                                         <div key={label} className="flex items-center gap-2">
-                                            <div className="w-14 text-xs font-bold text-slate-500">{label}</div>
+                                            <div className="w-14 text-xs text-slate-500 shrink-0">{label}</div>
                                             <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-500 ${color}`}
-                                                    style={{ width: `${Math.round(value * 100)}%` }}
-                                                />
+                                                <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
                                             </div>
-                                            <div className="w-7 text-xs font-mono text-right text-slate-500">
-                                                {Math.round(value * 100)}
-                                            </div>
+                                            <div className="w-6 text-xs font-mono text-right text-slate-500">{Math.round(value * 100)}</div>
                                         </div>
                                     ))}
                                 </div>
                             </>
                         )}
-                    </div>
 
-                    {/* Release: 데드캡 정보 */}
-                    {isRel && releaseMode !== 'waive' && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5">데드캡 정보</div>
-                            {releaseMode === 'stretch' && (
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-slate-500">연간 데드캡</span>
-                                    <span className="font-mono text-slate-300">{fmtM(stretchAnnual)} × {stretchYearsTotal}년</span>
+                        {/* Release: 데드캡 정보 */}
+                        {isRel && releaseMode !== 'waive' && (
+                            <>
+                                <div className="border-t border-slate-800" />
+                                <div className="px-4 py-3 space-y-1.5">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">데드캡 정보</div>
+                                    {releaseMode === 'stretch' && (
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">연간 데드캡</span>
+                                            <span className="font-mono text-slate-300">{fmtM(stretchAnnual)} × {stretchYearsTotal}년</span>
+                                        </div>
+                                    )}
+                                    {releaseMode === 'buyout' && (
+                                        <>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">최소 요구액</span>
+                                                <span className="font-mono text-red-400">{fmtM(minBuyoutAmount)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">제시 금액</span>
+                                                <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>{fmtM(buyoutAmount)}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
-                            )}
-                            {releaseMode === 'buyout' && (
-                                <>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">최소 요구액</span>
-                                        <span className="font-mono text-red-400">{fmtM(minBuyoutAmount)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">제시 금액</span>
-                                        <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {fmtM(buyoutAmount)}
-                                        </span>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* ── 중앙: 채팅 패널 ── */}
@@ -873,13 +864,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         })}
                                     </tbody>
                                     <tfoot>
-                                        <tr className="border-t border-slate-700">
-                                            <td colSpan={2} className="pt-1.5 text-xs text-slate-400 font-bold">총 계약액</td>
-                                            <td className="pt-1.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
+                                        <tr className="border-t border-slate-700/60">
+                                            <td colSpan={2} className="pt-3 pb-0.5 text-xs text-slate-400 font-bold">총 계약액</td>
+                                            <td className="pt-3 pb-0.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
                                         </tr>
                                     </tfoot>
                                 </table>
-                                <div className="text-[10px] text-center">
+                                <div className="text-[10px] text-center pt-1">
                                     {faIsAboveAsking
                                         ? <span className="text-emerald-400">✓ 요구 이상 — 높은 수락 확률</span>
                                         : faIsBelowWalkaway
@@ -889,67 +880,64 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
-
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 space-y-3">
-                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
-                                    {/* 계약 옵션 (2년 이상 시) */}
-                                    {faOfferYears >= 2 && (
-                                        <div>
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">계약 옵션</div>
-                                            {(['none', 'team', 'player'] as const).map(opt => {
-                                                const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
-                                                const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
-                                                const active = faContractOption === opt;
-                                                return (
-                                                    <label key={opt} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                        <input type="radio" checked={active} onChange={() => setFaContractOption(opt)}
-                                                            className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
-                                                        <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                        {sub && <span className="ml-2 text-[10px] text-slate-600">{sub}</span>}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* 트레이드 키커 (vet_min 제외) */}
-                                    {selectedSlot !== 'vet_min' && (
-                                        <div>
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">트레이드 키커</div>
-                                            {[0, 0.05, 0.10, 0.15].map(pct => {
-                                                const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
-                                                const sub = pct > 0 ? `$${(faOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
-                                                const active = faTradeKicker === pct;
-                                                return (
-                                                    <label key={pct} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                        <input type="radio" checked={active} onChange={() => setFaTradeKicker(pct)}
-                                                            className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
-                                                        <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                        {sub && <span className="text-[10px] text-slate-600 ml-1">{sub}</span>}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* NTC (bird_full 전용) */}
-                                    {selectedSlot === 'bird_full' && (
-                                        <div>
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">무이적 조항 (NTC)</div>
-                                            {[false, true].map(val => {
-                                                const active = faNoTrade === val;
-                                                return (
-                                                    <label key={String(val)} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                        <input type="radio" checked={active} onChange={() => setFaNoTrade(val as boolean)}
-                                                            className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
-                                                        <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
-                                                        {val && <span className="text-[10px] text-slate-600 ml-1">선수 동의 없이 트레이드 불가</span>}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
+                            <div className="flex-shrink-0">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 border-b border-slate-800 pb-2 mb-3">계약 조건</div>
+                                {/* 계약 옵션 (2년 이상 시) */}
+                                {faOfferYears >= 2 && (
+                                    <div className="mb-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">계약 옵션</div>
+                                        {(['none', 'team', 'player'] as const).map(opt => {
+                                            const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
+                                            const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
+                                            const active = faContractOption === opt;
+                                            return (
+                                                <label key={opt} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                    <input type="radio" checked={active} onChange={() => setFaContractOption(opt)}
+                                                        className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                    <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
+                                                    {sub && <span className="ml-2 text-[10px] text-slate-600">{sub}</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {/* 트레이드 키커 (vet_min 제외) */}
+                                {selectedSlot !== 'vet_min' && (
+                                    <div className={`mb-4${faOfferYears >= 2 ? ' border-t border-slate-800/60 pt-3' : ''}`}>
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">트레이드 키커</div>
+                                        {[0, 0.05, 0.10, 0.15].map(pct => {
+                                            const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
+                                            const sub = pct > 0 ? `$${(faOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
+                                            const active = faTradeKicker === pct;
+                                            return (
+                                                <label key={pct} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                    <input type="radio" checked={active} onChange={() => setFaTradeKicker(pct)}
+                                                        className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                    <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
+                                                    {sub && <span className="text-[10px] text-slate-600 ml-1">{sub}</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {/* NTC (bird_full 전용) */}
+                                {selectedSlot === 'bird_full' && (
+                                    <div className="border-t border-slate-800/60 pt-3">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">무이적 조항 (NTC)</div>
+                                        {[false, true].map(val => {
+                                            const active = faNoTrade === val;
+                                            return (
+                                                <label key={String(val)} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                    <input type="radio" checked={active} onChange={() => setFaNoTrade(val as boolean)}
+                                                        className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                    <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
+                                                    {val && <span className="text-[10px] text-slate-600 ml-1">선수 동의 없이 트레이드 불가</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
                             {/* 거절 사유 */}
@@ -1075,9 +1063,9 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         })}
                                     </tbody>
                                     <tfoot>
-                                        <tr className="border-t border-slate-700">
-                                            <td colSpan={2} className="pt-1.5 text-xs text-slate-400 font-bold">총 계약액</td>
-                                            <td className="pt-1.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
+                                        <tr className="border-t border-slate-700/60">
+                                            <td colSpan={2} className="pt-3 pb-0.5 text-xs text-slate-400 font-bold">총 계약액</td>
+                                            <td className="pt-3 pb-0.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1091,61 +1079,59 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             )}
 
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 space-y-3">
-                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
-                                    {/* 계약 옵션 (2년 이상일 때) */}
-                                    {extOfferYears >= 2 && (
-                                        <div>
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">계약 옵션</div>
-                                            {(['none', 'team', 'player'] as const).map(opt => {
-                                                const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
-                                                const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
-                                                const active = extContractOption === opt;
-                                                return (
-                                                    <label key={opt} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                        <input type="radio" checked={active} onChange={() => setExtContractOption(opt)}
-                                                            className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
-                                                        <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                        {sub && <span className="ml-2 text-[10px] text-slate-600">{sub}</span>}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* 트레이드 키커 */}
-                                    <div>
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">트레이드 키커</div>
-                                        {[0, 0.05, 0.10, 0.15].map(pct => {
-                                            const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
-                                            const sub = pct > 0 ? `$${(extOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
-                                            const active = extTradeKicker === pct;
+                            <div className="flex-shrink-0">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 border-b border-slate-800 pb-2 mb-3">계약 조건</div>
+                                {/* 계약 옵션 (2년 이상일 때) */}
+                                {extOfferYears >= 2 && (
+                                    <div className="mb-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">계약 옵션</div>
+                                        {(['none', 'team', 'player'] as const).map(opt => {
+                                            const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
+                                            const sub = opt === 'team' ? '마지막 해 팀이 연장 여부 결정' : opt === 'player' ? '마지막 해 선수가 옵트인 결정' : '';
+                                            const active = extContractOption === opt;
                                             return (
-                                                <label key={pct} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                    <input type="radio" checked={active} onChange={() => setExtTradeKicker(pct)}
+                                                <label key={opt} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                    <input type="radio" checked={active} onChange={() => setExtContractOption(opt)}
                                                         className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                     <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                    {sub && <span className="text-[10px] text-slate-600 ml-1">{sub}</span>}
+                                                    {sub && <span className="ml-2 text-[10px] text-slate-600">{sub}</span>}
                                                 </label>
                                             );
                                         })}
                                     </div>
-
-                                    {/* NTC */}
-                                    <div>
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">무이적 조항 (NTC)</div>
-                                        {[false, true].map(val => {
-                                            const active = extNoTrade === val;
-                                            return (
-                                                <label key={String(val)} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                    <input type="radio" checked={active} onChange={() => setExtNoTrade(val as boolean)}
-                                                        className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
-                                                    <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
-                                                    {val && <span className="text-[10px] text-slate-600 ml-1">선수 동의 없이 트레이드 불가</span>}
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
+                                )}
+                                {/* 트레이드 키커 */}
+                                <div className={`mb-4${extOfferYears >= 2 ? ' border-t border-slate-800/60 pt-3' : ''}`}>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">트레이드 키커</div>
+                                    {[0, 0.05, 0.10, 0.15].map(pct => {
+                                        const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
+                                        const sub = pct > 0 ? `$${(extOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
+                                        const active = extTradeKicker === pct;
+                                        return (
+                                            <label key={pct} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                <input type="radio" checked={active} onChange={() => setExtTradeKicker(pct)}
+                                                    className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
+                                                {sub && <span className="text-[10px] text-slate-600 ml-1">{sub}</span>}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                {/* NTC */}
+                                <div className="border-t border-slate-800/60 pt-3">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">무이적 조항 (NTC)</div>
+                                    {[false, true].map(val => {
+                                        const active = extNoTrade === val;
+                                        return (
+                                            <label key={String(val)} className="flex items-center gap-2.5 py-1 cursor-pointer group">
+                                                <input type="radio" checked={active} onChange={() => setExtNoTrade(val as boolean)}
+                                                    className="w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                <span className={`text-xs font-bold transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
+                                                {val && <span className="text-[10px] text-slate-600 ml-1">선수 동의 없이 트레이드 불가</span>}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             {/* 제출 버튼 */}
