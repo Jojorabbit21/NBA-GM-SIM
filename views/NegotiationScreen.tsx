@@ -460,21 +460,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
                     </div>
 
-                    {/* 선수 기분 (Morale) */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                        <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white/80">선수 기분</span>
-                        </div>
-                        <div className="p-3 flex items-center gap-3">
-                            <span className="text-3xl leading-none">{moraleEmoji(moraleScore)}</span>
-                            <div>
-                                <div className={`text-xs font-bold ${moraleTextColor(moraleScore)}`}>
-                                    {getMoraleLabel(moraleScore)}
-                                </div>
-                                <div className="text-xs font-mono text-slate-500 mt-0.5">{Math.round(moraleScore)}</div>
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Extension: 감정 상태 */}
                     {isExt && negState && (
@@ -579,9 +564,16 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         >
                             {player.name.charAt(0)}
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                             <div className="text-sm font-bold text-white ko-tight">{player.name}</div>
                             <div className="text-[10px] text-slate-500 font-mono">{player.position} · {player.age}세 · OVR {player.ovr}</div>
+                        </div>
+                        <div className="flex-shrink-0 flex items-center gap-2">
+                            <span className="text-2xl leading-none">{moraleEmoji(moraleScore)}</span>
+                            <div className="text-right">
+                                <div className={`text-xs font-bold ${moraleTextColor(moraleScore)}`}>{getMoraleLabel(moraleScore)}</div>
+                                <div className="text-[10px] font-mono text-slate-500">{Math.round(moraleScore)}</div>
+                            </div>
                         </div>
                     </div>
 
@@ -647,12 +639,42 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">현재 제안</div>
                         <p className="text-sm text-slate-200 leading-relaxed">{offerSummaryText}</p>
-                        {totalContractValue > 0 && (
-                            <div className="mt-3 pt-2.5 border-t border-slate-700/50 flex items-center justify-between">
-                                <span className="text-xs text-slate-500">예상 계약 총액</span>
-                                <span className="text-lg font-mono font-black text-amber-400">{fmtM(totalContractValue)}</span>
-                            </div>
-                        )}
+                        {totalContractValue > 0 && (() => {
+                            const offerYears = isFA ? faOfferYears : isExt ? extOfferYears : 0;
+                            const offerSalary = isFA ? faOfferSalary : extOfferSalary;
+                            return (
+                                <div className="mt-3 pt-2.5 border-t border-slate-700/50">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr>
+                                                <th className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500 pb-2">연차</th>
+                                                <th className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500 pb-2">시즌</th>
+                                                <th className="text-right text-[10px] font-black uppercase tracking-widest text-slate-500 pb-2">캡히트</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {Array.from({ length: offerYears }, (_, i) => {
+                                                const y = currentSeasonYear + i;
+                                                const season = `${y}-${String(y + 1).slice(-2)}`;
+                                                return (
+                                                    <tr key={i} className="border-t border-slate-800">
+                                                        <td className="py-1 text-xs text-slate-500">{i + 1}년차</td>
+                                                        <td className="py-1 text-xs font-mono text-slate-400">{season}</td>
+                                                        <td className="py-1 text-right text-xs font-mono font-bold text-amber-400">{fmtM(offerSalary)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="border-t border-slate-700">
+                                                <td colSpan={2} className="pt-2 text-xs text-slate-400 font-bold">총 계약액</td>
+                                                <td className="pt-2 text-right text-sm font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* ── FA 컨트롤 ── */}
