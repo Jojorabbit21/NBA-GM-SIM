@@ -328,7 +328,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
       {/* Shared Month Navigation */}
-      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-700 bg-slate-800">
+      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-900">
         <button
           onClick={() => changeMonth(-1)}
           disabled={isAtMinMonth}
@@ -364,7 +364,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                     {['일','월','화','수','목','금','토'].map((name, idx) => (
                       <div key={name} style={{ height: 36 }}
                         className={`flex items-center justify-center text-xs font-black uppercase tracking-widest border border-slate-800 bg-slate-900/50 ${
-                          idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-500'
+                          idx === 0 || idx === 6 ? 'text-slate-400' : 'text-slate-500'
                         }`}
                       >{name}</div>
                     ))}
@@ -391,7 +391,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                         isWon = isHome ? (game.homeScore! > game.awayScore!) : (game.awayScore! > game.homeScore!);
                         bgStyle = isWon ? 'bg-emerald-900/50' : 'bg-red-900/50';
                       } else if (game) {
-                        bgStyle = 'bg-slate-800/40';
+                        bgStyle = 'bg-slate-800';
                       } else if (!isOverflow && isToday) {
                         bgStyle = 'bg-indigo-500/10';
                       }
@@ -403,7 +403,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                       return (
                         <div key={idx}
                           style={{ width: cellSize, height: cellSize }}
-                          className={`border border-slate-700/40 relative p-1 flex flex-col ${bgStyle}`}
+                          className={`border border-slate-800 relative p-1 flex flex-col ${bgStyle}`}
                         >
                           <span className={`text-xs font-black leading-none ${
                             isOverflow ? 'text-slate-700' : isToday ? 'text-indigo-400' : 'text-slate-500'
@@ -448,7 +448,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         /* ── League Schedule: Day Carousel + Game Cards ── */
         <React.Fragment>
           {/* Day Carousel */}
-          <div className="shrink-0 border-b border-slate-700/50 bg-slate-900 flex items-center">
+          <div className="shrink-0 border-b border-slate-800 bg-slate-900 flex items-center">
             <button
               onClick={() => scrollCarousel(-1)}
               className="shrink-0 px-2 py-3 text-slate-500 hover:text-slate-300 transition-colors"
@@ -481,9 +481,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
                     }`}
                   >
-                    <span className="text-[9px] font-bold">{dayOfWeek}</span>
+                    <span className="text-xs font-bold">{dayOfWeek}</span>
                     <span className="text-sm font-black">{day}</span>
-                    <span className={`text-[8px] font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-600'}`}>{gameCount}경기</span>
+                    <span className={`text-xs font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-600'}`}>{gameCount}경기</span>
                   </button>
                 );
               })}
@@ -529,17 +529,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                         className={`rounded-2xl border overflow-hidden transition-all ${
                           isMyGame
                             ? 'border-amber-500/30 bg-amber-500/5'
-                            : 'border-slate-700/50 bg-slate-800/40'
+                            : 'border-slate-800 bg-slate-900'
                         }`}
                       >
                         {/* Playoff Header */}
                         {series && (
                           <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                            <span className="text-xs font-black uppercase tracking-wider text-amber-400">
                               {getSeriesLabel(series)}
                             </span>
-                            <span className="text-[9px] text-amber-500/60">·</span>
-                            <span className="text-[10px] font-bold text-amber-500/80">
+                            <span className="text-xs text-amber-500/60">·</span>
+                            <span className="text-xs font-bold text-amber-500/80">
                               {(() => { const s = getSeriesScoreAtGame(game, series); return `시리즈 ${s.higher}-${s.lower}`; })()}
                             </span>
                           </div>
@@ -556,19 +556,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               }`}>
                                 {awayTeam.city} {awayTeam.name}
                               </div>
-                              <div className="text-[10px] text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
+                              <div className="text-xs text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
                             </div>
                             {game.played ? (
                               <span className={`text-lg font-black ${awayIsWinner ? 'text-white' : 'text-slate-600'}`}>
                                 {game.awayScore}
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-600 font-bold">AWAY</span>
+                              <span className="text-xs text-slate-600 font-bold">AWAY</span>
                             )}
                           </div>
 
                           {/* Divider */}
-                          <div className="border-t border-slate-700/30" />
+                          <div className="border-t border-slate-800" />
 
                           {/* Home Team Row */}
                           <div className="flex items-center gap-3">
@@ -579,14 +579,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               }`}>
                                 {homeTeam.city} {homeTeam.name}
                               </div>
-                              <div className="text-[10px] text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>
+                              <div className="text-xs text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>
                             </div>
                             {game.played ? (
                               <span className={`text-lg font-black ${homeIsWinner ? 'text-white' : 'text-slate-600'}`}>
                                 {game.homeScore}
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-600 font-bold">HOME</span>
+                              <span className="text-xs text-slate-600 font-bold">HOME</span>
                             )}
                           </div>
                         </div>
@@ -598,7 +598,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               <button
                                 onClick={() => handleViewBoxScore(game.id)}
                                 disabled={!!fetchingGameId}
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-slate-700/50 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-black uppercase tracking-wider transition-all bg-slate-700/50 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
                               >
                                 {fetchingGameId === game.id ? (
                                   <Loader2 size={10} className="animate-spin" />
@@ -610,7 +610,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               <button
                                 onClick={() => onStartUserGame!()}
                                 disabled={isSimulating}
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-black uppercase tracking-wider transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
                               >
                                 {isSimulating ? (
                                   <Loader2 size={10} className="animate-spin" />
@@ -622,7 +622,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               <button
                                 onClick={() => onSpectateGame!(game.id)}
                                 disabled={isSimulating}
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-black uppercase tracking-wider transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
                               >
                                 {isSimulating ? (
                                   <Loader2 size={10} className="animate-spin" />
