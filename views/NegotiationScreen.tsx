@@ -498,7 +498,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     <span>뒤로</span>
                 </button>
                 <div className="h-4 w-px bg-slate-700 flex-shrink-0" />
-                <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded flex-shrink-0 ${badge.className}`}>
+                <span className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded flex-shrink-0 ${badge.className}`}>
                     {badge.label}
                 </span>
                 <button
@@ -518,7 +518,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-800 bg-slate-800/50">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">선수 정보</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">선수 정보</span>
                     </div>
 
                     {/* 스크롤 영역 */}
@@ -528,7 +528,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <div className="px-4 py-3 space-y-1.5">
                             <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500">현재 연봉</span>
-                                <span className="font-mono font-bold text-amber-400">{fmtM(player.salary ?? 0)} / yr</span>
+                                <span className="font-mono font-bold text-white">{fmtM(player.salary ?? 0)} / yr</span>
                             </div>
                             {isExt && negState && (
                                 <div className="flex justify-between items-center text-xs">
@@ -550,7 +550,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     </div>
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">잔여 총액</span>
-                                        <span className="font-mono font-bold text-amber-400">{fmtM(totalRemaining)}</span>
+                                        <span className="font-mono font-bold text-white">{fmtM(totalRemaining)}</span>
                                     </div>
                                 </>
                             )}
@@ -559,9 +559,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         {/* 직전 계약 */}
                         {player.contract && (
                             <>
-                                <div className="border-t border-slate-800" />
                                 <div className="px-4 py-3">
-                                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-2">직전 계약</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">직전 계약</div>
                                     <div className="space-y-1">
                                         {player.contract.years.map((sal, i) => {
                                             const isCurrent   = i === player.contract!.currentYear;
@@ -572,23 +571,22 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 <div key={i} className={`flex justify-between items-center text-xs ${isCompleted ? 'opacity-35' : ''}`}>
                                                     <span className="text-slate-500 shrink-0">
                                                         {i + 1}년차
-                                                        {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400">현재</span>}
-                                                        {isOptionYear && <span className="ml-1 text-[9px] text-slate-600">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
+                                                        {isCurrent && <span className="ml-1 text-xs font-black text-indigo-400">현재</span>}
+                                                        {isOptionYear && <span className="ml-1 text-xs text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
                                                     </span>
                                                     <span className="font-mono font-bold text-slate-200">{fmtM(sal)}</span>
                                                 </div>
                                             );
                                         })}
-                                        <div className="border-t border-slate-700/60 my-1" />
                                         <div className="flex justify-between items-center text-xs">
                                             <span className="text-slate-500">총액</span>
-                                            <span className="font-mono font-black text-amber-300">{fmtM(player.contract.years.reduce((a, b) => a + b, 0))}</span>
+                                            <span className="font-mono font-black text-white">{fmtM(player.contract.years.reduce((a, b) => a + b, 0))}</span>
                                         </div>
                                         <div className="flex justify-between items-center text-xs">
                                             <span className="text-slate-500">유형</span>
                                             <span className="font-mono text-slate-400 flex items-center gap-1">
                                                 {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
-                                                {player.contract.noTrade && <span className="text-[9px] font-black text-amber-400">NTC</span>}
+                                                {player.contract.noTrade && <span className="text-xs font-black text-amber-400">NTC</span>}
                                             </span>
                                         </div>
                                     </div>
@@ -599,9 +597,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         {/* 감정 상태 (Extension only) */}
                         {isExt && negState && (
                             <>
-                                <div className="border-t border-slate-800" />
                                 <div className="px-4 py-3 space-y-2">
-                                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">협상 감정</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">협상 감정</div>
                                     {[
                                         { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
                                         { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
@@ -622,9 +619,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         {/* Release: 데드캡 정보 */}
                         {isRel && releaseMode !== 'waive' && (
                             <>
-                                <div className="border-t border-slate-800" />
                                 <div className="px-4 py-3 space-y-1.5">
-                                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-2">데드캡 정보</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">데드캡 정보</div>
                                     {releaseMode === 'stretch' && (
                                         <div className="flex justify-between items-center text-xs">
                                             <span className="text-slate-500">연간 데드캡</span>
@@ -677,7 +673,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             if (msg.role === 'status') {
                                 return (
                                     <div key={msg.id} className="flex justify-center">
-                                        <div className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
+                                        <div className={`text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
                                             msg.isSuccess
                                                 ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
                                                 : 'bg-red-500/20 border-red-500/30 text-red-400'
@@ -712,7 +708,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         </tr>
                                                         <tr>
                                                             <td className="text-slate-500 pr-4 py-0.5">총액</td>
-                                                            <td className="text-right font-black text-amber-300">{fmtM(cd.total)}</td>
+                                                            <td className="text-right font-black text-white">{fmtM(cd.total)}</td>
                                                         </tr>
                                                     </tbody>
                                                 </table>
@@ -747,7 +743,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <>
                             {/* 계약 슬롯 */}
                             <div className="flex-shrink-0">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">계약 슬롯</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">계약 슬롯</div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {slots.map(slot => (
                                         <button
@@ -779,7 +775,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
                                 <select
                                     value={faOfferYears}
                                     onChange={e => {
@@ -795,91 +791,87 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </select>
                             </div>
 
-                            {/* 연차별 연봉 입력 테이블 */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
-                                    <div className="text-[10px] font-mono text-slate-500">AAV <span className="text-amber-400">{fmtM(faOfferAAV)}</span></div>
-                                </div>
+                            {/* 연차별 연봉 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {faIsDecliningSalary && (
-                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-[10px] text-amber-400">
+                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
                                     </div>
                                 )}
-                                <table className="w-full">
-                                    <tbody>
-                                        {faOfferSalaries.map((sal, i) => {
-                                            const y = currentSeasonYear + i;
-                                            const season = `${y}-${String(y + 1).slice(-2)}`;
-                                            const isDeclineYear = i > 0 && sal < faOfferSalaries[i - 1];
-                                            return (
-                                                <tr key={i}>
-                                                    <td className="pr-1.5 py-0.5 text-[10px] text-slate-500 whitespace-nowrap w-8">{i + 1}년차</td>
-                                                    <td className="pr-1.5 py-0.5 text-[10px] font-mono text-slate-500 w-12">{season}</td>
-                                                    <td className="py-0.5">
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="relative w-24 flex-shrink-0">
-                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-500 pointer-events-none">$</span>
-                                                                <input
-                                                                    type="number"
-                                                                    step={100_000}
-                                                                    min={vetMin}
-                                                                    max={Math.max(currentSlotMax, faEntry.askingSalary)}
-                                                                    disabled={selectedSlot === 'vet_min'}
-                                                                    value={sal}
-                                                                    onChange={e => {
-                                                                        const v = parseInt(e.target.value) || 0;
-                                                                        const max = Math.max(currentSlotMax, faEntry.askingSalary);
-                                                                        const clamped = Math.max(vetMin, Math.min(v, max));
-                                                                        if (i === 0) {
-                                                                            setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
-                                                                        } else {
-                                                                            const next = [...faOfferSalaries];
-                                                                            next[i] = clamped;
-                                                                            setFaOfferSalaries(next);
-                                                                        }
-                                                                    }}
-                                                                    className={`w-full bg-slate-800 border rounded pl-5 pr-1 py-1 text-[10px] font-mono font-bold text-white focus:outline-none disabled:opacity-40 transition-colors ${
-                                                                        isDeclineYear
-                                                                            ? 'border-amber-500/60 focus:border-amber-400'
-                                                                            : 'border-slate-700 focus:border-indigo-500'
-                                                                    }`}
-                                                                />
-                                                            </div>
-                                                            {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
-                                                                <button
-                                                                    key={delta}
-                                                                    disabled={selectedSlot === 'vet_min'}
-                                                                    onClick={() => {
-                                                                        const max = Math.max(currentSlotMax, faEntry.askingSalary);
-                                                                        const newVal = Math.max(vetMin, Math.min(sal + delta, max));
-                                                                        if (i === 0) {
-                                                                            setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
-                                                                        } else {
-                                                                            const next = [...faOfferSalaries];
-                                                                            next[i] = newVal;
-                                                                            setFaOfferSalaries(next);
-                                                                        }
-                                                                    }}
-                                                                    className="text-[9px] font-mono font-bold px-1 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-200 transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                                                                >
-                                                                    {delta < 0 ? `${delta / 1_000_000}M` : `+${delta / 1_000_000}M`}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot>
-                                        <tr className="border-t border-slate-700/60">
-                                            <td colSpan={2} className="pt-3 pb-0.5 text-xs text-slate-400 font-bold">총 계약액</td>
-                                            <td className="pt-3 pb-0.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                                <div className="text-[10px] text-center pt-1">
+                                <div className="space-y-1">
+                                    {faOfferSalaries.map((sal, i) => {
+                                        const y = currentSeasonYear + i;
+                                        const season = `${y}-${String(y + 1).slice(-2)}`;
+                                        const isDeclineYear = i > 0 && sal < faOfferSalaries[i - 1];
+                                        return (
+                                            <div key={i} className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 w-[88px]">{i + 1}년차 {season}</span>
+                                                <div className="relative flex-1 min-w-0">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">$</span>
+                                                    <input
+                                                        type="number"
+                                                        step={100_000}
+                                                        min={vetMin}
+                                                        max={Math.max(currentSlotMax, faEntry.askingSalary)}
+                                                        disabled={selectedSlot === 'vet_min'}
+                                                        value={sal}
+                                                        onChange={e => {
+                                                            const v = parseInt(e.target.value) || 0;
+                                                            const max = Math.max(currentSlotMax, faEntry.askingSalary);
+                                                            const clamped = Math.max(vetMin, Math.min(v, max));
+                                                            if (i === 0) {
+                                                                setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                            } else {
+                                                                const next = [...faOfferSalaries];
+                                                                next[i] = clamped;
+                                                                setFaOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className={`w-full bg-slate-800 border rounded pl-7 pr-1 py-1.5 text-xs font-mono font-bold text-white focus:outline-none disabled:opacity-40 transition-colors ${
+                                                            isDeclineYear
+                                                                ? 'border-amber-500/60 focus:border-amber-400'
+                                                                : 'border-slate-700 focus:border-indigo-500'
+                                                        }`}
+                                                    />
+                                                </div>
+                                                <div className="flex gap-1 flex-shrink-0">
+                                                    {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
+                                                        <button
+                                                            key={delta}
+                                                            disabled={selectedSlot === 'vet_min'}
+                                                            onClick={() => {
+                                                                const max = Math.max(currentSlotMax, faEntry.askingSalary);
+                                                                const newVal = Math.max(vetMin, Math.min(sal + delta, max));
+                                                                if (i === 0) {
+                                                                    setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
+                                                                } else {
+                                                                    const next = [...faOfferSalaries];
+                                                                    next[i] = newVal;
+                                                                    setFaOfferSalaries(next);
+                                                                }
+                                                            }}
+                                                            className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        >
+                                                            {delta < 0 ? `-$${Math.abs(delta) / 1_000_000}M` : `+$${delta / 1_000_000}M`}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="space-y-1 pt-1">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400 font-semibold">총 계약액</span>
+                                        <span className="font-mono font-bold text-white">{fmtM(totalContractValue)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400">AAV</span>
+                                        <span className="font-mono text-white">{fmtM(faOfferAAV)}</span>
+                                    </div>
+                                </div>
+                                <div className="text-xs text-center">
                                     {faIsAboveAsking
                                         ? <span className="text-emerald-400">✓ 요구 이상 — 높은 수락 확률</span>
                                         : faIsBelowWalkaway
@@ -891,11 +883,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* ── 계약 조건 옵션 ── */}
                             <div className="flex-shrink-0 space-y-3">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-2">계약 조건</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 조건</div>
                                 {/* 계약 옵션 (2년 이상 시) */}
                                 {faOfferYears >= 2 && (
                                     <div className="space-y-0.5">
-                                        <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">계약 옵션</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">계약 옵션</div>
                                         {(['none', 'team', 'player'] as const).map(opt => {
                                             const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
                                             const sub = opt === 'team' ? '마지막 해 팀이 결정' : opt === 'player' ? '마지막 해 선수가 결정' : '';
@@ -905,7 +897,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input type="radio" checked={active} onChange={() => setFaContractOption(opt)}
                                                         className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                    {sub && <span className="text-[10px] text-slate-500">{sub}</span>}
+                                                    {sub && <span className="text-xs text-slate-500">{sub}</span>}
                                                 </label>
                                             );
                                         })}
@@ -914,7 +906,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 {/* 트레이드 키커 (vet_min 제외) */}
                                 {selectedSlot !== 'vet_min' && (
                                     <div className="space-y-0.5">
-                                        <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 키커</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 키커</div>
                                         {[0, 0.05, 0.10, 0.15].map(pct => {
                                             const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
                                             const sub = pct > 0 ? `$${(faOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
@@ -924,7 +916,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input type="radio" checked={active} onChange={() => setFaTradeKicker(pct)}
                                                         className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                    {sub && <span className="text-[10px] text-slate-500">{sub}</span>}
+                                                    {sub && <span className="text-xs text-slate-500">{sub}</span>}
                                                 </label>
                                             );
                                         })}
@@ -933,7 +925,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 {/* NTC (bird_full 전용) */}
                                 {selectedSlot === 'bird_full' && (
                                     <div className="space-y-0.5">
-                                        <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">무이적 조항 (NTC)</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">무이적 조항 (NTC)</div>
                                         {[false, true].map(val => {
                                             const active = faNoTrade === val;
                                             return (
@@ -941,7 +933,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input type="radio" checked={active} onChange={() => setFaNoTrade(val as boolean)}
                                                         className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
-                                                    {val && <span className="text-[10px] text-slate-500">선수 동의 없이 트레이드 불가</span>}
+                                                    {val && <span className="text-xs text-slate-500">선수 동의 없이 트레이드 불가</span>}
                                                 </label>
                                             );
                                         })}
@@ -994,7 +986,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         <>
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
                                 <select
                                     value={extOfferYears}
                                     onChange={e => {
@@ -1010,96 +1002,92 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </select>
                             </div>
 
-                            {/* 연차별 연봉 입력 테이블 */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
-                                    <div className="text-[10px] font-mono text-slate-500">AAV <span className="text-indigo-400">{fmtM(extOfferAAV)}</span></div>
-                                </div>
+                            {/* 연차별 연봉 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {extIsDecliningSalary && (
-                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-[10px] text-amber-400">
+                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
                                     </div>
                                 )}
-                                <table className="w-full">
-                                    <tbody>
-                                        {extOfferSalaries.map((sal, i) => {
-                                            const y = currentSeasonYear + i;
-                                            const season = `${y}-${String(y + 1).slice(-2)}`;
-                                            const isDeclineYear = i > 0 && sal < extOfferSalaries[i - 1];
-                                            return (
-                                                <tr key={i}>
-                                                    <td className="pr-1.5 py-0.5 text-[10px] text-slate-500 whitespace-nowrap w-8">{i + 1}년차</td>
-                                                    <td className="pr-1.5 py-0.5 text-[10px] font-mono text-slate-500 w-12">{season}</td>
-                                                    <td className="py-0.5">
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="relative w-24 flex-shrink-0">
-                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-500 pointer-events-none">$</span>
-                                                                <input
-                                                                    type="number"
-                                                                    step={100_000}
-                                                                    min={Math.round(negState.demand.insultThreshold * 0.9)}
-                                                                    max={Math.round(negState.demand.openingAsk * 1.3)}
-                                                                    value={sal}
-                                                                    onChange={e => {
-                                                                        const v = parseInt(e.target.value) || 0;
-                                                                        const min = Math.round(negState.demand.insultThreshold * 0.9);
-                                                                        const max = Math.round(negState.demand.openingAsk * 1.3);
-                                                                        const clamped = Math.max(min, Math.min(v, max));
-                                                                        if (i === 0) {
-                                                                            setExtOfferSalaries(generateEscalatedSalaries(clamped, extEscalateRate, extOfferYears));
-                                                                        } else {
-                                                                            const next = [...extOfferSalaries];
-                                                                            next[i] = clamped;
-                                                                            setExtOfferSalaries(next);
-                                                                        }
-                                                                    }}
-                                                                    className={`w-full bg-slate-800 border rounded pl-5 pr-1 py-1 text-[10px] font-mono font-bold text-white focus:outline-none transition-colors ${
-                                                                        isDeclineYear
-                                                                            ? 'border-amber-500/60 focus:border-amber-400'
-                                                                            : extOfferAAV >= negState.demand.targetAAV
-                                                                            ? 'border-emerald-500/60 focus:border-emerald-400'
-                                                                            : extOfferAAV < negState.demand.insultThreshold
-                                                                            ? 'border-red-600/60 focus:border-red-500'
-                                                                            : extOfferAAV < negState.demand.reservationFloor
-                                                                            ? 'border-red-500/60 focus:border-red-400'
-                                                                            : 'border-slate-700 focus:border-indigo-500'
-                                                                    }`}
-                                                                />
-                                                            </div>
-                                                            {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
-                                                                <button
-                                                                    key={delta}
-                                                                    onClick={() => {
-                                                                        const min = Math.round(negState.demand.insultThreshold * 0.9);
-                                                                        const max = Math.round(negState.demand.openingAsk * 1.3);
-                                                                        const newVal = Math.max(min, Math.min(sal + delta, max));
-                                                                        if (i === 0) {
-                                                                            setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
-                                                                        } else {
-                                                                            const next = [...extOfferSalaries];
-                                                                            next[i] = newVal;
-                                                                            setExtOfferSalaries(next);
-                                                                        }
-                                                                    }}
-                                                                    className="text-[9px] font-mono font-bold px-1 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-200 transition-colors flex-shrink-0"
-                                                                >
-                                                                    {delta < 0 ? `${delta / 1_000_000}M` : `+${delta / 1_000_000}M`}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot>
-                                        <tr className="border-t border-slate-700/60">
-                                            <td colSpan={2} className="pt-3 pb-0.5 text-xs text-slate-400 font-bold">총 계약액</td>
-                                            <td className="pt-3 pb-0.5 text-right text-xs font-mono font-black text-amber-300">{fmtM(totalContractValue)}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                                <div className="space-y-1">
+                                    {extOfferSalaries.map((sal, i) => {
+                                        const y = currentSeasonYear + i;
+                                        const season = `${y}-${String(y + 1).slice(-2)}`;
+                                        const isDeclineYear = i > 0 && sal < extOfferSalaries[i - 1];
+                                        return (
+                                            <div key={i} className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 w-[88px]">{i + 1}년차 {season}</span>
+                                                <div className="relative flex-1 min-w-0">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">$</span>
+                                                    <input
+                                                        type="number"
+                                                        step={100_000}
+                                                        min={Math.round(negState.demand.insultThreshold * 0.9)}
+                                                        max={Math.round(negState.demand.openingAsk * 1.3)}
+                                                        value={sal}
+                                                        onChange={e => {
+                                                            const v = parseInt(e.target.value) || 0;
+                                                            const min = Math.round(negState.demand.insultThreshold * 0.9);
+                                                            const max = Math.round(negState.demand.openingAsk * 1.3);
+                                                            const clamped = Math.max(min, Math.min(v, max));
+                                                            if (i === 0) {
+                                                                setExtOfferSalaries(generateEscalatedSalaries(clamped, extEscalateRate, extOfferYears));
+                                                            } else {
+                                                                const next = [...extOfferSalaries];
+                                                                next[i] = clamped;
+                                                                setExtOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className={`w-full bg-slate-800 border rounded pl-7 pr-1 py-1.5 text-xs font-mono font-bold text-white focus:outline-none transition-colors ${
+                                                            isDeclineYear
+                                                                ? 'border-amber-500/60 focus:border-amber-400'
+                                                                : extOfferAAV >= negState.demand.targetAAV
+                                                                ? 'border-emerald-500/60 focus:border-emerald-400'
+                                                                : extOfferAAV < negState.demand.insultThreshold
+                                                                ? 'border-red-600/60 focus:border-red-500'
+                                                                : extOfferAAV < negState.demand.reservationFloor
+                                                                ? 'border-red-500/60 focus:border-red-400'
+                                                                : 'border-slate-700 focus:border-indigo-500'
+                                                        }`}
+                                                    />
+                                                </div>
+                                                <div className="flex gap-1 flex-shrink-0">
+                                                    {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
+                                                        <button
+                                                            key={delta}
+                                                            onClick={() => {
+                                                                const min = Math.round(negState.demand.insultThreshold * 0.9);
+                                                                const max = Math.round(negState.demand.openingAsk * 1.3);
+                                                                const newVal = Math.max(min, Math.min(sal + delta, max));
+                                                                if (i === 0) {
+                                                                    setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
+                                                                } else {
+                                                                    const next = [...extOfferSalaries];
+                                                                    next[i] = newVal;
+                                                                    setExtOfferSalaries(next);
+                                                                }
+                                                            }}
+                                                            className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                                                        >
+                                                            {delta < 0 ? `-$${Math.abs(delta) / 1_000_000}M` : `+$${delta / 1_000_000}M`}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="space-y-1 pt-1">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400 font-semibold">총 계약액</span>
+                                        <span className="font-mono font-bold text-white">{fmtM(totalContractValue)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400">AAV</span>
+                                        <span className="font-mono text-white">{fmtM(extOfferAAV)}</span>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* 카운터 배너 */}
@@ -1111,11 +1099,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* ── 계약 조건 옵션 ── */}
                             <div className="flex-shrink-0 space-y-3">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-2">계약 조건</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 조건</div>
                                 {/* 계약 옵션 (2년 이상일 때) */}
                                 {extOfferYears >= 2 && (
                                     <div className="space-y-0.5">
-                                        <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">계약 옵션</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">계약 옵션</div>
                                         {(['none', 'team', 'player'] as const).map(opt => {
                                             const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
                                             const sub = opt === 'team' ? '마지막 해 팀이 결정' : opt === 'player' ? '마지막 해 선수가 결정' : '';
@@ -1125,7 +1113,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input type="radio" checked={active} onChange={() => setExtContractOption(opt)}
                                                         className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                    {sub && <span className="text-[10px] text-slate-500">{sub}</span>}
+                                                    {sub && <span className="text-xs text-slate-500">{sub}</span>}
                                                 </label>
                                             );
                                         })}
@@ -1133,7 +1121,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 )}
                                 {/* 트레이드 키커 */}
                                 <div className="space-y-0.5">
-                                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 키커</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 키커</div>
                                     {[0, 0.05, 0.10, 0.15].map(pct => {
                                         const label = pct === 0 ? '없음' : `+${(pct * 100).toFixed(0)}%`;
                                         const sub = pct > 0 ? `$${(extOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
@@ -1143,14 +1131,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 <input type="radio" checked={active} onChange={() => setExtTradeKicker(pct)}
                                                     className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                 <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                {sub && <span className="text-[10px] text-slate-500">{sub}</span>}
+                                                {sub && <span className="text-xs text-slate-500">{sub}</span>}
                                             </label>
                                         );
                                     })}
                                 </div>
                                 {/* NTC */}
                                 <div className="space-y-0.5">
-                                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">무이적 조항 (NTC)</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">무이적 조항 (NTC)</div>
                                     {[false, true].map(val => {
                                         const active = extNoTrade === val;
                                         return (
@@ -1158,7 +1146,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 <input type="radio" checked={active} onChange={() => setExtNoTrade(val as boolean)}
                                                     className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                 <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
-                                                {val && <span className="text-[10px] text-slate-500">선수 동의 없이 트레이드 불가</span>}
+                                                {val && <span className="text-xs text-slate-500">선수 동의 없이 트레이드 불가</span>}
                                             </label>
                                         );
                                     })}
@@ -1241,7 +1229,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 }`}
                                             >
                                                 <div className="text-sm font-bold">{labels[mode].name}</div>
-                                                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{labels[mode].desc}</div>
+                                                <div className="text-xs font-mono text-slate-500 mt-0.5">{labels[mode].desc}</div>
                                             </button>
                                         );
                                     })}
@@ -1265,7 +1253,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         onChange={e => setBuyoutSlider(Number(e.target.value))}
                                         className="w-full accent-emerald-500"
                                     />
-                                    <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                                    <div className="flex justify-between text-xs font-mono text-slate-500">
                                         <span>최소 {fmtM(minBuyoutAmount)} ({minBuyoutPct}%)</span>
                                         <span>전액 {fmtM(totalRemaining)}</span>
                                     </div>
