@@ -456,68 +456,63 @@ export const FAView: React.FC<FAViewProps> = ({
 
                     {/* ── 일반 로스터 ── */}
                     <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-xs">
+                        <table className="w-full border-collapse text-xs" style={{ tableLayout: 'fixed', minWidth: 900 }}>
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-slate-800 border-b border-slate-700">
-                                    {['선수', '포지션', '나이', '능력치', '연봉', '잔여', ''].map(h => (
-                                        <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
-                                    ))}
+                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 160 }}>선수</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 60 }}>포지션</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 48 }}>나이</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-l border-slate-700" style={{ width: 52 }}>INS</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 52 }}>OUT</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 52 }}>PLM</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 52 }}>DEF</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 52 }}>REB</th>
+                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700" style={{ width: 52 }}>ATH</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 80 }}>연봉</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap" style={{ width: 56 }}>잔여</th>
+                                    <th className="px-4 py-2" style={{ width: 120 }}></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {myTeam.roster.length === 0 ? (
-                                    <tr><td colSpan={7} className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</td></tr>
+                                    <tr><td colSpan={12} className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</td></tr>
                                 ) : regularRoster.length === 0 ? (
-                                    <tr><td colSpan={7} className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</td></tr>
+                                    <tr><td colSpan={12} className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</td></tr>
                                 ) : (
                                     regularRoster.map(player => {
                                         const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
                                         const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
-                                        const isExtCandidate = extensionCandidates.some(ec => ec.id === player.id);
-                                        const attrGroups = [
-                                            { label: '슛', val: Math.round(((player.closeShot ?? 50) + (player.midRange ?? 50) + (player.threeTop ?? 50)) / 3) },
-                                            { label: '패스', val: player.passIq ?? 50 },
-                                            { label: '수비', val: Math.round(((player.perDef ?? 50) + (player.intDef ?? 50)) / 2) },
-                                            { label: '리바', val: Math.round(((player.offReb ?? 50) + (player.defReb ?? 50)) / 2) },
-                                            { label: '속도', val: Math.round(((player.speed ?? 50) + (player.agility ?? 50)) / 2) },
-                                            { label: '피지컬', val: Math.round(((player.strength ?? 50) + (player.vertical ?? 50)) / 2) },
-                                        ];
+                                        const getAttrColor = (v: number) => v >= 90 ? 'text-fuchsia-400' : v >= 80 ? 'text-emerald-400' : v >= 70 ? 'text-amber-400' : 'text-slate-500';
                                         return (
-                                            <tr key={player.id} className="group border-b border-slate-800">
+                                            <tr key={player.id} className="group border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
                                                 <td className="px-4 py-2">
                                                     <button
                                                         onClick={() => onViewPlayer?.(player)}
-                                                        className="font-bold text-white hover:text-indigo-400 transition-colors ko-tight block"
+                                                        className="font-bold text-white hover:text-indigo-400 transition-colors ko-tight block truncate max-w-[140px]"
                                                     >
                                                         {player.name}
                                                     </button>
                                                 </td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
-                                                <td className="px-4 py-2">
-                                                    <div className="grid grid-cols-3 gap-x-3 gap-y-0.5">
-                                                        {attrGroups.map(a => (
-                                                            <div key={a.label} className="flex items-center gap-1">
-                                                                <span className="text-[9px] text-slate-500 w-8">{a.label}</span>
-                                                                <span className="text-[10px] font-mono font-bold text-slate-300">{a.val}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center border-l border-slate-800/60 ${getAttrColor(player.ins ?? 50)}`}>{player.ins ?? '-'}</td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center ${getAttrColor(player.out ?? 50)}`}>{player.out ?? '-'}</td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center ${getAttrColor(player.plm ?? 50)}`}>{player.plm ?? '-'}</td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center ${getAttrColor(player.def ?? 50)}`}>{player.def ?? '-'}</td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center ${getAttrColor(player.reb ?? 50)}`}>{player.reb ?? '-'}</td>
+                                                <td className={`px-3 py-2 font-mono font-black text-center border-r border-slate-800/60 ${getAttrColor(player.ath ?? 50)}`}>{player.ath ?? '-'}</td>
                                                 <td className="px-4 py-2 font-mono text-slate-400 whitespace-nowrap">{fmtM(salary)}</td>
                                                 <td className="px-4 py-2 font-mono text-slate-400">{yearsLeft}년</td>
                                                 <td className="px-4 py-2">
-                                                    <div className="flex items-center gap-1.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
+                                                            className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-violet-600/30 bg-violet-600/15 text-violet-400 hover:bg-violet-600/25 active:scale-95 transition-all"
+                                                        >연장</button>
                                                         <button
                                                             onClick={() => setNegotiationTarget({ type: 'release', playerId: player.id })}
-                                                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                                            className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-red-600/30 bg-red-600/15 text-red-400 hover:bg-red-600/25 active:scale-95 transition-all"
                                                         >방출</button>
-                                                        {isExtCandidate && (
-                                                            <button
-                                                                onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
-                                                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition-colors"
-                                                            >계약 연장</button>
-                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
