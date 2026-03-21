@@ -264,7 +264,7 @@ const App: React.FC = () => {
                     {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}
                     <Route element={<ProtectedLayout />}>
                         <Route path="/" element={<HomePage />} />
-                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/locker-room" element={<DashboardPage />} />
                         <Route path="/roster" element={<RosterPage />} />
                         <Route path="/roster/:teamId" element={<RosterPage />} />
                         <Route path="/schedule" element={<SchedulePage />} />

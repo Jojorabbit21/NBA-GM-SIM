@@ -70,7 +70,7 @@ const DraftLotteryPage: React.FC = () => {
                                 .catch(e => console.warn('⚠️ Lottery result message failed:', e));
                         }
                     }
-                    navigate('/dashboard', { replace: true });
+                    navigate('/locker-room', { replace: true });
                 } else {
                     navigate('/draft/', { replace: true });
                 }

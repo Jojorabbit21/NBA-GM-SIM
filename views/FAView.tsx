@@ -5,7 +5,6 @@ import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../type
 import { LEAGUE_FINANCIALS } from '../utils/constants';
 import { calcTeamPayroll, getAvailableSigningSlots } from '../services/fa/faMarketBuilder';
 import { processUserOffer } from '../services/fa/faMarketBuilder';
-import { getTeamTheme } from '../utils/teamTheme';
 import { TEAM_DATA } from '../data/teamData';
 import {
     getExtensionCandidates,
@@ -43,23 +42,23 @@ interface FAViewProps {
 // ─────────────────────────────────────────────────────────────
 
 const FA_ROLE_LABELS: Record<FARole, string> = {
-    lead_guard:   'Lead Guard',
-    combo_guard:  'Combo Guard',
+    lead_guard:   '리드 가드',
+    combo_guard:  '콤보 가드',
     '3and_d':     '3&D',
-    shot_creator: 'Shot Creator',
-    stretch_big:  'Stretch Big',
-    rim_big:      'Rim Big',
-    floor_big:    'Floor Big',
+    shot_creator: '득점 창출자',
+    stretch_big:  '스트레치 빅',
+    rim_big:      '림 프로텍터',
+    floor_big:    '플로어 빅',
 };
 
 const SLOT_LABELS: Record<SigningType, string> = {
-    cap_space:   'Cap Space',
-    non_tax_mle: 'Non-Tax MLE',
-    tax_mle:     'Taxpayer MLE',
-    bird_full:   'Full Bird',
-    bird_early:  'Early Bird',
-    bird_non:    'Non-Bird',
-    vet_min:     'Vet Min',
+    cap_space:   '캡 스페이스',
+    non_tax_mle: '논택스 MLE',
+    tax_mle:     '택스페이어 MLE',
+    bird_full:   '풀 버드권',
+    bird_early:  '얼리 버드권',
+    bird_non:    '논버드',
+    vet_min:     '베테랑 미니멈',
 };
 
 const SLOT_CAPS: Record<SigningType, string> = {
@@ -86,9 +85,9 @@ function scoreColor(score: number): string {
 
 function statusBadge(status: FAMarketEntry['status']) {
     switch (status) {
-        case 'available': return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Available</span>;
-        case 'signed':    return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">Signed</span>;
-        case 'withdrawn': return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Withdrawn</span>;
+        case 'available': return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">가용</span>;
+        case 'signed':    return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">서명</span>;
+        case 'withdrawn': return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">철수</span>;
     }
 }
 
@@ -96,7 +95,7 @@ function statusBadge(status: FAMarketEntry['status']) {
 // CapStatus — 상단 팀 재정 요약
 // ─────────────────────────────────────────────────────────────
 
-const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean> }> = ({ myTeam, usedMLE }) => {
+const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; primaryColor: string; currentSeason: string }> = ({ myTeam, usedMLE, primaryColor, currentSeason }) => {
     const payroll   = calcTeamPayroll(myTeam);
     const deadTotal = (myTeam.deadMoney ?? []).reduce((s, d) => s + d.amount, 0);
     const cap       = LEAGUE_FINANCIALS.SALARY_CAP;
@@ -108,48 +107,53 @@ const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean> }> = 
 
     const capBarPct = Math.min(100, (payroll / apron2) * 100);
 
-    const teamColors = TEAM_DATA[myTeam.id]?.colors;
-    const theme = getTeamTheme(myTeam.id, teamColors ?? null);
-
     return (
-        <div className="flex-shrink-0 px-6 py-3 border-b border-slate-800 bg-slate-900/60">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
-                    <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
+        <div className="flex-shrink-0 px-6 py-3 border-b border-slate-800 bg-slate-950">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                {/* WidgetHeader */}
+                <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: primaryColor }}>
+                    <span className="text-sm font-bold text-white">샐러리 캡 현황</span>
+                    <span className="text-xs font-mono text-white/70">{currentSeason}</span>
                 </div>
-                {deadTotal > 0 && (
-                    <div>
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
-                        <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
+                {/* 정보 */}
+                <div className="flex items-center divide-x divide-slate-800 flex-wrap">
+                    <div className="px-4 py-2 min-w-[110px]">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
+                        <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
                     </div>
-                )}
-                <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
-                    <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{remaining > 0 ? fmtM(remaining) : '캡 초과'}</div>
-                </div>
-                <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">MLE</div>
-                    <div className={`text-sm font-bold ${mleUsed ? 'text-slate-500 line-through' : 'text-indigo-400'}`}>
-                        {mleUsed ? '사용됨' : payroll < apron1 ? 'Non-Tax ($14.1M)' : payroll < apron2 ? 'Tax ($5.7M)' : '없음'}
+                    {deadTotal > 0 && (
+                        <div className="px-4 py-2 min-w-[90px]">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
+                            <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
+                        </div>
+                    )}
+                    <div className="px-4 py-2 min-w-[90px]">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
+                        <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{remaining > 0 ? fmtM(remaining) : '캡 초과'}</div>
                     </div>
-                </div>
-                {/* Cap bar */}
-                <div className="flex-1 min-w-[160px]">
-                    <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-1">
-                        <span>CAP {fmtM(cap)}</span>
-                        <span>TAX {fmtM(tax)}</span>
-                        <span>APR1 {fmtM(apron1)}</span>
+                    <div className="px-4 py-2 min-w-[130px]">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">MLE</div>
+                        <div className={`text-sm font-bold ${mleUsed ? 'text-slate-500 line-through' : 'text-indigo-400'}`}>
+                            {mleUsed ? '사용됨' : payroll < apron1 ? '논택스 ($14.1M)' : payroll < apron2 ? '택스페이어 ($5.7M)' : '없음'}
+                        </div>
                     </div>
-                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
-                        <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${capBarPct}%`, backgroundColor: theme.accent }}
-                        />
-                        {/* CAP marker */}
-                        <div className="absolute top-0 bottom-0 w-px bg-indigo-500/60" style={{ left: `${(cap / apron2) * 100}%` }} />
-                        {/* TAX marker */}
-                        <div className="absolute top-0 bottom-0 w-px bg-amber-500/60" style={{ left: `${(tax / apron2) * 100}%` }} />
+                    {/* Cap bar */}
+                    <div className="flex-1 min-w-[180px] px-4 py-2">
+                        <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-1">
+                            <span>캡 {fmtM(cap)}</span>
+                            <span>택스 {fmtM(tax)}</span>
+                            <span>에이프런 {fmtM(apron1)}</span>
+                        </div>
+                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
+                            <div
+                                className="h-full rounded-full transition-all"
+                                style={{ width: `${capBarPct}%`, backgroundColor: primaryColor }}
+                            />
+                            {/* CAP marker */}
+                            <div className="absolute top-0 bottom-0 w-px bg-indigo-500/60" style={{ left: `${(cap / apron2) * 100}%` }} />
+                            {/* TAX marker */}
+                            <div className="absolute top-0 bottom-0 w-px bg-amber-500/60" style={{ left: `${(tax / apron2) * 100}%` }} />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -232,7 +236,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
             </div>
 
             {/* 선수 요구 조건 */}
-            <div className="bg-slate-800/60 rounded-xl p-4 space-y-2 border border-slate-700/50">
+            <div className="bg-slate-800 rounded-lg p-4 space-y-2 border border-slate-700">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">선수 요구 조건</div>
                 <div className="flex justify-between text-sm">
                     <span className="text-slate-400">요구 연봉</span>
@@ -268,7 +272,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
                             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm transition-all ${
                                 selectedSlot === slot
                                     ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                                    : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600'
+                                    : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600'
                             }`}
                         >
                             <span className="font-bold">{SLOT_LABELS[slot]}</span>
@@ -328,7 +332,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
                             className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition-all ${
                                 offerYears === y
                                     ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                                    : 'border-slate-700 bg-slate-800/40 text-slate-500 hover:border-slate-600'
+                                    : 'border-slate-700 bg-slate-800 text-slate-500 hover:border-slate-600'
                             }`}
                         >
                             {y}
@@ -339,7 +343,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
 
             {/* 오퍼 결과 */}
             {offerResult && (
-                <div className={`rounded-xl px-4 py-3 text-sm font-bold text-center border ${
+                <div className={`rounded-lg px-4 py-3 text-sm font-bold text-center border ${
                     offerResult.accepted
                         ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
                         : 'bg-red-500/10 border-red-500/40 text-red-400'
@@ -353,7 +357,7 @@ const NegotiationPanel: React.FC<NegotiationPanelProps> = ({
                 <button
                     onClick={() => onOfferSubmit(selectedSlot, offerSalary, offerYears)}
                     disabled={slots.length === 0 || isBelowWalkaway}
-                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
+                    className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
                         bg-indigo-600 hover:bg-indigo-500 text-white
                         disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -437,7 +441,7 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
                 </button>
                 <div className="flex gap-2 mt-2">
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-violet-500/20 text-violet-400">
-                        CONTRACT EXT.
+                        계약 익스텐션
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
                         잔여 {player.contractYears}년
@@ -446,13 +450,13 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
             </div>
 
             {/* 감정 상태 바 */}
-            <div className="bg-slate-800/60 rounded-xl p-3 space-y-2 border border-slate-700/50">
+            <div className="bg-slate-800 rounded-lg p-3 space-y-2 border border-slate-700">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">선수 심리 상태</div>
                 <div className="space-y-1.5">
                     {[
-                        { label: 'Respect', value: negState.respect, color: 'bg-indigo-500' },
-                        { label: 'Trust',   value: negState.trust,   color: 'bg-emerald-500' },
-                        { label: 'Frustration', value: negState.frustration, color: 'bg-red-500' },
+                        { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
+                        { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
+                        { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
                     ].map(({ label, value, color }) => (
                         <div key={label} className="flex items-center gap-2">
                             <div className="w-20 text-[10px] text-slate-500 font-bold">{label}</div>
@@ -476,7 +480,7 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
             </div>
 
             {/* 선수 요구 조건 */}
-            <div className="bg-slate-800/60 rounded-xl p-4 space-y-2 border border-slate-700/50">
+            <div className="bg-slate-800 rounded-lg p-4 space-y-2 border border-slate-700">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">선수 요구 조건</div>
                 <div className="flex justify-between text-sm">
                     <span className="text-slate-400">요구 연봉</span>
@@ -540,7 +544,7 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
                             className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition-all ${
                                 offerYears === y
                                     ? 'border-violet-500 bg-violet-500/20 text-violet-300'
-                                    : 'border-slate-700 bg-slate-800/40 text-slate-500 hover:border-slate-600'
+                                    : 'border-slate-700 bg-slate-800 text-slate-500 hover:border-slate-600'
                             }`}
                         >
                             {y}
@@ -551,7 +555,7 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
 
             {/* 응답 배너 */}
             {lastResponse && (
-                <div className={`rounded-xl px-4 py-3 text-sm font-bold border ${
+                <div className={`rounded-lg px-4 py-3 text-sm font-bold border ${
                     lastResponse.outcome === 'ACCEPT'
                         ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
                         : lastResponse.outcome === 'COUNTER'
@@ -571,7 +575,7 @@ const ExtensionPanel: React.FC<ExtensionPanelProps> = ({
             {!isFinal && (
                 <button
                     onClick={handleSubmit}
-                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
+                    className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
                         bg-violet-600 hover:bg-violet-500 text-white"
                 >
                     오퍼 제출
@@ -733,53 +737,49 @@ export const FAView: React.FC<FAViewProps> = ({
     // 방출 확인 모달용 선수
     const releaseTarget = releaseConfirmId ? myTeam.roster.find(p => p.id === releaseConfirmId) ?? null : null;
 
+    const primaryColor = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
+
     return (
         <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
-            {/* ── 헤더 ── */}
-            <div className="flex-shrink-0 px-6 h-14 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="oswald font-black uppercase tracking-widest text-white text-xl">FA Market</h1>
-                    <span className="text-xs font-mono text-slate-500">{currentSeason}</span>
+            {/* ── 탭 네비게이션 (통합) ── */}
+            <div className="flex-shrink-0 px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14">
+                <div className="flex items-center gap-8 h-full">
+                    <button
+                        onClick={() => handleTabChange('market')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'market' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >FA 시장</button>
+                    <button
+                        onClick={() => handleTabChange('roster')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'roster' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        내 로스터
+                        <span className="text-xs font-mono font-normal normal-case">({myTeam.roster.length})</span>
+                        {pendingTeamOptions.length > 0 && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
+                                옵션 {pendingTeamOptions.length}
+                            </span>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => handleTabChange('extensions')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'extensions' ? 'text-violet-400 border-violet-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        익스텐션
+                        {extensionCandidates.length > 0 && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
+                                {extensionCandidates.length}
+                            </span>
+                        )}
+                    </button>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-mono">
-                    <span className="text-emerald-400">{availableCount} Available</span>
-                    <span className="text-slate-500">{signedCount} Signed</span>
+                    <span className="text-emerald-400">{availableCount} 가용</span>
+                    <span className="text-slate-500">{signedCount} 서명</span>
                 </div>
-            </div>
-
-            {/* ── 탭 ── */}
-            <div className="flex-shrink-0 px-6 border-b border-slate-800 bg-slate-950 flex gap-4">
-                <button
-                    onClick={() => handleTabChange('market')}
-                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors ${activeTab === 'market' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-                >FA 시장</button>
-                <button
-                    onClick={() => handleTabChange('roster')}
-                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'roster' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-                >
-                    내 로스터
-                    <span className="text-xs text-slate-600 font-mono">({myTeam.roster.length})</span>
-                    {pendingTeamOptions.length > 0 && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
-                            옵션 {pendingTeamOptions.length}
-                        </span>
-                    )}
-                </button>
-                <button
-                    onClick={() => handleTabChange('extensions')}
-                    className={`py-2.5 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'extensions' ? 'border-violet-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-                >
-                    익스텐션
-                    {extensionCandidates.length > 0 && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
-                            {extensionCandidates.length}
-                        </span>
-                    )}
-                </button>
             </div>
 
             {/* ── 팀 캡 상황 ── */}
-            <CapStatus myTeam={myTeam} usedMLE={usedMLE} />
+            <CapStatus myTeam={myTeam} usedMLE={usedMLE} primaryColor={primaryColor} currentSeason={currentSeason} />
 
             {/* ── FA 시장 탭 콘텐츠 ── */}
             {activeTab === 'market' && (
@@ -840,47 +840,54 @@ export const FAView: React.FC<FAViewProps> = ({
                             <div className="flex-1 min-h-0 flex overflow-hidden">
                                 {/* FA 선수 목록 */}
                                 <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${selectedId ? 'border-r border-slate-800' : ''}`}>
-                                    {/* 테이블 헤더 */}
-                                    <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-4 py-2 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr_1fr] gap-2">
-                                        {['선수', '포지션', '나이', '롤', '요구 연봉', 'MVS', '상태'].map(h => (
-                                            <div key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{h}</div>
-                                        ))}
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-xs">
+                                            <thead className="sticky top-0 z-10">
+                                                <tr className="bg-slate-800 border-b border-slate-700">
+                                                    {['선수', '포지션', '나이', '롤', '요구 연봉', 'MVS', '상태'].map(h => (
+                                                        <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredEntries.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={7} className="py-16 text-center text-slate-500 text-sm">조건에 맞는 선수가 없습니다.</td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredEntries.map(entry => {
+                                                        const player = faPlayerMap[entry.playerId];
+                                                        if (!player) return null;
+                                                        const isSelected = selectedId === entry.playerId;
+                                                        return (
+                                                            <tr
+                                                                key={entry.playerId}
+                                                                onClick={() => handleSelectPlayer(entry.playerId)}
+                                                                className={`group border-b border-slate-800 cursor-pointer transition-all ${
+                                                                    isSelected
+                                                                        ? 'bg-indigo-600/10 border-l-2 border-l-indigo-500'
+                                                                        : 'hover:bg-slate-800'
+                                                                } ${entry.status !== 'available' ? 'opacity-50' : ''}`}
+                                                            >
+                                                                <td className="px-4 py-2 font-bold text-white ko-tight whitespace-nowrap">{player.name}</td>
+                                                                <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
+                                                                <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
+                                                                <td className="px-4 py-2 font-bold text-indigo-300 whitespace-nowrap">{FA_ROLE_LABELS[entry.faRole]}</td>
+                                                                <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(entry.askingSalary)}</td>
+                                                                <td className={`px-4 py-2 font-mono font-bold ${scoreColor(entry.marketValueScore)}`}>{entry.marketValueScore}</td>
+                                                                <td className="px-4 py-2">{statusBadge(entry.status)}</td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                        </table>
                                     </div>
-
-                                    {/* 선수 행 */}
-                                    {filteredEntries.length === 0 ? (
-                                        <div className="py-16 text-center text-slate-500 text-sm">조건에 맞는 선수가 없습니다.</div>
-                                    ) : (
-                                        filteredEntries.map(entry => {
-                                            const player = faPlayerMap[entry.playerId];
-                                            if (!player) return null;
-                                            const isSelected = selectedId === entry.playerId;
-                                            return (
-                                                <button
-                                                    key={entry.playerId}
-                                                    onClick={() => handleSelectPlayer(entry.playerId)}
-                                                    className={`w-full px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr_1fr] gap-2 items-center text-left border-b border-white/5 transition-all ${
-                                                        isSelected
-                                                            ? 'bg-indigo-600/10 border-l-2 border-l-indigo-500'
-                                                            : 'hover:bg-slate-800/50'
-                                                    } ${entry.status !== 'available' ? 'opacity-50' : ''}`}
-                                                >
-                                                    <div className="font-bold text-sm text-white truncate ko-tight">{player.name}</div>
-                                                    <div className="text-xs font-mono text-slate-400">{player.position}</div>
-                                                    <div className="text-xs font-mono text-slate-400">{player.age}</div>
-                                                    <div className="text-[10px] font-bold text-indigo-300 truncate">{FA_ROLE_LABELS[entry.faRole]}</div>
-                                                    <div className="text-xs font-mono font-bold text-amber-400">{fmtM(entry.askingSalary)}</div>
-                                                    <div className={`text-xs font-mono font-bold ${scoreColor(entry.marketValueScore)}`}>{entry.marketValueScore}</div>
-                                                    <div>{statusBadge(entry.status)}</div>
-                                                </button>
-                                            );
-                                        })
-                                    )}
                                 </div>
 
                                 {/* 협상 패널 */}
                                 {selectedEntry && selectedPlayer && (
-                                    <div className="w-80 flex-shrink-0 bg-slate-900/60">
+                                    <div className="w-80 flex-shrink-0 bg-slate-900 border-l border-slate-800">
                                         <NegotiationPanel
                                             entry={selectedEntry}
                                             player={selectedPlayer}
@@ -956,47 +963,52 @@ export const FAView: React.FC<FAViewProps> = ({
                     )}
 
                     {/* ── 일반 로스터 ── */}
-                    <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-4 py-2 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr] gap-2">
-                        {['선수', '포지션', '나이', '연봉', '잔여', ''].map(h => (
-                            <div key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{h}</div>
-                        ))}
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                            <thead className="sticky top-0 z-10">
+                                <tr className="bg-slate-800 border-b border-slate-700">
+                                    {['선수', '포지션', '나이', '연봉', '잔여', ''].map(h => (
+                                        <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {myTeam.roster.length === 0 ? (
+                                    <tr><td colSpan={6} className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</td></tr>
+                                ) : regularRoster.length === 0 ? (
+                                    <tr><td colSpan={6} className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</td></tr>
+                                ) : (
+                                    regularRoster.map(player => {
+                                        const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                                        const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
+                                        return (
+                                            <tr key={player.id} className="group border-b border-slate-800">
+                                                <td className="px-4 py-2">
+                                                    <button
+                                                        onClick={() => onViewPlayer?.(player)}
+                                                        className="font-bold text-white hover:text-indigo-400 transition-colors ko-tight block"
+                                                    >
+                                                        {player.name}
+                                                    </button>
+                                                    <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
+                                                </td>
+                                                <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
+                                                <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
+                                                <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(salary)}</td>
+                                                <td className="px-4 py-2 font-mono text-slate-400">{yearsLeft}년</td>
+                                                <td className="px-4 py-2">
+                                                    <button
+                                                        onClick={() => openReleaseModal(player.id)}
+                                                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                                    >방출</button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
                     </div>
-                    {myTeam.roster.length === 0 ? (
-                        <div className="py-16 text-center text-slate-500 text-sm">로스터에 선수가 없습니다.</div>
-                    ) : regularRoster.length === 0 ? (
-                        <div className="py-8 text-center text-slate-500 text-sm">모든 선수가 팀 옵션 대기 중입니다.</div>
-                    ) : (
-                        regularRoster.map(player => {
-                            const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
-                            const yearsLeft = player.contract ? player.contract.years.length - (player.contract.currentYear ?? 0) : 0;
-                            return (
-                                <div
-                                    key={player.id}
-                                    className="px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr_1fr] gap-2 items-center border-b border-white/5"
-                                >
-                                    <div>
-                                        <button
-                                            onClick={() => onViewPlayer?.(player)}
-                                            className="font-bold text-sm text-white hover:text-indigo-400 transition-colors truncate ko-tight"
-                                        >
-                                            {player.name}
-                                        </button>
-                                        <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
-                                    </div>
-                                    <div className="text-xs font-mono text-slate-400">{player.position}</div>
-                                    <div className="text-xs font-mono text-slate-400">{player.age}</div>
-                                    <div className="text-xs font-mono font-bold text-amber-400">{fmtM(salary)}</div>
-                                    <div className="text-xs font-mono text-slate-400">{yearsLeft}년</div>
-                                    <div>
-                                        <button
-                                            onClick={() => openReleaseModal(player.id)}
-                                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
-                                        >방출</button>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
                 </div>
             )}
 
@@ -1005,12 +1017,6 @@ export const FAView: React.FC<FAViewProps> = ({
                 <div className="flex-1 min-h-0 flex overflow-hidden">
                     {/* 후보 선수 목록 */}
                     <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${extSelectedPlayer ? 'border-r border-slate-800' : ''}`}>
-                        {/* 헤더 */}
-                        <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-4 py-2 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr] gap-2">
-                            {['선수', '포지션', '나이', '연봉', '잔여'].map(h => (
-                                <div key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{h}</div>
-                            ))}
-                        </div>
                         {extensionCandidates.length === 0 ? (
                             <div className="py-16 text-center text-slate-500 text-sm">
                                 <div className="text-3xl mb-3">📋</div>
@@ -1018,39 +1024,52 @@ export const FAView: React.FC<FAViewProps> = ({
                                 <div className="text-xs text-slate-600 mt-1">계약 1~2년 남은 선수가 대상입니다.</div>
                             </div>
                         ) : (
-                            extensionCandidates.map(player => {
-                                const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
-                                const yearsLeft = player.contractYears ?? 0;
-                                const isSelected = extSelectedId === player.id;
-                                return (
-                                    <button
-                                        key={player.id}
-                                        onClick={() => setExtSelectedId(player.id)}
-                                        className={`w-full px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1.2fr_1.2fr] gap-2 items-center text-left border-b border-white/5 transition-all ${
-                                            isSelected
-                                                ? 'bg-violet-600/10 border-l-2 border-l-violet-500'
-                                                : 'hover:bg-slate-800/50'
-                                        }`}
-                                    >
-                                        <div>
-                                            <div className="font-bold text-sm text-white truncate ko-tight">{player.name}</div>
-                                            <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
-                                        </div>
-                                        <div className="text-xs font-mono text-slate-400">{player.position}</div>
-                                        <div className="text-xs font-mono text-slate-400">{player.age}</div>
-                                        <div className="text-xs font-mono font-bold text-amber-400">{fmtM(salary)}</div>
-                                        <div className={`text-xs font-mono font-bold ${yearsLeft <= 1 ? 'text-red-400' : 'text-slate-300'}`}>
-                                            {yearsLeft}년
-                                        </div>
-                                    </button>
-                                );
-                            })
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse text-xs">
+                                    <thead className="sticky top-0 z-10">
+                                        <tr className="bg-slate-800 border-b border-slate-700">
+                                            {['선수', '포지션', '나이', '연봉', '잔여'].map(h => (
+                                                <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {extensionCandidates.map(player => {
+                                            const salary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
+                                            const yearsLeft = player.contractYears ?? 0;
+                                            const isSelected = extSelectedId === player.id;
+                                            return (
+                                                <tr
+                                                    key={player.id}
+                                                    onClick={() => setExtSelectedId(player.id)}
+                                                    className={`group border-b border-slate-800 cursor-pointer transition-all ${
+                                                        isSelected
+                                                            ? 'bg-violet-600/10 border-l-2 border-l-violet-500'
+                                                            : 'hover:bg-slate-800'
+                                                    }`}
+                                                >
+                                                    <td className="px-4 py-2">
+                                                        <div className="font-bold text-white ko-tight">{player.name}</div>
+                                                        <div className="text-[10px] text-slate-500 font-mono">OVR {player.ovr}</div>
+                                                    </td>
+                                                    <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
+                                                    <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
+                                                    <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(salary)}</td>
+                                                    <td className={`px-4 py-2 font-mono font-bold ${yearsLeft <= 1 ? 'text-red-400' : 'text-slate-300'}`}>
+                                                        {yearsLeft}년
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         )}
                     </div>
 
                     {/* 협상 패널 */}
                     {extSelectedPlayer && (
-                        <div className="w-80 flex-shrink-0 bg-slate-900/60">
+                        <div className="w-80 flex-shrink-0 bg-slate-900 border-l border-slate-800">
                             <ExtensionPanel
                                 key={extSelectedPlayer.id}
                                 player={extSelectedPlayer}
@@ -1103,7 +1122,7 @@ export const FAView: React.FC<FAViewProps> = ({
 
                 return (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-                        <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-96 space-y-4">
+                        <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 w-96 space-y-4">
                             {/* 헤더 */}
                             <div>
                                 <h3 className="oswald font-black text-white text-lg uppercase tracking-widest">선수 방출</h3>
@@ -1129,7 +1148,7 @@ export const FAView: React.FC<FAViewProps> = ({
                                             key={mode}
                                             disabled={disabled}
                                             onClick={() => !disabled && setReleaseMode(mode)}
-                                            className={`w-full text-left p-3 rounded-2xl border transition-all ${
+                                            className={`w-full text-left p-3 rounded-lg border transition-all ${
                                                 disabled ? 'opacity-30 cursor-not-allowed border-slate-700 bg-transparent' :
                                                 isSelected ? info.color + ' border-opacity-100' :
                                                 'border-slate-700 bg-transparent hover:bg-slate-800'
@@ -1156,7 +1175,7 @@ export const FAView: React.FC<FAViewProps> = ({
 
                             {/* 바이아웃 슬라이더 */}
                             {releaseMode === 'buyout' && (
-                                <div className="bg-slate-800/60 rounded-2xl p-3 space-y-2">
+                                <div className="bg-slate-800 rounded-lg p-3 space-y-2">
                                     <div className="flex justify-between text-xs">
                                         <span className="text-slate-400">제시 금액</span>
                                         <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -1182,7 +1201,7 @@ export const FAView: React.FC<FAViewProps> = ({
                             )}
 
                             {/* 데드캡 최종 확인 */}
-                            <div className="flex items-center justify-between bg-slate-800/40 rounded-2xl px-4 py-2.5">
+                            <div className="flex items-center justify-between bg-slate-800/40 rounded-lg px-4 py-2.5">
                                 <span className="text-sm text-slate-400">이번 시즌 데드캡</span>
                                 <span className="text-sm font-mono font-bold text-red-400">{fmtM(deadCapPreview)}</span>
                             </div>
@@ -1191,7 +1210,7 @@ export const FAView: React.FC<FAViewProps> = ({
                             <div className="flex gap-3 pt-1">
                                 <button
                                     onClick={() => setReleaseConfirmId(null)}
-                                    className="flex-1 py-2 rounded-2xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                                    className="flex-1 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
                                 >취소</button>
                                 <button
                                     disabled={releaseMode === 'buyout' && !buyoutAccepted}
@@ -1200,7 +1219,7 @@ export const FAView: React.FC<FAViewProps> = ({
                                         onReleasePlayer(releaseConfirmId, releaseMode, amount);
                                         setReleaseConfirmId(null);
                                     }}
-                                    className="flex-1 py-2 rounded-2xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="flex-1 py-2 rounded-lg text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >방출 확정</button>
                             </div>
                         </div>

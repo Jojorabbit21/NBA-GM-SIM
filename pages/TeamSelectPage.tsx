@@ -28,7 +28,7 @@ const TeamSelectPage: React.FC = () => {
             // 기본 모드: handleSelectTeam 완료 후 온보딩 이동 (myTeamId 세팅 보장)
             const success = await gameData.handleSelectTeam(teamId);
             if (!success) {
-                navigate('/dashboard', { replace: true });
+                navigate('/', { replace: true });
                 return false;
             }
             await refreshUnreadCount();

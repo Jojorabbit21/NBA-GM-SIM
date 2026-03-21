@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { HomeView } from '../views/HomeView';
 import { useGame } from '../hooks/useGameContext';
 const VIEW_TO_PATH: Record<string, string> = {
-    Dashboard:    '/dashboard',
+    Dashboard:    '/locker-room',
     Roster:       '/roster',
     Schedule:     '/schedule',
     Standings:    '/standings',
