@@ -158,7 +158,7 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
     return (
         <div
             ref={dropdownRef}
-            className="absolute top-full right-0 mt-1 z-[200] flex flex-col overflow-hidden"
+            className="absolute top-full left-0 mt-1 z-[200] flex flex-col overflow-hidden"
             style={{
                 background: '#0f172a',
                 border: '1px solid #334155',

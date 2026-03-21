@@ -106,11 +106,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
   });
 
-  // 연승/연패 텍스트
-  const streakText = streak && streak !== '-'
-    ? `${streak.startsWith('W') ? '🔥' : '❄️'}${streak.replace('W', '').replace('L', '')}${streak.startsWith('W') ? '연승' : '연패'} 중`
-    : '';
-
   // 메인 버튼 레이블
   const mainBtnLabel = (() => {
     if (simProgress) return simProgress.label;
@@ -142,23 +137,48 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           className="w-[60px] h-[60px] shrink-0 drop-shadow-lg"
         />
         <div className="flex flex-col gap-0.5 min-w-0">
-          <span
-            className="text-2xl font-semibold text-white leading-8 truncate"
-            style={{ fontFamily: 'Inter, "Noto Sans KR", sans-serif' }}
-          >
-            {TEAM_DATA[team.id] ? `${TEAM_DATA[team.id].city} ${TEAM_DATA[team.id].name}` : team.name}
-          </span>
-          <div className="flex items-center gap-3 text-sm font-bold leading-5 flex-wrap">
-            <span className="text-white whitespace-nowrap">
-              {conferenceName} 컨퍼런스 {conferenceRank}위
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="text-2xl font-semibold text-white leading-8 truncate"
+              style={{ fontFamily: 'Inter, "Noto Sans KR", sans-serif' }}
+            >
+              {TEAM_DATA[team.id] ? `${TEAM_DATA[team.id].city} ${TEAM_DATA[team.id].name}` : team.name}
             </span>
-            <span className="text-emerald-400 whitespace-nowrap">
+            <span className="text-lg font-bold text-emerald-400 whitespace-nowrap leading-8 shrink-0">
               {team.wins}W-{team.losses}L
             </span>
-            {streakText && (
-              <span className="text-white whitespace-nowrap">{streakText}</span>
-            )}
           </div>
+          {currentSimDate && keyDates && onSkipToDate && (
+            <div className="relative">
+              <button
+                onClick={() => setIsSkipDropdownOpen(prev => !prev)}
+                className="flex items-center gap-1.5 text-sm leading-5 text-slate-400 hover:text-slate-200 transition-colors duration-150 group"
+              >
+                <span className="font-medium whitespace-nowrap">
+                  오늘 {formatDateShort(currentSimDate)}
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="font-semibold text-slate-300 whitespace-nowrap group-hover:text-white transition-colors">
+                  {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
+                </span>
+                <span className="shrink-0">
+                  {isSkipDropdownOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </span>
+              </button>
+              <DateSkipDropdown
+                isOpen={isSkipDropdownOpen}
+                onClose={() => setIsSkipDropdownOpen(false)}
+                currentSimDate={currentSimDate}
+                keyDates={keyDates}
+                onSkipToDate={handleSkipToDate}
+                onSimulateFullSeason={handleSimulateFullSeason}
+                isSimulating={!!isSimulating}
+                themeText={theme.text}
+                isOffseason={isSeasonOver}
+                upcomingGames={upcomingGames}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -177,48 +197,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         )}
       </div>
 
-      {/* ③ 오른쪽: 데이트 스키퍼 + 액션 버튼 */}
+      {/* ③ 오른쪽: 액션 버튼 */}
       <div className="flex items-center gap-3 pr-4 shrink-0 relative z-10">
-        {/* 데이트 스키퍼 */}
-        {currentSimDate && keyDates && onSkipToDate && (
-          <div className="relative">
-            <button
-              onClick={() => setIsSkipDropdownOpen(prev => !prev)}
-              className="flex items-center justify-between gap-4 px-4 py-2 rounded-lg transition-all duration-150 hover:brightness-110"
-              style={{
-                background: '#0f172a',
-                border: '2px solid #475569',
-                minWidth: '260px',
-              }}
-            >
-              <div className="flex items-center gap-4 text-left">
-                <span className="text-xs font-semibold text-slate-400 whitespace-nowrap leading-4">
-                  오늘 {formatDateShort(currentSimDate)}
-                </span>
-                <span className="text-sm font-semibold text-slate-100 whitespace-nowrap leading-5">
-                  {todayOpponentName ? `vs ${todayOpponentName}` : '일정 없음'}
-                </span>
-              </div>
-              <div className="shrink-0 text-slate-400">
-                {isSkipDropdownOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </div>
-            </button>
-
-            <DateSkipDropdown
-              isOpen={isSkipDropdownOpen}
-              onClose={() => setIsSkipDropdownOpen(false)}
-              currentSimDate={currentSimDate}
-              keyDates={keyDates}
-              onSkipToDate={handleSkipToDate}
-              onSimulateFullSeason={handleSimulateFullSeason}
-              isSimulating={!!isSimulating}
-              themeText={theme.text}
-              isOffseason={isSeasonOver}
-              upcomingGames={upcomingGames}
-            />
-          </div>
-        )}
-
         {/* 액션 버튼 그룹 — 총 높이 68px */}
         <div className="flex flex-col gap-2" style={{ width: '177px' }}>
           {/* 메인 버튼 — Action: h-9(36px) + gap-2(8px) + sub h-6(24px) = 68px, NoAction: h-[68px] */}

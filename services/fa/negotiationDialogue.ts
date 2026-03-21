@@ -539,6 +539,50 @@ function selectPool(trigger: DialogueTrigger, ctx: DialogueContext): DialoguePoo
  * 선수 성격 + 협상 상태 기반으로 한국어 대사를 결정론적으로 생성한다.
  * 같은 seed + trigger + round 조합이면 항상 동일한 대사 반환.
  */
+/**
+ * 인사 대화의 subText용 — 요구 조건을 자연어로 다양하게 표현.
+ * salary는 달러 전체 금액, years는 정수.
+ */
+export function generateDemandSubText(
+    type: 'fa' | 'extension',
+    salary: number,
+    years: number,
+    seed: string,
+): string {
+    const m = salary / 1_000_000;
+    const s = `$${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+    const y = years;
+
+    const faPool: string[] = [
+        `${y}년 계약에 연 ${s} 정도를 기대하고 있어요.`,
+        `${s}에 ${y}년이면 진지하게 생각해볼 수 있어요.`,
+        `연봉은 연 ${s}, 기간은 ${y}년이 적당할 것 같아요.`,
+        `${y}년 동안 매 시즌 ${s}는 받아야 할 것 같아요.`,
+        `시장을 보면 ${y}년에 연 ${s} 정도는 받아야 하지 않을까요?`,
+        `저의 기대치는 ${y}년, 연 ${s} 수준이에요.`,
+        `최소 ${y}년에 연 ${s} 조건이어야 진지하게 고려할 수 있어요.`,
+        `${s}짜리 ${y}년 계약, 그 정도면 협상해볼 만해요.`,
+        `${y}년 계약에 연 ${s}, 그게 제 기준이에요.`,
+    ];
+
+    const extPool: string[] = [
+        `${y}년 연장 계약에 연 ${s} 조건을 생각하고 있어요.`,
+        `${y}년 더, 매 시즌 ${s}면 좋겠어요.`,
+        `연장 조건은 ${y}년에 연 ${s} 정도예요.`,
+        `${s}에 ${y}년 연장이면 바로 사인할게요.`,
+        `연 ${s}, ${y}년 연장 조건이 제 기대치예요.`,
+        `이 팀에서 ${y}년 더 뛰고 싶어요. 연 ${s} 정도면 어때요?`,
+        `재계약이라면 ${y}년에 연 ${s} 조건으로 얘기해봐요.`,
+        `${y}년, 연 ${s}짜리 딜이면 남겠어요.`,
+        `연 ${s}에 ${y}년 계약이 제 최소 조건이에요.`,
+    ];
+
+    const pool = type === 'fa' ? faPool : extPool;
+    const hash = stringToHash(seed + type + String(years));
+    const r    = seededRandom(hash);
+    return pool[Math.floor(r * pool.length)];
+}
+
 export function generateDialogue(
     trigger: DialogueTrigger,
     ctx: DialogueContext,
