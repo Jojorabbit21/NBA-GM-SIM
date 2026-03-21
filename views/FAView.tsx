@@ -267,7 +267,7 @@ export const FAView: React.FC<FAViewProps> = ({
         : null;
 
     return (
-        <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
+        <div className="relative h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
             {/* ── 탭 네비게이션 (통합) ── */}
             <div className="flex-shrink-0 px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14">
                 <div className="flex items-center gap-8 h-full">

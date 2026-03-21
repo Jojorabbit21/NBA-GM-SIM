@@ -1,11 +1,9 @@
 /**
- * NegotiationScreen — 협상 전용 전체화면 오버레이
- *
- * FA 서명 / 계약 익스텐션 / 선수 방출 협상을 전체화면으로 처리한다.
- * 선수 대사는 SaveTendencies + 감정 상태에 따라 동적으로 변한다.
+ * NegotiationScreen — FA 시장 바디 위 오버레이 (FM26 스타일)
+ * 3패널: 좌(선수정보+감정) | 중(오퍼폼+요약) | 우(채팅버블 히스토리)
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Player, PlayerContract, ReleaseType } from '../types';
 import type { FAMarketEntry, LeagueFAMarket, SigningType } from '../types/fa';
 import type { NegotiationState, NegotiationResponse } from '../services/fa/extensionEngine';
@@ -34,6 +32,14 @@ import type { Team } from '../types/team';
 // Types
 // ─────────────────────────────────────────────────────────────
 
+interface ChatMsg {
+    id: number;
+    role: 'player' | 'gm' | 'status';
+    text: string;
+    subText?: string;
+    isSuccess?: boolean;
+}
+
 interface NegotiationScreenProps {
     negotiationType: 'extension' | 'fa' | 'release';
     player: Player;
@@ -43,10 +49,8 @@ interface NegotiationScreenProps {
     currentSeasonYear: number;
     currentSeason: string;
     usedMLE: Record<string, boolean>;
-    // FA only
     faEntry?: FAMarketEntry;
     faMarket?: LeagueFAMarket;
-    // Callbacks
     onClose: () => void;
     onFAOfferAccepted?: (
         playerId: string,
@@ -91,11 +95,11 @@ const SLOT_LABELS: Record<SigningType, string> = {
     vet_min:     '베테랑 미니멈',
 };
 
-const TYPE_BADGE: Record<NegotiationScreenProps['negotiationType'], { label: string; className: string; accentColor: string }> = {
+const TYPE_BADGE = {
     fa:        { label: 'FA 서명',       className: 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30', accentColor: '#6366f1' },
     extension: { label: '계약 익스텐션', className: 'bg-violet-500/20 text-violet-400 border border-violet-500/30', accentColor: '#8b5cf6' },
     release:   { label: '선수 방출',     className: 'bg-red-500/20 text-red-400 border border-red-500/30',           accentColor: '#ef4444' },
-};
+} as const;
 
 // ─────────────────────────────────────────────────────────────
 // Main Component
@@ -118,63 +122,50 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     onReleasePlayer,
     onViewPlayer,
 }) => {
-    const primaryColor = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
-    const moraleScore = player.morale?.score ?? 50;
+    const primaryColor  = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
+    const moraleScore   = player.morale?.score ?? 50;
+    const badge         = TYPE_BADGE[negotiationType];
+    const accentColor   = badge.accentColor;
+    const isFA  = negotiationType === 'fa';
+    const isExt = negotiationType === 'extension';
+    const isRel = negotiationType === 'release';
 
-    // Tendencies (결정론적)
+    // ─── Tendencies ──────────────────────────────────────────
     const tendencies = useMemo(
         () => generateSaveTendencies(tendencySeed, player.id),
         [tendencySeed, player.id],
     );
 
-    // All players — extension initNegotiationState에 필요
-    const allPlayers = useMemo(() => teams.flatMap(t => t.roster), [teams]);
-
-    // Contender score (익스텐션 ofer 평가용)
+    const allPlayers    = useMemo(() => teams.flatMap(t => t.roster), [teams]);
     const contenderScore = useMemo(() => {
         const total = myTeam.wins + myTeam.losses;
         return total > 0 ? Math.min(1, (myTeam.wins / total) * 1.5) : 0.5;
     }, [myTeam.wins, myTeam.losses]);
 
     // ─── Extension State ─────────────────────────────────────
-    const [negState, setNegState] = useState<NegotiationState | null>(() => {
-        if (negotiationType === 'extension') {
-            return initNegotiationState(
-                player, myTeam, allPlayers, tendencySeed, currentSeasonYear, currentSeason,
-            );
-        }
-        return null;
-    });
-    const [extOfferSalary, setExtOfferSalary] = useState(
-        () => (negState ? negState.demand.openingAsk : 0),
+    const [negState, setNegState] = useState<NegotiationState | null>(() =>
+        isExt ? initNegotiationState(player, myTeam, allPlayers, tendencySeed, currentSeasonYear, currentSeason) : null,
     );
-    const [extOfferYears, setExtOfferYears] = useState(
-        () => (negState ? negState.demand.askingYears : 2),
-    );
+    const [extOfferSalary, setExtOfferSalary] = useState(() => negState?.demand.openingAsk ?? 0);
+    const [extOfferYears, setExtOfferYears]   = useState(() => negState?.demand.askingYears ?? 2);
     const [lastExtResponse, setLastExtResponse] = useState<NegotiationResponse | null>(null);
 
     // ─── FA State ────────────────────────────────────────────
-    const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const capPct = yos >= 10 ? 0.35 : yos >= 7 ? 0.30 : 0.25;
+    const yos         = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
+    const capPct      = yos >= 10 ? 0.35 : yos >= 7 ? 0.30 : 0.25;
     const faMaxAllowed = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * capPct);
-    const vetMin = yos >= 7 ? 3_000_000 : yos >= 4 ? 2_200_000 : 1_500_000;
+    const vetMin      = yos >= 7 ? 3_000_000 : yos >= 4 ? 2_200_000 : 1_500_000;
 
     const slots = useMemo(() => {
-        if (negotiationType !== 'fa' || !faEntry) return [] as SigningType[];
+        if (!isFA || !faEntry) return [] as SigningType[];
         return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE);
-    }, [negotiationType, faEntry, myTeam, player, usedMLE]);
+    }, [isFA, faEntry, myTeam, player, usedMLE]);
 
-    const [selectedSlot, setSelectedSlot] = useState<SigningType>(
-        () => slots[0] ?? 'vet_min',
-    );
-    const [faOfferSalary, setFaOfferSalary] = useState(
-        () => faEntry?.askingSalary ?? 0,
-    );
-    const [faOfferYears, setFaOfferYears] = useState(
-        () => faEntry?.askingYears ?? 2,
-    );
-    const [faResult, setFaResult] = useState<{ accepted: boolean; reason?: string } | null>(null);
-    const [faRound, setFaRound] = useState(0);
+    const [selectedSlot, setSelectedSlot]   = useState<SigningType>(() => slots[0] ?? 'vet_min');
+    const [faOfferSalary, setFaOfferSalary] = useState(() => faEntry?.askingSalary ?? 0);
+    const [faOfferYears, setFaOfferYears]   = useState(() => faEntry?.askingYears ?? 2);
+    const [faResult, setFaResult]           = useState<{ accepted: boolean; reason?: string } | null>(null);
+    const [faRound, setFaRound]             = useState(0);
 
     const slotMaxMap = useMemo((): Partial<Record<SigningType, number>> => {
         const payroll = calcTeamPayroll(myTeam);
@@ -190,34 +181,38 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     }, [myTeam, faMaxAllowed, player.salary, vetMin]);
 
     const currentSlotMax = slotMaxMap[selectedSlot] ?? vetMin;
-    const faMaxYears = selectedSlot === 'tax_mle' ? 2 : 5;
+    const faMaxYears     = selectedSlot === 'tax_mle' ? 2 : 5;
 
     // ─── Release State ───────────────────────────────────────
-    const [releaseMode, setReleaseMode] = useState<ReleaseType>('waive');
+    const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
     const [buyoutSlider, setBuyoutSlider] = useState(70);
 
-    const releaseContract = player.contract;
-    const remainingYears = releaseContract
-        ? releaseContract.years.length - releaseContract.currentYear
-        : 1;
-    const totalRemaining = releaseContract
+    const releaseContract  = player.contract;
+    const remainingYears   = releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1;
+    const totalRemaining   = releaseContract
         ? releaseContract.years.slice(releaseContract.currentYear).reduce((s, v) => s + v, 0)
         : (player.salary ?? 0);
     const stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
-    const stretchAnnual = totalRemaining / stretchYearsTotal;
-    const minBuyoutPct = Math.round(Math.min(75, 50 + 25 * Math.max(0, (player.ovr - 60) / 35)));
-    const minBuyoutAmount = Math.round(totalRemaining * (minBuyoutPct / 100));
-    const buyoutAmount = Math.round(totalRemaining * (buyoutSlider / 100));
-    const buyoutAccepted = buyoutAmount >= minBuyoutAmount;
+    const stretchAnnual     = totalRemaining / stretchYearsTotal;
+    const minBuyoutPct      = Math.round(Math.min(75, 50 + 25 * Math.max(0, (player.ovr - 60) / 35)));
+    const minBuyoutAmount   = Math.round(totalRemaining * (minBuyoutPct / 100));
+    const buyoutAmount      = Math.round(totalRemaining * (buyoutSlider / 100));
+    const buyoutAccepted    = buyoutAmount >= minBuyoutAmount;
 
-    // ─── Dialogue State ──────────────────────────────────────
-    const [dialogue, setDialogue] = useState('');
-    const [dialogueKey, setDialogueKey] = useState(0);
-    const [subText, setSubText] = useState<string | null>(null);
-    const [round, setRound] = useState(0);
+    // ─── Chat State ──────────────────────────────────────────
+    const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+    const idCounter  = useRef(0);
 
-    // 대사 갱신 헬퍼
-    const updateDialogue = (
+    const nextId = () => { idCounter.current += 1; return idCounter.current; };
+
+    // 채팅 메시지 추가 헬퍼
+    const addMsg = (role: ChatMsg['role'], text: string, subText?: string, isSuccess?: boolean) => {
+        setChatMessages(prev => [...prev, { id: nextId(), role, text, subText, isSuccess }]);
+    };
+
+    // 선수 대사 생성 후 채팅에 추가
+    const addPlayerMsg = (
         trigger: DialogueTrigger,
         r: number,
         negSt: NegotiationState | null | undefined,
@@ -225,26 +220,36 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     ) => {
         const ctx: DialogueContext = {
             tendencies,
-            morale: moraleScore,
-            respect:    negSt?.respect    ?? 0.70,
-            trust:      negSt?.trust      ?? 0.70,
+            morale:      moraleScore,
+            respect:     negSt?.respect     ?? 0.70,
+            trust:       negSt?.trust       ?? 0.70,
             frustration: negSt?.frustration ?? 0,
-            round: r,
+            round:       r,
             negotiationType: negotiationType as NegotiationType,
         };
         const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
-        setDialogue(d);
-        setDialogueKey(k => k + 1);
-        setSubText(sub);
+        setChatMessages(prev => [...prev, { id: nextId(), role: 'player', text: d, subText: sub ?? undefined }]);
     };
 
-    // 초기 인사 대사
+    // 채팅 자동 스크롤
     useEffect(() => {
-        if (negotiationType === 'release') {
-            updateDialogue('RELEASE_PROPOSE', 0, null, null);
-        } else {
-            updateDialogue('GREETING', 0, negState, null);
-        }
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+
+    // 인사 대사 (마운트 시 1회)
+    useEffect(() => {
+        const trigger: DialogueTrigger = isRel ? 'RELEASE_PROPOSE' : 'GREETING';
+        const ctx: DialogueContext = {
+            tendencies,
+            morale:      moraleScore,
+            respect:     negState?.respect     ?? 0.70,
+            trust:       negState?.trust       ?? 0.70,
+            frustration: negState?.frustration ?? 0,
+            round:       0,
+            negotiationType: negotiationType as NegotiationType,
+        };
+        const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
+        setChatMessages([{ id: nextId(), role: 'player', text: d }]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -252,24 +257,23 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const handleFASubmit = () => {
         if (!faEntry || !faMarket || faResult?.accepted) return;
 
-        const result = processUserOffer(
-            faMarket,
-            myTeam,
-            player,
-            faEntry.prevTeamId,
-            { salary: faOfferSalary, years: faOfferYears, signingType: selectedSlot },
-            tendencySeed,
-            currentSeasonYear,
-        );
-
         const newRound = faRound + 1;
         setFaRound(newRound);
 
+        // GM 오퍼 버블
+        addMsg('gm', `${fmtM(faOfferSalary)} / yr · ${faOfferYears}년`, `예상 총액 ${fmtM(faOfferSalary * faOfferYears)}`);
+
+        const result = processUserOffer(
+            faMarket, myTeam, player, faEntry.prevTeamId,
+            { salary: faOfferSalary, years: faOfferYears, signingType: selectedSlot },
+            tendencySeed, currentSeasonYear,
+        );
+
         if (result.accepted) {
             setFaResult({ accepted: true });
-            updateDialogue('ACCEPT', newRound, null, null);
+            addPlayerMsg('ACCEPT', newRound, null, null);
+            setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '✓ 계약 체결!', isSuccess: true }]);
 
-            // 마켓 업데이트 빌드
             const updatedEntries = faMarket.entries.map(e =>
                 e.playerId === player.id
                     ? { ...e, status: 'signed' as const, signedTeamId: myTeam.id, signedYears: faOfferYears, signedSalary: faOfferSalary }
@@ -284,15 +288,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         } else {
             const reason = (result as { accepted: false; reason: string }).reason;
             setFaResult({ accepted: false, reason });
-
-            // 거절 트리거: 제시 연봉 수준에 따라 결정
             let trigger: DialogueTrigger = 'REJECT';
-            if (faEntry && faOfferSalary < faEntry.walkAwaySalary * 0.65) {
-                trigger = 'OFFER_INSULT';
-            } else if (faEntry && faOfferSalary < faEntry.walkAwaySalary) {
-                trigger = 'OFFER_LOW';
-            }
-            updateDialogue(trigger, newRound, null, null);
+            if (faOfferSalary < faEntry.walkAwaySalary * 0.65) trigger = 'OFFER_INSULT';
+            else if (faOfferSalary < faEntry.walkAwaySalary)    trigger = 'OFFER_LOW';
+            addPlayerMsg(trigger, newRound, null, null);
         }
     };
 
@@ -302,38 +301,34 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
         const { response, updatedState } = evaluateExtensionOffer(
             { years: extOfferYears, annualSalary: extOfferSalary, contenderScore },
-            negState,
-            tendencySeed,
+            negState, tendencySeed,
         );
 
         setNegState(updatedState);
         setLastExtResponse(response);
-        const newRound = round + 1;
-        setRound(newRound);
+        const newRound = updatedState.roundsUsed;
+
+        // GM 오퍼 버블
+        addMsg('gm', `${fmtM(extOfferSalary)} / yr · ${extOfferYears}년`, `예상 총액 ${fmtM(extOfferSalary * extOfferYears)}`);
 
         switch (response.outcome) {
             case 'ACCEPT':
-                updateDialogue('ACCEPT', newRound, updatedState, null);
+                addPlayerMsg('ACCEPT', newRound, updatedState, null);
+                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '✓ 계약 연장!', isSuccess: true }]);
                 onExtensionSigned?.(player.id, response.contract);
                 break;
             case 'COUNTER':
-                updateDialogue(
-                    'COUNTER',
-                    newRound,
-                    updatedState,
-                    `요구: ${fmtM(response.counterAAV)} / ${response.counterYears}년`,
-                );
+                addPlayerMsg('COUNTER', newRound, updatedState, `요구: ${fmtM(response.counterAAV)} / ${response.counterYears}년`);
                 break;
             case 'REJECT_HARD':
-                updateDialogue(
+                addPlayerMsg(
                     extOfferSalary < negState.demand.insultThreshold ? 'OFFER_INSULT' : 'OFFER_LOW',
-                    newRound,
-                    updatedState,
-                    null,
+                    newRound, updatedState, null,
                 );
                 break;
             case 'WALKED_AWAY':
-                updateDialogue('WALKED_AWAY', newRound, updatedState, null);
+                addPlayerMsg('WALKED_AWAY', newRound, updatedState, null);
+                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '협상 결렬', isSuccess: false }]);
                 break;
         }
     };
@@ -346,52 +341,58 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     };
 
     // ─── Derived ─────────────────────────────────────────────
-    const isExtFinal = negotiationType === 'extension' && !!(negState?.walkedAway || negState?.signed);
-    const isFAFinal  = negotiationType === 'fa' && !!faResult?.accepted;
-    const badge = TYPE_BADGE[negotiationType];
+    const isExtFinal = isExt && !!(negState?.walkedAway || negState?.signed);
+    const isFAFinal  = isFA  && !!faResult?.accepted;
 
-    const isFA = negotiationType === 'fa';
-    const isExt = negotiationType === 'extension';
-    const isRel = negotiationType === 'release';
-
-    const faIsAboveAsking  = faEntry ? faOfferSalary >= faEntry.askingSalary : false;
+    const faIsAboveAsking   = faEntry ? faOfferSalary >= faEntry.askingSalary  : false;
     const faIsBelowWalkaway = faEntry ? faOfferSalary < faEntry.walkAwaySalary : false;
 
+    // 중앙 패널 오퍼 요약 문장 (FM 스타일)
+    const offerSummaryText = (() => {
+        if (isFA)  return `구단은 ${player.name}에게 ${fmtM(faOfferSalary)} / yr, ${faOfferYears}년 계약을 제안합니다.`;
+        if (isExt) return `구단은 ${player.name}의 계약을 ${fmtM(extOfferSalary)} / yr, ${extOfferYears}년 연장 제안합니다.`;
+        const modeNames: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
+        return `구단은 ${player.name}을(를) ${modeNames[releaseMode]} 방출 처리합니다.`;
+    })();
+
+    const totalContractValue = isFA ? faOfferSalary * faOfferYears : isExt ? extOfferSalary * extOfferYears : 0;
+
     // ─── Render ──────────────────────────────────────────────
+    // absolute inset-0: FAView(relative) 위에만 오버레이 — 사이드바·헤더 노출 유지
     return (
-        <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col text-slate-200">
+        <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col text-slate-200 animate-in fade-in duration-200">
 
             {/* ── Header ── */}
-            <div className="flex-shrink-0 h-14 px-6 border-b border-slate-800 bg-slate-950 flex items-center gap-4">
+            <div className="flex-shrink-0 h-12 px-5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
                 <button
                     onClick={onClose}
-                    className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white transition-colors"
+                    className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors flex-shrink-0"
                 >
-                    <span className="text-base">←</span>
+                    <span>←</span>
                     <span>뒤로</span>
                 </button>
-                <div className="h-5 w-px bg-slate-700" />
-                <span className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded ${badge.className}`}>
+                <div className="h-4 w-px bg-slate-700 flex-shrink-0" />
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded flex-shrink-0 ${badge.className}`}>
                     {badge.label}
                 </span>
                 <button
                     onClick={() => onViewPlayer?.(player)}
-                    className="ml-auto text-right hover:opacity-80 transition-opacity"
+                    className="ml-2 hover:opacity-80 transition-opacity flex items-center gap-2"
                 >
-                    <div className="text-base font-black text-white ko-tight">{player.name}</div>
-                    <div className="text-xs font-mono text-slate-400">{player.position} · {player.age}세 · OVR {player.ovr}</div>
+                    <span className="text-sm font-black text-white ko-tight">{player.name}</span>
+                    <span className="text-xs font-mono text-slate-500">{player.position} · {player.age}세 · OVR {player.ovr}</span>
                 </button>
             </div>
 
-            {/* ── Main ── */}
+            {/* ── 3-panel Main ── */}
             <div className="flex-1 flex overflow-hidden min-h-0">
 
-                {/* ── Left Panel ── */}
-                <div className="w-72 flex-shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-5 space-y-4">
+                {/* ── 좌측: 선수 정보 ── */}
+                <div className="w-56 flex-shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
 
-                    {/* 선수 정보 카드 */}
+                    {/* 선수 기본 정보 */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                        <div className="px-3 py-2" style={{ backgroundColor: primaryColor }}>
+                        <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
                             <span className="text-[10px] font-black uppercase tracking-widest text-white/80">선수 정보</span>
                         </div>
                         <div className="p-3 space-y-1.5">
@@ -444,7 +445,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                     {/* 선수 기분 (Morale) */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                        <div className="px-3 py-2" style={{ backgroundColor: primaryColor }}>
+                        <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
                             <span className="text-[10px] font-black uppercase tracking-widest text-white/80">선수 기분</span>
                         </div>
                         <div className="p-3 space-y-2">
@@ -454,7 +455,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </span>
                                 <span className="text-xs font-mono text-slate-500">{Math.round(moraleScore)}</span>
                             </div>
-                            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                 <div
                                     className={`h-full rounded-full transition-all ${moraleBarColor(moraleScore)}`}
                                     style={{ width: `${moraleScore}%` }}
@@ -463,44 +464,44 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
                     </div>
 
-                    {/* Extension: 협상 감정 상태 */}
+                    {/* Extension: 감정 상태 */}
                     {isExt && negState && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <div className="px-3 py-2" style={{ backgroundColor: primaryColor }}>
+                            <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-white/80">협상 감정 상태</span>
                             </div>
                             <div className="p-3 space-y-2">
                                 {[
-                                    { label: '존중감',   value: negState.respect,      color: 'bg-indigo-500' },
-                                    { label: '신뢰도',   value: negState.trust,        color: 'bg-emerald-500' },
-                                    { label: '불만족도', value: negState.frustration,  color: 'bg-red-500' },
+                                    { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
+                                    { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
+                                    { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
                                 ].map(({ label, value, color }) => (
                                     <div key={label} className="flex items-center gap-2">
-                                        <div className="w-16 text-[10px] font-bold text-slate-500">{label}</div>
+                                        <div className="w-14 text-[10px] font-bold text-slate-500">{label}</div>
                                         <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full transition-all duration-500 ${color}`}
                                                 style={{ width: `${Math.round(value * 100)}%` }}
                                             />
                                         </div>
-                                        <div className="w-8 text-[10px] font-mono text-right text-slate-500">
+                                        <div className="w-7 text-[10px] font-mono text-right text-slate-500">
                                             {Math.round(value * 100)}
                                         </div>
                                     </div>
                                 ))}
                                 {negState.lowballCount > 0 && (
                                     <div className="text-[10px] text-amber-400 font-bold pt-1">
-                                        ⚠ 저가 제안 경고 {negState.lowballCount}/3
+                                        ⚠ 저가 경고 {negState.lowballCount}/3
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {/* Extension: 요구 조건 정보 */}
+                    {/* Extension: 협상 현황 */}
                     {isExt && negState && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">협상 현황</div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">협상 현황</div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-500">현재 요구</span>
                                 <span className="font-mono font-bold text-amber-400">{fmtM(negState.currentCounterAAV)} / yr</span>
@@ -520,10 +521,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
                     )}
 
-                    {/* FA: 시장 정보 */}
+                    {/* FA: 협상 현황 */}
                     {isFA && faEntry && faRound > 0 && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">협상 현황</div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">협상 현황</div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-500">제출 횟수</span>
                                 <span className="font-mono text-slate-300">{faRound}회</span>
@@ -535,10 +536,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
                     )}
 
-                    {/* Release: 방출 방식 정보 */}
+                    {/* Release: 데드캡 정보 */}
                     {isRel && releaseMode !== 'waive' && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">데드캡 정보</div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">데드캡 정보</div>
                             {releaseMode === 'stretch' && (
                                 <div className="flex justify-between text-xs">
                                     <span className="text-slate-500">연간 데드캡</span>
@@ -563,60 +564,28 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     )}
                 </div>
 
-                {/* ── Center: Dialogue ── */}
-                <div className="flex-1 flex flex-col items-center justify-center gap-8 px-8 overflow-hidden">
-                    {/* 플레이어 아바타 */}
-                    <div
-                        className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-black text-white shadow-2xl ring-4 ring-white/10 flex-shrink-0"
-                        style={{ backgroundColor: primaryColor }}
-                    >
-                        {player.name.charAt(0)}
-                    </div>
+                {/* ── 중앙: 오퍼 폼 ── */}
+                <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 min-w-0">
 
-                    {/* 대사 */}
-                    <div
-                        key={dialogueKey}
-                        className="animate-in fade-in slide-in-from-bottom-2 duration-300 text-center max-w-xl space-y-4"
-                    >
-                        {dialogue ? (
-                            <p className="text-2xl font-bold text-white leading-relaxed">
-                                &ldquo;{dialogue}&rdquo;
-                            </p>
-                        ) : (
-                            <p className="text-2xl font-bold text-slate-600">...</p>
-                        )}
-                        {subText && (
-                            <p className="text-sm font-mono text-slate-400 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2">
-                                {subText}
-                            </p>
+                    {/* FM 스타일 오퍼 요약 카드 */}
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">현재 제안</div>
+                        <p className="text-sm text-slate-200 leading-relaxed">{offerSummaryText}</p>
+                        {totalContractValue > 0 && (
+                            <div className="mt-3 pt-2.5 border-t border-slate-700/50 flex items-center justify-between">
+                                <span className="text-xs text-slate-500">예상 계약 총액</span>
+                                <span className="text-lg font-mono font-black text-amber-400">{fmtM(totalContractValue)}</span>
+                            </div>
                         )}
                     </div>
 
-                    {/* 최종 상태 배지 */}
-                    {(isExtFinal || isFAFinal) && (
-                        <div className={`px-5 py-2.5 rounded-lg text-sm font-black uppercase tracking-wide ${
-                            (negState?.signed || faResult?.accepted)
-                                ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400'
-                                : 'bg-red-500/20 border border-red-500/40 text-red-400'
-                        }`}>
-                            {(negState?.signed || faResult?.accepted) ? '✓ 계약 체결!' : '협상 결렬'}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* ── Bottom Controls ── */}
-            <div className="flex-shrink-0 border-t border-slate-800 bg-slate-900/50 px-8 py-5">
-
-                {/* ── FA Controls ── */}
-                {isFA && faEntry && (
-                    <div className="flex gap-8 items-start">
-
-                        {/* 계약 슬롯 선택 */}
-                        {!faResult?.accepted && (
-                            <div className="flex-shrink-0 w-52 space-y-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 슬롯</div>
-                                <div className="space-y-1">
+                    {/* ── FA 컨트롤 ── */}
+                    {isFA && faEntry && !isFAFinal && (
+                        <>
+                            {/* 계약 슬롯 */}
+                            <div className="flex-shrink-0">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">계약 슬롯</div>
+                                <div className="flex flex-wrap gap-1.5">
                                     {slots.map(slot => (
                                         <button
                                             key={slot}
@@ -626,134 +595,123 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 setFaOfferSalary(prev => Math.min(prev, newMax));
                                                 setFaOfferYears(prev => Math.min(prev, slot === 'tax_mle' ? 2 : 5));
                                             }}
-                                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                                                 selectedSlot === slot
-                                                    ? 'border-indigo-500 bg-indigo-500/15 text-white'
-                                                    : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600'
+                                                    ? 'border-indigo-500 bg-indigo-500/20 text-white'
+                                                    : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
                                             }`}
                                         >
                                             {SLOT_LABELS[slot]}
                                         </button>
                                     ))}
                                     {slots.length === 0 && (
-                                        <div className="text-xs text-slate-500 py-2">사용 가능한 슬롯 없음</div>
+                                        <div className="text-xs text-slate-500 py-1">사용 가능한 슬롯 없음</div>
                                     )}
                                 </div>
                             </div>
-                        )}
 
-                        {/* 연봉 + 연수 */}
-                        {!faResult?.accepted && (
-                            <div className="flex-1 space-y-4">
-                                {/* 연봉 슬라이더 */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
-                                        <div className={`text-sm font-mono font-bold ${
-                                            faIsAboveAsking ? 'text-emerald-400' :
-                                            faIsBelowWalkaway ? 'text-red-400' :
-                                            'text-amber-400'
-                                        }`}>{fmtM(faOfferSalary)}</div>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={vetMin}
-                                        max={Math.max(currentSlotMax, faEntry.askingSalary)}
-                                        step={100_000}
-                                        value={faOfferSalary}
-                                        onChange={e => setFaOfferSalary(Number(e.target.value))}
-                                        className="w-full accent-indigo-500"
-                                        disabled={selectedSlot === 'vet_min'}
-                                    />
-                                    <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-0.5">
-                                        <span>{fmtM(vetMin)}</span>
-                                        <span className="text-amber-600">요구 {fmtM(faEntry.askingSalary)}</span>
-                                        <span>{fmtM(Math.max(currentSlotMax, faEntry.askingSalary))}</span>
-                                    </div>
-                                    <div className="mt-1 text-[10px] text-center">
-                                        {faIsAboveAsking
-                                            ? <span className="text-emerald-400">✓ 요구 이상 — 높은 수락 확률</span>
-                                            : faIsBelowWalkaway
-                                            ? <span className="text-red-400">✗ 최저선 미달 — 거절 확정</span>
-                                            : <span className="text-slate-500">협상 구간</span>
-                                        }
-                                    </div>
+                            {/* 연봉 슬라이더 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
+                                    <div className={`text-lg font-mono font-black ${
+                                        faIsAboveAsking ? 'text-emerald-400' : faIsBelowWalkaway ? 'text-red-400' : 'text-amber-400'
+                                    }`}>{fmtM(faOfferSalary)}</div>
                                 </div>
-
-                                {/* 연수 버튼 */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
-                                        <div className="text-sm font-mono font-bold text-white">{faOfferYears}년</div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {Array.from({ length: faMaxYears }, (_, i) => i + 1).map(y => (
-                                            <button
-                                                key={y}
-                                                onClick={() => setFaOfferYears(y)}
-                                                className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition-all ${
-                                                    faOfferYears === y
-                                                        ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                                                        : 'border-slate-700 bg-slate-800 text-slate-500 hover:border-slate-600'
-                                                }`}
-                                            >
-                                                {y}
-                                            </button>
-                                        ))}
-                                    </div>
+                                <input
+                                    type="range"
+                                    min={vetMin}
+                                    max={Math.max(currentSlotMax, faEntry.askingSalary)}
+                                    step={100_000}
+                                    value={faOfferSalary}
+                                    onChange={e => setFaOfferSalary(Number(e.target.value))}
+                                    className="w-full accent-indigo-500"
+                                    disabled={selectedSlot === 'vet_min'}
+                                />
+                                <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                                    <span>{fmtM(vetMin)}</span>
+                                    <span className="text-amber-600">요구 {fmtM(faEntry.askingSalary)}</span>
+                                    <span>{fmtM(Math.max(currentSlotMax, faEntry.askingSalary))}</span>
+                                </div>
+                                <div className="text-[10px] text-center">
+                                    {faIsAboveAsking
+                                        ? <span className="text-emerald-400">✓ 요구 이상 — 높은 수락 확률</span>
+                                        : faIsBelowWalkaway
+                                        ? <span className="text-red-400">✗ 최저선 미달 — 거절 확정</span>
+                                        : <span className="text-slate-500">협상 구간</span>
+                                    }
                                 </div>
                             </div>
-                        )}
 
-                        {/* 제출 / 결과 */}
-                        <div className="flex-shrink-0 w-44 flex flex-col gap-3 pt-5">
-                            {!faResult ? (
+                            {/* 계약 연수 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
+                                    <div className="text-lg font-mono font-black text-white">{faOfferYears}년</div>
+                                </div>
+                                <div className="flex gap-2">
+                                    {Array.from({ length: faMaxYears }, (_, i) => i + 1).map(y => (
+                                        <button
+                                            key={y}
+                                            onClick={() => setFaOfferYears(y)}
+                                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${
+                                                faOfferYears === y
+                                                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
+                                                    : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
+                                            }`}
+                                        >{y}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 거절 사유 */}
+                            {faResult && !faResult.accepted && (
+                                <div className="flex-shrink-0 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-400">
+                                    {faResult.reason ?? '거절됨 — 조건을 수정해 재협상하세요.'}
+                                </div>
+                            )}
+
+                            {/* 제출 버튼 */}
+                            <div className="flex-shrink-0 flex gap-3 mt-auto pt-2">
+                                {faResult && !faResult.accepted && (
+                                    <button
+                                        onClick={() => setFaResult(null)}
+                                        className="flex-1 py-3 rounded-xl text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
+                                    >재협상</button>
+                                )}
                                 <button
                                     onClick={handleFASubmit}
                                     disabled={slots.length === 0 || faIsBelowWalkaway}
-                                    className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
+                                    className="flex-1 py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
                                         bg-indigo-600 hover:bg-indigo-500 text-white
                                         disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    오퍼 제출
-                                </button>
-                            ) : faResult.accepted ? (
-                                <button
-                                    onClick={onClose}
-                                    className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
-                                        bg-emerald-600 hover:bg-emerald-500 text-white"
-                                >
-                                    완료
-                                </button>
-                            ) : (
-                                <>
-                                    <div className="text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                                        {faResult.reason ?? '거절'}
-                                    </div>
-                                    <button
-                                        onClick={() => setFaResult(null)}
-                                        className="w-full py-2 rounded-lg font-bold text-sm transition-all
-                                            bg-slate-700 hover:bg-slate-600 text-slate-200"
-                                    >
-                                        재협상
-                                    </button>
-                                </>
-                            )}
+                                >오퍼 제출</button>
+                            </div>
+                        </>
+                    )}
+
+                    {/* FA 완료 */}
+                    {isFAFinal && (
+                        <div className="flex-1 flex flex-col items-center justify-center gap-5">
+                            <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/50 flex items-center justify-center">
+                                <span className="text-3xl text-emerald-400">✓</span>
+                            </div>
+                            <div className="text-2xl font-black text-emerald-400 uppercase tracking-wide">계약 체결!</div>
+                            <button
+                                onClick={onClose}
+                                className="px-10 py-3 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
+                            >완료</button>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* ── Extension Controls ── */}
-                {isExt && negState && (
-                    <div className="flex gap-8 items-start">
-
-                        {/* 연봉 + 연수 */}
-                        <div className="flex-1 space-y-4">
+                    {/* ── Extension 컨트롤 ── */}
+                    {isExt && negState && !isExtFinal && (
+                        <>
                             {/* 연봉 슬라이더 */}
-                            <div>
-                                <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="flex items-center justify-between">
                                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 연봉 / yr</div>
-                                    <div className={`text-sm font-mono font-bold ${
+                                    <div className={`text-lg font-mono font-black ${
                                         extOfferSalary >= negState.demand.targetAAV ? 'text-emerald-400' :
                                         extOfferSalary < negState.demand.insultThreshold ? 'text-red-500' :
                                         extOfferSalary < negState.demand.reservationFloor ? 'text-red-400' :
@@ -768,14 +726,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     value={extOfferSalary}
                                     onChange={e => setExtOfferSalary(Number(e.target.value))}
                                     className="w-full accent-violet-500"
-                                    disabled={isExtFinal}
                                 />
-                                <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-0.5">
+                                <div className="flex justify-between text-[10px] font-mono text-slate-500">
                                     <span>{fmtM(Math.round(negState.demand.insultThreshold * 0.9))}</span>
                                     <span className="text-amber-600">요구 {fmtM(negState.currentCounterAAV)}</span>
                                     <span>{fmtM(Math.round(negState.demand.openingAsk * 1.3))}</span>
                                 </div>
-                                <div className="mt-1 text-[10px] text-center">
+                                <div className="text-[10px] text-center">
                                     {extOfferSalary >= negState.demand.targetAAV
                                         ? <span className="text-emerald-400">✓ 목표가 이상 — 높은 수락 가능성</span>
                                         : extOfferSalary < negState.demand.insultThreshold
@@ -787,76 +744,78 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
-                            {/* 연수 버튼 */}
-                            <div>
-                                <div className="flex items-center justify-between mb-1.5">
+                            {/* 계약 연수 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="flex items-center justify-between">
                                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
-                                    <div className="text-sm font-mono font-bold text-white">{extOfferYears}년</div>
+                                    <div className="text-lg font-mono font-black text-white">{extOfferYears}년</div>
                                 </div>
                                 <div className="flex gap-2">
                                     {[1, 2, 3, 4].map(y => (
                                         <button
                                             key={y}
                                             onClick={() => setExtOfferYears(y)}
-                                            disabled={isExtFinal}
-                                            className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition-all ${
+                                            className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${
                                                 extOfferYears === y
                                                     ? 'border-violet-500 bg-violet-500/20 text-violet-300'
-                                                    : 'border-slate-700 bg-slate-800 text-slate-500 hover:border-slate-600'
+                                                    : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
                                             }`}
-                                        >
-                                            {y}
-                                        </button>
+                                        >{y}</button>
                                     ))}
                                 </div>
                             </div>
-                        </div>
 
-                        {/* 응답 배너 + 제출 */}
-                        <div className="flex-shrink-0 w-44 flex flex-col gap-3 pt-5">
-                            {lastExtResponse && !isExtFinal && (
-                                <div className={`rounded-lg px-3 py-2 text-xs font-bold border text-center ${
-                                    lastExtResponse.outcome === 'COUNTER'
-                                        ? 'bg-violet-500/10 border-violet-500/30 text-violet-300'
-                                        : 'bg-red-500/10 border-red-500/30 text-red-400'
-                                }`}>
-                                    {lastExtResponse.outcome === 'COUNTER' ? '카운터 제시' : '거절'}
+                            {/* 카운터 배너 */}
+                            {lastExtResponse?.outcome === 'COUNTER' && (
+                                <div className="flex-shrink-0 bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-300">
+                                    카운터 오퍼: {fmtM(lastExtResponse.counterAAV)} / yr · {lastExtResponse.counterYears}년 — 오른쪽 채팅 확인
                                 </div>
                             )}
-                            {!isExtFinal ? (
+
+                            {/* 제출 버튼 */}
+                            <div className="flex-shrink-0 mt-auto pt-2">
                                 <button
                                     onClick={handleExtSubmit}
-                                    className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
+                                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
                                         bg-violet-600 hover:bg-violet-500 text-white"
-                                >
-                                    오퍼 제출
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={onClose}
-                                    className={`w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
-                                        ${negState.signed
-                                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                            : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                                        }`}
-                                >
-                                    {negState.signed ? '완료' : '닫기'}
-                                </button>
-                            )}
+                                >오퍼 제출</button>
+                            </div>
+                        </>
+                    )}
+
+                    {/* Extension 최종 상태 */}
+                    {isExtFinal && negState && (
+                        <div className="flex-1 flex flex-col items-center justify-center gap-5">
+                            <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
+                                negState.signed
+                                    ? 'bg-emerald-500/20 border-2 border-emerald-500/50'
+                                    : 'bg-red-500/20 border-2 border-red-500/50'
+                            }`}>
+                                <span className={`text-3xl ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {negState.signed ? '✓' : '✗'}
+                                </span>
+                            </div>
+                            <div className={`text-2xl font-black uppercase tracking-wide ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {negState.signed ? '계약 연장!' : '협상 결렬'}
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className={`px-10 py-3 rounded-xl font-bold text-sm transition-all ${
+                                    negState.signed
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                        : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                                }`}
+                            >{negState.signed ? '완료' : '닫기'}</button>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* ── Release Controls ── */}
-                {isRel && (
-                    <div className="flex gap-8 items-start">
-
-                        {/* 방출 방식 + 바이아웃 슬라이더 */}
-                        <div className="flex-1 space-y-4">
-                            {/* 방식 선택 버튼 */}
-                            <div>
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">방출 방식</div>
-                                <div className="flex gap-3">
+                    {/* ── Release 컨트롤 ── */}
+                    {isRel && (
+                        <>
+                            {/* 방출 방식 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">방출 방식</div>
+                                <div className="grid grid-cols-3 gap-2">
                                     {(['waive', 'stretch', 'buyout'] as ReleaseType[]).map(mode => {
                                         const labels: Record<ReleaseType, { name: string; desc: string }> = {
                                             waive:   { name: '웨이브',   desc: `데드캡 ${fmtM(totalRemaining)}` },
@@ -870,12 +829,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 key={mode}
                                                 disabled={isDisabled}
                                                 onClick={() => { if (!isDisabled) setReleaseMode(mode); }}
-                                                className={`flex-1 text-left p-3 rounded-lg border transition-all ${
+                                                className={`p-3 rounded-xl border transition-all text-left ${
                                                     isDisabled
                                                         ? 'opacity-30 cursor-not-allowed border-slate-700 bg-transparent'
                                                         : isSelected
                                                         ? 'border-red-500/60 bg-red-500/10 text-white'
-                                                        : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600'
+                                                        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
                                                 }`}
                                             >
                                                 <div className="text-sm font-bold">{labels[mode].name}</div>
@@ -888,10 +847,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 바이아웃 슬라이더 */}
                             {releaseMode === 'buyout' && (
-                                <div>
-                                    <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex-shrink-0 space-y-2">
+                                    <div className="flex items-center justify-between">
                                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">제시 금액</div>
-                                        <div className={`text-sm font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        <div className={`text-lg font-mono font-black ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
                                             {fmtM(buyoutAmount)} {buyoutAccepted ? '✓ 수락 예상' : '✗ 거절 예상'}
                                         </div>
                                     </div>
@@ -903,41 +862,108 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         onChange={e => setBuyoutSlider(Number(e.target.value))}
                                         className="w-full accent-emerald-500"
                                     />
-                                    <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-0.5">
+                                    <div className="flex justify-between text-[10px] font-mono text-slate-500">
                                         <span>최소 {fmtM(minBuyoutAmount)} ({minBuyoutPct}%)</span>
                                         <span>전액 {fmtM(totalRemaining)}</span>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mt-1">
-                                        선수는 잔여 금액의 최소 {minBuyoutPct}%를 요구합니다.
-                                    </p>
                                 </div>
                             )}
-                        </div>
 
-                        {/* 데드캡 + 확정 버튼 */}
-                        <div className="flex-shrink-0 w-52 flex flex-col gap-3 pt-2">
-                            <div className="bg-slate-800 rounded-lg px-4 py-2.5 flex items-center justify-between">
-                                <span className="text-xs text-slate-400">
-                                    {releaseMode === 'stretch' ? '연간 데드캡' : '데드캡'}
-                                </span>
-                                <span className="text-sm font-mono font-bold text-red-400">
-                                    {releaseMode === 'waive'   ? fmtM(totalRemaining) :
-                                     releaseMode === 'stretch' ? fmtM(stretchAnnual) :
-                                     fmtM(buyoutAmount)}
-                                </span>
+                            {/* 데드캡 확인 + 방출 버튼 */}
+                            <div className="flex-shrink-0 mt-auto pt-2 space-y-3">
+                                <div className="bg-slate-800 rounded-xl px-5 py-3 flex items-center justify-between">
+                                    <span className="text-sm text-slate-400">
+                                        {releaseMode === 'stretch' ? '연간 데드캡' : '이번 시즌 데드캡'}
+                                    </span>
+                                    <span className="text-lg font-mono font-black text-red-400">
+                                        {releaseMode === 'waive'   ? fmtM(totalRemaining)  :
+                                         releaseMode === 'stretch' ? fmtM(stretchAnnual)   :
+                                         fmtM(buyoutAmount)}
+                                    </span>
+                                </div>
+                                <button
+                                    disabled={releaseMode === 'buyout' && !buyoutAccepted}
+                                    onClick={handleReleaseConfirm}
+                                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
+                                        bg-red-600 hover:bg-red-500 text-white
+                                        disabled:opacity-40 disabled:cursor-not-allowed"
+                                >방출 확정</button>
                             </div>
-                            <button
-                                disabled={releaseMode === 'buyout' && !buyoutAccepted}
-                                onClick={handleReleaseConfirm}
-                                className="w-full py-3 rounded-lg font-black uppercase tracking-wide text-sm transition-all
-                                    bg-red-600 hover:bg-red-500 text-white
-                                    disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                방출 확정
-                            </button>
+                        </>
+                    )}
+                </div>
+
+                {/* ── 우측: 채팅 패널 ── */}
+                <div className="w-80 flex-shrink-0 border-l border-slate-800 flex flex-col">
+
+                    {/* 채팅 헤더 */}
+                    <div className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center gap-3">
+                        <div
+                            className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
+                            style={{ backgroundColor: accentColor }}
+                        >
+                            {player.name.charAt(0)}
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-white ko-tight">{player.name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">{player.position} · {player.age}세 · OVR {player.ovr}</div>
                         </div>
                     </div>
-                )}
+
+                    {/* 메시지 목록 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                        {chatMessages.map(msg => {
+                            // 상태 배지
+                            if (msg.role === 'status') {
+                                return (
+                                    <div key={msg.id} className="flex justify-center">
+                                        <div className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
+                                            msg.isSuccess
+                                                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                                                : 'bg-red-500/20 border-red-500/30 text-red-400'
+                                        }`}>{msg.text}</div>
+                                    </div>
+                                );
+                            }
+
+                            // GM 오퍼 버블 (우측 정렬)
+                            if (msg.role === 'gm') {
+                                return (
+                                    <div key={msg.id} className="flex justify-end">
+                                        <div className="max-w-[85%] bg-indigo-600/15 border border-indigo-500/25 rounded-2xl rounded-tr-sm px-4 py-3">
+                                            <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">내 오퍼</div>
+                                            <div className="text-sm font-mono font-bold text-white">{msg.text}</div>
+                                            {msg.subText && (
+                                                <div className="text-[10px] text-slate-400 mt-0.5">{msg.subText}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // 선수 대사 버블 (좌측 정렬)
+                            return (
+                                <div key={msg.id} className="flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                    <div
+                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black text-white mt-0.5"
+                                        style={{ backgroundColor: accentColor }}
+                                    >
+                                        {player.name.charAt(0)}
+                                    </div>
+                                    <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
+                                        <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
+                                        {msg.subText && (
+                                            <p className="text-[10px] font-mono text-slate-400 mt-1.5 bg-slate-700/50 rounded px-2 py-1">
+                                                {msg.subText}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div ref={chatEndRef} />
+                    </div>
+                </div>
             </div>
         </div>
     );
