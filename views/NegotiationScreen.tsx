@@ -33,12 +33,19 @@ import type { Team } from '../types/team';
 // Types
 // ─────────────────────────────────────────────────────────────
 
+interface ContractData {
+    salaries: number[];
+    aav: number;
+    total: number;
+}
+
 interface ChatMsg {
     id: number;
     role: 'player' | 'gm' | 'status';
     text: string;
     subText?: string;
     isSuccess?: boolean;
+    contractData?: ContractData;
 }
 
 interface NegotiationScreenProps {
@@ -269,8 +276,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const nextId = () => { idCounter.current += 1; return idCounter.current; };
 
     // 채팅 메시지 추가 헬퍼
-    const addMsg = (role: ChatMsg['role'], text: string, subText?: string, isSuccess?: boolean) => {
-        setChatMessages(prev => [...prev, { id: nextId(), role, text, subText, isSuccess }]);
+    const addMsg = (role: ChatMsg['role'], text: string, subText?: string, isSuccess?: boolean, contractData?: ContractData) => {
+        setChatMessages(prev => [...prev, { id: nextId(), role, text, subText, isSuccess, contractData }]);
     };
 
     // 선수 대사 생성 후 채팅에 추가
@@ -341,11 +348,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         }
 
         // GM 오퍼 버블
-        const faOfferDetail = faIsDecliningSalary
-            ? `${fmtM(faOfferSalaries[0])} → ${fmtM(faOfferSalaries[faOfferSalaries.length - 1])} · ${faOfferYears}년 · 총액 ${fmtM(totalContractValue)}`
-            : `AAV ${fmtM(faOfferAAV)} · ${faOfferYears}년 · 총액 ${fmtM(totalContractValue)}`;
         const faPhrase = GM_OFFER_PHRASES[(newRound - 1) % GM_OFFER_PHRASES.length];
-        addMsg('gm', faPhrase, faOfferDetail);
+        addMsg('gm', faPhrase, undefined, undefined, { salaries: [...faOfferSalaries], aav: faOfferAAV, total: totalContractValue });
 
         const result = processUserOffer(
             faMarket, myTeam, player, faEntry.prevTeamId,
@@ -403,11 +407,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         const newRound = updatedState.roundsUsed;
 
         // GM 오퍼 버블
-        const extOfferDetail = extIsDecliningSalary
-            ? `${fmtM(extOfferSalaries[0])} → ${fmtM(extOfferSalaries[extOfferSalaries.length - 1])} · ${extOfferYears}년 · 총액 ${fmtM(totalContractValue)}`
-            : `AAV ${fmtM(extOfferAAV)} · ${extOfferYears}년 · 총액 ${fmtM(totalContractValue)}`;
         const extPhrase = GM_OFFER_PHRASES[(newRound - 1) % GM_OFFER_PHRASES.length];
-        addMsg('gm', extPhrase, extOfferDetail);
+        addMsg('gm', extPhrase, undefined, undefined, { salaries: [...extOfferSalaries], aav: extOfferAAV, total: totalContractValue });
 
         switch (response.outcome) {
             case 'ACCEPT':
@@ -530,6 +531,56 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     </div>
 
 
+                    {/* 직전 계약 테이블 */}
+                    {player.contract && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <div className="px-3 py-1.5" style={{ backgroundColor: primaryColor }}>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-white/80">직전 계약</span>
+                            </div>
+                            <div className="p-3">
+                                <table className="w-full text-xs border-collapse">
+                                    <tbody>
+                                        {player.contract.years.map((sal, i) => {
+                                            const isCurrent = i === player.contract!.currentYear;
+                                            const isCompleted = i < player.contract!.currentYear;
+                                            const opt = player.contract!.option;
+                                            const isOptionYear = opt && opt.year === i;
+                                            return (
+                                                <tr key={i} className={isCompleted ? 'opacity-40' : ''}>
+                                                    <td className="py-0.5 text-slate-500 pr-3">
+                                                        {i + 1}년차
+                                                        {isCurrent && <span className="ml-1 text-[9px] font-black text-indigo-400 uppercase">현재</span>}
+                                                    </td>
+                                                    <td className="py-0.5 text-right font-mono font-bold text-slate-200">{fmtM(sal)}</td>
+                                                    <td className="py-0.5 pl-2 text-right text-[9px] text-slate-500">
+                                                        {isOptionYear && (opt!.type === 'player' ? '선수옵션' : '팀옵션')}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr>
+                                            <td colSpan={3}><div className="border-t border-slate-700 my-1.5" /></td>
+                                        </tr>
+                                        <tr>
+                                            <td className="text-slate-500">총액</td>
+                                            <td className="text-right font-mono font-black text-amber-300">
+                                                {fmtM(player.contract.years.reduce((a, b) => a + b, 0))}
+                                            </td>
+                                            <td />
+                                        </tr>
+                                        <tr>
+                                            <td className="text-slate-500 pt-1">유형</td>
+                                            <td className="text-right font-mono text-slate-400 pt-1" colSpan={2}>
+                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
+                                                {player.contract.noTrade && <span className="ml-1.5 text-[9px] font-black text-amber-400">NTC</span>}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Extension: 감정 상태 */}
                     {isExt && negState && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -555,41 +606,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </div>
                                     </div>
                                 ))}
-                                {negState.lowballCount > 0 && (
-                                    <div className="text-xs text-amber-400 font-bold pt-1">
-                                        ⚠ 저가 경고 {negState.lowballCount}/3
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Extension: 협상 현황 */}
-                    {isExt && negState && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">협상 현황</div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">최소 수용선</span>
-                                <span className="font-mono text-slate-400">{fmtM(negState.demand.reservationFloor)} / yr</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">협상 라운드</span>
-                                <span className="font-mono text-slate-300">{negState.roundsUsed}회</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* FA: 협상 현황 */}
-                    {isFA && faEntry && faRound > 0 && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">협상 현황</div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">제출 횟수</span>
-                                <span className="font-mono text-slate-300">{faRound}회</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">MVS</span>
-                                <span className="font-mono text-slate-300">{faEntry.marketValueScore}</span>
                             </div>
                         </div>
                     )}
@@ -635,14 +651,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="text-sm font-bold text-white ko-tight">{player.name}</div>
-                            <div className="text-[10px] text-slate-500 font-mono">{player.position} · {player.age}세 · OVR {player.ovr}</div>
+                            <div className="text-xs text-slate-500 font-mono">{player.position} · {player.age}세</div>
                         </div>
                         <div className="flex-shrink-0 flex items-center gap-2">
                             <span className="text-2xl leading-none">{moraleEmoji(moraleScore)}</span>
-                            <div className="text-right">
-                                <div className={`text-xs font-bold ${moraleTextColor(moraleScore)}`}>{getMoraleLabel(moraleScore)}</div>
-                                <div className="text-[10px] font-mono text-slate-500">{Math.round(moraleScore)}</div>
-                            </div>
+                            <div className={`text-base font-bold ${moraleTextColor(moraleScore)}`}>{getMoraleLabel(moraleScore)}</div>
                         </div>
                     </div>
 
@@ -664,16 +677,35 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             // GM 오퍼 버블 (우측 정렬, 대화체)
                             if (msg.role === 'gm') {
+                                const cd = msg.contractData;
                                 return (
-                                    <div key={msg.id} className="flex items-end gap-2 justify-end animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                    <div key={msg.id} className="flex flex-col items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                        <span className="text-xs font-bold text-indigo-400 px-1">GM</span>
                                         <div className="max-w-[85%] bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-br-sm px-4 py-3">
                                             <p className="text-sm text-white leading-relaxed">{msg.text}</p>
-                                            {msg.subText && (
-                                                <p className="text-[11px] font-mono text-indigo-300/80 mt-1.5">{msg.subText}</p>
+                                            {cd && (
+                                                <table className="mt-2.5 w-full text-[11px] font-mono border-collapse">
+                                                    <tbody>
+                                                        {cd.salaries.map((sal, i) => (
+                                                            <tr key={i}>
+                                                                <td className="text-slate-500 pr-4 py-0.5">{i + 1}년차</td>
+                                                                <td className="text-right text-slate-200">{fmtM(sal)}</td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr>
+                                                            <td colSpan={2}><div className="border-t border-indigo-500/30 my-1" /></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="text-slate-500 pr-4 py-0.5">AAV</td>
+                                                            <td className="text-right text-indigo-300">{fmtM(cd.aav)}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="text-slate-500 pr-4 py-0.5">총액</td>
+                                                            <td className="text-right font-black text-amber-300">{fmtM(cd.total)}</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
                                             )}
-                                        </div>
-                                        <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-black text-white bg-indigo-700">
-                                            GM
                                         </div>
                                     </div>
                                 );
@@ -681,13 +713,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             // 선수 대사 버블 (좌측 정렬)
                             return (
-                                <div key={msg.id} className="flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                                    <div
-                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black text-white mt-0.5"
-                                        style={{ backgroundColor: accentColor }}
-                                    >
-                                        {player.name.charAt(0)}
-                                    </div>
+                                <div key={msg.id} className="flex flex-col items-start gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                    <span className="text-xs font-bold text-slate-400 px-1">{player.name}</span>
                                     <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
                                         <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
                                         {msg.subText && (
@@ -761,7 +788,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         setFaOfferYears(y);
                                         setFaOfferSalaries(generateEscalatedSalaries(faOfferSalaries[0] ?? (faEntry.askingSalary), faEscalateRate, y));
                                     }}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
                                 >
                                     {Array.from({ length: faMaxYears }, (_, i) => i + 1).map(y => (
                                         <option key={y} value={y}>{y}년</option>
@@ -895,7 +922,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         setExtOfferYears(y);
                                         setExtOfferSalaries(generateEscalatedSalaries(extOfferSalaries[0] ?? (negState.demand.openingAsk), extEscalateRate, y));
                                     }}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
                                 >
                                     {[1, 2, 3, 4].map(y => (
                                         <option key={y} value={y}>{y}년</option>
