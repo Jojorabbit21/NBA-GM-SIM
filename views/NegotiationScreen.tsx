@@ -511,10 +511,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             </div>
 
             {/* ── 3-panel Main ── */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
+            <div className="flex-1 flex overflow-hidden min-h-0 p-3 gap-3">
 
                 {/* ── 좌측: 선수 정보 ── */}
-                <div className="flex-[2] min-w-0 border-r border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
 
                     {/* 통합 선수 카드 */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -659,7 +659,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 중앙: 채팅 패널 ── */}
-                <div className="flex-[5] min-w-0 border-r border-slate-800 flex flex-col">
+                <div className="flex-[5] min-w-0 rounded-2xl border border-slate-800 flex flex-col overflow-hidden">
 
                     {/* 채팅 헤더 */}
                     <div className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center gap-3">
@@ -749,7 +749,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className="flex-[3] min-w-0 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 border-l border-slate-800">
+                <div className="flex-[3] min-w-0 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 rounded-2xl border border-slate-800">
 
                     {/* FM 스타일 오퍼 요약 카드 */}
                     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
@@ -891,11 +891,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
 
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-                                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-800/40">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 조건</div>
-                                </div>
-                                <div className="px-4 py-3 space-y-3">
+                            <div className="flex-shrink-0 space-y-3">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
                                     {/* 계약 옵션 (2년 이상 시) */}
                                     {faOfferYears >= 2 && (
                                         <div>
@@ -953,7 +950,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             })}
                                         </div>
                                     )}
-                                </div>
                             </div>
 
                             {/* 거절 사유 */}
@@ -1000,34 +996,29 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {isExt && negState && !isExtFinal && (
                         <>
                             {/* 계약 연수 */}
-                            <div className="flex-shrink-0 rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-                                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-800/40">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 연수</div>
-                                </div>
-                                <div className="px-4 py-3">
-                                    <select
-                                        value={extOfferYears}
-                                        onChange={e => {
-                                            const y = Number(e.target.value);
-                                            setExtOfferYears(y);
-                                            setExtOfferSalaries(generateEscalatedSalaries(extOfferSalaries[0] ?? (negState.demand.openingAsk), extEscalateRate, y));
-                                        }}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-3 pr-8 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
-                                    >
-                                        {[1, 2, 3, 4].map(y => (
-                                            <option key={y} value={y}>{y}년</option>
-                                        ))}
-                                    </select>
-                                </div>
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1.5">계약 연수</div>
+                                <select
+                                    value={extOfferYears}
+                                    onChange={e => {
+                                        const y = Number(e.target.value);
+                                        setExtOfferYears(y);
+                                        setExtOfferSalaries(generateEscalatedSalaries(extOfferSalaries[0] ?? (negState.demand.openingAsk), extEscalateRate, y));
+                                    }}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2.5 text-sm font-mono font-bold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+                                >
+                                    {[1, 2, 3, 4].map(y => (
+                                        <option key={y} value={y}>{y}년</option>
+                                    ))}
+                                </select>
                             </div>
 
                             {/* 연차별 연봉 입력 테이블 */}
-                            <div className="flex-shrink-0 rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-                                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-800/40 flex items-center justify-between">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-black uppercase tracking-widest text-slate-500">연차별 연봉</div>
                                     <div className="text-[10px] font-mono text-slate-500">AAV <span className="text-violet-400">{fmtM(extOfferAAV)}</span></div>
                                 </div>
-                                <div className="px-4 py-3 space-y-2">
                                 {extIsDecliningSalary && (
                                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-[10px] text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
@@ -1090,7 +1081,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </tr>
                                     </tfoot>
                                 </table>
-                                </div>
                             </div>
 
                             {/* 카운터 배너 */}
@@ -1101,11 +1091,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             )}
 
                             {/* ── 계약 조건 옵션 ── */}
-                            <div className="flex-shrink-0 rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-                                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-800/40">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">계약 조건</div>
-                                </div>
-                                <div className="px-4 py-3 space-y-3">
+                            <div className="flex-shrink-0 space-y-3">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
                                     {/* 계약 옵션 (2년 이상일 때) */}
                                     {extOfferYears >= 2 && (
                                         <div>
@@ -1159,7 +1146,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             );
                                         })}
                                     </div>
-                                </div>
                             </div>
 
                             {/* 제출 버튼 */}
