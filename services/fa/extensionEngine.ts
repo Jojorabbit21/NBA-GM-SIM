@@ -95,6 +95,9 @@ export interface ExtensionOfferContext {
     years: number;
     annualSalary: number;
     contenderScore: number; // 0~1 (팀 강팀 여부)
+    option?: import('../../types/player').ContractOption;
+    noTrade?: boolean;
+    tradeKicker?: number;
 }
 
 /** 오퍼 평가 결과 */
@@ -360,10 +363,19 @@ export function evaluateExtensionOffer(
     tendencySeed: string,
 ): { response: NegotiationResponse; updatedState: NegotiationState } {
     const { demand, personality } = state;
+
+    // 계약 옵션 보정 — 수락 판정에만 사용 (저장 연봉은 offer.annualSalary 원본)
+    let effectiveAAV = offer.annualSalary;
+    if (offer.option?.type === 'player') effectiveAAV *= 1.08;
+    if (offer.option?.type === 'team')   effectiveAAV *= 0.95;
+    if (offer.noTrade)                   effectiveAAV *= 1.05;
+    if (offer.tradeKicker)               effectiveAAV *= (1 + offer.tradeKicker * 0.3);
+    const effectiveOffer = { ...offer, annualSalary: effectiveAAV };
+
     let next = { ...state, roundsUsed: state.roundsUsed + 1, lastOfferAAV: offer.annualSalary };
 
     // ── 규칙 1: 모욕선 이하 → REJECT_HARD + 감정 악화
-    if (offer.annualSalary < demand.insultThreshold) {
+    if (effectiveAAV < demand.insultThreshold) {
         next = {
             ...next,
             respect:      clamp(next.respect - 0.25),
@@ -403,15 +415,15 @@ export function evaluateExtensionOffer(
         next = { ...next, frustration: clamp(next.frustration + 0.10) };
     }
 
-    // ── 감정 변화 (모욕선 이상 오퍼)
-    if (offer.annualSalary < demand.reservationFloor) {
+    // ── 감정 변화 (effectiveAAV 기준)
+    if (effectiveAAV < demand.reservationFloor) {
         next = {
             ...next,
             respect:      clamp(next.respect - 0.10),
             frustration:  clamp(next.frustration + 0.15),
             lowballCount: next.lowballCount + 1,
         };
-    } else if (offer.annualSalary >= demand.targetAAV) {
+    } else if (effectiveAAV >= demand.targetAAV) {
         next = {
             ...next,
             respect:     clamp(next.respect + 0.10),
@@ -420,12 +432,12 @@ export function evaluateExtensionOffer(
         };
     }
 
-    // ── 규칙 4: 수락 판정
-    const utility = calcOfferUtility(offer, next);
+    // ── 규칙 4: 수락 판정 (effectiveOffer 기준)
+    const utility = calcOfferUtility(effectiveOffer, next);
     const acceptThreshold = 0.90 - next.frustration * 0.10;
 
     if (!sameOffer && utility >= acceptThreshold) {
-        const contract = buildExtensionContract(offer.annualSalary, offer.years);
+        const contract = buildExtensionContract(offer.annualSalary, offer.years, offer.option, offer.noTrade, offer.tradeKicker);
         next = { ...next, signed: true };
         return {
             response: { outcome: 'ACCEPT', contract },
@@ -457,12 +469,22 @@ export function evaluateExtensionOffer(
 // ─────────────────────────────────────────────────────────────
 
 /** 수락된 오퍼로 PlayerContract 생성 */
-export function buildExtensionContract(annualSalary: number, years: number): PlayerContract {
-    return {
+export function buildExtensionContract(
+    annualSalary: number,
+    years: number,
+    option?: import('../../types/player').ContractOption,
+    noTrade?: boolean,
+    tradeKicker?: number,
+): PlayerContract {
+    const contract: PlayerContract = {
         years: Array.from({ length: years }, (_, i) =>
             Math.round(annualSalary * Math.pow(1.05, i)),
         ),
         currentYear: 0,
         type: 'extension',
     };
+    if (option)                         contract.option      = option;
+    if (noTrade)                        contract.noTrade     = true;
+    if (tradeKicker && tradeKicker > 0) contract.tradeKicker = tradeKicker;
+    return contract;
 }

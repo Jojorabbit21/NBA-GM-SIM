@@ -194,6 +194,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const [extOfferYears, setExtOfferYears] = useState(() => negState?.demand.askingYears ?? 2);
     const [lastExtResponse, setLastExtResponse] = useState<NegotiationResponse | null>(null);
 
+    // ─── Contract Options State ───────────────────────────────
+    const [faContractOption,  setFaContractOption]  = useState<'none' | 'player' | 'team'>('none');
+    const [faNoTrade,         setFaNoTrade]          = useState(false);
+    const [faTradeKicker,     setFaTradeKicker]      = useState(0); // 0 | 0.05 | 0.10 | 0.15
+    const [extContractOption, setExtContractOption]  = useState<'none' | 'player' | 'team'>('none');
+    const [extNoTrade,        setExtNoTrade]         = useState(false);
+    const [extTradeKicker,    setExtTradeKicker]     = useState(0);
+
     // ─── FA State ────────────────────────────────────────────
     const yos         = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
     const capPct      = yos >= 10 ? 0.35 : yos >= 7 ? 0.30 : 0.25;
@@ -354,7 +362,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
         const result = processUserOffer(
             faMarket, myTeam, player, faEntry.prevTeamId,
-            { salary: faOfferAAV, years: faOfferYears, signingType: selectedSlot },
+            {
+                salary: faOfferAAV, years: faOfferYears, signingType: selectedSlot,
+                option:      faContractOption !== 'none' && faOfferYears >= 2
+                    ? { type: faContractOption as 'player' | 'team', year: faOfferYears - 1 }
+                    : undefined,
+                noTrade:     faNoTrade && selectedSlot === 'bird_full' ? true : undefined,
+                tradeKicker: faTradeKicker > 0 && selectedSlot !== 'vet_min' ? faTradeKicker : undefined,
+            },
             tendencySeed, currentSeasonYear,
         );
 
@@ -399,7 +414,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         }
 
         const { response, updatedState } = evaluateExtensionOffer(
-            { years: extOfferYears, annualSalary: extOfferAAV, contenderScore },
+            {
+                years: extOfferYears, annualSalary: extOfferAAV, contenderScore,
+                option:      extContractOption !== 'none' && extOfferYears >= 2
+                    ? { type: extContractOption as 'player' | 'team', year: extOfferYears - 1 }
+                    : undefined,
+                noTrade:     extNoTrade ? true : undefined,
+                tradeKicker: extTradeKicker > 0 ? extTradeKicker : undefined,
+            },
             negState, tendencySeed,
         );
 
@@ -867,6 +889,62 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
+                            {/* ── 계약 조건 옵션 ── */}
+                            <div className="flex-shrink-0 space-y-3">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
+
+                                {/* 계약 옵션 (2년 이상 시) */}
+                                {faOfferYears >= 2 && (
+                                    <div>
+                                        <div className="text-[10px] text-slate-500 mb-1.5">계약 옵션</div>
+                                        <div className="flex gap-1.5">
+                                            {(['none', 'team', 'player'] as const).map(opt => (
+                                                <button key={opt} onClick={() => setFaContractOption(opt)}
+                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                                        faContractOption === opt
+                                                            ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
+                                                            : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
+                                                    }`}>
+                                                    {opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 트레이드 키커 (vet_min 제외) */}
+                                {selectedSlot !== 'vet_min' && (
+                                    <div>
+                                        <div className="text-[10px] text-slate-500 mb-1.5">트레이드 키커</div>
+                                        <div className="flex gap-1.5">
+                                            {[0, 0.05, 0.10, 0.15].map(pct => (
+                                                <button key={pct} onClick={() => setFaTradeKicker(pct)}
+                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                                        faTradeKicker === pct
+                                                            ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                                                            : 'border-slate-700 bg-slate-800/50 text-slate-500 hover:border-slate-600'
+                                                    }`}>
+                                                    {pct === 0 ? '없음' : `${(pct * 100).toFixed(0)}%`}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* NTC (bird_full 전용) */}
+                                {selectedSlot === 'bird_full' && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] text-slate-500">무이적 조항 (NTC)</span>
+                                        <button onClick={() => setFaNoTrade(v => !v)}
+                                            className={`w-10 h-5 rounded-full border transition-all relative ${
+                                                faNoTrade ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-700 border-slate-600'
+                                            }`}>
+                                            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${faNoTrade ? 'left-5' : 'left-0.5'}`} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* 거절 사유 */}
                             {faResult && !faResult.accepted && (
                                 <div className="flex-shrink-0 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-400">
@@ -1014,6 +1092,68 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     카운터 오퍼: {fmtM(lastExtResponse.counterAAV)} / yr · {lastExtResponse.counterYears}년 — 가운데 채팅 확인
                                 </div>
                             )}
+
+                            {/* ── 계약 조건 옵션 ── */}
+                            <div className="flex-shrink-0 space-y-3">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">계약 조건</div>
+
+                                {/* 계약 옵션 (2년 이상일 때) */}
+                                {extOfferYears >= 2 && (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">계약 옵션</div>
+                                        <div className="flex gap-1.5">
+                                            {(['none', 'team', 'player'] as const).map(opt => (
+                                                <button
+                                                    key={opt}
+                                                    onClick={() => setExtContractOption(opt)}
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
+                                                        extContractOption === opt
+                                                            ? 'bg-violet-500/25 border-violet-500/50 text-violet-300'
+                                                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                                                    }`}
+                                                >
+                                                    {opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 트레이드 키커 */}
+                                <div className="space-y-1.5">
+                                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">트레이드 키커</div>
+                                    <div className="flex gap-1.5">
+                                        {[0, 5, 10, 15].map(pct => (
+                                            <button
+                                                key={pct}
+                                                onClick={() => setExtTradeKicker(pct / 100)}
+                                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
+                                                    extTradeKicker === pct / 100
+                                                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                                                }`}
+                                            >
+                                                {pct === 0 ? '없음' : `+${pct}%`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* NTC */}
+                                <div className="flex items-center justify-between">
+                                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">무역 거부권 (NTC)</div>
+                                    <button
+                                        onClick={() => setExtNoTrade(v => !v)}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 border ${
+                                            extNoTrade
+                                                ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                                        }`}
+                                    >
+                                        {extNoTrade ? '포함' : '미포함'}
+                                    </button>
+                                </div>
+                            </div>
 
                             {/* 제출 버튼 */}
                             <div className="flex-shrink-0 mt-auto pt-2">

@@ -146,6 +146,7 @@ export interface PlayerContract {
     type: ContractType;
     noTrade?: boolean;
     option?: ContractOption;
+    tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
 }
 
 // [New] Interface for saving player state (Condition + Health + Growth)
