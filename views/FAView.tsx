@@ -6,8 +6,6 @@ import { LEAGUE_FINANCIALS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
 import { getExtensionCandidates } from '../services/fa/extensionEngine';
-import { generateDialogue } from '../services/fa/negotiationDialogue';
-import { generateSaveTendencies } from '../utils/hiddenTendencies';
 import { NegotiationScreen } from './NegotiationScreen';
 
 // ─────────────────────────────────────────────────────────────
@@ -194,8 +192,6 @@ export const FAView: React.FC<FAViewProps> = ({
         playerId: string;
     } | null>(null);
 
-    // 계약 연장 거절 메시지 (잔여 계약 > 1년인 선수가 연장 버튼 클릭 시)
-    const [extensionBlockMsg, setExtensionBlockMsg] = useState<{ playerName: string; msg: string } | null>(null);
 
     const handleTabChange = (tab: 'market' | 'roster') => {
         setActiveTab(tab);
@@ -511,23 +507,7 @@ export const FAView: React.FC<FAViewProps> = ({
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         <button
-                                                            onClick={() => {
-                                                                if (yearsLeft > 1) {
-                                                                    const tendencies = generateSaveTendencies(tendencySeed, player.id);
-                                                                    const msg = generateDialogue('EXT_NOT_YET', {
-                                                                        tendencies,
-                                                                        morale: player.morale?.score ?? 50,
-                                                                        respect: 0.70,
-                                                                        trust: 0.75,
-                                                                        frustration: 0.00,
-                                                                        round: 0,
-                                                                        negotiationType: 'extension',
-                                                                    }, tendencySeed + player.id);
-                                                                    setExtensionBlockMsg({ playerName: player.name, msg });
-                                                                } else {
-                                                                    setNegotiationTarget({ type: 'extension', playerId: player.id });
-                                                                }
-                                                            }}
+                                                            onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
                                                             className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-violet-600/30 bg-violet-600/15 text-violet-400 hover:bg-violet-600/25 active:scale-95 transition-all"
                                                         >연장</button>
                                                         <button
@@ -547,33 +527,7 @@ export const FAView: React.FC<FAViewProps> = ({
             )}
 
 
-            {/* ── 계약 연장 거절 메시지 ── */}
-            {extensionBlockMsg && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
-                    onClick={() => setExtensionBlockMsg(null)}
-                >
-                    <div
-                        className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-violet-600/20 border border-violet-600/30 flex items-center justify-center text-sm font-black text-violet-300 flex-shrink-0">
-                                {extensionBlockMsg.playerName[0]}
-                            </div>
-                            <div>
-                                <div className="font-bold text-white text-sm ko-tight">{extensionBlockMsg.playerName}</div>
-                                <div className="text-[10px] text-slate-500 uppercase tracking-widest font-black">계약 연장 거절</div>
-                            </div>
-                        </div>
-                        <p className="text-sm text-slate-300 leading-relaxed">"{extensionBlockMsg.msg}"</p>
-                        <button
-                            onClick={() => setExtensionBlockMsg(null)}
-                            className="mt-5 w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 active:scale-95 transition-all"
-                        >확인</button>
-                    </div>
-                </div>
-            )}
+
 
             {/* ── NegotiationScreen 오버레이 ── */}
             {negotiationTarget && ntPlayer && (
@@ -588,6 +542,12 @@ export const FAView: React.FC<FAViewProps> = ({
                     usedMLE={usedMLE}
                     faEntry={ntEntry ?? undefined}
                     faMarket={leagueFAMarket ?? undefined}
+                    extensionNotYet={
+                        negotiationTarget.type === 'extension' &&
+                        (ntPlayer.contract
+                            ? ntPlayer.contract.years.length - (ntPlayer.contract.currentYear ?? 0)
+                            : 0) > 1
+                    }
                     onClose={() => setNegotiationTarget(null)}
                     onFAOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
                         onOfferAccepted(playerId, contract, signingType, updatedMarket);

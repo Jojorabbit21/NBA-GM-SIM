@@ -69,6 +69,7 @@ interface NegotiationScreenProps {
     onExtensionSigned?: (playerId: string, contract: PlayerContract) => void;
     onReleasePlayer?: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onViewPlayer?: (player: Player) => void;
+    extensionNotYet?: boolean; // 잔여 계약 > 1년 → 선수가 연장 거절, 협상 불가
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -159,6 +160,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     onExtensionSigned,
     onReleasePlayer,
     onViewPlayer,
+    extensionNotYet = false,
 }) => {
     const primaryColor  = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
     const moraleScore   = player.morale?.score ?? 50;
@@ -307,7 +309,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     // 인사 대사 (마운트 시 1회)
     useEffect(() => {
-        const trigger: DialogueTrigger = isRel ? 'RELEASE_PROPOSE' : 'GREETING';
+        const trigger: DialogueTrigger = extensionNotYet ? 'EXT_NOT_YET' : isRel ? 'RELEASE_PROPOSE' : 'GREETING';
         const ctx: DialogueContext = {
             tendencies,
             morale:      moraleScore,
@@ -318,10 +320,9 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             negotiationType: negotiationType as NegotiationType,
         };
         const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
-        // 인사 대화에 요구 조건을 자연어 subText로 간접 노출 (결정론적 다양성)
-        const greetingSub = isExt && negState
+        const greetingSub = !extensionNotYet && isExt && negState
             ? generateDemandSubText('extension', negState.demand.openingAsk, negState.demand.askingYears, `${tendencySeed}:${player.id}`)
-            : isFA && faEntry
+            : !extensionNotYet && isFA && faEntry
             ? generateDemandSubText('fa', faEntry.askingSalary, faEntry.askingYears, `${tendencySeed}:${player.id}`)
             : undefined;
         setChatMessages([{ id: nextId(), role: 'player', text: d, subText: greetingSub }]);
@@ -440,7 +441,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     };
 
     // ─── Derived ─────────────────────────────────────────────
-    const isExtFinal = isExt && !!(negState?.walkedAway || negState?.signed);
+    const isExtFinal = isExt && !!(negState?.walkedAway || negState?.signed || extensionNotYet);
     const isFAFinal  = isFA  && !!faResult?.accepted;
 
     const faIsAboveAsking   = faEntry ? faOfferAAV >= faEntry.askingSalary  : false;
@@ -1028,26 +1029,36 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* Extension 최종 상태 */}
                     {isExtFinal && negState && (
                         <div className="flex-1 flex flex-col items-center justify-center gap-5">
-                            <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
-                                negState.signed
-                                    ? 'bg-emerald-500/20 border-2 border-emerald-500/50'
-                                    : 'bg-red-500/20 border-2 border-red-500/50'
-                            }`}>
-                                <span className={`text-3xl ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {negState.signed ? '✓' : '✗'}
-                                </span>
-                            </div>
-                            <div className={`text-2xl font-black uppercase tracking-wide ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {negState.signed ? '계약 연장!' : '협상 결렬'}
-                            </div>
+                            {extensionNotYet ? (
+                                <>
+                                    <div className="w-20 h-20 rounded-full flex items-center justify-center bg-slate-700/40 border-2 border-slate-600/50">
+                                        <span className="text-3xl text-slate-400">—</span>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-lg font-black uppercase tracking-wide text-slate-400">협상 불가</div>
+                                        <div className="text-xs text-slate-500 mt-1">잔여 계약이 1년 이상 남아있습니다</div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
+                                        negState.signed
+                                            ? 'bg-emerald-500/20 border-2 border-emerald-500/50'
+                                            : 'bg-red-500/20 border-2 border-red-500/50'
+                                    }`}>
+                                        <span className={`text-3xl ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {negState.signed ? '✓' : '✗'}
+                                        </span>
+                                    </div>
+                                    <div className={`text-2xl font-black uppercase tracking-wide ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {negState.signed ? '계약 연장!' : '협상 결렬'}
+                                    </div>
+                                </>
+                            )}
                             <button
                                 onClick={onClose}
-                                className={`px-10 py-3 rounded-xl font-bold text-sm transition-all ${
-                                    negState.signed
-                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                        : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                                }`}
-                            >{negState.signed ? '완료' : '닫기'}</button>
+                                className="px-10 py-3 rounded-xl font-bold text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
+                            >닫기</button>
                         </div>
                     )}
 
