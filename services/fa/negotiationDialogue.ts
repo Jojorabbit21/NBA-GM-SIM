@@ -26,7 +26,8 @@ export type DialogueTrigger =
     | 'WALKED_AWAY'        // 협상 결렬
     | 'RELEASE_PROPOSE'    // 방출 제안 (waive/stretch)
     | 'RELEASE_BUYOUT_OK'  // 바이아웃 수락
-    | 'RELEASE_BUYOUT_NO'; // 바이아웃 거절
+    | 'RELEASE_BUYOUT_NO'  // 바이아웃 거절
+    | 'EXT_NOT_YET';       // 계약 기간 남아있어 연장 거절
 
 export interface DialogueContext {
     tendencies: SaveTendencies;
@@ -375,6 +376,45 @@ const POOLS: Record<string, DialoguePool> = {
         "협상이 결렬됐어요. 유감이에요.",
     ],
 
+    // ── EXT_NOT_YET ────────────────────────────────────────────
+    'EXT_NOT_YET_proud': [
+        "계약이 아직 남아있는데요. 지금 그 얘기를 꺼내시는 거예요?",
+        "제 계약 기간은 아직 유효해요. 때가 되면 다시 얘기해요.",
+        "지금은 연장 얘기 할 타이밍이 아니에요. 계약대로 뛸게요.",
+        "잔여 계약이 있어요. 지금 연장을 논의하는 건 이르죠.",
+    ],
+    'EXT_NOT_YET_money': [
+        "지금은 연장 생각 없어요. 시장 상황을 좀 더 보고 싶어요.",
+        "FA가 되면 시장가를 제대로 받을 수 있어요. 지금은 아니에요.",
+        "아직 계약 기간이 남았어요. 나중에 얘기해요.",
+        "지금 연장 사인을 하는 건 제 이득이 아닌 것 같아요.",
+    ],
+    'EXT_NOT_YET_loyal': [
+        "이 팀을 떠나고 싶은 마음은 없어요. 근데 지금은 아직 때가 아니에요.",
+        "계약 기간이 남아있어요. 그때 가서 제대로 얘기해봐요.",
+        "여기서 계속 뛰고 싶긴 한데, 지금 연장 사인은 좀 이른 것 같아요.",
+        "아직 남은 계약이 있어요. 좀 더 기다렸다가 얘기해요.",
+    ],
+    'EXT_NOT_YET_winFirst': [
+        "지금은 우승에 집중하고 싶어요. 계약 얘기는 나중에 해요.",
+        "시즌이 남았어요. 계약보다 플레이에 집중하고 싶어요.",
+        "연장보다 지금은 팀 성적이 중요해요. 때 되면 얘기하죠.",
+        "계약 기간이 있는데 지금 당장 그 얘기는 아닌 것 같아요.",
+    ],
+    'EXT_NOT_YET_hotheaded': [
+        "계약 기간이 남아있는데 벌써 연장 얘기를 꺼내는 거예요?",
+        "지금 이 타이밍에 연장 얘기요? 이르다고 생각하지 않으세요?",
+        "아직 계약 중이에요! 지금은 그 얘기 하고 싶지 않아요.",
+        "지금 당장은 연장 생각이 없어요. 나중에 연락해요.",
+    ],
+    'EXT_NOT_YET_neutral': [
+        "아직 계약 기간이 남아있어요. 지금은 얘기할 때가 아닌 것 같아요.",
+        "계약이 남아있는데 지금 당장 연장 얘기는 좀 이른 것 같아요.",
+        "지금 당장 연장은 생각 없어요. 계약대로 뛸 거예요.",
+        "아직 시즌이 남았어요. 연장 얘기는 나중에 하죠.",
+        "솔직히 말하면 지금은 그 얘기 하고 싶지 않아요.",
+    ],
+
     // ── RELEASE_PROPOSE ────────────────────────────────────────
     'RELEASE_PROPOSE_proud': [
         "이렇게 보내시는 건가요. 아직 드릴 게 많은데요.",
@@ -524,6 +564,15 @@ function selectPool(trigger: DialogueTrigger, ctx: DialogueContext): DialoguePoo
         case 'RELEASE_BUYOUT_NO': {
             if (isProud(t)) return POOLS['RELEASE_BUYOUT_NO_proud']!;
             return POOLS['RELEASE_BUYOUT_NO_neutral']!;
+        }
+
+        case 'EXT_NOT_YET': {
+            if (isHotheaded(t)) return POOLS['EXT_NOT_YET_hotheaded']!;
+            if (isProud(t))     return POOLS['EXT_NOT_YET_proud']!;
+            if (isMoney(t))     return POOLS['EXT_NOT_YET_money']!;
+            if (isLoyal(t))     return POOLS['EXT_NOT_YET_loyal']!;
+            if (isWinFirst(t))  return POOLS['EXT_NOT_YET_winFirst']!;
+            return POOLS['EXT_NOT_YET_neutral']!;
         }
 
         default:
