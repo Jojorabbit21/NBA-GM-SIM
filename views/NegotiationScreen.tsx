@@ -262,9 +262,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             negotiationType: negotiationType as NegotiationType,
         };
         const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
-        // 익스텐션: 초기 요구 조건을 대화 subText로 간접 노출
+        // 인사 대화에 요구 조건을 자연어 subText로 간접 노출
         const greetingSub = isExt && negState
-            ? `요구: ${fmtM(negState.demand.openingAsk)} / yr · ${negState.demand.askingYears}년`
+            ? `${negState.demand.askingYears}년 연장 계약에 연 ${fmtM(negState.demand.openingAsk)} 조건을 생각하고 있어요.`
+            : isFA && faEntry
+            ? `${faEntry.askingYears}년 계약에 연 ${fmtM(faEntry.askingSalary)} 정도를 기대하고 있어요.`
             : undefined;
         setChatMessages([{ id: nextId(), role: 'player', text: d, subText: greetingSub }]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -335,7 +337,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 onExtensionSigned?.(player.id, response.contract);
                 break;
             case 'COUNTER':
-                addPlayerMsg('COUNTER', newRound, updatedState, `요구: ${fmtM(response.counterAAV)} / ${response.counterYears}년`);
+                addPlayerMsg('COUNTER', newRound, updatedState, `${response.counterYears}년 계약에 연 ${fmtM(response.counterAAV)} 정도면 사인할 수 있어요.`);
                 break;
             case 'REJECT_HARD':
                 addPlayerMsg(
@@ -418,32 +420,16 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 <span className="font-mono font-bold text-amber-400">{fmtM(player.salary ?? 0)} / yr</span>
                             </div>
                             {isExt && negState && (
-                                <>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">잔여 계약</span>
-                                        <span className="font-mono text-slate-300">{player.contractYears}년</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">선수 요구</span>
-                                        <span className="font-mono font-bold text-amber-400">{fmtM(negState.demand.openingAsk)} / yr</span>
-                                    </div>
-                                </>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-slate-500">잔여 계약</span>
+                                    <span className="font-mono text-slate-300">{player.contractYears}년</span>
+                                </div>
                             )}
                             {isFA && faEntry && (
-                                <>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">요구 연봉</span>
-                                        <span className="font-mono font-bold text-amber-400">{fmtM(faEntry.askingSalary)} / yr</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">요구 연수</span>
-                                        <span className="font-mono text-slate-300">{faEntry.askingYears}년</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">관심 팀</span>
-                                        <span className="font-mono text-slate-300">{faEntry.interestedTeamIds.length}팀</span>
-                                    </div>
-                                </>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-slate-500">관심 팀</span>
+                                    <span className="font-mono text-slate-300">{faEntry.interestedTeamIds.length}팀</span>
+                                </div>
                             )}
                             {isRel && (
                                 <>
