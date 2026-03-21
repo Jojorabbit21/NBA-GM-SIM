@@ -514,7 +514,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0 p-3 gap-3">
 
                 {/* ── 좌측: 선수 정보 ── */}
-                <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <div className="flex-[2] min-w-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
 
                     {/* 통합 선수 카드 */}
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -659,10 +659,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 중앙: 채팅 패널 ── */}
-                <div className="flex-[5] min-w-0 rounded-2xl border border-slate-800 flex flex-col overflow-hidden">
+                <div className="flex-[5] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
 
                     {/* 채팅 헤더 */}
-                    <div className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center gap-3">
+                    <div className="flex-shrink-0 p-4 border-b border-slate-800 bg-slate-800/50 flex items-center gap-3">
                         <div
                             className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
                             style={{ backgroundColor: accentColor }}
@@ -749,7 +749,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className="flex-[3] min-w-0 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 rounded-2xl border border-slate-800">
+                <div className="flex-[3] min-w-0 flex flex-col overflow-y-auto custom-scrollbar p-6 gap-5 rounded-2xl border border-slate-800 bg-slate-900/40">
 
                     {/* FM 스타일 오퍼 요약 카드 */}
                     <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex-shrink-0">
