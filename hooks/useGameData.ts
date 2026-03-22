@@ -707,7 +707,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
                             const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
                             const hasAwards = p.awards && p.awards.length > 0;
-                            const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option);
+                            const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option || p.contract.type === 'extension');
                             const hasArchetypeState = !!p.archetypeState;
                             const hasPopularity = !!p.popularity;
                             const hasMorale = !!p.morale;

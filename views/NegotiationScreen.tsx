@@ -41,7 +41,7 @@ interface ContractData {
 
 interface ChatMsg {
     id: number;
-    role: 'player' | 'gm' | 'status';
+    role: 'player' | 'gm' | 'status' | 'narration';
     text: string;
     subText?: string;
     isSuccess?: boolean;
@@ -317,6 +317,25 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     // 인사 대사 (마운트 시 1회)
     useEffect(() => {
+        const msgs: ChatMsg[] = [];
+
+        // 1. 장면 설명
+        const narration = isExt
+            ? `단장실 — ${currentSeason} 계약 연장 협상`
+            : isRel
+            ? '단장실 — 비공개 면담'
+            : `${myTeam.name} 연습시설 — FA 서명 미팅`;
+        msgs.push({ id: nextId(), role: 'narration', text: narration });
+
+        // 2. GM 첫 인사
+        const gmIntro = isExt
+            ? `${player.name}, 오늘 시간 내줘서 고마워요. 함께할 앞으로의 계획에 대해 솔직하게 얘기 나눠봅시다.`
+            : isRel
+            ? `${player.name}... 이 시즌 동안 정말 헌신해줘서 고마워요. 오늘 드리려는 얘기가 쉽지 않은 내용이에요.`
+            : `반갑습니다, ${player.name}. 우리 팀에 관심 가져줘서 고마워요. 편하게 앉아요.`;
+        msgs.push({ id: nextId(), role: 'gm', text: gmIntro });
+
+        // 3. 선수 인사 대사
         const trigger: DialogueTrigger = extensionNotYet ? 'EXT_NOT_YET' : isRel ? 'RELEASE_PROPOSE' : 'GREETING';
         const ctx: DialogueContext = {
             tendencies,
@@ -333,7 +352,9 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             : !extensionNotYet && isFA && faEntry
             ? generateDemandSubText('fa', faEntry.askingSalary, faEntry.askingYears, `${tendencySeed}:${player.id}`)
             : undefined;
-        setChatMessages([{ id: nextId(), role: 'player', text: d, subText: greetingSub }]);
+        msgs.push({ id: nextId(), role: 'player', text: d, subText: greetingSub });
+
+        setChatMessages(msgs);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -497,17 +518,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     <span>←</span>
                     <span>뒤로</span>
                 </button>
-                <div className="h-4 w-px bg-slate-700 flex-shrink-0" />
-                <span className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded flex-shrink-0 ${badge.className}`}>
-                    {badge.label}
-                </span>
-                <button
-                    onClick={() => onViewPlayer?.(player)}
-                    className="ml-2 hover:opacity-80 transition-opacity flex items-center gap-2"
-                >
-                    <span className="text-sm font-black text-white ko-tight">{player.name}</span>
-                    <span className="text-xs font-mono text-slate-500">{player.position} · {player.age}세 · OVR {player.ovr}</span>
-                </button>
             </div>
 
             {/* ── 3-panel Main ── */}
@@ -523,6 +533,42 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                     {/* 스크롤 영역 */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                        {/* 프로필 카드 */}
+                        <div className="px-4 py-4 flex items-center gap-3">
+                            <div
+                                className="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-lg font-black text-white"
+                                style={{ backgroundColor: accentColor }}
+                            >
+                                {player.name.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-black text-white ko-tight truncate">{player.name}</div>
+                                <div className="text-xs text-slate-400 mt-0.5">{player.position} · {player.age}세</div>
+                                <div className="text-xs text-slate-500 font-mono mt-0.5">{player.height} cm · {player.weight} kg</div>
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                                <div className="text-xl font-black text-white font-mono">{player.ovr}</div>
+                                <div className="text-xs text-slate-500 uppercase tracking-widest">OVR</div>
+                            </div>
+                        </div>
+
+                        {/* 인기도 */}
+                        <div className="px-4 pb-3 space-y-2">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">인기도</div>
+                            {[
+                                { label: '지역', value: player.popularity?.local ?? 0, color: 'bg-indigo-500' },
+                                { label: '전국', value: player.popularity?.national ?? 0, color: 'bg-violet-500' },
+                            ].map(({ label, value, color }) => (
+                                <div key={label} className="flex items-center gap-2">
+                                    <div className="w-8 text-xs text-slate-500 shrink-0">{label}</div>
+                                    <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value}%` }} />
+                                    </div>
+                                    <div className="w-6 text-xs font-mono text-right text-slate-400">{value}</div>
+                                </div>
+                            ))}
+                        </div>
 
                         {/* 기본 정보 */}
                         <div className="px-4 py-3 space-y-1.5">
@@ -669,6 +715,17 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* 메시지 목록 */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                         {chatMessages.map(msg => {
+                            // 장면 설명
+                            if (msg.role === 'narration') {
+                                return (
+                                    <div key={msg.id} className="flex items-center gap-3 py-1">
+                                        <div className="flex-1 h-px bg-slate-800" />
+                                        <span className="text-xs text-slate-600 italic tracking-wide whitespace-nowrap">{msg.text}</span>
+                                        <div className="flex-1 h-px bg-slate-800" />
+                                    </div>
+                                );
+                            }
+
                             // 상태 배지
                             if (msg.role === 'status') {
                                 return (
@@ -812,19 +869,15 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input
                                                         type="number"
                                                         step={100_000}
-                                                        min={vetMin}
-                                                        max={Math.max(currentSlotMax, faEntry.askingSalary)}
                                                         disabled={selectedSlot === 'vet_min'}
                                                         value={sal}
                                                         onChange={e => {
                                                             const v = parseInt(e.target.value) || 0;
-                                                            const max = Math.max(currentSlotMax, faEntry.askingSalary);
-                                                            const clamped = Math.max(vetMin, Math.min(v, max));
                                                             if (i === 0) {
-                                                                setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                                setFaOfferSalaries(generateEscalatedSalaries(v, faEscalateRate, faOfferYears));
                                                             } else {
                                                                 const next = [...faOfferSalaries];
-                                                                next[i] = clamped;
+                                                                next[i] = v;
                                                                 setFaOfferSalaries(next);
                                                             }
                                                         }}
@@ -841,8 +894,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                             key={delta}
                                                             disabled={selectedSlot === 'vet_min'}
                                                             onClick={() => {
-                                                                const max = Math.max(currentSlotMax, faEntry.askingSalary);
-                                                                const newVal = Math.max(vetMin, Math.min(sal + delta, max));
+                                                                const newVal = sal + delta;
                                                                 if (i === 0) {
                                                                     setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
                                                                 } else {
@@ -1023,19 +1075,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input
                                                         type="number"
                                                         step={100_000}
-                                                        min={Math.round(negState.demand.insultThreshold * 0.9)}
-                                                        max={Math.round(negState.demand.openingAsk * 1.3)}
                                                         value={sal}
                                                         onChange={e => {
                                                             const v = parseInt(e.target.value) || 0;
-                                                            const min = Math.round(negState.demand.insultThreshold * 0.9);
-                                                            const max = Math.round(negState.demand.openingAsk * 1.3);
-                                                            const clamped = Math.max(min, Math.min(v, max));
                                                             if (i === 0) {
-                                                                setExtOfferSalaries(generateEscalatedSalaries(clamped, extEscalateRate, extOfferYears));
+                                                                setExtOfferSalaries(generateEscalatedSalaries(v, extEscalateRate, extOfferYears));
                                                             } else {
                                                                 const next = [...extOfferSalaries];
-                                                                next[i] = clamped;
+                                                                next[i] = v;
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
@@ -1057,9 +1104,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         <button
                                                             key={delta}
                                                             onClick={() => {
-                                                                const min = Math.round(negState.demand.insultThreshold * 0.9);
-                                                                const max = Math.round(negState.demand.openingAsk * 1.3);
-                                                                const newVal = Math.max(min, Math.min(sal + delta, max));
+                                                                const newVal = sal + delta;
                                                                 if (i === 0) {
                                                                     setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
                                                                 } else {
