@@ -101,10 +101,10 @@ export function buildHeaderGradient(
             return [
                 // 좌측에서 강하게 번지는 primary (Figma linear-gradient 왼쪽 채움)
                 `linear-gradient(90deg, ${hexAlpha(primary, 0.70)} 0%, ${hexAlpha(primary, 0.15)} 45%, transparent 65%)`,
-                // 우상단 secondary blob (Figma 우측 radialGradient)
-                `radial-gradient(ellipse 55% 120% at 100% 0%, ${hexAlpha(secondary, 0.40)} 0%, transparent 55%)`,
-                // 좌하단 보조 radial (Figma 좌측 radialGradient)
-                `radial-gradient(ellipse 45% 110% at 0% 100%, ${hexAlpha(primary, 0.30)} 0%, transparent 50%)`,
+                // 우하단 secondary blob
+                `radial-gradient(ellipse 55% 120% at 100% 100%, ${hexAlpha(secondary, 0.40)} 0%, transparent 55%)`,
+                // 좌상단 보조 radial
+                `radial-gradient(ellipse 45% 110% at 0% 0%, ${hexAlpha(primary, 0.30)} 0%, transparent 50%)`,
                 BASE,
             ].join(', ');
 

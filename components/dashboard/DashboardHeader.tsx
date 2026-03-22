@@ -132,12 +132,21 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <div
-      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
+      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative overflow-hidden"
       style={{
-        background: headerBg,
+        background: '#0a1628',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
       }}
     >
+      {/* 블러 처리된 그라디언트 레이어 */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: headerBg,
+          filter: 'blur(24px)',
+          transform: 'scale(1.1)', // blur 엣지 번짐 방지
+        }}
+      />
       {/* ── 개발용 그라디언트 스타일 전환 ── */}
       <div className="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 z-50">
         {GRADIENT_STYLES.map(s => (
