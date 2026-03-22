@@ -100,17 +100,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   // 선택(active) 아이콘: Figma {TEAM}/accent 기준, 기본 #ffffff
   const activeIconColor = team ? (SIDEBAR_SELECTED_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
 
-  // 선택 버튼 배경: tertiary 우선, 없으면 배경 밝기로 계산
-  const activeBg = teamStatic?.colors?.tertiary ?? (() => {
-    const hex = sidebarBg.replace('#', '');
-    if (hex.length < 6) return '#000000';
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return (r * 0.299 + g * 0.587 + b * 0.114) < 60
-      ? 'rgba(255,255,255,0.2)'
-      : '#000000';
-  })();
+  // 선택 버튼 배경: tertiary 우선, 없으면 secondary (Figma 기준)
+  const activeBg = teamStatic?.colors?.tertiary ?? teamStatic?.colors?.secondary ?? 'rgba(255,255,255,0.2)';
 
   // 프로필 드롭다운 외부 클릭 닫기
   useEffect(() => {
@@ -147,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         />
 
         {/* 메인 네비게이션 */}
-        <nav className="flex-1 flex flex-col gap-2 px-5 pt-4 pb-2 relative z-10">
+        <nav className="flex-1 flex flex-col gap-6 px-5 pt-6 pb-2 relative z-10">
           {/* 오프시즌 이벤트 버튼 */}
           {pendingOffseasonAction && (() => {
             const cfg = pendingOffseasonAction === 'lottery'
@@ -167,12 +158,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
           <Nav active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
           <Nav active={pathname.startsWith('/inbox')} icon={<Globe />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
-          <div className="mx-2 my-1 h-px" style={{ backgroundColor: iconColor, opacity: 0.25 }} />
           <Nav active={pathname.startsWith('/front-office')} icon={<Landmark />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
           <Nav active={pathname.startsWith('/locker-room')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/locker-room')} />
           <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
           <Nav active={false} icon={<TrafficCone />} label="훈련 (준비 중)" onClick={() => {}} />
-          <div className="mx-2 my-1 h-px" style={{ backgroundColor: iconColor, opacity: 0.25 }} />
           <Nav active={pathname.startsWith('/standings')} icon={<Table2 />} label="순위표" onClick={() => navigate('/standings')} />
           <Nav active={pathname.startsWith('/leaderboard')} icon={<PieChart />} label="리더보드" onClick={() => navigate('/leaderboard')} />
           <Nav active={pathname.startsWith('/fa-market')} icon={<Contact />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
