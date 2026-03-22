@@ -3,7 +3,6 @@ import React, { useState, useCallback } from 'react';
 import { Loader2, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   buildHeaderGradient,
-  GRADIENT_STYLES,
   type GradientStyleId,
 } from '../../utils/dashboardGradient';
 import { Team, Game, PlayoffSeries, Player } from '../../types';
@@ -69,7 +68,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-  const [gradientStyle, setGradientStyle] = useState<GradientStyleId>('diagonal');
+  const [gradientStyle] = useState<GradientStyleId>('noise_glow');
   const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
@@ -147,23 +146,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           transform: 'scale(1.1)', // blur 엣지 번짐 방지
         }}
       />
-      {/* ── 개발용 그라디언트 스타일 전환 ── */}
-      <div className="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 z-50">
-        {GRADIENT_STYLES.map(s => (
-          <button
-            key={s.id}
-            title={s.description}
-            onClick={() => setGradientStyle(s.id)}
-            className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
-              gradientStyle === s.id
-                ? 'bg-white text-black'
-                : 'bg-black/40 text-white/60 hover:text-white'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
 
       {/* ① 왼쪽: 팀 정보 */}
       <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
