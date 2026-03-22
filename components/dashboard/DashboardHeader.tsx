@@ -1,6 +1,11 @@
 
 import React, { useState, useCallback } from 'react';
 import { Loader2, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  buildHeaderGradient,
+  GRADIENT_STYLES,
+  type GradientStyleId,
+} from '../../utils/dashboardGradient';
 import { Team, Game, PlayoffSeries, Player } from '../../types';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
@@ -64,6 +69,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const [gradientStyle, setGradientStyle] = useState<GradientStyleId>('mesh_dual');
   const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
@@ -82,6 +88,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
   const btnTheme = getButtonTheme(team.id, teamColors);
+
+  const headerBg = teamColors
+    ? buildHeaderGradient(gradientStyle, teamColors)
+    : '#0a1628';
 
   const mainBtnStyle = (id: string): React.CSSProperties => {
     const isPressed = pressedBtn === id;
@@ -124,10 +134,27 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     <div
       className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
       style={{
-        backgroundColor: '#0f172a',
-        borderBottom: '2px solid #334155',
+        background: headerBg,
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
       }}
     >
+      {/* ── 개발용 그라디언트 스타일 전환 ── */}
+      <div className="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 z-50">
+        {GRADIENT_STYLES.map(s => (
+          <button
+            key={s.id}
+            title={s.description}
+            onClick={() => setGradientStyle(s.id)}
+            className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
+              gradientStyle === s.id
+                ? 'bg-white text-black'
+                : 'bg-black/40 text-white/60 hover:text-white'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
 
       {/* ① 왼쪽: 팀 정보 */}
       <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
