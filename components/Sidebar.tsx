@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, Trophy, PieChart,
@@ -87,6 +88,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileBtnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownBottom, setDropdownBottom] = useState(0);
 
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
@@ -107,13 +111,22 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   useEffect(() => {
     if (!isMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsMenuOpen(false);
-      }
+      const target = e.target as Node;
+      const inBtn = menuRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inBtn && !inDropdown) setIsMenuOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [isMenuOpen]);
+
+  const handleProfileClick = () => {
+    if (profileBtnRef.current) {
+      const rect = profileBtnRef.current.getBoundingClientRect();
+      setDropdownBottom(window.innerHeight - rect.top + 8);
+    }
+    setIsMenuOpen(prev => !prev);
+  };
 
   // NavItem 래퍼 — iconColor/activeIconColor/activeBg 자동 주입
   const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeIconColor' | 'activeBg'>) => (
@@ -183,7 +196,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           {/* 프로필 버튼 (드롭다운 위 방향 오픈) */}
           <div ref={menuRef} className="relative">
             <button
-              onClick={() => setIsMenuOpen(prev => !prev)}
+              ref={profileBtnRef}
+              onClick={handleProfileClick}
               title={userEmail || '프로필'}
               className={`w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 outline outline-2 outline-transparent ${
                 isMenuOpen ? '' : 'hover:bg-black/15 hover:outline-black/25'
@@ -193,11 +207,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               <CircleUser size={24} color={isMenuOpen ? '#ffffff' : iconColor} />
             </button>
 
-            {/* 드롭다운 — 위쪽 방향 */}
-            {isMenuOpen && (
+            {/* 드롭다운 — Portal로 body에 렌더링 (스태킹 컨텍스트 탈출) */}
+            {isMenuOpen && createPortal(
               <div
-                className="absolute bottom-full left-0 mb-2 w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
+                ref={dropdownRef}
+                className="fixed left-20 w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
                 style={{
+                  bottom: `${dropdownBottom}px`,
                   background: '#1e293b',
                   border: '1px solid rgba(255,255,255,0.1)',
                 }}
@@ -262,7 +278,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>
                   </button>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 
