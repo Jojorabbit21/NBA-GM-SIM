@@ -114,6 +114,7 @@ export function buildHeaderGradient(
                 `linear-gradient(90deg, ${hexAlpha(primary, 0.55)} 0%, transparent 35%)`,
                 `linear-gradient(0deg, ${hexAlpha(primary, 0.50)} 0%, transparent 65%)`,
                 `radial-gradient(ellipse 40% 200% at 0% 100%, ${hexAlpha(primary, 0.45)} 0%, transparent 50%)`,
+                `radial-gradient(ellipse 100% 80% at 50% 0%, ${hexAlpha(secondary, 0.18)} 0%, transparent 55%)`,
                 BASE,
             ].join(', ');
     }
