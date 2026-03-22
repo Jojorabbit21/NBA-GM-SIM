@@ -69,7 +69,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-  const [gradientStyle, setGradientStyle] = useState<GradientStyleId>('mesh_dual');
+  const [gradientStyle, setGradientStyle] = useState<GradientStyleId>('diagonal');
   const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 

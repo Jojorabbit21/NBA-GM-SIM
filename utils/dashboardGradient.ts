@@ -96,11 +96,15 @@ export function buildHeaderGradient(
                 BASE,
             ].join(', ');
 
-        // ── 4. 대각선 페이드: 좌상 → 우하 ────────────────────────────────
+        // ── 4. 대각선 페이드: 좌측 primary 스포트 + 우측 secondary 블럼 + 대각 레이어 ─
         case 'diagonal':
             return [
-                `linear-gradient(135deg, ${hexAlpha(primary, 0.75)} 0%, ${hexAlpha(secondary, 0.35)} 45%, transparent 70%)`,
-                `linear-gradient(315deg, ${hexAlpha(secondary, 0.20)} 0%, transparent 40%)`,
+                // 좌측에서 강하게 번지는 primary (Figma linear-gradient 왼쪽 채움)
+                `linear-gradient(90deg, ${hexAlpha(primary, 0.70)} 0%, ${hexAlpha(primary, 0.15)} 45%, transparent 65%)`,
+                // 우상단 secondary blob (Figma 우측 radialGradient)
+                `radial-gradient(ellipse 55% 120% at 100% 0%, ${hexAlpha(secondary, 0.40)} 0%, transparent 55%)`,
+                // 좌하단 보조 radial (Figma 좌측 radialGradient)
+                `radial-gradient(ellipse 45% 110% at 0% 100%, ${hexAlpha(primary, 0.30)} 0%, transparent 50%)`,
                 BASE,
             ].join(', ');
 
