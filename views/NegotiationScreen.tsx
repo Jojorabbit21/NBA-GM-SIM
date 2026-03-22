@@ -551,8 +551,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
 
                     {/* 위젯 헤더 */}
-                    <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-800 bg-slate-800/50">
-                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">선수 정보</span>
+                    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-sm font-bold text-white">선수 정보</span>
                     </div>
 
                     {/* 스크롤 영역 */}
@@ -797,8 +797,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 <div className="flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
 
                     {/* 위젯 헤더 */}
-                    <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-800 bg-slate-800/50">
-                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-sm font-bold text-white">
                             {isFA ? 'FA 서명 조건' : isExt ? '계약 연장 조건' : '방출 처리'}
                         </span>
                     </div>
