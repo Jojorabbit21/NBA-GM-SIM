@@ -108,13 +108,10 @@ export function buildHeaderGradient(
                 BASE,
             ].join(', ');
 
-        // ── 5. 엣지 글로우: 하단 + 좌측 가장자리 글로우 ─────────────────
+        // ── 5. 엣지 글로우: 하단 팀 컬러 → 상단 투명 ───────────────────
         case 'noise_glow':
             return [
-                `linear-gradient(90deg, ${hexAlpha(primary, 0.55)} 0%, transparent 35%)`,
-                `linear-gradient(0deg, ${hexAlpha(primary, 0.50)} 0%, transparent 65%)`,
-                `radial-gradient(ellipse 40% 200% at 0% 100%, ${hexAlpha(primary, 0.45)} 0%, transparent 50%)`,
-                `radial-gradient(ellipse 100% 80% at 50% 0%, ${hexAlpha(secondary, 0.18)} 0%, transparent 55%)`,
+                `linear-gradient(0deg, ${hexAlpha(primary, 0.55)} 0%, transparent 100%)`,
                 BASE,
             ].join(', ');
     }

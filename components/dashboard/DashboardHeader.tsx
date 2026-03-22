@@ -134,7 +134,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative overflow-hidden"
       style={{
         background: '#0a1628',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        borderBottom: '2px solid #374151',
       }}
     >
       {/* 블러 처리된 그라디언트 레이어 */}
