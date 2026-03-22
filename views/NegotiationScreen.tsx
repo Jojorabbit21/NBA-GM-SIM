@@ -28,6 +28,7 @@ import {
 } from '../services/fa/negotiationDialogue';
 import { TEAM_DATA } from '../data/teamData';
 import type { Team } from '../types/team';
+import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -504,6 +505,29 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         ? extOfferSalaries.reduce((a, b) => a + b, 0)
         : 0;
 
+    // ─── Label helpers ───────────────────────────────────────
+    const respectLbl = (v: number): { label: string; color: string } => {
+        if (v >= 0.8) return { label: '매우 존중받고 있음',       color: 'text-emerald-400' };
+        if (v >= 0.6) return { label: '존중받고 있음',           color: 'text-teal-400' };
+        if (v >= 0.4) return { label: '보통',                    color: 'text-slate-400' };
+        if (v >= 0.2) return { label: '존중받지 못한다고 느낌',  color: 'text-amber-400' };
+        return              { label: '무시받고 있음',            color: 'text-red-400' };
+    };
+    const trustLbl = (v: number): { label: string; color: string } => {
+        if (v >= 0.8) return { label: '매우 신뢰함',         color: 'text-emerald-400' };
+        if (v >= 0.6) return { label: '신뢰하고 있음',       color: 'text-teal-400' };
+        if (v >= 0.4) return { label: '보통',                color: 'text-slate-400' };
+        if (v >= 0.2) return { label: '약간 불신하고 있음',  color: 'text-amber-400' };
+        return              { label: '전혀 신뢰하지 않음',   color: 'text-red-400' };
+    };
+    const frustrationLbl = (v: number): { label: string; color: string } => {
+        if (v >= 0.8) return { label: '매우 불만족하고 있음', color: 'text-red-400' };
+        if (v >= 0.6) return { label: '불만족하고 있음',     color: 'text-amber-400' };
+        if (v >= 0.4) return { label: '보통',                color: 'text-slate-400' };
+        if (v >= 0.2) return { label: '약간 만족함',         color: 'text-teal-400' };
+        return              { label: '매우 만족함',          color: 'text-emerald-400' };
+    };
+
     // ─── Render ──────────────────────────────────────────────
     // absolute inset-0: FAView(relative) 위에만 오버레이 — 사이드바·헤더 노출 유지
     return (
@@ -534,159 +558,136 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* 스크롤 영역 */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
 
-                        {/* 프로필 카드 */}
-                        <div className="px-4 py-4 flex items-center gap-3">
-                            <div
-                                className="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-lg font-black text-white"
-                                style={{ backgroundColor: accentColor }}
-                            >
-                                {player.name.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm font-black text-white ko-tight truncate">{player.name}</div>
-                                <div className="text-xs text-slate-400 mt-0.5">{player.position} · {player.age}세</div>
-                                <div className="text-xs text-slate-500 font-mono mt-0.5">{player.height} cm · {player.weight} kg</div>
+                        {/* 이름 + OVR */}
+                        <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="text-base font-black text-white ko-tight leading-tight">{player.name}</div>
                             </div>
                             <div className="flex-shrink-0 text-right">
-                                <div className="text-xl font-black text-white font-mono">{player.ovr}</div>
-                                <div className="text-xs text-slate-500 uppercase tracking-widest">OVR</div>
+                                <div className="text-xl font-black text-white font-mono leading-none">{player.ovr}</div>
+                                <div className="text-xs text-slate-500 uppercase tracking-widest mt-0.5">OVR</div>
                             </div>
                         </div>
 
-                        {/* 인기도 */}
-                        <div className="px-4 pb-3 space-y-2">
-                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">인기도</div>
+                        {/* 프로필 */}
+                        <div className="px-4 pb-3 space-y-1">
                             {[
-                                { label: '지역', value: player.popularity?.local ?? 0, color: 'bg-indigo-500' },
-                                { label: '전국', value: player.popularity?.national ?? 0, color: 'bg-violet-500' },
-                            ].map(({ label, value, color }) => (
-                                <div key={label} className="flex items-center gap-2">
-                                    <div className="w-8 text-xs text-slate-500 shrink-0">{label}</div>
-                                    <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value}%` }} />
-                                    </div>
-                                    <div className="w-6 text-xs font-mono text-right text-slate-400">{value}</div>
+                                { label: '포지션', value: player.position },
+                                { label: '나이',   value: `${player.age}세` },
+                                { label: '신장',   value: `${player.height}cm` },
+                                { label: '체중',   value: `${player.weight}kg` },
+                                ...(isFA && faEntry ? [{ label: '관심 팀', value: `${faEntry.interestedTeamIds.length}팀` }] : []),
+                            ].map(({ label, value }) => (
+                                <div key={label} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">{label}</span>
+                                    <span className="font-mono text-slate-200">{value}</span>
                                 </div>
                             ))}
                         </div>
 
-                        {/* 기본 정보 */}
-                        <div className="px-4 py-3 space-y-1.5">
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="text-slate-500">현재 연봉</span>
-                                <span className="font-mono font-bold text-white">{fmtM(player.salary ?? 0)} / yr</span>
-                            </div>
-                            {isExt && negState && (
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="text-slate-500">잔여 계약</span>
-                                    <span className="font-mono text-slate-300">{player.contractYears}년</span>
+                        {/* 인기도 */}
+                        <div className="px-4 py-3 space-y-1">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">인기도</div>
+                            {[
+                                { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local    ?? 0) },
+                                { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">{label}</span>
+                                    <span className="text-slate-200 font-semibold">{value}</span>
                                 </div>
-                            )}
-                            {isFA && faEntry && (
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="text-slate-500">관심 팀</span>
-                                    <span className="font-mono text-slate-300">{faEntry.interestedTeamIds.length}팀</span>
-                                </div>
-                            )}
-                            {isRel && (
-                                <>
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-500">잔여 연수</span>
-                                        <span className="font-mono text-slate-300">{remainingYears}년</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-500">잔여 총액</span>
-                                        <span className="font-mono font-bold text-white">{fmtM(totalRemaining)}</span>
-                                    </div>
-                                </>
-                            )}
+                            ))}
                         </div>
 
-                        {/* 직전 계약 */}
+                        {/* 현재 계약 */}
                         {player.contract && (
-                            <>
-                                <div className="px-4 py-3">
-                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">직전 계약</div>
-                                    <div className="space-y-1">
-                                        {player.contract.years.map((sal, i) => {
-                                            const isCurrent   = i === player.contract!.currentYear;
-                                            const isCompleted = i <  player.contract!.currentYear;
-                                            const opt = player.contract!.option;
-                                            const isOptionYear = opt && opt.year === i;
-                                            return (
-                                                <div key={i} className={`flex justify-between items-center text-xs ${isCompleted ? 'opacity-35' : ''}`}>
-                                                    <span className="text-slate-500 shrink-0">
-                                                        {i + 1}년차
-                                                        {isCurrent && <span className="ml-1 text-xs font-black text-indigo-400">현재</span>}
-                                                        {isOptionYear && <span className="ml-1 text-xs text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
-                                                    </span>
-                                                    <span className="font-mono font-bold text-slate-200">{fmtM(sal)}</span>
-                                                </div>
-                                            );
-                                        })}
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">총액</span>
-                                            <span className="font-mono font-black text-white">{fmtM(player.contract.years.reduce((a, b) => a + b, 0))}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">유형</span>
-                                            <span className="font-mono text-slate-400 flex items-center gap-1">
-                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
-                                                {player.contract.noTrade && <span className="text-xs font-black text-amber-400">NTC</span>}
+                            <div className="px-4 py-3 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">현재 계약</div>
+                                {player.contract.years.map((sal, i) => {
+                                    const startYear    = currentSeasonYear - player.contract!.currentYear;
+                                    const year         = startYear + i;
+                                    const seasonLabel  = `${year}-${String(year + 1).slice(-2)}`;
+                                    const isCurrent    = i === player.contract!.currentYear;
+                                    const isCompleted  = i <  player.contract!.currentYear;
+                                    const opt          = player.contract!.option;
+                                    const isOptionYear = opt && opt.year === i;
+                                    return (
+                                        <div key={i} className={`flex justify-between items-center text-xs ${isCompleted ? 'opacity-30' : ''}`}>
+                                            <span className="text-slate-500 flex items-center gap-1">
+                                                {seasonLabel}
+                                                {isCurrent    && <span className="text-indigo-400 font-black">현재</span>}
+                                                {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
                                             </span>
+                                            <span className="font-mono font-bold text-slate-200">{fmtM(sal)}</span>
                                         </div>
-                                    </div>
+                                    );
+                                })}
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">AAV</span>
+                                    <span className="font-mono text-slate-300">{fmtM(player.contract.years.reduce((a, b) => a + b, 0) / player.contract.years.length)}</span>
                                 </div>
-                            </>
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">유형</span>
+                                    <span className="text-slate-400 flex items-center gap-1">
+                                        {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
+                                        {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
+                                    </span>
+                                </div>
+                                {isRel && (
+                                    <>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">잔여 연수</span>
+                                            <span className="font-mono text-slate-300">{remainingYears}년</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">잔여 총액</span>
+                                            <span className="font-mono font-bold text-white">{fmtM(totalRemaining)}</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         )}
 
-                        {/* 감정 상태 (Extension only) */}
+                        {/* 기분 및 태도 (Extension only) */}
                         {isExt && negState && (
-                            <>
-                                <div className="px-4 py-3 space-y-2">
-                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">협상 감정</div>
-                                    {[
-                                        { label: '존중감',   value: negState.respect,     color: 'bg-indigo-500' },
-                                        { label: '신뢰도',   value: negState.trust,       color: 'bg-emerald-500' },
-                                        { label: '불만족도', value: negState.frustration, color: 'bg-red-500' },
-                                    ].map(({ label, value, color }) => (
-                                        <div key={label} className="flex items-center gap-2">
-                                            <div className="w-14 text-xs text-slate-500 shrink-0">{label}</div>
-                                            <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                                <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
-                                            </div>
-                                            <div className="w-6 text-xs font-mono text-right text-slate-500">{Math.round(value * 100)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </>
+                            <div className="px-4 py-3 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">기분 및 태도</div>
+                                {[
+                                    { label: '존중심',   lbl: respectLbl(negState.respect) },
+                                    { label: '신뢰도',   lbl: trustLbl(negState.trust) },
+                                    { label: '불만족도', lbl: frustrationLbl(negState.frustration) },
+                                ].map(({ label, lbl }) => (
+                                    <div key={label} className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">{label}</span>
+                                        <span className={`font-semibold text-right ${lbl.color}`}>{lbl.label}</span>
+                                    </div>
+                                ))}
+                            </div>
                         )}
 
                         {/* Release: 데드캡 정보 */}
                         {isRel && releaseMode !== 'waive' && (
-                            <>
-                                <div className="px-4 py-3 space-y-1.5">
-                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">데드캡 정보</div>
-                                    {releaseMode === 'stretch' && (
+                            <div className="px-4 py-3 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">데드캡 정보</div>
+                                {releaseMode === 'stretch' && (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">연간 데드캡</span>
+                                        <span className="font-mono text-slate-300">{fmtM(stretchAnnual)} × {stretchYearsTotal}년</span>
+                                    </div>
+                                )}
+                                {releaseMode === 'buyout' && (
+                                    <>
                                         <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">연간 데드캡</span>
-                                            <span className="font-mono text-slate-300">{fmtM(stretchAnnual)} × {stretchYearsTotal}년</span>
+                                            <span className="text-slate-500">최소 요구액</span>
+                                            <span className="font-mono text-red-400">{fmtM(minBuyoutAmount)}</span>
                                         </div>
-                                    )}
-                                    {releaseMode === 'buyout' && (
-                                        <>
-                                            <div className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-500">최소 요구액</span>
-                                                <span className="font-mono text-red-400">{fmtM(minBuyoutAmount)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-500">제시 금액</span>
-                                                <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>{fmtM(buyoutAmount)}</span>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">제시 금액</span>
+                                            <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>{fmtM(buyoutAmount)}</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
