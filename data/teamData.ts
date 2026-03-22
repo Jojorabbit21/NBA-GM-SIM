@@ -18,7 +18,7 @@ export interface TeamStaticData {
 export const TEAM_COLORS: Record<string, { primary: string; secondary: string; tertiary?: string; text: string }> = {
     'atl': { primary: '#C8102E', secondary: '#FDB927', tertiary: '#000000', text: '#FFFFFF' },
     'bos': { primary: '#007A33', secondary: '#BA9653', text: '#FFFFFF' },
-    'bkn': { primary: '#000000', secondary: '#C6CED4', text: '#FFFFFF' },
+    'bkn': { primary: '#000000', secondary: '#C6CED4', tertiary: '#FFFFFF', text: '#FFFFFF' },
     'cha': { primary: '#00788C', secondary: '#1D1160', text: '#FFFFFF' },
     'chi': { primary: '#CE1141', secondary: '#000000', tertiary: '#FFFFFF', text: '#FFFFFF' },
     'cle': { primary: '#860038', secondary: '#BC945C', text: '#FFFFFF' },
@@ -42,7 +42,7 @@ export const TEAM_COLORS: Record<string, { primary: string; secondary: string; t
     'phx': { primary: '#1D1160', secondary: '#E56020', tertiary: '#F9A01B', text: '#FFFFFF' },
     'por': { primary: '#CF0A2C', secondary: '#010101', tertiary: '#FFFFFF', text: '#FFFFFF' },
     'sac': { primary: '#5B2C81', secondary: '#63727A', text: '#FFFFFF' },
-    'sa':  { primary: '#010101', secondary: '#C4CED4', text: '#FFFFFF' },
+    'sa':  { primary: '#010101', secondary: '#C4CED4', tertiary: '#FFFFFF', text: '#FFFFFF' },
     'tor': { primary: '#CE1141', secondary: '#000000', text: '#FFFFFF' },
     'uta': { primary: '#330072', secondary: '#7BA4DB', text: '#FFFFFF' },
     'was': { primary: '#E31837', secondary: '#002B5C', tertiary: '#C4CED4', text: '#FFFFFF' },

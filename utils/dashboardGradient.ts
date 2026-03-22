@@ -112,8 +112,8 @@ export function buildHeaderGradient(
         case 'noise_glow':
             return [
                 `linear-gradient(90deg, ${hexAlpha(primary, 0.55)} 0%, transparent 35%)`,
-                `linear-gradient(0deg, ${hexAlpha(secondary, 0.35)} 0%, transparent 60%)`,
-                `radial-gradient(ellipse 40% 200% at 0% 100%, ${hexAlpha(primary, 0.40)} 0%, transparent 50%)`,
+                `linear-gradient(0deg, ${hexAlpha(third, 0.40)} 0%, transparent 60%)`,
+                `radial-gradient(ellipse 40% 200% at 0% 100%, ${hexAlpha(primary, 0.45)} 0%, transparent 50%)`,
                 BASE,
             ].join(', ');
     }
