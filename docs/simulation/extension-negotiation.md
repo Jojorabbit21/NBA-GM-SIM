@@ -146,25 +146,95 @@ patience          = clamp(1.0 - (st.temperament + 1) / 2)
 riskAversion      = clamp((player.age - 24) / 12)  // 24세=0, 36세=1
 ```
 
+### `calcTenureAvailability(player): number` *(내부 헬퍼)*
+
+팀 재직 기간 동안의 가용성 계수 (0.82~1.00). 연봉 앵커에 할인으로 적용된다.
+
+```
+tenure  = max(1, player.teamTenure)
+currentG = player.stats?.g ?? 0
+
+// 현재 시즌 출전율 (75경기 = 풀시즌 기준)
+currentAvail = currentG > 0 ? min(1, currentG / 75) : null
+
+// 재직 기간 내 심각 부상 빈도 (Minor 제외)
+recentInjuries = injuryHistory.slice(-(tenure * 5))
+seriousCount   = recentInjuries.filter(severity ≠ 'Minor').length
+injuryRate     = seriousCount / tenure       // 시즌당 심각 부상 횟수
+
+availScore     = currentAvail ?? clamp(1 - injuryRate * 0.25)
+injuryDiscount = min(0.10, injuryRate * 0.04)  // 최대 -10%
+
+return clamp(0.85 + 0.15 * availScore - injuryDiscount, 0.82, 1.00)
+```
+
+| 상황 | availDiscount |
+|------|--------------|
+| 75경기 출전 + 부상 없음 | 1.00 (할인 없음) |
+| 40경기 출전 + Minor만 | ~0.93 |
+| 20경기 출전 + Season-Ending | ~0.82 (최대 할인) |
+
+---
+
+### `calcSalaryAnchorBATNA(player, personality): number` *(내부 헬퍼)*
+
+직전 연봉(`player.salary`)에 성격 보정과 가용성 할인을 적용하여 BATNA 앵커를 산출한다.
+시즌 중 협상이나 부상으로 인해 퍼포먼스 스탯이 비어 있어도 비현실적으로 낮은 BATNA를 방지한다.
+
+```
+// 앵커 비율: 직전 연봉 대비 FA 시장에서 기대하는 최소 수령액
+anchorRatio = clamp(
+    0.80
+    + riskAversion      * 0.10   // 안정 선호 → 직전 연봉 기준 더 고수
+    - loyalty           * 0.08   // 팀 충성 → 조금 더 양보 가능
+    + financialAmbition * 0.08,  // 재정 야망 → 높은 앵커
+    0.70, 0.92                   // 범위: 직전 연봉의 70%~92%
+)
+
+availDiscount    = calcTenureAvailability(player)   // 0.82~1.00
+salaryAnchor     = prevSalary * anchorRatio * availDiscount
+```
+
+**성격 조합 예시** (직전 연봉 $30M 기준):
+
+| riskAversion | loyalty | financialAmbition | anchorRatio | 앵커 (부상 없음) |
+|:---:|:---:|:---:|:---:|:---:|
+| 0.8 | 0.2 | 0.9 | 0.92 (상한) | ~$27.6M |
+| 0.5 | 0.5 | 0.5 | 0.81 | ~$24.3M |
+| 0.2 | 0.9 | 0.1 | 0.70 (하한) | ~$21.0M |
+
+---
+
 ### `calcExtensionBATNA(player, allPlayers, tendencySeed, ...): number`
 
 ```
 faDemand    = calcFADemand(player, allPlayers, NEUTRAL_MARKET, ...)
 tieredFloor = getTierFloor(player.ovr)
+personality = buildExtensionPersonality(player, tendencySeed)
+salaryAnchor = calcSalaryAnchorBATNA(player, personality)
 
-batna = max(faDemand.targetSalary * 0.95, tieredFloor)
+batna = max(
+    faDemand.targetSalary * 0.95,  // FA 시장가치 기준
+    tieredFloor,                    // OVR 티어 하한
+    salaryAnchor,                   // 직전 연봉 앵커 ← 신규
+)
 ```
 
 **NEUTRAL_MARKET**: FA 개막 전이므로 시장 수급 미반영, 모든 롤 ratio=1.0 중립값 사용.
 
-**티어 하한**:
-| OVR | floor |
-|-----|-------|
-| 90+ | $30M  |
-| 82+ | $20M  |
-| 74+ | $9M   |
-| 64+ | $4M   |
-| 0+  | $1.1M |
+**OVR 티어 하한** (`getTierFloor`): 동적 z-score 기반 (`getOVRThreshold('STARTER'|'ROLE'|...)`).
+기본 분포(mean=75, std=7) 기준 대략적 임계값:
+
+| 티어 | z-score | display OVR (대략) | floor |
+|------|---------|-------------------|-------|
+| SUPERSTAR | 1.8 | ~89 | $30M |
+| STAR | 1.1 | ~83 | $20M |
+| STARTER | 0.35 | ~77 | $9M |
+| ROLE | -0.25 | ~73 | $4M |
+| FRINGE | — | 미만 | $1.1M |
+
+> **설계 의도**: 세 후보 중 최댓값을 취하므로, 당해 스탯이 부재하거나 부상으로 FA 가치가
+> 붕괴된 경우에도 직전 연봉 앵커가 BATNA를 현실적인 수준으로 유지한다.
 
 ### `buildExtensionDemand(player, personality, batnaAAV, ...): ExtensionDemand`
 
@@ -319,7 +389,10 @@ const [negState, setNegState] = useState<NegotiationState>(() =>
 | 모욕선 강제 거절 | `annualSalary < insultThreshold` → 즉시 REJECT_HARD |
 | 반복 저가 패널티 | `lowballCount >= 3` → WALKED_AWAY (해당 오프시즌 재협상 불가) |
 | 같은 금액 재제시 | frustration +0.10 누적 + 수락 불가 |
-| 티어 하한 | OVR 82+ $20M / OVR 74+ $9M / OVR 64+ $4M |
+| 티어 하한 | z-score 기반 동적 (기본 분포 기준 STARTER≈OVR 77 → $9M, ROLE≈OVR 73 → $4M) |
+| 직전 연봉 앵커 | `salaryAnchor = prevSalary * anchorRatio * availDiscount` → BATNA 하한 |
+| 앵커 비율 범위 | 0.70~0.92 (riskAversion·loyalty·financialAmbition 연동, clamp 강제) |
+| 가용성 할인 범위 | 0.82~1.00 (결장·부상 기록 기반, 최대 -18% 할인) |
 | 할인 합산 상한 | loyalty+winDesire 완화 합계 최대 12% (`min()` 강제) |
 | 안정성 할인 상한 | securityDiscount 최대 12% (`riskAversion * 0.12`) |
 
@@ -342,3 +415,7 @@ const [negState, setNegState] = useState<NegotiationState>(() =>
 | 수락 후 forceSave | 리로드 시 contract.type='extension' 확인 |
 | contractYears=3 선수 | extensions 후보 목록 미표시 |
 | 선수 옵션 보유자 | extensions 후보 목록 미표시 |
+| 직전 연봉 $30M, 부상으로 stats 없음 | salaryAnchor가 BATNA 지배 → BATNA ≈ $21~27M |
+| 직전 연봉 $30M, 20경기 출전 + Season-Ending | availDiscount ≈ 0.82 → 앵커 약 18% 추가 할인 |
+| loyalty=0.9, financialAmbition=0.1 | anchorRatio = 0.70 (하한) → 팀에 양보 |
+| riskAversion=1.0, financialAmbition=1.0 | anchorRatio = 0.92 (상한) → 강경 협상 |

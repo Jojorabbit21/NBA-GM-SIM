@@ -173,12 +173,46 @@ patience          = 1 - (temperament + 1) / 2
 riskAversion      = (player.age - 24) / 12    [24세=0, 36세=1]
 ```
 
-**BATNA 계산:**
+**BATNA 계산 (3-way max):**
 ```
-batnaAAV = max(FA 요구(NEUTRAL_MARKET) × 0.95, tierFloor)
+personality  = buildExtensionPersonality(player, tendencySeed)
+salaryAnchor = calcSalaryAnchorBATNA(player, personality)
 
-OVR 90+: $30M floor / OVR 82+: $20M floor / OVR 74+: $9M floor
-OVR 64+:  $4M floor / OVR 미만: $1.1M floor
+batnaAAV = max(
+    FA 요구(NEUTRAL_MARKET) × 0.95,   // FA 시장가치 기준
+    tierFloor,                          // OVR 티어 하한
+    salaryAnchor,                       // 직전 연봉 앵커 ← 시즌 중 협상/부상 대비
+)
+```
+
+**OVR 티어 하한** (`getTierFloor`): z-score 동적 계산 (기본 분포 mean=75, std=7 기준):
+- SUPERSTAR(z=1.8) ≈ OVR 89+: $30M
+- STAR(z=1.1) ≈ OVR 83+: $20M
+- STARTER(z=0.35) ≈ OVR 77+: $9M
+- ROLE(z=-0.25) ≈ OVR 73+: $4M
+- FRINGE 미만: $1.1M
+
+**직전 연봉 앵커 (`calcSalaryAnchorBATNA`):**
+```
+anchorRatio = clamp(
+    0.80
+    + riskAversion      × 0.10   // 안정 선호 → 높은 앵커
+    - loyalty           × 0.08   // 팀 충성 → 양보
+    + financialAmbition × 0.08,  // 재정 야망 → 높은 앵커
+    0.70, 0.92
+)
+availDiscount    = calcTenureAvailability(player)  // 0.82~1.00
+salaryAnchor     = prevSalary × anchorRatio × availDiscount
+```
+
+**팀 재직 기간 가용성 (`calcTenureAvailability`):**
+```
+currentAvail   = min(1, stats.g / 75)   // 현재 시즌 (데이터 있을 때)
+injuryRate     = 재직기간 심각부상 수 / teamTenure
+availScore     = currentAvail ?? clamp(1 - injuryRate × 0.25)
+injuryDiscount = min(0.10, injuryRate × 0.04)
+
+return clamp(0.85 + 0.15 × availScore - injuryDiscount, 0.82, 1.00)
 ```
 
 **Reservation Floor 계산:**
