@@ -642,18 +642,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     const isOptionYear = opt && opt.year === i;
                                     return (
                                         <div key={i} className="flex justify-between items-center text-xs">
-                                            <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-500'}`}>
+                                            <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-500' : 'text-slate-500'}`}>
                                                 {seasonLabel}
                                                 {isCurrent    && <span className="text-indigo-400 font-black">현재</span>}
                                                 {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
                                             </span>
-                                            <span className={`font-mono font-bold ${isCompleted ? 'text-slate-600' : 'text-slate-200'}`}>{fmtM(sal)}</span>
+                                            <span className={`font-mono font-bold ${isCompleted ? 'text-slate-500' : 'text-slate-200'}`}>{fmtM(sal)}</span>
                                         </div>
                                     );
                                 })}
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">AAV</span>
-                                    <span className="font-mono text-slate-300">{fmtM(player.contract.years.reduce((a, b) => a + b, 0) / player.contract.years.length)}</span>
+                                    <span className="font-mono text-slate-300">{fmtM(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}</span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">유형</span>

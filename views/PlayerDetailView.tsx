@@ -1060,13 +1060,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             return (
                                                 <TableRow key={idx} className="h-10">
                                                     <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                        <span className={`font-mono font-medium tabular-nums text-xs flex items-center justify-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-300'}`}>
+                                                        <span className={`font-mono font-medium tabular-nums text-xs flex items-center justify-center gap-1 ${isCompleted ? 'text-slate-500' : 'text-slate-300'}`}>
                                                             {seasonLabel}{optionLabel}
                                                             {isCurrent && <span className="text-indigo-400 font-black">현재</span>}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell align="center">
-                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCompleted ? 'text-slate-600' : 'text-slate-300'}`}>
+                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCompleted ? 'text-slate-500' : 'text-slate-300'}`}>
                                                             {formatMoney(yearSalary)}
                                                         </span>
                                                     </TableCell>
