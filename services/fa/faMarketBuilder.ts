@@ -8,6 +8,7 @@ import {
     evaluateFAOffer,
     determineFARole,
 } from './faValuation';
+import { isRoseRuleEligible } from './contractEligibility';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -107,9 +108,11 @@ function getSlotSalaryCap(
     }
 }
 
-function calcYOSBounds(yos: number): { maxAllowed: number; vetMin: number } {
+function calcYOSBounds(yos: number, player?: Player): { maxAllowed: number; vetMin: number } {
     const cap = LEAGUE_FINANCIALS.SALARY_CAP;
-    const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : cap * 0.25;
+    // 데릭 로즈 룰: YOS 0~6 + 루키 3시즌 내 수상 → 30%
+    const roseRule = yos < 7 && !!player && isRoseRuleEligible(player);
+    const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : roseRule ? cap * 0.30 : cap * 0.25;
     const vetMin     = yos >= 7  ? 3_000_000  : yos >= 4 ? 2_200_000  : 1_500_000;
     return { maxAllowed, vetMin };
 }
@@ -309,7 +312,7 @@ export function simulateCPUSigning(
 
             // 예산에 맞는 최선 슬롯 선택
             const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-            const { maxAllowed, vetMin } = calcYOSBounds(yos);
+            const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
             let bestSlot: SigningType | null = null;
             let offerSalary = 0;
@@ -411,7 +414,7 @@ export function processUserOffer(
     }
 
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const { maxAllowed, vetMin } = calcYOSBounds(yos);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
     // 슬롯 유효성 검증
     const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE);

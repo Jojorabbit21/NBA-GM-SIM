@@ -4,6 +4,7 @@ import type { FARole, FADemandResult, MarketCondition } from '../../types/fa';
 import { ARCHETYPE_TO_FA_ROLE } from '../../types/archetype';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
+import { isRoseRuleEligible, isSuperMaxEligible } from './contractEligibility';
 
 // ─────────────────────────────────────────────────────────────
 // Role Weights (percentile-weighted, sum ≈ 1.0 per role)
@@ -148,17 +149,19 @@ function calcReliability(stats?: PlayerStats): number {
 // ─────────────────────────────────────────────────────────────
 
 function calcAwardBonus(player: Player, currentSeason: string): number {
-    if (!player.awards || player.awards.length === 0) return 0;
     const [startStr] = currentSeason.split('-');
     const prevStart = parseInt(startStr) - 1;
     const prevSeason = `${prevStart}-${String(prevStart + 1).slice(-2)}`;
 
-    let total = 0;
-    for (const award of player.awards) {
-        if (award.season === prevSeason) {
-            total += AWARD_BONUS[award.type] ?? 0;
-        }
-    }
+    const allAwards = [
+        ...(player.career_history ?? []).flatMap(s => (s.awards ?? []).map(a => ({ ...a, season: a.season || s.season }))),
+        ...(player.awards ?? []),
+    ];
+
+    const total = allAwards
+        .filter(a => a.season === prevSeason)
+        .reduce((sum, a) => sum + (AWARD_BONUS[a.type] ?? 0), 0);
+
     return Math.min(12, total);
 }
 
@@ -231,9 +234,11 @@ function scoreToCapShare(score: number): number {
 // Step 9: YOS → 개인 맥스 실링 + 베테랑 미니멈
 // ─────────────────────────────────────────────────────────────
 
-function calcYOSBounds(yos: number): { maxAllowed: number; vetMin: number } {
+function calcYOSBounds(yos: number, player?: Player): { maxAllowed: number; vetMin: number } {
     const cap = LEAGUE_FINANCIALS.SALARY_CAP;
-    const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : cap * 0.25;
+    // 데릭 로즈 룰: YOS 0~6 + 루키 3시즌 내 수상 → 30%
+    const roseRule = yos < 7 && !!player && isRoseRuleEligible(player);
+    const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : roseRule ? cap * 0.30 : cap * 0.25;
     const vetMin     = yos >= 7  ? 3_000_000  : yos >= 4 ? 2_200_000  : 1_500_000;
     return { maxAllowed, vetMin };
 }
@@ -345,11 +350,15 @@ export function calcFADemand(
 
     // Step 9: YOS 상/하한
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const { maxAllowed, vetMin } = calcYOSBounds(yos);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
     targetSalary = Math.max(vetMin, Math.min(maxAllowed, targetSalary));
 
     // Step 10: 맥스 요구 게이트
-    const canDemandMax = marketValueScore >= 90 && (scarcityBonus + demandBonus) >= 4;
+    // 슈퍼맥스/로즈룰 자격자는 수상 이력 자체가 근거 → 퍼포먼스·시장 조건 무관하게 허용
+    const hasSpecialDesignation = isSuperMaxEligible(player, currentSeasonYear)
+        || isRoseRuleEligible(player);
+    const canDemandMax = hasSpecialDesignation
+        || (marketValueScore >= 90 && (scarcityBonus + demandBonus) >= 4);
     if (!canDemandMax && targetSalary >= maxAllowed) {
         targetSalary = maxAllowed * 0.92;
     }

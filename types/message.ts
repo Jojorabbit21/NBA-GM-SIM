@@ -192,10 +192,10 @@ export interface OwnerLetterContent {
     ownerName: string;
     title: string;
     msg: string;
-    mood: { color: string; borderColor: string; bg: string };
-    confRank: number;
-    wins: number;
-    losses: number;
+    mood?: { color: string; borderColor: string; bg: string };
+    confRank?: number;
+    wins?: number;
+    losses?: number;
 }
 
 export interface SeriesPlayerStat {

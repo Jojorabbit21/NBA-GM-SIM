@@ -19,6 +19,7 @@ import {
     getAvailableSigningSlots,
     processUserOffer,
 } from '../services/fa/faMarketBuilder';
+import { getMaxCapPct, isSuperMaxEligible, isRoseRuleEligible } from '../services/fa/contractEligibility';
 import {
     generateDialogue,
     generateDemandSubText,
@@ -204,10 +205,30 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const [extTradeKicker,    setExtTradeKicker]     = useState(0);
 
     // ─── FA State ────────────────────────────────────────────
-    const yos         = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const capPct      = yos >= 10 ? 0.35 : yos >= 7 ? 0.30 : 0.25;
-    const faMaxAllowed = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * capPct);
+    const yos              = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
+    const maxCapResult     = getMaxCapPct(player, yos, currentSeasonYear, isExt);
+    const capPct           = maxCapResult.pct;
+    const capPctReason     = maxCapResult.reason;
+    const faMaxAllowed     = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * capPct);
     const vetMin      = yos >= 7 ? 3_000_000 : yos >= 4 ? 2_200_000 : 1_500_000;
+
+    // ─── 자격 조건 ───────────────────────────────────────────
+    const isSuperMax  = yos >= 7 && yos <= 9 && isSuperMaxEligible(player, currentSeasonYear);
+    const isRoseRule  = yos < 7 && isRoseRuleEligible(player);
+    const recentAwards = useMemo(() => {
+        const fmt = (y: number) => `${y}-${String(y + 1).slice(-2)}`;
+        const recentLabels = new Set([fmt(currentSeasonYear - 1), fmt(currentSeasonYear - 2), fmt(currentSeasonYear - 3)]);
+        const all = [
+            ...(player.career_history ?? []).flatMap(s => (s.awards ?? []).map(a => ({ ...a, season: a.season || s.season }))),
+            ...(player.awards ?? []),
+        ].filter(a => recentLabels.has(a.season));
+        return {
+            mvp:    all.filter(a => a.type === 'MVP').map(a => a.season),
+            dpoy:   all.filter(a => a.type === 'DPOY').map(a => a.season),
+            allNba: all.filter(a => a.type === 'ALL_NBA_1' || a.type === 'ALL_NBA_2' || a.type === 'ALL_NBA_3')
+                       .map(a => ({ season: a.season, tier: a.type === 'ALL_NBA_1' ? '1st' : a.type === 'ALL_NBA_2' ? '2nd' : '3rd' })),
+        };
+    }, [player, currentSeasonYear]);
 
     const slots = useMemo(() => {
         if (!isFA || !faEntry) return [] as SigningType[];
@@ -262,6 +283,20 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const extOfferAAV    = extOfferSalaries.length > 0 ? Math.round(extOfferSalaries.reduce((a, b) => a + b, 0) / extOfferSalaries.length) : 0;
     const faIsDecliningSalary  = faOfferSalaries.some((s, i)  => i > 0 && s < faOfferSalaries[i - 1]);
     const extIsDecliningSalary = extOfferSalaries.some((s, i) => i > 0 && s < extOfferSalaries[i - 1]);
+
+    // 캡% 입력 표시 (year 1 기준 실시간 역산)
+    const [faCapPctStr,  setFaCapPctStr]  = useState<string>('');
+    const [extCapPctStr, setExtCapPctStr] = useState<string>('');
+
+    useEffect(() => {
+        if (faOfferSalaries[0] > 0)
+            setFaCapPctStr(((faOfferSalaries[0] / LEAGUE_FINANCIALS.SALARY_CAP) * 100).toFixed(1));
+    }, [faOfferSalaries]);
+
+    useEffect(() => {
+        if (extOfferSalaries[0] > 0)
+            setExtCapPctStr(((extOfferSalaries[0] / LEAGUE_FINANCIALS.SALARY_CAP) * 100).toFixed(1));
+    }, [extOfferSalaries]);
 
     // ─── Release State ───────────────────────────────────────
     const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
@@ -606,13 +641,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     const opt          = player.contract!.option;
                                     const isOptionYear = opt && opt.year === i;
                                     return (
-                                        <div key={i} className={`flex justify-between items-center text-xs ${isCompleted ? 'opacity-30' : ''}`}>
-                                            <span className="text-slate-500 flex items-center gap-1">
+                                        <div key={i} className="flex justify-between items-center text-xs">
+                                            <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-500'}`}>
                                                 {seasonLabel}
                                                 {isCurrent    && <span className="text-indigo-400 font-black">현재</span>}
                                                 {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
                                             </span>
-                                            <span className="font-mono font-bold text-slate-200">{fmtM(sal)}</span>
+                                            <span className={`font-mono font-bold ${isCompleted ? 'text-slate-600' : 'text-slate-200'}`}>{fmtM(sal)}</span>
                                         </div>
                                     );
                                 })}
@@ -641,6 +676,42 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 )}
                             </div>
                         )}
+
+                        {/* 자격 조건 */}
+                        <div className="px-4 py-3 space-y-1.5">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">자격 조건</div>
+                                {yos >= 7 && yos <= 9 && (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">슈퍼맥스 대상</span>
+                                        <span className={isSuperMax ? 'text-amber-400 font-bold' : 'text-slate-600'}>
+                                            {isSuperMax ? '✓ 해당' : '✗ 미해당'}
+                                        </span>
+                                    </div>
+                                )}
+                                {yos < 7 && (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">로즈룰 대상</span>
+                                        <span className={isRoseRule ? 'text-amber-400 font-bold' : 'text-slate-600'}>
+                                            {isRoseRule ? '✓ 해당' : '✗ 미해당'}
+                                        </span>
+                                    </div>
+                                )}
+                                <div className="pt-0.5 space-y-1">
+                                    <div className="text-xs text-slate-600 mb-0.5">최근 3년 수상</div>
+                                    {[
+                                        { label: 'MVP',            entries: recentAwards.mvp.map(s => s) },
+                                        { label: 'DPOY',           entries: recentAwards.dpoy.map(s => s) },
+                                        { label: '올-오펜시브',    entries: recentAwards.allNba.map(a => `${a.season}(${a.tier})`) },
+                                    ].map(({ label, entries }) => (
+                                        <div key={label} className="flex justify-between items-start gap-2 text-xs">
+                                            <span className="text-slate-600 flex-shrink-0">{label}</span>
+                                            <span className={`text-right font-mono ${entries.length ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                {entries.length ? entries.join(', ') : '없음'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                        </div>
 
                         {/* 기분 및 태도 (Extension only) */}
                         {isExt && negState && (
@@ -863,38 +934,44 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
                                 {selectedSlot !== 'vet_min' && (
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-slate-500">캡% 지정</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <input
-                                                type="number"
-                                                step={0.1}
-                                                min={0}
-                                                max={35}
-                                                placeholder="–"
-                                                onBlur={e => {
-                                                    const pct = parseFloat(e.target.value);
-                                                    if (!isNaN(pct) && pct > 0) {
-                                                        const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
-                                                        const clamped = Math.min(raw, currentSlotMax);
-                                                        setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
-                                                    }
-                                                    e.target.value = '';
-                                                }}
-                                                onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
-                                                        const pct = parseFloat((e.target as HTMLInputElement).value);
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-slate-500">캡% 지정</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <input
+                                                    type="number"
+                                                    step={0.1}
+                                                    min={0}
+                                                    max={capPct * 100}
+                                                    value={faCapPctStr}
+                                                    onChange={e => setFaCapPctStr(e.target.value)}
+                                                    onBlur={e => {
+                                                        const pct = parseFloat(e.target.value);
                                                         if (!isNaN(pct) && pct > 0) {
                                                             const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
                                                             const clamped = Math.min(raw, currentSlotMax);
                                                             setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                        } else {
+                                                            setFaCapPctStr(faOfferSalaries[0] > 0 ? ((faOfferSalaries[0] / LEAGUE_FINANCIALS.SALARY_CAP) * 100).toFixed(1) : '');
                                                         }
-                                                        (e.target as HTMLInputElement).value = '';
-                                                    }
-                                                }}
-                                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
-                                            />
-                                            <span className="text-xs text-slate-500">%</span>
+                                                    }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') {
+                                                            const pct = parseFloat((e.target as HTMLInputElement).value);
+                                                            if (!isNaN(pct) && pct > 0) {
+                                                                const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                                const clamped = Math.min(raw, currentSlotMax);
+                                                                setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                                                />
+                                                <span className="text-xs text-slate-500">%</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right text-xs text-slate-600">
+                                            CBA 상한 {(capPct * 100).toFixed(0)}%
                                         </div>
                                     </div>
                                 )}
@@ -909,8 +986,27 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         const season = `${y}-${String(y + 1).slice(-2)}`;
                                         const isDeclineYear = i > 0 && sal < faOfferSalaries[i - 1];
                                         return (
-                                            <div key={i} className="flex items-center gap-2">
+                                            <div key={i} className="flex items-center gap-1">
                                                 <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 w-[88px]">{i + 1}년차 {season}</span>
+                                                {[-5_000_000, -1_000_000].map(delta => (
+                                                    <button
+                                                        key={delta}
+                                                        disabled={selectedSlot === 'vet_min'}
+                                                        onClick={() => {
+                                                            const newVal = sal + delta;
+                                                            if (i === 0) {
+                                                                setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
+                                                            } else {
+                                                                const next = [...faOfferSalaries];
+                                                                next[i] = newVal;
+                                                                setFaOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                                                    >
+                                                        {`-$${Math.abs(delta) / 1_000_000}M`}
+                                                    </button>
+                                                ))}
                                                 <div className="relative flex-1 min-w-0">
                                                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">$</span>
                                                     <input
@@ -935,27 +1031,25 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         }`}
                                                     />
                                                 </div>
-                                                <div className="flex gap-1 flex-shrink-0">
-                                                    {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
-                                                        <button
-                                                            key={delta}
-                                                            disabled={selectedSlot === 'vet_min'}
-                                                            onClick={() => {
-                                                                const newVal = sal + delta;
-                                                                if (i === 0) {
-                                                                    setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
-                                                                } else {
-                                                                    const next = [...faOfferSalaries];
-                                                                    next[i] = newVal;
-                                                                    setFaOfferSalaries(next);
-                                                                }
-                                                            }}
-                                                            className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                                        >
-                                                            {delta < 0 ? `-$${Math.abs(delta) / 1_000_000}M` : `+$${delta / 1_000_000}M`}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                                {[1_000_000, 5_000_000].map(delta => (
+                                                    <button
+                                                        key={delta}
+                                                        disabled={selectedSlot === 'vet_min'}
+                                                        onClick={() => {
+                                                            const newVal = sal + delta;
+                                                            if (i === 0) {
+                                                                setFaOfferSalaries(generateEscalatedSalaries(newVal, faEscalateRate, faOfferYears));
+                                                            } else {
+                                                                const next = [...faOfferSalaries];
+                                                                next[i] = newVal;
+                                                                setFaOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                                                    >
+                                                        {`+$${delta / 1_000_000}M`}
+                                                    </button>
+                                                ))}
                                             </div>
                                         );
                                     })}
@@ -1104,36 +1198,42 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-500">캡% 지정</span>
-                                    <div className="flex items-center gap-1.5">
-                                        <input
-                                            type="number"
-                                            step={0.1}
-                                            min={0}
-                                            max={35}
-                                            placeholder="–"
-                                            onBlur={e => {
-                                                const pct = parseFloat(e.target.value);
-                                                if (!isNaN(pct) && pct > 0) {
-                                                    const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
-                                                    setExtOfferSalaries(generateEscalatedSalaries(newSal, extEscalateRate, extOfferYears));
-                                                }
-                                                e.target.value = '';
-                                            }}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                    const pct = parseFloat((e.target as HTMLInputElement).value);
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-slate-500">캡% 지정</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="number"
+                                                step={0.1}
+                                                min={0}
+                                                max={capPct * 100}
+                                                value={extCapPctStr}
+                                                onChange={e => setExtCapPctStr(e.target.value)}
+                                                onBlur={e => {
+                                                    const pct = parseFloat(e.target.value);
                                                     if (!isNaN(pct) && pct > 0) {
                                                         const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
                                                         setExtOfferSalaries(generateEscalatedSalaries(newSal, extEscalateRate, extOfferYears));
+                                                    } else {
+                                                        setExtCapPctStr(extOfferSalaries[0] > 0 ? ((extOfferSalaries[0] / LEAGUE_FINANCIALS.SALARY_CAP) * 100).toFixed(1) : '');
                                                     }
-                                                    (e.target as HTMLInputElement).value = '';
-                                                }
-                                            }}
-                                            className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
-                                        />
-                                        <span className="text-xs text-slate-500">%</span>
+                                                }}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        const pct = parseFloat((e.target as HTMLInputElement).value);
+                                                        if (!isNaN(pct) && pct > 0) {
+                                                            const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                            setExtOfferSalaries(generateEscalatedSalaries(newSal, extEscalateRate, extOfferYears));
+                                                        }
+                                                    }
+                                                }}
+                                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                                            />
+                                            <span className="text-xs text-slate-500">%</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right text-xs text-slate-600">
+                                        CBA 상한 {(capPct * 100).toFixed(0)}%
                                     </div>
                                 </div>
                                 {extIsDecliningSalary && (
@@ -1147,8 +1247,26 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         const season = `${y}-${String(y + 1).slice(-2)}`;
                                         const isDeclineYear = i > 0 && sal < extOfferSalaries[i - 1];
                                         return (
-                                            <div key={i} className="flex items-center gap-2">
+                                            <div key={i} className="flex items-center gap-1">
                                                 <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 w-[88px]">{i + 1}년차 {season}</span>
+                                                {[-5_000_000, -1_000_000].map(delta => (
+                                                    <button
+                                                        key={delta}
+                                                        onClick={() => {
+                                                            const newVal = sal + delta;
+                                                            if (i === 0) {
+                                                                setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
+                                                            } else {
+                                                                const next = [...extOfferSalaries];
+                                                                next[i] = newVal;
+                                                                setExtOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                                                    >
+                                                        {`-$${Math.abs(delta) / 1_000_000}M`}
+                                                    </button>
+                                                ))}
                                                 <div className="relative flex-1 min-w-0">
                                                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">$</span>
                                                     <input
@@ -1172,26 +1290,24 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         }`}
                                                     />
                                                 </div>
-                                                <div className="flex gap-1 flex-shrink-0">
-                                                    {[-5_000_000, -1_000_000, 1_000_000, 5_000_000].map(delta => (
-                                                        <button
-                                                            key={delta}
-                                                            onClick={() => {
-                                                                const newVal = sal + delta;
-                                                                if (i === 0) {
-                                                                    setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
-                                                                } else {
-                                                                    const next = [...extOfferSalaries];
-                                                                    next[i] = newVal;
-                                                                    setExtOfferSalaries(next);
-                                                                }
-                                                            }}
-                                                            className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                                                        >
-                                                            {delta < 0 ? `-$${Math.abs(delta) / 1_000_000}M` : `+$${delta / 1_000_000}M`}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                                {[1_000_000, 5_000_000].map(delta => (
+                                                    <button
+                                                        key={delta}
+                                                        onClick={() => {
+                                                            const newVal = sal + delta;
+                                                            if (i === 0) {
+                                                                setExtOfferSalaries(generateEscalatedSalaries(newVal, extEscalateRate, extOfferYears));
+                                                            } else {
+                                                                const next = [...extOfferSalaries];
+                                                                next[i] = newVal;
+                                                                setExtOfferSalaries(next);
+                                                            }
+                                                        }}
+                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                                                    >
+                                                        {`+$${delta / 1_000_000}M`}
+                                                    </button>
+                                                ))}
                                             </div>
                                         );
                                     })}

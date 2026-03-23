@@ -1040,26 +1040,33 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 </TableCell>
                                                 <TableCell align="center">
                                                     <span className="font-mono font-medium tabular-nums text-xs text-white">
-                                                        {player.contract.option.type === 'player' ? '선수 옵션' : '팀 옵션'} ({2025 - player.contract.currentYear + player.contract.option.year}-{String(2026 - player.contract.currentYear + player.contract.option.year).slice(-2)})
+                                                        {(() => {
+                                                            const baseYear = parseInt(seasonShort.split('-')[0]) - player.contract.currentYear + player.contract.option!.year;
+                                                            return `${player.contract.option!.type === 'player' ? '선수 옵션' : '팀 옵션'} (${baseYear}-${String(baseYear + 1).slice(-2)})`;
+                                                        })()}
                                                     </span>
                                                 </TableCell>
                                             </TableRow>
                                         )}
                                         {/* 연차별 연봉 */}
                                         {player.contract.years.map((yearSalary, idx) => {
-                                            const seasonStart = 2025 - player.contract!.currentYear + idx;
+                                            const baseYear    = parseInt(seasonShort.split('-')[0]);
+                                            const seasonStart = baseYear - player.contract!.currentYear + idx;
                                             const seasonLabel = `${seasonStart}-${String(seasonStart + 1).slice(-2)}`;
-                                            const isOption = player.contract!.option && idx === player.contract!.option.year;
+                                            const isCurrent   = idx === player.contract!.currentYear;
+                                            const isCompleted = idx < player.contract!.currentYear;
+                                            const isOption    = player.contract!.option && idx === player.contract!.option.year;
                                             const optionLabel = isOption ? (player.contract!.option!.type === 'player' ? ' (선수옵션)' : ' (팀옵션)') : '';
                                             return (
                                                 <TableRow key={idx} className="h-10">
                                                     <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                        <span className="font-mono font-medium tabular-nums text-xs text-slate-300">
+                                                        <span className={`font-mono font-medium tabular-nums text-xs flex items-center justify-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-300'}`}>
                                                             {seasonLabel}{optionLabel}
+                                                            {isCurrent && <span className="text-indigo-400 font-black">현재</span>}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell align="center">
-                                                        <span className="font-mono font-medium tabular-nums text-xs text-slate-300">
+                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCompleted ? 'text-slate-600' : 'text-slate-300'}`}>
                                                             {formatMoney(yearSalary)}
                                                         </span>
                                                     </TableCell>

@@ -16,6 +16,7 @@
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
 import { PlayerContract } from '../../types/player';
+import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ── 상수 ──
 
@@ -49,7 +50,10 @@ const POSITION_SKILL_PENALTY: Record<string, Partial<Record<typeof SKILL_KEYS[nu
     C: { '3c': -8, '3_45': -10, '3t': -10, handl: -10, spwb: -10, pacc: -5, piq: -5, pvis: -5, spd: -5, agi: -5, pdef: -5, stl: -3 },
 };
 
-/** 신인 연봉 슬롯 (1~30픽, 단위: $) — NBA 루키 스케일 기반 간소화 */
+/** 루키 스케일 기준 캡 (2025-26 시즌 고정) */
+const _ROOKIE_BASE_CAP = 154_647_000;
+
+/** 신인 연봉 슬롯 (1~30픽, 단위: $) — 2025-26 기준값, calcRookieContract()에서 현재 캡 비율로 보정됨 */
 export const ROOKIE_SALARIES: number[] = [
     12_000_000, 10_800_000, 9_700_000, 8_800_000, 8_000_000,  // 1-5
     7_200_000,  6_500_000,  5_900_000, 5_400_000, 5_000_000,  // 6-10
@@ -308,9 +312,10 @@ export function generateDraftClass(
         // 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 롤
         const pot = generatePotential(rng, rank, potOffset);
 
-        // 연봉
+        // 연봉 (현재 캡 기준 비율 보정)
+        const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
         const salarySlot = Math.min(rank, 30) - 1;
-        const salary = ROOKIE_SALARIES[salarySlot] ?? 1_700_000;
+        const salary = Math.round((ROOKIE_SALARIES[salarySlot] ?? 1_700_000) * capScale);
 
         // 계약 (4년 루키 스케일)
         const yearSalaries = [
@@ -369,8 +374,9 @@ const SECOND_ROUND_SALARY = 1_500_000;
  * 드래프트 완료 시 호출하여 생성 순서 기반 임시 계약을 실제 픽 순번 계약으로 교체한다.
  */
 export function calcRookieContract(pickNumber: number): PlayerContract {
+    const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
     if (pickNumber <= 30) {
-        const salary = ROOKIE_SALARIES[pickNumber - 1] ?? ROOKIE_SALARIES[29];
+        const salary = Math.round((ROOKIE_SALARIES[pickNumber - 1] ?? ROOKIE_SALARIES[29]) * capScale);
         return {
             years: [
                 salary,
@@ -383,10 +389,11 @@ export function calcRookieContract(pickNumber: number): PlayerContract {
         };
     }
     // 2라운드: 2년 최저 연봉
+    const secondRound = Math.round(SECOND_ROUND_SALARY * capScale);
     return {
         years: [
-            SECOND_ROUND_SALARY,
-            Math.round(SECOND_ROUND_SALARY * 1.05),
+            secondRound,
+            Math.round(secondRound * 1.05),
         ],
         currentYear: 0,
         type: 'rookie',

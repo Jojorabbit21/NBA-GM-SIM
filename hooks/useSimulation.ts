@@ -129,6 +129,7 @@ export const useSimulation = (
 
     const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
     const isFinalizingRef = useRef(false); // 재진입 방지 가드
+    const luxuryTaxPaidRef = useRef(false); // 시즌당 1회 정산 멱등성
 
     // ── Spectate Mode (리그 일정에서 AI 경기 참관) ──
     const [spectateTarget, setSpectateTarget] = useState<{
@@ -744,6 +745,7 @@ export const useSimulation = (
                         userTeamId: myTeamId || undefined,
                         hasProspects: (prospects?.length ?? 0) > 0,
                         leaguePickAssets: leaguePickAssets ?? undefined,
+                        luxuryTaxPaid: luxuryTaxPaidRef.current,
                     });
 
                     if (offseasonEvent.fired && offseasonEvent.updates) {
@@ -752,6 +754,7 @@ export const useSimulation = (
 
                         // openingNight 핸들러 결과: 새 시즌 시작
                         if (u.newSchedule && u.newSeasonNumber && u.newSeasonConfig) {
+                            luxuryTaxPaidRef.current = false; // 새 시즌에 초기화
                             newSchedule = u.newSchedule;
                             newPlayoffSeries = [];
                             setTeams([...newTeams]);
@@ -912,6 +915,21 @@ export const useSimulation = (
 
                             setLeagueFAMarket(openingMarket);
                             forceSave({ teams: newTeams, leagueFAMarket: openingMarket });
+                        }
+
+                        // 럭셔리 택스 정산: luxuryTaxDay → OWNER_LETTER 발송
+                        if (u.luxuryTaxResult) {
+                            luxuryTaxPaidRef.current = true;
+                            if (!isGuestMode && session?.user?.id && myTeamId) {
+                                const ltr = u.luxuryTaxResult;
+                                sendMessage(session.user.id, myTeamId, nextDate, 'OWNER_LETTER', `[서신] ${ltr.title}`, {
+                                    ownerName: ltr.ownerName,
+                                    title: ltr.title,
+                                    msg: ltr.msg,
+                                })
+                                    .then(() => refreshUnreadCount())
+                                    .catch(e => console.warn('⚠️ Luxury tax message failed:', e));
+                            }
                         }
 
                         // FA 시장 마감: rosterDeadline → CPU 웨이버 → CPU 자동 서명 + FA_LEAGUE_NEWS

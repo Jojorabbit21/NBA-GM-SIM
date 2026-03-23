@@ -45,6 +45,7 @@ export interface SeasonKeyDates {
     rookieDraft: string;         // 6월 4번째 목요일
     moratoriumStart: string;     // 6월 30일 (고정)
     freeAgencyOpen: string;      // 7월 1번째 일요일 +1일
+    luxuryTaxDay: string;        // FA 개막 +14일 (7월 중순, 리그 럭셔리 택스 정산일)
     freeAgencyClose: string;     // 9월 2번째 금요일
     trainingCamp: string;        // 9월 마지막 화요일
     rosterDeadline: string;      // 10월 3번째 월요일
@@ -117,6 +118,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     const rookieDraft     = addDays(draftLottery, 14);                        // 로터리 +14일
     const moratoriumStart = addDays(rookieDraft, 5);                          // 드래프트 +5일
     const freeAgencyOpen  = addDays(moratoriumStart, 7);                      // 모라토리엄 +7일
+    const luxuryTaxDay    = addDays(freeAgencyOpen, 14);                      // FA 개막 +14일 (7월 중순)
     const freeAgencyClose = nthDayOfMonth(endYear, 8, 5, 2);                  // 9월 2번째 금요일
     const trainingCamp    = lastDayOfWeekInMonth(endYear, 8, 2);              // 9월 마지막 화요일
     const rosterDeadline  = nthDayOfMonth(endYear, 9, 1, 3);                  // 10월 3번째 월요일
@@ -128,6 +130,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
         rookieDraft: fmt(rookieDraft),
         moratoriumStart: fmt(moratoriumStart),
         freeAgencyOpen: fmt(freeAgencyOpen),
+        luxuryTaxDay: fmt(luxuryTaxDay),
         freeAgencyClose: fmt(freeAgencyClose),
         trainingCamp: fmt(trainingCamp),
         rosterDeadline: fmt(rosterDeadline),

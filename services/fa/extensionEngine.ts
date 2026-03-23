@@ -16,6 +16,7 @@ import { calcFADemand, determineFARole } from './faValuation';
 import { analyzeTeamSituation } from '../tradeEngine/teamAnalysis';
 import { LEAGUE_FINANCIALS, getOVRThreshold } from '../../utils/constants';
 import { formatMoney } from '../../utils/formatMoney';
+import { getMaxCapPct } from './contractEligibility';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -181,6 +182,7 @@ function _buildDemandFromFA(
     faDemand: FADemandResult,
     isContender: boolean,
     tieredFloor: number,
+    currentSeasonYear: number,
 ): ExtensionDemand {
     const securityDiscount = 1.0 - personality.riskAversion * 0.12 * (1 - personality.financialAmbition * 0.5);
     const targetAAV = Math.max(tieredFloor, faDemand.targetSalary * securityDiscount);
@@ -195,8 +197,10 @@ function _buildDemandFromFA(
         tieredFloor,
     );
 
+    const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
+    const maxCapPct = getMaxCapPct(player, yos, currentSeasonYear, /* isExtension */ true).pct;
     const openingAsk = Math.min(
-        LEAGUE_FINANCIALS.SALARY_CAP * 0.35,
+        LEAGUE_FINANCIALS.SALARY_CAP * maxCapPct,
         Math.max(reservationFloor * 1.06, faDemand.askingSalary * 0.92),
     );
 
@@ -231,7 +235,7 @@ export function buildExtensionDemand(
     const mc = marketConditions ?? NEUTRAL_MARKET;
     const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
     const tieredFloor = getTierFloor(player.ovr);
-    return _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor);
+    return _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor, currentSeasonYear);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -258,7 +262,7 @@ export function initNegotiationState(
     const tieredFloor = getTierFloor(player.ovr);
 
     const batnaAAV = Math.max(faDemand.targetSalary * 0.95, tieredFloor);
-    const demand   = _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor);
+    const demand   = _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor, currentSeasonYear);
 
     return {
         playerId: player.id,

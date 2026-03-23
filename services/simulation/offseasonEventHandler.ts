@@ -14,8 +14,11 @@ import { GeneratedPlayerRow } from '../../types/generatedPlayer';
 import { fetchPredefinedDraftClass } from '../queries';
 import { buildSeasonConfig } from '../../utils/seasonConfig';
 import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
-import { INITIAL_STATS } from '../../utils/constants';
+import { INITIAL_STATS, LEAGUE_FINANCIALS } from '../../utils/constants';
 import { processOffseason, OffseasonResult } from '../playerDevelopment/playerAging';
+import { calculateLuxuryTax } from '../financeEngine/budgetManager';
+import { calcTeamPayroll } from '../fa/faMarketBuilder';
+import { TEAM_DATA } from '../../data/teamData';
 import { resolveDraftOrder } from '../draft/draftOrderResolver';
 import type { LeaguePickAssets, ResolvedDraftOrder } from '../../types/draftAssets';
 
@@ -43,6 +46,16 @@ export interface OffseasonEventResult {
         expiredPlayerObjects?: Team['roster'];  // 계약 만료 선수 전체 Player 객체 (FA 시장 개설용)
         prevTeamIdMap?: Record<string, string>; // playerId → 계약 만료 직전 팀 ID (Bird Rights 판정용)
         faMarketClosed?: boolean;               // FA 시장 마감 신호 (CPU 자동 서명 트리거)
+        luxuryTaxResult?: {                     // 럭셔리 택스 정산 결과
+            myTeamTax: number;
+            myTeamPayroll: number;
+            taxLevel: number;
+            isLuxuryTeam: boolean;
+            ownerName: string;
+            title: string;
+            msg: string;
+        };
+        luxuryTaxPaid?: boolean;                // 멱등성 플래그
     };
 }
 
@@ -162,6 +175,7 @@ export interface DispatchParams {
     userTeamId?: string;  // 유저팀 팀옵션 보류용
     hasProspects?: boolean;  // prospectReveal에서 이미 생성됨
     leaguePickAssets?: LeaguePickAssets;  // 픽 자산 (보호/스왑 해석용)
+    luxuryTaxPaid?: boolean;  // 럭셔리 택스 이미 처리됨 (멱등성)
 }
 
 /**
@@ -236,6 +250,35 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
     // ── moratoriumStart: 에이징/은퇴/계약만료/옵션 처리 ──
     if (currentDate >= keyDates.moratoriumStart && offseasonPhase === 'POST_DRAFT') {
         return handleMoratoriumStart(teams, currentSeasonNumber, tendencySeed, userTeamId);
+    }
+
+    // ── luxuryTaxDay: 럭셔리 택스 정산 ──
+    if (keyDates.luxuryTaxDay && currentDate >= keyDates.luxuryTaxDay
+        && offseasonPhase === 'FA_OPEN' && !params.luxuryTaxPaid) {
+        const myTeam = userTeamId ? teams.find(t => t.id === userTeamId) : null;
+        if (myTeam) {
+            const myTeamPayroll = calcTeamPayroll(myTeam);
+            const taxLevel = LEAGUE_FINANCIALS.TAX_LEVEL;
+            const myTeamTax = calculateLuxuryTax(myTeamPayroll, taxLevel);
+            const isLuxuryTeam = myTeamTax > 0;
+            const ownerName = TEAM_DATA[myTeam.id]?.owner ?? 'The Ownership Group';
+            const fmtM = (v: number) => `$${(v / 1_000_000).toFixed(1)}M`;
+            const title = isLuxuryTeam ? '럭셔리 택스 납부 안내' : '시즌 재정 결산 보고';
+            const msg = isLuxuryTeam
+                ? `이번 시즌 팀 페이롤은 ${fmtM(myTeamPayroll)}입니다. 럭셔리 택스 기준선(${fmtM(taxLevel)})을 초과하여 ${fmtM(myTeamTax)}의 럭셔리 택스를 납부했습니다.`
+                : `이번 시즌 팀 페이롤은 ${fmtM(myTeamPayroll)}입니다. 럭셔리 택스 기준선(${fmtM(taxLevel)}) 이내로 마감되어 럭셔리 택스가 부과되지 않았습니다.`;
+
+            console.log(`💰 Luxury tax settled: ${myTeam.id} — payroll ${fmtM(myTeamPayroll)}, tax ${fmtM(myTeamTax)}`);
+
+            return {
+                fired: true,
+                blocked: false,
+                updates: {
+                    luxuryTaxResult: { myTeamTax, myTeamPayroll, taxLevel, isLuxuryTeam, ownerName, title, msg },
+                    luxuryTaxPaid: true,
+                },
+            };
+        }
     }
 
     // ── rosterDeadline: FA 시장 마감 (FA_OPEN → PRE_SEASON) ──
