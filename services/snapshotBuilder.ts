@@ -173,7 +173,16 @@ export const hydrateFromSnapshot = (
             if ((pData as any).archetypeState) player.archetypeState = (pData as any).archetypeState;
             if ((pData as any).age !== undefined) player.age = (pData as any).age;
             if ((pData as any).contract) {
-                player.contract = (pData as any).contract;
+                const snapContract = (pData as any).contract;
+                const dbContract = player.contract; // baseTeams에서 온 최신 DB 계약
+                // DB 계약이 더 완전하면 (BBRef 업데이트로 이전 연도 추가됨) DB 우선 사용
+                const snapCurSal = snapContract.years[snapContract.currentYear ?? 0];
+                const dbCurSal = dbContract?.years[dbContract?.currentYear ?? 0];
+                const useDB = dbContract && snapCurSal === dbCurSal && (
+                    snapContract.years.length < dbContract.years.length ||
+                    (dbContract.currentYear ?? 0) > (snapContract.currentYear ?? 0)
+                );
+                player.contract = useDB ? dbContract : snapContract;
                 player.salary = player.contract!.years[player.contract!.currentYear];
                 player.contractYears = player.contract!.years.length - player.contract!.currentYear;
             }
