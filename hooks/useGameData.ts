@@ -382,11 +382,18 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                         const saved = savedState.contract;
                                         if (!saved) return {};
                                         const db = p.contract; // dataMapper에서 로드된 DB 다년 계약
-                                        // saved가 단년(1개)이고 DB가 더 많은 연도를 포함하면
-                                        // 기존 세이브의 부분 데이터 → DB의 완전한 계약을 우선 사용
-                                        const useContract = (db && saved.years.length < db.years.length)
-                                            ? db
-                                            : saved;
+                                        // DB에 더 많은 이력이 있으면 DB 우선 사용 (BBRef 업데이트 반영)
+                                        // 추가 조건: 연봉 배열 길이가 같아도 DB의 currentYear가 더 크면 DB 우선
+                                        // (단, 현재 연봉이 일치하는 경우에만 - 재계약된 선수 오판 방지)
+                                        const savedCurSal = saved.years[saved.currentYear ?? 0];
+                                        const dbCurSal = db?.years[db?.currentYear ?? 0];
+                                        const useDB = db && (
+                                            saved.years.length < db.years.length ||
+                                            ((db.currentYear ?? 0) > (saved.currentYear ?? 0) &&
+                                             dbCurSal === savedCurSal &&
+                                             saved.years.length <= db.years.length)
+                                        );
+                                        const useContract = useDB ? db : saved;
                                         return {
                                             contract: useContract,
                                             salary: useContract.years[useContract.currentYear],
@@ -694,6 +701,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             } catch (e) {
                 console.error("❌ Initialization Failed:", e);
             } finally {
+                setLoadingProgress(100);
+                setLoadingMessage('');
+                await new Promise(r => setTimeout(r, 500));
                 setIsSaveLoading(false);
             }
         };

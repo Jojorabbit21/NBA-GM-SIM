@@ -126,18 +126,24 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
                         </div>
                     </div>
 
+                    {/* 배경 블러 오버레이 — 피그마: backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)] */}
+                    <div
+                        className="fixed inset-0 z-40"
+                        style={{ backgroundColor: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(6px)' }}
+                    />
+
                     {/* Loading Banner — 피그마 LoadingIndicator */}
                     <div
                         className="fixed top-0 left-0 right-0 z-50"
                         style={{ backgroundColor: '#1e293b', height: '123px' }}
                     >
-                        {/* 상단 메시지 영역 */}
+                        {/* 상단: 고정 타이틀 */}
                         <div className="flex items-center px-8" style={{ height: '88px' }}>
                             <p className="text-2xl font-medium text-white whitespace-nowrap">
-                                {message || '데이터 로딩 중 ...'}
+                                단장 사무실에 집기 채워넣는 중 ...
                             </p>
                         </div>
-                        {/* 프로그레스 바 영역 */}
+                        {/* 프로그레스 바: % + 단계별 작업 메시지 */}
                         <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
                             <div
                                 className="absolute left-0 top-0 h-full"

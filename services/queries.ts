@@ -69,7 +69,8 @@ export const useBaseData = (enabled: boolean = true) => {
 
             return { teams, schedule, freeAgents };
         },
-        staleTime: Infinity,
+        staleTime: 0,
+        refetchOnWindowFocus: false,
         retry: 2
     });
 };
