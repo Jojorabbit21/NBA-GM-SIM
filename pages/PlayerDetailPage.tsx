@@ -37,11 +37,18 @@ const PlayerDetailPage: React.FC = () => {
         );
     }
 
+    // teamId가 state에 없으면 현재 로스터에서 찾아서 보정 (FAView 등 teamId 미전달 경로 대응)
+    const resolvedTeamEntry = !data.teamId
+        ? gameData.teams.flatMap(t => t.roster.map(p => ({ player: p, teamId: t.id, teamName: t.name }))).find(x => x.player.id === playerId)
+        : null;
+    const resolvedTeamId = data.teamId ?? resolvedTeamEntry?.teamId;
+    const resolvedTeamName = data.teamName ?? resolvedTeamEntry?.teamName;
+
     return (
         <PlayerDetailView
             player={{ ...data.player, ovr: calculatePlayerOvr(data.player) }}
-            teamName={data.teamName}
-            teamId={data.teamId}
+            teamName={resolvedTeamName}
+            teamId={resolvedTeamId}
             allTeams={gameData.teams}
             tendencySeed={gameData.tendencySeed || undefined}
             seasonShort={seasonShort}

@@ -683,29 +683,29 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 {yos >= 7 && yos <= 9 && (
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">슈퍼맥스 대상</span>
-                                        <span className={isSuperMax ? 'text-amber-400 font-bold' : 'text-slate-600'}>
-                                            {isSuperMax ? '✓ 해당' : '✗ 미해당'}
+                                        <span className={isSuperMax ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+                                            {isSuperMax ? '✓ 해당' : '미해당'}
                                         </span>
                                     </div>
                                 )}
                                 {yos < 7 && (
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">로즈룰 대상</span>
-                                        <span className={isRoseRule ? 'text-amber-400 font-bold' : 'text-slate-600'}>
-                                            {isRoseRule ? '✓ 해당' : '✗ 미해당'}
+                                        <span className={isRoseRule ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+                                            {isRoseRule ? '✓ 해당' : '미해당'}
                                         </span>
                                     </div>
                                 )}
                                 <div className="pt-0.5 space-y-1">
-                                    <div className="text-xs text-slate-600 mb-0.5">최근 3년 수상</div>
+                                    <div className="text-xs text-slate-500 mb-0.5">최근 3년 수상</div>
                                     {[
                                         { label: 'MVP',            entries: recentAwards.mvp.map(s => s) },
                                         { label: 'DPOY',           entries: recentAwards.dpoy.map(s => s) },
                                         { label: '올-오펜시브',    entries: recentAwards.allNba.map(a => `${a.season}(${a.tier})`) },
                                     ].map(({ label, entries }) => (
                                         <div key={label} className="flex justify-between items-start gap-2 text-xs">
-                                            <span className="text-slate-600 flex-shrink-0">{label}</span>
-                                            <span className={`text-right font-mono ${entries.length ? 'text-slate-300' : 'text-slate-700'}`}>
+                                            <span className="text-slate-500 flex-shrink-0">{label}</span>
+                                            <span className="text-right font-mono text-slate-300">
                                                 {entries.length ? entries.join(', ') : '없음'}
                                             </span>
                                         </div>
@@ -934,10 +934,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
                                 {selectedSlot !== 'vet_min' && (
-                                    <div className="space-y-0.5">
-                                        <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
                                             <span className="text-xs text-slate-500">캡% 지정</span>
-                                            <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-mono text-indigo-400/80">상한 {(capPct * 100).toFixed(0)}%</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
                                                 <input
                                                     type="number"
                                                     step={0.1}
@@ -969,10 +971,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 />
                                                 <span className="text-xs text-slate-500">%</span>
                                             </div>
-                                        </div>
-                                        <div className="text-right text-xs text-slate-600">
-                                            CBA 상한 {(capPct * 100).toFixed(0)}%
-                                        </div>
                                     </div>
                                 )}
                                 {faIsDecliningSalary && (
@@ -980,7 +978,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
                                     </div>
                                 )}
-                                <div className="space-y-1">
+                                <div className="space-y-1 border-t border-slate-800 pt-2">
                                     {faOfferSalaries.map((sal, i) => {
                                         const y = currentSeasonYear + i;
                                         const season = `${y}-${String(y + 1).slice(-2)}`;
@@ -1002,7 +1000,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setFaOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
                                                     >
                                                         {`-$${Math.abs(delta) / 1_000_000}M`}
                                                     </button>
@@ -1045,7 +1043,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setFaOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
                                                     >
                                                         {`+$${delta / 1_000_000}M`}
                                                     </button>
@@ -1054,7 +1052,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         );
                                     })}
                                 </div>
-                                <div className="space-y-1 pt-1">
+                                <div className="space-y-1 pt-2 mt-1 border-t border-slate-700/50">
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-400 font-semibold">총 계약액</span>
                                         <span className="font-mono font-bold text-white">{fmtM(totalContractValue)}</span>
@@ -1198,10 +1196,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
-                                <div className="space-y-0.5">
-                                    <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
                                         <span className="text-xs text-slate-500">캡% 지정</span>
-                                        <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-mono text-indigo-400/80">상한 {(capPct * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
                                             <input
                                                 type="number"
                                                 step={0.1}
@@ -1231,17 +1231,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             />
                                             <span className="text-xs text-slate-500">%</span>
                                         </div>
-                                    </div>
-                                    <div className="text-right text-xs text-slate-600">
-                                        CBA 상한 {(capPct * 100).toFixed(0)}%
-                                    </div>
                                 </div>
                                 {extIsDecliningSalary && (
                                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
                                     </div>
                                 )}
-                                <div className="space-y-1">
+                                <div className="space-y-1 border-t border-slate-800 pt-2">
                                     {extOfferSalaries.map((sal, i) => {
                                         const y = currentSeasonYear + i;
                                         const season = `${y}-${String(y + 1).slice(-2)}`;
@@ -1262,7 +1258,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
                                                     >
                                                         {`-$${Math.abs(delta) / 1_000_000}M`}
                                                     </button>
@@ -1303,7 +1299,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-1.5 py-1 rounded bg-slate-800 border border-slate-700/60 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
                                                     >
                                                         {`+$${delta / 1_000_000}M`}
                                                     </button>
@@ -1312,7 +1308,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         );
                                     })}
                                 </div>
-                                <div className="space-y-1 pt-1">
+                                <div className="space-y-1 pt-2 mt-1 border-t border-slate-700/50">
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-slate-400 font-semibold">총 계약액</span>
                                         <span className="font-mono font-bold text-white">{fmtM(totalContractValue)}</span>
