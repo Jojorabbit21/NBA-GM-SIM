@@ -578,7 +578,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                         {(() => {
                             const allAwards: any[] = [
-                                ...(player.career_history?.flatMap(s =>
+                                ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
                                     (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
                                 ) ?? []),
                                 ...(player.awards ?? []),
@@ -1076,9 +1076,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <SectionHeader title="수상 내역" style={sectionBg} />
                             <div className="custom-scrollbar min-h-[440px]">
                             {(() => {
-                                const historicalAwards = player.career_history?.flatMap(s =>
+                                const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
                                     (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
-                                ) ?? [];
+                                );
                                 const allAwards = [...historicalAwards, ...(player.awards ?? [])];
                                 return allAwards.length === 0 ? (
                                 <div className="flex items-center justify-center h-[400px]">

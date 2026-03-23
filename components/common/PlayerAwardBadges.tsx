@@ -39,8 +39,12 @@ interface AggregatedAward {
 }
 
 function aggregateAwards(awards: PlayerAwardEntry[]): AggregatedAward[] {
+    const seen = new Set<string>();
     const map = new Map<PlayerAwardType, { count: number; seasons: string[] }>();
     for (const a of awards) {
+        const key = `${a.type}__${a.season}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
         const existing = map.get(a.type);
         if (existing) {
             existing.count++;
@@ -123,8 +127,15 @@ export const PlayerAwardList: React.FC<{ awards?: PlayerAwardEntry[] }> = ({ awa
         );
     }
 
-    // 각 엔트리를 개별 행으로 (시즌 desc → order asc 정렬)
-    const sorted = [...awards].sort((a, b) => {
+    // 각 엔트리를 개별 행으로 (시즌 desc → order asc 정렬), type+season 중복 제거
+    const seenKeys = new Set<string>();
+    const deduped = awards.filter(a => {
+        const key = `${a.type}__${a.season}`;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+    });
+    const sorted = [...deduped].sort((a, b) => {
         const seasonCmp = b.season.localeCompare(a.season);
         if (seasonCmp !== 0) return seasonCmp;
         return AWARD_META[a.type].order - AWARD_META[b.type].order;
