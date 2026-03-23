@@ -365,11 +365,21 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.popularity && { popularity: savedState.popularity }),
                                     ...(savedState.morale && { morale: savedState.morale }),
                                     ...(savedState.age !== undefined && { age: savedState.age }),
-                                    ...(savedState.contract && {
-                                        contract: savedState.contract,
-                                        salary: savedState.contract.years[savedState.contract.currentYear],
-                                        contractYears: savedState.contract.years.length - savedState.contract.currentYear,
-                                    }),
+                                    ...(() => {
+                                        const saved = savedState.contract;
+                                        if (!saved) return {};
+                                        const db = p.contract; // dataMapper에서 로드된 DB 다년 계약
+                                        // saved가 단년(1개)이고 DB가 더 많은 연도를 포함하면
+                                        // 기존 세이브의 부분 데이터 → DB의 완전한 계약을 우선 사용
+                                        const useContract = (db && saved.years.length < db.years.length)
+                                            ? db
+                                            : saved;
+                                        return {
+                                            contract: useContract,
+                                            salary: useContract.years[useContract.currentYear],
+                                            contractYears: useContract.years.length - useContract.currentYear,
+                                        };
+                                    })(),
                                 };
                                 // snapshot 경로에서 이미 reapplyAttrDeltas를 호출했으므로 이중 적용 방지
                                 if (!snapshotUsed && restored.attrDeltas) reapplyAttrDeltas(restored);
