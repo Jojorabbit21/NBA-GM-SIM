@@ -12,6 +12,15 @@ body {
 
 .text-huge { font-size: clamp(3rem, 8vw, 6rem); line-height: 0.9; }
 
+/* Skeleton shimmer — transform 기반 (GPU 가속, 리렌더링에 무관하게 연속 동작) */
+@keyframes shimmer-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+}
+.animate-shimmer {
+    animation: shimmer-slide 1.8s ease-in-out infinite;
+}
+
 @keyframes marquee {
     from { transform: translateX(0); }
     to { transform: translateX(-50%); }

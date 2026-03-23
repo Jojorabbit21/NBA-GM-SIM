@@ -162,7 +162,11 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
                             </p>
                         </div>
                         {/* 프로그레스 바: % + 단계별 작업 메시지 */}
-                        <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px', ...shimmerStyle }}>
+                        <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
+                            {/* shimmer — transform 기반 (GPU 가속) */}
+                            <div className="animate-shimmer absolute inset-0 pointer-events-none"
+                                style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)' }}
+                            />
                             <div
                                 className="absolute left-0 top-0 h-full"
                                 style={{
