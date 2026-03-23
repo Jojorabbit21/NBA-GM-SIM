@@ -86,6 +86,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
+    const [draftPicksState, setDraftPicksState] = useState<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     const pendingSaveRef = useRef<any>(null);
     const isSavingRef = useRef(false);
 
@@ -199,6 +200,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savedDraftPicks = checkpoint.draft_picks as { order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null;
                     if (savedDraftPicks) {
                         draftPicksRef.current = savedDraftPicks;
+                        setDraftPicksState(savedDraftPicks);
                         if (savedDraftPicks.teams) {
                             const playerMap = new Map<string, Player>();
                             baseData.teams.forEach((t: Team) => t.roster.forEach((p: Player) => playerMap.set(p.id, p)));
@@ -770,6 +772,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
                 if (ov?.draftPicks) {
                     draftPicksRef.current = ov.draftPicks;
+                    setDraftPicksState(ov.draftPicks);
                 }
                 const seed = ov?.tendencySeed || gameStateRef.current.tendencySeed;
 
@@ -933,6 +936,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
             draftPicksRef.current = null;
+            setDraftPicksState(null);
             setLotteryResult(null);
             setPlayoffSeries([]);
             setUserTactics(null);
@@ -966,6 +970,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const saveDraftOrder = useCallback(async (order: string[], poolType: DraftPoolType, teamId?: string) => {
         const draftData = { order, poolType };
         draftPicksRef.current = draftData;
+        setDraftPicksState(draftData);
 
         await forceSave({
             myTeamId: teamId || gameStateRef.current.myTeamId,
@@ -1181,6 +1186,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setNews([]);
          setLotteryResult(null);
          draftPicksRef.current = null;
+         setDraftPicksState(null);
          isInitialTacticsLoad.current = true;
          isInitialSimSettingsLoad.current = true;
          hasInitialLoadRef.current = false;
@@ -1236,7 +1242,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         cleanupData,
         
         freeAgents: effectiveFreeAgents,
-        draftPicks: draftPicksRef.current,
+        draftPicks: draftPicksState,
         lotteryResult, setLotteryResult,
         resolvedDraftOrder, setResolvedDraftOrder,
         leagueFAPool, setLeagueFAPool,

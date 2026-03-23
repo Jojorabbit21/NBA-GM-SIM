@@ -861,6 +861,43 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {/* 연차별 연봉 */}
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
+                                {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
+                                {selectedSlot !== 'vet_min' && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-slate-500">캡% 지정</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="number"
+                                                step={0.1}
+                                                min={0}
+                                                max={35}
+                                                placeholder="–"
+                                                onBlur={e => {
+                                                    const pct = parseFloat(e.target.value);
+                                                    if (!isNaN(pct) && pct > 0) {
+                                                        const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                        const clamped = Math.min(raw, currentSlotMax);
+                                                        setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                    }
+                                                    e.target.value = '';
+                                                }}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        const pct = parseFloat((e.target as HTMLInputElement).value);
+                                                        if (!isNaN(pct) && pct > 0) {
+                                                            const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                            const clamped = Math.min(raw, currentSlotMax);
+                                                            setFaOfferSalaries(generateEscalatedSalaries(clamped, faEscalateRate, faOfferYears));
+                                                        }
+                                                        (e.target as HTMLInputElement).value = '';
+                                                    }
+                                                }}
+                                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
+                                            />
+                                            <span className="text-xs text-slate-500">%</span>
+                                        </div>
+                                    </div>
+                                )}
                                 {faIsDecliningSalary && (
                                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
@@ -1066,6 +1103,39 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {/* 연차별 연봉 */}
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
+                                {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">캡% 지정</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <input
+                                            type="number"
+                                            step={0.1}
+                                            min={0}
+                                            max={35}
+                                            placeholder="–"
+                                            onBlur={e => {
+                                                const pct = parseFloat(e.target.value);
+                                                if (!isNaN(pct) && pct > 0) {
+                                                    const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                    setExtOfferSalaries(generateEscalatedSalaries(newSal, extEscalateRate, extOfferYears));
+                                                }
+                                                e.target.value = '';
+                                            }}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    const pct = parseFloat((e.target as HTMLInputElement).value);
+                                                    if (!isNaN(pct) && pct > 0) {
+                                                        const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
+                                                        setExtOfferSalaries(generateEscalatedSalaries(newSal, extEscalateRate, extOfferYears));
+                                                    }
+                                                    (e.target as HTMLInputElement).value = '';
+                                                }
+                                            }}
+                                            className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
+                                        />
+                                        <span className="text-xs text-slate-500">%</span>
+                                    </div>
+                                </div>
                                 {extIsDecliningSalary && (
                                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
                                         ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락

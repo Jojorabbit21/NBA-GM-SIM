@@ -301,7 +301,88 @@ ALTER TABLE saves ADD COLUMN team_finances JSONB DEFAULT NULL;
 
 ---
 
-## 7. 30팀 정적 데이터
+## 7. 동적 샐러리 캡 시스템 (멀티시즌)
+
+### 개요
+
+멀티시즌에서 샐러리 캡은 매 시즌 5~10% 랜덤 성장한다.
+시즌 시작 시 고정 상수였던 `LEAGUE_FINANCIALS`가 해당 시즌 캡으로 동적 갱신된다.
+
+**실제 NBA 근거**:
+- 정상 구간: 연 3~8% 인상 (TV 딜·수익 성장)
+- CBA 상한: 연간 최대 10% (2016 급등 후 도입)
+- 2025-26 기준 새 TV딜(ESPN/NBC/Amazon) 반영으로 +10% 구간 지속 예상
+
+### 캡 임계값 비율 (고정)
+
+모든 임계값은 `SALARY_CAP`에 대한 비율로 유지된다:
+
+| 항목 | 비율 | 2025-26 기준 |
+|------|------|------------|
+| Salary Floor | ×0.9002 | $139.2M |
+| Salary Cap | ×1.0000 | $154.6M |
+| Tax Level | ×1.2151 | $187.9M |
+| First Apron | ×1.2672 | $195.9M |
+| Second Apron | ×1.3440 | $207.8M |
+| Non-Tax MLE | ×0.09121 | $14.1M |
+| Taxpayer MLE | ×0.03677 | $5.7M |
+
+### 캡 히스토리 (`league_cap_history`)
+
+게임 시작 시 10시즌치 캡을 미리 생성해 `saves`에 저장:
+
+```typescript
+// 예시 (매 플레이마다 랜덤 생성)
+{
+  1: 154_647_000,   // 2025-26 (고정)
+  2: 168_153_450,   // +8.7%
+  3: 179_924_011,   // +7.0%
+  4: 192_518_772,   // +7.0%
+  5: 207_920_273,   // +8.0%
+  ...
+  10: 283_067_036,
+}
+```
+
+**설계 근거 — FA 계약은 달러 고정**:
+- 실제 NBA FA 계약은 서명 시점 달러로 확정 (캡% 플로팅 아님)
+- 루키 스케일도 드래프트 시점 캡 × 슬롯% → 달러 확정 후 고정
+- 따라서 미래 캡을 미리 알아야 드래프트/연장협상 금액 계산 가능
+- 10시즌치 사전 생성으로 모든 계약 시나리오 커버
+
+### 관련 함수 (`utils/constants.ts`)
+
+| 함수 | 역할 |
+|------|------|
+| `updateLeagueFinancials(newCap)` | LEAGUE_FINANCIALS + SIGNING_EXCEPTIONS 전체 재계산 |
+| `generateCapHistory(n=10)` | 시즌 1부터 n시즌까지 5~10% 랜덤 성장 히스토리 생성 |
+| `getSeasonCap(capHistory, n)` | 히스토리에서 시즌 n의 캡 조회 |
+
+### 동작 흐름
+
+```
+[게임 최초 로드]
+  league_cap_history 없음 → generateCapHistory(10) → saves 저장
+  → updateLeagueFinancials(시즌 1 캡)
+
+[재로드]
+  league_cap_history 복원 → updateLeagueFinancials(현재 시즌 캡)
+
+[openingNight — 시즌 전환]
+  seasonNumber 변경 → useEffect → updateLeagueFinancials(다음 시즌 캡)
+  (capHistory는 이미 saves에 저장되어 있으므로 재생성 불필요)
+```
+
+### DB 스키마
+
+```sql
+ALTER TABLE saves ADD COLUMN league_cap_history JSONB DEFAULT NULL;
+-- 형식: { "1": 154647000, "2": 168153450, ... }
+```
+
+---
+
+## 8. 30팀 정적 데이터
 
 `data/teamFinanceData.ts`에 하드코딩. 실제 NBA 데이터 기반 + 가상 경기장 이름.
 

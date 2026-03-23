@@ -16,8 +16,6 @@ export const POSITION_COLORS: Record<string, string> = {
     PG: '#22d3ee', SG: '#34d399', SF: '#fbbf24', PF: '#fb7185', C: '#a78bfa',
 };
 
-const CPU_PICK_DELAY = 800; // ms between CPU picks
-
 interface FantasyDraftViewProps {
     teams: Team[];
     myTeamId: string;
@@ -111,33 +109,6 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         return () => clearInterval(interval);
     }, [currentPickIndex]);
 
-    // ── CPU auto-pick: one pick at a time after short delay ──
-    useEffect(() => {
-        if (isUserTurn || currentPickIndex >= draftOrder.length) return;
-
-        const timer = setTimeout(() => {
-            setPicks(prevPicks => {
-                const used = new Set(prevPicks.map(p => p.playerId));
-                const pool = allPlayers.filter(p => !used.has(p.id));
-                if (pool.length === 0) return prevPicks;
-
-                const teamId = draftOrder[currentPickIndex];
-                const player = pool[0]; // BPA (Best Player Available)
-                return [...prevPicks, {
-                    round: Math.floor(currentPickIndex / teamIds.length) + 1,
-                    teamId,
-                    playerId: player.id,
-                    playerName: player.name,
-                    ovr: calculatePlayerOvr(player),
-                    position: player.position,
-                }];
-            });
-            setCurrentPickIndex(prev => prev + 1);
-        }, CPU_PICK_DELAY);
-
-        return () => clearTimeout(timer);
-    }, [currentPickIndex, isUserTurn, draftOrder, allPlayers, teamIds.length]);
-
     // ── User auto-pick on timeout ──
     useEffect(() => {
         if (timeRemaining !== 0 || !isUserTurn) return;
@@ -163,8 +134,8 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         setSelectedPlayerId(null);
     }, [isUserTurn, currentRound, myTeamId]);
 
-    // ── Skip to my turn: all CPU picks at once ──
-    const handleSkipToMyTurn = useCallback(() => {
+    // ── Batch-simulate picks until stopCondition returns true ──
+    const simulatePicks = useCallback((stopCondition?: (teamId: string) => boolean) => {
         const newPicks: BoardPick[] = [];
         const used = new Set(picks.map(p => p.playerId));
         let idx = currentPickIndex;
@@ -173,7 +144,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
 
         while (idx < draftOrder.length && poolIdx < pool.length) {
             const tid = draftOrder[idx];
-            if (tid === myTeamId) break;
+            if (stopCondition?.(tid)) break;
             const player = pool[poolIdx++];
             used.add(player.id);
             newPicks.push({
@@ -191,7 +162,27 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             setPicks(prev => [...prev, ...newPicks]);
             setCurrentPickIndex(idx);
         }
-    }, [picks, currentPickIndex, draftOrder, myTeamId, allPlayers, teamIds.length]);
+    }, [picks, currentPickIndex, draftOrder, allPlayers, teamIds.length]);
+
+    const handleSkipToMyTurn = useCallback(() => simulatePicks(tid => tid === myTeamId), [simulatePicks, myTeamId]);
+    const handleAutoCompleteAll = useCallback(() => simulatePicks(), [simulatePicks]);
+
+    // ── Advance one CPU pick ──
+    const handleAdvanceOnePick = useCallback(() => {
+        if (isUserTurn || currentPickIndex >= draftOrder.length) return;
+        if (availablePlayers.length === 0) return;
+        const teamId = draftOrder[currentPickIndex];
+        const player = availablePlayers[0];
+        setPicks(prev => [...prev, {
+            round: currentRound,
+            teamId,
+            playerId: player.id,
+            playerName: player.name,
+            ovr: calculatePlayerOvr(player),
+            position: player.position,
+        }]);
+        setCurrentPickIndex(prev => prev + 1);
+    }, [isUserTurn, currentPickIndex, draftOrder, availablePlayers, currentRound]);
 
     const showSkip = !isUserTurn && currentPickIndex < draftOrder.length;
 
@@ -236,8 +227,12 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 isUserTurn={isUserTurn}
                 picksUntilUser={picksUntilUser}
                 timeRemaining={timeRemaining}
+                onAdvanceOnePick={handleAdvanceOnePick}
                 onSkipToMyTurn={handleSkipToMyTurn}
+                onAutoCompleteAll={handleAutoCompleteAll}
                 showAdvance={showSkip}
+                nextPickNumber={currentPickIndex + 1}
+                nextPickTeamId={draftOrder[currentPickIndex]}
                 onBack={onComplete ? undefined : onBack}
             />
 

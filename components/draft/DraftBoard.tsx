@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { TEAM_DATA } from '../../data/teamData';
 
 export interface BoardPick {
@@ -41,11 +41,9 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             const cellRect = cell.getBoundingClientRect();
             const containerRect = container.getBoundingClientRect();
 
-            // Horizontal scroll: keep current cell visible
             if (cellRect.left < containerRect.left + 80 || cellRect.right > containerRect.right) {
                 container.scrollLeft += cellRect.left - containerRect.left - 100;
             }
-            // Vertical scroll: keep current cell visible
             if (cellRect.top < containerRect.top + 40 || cellRect.bottom > containerRect.bottom) {
                 container.scrollTop += cellRect.top - containerRect.top - 60;
             }
@@ -53,21 +51,34 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     }, [currentPickIndex]);
 
     // Build lookup: picksByTeamAndRound[teamId][round] = BoardPick
-    const picksByTeamAndRound: Record<string, Record<number, BoardPick>> = {};
-    picks.forEach(p => {
-        if (!picksByTeamAndRound[p.teamId]) picksByTeamAndRound[p.teamId] = {};
-        picksByTeamAndRound[p.teamId][p.round] = p;
-    });
+    const picksByTeamAndRound = useMemo(() => {
+        const map: Record<string, Record<number, BoardPick>> = {};
+        picks.forEach(p => {
+            if (!map[p.teamId]) map[p.teamId] = {};
+            map[p.teamId][p.round] = p;
+        });
+        return map;
+    }, [picks]);
+
+    // Build lookup: pickNumber per (teamId, round) from draftOrder
+    const pickNumberMap = useMemo(() => {
+        const map: Record<string, Record<number, number>> = {};
+        draftOrder.forEach((teamId, idx) => {
+            const round = Math.floor(idx / teamIds.length) + 1;
+            if (!map[teamId]) map[teamId] = {};
+            map[teamId][round] = idx + 1;
+        });
+        return map;
+    }, [draftOrder, teamIds.length]);
 
     const currentTeamId = draftOrder[currentPickIndex] || '';
     const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
-    const currentTeamColor = TEAM_DATA[currentTeamId]?.colors.primary || '#6366f1';
 
     return (
         <div
             ref={scrollContainerRef}
             className="h-full overflow-auto"
-            style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
+            style={{ scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' } as React.CSSProperties}
         >
             {/* Transposed: columns = teams, rows = rounds */}
             <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px', margin: '-2px' }}>
@@ -83,15 +94,19 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         {/* Team column headers */}
                         {teamIds.map(teamId => {
                             const isUser = teamId === userTeamId;
+                            const teamData = TEAM_DATA[teamId];
+                            const teamColor = teamData?.colors.primary || '#6366f1';
+                            const teamTextColor = teamData?.colors.text || '#FFFFFF';
                             return (
                                 <th
                                     key={teamId}
-                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-xs font-bold uppercase ${
-                                        isUser ? 'text-white' : 'text-slate-400'
-                                    }`}
+                                    className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-xs font-bold uppercase"
                                     style={{
-                                        ...(isUser ? { backgroundColor: 'rgba(245,158,11,0.12)' } : {}),
-                                        boxShadow: '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
+                                        backgroundColor: teamColor,
+                                        color: teamTextColor,
+                                        boxShadow: isUser
+                                            ? `inset 0 0 0 2px rgba(245,158,11,0.7), 1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)`
+                                            : '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
                                     }}
                                 >
                                     {teamId.toUpperCase()}
@@ -108,22 +123,21 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         const isCurrentRound = round === currentRound;
 
                         return (
-                            <tr
-                                key={round}
-                                className="h-[76px]"
-                            >
+                            <tr key={round} className="h-[76px]">
                                 {/* Round label (sticky left) */}
                                 <td
-                                    className="sticky left-0 bg-slate-950 px-2 py-1 z-10"
+                                    className={`sticky left-0 px-2 py-1 z-10 text-center ${
+                                        isCurrentRound ? 'bg-indigo-950' : 'bg-slate-950'
+                                    }`}
                                     style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
                                 >
-                                    <div className="flex items-center justify-center gap-1">
-                                        <span className={`text-xs font-bold whitespace-nowrap ${
-                                            isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span className={`text-[11px] font-black whitespace-nowrap ${
+                                            isCurrentRound ? 'text-indigo-300' : isPast ? 'text-slate-600' : 'text-slate-500'
                                         }`}>
-                                            {round}라운드
+                                            R{round}
                                         </span>
-                                        <span className={`text-xs ${
+                                        <span className={`text-[10px] ${
                                             isCurrentRound ? 'text-indigo-400/70' : 'text-slate-600'
                                         }`}>
                                             {isEvenRound ? '→' : '←'}
@@ -137,50 +151,66 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                     const isCurrent = currentTeamId === teamId && currentRound === round && !pick;
                                     const isUserCol = teamId === userTeamId;
                                     const posColor = pick ? (positionColors[pick.position] || '#64748b') : undefined;
+                                    const pickNum = pickNumberMap[teamId]?.[round];
 
                                     return (
                                         <td
                                             key={teamId}
                                             ref={isCurrent ? currentCellRef : undefined}
-                                            className="p-0 text-center rounded-lg"
-                                            style={{
-                                                ...(pick
-                                                    ? { backgroundColor: isUserCol ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
-                                                    : isCurrent
-                                                        ? { backgroundColor: `${currentTeamColor}15`, boxShadow: `inset 0 0 0 2px ${currentTeamColor}` }
-                                                        : isUserCol
-                                                            ? { backgroundColor: 'rgba(245,158,11,0.08)' }
-                                                            : {}
-                                                ),
-                                            }}
+                                            className="relative p-0 text-center"
                                         >
-                                            {pick ? (
-                                                /* Picked cell */
-                                                <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
-                                                    <span
-                                                        className="text-xs font-bold uppercase opacity-60"
-                                                        style={{ color: posColor }}
-                                                    >
-                                                        {pick.position}
-                                                    </span>
-                                                    <span
-                                                        className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
-                                                        style={{ color: posColor }}
-                                                    >
-                                                        {pick.playerName}
-                                                    </span>
-                                                </div>
-                                            ) : isCurrent ? (
-                                                /* Current pick cell */
-                                                <div className="h-full flex items-center justify-center">
-                                                    <span className="text-sm animate-pulse font-bold" style={{ color: currentTeamColor }}>
-                                                        ···
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                /* Empty cell */
-                                                null
-                                            )}
+                                            <div
+                                                className="absolute inset-[3px] rounded-md"
+                                                style={{
+                                                    ...(pick
+                                                        ? { backgroundColor: isUserCol ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
+                                                        : isCurrent
+                                                            ? { backgroundColor: 'rgba(16,185,129,0.10)', boxShadow: 'inset 0 0 0 2px rgba(16,185,129,0.6)' }
+                                                            : isUserCol
+                                                                ? { backgroundColor: 'rgba(245,158,11,0.08)' }
+                                                                : {}
+                                                    ),
+                                                }}
+                                            >
+                                                {pick ? (
+                                                    <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
+                                                        {pickNum != null && (
+                                                            <span className="text-[9px] opacity-40 font-bold text-slate-300">
+                                                                #{pickNum}
+                                                            </span>
+                                                        )}
+                                                        <span
+                                                            className="text-xs font-bold uppercase opacity-60"
+                                                            style={{ color: posColor }}
+                                                        >
+                                                            {pick.position}
+                                                        </span>
+                                                        <span
+                                                            className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
+                                                            style={{ color: posColor }}
+                                                        >
+                                                            {pick.playerName}
+                                                        </span>
+                                                    </div>
+                                                ) : isCurrent ? (
+                                                    <div className="h-full flex flex-col items-center justify-center gap-0.5 animate-pulse">
+                                                        {pickNum != null && (
+                                                            <span className="text-[9px] opacity-40 font-bold text-slate-300">
+                                                                #{pickNum}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[11px] font-bold text-emerald-400">
+                                                            선택 중...
+                                                        </span>
+                                                    </div>
+                                                ) : pickNum != null ? (
+                                                    <div className="h-full flex items-end justify-center pb-1.5">
+                                                        <span className="text-[9px] opacity-25 font-bold text-slate-400">
+                                                            #{pickNum}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
+                                            </div>
                                         </td>
                                     );
                                 })}

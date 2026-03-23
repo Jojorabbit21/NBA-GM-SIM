@@ -2,7 +2,8 @@
 
 > 리서치 원문: `docs/domain/nba-salary-cap-2025-26.md`
 > **선결 과제**: 구단 재정 시스템 (별도 구현 후 연동)
-> **상태**: 계획 완료, 구현 대기 (재정 시스템 완성 후)
+> **상태**: 일부 구현 완료 (동적 캡 히스토리 ✅, 나머지 Phase 1~3 대기)
+> **동적 캡 시스템 문서**: `docs/simulation/finance-system.md` §7
 
 ---
 
@@ -143,6 +144,13 @@ VET_MIN_CAP_HIT = 2.296;
 ---
 
 ## 구현 순서
+
+### Phase 0 — 완료 (동적 캡 히스토리)
+- ✅ `generateCapHistory(10)` — 게임 시작 시 10시즌치 랜덤 생성 (5~10%/year)
+- ✅ `updateLeagueFinancials(cap)` — LEAGUE_FINANCIALS + SIGNING_EXCEPTIONS 비율 재계산
+- ✅ `getSeasonCap(capHistory, n)` — 시즌별 캡 조회
+- ✅ `saves.league_cap_history` JSONB 저장/복원
+- ✅ `useEffect([seasonNumber, leagueCapHistory])` — 시즌 전환 시 자동 갱신
 
 ### Phase 1 — 즉시 구현 (재정 시스템 완성 후)
 1. ✅ 캡 상수 업데이트 + 통합
