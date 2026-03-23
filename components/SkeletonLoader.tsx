@@ -58,10 +58,21 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
         return () => clearInterval(id);
     }, []);
 
+    // 스켈레톤은 800ms 후에 페이드인 — 로더 shimmer가 먼저 안정된 뒤 표시
+    const [showSkeleton, setShowSkeleton] = useState(false);
+    useEffect(() => {
+        const id = setTimeout(() => setShowSkeleton(true), 800);
+        return () => clearTimeout(id);
+    }, []);
+
     return (
         <>
             <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
-            <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200">
+            {/* 스켈레톤 UI — 800ms 후 페이드인 */}
+            <div
+                className="flex h-screen bg-slate-950 overflow-hidden text-slate-200"
+                style={{ opacity: showSkeleton ? 1 : 0, transition: 'opacity 0.4s ease' }}
+            >
 
                 {/* Sidebar — w-20, 아이콘 전용 */}
                 <aside
@@ -147,47 +158,48 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
                         </div>
                     </div>
 
-                    {/* 배경 블러 오버레이 — 피그마: backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)] */}
-                    <div className="fixed inset-0 z-40 backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)]" />
-
-                    {/* Loading Banner — 피그마 LoadingIndicator */}
-                    <div
-                        className="fixed top-0 left-0 right-0 z-50 shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-1px_rgba(0,0,0,0.06)]"
-                        style={{ backgroundColor: '#1e293b', height: '123px' }}
-                    >
-                        {/* 상단: 고정 타이틀 */}
-                        <div className="flex items-center px-8" style={{ height: '88px' }}>
-                            <p className="font-['Inter','Noto_Sans_KR',sans-serif] text-2xl font-medium text-white whitespace-nowrap">
-                                {LOADING_TITLES[titleIndex]}
-                            </p>
-                        </div>
-                        {/* 프로그레스 바: % + 단계별 작업 메시지 */}
-                        <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
-                            {/* shimmer — transform 기반 (GPU 가속) */}
-                            <div className="animate-shimmer absolute inset-0 pointer-events-none"
-                                style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)' }}
-                            />
-                            <div
-                                className="absolute left-0 top-0 h-full"
-                                style={{
-                                    width: `${progress}%`,
-                                    backgroundColor: '#059669',
-                                    transition: 'width 0.3s ease',
-                                }}
-                            />
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="font-['Inter',sans-serif] text-2xl font-medium text-white whitespace-nowrap" style={{ marginLeft: '31px' }}>
-                                    {progress}%
-                                </span>
-                                {message && (
-                                    <span className="font-['Inter',sans-serif] text-base font-bold text-white truncate" style={{ marginLeft: '12px' }}>
-                                        {message}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
                 </main>
+            </div>
+
+            {/* 배경 블러 오버레이 — 피그마: backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)] */}
+            <div className="fixed inset-0 z-40 backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)]" />
+
+            {/* Loading Banner — 피그마 LoadingIndicator */}
+            <div
+                className="fixed top-0 left-0 right-0 z-50 shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-1px_rgba(0,0,0,0.06)]"
+                style={{ backgroundColor: '#1e293b', height: '123px' }}
+            >
+                {/* 상단: 고정 타이틀 */}
+                <div className="flex items-center px-8" style={{ height: '88px' }}>
+                    <p className="font-['Inter','Noto_Sans_KR',sans-serif] text-2xl font-medium text-white whitespace-nowrap">
+                        {LOADING_TITLES[titleIndex]}
+                    </p>
+                </div>
+                {/* 프로그레스 바: % + 단계별 작업 메시지 */}
+                <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
+                    {/* shimmer — transform 기반 (GPU 가속) */}
+                    <div className="animate-shimmer absolute inset-0 pointer-events-none"
+                        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)' }}
+                    />
+                    <div
+                        className="absolute left-0 top-0 h-full"
+                        style={{
+                            width: `${progress}%`,
+                            backgroundColor: '#059669',
+                            transition: 'width 0.3s ease',
+                        }}
+                    />
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="font-['Inter',sans-serif] text-2xl font-medium text-white whitespace-nowrap" style={{ marginLeft: '31px' }}>
+                            {progress}%
+                        </span>
+                        {message && (
+                            <span className="font-['Inter',sans-serif] text-base font-bold text-white truncate" style={{ marginLeft: '12px' }}>
+                                {message}
+                            </span>
+                        )}
+                    </div>
+                </div>
             </div>
         </>
     );
