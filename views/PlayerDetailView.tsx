@@ -259,7 +259,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 // BBRef award code → 시뮬 PlayerAwardType 변환 (배지/헤더 표시용)
 // BRef는 MVP-1(수상자), MVP-2(2위 후보) 형태로 순위를 코드에 포함
 const BREF_BASE_TO_SIM_TYPE: Record<string, string> = {
-    CHM: 'CHAMPION', RCHM: 'REG_SEASON_CHAMPION', FMVP: 'FINALS_MVP',
+    CHM: 'CHAMPION', RCHM: 'REG_SEASON_CHAMPION', REG_CHM: 'REG_SEASON_CHAMPION', FMVP: 'FINALS_MVP',
     MVP: 'MVP', DPOY: 'DPOY',
     NBA1: 'ALL_NBA_1', NBA2: 'ALL_NBA_2', NBA3: 'ALL_NBA_3',
     DEF1: 'ALL_DEF_1', DEF2: 'ALL_DEF_2',
@@ -1084,7 +1084,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             <div className="custom-scrollbar min-h-[440px]">
                             {(() => {
                                 const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
-                                    (s.awards ?? []).map((a: any) => ({ type: a.code ?? a.type, season: a.season ?? s.season, label: a.label }))
+                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
                                 );
                                 const allAwards = [...historicalAwards, ...(player.awards ?? [])];
                                 return allAwards.length === 0 ? (

@@ -1,7 +1,20 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TEAM_DATA } from '../data/teamData';
 import { SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
+
+const LOADING_TITLES = [
+    '단장 사무실에 집기 채워넣는 중 ...',
+    '스카우트 보고서 검토하는 중 ...',
+    '드래프트 전략 수립하는 중 ...',
+    '트레이드 제안서 검토하는 중 ...',
+    '선수 계약 협상하는 중 ...',
+    '로스터 재정비하는 중 ...',
+    '코치진과 작전 회의하는 중 ...',
+    '구단주에게 보고서 작성하는 중 ...',
+    '연봉 협상 자료 준비하는 중 ...',
+    '원정 일정 조율하는 중 ...',
+];
 
 const shimmerStyle: React.CSSProperties = {
     backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
@@ -36,6 +49,14 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
     const data = getLastTeamData();
     const sidebarBg = data?.teamStatic?.colors?.primary ?? '#0f172a';
     const iconColor = data ? (SIDEBAR_ICON_COLORS[data.teamId] ?? 'rgba(255,255,255,0.35)') : 'rgba(255,255,255,0.35)';
+
+    const [titleIndex, setTitleIndex] = useState(() => Math.floor(Math.random() * LOADING_TITLES.length));
+    useEffect(() => {
+        const id = setInterval(() => {
+            setTitleIndex(i => (i + 1) % LOADING_TITLES.length);
+        }, 2500);
+        return () => clearInterval(id);
+    }, []);
 
     return (
         <>
@@ -137,7 +158,7 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
                         {/* 상단: 고정 타이틀 */}
                         <div className="flex items-center px-8" style={{ height: '88px' }}>
                             <p className="font-['Inter','Noto_Sans_KR',sans-serif] text-2xl font-medium text-white whitespace-nowrap">
-                                단장 사무실에 집기 채워넣는 중 ...
+                                {LOADING_TITLES[titleIndex]}
                             </p>
                         </div>
                         {/* 프로그레스 바: % + 단계별 작업 메시지 */}
