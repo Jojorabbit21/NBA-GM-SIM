@@ -146,12 +146,85 @@ export function buildExtensionPersonality(player: Player, tendencySeed: string):
 }
 
 // ─────────────────────────────────────────────────────────────
+// calcTenureAvailability — 팀 재직 기간 가용성 계수 (0.82~1.0)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 현재 시즌 출전 데이터와 부상 이력을 바탕으로
+ * 선수가 얼마나 안정적으로 출전했는지 나타내는 계수를 반환.
+ * 결장이 잦을수록 낮아지며, 연봉 앵커에 할인으로 적용된다.
+ */
+function calcTenureAvailability(player: Player): number {
+    const tenure = Math.max(1, player.teamTenure ?? 1);
+    const injuries = player.injuryHistory ?? [];
+
+    // 현재 시즌 출전율 (g/75 기준 — 75경기 이상이면 풀 가용)
+    const currentG = player.stats?.g ?? 0;
+    const currentAvail = currentG > 0 ? Math.min(1, currentG / 75) : null;
+
+    // 재직 기간 내 Major/Season-Ending 부상 빈도
+    const recentInjuries = injuries.slice(-(tenure * 5));
+    const seriousCount = recentInjuries.filter(e => e.severity !== 'Minor').length;
+    const injuryRate = seriousCount / tenure; // 시즌당 심각 부상 횟수
+
+    // 가용성 점수 (0~1): 현재 시즌 실데이터 우선, 없으면 부상 빈도로 추정
+    const availScore = currentAvail !== null
+        ? currentAvail
+        : clamp(1 - injuryRate * 0.25);
+
+    // 부상 할인: 시즌당 심각 부상 1회 이상 → 최대 -10%
+    const injuryDiscount = Math.min(0.10, injuryRate * 0.04);
+
+    return clamp(0.85 + 0.15 * availScore - injuryDiscount, 0.82, 1.00);
+}
+
+// ─────────────────────────────────────────────────────────────
+// calcSalaryAnchorBATNA — 직전 연봉 기반 BATNA 앵커
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 직전 연봉에 성격 보정과 가용성 할인을 적용하여
+ * "오픈마켓에서 최소 이 정도는 받을 수 있다"는 앵커 BATNA를 반환.
+ *
+ * anchorRatio 구성:
+ *   base 0.80
+ *   + riskAversion      × 0.10  (안정 선호 → 직전 연봉 기준 더 고수)
+ *   - loyalty           × 0.08  (팀 충성 → 양보 가능)
+ *   + financialAmbition × 0.08  (재정 야망 → 높은 앵커)
+ *   clamp → 0.70 ~ 0.92
+ *
+ * availDiscount: 팀 재직 기간 결장이 많을수록 0.82까지 할인 적용.
+ */
+function calcSalaryAnchorBATNA(
+    player: Player,
+    personality: ExtensionPersonality,
+): number {
+    const prevSalary = player.salary ?? 0;
+    if (prevSalary <= 0) return 0;
+
+    const anchorRatio = clamp(
+        0.80
+        + personality.riskAversion      * 0.10
+        - personality.loyalty           * 0.08
+        + personality.financialAmbition * 0.08,
+        0.70, 0.92,
+    );
+
+    const availDiscount = calcTenureAvailability(player);
+
+    return prevSalary * anchorRatio * availDiscount;
+}
+
+// ─────────────────────────────────────────────────────────────
 // calcExtensionBATNA
 // ─────────────────────────────────────────────────────────────
 
 /**
  * 선수의 대체 시장 기대치 (BATNA).
- * FA 시장가치의 95%를 기준으로 하되, OVR 티어 하한 보장.
+ * FA 시장가치 95% / OVR 티어 하한 / 직전 연봉 앵커 중 최댓값.
+ *
+ * 직전 연봉 앵커를 포함함으로써 시즌 중 협상이나 부상으로 인한
+ * 스탯 부재 시에도 비현실적으로 낮은 BATNA가 산출되지 않도록 방지.
  */
 export function calcExtensionBATNA(
     player: Player,
@@ -164,7 +237,10 @@ export function calcExtensionBATNA(
     const mc = marketConditions ?? NEUTRAL_MARKET;
     const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
     const tieredFloor = getTierFloor(player.ovr);
-    return Math.max(faDemand.targetSalary * 0.95, tieredFloor);
+    const personality = buildExtensionPersonality(player, tendencySeed);
+    const salaryAnchor = calcSalaryAnchorBATNA(player, personality);
+
+    return Math.max(faDemand.targetSalary * 0.95, tieredFloor, salaryAnchor);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -261,7 +337,11 @@ export function initNegotiationState(
     const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
     const tieredFloor = getTierFloor(player.ovr);
 
-    const batnaAAV = Math.max(faDemand.targetSalary * 0.95, tieredFloor);
+    const batnaAAV = Math.max(
+        faDemand.targetSalary * 0.95,
+        tieredFloor,
+        calcSalaryAnchorBATNA(player, personality),
+    );
     const demand   = _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor, currentSeasonYear);
 
     return {
