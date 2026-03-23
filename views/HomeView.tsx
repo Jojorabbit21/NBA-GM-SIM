@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { Team, Game, Player } from '../types';
 import { DepthChart } from '../types/tactics';
 import { OffseasonPhase } from '../types/app';
@@ -60,12 +60,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
     onViewPlayer,
 }) => {
     const [recentMessages, setRecentMessages] = useState<MessageListItem[]>([]);
+    const [inboxPage, setInboxPage] = useState(0);
+    const INBOX_PAGE_SIZE = 5;
 
     useEffect(() => {
         if (!userId || !team?.id) return;
-        fetchMessageList(userId, team.id, 0, 50)
-            .then(msgs => setRecentMessages(msgs.filter(m => !m.is_read)))
+        fetchMessageList(userId, team.id, 0, 100)
+            .then(msgs => setRecentMessages(msgs))
             .catch(() => {});
+        setInboxPage(0);
     }, [userId, team?.id]);
 
     const teamData = TEAM_DATA[team.id];
@@ -332,23 +335,50 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             />
                             {recentMessages.length === 0 ? (
                                 <div className="px-4 py-4 text-xs text-slate-500 text-center">새 메시지가 없습니다</div>
-                            ) : (
-                                <div>
-                                    {recentMessages.map(msg => (
-                                        <div
-                                            key={msg.id}
-                                            onClick={() => onNavigate('Inbox', msg.id)}
-                                            className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
-                                        >
-                                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${msg.is_read ? 'bg-transparent' : 'bg-indigo-400'}`} />
-                                            <span className="text-slate-500 font-mono text-xs shrink-0 w-12">{formatDate(msg.created_at)}</span>
-                                            <span className={`flex-1 text-sm truncate ${msg.is_read ? 'text-slate-500' : 'text-white font-bold'}`}>
-                                                {msg.title}
-                                            </span>
+                            ) : (() => {
+                                const totalPages = Math.ceil(recentMessages.length / INBOX_PAGE_SIZE);
+                                const pageMessages = recentMessages.slice(inboxPage * INBOX_PAGE_SIZE, (inboxPage + 1) * INBOX_PAGE_SIZE);
+                                return (
+                                    <>
+                                        <div>
+                                            {pageMessages.map(msg => (
+                                                <div
+                                                    key={msg.id}
+                                                    onClick={() => onNavigate('Inbox', msg.id)}
+                                                    className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
+                                                >
+                                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${msg.is_read ? 'bg-transparent' : 'bg-indigo-400'}`} />
+                                                    <span className="text-slate-500 font-mono text-xs shrink-0 w-12">{formatDate(msg.created_at)}</span>
+                                                    <span className={`flex-1 text-sm truncate ${msg.is_read ? 'text-slate-500' : 'text-white font-bold'}`}>
+                                                        {msg.title}
+                                                    </span>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                        {totalPages > 1 && (
+                                            <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800/50">
+                                                <button
+                                                    onClick={() => setInboxPage(p => Math.max(0, p - 1))}
+                                                    disabled={inboxPage === 0}
+                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    <ChevronLeft size={13} /> 이전
+                                                </button>
+                                                <span className="text-xs text-slate-500">
+                                                    {inboxPage + 1} / {totalPages}
+                                                </span>
+                                                <button
+                                                    onClick={() => setInboxPage(p => Math.min(totalPages - 1, p + 1))}
+                                                    disabled={inboxPage >= totalPages - 1}
+                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    다음 <ChevronRight size={13} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </div>
                     )}
 
