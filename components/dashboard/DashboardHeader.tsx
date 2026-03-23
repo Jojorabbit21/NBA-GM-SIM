@@ -131,21 +131,23 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <div
-      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative overflow-hidden"
+      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
       style={{
         background: '#0a1628',
         borderBottom: '2px solid #374151',
       }}
     >
-      {/* 블러 처리된 그라디언트 레이어 */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: headerBg,
-          filter: 'blur(24px)',
-          transform: 'scale(1.1)', // blur 엣지 번짐 방지
-        }}
-      />
+      {/* 블러 처리된 그라디언트 레이어 — overflow-hidden을 여기서만 적용 */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: headerBg,
+            filter: 'blur(24px)',
+            transform: 'scale(1.1)', // blur 엣지 번짐 방지
+          }}
+        />
+      </div>
 
       {/* ① 왼쪽: 팀 정보 */}
       <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
