@@ -34,7 +34,8 @@ export const saveCheckpoint = async (
     offseasonPhase?: OffseasonPhase,  // [Multi-Season] 오프시즌 진행 단계
     leagueFAPool?: LeagueFAPool | null,  // [Multi-Season] 생성 FA 선수 목록
     retiredPlayerIds?: string[] | null,  // [Multi-Season] 누적 은퇴 선수 ID 목록
-    leagueFAMarket?: LeagueFAMarket | null  // [FA] FA 시장 상태
+    leagueFAMarket?: LeagueFAMarket | null,  // [FA] FA 시장 상태
+    leagueCapHistory?: Record<number, number> | null  // [Multi-Season] 시즌별 샐러리 캡 히스토리
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -141,6 +142,11 @@ export const saveCheckpoint = async (
         payload.league_fa_market = leagueFAMarket;
     }
 
+    // league_cap_history: 시즌별 샐러리 캡 히스토리
+    if (leagueCapHistory !== undefined) {
+        payload.league_cap_history = leagueCapHistory;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     let { data, error } = await supabase
         .from('saves')
@@ -175,7 +181,7 @@ export const loadCheckpoint = async (userId: string) => {
     // 먼저 새 컬럼 포함 시도, 실패 시 기존 컬럼만으로 폴백
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers, league_gm_profiles, season_number, current_season, lottery_result, offseason_phase, league_fa_pool, retired_player_ids, league_fa_market')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff, team_finances, league_pick_assets, league_trade_blocks, league_trade_offers, league_gm_profiles, season_number, current_season, lottery_result, offseason_phase, league_fa_pool, retired_player_ids, league_fa_market, league_cap_history')
         .eq('user_id', userId)
         .maybeSingle();
 

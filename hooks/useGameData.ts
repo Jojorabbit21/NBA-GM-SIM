@@ -29,6 +29,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
+import { updateLeagueFinancials, generateCapHistory, getSeasonCap } from '../utils/constants';
 import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
@@ -76,6 +77,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [generatedFreeAgents, setGeneratedFreeAgents] = useState<Player[]>([]);
     const [retiredPlayerIds, setRetiredPlayerIds] = useState<string[]>([]);
     const [leagueFAMarket, setLeagueFAMarket] = useState<LeagueFAMarket | null>(null);
+    const [leagueCapHistory, setLeagueCapHistory] = useState<Record<number, number>>({});
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -91,13 +93,20 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
     const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
     const [offseasonPhase, setOffseasonPhase] = useState<OffseasonPhase>(null);
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory]);
 
     // --- Season Config (derived from seasonNumber) ---
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
+
+    // 시즌 전환 시 LEAGUE_FINANCIALS 동적 갱신
+    useEffect(() => {
+        if (Object.keys(leagueCapHistory).length > 0) {
+            updateLeagueFinancials(getSeasonCap(leagueCapHistory, seasonNumber));
+        }
+    }, [seasonNumber, leagueCapHistory]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData(!!session || isGuestMode);
@@ -525,6 +534,22 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLeagueFAMarket(savedFAMarket);
                     }
 
+                    // 캡 히스토리 복원 (없으면 10시즌치 신규 생성)
+                    const savedCapHistory = (checkpoint as any).league_cap_history as Record<number, number> | null;
+                    if (savedCapHistory && Object.keys(savedCapHistory).length > 0) {
+                        setLeagueCapHistory(savedCapHistory);
+                        updateLeagueFinancials(getSeasonCap(savedCapHistory, savedSeasonNumber ?? 1));
+                    } else {
+                        const newCapHistory = generateCapHistory(10);
+                        setLeagueCapHistory(newCapHistory);
+                        updateLeagueFinancials(getSeasonCap(newCapHistory, savedSeasonNumber ?? 1));
+                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            undefined, undefined, newCapHistory);
+                    }
+
                     // 생성 선수 로드 (시즌 2+ 또는 league_fa_pool 존재 시)
                     if (savedFAPool || (savedSeasonNumber && savedSeasonNumber > 1)) {
                         try {
@@ -773,7 +798,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savFAPool = ov?.leagueFAPool !== undefined ? ov.leagueFAPool : gameStateRef.current.leagueFAPool;
                     const savRetiredIds = ov?.retiredPlayerIds !== undefined ? ov.retiredPlayerIds : gameStateRef.current.retiredPlayerIds;
                     const savFAMarket = ov?.leagueFAMarket !== undefined ? ov.leagueFAMarket : gameStateRef.current.leagueFAMarket;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket);
+                    const savCapHistory = ov?.leagueCapHistory !== undefined ? ov.leagueCapHistory : gameStateRef.current.leagueCapHistory;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket, savCapHistory);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -926,6 +952,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setGeneratedFreeAgents([]);
             setRetiredPlayerIds([]);
             setProspects([]);
+            setLeagueCapHistory({});
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -1147,6 +1174,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setSimSettings(DEFAULT_SIM_SETTINGS);
          setCoachingData(null);
          setLeaguePickAssets(null);
+         setLeagueCapHistory({});
          setSeasonNumber(1);
          setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
          setOffseasonPhase(null);
@@ -1215,6 +1243,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         generatedFreeAgents, setGeneratedFreeAgents,
         retiredPlayerIds, setRetiredPlayerIds,
         leagueFAMarket, setLeagueFAMarket,
+        leagueCapHistory, setLeagueCapHistory,
         faPlayerMap,
 
         hasInitialLoadRef,

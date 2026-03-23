@@ -18,7 +18,8 @@ export const SEASON_START_DATE = DEFAULT_SEASON_CONFIG.startDate;
 /** @deprecated buildSeasonConfig(n) 사용 권장 */
 export const TRADE_DEADLINE = DEFAULT_SEASON_CONFIG.tradeDeadline;
 
-// League Financial Constants (달러) — 2025-26 실제 금액
+// League Financial Constants (달러) — 시즌 1(2025-26) 기준값
+// updateLeagueFinancials() 호출로 시즌별 캡에 맞게 갱신됨
 export const LEAGUE_FINANCIALS = {
     SALARY_FLOOR:   139_182_000,
     SALARY_CAP:     154_647_000,
@@ -33,6 +34,54 @@ export const SIGNING_EXCEPTIONS = {
     TAXPAYER_MLE:  5_685_000,  // Taxpayer MLE (1~2차 에이프런 사이 팀, 최대 2년)
     // Room Exception, Bi-Annual Exception: 복잡도 대비 가치 낮음 → 미구현
 };
+
+// ── 캡 히스토리 / 동적 갱신 ────────────────────────────────────────────────
+
+/** 시즌 1(2025-26) 기준 캡 대비 각 임계값 비율 (고정) */
+const _BASE_CAP = 154_647_000;
+const _CAP_RATIOS = {
+    SALARY_FLOOR:   139_182_000 / _BASE_CAP,   // ~0.9002
+    TAX_LEVEL:      187_895_000 / _BASE_CAP,   // ~1.2151
+    FIRST_APRON:    195_945_000 / _BASE_CAP,   // ~1.2672
+    SECOND_APRON:   207_824_000 / _BASE_CAP,   // ~1.3440
+};
+const _MLE_RATIOS = {
+    NON_TAX_MLE:  14_104_000 / _BASE_CAP,      // ~0.09121
+    TAXPAYER_MLE:  5_685_000 / _BASE_CAP,      // ~0.03677
+};
+
+/**
+ * 새 시즌 캡 금액으로 LEAGUE_FINANCIALS·SIGNING_EXCEPTIONS 전체를 비율 기반 재계산.
+ * 게임 로드 시 및 시즌 전환(openingNight) 시 호출.
+ */
+export function updateLeagueFinancials(newCap: number): void {
+    LEAGUE_FINANCIALS.SALARY_CAP    = newCap;
+    LEAGUE_FINANCIALS.SALARY_FLOOR  = Math.round(newCap * _CAP_RATIOS.SALARY_FLOOR);
+    LEAGUE_FINANCIALS.TAX_LEVEL     = Math.round(newCap * _CAP_RATIOS.TAX_LEVEL);
+    LEAGUE_FINANCIALS.FIRST_APRON   = Math.round(newCap * _CAP_RATIOS.FIRST_APRON);
+    LEAGUE_FINANCIALS.SECOND_APRON  = Math.round(newCap * _CAP_RATIOS.SECOND_APRON);
+    SIGNING_EXCEPTIONS.NON_TAX_MLE  = Math.round(newCap * _MLE_RATIOS.NON_TAX_MLE);
+    SIGNING_EXCEPTIONS.TAXPAYER_MLE = Math.round(newCap * _MLE_RATIOS.TAXPAYER_MLE);
+}
+
+/**
+ * 시즌 1부터 N시즌까지 캡 히스토리 생성.
+ * 매년 5~10% 사이 랜덤 성장 (CBA 10% 상한 내).
+ */
+export function generateCapHistory(seasonCount: number = 10): Record<number, number> {
+    const history: Record<number, number> = {};
+    history[1] = _BASE_CAP;
+    for (let s = 2; s <= seasonCount; s++) {
+        const growthRate = 0.05 + Math.random() * 0.05;
+        history[s] = Math.round(history[s - 1] * (1 + growthRate));
+    }
+    return history;
+}
+
+/** 캡 히스토리에서 특정 시즌 캡 조회 (없으면 현재 SALARY_CAP 반환) */
+export function getSeasonCap(capHistory: Record<number, number>, seasonNumber: number): number {
+    return capHistory[seasonNumber] ?? LEAGUE_FINANCIALS.SALARY_CAP;
+}
 
 /** @deprecated buildSeasonConfig(n) 사용 권장 */
 export const CALENDAR_EVENTS = {

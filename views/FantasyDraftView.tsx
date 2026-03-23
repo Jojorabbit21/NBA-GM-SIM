@@ -29,7 +29,7 @@ interface FantasyDraftViewProps {
 }
 
 // ── Collect all players from all teams (+ free agents for alltime) as the "draft pool" ──
-const ALLTIME_OVR_FLOOR = 80;
+const ALLTIME_OVR_FLOOR = 70;
 
 function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: Player[] = []): Player[] {
     let all: Player[] = [];
