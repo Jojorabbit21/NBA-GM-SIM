@@ -82,6 +82,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
     const [loadingProgress, setLoadingProgress] = useState(0);
+    const [loadingMessage, setLoadingMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
@@ -171,6 +172,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         const initializeGame = async () => {
             setIsSaveLoading(true);
             setLoadingProgress(0);
+            setLoadingMessage('');
             try {
                 if (isGuestMode) {
                     setLoadingProgress(100);
@@ -189,11 +191,13 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
                 // Load Data
                 setLoadingProgress(10);
+                setLoadingMessage('세이브 데이터 조회 중 ...');
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
                     setLoadingProgress(20);
+                    setLoadingMessage('드래프트 기록 복원 중 ...');
 
                     // 드래프트 결과 복원 (스냅샷/리플레이 공통)
                     let teamsForReplay = baseData.teams;
@@ -244,6 +248,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     // Playoff bracket + snapshot validation + transactions 병렬 로드
                     if (snapshot && snapshot.version === CURRENT_SNAPSHOT_VERSION) {
                         setLoadingProgress(30);
+                        setLoadingMessage('스냅샷 유효성 검사 중 ...');
                         const [pbState, counts, txData] = await Promise.all([
                             loadPlayoffState(userId, checkpoint.team_id, savedSeason),
                             countUserData(userId),
@@ -261,14 +266,17 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         if (isValid) {
                             console.log("⚡ Snapshot valid — skipping full replay");
                             setLoadingProgress(50);
+                            setLoadingMessage('트랜잭션 기록 확인 완료');
                             txList = txData;
                             setLoadingProgress(70);
+                            setLoadingMessage('스냅샷에서 팀 상태 복원 중 ...');
                             await new Promise(r => setTimeout(r, 0));
                             const hydrated = hydrateFromSnapshot(teamsForReplay, baseSchedule, snapshot, txList);
                             loadedTeams = hydrated.teams;
                             loadedSchedule = hydrated.schedule;
                             snapshotUsed = true;
                             setLoadingProgress(90);
+                            setLoadingMessage('데이터 적용 중 ...');
                         }
                     }
 
@@ -279,16 +287,20 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id, savedSeason);
                         }
                         setLoadingProgress(40);
+                        setLoadingMessage('전체 경기 기록 조회 중 ...');
                         const history = await loadUserHistory(userId, savedSeason);
                         txList = history.transactions;
                         setLoadingProgress(50);
+                        setLoadingMessage('플레이오프 기록 조회 중 ...');
                         const rawPlayoffResults = playoffBracketState ? await loadPlayoffGameResults(userId, savedSeason) : [];
                         setLoadingProgress(65);
+                        setLoadingMessage('시즌 전체 경기 재생 중 ...');
                         await new Promise(r => setTimeout(r, 0));
                         const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
                         const allGameResults = [...history.games, ...playoffResults];
 
                         setLoadingProgress(70);
+                        setLoadingMessage('팀 상태 재조립 중 ...');
                         await new Promise(r => setTimeout(r, 0));
                         const replayedState = replayGameState(
                             teamsForReplay,
@@ -301,6 +313,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         loadedTeams = replayedState.teams;
                         loadedSchedule = replayedState.schedule;
                         setLoadingProgress(90);
+                        setLoadingMessage('선수 성장 데이터 적용 중 ...');
                         await new Promise(r => setTimeout(r, 0));
 
                         // ★ 기존 스냅샷에서 성장 데이터 복원 (스냅샷 버전 미스매치 등으로 full replay 시)
@@ -1241,6 +1254,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         isBaseDataError,
         isSaveLoading,
         loadingProgress,
+        loadingMessage,
         isSaving,
         
         handleSelectTeam,

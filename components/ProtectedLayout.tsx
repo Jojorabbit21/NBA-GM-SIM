@@ -60,7 +60,7 @@ const ProtectedLayout: React.FC = () => {
 
     // ─── 데이터 로딩 ─────────────────────────────────────────────────────
 
-    if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} />;
+    if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} message={gameData.loadingMessage} />;
 
     // ─── 팀 선택 가드 ────────────────────────────────────────────────────
 

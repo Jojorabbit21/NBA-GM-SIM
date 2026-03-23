@@ -27,11 +27,12 @@ function getLastTeamData() {
 
 interface SkeletonLoaderProps {
     progress?: number; // 0~100
+    message?: string;
 }
 
 const NAV_ICON_COUNT = 11;
 
-const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
+const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }) => {
     const data = getLastTeamData();
     const sidebarBg = data?.teamStatic?.colors?.primary ?? '#0f172a';
     const iconColor = data ? (SIDEBAR_ICON_COLORS[data.teamId] ?? 'rgba(255,255,255,0.35)') : 'rgba(255,255,255,0.35)';
@@ -125,24 +126,37 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
                         </div>
                     </div>
 
-                    {/* Progress Modal */}
-                    <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-                        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/50 rounded-3xl px-10 py-8 w-80 shadow-2xl pointer-events-auto">
-                            <p className="text-sm font-bold text-slate-300 text-center mb-5 tracking-tight">
-                                시뮬레이션 데이터 로딩 중 ...
+                    {/* Loading Banner — 피그마 LoadingIndicator */}
+                    <div
+                        className="fixed top-0 left-0 right-0 z-50"
+                        style={{ backgroundColor: '#1e293b', height: '123px' }}
+                    >
+                        {/* 상단 메시지 영역 */}
+                        <div className="flex items-center px-8" style={{ height: '88px' }}>
+                            <p className="text-2xl font-medium text-white whitespace-nowrap">
+                                {message || '데이터 로딩 중 ...'}
                             </p>
-                            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full rounded-full bg-emerald-500"
-                                    style={{
-                                        width: `${progress}%`,
-                                        boxShadow: '0 0 12px rgba(16,185,129,0.4)',
-                                    }}
-                                />
+                        </div>
+                        {/* 프로그레스 바 영역 */}
+                        <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
+                            <div
+                                className="absolute left-0 top-0 h-full"
+                                style={{
+                                    width: `${progress}%`,
+                                    backgroundColor: '#059669',
+                                    transition: 'width 0.3s ease',
+                                }}
+                            />
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="text-2xl font-medium text-white" style={{ marginLeft: '31px' }}>
+                                    {progress}%
+                                </span>
+                                {message && (
+                                    <span className="text-base font-bold text-white truncate" style={{ marginLeft: '12px' }}>
+                                        {message}
+                                    </span>
+                                )}
                             </div>
-                            <p className="text-xs font-bold text-slate-500 text-center mt-3">
-                                {progress}%
-                            </p>
                         </div>
                     </div>
                 </main>
