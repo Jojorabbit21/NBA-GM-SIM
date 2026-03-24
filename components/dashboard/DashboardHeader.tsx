@@ -132,7 +132,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <div
-      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative overflow-hidden"
+      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
       style={{
         backgroundImage: headerGradient,
         borderBottom: `2px solid ${borderColor}`,
