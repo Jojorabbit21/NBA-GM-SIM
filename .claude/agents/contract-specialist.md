@@ -234,6 +234,40 @@ securityDiscount = 1.0 - riskAversion × 0.12 × (1 - financialAmbition × 0.5)
 targetAAV = max(tierFloor, FA_targetSalary × securityDiscount)
 ```
 
+**저평가 인식 부스트 (`calcUnderpaymentBoost`) — openingAsk에만 적용:**
+```
+// 1단계: 객관적 감지 (FA 시장가치 vs 현재 연봉 비교)
+underpaymentRatio = faDemand.targetSalary / player.salary
+if underpaymentRatio < 1.20 → boost = 0  (20% 미만 저평가 무시)
+
+underpaymentScale = min(1.0, (underpaymentRatio - 1.20) / 0.80)
+  → 1.2배=0.0, 2.0배=1.0 (선형 스케일)
+
+// 2단계: 주관적 보정 (자존심+재정야망 기반 과대 인식)
+perceivedValue = targetSalary × (1 + pride × 0.15 + financialAmbition × 0.10)
+perceivedGap   = max(0, perceivedValue - player.salary)
+boostFactor    = financialAmbition × 0.6 + pride × 0.4
+
+rawBoost = perceivedGap × boostFactor × underpaymentScale
+boost    = min(rawBoost, targetSalary × 0.30)  // 상한: 시장가치의 30%
+
+// 최종 openingAsk 적용
+openingAsk = min(
+    SALARY_CAP × maxCapPct,
+    max(reservationFloor × 1.06, faDemand.askingSalary × 0.92) + boost,
+)
+```
+
+> **핵심**: targetAAV / reservationFloor / BATNA에는 영향 없음 — 초기 제안가만 올림.
+> 선수가 저평가됐음을 인식하고 협상 시작점을 높게 잡는 전략적 행동.
+
+| 시나리오 | underpayRatio | pride | finAmb | boost 비율 |
+|---------|--------------|-------|--------|-----------|
+| 약간 저평가 | 1.25× | 0.7 | 0.8 | ~3% |
+| 심한 저평가 | 1.80× | 0.7 | 0.8 | ~18% |
+| 겸손한 선수 | 1.80× | 0.2 | 0.3 | ~5% |
+| 극단적 저평가 | 2.0×+ | 0.9 | 1.0 | 30% (상한) |
+
 ### Offer Utility 계산
 ```
 moneyScore     = clamp(annualSalary / targetAAV, 0, 1.5)
@@ -284,6 +318,8 @@ reservationFloor ≥ max(batnaAAV × 0.82, tierFloor)  [하드 최소선]
 loyalty+winDesire 완화 합산 ≤ 12%                   [min() 강제]
 securityDiscount 최대 12%                            [riskAversion × 0.12]
 샐러리캡 상한:  min(SALARY_CAP × 0.35, openingAsk) [연봉 상한]
+underpayBoost 상한: targetSalary × 0.30             [openingAsk 과도한 상승 방지]
+앵커 BATNA 상한: anchorRatio 0.92 (prevSalary × 92%) [직전 연봉 100% 이상 요구 불가]
 ```
 
 ---

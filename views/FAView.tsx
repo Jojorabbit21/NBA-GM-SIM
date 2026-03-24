@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
+import type { NegotiationState } from '../services/fa/extensionEngine';
 import { LEAGUE_FINANCIALS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
@@ -30,6 +31,7 @@ interface FAViewProps {
     onTeamOptionDecide: (playerId: string, exercised: boolean) => void;
     onExtensionOffer: (playerId: string, contract: PlayerContract) => void;
     onViewPlayer?: (player: Player) => void;
+    currentDate?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -180,6 +182,7 @@ export const FAView: React.FC<FAViewProps> = ({
     onTeamOptionDecide,
     onExtensionOffer,
     onViewPlayer,
+    currentDate = '',
 }) => {
     const [activeTab, setActiveTab]       = useState<'market' | 'roster'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
@@ -191,6 +194,18 @@ export const FAView: React.FC<FAViewProps> = ({
         type: 'fa' | 'extension' | 'release';
         playerId: string;
     } | null>(null);
+
+    // 결렬된 협상 선수 ID (FA walk away 또는 Extension 결렬 — 재협상 불가)
+    const [blockedNegotiationIds, setBlockedNegotiationIds] = useState<Set<string>>(new Set());
+
+    // FA 협상 라운드 간 쿨다운: playerId → 다음 오퍼 가능 날짜
+    const [cooldownMap, setCooldownMap] = useState<Record<string, string>>({});
+
+    // Extension 감정 상태 영속화: playerId → NegotiationState
+    const [extNegStates, setExtNegStates] = useState<Record<string, NegotiationState>>({});
+
+    // FA 협상 상태 영속화: playerId → { round, result }
+    const [faSessionStates, setFaSessionStates] = useState<Record<string, { round: number; result: { accepted: boolean; reason?: string } | null }>>({});
 
 
     const handleTabChange = (tab: 'market' | 'roster') => {
@@ -378,8 +393,8 @@ export const FAView: React.FC<FAViewProps> = ({
                                                         return (
                                                             <tr
                                                                 key={entry.playerId}
-                                                                onClick={() => entry.status === 'available' && setNegotiationTarget({ type: 'fa', playerId: entry.playerId })}
-                                                                className={`group border-b border-slate-800 transition-all hover:bg-slate-800 ${entry.status !== 'available' ? 'opacity-50' : 'cursor-pointer'}`}
+                                                                onClick={() => entry.status === 'available' && !blockedNegotiationIds.has(entry.playerId) && setNegotiationTarget({ type: 'fa', playerId: entry.playerId })}
+                                                                className={`group border-b border-slate-800 transition-all hover:bg-slate-800 ${entry.status !== 'available' || blockedNegotiationIds.has(entry.playerId) ? 'opacity-50' : 'cursor-pointer'}`}
                                                             >
                                                                 <td className="px-4 py-2 font-bold text-white ko-tight whitespace-nowrap">{player.name}</td>
                                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
@@ -507,8 +522,9 @@ export const FAView: React.FC<FAViewProps> = ({
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         <button
-                                                            onClick={() => setNegotiationTarget({ type: 'extension', playerId: player.id })}
-                                                            className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-violet-600/30 bg-violet-600/15 text-violet-400 hover:bg-violet-600/25 active:scale-95 transition-all"
+                                                            onClick={() => !blockedNegotiationIds.has(player.id) && setNegotiationTarget({ type: 'extension', playerId: player.id })}
+                                                            disabled={blockedNegotiationIds.has(player.id)}
+                                                            className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-violet-600/30 bg-violet-600/15 text-violet-400 hover:bg-violet-600/25 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                                         >연장</button>
                                                         <button
                                                             onClick={() => setNegotiationTarget({ type: 'release', playerId: player.id })}
@@ -557,6 +573,23 @@ export const FAView: React.FC<FAViewProps> = ({
                         onExtensionOffer(playerId, contract);
                         setNegotiationTarget(null);
                     }}
+                    onNegotiationBlocked={(playerId) => {
+                        setBlockedNegotiationIds(prev => new Set([...prev, playerId]));
+                    }}
+                    onCooldownStarted={(playerId, nextOfferDate) => {
+                        setCooldownMap(prev => ({ ...prev, [playerId]: nextOfferDate }));
+                    }}
+                    onNegStateChange={(playerId, state) => {
+                        setExtNegStates(prev => ({ ...prev, [playerId]: state }));
+                    }}
+                    onFAStateChange={(playerId, round, result) => {
+                        setFaSessionStates(prev => ({ ...prev, [playerId]: { round, result } }));
+                    }}
+                    persistedNegState={negotiationTarget ? extNegStates[negotiationTarget.playerId] : undefined}
+                    persistedFARound={negotiationTarget ? faSessionStates[negotiationTarget.playerId]?.round : undefined}
+                    persistedFAResult={negotiationTarget ? faSessionStates[negotiationTarget.playerId]?.result : undefined}
+                    currentDate={currentDate}
+                    cooldownNextDate={negotiationTarget ? cooldownMap[negotiationTarget.playerId] : undefined}
                     onReleasePlayer={onReleasePlayer}
                     onViewPlayer={onViewPlayer}
                 />

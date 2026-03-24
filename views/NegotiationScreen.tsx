@@ -71,6 +71,15 @@ interface NegotiationScreenProps {
     onExtensionSigned?: (playerId: string, contract: PlayerContract) => void;
     onReleasePlayer?: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onViewPlayer?: (player: Player) => void;
+    onNegotiationBlocked?: (playerId: string) => void; // 협상 영구 결렬 시 호출
+    onCooldownStarted?: (playerId: string, nextOfferDate: string) => void; // 거절 후 쿨다운 시작
+    onNegStateChange?: (playerId: string, state: NegotiationState) => void; // Extension 감정 상태 영속화
+    onFAStateChange?: (playerId: string, round: number, result: { accepted: boolean; reason?: string } | null) => void; // FA 상태 영속화
+    persistedNegState?: NegotiationState;  // Extension: 이전 감정 상태 복원
+    persistedFARound?: number;             // FA: 이전 라운드 수
+    persistedFAResult?: { accepted: boolean; reason?: string } | null; // FA: 이전 결과
+    currentDate?: string;        // 현재 게임 날짜 (쿨다운 비교용)
+    cooldownNextDate?: string;   // 이 선수의 다음 오퍼 가능 날짜
     extensionNotYet?: boolean; // 잔여 계약 > 1년 → 선수가 연장 거절, 협상 불가
 }
 
@@ -162,6 +171,15 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     onExtensionSigned,
     onReleasePlayer,
     onViewPlayer,
+    onNegotiationBlocked,
+    onCooldownStarted,
+    onNegStateChange,
+    onFAStateChange,
+    persistedNegState,
+    persistedFARound,
+    persistedFAResult,
+    currentDate = '',
+    cooldownNextDate,
     extensionNotYet = false,
 }) => {
     const primaryColor  = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
@@ -178,6 +196,25 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         [tendencySeed, player.id],
     );
 
+    // 선수 성격 기반 FA 협상 최대 라운드
+    // loyalty(0~1): 높을수록 오래 기다림 (+0~3)
+    // temperament(-1~+1): 다혈질일수록 빨리 walk away (-0~2)
+    const maxFARounds = useMemo(() => {
+        const base = 4;
+        const loyaltyBonus     = Math.round((tendencies.loyalty ?? 0.5) * 3);
+        const temperamentMalus = tendencies.temperament > 0 ? Math.round(tendencies.temperament * 2) : 0;
+        return Math.max(2, Math.min(7, base + loyaltyBonus - temperamentMalus));
+    }, [tendencies]);
+
+    // 선수 성격 기반 라운드 간 쿨다운 (일수)
+    // temperament 다혈질(+1): +2일, loyalty 낮음(0): +1일
+    const faCooldownDays = useMemo(() => {
+        const base             = 1;
+        const temperamentExtra = tendencies.temperament > 0 ? Math.round(tendencies.temperament) : 0;
+        const loyaltyExtra     = Math.round((1 - (tendencies.loyalty ?? 0.5)));
+        return Math.max(1, Math.min(3, base + temperamentExtra + loyaltyExtra));
+    }, [tendencies]);
+
     const allPlayers    = useMemo(() => teams.flatMap(t => t.roster), [teams]);
     const contenderScore = useMemo(() => {
         const total = myTeam.wins + myTeam.losses;
@@ -185,9 +222,28 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     }, [myTeam.wins, myTeam.losses]);
 
     // ─── Extension State ─────────────────────────────────────
-    const [negState, setNegState] = useState<NegotiationState | null>(() =>
-        isExt ? initNegotiationState(player, myTeam, allPlayers, tendencySeed, currentSeasonYear, currentSeason) : null,
-    );
+    const [negState, setNegState] = useState<NegotiationState | null>(() => {
+        if (!isExt) return null;
+        const base = persistedNegState
+            ?? initNegotiationState(player, myTeam, allPlayers, tendencySeed, currentSeasonYear, currentSeason);
+
+        // 마지막 오퍼 후 경과일에 따라 frustration 자연 회복 (0.03/day, 최대 0.15)
+        if (persistedNegState?.lastOfferDate && currentDate && currentDate > persistedNegState.lastOfferDate) {
+            const daysPassed = Math.floor(
+                (new Date(currentDate + 'T12:00:00').getTime() - new Date(persistedNegState.lastOfferDate + 'T12:00:00').getTime())
+                / 86_400_000
+            );
+            if (daysPassed > 0) {
+                const recovery = Math.min(0.15, daysPassed * 0.03);
+                return {
+                    ...base,
+                    frustration: Math.max(0, base.frustration - recovery),
+                    respect:     Math.min(1, base.respect + recovery * 0.3),
+                };
+            }
+        }
+        return base;
+    });
     const [extOfferSalaries, setExtOfferSalaries] = useState<number[]>(() => {
         const base  = negState?.demand.openingAsk ?? 0;
         const years = negState?.demand.askingYears ?? 2;
@@ -243,8 +299,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         return generateEscalatedSalaries(base, initRate, years);
     });
     const [faOfferYears, setFaOfferYears] = useState(() => faEntry?.askingYears ?? 2);
-    const [faResult, setFaResult]           = useState<{ accepted: boolean; reason?: string } | null>(null);
-    const [faRound, setFaRound]             = useState(0);
+    const [faResult, setFaResult]           = useState<{ accepted: boolean; reason?: string } | null>(persistedFAResult ?? null);
+    const [faRound, setFaRound]             = useState(persistedFARound ?? 0);
 
     const slotMaxMap = useMemo((): Partial<Record<SigningType, number>> => {
         const payroll = calcTeamPayroll(myTeam);
@@ -394,6 +450,20 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ─── 감정 상태 영속화 (부모에 콜백) ──────────────────────
+    const isMounted = useRef(false);
+    useEffect(() => {
+        if (!isMounted.current) { isMounted.current = true; return; }
+        if (negState) onNegStateChange?.(player.id, negState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [negState]);
+
+    useEffect(() => {
+        if (!isMounted.current) return;
+        onFAStateChange?.(player.id, faRound, faResult);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [faRound, faResult]);
+
     // ─── FA Submit ───────────────────────────────────────────
     const handleFASubmit = () => {
         if (!faEntry || !faMarket || faResult?.accepted) return;
@@ -453,6 +523,19 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             if (faOfferAAV < faEntry.walkAwaySalary * 0.65) trigger = 'OFFER_INSULT';
             else if (faOfferAAV < faEntry.walkAwaySalary)    trigger = 'OFFER_LOW';
             addPlayerMsg(trigger, newRound, null, null);
+
+            // 최대 라운드 초과 시 선수 walk away → 재협상 불가
+            if (newRound >= maxFARounds) {
+                addPlayerMsg('WALKED_AWAY', newRound, null, null);
+                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '협상 결렬', isSuccess: false }]);
+                onNegotiationBlocked?.(player.id);
+            } else if (currentDate) {
+                // 거절 후 쿨다운 시작 — 다음 오퍼 가능 날짜 계산
+                const d = new Date(currentDate + 'T12:00:00');
+                d.setDate(d.getDate() + faCooldownDays);
+                const nextDate = d.toISOString().slice(0, 10);
+                onCooldownStarted?.(player.id, nextDate);
+            }
         }
     };
 
@@ -478,6 +561,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     : undefined,
                 noTrade:     extNoTrade ? true : undefined,
                 tradeKicker: extTradeKicker > 0 ? extTradeKicker : undefined,
+                offerDate:   currentDate || undefined,
             },
             negState, tendencySeed,
         );
@@ -508,6 +592,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             case 'WALKED_AWAY':
                 addPlayerMsg('WALKED_AWAY', newRound, updatedState, null);
                 setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '협상 결렬', isSuccess: false }]);
+                onNegotiationBlocked?.(player.id);
                 break;
         }
     };
@@ -520,8 +605,19 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     };
 
     // ─── Derived ─────────────────────────────────────────────
-    const isExtFinal = isExt && !!(negState?.walkedAway || negState?.signed || extensionNotYet);
-    const isFAFinal  = isFA  && !!faResult?.accepted;
+    const isFAFinal    = isFA  && !!faResult?.accepted;
+    const isFABlocked  = isFA  && faRound >= maxFARounds && !faResult?.accepted;
+    // 쿨다운 활성 여부 및 남은 일수
+    const cooldownActive = isFA && !!cooldownNextDate && !!currentDate && currentDate < cooldownNextDate;
+    const cooldownRemaining = cooldownActive && cooldownNextDate && currentDate
+        ? (() => {
+            const a = new Date(currentDate  + 'T12:00:00');
+            const b = new Date(cooldownNextDate + 'T12:00:00');
+            return Math.ceil((b.getTime() - a.getTime()) / 86_400_000);
+        })()
+        : 0;
+    const isWalkedAway  = isExt && !!negState?.walkedAway;
+    const isExtDisabled = isWalkedAway || (isExt && extensionNotYet);
 
     const faIsAboveAsking   = faEntry ? faOfferAAV >= faEntry.askingSalary  : false;
     const faIsBelowWalkaway = faEntry ? faOfferAAV < faEntry.walkAwaySalary : false;
@@ -786,26 +882,21 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* 메시지 목록 */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
                         {chatMessages.map(msg => {
-                            // 장면 설명
-                            if (msg.role === 'narration') {
-                                return (
-                                    <div key={msg.id} className="flex items-center gap-3 py-1">
-                                        <div className="flex-1 h-px bg-slate-800" />
-                                        <span className="text-xs text-slate-600 italic tracking-wide whitespace-nowrap">{msg.text}</span>
-                                        <div className="flex-1 h-px bg-slate-800" />
-                                    </div>
-                                );
-                            }
+                            // 장면 설명 — 숨김
+                            if (msg.role === 'narration') return null;
 
                             // 상태 배지
                             if (msg.role === 'status') {
+                                if (!msg.isSuccess) {
+                                    return (
+                                        <div key={msg.id} className="flex justify-center py-1">
+                                            <span className="text-xs text-slate-500 italic">선수가 단장실을 떠났습니다.</span>
+                                        </div>
+                                    );
+                                }
                                 return (
                                     <div key={msg.id} className="flex justify-center">
-                                        <div className={`text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${
-                                            msg.isSuccess
-                                                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-                                                : 'bg-red-500/20 border-red-500/30 text-red-400'
-                                        }`}>{msg.text}</div>
+                                        <div className="text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">{msg.text}</div>
                                     </div>
                                 );
                             }
@@ -877,7 +968,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
 
                     {/* ── FA 컨트롤 ── */}
-                    {isFA && faEntry && !isFAFinal && (
+                    {isFA && faEntry && !isFAFinal && !isFABlocked && (
                         <>
                             {/* 계약 슬롯 */}
                             <div className="flex-shrink-0">
@@ -1132,15 +1223,22 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             </div>
 
                             {/* 거절 사유 */}
-                            {faResult && !faResult.accepted && (
+                            {faResult && !faResult.accepted && !cooldownActive && (
                                 <div className="flex-shrink-0 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-400">
                                     {faResult.reason ?? '거절됨 — 조건을 수정해 재협상하세요.'}
                                 </div>
                             )}
 
+                            {/* 쿨다운 배너 */}
+                            {cooldownActive && (
+                                <div className="flex-shrink-0 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400">
+                                    선수가 생각할 시간이 필요합니다. <span className="font-bold">{cooldownRemaining}일 후</span> 재협상 가능합니다.
+                                </div>
+                            )}
+
                             {/* 제출 버튼 */}
                             <div className="flex-shrink-0 flex gap-3 mt-auto pt-2">
-                                {faResult && !faResult.accepted && (
+                                {faResult && !faResult.accepted && !cooldownActive && (
                                     <button
                                         onClick={() => setFaResult(null)}
                                         className="flex-1 py-3 rounded-xl text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
@@ -1148,7 +1246,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 )}
                                 <button
                                     onClick={handleFASubmit}
-                                    disabled={slots.length === 0 || faIsBelowWalkaway}
+                                    disabled={slots.length === 0 || faIsBelowWalkaway || cooldownActive}
                                     className="flex-1 py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
                                         bg-indigo-600 hover:bg-indigo-500 text-white
                                         disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1172,19 +1270,20 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     )}
 
                     {/* ── Extension 컨트롤 ── */}
-                    {isExt && negState && !isExtFinal && (
+                    {isExt && negState && !negState.signed && (
                         <>
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-1.5">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
                                 <select
                                     value={extOfferYears}
+                                    disabled={isExtDisabled}
                                     onChange={e => {
                                         const y = Number(e.target.value);
                                         setExtOfferYears(y);
                                         setExtOfferSalaries(generateEscalatedSalaries(extOfferSalaries[0] ?? (negState.demand.openingAsk), extEscalateRate, y));
                                     }}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     {[1, 2, 3, 4].map(y => (
                                         <option key={y} value={y}>{y}년</option>
@@ -1208,6 +1307,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 min={0}
                                                 max={capPct * 100}
                                                 value={extCapPctStr}
+                                                disabled={isExtDisabled}
                                                 onChange={e => setExtCapPctStr(e.target.value)}
                                                 onBlur={e => {
                                                     const pct = parseFloat(e.target.value);
@@ -1227,7 +1327,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         }
                                                     }
                                                 }}
-                                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white text-right focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden disabled:opacity-40 disabled:cursor-not-allowed"
                                             />
                                             <span className="text-xs text-slate-500">%</span>
                                         </div>
@@ -1248,6 +1348,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 {[-5_000_000, -1_000_000].map(delta => (
                                                     <button
                                                         key={delta}
+                                                        disabled={isExtDisabled}
                                                         onClick={() => {
                                                             const newVal = sal + delta;
                                                             if (i === 0) {
@@ -1258,7 +1359,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-700/50 disabled:hover:border-slate-600/60 disabled:hover:text-slate-300"
                                                     >
                                                         {`-$${Math.abs(delta) / 1_000_000}M`}
                                                     </button>
@@ -1269,6 +1370,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         type="number"
                                                         step={100_000}
                                                         value={sal}
+                                                        disabled={isExtDisabled}
                                                         onChange={e => {
                                                             const v = parseInt(e.target.value) || 0;
                                                             if (i === 0) {
@@ -1279,7 +1381,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className={`w-full bg-slate-800 border rounded pl-7 pr-1 py-1.5 text-xs font-mono font-bold text-white focus:outline-none transition-colors ${
+                                                        className={`w-full bg-slate-800 border rounded pl-7 pr-1 py-1.5 text-xs font-mono font-bold text-white focus:outline-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                                                             isDeclineYear
                                                                 ? 'border-amber-500/60 focus:border-amber-400'
                                                                 : 'border-slate-700 focus:border-indigo-500'
@@ -1289,6 +1391,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 {[1_000_000, 5_000_000].map(delta => (
                                                     <button
                                                         key={delta}
+                                                        disabled={isExtDisabled}
                                                         onClick={() => {
                                                             const newVal = sal + delta;
                                                             if (i === 0) {
@@ -1299,7 +1402,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                                 setExtOfferSalaries(next);
                                                             }
                                                         }}
-                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
+                                                        className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-700/50 disabled:hover:border-slate-600/60 disabled:hover:text-slate-300"
                                                     >
                                                         {`+$${delta / 1_000_000}M`}
                                                     </button>
@@ -1339,9 +1442,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 const label = opt === 'none' ? '없음' : opt === 'team' ? '팀 옵션' : '선수 옵션';
                                                 const active = extContractOption === opt;
                                                 return (
-                                                    <label key={opt} className="flex items-center gap-2 py-0.5 cursor-pointer group">
+                                                    <label key={opt} className={`flex items-center gap-2 py-0.5 ${isExtDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer group'}`}>
                                                         <input type="radio" checked={active} onChange={() => setExtContractOption(opt)}
-                                                            className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                            disabled={isExtDisabled}
+                                                            className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed" />
                                                         <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
                                                     </label>
                                                 );
@@ -1356,9 +1460,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             const sub = pct > 0 ? `$${(extOfferAAV * pct / 1_000_000).toFixed(1)}M 추가` : '';
                                             const active = extTradeKicker === pct;
                                             return (
-                                                <label key={pct} className="flex items-center gap-2 py-0.5 cursor-pointer group">
+                                                <label key={pct} className={`flex items-center gap-2 py-0.5 ${isExtDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer group'}`}>
                                                     <input type="radio" checked={active} onChange={() => setExtTradeKicker(pct)}
-                                                        className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                        disabled={isExtDisabled}
+                                                        className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
                                                     {sub && <span className="text-xs text-slate-500">{sub}</span>}
                                                 </label>
@@ -1371,9 +1476,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         {[false, true].map(val => {
                                             const active = extNoTrade === val;
                                             return (
-                                                <label key={String(val)} className="flex items-center gap-2 py-0.5 cursor-pointer group">
+                                                <label key={String(val)} className={`flex items-center gap-2 py-0.5 ${isExtDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer group'}`}>
                                                     <input type="radio" checked={active} onChange={() => setExtNoTrade(val as boolean)}
-                                                        className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                        disabled={isExtDisabled}
+                                                        className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed" />
                                                     <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
                                                 </label>
                                             );
@@ -1386,42 +1492,24 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             <div className="flex-shrink-0 mt-auto pt-2">
                                 <button
                                     onClick={handleExtSubmit}
+                                    disabled={isExtDisabled}
                                     className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all
-                                        bg-indigo-600 hover:bg-indigo-500 text-white"
+                                        bg-indigo-600 hover:bg-indigo-500 text-white
+                                        disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                                 >오퍼 제출</button>
                             </div>
                         </>
                     )}
 
-                    {/* Extension 최종 상태 */}
-                    {isExtFinal && negState && (
+                    {/* Extension 최종 상태 (서명 완료인 경우만) */}
+                    {negState?.signed && negState && (
                         <div className="flex-1 flex flex-col items-center justify-center gap-5">
-                            {extensionNotYet ? (
-                                <>
-                                    <div className="w-20 h-20 rounded-full flex items-center justify-center bg-slate-700/40 border-2 border-slate-600/50">
-                                        <span className="text-3xl text-slate-400">—</span>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-lg font-black uppercase tracking-wide text-slate-400">협상 불가</div>
-                                        <div className="text-xs text-slate-500 mt-1">잔여 계약이 1년 이상 남아있습니다</div>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
-                                        negState.signed
-                                            ? 'bg-emerald-500/20 border-2 border-emerald-500/50'
-                                            : 'bg-red-500/20 border-2 border-red-500/50'
-                                    }`}>
-                                        <span className={`text-3xl ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {negState.signed ? '✓' : '✗'}
-                                        </span>
-                                    </div>
-                                    <div className={`text-2xl font-black uppercase tracking-wide ${negState.signed ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {negState.signed ? '계약 연장!' : '협상 결렬'}
-                                    </div>
-                                </>
-                            )}
+                            <div className="w-20 h-20 rounded-full flex items-center justify-center bg-emerald-500/20 border-2 border-emerald-500/50">
+                                <span className="text-3xl text-emerald-400">✓</span>
+                            </div>
+                            <div className="text-2xl font-black uppercase tracking-wide text-emerald-400">
+                                계약 연장!
+                            </div>
                             <button
                                 onClick={onClose}
                                 className="px-10 py-3 rounded-xl font-bold text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"

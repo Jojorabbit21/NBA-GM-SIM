@@ -272,6 +272,40 @@ insultThreshold = reservationFloor * (0.94 - pride * 0.08)  // 0.86~0.94
 askingYears     = max(1, faDemand.askingYears - 1)
 ```
 
+### `calcUnderpaymentBoost(player, faDemand, personality): number` *(내부 헬퍼)*
+
+선수가 자신이 저평가됐음을 인식할 때 `openingAsk`에 더하는 상향 부스트. 두 단계로 분리된다.
+
+```
+// Step 1: 저평가 감지 (객관적)
+underpaymentRatio = faDemand.targetSalary / player.salary
+if underpaymentRatio < 1.20 → return 0   // 20% 미만 저평가 = 무반응
+
+underpaymentScale = min(1.0, (underpaymentRatio - 1.20) / 0.80)
+                                          // 1.2배=0, 2.0배=1.0
+
+// Step 2: 지각된 시장가치 (주관적) — 성격으로 과대 인식
+perceivedValue = targetSalary × (1 + pride × 0.15 + financialAmbition × 0.10)
+boostFactor    = financialAmbition × 0.6 + pride × 0.4
+
+perceivedGap = max(0, perceivedValue - prevSalary)
+rawBoost     = perceivedGap × boostFactor × underpaymentScale
+return min(rawBoost, targetSalary × 0.30)  // 상한: targetSalary의 30%
+```
+
+**성격 조합 예시** (prevSalary=$5M, targetSalary=$20M 기준):
+
+| pride | financialAmbition | underpaymentScale | boost |
+|:---:|:---:|:---:|:---:|
+| 1.0 | 1.0 | 1.0 | $6.0M (30% 상한) |
+| 0.5 | 0.8 | 1.0 | ~$4.8M |
+| 0.2 | 0.3 | 1.0 | ~$1.2M |
+| any | any | 0.025 (1.22배) | < $0.1M (미미) |
+
+**설계 의도**: `targetAAV`·`reservationFloor`는 객관적 시장가치 그대로 유지하고,
+초기 앵커(`openingAsk`)만 올려서 "나는 저평가됐다"는 협상 태도를 표현한다.
+과지급 선수(underpaymentRatio < 1.20)는 이 메커니즘이 전혀 작동하지 않는다.
+
 > **내부 최적화**: `initNegotiationState`는 `calcFADemand`를 1회만 호출하고 결과를
 > 내부 헬퍼 `_buildDemandFromFA`에 전달. (allPlayers 450명 × 12회 정렬 연산 중복 방지)
 
@@ -419,3 +453,7 @@ const [negState, setNegState] = useState<NegotiationState>(() =>
 | 직전 연봉 $30M, 20경기 출전 + Season-Ending | availDiscount ≈ 0.82 → 앵커 약 18% 추가 할인 |
 | loyalty=0.9, financialAmbition=0.1 | anchorRatio = 0.70 (하한) → 팀에 양보 |
 | riskAversion=1.0, financialAmbition=1.0 | anchorRatio = 0.92 (상한) → 강경 협상 |
+| prevSalary=$5M, targetSalary=$20M, pride=1.0, amb=1.0 | underpaymentBoost = $6M (30% 상한) → openingAsk 대폭 상향 |
+| prevSalary=$5M, targetSalary=$20M, pride=0.2, amb=0.3 | underpaymentBoost ≈ $1.2M → 소폭 상향 |
+| prevSalary=$22M, targetSalary=$25M (1.14배) | underpaymentRatio < 1.20 → boost = 0 (무반응) |
+| prevSalary=$30M, targetSalary=$4M (과지급) | underpaymentRatio < 1.20 → boost = 0 (무반응) |

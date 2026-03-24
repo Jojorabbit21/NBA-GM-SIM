@@ -89,6 +89,8 @@ export interface NegotiationState {
     // 플래그
     walkedAway: boolean;
     signed: boolean;
+    // 마지막 오퍼 날짜 (시간 경과 기반 자연 회복용)
+    lastOfferDate?: string;
 }
 
 /** 유저가 제출하는 오퍼 */
@@ -99,6 +101,7 @@ export interface ExtensionOfferContext {
     option?: import('../../types/player').ContractOption;
     noTrade?: boolean;
     tradeKicker?: number;
+    offerDate?: string;    // 오퍼 제출 날짜 (시간 경과 회복 추적용)
 }
 
 /** 오퍼 평가 결과 */
@@ -244,6 +247,48 @@ export function calcExtensionBATNA(
 }
 
 // ─────────────────────────────────────────────────────────────
+// calcUnderpaymentBoost — 저평가 인식 기반 openingAsk 추가 상향
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 선수가 자신이 저평가됐음을 인식할 때 openingAsk에 더하는 부스트.
+ *
+ * 두 단계로 분리:
+ *   Step 1 — 저평가 감지 (객관적): faDemand.targetSalary vs player.salary 비교
+ *   Step 2 — 요구 강도 (주관적): perceivedValue = targetSalary × pride·financialAmbition 보정
+ *
+ * underpaymentRatio < 1.20 이면 0 반환 (과지급 또는 공정 계약 선수는 무반응).
+ * 부스트 상한: targetSalary × 30% (과도한 앵커 방지).
+ */
+function calcUnderpaymentBoost(
+    player: Player,
+    faDemand: FADemandResult,
+    personality: ExtensionPersonality,
+): number {
+    const prevSalary = player.salary ?? 0;
+    if (prevSalary <= 0) return 0;
+
+    // Step 1: 저평가 감지 (객관적) — 20% 이상 저평가일 때만 작동
+    const underpaymentRatio = faDemand.targetSalary / prevSalary;
+    if (underpaymentRatio < 1.20) return 0;
+
+    // 저평가 강도 (0~1): 1.2배=0, 2.0배=1.0
+    const underpaymentScale = Math.min(1.0, (underpaymentRatio - 1.20) / 0.80);
+
+    // Step 2: 지각된 시장가치 (주관적) — pride·financialAmbition이 높을수록 자기 가치 과대 인식
+    const perceivedValue = faDemand.targetSalary
+        * (1 + personality.pride * 0.15 + personality.financialAmbition * 0.10);
+
+    // 요구 강도: 재정야망 60% + 자존심 40%
+    const boostFactor = personality.financialAmbition * 0.6 + personality.pride * 0.4;
+
+    // 지각된 갭 × 강도 × 스케일, 단 targetSalary의 30% 초과 불가
+    const perceivedGap = Math.max(0, perceivedValue - prevSalary);
+    const rawBoost = perceivedGap * boostFactor * underpaymentScale;
+    return Math.min(rawBoost, faDemand.targetSalary * 0.30);
+}
+
+// ─────────────────────────────────────────────────────────────
 // buildExtensionDemand
 // ─────────────────────────────────────────────────────────────
 
@@ -275,9 +320,10 @@ function _buildDemandFromFA(
 
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
     const maxCapPct = getMaxCapPct(player, yos, currentSeasonYear, /* isExtension */ true).pct;
+    const underpaymentBoost = calcUnderpaymentBoost(player, faDemand, personality);
     const openingAsk = Math.min(
         LEAGUE_FINANCIALS.SALARY_CAP * maxCapPct,
-        Math.max(reservationFloor * 1.06, faDemand.askingSalary * 0.92),
+        Math.max(reservationFloor * 1.06, faDemand.askingSalary * 0.92) + underpaymentBoost,
     );
 
     const insultThreshold = reservationFloor * (0.94 - personality.pride * 0.08);
@@ -456,7 +502,7 @@ export function evaluateExtensionOffer(
     if (offer.tradeKicker)               effectiveAAV *= (1 + offer.tradeKicker * 0.3);
     const effectiveOffer = { ...offer, annualSalary: effectiveAAV };
 
-    let next = { ...state, roundsUsed: state.roundsUsed + 1, lastOfferAAV: offer.annualSalary };
+    let next = { ...state, roundsUsed: state.roundsUsed + 1, lastOfferAAV: offer.annualSalary, lastOfferDate: offer.offerDate };
 
     // ── 규칙 1: 모욕선 이하 → REJECT_HARD + 감정 악화
     if (effectiveAAV < demand.insultThreshold) {
@@ -501,6 +547,7 @@ export function evaluateExtensionOffer(
 
     // ── 감정 변화 (effectiveAAV 기준)
     if (effectiveAAV < demand.reservationFloor) {
+        // 최소 수용선 미만: 부정적 반응
         next = {
             ...next,
             respect:      clamp(next.respect - 0.10),
@@ -508,11 +555,26 @@ export function evaluateExtensionOffer(
             lowballCount: next.lowballCount + 1,
         };
     } else if (effectiveAAV >= demand.targetAAV) {
+        // 목표 연봉 이상: 큰 긍정 반응
         next = {
             ...next,
             respect:     clamp(next.respect + 0.10),
             trust:       clamp(next.trust + 0.05),
+            frustration: clamp(next.frustration - 0.08),
+        };
+    } else if (effectiveAAV >= next.currentCounterAAV) {
+        // 현재 카운터 이상 ~ 목표 미만: 성의를 인정, 소폭 긍정
+        next = {
+            ...next,
+            respect:     clamp(next.respect + 0.05),
             frustration: clamp(next.frustration - 0.05),
+        };
+    } else {
+        // reservationFloor ~ 카운터 미만: 시도는 인정하나 중립 유지
+        // frustration 자연 회복 (소폭)
+        next = {
+            ...next,
+            frustration: clamp(next.frustration - 0.02),
         };
     }
 
