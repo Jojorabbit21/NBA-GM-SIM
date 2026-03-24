@@ -521,7 +521,31 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         : (player.salary ?? 0);
     const stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
     const stretchAnnual     = totalRemaining / stretchYearsTotal;
-    const minBuyoutPct      = Math.round(Math.min(75, 50 + 25 * Math.max(0, (player.ovr - 60) / 35)));
+    const minBuyoutPct = (() => {
+        const loyalty           = tendencies.loyalty           ?? 0.5;  // 0~1
+        const financialAmbition = tendencies.financialAmbition ?? 0.5;  // 0~1
+
+        // 기본 73% — 현실 NBA 바이아웃 중앙값 수준
+        let pct = 73;
+
+        // 재정적 야망: 돈을 중시할수록 더 요구 (±10%)
+        pct += (financialAmbition - 0.5) * 20;
+
+        // 충성심: 팀에 남고 싶어서 계약 가치를 더 중시 (±7%)
+        pct += (loyalty - 0.5) * 14;
+
+        // OVR: 시장가치를 알고 있어 더 요구 (±5%)
+        pct += (player.ovr - 75) / 25 * 5;
+
+        // 모랄: 낮을수록 나가고 싶어 할인 수용 (±6%)
+        pct += (moraleScore - 50) / 50 * 6;
+
+        // 잔여 1년: 어차피 시즌 후 FA — 할인 동기 거의 없어 최저 80%
+        if (remainingYears <= 1) pct = Math.max(pct, 80);
+
+        // 현실적 범위: 최소 62%, 최대 90%
+        return Math.round(Math.min(90, Math.max(62, pct)));
+    })();
     const minBuyoutAmount   = Math.round(totalRemaining * (minBuyoutPct / 100));
     const buyoutAmount      = Math.round(totalRemaining * (buyoutSlider / 100));
     const buyoutAccepted    = buyoutAmount >= minBuyoutAmount;
