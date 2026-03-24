@@ -63,7 +63,7 @@
 ### 폰트 클래스
 | 용도 | 클래스 |
 |------|--------|
-| 스포츠 타이틀 | `oswald font-black uppercase tracking-widest` |
+| 스포츠 타이틀 | `oswald font-black` |
 | 한글 제목 | `font-black ko-tight` (`letter-spacing: -0.025em`) |
 | 한글 본문 | `ko-normal` (`letter-spacing: -0.01em`) |
 | 통계 숫자 | `font-mono tabular-nums` |
@@ -76,7 +76,7 @@
 | 섹션 헤더 | `text-xl font-bold` |
 | 일반 텍스트 | `text-sm` |
 | 보조 텍스트 | `text-xs` |
-| 테이블 헤더 | `text-[10px] font-black uppercase tracking-widest` |
+| 테이블 헤더 | `text-[10px] font-black` |
 | 배지 텍스트 | `text-[9px]` ~ `text-[10px]` |
 | 초대형 | `.text-huge` → `clamp(3rem, 8vw, 6rem)` |
 
