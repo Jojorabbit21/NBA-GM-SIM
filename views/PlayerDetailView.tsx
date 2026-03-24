@@ -634,19 +634,22 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 {playerArchetypeState && (
                                     <>
                                         <SectionHeader title="선수 유형" style={sectionBg} />
-                                        <div className="px-4 py-3 flex flex-wrap items-center gap-2">
-                                            <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.55) }}>
-                                                {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
-                                            </span>
+                                        <div className="px-4 py-3 space-y-1">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">아키타입</span>
+                                                <span className="font-semibold text-slate-200">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
+                                            </div>
                                             {playerArchetypeState.secondary && (
-                                                <span className="px-2.5 py-1 rounded-full text-xs font-bold border border-slate-700 text-slate-300">
-                                                    {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
-                                                </span>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500">보조 유형</span>
+                                                    <span className="font-semibold text-slate-400">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
+                                                </div>
                                             )}
-                                            {playerArchetypeState.tags.slice(0, 4).map(tag => (
-                                                <span key={tag} className="px-2 py-0.5 rounded text-[11px] font-bold text-slate-400 border border-slate-700">
-                                                    {getTraitTagDisplayInfo(tag).label}
-                                                </span>
+                                            {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
+                                                <div key={tag} className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500">{i === 0 ? '특성' : ''}</span>
+                                                    <span className="text-slate-400">{getTraitTagDisplayInfo(tag).label}</span>
+                                                </div>
                                             ))}
                                         </div>
                                     </>
@@ -664,73 +667,46 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                                 {/* ─ 인기도 ─ */}
                                 <SectionHeader title="인기도" style={sectionBg} />
-                                <div className="px-4 py-3 flex flex-col gap-3">
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">지역 인기</span>
-                                            <span className="text-[11px] font-bold text-white">
-                                                {player.popularity?.local ?? 0}
-                                                <span className="text-slate-400 ml-1 font-normal">— {getLocalPopularityLabel(player.popularity?.local ?? 0)}</span>
-                                            </span>
+                                <div className="px-4 py-3 space-y-1">
+                                    {[
+                                        { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
+                                        { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
+                                    ].map(({ label, value }) => (
+                                        <div key={label} className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">{label}</span>
+                                            <span className="text-slate-200 font-semibold">{value}</span>
                                         </div>
-                                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                            <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.local ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.6 : 0.8) }} />
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">전국 인기</span>
-                                            <span className="text-[11px] font-bold text-white">
-                                                {player.popularity?.national ?? 0}
-                                                <span className="text-slate-400 ml-1 font-normal">— {getNationalPopularityLabel(player.popularity?.national ?? 0)}</span>
-                                            </span>
-                                        </div>
-                                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                            <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.national ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.5) }} />
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
 
                                 {/* ─ 성격 & 기분 ─ */}
                                 {saveTendencies && (
                                     <>
                                         <SectionHeader title="성격 & 기분" style={sectionBg} />
-                                        <div className="px-4 py-3 flex flex-col gap-3">
-                                            <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
-                                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">현재 기분</span>
-                                                <span className="text-[11px] font-bold" style={{
-                                                    color: (player.morale?.score ?? 50) >= 70 ? '#34d399'
-                                                         : (player.morale?.score ?? 50) >= 40 ? '#f59e0b'
-                                                         : '#f87171'
-                                                }}>
-                                                    {getMoraleLabel(player.morale?.score ?? 50)}
-                                                    <span className="text-slate-500 ml-1 font-normal">({player.morale?.score ?? 50})</span>
-                                                </span>
-                                            </div>
-                                            {([
-                                                { label: '자존심', leftLabel: '겸손', rightLabel: '오만', value: Math.round((saveTendencies.ego + 1) / 2 * 100), highlight: saveTendencies.ego > 0.35 ? 'right' : saveTendencies.ego < -0.35 ? 'left' : 'mid' },
-                                                { label: '금전욕', leftLabel: '검소', rightLabel: '탐욕', value: Math.round(saveTendencies.financialAmbition * 100), highlight: saveTendencies.financialAmbition > 0.68 ? 'right' : saveTendencies.financialAmbition < 0.32 ? 'left' : 'mid' },
-                                                { label: '팀 충성도', leftLabel: '이적욕', rightLabel: '충성', value: Math.round(saveTendencies.loyalty * 100), highlight: saveTendencies.loyalty > 0.65 ? 'right' : saveTendencies.loyalty < 0.35 ? 'left' : 'mid' },
-                                                { label: '우승욕', leftLabel: '역할우선', rightLabel: '우승욕', value: Math.round(saveTendencies.winDesire * 100), highlight: saveTendencies.winDesire > 0.65 ? 'right' : 'mid' },
-                                                { label: '기질', leftLabel: '냉정', rightLabel: '다혈질', value: Math.round((saveTendencies.temperament + 1) / 2 * 100), highlight: saveTendencies.temperament > 0.45 ? 'right' : saveTendencies.temperament < -0.40 ? 'left' : 'mid' },
-                                            ] as { label: string; leftLabel: string; rightLabel: string; value: number; highlight: 'right' | 'left' | 'mid' }[]).map(({ label, leftLabel, rightLabel, value, highlight }) => (
-                                                <div key={label} className="flex flex-col gap-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[11px] font-bold text-slate-300">{label}</span>
-                                                        <span className={`text-[11px] font-bold ${highlight === 'right' ? 'text-amber-400' : highlight === 'left' ? 'text-sky-400' : 'text-slate-500'}`}>
-                                                            {highlight === 'right' ? rightLabel : highlight === 'left' ? leftLabel : '중간'}
-                                                        </span>
+                                        <div className="px-4 py-3 space-y-1">
+                                            {(() => {
+                                                const ms = player.morale?.score ?? 50;
+                                                const moraleColor = ms >= 70 ? 'text-emerald-400' : ms >= 40 ? 'text-amber-400' : 'text-red-400';
+                                                const t = saveTendencies;
+                                                const egoLbl = t.ego > 0.35 ? { text: '오만', color: 'text-amber-400' } : t.ego < -0.35 ? { text: '겸손', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
+                                                const finLbl = t.financialAmbition > 0.68 ? { text: '탐욕적', color: 'text-amber-400' } : t.financialAmbition < 0.32 ? { text: '검소', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
+                                                const loyLbl = t.loyalty > 0.65 ? { text: '충성', color: 'text-emerald-400' } : t.loyalty < 0.35 ? { text: '이적욕 강함', color: 'text-red-400' } : { text: '보통', color: 'text-slate-400' };
+                                                const winLbl = t.winDesire > 0.65 ? { text: '우승 집착', color: 'text-emerald-400' } : t.winDesire < 0.35 ? { text: '역할 우선', color: 'text-slate-400' } : { text: '보통', color: 'text-slate-400' };
+                                                const tmpLbl = t.temperament > 0.45 ? { text: '다혈질', color: 'text-red-400' } : t.temperament < -0.40 ? { text: '냉정', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
+                                                return [
+                                                    { label: '현재 기분', text: getMoraleLabel(ms), color: moraleColor },
+                                                    { label: '자존심', ...egoLbl },
+                                                    { label: '금전욕', ...finLbl },
+                                                    { label: '팀 충성도', ...loyLbl },
+                                                    { label: '우승욕', ...winLbl },
+                                                    { label: '기질', ...tmpLbl },
+                                                ].map(({ label, text, color }) => (
+                                                    <div key={label} className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-500">{label}</span>
+                                                        <span className={`font-semibold ${color}`}>{text}</span>
                                                     </div>
-                                                    <div className="relative h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                                        <div className="absolute top-0 h-full rounded-full" style={{ left: value < 50 ? `${value}%` : '50%', width: `${Math.abs(value - 50)}%`, backgroundColor: highlight === 'right' ? 'rgba(251,191,36,0.7)' : highlight === 'left' ? 'rgba(56,189,248,0.7)' : 'rgba(100,116,139,0.4)' }} />
-                                                        <div className="absolute top-0 left-1/2 w-px h-full bg-slate-600" />
-                                                    </div>
-                                                    <div className="flex justify-between text-[9px] text-slate-600">
-                                                        <span>{leftLabel}</span>
-                                                        <span>{rightLabel}</span>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                ));
+                                            })()}
                                         </div>
                                     </>
                                 )}
