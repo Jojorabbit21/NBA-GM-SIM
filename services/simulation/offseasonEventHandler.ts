@@ -295,7 +295,7 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
 
     // ── openingNight: 새 시즌 개막 ──
     if (currentDate >= keyDates.openingNight && (offseasonPhase === 'FA_OPEN' || offseasonPhase === 'PRE_SEASON')) {
-        return handleOpeningNight(teams, currentSeasonNumber);
+        return handleOpeningNight(teams, currentSeasonNumber, userTeamId);
     }
 
     return NO_EVENT;
@@ -386,6 +386,7 @@ function handleMoratoriumStart(
 function handleOpeningNight(
     teams: Team[],
     currentSeasonNumber: number,
+    userTeamId?: string,
 ): OffseasonEventResult {
     const nextSeasonNumber = currentSeasonNumber + 1;
     const nextConfig = buildSeasonConfig(nextSeasonNumber);
@@ -411,6 +412,20 @@ function handleOpeningNight(
         for (const player of team.roster) {
             player.stats = INITIAL_STATS();
             player.playoffStats = undefined;
+        }
+    }
+
+    // 유저팀 미결정 팀 옵션 자동 행사 (FA_OPEN 중 미결정 시 로스터 잔류 = 행사로 간주)
+    // option.year === currentYear 인 선수는 이미 option year에 진입 → option 필드 제거
+    if (userTeamId) {
+        const userTeam = teams.find(t => t.id === userTeamId);
+        if (userTeam) {
+            for (const player of userTeam.roster) {
+                if (player.contract?.option?.type === 'team' &&
+                    player.contract.option.year === player.contract.currentYear) {
+                    player.contract = { ...player.contract, option: undefined };
+                }
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
 import type { NegotiationState } from '../services/fa/extensionEngine';
+import type { OffseasonPhase } from '../types/app';
 import { LEAGUE_FINANCIALS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
@@ -33,6 +34,7 @@ interface FAViewProps {
     onExtensionOffer: (playerId: string, contract: PlayerContract) => void;
     onViewPlayer?: (player: Player) => void;
     currentDate?: string;
+    offseasonPhase?: OffseasonPhase;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -183,6 +185,7 @@ export const FAView: React.FC<FAViewProps> = ({
     onExtensionOffer,
     onViewPlayer,
     currentDate = '',
+    offseasonPhase,
 }) => {
     const [activeTab, setActiveTab]       = useTabParam<'market' | 'roster'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
@@ -236,23 +239,25 @@ export const FAView: React.FC<FAViewProps> = ({
         [myTeam.roster],
     );
 
-    // 팀 옵션 대기 선수: team option이 있고 현재 연차(currentYear)가 option.year와 일치해야 함
-    // processOffseason()이 currentYear를 먼저 +1한 뒤 option.year와 비교하므로 동일한 조건 사용
+    // 팀 옵션 대기 선수: FA_OPEN 또는 PRE_SEASON 중에만 결정 가능
+    // processOffseason()이 currentYear를 +1한 후 option.year와 일치하는 시점 = 오프시즌
+    const isOffseasonPhase = offseasonPhase === 'FA_OPEN' || offseasonPhase === 'PRE_SEASON';
     const pendingTeamOptions = useMemo(
-        () => myTeam.roster.filter(p =>
+        () => isOffseasonPhase ? myTeam.roster.filter(p =>
             p.contract?.option?.type === 'team' &&
             p.contract.option.year === p.contract.currentYear
-        ),
-        [myTeam.roster],
+        ) : [],
+        [myTeam.roster, isOffseasonPhase],
     );
 
-    // 일반 로스터 (현재 결정해야 할 팀옵션 선수 제외)
+    // 일반 로스터 (현재 결정해야 할 팀옵션 선수 제외, 오프시즌 중에만)
     const regularRoster = useMemo(
         () => sortedRoster.filter(p =>
+            !isOffseasonPhase ||
             p.contract?.option?.type !== 'team' ||
             p.contract.option.year !== p.contract.currentYear
         ),
-        [sortedRoster],
+        [sortedRoster, isOffseasonPhase],
     );
 
     const roles: FARole[] = ['lead_guard', 'combo_guard', '3and_d', 'shot_creator', 'stretch_big', 'rim_big', 'floor_big'];

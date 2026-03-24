@@ -427,6 +427,22 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         });
                     }
 
+                    // 정규 시즌(offseasonPhase=null)에 currentYear===option.year인 팀 옵션 자동 행사
+                    // - DB에서 로드된 선수 중 오프시즌 전에 결정됐어야 할 옵션이 남아있는 경우 처리
+                    // - FA_OPEN/PRE_SEASON 중에는 행사하지 않음(사용자가 결정해야 하므로)
+                    if (!checkpoint.offseason_phase) {
+                        loadedTeams = loadedTeams!.map(t => ({
+                            ...t,
+                            roster: t.roster.map(p => {
+                                if (p.contract?.option?.type === 'team' &&
+                                    p.contract.option.year === p.contract.currentYear) {
+                                    return { ...p, contract: { ...p.contract, option: undefined } };
+                                }
+                                return p;
+                            }),
+                        }));
+                    }
+
                     setMyTeamId(checkpoint.team_id);
                     setTeams(loadedTeams!);
                     setSchedule(loadedSchedule!);

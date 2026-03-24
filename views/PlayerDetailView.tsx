@@ -300,7 +300,7 @@ function getEffectiveTintColor(theme: { bg: string; accent: string }): string {
 // ── Section Header ──
 const SectionHeader: React.FC<{ title: string; className?: string; style?: React.CSSProperties; children?: React.ReactNode }> = ({ title, className, style, children }) => (
     <div className={`px-6 py-3 flex items-center justify-between${className ? ` ${className}` : ''}`} style={style}>
-        <span className="text-sm font-black text-white uppercase tracking-widest">{title}</span>
+        <span className="text-sm font-black text-white uppercase">{title}</span>
         {children && <div className="flex items-center gap-2">{children}</div>}
     </div>
 );
@@ -432,7 +432,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                     <div style={{ height: totalHeight, position: 'relative' }}>
                         <table className="w-full text-left border-separate border-spacing-0">
                             <thead className="sticky top-0 z-40 border-b border-slate-800 shadow-sm" style={subHeaderStyle}>
-                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                                <tr className="text-slate-500 text-[10px] font-black uppercase h-10">
                                     {GAME_LOG_COLS.map((c, i) => (
                                         <th
                                             key={c.key}
@@ -687,10 +687,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
-                <div className="grid items-start" style={{ gridTemplateColumns: '2fr 8fr' }}>
+                <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
 
                     {/* ══════════════ 좌열 (3fr) ══════════════ */}
-                    <div className="flex flex-col gap-2 p-2">
+                    <div className="flex flex-col gap-4">
 
                         {/* ── 위젯 1: 선수 정보 통합 카드 ── */}
                         {(() => {
@@ -829,7 +829,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 {scoutReport.length > 0 && (
                                     <div className="px-4 py-3 border-t border-slate-800">
                                         <div className="text-sm font-bold text-white mb-1.5">스카우팅 리포트</div>
-                                        <span className="text-xs leading-relaxed text-white">{scoutReport}</span>
+                                        <span className="text-xs text-white">{scoutReport}</span>
                                     </div>
                                 )}
 
@@ -985,7 +985,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     </div>{/* end 좌열 */}
 
                     {/* ══════════════ 우열 (7fr) ══════════════ */}
-                    <div className="flex flex-col gap-2 p-2">
+                    <div className="flex flex-col gap-4">
 
                         {/* ── 위젯 A: 능력치 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -1002,7 +1002,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             return (
                                                 <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800' : ''}`}>
                                                     <div className="h-10 flex items-center justify-center border-b border-slate-800 bg-slate-800">
-                                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
+                                                        <span className="text-xs font-black uppercase text-slate-500">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                                     </div>
                                                     {attrKeys.map((k) => {
                                                         const val = (player as any)[k] || 0;
@@ -1041,7 +1041,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                         <div key={`empty-${i}`} className="h-9 border-b border-slate-800" />
                                                     ))}
                                                     <div className={`flex items-center justify-between px-3 h-10 border-t border-slate-800 bg-slate-800 ${getAttrBg(avgVal)}`}>
-                                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">종합</span>
+                                                        <span className="text-xs font-black uppercase text-slate-500">종합</span>
                                                         <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                                     </div>
                                                 </div>
@@ -1070,7 +1070,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         <thead>
                                             <tr>
                                                 {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
-                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 ${i === 0 ? 'sticky left-0 z-10' : ''}`}>
+                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 ${i === 0 ? 'sticky left-0 z-10' : ''}`}>
                                                         {col.label}
                                                     </th>
                                                 ))}
@@ -1225,13 +1225,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
-                                        <tr className="bg-slate-800">
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 bg-slate-800 text-slate-500">구역</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">시도</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">성공</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">성공률</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">평균</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">vs 평균</th>
+                                        <tr style={sectionBg}>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10" style={{ ...sectionBg, color: theme.text }}>구역</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>시도</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>성공</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>성공률</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>평균</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>vs 평균</th>
                                         </tr>
                                     </thead>
                                     <tbody>

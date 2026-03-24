@@ -31,6 +31,7 @@ const FAMarketPage: React.FC = () => {
             currentSeasonYear={currentSeasonYear}
             currentSeason={seasonShort}
             currentDate={gameData.currentSimDate}
+            offseasonPhase={gameData.offseasonPhase}
             onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
                 const faPlayer = gameData.faPlayerMap?.[playerId];
                 if (!faPlayer) return;
