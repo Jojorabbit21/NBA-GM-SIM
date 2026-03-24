@@ -567,11 +567,9 @@ export const FAView: React.FC<FAViewProps> = ({
                     onClose={() => setNegotiationTarget(null)}
                     onFAOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
                         onOfferAccepted(playerId, contract, signingType, updatedMarket);
-                        setNegotiationTarget(null);
                     }}
                     onExtensionSigned={(playerId, contract) => {
                         onExtensionOffer(playerId, contract);
-                        setNegotiationTarget(null);
                     }}
                     onNegotiationBlocked={(playerId) => {
                         setBlockedNegotiationIds(prev => new Set([...prev, playerId]));

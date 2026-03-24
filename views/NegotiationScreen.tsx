@@ -1080,9 +1080,16 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </div>
                                     );
                                 }
+                                const isEnded = msg.text.includes('대화 종료');
                                 return (
-                                    <div key={msg.id} className="flex justify-center">
+                                    <div key={msg.id} className="flex flex-col items-center gap-2">
                                         <div className="text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">{msg.text}</div>
+                                        {isEnded && (
+                                            <button
+                                                onClick={onClose}
+                                                className="px-6 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                                            >닫기</button>
+                                        )}
                                     </div>
                                 );
                             }
