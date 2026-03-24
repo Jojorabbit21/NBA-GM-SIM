@@ -1,6 +1,6 @@
 
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { formatMoney, formatMoneyFull } from '../utils/formatMoney';
@@ -479,7 +479,38 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
+    // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
+    const [player, setPlayer] = useState(playerProp);
+    const [teamId, setTeamId] = useState(teamIdProp);
+    useEffect(() => { setPlayer(playerProp); setTeamId(teamIdProp); }, [playerProp.id, teamIdProp]);
+
+    const teamName = teamId ? (allTeams?.find(t => t.id === teamId)?.name ?? teamNameProp) : undefined;
+
+    const [teamDropOpen, setTeamDropOpen] = useState(false);
+    const [playerDropOpen, setPlayerDropOpen] = useState(false);
+    const teamDropRef = useRef<HTMLDivElement>(null);
+    const playerDropRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (teamDropRef.current && !teamDropRef.current.contains(e.target as Node)) setTeamDropOpen(false);
+            if (playerDropRef.current && !playerDropRef.current.contains(e.target as Node)) setPlayerDropOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const sortedTeams = useMemo(() =>
+        [...(allTeams ?? [])].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
+    [allTeams]);
+
+    const currentTeamRoster = useMemo(() => {
+        const team = allTeams?.find(t => t.id === teamId);
+        if (!team) return [];
+        return [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    }, [teamId, allTeams]);
+
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
     const theme = getTeamTheme(teamId || null, teamColors);
     const tintColor = getEffectiveTintColor(theme);
@@ -521,14 +552,40 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
     const s = player.stats;
 
+    // 리그 전체 선수 zone 스탯 합산 → 실제 리그 평균 계산
+    const leagueZoneAvg = useMemo(() => {
+        const totals = { rim_m: 0, rim_a: 0, paint_m: 0, paint_a: 0, mid_m: 0, mid_a: 0, c3_m: 0, c3_a: 0, atb3_m: 0, atb3_a: 0 };
+        const allPlayers = (allTeams ?? []).flatMap(t => t.roster ?? []);
+        for (const p of allPlayers) {
+            const st = p.stats as any;
+            if (!st) continue;
+            totals.rim_m   += st.zone_rim_m    || 0; totals.rim_a   += st.zone_rim_a    || 0;
+            totals.paint_m += st.zone_paint_m  || 0; totals.paint_a += st.zone_paint_a  || 0;
+            totals.mid_m   += (st.zone_mid_l_m || 0) + (st.zone_mid_c_m || 0) + (st.zone_mid_r_m || 0);
+            totals.mid_a   += (st.zone_mid_l_a || 0) + (st.zone_mid_c_a || 0) + (st.zone_mid_r_a || 0);
+            totals.c3_m    += (st.zone_c3_l_m  || 0) + (st.zone_c3_r_m  || 0);
+            totals.c3_a    += (st.zone_c3_l_a  || 0) + (st.zone_c3_r_a  || 0);
+            totals.atb3_m  += (st.zone_atb3_l_m || 0) + (st.zone_atb3_c_m || 0) + (st.zone_atb3_r_m || 0);
+            totals.atb3_a  += (st.zone_atb3_l_a || 0) + (st.zone_atb3_c_a || 0) + (st.zone_atb3_r_a || 0);
+        }
+        const pct = (m: number, a: number, fallback: number) => a > 0 ? m / a : fallback;
+        return {
+            rim:   pct(totals.rim_m,   totals.rim_a,   ZONE_AVG.rim),
+            paint: pct(totals.paint_m, totals.paint_a, ZONE_AVG.paint),
+            mid:   pct(totals.mid_m,   totals.mid_a,   ZONE_AVG.mid),
+            c3:    pct(totals.c3_m,    totals.c3_a,    ZONE_AVG.c3),
+            atb3:  pct(totals.atb3_m,  totals.atb3_a,  ZONE_AVG.atb3),
+        };
+    }, [allTeams]);
+
     const chartZones = useMemo(() =>
         CHART_ZONES.map(z => {
             const sk = ZONE_STAT_KEYS[z.key];
             const m = sk ? ((s as any)[sk.keyM] || 0) : 0;
             const a = sk ? ((s as any)[sk.keyA] || 0) : 0;
-            return { ...z, m, a, avg: ZONE_AVG[z.avgKey] };
+            return { ...z, m, a, avg: leagueZoneAvg[z.avgKey] };
         }),
-    [player.stats]);
+    [player.stats, leagueZoneAvg]);
 
     const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
@@ -554,16 +611,78 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
-            {/* ═══ 미니 뒤로가기 바 (팀 테마 배경, 전체폭) ═══ */}
-            <div className="flex items-center px-4 py-2.5 border-b border-white/10 shrink-0" style={{ backgroundColor: theme.bg }}>
+            {/* ═══ 브레드크럼 바 ═══ */}
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-white/10 shrink-0" style={{ backgroundColor: theme.bg }}>
+                {/* 뒤로 버튼 */}
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5 rounded-lg transition-colors"
+                    className="flex items-center justify-center w-7 h-7 rounded-md bg-black/30 hover:bg-black/50 transition-colors shrink-0"
                     style={{ color: theme.text }}
                 >
                     <ArrowLeft size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
                 </button>
+
+                <span className="text-white/30 text-sm mx-1">/</span>
+
+                {/* 팀 드롭다운 */}
+                <div ref={teamDropRef} className="relative">
+                    <button
+                        onClick={() => { setTeamDropOpen(o => !o); setPlayerDropOpen(false); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors"
+                        style={{ color: theme.text }}
+                    >
+                        {teamId && <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />}
+                        <span className="text-xs font-bold">{teamName ?? 'FA'}</span>
+                        {allTeams && <ChevronDown size={11} className="opacity-60" />}
+                    </button>
+                    {teamDropOpen && allTeams && (
+                        <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+                            {sortedTeams.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => {
+                                        const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+                                        if (roster.length > 0) { setPlayer(roster[0]); setTeamId(t.id); }
+                                        setTeamDropOpen(false);
+                                    }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
+                                >
+                                    <img src={getTeamLogoUrl(t.id)} className="w-4 h-4 object-contain shrink-0" alt="" />
+                                    <span className="truncate">{t.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <span className="text-white/30 text-sm mx-1">›</span>
+
+                {/* 선수 드롭다운 */}
+                <div ref={playerDropRef} className="relative min-w-0">
+                    <button
+                        onClick={() => { setPlayerDropOpen(o => !o); setTeamDropOpen(false); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors max-w-[180px]"
+                        style={{ color: theme.text }}
+                    >
+                        <span className="text-xs font-bold truncate">{player.name}</span>
+                        {currentTeamRoster.length > 1 && <ChevronDown size={11} className="opacity-60 shrink-0" />}
+                    </button>
+                    {playerDropOpen && currentTeamRoster.length > 1 && (
+                        <div className="absolute top-full left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+                            {currentTeamRoster.map(p => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => { setPlayer(p); setPlayerDropOpen(false); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${p.id === player.id ? 'text-white font-bold' : 'text-slate-300'}`}
+                                >
+                                    <span className="font-mono w-6 text-center shrink-0 text-slate-400">{calculatePlayerOvr(p)}</span>
+                                    <span className="truncate">{p.name}</span>
+                                    <span className="text-slate-500 shrink-0">{p.position}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
@@ -584,29 +703,29 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             return (
                             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
 
-                                {/* ─ 헤더: OVR + 이름 + 트로피 ─ */}
+                                {/* ─ 헤더: OVR + 이름 ─ */}
                                 <div className="p-4" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.15 : 0.55) }}>
-                                    <div className="flex items-center gap-3 min-w-0 mb-2">
+                                    <div className="flex items-center gap-3 min-w-0">
                                         <OvrBadge value={calculatedOvr} size="md" />
                                         <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
                                     </div>
+                                </div>
+
+                                {/* ─ 기본 정보 ─ */}
+                                <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
                                     {/* 트로피 행 */}
                                     {allAwards.length > 0 && (
-                                        <div className="mb-1">
+                                        <div className="pb-2 mb-1 border-b border-slate-800">
                                             <HeaderAwardTrophies awards={allAwards} />
                                         </div>
                                     )}
                                     {/* 부상 배지 */}
                                     {player.health && player.health !== 'Healthy' && (
-                                        <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mt-2">
+                                        <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mb-1">
                                             {player.injuryType || player.health}
                                             {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
                                         </span>
                                     )}
-                                </div>
-
-                                {/* ─ 기본 정보 ─ */}
-                                <div className="px-4 pt-3 pb-2 border-t border-slate-800 space-y-1">
                                     {[
                                         { label: '팀', value: teamId ? <span className="flex items-center gap-1"><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</span> : 'FA' },
                                         { label: '포지션', value: player.position },
@@ -627,7 +746,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                                 {/* ─ 선수 유형 ─ */}
                                 {playerArchetypeState && (
-                                    <div className="px-4 pt-3 pb-2 border-t border-slate-800 space-y-1">
+                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">선수 유형</div>
                                         <div className="flex justify-between items-center text-xs">
                                             <span className="text-slate-500">아키타입</span>
@@ -649,7 +768,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 )}
 
                                 {/* ─ 인기도 ─ */}
-                                <div className="px-4 pt-3 pb-2 border-t border-slate-800 space-y-1">
+                                <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
                                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">인기도</div>
                                     {[
                                         { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
@@ -664,7 +783,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                                 {/* ─ 성격 & 기분 ─ */}
                                 {saveTendencies && (
-                                    <div className="px-4 pt-3 pb-2 border-t border-slate-800 space-y-1">
+                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">성격 & 기분</div>
                                         {(() => {
                                             const ms = player.morale?.score ?? 50;
@@ -694,9 +813,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                                 {/* ─ 스카우팅 리포트 ─ */}
                                 {scoutReport.length > 0 && (
-                                    <div className="px-4 pt-3 pb-2 border-t border-slate-800">
+                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">스카우팅 리포트</div>
-                                        <span className="text-xs leading-relaxed italic text-slate-300">"{scoutReport}"</span>
+                                        <span className="text-xs leading-relaxed text-slate-200">{scoutReport}</span>
                                     </div>
                                 )}
 
@@ -1006,7 +1125,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         )}
 
                         {/* ── 위젯 C: 최근 경기 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        {!gameLogLoading && gameLog && gameLog.length > 0 && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="최근 경기" style={sectionBg} />
                             <div style={{ height: '400px' }} className="relative">
                                 <VirtualGameLog
@@ -1020,7 +1139,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     subHeaderTextStyle={subHeaderTextStyle}
                                 />
                             </div>
-                        </div>
+                        </div>}
 
                         {/* ── 위젯 D: 샷차트 + 구역별 야투 기록 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">

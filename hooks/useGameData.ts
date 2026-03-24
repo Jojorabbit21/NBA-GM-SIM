@@ -1271,7 +1271,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // FA 시장 선수 맵 (playerId → Player) — leagueFAMarket.players 기반
     const faPlayerMap = useMemo<Record<string, Player>>(() => {
         if (!leagueFAMarket?.players) return {};
-        return Object.fromEntries(leagueFAMarket.players.map(p => [p.id, p]));
+        // FA 선수는 계약이 없는 상태 — 생성 시 포함된 contract/salary 제거
+        return Object.fromEntries(leagueFAMarket.players.map(p => [p.id, { ...p, contract: undefined, salary: undefined, contractYears: undefined }]));
     }, [leagueFAMarket]);
 
     return {
