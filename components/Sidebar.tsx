@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileBtnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownBottom, setDropdownBottom] = useState(0);
+  const [dropdownTop, setDropdownTop] = useState(0);
 
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
@@ -123,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const handleProfileClick = () => {
     if (profileBtnRef.current) {
       const rect = profileBtnRef.current.getBoundingClientRect();
-      setDropdownBottom(window.innerHeight - rect.top + 8);
+      setDropdownTop(rect.top);
     }
     setIsMenuOpen(prev => !prev);
   };
@@ -213,7 +213,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 ref={dropdownRef}
                 className="fixed left-20 w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
                 style={{
-                  bottom: `${dropdownBottom}px`,
+                  top: `${dropdownTop}px`,
+                  transform: 'translateY(-100%) translateY(-8px)',
                   background: '#1e293b',
                   border: '1px solid rgba(255,255,255,0.1)',
                 }}

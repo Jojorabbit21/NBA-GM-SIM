@@ -35,6 +35,7 @@ import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
 import { LeagueFAMarket } from '../types/fa';
+import { openFAMarket } from '../services/fa/faMarketBuilder';
 import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted, insertDraftClass } from '../services/draft/rookieRepository';
 import { calcRookieContract, generateInitialFAPool } from '../services/draft/rookieGenerator';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
@@ -910,19 +911,38 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
-        // 초기 FA 풀 생성 및 DB 저장 (forceSave 전에 수행해야 leagueFAPool이 함께 저장됨)
+        // 초기 FA 풀 생성 및 FA 마켓 구성 (forceSave 전에 수행)
         let initialFAPool: LeagueFAPool | null = null;
+        let initialFAMarket: LeagueFAMarket | null = null;
         if (session?.user?.id) {
             try {
                 const faRows = generateInitialFAPool(session.user.id, newSeed);
                 await insertDraftClass(faRows);
-                initialFAPool = { generatedIds: faRows.map(p => p.id) };
-                setLeagueFAPool(initialFAPool);
+
                 const faPlayerObjects = faRows.map(row => mapRawPlayerToRuntimePlayer({
                     id: row.id,
                     base_attributes: row.base_attributes,
                 }));
+
+                // FA 마켓 생성 — faPlayerMap(뷰 렌더링용) 구성을 위해 players 배열 포함
+                const allRosterPlayers = teams.flatMap((t: Team) => t.roster);
+                const seasonYear = new Date(INITIAL_DATE).getFullYear();
+                initialFAMarket = openFAMarket(
+                    faPlayerObjects,
+                    allRosterPlayers,
+                    teams,
+                    INITIAL_DATE,
+                    INITIAL_DATE,
+                    seasonYear,
+                    DEFAULT_SEASON_CONFIG.seasonLabel,
+                    newSeed,
+                );
+                initialFAMarket.players = faPlayerObjects;
+
+                initialFAPool = { generatedIds: faRows.map(p => p.id) };
+                setLeagueFAPool(initialFAPool);
                 setGeneratedFreeAgents(faPlayerObjects);
+                setLeagueFAMarket(initialFAMarket);
                 console.log(`🏀 [initFA] Generated ${faRows.length} initial FA players`);
             } catch (e) {
                 console.warn('⚠️ [initFA] Failed to generate initial FA pool (non-critical):', e);
@@ -938,6 +958,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             leaguePickAssets: newPickAssets,
             teams,
             ...(initialFAPool ? { leagueFAPool: initialFAPool } : {}),
+            ...(initialFAMarket ? { leagueFAMarket: initialFAMarket } : {}),
         });
 
         // 시즌 시작 구단주 환영 서신 발송
