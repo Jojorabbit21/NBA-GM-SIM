@@ -20,6 +20,9 @@ import { usePlayerGameLog } from '../services/queries';
 import { HeaderAwardTrophies } from '../components/common/PlayerAwardBadges';
 import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../services/playerDevelopment/archetypeEvaluator';
 import type { PlayerArchetypeState } from '../types/archetype';
+import { generateSaveTendencies } from '../utils/hiddenTendencies';
+import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
+import { getMoraleLabel } from '../services/moraleService';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -544,456 +547,240 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
         return assignArchetypes(player, seasonShort || '2025-26');
     }, [player, seasonShort]);
 
+    const saveTendencies = useMemo(
+        () => tendencySeed ? generateSaveTendencies(tendencySeed, player.id) : null,
+        [tendencySeed, player.id]
+    );
+
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
+            {/* ═══ 미니 뒤로가기 바 (팀 테마 배경, 전체폭) ═══ */}
+            <div className="flex items-center px-4 py-2.5 border-b border-white/10 shrink-0" style={{ backgroundColor: theme.bg }}>
+                <button
+                    onClick={onBack}
+                    className="flex items-center gap-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5 rounded-lg transition-colors"
+                    style={{ color: theme.text }}
+                >
+                    <ArrowLeft size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
+                </button>
+            </div>
 
-            {/* ═══ Single scrollable area (header + body) ═══ */}
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+            {/* ═══ 단일 스크롤 영역 ═══ */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
+                <div className="grid items-start" style={{ gridTemplateColumns: '3fr 7fr' }}>
 
-                {/* ═══ HEADER ═══ */}
-                <div className="border-b border-white/5 relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
-                        {/* Back button row */}
-                    <div className="px-6 pt-5 pb-4 relative z-10">
-                        <button
-                            onClick={onBack}
-                            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5 rounded-lg transition-colors"
-                            style={{ color: theme.text }}
-                        >
-                            <ArrowLeft size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
-                        </button>
-                    </div>
+                    {/* ══════════════ 좌열 (3fr) ══════════════ */}
+                    <div className="flex flex-col gap-2 p-2 border-r border-slate-800">
 
-                    {/* Player name + OVR + Header Trophies */}
-                    <div className="px-6 pt-1 pb-4 relative z-10 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-4 min-w-0">
-                            <OvrBadge value={calculatedOvr} size="md" />
-                            <h2 className="text-3xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
-                            {player.health && player.health !== 'Healthy' && (
-                                <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md shrink-0">
-                                    {player.injuryType || player.health}
-                                    {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                </span>
-                            )}
-                        </div>
-                        {(() => {
-                            const allAwards: any[] = [
-                                ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
-                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
-                                ) ?? []),
-                                ...(player.awards ?? []),
-                            ];
-                            return allAwards.length > 0 ? <HeaderAwardTrophies awards={allAwards} /> : null;
-                        })()}
-                    </div>
-
-                    {/* Spacer */}
-                    <div className="mx-6" />
-
-                    {/* Player info table */}
-                    <div className="px-6 py-3 relative z-10">
-                        <table className="text-sm" style={{ color: theme.text }}>
-                            <thead>
-                                <tr className="text-xs uppercase tracking-wider border-b border-white/15">
-                                    <th className="pr-5 pb-2 text-left font-bold">팀</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">포지션</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">나이</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">신장</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">체중</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">연봉</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">계약</th>
-                                    <th className="pr-5 pb-2 text-left font-bold">리그에서의 레벨</th>
-                                    <th className="pb-2 text-left font-bold">포지션 평점</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className="font-bold">
-                                    <td className="pr-5 pt-2">
-                                        {teamId ? (
-                                            <span className="flex items-center gap-1.5">
-                                                <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />
-                                                {teamName || 'FA'}
-                                            </span>
-                                        ) : 'FA'}
-                                    </td>
-                                    <td className="pr-5 pt-2">{player.position}</td>
-                                    <td className="pr-5 pt-2">{player.age}세</td>
-                                    <td className="pr-5 pt-2">{player.height}cm</td>
-                                    <td className="pr-5 pt-2">{player.weight}kg</td>
-                                    <td className="pr-5 pt-2">{player.salary > 0 ? formatMoney(player.salary) : '-'}</td>
-                                    <td className="pr-5 pt-2">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</td>
-                                    <td className="pr-5 pt-2"><StarRating ovr={calculatedOvr} size="md" /></td>
-                                    <td className="pt-2">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Spacer */}
-                    <div className="mx-6" />
-
-                    {/* Scout Report */}
-                    {(archetypes.length > 0 || scoutReport.length > 0 || playerArchetypeState) && (
-                        <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-3">
-                            {/* Archetype identity line */}
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold" style={{ color: theme.text }}>
-                                <span>선수 유형 :</span>
-                                <span>{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
-                                {playerArchetypeState.secondary && (
-                                    <>
-                                        <span>/</span>
-                                        <span>{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
-                                    </>
+                        {/* ── 위젯 1: 선수 기본 정보 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <div className="p-4" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.15 : 0.55) }}>
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <OvrBadge value={calculatedOvr} size="md" />
+                                        <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
+                                    </div>
+                                    {(() => {
+                                        const allAwards: any[] = [
+                                            ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
+                                                (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
+                                            ) ?? []),
+                                            ...(player.awards ?? []),
+                                        ];
+                                        return allAwards.length > 0 ? <HeaderAwardTrophies awards={allAwards} /> : null;
+                                    })()}
+                                </div>
+                                {player.health && player.health !== 'Healthy' && (
+                                    <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mb-3">
+                                        {player.injuryType || player.health}
+                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                                    </span>
                                 )}
-                                {playerArchetypeState.tags.slice(0, 4).map(tag => (
-                                    <React.Fragment key={tag}>
-                                        <span>/</span>
-                                        <span>{getTraitTagDisplayInfo(tag).label}</span>
-                                    </React.Fragment>
-                                ))}
+                                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs" style={{ color: theme.text }}>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">팀</span>
+                                    <span className="font-bold flex items-center gap-1">
+                                        {teamId ? (
+                                            <><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</>
+                                        ) : 'FA'}
+                                    </span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">포지션</span>
+                                    <span className="font-bold">{player.position}</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">나이</span>
+                                    <span className="font-bold">{player.age}세</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">신장</span>
+                                    <span className="font-bold">{player.height}cm</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">체중</span>
+                                    <span className="font-bold">{player.weight}kg</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">연봉</span>
+                                    <span className="font-bold">{player.salary > 0 ? formatMoney(player.salary) : '-'}</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">계약</span>
+                                    <span className="font-bold">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">리그 레벨</span>
+                                    <span className="font-bold"><StarRating ovr={calculatedOvr} size="md" /></span>
+                                    <span className="font-bold opacity-50 uppercase tracking-wider">포지션 평점</span>
+                                    <span className="font-bold">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</span>
+                                </div>
                             </div>
-                            {scoutReport.length > 0 && (
-                                <span className="text-sm leading-relaxed italic" style={{ color: theme.text }}>
-                                    "{scoutReport}"
-                                </span>
-                            )}
-                            {/* Hidden archetypes — disabled, hidden until re-enabled */}
-                            {false && archetypes.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                    {archetypes.map((arch, i) => (
-                                        <span key={i} className="px-2.5 py-0.5 rounded-full text-xs font-bold border" style={{ color: theme.accent, borderColor: theme.accent, opacity: 0.8 }}>
-                                            {arch}
+                        </div>
+
+                        {/* ── 위젯 2: 선수 유형 ── */}
+                        {playerArchetypeState && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <SectionHeader title="선수 유형" style={sectionBg} />
+                                <div className="px-4 py-3 flex flex-wrap items-center gap-2">
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.55) }}>
+                                        {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
+                                    </span>
+                                    {playerArchetypeState.secondary && (
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold border border-slate-700 text-slate-300">
+                                            {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
+                                        </span>
+                                    )}
+                                    {playerArchetypeState.tags.slice(0, 4).map(tag => (
+                                        <span key={tag} className="px-2 py-0.5 rounded text-[11px] font-bold text-slate-400 border border-slate-700">
+                                            {getTraitTagDisplayInfo(tag).label}
                                         </span>
                                     ))}
                                 </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                            </div>
+                        )}
 
-                {/* ═══ BODY — 3 sections ═══ */}
-                <div className="text-xs bg-slate-950">
-
-                    {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
-                    <div className="border-b-2" style={{ borderBottomColor: heavyDividerColor }}>
-                        <SectionHeader title="능력치" style={sectionBg} />
-                        {(() => {
-                            const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
-                            return (
-                                <div className="grid grid-cols-6">
-                                    {ATTR_GROUPS.map((gr, gi) => {
-                                        const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                                        const avgVal = (player as any)[gr.keys[0]] || 0;
-                                        const isLastCol = gi === ATTR_GROUPS.length - 1;
-                                        const emptyRows = maxRows - attrKeys.length;
-                                        return (
-                                            <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r' : ''}`} style={!isLastCol ? { borderRightColor: dividerColor } : undefined}>
-                                                {/* Group header */}
-                                                <div className="h-10 flex items-center justify-center border-b" style={{ ...subHeaderBg, borderBottomColor: dividerColor }}>
-                                                    <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
-                                                </div>
-                                                {/* Attribute rows */}
-                                                {attrKeys.map((k) => {
-                                                    const val = (player as any)[k] || 0;
-                                                    const seasonDelta = player.seasonStartAttributes
-                                                        ? val - (player.seasonStartAttributes[k] ?? val)
-                                                        : 0;
-                                                    const attrEvents = (seasonDelta !== 0 && player.changeLog)
-                                                        ? player.changeLog.filter(e => e.attribute === k)
-                                                        : [];
-                                                    return (
-                                                        <div key={k} className={`flex items-center justify-between px-3 h-9 border-b transition-colors hover:bg-white/5 ${getAttrBg(val)}`} style={{ borderBottomColor: dividerColor }}>
-                                                            <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
-                                                            <div className="flex items-center gap-3 shrink-0">
-                                                                {seasonDelta !== 0 && (
-                                                                    <span className={`relative group font-mono font-black text-xs tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                                        {seasonDelta > 0 ? '▲' : '▼'} {Math.abs(seasonDelta)}
-                                                                        {attrEvents.length > 0 && (
-                                                                            <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:flex flex-col gap-0.5 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-xl z-50 whitespace-nowrap">
-                                                                                {attrEvents.map((evt, i) => (
-                                                                                    <span key={i} className="flex items-center gap-2 text-[11px] font-normal">
-                                                                                        <span className="text-slate-500 font-mono">{evt.date.slice(5)}</span>
-                                                                                        <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>{evt.delta > 0 ? '▲' : '▼'}</span>
-                                                                                        <span className="text-slate-300 font-mono">{evt.oldValue} → {evt.newValue}</span>
-                                                                                    </span>
-                                                                                ))}
-                                                                            </span>
-                                                                        )}
-                                                                    </span>
-                                                                )}
-                                                                <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                                {/* Empty rows with dividers to align columns */}
-                                                {Array.from({ length: emptyRows }).map((_, i) => (
-                                                    <div key={`empty-${i}`} className="h-9 border-b" style={{ borderBottomColor: dividerColor }} />
-                                                ))}
-                                                {/* AVG row */}
-                                                <div className={`flex items-center justify-between px-3 h-10 border-t ${getAttrBg(avgVal)}`} style={{ ...subHeaderBg, borderTopColor: dividerColor }}>
-                                                    <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>종합</span>
-                                                    <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                        {/* ── 위젯 3: 스카우팅 리포트 ── */}
+                        {scoutReport.length > 0 && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <SectionHeader title="스카우팅 리포트" style={sectionBg} />
+                                <div className="px-4 py-3">
+                                    <span className="text-xs leading-relaxed italic text-slate-300">"{scoutReport}"</span>
                                 </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* ═══ SECTION 1.5: 기록 ═══ */}
-                    {player.career_history && player.career_history.length > 0 && (
-                        <div className="border-b-2" style={{ borderBottomColor: heavyDividerColor }}>
-                            <SectionHeader title="기록" style={sectionBg}>
-                                <select
-                                    value={careerMode}
-                                    onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')}
-                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none"
-                                    style={dropdownStyle}
-                                >
-                                    <option value="regular">정규시즌</option>
-                                    {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
-                                </select>
-                                <select
-                                    value={careerTab}
-                                    onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')}
-                                    className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none"
-                                    style={dropdownStyle}
-                                >
-                                    <option value="trad">기본</option>
-                                    <option value="adv">어드밴스드</option>
-                                </select>
-                            </SectionHeader>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
-                                    <thead>
-                                        <tr>
-                                            {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
-                                                <th
-                                                    key={col.key}
-                                                    className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b ${i === 0 ? 'sticky left-0 z-10' : ''}`}
-                                                    style={{ ...subHeaderBg, borderBottomColor: dividerColor, ...subHeaderTextStyle }}
-                                                >
-                                                    {col.label}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(() => {
-                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
-                                            const isPlayoffMode = careerMode === 'playoff';
-                                            const rows = isPlayoffMode ? careerPlayoff : careerRegular;
-                                            // 다중 팀 시즌 감지: 2TM 행이 있는 시즌 집합
-                                            const multiTeamSeasons = new Set(
-                                                rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season)
-                                            );
-                                            // 그룹별 교차 배경색: 2TM 행의 인덱스 기준으로 그룹 색상 결정
-                                            let groupIdx = -1;
-                                            return rows.map((row, ri) => {
-                                                const isCurrentSeason = String((row as any).season) === seasonShort;
-                                                const team = (row as any).team;
-                                                const season = (row as any).season;
-                                                const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
-                                                const isSummaryRow = team === '2TM';
-                                                // 그룹 인덱스: 2TM 행(또는 단일팀 행)마다 증가
-                                                if (!isSubRow) groupIdx++;
-                                                const rowBg = groupIdx % 2 !== 0 ? rowAltBg : rowBaseBg;
-                                                return (
-                                                    <tr key={ri}>
-                                                        {cols.map((col, ci) => {
-                                                            const raw = (row as any)[col.key];
-                                                            const display = (isSubRow && col.key === 'season')
-                                                                ? ''
-                                                                : formatCareerCell(col.key, raw);
-                                                            const isSticky = ci === 0;
-                                                            const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
-                                                            return (
-                                                                <td
-                                                                    key={col.key}
-                                                                    className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b ${
-                                                                        isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''
-                                                                    } ${isSubRow ? 'opacity-60' : ''}`}
-                                                                    style={{
-                                                                        ...rowBg,
-                                                                        borderBottomColor: dividerColor,
-                                                                        ...(isSubRow && isSticky ? { borderLeft: `2px solid ${dividerColor}`, paddingLeft: '20px' } : {}),
-                                                                        color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined,
-                                                                    }}
-                                                                >
-                                                                    {isSummaryRow && col.key === 'team' ? (
-                                                                        <span className="font-black">{display}</span>
-                                                                    ) : display}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                    </tr>
-                                                );
-                                            });
-                                        })()}
-                                    </tbody>
-                                    <tfoot>
-                                        {(() => {
-                                            const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
-                                            const rows = careerMode === 'playoff' ? careerPlayoff : careerRegular;
-                                            const nonTm = rows.filter(r => (r as any).team !== '2TM');
-                                            // 팀별 평균: 각 팀에서 뛴 시즌만, 등장 순서(최신→오래된)로 정렬
-                                            const teamOrder: string[] = [];
-                                            nonTm.forEach(r => {
-                                                const t = (r as any).team;
-                                                if (!teamOrder.includes(t)) teamOrder.push(t);
-                                            });
-                                            const avgRows = [
-                                                ...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)),
-                                                computeCareerAvg(nonTm, '커리어'),
-                                            ].filter(r => r.team);
-                                            return avgRows.map((avgRow, ai) => {
-                                                const isCareer = avgRow.team === '커리어';
-                                                return (
-                                                    <tr key={ai} style={isCareer ? subHeaderBg : { ...subHeaderBg, opacity: 0.75 }}>
-                                                        {cols.map((col, ci) => (
-                                                            <td
-                                                                key={col.key}
-                                                                className={`px-3 py-1.5 font-mono tabular-nums whitespace-nowrap border-t ${
-                                                                    ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'
-                                                                }`}
-                                                                style={{
-                                                                    ...subHeaderBg,
-                                                                    borderTopColor: isCareer ? heavyDividerColor : dividerColor,
-                                                                    ...subHeaderTextStyle,
-                                                                    ...(isCareer && ci !== 0 ? { color: 'white' } : {}),
-                                                                }}
-                                                            >
-                                                                {formatCareerCell(col.key, avgRow[col.key])}
-                                                            </td>
-                                                        ))}
-                                                    </tr>
-                                                );
-                                            });
-                                        })()}
-                                    </tfoot>
-                                </table>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율, 헤더 행 공유 ═══ */}
-                    <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>
-
-                        {/* Row 1, Col 1: 샷 차트 헤더 */}
-                        <SectionHeader title="샷 차트" className="border-r border-slate-800" style={sectionBg}>
-                            <button
-                                onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
-                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border text-white transition-colors"
-                                style={dropdownStyle}
-                            >
-                                {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
-                            </button>
-                        </SectionHeader>
-
-                        {/* Row 1, Col 2: 최근 경기 헤더 */}
-                        <SectionHeader title="최근 경기" style={sectionBg} />
-
-                        {/* Row 2, Col 1: 샷 차트 본문 */}
-                        <div className="border-r border-slate-800 p-4">
-                            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
-                                <svg viewBox="0 0 435 403" className="w-full h-full">
-                                    <rect x="0" y="0" width="435" height="403" fill="#020617" />
-                                    <g>
-                                        {chartZones.map((z, i) => {
-                                            const style = shotChartMode === 'efficiency'
-                                                ? getZoneStyle(z.m, z.a, z.avg)
-                                                : getZoneVolumeStyle(z.a, maxAttempts);
-                                            return (
-                                                <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke={style.fill} strokeWidth={0.5} strokeOpacity={style.opacity} className="transition-all duration-300" />
-                                            );
-                                        })}
-                                    </g>
-                                    <g fill="#0f172a" fillRule="evenodd" stroke="none" pointerEvents="none">
-                                        {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
-                                    </g>
-                                    <g pointerEvents="none">
-                                        {chartZones.map((z, i) => {
-                                            if (shotChartMode === 'efficiency') {
-                                                const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
-                                                const style = getZoneStyle(z.m, z.a, z.avg);
-                                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                                const w = 54, h = z.a > 0 ? 42 : 32;
-                                                return (
-                                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                        <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
-                                                        <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
-                                                            {pct}%
-                                                        </text>
-                                                        {z.a > 0 && (
-                                                            <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
-                                                                {z.m}/{z.a}
-                                                            </text>
-                                                        )}
-                                                    </g>
-                                                );
-                                            } else {
-                                                const volPct = totalAttempts > 0 ? (z.a / totalAttempts * 100).toFixed(1) : '0.0';
-                                                const w = 54, h = z.a > 0 ? 42 : 32;
-                                                const pillFill = z.a > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(30,41,59,0.8)';
-                                                const textFill = z.a > 0 ? '#ffffff' : '#94a3b8';
-                                                const borderStroke = z.a > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)';
-                                                return (
-                                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                        <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
-                                                        <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
-                                                            {z.a}
-                                                        </text>
-                                                        {z.a > 0 && (
-                                                            <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
-                                                                {volPct}%
-                                                            </text>
-                                                        )}
-                                                    </g>
-                                                );
-                                            }
-                                        })}
-                                    </g>
-                                </svg>
+                        {/* ── 위젯 4: 인기도 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <SectionHeader title="인기도" style={sectionBg} />
+                            <div className="px-4 py-3 flex flex-col gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">지역 인기</span>
+                                        <span className="text-[11px] font-bold text-white">
+                                            {player.popularity?.local ?? 0}
+                                            <span className="text-slate-400 ml-1 font-normal">— {getLocalPopularityLabel(player.popularity?.local ?? 0)}</span>
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                        <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.local ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.6 : 0.8) }} />
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">전국 인기</span>
+                                        <span className="text-[11px] font-bold text-white">
+                                            {player.popularity?.national ?? 0}
+                                            <span className="text-slate-400 ml-1 font-normal">— {getNationalPopularityLabel(player.popularity?.national ?? 0)}</span>
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                        <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.national ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.5) }} />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Row 2, Col 2: 최근 경기 본문 — 샷 차트 높이에 맞춰 스크롤 */}
-                        <VirtualGameLog
-                            gameLog={gameLog}
-                            gameLogLoading={gameLogLoading}
-                            teamId={teamId}
-                            subHeaderStyle={subHeaderBg}
-                            rowAltStyle={rowAltBg}
-                            rowBaseStyle={rowBaseBg}
-                            dividerColor={dividerColor}
-                            subHeaderTextStyle={subHeaderTextStyle}
-                        />
+                        {/* ── 위젯 5: 성격 & 기분 ── */}
+                        {saveTendencies && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <SectionHeader title="성격 & 기분" style={sectionBg} />
+                                <div className="px-4 py-3 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">현재 기분</span>
+                                        <span className="text-[11px] font-bold" style={{
+                                            color: (player.morale?.score ?? 50) >= 70 ? '#34d399'
+                                                 : (player.morale?.score ?? 50) >= 40 ? '#f59e0b'
+                                                 : '#f87171'
+                                        }}>
+                                            {getMoraleLabel(player.morale?.score ?? 50)}
+                                            <span className="text-slate-500 ml-1 font-normal">({player.morale?.score ?? 50})</span>
+                                        </span>
+                                    </div>
+                                    {([
+                                        {
+                                            label: '자존심',
+                                            leftLabel: '겸손',
+                                            rightLabel: '오만',
+                                            value: Math.round((saveTendencies.ego + 1) / 2 * 100),
+                                            highlight: saveTendencies.ego > 0.35 ? 'right' : saveTendencies.ego < -0.35 ? 'left' : 'mid',
+                                        },
+                                        {
+                                            label: '금전욕',
+                                            leftLabel: '검소',
+                                            rightLabel: '탐욕',
+                                            value: Math.round(saveTendencies.financialAmbition * 100),
+                                            highlight: saveTendencies.financialAmbition > 0.68 ? 'right' : saveTendencies.financialAmbition < 0.32 ? 'left' : 'mid',
+                                        },
+                                        {
+                                            label: '팀 충성도',
+                                            leftLabel: '이적욕',
+                                            rightLabel: '충성',
+                                            value: Math.round(saveTendencies.loyalty * 100),
+                                            highlight: saveTendencies.loyalty > 0.65 ? 'right' : saveTendencies.loyalty < 0.35 ? 'left' : 'mid',
+                                        },
+                                        {
+                                            label: '우승욕',
+                                            leftLabel: '역할우선',
+                                            rightLabel: '우승욕',
+                                            value: Math.round(saveTendencies.winDesire * 100),
+                                            highlight: saveTendencies.winDesire > 0.65 ? 'right' : 'mid',
+                                        },
+                                        {
+                                            label: '기질',
+                                            leftLabel: '냉정',
+                                            rightLabel: '다혈질',
+                                            value: Math.round((saveTendencies.temperament + 1) / 2 * 100),
+                                            highlight: saveTendencies.temperament > 0.45 ? 'right' : saveTendencies.temperament < -0.40 ? 'left' : 'mid',
+                                        },
+                                    ] as { label: string; leftLabel: string; rightLabel: string; value: number; highlight: 'right' | 'left' | 'mid' }[]).map(({ label, leftLabel, rightLabel, value, highlight }) => (
+                                        <div key={label} className="flex flex-col gap-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-bold text-slate-300">{label}</span>
+                                                <span className={`text-[11px] font-bold ${highlight === 'right' ? 'text-amber-400' : highlight === 'left' ? 'text-sky-400' : 'text-slate-500'}`}>
+                                                    {highlight === 'right' ? rightLabel : highlight === 'left' ? leftLabel : '중간'}
+                                                </span>
+                                            </div>
+                                            <div className="relative h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                                <div
+                                                    className="absolute top-0 h-full rounded-full"
+                                                    style={{
+                                                        left: value < 50 ? `${value}%` : '50%',
+                                                        width: `${Math.abs(value - 50)}%`,
+                                                        backgroundColor: highlight === 'right' ? 'rgba(251,191,36,0.7)' : highlight === 'left' ? 'rgba(56,189,248,0.7)' : 'rgba(100,116,139,0.4)',
+                                                    }}
+                                                />
+                                                <div className="absolute top-0 left-1/2 w-px h-full bg-slate-600" />
+                                            </div>
+                                            <div className="flex justify-between text-[9px] text-slate-600">
+                                                <span>{leftLabel}</span>
+                                                <span>{rightLabel}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
-                    </div>
-
-                    {/* ── SECTION 4: 계약 정보 + 수상 내역 + 부상 이력 (3분할) ── */}
-                    <div className="border-t-2 grid grid-cols-3" style={{ borderTopColor: heavyDividerColor }}>
-                        {/* 좌측: 계약 정보 */}
-                        <div>
+                        {/* ── 위젯 6: 계약 정보 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="계약 정보" style={sectionBg} />
-                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
+                            <div className="overflow-x-auto custom-scrollbar">
                             {!player.contract || player.contract.years.length === 0 ? (
-                                <div className="flex items-center justify-center h-[400px]">
+                                <div className="flex items-center justify-center h-32">
                                     <span className="text-slate-500 text-sm">계약 정보가 없습니다</span>
                                 </div>
                             ) : (
                                 <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
                                     <TableHead style={subHeaderBg}>
                                         {['항목', '내용'].map((h, i) => (
-                                            <TableHeaderCell
-                                                key={h}
-                                                align="center"
-                                                className={`text-xs ${i < 1 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                style={subHeaderTextStyle}
-                                            >
+                                            <TableHeaderCell key={h} align="center" className={`text-xs ${i < 1 ? 'border-r border-r-slate-800/30' : ''}`} style={subHeaderTextStyle}>
                                                 {h}
                                             </TableHeaderCell>
                                         ))}
@@ -1048,7 +835,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 </TableCell>
                                             </TableRow>
                                         )}
-                                        {/* 연차별 연봉 */}
                                         {player.contract.years.map((yearSalary, idx) => {
                                             const baseYear    = parseInt(seasonShort.split('-')[0]);
                                             const seasonStart = baseYear - player.contract!.currentYear + idx;
@@ -1078,160 +864,383 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             )}
                             </div>
                         </div>
-                        {/* 중앙: 수상 내역 */}
-                        <div className="border-l border-slate-800">
+
+                        {/* ── 위젯 7: 수상 내역 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="수상 내역" style={sectionBg} />
-                            <div className="custom-scrollbar min-h-[440px]">
+                            <div className="custom-scrollbar">
                             {(() => {
                                 const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
                                     (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
                                 );
                                 const allAwards = [...historicalAwards, ...(player.awards ?? [])];
                                 return allAwards.length === 0 ? (
-                                <div className="flex items-center justify-center h-[400px]">
-                                    <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
-                                </div>
-                            ) : (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed max-h-[600px]" fullHeight={false}>
-                                    <TableHead style={subHeaderBg}>
-                                        {['시즌', '이름', '내용'].map((h, i) => (
-                                            <TableHeaderCell
-                                                key={h}
-                                                align="center"
-                                                className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                style={{ ...subHeaderTextStyle, ...subHeaderBg }}
-                                            >
-                                                {h}
-                                            </TableHeaderCell>
-                                        ))}
-                                    </TableHead>
-                                    <TableBody>
-                                        {[...allAwards]
-                                            .sort((a, b) => {
-                                                const sc = (b.season ?? '').localeCompare(a.season ?? '');
-                                                if (sc !== 0) return sc;
-                                                const orderMap: Record<string, number> = {
-                                                    CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
-                                                    ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
-                                                };
-                                                return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
-                                            })
-                                            .map((entry, idx) => {
-                                                const BASE_NAME: Record<string, string> = {
-                                                    // 시뮬 타입
-                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승',
-                                                    MVP: '올해의 선수', FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
-                                                    ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
-                                                    ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
-                                                    // BBRef 코드
-                                                    CHM: '챔피언', RCHM: '정규시즌 우승', FMVP: '파이널 MVP',
-                                                    NBA1: '올-오펜시브 팀', NBA2: '올-오펜시브 팀', NBA3: '올-오펜시브 팀',
-                                                    DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
-                                                    ROY: '올해의 신인', CPOY: '올해의 클러치 플레이어',
-                                                    MIP: '최고 발전 선수', '6MOY': '식스맨', SMOY: '식스맨',
-                                                };
-                                                const BASE_DETAIL: Record<string, string> = {
-                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승', RCHM: '우승',
-                                                    FINALS_MVP: '수상', FMVP: '수상',
-                                                    ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
-                                                    ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
-                                                    NBA1: '1st', NBA2: '2nd', NBA3: '3rd',
-                                                    DEF1: '1st', DEF2: '2nd',
-                                                };
-                                                const toOrdinal = (n: number) =>
-                                                    n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
-
-                                                // 코드-숫자 패턴 파싱 (MVP-2, CPOY-4, ROY-2 등)
-                                                const ranked = entry.type?.match(/^(.+)-(\d+)$/);
-                                                const baseCode = ranked ? ranked[1] : entry.type;
-                                                const rankNum  = ranked ? parseInt(ranked[2]) : null;
-
-                                                const displayName = BASE_NAME[baseCode] ?? baseCode;
-
-                                                let detail: string;
-                                                if (rankNum !== null) {
-                                                    detail = toOrdinal(rankNum);
-                                                } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && (entry as any).rank != null) {
-                                                    detail = (entry as any).rank === 1 ? '1st (수상)' : toOrdinal((entry as any).rank);
-                                                } else {
-                                                    detail = BASE_DETAIL[entry.type] ?? ((entry as any).label ? '' : '-');
-                                                }
-                                                return (
-                                                    <TableRow key={idx} className="h-10">
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-white">{displayName}</span>
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                    </TableBody>
-                                </Table>
-                            );
-                            })()}
-                            </div>
-                        </div>
-                        {/* 우측: 부상 이력 */}
-                        <div className="border-l border-slate-800">
-                            <SectionHeader title="부상 이력" style={sectionBg} />
-                            <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
-                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
-                                <div className="flex items-center justify-center h-[400px]">
-                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
-                                </div>
-                            ) : (
-                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-auto" fullHeight={false}>
+                                    <div className="flex items-center justify-center h-24">
+                                        <span className="text-slate-500 text-sm">수상 내역이 없습니다</span>
+                                    </div>
+                                ) : (
+                                    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
                                         <TableHead style={subHeaderBg}>
-                                            {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
-                                                <TableHeaderCell
-                                                    key={h}
-                                                    align="center"
-                                                    className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`}
-                                                    style={subHeaderTextStyle}
-                                                >
+                                            {['시즌', '이름', '내용'].map((h, i) => (
+                                                <TableHeaderCell key={h} align="center" className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`} style={{ ...subHeaderTextStyle, ...subHeaderBg }}>
                                                     {h}
                                                 </TableHeaderCell>
                                             ))}
                                         </TableHead>
                                         <TableBody>
-                                            {[...player.injuryHistory]
-                                                .sort((a, b) => b.date.localeCompare(a.date))
+                                            {[...allAwards]
+                                                .sort((a, b) => {
+                                                    const sc = (b.season ?? '').localeCompare(a.season ?? '');
+                                                    if (sc !== 0) return sc;
+                                                    const orderMap: Record<string, number> = {
+                                                        CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
+                                                        ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
+                                                    };
+                                                    return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
+                                                })
                                                 .map((entry, idx) => {
-                                                    const dateStr = entry.date.slice(5).replace('-', '/');
-                                                    const severityColor =
-                                                        entry.severity === 'Season-Ending' ? 'text-red-400' :
-                                                        entry.severity === 'Major' ? 'text-amber-400' :
-                                                        'text-white';
+                                                    const BASE_NAME: Record<string, string> = {
+                                                        CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승',
+                                                        MVP: '올해의 선수', FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
+                                                        ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
+                                                        ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
+                                                        CHM: '챔피언', RCHM: '정규시즌 우승', FMVP: '파이널 MVP',
+                                                        NBA1: '올-오펜시브 팀', NBA2: '올-오펜시브 팀', NBA3: '올-오펜시브 팀',
+                                                        DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
+                                                        ROY: '올해의 신인', CPOY: '올해의 클러치 플레이어',
+                                                        MIP: '최고 발전 선수', '6MOY': '식스맨', SMOY: '식스맨',
+                                                    };
+                                                    const BASE_DETAIL: Record<string, string> = {
+                                                        CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승', RCHM: '우승',
+                                                        FINALS_MVP: '수상', FMVP: '수상',
+                                                        ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
+                                                        ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
+                                                        NBA1: '1st', NBA2: '2nd', NBA3: '3rd',
+                                                        DEF1: '1st', DEF2: '2nd',
+                                                    };
+                                                    const toOrdinal = (n: number) =>
+                                                        n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+                                                    const ranked = entry.type?.match(/^(.+)-(\d+)$/);
+                                                    const baseCode = ranked ? ranked[1] : entry.type;
+                                                    const rankNum  = ranked ? parseInt(ranked[2]) : null;
+                                                    const displayName = BASE_NAME[baseCode] ?? baseCode;
+                                                    let detail: string;
+                                                    if (rankNum !== null) {
+                                                        detail = toOrdinal(rankNum);
+                                                    } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && (entry as any).rank != null) {
+                                                        detail = (entry as any).rank === 1 ? '1st (수상)' : toOrdinal((entry as any).rank);
+                                                    } else {
+                                                        detail = BASE_DETAIL[entry.type] ?? ((entry as any).label ? '' : '-');
+                                                    }
                                                     return (
                                                         <TableRow key={idx} className="h-10">
                                                             <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.season}</span>
                                                             </TableCell>
                                                             <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
-                                                            </TableCell>
-                                                            <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-white">{displayName}</span>
                                                             </TableCell>
                                                             <TableCell align="center">
-                                                                <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
-                                                                    {entry.isTraining ? '훈련' : '경기'}
-                                                                </span>
+                                                                <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
                                                             </TableCell>
                                                         </TableRow>
                                                     );
                                                 })}
                                         </TableBody>
                                     </Table>
+                                );
+                            })()}
+                            </div>
+                        </div>
+
+                        {/* ── 위젯 8: 부상 이력 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <SectionHeader title="부상 이력" style={sectionBg} />
+                            <div className="overflow-x-auto custom-scrollbar">
+                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
+                                <div className="flex items-center justify-center h-24">
+                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
+                                </div>
+                            ) : (
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-auto" fullHeight={false}>
+                                    <TableHead style={subHeaderBg}>
+                                        {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
+                                            <TableHeaderCell key={h} align="center" className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`} style={subHeaderTextStyle}>
+                                                {h}
+                                            </TableHeaderCell>
+                                        ))}
+                                    </TableHead>
+                                    <TableBody>
+                                        {[...player.injuryHistory]
+                                            .sort((a, b) => b.date.localeCompare(a.date))
+                                            .map((entry, idx) => {
+                                                const dateStr = entry.date.slice(5).replace('-', '/');
+                                                const severityColor =
+                                                    entry.severity === 'Season-Ending' ? 'text-red-400' :
+                                                    entry.severity === 'Major' ? 'text-amber-400' :
+                                                    'text-white';
+                                                return (
+                                                    <TableRow key={idx} className="h-10">
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
+                                                                {entry.isTraining ? '훈련' : '경기'}
+                                                            </span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                    </TableBody>
+                                </Table>
                             )}
                             </div>
                         </div>
-                    </div>
+
+                    </div>{/* end 좌열 */}
+
+                    {/* ══════════════ 우열 (7fr) ══════════════ */}
+                    <div className="flex flex-col gap-2 p-2">
+
+                        {/* ── 위젯 A: 능력치 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <SectionHeader title="능력치" style={sectionBg} />
+                            {(() => {
+                                const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
+                                return (
+                                    <div className="grid grid-cols-6">
+                                        {ATTR_GROUPS.map((gr, gi) => {
+                                            const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
+                                            const avgVal = (player as any)[gr.keys[0]] || 0;
+                                            const isLastCol = gi === ATTR_GROUPS.length - 1;
+                                            const emptyRows = maxRows - attrKeys.length;
+                                            return (
+                                                <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r' : ''}`} style={!isLastCol ? { borderRightColor: dividerColor } : undefined}>
+                                                    <div className="h-10 flex items-center justify-center border-b" style={{ ...subHeaderBg, borderBottomColor: dividerColor }}>
+                                                        <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
+                                                    </div>
+                                                    {attrKeys.map((k) => {
+                                                        const val = (player as any)[k] || 0;
+                                                        const seasonDelta = player.seasonStartAttributes
+                                                            ? val - (player.seasonStartAttributes[k] ?? val)
+                                                            : 0;
+                                                        const attrEvents = (seasonDelta !== 0 && player.changeLog)
+                                                            ? player.changeLog.filter(e => e.attribute === k)
+                                                            : [];
+                                                        return (
+                                                            <div key={k} className={`flex items-center justify-between px-3 h-9 border-b transition-colors hover:bg-white/5 ${getAttrBg(val)}`} style={{ borderBottomColor: dividerColor }}>
+                                                                <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
+                                                                <div className="flex items-center gap-3 shrink-0">
+                                                                    {seasonDelta !== 0 && (
+                                                                        <span className={`relative group font-mono font-black text-xs tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                            {seasonDelta > 0 ? '▲' : '▼'} {Math.abs(seasonDelta)}
+                                                                            {attrEvents.length > 0 && (
+                                                                                <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:flex flex-col gap-0.5 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-xl z-50 whitespace-nowrap">
+                                                                                    {attrEvents.map((evt, i) => (
+                                                                                        <span key={i} className="flex items-center gap-2 text-[11px] font-normal">
+                                                                                            <span className="text-slate-500 font-mono">{evt.date.slice(5)}</span>
+                                                                                            <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>{evt.delta > 0 ? '▲' : '▼'}</span>
+                                                                                            <span className="text-slate-300 font-mono">{evt.oldValue} → {evt.newValue}</span>
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </span>
+                                                                            )}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {Array.from({ length: emptyRows }).map((_, i) => (
+                                                        <div key={`empty-${i}`} className="h-9 border-b" style={{ borderBottomColor: dividerColor }} />
+                                                    ))}
+                                                    <div className={`flex items-center justify-between px-3 h-10 border-t ${getAttrBg(avgVal)}`} style={{ ...subHeaderBg, borderTopColor: dividerColor }}>
+                                                        <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>종합</span>
+                                                        <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {/* ── 위젯 B: 커리어 기록 ── */}
+                        {player.career_history && player.career_history.length > 0 && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <SectionHeader title="기록" style={sectionBg}>
+                                    <select value={careerMode} onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')} className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none" style={dropdownStyle}>
+                                        <option value="regular">정규시즌</option>
+                                        {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
+                                    </select>
+                                    <select value={careerTab} onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')} className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-lg border cursor-pointer focus:outline-none" style={dropdownStyle}>
+                                        <option value="trad">기본</option>
+                                        <option value="adv">어드밴스드</option>
+                                    </select>
+                                </SectionHeader>
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                        <thead>
+                                            <tr>
+                                                {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
+                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b ${i === 0 ? 'sticky left-0 z-10' : ''}`} style={{ ...subHeaderBg, borderBottomColor: dividerColor, ...subHeaderTextStyle }}>
+                                                        {col.label}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                                const isPlayoffMode = careerMode === 'playoff';
+                                                const rows = isPlayoffMode ? careerPlayoff : careerRegular;
+                                                const multiTeamSeasons = new Set(rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season));
+                                                let groupIdx = -1;
+                                                return rows.map((row, ri) => {
+                                                    const isCurrentSeason = String((row as any).season) === seasonShort;
+                                                    const team = (row as any).team;
+                                                    const season = (row as any).season;
+                                                    const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
+                                                    const isSummaryRow = team === '2TM';
+                                                    if (!isSubRow) groupIdx++;
+                                                    const rowBg = groupIdx % 2 !== 0 ? rowAltBg : rowBaseBg;
+                                                    return (
+                                                        <tr key={ri}>
+                                                            {cols.map((col, ci) => {
+                                                                const raw = (row as any)[col.key];
+                                                                const display = (isSubRow && col.key === 'season') ? '' : formatCareerCell(col.key, raw);
+                                                                const isSticky = ci === 0;
+                                                                const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
+                                                                return (
+                                                                    <td key={col.key} className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
+                                                                        style={{ ...rowBg, borderBottomColor: dividerColor, ...(isSubRow && isSticky ? { borderLeft: `2px solid ${dividerColor}`, paddingLeft: '20px' } : {}), color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined }}>
+                                                                        {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    );
+                                                });
+                                            })()}
+                                        </tbody>
+                                        <tfoot>
+                                            {(() => {
+                                                const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                                const rows = careerMode === 'playoff' ? careerPlayoff : careerRegular;
+                                                const nonTm = rows.filter(r => (r as any).team !== '2TM');
+                                                const teamOrder: string[] = [];
+                                                nonTm.forEach(r => { const t = (r as any).team; if (!teamOrder.includes(t)) teamOrder.push(t); });
+                                                const avgRows = [...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)), computeCareerAvg(nonTm, '커리어')].filter(r => r.team);
+                                                return avgRows.map((avgRow, ai) => {
+                                                    const isCareer = avgRow.team === '커리어';
+                                                    return (
+                                                        <tr key={ai} style={isCareer ? subHeaderBg : { ...subHeaderBg, opacity: 0.75 }}>
+                                                            {cols.map((col, ci) => (
+                                                                <td key={col.key} className={`px-3 py-1.5 font-mono tabular-nums whitespace-nowrap border-t ${ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'}`}
+                                                                    style={{ ...subHeaderBg, borderTopColor: isCareer ? heavyDividerColor : dividerColor, ...subHeaderTextStyle, ...(isCareer && ci !== 0 ? { color: 'white' } : {}) }}>
+                                                                    {formatCareerCell(col.key, avgRow[col.key])}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    );
+                                                });
+                                            })()}
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── 위젯 C: 최근 경기 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <SectionHeader title="최근 경기" style={sectionBg} />
+                            <div style={{ height: '400px' }} className="relative">
+                                <VirtualGameLog
+                                    gameLog={gameLog}
+                                    gameLogLoading={gameLogLoading}
+                                    teamId={teamId}
+                                    subHeaderStyle={subHeaderBg}
+                                    rowAltStyle={rowAltBg}
+                                    rowBaseStyle={rowBaseBg}
+                                    dividerColor={dividerColor}
+                                    subHeaderTextStyle={subHeaderTextStyle}
+                                />
+                            </div>
+                        </div>
+
+                        {/* ── 위젯 D: 샷차트 ── */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <SectionHeader title="샷 차트" style={sectionBg}>
+                                <button
+                                    onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
+                                    className="px-2.5 py-1 text-[10px] font-bold rounded-lg border text-white transition-colors"
+                                    style={dropdownStyle}
+                                >
+                                    {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
+                                </button>
+                            </SectionHeader>
+                            <div className="p-4">
+                                <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
+                                    <svg viewBox="0 0 435 403" className="w-full h-full">
+                                        <rect x="0" y="0" width="435" height="403" fill="#020617" />
+                                        <g>
+                                            {chartZones.map((z, i) => {
+                                                const style = shotChartMode === 'efficiency'
+                                                    ? getZoneStyle(z.m, z.a, z.avg)
+                                                    : getZoneVolumeStyle(z.a, maxAttempts);
+                                                return (
+                                                    <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke={style.fill} strokeWidth={0.5} strokeOpacity={style.opacity} className="transition-all duration-300" />
+                                                );
+                                            })}
+                                        </g>
+                                        <g fill="#0f172a" fillRule="evenodd" stroke="none" pointerEvents="none">
+                                            {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
+                                        </g>
+                                        <g pointerEvents="none">
+                                            {chartZones.map((z, i) => {
+                                                if (shotChartMode === 'efficiency') {
+                                                    const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
+                                                    const style = getZoneStyle(z.m, z.a, z.avg);
+                                                    const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
+                                                    const w = 54, h = z.a > 0 ? 42 : 32;
+                                                    return (
+                                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                            <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
+                                                            <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">{pct}%</text>
+                                                            {z.a > 0 && <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">{z.m}/{z.a}</text>}
+                                                        </g>
+                                                    );
+                                                } else {
+                                                    const volPct = totalAttempts > 0 ? (z.a / totalAttempts * 100).toFixed(1) : '0.0';
+                                                    const w = 54, h = z.a > 0 ? 42 : 32;
+                                                    const pillFill = z.a > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(30,41,59,0.8)';
+                                                    const textFill = z.a > 0 ? '#ffffff' : '#94a3b8';
+                                                    const borderStroke = z.a > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)';
+                                                    return (
+                                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                            <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
+                                                            <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">{z.a}</text>
+                                                            {z.a > 0 && <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">{volPct}%</text>}
+                                                        </g>
+                                                    );
+                                                }
+                                            })}
+                                        </g>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>{/* end 우열 */}
 
                 </div>
             </div>

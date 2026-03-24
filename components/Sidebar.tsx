@@ -15,7 +15,7 @@ import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
 import { TEAM_DATA } from '../data/teamData';
 
 import { LegalModal } from './LegalModal';
-import { getTeamTheme, SIDEBAR_ICON_COLORS, SIDEBAR_SELECTED_ICON_COLORS } from '../utils/teamTheme';
+import { getTeamTheme, SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -41,10 +41,9 @@ const NavItem: React.FC<{
   badge?: number;
   textBadge?: string;
   iconColor: string;
-  activeIconColor: string;
   whiteBg?: boolean;
   buttonRef?: React.RefObject<HTMLButtonElement>;
-}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, whiteBg, buttonRef }) => {
+}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, whiteBg, buttonRef }) => {
   const selectedBg = whiteBg ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
   const hoverCls = whiteBg
     ? 'hover:bg-[rgba(255,255,255,0.1)] hover:outline-[rgba(255,255,255,0.2)]'
@@ -63,7 +62,7 @@ const NavItem: React.FC<{
   >
     {React.cloneElement(icon as React.ReactElement<any>, {
       size: 24,
-      color: active ? activeIconColor : iconColor,
+      color: iconColor,
     })}
     {badge !== undefined && badge > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
@@ -112,9 +111,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   // 비선택 아이콘: Figma {TEAM}/secondary 기준
   const iconColor = team ? (SIDEBAR_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
 
-  // 선택(active) 아이콘: Figma {TEAM}/accent 기준, 기본 #ffffff
-  const activeIconColor = team ? (SIDEBAR_SELECTED_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
-
   // 프로필 드롭다운 외부 클릭 닫기
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -139,9 +135,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   const isWhiteBg = team?.id === 'sa';
 
-  // NavItem 래퍼 — iconColor/activeIconColor/whiteBg 자동 주입
-  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeIconColor' | 'whiteBg'>) => (
-    <NavItem {...props} iconColor={iconColor} activeIconColor={activeIconColor} whiteBg={isWhiteBg} />
+  // NavItem 래퍼 — iconColor/whiteBg 자동 주입
+  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'whiteBg'>) => (
+    <NavItem {...props} iconColor={iconColor} whiteBg={isWhiteBg} />
   );
 
   return (

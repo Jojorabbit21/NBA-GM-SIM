@@ -1174,7 +1174,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${isFAFinal || isReleaseConfirmed ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${isFAFinal || isReleaseConfirmed || negState?.signed ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
@@ -1187,7 +1187,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
 
                     {/* ── FA 컨트롤 ── */}
-                    {isFA && faEntry && !isFAFinal && !isFABlocked && (
+                    {isFA && faEntry && !isFABlocked && (
                         <>
                             {/* 계약 슬롯 */}
                             <div className="flex-shrink-0">
@@ -1469,19 +1469,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </>
                     )}
 
-                    {/* FA 완료 */}
-                    {isFAFinal && (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-5">
-                            <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/50 flex items-center justify-center">
-                                <span className="text-3xl text-emerald-400">✓</span>
-                            </div>
-                            <div className="text-2xl font-black text-emerald-400 uppercase tracking-wide">계약 체결!</div>
-                            <button
-                                onClick={onClose}
-                                className="px-10 py-3 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
-                            >완료</button>
-                        </div>
-                    )}
 
                     {/* ── Extension 컨트롤 ── */}
                     {isExt && negState && (

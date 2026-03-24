@@ -38,7 +38,7 @@ export const TEAM_COLORS: Record<string, { primary: string; secondary: string; t
     'nyk': { primary: '#006BB6', secondary: '#F58426', tertiary: '#BEC0C2', text: '#FFFFFF' },
     'okc': { primary: '#EF3B24', secondary: '#007AC1', tertiary: '#002D62', text: '#FFFFFF' },
     'orl': { primary: '#0077C0', secondary: '#C4CED4', tertiary: '#000000', text: '#FFFFFF' },
-    'phi': { primary: '#1D428A', secondary: '#C8102E', tertiary: '#7766EE', text: '#FFFFFF' },
+    'phi': { primary: '#000000', secondary: '#896C4C', tertiary: '#D50032', text: '#FFFFFF' },
     'phx': { primary: '#1D1160', secondary: '#E56020', tertiary: '#F9A01B', text: '#FFFFFF' },
     'por': { primary: '#CF0A2C', secondary: '#000000', tertiary: '#FFFFFF', text: '#FFFFFF' },
     'sac': { primary: '#5B2C81', secondary: '#707272', tertiary: '#010101', text: '#FFFFFF' },

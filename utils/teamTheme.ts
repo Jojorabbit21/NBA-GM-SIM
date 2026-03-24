@@ -3,16 +3,16 @@
 
 // 사이드바 비선택 아이콘 색상 — Figma Colors.tokens.json {TEAM}/secondary
 export const SIDEBAR_ICON_COLORS: Record<string, string> = {
-    'atl': '#FFC72C', 'bos': '#BA9653', 'bkn': '#CD1041',
-    'cha': '#280071', 'chi': '#000000', 'cle': '#FFB81C',
-    'dal': '#002B5E', 'den': '#8B2131', 'det': '#1D42BA',
-    'gs':  '#FDB927', 'hou': '#C4CED4', 'ind': '#FDBB30',
-    'law': '#D50032', 'lam': '#FDB927', 'mem': '#12173F',
-    'mia': '#010101', 'mil': '#EEE1C6', 'min': '#236192',
-    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#007AC1',
-    'orl': '#C4CED4', 'phi': '#C8102E', 'phx': '#E56020',
-    'por': '#000000', 'sac': '#707272', 'sa':  '#C4CED4',
-    'tor': '#010101', 'uta': '#7BA4DB', 'was': '#002B5C',
+    'atl': '#FFC72C', 'bos': '#FFFFFF', 'bkn': '#FFFFFF',
+    'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFB81C',
+    'dal': '#FFFFFF', 'den': '#FEC524', 'det': '#FFFFFF',
+    'gs':  '#FDB927', 'hou': '#FFFFFF', 'ind': '#FDBB30',
+    'law': '#D50032', 'lam': '#FDB927', 'mem': '#FFFFFF',
+    'mia': '#F9A01B', 'mil': '#EEE1C6', 'min': '#79BC43',
+    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#FFFFFF',
+    'orl': '#FFFFFF', 'phi': '#D50032', 'phx': '#E56020',
+    'por': '#FFFFFF', 'sac': '#FFFFFF', 'sa':  '#FFFFFF',
+    'tor': '#FFFFFF', 'uta': '#7BA4DB', 'was': '#C4CED4',
 };
 
 // 사이드바 선택(active) 아이콘 색상 — 피그마 기준 전 팀 #ffffff (기본값)
