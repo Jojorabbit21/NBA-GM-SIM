@@ -328,7 +328,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
       {/* Shared Month Navigation */}
-      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-900">
+      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-950">
         <button
           onClick={() => changeMonth(-1)}
           disabled={isAtMinMonth}
@@ -448,7 +448,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         /* ── League Schedule: Day Carousel + Game Cards ── */
         <React.Fragment>
           {/* Day Carousel */}
-          <div className="shrink-0 border-b border-slate-800 bg-slate-900 flex items-center">
+          <div className="shrink-0 border-b border-slate-800 bg-slate-950 flex items-center">
             <button
               onClick={() => scrollCarousel(-1)}
               className="shrink-0 px-2 py-3 text-slate-500 hover:text-slate-300 transition-colors"
