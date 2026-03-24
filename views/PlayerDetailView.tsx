@@ -702,10 +702,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 ...(player.awards ?? []),
                             ];
                             return (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg">
 
                                 {/* ─ 헤더: OVR + 이름 ─ */}
-                                <div className="p-4" style={{ backgroundColor: theme.bg }}>
+                                <div className="p-4 rounded-t-lg" style={{ backgroundColor: theme.bg }}>
                                     <div className="flex items-center gap-3 min-w-0">
                                         <OvrBadge value={calculatedOvr} size="md" />
                                         <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
