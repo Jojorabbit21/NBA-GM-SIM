@@ -578,7 +578,20 @@ export function evaluateExtensionOffer(
         };
     }
 
-    // ── 규칙 4: 수락 판정 (effectiveOffer 기준)
+    // ── 규칙 4a: 카운터 충족 → 즉시 수락
+    // 선수가 카운터를 제시했고 GM이 그 이상을 제공하면 반드시 수락
+    const meetsCounter = effectiveAAV >= next.currentCounterAAV
+        && offer.years >= demand.askingYears - 1;
+    if (!sameOffer && meetsCounter) {
+        const contract = buildExtensionContract(offer.annualSalary, offer.years, offer.option, offer.noTrade, offer.tradeKicker);
+        next = { ...next, signed: true };
+        return {
+            response: { outcome: 'ACCEPT', contract },
+            updatedState: next,
+        };
+    }
+
+    // ── 규칙 4b: 효용 기반 수락 판정 (targetAAV 초과 오퍼)
     const utility = calcOfferUtility(effectiveOffer, next);
     const acceptThreshold = 0.90 - next.frustration * 0.10;
 

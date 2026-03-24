@@ -1198,11 +1198,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             </div>
                                     </div>
                                 )}
-                                {faIsDecliningSalary && (
-                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
-                                        ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
-                                    </div>
-                                )}
                                 <div className="space-y-1 border-t border-slate-800 pt-2">
                                     {faOfferSalaries.map((sal, i) => {
                                         const y = currentSeasonYear + i;
@@ -1466,11 +1461,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             <span className="text-xs text-slate-500">%</span>
                                         </div>
                                 </div>
-                                {extIsDecliningSalary && (
-                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
-                                        ↘ 하향식 계약 — 충성도 ↑ · 재정적 야망 ↓ 선수만 수락
-                                    </div>
-                                )}
                                 <div className="space-y-1 border-t border-slate-800 pt-2">
                                     {extOfferSalaries.map((sal, i) => {
                                         const y = currentSeasonYear + i;
