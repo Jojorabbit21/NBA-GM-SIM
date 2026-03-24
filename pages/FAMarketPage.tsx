@@ -35,11 +35,26 @@ const FAMarketPage: React.FC = () => {
                 if (!faPlayer) return;
                 const salary = contract.years[contract.currentYear] ?? contract.years[0];
                 const signedPlayer = { ...faPlayer, contract, salary, contractYears: contract.years.length, teamTenure: 0 };
-                const newTeams = gameData.teams.map((t: Team) =>
-                    t.id === gameData.myTeamId
-                        ? { ...t, roster: [...t.roster, signedPlayer] }
-                        : t
-                );
+                // Set-Off Rule: 웨이브된 선수를 영입 시 B팀 총 계약액만큼 원팀 waive 데드캡 차감
+                const prevTeamId = gameData.leagueFAMarket?.entries.find(e => e.playerId === playerId)?.prevTeamId;
+                const bTeamTotalContract = contract.years.reduce((s: number, v: number) => s + v, 0);
+                const newTeams = gameData.teams.map((t: Team) => {
+                    if (t.id === gameData.myTeamId) return { ...t, roster: [...t.roster, signedPlayer] };
+                    if (prevTeamId && t.id === prevTeamId) {
+                        const newDeadMoney = (t.deadMoney ?? []).reduce((acc: DeadMoneyEntry[], d) => {
+                            if (d.playerId === playerId && d.releaseType === 'waive') {
+                                const remaining = d.amount - bTeamTotalContract;
+                                if (remaining > 0) acc.push({ ...d, amount: remaining });
+                                // remaining <= 0 이면 완전 소멸
+                            } else {
+                                acc.push(d);
+                            }
+                            return acc;
+                        }, []);
+                        return { ...t, deadMoney: newDeadMoney };
+                    }
+                    return t;
+                });
                 gameData.setTeams(newTeams);
                 const marketWithPlayers = { ...updatedMarket, players: gameData.leagueFAMarket?.players };
                 gameData.setLeagueFAMarket(marketWithPlayers);

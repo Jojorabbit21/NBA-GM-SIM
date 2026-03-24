@@ -375,6 +375,23 @@ export function simulateCPUSigning(
                     };
                 }
 
+                // Set-Off Rule: B팀 총 계약액만큼 원팀 waive 데드캡 차감
+                if (entry.prevTeamId) {
+                    const prevTeam = updatedTeams.find(t => t.id === entry.prevTeamId);
+                    if (prevTeam) {
+                        const bTeamTotal = offerSalary * offerYears;
+                        prevTeam.deadMoney = (prevTeam.deadMoney ?? []).reduce((acc, d) => {
+                            if (d.playerId === player.id && d.releaseType === 'waive') {
+                                const remaining = d.amount - bTeamTotal;
+                                if (remaining > 0) acc.push({ ...d, amount: remaining });
+                            } else {
+                                acc.push(d);
+                            }
+                            return acc;
+                        }, [] as typeof prevTeam.deadMoney);
+                    }
+                }
+
                 signings.push({ teamId: team.id, playerId: player.id, salary: offerSalary, years: offerYears });
                 break; // 한 라운드에 팀당 1명 서명
             }

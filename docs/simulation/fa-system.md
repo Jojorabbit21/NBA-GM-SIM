@@ -598,11 +598,31 @@ stretchAnnual = totalRemaining / stretchYearsTotal;
 
 #### 바이아웃 최소 수락액
 
+선수 성격(loyalty, financialAmbition), OVR, 모럴, 잔여 연수를 종합한 공식:
+
 ```ts
-// OVR 기반 선형 보간 (OVR 60 → 50%, OVR 95 → 75%)
-const minBuyoutPct = Math.min(75, 50 + 25 * Math.max(0, (ovr - 60) / 35));
+const minBuyoutPct = (() => {
+    const loyalty           = tendencies.loyalty           ?? 0.5;
+    const financialAmbition = tendencies.financialAmbition ?? 0.5;
+    let pct = 73; // 기본값 (NBA 중앙값)
+    pct += (financialAmbition - 0.5) * 20;  // ±10%  (재정 야망이 높을수록 더 많이 요구)
+    pct += (loyalty - 0.5) * 14;             // ±7%   (충성심 높을수록 거절 경향)
+    pct += (player.ovr - 75) / 25 * 5;       // ±5%   (스타일수록 협상력 있음)
+    pct += (moraleScore - 50) / 50 * 6;      // ±6%   (불만족 선수일수록 수락 용이)
+    if (remainingYears <= 1) pct = Math.max(pct, 80); // 올해 만료 선수 — 협상력 약함
+    return Math.round(Math.min(90, Math.max(62, pct)));
+})();
 const minBuyoutAmount = totalRemaining * (minBuyoutPct / 100);
 ```
+
+| 요소 | 범위 | 효과 |
+|------|------|------|
+| 재정 야망 (`financialAmbition`) | ±10% | 높을수록 더 많은 금액 요구 |
+| 충성심 (`loyalty`) | ±7% | 높을수록 바이아웃 거절 경향 |
+| OVR | ±5% | OVR 75 기준, 높을수록 요구액 상향 |
+| 모럴 (`moraleScore`) | ±6% | 불만족할수록 조금 더 수락하기 쉬움 |
+| 잔여 연수 = 1 | 최소 80% | 올해 만료 선수는 협상 여지 좁음 |
+| **범위** | **62% ~ 90%** | 역사적 NBA 바이아웃 범위 |
 
 유저는 슬라이더로 `minBuyoutAmount ~ totalRemaining` 범위에서 제시액을 설정한다.
 최소 수락액 미만 제시 시 방출 확정 버튼 비활성화.
@@ -691,9 +711,39 @@ team.deadMoney = (team.deadMoney ?? [])
 
 | 방식 | 소멸 규칙 |
 |------|---------|
-| **waive** | 1회성. 다음 오프시즌에 제거 |
-| **buyout** | 1회성. 다음 오프시즌에 제거 |
-| **stretch** | `stretchYearsRemaining`이 0이 될 때까지 매 시즌 `amount`씩 캡 산정 후 제거 |
+| **waive** | 1회성. 다음 오프시즌에 제거. 단, **다른 팀이 해당 선수를 영입하면 즉시 Set-Off 적용** (아래 참조) |
+| **buyout** | 1회성. 다음 오프시즌에 제거. Set-Off 없음 (합의된 고정 금액) |
+| **stretch** | `stretchYearsRemaining`이 0이 될 때까지 매 시즌 `amount`씩 캡 산정 후 제거. Set-Off 없음 |
+
+### Set-Off Rule (NBA CBA Article 13.14)
+
+웨이브된 선수가 FA 시장에서 다른 팀(B팀)과 계약하면, 원 소속팀(A팀)의 데드캡 의무가 줄어든다.
+
+```
+A팀 잔여 데드캡 = max(0, 원래 waive 데드캡 - B팀 총 계약액)
+```
+
+B팀 총 계약액이 A팀 데드캡 이상이면 항목 자체 소멸.
+B팀 총 계약액이 더 작으면 차액만큼 A팀 데드캡이 잔존.
+
+**예시:**
+```
+A팀 웨이브, 남은 보장 = $20M
+→ A팀 deadMoney amount = $20M
+
+B팀이 2년 × $6M = $12M 계약 체결
+→ A팀 잔여 데드캡 = $20M - $12M = $8M (잔존)
+
+B팀이 3년 × $8M = $24M 계약 체결
+→ A팀 잔여 데드캡 = $0 (소멸)
+```
+
+**구현 위치:**
+- 유저가 웨이브된 선수 영입 시: `pages/FAMarketPage.tsx` → `onOfferAccepted`
+- CPU가 웨이브된 선수 영입 시: `services/fa/faMarketBuilder.ts` → `simulateCPUSigning`
+
+**Set-Off 적용 조건: `releaseType === 'waive'` 항목만.**
+스트레치/바이아웃은 이미 당사자 간 합의된 고정 금액이므로 B팀 서명 여부와 무관.
 
 ---
 
@@ -735,6 +785,8 @@ team.deadMoney = (team.deadMoney ?? [])
 | CPU 웨이버 moratoriumStart 조기 실행 (Phase 1+3) | `hooks/useSimulation.ts` | ✅ 완료 |
 | CPU 웨이버 rosterDeadline 실행 (Phase 1+2+3) | `hooks/useSimulation.ts` | ✅ 완료 |
 | 트레이드 우선 필터 (`preferTradeBlock`) | `services/fa/cpuWaiverEngine.ts` | ✅ 완료 |
+| Set-Off Rule — 웨이브 후 B팀 영입 시 A팀 데드캡 차감 | `FAMarketPage.tsx` + `faMarketBuilder.ts` | ✅ 완료 |
+| 바이아웃 최소 수락액 — 성격 기반 공식 (loyalty/financialAmbition/OVR/morale) | `views/NegotiationScreen.tsx` | ✅ 완료 |
 
 ---
 
