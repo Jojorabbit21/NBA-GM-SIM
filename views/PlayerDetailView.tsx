@@ -1158,14 +1158,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 위젯 D: 샷차트 + 구역별 야투 기록 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="샷 차트" style={sectionBg}>
-                                <div className="flex items-center rounded-lg overflow-hidden border border-slate-700 text-[10px] font-bold">
+                                <div className="flex items-center rounded-lg overflow-hidden border border-white/20 text-[10px] font-bold">
                                     <button
                                         onClick={() => setShotChartMode('efficiency')}
-                                        className={`px-2.5 py-1 transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
+                                        className="px-2.5 py-1 transition-colors"
+                                        style={shotChartMode === 'efficiency' ? { backgroundColor: 'rgba(0,0,0,0.35)', color: theme.text } : { backgroundColor: 'transparent', color: 'rgba(255,255,255,0.4)' }}
                                     >성공률</button>
                                     <button
                                         onClick={() => setShotChartMode('volume')}
-                                        className={`px-2.5 py-1 transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'bg-transparent text-slate-500 hover:text-slate-300'}`}
+                                        className="px-2.5 py-1 transition-colors"
+                                        style={shotChartMode === 'volume' ? { backgroundColor: 'rgba(0,0,0,0.35)', color: theme.text } : { backgroundColor: 'transparent', color: 'rgba(255,255,255,0.4)' }}
                                     >시도수</button>
                                 </div>
                             </SectionHeader>
@@ -1225,13 +1227,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
-                                        <tr style={sectionBg}>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10" style={{ ...sectionBg, color: theme.text }}>구역</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>시도</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>성공</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>성공률</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>평균</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right" style={{ color: theme.text }}>vs 평균</th>
+                                        <tr className="bg-slate-800">
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 bg-slate-800 text-slate-400">구역</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">시도</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">성공</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">성공률</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">평균</th>
+                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">vs 평균</th>
                                         </tr>
                                     </thead>
                                     <tbody>
