@@ -15,9 +15,6 @@ body {
     overscroll-behavior: none;
 }
 
-* {
-    overscroll-behavior: none;
-}
 
 .text-huge { font-size: clamp(3rem, 8vw, 6rem); line-height: 0.9; }
 

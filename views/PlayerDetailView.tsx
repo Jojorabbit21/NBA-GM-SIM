@@ -419,7 +419,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
         <div className="relative overflow-hidden h-full" style={{ contain: 'strict' }}>
             <div
                 ref={scrollRef}
-                className="absolute inset-0 overflow-y-auto"
+                className="absolute inset-0 overflow-y-auto overscroll-none"
                 onScroll={handleScroll}
             >
                 {gameLogLoading && teamId && (
@@ -687,7 +687,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             </div>
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
                 <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
 
                     {/* ══════════════ 좌열 (3fr) ══════════════ */}
