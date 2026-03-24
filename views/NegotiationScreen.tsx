@@ -481,6 +481,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     // ─── Release State ───────────────────────────────────────
     const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
     const [buyoutSlider, setBuyoutSlider] = useState(70);
+    const [buyoutInputStr, setBuyoutInputStr] = useState('');
 
     const releaseContract  = player.contract;
     const remainingYears   = releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1;
@@ -493,6 +494,29 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const minBuyoutAmount   = Math.round(totalRemaining * (minBuyoutPct / 100));
     const buyoutAmount      = Math.round(totalRemaining * (buyoutSlider / 100));
     const buyoutAccepted    = buyoutAmount >= minBuyoutAmount;
+
+    // 향후 5년 데드캡 영향 테이블
+    const deadCapTable = useMemo(() => {
+        const seasonLabel = (offset: number) => {
+            const y = currentSeasonYear + offset;
+            return `${y}-${String(y + 1).slice(-2)}`;
+        };
+        return Array.from({ length: 5 }, (_, i) => {
+            const label = seasonLabel(i);
+            const existing = (myTeam.deadMoney ?? []).reduce((sum, entry) => {
+                if (entry.releaseType === 'stretch') {
+                    return sum + ((entry.stretchYearsRemaining ?? 0) > i ? entry.amount : 0);
+                }
+                return sum + (i === 0 ? entry.amount : 0);
+            }, 0);
+            const addition =
+                releaseMode === 'waive'   && i === 0 ? totalRemaining :
+                releaseMode === 'stretch' && i < stretchYearsTotal ? Math.round(stretchAnnual) :
+                releaseMode === 'buyout'  && i === 0 ? buyoutAmount :
+                0;
+            return { label, existing, addition, total: existing + addition };
+        });
+    }, [myTeam.deadMoney, releaseMode, totalRemaining, stretchAnnual, stretchYearsTotal, buyoutAmount, currentSeasonYear]);
 
     // ─── Chat State ──────────────────────────────────────────
     const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
@@ -961,30 +985,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             ))}
                         </div>
 
-                        {/* Release: 데드캡 정보 */}
-                        {isRel && releaseMode !== 'waive' && (
-                            <div className="px-4 py-3 space-y-1">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">데드캡 정보</div>
-                                {releaseMode === 'stretch' && (
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-500">연간 데드캡</span>
-                                        <span className="font-mono text-slate-300">{fmtM(stretchAnnual)} × {stretchYearsTotal}년</span>
-                                    </div>
-                                )}
-                                {releaseMode === 'buyout' && (
-                                    <>
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">최소 요구액</span>
-                                            <span className="font-mono text-red-400">{fmtM(minBuyoutAmount)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">제시 금액</span>
-                                            <span className={`font-mono font-bold ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>{fmtM(buyoutAmount)}</span>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
 
@@ -1655,75 +1655,132 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* ── Release 컨트롤 ── */}
                     {isRel && (
                         <>
-                            {/* 방출 방식 */}
+                            {/* 방출 방식 라디오 */}
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-black uppercase tracking-widest text-slate-500">방출 방식</div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(['waive', 'stretch', 'buyout'] as ReleaseType[]).map(mode => {
-                                        const labels: Record<ReleaseType, { name: string; desc: string }> = {
-                                            waive:   { name: '웨이브',   desc: `데드캡 ${fmtM(totalRemaining)}` },
-                                            stretch: { name: '스트레치', desc: `연간 ${fmtM(stretchAnnual)} × ${stretchYearsTotal}년` },
-                                            buyout:  { name: '바이아웃', desc: `최소 ${fmtM(minBuyoutAmount)}` },
-                                        };
-                                        const isDisabled = mode === 'stretch' && remainingYears <= 1;
+                                <div className="space-y-1.5">
+                                    {([
+                                        { mode: 'waive'   as ReleaseType, name: '웨이브',            desc: `잔여 계약 전액 즉시 처리 — ${fmtM(totalRemaining)}`,                    disabled: false },
+                                        { mode: 'stretch' as ReleaseType, name: '스트레치 웨이브',   desc: `잔여 금액 분산 처리 — 연간 ${fmtM(Math.round(stretchAnnual))} × ${stretchYearsTotal}년`, disabled: remainingYears <= 1 },
+                                        { mode: 'buyout'  as ReleaseType, name: '바이아웃',          desc: `협상 합의금 지급 — 최소 ${fmtM(minBuyoutAmount)}`,                       disabled: false },
+                                    ]).map(({ mode, name, desc, disabled }) => {
                                         const isSelected = releaseMode === mode;
                                         return (
-                                            <button
+                                            <label
                                                 key={mode}
-                                                disabled={isDisabled}
-                                                onClick={() => { if (!isDisabled) setReleaseMode(mode); }}
-                                                className={`p-3 rounded-xl border transition-all text-left ${
-                                                    isDisabled
-                                                        ? 'opacity-30 cursor-not-allowed border-slate-700 bg-transparent'
+                                                className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                                                    disabled
+                                                        ? 'opacity-30 cursor-not-allowed border-slate-800 bg-transparent'
                                                         : isSelected
-                                                        ? 'border-red-500/60 bg-red-500/10 text-white'
-                                                        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
+                                                        ? 'border-red-500/50 bg-red-500/10'
+                                                        : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
                                                 }`}
                                             >
-                                                <div className="text-sm font-bold">{labels[mode].name}</div>
-                                                <div className="text-xs font-mono text-slate-500 mt-0.5">{labels[mode].desc}</div>
-                                            </button>
+                                                <input
+                                                    type="radio"
+                                                    name="releaseMode"
+                                                    value={mode}
+                                                    checked={isSelected}
+                                                    disabled={disabled}
+                                                    onChange={() => setReleaseMode(mode)}
+                                                    className="mt-0.5 accent-red-500 flex-shrink-0"
+                                                />
+                                                <div>
+                                                    <div className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{name}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">{desc}</div>
+                                                </div>
+                                            </label>
                                         );
                                     })}
                                 </div>
                             </div>
 
-                            {/* 바이아웃 슬라이더 */}
+                            {/* 바이아웃 금액 입력 */}
                             {releaseMode === 'buyout' && (
                                 <div className="flex-shrink-0 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-xs font-black uppercase tracking-widest text-slate-500">제시 금액</div>
-                                        <div className={`text-lg font-mono font-black ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {fmtM(buyoutAmount)} {buyoutAccepted ? '✓ 수락 예상' : '✗ 거절 예상'}
+                                    <div className="text-xs font-black uppercase tracking-widest text-slate-500">제시 금액</div>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`flex items-center gap-1 flex-1 rounded-lg border px-3 py-2 ${
+                                            buyoutAccepted ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-red-500/50 bg-red-500/5'
+                                        }`}>
+                                            <span className="text-xs text-slate-500">$</span>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min={(minBuyoutAmount / 1_000_000).toFixed(1)}
+                                                max={(totalRemaining / 1_000_000).toFixed(1)}
+                                                value={buyoutInputStr || (buyoutAmount / 1_000_000).toFixed(1)}
+                                                onChange={e => {
+                                                    setBuyoutInputStr(e.target.value);
+                                                    const m = parseFloat(e.target.value);
+                                                    if (!isNaN(m)) {
+                                                        const dollars = Math.round(m * 1_000_000);
+                                                        const clamped = Math.min(totalRemaining, Math.max(0, dollars));
+                                                        setBuyoutSlider(Math.round(clamped / totalRemaining * 100));
+                                                    }
+                                                }}
+                                                onBlur={() => setBuyoutInputStr('')}
+                                                className="flex-1 min-w-0 bg-transparent text-sm font-mono font-bold text-white focus:outline-none"
+                                            />
+                                            <span className="text-xs text-slate-500">M</span>
                                         </div>
+                                        <span className={`text-xs font-bold flex-shrink-0 ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {buyoutAccepted ? '✓ 수락' : '✗ 거절'}
+                                        </span>
                                     </div>
                                     <input
                                         type="range"
                                         min={minBuyoutPct}
                                         max={100}
                                         value={buyoutSlider}
-                                        onChange={e => setBuyoutSlider(Number(e.target.value))}
-                                        className="w-full accent-emerald-500"
+                                        onChange={e => {
+                                            setBuyoutSlider(Number(e.target.value));
+                                            setBuyoutInputStr('');
+                                        }}
+                                        className="w-full accent-red-500"
                                     />
                                     <div className="flex justify-between text-xs font-mono text-slate-500">
-                                        <span>최소 {fmtM(minBuyoutAmount)} ({minBuyoutPct}%)</span>
+                                        <span>최소 {fmtM(minBuyoutAmount)}</span>
                                         <span>전액 {fmtM(totalRemaining)}</span>
                                     </div>
                                 </div>
                             )}
 
-                            {/* 데드캡 확인 + 방출 버튼 */}
-                            <div className="flex-shrink-0 mt-auto pt-2 space-y-3">
-                                <div className="bg-slate-800 rounded-xl px-5 py-3 flex items-center justify-between">
-                                    <span className="text-sm text-slate-400">
-                                        {releaseMode === 'stretch' ? '연간 데드캡' : '이번 시즌 데드캡'}
-                                    </span>
-                                    <span className="text-lg font-mono font-black text-red-400">
-                                        {releaseMode === 'waive'   ? fmtM(totalRemaining)  :
-                                         releaseMode === 'stretch' ? fmtM(stretchAnnual)   :
-                                         fmtM(buyoutAmount)}
-                                    </span>
+                            {/* 향후 5년 데드캡 테이블 */}
+                            <div className="flex-shrink-0 space-y-2">
+                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">향후 5년 데드캡 영향</div>
+                                <div className="rounded-xl border border-slate-700 overflow-hidden">
+                                    <table className="w-full text-xs">
+                                        <thead>
+                                            <tr className="bg-slate-800/80">
+                                                <th className="text-left px-3 py-2 text-slate-400 font-bold">시즌</th>
+                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">기존</th>
+                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">추가분</th>
+                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">합계</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {deadCapTable.map(({ label, existing, addition, total }, i) => (
+                                                <tr key={label} className={`border-t border-slate-700/60 ${i === 0 ? 'bg-slate-800/30' : ''}`}>
+                                                    <td className="px-3 py-2 font-mono text-slate-300">{label}</td>
+                                                    <td className="px-3 py-2 text-right font-mono text-slate-400">
+                                                        {existing > 0 ? fmtM(existing) : <span className="text-slate-600">—</span>}
+                                                    </td>
+                                                    <td className={`px-3 py-2 text-right font-mono font-bold ${addition > 0 ? 'text-red-400' : 'text-slate-600'}`}>
+                                                        {addition > 0 ? `+${fmtM(addition)}` : '—'}
+                                                    </td>
+                                                    <td className={`px-3 py-2 text-right font-mono font-black ${total > 0 ? 'text-white' : 'text-slate-600'}`}>
+                                                        {total > 0 ? fmtM(total) : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
+                            </div>
+
+                            {/* 방출 확정 버튼 */}
+                            <div className="flex-shrink-0 mt-auto pt-1">
                                 <button
                                     disabled={releaseMode === 'buyout' && !buyoutAccepted}
                                     onClick={handleReleaseConfirm}
