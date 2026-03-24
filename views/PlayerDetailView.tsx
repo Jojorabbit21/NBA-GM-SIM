@@ -568,205 +568,176 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
-                <div className="grid items-start" style={{ gridTemplateColumns: '3fr 7fr' }}>
+                <div className="grid items-start" style={{ gridTemplateColumns: '2fr 8fr' }}>
 
                     {/* ══════════════ 좌열 (3fr) ══════════════ */}
-                    <div className="flex flex-col gap-2 p-2 border-r border-slate-800">
+                    <div className="flex flex-col gap-2 p-2">
 
-                        {/* ── 위젯 1: 선수 기본 정보 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <div className="p-4" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.15 : 0.55) }}>
-                                <div className="flex items-start justify-between gap-2 mb-3">
-                                    <div className="flex items-center gap-3 min-w-0">
+                        {/* ── 위젯 1: 선수 정보 통합 카드 ── */}
+                        {(() => {
+                            const allAwards: any[] = [
+                                ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
+                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
+                                ) ?? []),
+                                ...(player.awards ?? []),
+                            ];
+                            return (
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+
+                                {/* ─ 헤더: OVR + 이름 + 트로피 ─ */}
+                                <div className="p-4" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.15 : 0.55) }}>
+                                    <div className="flex items-center gap-3 min-w-0 mb-2">
                                         <OvrBadge value={calculatedOvr} size="md" />
                                         <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
                                     </div>
-                                    {(() => {
-                                        const allAwards: any[] = [
-                                            ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
-                                                (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
-                                            ) ?? []),
-                                            ...(player.awards ?? []),
-                                        ];
-                                        return allAwards.length > 0 ? <HeaderAwardTrophies awards={allAwards} /> : null;
-                                    })()}
-                                </div>
-                                {player.health && player.health !== 'Healthy' && (
-                                    <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mb-3">
-                                        {player.injuryType || player.health}
-                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                    </span>
-                                )}
-                                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs" style={{ color: theme.text }}>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">팀</span>
-                                    <span className="font-bold flex items-center gap-1">
-                                        {teamId ? (
-                                            <><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</>
-                                        ) : 'FA'}
-                                    </span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">포지션</span>
-                                    <span className="font-bold">{player.position}</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">나이</span>
-                                    <span className="font-bold">{player.age}세</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">신장</span>
-                                    <span className="font-bold">{player.height}cm</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">체중</span>
-                                    <span className="font-bold">{player.weight}kg</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">연봉</span>
-                                    <span className="font-bold">{player.salary > 0 ? formatMoney(player.salary) : '-'}</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">계약</span>
-                                    <span className="font-bold">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">리그 레벨</span>
-                                    <span className="font-bold"><StarRating ovr={calculatedOvr} size="md" /></span>
-                                    <span className="font-bold opacity-50 uppercase tracking-wider">포지션 평점</span>
-                                    <span className="font-bold">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* ── 위젯 2: 선수 유형 ── */}
-                        {playerArchetypeState && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <SectionHeader title="선수 유형" style={sectionBg} />
-                                <div className="px-4 py-3 flex flex-wrap items-center gap-2">
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.55) }}>
-                                        {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
-                                    </span>
-                                    {playerArchetypeState.secondary && (
-                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold border border-slate-700 text-slate-300">
-                                            {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
+                                    {/* 트로피 행 */}
+                                    {allAwards.length > 0 && (
+                                        <div className="mb-3">
+                                            <HeaderAwardTrophies awards={allAwards} />
+                                        </div>
+                                    )}
+                                    {/* 부상 배지 */}
+                                    {player.health && player.health !== 'Healthy' && (
+                                        <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mb-3">
+                                            {player.injuryType || player.health}
+                                            {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
                                         </span>
                                     )}
-                                    {playerArchetypeState.tags.slice(0, 4).map(tag => (
-                                        <span key={tag} className="px-2 py-0.5 rounded text-[11px] font-bold text-slate-400 border border-slate-700">
-                                            {getTraitTagDisplayInfo(tag).label}
+                                    {/* key-value grid */}
+                                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs" style={{ color: theme.text }}>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">팀</span>
+                                        <span className="font-bold flex items-center gap-1">
+                                            {teamId ? (
+                                                <><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</>
+                                            ) : 'FA'}
                                         </span>
-                                    ))}
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">포지션</span>
+                                        <span className="font-bold">{player.position}</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">나이</span>
+                                        <span className="font-bold">{player.age}세</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">신장</span>
+                                        <span className="font-bold">{player.height}cm</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">체중</span>
+                                        <span className="font-bold">{player.weight}kg</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">연봉</span>
+                                        <span className="font-bold">{player.salary > 0 ? formatMoney(player.salary) : '-'}</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">계약</span>
+                                        <span className="font-bold">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">리그 레벨</span>
+                                        <span className="font-bold"><StarRating ovr={calculatedOvr} size="md" /></span>
+                                        <span className="font-bold opacity-50 uppercase tracking-wider">포지션 평점</span>
+                                        <span className="font-bold">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
 
-                        {/* ── 위젯 3: 스카우팅 리포트 ── */}
-                        {scoutReport.length > 0 && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <SectionHeader title="스카우팅 리포트" style={sectionBg} />
-                                <div className="px-4 py-3">
-                                    <span className="text-xs leading-relaxed italic text-slate-300">"{scoutReport}"</span>
-                                </div>
-                            </div>
-                        )}
+                                {/* ─ 선수 유형 ─ */}
+                                {playerArchetypeState && (
+                                    <>
+                                        <SectionHeader title="선수 유형" style={sectionBg} />
+                                        <div className="px-4 py-3 flex flex-wrap items-center gap-2">
+                                            <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.55) }}>
+                                                {getArchetypeDisplayInfo(playerArchetypeState.primary).label}
+                                            </span>
+                                            {playerArchetypeState.secondary && (
+                                                <span className="px-2.5 py-1 rounded-full text-xs font-bold border border-slate-700 text-slate-300">
+                                                    {getArchetypeDisplayInfo(playerArchetypeState.secondary).label}
+                                                </span>
+                                            )}
+                                            {playerArchetypeState.tags.slice(0, 4).map(tag => (
+                                                <span key={tag} className="px-2 py-0.5 rounded text-[11px] font-bold text-slate-400 border border-slate-700">
+                                                    {getTraitTagDisplayInfo(tag).label}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
 
-                        {/* ── 위젯 4: 인기도 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="인기도" style={sectionBg} />
-                            <div className="px-4 py-3 flex flex-col gap-3">
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">지역 인기</span>
-                                        <span className="text-[11px] font-bold text-white">
-                                            {player.popularity?.local ?? 0}
-                                            <span className="text-slate-400 ml-1 font-normal">— {getLocalPopularityLabel(player.popularity?.local ?? 0)}</span>
-                                        </span>
-                                    </div>
-                                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                        <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.local ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.6 : 0.8) }} />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">전국 인기</span>
-                                        <span className="text-[11px] font-bold text-white">
-                                            {player.popularity?.national ?? 0}
-                                            <span className="text-slate-400 ml-1 font-normal">— {getNationalPopularityLabel(player.popularity?.national ?? 0)}</span>
-                                        </span>
-                                    </div>
-                                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                        <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.national ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.5) }} />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                                {/* ─ 스카우팅 리포트 ─ */}
+                                {scoutReport.length > 0 && (
+                                    <>
+                                        <SectionHeader title="스카우팅 리포트" style={sectionBg} />
+                                        <div className="px-4 py-3">
+                                            <span className="text-xs leading-relaxed italic text-slate-300">"{scoutReport}"</span>
+                                        </div>
+                                    </>
+                                )}
 
-                        {/* ── 위젯 5: 성격 & 기분 ── */}
-                        {saveTendencies && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <SectionHeader title="성격 & 기분" style={sectionBg} />
+                                {/* ─ 인기도 ─ */}
+                                <SectionHeader title="인기도" style={sectionBg} />
                                 <div className="px-4 py-3 flex flex-col gap-3">
-                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
-                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">현재 기분</span>
-                                        <span className="text-[11px] font-bold" style={{
-                                            color: (player.morale?.score ?? 50) >= 70 ? '#34d399'
-                                                 : (player.morale?.score ?? 50) >= 40 ? '#f59e0b'
-                                                 : '#f87171'
-                                        }}>
-                                            {getMoraleLabel(player.morale?.score ?? 50)}
-                                            <span className="text-slate-500 ml-1 font-normal">({player.morale?.score ?? 50})</span>
-                                        </span>
+                                    <div className="flex flex-col gap-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">지역 인기</span>
+                                            <span className="text-[11px] font-bold text-white">
+                                                {player.popularity?.local ?? 0}
+                                                <span className="text-slate-400 ml-1 font-normal">— {getLocalPopularityLabel(player.popularity?.local ?? 0)}</span>
+                                            </span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                            <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.local ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.6 : 0.8) }} />
+                                        </div>
                                     </div>
-                                    {([
-                                        {
-                                            label: '자존심',
-                                            leftLabel: '겸손',
-                                            rightLabel: '오만',
-                                            value: Math.round((saveTendencies.ego + 1) / 2 * 100),
-                                            highlight: saveTendencies.ego > 0.35 ? 'right' : saveTendencies.ego < -0.35 ? 'left' : 'mid',
-                                        },
-                                        {
-                                            label: '금전욕',
-                                            leftLabel: '검소',
-                                            rightLabel: '탐욕',
-                                            value: Math.round(saveTendencies.financialAmbition * 100),
-                                            highlight: saveTendencies.financialAmbition > 0.68 ? 'right' : saveTendencies.financialAmbition < 0.32 ? 'left' : 'mid',
-                                        },
-                                        {
-                                            label: '팀 충성도',
-                                            leftLabel: '이적욕',
-                                            rightLabel: '충성',
-                                            value: Math.round(saveTendencies.loyalty * 100),
-                                            highlight: saveTendencies.loyalty > 0.65 ? 'right' : saveTendencies.loyalty < 0.35 ? 'left' : 'mid',
-                                        },
-                                        {
-                                            label: '우승욕',
-                                            leftLabel: '역할우선',
-                                            rightLabel: '우승욕',
-                                            value: Math.round(saveTendencies.winDesire * 100),
-                                            highlight: saveTendencies.winDesire > 0.65 ? 'right' : 'mid',
-                                        },
-                                        {
-                                            label: '기질',
-                                            leftLabel: '냉정',
-                                            rightLabel: '다혈질',
-                                            value: Math.round((saveTendencies.temperament + 1) / 2 * 100),
-                                            highlight: saveTendencies.temperament > 0.45 ? 'right' : saveTendencies.temperament < -0.40 ? 'left' : 'mid',
-                                        },
-                                    ] as { label: string; leftLabel: string; rightLabel: string; value: number; highlight: 'right' | 'left' | 'mid' }[]).map(({ label, leftLabel, rightLabel, value, highlight }) => (
-                                        <div key={label} className="flex flex-col gap-1">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-bold text-slate-300">{label}</span>
-                                                <span className={`text-[11px] font-bold ${highlight === 'right' ? 'text-amber-400' : highlight === 'left' ? 'text-sky-400' : 'text-slate-500'}`}>
-                                                    {highlight === 'right' ? rightLabel : highlight === 'left' ? leftLabel : '중간'}
+                                    <div className="flex flex-col gap-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">전국 인기</span>
+                                            <span className="text-[11px] font-bold text-white">
+                                                {player.popularity?.national ?? 0}
+                                                <span className="text-slate-400 ml-1 font-normal">— {getNationalPopularityLabel(player.popularity?.national ?? 0)}</span>
+                                            </span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                            <div className="h-full rounded-full transition-all" style={{ width: `${player.popularity?.national ?? 0}%`, backgroundColor: hexAlpha(tintColor, isLight ? 0.35 : 0.5) }} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ─ 성격 & 기분 ─ */}
+                                {saveTendencies && (
+                                    <>
+                                        <SectionHeader title="성격 & 기분" style={sectionBg} />
+                                        <div className="px-4 py-3 flex flex-col gap-3">
+                                            <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">현재 기분</span>
+                                                <span className="text-[11px] font-bold" style={{
+                                                    color: (player.morale?.score ?? 50) >= 70 ? '#34d399'
+                                                         : (player.morale?.score ?? 50) >= 40 ? '#f59e0b'
+                                                         : '#f87171'
+                                                }}>
+                                                    {getMoraleLabel(player.morale?.score ?? 50)}
+                                                    <span className="text-slate-500 ml-1 font-normal">({player.morale?.score ?? 50})</span>
                                                 </span>
                                             </div>
-                                            <div className="relative h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                                                <div
-                                                    className="absolute top-0 h-full rounded-full"
-                                                    style={{
-                                                        left: value < 50 ? `${value}%` : '50%',
-                                                        width: `${Math.abs(value - 50)}%`,
-                                                        backgroundColor: highlight === 'right' ? 'rgba(251,191,36,0.7)' : highlight === 'left' ? 'rgba(56,189,248,0.7)' : 'rgba(100,116,139,0.4)',
-                                                    }}
-                                                />
-                                                <div className="absolute top-0 left-1/2 w-px h-full bg-slate-600" />
-                                            </div>
-                                            <div className="flex justify-between text-[9px] text-slate-600">
-                                                <span>{leftLabel}</span>
-                                                <span>{rightLabel}</span>
-                                            </div>
+                                            {([
+                                                { label: '자존심', leftLabel: '겸손', rightLabel: '오만', value: Math.round((saveTendencies.ego + 1) / 2 * 100), highlight: saveTendencies.ego > 0.35 ? 'right' : saveTendencies.ego < -0.35 ? 'left' : 'mid' },
+                                                { label: '금전욕', leftLabel: '검소', rightLabel: '탐욕', value: Math.round(saveTendencies.financialAmbition * 100), highlight: saveTendencies.financialAmbition > 0.68 ? 'right' : saveTendencies.financialAmbition < 0.32 ? 'left' : 'mid' },
+                                                { label: '팀 충성도', leftLabel: '이적욕', rightLabel: '충성', value: Math.round(saveTendencies.loyalty * 100), highlight: saveTendencies.loyalty > 0.65 ? 'right' : saveTendencies.loyalty < 0.35 ? 'left' : 'mid' },
+                                                { label: '우승욕', leftLabel: '역할우선', rightLabel: '우승욕', value: Math.round(saveTendencies.winDesire * 100), highlight: saveTendencies.winDesire > 0.65 ? 'right' : 'mid' },
+                                                { label: '기질', leftLabel: '냉정', rightLabel: '다혈질', value: Math.round((saveTendencies.temperament + 1) / 2 * 100), highlight: saveTendencies.temperament > 0.45 ? 'right' : saveTendencies.temperament < -0.40 ? 'left' : 'mid' },
+                                            ] as { label: string; leftLabel: string; rightLabel: string; value: number; highlight: 'right' | 'left' | 'mid' }[]).map(({ label, leftLabel, rightLabel, value, highlight }) => (
+                                                <div key={label} className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[11px] font-bold text-slate-300">{label}</span>
+                                                        <span className={`text-[11px] font-bold ${highlight === 'right' ? 'text-amber-400' : highlight === 'left' ? 'text-sky-400' : 'text-slate-500'}`}>
+                                                            {highlight === 'right' ? rightLabel : highlight === 'left' ? leftLabel : '중간'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="relative h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                                        <div className="absolute top-0 h-full rounded-full" style={{ left: value < 50 ? `${value}%` : '50%', width: `${Math.abs(value - 50)}%`, backgroundColor: highlight === 'right' ? 'rgba(251,191,36,0.7)' : highlight === 'left' ? 'rgba(56,189,248,0.7)' : 'rgba(100,116,139,0.4)' }} />
+                                                        <div className="absolute top-0 left-1/2 w-px h-full bg-slate-600" />
+                                                    </div>
+                                                    <div className="flex justify-between text-[9px] text-slate-600">
+                                                        <span>{leftLabel}</span>
+                                                        <span>{rightLabel}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
+                                    </>
+                                )}
+
                             </div>
-                        )}
+                            );
+                        })()}
 
                         {/* ── 위젯 6: 계약 정보 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -1177,7 +1148,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         </div>
 
-                        {/* ── 위젯 D: 샷차트 ── */}
+                        {/* ── 위젯 D: 샷차트 + 구역별 야투 기록 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="샷 차트" style={sectionBg}>
                                 <button
@@ -1188,7 +1159,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
                                 </button>
                             </SectionHeader>
-                            <div className="p-4">
+                            <div className="grid" style={{ gridTemplateColumns: '2fr 8fr' }}>
+                            {/* 좌: 샷차트 SVG */}
+                            <div className="p-3 border-r border-slate-800">
                                 <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
                                     <svg viewBox="0 0 435 403" className="w-full h-full">
                                         <rect x="0" y="0" width="435" height="403" fill="#020617" />
@@ -1238,6 +1211,43 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     </svg>
                                 </div>
                             </div>
+                            {/* 우: 구역별 야투 기록 테이블 */}
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                    <thead>
+                                        <tr style={subHeaderBg}>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b sticky left-0 z-10" style={{ borderBottomColor: dividerColor, ...subHeaderBg, ...subHeaderTextStyle }}>구역</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>M/A</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>FG%</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>평균</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>vs 평균</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {chartZones.map((z, i) => {
+                                            const pct = z.a > 0 ? z.m / z.a : null;
+                                            const delta = pct !== null ? pct - z.avg : null;
+                                            const rowBg = i % 2 !== 0 ? rowAltBg : rowBaseBg;
+                                            const deltaColor = delta === null ? 'text-slate-600'
+                                                : delta > 0.03 ? 'text-emerald-400'
+                                                : delta < -0.03 ? 'text-rose-400'
+                                                : 'text-slate-400';
+                                            return (
+                                                <tr key={z.key} style={rowBg}>
+                                                    <td className="px-3 py-2 font-bold whitespace-nowrap border-b sticky left-0 z-10 text-slate-200" style={{ borderBottomColor: dividerColor, ...rowBg }}>{(z as any).label}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right text-slate-300" style={{ borderBottomColor: dividerColor }}>{z.a > 0 ? `${z.m}/${z.a}` : '-'}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right font-bold text-white" style={{ borderBottomColor: dividerColor }}>{pct !== null ? `${(pct * 100).toFixed(1)}%` : '-'}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right text-slate-400" style={{ borderBottomColor: dividerColor }}>{(z.avg * 100).toFixed(1)}%</td>
+                                                    <td className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right font-bold ${deltaColor}`} style={{ borderBottomColor: dividerColor }}>
+                                                        {delta !== null ? `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%` : '-'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            </div>{/* end grid 2:8 */}
                         </div>
 
                     </div>{/* end 우열 */}

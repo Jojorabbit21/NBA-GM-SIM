@@ -24,7 +24,7 @@ export interface TeamTheme {
     accent: string;
 }
 
-const DEFAULT_COLORS = { primary: '#4f46e5', secondary: '#6366f1', text: '#FFFFFF' };
+const DEFAULT_COLORS = { primary: '#334155', secondary: '#64748b', text: '#FFFFFF' };
 
 // ── Button Theme ──
 export interface ButtonTheme {
