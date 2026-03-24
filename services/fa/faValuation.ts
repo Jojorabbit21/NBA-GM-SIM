@@ -301,6 +301,20 @@ export function buildMarketConditions(
 }
 
 // ─────────────────────────────────────────────────────────────
+// OVR → 롤 스코어 추정 (스탯 없는 생성 FA 선수 폴백용)
+// ─────────────────────────────────────────────────────────────
+
+function ovrToRoleScore(ovr: number): number {
+    if (ovr >= 95) return 96;
+    if (ovr >= 88) return 84;
+    if (ovr >= 82) return 72;
+    if (ovr >= 75) return 60;
+    if (ovr >= 68) return 48;
+    if (ovr >= 60) return 35;
+    return 20;
+}
+
+// ─────────────────────────────────────────────────────────────
 // calcFADemand — 선수 FA 요구 조건 산정 (메인)
 // ─────────────────────────────────────────────────────────────
 
@@ -315,11 +329,17 @@ export function calcFADemand(
     const faRole = determineFARole(player);
 
     // Step 2~3: Role score + reliability
+    // 스탯이 없는 생성 FA 선수는 OVR 기반으로 추정 (reliability 0.65 적용)
     const pool = allPlayers.filter(p => p.stats && p.stats.g >= 1).map(p => p.stats!);
-    const roleScore = player.stats && player.stats.g >= 1
-        ? calcRoleScore(player.stats, faRole, pool)
-        : 0;
-    const reliability = calcReliability(player.stats);
+    let roleScore: number;
+    let reliability: number;
+    if (player.stats && player.stats.g >= 1) {
+        roleScore  = calcRoleScore(player.stats, faRole, pool);
+        reliability = calcReliability(player.stats);
+    } else {
+        roleScore  = ovrToRoleScore(player.ovr ?? 60);
+        reliability = 0.65;
+    }
     const adjustedPerfScore = roleScore * reliability;
 
     // Step 4~6: Bonuses & penalties
