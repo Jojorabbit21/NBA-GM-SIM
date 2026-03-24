@@ -1700,7 +1700,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     ]).map(({ mode, name, desc, disabled }) => {
                                         const isSelected = releaseMode === mode;
                                         return (
-                                            <label key={mode} className={`flex items-start gap-2 py-1 ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer group'}`}>
+                                            <label key={mode} className={`flex items-center gap-2 py-1 ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer group'}`}>
                                                 <input
                                                     type="radio"
                                                     name="releaseMode"
@@ -1708,7 +1708,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     checked={isSelected}
                                                     disabled={disabled}
                                                     onChange={() => setReleaseMode(mode)}
-                                                    className="mt-0.5 w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-red-500 checked:bg-red-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed"
+                                                    className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed"
                                                 />
                                                 <div>
                                                     <span className={`text-xs transition-colors ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{name}</span>
@@ -1772,36 +1772,30 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             )}
 
                             {/* 향후 5년 데드캡 테이블 */}
-                            <div className="flex-shrink-0 space-y-2">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">향후 5년 데드캡 영향</div>
-                                <div className="rounded-xl border border-slate-700 overflow-hidden">
-                                    <table className="w-full text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-800/80">
-                                                <th className="text-left px-3 py-2 text-slate-400 font-bold">시즌</th>
-                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">기존</th>
-                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">추가분</th>
-                                                <th className="text-right px-3 py-2 text-slate-400 font-bold">합계</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {deadCapTable.map(({ label, existing, addition, total }, i) => (
-                                                <tr key={label} className={`border-t border-slate-700/60 ${i === 0 ? 'bg-slate-800/30' : ''}`}>
-                                                    <td className="px-3 py-2 font-mono text-slate-300">{label}</td>
-                                                    <td className="px-3 py-2 text-right font-mono text-slate-400">
-                                                        {existing > 0 ? fmtM(existing) : <span className="text-slate-600">—</span>}
-                                                    </td>
-                                                    <td className={`px-3 py-2 text-right font-mono font-bold ${addition > 0 ? 'text-red-400' : 'text-slate-600'}`}>
-                                                        {addition > 0 ? `+${fmtM(addition)}` : '—'}
-                                                    </td>
-                                                    <td className={`px-3 py-2 text-right font-mono font-black ${total > 0 ? 'text-white' : 'text-slate-600'}`}>
-                                                        {total > 0 ? fmtM(total) : '—'}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                            <div className="flex-shrink-0 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">향후 5년 데드캡 영향</div>
+                                {/* 헤더 */}
+                                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-xs text-slate-500 pb-1.5 border-b border-slate-800">
+                                    <span>시즌</span>
+                                    <span className="text-right w-14">기존</span>
+                                    <span className="text-right w-14">추가분</span>
+                                    <span className="text-right w-14">합계</span>
                                 </div>
+                                {/* 데이터 행 */}
+                                {deadCapTable.map(({ label, existing, addition, total }, i) => (
+                                    <div key={label} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-xs items-center py-1 ${i < deadCapTable.length - 1 ? 'border-b border-slate-800/50' : ''}`}>
+                                        <span className={`font-mono ${i === 0 ? 'text-slate-200' : 'text-slate-500'}`}>{label}</span>
+                                        <span className="font-mono text-right w-14 text-slate-500">
+                                            {existing > 0 ? fmtM(existing) : '—'}
+                                        </span>
+                                        <span className={`font-mono font-bold text-right w-14 ${addition > 0 ? 'text-red-400' : 'text-slate-600'}`}>
+                                            {addition > 0 ? `+${fmtM(addition)}` : '—'}
+                                        </span>
+                                        <span className={`font-mono font-bold text-right w-14 ${total > 0 ? (i === 0 ? 'text-white' : 'text-slate-300') : 'text-slate-600'}`}>
+                                            {total > 0 ? fmtM(total) : '—'}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
 
                             {/* 방출 확정 버튼 */}
