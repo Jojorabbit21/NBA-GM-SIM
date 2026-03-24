@@ -1,31 +1,22 @@
 
 // Shared team color theme logic (used by Sidebar + DashboardHeader)
 
-// 사이드바 비선택 아이콘 색상 (Figma {TEAM}/secondary)
+// 사이드바 비선택 아이콘 색상 — Figma 우선순위: secondary > tertiary > accent/text(#fff)
 export const SIDEBAR_ICON_COLORS: Record<string, string> = {
-    'atl': '#FDB927', 'bos': '#BA9653', 'bkn': '#C6CED4',
-    'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#BC945C',
-    'dal': '#BBC4CA', 'den': '#FEC524', 'det': '#FFFFFF',
-    'gs':  '#FDB927', 'hou': '#FFFFFF', 'ind': '#FDBB30',
-    'law': '#C8102E', 'lam': '#FDB927', 'mem': '#FFFFFF',
+    'atl': '#ffc72c', 'bos': '#ffffff', 'bkn': '#ffffff',
+    'cha': '#ffffff', 'chi': '#ffffff', 'cle': '#ffb81c',
+    'dal': '#BBC4CA', 'den': '#FEC524', 'det': '#ffffff',
+    'gs':  '#FDB927', 'hou': '#ffffff', 'ind': '#FDBB30',
+    'law': '#d50032', 'lam': '#FDB927', 'mem': '#ffffff',
     'mia': '#F9A01B', 'mil': '#EEE1C6', 'min': '#79BC43',
-    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#FFFFFF',
-    'orl': '#FFFFFF', 'phi': '#C8102E', 'phx': '#E56020',
-    'por': '#FFFFFF', 'sac': '#FFFFFF', 'sa':  '#C4CED4',
-    'tor': '#FFFFFF', 'uta': '#7BA4DB', 'was': '#C4CED4',
+    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#ffffff',
+    'orl': '#ffffff', 'phi': '#ffffff', 'phx': '#E56020',
+    'por': '#ffffff', 'sac': '#ffffff', 'sa':  '#C4CED4',
+    'tor': '#ffffff', 'uta': '#7BA4DB', 'was': '#C4CED4',
 };
 
-// 사이드바 선택(active) 아이콘 색상 (Figma {TEAM}/accent) — 기본값 #ffffff
-export const SIDEBAR_SELECTED_ICON_COLORS: Record<string, string> = {
-    // 특수 accent 색상 팀
-    'bkn': '#C6CFD4', // silver (black primary → silver accent)
-    'den': '#FEC524', // gold (navy tertiary bg → gold accent)
-    // 흰색 tertiary bg → primary 색상으로 아이콘 표시
-    'chi': '#CE1141', // red
-    'por': '#C8102E', // red
-    'cha': '#1D1160', // purple
-    'okc': '#007AC1', // blue
-};
+// 사이드바 선택(active) 아이콘 색상 — 피그마 기준 전 팀 #ffffff (기본값)
+export const SIDEBAR_SELECTED_ICON_COLORS: Record<string, string> = {};
 
 export interface TeamTheme {
     bg: string;
@@ -40,14 +31,6 @@ export interface ButtonTheme {
     bg: string;
     text: string;
     glow: string;
-}
-
-function isLightColor(hex: string): boolean {
-    const n = parseInt(hex.replace('#', ''), 16);
-    const r = (n >> 16) & 0xff;
-    const g = (n >> 8) & 0xff;
-    const b = n & 0xff;
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
 // 팀별 버튼 색상 오버라이드 — 기본값: bg=primary, text=white, glow=primary

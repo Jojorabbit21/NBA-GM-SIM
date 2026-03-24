@@ -42,15 +42,22 @@ const NavItem: React.FC<{
   textBadge?: string;
   iconColor: string;
   activeIconColor: string;
-  activeBg: string;
-}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, activeBg }) => (
+  whiteBg?: boolean;
+}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, whiteBg }) => {
+  const selectedBg = whiteBg ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
+  const hoverCls = whiteBg
+    ? 'hover:bg-[rgba(255,255,255,0.1)] hover:outline-[rgba(255,255,255,0.2)]'
+    : 'hover:bg-[rgba(0,0,0,0.15)] hover:outline-[rgba(0,0,0,0.2)]';
+  return (
   <button
     onClick={onClick}
     title={label}
     className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 outline outline-2 outline-transparent ${
-      active ? '' : 'hover:bg-black/15 hover:outline-black/25'
+      active
+        ? 'shadow-[0px_10px_15px_0px_rgba(0,0,0,0.1),0px_4px_6px_0px_rgba(0,0,0,0.05)]'
+        : `opacity-70 ${hoverCls}`
     }`}
-    style={active ? { backgroundColor: activeBg } : undefined}
+    style={active ? { backgroundColor: selectedBg } : undefined}
   >
     {React.cloneElement(icon as React.ReactElement<any>, {
       size: 24,
@@ -67,7 +74,8 @@ const NavItem: React.FC<{
       </span>
     )}
   </button>
-);
+  );
+};
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
@@ -130,9 +138,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     setIsMenuOpen(prev => !prev);
   };
 
-  // NavItem 래퍼 — iconColor/activeIconColor/activeBg 자동 주입
-  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeIconColor' | 'activeBg'>) => (
-    <NavItem {...props} iconColor={iconColor} activeIconColor={activeIconColor} activeBg={activeBg} />
+  const isWhiteBg = team?.id === 'sa';
+
+  // NavItem 래퍼 — iconColor/activeIconColor/whiteBg 자동 주입
+  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'activeIconColor' | 'whiteBg'>) => (
+    <NavItem {...props} iconColor={iconColor} activeIconColor={activeIconColor} whiteBg={isWhiteBg} />
   );
 
   return (

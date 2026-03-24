@@ -1,10 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { Loader2, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
-import {
-  buildHeaderGradient,
-  type GradientStyleId,
-} from '../../utils/dashboardGradient';
 import { Team, Game, PlayoffSeries, Player } from '../../types';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
@@ -51,6 +47,13 @@ interface DashboardHeaderProps {
   onSearchViewCoach?: (teamId: string) => void;
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 /** ISO 날짜 → 간략 한글 포맷 (월 일) */
 function formatDateShort(isoDate: string): string {
   const d = new Date(isoDate + 'T00:00:00');
@@ -68,7 +71,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
-  const [gradientStyle] = useState<GradientStyleId>('noise_glow');
   const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
@@ -88,9 +90,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const theme = getTeamTheme(team.id, teamColors);
   const btnTheme = getButtonTheme(team.id, teamColors);
 
-  const headerBg = teamColors
-    ? buildHeaderGradient(gradientStyle, teamColors)
-    : '#0a1628';
+  const borderColor = hexToRgba(teamColors?.secondary ?? teamColors?.tertiary ?? '#ffffff', 0.4);
+  const headerGradient = `linear-gradient(97.5deg, transparent 58%, ${hexToRgba(teamColors?.primary ?? '#0a1628', 0.25)} 89%)`;
 
   const mainBtnStyle = (id: string): React.CSSProperties => {
     const isPressed = pressedBtn === id;
@@ -131,23 +132,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <div
-      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative"
+      className="w-full sticky top-0 z-[100] flex items-center h-[100px] relative overflow-hidden"
       style={{
-        background: '#0a1628',
-        borderBottom: '2px solid #374151',
+        backgroundImage: headerGradient,
+        borderBottom: `2px solid ${borderColor}`,
       }}
     >
-      {/* 블러 처리된 그라디언트 레이어 — overflow-hidden을 여기서만 적용 */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute inset-0"
-          style={{
-            background: headerBg,
-            filter: 'blur(24px)',
-            transform: 'scale(1.1)', // blur 엣지 번짐 방지
-          }}
-        />
-      </div>
+      {/* backdrop-blur 오버레이 */}
+      <div className="absolute inset-0 backdrop-blur-[20px] bg-[rgba(0,0,0,0.1)] pointer-events-none" />
 
       {/* ① 왼쪽: 팀 정보 */}
       <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
