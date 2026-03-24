@@ -511,8 +511,9 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     }, [extOfferSalaries]);
 
     // ─── Release State ───────────────────────────────────────
-    const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
-    const [buyoutSlider, setBuyoutSlider] = useState(70);
+    const [releaseMode, setReleaseMode]     = useState<ReleaseType>('waive');
+    const [buyoutSlider, setBuyoutSlider]   = useState(70);
+    const [isReleaseConfirmed, setIsReleaseConfirmed] = useState(false);
 
     const releaseContract  = player.contract;
     const remainingYears   = releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1;
@@ -824,7 +825,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const handleReleaseConfirm = () => {
         const amount = releaseMode === 'buyout' ? buyoutAmount : undefined;
         onReleasePlayer?.(player.id, releaseMode, amount);
-        onClose();
+        const modeLabel: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
+        setChatMessages(prev => [...prev,
+            { id: nextId(), role: 'gm',    text: `${player.name} 선수를 ${modeLabel[releaseMode]} 처리합니다. 그동안 함께해 주셔서 감사합니다.` },
+            { id: nextId(), role: 'status', text: '방출 완료 — 대화 종료', isSuccess: true },
+        ]);
+        setIsReleaseConfirmed(true);
     };
 
     // ─── Derived ─────────────────────────────────────────────
@@ -1168,7 +1174,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${isFAFinal ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${isFAFinal || isReleaseConfirmed ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
@@ -1819,6 +1825,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             </div>
 
                             {/* 방출 확정 버튼 */}
+                            {!isReleaseConfirmed && (
                             <div className="flex-shrink-0 mt-auto pt-1">
                                 <button
                                     disabled={releaseMode === 'buyout' && !buyoutAccepted}
@@ -1828,6 +1835,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         disabled:opacity-40 disabled:cursor-not-allowed"
                                 >방출 확정</button>
                             </div>
+                            )}
                         </>
                     )}
                     </div>{/* 스크롤 바디 end */}
