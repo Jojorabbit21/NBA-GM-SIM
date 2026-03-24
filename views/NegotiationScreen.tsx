@@ -253,13 +253,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         const winDesire         = tendencies.winDesire         ?? 0.5; // 0 ~ 1
 
         const c = (v: number) => Math.max(0, Math.min(1, v));
-        const ovrNorm = c((player.ovr - 50) / 40);   // 50→0, 90→1
-        const egoNorm = (ego + 1) / 2;               // -1~+1 → 0~1
+        const ovrNorm = c((player.ovr - 70) / 25);   // 70→0, 95→1
 
         type Item = { label: string; text: string; color: string };
 
-        // 1. 자기 평가 등급
-        const selfScore = c(ovrNorm * 0.6 + egoNorm * 0.4);
+        // 1. 자기 평가 등급 — ego는 OVR 기반 점수에 ±delta로 가감
+        const selfScore = c(ovrNorm + ego * 0.15);
         const selfGrade: Item = selfScore > 0.82
             ? { label: '자기 평가 등급', text: '최정상급', color: 'text-emerald-400' }
             : selfScore > 0.68
@@ -273,7 +272,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             : { label: '자기 평가 등급', text: '유망주', color: 'text-amber-400' };
 
         // 2. 기대 역할
-        const roleScore = c(ovrNorm * 0.7 + egoNorm * 0.3);
+        const roleScore = c(ovrNorm + ego * 0.10);
         const expectedRole: Item = roleScore > 0.80
             ? { label: '기대 역할', text: '1옵션', color: 'text-emerald-400' }
             : roleScore > 0.65
@@ -303,7 +302,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             : { label: '연봉 만족도', text: '매우 불만족', color: 'text-red-400' };
 
         // 4. 시장 가치 인식
-        const marketScore = c(ovrNorm * 0.55 + egoNorm * 0.45);
+        const marketScore = c(ovrNorm + ego * 0.18);
         const marketPerception: Item = marketScore > 0.80
             ? { label: '시장 가치 인식', text: '최상위권', color: 'text-emerald-400' }
             : marketScore > 0.65
@@ -355,7 +354,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
         // 8. 레거시 욕구
         const ageNorm = c((player.age - 23) / 14); // 23세→0, 37세→1
-        const legacyScore = c(egoNorm * 0.40 + winDesire * 0.35 + ageNorm * 0.25);
+        const legacyScore = c((ego + 1) / 2 * 0.40 + winDesire * 0.35 + ageNorm * 0.25);
         const legacyDesire: Item = legacyScore > 0.78
             ? { label: '레거시 욕구', text: '매우 강함', color: 'text-emerald-400' }
             : legacyScore > 0.62
