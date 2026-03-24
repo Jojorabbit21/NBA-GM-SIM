@@ -481,7 +481,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     // ─── Release State ───────────────────────────────────────
     const [releaseMode, setReleaseMode]   = useState<ReleaseType>('waive');
     const [buyoutSlider, setBuyoutSlider] = useState(70);
-    const [buyoutInputStr, setBuyoutInputStr] = useState('');
 
     const releaseContract  = player.contract;
     const remainingYears   = releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1;
@@ -1655,27 +1654,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     {/* ── Release 컨트롤 ── */}
                     {isRel && (
                         <>
-                            {/* 방출 방식 라디오 */}
+                            {/* 방출 방식 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">방출 방식</div>
-                                <div className="space-y-1.5">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">방출 방식</div>
+                                <div className="space-y-0.5">
                                     {([
-                                        { mode: 'waive'   as ReleaseType, name: '웨이브',            desc: `잔여 계약 전액 즉시 처리 — ${fmtM(totalRemaining)}`,                    disabled: false },
-                                        { mode: 'stretch' as ReleaseType, name: '스트레치 웨이브',   desc: `잔여 금액 분산 처리 — 연간 ${fmtM(Math.round(stretchAnnual))} × ${stretchYearsTotal}년`, disabled: remainingYears <= 1 },
-                                        { mode: 'buyout'  as ReleaseType, name: '바이아웃',          desc: `협상 합의금 지급 — 최소 ${fmtM(minBuyoutAmount)}`,                       disabled: false },
+                                        { mode: 'waive'   as ReleaseType, name: '웨이브',           desc: `잔여 계약 전액 즉시 처리 — ${fmtM(totalRemaining)}`,                              disabled: false },
+                                        { mode: 'stretch' as ReleaseType, name: '스트레치 웨이브',  desc: `잔여 금액 분산 처리 — 연간 ${fmtM(Math.round(stretchAnnual))} × ${stretchYearsTotal}년`, disabled: remainingYears <= 1 },
+                                        { mode: 'buyout'  as ReleaseType, name: '바이아웃',         desc: `협상 합의금 지급 — 최소 ${fmtM(minBuyoutAmount)}`,                                 disabled: false },
                                     ]).map(({ mode, name, desc, disabled }) => {
                                         const isSelected = releaseMode === mode;
                                         return (
-                                            <label
-                                                key={mode}
-                                                className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
-                                                    disabled
-                                                        ? 'opacity-30 cursor-not-allowed border-slate-800 bg-transparent'
-                                                        : isSelected
-                                                        ? 'border-red-500/50 bg-red-500/10'
-                                                        : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
-                                                }`}
-                                            >
+                                            <label key={mode} className={`flex items-start gap-2 py-1 ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer group'}`}>
                                                 <input
                                                     type="radio"
                                                     name="releaseMode"
@@ -1683,10 +1673,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     checked={isSelected}
                                                     disabled={disabled}
                                                     onChange={() => setReleaseMode(mode)}
-                                                    className="mt-0.5 accent-red-500 flex-shrink-0"
+                                                    className="mt-0.5 w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-red-500 checked:bg-red-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0 disabled:cursor-not-allowed"
                                                 />
                                                 <div>
-                                                    <div className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{name}</div>
+                                                    <span className={`text-xs transition-colors ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{name}</span>
                                                     <div className="text-xs text-slate-500 mt-0.5">{desc}</div>
                                                 </div>
                                             </label>
@@ -1695,50 +1685,50 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             </div>
 
-                            {/* 바이아웃 금액 입력 */}
+                            {/* 바이아웃 금액 */}
                             {releaseMode === 'buyout' && (
-                                <div className="flex-shrink-0 space-y-2">
-                                    <div className="text-xs font-black uppercase tracking-widest text-slate-500">제시 금액</div>
-                                    <div className="flex items-center gap-2">
-                                        <div className={`flex items-center gap-1 flex-1 rounded-lg border px-3 py-2 ${
-                                            buyoutAccepted ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-red-500/50 bg-red-500/5'
-                                        }`}>
-                                            <span className="text-xs text-slate-500">$</span>
+                                <div className="flex-shrink-0 space-y-1.5">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400">제시 금액</div>
+                                    <div className="flex items-center gap-1">
+                                        {[-5_000_000, -1_000_000].map(delta => (
+                                            <button
+                                                key={delta}
+                                                onClick={() => {
+                                                    const next = Math.min(totalRemaining, Math.max(minBuyoutAmount, buyoutAmount + delta));
+                                                    setBuyoutSlider(Math.round(next / totalRemaining * 100));
+                                                }}
+                                                className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
+                                            >
+                                                {`-$${Math.abs(delta) / 1_000_000}M`}
+                                            </button>
+                                        ))}
+                                        <div className="relative flex-1 min-w-0">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">$</span>
                                             <input
                                                 type="number"
-                                                step="0.1"
-                                                min={(minBuyoutAmount / 1_000_000).toFixed(1)}
-                                                max={(totalRemaining / 1_000_000).toFixed(1)}
-                                                value={buyoutInputStr || (buyoutAmount / 1_000_000).toFixed(1)}
+                                                step={100_000}
+                                                value={buyoutAmount}
                                                 onChange={e => {
-                                                    setBuyoutInputStr(e.target.value);
-                                                    const m = parseFloat(e.target.value);
-                                                    if (!isNaN(m)) {
-                                                        const dollars = Math.round(m * 1_000_000);
-                                                        const clamped = Math.min(totalRemaining, Math.max(0, dollars));
-                                                        setBuyoutSlider(Math.round(clamped / totalRemaining * 100));
-                                                    }
+                                                    const v = parseInt(e.target.value) || 0;
+                                                    const clamped = Math.min(totalRemaining, Math.max(0, v));
+                                                    setBuyoutSlider(Math.round(clamped / totalRemaining * 100));
                                                 }}
-                                                onBlur={() => setBuyoutInputStr('')}
-                                                className="flex-1 min-w-0 bg-transparent text-sm font-mono font-bold text-white focus:outline-none"
+                                                className="w-full bg-slate-800 border border-slate-700 rounded pl-7 pr-1 py-1.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-red-500"
                                             />
-                                            <span className="text-xs text-slate-500">M</span>
                                         </div>
-                                        <span className={`text-xs font-bold flex-shrink-0 ${buyoutAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {buyoutAccepted ? '✓ 수락' : '✗ 거절'}
-                                        </span>
+                                        {[1_000_000, 5_000_000].map(delta => (
+                                            <button
+                                                key={delta}
+                                                onClick={() => {
+                                                    const next = Math.min(totalRemaining, Math.max(minBuyoutAmount, buyoutAmount + delta));
+                                                    setBuyoutSlider(Math.round(next / totalRemaining * 100));
+                                                }}
+                                                className="text-xs font-mono px-2 py-1.5 rounded bg-slate-700/50 border border-slate-600/60 hover:bg-slate-600/60 hover:border-slate-500/80 text-slate-300 hover:text-white transition-colors flex-shrink-0"
+                                            >
+                                                {`+$${delta / 1_000_000}M`}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <input
-                                        type="range"
-                                        min={minBuyoutPct}
-                                        max={100}
-                                        value={buyoutSlider}
-                                        onChange={e => {
-                                            setBuyoutSlider(Number(e.target.value));
-                                            setBuyoutInputStr('');
-                                        }}
-                                        className="w-full accent-red-500"
-                                    />
                                     <div className="flex justify-between text-xs font-mono text-slate-500">
                                         <span>최소 {fmtM(minBuyoutAmount)}</span>
                                         <span>전액 {fmtM(totalRemaining)}</span>
@@ -1748,7 +1738,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
                             {/* 향후 5년 데드캡 테이블 */}
                             <div className="flex-shrink-0 space-y-2">
-                                <div className="text-xs font-black uppercase tracking-widest text-slate-500">향후 5년 데드캡 영향</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">향후 5년 데드캡 영향</div>
                                 <div className="rounded-xl border border-slate-700 overflow-hidden">
                                     <table className="w-full text-xs">
                                         <thead>
