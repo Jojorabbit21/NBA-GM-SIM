@@ -840,7 +840,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         })()
         : 0;
     const isWalkedAway  = isExt && !!negState?.walkedAway;
-    const isExtDisabled = isWalkedAway || (isExt && extensionNotYet);
+    const isExtDisabled = isWalkedAway || (isExt && extensionNotYet) || (isExt && !!negState?.signed);
 
     const faIsAboveAsking   = faEntry ? faOfferAAV >= faEntry.askingSalary  : false;
     const faIsBelowWalkaway = faEntry ? faOfferAAV < faEntry.walkAwaySalary : false;
@@ -1050,7 +1050,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         )}
 
                         {/* 자기 인식 */}
-                        <div className="px-4 py-3 space-y-1 border-t border-slate-800/60">
+                        <div className="px-4 py-3 space-y-1">
                             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">자기 인식</div>
                             {selfAssessmentItems.map(({ label, text, color }) => (
                                 <div key={label} className="flex justify-between items-center text-xs gap-2">
@@ -1104,16 +1104,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </div>
                                     );
                                 }
-                                const isEnded = msg.text.includes('대화 종료');
                                 return (
                                     <div key={msg.id} className="flex flex-col items-center gap-2">
-                                        <div className="text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">{msg.text}</div>
-                                        {isEnded && (
-                                            <button
-                                                onClick={onClose}
-                                                className="px-6 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                                            >닫기</button>
-                                        )}
+                                        <button
+                                            onClick={onClose}
+                                            className="px-6 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                                        >닫기</button>
                                     </div>
                                 );
                             }
@@ -1172,7 +1168,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${(negState?.signed || isFAFinal) ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${isFAFinal ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
@@ -1482,7 +1478,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     )}
 
                     {/* ── Extension 컨트롤 ── */}
-                    {isExt && negState && !negState.signed && (
+                    {isExt && negState && (
                         <>
                             {/* 계약 연수 */}
                             <div className="flex-shrink-0 space-y-1.5">

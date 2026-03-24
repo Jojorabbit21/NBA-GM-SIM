@@ -4,6 +4,7 @@ import { FAView } from '../views/FAView';
 import { useGame } from '../hooks/useGameContext';
 import { sendMessage } from '../services/messageService';
 import { releasePlayerToMarket } from '../services/fa/faMarketBuilder';
+import { writeTransaction } from '../services/persistence';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { SigningType } from '../types/fa';
@@ -67,11 +68,14 @@ const FAMarketPage: React.FC = () => {
                     sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
                         'FA_SIGNING', `[FA 서명] ${faPlayer.name} 영입 완료`, content);
                 }
-                gameData.setTransactions((prev: any) => [{
+                const faTx = {
                     id: `fa_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
-                    type: 'fa_signing', teamId: gameData.myTeamId,
-                    description: `FA 서명: ${faPlayer.name} (${signingType})`, details: null,
-                }, ...prev]);
+                    type: 'FASigning' as const, teamId: gameData.myTeamId ?? '',
+                    description: `FA 서명: ${faPlayer.name} (${signingType})`,
+                    details: { playerName: faPlayer.name, position: faPlayer.position, ovr: faPlayer.ovr, salary, years: contract.years.length, signingType },
+                };
+                gameData.setTransactions((prev: any) => [faTx, ...prev]);
+                if (session?.user?.id) writeTransaction(session.user.id, faTx).catch(console.error);
             }}
             onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                 const player = myTeam?.roster.find((p: Player) => p.id === playerId);
@@ -111,9 +115,9 @@ const FAMarketPage: React.FC = () => {
                     currentSeasonYear, seasonShort, gameData.myTeamId ?? undefined,
                 );
                 gameData.setLeagueFAMarket(updatedMarket);
+                const LABELS: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
                 if (session?.user?.id && gameData.myTeamId) {
                     const prevSalary = player.salary ?? player.contract?.years[player.contract?.currentYear ?? 0] ?? 0;
-                    const LABELS: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
                     const content: FAReleaseContent = {
                         playerId, playerName: player.name, position: player.position,
                         ovr: player.ovr, prevSalary, releaseType, deadCapAmount: deadAmount,
@@ -121,11 +125,14 @@ const FAMarketPage: React.FC = () => {
                     sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
                         'FA_RELEASE', `[${LABELS[releaseType]}] ${player.name} 방출`, content);
                 }
-                gameData.setTransactions((prev: any) => [{
+                const relTx = {
                     id: `rel_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
-                    type: 'fa_release', teamId: gameData.myTeamId,
-                    description: `방출(${releaseType}): ${player.name} — 데드캡 ${(deadAmount / 1_000_000).toFixed(1)}M`, details: null,
-                }, ...prev]);
+                    type: 'FARelease' as const, teamId: gameData.myTeamId ?? '',
+                    description: `방출(${LABELS[releaseType]}): ${player.name} — 데드캡 ${(deadAmount / 1_000_000).toFixed(1)}M`,
+                    details: { playerName: player.name, position: player.position, ovr: player.ovr, releaseType, deadCapAmount: deadAmount },
+                };
+                gameData.setTransactions((prev: any) => [relTx, ...prev]);
+                if (session?.user?.id) writeTransaction(session.user.id, relTx).catch(console.error);
                 gameData.forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
             }}
             onExtensionOffer={(playerId, contract) => {
@@ -139,16 +146,25 @@ const FAMarketPage: React.FC = () => {
                 });
                 gameData.setTeams(newTeams);
                 gameData.forceSave({ teams: newTeams });
-                if (session?.user?.id && gameData.myTeamId) {
+                const extTx = {
+                    id: `ext_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
+                    type: 'Extension' as const, teamId: gameData.myTeamId ?? '',
+                    description: `계약 익스텐션: ${player.name} ${contract.years.length}년 / ${(contract.years[0] / 1_000_000).toFixed(1)}M`,
+                    details: { playerName: player.name, position: player.position, ovr: player.ovr, salary: contract.years[0], years: contract.years.length },
+                };
+                gameData.setTransactions((prev: any) => [extTx, ...prev]);
+                if (session?.user?.id) {
                     const content: ExtensionSignedContent = {
                         playerId, playerName: player.name, position: player.position,
                         ovr: player.ovr, salary: contract.years[0], years: contract.years.length,
                     };
-                    sendMessage(session.user.id, gameData.myTeamId, gameData.currentSimDate,
+                    sendMessage(session.user.id, gameData.myTeamId!, gameData.currentSimDate,
                         'EXTENSION_SIGNED', `[계약 익스텐션] ${player.name}과 연장 계약 체결`, content);
+                    writeTransaction(session.user.id, extTx).catch(console.error);
                 }
             }}
             onTeamOptionDecide={(playerId, exercised) => {
+                const player = myTeam?.roster.find((p: Player) => p.id === playerId);
                 const newTeams = gameData.teams.map((t: Team) => {
                     if (t.id !== gameData.myTeamId) return t;
                     if (exercised) {
@@ -163,6 +179,16 @@ const FAMarketPage: React.FC = () => {
                 });
                 gameData.setTeams(newTeams);
                 gameData.forceSave({ teams: newTeams, withSnapshot: true });
+                if (player) {
+                    const optTx = {
+                        id: `opt_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
+                        type: 'TeamOption' as const, teamId: gameData.myTeamId ?? '',
+                        description: `팀 옵션 ${exercised ? '행사' : '거절'}: ${player.name}`,
+                        details: { playerName: player.name, position: player.position, ovr: player.ovr, exercised },
+                    };
+                    gameData.setTransactions((prev: any) => [optTx, ...prev]);
+                    if (session?.user?.id) writeTransaction(session.user.id, optTx).catch(console.error);
+                }
             }}
             onViewPlayer={(player) => {
                 setViewPlayerData({ player });
