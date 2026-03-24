@@ -141,12 +141,16 @@ ZONE_TABLE.forEach(z => { ZONE_STAT_KEYS[z.key] = { keyM: z.keyM, keyA: z.keyA }
 const GAME_LOG_COLS = [
     { key: 'date', label: 'DATE' }, { key: 'opp', label: 'OPP' }, { key: 'result', label: 'RESULT' },
     { key: 'min', label: 'MIN' },
-    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
-    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
-    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+    { key: 'pts', label: 'PTS' },
+    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
+    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
+    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
+    { key: 'ts%', label: 'TS%' },
+    { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' }, { key: 'reb', label: 'REB' },
+    { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' },
+    { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
     { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
-    { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' },
-    { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' },
+    { key: 'pm', label: '+/-' },
 ];
 
 const getAttrColor = (val: number) => {
@@ -358,6 +362,10 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
         { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
         { val: String(Math.round(g.mp || 0)) },
         { val: String(g.pts || 0) },
+        { val: String(g.fgm || 0) }, { val: String(g.fga || 0) }, { val: fgPct },
+        { val: String(g.p3m || 0) }, { val: String(g.p3a || 0) }, { val: p3Pct },
+        { val: String(g.ftm || 0) }, { val: String(g.fta || 0) }, { val: ftPct },
+        { val: tsPct },
         { val: String(g.offReb || 0) },
         { val: String(g.defReb || 0) },
         { val: String(g.reb || 0) },
@@ -368,15 +376,11 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
         { val: String(g.pf || 0) },
         { val: String(g.techFouls || 0) },
         { val: String(g.flagrantFouls || 0) },
-        { val: fgPct },
-        { val: p3Pct },
-        { val: ftPct },
-        { val: tsPct },
         { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
     ];
 }
 
-const ROW_HEIGHT = 40; // h-10 = 40px
+const ROW_HEIGHT = 32; // h-8 = 32px
 const OVERSCAN = 5;
 
 const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties; rowBaseStyle?: React.CSSProperties; dividerColor?: string; subHeaderTextStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle, rowAltStyle, rowBaseStyle, dividerColor, subHeaderTextStyle }) => {
@@ -430,18 +434,15 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 )}
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
-                        <table className="w-full text-left border-separate border-spacing-0">
-                            <thead className="sticky top-0 z-40 border-b border-slate-800 shadow-sm" style={subHeaderStyle}>
-                                <tr className="text-slate-500 text-[10px] font-black uppercase h-10">
+                        <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                            <thead className="sticky top-0 z-40">
+                                <tr>
                                     {GAME_LOG_COLS.map((c, i) => (
                                         <th
                                             key={c.key}
-                                            className={`py-3 px-1.5 whitespace-nowrap border-b text-center ${i < GAME_LOG_COLS.length - 1 ? 'border-r' : ''}`}
-                                            style={{ ...(dividerColor ? { borderBottomColor: dividerColor, borderRightColor: dividerColor } : undefined), ...subHeaderTextStyle }}
+                                            className={`px-3 py-2 font-bold uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-center ${i === 0 ? 'sticky left-0 z-10' : ''}`}
                                         >
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <span className="truncate min-w-0">{c.label}</span>
-                                            </div>
+                                            {c.label}
                                         </th>
                                     ))}
                                 </tr>
