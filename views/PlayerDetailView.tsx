@@ -741,20 +741,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 {/* ─ 부상 현황 ─ */}
                                 {player.health && player.health !== 'Healthy' && (() => {
                                     const currentInjury = [...(player.injuryHistory ?? [])].sort((a, b) => b.date.localeCompare(a.date))[0];
-                                    const severityColor = currentInjury?.severity === 'Season-Ending' ? 'text-red-400'
-                                        : currentInjury?.severity === 'Major' ? 'text-amber-400'
-                                        : 'text-yellow-300';
                                     return (
-                                        <div className="px-4 pt-4 pb-3 border-t border-red-900/40 space-y-1 bg-red-950/10">
-                                            <div className="text-[10px] font-bold uppercase tracking-wider text-red-400/70 mb-1.5">부상 현황</div>
+                                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">부상 현황</div>
                                             {[
-                                                { label: '부상명', value: <span className={`font-semibold ${severityColor}`}>{player.injuryType ?? '-'}</span> },
+                                                { label: '부상명', value: player.injuryType ?? '-' },
                                                 { label: '기간', value: currentInjury?.duration ?? '-' },
                                                 { label: '예상 복귀', value: player.returnDate ?? '-' },
                                             ].map(({ label, value }) => (
-                                                <div key={label} className="flex justify-between items-center text-xs">
-                                                    <span className="text-slate-500 shrink-0">{label}</span>
-                                                    <span className="font-semibold text-slate-200 text-right">{value}</span>
+                                                <div key={label} className="flex justify-between items-center">
+                                                    <span className="text-sm text-slate-500 shrink-0">{label}</span>
+                                                    <span className="text-sm font-semibold text-white text-right">{value}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -763,44 +760,44 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                                 {/* ─ 선수 유형 ─ */}
                                 {playerArchetypeState && (
-                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
+                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">선수 유형</div>
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">아키타입</span>
-                                            <span className="font-semibold text-slate-200">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-slate-500">아키타입</span>
+                                            <span className="text-sm font-semibold text-white">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
                                         </div>
                                         {playerArchetypeState.secondary && (
-                                            <div className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-500">보조 유형</span>
-                                                <span className="font-semibold text-slate-400">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-slate-500">보조 유형</span>
+                                                <span className="text-sm font-semibold text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
                                             </div>
                                         )}
                                         {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
-                                            <div key={tag} className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-500">{i === 0 ? '특성' : ''}</span>
-                                                <span className="text-slate-400">{getTraitTagDisplayInfo(tag).label}</span>
+                                            <div key={tag} className="flex justify-between items-center">
+                                                <span className="text-sm text-slate-500">{i === 0 ? '특성' : ''}</span>
+                                                <span className="text-sm text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
                                             </div>
                                         ))}
                                     </div>
                                 )}
 
                                 {/* ─ 인기도 ─ */}
-                                <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
+                                <div className="px-4 py-3 border-t border-slate-800 space-y-1">
                                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">인기도</div>
                                     {[
                                         { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
                                         { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
                                     ].map(({ label, value }) => (
-                                        <div key={label} className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">{label}</span>
-                                            <span className="text-slate-200 font-semibold">{value}</span>
+                                        <div key={label} className="flex justify-between items-center">
+                                            <span className="text-sm text-slate-500">{label}</span>
+                                            <span className="text-sm text-white font-semibold">{value}</span>
                                         </div>
                                     ))}
                                 </div>
 
                                 {/* ─ 성격 & 기분 ─ */}
                                 {saveTendencies && (
-                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
+                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">성격 & 기분</div>
                                         {(() => {
                                             const ms = player.morale?.score ?? 50;
@@ -819,9 +816,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 { label: '우승욕', ...winLbl },
                                                 { label: '기질', ...tmpLbl },
                                             ].map(({ label, text, color }) => (
-                                                <div key={label} className="flex justify-between items-center text-xs">
-                                                    <span className="text-slate-500">{label}</span>
-                                                    <span className={`font-semibold ${color}`}>{text}</span>
+                                                <div key={label} className="flex justify-between items-center">
+                                                    <span className="text-sm text-slate-500">{label}</span>
+                                                    <span className={`text-sm font-semibold ${color}`}>{text}</span>
                                                 </div>
                                             ));
                                         })()}
@@ -830,9 +827,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                                 {/* ─ 스카우팅 리포트 ─ */}
                                 {scoutReport.length > 0 && (
-                                    <div className="px-4 pt-4 pb-3 border-t border-slate-800">
+                                    <div className="px-4 py-3 border-t border-slate-800">
                                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">스카우팅 리포트</div>
-                                        <span className="text-xs leading-relaxed text-slate-200">{scoutReport}</span>
+                                        <span className="text-sm leading-relaxed text-white">{scoutReport}</span>
                                     </div>
                                 )}
 
@@ -888,18 +885,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         </div>
 
                         {/* ── 위젯 7: 수상 내역 ── */}
+                        {(() => {
+                            const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
+                                (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
+                            );
+                            const allAwards = [...historicalAwards, ...(player.awards ?? [])];
+                            if (allAwards.length === 0) return null;
+                            return (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="수상 내역" style={sectionBg} />
                             {(() => {
-                                const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
-                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
-                                );
-                                const allAwards = [...historicalAwards, ...(player.awards ?? [])];
-                                if (allAwards.length === 0) return (
-                                    <div className="flex items-center justify-center h-20">
-                                        <span className="text-slate-500 text-xs">수상 내역이 없습니다</span>
-                                    </div>
-                                );
                                 const BASE_NAME: Record<string, string> = {
                                     CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승',
                                     MVP: '올해의 선수', FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
@@ -956,6 +951,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 );
                             })()}
                         </div>
+                            );
+                        })()}
 
                         {/* ── 위젯 8: 부상 이력 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -1003,9 +1000,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             const isLastCol = gi === ATTR_GROUPS.length - 1;
                                             const emptyRows = maxRows - attrKeys.length;
                                             return (
-                                                <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r' : ''}`} style={!isLastCol ? { borderRightColor: dividerColor } : undefined}>
-                                                    <div className="h-10 flex items-center justify-center border-b" style={{ ...subHeaderBg, borderBottomColor: dividerColor }}>
-                                                        <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
+                                                <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800' : ''}`}>
+                                                    <div className="h-10 flex items-center justify-center border-b border-slate-800 bg-slate-800">
+                                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                                     </div>
                                                     {attrKeys.map((k) => {
                                                         const val = (player as any)[k] || 0;
@@ -1016,7 +1013,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                             ? player.changeLog.filter(e => e.attribute === k)
                                                             : [];
                                                         return (
-                                                            <div key={k} className={`flex items-center justify-between px-3 h-9 border-b transition-colors hover:bg-white/5 ${getAttrBg(val)}`} style={{ borderBottomColor: dividerColor }}>
+                                                            <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
                                                                 <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                                 <div className="flex items-center gap-3 shrink-0">
                                                                     {seasonDelta !== 0 && (
@@ -1041,10 +1038,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                         );
                                                     })}
                                                     {Array.from({ length: emptyRows }).map((_, i) => (
-                                                        <div key={`empty-${i}`} className="h-9 border-b" style={{ borderBottomColor: dividerColor }} />
+                                                        <div key={`empty-${i}`} className="h-9 border-b border-slate-800" />
                                                     ))}
-                                                    <div className={`flex items-center justify-between px-3 h-10 border-t ${getAttrBg(avgVal)}`} style={{ ...subHeaderBg, borderTopColor: dividerColor }}>
-                                                        <span className="text-xs font-black uppercase tracking-widest" style={subHeaderTextStyle}>종합</span>
+                                                    <div className={`flex items-center justify-between px-3 h-10 border-t border-slate-800 bg-slate-800 ${getAttrBg(avgVal)}`}>
+                                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">종합</span>
                                                         <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                                     </div>
                                                 </div>
@@ -1073,7 +1070,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         <thead>
                                             <tr>
                                                 {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
-                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b ${i === 0 ? 'sticky left-0 z-10' : ''}`} style={{ ...subHeaderBg, borderBottomColor: dividerColor, ...subHeaderTextStyle }}>
+                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 ${i === 0 ? 'sticky left-0 z-10' : ''}`}>
                                                         {col.label}
                                                     </th>
                                                 ))}
@@ -1093,7 +1090,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
                                                     const isSummaryRow = team === '2TM';
                                                     if (!isSubRow) groupIdx++;
-                                                    const rowBg = groupIdx % 2 !== 0 ? rowAltBg : rowBaseBg;
+                                                    const rowBg = groupIdx % 2 !== 0 ? { backgroundColor: 'rgba(255,255,255,0.04)' } : {};
                                                     return (
                                                         <tr key={ri}>
                                                             {cols.map((col, ci) => {
@@ -1102,8 +1099,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                 const isSticky = ci === 0;
                                                                 const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
                                                                 return (
-                                                                    <td key={col.key} className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
-                                                                        style={{ ...rowBg, borderBottomColor: dividerColor, ...(isSubRow && isSticky ? { borderLeft: `2px solid ${dividerColor}`, paddingLeft: '20px' } : {}), color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined }}>
+                                                                    <td key={col.key} className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
+                                                                        style={{ ...rowBg, ...(isSubRow && isSticky ? { borderLeft: '2px solid #1e293b', paddingLeft: '20px' } : {}), color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined }}>
                                                                         {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
                                                                     </td>
                                                                 );
@@ -1124,10 +1121,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 return avgRows.map((avgRow, ai) => {
                                                     const isCareer = avgRow.team === '커리어';
                                                     return (
-                                                        <tr key={ai} style={isCareer ? subHeaderBg : { ...subHeaderBg, opacity: 0.75 }}>
+                                                        <tr key={ai} style={isCareer ? { backgroundColor: '#1e293b' } : { backgroundColor: '#1e293b', opacity: 0.75 }}>
                                                             {cols.map((col, ci) => (
                                                                 <td key={col.key} className={`px-3 py-1.5 font-mono tabular-nums whitespace-nowrap border-t ${ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'}`}
-                                                                    style={{ ...subHeaderBg, borderTopColor: isCareer ? heavyDividerColor : dividerColor, ...subHeaderTextStyle, ...(isCareer && ci !== 0 ? { color: 'white' } : {}) }}>
+                                                                    style={{ backgroundColor: '#1e293b', borderTopColor: isCareer ? '#334155' : '#1e293b', color: '#64748b', ...(isCareer && ci !== 0 ? { color: 'white' } : {}) }}>
                                                                     {formatCareerCell(col.key, avgRow[col.key])}
                                                                 </td>
                                                             ))}
@@ -1149,11 +1146,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     gameLog={gameLog}
                                     gameLogLoading={gameLogLoading}
                                     teamId={teamId}
-                                    subHeaderStyle={subHeaderBg}
-                                    rowAltStyle={rowAltBg}
-                                    rowBaseStyle={rowBaseBg}
-                                    dividerColor={dividerColor}
-                                    subHeaderTextStyle={subHeaderTextStyle}
+                                    subHeaderStyle={{ backgroundColor: '#1e293b' }}
+                                    rowAltStyle={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+                                    rowBaseStyle={{}}
+                                    dividerColor="#1e293b"
+                                    subHeaderTextStyle={{ color: '#64748b' }}
                                 />
                             </div>
                         </div>}
@@ -1175,7 +1172,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             <div className="grid" style={{ gridTemplateColumns: '4fr 6fr' }}>
                             {/* 좌: 샷차트 SVG */}
                             <div className="p-3 border-r border-slate-800">
-                                <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
+                                <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-slate-700">
                                     <svg viewBox="0 0 435 403" className="w-full h-full">
                                         <rect x="0" y="0" width="435" height="403" fill="#020617" />
                                         <g>
@@ -1228,30 +1225,32 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-separate border-spacing-0 text-xs">
                                     <thead>
-                                        <tr style={subHeaderBg}>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b sticky left-0 z-10" style={{ borderBottomColor: dividerColor, ...subHeaderBg, ...subHeaderTextStyle }}>구역</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>M/A</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>FG%</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>평균</th>
-                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b text-right" style={{ borderBottomColor: dividerColor, ...subHeaderTextStyle }}>vs 평균</th>
+                                        <tr className="bg-slate-800">
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 bg-slate-800 text-slate-500">구역</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">시도</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">성공</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">성공률</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">평균</th>
+                                            <th className="px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap border-b border-slate-800 text-right text-slate-500">vs 평균</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {chartZones.map((z, i) => {
                                             const pct = z.a > 0 ? z.m / z.a : null;
                                             const delta = pct !== null ? pct - z.avg : null;
-                                            const rowBg = i % 2 !== 0 ? rowAltBg : rowBaseBg;
+                                            const rowBg = i % 2 !== 0 ? { backgroundColor: 'rgba(255,255,255,0.04)' } : {};
                                             const deltaColor = delta === null ? 'text-slate-600'
                                                 : delta > 0.03 ? 'text-emerald-400'
                                                 : delta < -0.03 ? 'text-rose-400'
                                                 : 'text-slate-400';
                                             return (
                                                 <tr key={z.key} style={rowBg}>
-                                                    <td className="px-3 py-2 font-bold whitespace-nowrap border-b sticky left-0 z-10 text-slate-200" style={{ borderBottomColor: dividerColor, ...rowBg }}>{(z as any).label}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right text-slate-300" style={{ borderBottomColor: dividerColor }}>{z.a > 0 ? `${z.m}/${z.a}` : '-'}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right font-bold text-white" style={{ borderBottomColor: dividerColor }}>{pct !== null ? `${(pct * 100).toFixed(1)}%` : '-'}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right text-slate-400" style={{ borderBottomColor: dividerColor }}>{(z.avg * 100).toFixed(1)}%</td>
-                                                    <td className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b text-right font-bold ${deltaColor}`} style={{ borderBottomColor: dividerColor }}>
+                                                    <td className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 text-slate-200" style={rowBg}>{(z as any).label}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-300">{z.a > 0 ? z.a : '-'}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-300">{z.a > 0 ? z.m : '-'}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right font-bold text-white">{pct !== null ? `${(pct * 100).toFixed(1)}%` : '-'}</td>
+                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-400">{(z.avg * 100).toFixed(1)}%</td>
+                                                    <td className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right font-bold ${deltaColor}`}>
                                                         {delta !== null ? `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%` : '-'}
                                                     </td>
                                                 </tr>
