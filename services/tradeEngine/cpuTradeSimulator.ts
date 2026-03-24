@@ -611,7 +611,8 @@ function selectPlayersForNeeds(
 function createTradeTransaction(
     teamA: Team, teamB: Team,
     teamAPlayers: Player[], teamBPlayers: Player[],
-    analysis: string[]
+    analysis: string[],
+    season?: string,
 ): Transaction {
     const id = crypto.randomUUID();
 
@@ -620,6 +621,7 @@ function createTradeTransaction(
         date: '',
         type: 'Trade',
         teamId: teamA.id,
+        season,
         description: `[CPU] ${teamA.name} ↔ ${teamB.name} 트레이드`,
         details: {
             acquired: teamBPlayers.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p) })),
@@ -760,7 +762,7 @@ export function runCPUTradeRound(
                 const pkg = constructTradePackage(buyerProf, sellerProf);
                 if (!pkg) continue;
                 console.log(`  🔄 패키지: [${buyerTeam.name}] ${pkg.teamAPlayers.map(p => p.name).join(', ')} ↔ [${sellerProf.team.name}] ${pkg.teamBPlayers.map(p => p.name).join(', ')} (score ${score.toFixed(2)})`);
-                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers, seasonConfig?.seasonShort)) {
                     console.log(`  ✅ 성사`);
                     console.groupEnd();
                     break;
@@ -830,7 +832,7 @@ export function runCPUTradeRound(
                 continue; // 양팀 모두 수락 가능해야 트레이드 성사
             }
 
-            if (executePkg(pkg, buyerProf, sellerProfile, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
+            if (executePkg(pkg, buyerProf, sellerProfile, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers, seasonConfig?.seasonShort)) {
                 console.log(`    ✅ 트레이드 성사!`);
                 console.groupEnd();
                 break; // 이 구매자에 대해 하나 성사 → 다음 팀으로
@@ -865,7 +867,7 @@ export function runCPUTradeRound(
                     continue;
                 }
                 console.log(`    🔄 패키지: [${buyerTeam.name}] ${pkg.teamAPlayers.map(p => p.name).join(', ')} ↔ [${sellerProf.team.name}] ${pkg.teamBPlayers.map(p => p.name).join(', ')} (score ${score.toFixed(2)})`);
-                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers)) {
+                if (executePkg(pkg, buyerProf, sellerProf, teams, leaguePickAssets, leagueTradeBlocks, currentDate, transactions, tradedTeamIds, overflowCutPlayers, seasonConfig?.seasonShort)) {
                     console.log(`    ✅ 성사`);
                     break;
                 }
@@ -918,6 +920,7 @@ function executePkg(
     transactions: Transaction[],
     tradedTeamIds: Set<string>,
     overflowCutPlayers: Player[],
+    season?: string,
 ): boolean {
     if (leaguePickAssets && (pkg.teamAPicks.length > 0 || pkg.teamBPicks.length > 0)) {
         const payload: TradeExecutionPayload = {
@@ -938,6 +941,7 @@ function executePkg(
                 currentTeamId: profileB.team.id,
             })),
             date: currentDate,
+            season,
             isUserTrade: false,
         };
         const result = executeTrade(payload, teams, leaguePickAssets, leagueTradeBlocks);
@@ -951,7 +955,7 @@ function executePkg(
     } else {
         executeRosterSwap(profileA.team, profileB.team, pkg.teamAPlayers, pkg.teamBPlayers);
         const tx = createTradeTransaction(
-            profileA.team, profileB.team, pkg.teamAPlayers, pkg.teamBPlayers, pkg.analysis
+            profileA.team, profileB.team, pkg.teamAPlayers, pkg.teamBPlayers, pkg.analysis, season
         );
         transactions.push(tx);
         tradedTeamIds.add(profileA.team.id);

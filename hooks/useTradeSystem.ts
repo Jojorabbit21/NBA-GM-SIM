@@ -372,6 +372,7 @@ export const useTradeSystem = (
                     teamBSentPlayers: targetAssets.map(p => p.id),
                     teamBSentPicks: targetPicks || [],
                     date: currentSimDate,
+                    season: seasonConfig?.seasonShort,
                     isUserTrade: true,
                 };
 
@@ -423,6 +424,7 @@ export const useTradeSystem = (
                     date: currentSimDate,
                     type: 'Trade',
                     teamId: team.id,
+                    season: seasonConfig?.seasonShort,
                     description: `${targetTeam.name}와의 트레이드 합의`,
                     details: {
                         acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p), position: p.position })),

@@ -50,6 +50,7 @@ export interface Transaction {
     date: string;
     type: 'Trade' | 'Sign' | 'Release' | 'InjuryUpdate' | 'FASigning' | 'FARelease' | 'Extension' | 'TeamOption';
     teamId: string;
+    season?: string;
     description: string;
     details?: TradeDetails | any;
 }

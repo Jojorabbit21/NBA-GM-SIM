@@ -208,8 +208,9 @@ export const loadUserHistory = async (userId: string, season?: string) => {
     gamesQuery = gamesQuery.order('date', { ascending: true });
 
     let txQuery = supabase.from('user_transactions')
-        .select('id, date, type, team_id, description, details')
+        .select('id, date, type, team_id, season, description, details')
         .eq('user_id', userId);
+    if (season) txQuery = txQuery.eq('season', season);
     txQuery = txQuery.order('date', { ascending: true });
 
     const [gamesRes, txRes] = await Promise.all([gamesQuery, txQuery]);
@@ -231,7 +232,8 @@ export const countUserData = async (userId: string, season?: string) => {
     if (season) gamesQ = gamesQ.eq('season', season);
     let playoffQ = supabase.from('user_playoffs_results').select('game_id', { count: 'exact', head: true }).eq('user_id', userId);
     if (season) playoffQ = playoffQ.eq('season', season);
-    const txQ = supabase.from('user_transactions').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+    let txQ = supabase.from('user_transactions').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+    if (season) txQ = txQ.eq('season', season);
 
     const [gamesCount, playoffCount, txCount] = await Promise.all([gamesQ, playoffQ, txQ]);
     return {
@@ -242,12 +244,14 @@ export const countUserData = async (userId: string, season?: string) => {
 };
 
 // 3-2. Load only transactions (for snapshot hydration path — no game results needed)
-export const loadUserTransactions = async (userId: string) => {
-    const { data, error } = await supabase
+export const loadUserTransactions = async (userId: string, season?: string) => {
+    let query = supabase
         .from('user_transactions')
-        .select('id, date, type, team_id, description, details')
-        .eq('user_id', userId)
-        .order('date', { ascending: true });
+        .select('id, date, type, team_id, season, description, details')
+        .eq('user_id', userId);
+    if (season) query = query.eq('season', season);
+    query = query.order('date', { ascending: true });
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
 };
@@ -268,6 +272,7 @@ export const writeTransaction = async (userId: string, tx: Transaction) => {
         date: tx.date,
         type: tx.type,
         team_id: tx.teamId,
+        season: tx.season ?? null,
         description: tx.description,
         details: tx.details
     });
@@ -285,6 +290,7 @@ export const bulkWriteTransactions = async (userId: string, txList: Transaction[
         date: tx.date,
         type: tx.type,
         team_id: tx.teamId,
+        season: tx.season ?? null,
         description: tx.description,
         details: tx.details,
     }));

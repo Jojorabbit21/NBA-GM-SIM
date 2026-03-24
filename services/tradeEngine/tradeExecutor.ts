@@ -25,6 +25,7 @@ export interface TradeExecutionPayload {
     teamBSentPlayers: string[];          // player IDs (B가 내보내는 선수)
     teamBSentPicks: PersistentPickRef[]; // B가 내보내는 픽
     date: string;
+    season?: string;
     isUserTrade: boolean;
 }
 
@@ -327,6 +328,7 @@ function buildTransaction(
         date: payload.date,
         type: 'Trade',
         teamId: payload.teamAId,
+        season: payload.season,
         description: `${teamA.name} → ${aSentDesc} ↔ ${teamB.name} → ${bSentDesc}`,
         details,
     };

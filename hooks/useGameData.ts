@@ -251,8 +251,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLoadingMessage('스냅샷 유효성 검사 중 ...');
                         const [pbState, counts, txData] = await Promise.all([
                             loadPlayoffState(userId, checkpoint.team_id, savedSeason),
-                            countUserData(userId),
-                            loadUserTransactions(userId),
+                            countUserData(userId, savedSeason),
+                            loadUserTransactions(userId, savedSeason),
                         ]);
                         playoffBracketState = pbState;
                         // count가 -1이면 DB 에러 — 스냅샷 검증 불가, full replay로 fallback

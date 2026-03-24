@@ -71,6 +71,7 @@ const FAMarketPage: React.FC = () => {
                 const faTx = {
                     id: `fa_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
                     type: 'FASigning' as const, teamId: gameData.myTeamId ?? '',
+                    season: seasonShort,
                     description: `FA 서명: ${faPlayer.name} (${signingType})`,
                     details: { playerName: faPlayer.name, position: faPlayer.position, ovr: faPlayer.ovr, salary, years: contract.years.length, signingType },
                 };
@@ -128,6 +129,7 @@ const FAMarketPage: React.FC = () => {
                 const relTx = {
                     id: `rel_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
                     type: 'FARelease' as const, teamId: gameData.myTeamId ?? '',
+                    season: seasonShort,
                     description: `방출(${LABELS[releaseType]}): ${player.name} — 데드캡 ${(deadAmount / 1_000_000).toFixed(1)}M`,
                     details: { playerName: player.name, position: player.position, ovr: player.ovr, releaseType, deadCapAmount: deadAmount },
                 };
@@ -149,6 +151,7 @@ const FAMarketPage: React.FC = () => {
                 const extTx = {
                     id: `ext_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
                     type: 'Extension' as const, teamId: gameData.myTeamId ?? '',
+                    season: seasonShort,
                     description: `계약 익스텐션: ${player.name} ${contract.years.length}년 / ${(contract.years[0] / 1_000_000).toFixed(1)}M`,
                     details: { playerName: player.name, position: player.position, ovr: player.ovr, salary: contract.years[0], years: contract.years.length },
                 };
@@ -183,6 +186,7 @@ const FAMarketPage: React.FC = () => {
                     const optTx = {
                         id: `opt_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
                         type: 'TeamOption' as const, teamId: gameData.myTeamId ?? '',
+                        season: seasonShort,
                         description: `팀 옵션 ${exercised ? '행사' : '거절'}: ${player.name}`,
                         details: { playerName: player.name, position: player.position, ovr: player.ovr, exercised },
                     };
