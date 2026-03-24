@@ -90,7 +90,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileBtnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownTop, setDropdownTop] = useState(0);
+  const [dropdownBottom, setDropdownBottom] = useState(0);
+  const [dropdownLeft, setDropdownLeft] = useState(0);
 
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
@@ -123,7 +124,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const handleProfileClick = () => {
     if (profileBtnRef.current) {
       const rect = profileBtnRef.current.getBoundingClientRect();
-      setDropdownTop(rect.top);
+      setDropdownBottom(window.innerHeight - rect.bottom + 8);
+      setDropdownLeft(rect.right + 8);
     }
     setIsMenuOpen(prev => !prev);
   };
@@ -211,10 +213,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             {isMenuOpen && createPortal(
               <div
                 ref={dropdownRef}
-                className="fixed left-20 w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
+                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
                 style={{
-                  top: `${dropdownTop}px`,
-                  transform: 'translateY(-100%) translateY(-8px)',
+                  bottom: `${dropdownBottom}px`,
+                  left: `${dropdownLeft}px`,
                   background: '#1e293b',
                   border: '1px solid rgba(255,255,255,0.1)',
                 }}

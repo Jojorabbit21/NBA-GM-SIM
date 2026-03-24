@@ -73,11 +73,10 @@ function fmtM(val: number): string {
     return `$${(val / 1_000_000).toFixed(1)}M`;
 }
 
-function scoreColor(score: number): string {
-    if (score >= 82) return 'text-amber-400';
-    if (score >= 72) return 'text-emerald-400';
-    if (score >= 60) return 'text-blue-400';
-    if (score >= 48) return 'text-slate-300';
+function attrColor(v: number): string {
+    if (v >= 90) return 'text-fuchsia-400';
+    if (v >= 80) return 'text-emerald-400';
+    if (v >= 70) return 'text-amber-400';
     return 'text-slate-500';
 }
 
@@ -188,7 +187,7 @@ export const FAView: React.FC<FAViewProps> = ({
     const [activeTab, setActiveTab]       = useTabParam<'market' | 'roster'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
     const [statusFilter, setStatusFilter] = useState<'available' | 'all'>('available');
-    const [sortBy, setSortBy]             = useState<'ovr' | 'salary' | 'score'>('ovr');
+    const [sortBy, setSortBy]             = useState<'ovr' | 'salary'>('ovr');
 
     // 협상 타깃 (NegotiationScreen 오버레이를 열 때 사용)
     const [negotiationTarget, setNegotiationTarget] = useState<{
@@ -228,7 +227,6 @@ export const FAView: React.FC<FAViewProps> = ({
                 if (!pa || !pb) return 0;
                 if (sortBy === 'ovr')    return pb.ovr - pa.ovr;
                 if (sortBy === 'salary') return b.askingSalary - a.askingSalary;
-                if (sortBy === 'score')  return b.marketValueScore - a.marketValueScore;
                 return 0;
             });
     }, [market, statusFilter, roleFilter, sortBy, faPlayerMap]);
@@ -356,12 +354,12 @@ export const FAView: React.FC<FAViewProps> = ({
                                 {/* 정렬 */}
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">정렬</span>
-                                    {(['ovr', 'salary', 'score'] as const).map(s => (
+                                    {(['ovr', 'salary'] as const).map(s => (
                                         <button
                                             key={s}
                                             onClick={() => setSortBy(s)}
                                             className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${sortBy === s ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                        >{{ ovr: 'OVR', salary: '연봉', score: 'MVS' }[s]}</button>
+                                        >{{ ovr: 'OVR', salary: '연봉' }[s]}</button>
                                     ))}
                                 </div>
                             </div>
@@ -374,33 +372,64 @@ export const FAView: React.FC<FAViewProps> = ({
                                         <table className="w-full border-collapse text-xs">
                                             <thead className="sticky top-0 z-10">
                                                 <tr className="bg-slate-800 border-b border-slate-700">
-                                                    {['선수', '포지션', '나이', '롤', '요구 연봉', 'MVS', '상태'].map(h => (
-                                                        <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
-                                                    ))}
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">선수</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">포지션</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">나이</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">키·체중</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-l border-slate-700">INS</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">OUT</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">PLM</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">DEF</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">REB</th>
+                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">ATH</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">롤</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">요구 연봉</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">상태</th>
+                                                    <th className="px-4 py-2"></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {filteredEntries.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={7} className="py-16 text-center text-slate-500 text-sm">조건에 맞는 선수가 없습니다.</td>
+                                                        <td colSpan={14} className="py-16 text-center text-slate-500 text-sm">조건에 맞는 선수가 없습니다.</td>
                                                     </tr>
                                                 ) : (
                                                     filteredEntries.map(entry => {
                                                         const player = faPlayerMap[entry.playerId];
                                                         if (!player) return null;
+                                                        const unavailable = entry.status !== 'available' || blockedNegotiationIds.has(entry.playerId);
                                                         return (
                                                             <tr
                                                                 key={entry.playerId}
-                                                                onClick={() => entry.status === 'available' && !blockedNegotiationIds.has(entry.playerId) && setNegotiationTarget({ type: 'fa', playerId: entry.playerId })}
-                                                                className={`group border-b border-slate-800 transition-all hover:bg-slate-800 ${entry.status !== 'available' || blockedNegotiationIds.has(entry.playerId) ? 'opacity-50' : 'cursor-pointer'}`}
+                                                                className={`group border-b border-slate-800 transition-all hover:bg-slate-800/50 ${unavailable ? 'opacity-50' : ''}`}
                                                             >
-                                                                <td className="px-4 py-2 font-bold text-white ko-tight whitespace-nowrap">{player.name}</td>
+                                                                <td className="px-4 py-2 whitespace-nowrap">
+                                                                    <button
+                                                                        onClick={() => onViewPlayer?.(player)}
+                                                                        className="font-bold text-white hover:text-indigo-400 transition-colors ko-tight"
+                                                                    >{player.name}</button>
+                                                                </td>
                                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
                                                                 <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
+                                                                <td className="px-4 py-2 font-mono text-slate-500 whitespace-nowrap text-[11px]">
+                                                                    {player.height ?? '-'}cm · {player.weight ?? '-'}kg
+                                                                </td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center border-l border-slate-800/60 ${attrColor(player.ins ?? 50)}`}>{player.ins ?? '-'}</td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.out ?? 50)}`}>{player.out ?? '-'}</td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.plm ?? 50)}`}>{player.plm ?? '-'}</td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.def ?? 50)}`}>{player.def ?? '-'}</td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.reb ?? 50)}`}>{player.reb ?? '-'}</td>
+                                                                <td className={`px-3 py-2 font-mono font-black text-center border-r border-slate-800/60 ${attrColor(player.ath ?? 50)}`}>{player.ath ?? '-'}</td>
                                                                 <td className="px-4 py-2 font-bold text-indigo-300 whitespace-nowrap">{FA_ROLE_LABELS[entry.faRole]}</td>
                                                                 <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(entry.askingSalary)}</td>
-                                                                <td className={`px-4 py-2 font-mono font-bold ${scoreColor(entry.marketValueScore)}`}>{entry.marketValueScore}</td>
                                                                 <td className="px-4 py-2">{statusBadge(entry.status)}</td>
+                                                                <td className="px-4 py-2">
+                                                                    <button
+                                                                        onClick={() => !unavailable && setNegotiationTarget({ type: 'fa', playerId: entry.playerId })}
+                                                                        disabled={unavailable}
+                                                                        className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-600/30 bg-indigo-600/15 text-indigo-400 hover:bg-indigo-600/25 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                                                    >계약 협상</button>
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })
