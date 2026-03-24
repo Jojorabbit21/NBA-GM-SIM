@@ -117,6 +117,38 @@ const SLOT_LABELS: Record<SigningType, string> = {
     vet_min:     '베테랑 미니멈',
 };
 
+// 계약 수락 후 GM 계약 요약 문장 생성
+function buildGMSigningMessage(
+    type: 'fa' | 'extension',
+    playerName: string,
+    years: number,
+    aav: number,
+    total: number,
+    option?: { type: 'player' | 'team' } | null,
+    noTrade?: boolean,
+    tradeKicker?: number,
+): string {
+    const extras: string[] = [];
+    if (option?.type === 'player') extras.push('선수 옵션');
+    if (option?.type === 'team')   extras.push('팀 옵션');
+    if (noTrade)                   extras.push('트레이드 거부권');
+    if (tradeKicker)               extras.push(`트레이드 키커 ${(tradeKicker * 100).toFixed(0)}%`);
+    const extraText = extras.length > 0 ? ` (${extras.join(' · ')} 포함)` : '';
+    if (type === 'extension') {
+        return `좋아요. 그럼 계약 내용을 확인해볼게요. ${years}년 연장, 연평균 ${fmtM(aav)}, 총액 ${fmtM(total)}${extraText}. 앞으로도 잘 부탁드립니다.`;
+    }
+    return `환영합니다, ${playerName}. 계약 내용 확인해드릴게요. ${years}년, 연평균 ${fmtM(aav)}, 총액 ${fmtM(total)}${extraText}. 팀에 합류하게 돼서 기쁩니다.`;
+}
+
+// 선수 맺음말 풀
+const PLAYER_FAREWELL_PHRASES = [
+    '잘 부탁드립니다. 기대에 부응하는 모습 보여드리겠습니다.',
+    '열심히 하겠습니다. 좋은 결과 만들어봐요.',
+    '감사합니다. 코트에서 최선을 다하겠습니다.',
+    '잘 됐네요. 함께 좋은 시즌 만들어봅시다.',
+    '결정했어요. 좋은 계약이 됐으면 합니다.',
+];
+
 // NBA CBA 슬롯별 연봉 에스컬레이터 (Bird권: 8%, 기타: 5%, vet_min: 0%)
 // GM 오퍼 제출 시 대화체 문장 풀
 const GM_OFFER_PHRASES = [
@@ -650,7 +682,17 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         if (result.accepted) {
             setFaResult({ accepted: true });
             addPlayerMsg('ACCEPT', newRound, null, null);
-            setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '✓ 계약 체결!', isSuccess: true }]);
+            // GM 계약 요약
+            const faSigningMsg = buildGMSigningMessage(
+                'fa', player.name, faOfferYears, faOfferAAV, totalContractValue,
+                faContractOption !== 'none' && faOfferYears >= 2 ? { type: faContractOption as 'player' | 'team' } : null,
+                faNoTrade && selectedSlot === 'bird_full', faTradeKicker > 0 ? faTradeKicker : undefined,
+            );
+            addMsg('gm', faSigningMsg);
+            // 선수 맺음말
+            const farewellIdx = player.id.charCodeAt(0) % PLAYER_FAREWELL_PHRASES.length;
+            addMsg('player', PLAYER_FAREWELL_PHRASES[farewellIdx]);
+            setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '계약 체결 — 대화 종료', isSuccess: true }]);
 
             const updatedEntries = faMarket.entries.map(e =>
                 e.playerId === player.id
@@ -724,7 +766,17 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         switch (response.outcome) {
             case 'ACCEPT':
                 addPlayerMsg('ACCEPT', newRound, updatedState, null);
-                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '✓ 계약 연장!', isSuccess: true }]);
+                // GM 계약 요약
+                addMsg('gm', buildGMSigningMessage(
+                    'extension', player.name, extOfferYears, extOfferAAV, totalContractValue,
+                    extContractOption !== 'none' && extOfferYears >= 2 ? { type: extContractOption as 'player' | 'team' } : null,
+                    extNoTrade, extTradeKicker > 0 ? extTradeKicker : undefined,
+                ));
+                // 선수 맺음말
+                addMsg('player', PLAYER_FAREWELL_PHRASES[
+                    player.id.charCodeAt(0) % PLAYER_FAREWELL_PHRASES.length
+                ]);
+                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '계약 연장 — 대화 종료', isSuccess: true }]);
                 onExtensionSigned?.(player.id, response.contract);
                 break;
             case 'COUNTER':
@@ -1089,7 +1141,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 오퍼 폼 ── */}
-                <div className="flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${(negState?.signed || isFAFinal) ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
@@ -1625,21 +1677,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </>
                     )}
 
-                    {/* Extension 최종 상태 (서명 완료인 경우만) */}
-                    {negState?.signed && negState && (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-5">
-                            <div className="w-20 h-20 rounded-full flex items-center justify-center bg-emerald-500/20 border-2 border-emerald-500/50">
-                                <span className="text-3xl text-emerald-400">✓</span>
-                            </div>
-                            <div className="text-2xl font-black uppercase tracking-wide text-emerald-400">
-                                계약 연장!
-                            </div>
-                            <button
-                                onClick={onClose}
-                                className="px-10 py-3 rounded-xl font-bold text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
-                            >닫기</button>
-                        </div>
-                    )}
+
 
                     {/* ── Release 컨트롤 ── */}
                     {isRel && (

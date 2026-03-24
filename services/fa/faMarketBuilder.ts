@@ -440,7 +440,8 @@ export function processUserOffer(
     // 계약 옵션에 따른 체감 연봉 보정 (수락 판정용)
     let effectiveSalary = offer.salary;
     if (offer.option?.type === 'player') effectiveSalary *= 1.08;  // 선수 옵션: 이탈 자유 → 선수에게 유리
-    if (offer.option?.type === 'team')   effectiveSalary *= 0.95;  // 팀 옵션: 팀이 결정권 → 선수에게 불리
+    // 팀 옵션: 마지막 1년이 불확실 → 계약 연수 비례 패널티 (짧을수록 타격 큼)
+    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / offer.years) * 0.55);
     if (offer.noTrade)                   effectiveSalary *= 1.05;  // NTC: 이적 거부권 → 선수에게 유리
     if (offer.tradeKicker)               effectiveSalary *= (1 + offer.tradeKicker * 0.3);
 

@@ -497,7 +497,8 @@ export function evaluateExtensionOffer(
     // 계약 옵션 보정 — 수락 판정에만 사용 (저장 연봉은 offer.annualSalary 원본)
     let effectiveAAV = offer.annualSalary;
     if (offer.option?.type === 'player') effectiveAAV *= 1.08;
-    if (offer.option?.type === 'team')   effectiveAAV *= 0.95;
+    // 팀 옵션: 마지막 1년이 불확실 → 계약 연수 비례 패널티 (짧을수록 타격 큼)
+    if (offer.option?.type === 'team')   effectiveAAV *= (1 - (1 / offer.years) * 0.55);
     if (offer.noTrade)                   effectiveAAV *= 1.05;
     if (offer.tradeKicker)               effectiveAAV *= (1 + offer.tradeKicker * 0.3);
     const effectiveOffer = { ...offer, annualSalary: effectiveAAV };
