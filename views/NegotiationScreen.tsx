@@ -244,6 +244,131 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         }
         return base;
     });
+
+    // ─── 자기 인식 지표 (8개) ─────────────────────────────────
+    const selfAssessmentItems = useMemo(() => {
+        const ego               = tendencies.ego               ?? 0;   // -1 ~ +1
+        const loyalty           = tendencies.loyalty           ?? 0.5; // 0 ~ 1
+        const financialAmbition = tendencies.financialAmbition ?? 0.5; // 0 ~ 1
+        const winDesire         = tendencies.winDesire         ?? 0.5; // 0 ~ 1
+
+        const c = (v: number) => Math.max(0, Math.min(1, v));
+        const ovrNorm = c((player.ovr - 50) / 40);   // 50→0, 90→1
+        const egoNorm = (ego + 1) / 2;               // -1~+1 → 0~1
+
+        type Item = { label: string; text: string; color: string };
+
+        // 1. 자기 평가 등급
+        const selfScore = c(ovrNorm * 0.6 + egoNorm * 0.4);
+        const selfGrade: Item = selfScore > 0.82
+            ? { label: '자기 평가 등급', text: '최정상급', color: 'text-emerald-400' }
+            : selfScore > 0.68
+            ? { label: '자기 평가 등급', text: '올스타급', color: 'text-emerald-400' }
+            : selfScore > 0.54
+            ? { label: '자기 평가 등급', text: '핵심 스타터급', color: 'text-indigo-400' }
+            : selfScore > 0.40
+            ? { label: '자기 평가 등급', text: '스타터급', color: 'text-slate-300' }
+            : selfScore > 0.26
+            ? { label: '자기 평가 등급', text: '롤플레이어급', color: 'text-slate-300' }
+            : { label: '자기 평가 등급', text: '유망주', color: 'text-amber-400' };
+
+        // 2. 기대 역할
+        const roleScore = c(ovrNorm * 0.7 + egoNorm * 0.3);
+        const expectedRole: Item = roleScore > 0.80
+            ? { label: '기대 역할', text: '1옵션', color: 'text-emerald-400' }
+            : roleScore > 0.65
+            ? { label: '기대 역할', text: '1~2옵션', color: 'text-emerald-400' }
+            : roleScore > 0.50
+            ? { label: '기대 역할', text: '2~3옵션', color: 'text-indigo-400' }
+            : roleScore > 0.35
+            ? { label: '기대 역할', text: '정규 스타터', color: 'text-slate-300' }
+            : roleScore > 0.20
+            ? { label: '기대 역할', text: '식스맨', color: 'text-amber-400' }
+            : { label: '기대 역할', text: '로테이션', color: 'text-slate-500' };
+
+        // 3. 연봉 만족도
+        const demandAAV = isExt
+            ? (negState?.demand.targetAAV ?? player.salary ?? 0)
+            : (faEntry?.askingSalary    ?? player.salary ?? 0);
+        const salaryRatio = demandAAV > 0 ? c((player.salary ?? 0) / demandAAV) : 0.7;
+        const salaryScore = c(salaryRatio * 0.65 + (1 - financialAmbition) * 0.35);
+        const salarySatisfaction: Item = salaryScore > 0.78
+            ? { label: '연봉 만족도', text: '매우 만족', color: 'text-emerald-400' }
+            : salaryScore > 0.60
+            ? { label: '연봉 만족도', text: '만족', color: 'text-indigo-400' }
+            : salaryScore > 0.42
+            ? { label: '연봉 만족도', text: '보통', color: 'text-slate-300' }
+            : salaryScore > 0.25
+            ? { label: '연봉 만족도', text: '불만족', color: 'text-amber-400' }
+            : { label: '연봉 만족도', text: '매우 불만족', color: 'text-red-400' };
+
+        // 4. 시장 가치 인식
+        const marketScore = c(ovrNorm * 0.55 + egoNorm * 0.45);
+        const marketPerception: Item = marketScore > 0.80
+            ? { label: '시장 가치 인식', text: '최상위권', color: 'text-emerald-400' }
+            : marketScore > 0.65
+            ? { label: '시장 가치 인식', text: '상위권', color: 'text-emerald-400' }
+            : marketScore > 0.50
+            ? { label: '시장 가치 인식', text: '평균 이상', color: 'text-indigo-400' }
+            : marketScore > 0.35
+            ? { label: '시장 가치 인식', text: '평균', color: 'text-slate-300' }
+            : { label: '시장 가치 인식', text: '평균 이하', color: 'text-slate-400' };
+
+        // 5. 팀 헌신도
+        const commitScore = isExt
+            ? c(loyalty * 0.40 + (negState?.respect ?? 0.7) * 0.35 + (negState?.trust ?? 0.7) * 0.25)
+            : c(loyalty * 0.60 + moraleScore / 100 * 0.40);
+        const teamCommitment: Item = commitScore > 0.78
+            ? { label: '팀 헌신도', text: '매우 높음', color: 'text-emerald-400' }
+            : commitScore > 0.62
+            ? { label: '팀 헌신도', text: '높음', color: 'text-emerald-400' }
+            : commitScore > 0.46
+            ? { label: '팀 헌신도', text: '보통', color: 'text-slate-300' }
+            : commitScore > 0.30
+            ? { label: '팀 헌신도', text: '낮음', color: 'text-amber-400' }
+            : { label: '팀 헌신도', text: '매우 낮음', color: 'text-red-400' };
+
+        // 6. 우승 기대감
+        const champScore = c(winDesire * 0.55 + contenderScore * 0.45);
+        const championshipHope: Item = champScore > 0.78
+            ? { label: '우승 기대감', text: '매우 높음', color: 'text-emerald-400' }
+            : champScore > 0.62
+            ? { label: '우승 기대감', text: '높음', color: 'text-emerald-400' }
+            : champScore > 0.46
+            ? { label: '우승 기대감', text: '보통', color: 'text-indigo-400' }
+            : champScore > 0.30
+            ? { label: '우승 기대감', text: '낮음', color: 'text-amber-400' }
+            : { label: '우승 기대감', text: '매우 낮음', color: 'text-slate-500' };
+
+        // 7. 환경 만족도
+        const frustPenalty = isExt ? (negState?.frustration ?? 0) * 0.20 : 0;
+        const envScore = c(moraleScore / 100 * 0.50 + loyalty * 0.30 + (1 - frustPenalty) * 0.20);
+        const envSatisfaction: Item = envScore > 0.78
+            ? { label: '환경 만족도', text: '매우 만족', color: 'text-emerald-400' }
+            : envScore > 0.62
+            ? { label: '환경 만족도', text: '만족', color: 'text-indigo-400' }
+            : envScore > 0.46
+            ? { label: '환경 만족도', text: '보통', color: 'text-slate-300' }
+            : envScore > 0.30
+            ? { label: '환경 만족도', text: '불만족', color: 'text-amber-400' }
+            : { label: '환경 만족도', text: '매우 불만족', color: 'text-red-400' };
+
+        // 8. 레거시 욕구
+        const ageNorm = c((player.age - 23) / 14); // 23세→0, 37세→1
+        const legacyScore = c(egoNorm * 0.40 + winDesire * 0.35 + ageNorm * 0.25);
+        const legacyDesire: Item = legacyScore > 0.78
+            ? { label: '레거시 욕구', text: '매우 강함', color: 'text-emerald-400' }
+            : legacyScore > 0.62
+            ? { label: '레거시 욕구', text: '강함', color: 'text-indigo-400' }
+            : legacyScore > 0.46
+            ? { label: '레거시 욕구', text: '보통', color: 'text-slate-300' }
+            : legacyScore > 0.30
+            ? { label: '레거시 욕구', text: '약함', color: 'text-slate-400' }
+            : { label: '레거시 욕구', text: '없음', color: 'text-slate-500' };
+
+        return [selfGrade, expectedRole, salarySatisfaction, marketPerception, teamCommitment, championshipHope, envSatisfaction, legacyDesire];
+    }, [tendencies, moraleScore, player, negState, faEntry, contenderScore, isExt]);
+
     const [extOfferSalaries, setExtOfferSalaries] = useState<number[]>(() => {
         const base  = negState?.demand.openingAsk ?? 0;
         const years = negState?.demand.askingYears ?? 2;
@@ -825,6 +950,17 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 ))}
                             </div>
                         )}
+
+                        {/* 자기 인식 */}
+                        <div className="px-4 py-3 space-y-1 border-t border-slate-800/60">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">자기 인식</div>
+                            {selfAssessmentItems.map(({ label, text, color }) => (
+                                <div key={label} className="flex justify-between items-center text-xs gap-2">
+                                    <span className="text-slate-500 flex-shrink-0">{label}</span>
+                                    <span className={`font-semibold text-right ${color}`}>{text}</span>
+                                </div>
+                            ))}
+                        </div>
 
                         {/* Release: 데드캡 정보 */}
                         {isRel && releaseMode !== 'waive' && (
