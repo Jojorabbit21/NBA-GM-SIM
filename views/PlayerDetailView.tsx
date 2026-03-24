@@ -502,7 +502,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     }, []);
 
     const sortedTeams = useMemo(() =>
-        [...(allTeams ?? [])].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
+        [...(allTeams ?? [])].sort((a, b) => (a.id ?? '').localeCompare(b.id ?? '')),
     [allTeams]);
 
     const currentTeamRoster = useMemo(() => {
@@ -711,21 +711,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     </div>
                                 </div>
 
+                                {/* ─ 트로피 행 ─ */}
+                                {allAwards.length > 0 && (
+                                    <div className="px-4 py-3 border-t border-slate-800">
+                                        <HeaderAwardTrophies awards={allAwards} />
+                                    </div>
+                                )}
+
                                 {/* ─ 기본 정보 ─ */}
-                                <div className="px-4 pt-4 pb-3 border-t border-slate-800 space-y-1">
-                                    {/* 트로피 행 */}
-                                    {allAwards.length > 0 && (
-                                        <div className="pb-2 mb-1 border-b border-slate-800">
-                                            <HeaderAwardTrophies awards={allAwards} />
-                                        </div>
-                                    )}
-                                    {/* 부상 배지 */}
-                                    {player.health && player.health !== 'Healthy' && (
-                                        <span className="inline-flex text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md mb-1">
-                                            {player.injuryType || player.health}
-                                            {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                        </span>
-                                    )}
+                                <div className="px-4 pt-3 pb-3 border-t border-slate-800 space-y-1">
                                     {[
                                         { label: '팀', value: teamId ? <span className="flex items-center gap-1"><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</span> : 'FA' },
                                         { label: '포지션', value: player.position },
@@ -743,6 +737,29 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* ─ 부상 현황 ─ */}
+                                {player.health && player.health !== 'Healthy' && (() => {
+                                    const currentInjury = [...(player.injuryHistory ?? [])].sort((a, b) => b.date.localeCompare(a.date))[0];
+                                    const severityColor = currentInjury?.severity === 'Season-Ending' ? 'text-red-400'
+                                        : currentInjury?.severity === 'Major' ? 'text-amber-400'
+                                        : 'text-yellow-300';
+                                    return (
+                                        <div className="px-4 pt-4 pb-3 border-t border-red-900/40 space-y-1 bg-red-950/10">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-red-400/70 mb-1.5">부상 현황</div>
+                                            {[
+                                                { label: '부상명', value: <span className={`font-semibold ${severityColor}`}>{player.injuryType ?? '-'}</span> },
+                                                { label: '기간', value: currentInjury?.duration ?? '-' },
+                                                { label: '예상 복귀', value: player.returnDate ?? '-' },
+                                            ].map(({ label, value }) => (
+                                                <div key={label} className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500 shrink-0">{label}</span>
+                                                    <span className="font-semibold text-slate-200 text-right">{value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* ─ 선수 유형 ─ */}
                                 {playerArchetypeState && (
