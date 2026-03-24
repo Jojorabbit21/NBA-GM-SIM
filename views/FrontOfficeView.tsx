@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import { useTabParam } from '../hooks/useTabParam';
 import { Team, Player } from '../types';
 import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
@@ -35,7 +36,7 @@ interface FrontOfficeViewProps {
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
 }) => {
-    const [activeTab, setActiveTab] = useState<FrontOfficeTab>('club');
+    const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const finData = TEAM_FINANCE_DATA[myTeamId];

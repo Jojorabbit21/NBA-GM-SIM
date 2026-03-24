@@ -35,8 +35,8 @@ import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
 import { LeagueFAMarket } from '../types/fa';
-import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted } from '../services/draft/rookieRepository';
-import { calcRookieContract } from '../services/draft/rookieGenerator';
+import { fetchUserGeneratedPlayers, fetchDraftClass, markAsDrafted, insertDraftClass } from '../services/draft/rookieRepository';
+import { calcRookieContract, generateInitialFAPool } from '../services/draft/rookieGenerator';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { TEAM_DATA } from '../data/teamData';
 import type { DraftResultContent, DraftResultEntry } from '../types/message';
@@ -910,6 +910,25 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
+        // 초기 FA 풀 생성 및 DB 저장 (forceSave 전에 수행해야 leagueFAPool이 함께 저장됨)
+        let initialFAPool: LeagueFAPool | null = null;
+        if (session?.user?.id) {
+            try {
+                const faRows = generateInitialFAPool(session.user.id, newSeed);
+                await insertDraftClass(faRows);
+                initialFAPool = { generatedIds: faRows.map(p => p.id) };
+                setLeagueFAPool(initialFAPool);
+                const faPlayerObjects = faRows.map(row => mapRawPlayerToRuntimePlayer({
+                    id: row.id,
+                    base_attributes: row.base_attributes,
+                }));
+                setGeneratedFreeAgents(faPlayerObjects);
+                console.log(`🏀 [initFA] Generated ${faRows.length} initial FA players`);
+            } catch (e) {
+                console.warn('⚠️ [initFA] Failed to generate initial FA pool (non-critical):', e);
+            }
+        }
+
         await forceSave({
             myTeamId: teamId,
             currentSimDate: INITIAL_DATE,
@@ -918,6 +937,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             coachingData: newCoachingData,
             leaguePickAssets: newPickAssets,
             teams,
+            ...(initialFAPool ? { leagueFAPool: initialFAPool } : {}),
         });
 
         // 시즌 시작 구단주 환영 서신 발송

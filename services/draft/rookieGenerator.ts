@@ -493,27 +493,25 @@ function generateAttributes(
     // rank 1 → baseLevel ~65, rank 30 → ~51, rank 60 → ~43
     const t = (rank - 1) / (totalCount - 1); // 0~1, 0=최고
     const baseLevel = Math.round(65 - t * 22); // 65 → 43
-
-    const attrs: Record<string, number> = {};
-    const biases = POSITION_SKILL_BIAS[position] ?? {};
-    const penalties = POSITION_SKILL_PENALTY[position] ?? {};
-
-    for (const key of SKILL_KEYS) {
-        const bias = biases[key] ?? 0;
-        const penalty = penalties[key] ?? 0;
-
-        // 기본값 + 포지션 편향 + 랜덤 변동
-        const variation = rng.normal(0, 6);
-        const raw = baseLevel + bias + penalty + variation;
-
-        attrs[key] = clamp(Math.round(raw), 25, 90);
-    }
-
-    return attrs;
+    return buildAttrMap(rng, position, baseLevel);
 }
 
 function clamp(val: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, val));
+}
+
+/** baseLevel을 직접 받아 포지션 편향/패널티를 적용한 능력치 맵 생성 */
+function buildAttrMap(rng: SeededRandom, position: string, baseLevel: number): Record<string, number> {
+    const attrs: Record<string, number> = {};
+    const biases = POSITION_SKILL_BIAS[position] ?? {};
+    const penalties = POSITION_SKILL_PENALTY[position] ?? {};
+    for (const key of SKILL_KEYS) {
+        const bias = biases[key] ?? 0;
+        const penalty = penalties[key] ?? 0;
+        const variation = rng.normal(0, 6);
+        attrs[key] = clamp(Math.round(baseLevel + bias + penalty + variation), 25, 90);
+    }
+    return attrs;
 }
 
 function generateUUID(rng: SeededRandom): string {
@@ -526,4 +524,111 @@ function generateUUID(rng: SeededRandom): string {
         }
         return s;
     }).join('-');
+}
+
+// ── 초기 FA 풀 생성 ──
+
+export const DEFAULT_FA_POOL_SIZE = 65;
+
+// 티어별 파라미터
+const FA_TIER_BASE_MEAN = [67, 57, 47] as const;             // 능력치 기준값 평균
+const FA_TIER_BASE_CLAMP: [number, number][] = [[58, 78], [48, 68], [38, 58]];
+const FA_TIER_AGE: [number, number][] = [[24, 33], [22, 36], [22, 38]];
+const FA_TIER_SALARY: [number, number][] = [
+    [10_000_000, 18_000_000],   // High: 스타터급
+    [3_000_000,  8_000_000],    // Mid: 롤플레이어
+    [1_800_000,  3_000_000],    // Low: 미니멈 근처
+];
+const FA_TIER_YEARS: [number, number][] = [[2, 3], [1, 3], [1, 2]];
+const FA_TIER_CONTRACT_TYPE = ['veteran', 'veteran', 'min'] as const;
+const FA_TIER_WEIGHTS = [0.20, 0.45, 0.35]; // high / mid / low
+
+/**
+ * 게임 시작 시 초기 FA 풀을 생성한다.
+ *
+ * 루키 드래프트 클래스와 달리 베테랑 선수들로 구성되며,
+ * 3개 티어(High/Mid/Low)에 따라 능력치·나이·계약이 결정된다.
+ * season_number = 0 으로 드래프트 클래스와 구분.
+ *
+ * @param userId  사용자 ID
+ * @param seed    tendencySeed (결정론적 시드)
+ * @param count   생성할 선수 수 (기본 65)
+ */
+export function generateInitialFAPool(
+    userId: string,
+    seed: string,
+    count: number = DEFAULT_FA_POOL_SIZE
+): GeneratedPlayerRow[] {
+    const rng = new SeededRandom(`${seed}_init_fa`);
+    const players: GeneratedPlayerRow[] = [];
+
+    const positionPool = buildPositionPool(rng, count);
+    const shuffledPositions = rng.shuffle(positionPool);
+    const poolWeights = NAME_POOLS.map(p => p.weight);
+
+    for (let i = 0; i < count; i++) {
+        const position = shuffledPositions[i];
+        const tierIdx = rng.weightedIndex(FA_TIER_WEIGHTS); // 0=High, 1=Mid, 2=Low
+
+        const name = generateName(rng, poolWeights);
+
+        // 나이
+        const [ageMin, ageMax] = FA_TIER_AGE[tierIdx];
+        const age = rng.intRange(ageMin, ageMax);
+
+        // 키/몸무게
+        const height = generateHeight(rng, position);
+        const [wMin, wMax] = WEIGHT_RANGES[position];
+        const weight = rng.intRange(wMin, wMax);
+
+        // 능력치 (티어별 baseLevel 적용)
+        const [clampMin, clampMax] = FA_TIER_BASE_CLAMP[tierIdx];
+        const baseLevel = clamp(Math.round(rng.normal(FA_TIER_BASE_MEAN[tierIdx], 4)), clampMin, clampMax);
+        const attrs = buildAttrMap(rng, position, baseLevel);
+
+        // 포텐셜: 나이가 많을수록 낮음, 티어에 따라 천장 결정
+        const ageFactor = age <= 25 ? 1.0 : age <= 28 ? 0.65 : age <= 32 ? 0.25 : 0.0;
+        const potCeiling = FA_TIER_BASE_MEAN[tierIdx] + 12;
+        const pot = clamp(Math.round(rng.normal(baseLevel + ageFactor * (potCeiling - baseLevel) * 0.5, 4)), 40, 92);
+
+        // 계약
+        const [salMin, salMax] = FA_TIER_SALARY[tierIdx];
+        const salary = rng.intRange(salMin, salMax);
+        const [yMin, yMax] = FA_TIER_YEARS[tierIdx];
+        const contractYears = rng.intRange(yMin, yMax);
+        const contractType = FA_TIER_CONTRACT_TYPE[tierIdx];
+        const yearSalaries = Array.from({ length: contractYears }, (_, yr) =>
+            Math.round(salary * Math.pow(1.04, yr))
+        );
+
+        const id = `gen_${generateUUID(rng)}`;
+
+        players.push({
+            id,
+            user_id: userId,
+            season_number: 0,   // 초기 FA 풀 구분자 (드래프트 클래스와 구별)
+            draft_pick: null,
+            draft_team_id: null,
+            status: 'fa',
+            base_attributes: {
+                name,
+                position,
+                age,
+                salary,
+                contractYears,
+                ...attrs,
+                pot,
+                height,
+                weight,
+                contract: {
+                    years: yearSalaries,
+                    currentYear: 0,
+                    type: contractType,
+                },
+            },
+            age_at_draft: age,
+        });
+    }
+
+    return players;
 }

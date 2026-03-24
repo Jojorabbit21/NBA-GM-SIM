@@ -225,6 +225,63 @@ setSearchParams(params, { replace: true });
 
 > **`replace: true` 이유:** 필터 변경은 새 히스토리 항목을 만들면 안 된다. 뒤로가기가 "필터 변경 전"이 아니라 "이전 페이지"로 이동해야 한다.
 
+#### 라커룸 (DashboardPage) — `/locker-room`
+
+| Param | 값 예시 | 설명 |
+|---|---|---|
+| `tab` | `roster` | rotation(기본) / roster / records / opponent / schedule |
+
+#### 프론트 오피스 — `/front-office`
+
+| Param | 값 예시 | 설명 |
+|---|---|---|
+| `tab` | `payroll` | club(기본) / payroll / coaching / draftPicks |
+
+#### 순위표 — `/standings`
+
+| Param | 값 예시 | 설명 |
+|---|---|---|
+| `tab` | `Conference` | League(기본) / Conference / Division |
+
+#### FA 시장 — `/fa-market`
+
+| Param | 값 예시 | 설명 |
+|---|---|---|
+| `tab` | `roster` | market(기본) / roster |
+
+#### 트레이드 — `/transactions`
+
+| Param | 값 예시 | 설명 |
+|---|---|---|
+| `tab` | `Block` | Explore(기본) / Block / Scout / History |
+
+### `useTabParam` 훅
+
+탭 URL 동기화를 위한 공용 훅. `hooks/useTabParam.ts`.
+
+```ts
+const [activeTab, setActiveTab] = useTabParam<MyTab>('defaultTab');
+// /page        → activeTab = 'defaultTab'  (파라미터 없음)
+// /page?tab=X  → activeTab = 'X'
+```
+
+- 기본 탭은 URL에서 `?tab=` 파라미터를 제거해 깔끔하게 유지
+- `replace: true` — 탭 전환이 히스토리 스택에 쌓이지 않음 (뒤로가기 = 이전 페이지)
+- 같은 라우트에서 탭이 여러 계층인 경우 `key` 파라미터로 구분 가능:
+  ```ts
+  const [tab, setTab] = useTabParam<MainTab>('roster');           // ?tab=
+  const [sub, setSub] = useTabParam<SubTab>('depth', 'subtab');  // ?subtab=
+  ```
+
+**기존 `useState` 탭을 URL 기반으로 전환하는 방법:**
+```ts
+// 변경 전
+const [activeTab, setActiveTab] = useState<MyTab>('default');
+
+// 변경 후 (한 줄 교체)
+const [activeTab, setActiveTab] = useTabParam<MyTab>('default');
+```
+
 ### 새 페이지에 URL params 적용 시 체크리스트
 
 1. `useRef` 대신 `useSearchParams()` 사용

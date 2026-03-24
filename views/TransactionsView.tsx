@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { useTabParam } from '../hooks/useTabParam';
 import { Loader2 } from 'lucide-react';
 import { Team, Player, Transaction, GameTactics } from '../types';
 import { LeaguePickAssets } from '../types/draftAssets';
@@ -65,7 +66,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     leagueGMProfiles,
     seasonConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<TradeTabId>('Explore');
+  const [activeTab, setActiveTab] = useTabParam<TradeTabId>('Explore');
 
   const tradeSystem = useTradeSystem(
       team, teams, setTeams, currentSimDate,

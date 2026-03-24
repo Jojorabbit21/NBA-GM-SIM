@@ -26,6 +26,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | [playoff-system.md](playoff-system.md) | 플레이오프 브래킷/타이브레이커/일정 생성 | playoffLogic.ts, tiebreaker.ts, seasonService.ts |
 | [draft-lottery.md](draft-lottery.md) | NBA 2019+ 드래프트 로터리 추첨 시스템 | lotteryEngine.ts, offseasonEventHandler.ts |
 | [rookie-generator.md](rookie-generator.md) | 루키 생성 알고리즘 (60명 드래프트 클래스) | rookieGenerator.ts, rookieRepository.ts |
+| [initial-fa-pool.md](initial-fa-pool.md) | 게임 시작 시 초기 FA 풀 생성 (베테랑 65명, 3티어) | rookieGenerator.ts, useGameData.ts |
 
 ---
 
@@ -56,8 +57,8 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | 파일 | 문서 |
 |------|------|
 | lotteryEngine.ts | [draft-lottery.md](draft-lottery.md) |
-| rookieGenerator.ts | [rookie-generator.md](rookie-generator.md) |
-| rookieRepository.ts | [rookie-generator.md](rookie-generator.md) |
+| rookieGenerator.ts | [rookie-generator.md](rookie-generator.md), [initial-fa-pool.md](initial-fa-pool.md) |
+| rookieRepository.ts | [rookie-generator.md](rookie-generator.md), [initial-fa-pool.md](initial-fa-pool.md) |
 
 ### 트레이드 (`services/tradeEngine/`)
 | 파일 | 문서 |

@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { useTabParam } from '../hooks/useTabParam';
 import { Team, Game } from '../types';
 import { Loader2 } from 'lucide-react';
 import { TabBar } from '../components/common/TabBar';
@@ -35,7 +36,7 @@ interface RankedTeam {
 }
 
 export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, onTeamClick }) => {
-    const [mode, setMode] = useState<StandingsMode>('League');
+    const [mode, setMode] = useTabParam<StandingsMode>('League');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pct', direction: 'desc' });
 
     // Compute extended stats

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useTabParam } from '../hooks/useTabParam';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
@@ -184,7 +185,7 @@ export const FAView: React.FC<FAViewProps> = ({
     onViewPlayer,
     currentDate = '',
 }) => {
-    const [activeTab, setActiveTab]       = useState<'market' | 'roster'>('market');
+    const [activeTab, setActiveTab]       = useTabParam<'market' | 'roster'>('market');
     const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
     const [statusFilter, setStatusFilter] = useState<'available' | 'all'>('available');
     const [sortBy, setSortBy]             = useState<'ovr' | 'salary' | 'score'>('ovr');
@@ -208,9 +209,6 @@ export const FAView: React.FC<FAViewProps> = ({
     const [faSessionStates, setFaSessionStates] = useState<Record<string, { round: number; result: { accepted: boolean; reason?: string } | null }>>({});
 
 
-    const handleTabChange = (tab: 'market' | 'roster') => {
-        setActiveTab(tab);
-    };
 
     const market = leagueFAMarket;
     const usedMLE = market?.usedMLE ?? {};
@@ -288,11 +286,11 @@ export const FAView: React.FC<FAViewProps> = ({
             <div className="flex-shrink-0 px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14">
                 <div className="flex items-center gap-8 h-full">
                     <button
-                        onClick={() => handleTabChange('market')}
+                        onClick={() => setActiveTab('market')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'market' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >FA 시장</button>
                     <button
-                        onClick={() => handleTabChange('roster')}
+                        onClick={() => setActiveTab('roster')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'roster' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         내 로스터

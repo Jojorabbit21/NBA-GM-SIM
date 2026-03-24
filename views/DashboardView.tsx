@@ -1,5 +1,6 @@
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useCallback } from 'react';
+import { useTabParam } from '../hooks/useTabParam';
 import { Team, Game, Player, GameTactics, DepthChart } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -27,7 +28,6 @@ interface DashboardViewProps {
   userId?: string;
   onViewGameResult?: (result: any) => void;
   coachingData?: LeagueCoachingData | null;
-  initialTab?: DashboardTab;
   onCoachClick?: (teamId: string) => void;
   seasonStartYear?: number;
 }
@@ -38,11 +38,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
-  userId, onViewGameResult, coachingData, initialTab, onCoachClick, seasonStartYear
+  userId, onViewGameResult, coachingData, onCoachClick, seasonStartYear
 }) => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'rotation');
-
-  useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
+  const [activeTab, setActiveTab] = useTabParam<DashboardTab>('rotation');
 
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
