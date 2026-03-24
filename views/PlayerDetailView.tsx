@@ -412,7 +412,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     const endIdx = Math.min(totalRows, startIdx + visibleCount);
 
     return (
-        <div className="relative overflow-hidden" style={{ contain: 'strict' }}>
+        <div className="relative overflow-hidden h-full" style={{ contain: 'strict' }}>
             <div
                 ref={scrollRef}
                 className="absolute inset-0 overflow-y-auto"
@@ -889,7 +889,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
                                 (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
                             );
-                            const allAwards = [...historicalAwards, ...(player.awards ?? [])];
+                            const allAwards = [...historicalAwards, ...(player.awards ?? [])].filter(Boolean);
                             if (allAwards.length === 0) return null;
                             return (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -1158,7 +1158,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 위젯 D: 샷차트 + 구역별 야투 기록 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="샷 차트" style={sectionBg}>
-                                <div className="flex items-center rounded-lg overflow-hidden border border-white/20 text-[10px] font-bold">
+                                <div className="flex items-center rounded-lg overflow-hidden border border-white/20 text-xs font-bold">
                                     <button
                                         onClick={() => setShotChartMode('efficiency')}
                                         className="px-2.5 py-1 transition-colors"

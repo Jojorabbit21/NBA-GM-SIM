@@ -8,6 +8,7 @@ body {
     background-color: #0f172a;
     color: #f8fafc;
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
 }
 
 .text-huge { font-size: clamp(3rem, 8vw, 6rem); line-height: 0.9; }
