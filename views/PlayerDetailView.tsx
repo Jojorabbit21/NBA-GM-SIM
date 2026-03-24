@@ -1142,7 +1142,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 위젯 C: 최근 경기 ── */}
                         {!gameLogLoading && gameLog && gameLog.length > 0 && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="최근 경기" style={sectionBg} />
-                            <div style={{ height: '400px' }} className="relative">
+                            <div style={{ height: Math.min(gameLog.length * ROW_HEIGHT + ROW_HEIGHT, 400) }} className="relative">
                                 <VirtualGameLog
                                     gameLog={gameLog}
                                     gameLogLoading={gameLogLoading}
