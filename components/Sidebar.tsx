@@ -43,13 +43,15 @@ const NavItem: React.FC<{
   iconColor: string;
   activeIconColor: string;
   whiteBg?: boolean;
-}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, whiteBg }) => {
+  buttonRef?: React.RefObject<HTMLButtonElement>;
+}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, activeIconColor, whiteBg, buttonRef }) => {
   const selectedBg = whiteBg ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
   const hoverCls = whiteBg
     ? 'hover:bg-[rgba(255,255,255,0.1)] hover:outline-[rgba(255,255,255,0.2)]'
     : 'hover:bg-[rgba(0,0,0,0.15)] hover:outline-[rgba(0,0,0,0.2)]';
   return (
   <button
+    ref={buttonRef}
     onClick={onClick}
     title={label}
     className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 outline outline-2 outline-transparent ${
@@ -112,9 +114,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   // 선택(active) 아이콘: Figma {TEAM}/accent 기준, 기본 #ffffff
   const activeIconColor = team ? (SIDEBAR_SELECTED_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
-
-  // 선택 버튼 배경: tertiary 우선, 없으면 secondary (Figma 기준)
-  const activeBg = teamStatic?.colors?.tertiary ?? teamStatic?.colors?.secondary ?? 'rgba(255,255,255,0.2)';
 
   // 프로필 드롭다운 외부 클릭 닫기
   useEffect(() => {
@@ -207,17 +206,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         >
           {/* 프로필 버튼 (드롭다운 위 방향 오픈) */}
           <div ref={menuRef} className="relative">
-            <button
-              ref={profileBtnRef}
+            <Nav
+              active={isMenuOpen}
+              icon={<CircleUser />}
+              label={userEmail || '프로필'}
               onClick={handleProfileClick}
-              title={userEmail || '프로필'}
-              className={`w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 outline outline-2 outline-transparent ${
-                isMenuOpen ? '' : 'hover:bg-black/15 hover:outline-black/25'
-              }`}
-              style={isMenuOpen ? { backgroundColor: activeBg } : undefined}
-            >
-              <CircleUser size={24} color={isMenuOpen ? '#ffffff' : iconColor} />
-            </button>
+              buttonRef={profileBtnRef}
+            />
 
             {/* 드롭다운 — Portal로 body에 렌더링 (스태킹 컨텍스트 탈출) */}
             {isMenuOpen && createPortal(
@@ -297,13 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           </div>
 
           {/* 시뮬레이션 설정 버튼 */}
-          <button
-            onClick={onSimSettingsClick}
-            title="시뮬레이션 설정"
-            className="w-full flex items-center justify-center p-2 rounded-[4px] transition-all duration-150 outline outline-2 outline-transparent hover:bg-black/15 hover:outline-black/25"
-          >
-            <Settings size={24} color={iconColor} />
-          </button>
+          <Nav active={false} icon={<Settings />} label="시뮬레이션 설정" onClick={onSimSettingsClick} />
         </div>
       </aside>
 

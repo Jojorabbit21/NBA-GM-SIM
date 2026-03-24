@@ -1,18 +1,18 @@
 
 // Shared team color theme logic (used by Sidebar + DashboardHeader)
 
-// 사이드바 비선택 아이콘 색상 — Figma 우선순위: secondary > tertiary > accent/text(#fff)
+// 사이드바 비선택 아이콘 색상 — Figma Colors.tokens.json {TEAM}/secondary
 export const SIDEBAR_ICON_COLORS: Record<string, string> = {
-    'atl': '#ffc72c', 'bos': '#ffffff', 'bkn': '#ffffff',
-    'cha': '#ffffff', 'chi': '#ffffff', 'cle': '#ffb81c',
-    'dal': '#BBC4CA', 'den': '#FEC524', 'det': '#ffffff',
-    'gs':  '#FDB927', 'hou': '#ffffff', 'ind': '#FDBB30',
-    'law': '#d50032', 'lam': '#FDB927', 'mem': '#ffffff',
-    'mia': '#F9A01B', 'mil': '#EEE1C6', 'min': '#79BC43',
-    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#ffffff',
-    'orl': '#ffffff', 'phi': '#ffffff', 'phx': '#E56020',
-    'por': '#ffffff', 'sac': '#ffffff', 'sa':  '#C4CED4',
-    'tor': '#ffffff', 'uta': '#7BA4DB', 'was': '#C4CED4',
+    'atl': '#FFC72C', 'bos': '#BA9653', 'bkn': '#CD1041',
+    'cha': '#280071', 'chi': '#000000', 'cle': '#FFB81C',
+    'dal': '#002B5E', 'den': '#8B2131', 'det': '#1D42BA',
+    'gs':  '#FDB927', 'hou': '#C4CED4', 'ind': '#FDBB30',
+    'law': '#D50032', 'lam': '#FDB927', 'mem': '#12173F',
+    'mia': '#010101', 'mil': '#EEE1C6', 'min': '#236192',
+    'no':  '#B4975A', 'nyk': '#F58426', 'okc': '#007AC1',
+    'orl': '#C4CED4', 'phi': '#C8102E', 'phx': '#E56020',
+    'por': '#000000', 'sac': '#707272', 'sa':  '#C4CED4',
+    'tor': '#010101', 'uta': '#7BA4DB', 'was': '#002B5C',
 };
 
 // 사이드바 선택(active) 아이콘 색상 — 피그마 기준 전 팀 #ffffff (기본값)
