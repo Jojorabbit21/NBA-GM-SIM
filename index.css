@@ -4,10 +4,18 @@
 @tailwind utilities;
 
 /* 커스텀 스크롤바 스타일 (기존 index.html의 스타일 이관) */
+html {
+    overscroll-behavior: none;
+}
+
 body {
     background-color: #0f172a;
     color: #f8fafc;
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+}
+
+* {
     overscroll-behavior: none;
 }
 
