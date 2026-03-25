@@ -1,23 +1,16 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
-import { Team, Game, Player, Transaction } from '../types';
+import { Team, Game, Player } from '../types';
 import { DepthChart } from '../types/tactics';
 import { OffseasonPhase } from '../types/app';
 import { MessageListItem } from '../types/message';
 import { SavedTeamFinances } from '../types/finance';
-import { LeagueTradeBlocks } from '../types/trade';
-import { LeagueGMProfiles } from '../types/gm';
 import { computeStandingsStats } from '../utils/standingsStats';
 import { calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
 import { fetchMessageList } from '../services/messageService';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { ExploreWidget } from '../components/transactions/widgets/ExploreWidget';
-import { TradeBlockWidget } from '../components/transactions/widgets/TradeBlockWidget';
-import { TradeHistoryWidget } from '../components/transactions/widgets/TradeHistoryWidget';
-import { TradeBlockEntry } from '../types/trade';
-import { DraftPickAsset } from '../types/draftAssets';
 
 interface HomeViewProps {
     team: Team;
@@ -32,18 +25,6 @@ interface HomeViewProps {
     depthChart?: DepthChart | null;
     onNavigate: (view: string, messageId?: string) => void;
     onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
-    // 트레이드 위젯용 (선택적)
-    transactions?: Transaction[];
-    leagueTradeBlocks?: LeagueTradeBlocks;
-    leagueGMProfiles?: LeagueGMProfiles;
-    userBlockEntries?: TradeBlockEntry[];
-    togglePersistentBlockPlayer?: (playerId: string) => void;
-    userPicks?: DraftPickAsset[];
-    incomingOfferCount?: number;
-    isTradeDeadlinePassed?: boolean;
-    isTradeLimitReached?: boolean;
-    dailyTradeAttempts?: number;
-    maxDailyTrades?: number;
 }
 
 const SectionHeader: React.FC<{
@@ -77,17 +58,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     depthChart,
     onNavigate,
     onViewPlayer,
-    transactions,
-    leagueTradeBlocks,
-    leagueGMProfiles,
-    userBlockEntries,
-    togglePersistentBlockPlayer,
-    userPicks,
-    incomingOfferCount = 0,
-    isTradeDeadlinePassed = false,
-    isTradeLimitReached = false,
-    dailyTradeAttempts = 0,
-    maxDailyTrades = 3,
 }) => {
     const [recentMessages, setRecentMessages] = useState<MessageListItem[]>([]);
     const [inboxPage, setInboxPage] = useState(0);
@@ -587,48 +557,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         </div>
                     </div>
 
-                    {/* ── 트레이드 위젯 ── */}
-                    {userBlockEntries && togglePersistentBlockPlayer && (
-                        <TradeBlockWidget
-                            team={team}
-                            teams={teams}
-                            userBlockEntries={userBlockEntries}
-                            togglePersistentBlockPlayer={togglePersistentBlockPlayer}
-                            leagueTradeBlocks={leagueTradeBlocks}
-                            leagueGMProfiles={leagueGMProfiles}
-                            incomingOfferCount={incomingOfferCount}
-                            isTradeDeadlinePassed={isTradeDeadlinePassed}
-                            onViewPlayer={p => onViewPlayer(p)}
-                            onOpenFullView={() => onNavigate('Transactions')}
-                        />
-                    )}
-
-                    {transactions !== undefined && (
-                        <TradeHistoryWidget
-                            transactions={transactions}
-                            teamId={team.id}
-                            teams={teams}
-                            currentSimDate={currentSimDate}
-                            maxItems={5}
-                            myTeamOnly={true}
-                            onOpenFullView={() => onNavigate('Transactions')}
-                        />
-                    )}
-
-                    {userPicks !== undefined && (
-                        <ExploreWidget
-                            team={team}
-                            teams={teams}
-                            userPicks={userPicks}
-                            isTradeDeadlinePassed={isTradeDeadlinePassed}
-                            dailyTradeAttempts={dailyTradeAttempts}
-                            maxDailyTrades={maxDailyTrades}
-                            isTradeLimitReached={isTradeLimitReached}
-                            onAcceptOffer={() => onNavigate('Transactions')}
-                            onViewPlayer={p => onViewPlayer(p)}
-                            onOpenFullView={() => onNavigate('Transactions')}
-                        />
-                    )}
                 </div>
             </div>
         </div>
