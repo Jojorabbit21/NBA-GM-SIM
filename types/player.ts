@@ -259,6 +259,7 @@ export interface Player {
     contract?: PlayerContract;
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
     teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
+    prevSeasonStats?: PrevSeasonStats; // 직전 시즌 성적 (생성 선수용, FA 가치 산정에 활용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
     popularity?: PlayerPopularity;          // 런타임, 저장 경로: SavedPlayerState
     morale?: PlayerMorale;                  // 런타임, 저장 경로: SavedPlayerState
@@ -300,6 +301,19 @@ export interface CareerSeasonStat {
     playoff?: boolean;
     // 해당 시즌 수상 내역 (BBRef 기반 과거 이력, 시뮬 수상은 Player.awards에 별도 저장)
     awards?: PlayerAwardEntry[];
+}
+
+export interface PrevSeasonStats {
+    gp: number;
+    mpg: number;
+    ppg: number;
+    rpg: number;
+    apg: number;
+    spg: number;
+    bpg: number;
+    fgPct: number;
+    fg3Pct: number;
+    ftPct: number;
 }
 
 export interface RosterUpdate {

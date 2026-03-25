@@ -46,6 +46,8 @@ export interface FAUserOffer {
 export interface FAMarketEntry {
     playerId: string;
     prevTeamId?: string;   // FA 등록 직전 소속팀 ID (Bird Rights 판정용)
+    prevTeamTenure?: number; // Bird Rights 판정용 — teamTenure 리셋 전 값 (계약 만료 선수)
+    isBuyout?: boolean;    // 방출(waive/buyout/stretch) 출신 여부 — 에이프런 영입 제한 적용
 
     // 선수 요구 조건 (FA 시장 개막 시 계산, 고정)
     askingYears: number;

@@ -444,8 +444,22 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     const slots = useMemo(() => {
         if (!isFA || !faEntry) return [] as SigningType[];
-        return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE);
+        return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE, faEntry.isBuyout, faEntry.prevTeamTenure);
     }, [isFA, faEntry, myTeam, player, usedMLE]);
+
+    const buyoutRestriction = useMemo(() => {
+        if (!faEntry?.isBuyout || !isFA) return null;
+        const payroll = calcTeamPayroll(myTeam);
+        if (payroll >= LEAGUE_FINANCIALS.SECOND_APRON) return 'second_apron' as const;
+        if (payroll >= LEAGUE_FINANCIALS.FIRST_APRON)  return 'first_apron' as const;
+        return null;
+    }, [faEntry, isFA, myTeam]);
+
+    // 2023 CBA: Second Apron 초과 팀은 신규 계약에 NTC 삽입 불가
+    const isAboveSecondApron = useMemo(() => {
+        if (!isFA) return false;
+        return calcTeamPayroll(myTeam) >= LEAGUE_FINANCIALS.SECOND_APRON;
+    }, [isFA, myTeam]);
 
     const [selectedSlot, setSelectedSlot]   = useState<SigningType>(() => slots[0] ?? 'vet_min');
     const [faOfferSalaries, setFaOfferSalaries] = useState<number[]>(() => {
@@ -698,7 +712,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 option:      faContractOption !== 'none' && faOfferYears >= 2
                     ? { type: faContractOption as 'player' | 'team', year: faOfferYears - 1 }
                     : undefined,
-                noTrade:     faNoTrade && selectedSlot === 'bird_full' ? true : undefined,
+                noTrade:     faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron ? true : undefined,
                 tradeKicker: faTradeKicker > 0 && selectedSlot !== 'vet_min' ? faTradeKicker : undefined,
             },
             tendencySeed, currentSeasonYear,
@@ -711,7 +725,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             const faSigningMsg = buildGMSigningMessage(
                 'fa', player.name, faOfferYears, faOfferAAV, totalContractValue,
                 faContractOption !== 'none' && faOfferYears >= 2 ? { type: faContractOption as 'player' | 'team' } : null,
-                faNoTrade && selectedSlot === 'bird_full', faTradeKicker > 0 ? faTradeKicker : undefined,
+                faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron, faTradeKicker > 0 ? faTradeKicker : undefined,
             );
             addMsg('gm', faSigningMsg);
             // 선수 맺음말
@@ -1367,14 +1381,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         <span className="font-mono text-white">{fmtM(faOfferAAV)}</span>
                                     </div>
                                 </div>
-                                <div className="text-xs text-center">
-                                    {faIsAboveAsking
-                                        ? <span className="text-emerald-400">✓ 요구 이상 — 높은 수락 확률</span>
-                                        : faIsBelowWalkaway
-                                        ? <span className="text-red-400">✗ 최저선 미달 — 거절 확정</span>
-                                        : <span className="text-slate-500">협상 구간 · 요구 {fmtM(faEntry.askingSalary)}</span>
-                                    }
-                                </div>
                             </div>
 
                             {/* ── 계약 조건 옵션 ── */}
@@ -1417,16 +1423,23 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                             })}
                                         </div>
                                     )}
-                                    {/* 트레이드 거부권 (bird_full 전용) */}
-                                    {selectedSlot === 'bird_full' && (
+                                    {/* 트레이드 거부권 (vet_min 제외, Second Apron 초과 팀 불가) */}
+                                    {selectedSlot !== 'vet_min' && (
                                         <div className="py-3 space-y-0.5">
-                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 거부권</div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">트레이드 거부권</div>
+                                                {isAboveSecondApron && (
+                                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 uppercase tracking-wider">2nd 에이프런 제한</span>
+                                                )}
+                                            </div>
                                             {[false, true].map(val => {
-                                                const active = faNoTrade === val;
+                                                const disabled = isAboveSecondApron;
+                                                const active = faNoTrade === val && !disabled;
                                                 return (
-                                                    <label key={String(val)} className="flex items-center gap-2 py-0.5 cursor-pointer group">
-                                                        <input type="radio" checked={active} onChange={() => setFaNoTrade(val as boolean)}
-                                                            className="w-3 h-3 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
+                                                    <label key={String(val)} className={`flex items-center gap-2 py-0.5 ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer group'}`}>
+                                                        <input type="radio" checked={!disabled && faNoTrade === val} disabled={disabled}
+                                                            onChange={() => !disabled && setFaNoTrade(val as boolean)}
+                                                            className="w-3 h-3 appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2px_rgb(2,6,23)] transition-colors flex-shrink-0" />
                                                         <span className={`text-xs transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>{val ? '포함' : '미포함'}</span>
                                                     </label>
                                                 );
@@ -1440,6 +1453,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             {faResult && !faResult.accepted && !cooldownActive && (
                                 <div className="flex-shrink-0 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-400">
                                     {faResult.reason ?? '거절됨 — 조건을 수정해 재협상하세요.'}
+                                </div>
+                            )}
+
+                            {/* 바이아웃 선수 에이프런 영입 제한 배너 */}
+                            {buyoutRestriction === 'second_apron' && (
+                                <div className="flex-shrink-0 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-400">
+                                    2차 에이프런 초과 팀은 바이아웃 선수를 영입할 수 없습니다.
+                                </div>
+                            )}
+                            {buyoutRestriction === 'first_apron' && (
+                                <div className="flex-shrink-0 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400">
+                                    1차 에이프런 초과 팀은 바이아웃 선수에게 MLE를 사용할 수 없습니다. 베테랑 미니멈 계약만 가능합니다.
                                 </div>
                             )}
 

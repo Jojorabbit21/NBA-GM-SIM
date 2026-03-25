@@ -347,8 +347,17 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         // 올타임 드래프트 풀 포함 여부 (기본 true, false면 제외)
         includeAlltime: raw.include_alltime !== false,
 
-        // FA 시스템: YOS 역산용 드래프트 연도 (meta_players.draft_year row-level 컬럼)
-        draftYear: raw.draft_year != null ? Number(raw.draft_year) : undefined,
+        // FA 시스템: YOS 역산용 드래프트 연도
+        // row-level draft_year 우선 (meta_players), 없으면 base_attributes.draft_year (생성 선수)
+        draftYear: raw.draft_year != null
+            ? Number(raw.draft_year)
+            : (baseAttrs.draft_year != null ? Number(baseAttrs.draft_year) : undefined),
+
+        // 현재 팀 재직 연수 (base_attributes.prev_team_tenure, FA 가입 전 히스토리용)
+        teamTenure: baseAttrs.prev_team_tenure != null ? Number(baseAttrs.prev_team_tenure) : undefined,
+
+        // 직전 시즌 성적 (생성 선수용)
+        prevSeasonStats: baseAttrs.prev_season_stats ?? undefined,
 
         // 커리어 스탯 (meta_players.career_history JSONB)
         career_history: Array.isArray(raw.career_history) ? raw.career_history : undefined,

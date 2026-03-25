@@ -15,7 +15,7 @@
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
-import { PlayerContract } from '../../types/player';
+import { PlayerContract, PrevSeasonStats } from '../../types/player';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ── 상수 ──
@@ -526,6 +526,121 @@ function generateUUID(rng: SeededRandom): string {
     }).join('-');
 }
 
+// ── 초기 FA 풀 히스토리 생성 헬퍼 ──
+
+/**
+ * 포지션/티어별 NBA 입단 나이 추정
+ * High 티어(tierIdx=0)는 일찍 입단하는 경향, Low 티어는 늦은 경향
+ */
+function getEntryAge(position: string, tierIdx: number, rng: SeededRandom): number {
+    // 포지션별 기본 범위 (min, max)
+    const posRanges: Record<string, [number, number]> = {
+        PG: [19, 22],
+        SG: [19, 22],
+        SF: [19, 23],
+        PF: [19, 23],
+        C: [20, 23],
+    };
+    const [minAge, maxAge] = posRanges[position] ?? [19, 23];
+    // 티어가 높을수록(0) 일찍 입단 (min~min+1), 낮을수록 늦게 입단 (max-1~max)
+    const tierBias = tierIdx === 0 ? -1 : tierIdx === 1 ? 0 : 1;
+    const biasedMin = clamp(minAge + tierBias, minAge, maxAge - 1);
+    const biasedMax = clamp(maxAge + tierBias, biasedMin + 1, maxAge);
+    return rng.intRange(biasedMin, biasedMax);
+}
+
+/**
+ * OVR + YOS 기반 직전 계약 연봉 추정
+ * YOS가 많을수록 최대 10% 가산
+ */
+function calcPrevSalary(ovr: number, yos: number, cap: number, rng: SeededRandom): number {
+    let baseRatioMin: number;
+    let baseRatioMax: number;
+    if (ovr >= 85) {
+        baseRatioMin = 0.25; baseRatioMax = 0.35;
+    } else if (ovr >= 75) {
+        baseRatioMin = 0.10; baseRatioMax = 0.20;
+    } else if (ovr >= 65) {
+        baseRatioMin = 0.04; baseRatioMax = 0.10;
+    } else {
+        baseRatioMin = 0.02; baseRatioMax = 0.05;
+    }
+    const baseRatio = baseRatioMin + rng.next() * (baseRatioMax - baseRatioMin);
+    // YOS 가산: 연수당 0.5%, 최대 10%
+    const yosBonusRatio = Math.min(yos * 0.005, 0.10);
+    const totalRatio = baseRatio + yosBonusRatio;
+    return Math.round(cap * totalRatio);
+}
+
+/**
+ * 능력치 기반 직전 시즌 성적 생성
+ * attrs: buildAttrMap 결과 (SKILL_KEYS 기반 단축키), position, ovr, rng
+ */
+function generatePrevSeasonStats(
+    attrs: Record<string, number>,
+    position: string,
+    ovr: number,
+    rng: SeededRandom
+): PrevSeasonStats {
+    // ±15% 분산 적용 헬퍼
+    const vary = (val: number): number => {
+        const factor = 1 + (rng.next() * 0.30 - 0.15);
+        return Math.max(0, val * factor);
+    };
+
+    // GP: 40~75 (부상 가능성 반영)
+    const gp = rng.intRange(40, 75);
+
+    // MPG: OVR 기반 기대 출전시간 (15~36분)
+    const baseMpg = ovr >= 80 ? 30 : ovr >= 70 ? 24 : ovr >= 60 ? 20 : 16;
+    const mpg = clamp(Math.round(vary(baseMpg)), 15, 36);
+
+    // PPG: closeShot/layup/dunk/mid + scoring 능력치 기반
+    const scoringBase = (
+        (attrs['close'] ?? 60) * 0.20 +
+        (attrs['lay'] ?? 60) * 0.20 +
+        (attrs['mid'] ?? 60) * 0.15 +
+        (attrs['3t'] ?? 55) * 0.10 +
+        (attrs['dnk'] ?? 55) * 0.15 +
+        (attrs['siq'] ?? 60) * 0.20
+    );
+    const ppgScale = mpg / 36;
+    const ppg = clamp(Math.round(vary((scoringBase - 50) / 4 * ppgScale + 8 * ppgScale) * 10) / 10, 2, 35);
+
+    // RPG: offReb + defReb 기반, 빅맨 보너스
+    const rebBase = ((attrs['oreb'] ?? 55) + (attrs['dreb'] ?? 55)) / 2;
+    const posFactor = position === 'C' ? 1.4 : position === 'PF' ? 1.2 : position === 'SF' ? 0.9 : 0.6;
+    const rpg = clamp(Math.round(vary((rebBase - 50) / 6 * posFactor + 5 * posFactor) * 10) / 10, 0.5, 15);
+
+    // APG: passAcc + passIq 기반, 가드 보너스
+    const passBase = ((attrs['pacc'] ?? 55) + (attrs['piq'] ?? 55)) / 2;
+    const guardFactor = position === 'PG' ? 1.5 : position === 'SG' ? 0.9 : position === 'SF' ? 0.7 : 0.4;
+    const apg = clamp(Math.round(vary((passBase - 50) / 5 * guardFactor + 4 * guardFactor) * 10) / 10, 0.5, 12);
+
+    // SPG: perDef + steal 기반
+    const stlBase = ((attrs['pdef'] ?? 55) + (attrs['stl'] ?? 55)) / 2;
+    const spg = clamp(Math.round(vary((stlBase - 50) / 15 + 0.9) * 10) / 10, 0.3, 3.0);
+
+    // BPG: intDef + blk 기반, 센터 보너스
+    const blkBase = ((attrs['idef'] ?? 55) + (attrs['blk'] ?? 55)) / 2;
+    const centerFactor = position === 'C' ? 1.5 : position === 'PF' ? 1.1 : 0.5;
+    const bpg = clamp(Math.round(vary((blkBase - 50) / 15 * centerFactor + 0.6 * centerFactor) * 10) / 10, 0.1, 3.5);
+
+    // FG%: closeShot + layup + shotIq 기반
+    const fgBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
+    const fgPct = clamp(Math.round(vary(fgBase / 200 + 0.38) * 1000) / 1000, 0.35, 0.65);
+
+    // 3P%: 3c + 3_45 + 3t 기반
+    const threeBase = ((attrs['3c'] ?? 50) + (attrs['3_45'] ?? 50) + (attrs['3t'] ?? 50)) / 3;
+    const fg3Pct = clamp(Math.round(vary(threeBase / 300 + 0.28) * 1000) / 1000, 0.20, 0.45);
+
+    // FT%: ft 기반
+    const ftBase = attrs['ft'] ?? 70;
+    const ftPct = clamp(Math.round(vary(ftBase / 140 + 0.45) * 1000) / 1000, 0.40, 0.95);
+
+    return { gp, mpg, ppg, rpg, apg, spg, bpg, fgPct, fg3Pct, ftPct };
+}
+
 // ── 초기 FA 풀 생성 ──
 
 export const DEFAULT_FA_POOL_SIZE = 65;
@@ -550,14 +665,16 @@ const FA_TIER_WEIGHTS = [0.20, 0.45, 0.35]; // high / mid / low
  * 3개 티어(High/Mid/Low)에 따라 능력치·나이·계약이 결정된다.
  * season_number = 0 으로 드래프트 클래스와 구분.
  *
- * @param userId  사용자 ID
- * @param seed    tendencySeed (결정론적 시드)
- * @param count   생성할 선수 수 (기본 65)
+ * @param userId            사용자 ID
+ * @param seed              tendencySeed (결정론적 시드)
+ * @param count             생성할 선수 수 (기본 65)
+ * @param currentSeasonYear 현재 시즌 시작 연도 (draft_year 역산용, 예: 2025)
  */
 export function generateInitialFAPool(
     userId: string,
     seed: string,
-    count: number = DEFAULT_FA_POOL_SIZE
+    count: number = DEFAULT_FA_POOL_SIZE,
+    currentSeasonYear: number = 2025
 ): GeneratedPlayerRow[] {
     const rng = new SeededRandom(`${seed}_init_fa`);
     const players: GeneratedPlayerRow[] = [];
@@ -601,6 +718,25 @@ export function generateInitialFAPool(
             Math.round(salary * Math.pow(1.04, yr))
         );
 
+        // ── 히스토리 데이터 생성 ──
+
+        // OVR 근사: baseLevel을 기반으로 간단 추정 (정확한 calculateOvr 대신)
+        const approxOvr = clamp(baseLevel + (tierIdx === 0 ? 8 : tierIdx === 1 ? 2 : -4), 40, 95);
+
+        // 서비스 타임 계산
+        const entryAge = getEntryAge(position, tierIdx, rng);
+        const yos = Math.max(1, age - entryAge); // 최소 1년 보장
+        const draftYear = currentSeasonYear - yos;
+
+        // 직전 계약 연봉
+        const prevSalary = calcPrevSalary(approxOvr, yos, LEAGUE_FINANCIALS.SALARY_CAP, rng);
+
+        // 직전 팀 tenure: 1 ~ min(4, yos)
+        const prevTeamTenure = Math.max(1, rng.intRange(1, Math.min(4, yos)));
+
+        // 직전 시즌 성적
+        const prevSeasonStats = generatePrevSeasonStats(attrs, position, approxOvr, rng);
+
         const id = `gen_${generateUUID(rng)}`;
 
         players.push({
@@ -625,6 +761,11 @@ export function generateInitialFAPool(
                     currentYear: 0,
                     type: contractType,
                 },
+                // 히스토리 필드 (mapRawPlayerToRuntimePlayer에서 Player로 매핑)
+                draft_year: draftYear,
+                prev_salary: prevSalary,
+                prev_team_tenure: prevTeamTenure,
+                prev_season_stats: prevSeasonStats,
             },
             age_at_draft: age,
         });

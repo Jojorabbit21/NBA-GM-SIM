@@ -932,7 +932,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         let initialFAMarket: LeagueFAMarket | null = null;
         if (session?.user?.id) {
             try {
-                const faRows = generateInitialFAPool(session.user.id, newSeed);
+                const faSeasonYear = new Date(INITIAL_DATE).getFullYear();
+                const faRows = generateInitialFAPool(session.user.id, newSeed, undefined, faSeasonYear);
                 await insertDraftClass(faRows);
 
                 const faPlayerObjects = faRows.map(row => mapRawPlayerToRuntimePlayer({

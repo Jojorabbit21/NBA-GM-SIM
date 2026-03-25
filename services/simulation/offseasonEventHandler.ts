@@ -45,6 +45,7 @@ export interface OffseasonEventResult {
         offseasonProcessed?: OffseasonResult;  // 에이징/은퇴/계약만료/옵션 결과
         expiredPlayerObjects?: Team['roster'];  // 계약 만료 선수 전체 Player 객체 (FA 시장 개설용)
         prevTeamIdMap?: Record<string, string>; // playerId → 계약 만료 직전 팀 ID (Bird Rights 판정용)
+        prevTenureMap?: Record<string, number>; // playerId → teamTenure 리셋 전 값 (Bird Rights 판정용)
         faMarketClosed?: boolean;               // FA 시장 마감 신호 (CPU 자동 서명 트리거)
         luxuryTaxResult?: {                     // 럭셔리 택스 정산 결과
             myTeamTax: number;
@@ -345,13 +346,17 @@ function handleMoratoriumStart(
     }
 
     // FA 선수 전체 객체 수집 (로스터 필터링 전 — FA 시장 개설 시 사용)
+    // prevTenureMap: teamTenure는 processOffseason()에서 0으로 리셋되므로
+    // 로스터 필터링 전(리셋 전) 값을 여기서 스냅샷해 Bird Rights 판정에 사용한다
     const expiredPlayerObjects: Team['roster'] = [];
     const prevTeamIdMap: Record<string, string> = {};
+    const prevTenureMap: Record<string, number> = {};
     for (const team of teams) {
         for (const player of team.roster) {
             if (removeIds.has(player.id) && !offseasonResult.retiredPlayers.some(r => r.playerId === player.id)) {
                 expiredPlayerObjects.push(player);
                 prevTeamIdMap[player.id] = team.id;
+                prevTenureMap[player.id] = player.teamTenure ?? 0;
             }
         }
     }
@@ -377,6 +382,7 @@ function handleMoratoriumStart(
             offseasonProcessed: offseasonResult,
             expiredPlayerObjects,
             prevTeamIdMap,
+            prevTenureMap,
         },
     };
 }

@@ -554,6 +554,7 @@ export async function runBatchSeason(
                     seasonLabel,
                     tendencySeed ?? '',
                     u.prevTeamIdMap,
+                    u.prevTenureMap,
                 );
                 activeFAMarket.players = u.expiredPlayerObjects;
 

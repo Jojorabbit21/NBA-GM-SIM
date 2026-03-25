@@ -53,10 +53,22 @@ export function getAvailableSigningSlots(
     player: Player,
     playerPrevTeamId: string | undefined,
     usedMLE: Record<string, boolean>,
+    isBuyout?: boolean,
+    prevTeamTenure?: number,  // Bird Rights 판정용 — teamTenure 리셋 전 값 (FAMarketEntry.prevTeamTenure)
 ): SigningType[] {
     const slots: SigningType[] = [];
     const payroll = calcTeamPayroll(team);
     const { SALARY_CAP, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
+
+    // 바이아웃 선수 에이프런 영입 제한
+    if (isBuyout) {
+        if (payroll >= SECOND_APRON) return [];   // 2차 에이프런 초과: 완전 불가
+        if (payroll >= FIRST_APRON) {             // 1차 에이프런 초과: vet_min만 가능
+            if (payroll < SALARY_CAP) slots.push('cap_space');
+            slots.push('vet_min');
+            return slots;
+        }
+    }
 
     // 캡 스페이스
     if (payroll < SALARY_CAP) slots.push('cap_space');
@@ -69,8 +81,11 @@ export function getAvailableSigningSlots(
     }
 
     // Bird Rights (자팀 FA만)
+    // prevTeamTenure 우선 사용 — teamTenure는 processOffseason()에서 0으로 리셋되므로
+    // FA 등록 시점에 저장해 둔 prevTeamTenure(리셋 전 값)를 Bird Rights 판정 기준으로 삼는다
     if (playerPrevTeamId === team.id) {
-        const bird = getBirdRightsLevel(player.teamTenure ?? 0);
+        const tenureForBird = prevTeamTenure ?? player.teamTenure ?? 0;
+        const bird = getBirdRightsLevel(tenureForBird);
         if (bird === 'full')  slots.push('bird_full');
         if (bird === 'early') slots.push('bird_early');
         if (bird === 'non')   slots.push('bird_non');
@@ -143,7 +158,8 @@ export function openFAMarket(
     currentSeasonYear: number,
     currentSeason: string,
     tendencySeed: string,
-    prevTeamIdMap?: Record<string, string>,  // playerId → 계약 만료 직전 팀 ID (Bird Rights용)
+    prevTeamIdMap?: Record<string, string>,    // playerId → 계약 만료 직전 팀 ID (Bird Rights용)
+    prevTenureMap?: Record<string, number>,    // playerId → teamTenure 리셋 전 값 (Bird Rights 판정용)
 ): LeagueFAMarket {
     const marketConditions = buildMarketConditions(allPlayers, expiredPlayers, teams);
 
@@ -164,6 +180,7 @@ export function openFAMarket(
         entries.push({
             playerId:          player.id,
             prevTeamId:        prevTeamIdMap?.[player.id],
+            prevTeamTenure:    prevTenureMap?.[player.id],
             askingYears:       demand.askingYears,
             askingSalary:      demand.askingSalary,
             walkAwaySalary:    demand.walkAwaySalary,
@@ -226,6 +243,7 @@ export function releasePlayerToMarket(
     const newEntry: FAMarketEntry = {
         playerId:         player.id,
         prevTeamId,
+        isBuyout:         true,
         askingYears:      demand.askingYears,
         askingSalary:     demand.askingSalary,
         walkAwaySalary:   demand.walkAwaySalary,
@@ -307,6 +325,7 @@ export function simulateCPUSigning(
                 player,
                 undefined, // CPU는 Bird Rights 자팀 여부 간단히 생략
                 updatedMarket.usedMLE,
+                entry.isBuyout,
             );
             if (slots.length === 0) continue;
 
@@ -433,8 +452,8 @@ export function processUserOffer(
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
     const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
-    // 슬롯 유효성 검증
-    const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE);
+    // 슬롯 유효성 검증 — entry.prevTeamTenure로 Bird Rights 판정 (teamTenure 리셋 전 값)
+    const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE, entry.isBuyout, entry.prevTeamTenure);
     if (!availableSlots.includes(offer.signingType)) {
         return { accepted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
     }
