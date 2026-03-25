@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FAView } from '../views/FAView';
 import { useGame } from '../hooks/useGameContext';
 import { sendMessage } from '../services/messageService';
@@ -14,6 +14,7 @@ import type { FASigningContent, FAReleaseContent } from '../types/message';
 const FAMarketPage: React.FC = () => {
     const { session, gameData, setViewPlayerData } = useGame();
     const navigate = useNavigate();
+    const { state } = useLocation();
 
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     if (!myTeam) return null;
@@ -31,6 +32,7 @@ const FAMarketPage: React.FC = () => {
             currentSeasonYear={currentSeasonYear}
             currentSeason={seasonShort}
             currentDate={gameData.currentSimDate}
+            initialNegotiateId={(state as any)?.autoNegotiateId}
             onOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
                 const faPlayer = gameData.faPlayerMap?.[playerId];
                 if (!faPlayer) return;

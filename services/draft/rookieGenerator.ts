@@ -587,15 +587,17 @@ function generateCareerStatRow(
     const baseMpg = ovr >= 80 ? 30 : ovr >= 70 ? 24 : ovr >= 60 ? 20 : 16;
     const min = clamp(Math.round(vary(baseMpg)), 14, 36);
 
-    // FG% — 슛 능력치 기반
+    // FG% — 슛 능력치 기반 (avg attr~60 → ~48%, elite~85 → ~56%)
     const fgBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
-    const fg_pct = clamp(Math.round(vary(fgBase / 200 + 0.38) * 1000) / 1000, 0.35, 0.65);
+    const fg_pct = clamp(Math.round(vary(fgBase / 300 + 0.28) * 1000) / 1000, 0.35, 0.65);
 
+    // 3P% (avg attr~50 → ~33%, elite~85 → ~41%)
     const threeBase = ((attrs['3c'] ?? 50) + (attrs['3_45'] ?? 50) + (attrs['3t'] ?? 50)) / 3;
-    const fg3_pct = clamp(Math.round(vary(threeBase / 300 + 0.28) * 1000) / 1000, 0.20, 0.45);
+    const fg3_pct = clamp(Math.round(vary(threeBase / 450 + 0.22) * 1000) / 1000, 0.20, 0.45);
 
+    // FT% (attr 70 → ~76%, attr 85 → ~85%)
     const ftBase = attrs['ft'] ?? 70;
-    const ft_pct = clamp(Math.round(vary(ftBase / 140 + 0.45) * 1000) / 1000, 0.40, 0.95);
+    const ft_pct = clamp(Math.round(vary(ftBase / 170 + 0.35) * 1000) / 1000, 0.40, 0.95);
 
     // FGA per game — OVR 기반 사용률
     const baseUsage = ovr >= 80 ? 0.26 : ovr >= 70 ? 0.21 : ovr >= 60 ? 0.17 : 0.14;
@@ -605,8 +607,9 @@ function generateCareerStatRow(
     const threePARate = isGuard ? 0.44 : position === 'SF' ? 0.33 : 0.13;
     const fg3a = clamp(Math.round(vary(fga * threePARate) * 10) / 10, 0, fga * 0.75);
 
-    // FTA per game — drawFoul 능력치 기반
-    const fta = clamp(Math.round(vary((attrs['draw'] ?? 55) / 100 * 4.5) * 10) / 10, 0.5, 9);
+    // FTA per game — per-36분 기준 능력치 산출 후 실제 분 환산
+    const ftaPer36 = (attrs['draw'] ?? 55) / 10 - 2.5; // draw=60→3.5, draw=80→5.5
+    const fta = clamp(Math.round(vary(Math.max(0.8, ftaPer36) * min / 36) * 10) / 10, 0.3, 9);
 
     // Makes per game
     const fgm = Math.round(fga * fg_pct * 10) / 10;
@@ -616,29 +619,33 @@ function generateCareerStatRow(
     // pts = 2*FGM + FG3M + FTM  (FG3M already counted once in FGM)
     const pts = Math.round((2 * fgm + fg3m + ftm) * 10) / 10;
 
-    // REB
+    // REB — per-36분 기준 환산 (출전시간과 비례해 자연스러운 커리어 아크 형성)
     const rebBase = ((attrs['oreb'] ?? 55) + (attrs['dreb'] ?? 55)) / 2;
     const posFactor = position === 'C' ? 1.4 : position === 'PF' ? 1.2 : position === 'SF' ? 0.9 : 0.6;
-    const reb = clamp(Math.round(vary((rebBase - 50) / 6 * posFactor + 5 * posFactor) * 10) / 10, 0.5, 15);
+    const rebPer36 = (rebBase - 50) / 6 * posFactor + 5 * posFactor;
+    const reb = clamp(Math.round(vary(rebPer36 * min / 36) * 10) / 10, 0.5, 15);
     const orebRatio = isBig ? 0.33 : 0.18;
     const oreb = Math.round(reb * orebRatio * 10) / 10;
     const dreb = Math.round((reb - oreb) * 10) / 10;
 
-    // AST
+    // AST — per-36분 기준 환산
     const passBase = ((attrs['pacc'] ?? 55) + (attrs['piq'] ?? 55)) / 2;
     const guardFactor = position === 'PG' ? 1.5 : position === 'SG' ? 0.9 : position === 'SF' ? 0.7 : 0.4;
-    const ast = clamp(Math.round(vary((passBase - 50) / 5 * guardFactor + 4 * guardFactor) * 10) / 10, 0.5, 12);
+    const astPer36 = (passBase - 50) / 5 * guardFactor + 2 * guardFactor;
+    const ast = clamp(Math.round(vary(astPer36 * min / 36) * 10) / 10, 0.5, 12);
 
-    // STL, BLK, TOV, PF
+    // STL, BLK, TOV, PF — per-36분 기준 환산
     const stlBase = ((attrs['pdef'] ?? 55) + (attrs['stl'] ?? 55)) / 2;
-    const stl = clamp(Math.round(vary((stlBase - 50) / 15 + 0.9) * 10) / 10, 0.3, 3.0);
+    const stlPer36 = (stlBase - 50) / 15 + 0.9;
+    const stl = clamp(Math.round(vary(stlPer36 * min / 36) * 10) / 10, 0.3, 3.0);
 
     const blkBase = ((attrs['idef'] ?? 55) + (attrs['blk'] ?? 55)) / 2;
     const centerFactor = position === 'C' ? 1.5 : position === 'PF' ? 1.1 : 0.5;
-    const blk = clamp(Math.round(vary((blkBase - 50) / 15 * centerFactor + 0.6 * centerFactor) * 10) / 10, 0.1, 3.5);
+    const blkPer36 = (blkBase - 50) / 15 * centerFactor + 0.6 * centerFactor;
+    const blk = clamp(Math.round(vary(blkPer36 * min / 36) * 10) / 10, 0.1, 3.5);
 
     const tov = clamp(Math.round(vary(ast * 0.20 + 0.5) * 10) / 10, 0.3, 4.0);
-    const pf = clamp(Math.round(vary(2.1) * 10) / 10, 1.0, 4.0);
+    const pf = clamp(Math.round(vary(2.8 * min / 36) * 10) / 10, 1.0, 4.0);
 
     // Advanced stats
     const ts_pct = Math.round(pts / (2 * (fga + 0.44 * fta) || 1) * 1000) / 1000;
@@ -694,7 +701,7 @@ function generateTeamSequence(yos: number, ovr: number, rng: SeededRandom): stri
             while (next === current);
             current = next;
         }
-        teams.push(current);
+        teams.push(current.toUpperCase());
     }
     return teams;
 }
@@ -860,9 +867,10 @@ export function generateInitialFAPool(
             careerHistory.push(generateCareerStatRow(attrs, position, seasonOvr, seasonAge, seasonStartYear, teamSequence[yr], rng));
         }
 
-        // 인기도: 직전 시즌(마지막 행) 기준으로 산정
+        // 인기도: 직전 시즌(마지막 행, 아직 순방향) 기준으로 산정 후 역순 정렬
         const lastRow = careerHistory[careerHistory.length - 1];
         const popularity = generatePopularity(approxOvr, age, lastRow, rng);
+        careerHistory.reverse(); // 최신 시즌이 앞에 오도록
 
         const id = `gen_${generateUUID(rng)}`;
 

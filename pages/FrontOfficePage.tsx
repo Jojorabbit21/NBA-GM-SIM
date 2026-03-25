@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FrontOfficeView } from '../views/FrontOfficeView';
 import { useGame } from '../hooks/useGameContext';
 import { sendMessage } from '../services/messageService';
@@ -13,6 +13,7 @@ import type { ExtensionSignedContent, FAReleaseContent } from '../types/message'
 const FrontOfficePage: React.FC = () => {
     const { session, gameData, setViewPlayerData } = useGame();
     const navigate = useNavigate();
+    const { state } = useLocation();
 
     const myTeam = gameData.teams.find(t => t.id === gameData.myTeamId);
     if (!myTeam) return null;
@@ -44,6 +45,8 @@ const FrontOfficePage: React.FC = () => {
             userNickname={session?.user?.email?.split('@')[0]}
             offseasonPhase={gameData.offseasonPhase}
             tendencySeed={gameData.tendencySeed || ''}
+            initialNegotiateId={(state as any)?.autoNegotiateId}
+            initialNegotiateType={(state as any)?.negotiateType}
             onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                 const player = myTeam?.roster.find((p: Player) => p.id === playerId);
                 if (!player) return;

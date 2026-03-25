@@ -465,7 +465,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         return null;
     }, [faEntry, isFA, myTeam]);
 
-    const lastSeasonStat = player.career_history?.at(-1) ?? null;
+    const lastSeasonStat = player.career_history?.[0] ?? null;
 
     // 2023 CBA: Second Apron 초과 팀은 신규 계약에 NTC 삽입 불가
     const isAboveSecondApron = useMemo(() => {

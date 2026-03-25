@@ -11,6 +11,7 @@ const PlayerDetailPage: React.FC = () => {
     const navigate = useNavigate();
 
     const seasonShort: string = gameData.seasonConfig?.seasonShort ?? '2025-26';
+    const myTeamId = gameData.myTeamId ?? undefined;
 
     // location.state 우선, 없으면 context fallback
     const data = state as { player: any; teamId?: string; teamName?: string } | null
@@ -21,6 +22,7 @@ const PlayerDetailPage: React.FC = () => {
         const found = gameData.teams.flatMap(t => t.roster.map(p => ({ player: p, teamId: t.id, teamName: t.name }))).find(x => x.player.id === playerId);
         if (!found) { navigate(-1); return null; }
         const { player, teamId, teamName } = found;
+        const isMyTeam = myTeamId && teamId === myTeamId;
         return (
             <PlayerDetailView
                 player={{ ...player, ovr: calculatePlayerOvr(player) }}
@@ -29,10 +31,10 @@ const PlayerDetailPage: React.FC = () => {
                 allTeams={gameData.teams}
                 tendencySeed={gameData.tendencySeed || undefined}
                 seasonShort={seasonShort}
-                onBack={() => {
-                    setViewPlayerData(null);
-                    navigate(-1);
-                }}
+                myTeamId={myTeamId}
+                onBack={() => { setViewPlayerData(null); navigate(-1); }}
+                onExtension={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'extension' } }) : undefined}
+                onRelease={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'release' } }) : undefined}
             />
         );
     }
@@ -43,6 +45,8 @@ const PlayerDetailPage: React.FC = () => {
         : null;
     const resolvedTeamId = data.teamId ?? resolvedTeamEntry?.teamId;
     const resolvedTeamName = data.teamName ?? resolvedTeamEntry?.teamName;
+    const isFA = !resolvedTeamId;
+    const isMyTeam = myTeamId && resolvedTeamId === myTeamId;
 
     return (
         <PlayerDetailView
@@ -52,10 +56,11 @@ const PlayerDetailPage: React.FC = () => {
             allTeams={gameData.teams}
             tendencySeed={gameData.tendencySeed || undefined}
             seasonShort={seasonShort}
-            onBack={() => {
-                setViewPlayerData(null);
-                navigate(-1);
-            }}
+            myTeamId={myTeamId}
+            onBack={() => { setViewPlayerData(null); navigate(-1); }}
+            onNegotiate={isFA ? () => navigate('/fa', { state: { autoNegotiateId: data.player.id } }) : undefined}
+            onExtension={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'extension' } }) : undefined}
+            onRelease={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'release' } }) : undefined}
         />
     );
 };

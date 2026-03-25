@@ -3,7 +3,7 @@
  * FAView.tsx의 roster 탭(팀 옵션 결정 + 로스터 테이블 + NegotiationScreen 오버레이)을 이전
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Team, Player, ReleaseType } from '../../types';
 import type { PlayerContract } from '../../types/player';
 import type { NegotiationState } from '../../services/fa/extensionEngine';
@@ -27,6 +27,8 @@ export interface ContractManagementTabProps {
     onExtensionOffer: (playerId: string, contract: PlayerContract) => void;
     onViewPlayer?: (player: Player) => void;
     currentDate?: string;
+    initialNegotiateId?: string;                             // 자동 오픈 선수 ID
+    initialNegotiateType?: 'extension' | 'release';          // 자동 오픈 협상 타입
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -60,12 +62,21 @@ export const ContractManagementTab: React.FC<ContractManagementTabProps> = ({
     onExtensionOffer,
     onViewPlayer,
     currentDate = '',
+    initialNegotiateId,
+    initialNegotiateType,
 }) => {
     // extension / release 타입만 (fa 타입 없음)
     const [negotiationTarget, setNegotiationTarget] = useState<{
         type: 'extension' | 'release';
         playerId: string;
     } | null>(null);
+
+    // PlayerDetailView에서 직접 진입 시 자동 오픈
+    useEffect(() => {
+        if (initialNegotiateId && initialNegotiateType) {
+            setNegotiationTarget({ type: initialNegotiateType, playerId: initialNegotiateId });
+        }
+    }, [initialNegotiateId, initialNegotiateType]);
 
     // 결렬된 협상 선수 ID (Extension 결렬 — 재협상 불가)
     const [blockedNegotiationIds, setBlockedNegotiationIds] = useState<Set<string>>(new Set());

@@ -41,11 +41,14 @@ interface FrontOfficeViewProps {
     onTeamOptionDecide?: (playerId: string, exercised: boolean) => void;
     onExtensionOffer?: (playerId: string, contract: PlayerContract) => void;
     tendencySeed?: string;
+    initialNegotiateId?: string;                          // 자동 오픈 선수 ID
+    initialNegotiateType?: 'extension' | 'release';       // 자동 오픈 협상 타입
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
+    initialNegotiateId, initialNegotiateType,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -105,6 +108,8 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             onExtensionOffer={onExtensionOffer}
                             onViewPlayer={onViewPlayer ? (player) => onViewPlayer(player) : undefined}
                             currentDate={currentSimDate}
+                            initialNegotiateId={initialNegotiateId}
+                            initialNegotiateType={initialNegotiateType}
                         />
                     )}
                     {activeTab === 'contracts' && (!onReleasePlayer || !onTeamOptionDecide || !onExtensionOffer) && (

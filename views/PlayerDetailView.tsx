@@ -31,7 +31,11 @@ interface PlayerDetailViewProps {
     allTeams?: Team[];
     tendencySeed?: string;
     seasonShort?: string;
+    myTeamId?: string;
     onBack: () => void;
+    onNegotiate?: () => void;   // FA 계약 협상
+    onExtension?: () => void;   // 우리팀 계약 연장
+    onRelease?: () => void;     // 우리팀 방출
 }
 
 
@@ -480,7 +484,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, tendencySeed, seasonShort = '2025-26', onBack }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
@@ -704,11 +708,44 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             return (
                             <div className="bg-slate-900 border border-slate-800 rounded-lg">
 
-                                {/* ─ 헤더: OVR + 이름 ─ */}
+                                {/* ─ 헤더: OVR + 이름 + 액션 버튼 ─ */}
                                 <div className="p-4 rounded-t-lg" style={{ backgroundColor: theme.bg }}>
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <OvrBadge value={calculatedOvr} size="md" />
-                                        <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <OvrBadge value={calculatedOvr} size="md" />
+                                            <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
+                                        </div>
+                                        {/* 액션 버튼 그룹 */}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {!teamId && onNegotiate && (
+                                                <button
+                                                    onClick={onNegotiate}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 transition-all whitespace-nowrap"
+                                                >
+                                                    계약 협상
+                                                </button>
+                                            )}
+                                            {myTeamId && teamId === myTeamId && (
+                                                <>
+                                                    {onExtension && (
+                                                        <button
+                                                            onClick={onExtension}
+                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600/80 text-white hover:bg-indigo-500 active:scale-95 transition-all whitespace-nowrap"
+                                                        >
+                                                            계약 연장
+                                                        </button>
+                                                    )}
+                                                    {onRelease && (
+                                                        <button
+                                                            onClick={onRelease}
+                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-700/80 text-white hover:bg-red-600 active:scale-95 transition-all whitespace-nowrap"
+                                                        >
+                                                            방출
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -841,23 +878,36 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 위젯 6: 계약 정보 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             {player.prevSalary != null ? (
-                                // 생성 FA 선수: 직전 계약 표시
+                                // 생성 FA 선수: 직전 계약 전체 연도 표시 (모두 완료됨)
                                 <>
                                     <SectionHeader title="직전 계약" style={sectionBg} />
-                                    <div className="px-4 py-3 space-y-1">
-                                        <div className="flex justify-between items-center text-xs">
-                                            <span className="text-slate-500">직전 연봉</span>
-                                            <span className="font-mono font-bold text-slate-200">{formatMoney(player.prevSalary)}</span>
-                                        </div>
-                                        {player.contract && (
+                                    {player.contract && player.contract.years.length > 0 ? (
+                                        <div className="px-4 py-3 space-y-1">
+                                            {player.contract.years.map((sal, i) => {
+                                                const n = player.contract!.years.length;
+                                                // career_history는 최신순(index 0 = 가장 최근) → 계약 첫 해 = history[n-1]
+                                                const seasonLabel = player.career_history?.[n - 1 - i]?.season;
+                                                return (
+                                                    <div key={i} className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-600">{seasonLabel ?? `Year ${i + 1}`}</span>
+                                                        <span className="font-mono font-bold text-slate-600">{formatMoney(sal)}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
+                                                <span className="text-slate-500">AAV</span>
+                                                <span className="font-mono text-slate-400">
+                                                    {formatMoney(player.contract.years.reduce((a, b) => a + b, 0) / player.contract.years.length)}
+                                                </span>
+                                            </div>
                                             <div className="flex justify-between items-center text-xs">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400">
                                                     {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
                                                 </span>
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : null}
                                 </>
                             ) : (
                                 // 일반 선수: 현재 계약 표시

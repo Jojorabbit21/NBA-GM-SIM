@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
@@ -29,6 +29,7 @@ interface FAViewProps {
     onReleasePlayer: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onViewPlayer?: (player: Player) => void;
     currentDate?: string;
+    initialNegotiateId?: string;  // PlayerDetailView에서 직접 협상 진입 시 자동 오픈
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -177,12 +178,18 @@ export const FAView: React.FC<FAViewProps> = ({
     onReleasePlayer,
     onViewPlayer,
     currentDate = '',
+    initialNegotiateId,
 }) => {
     // 협상 타깃 (NegotiationScreen 오버레이를 열 때 사용) — fa 타입만
     const [negotiationTarget, setNegotiationTarget] = useState<{
         type: 'fa';
         playerId: string;
     } | null>(null);
+
+    // PlayerDetailView에서 직접 진입 시 자동 오픈
+    useEffect(() => {
+        if (initialNegotiateId) setNegotiationTarget({ type: 'fa', playerId: initialNegotiateId });
+    }, [initialNegotiateId]);
 
     // FA walk away 후 재협상 불가 선수 ID
     const [blockedNegotiationIds, setBlockedNegotiationIds] = useState<Set<string>>(new Set());
