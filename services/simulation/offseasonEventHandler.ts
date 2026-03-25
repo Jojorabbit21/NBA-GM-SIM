@@ -46,6 +46,7 @@ export interface OffseasonEventResult {
         expiredPlayerObjects?: Team['roster'];  // 계약 만료 선수 전체 Player 객체 (FA 시장 개설용)
         prevTeamIdMap?: Record<string, string>; // playerId → 계약 만료 직전 팀 ID (Bird Rights 판정용)
         prevTenureMap?: Record<string, number>; // playerId → teamTenure 리셋 전 값 (Bird Rights 판정용)
+        rfaCandidateMap?: Record<string, { qoSalary: number; originalTeamId: string }>; // RFA 후보 (QO 텐더된)
         faMarketClosed?: boolean;               // FA 시장 마감 신호 (CPU 자동 서명 트리거)
         luxuryTaxResult?: {                     // 럭셔리 택스 정산 결과
             myTeamTax: number;
@@ -372,7 +373,21 @@ function handleMoratoriumStart(
             .filter(e => (e.stretchYearsRemaining ?? 0) > 0);
     }
 
-    console.log(`📋 Moratorium: ${offseasonResult.retiredPlayers.length} retired, ${offseasonResult.expiredPlayers.length} expired, ${offseasonResult.optionDecisions.length} option decisions`);
+    // RFA 후보 처리: CPU 팀은 OVR >= 70이면 QO 텐더, 미만이면 포기(UFA 전환)
+    // 유저 팀 RFA는 OFFSEASON_REPORT로 전달해 유저가 직접 결정
+    const rfaCandidateMap: Record<string, { qoSalary: number; originalTeamId: string }> = {};
+    for (const candidate of offseasonResult.rfaCandidates) {
+        if (candidate.teamId === userTeamId) {
+            // 유저팀: OFFSEASON_REPORT에서 결정 — 일단 포함해두고 유저 QO 결정 콜백으로 확정
+            rfaCandidateMap[candidate.playerId] = { qoSalary: candidate.qoSalary, originalTeamId: candidate.teamId };
+        } else if (candidate.ovr >= 70) {
+            // CPU팀: 자동 텐더
+            rfaCandidateMap[candidate.playerId] = { qoSalary: candidate.qoSalary, originalTeamId: candidate.teamId };
+        }
+        // OVR < 70 CPU팀: UFA로 처리 (rfaCandidateMap에 포함하지 않음)
+    }
+
+    console.log(`📋 Moratorium: ${offseasonResult.retiredPlayers.length} retired, ${offseasonResult.expiredPlayers.length} expired, ${offseasonResult.optionDecisions.length} option decisions, ${offseasonResult.rfaCandidates.length} RFA candidates`);
 
     return {
         fired: true,
@@ -383,6 +398,7 @@ function handleMoratoriumStart(
             expiredPlayerObjects,
             prevTeamIdMap,
             prevTenureMap,
+            rfaCandidateMap,
         },
     };
 }

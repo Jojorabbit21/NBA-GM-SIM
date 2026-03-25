@@ -60,4 +60,6 @@ export interface Team {
     };
     /** 방출된 선수들의 잔여 계약금 (데드캡) */
     deadMoney?: DeadMoneyEntry[];
+    /** 마지막 BAE(Bi-Annual Exception) 사용 시즌 시작 연도 (e.g. 2025 for 2025-26). 2시즌에 1번 제한 */
+    usedBAEyear?: number;
 }

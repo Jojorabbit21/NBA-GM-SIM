@@ -32,7 +32,7 @@ export const LEAGUE_FINANCIALS = {
 export const SIGNING_EXCEPTIONS = {
     NON_TAX_MLE:  14_104_000,  // Non-Taxpayer MLE (1차 에이프런 미만 팀, 최대 4년)
     TAXPAYER_MLE:  5_685_000,  // Taxpayer MLE (1~2차 에이프런 사이 팀, 최대 2년)
-    // Room Exception, Bi-Annual Exception: 복잡도 대비 가치 낮음 → 미구현
+    BAE:           4_516_000,  // Bi-Annual Exception (비납세자, 최대 2년, 2시즌에 1번)
 };
 
 // ── 캡 히스토리 / 동적 갱신 ────────────────────────────────────────────────
@@ -48,6 +48,7 @@ const _CAP_RATIOS = {
 const _MLE_RATIOS = {
     NON_TAX_MLE:  14_104_000 / _BASE_CAP,      // ~0.09121
     TAXPAYER_MLE:  5_685_000 / _BASE_CAP,      // ~0.03677
+    BAE:           4_516_000 / _BASE_CAP,      // ~0.02920
 };
 
 /**
@@ -62,6 +63,7 @@ export function updateLeagueFinancials(newCap: number): void {
     LEAGUE_FINANCIALS.SECOND_APRON  = Math.round(newCap * _CAP_RATIOS.SECOND_APRON);
     SIGNING_EXCEPTIONS.NON_TAX_MLE  = Math.round(newCap * _MLE_RATIOS.NON_TAX_MLE);
     SIGNING_EXCEPTIONS.TAXPAYER_MLE = Math.round(newCap * _MLE_RATIOS.TAXPAYER_MLE);
+    SIGNING_EXCEPTIONS.BAE          = Math.round(newCap * _MLE_RATIOS.BAE);
 }
 
 /**

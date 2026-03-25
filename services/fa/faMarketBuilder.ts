@@ -1,6 +1,6 @@
 import type { Player, PlayerContract } from '../../types/player';
 import type { Team } from '../../types/team';
-import type { FARole, FAMarketEntry, LeagueFAMarket, SigningType } from '../../types/fa';
+import type { FARole, FAMarketEntry, LeagueFAMarket, SigningType, PendingOfferSheet } from '../../types/fa';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../../utils/constants';
 import {
     buildMarketConditions,
@@ -55,6 +55,7 @@ export function getAvailableSigningSlots(
     usedMLE: Record<string, boolean>,
     isBuyout?: boolean,
     prevTeamTenure?: number,  // Bird Rights 판정용 — teamTenure 리셋 전 값 (FAMarketEntry.prevTeamTenure)
+    currentSeasonYear?: number,  // BAE 2시즌 주기 판정용 (e.g. 2025 for 2025-26)
 ): SigningType[] {
     const slots: SigningType[] = [];
     const payroll = calcTeamPayroll(team);
@@ -78,6 +79,15 @@ export function getAvailableSigningSlots(
     if (!mleUsed) {
         if (payroll < FIRST_APRON)  slots.push('non_tax_mle');
         else if (payroll < SECOND_APRON) slots.push('tax_mle');
+    }
+
+    // BAE: 비납세자 팀 + MLE 미사용 + 2시즌에 1번 제한
+    // MLE 사용팀은 BAE 동시 사용 불가 (CBA 규정)
+    if (!mleUsed && payroll < FIRST_APRON) {
+        const lastBAE = team.usedBAEyear ?? -99;
+        if (!currentSeasonYear || (currentSeasonYear - lastBAE) >= 2) {
+            slots.push('bae');
+        }
     }
 
     // Bird Rights (자팀 FA만)
@@ -112,6 +122,7 @@ function getSlotSalaryCap(
         case 'cap_space':  return Math.min(remainingCap, maxAllowed);
         case 'non_tax_mle': return Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, maxAllowed);
         case 'tax_mle':    return Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, maxAllowed);
+        case 'bae':        return Math.min(SIGNING_EXCEPTIONS.BAE, maxAllowed);
         case 'bird_full':  return maxAllowed;
         case 'bird_early': {
             const base = player.prevSalary ?? player.salary ?? 0;
@@ -149,6 +160,16 @@ function buildContract(
 }
 
 // ─────────────────────────────────────────────────────────────
+// 날짜 헬퍼
+// ─────────────────────────────────────────────────────────────
+
+function addDaysToDate(dateStr: string, days: number): string {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+// ─────────────────────────────────────────────────────────────
 // 1. FA 시장 개설
 // ─────────────────────────────────────────────────────────────
 
@@ -163,6 +184,7 @@ export function openFAMarket(
     tendencySeed: string,
     prevTeamIdMap?: Record<string, string>,    // playerId → 계약 만료 직전 팀 ID (Bird Rights용)
     prevTenureMap?: Record<string, number>,    // playerId → teamTenure 리셋 전 값 (Bird Rights 판정용)
+    rfaCandidateMap?: Record<string, { qoSalary: number; originalTeamId: string }>,  // playerId → RFA 정보
 ): LeagueFAMarket {
     const marketConditions = buildMarketConditions(allPlayers, expiredPlayers, teams);
 
@@ -179,6 +201,7 @@ export function openFAMarket(
         );
 
         const interestedTeamIds = calcInterestedTeamIds(teams, player, demand.faRole);
+        const rfaInfo = rfaCandidateMap?.[player.id];
 
         entries.push({
             playerId:          player.id,
@@ -191,6 +214,11 @@ export function openFAMarket(
             faRole:            demand.faRole,
             interestedTeamIds,
             status:            'available',
+            ...(rfaInfo && {
+                isRFA:          true,
+                qualifyingOffer: rfaInfo.qoSalary,
+                originalTeamId: rfaInfo.originalTeamId,
+            }),
         });
     }
 
@@ -280,6 +308,7 @@ export function simulateCPUSigning(
     userTeamId: string,
     tendencySeed: string,
     currentSeasonYear: number,
+    currentDate?: string,
 ): CPUSigningResult {
     const updatedTeams: Team[] = teams.map(t => ({
         ...t,
@@ -330,6 +359,7 @@ export function simulateCPUSigning(
                 updatedMarket.usedMLE,
                 entry.isBuyout,
                 entry.prevTeamTenure,
+                currentSeasonYear,
             );
             if (slots.length === 0) continue;
 
@@ -352,7 +382,7 @@ export function simulateCPUSigning(
             }
             if (!bestSlot || offerSalary <= 0) continue;
 
-            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'tax_mle' || bestSlot === 'vet_min' ? 2 : 4;
+            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'tax_mle' || bestSlot === 'bae' || bestSlot === 'vet_min' ? 2 : 4;
             const offerYears = Math.min(entry.askingYears, slotMaxYears);
             const seed = `${tendencySeed}:cpu:${team.id}:${player.id}`;
 
@@ -370,7 +400,38 @@ export function simulateCPUSigning(
             );
 
             if (accepted) {
-                // 계약 체결
+                // RFA 타팀 → 오퍼시트 제출 (즉시 서명 불가)
+                if (entry.isRFA && entry.originalTeamId && entry.originalTeamId !== team.id) {
+                    const contractType = bestSlot === 'vet_min' ? 'min' : 'veteran';
+                    const contract = buildContract(offerSalary, offerYears, contractType);
+                    const offerSheet: PendingOfferSheet = {
+                        id: `os_${team.id}_${player.id}_${Date.now()}`,
+                        playerId:        player.id,
+                        offeringTeamId:  team.id,
+                        originalTeamId:  entry.originalTeamId,
+                        salary:          offerSalary,
+                        years:           offerYears,
+                        contract,
+                        signingType:     bestSlot,
+                        submittedDate:   currentDate ?? '',
+                        matchDeadline:   currentDate ? addDaysToDate(currentDate, 3) : '',
+                    };
+                    updatedMarket.pendingOfferSheets = [...(updatedMarket.pendingOfferSheets ?? []), offerSheet];
+                    const entryIdxRFA = updatedMarket.entries.findIndex(e => e.playerId === player.id);
+                    if (entryIdxRFA !== -1) {
+                        updatedMarket.entries[entryIdxRFA] = { ...updatedMarket.entries[entryIdxRFA], status: 'pending_match' };
+                    }
+                    if (bestSlot === 'non_tax_mle' || bestSlot === 'tax_mle' || bestSlot === 'bae') {
+                        updatedMarket.usedMLE[team.id] = true;
+                    }
+                    if (bestSlot === 'bae') {
+                        teamObj.usedBAEyear = currentSeasonYear;
+                    }
+                    signings.push({ teamId: team.id, playerId: player.id, salary: offerSalary, years: offerYears });
+                    break;
+                }
+
+                // 일반 UFA or 자팀 RFA → 즉시 계약 체결
                 const contractType = bestSlot === 'vet_min' ? 'min' : 'veteran';
                 const contract = buildContract(offerSalary, offerYears, contractType);
                 const signedPlayer: Player = {
@@ -382,9 +443,12 @@ export function simulateCPUSigning(
                 };
                 teamObj.roster.push(signedPlayer);
 
-                // MLE 사용 처리
-                if (bestSlot === 'non_tax_mle' || bestSlot === 'tax_mle') {
+                // MLE/BAE 사용 처리 (BAE와 MLE는 같은 시즌 동시 사용 불가)
+                if (bestSlot === 'non_tax_mle' || bestSlot === 'tax_mle' || bestSlot === 'bae') {
                     updatedMarket.usedMLE[team.id] = true;
+                }
+                if (bestSlot === 'bae') {
+                    teamObj.usedBAEyear = currentSeasonYear;
                 }
 
                 // 마켓 엔트리 업데이트
@@ -458,7 +522,7 @@ export function processUserOffer(
     const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
     // 슬롯 유효성 검증 — entry.prevTeamTenure로 Bird Rights 판정 (teamTenure 리셋 전 값)
-    const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE, entry.isBuyout, entry.prevTeamTenure);
+    const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE, entry.isBuyout, entry.prevTeamTenure, currentSeasonYear);
     if (!availableSlots.includes(offer.signingType)) {
         return { accepted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
     }
@@ -475,7 +539,7 @@ export function processUserOffer(
     // 연수 검증 (슬롯별 CBA 상한 — UI SLOT_MAX_YEARS와 동일하게 유지)
     const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
         bird_full: 5, bird_early: 4, bird_non: 4,
-        cap_space: 4, non_tax_mle: 4, tax_mle: 2, vet_min: 2,
+        cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
     };
     const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
     if (offer.years < 1 || offer.years > maxYears) {
@@ -513,6 +577,213 @@ export function processUserOffer(
     const contract = buildContract(offer.salary, offer.years, contractType, offer.option, offer.noTrade, offer.tradeKicker);
 
     return { accepted: true, contract, signingType: offer.signingType };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4. RFA 오퍼시트 제출 (유저용)
+// ─────────────────────────────────────────────────────────────
+
+export type OfferSheetResult =
+    | { submitted: true;  offerSheet: PendingOfferSheet; updatedMarket: LeagueFAMarket }
+    | { submitted: false; reason: string };
+
+export function processOfferSheet(
+    market: LeagueFAMarket,
+    offeringTeam: Team,
+    player: Player,
+    offer: {
+        salary: number;
+        years: number;
+        signingType: SigningType;
+        option?: import('../../types/player').ContractOption;
+        noTrade?: boolean;
+        tradeKicker?: number;
+    },
+    tendencySeed: string,
+    currentSeasonYear: number,
+    currentDate: string,
+): OfferSheetResult {
+    const entry = market.entries.find(e => e.playerId === player.id);
+    if (!entry || entry.status !== 'available') {
+        return { submitted: false, reason: '이미 서명이 완료된 선수입니다.' };
+    }
+    if (!entry.isRFA || !entry.originalTeamId) {
+        return { submitted: false, reason: 'RFA 선수가 아닙니다.' };
+    }
+    if (entry.originalTeamId === offeringTeam.id) {
+        return { submitted: false, reason: '자팀 RFA에는 오퍼시트를 제출할 수 없습니다.' };
+    }
+
+    const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
+
+    const availableSlots = getAvailableSigningSlots(offeringTeam, player, undefined, market.usedMLE, false, undefined, currentSeasonYear);
+    if (!availableSlots.includes(offer.signingType)) {
+        return { submitted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
+    }
+
+    const slotCap = getSlotSalaryCap(offer.signingType, offeringTeam, player, maxAllowed, vetMin);
+    if (offer.salary > slotCap) {
+        return { submitted: false, reason: `제시 연봉이 슬롯 상한($${(slotCap / 1_000_000).toFixed(1)}M)을 초과합니다.` };
+    }
+    if (offer.salary < vetMin) {
+        return { submitted: false, reason: `제시 연봉이 베테랑 미니멈($${(vetMin / 1_000_000).toFixed(1)}M) 미만입니다.` };
+    }
+
+    const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
+        bird_full: 5, bird_early: 4, bird_non: 4,
+        cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
+    };
+    const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
+    if (offer.years < 1 || offer.years > maxYears) {
+        return { submitted: false, reason: `연수는 1~${maxYears}년 사이여야 합니다.` };
+    }
+
+    // 선수 수락 여부 판정 (RFA도 walkAway/askingSalary 기준 동일)
+    let effectiveSalary = offer.salary;
+    if (offer.option?.type === 'player') effectiveSalary *= 1.08;
+    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / offer.years) * 0.55);
+    if (offer.noTrade)                   effectiveSalary *= 1.05;
+    if (offer.tradeKicker)               effectiveSalary *= (1 + offer.tradeKicker * 0.3);
+
+    const seed = `${tendencySeed}:offersheet:${offeringTeam.id}:${player.id}`;
+    const playerAccepts = evaluateFAOffer(
+        { salary: effectiveSalary, years: offer.years },
+        {
+            askingSalary:    entry.askingSalary,
+            walkAwaySalary:  entry.walkAwaySalary,
+            targetSalary:    entry.walkAwaySalary,
+            askingYears:     entry.askingYears,
+            marketValueScore: entry.marketValueScore,
+            faRole:          entry.faRole,
+        },
+        seed,
+    );
+    if (!playerAccepts) {
+        return { submitted: false, reason: '선수가 오퍼시트를 거절했습니다.' };
+    }
+
+    const contractType = offer.signingType === 'vet_min' ? 'min' : 'veteran';
+    const contract = buildContract(offer.salary, offer.years, contractType, offer.option, offer.noTrade, offer.tradeKicker);
+
+    const offerSheet: PendingOfferSheet = {
+        id: `os_${offeringTeam.id}_${player.id}_${Date.now()}`,
+        playerId:        player.id,
+        offeringTeamId:  offeringTeam.id,
+        originalTeamId:  entry.originalTeamId,
+        salary:          offer.salary,
+        years:           offer.years,
+        contract,
+        signingType:     offer.signingType,
+        submittedDate:   currentDate,
+        matchDeadline:   addDaysToDate(currentDate, 3),
+    };
+
+    const updatedMarket: LeagueFAMarket = {
+        ...market,
+        entries: market.entries.map(e =>
+            e.playerId === player.id ? { ...e, status: 'pending_match' } : e
+        ),
+        pendingOfferSheets: [...(market.pendingOfferSheets ?? []), offerSheet],
+        usedMLE: offer.signingType === 'non_tax_mle' || offer.signingType === 'tax_mle' || offer.signingType === 'bae'
+            ? { ...market.usedMLE, [offeringTeam.id]: true }
+            : { ...market.usedMLE },
+    };
+
+    return { submitted: true, offerSheet, updatedMarket };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. 만료 오퍼시트 처리
+// ─────────────────────────────────────────────────────────────
+
+export interface ResolvedOfferSheet {
+    sheet: PendingOfferSheet;
+    matched: boolean;
+    isUserOriginalTeam: boolean;
+    isUserOfferingTeam: boolean;
+}
+
+export function resolveExpiredOfferSheets(
+    market: LeagueFAMarket,
+    teams: Team[],
+    faPlayerMap: Record<string, Player>,
+    currentDate: string,
+    userTeamId: string,
+): {
+    updatedMarket: LeagueFAMarket;
+    updatedTeams: Team[];
+    resolved: ResolvedOfferSheet[];
+} {
+    const expired = (market.pendingOfferSheets ?? []).filter(s => s.matchDeadline <= currentDate);
+    if (expired.length === 0) {
+        return { updatedMarket: market, updatedTeams: teams, resolved: [] };
+    }
+
+    const updatedTeams: Team[] = teams.map(t => ({ ...t, roster: [...t.roster] }));
+    const updatedEntries = market.entries.map(e => ({ ...e }));
+    const remaining = (market.pendingOfferSheets ?? []).filter(s => s.matchDeadline > currentDate);
+    const resolved: ResolvedOfferSheet[] = [];
+
+    for (const sheet of expired) {
+        const player = faPlayerMap[sheet.playerId];
+        if (!player) continue;
+
+        const isUserOriginalTeam = sheet.originalTeamId === userTeamId;
+        const isUserOfferingTeam = sheet.offeringTeamId === userTeamId;
+
+        // 원소속팀의 매칭 결정 (CPU만 자동 판정; 유저는 인박스 결정 결과를 sheet.decision으로 기록)
+        let matched: boolean;
+        if (isUserOriginalTeam) {
+            // 유저가 결정한 경우 sheet.decision을 참조
+            matched = (sheet as any).decision === 'matched';
+        } else {
+            // CPU 원소속팀: OVR >= 80이고 페이롤 여유 있으면 매칭
+            const originalTeam = updatedTeams.find(t => t.id === sheet.originalTeamId);
+            if (originalTeam) {
+                const payroll = calcTeamPayroll(originalTeam);
+                matched = player.ovr >= 80 && payroll < LEAGUE_FINANCIALS.FIRST_APRON;
+            } else {
+                matched = false;
+            }
+        }
+
+        // 로스터 추가
+        const receivingTeamId = matched ? sheet.originalTeamId : sheet.offeringTeamId;
+        const receivingTeam = updatedTeams.find(t => t.id === receivingTeamId);
+        if (receivingTeam) {
+            const signedPlayer: Player = {
+                ...player,
+                contract: sheet.contract,
+                salary: sheet.salary,
+                contractYears: sheet.years,
+                teamTenure: matched ? (player.teamTenure ?? 0) + 1 : 0,
+            };
+            receivingTeam.roster.push(signedPlayer);
+        }
+
+        // 엔트리 업데이트
+        const entryIdx = updatedEntries.findIndex(e => e.playerId === sheet.playerId);
+        if (entryIdx !== -1) {
+            updatedEntries[entryIdx] = {
+                ...updatedEntries[entryIdx],
+                status:       'signed',
+                signedTeamId: receivingTeamId,
+                signedYears:  sheet.years,
+                signedSalary: sheet.salary,
+            };
+        }
+
+        resolved.push({ sheet, matched, isUserOriginalTeam, isUserOfferingTeam });
+    }
+
+    const updatedMarket: LeagueFAMarket = {
+        ...market,
+        entries: updatedEntries,
+        pendingOfferSheets: remaining,
+    };
+
+    return { updatedMarket, updatedTeams, resolved };
 }
 
 // ─────────────────────────────────────────────────────────────

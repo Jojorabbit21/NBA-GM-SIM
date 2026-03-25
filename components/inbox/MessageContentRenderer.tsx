@@ -32,9 +32,11 @@ interface MessageContentRendererProps {
     onNavigateToDraftLottery?: () => void;
     seasonShort?: string;
     onTeamOptionDecide?: (playerId: string, exercised: boolean) => void;
+    onQODecide?: (playerId: string, decision: 'tender' | 'decline') => void;
+    onRFAMatchDecide?: (offerSheetId: string, decision: 'matched' | 'declined') => void;
 }
 
-export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, onNavigateToDraft, onNavigateToDraftLottery, seasonShort = '2025-26', onTeamOptionDecide }) => {
+export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof, onNavigateToDraft, onNavigateToDraftLottery, seasonShort = '2025-26', onTeamOptionDecide, onQODecide, onRFAMatchDecide }) => {
 
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -715,7 +717,8 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
         case 'OFFSEASON_REPORT': {
             const report = content as OffseasonReportContent;
             const hasPendingTeamOptions = (report.pendingTeamOptions?.length ?? 0) > 0;
-            const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0 || hasPendingTeamOptions;
+            const hasRFACandidates = (report.rfaCandidates?.length ?? 0) > 0;
+            const hasMyTeamChanges = report.retired.length > 0 || report.expired.length > 0 || report.optionDecisions.length > 0 || hasPendingTeamOptions || hasRFACandidates;
 
 
             return (
@@ -823,6 +826,55 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                                                             className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-600/30 text-red-400 hover:bg-red-600/50 transition-colors"
                                                         >
                                                             행사하지 않음
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* RFA QO 결정 */}
+                    {hasRFACandidates && (
+                        <div>
+                            <h4 className="text-sm font-bold text-orange-400 mb-2">RFA 대상 선수 (QO 결정)</h4>
+                            <p className="text-xs text-slate-400 mb-3">1라운드 루키 계약 만료 선수입니다. QO를 텐더하면 RFA 자격으로 FA 시장에 등록됩니다.</p>
+                            <div className="space-y-2">
+                                {report.rfaCandidates!.map(c => {
+                                    const decided = !!c.decision;
+                                    return (
+                                        <div key={c.playerId} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800/60">
+                                            <OvrBadge value={c.ovr} size="sm" />
+                                            <button onClick={() => onPlayerClick(c.playerId)} className="text-sm font-bold text-white hover:text-indigo-400 transition-colors">
+                                                {c.playerName}
+                                            </button>
+                                            <span className="text-xs text-slate-500">{c.position} · {c.age}세</span>
+                                            <span className="text-xs text-orange-400 ml-1">{formatMoney(c.qoSalary)} QO</span>
+                                            <div className="ml-auto flex items-center gap-1.5">
+                                                {decided ? (
+                                                    <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                                                        c.decision === 'tender'
+                                                            ? 'bg-orange-500/20 text-orange-400'
+                                                            : 'bg-slate-700 text-slate-400'
+                                                    }`}>
+                                                        {c.decision === 'tender' ? 'RFA 등록됨' : 'UFA 전환됨'}
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => onQODecide?.(c.playerId, 'tender')}
+                                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-600/30 text-orange-400 hover:bg-orange-600/50 transition-colors"
+                                                        >
+                                                            QO 텐더
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onQODecide?.(c.playerId, 'decline')}
+                                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 transition-colors"
+                                                        >
+                                                            포기
                                                         </button>
                                                     </>
                                                 )}
@@ -1269,6 +1321,68 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                         <p className="text-slate-400 text-sm">NBA League Office</p>
                         <p className="text-slate-500 text-xs mt-0.5">Official League Communication</p>
                     </div>
+                </div>
+            );
+        }
+
+        case 'RFA_OFFER_SHEET': {
+            const c = content as import('../../types/message').RFAOfferSheetContent;
+            const decided = !!c.decision;
+            const offeringTeamData = teams.find(t => t.id === c.offeringTeamId);
+            const offeringTeamName = offeringTeamData ? `${offeringTeamData.city} ${offeringTeamData.name}` : c.offeringTeamName;
+            const isResult = !!c.decision;
+            return (
+                <div className="space-y-4 text-slate-300 leading-relaxed">
+                    <p className="text-xs font-black text-orange-400/80 uppercase tracking-widest">
+                        {isResult ? 'RFA 오퍼시트 — 매칭 결과' : 'RFA 오퍼시트 도착'}
+                    </p>
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-800/60 border border-orange-500/20">
+                        <OvrBadge value={c.ovr} size="md" />
+                        <div className="flex-1">
+                            <button onClick={() => onPlayerClick(c.playerId)} className="text-base font-bold text-white hover:text-indigo-400 transition-colors">
+                                {c.playerName}
+                            </button>
+                            <div className="text-xs text-slate-500 mt-0.5">{c.position}</div>
+                        </div>
+                    </div>
+                    <div className="px-4 py-3 rounded-xl bg-slate-800/60 space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">제안팀</span>
+                            <span className="text-white font-bold">{offeringTeamName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">오퍼 조건</span>
+                            <span className="text-white font-bold">{formatMoney(c.salary)} × {c.years}년</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">매칭 마감</span>
+                            <span className="text-amber-400 font-bold">{c.matchDeadline}</span>
+                        </div>
+                    </div>
+                    {isResult ? (
+                        <div className={`px-4 py-3 rounded-xl text-center font-bold text-sm ${
+                            c.decision === 'matched'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-700/60 text-slate-400'
+                        }`}>
+                            {c.decision === 'matched' ? '✓ 매칭 완료 — 원소속팀 잔류' : '✗ 매칭 포기 — 제안팀으로 이적'}
+                        </div>
+                    ) : !decided && (
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => onRFAMatchDecide?.(c.offerSheetId, 'matched')}
+                                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600/30 text-emerald-400 hover:bg-emerald-600/50 transition-colors"
+                            >
+                                매칭 (잔류)
+                            </button>
+                            <button
+                                onClick={() => onRFAMatchDecide?.(c.offerSheetId, 'declined')}
+                                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
+                            >
+                                포기 (이적 허용)
+                            </button>
+                        </div>
+                    )}
                 </div>
             );
         }

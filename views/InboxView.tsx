@@ -18,12 +18,14 @@ interface InboxViewProps {
   currentSimDate?: string;
   seasonShort?: string;
   onTeamOptionExecuted?: (playerId: string, exercised: boolean) => void;
+  onQODecide?: (playerId: string, decision: 'tender' | 'decline') => void;
+  onRFAMatchDecide?: (offerSheetId: string, decision: 'matched' | 'declined') => void;
   onNavigateToDraft?: () => void;
   onNavigateToDraftLottery?: () => void;
   initialMessageId?: string;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onNavigateToDraft, onNavigateToDraftLottery, initialMessageId }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate, seasonShort = '2025-26', onTeamOptionExecuted, onQODecide, onRFAMatchDecide, onNavigateToDraft, onNavigateToDraftLottery, initialMessageId }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -55,6 +57,29 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       patchMessageContent(selectedMessage.id, newContent)
           .catch(e => console.warn('⚠️ Team option decision save failed:', e));
   }, [selectedMessage, selectedContent, onTeamOptionExecuted]);
+
+  const handleQODecide = useCallback(async (playerId: string, decision: 'tender' | 'decline') => {
+      if (!selectedMessage || !selectedContent?.rfaCandidates) return;
+      const updatedCandidates = selectedContent.rfaCandidates.map((c: any) =>
+          c.playerId === playerId ? { ...c, decision } : c
+      );
+      const newContent = { ...selectedContent, rfaCandidates: updatedCandidates };
+      contentCache.current.set(selectedMessage.id, newContent);
+      setSelectedContent(newContent);
+      onQODecide?.(playerId, decision);
+      patchMessageContent(selectedMessage.id, newContent)
+          .catch(e => console.warn('⚠️ QO decision save failed:', e));
+  }, [selectedMessage, selectedContent, onQODecide]);
+
+  const handleRFAMatchDecide = useCallback(async (offerSheetId: string, decision: 'matched' | 'declined') => {
+      if (!selectedMessage) return;
+      const newContent = { ...selectedContent, decision };
+      contentCache.current.set(selectedMessage.id, newContent);
+      setSelectedContent(newContent);
+      onRFAMatchDecide?.(offerSheetId, decision);
+      patchMessageContent(selectedMessage.id, newContent)
+          .catch(e => console.warn('⚠️ RFA match decision save failed:', e));
+  }, [selectedMessage, selectedContent, onRFAMatchDecide]);
 
   const handleSelectMessage = useCallback(async (msg: MessageListItem) => {
       setSelectedMessage(msg);
@@ -243,6 +268,8 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                                     onNavigateToHof={onNavigateToHof}
                                     seasonShort={seasonShort}
                                     onTeamOptionDecide={handleTeamOptionDecide}
+                                    onQODecide={handleQODecide}
+                                    onRFAMatchDecide={handleRFAMatchDecide}
                                     onNavigateToDraft={onNavigateToDraft}
                                     onNavigateToDraftLottery={onNavigateToDraftLottery}
                                 />

@@ -1,4 +1,4 @@
-import type { Player } from './player';
+import type { Player, PlayerContract } from './player';
 
 // FA valuation role (7 market roles for salary estimation)
 export type FARole =
@@ -15,6 +15,7 @@ export type SigningType =
     | 'cap_space'    // 팀 페이롤 < 캡 (기본 상태)
     | 'non_tax_mle'  // Non-Taxpayer MLE ($14.104M, 1차 에이프런 미만)
     | 'tax_mle'      // Taxpayer MLE ($5.685M, 1~2차 에이프런 사이)
+    | 'bae'          // Bi-Annual Exception (~$4.516M, 비납세자, 2시즌에 1번)
     | 'bird_full'    // Full Bird Rights (teamTenure >= 3)
     | 'bird_early'   // Early Bird Rights (teamTenure == 2)
     | 'bird_non'     // Non-Bird Rights (teamTenure == 1)
@@ -62,11 +63,30 @@ export interface FAMarketEntry {
     // 유저 오퍼
     userOffer?: FAUserOffer;
 
+    // RFA 관련
+    isRFA?: boolean;           // 1라운드 루키 QO 텐더 시 true
+    qualifyingOffer?: number;  // QO 텐더 금액
+    originalTeamId?: string;  // RFA 원소속팀 ID (매칭 권한 판정용)
+
     // 상태
-    status: 'available' | 'signed' | 'withdrawn';
+    status: 'available' | 'pending_match' | 'signed' | 'withdrawn';
     signedTeamId?: string;
     signedYears?: number;
     signedSalary?: number;
+}
+
+// 오퍼시트 — RFA 원소속팀 매칭 대기 중인 계약
+export interface PendingOfferSheet {
+    id: string;
+    playerId: string;
+    offeringTeamId: string;     // 오퍼시트를 제출한 팀
+    originalTeamId: string;     // 매칭 권한을 가진 원소속팀
+    salary: number;
+    years: number;
+    contract: PlayerContract;
+    signingType: SigningType;
+    submittedDate: string;
+    matchDeadline: string;      // submittedDate + 3일
 }
 
 export interface LeagueFAMarket {
@@ -75,4 +95,5 @@ export interface LeagueFAMarket {
     entries: FAMarketEntry[];
     usedMLE: Record<string, boolean>;  // teamId → MLE 사용 여부
     players?: Player[];                // FA 후보 전체 선수 객체 (faPlayerMap 구성용)
+    pendingOfferSheets?: PendingOfferSheet[];  // 매칭 대기 중인 RFA 오퍼시트
 }

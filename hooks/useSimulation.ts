@@ -30,7 +30,7 @@ import { HofQualificationContent, FinalsMvpContent, ProspectRevealContent, FALea
 import { stampPlayoffAwards } from '../utils/awardStamper';
 import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { LeagueFAMarket } from '../types/fa';
-import { openFAMarket, simulateCPUSigning, releasePlayerToMarket } from '../services/fa/faMarketBuilder';
+import { openFAMarket, simulateCPUSigning, releasePlayerToMarket, resolveExpiredOfferSheets } from '../services/fa/faMarketBuilder';
 import { simulateCPUWaivers } from '../services/fa/cpuWaiverEngine';
 import { getFinancesSnapshot } from '../services/financeEngine';
 
@@ -513,6 +513,58 @@ export const useSimulation = (
                     }
                     _fPerf['4_scoutReport'] = performance.now() - _ft1;
 
+                    // FA_OPEN 기간 중 만료 오퍼시트 처리 (매일 체크)
+                    if (offseasonPhase === 'FA_OPEN' && leagueFAMarket?.pendingOfferSheets?.some(s => s.matchDeadline <= currentSimDate)) {
+                        const faPlayerMapLocal: Record<string, any> = {};
+                        for (const t of newTeams as any[]) {
+                            for (const p of t.roster) faPlayerMapLocal[p.id] = p;
+                        }
+                        // leagueFAMarket.players도 포함
+                        for (const p of leagueFAMarket.players ?? []) faPlayerMapLocal[p.id] = p;
+
+                        const { updatedMarket, updatedTeams, resolved } = resolveExpiredOfferSheets(
+                            leagueFAMarket,
+                            newTeams as any,
+                            faPlayerMapLocal,
+                            currentSimDate,
+                            myTeamId ?? '',
+                        );
+                        newTeams = updatedTeams as any;
+
+                        // 결과 알림 메시지
+                        if (!isGuestMode && session?.user?.id && myTeamId) {
+                            for (const r of resolved) {
+                                if (r.isUserOfferingTeam || r.isUserOriginalTeam) {
+                                    const player = faPlayerMapLocal[r.sheet.playerId];
+                                    const resultTeamId = r.matched ? r.sheet.originalTeamId : r.sheet.offeringTeamId;
+                                    const resultTeam = (newTeams as any[]).find(t => t.id === resultTeamId);
+                                    sendMessage(
+                                        session.user.id, myTeamId, currentSimDate,
+                                        'RFA_OFFER_SHEET',
+                                        `[RFA] ${player?.name ?? r.sheet.playerId} 매칭 결과`,
+                                        {
+                                            offerSheetId:     r.sheet.id,
+                                            offeringTeamId:   r.sheet.offeringTeamId,
+                                            offeringTeamName: resultTeam ? `${resultTeam.city} ${resultTeam.name}` : r.sheet.offeringTeamId,
+                                            playerId:         r.sheet.playerId,
+                                            playerName:       player?.name ?? r.sheet.playerId,
+                                            position:         player?.position ?? '',
+                                            ovr:              player?.ovr ?? 0,
+                                            salary:           r.sheet.salary,
+                                            years:            r.sheet.years,
+                                            matchDeadline:    r.sheet.matchDeadline,
+                                            decision:         r.matched ? 'matched' : 'declined',
+                                        },
+                                    );
+                                }
+                            }
+                        }
+
+                        setTeams(newTeams);
+                        setLeagueFAMarket?.(updatedMarket.entries.some(e => e.status !== 'signed') ? updatedMarket : null);
+                        if (!isGuestMode) forceSave({ teams: newTeams, leagueFAMarket: updatedMarket });
+                    }
+
                     // Commit State Updates
                     setSimProgress({ percent: 95, label: '마무리...' });
                     setTeams(newTeams);
@@ -832,14 +884,18 @@ export const useSimulation = (
                                 const myOptions = op.optionDecisions.filter(p => p.teamId === myTeamId);
                                 const leagueRetired = op.retiredPlayers.filter(p => p.teamId !== myTeamId);
                                 const myPendingTeamOptions = op.pendingTeamOptions;
+                                const myRFACandidates = op.rfaCandidates.filter(c => c.teamId === myTeamId);
 
-                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || myPendingTeamOptions.length > 0) {
+                                if (myRetired.length > 0 || myExpired.length > 0 || myOptions.length > 0 || myPendingTeamOptions.length > 0 || myRFACandidates.length > 0) {
                                     const reportContent = {
                                         retired: myRetired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position })),
                                         expired: myExpired.map(p => ({ playerId: p.playerId, playerName: p.playerName, age: p.age, ovr: p.ovr, position: p.position, lastSalary: p.lastSalary })),
                                         optionDecisions: myOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, optionType: p.optionType, exercised: p.exercised, salary: p.salary })),
                                         pendingTeamOptions: myPendingTeamOptions.length > 0
                                             ? myPendingTeamOptions.map(p => ({ playerId: p.playerId, playerName: p.playerName, ovr: p.ovr, position: p.position, age: p.age, salary: p.salary }))
+                                            : undefined,
+                                        rfaCandidates: myRFACandidates.length > 0
+                                            ? myRFACandidates.map(c => ({ playerId: c.playerId, playerName: c.playerName, position: c.position, ovr: c.ovr, age: c.age, qoSalary: c.qoSalary }))
                                             : undefined,
                                     };
                                     sendMessage(session.user.id, myTeamId, nextDate, 'OFFSEASON_REPORT', '오프시즌 로스터 변동 보고서', reportContent)
@@ -884,6 +940,7 @@ export const useSimulation = (
                                 tendencySeed ?? '',
                                 u.prevTeamIdMap,
                                 u.prevTenureMap,
+                                u.rfaCandidateMap,
                             );
                             // players 배열 포함 (faPlayerMap 재구성용)
                             newMarket.players = u.expiredPlayerObjects;
@@ -977,10 +1034,41 @@ export const useSimulation = (
                                 myTeamId ?? '',
                                 tendencySeed ?? '',
                                 seasonYear,
+                                nextDate,
                             );
                             newTeams = [...cpuResult.teams];
                             setTeams(newTeams);
-                            setLeagueFAMarket(null);
+
+                            // CPU가 유저팀 RFA에 오퍼시트 제출했으면 인박스 알림
+                            if (!isGuestMode && session?.user?.id && myTeamId) {
+                                const newSheetsOnMyRFA = (cpuResult.market.pendingOfferSheets ?? [])
+                                    .filter(s => s.originalTeamId === myTeamId);
+                                for (const sheet of newSheetsOnMyRFA) {
+                                    const player = faPlayerMap[sheet.playerId];
+                                    const offeringTeam = cpuResult.teams.find((t: any) => t.id === sheet.offeringTeamId);
+                                    if (player && offeringTeam) {
+                                        sendMessage(
+                                            session.user.id, myTeamId, nextDate,
+                                            'RFA_OFFER_SHEET',
+                                            `[RFA] ${player.name}에 오퍼시트 도착`,
+                                            {
+                                                offerSheetId:     sheet.id,
+                                                offeringTeamId:   sheet.offeringTeamId,
+                                                offeringTeamName: `${offeringTeam.city} ${offeringTeam.name}`,
+                                                playerId:         sheet.playerId,
+                                                playerName:       player.name,
+                                                position:         player.position,
+                                                ovr:              player.ovr,
+                                                salary:           sheet.salary,
+                                                years:            sheet.years,
+                                                matchDeadline:    sheet.matchDeadline,
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+
+                            setLeagueFAMarket(cpuResult.market.pendingOfferSheets?.length ? cpuResult.market : null);
 
                             if (!isGuestMode && session?.user?.id && myTeamId && cpuResult.signings.length > 0) {
                                 const newsContent: FALeagueNewsContent = {

@@ -41,8 +41,11 @@ const FAMarketPage: React.FC = () => {
                 // Set-Off Rule: 웨이브된 선수를 영입 시 B팀 총 계약액만큼 원팀 waive 데드캡 차감
                 const prevTeamId = gameData.leagueFAMarket?.entries.find(e => e.playerId === playerId)?.prevTeamId;
                 const bTeamTotalContract = contract.years.reduce((s: number, v: number) => s + v, 0);
+                // BAE 사용 기록: usedBAEyear를 현재 시즌 시작 연도로 업데이트
+                const baeUsed = signingType === 'bae';
+                const currentSeasonYear = parseInt((gameData.seasonConfig?.seasonShort ?? '2025-26').split('-')[0]);
                 const newTeams = gameData.teams.map((t: Team) => {
-                    if (t.id === gameData.myTeamId) return { ...t, roster: [...t.roster, signedPlayer] };
+                    if (t.id === gameData.myTeamId) return { ...t, roster: [...t.roster, signedPlayer], ...(baeUsed ? { usedBAEyear: currentSeasonYear } : {}) };
                     if (prevTeamId && t.id === prevTeamId) {
                         const newDeadMoney = (t.deadMoney ?? []).reduce((acc: DeadMoneyEntry[], d) => {
                             if (d.playerId === playerId && d.releaseType === 'waive') {
@@ -79,6 +82,11 @@ const FAMarketPage: React.FC = () => {
                 };
                 gameData.setTransactions((prev: any) => [faTx, ...prev]);
                 if (session?.user?.id) writeTransaction(session.user.id, faTx).catch(console.error);
+            }}
+            onOfferSheetSubmitted={(playerId, updatedMarket) => {
+                const marketWithPlayers = { ...updatedMarket, players: gameData.leagueFAMarket?.players };
+                gameData.setLeagueFAMarket(marketWithPlayers);
+                gameData.forceSave({ leagueFAMarket: marketWithPlayers });
             }}
             onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                 const player = myTeam?.roster.find((p: Player) => p.id === playerId);

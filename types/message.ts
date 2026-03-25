@@ -5,7 +5,7 @@ import type { SigningType } from './fa';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT' | 'PROSPECT_REVEAL' | 'LOTTERY_RESULT' | 'DRAFT_RESULT' | 'RETIREMENT_NEWS' | 'FA_SIGNING' | 'FA_RELEASE' | 'FA_LEAGUE_NEWS' | 'EXTENSION_SIGNED';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'TRADE_OFFER_RECEIVED' | 'TRADE_OFFER_RESPONSE' | 'INJURY_REPORT' | 'SUSPENSION' | 'LEAGUE_NEWS' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT' | 'OFFSEASON_REPORT' | 'PROSPECT_REVEAL' | 'LOTTERY_RESULT' | 'DRAFT_RESULT' | 'RETIREMENT_NEWS' | 'FA_SIGNING' | 'FA_RELEASE' | 'FA_LEAGUE_NEWS' | 'EXTENSION_SIGNED' | 'RFA_OFFER_SHEET';
 
 export type MessageFilterCategory = 'GAME' | 'TRADE' | 'INJURY' | 'SCOUT' | 'LEAGUE' | 'SYSTEM';
 
@@ -13,7 +13,7 @@ export const MESSAGE_FILTER_CATEGORIES: MessageFilterCategory[] = ['GAME', 'TRAD
 
 export const MESSAGE_FILTER_MAP: Record<MessageFilterCategory, MessageType[]> = {
     GAME: ['GAME_RECAP', 'PLAYOFF_STAGE_REVIEW'],
-    TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE', 'FA_SIGNING', 'FA_RELEASE', 'FA_LEAGUE_NEWS', 'EXTENSION_SIGNED'],
+    TRADE: ['TRADE_ALERT', 'TRADE_OFFER_RECEIVED', 'TRADE_OFFER_RESPONSE', 'FA_SIGNING', 'FA_RELEASE', 'FA_LEAGUE_NEWS', 'EXTENSION_SIGNED', 'RFA_OFFER_SHEET'],
     INJURY: ['INJURY_REPORT', 'SUSPENSION'],
     SCOUT: ['SCOUT_REPORT', 'PROSPECT_REVEAL'],
     LEAGUE: ['LEAGUE_NEWS', 'RETIREMENT_NEWS', 'SEASON_REVIEW', 'SEASON_AWARDS', 'OWNER_LETTER', 'HOF_QUALIFICATION', 'FINALS_MVP', 'REG_SEASON_CHAMPION', 'PLAYOFF_CHAMPION', 'OFFSEASON_REPORT', 'LOTTERY_RESULT', 'DRAFT_RESULT'],
@@ -446,6 +446,29 @@ export interface OffseasonReportContent {
     expired: { playerId: string; playerName: string; age: number; ovr: number; position: string; lastSalary: number }[];
     optionDecisions: { playerId: string; playerName: string; optionType: 'player' | 'team'; exercised: boolean; salary: number }[];
     pendingTeamOptions?: TeamOptionEntry[];
+    rfaCandidates?: {
+        playerId: string;
+        playerName: string;
+        position: string;
+        ovr: number;
+        age: number;
+        qoSalary: number;
+        decision?: 'tender' | 'decline';
+    }[];
+}
+
+export interface RFAOfferSheetContent {
+    offerSheetId: string;
+    offeringTeamId: string;
+    offeringTeamName: string;
+    playerId: string;
+    playerName: string;
+    position: string;
+    ovr: number;
+    salary: number;
+    years: number;
+    matchDeadline: string;
+    decision?: 'matched' | 'declined';
 }
 
 export interface RetirementNewsContent {

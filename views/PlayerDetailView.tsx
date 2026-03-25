@@ -907,6 +907,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 </span>
                                             </div>
                                         </div>
+                                    ) : player.prevSalary != null ? (
+                                        <div className="px-4 py-3 space-y-1">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">연평균 연봉</span>
+                                                <span className="font-mono font-bold text-slate-400">{formatMoney(player.prevSalary)}</span>
+                                            </div>
+                                            {player.prevTeamTenure != null && (
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-500">재직 기간</span>
+                                                    <span className="text-slate-400">{player.prevTeamTenure}년</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : null}
                                 </>
                             ) : (

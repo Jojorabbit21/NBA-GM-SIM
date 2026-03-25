@@ -415,13 +415,36 @@ export function evaluateFAOffer(
     demand: FADemandResult,
     seed: string,
 ): boolean {
-    if (offer.salary >= demand.askingSalary)  return true;
+    // Years evaluation: how many years short of asking
+    const yearsShort = Math.max(0, (demand.askingYears ?? 0) - offer.years);
+
+    if (offer.salary >= demand.askingSalary) {
+        // Salary is sufficient but years may be too short
+        if (yearsShort >= 2) {
+            // 2 years short: 25% reject, 3 years: 50%, capped at 55%
+            const rejectProb = Math.min(0.55, (yearsShort - 1) * 0.25);
+            const hash = stringToHash(seed + 'yr' + String(offer.years));
+            if ((hash % 10000) / 10000 < rejectProb) return false;
+        }
+        return true;
+    }
     if (offer.salary < demand.walkAwaySalary) return false;
 
     const range = demand.askingSalary - demand.walkAwaySalary;
     if (range <= 0) return false;
 
-    const acceptProb = (offer.salary - demand.walkAwaySalary) / range;
+    let acceptProb = (offer.salary - demand.walkAwaySalary) / range;
+
+    // yearsFactor: 1 year short = ×0.88, 2 = ×0.76, 3 = ×0.64 (floor ×0.55)
+    // years extra: 1 over = ×1.04, capped at ×1.10
+    if (demand.askingYears) {
+        const yearsDiff = demand.askingYears - offer.years;
+        const yearsFactor = yearsDiff > 0
+            ? Math.max(0.55, 1.0 - yearsDiff * 0.12)
+            : Math.min(1.10, 1.0 + Math.abs(yearsDiff) * 0.04);
+        acceptProb *= yearsFactor;
+    }
+
     const hash = stringToHash(seed + String(offer.salary) + String(offer.years));
     const rand = (hash % 10000) / 10000;
 

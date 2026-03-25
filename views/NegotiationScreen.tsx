@@ -18,7 +18,9 @@ import {
     calcTeamPayroll,
     getAvailableSigningSlots,
     processUserOffer,
+    processOfferSheet,
 } from '../services/fa/faMarketBuilder';
+import type { PendingOfferSheet } from '../types/fa';
 import { getMaxCapPct, isSuperMaxEligible, isRoseRuleEligible } from '../services/fa/contractEligibility';
 import {
     generateDialogue,
@@ -71,6 +73,7 @@ interface NegotiationScreenProps {
     onExtensionSigned?: (playerId: string, contract: PlayerContract) => void;
     onReleasePlayer?: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onViewPlayer?: (player: Player) => void;
+    onFAOfferSheetSubmitted?: (playerId: string, offerSheet: PendingOfferSheet, updatedMarket: LeagueFAMarket) => void;
     onNegotiationBlocked?: (playerId: string) => void; // 협상 영구 결렬 시 호출
     onCooldownStarted?: (playerId: string, nextOfferDate: string) => void; // 거절 후 쿨다운 시작
     onNegStateChange?: (playerId: string, state: NegotiationState) => void; // Extension 감정 상태 영속화
@@ -111,6 +114,7 @@ const SLOT_LABELS: Record<SigningType, string> = {
     cap_space:   '캡 스페이스',
     non_tax_mle: '논택스 MLE',
     tax_mle:     '택스페이어 MLE',
+    bae:         '바이어뉴얼 익셉션',
     bird_full:   '풀 버드권',
     bird_early:  '얼리 버드권',
     bird_non:    '논버드',
@@ -169,12 +173,13 @@ const SLOT_MAX_YEARS: Record<SigningType, number> = {
     cap_space:   4,
     non_tax_mle: 4,
     tax_mle:     2,  // CBA: 2년 (3년 아님)
+    bae:         2,  // CBA: 2년
     vet_min:     2,
 };
 
 const SLOT_ESCALATOR: Record<SigningType, number> = {
     bird_full: 0.08, bird_early: 0.08, bird_non: 0.05,
-    cap_space: 0.05, non_tax_mle: 0.05, tax_mle: 0.05, vet_min: 0.00,
+    cap_space: 0.05, non_tax_mle: 0.05, tax_mle: 0.05, bae: 0.05, vet_min: 0.00,
 };
 
 /** 연차별 연봉: i=0 → 기준연봉 그대로, i>0 → base × (1+rate)^i */
@@ -210,6 +215,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     faMarket,
     onClose,
     onFAOfferAccepted,
+    onFAOfferSheetSubmitted,
     onExtensionSigned,
     onReleasePlayer,
     onViewPlayer,
@@ -454,8 +460,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     const slots = useMemo(() => {
         if (!isFA || !faEntry) return [] as SigningType[];
-        return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE, faEntry.isBuyout, faEntry.prevTeamTenure);
-    }, [isFA, faEntry, myTeam, player, usedMLE]);
+        return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE, faEntry.isBuyout, faEntry.prevTeamTenure, currentSeasonYear);
+    }, [isFA, faEntry, myTeam, player, usedMLE, currentSeasonYear]);
 
     const buyoutRestriction = useMemo(() => {
         if (!faEntry?.isBuyout || !isFA) return null;
@@ -713,6 +719,35 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         const faPhrase = GM_OFFER_PHRASES[(newRound - 1) % GM_OFFER_PHRASES.length];
         addMsg('gm', faPhrase, undefined, undefined, { salaries: [...faOfferSalaries], aav: faOfferAAV, total: totalContractValue });
 
+        // RFA 타팀 선수 → 오퍼시트 제출 경로
+        const isOtherTeamRFA = faEntry.isRFA && faEntry.originalTeamId && faEntry.originalTeamId !== myTeam.id;
+        if (isOtherTeamRFA) {
+            const sheetResult = processOfferSheet(
+                faMarket, myTeam, player,
+                {
+                    salary: faOfferAAV, years: faOfferYears, signingType: selectedSlot,
+                    option:      faContractOption !== 'none' && faOfferYears >= 2
+                        ? { type: faContractOption as 'player' | 'team', year: faOfferYears - 1 }
+                        : undefined,
+                    noTrade:     faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron ? true : undefined,
+                    tradeKicker: faTradeKicker > 0 && selectedSlot !== 'vet_min' ? faTradeKicker : undefined,
+                },
+                tendencySeed, currentSeasonYear, currentDate,
+            );
+            if (sheetResult.submitted) {
+                setFaResult({ accepted: true });
+                addPlayerMsg('ACCEPT', newRound, null, null);
+                addMsg('gm', `오퍼시트가 제출되었습니다. 원소속팀(매칭 마감: ${sheetResult.offerSheet.matchDeadline})의 결정을 기다리는 중입니다.`);
+                setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '오퍼시트 제출 완료 — 매칭 대기 중', isSuccess: true }]);
+                onFAOfferSheetSubmitted?.(player.id, sheetResult.offerSheet, sheetResult.updatedMarket);
+            } else {
+                const reason = sheetResult.reason;
+                setFaResult({ accepted: false, reason });
+                addPlayerMsg('REJECT', newRound, null, null);
+            }
+            return;
+        }
+
         const result = processUserOffer(
             faMarket, myTeam, player, faEntry.prevTeamId,
             {
@@ -747,7 +782,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     : e,
             );
             const updatedMLE = { ...faMarket.usedMLE };
-            if (selectedSlot === 'non_tax_mle' || selectedSlot === 'tax_mle') {
+            if (selectedSlot === 'non_tax_mle' || selectedSlot === 'tax_mle' || selectedSlot === 'bae') {
                 updatedMLE[myTeam.id] = true;
             }
             const updatedMarket: LeagueFAMarket = { ...faMarket, entries: updatedEntries, usedMLE: updatedMLE };

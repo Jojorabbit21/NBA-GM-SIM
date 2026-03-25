@@ -26,6 +26,7 @@ interface FAViewProps {
         signingType: SigningType,
         updatedMarket: LeagueFAMarket,
     ) => void;
+    onOfferSheetSubmitted?: (playerId: string, updatedMarket: LeagueFAMarket) => void;
     onReleasePlayer: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
     onViewPlayer?: (player: Player) => void;
     currentDate?: string;
@@ -50,6 +51,7 @@ const SLOT_LABELS: Record<SigningType, string> = {
     cap_space:   '캡 스페이스',
     non_tax_mle: '논택스 MLE',
     tax_mle:     '택스페이어 MLE',
+    bae:         '바이어뉴얼 익셉션',
     bird_full:   '풀 버드권',
     bird_early:  '얼리 버드권',
     bird_non:    '논버드',
@@ -60,6 +62,7 @@ const SLOT_CAPS: Record<SigningType, string> = {
     cap_space:   '잔여 캡',
     non_tax_mle: '$14.1M',
     tax_mle:     '$5.7M',
+    bae:         '$4.5M',
     bird_full:   '맥스',
     bird_early:  '전 연봉 175%',
     bird_non:    '전 연봉 120%',
@@ -175,6 +178,7 @@ export const FAView: React.FC<FAViewProps> = ({
     currentSeasonYear,
     currentSeason,
     onOfferAccepted,
+    onOfferSheetSubmitted,
     onReleasePlayer,
     onViewPlayer,
     currentDate = '',
@@ -258,13 +262,33 @@ export const FAView: React.FC<FAViewProps> = ({
                         hideAvgColumns={true}
                         onPlayerClick={(player) => onViewPlayer?.(player)}
                         renderRowAction={(player) => {
+                            const entry = market?.entries.find(e => e.playerId === player.id);
                             const blocked = blockedNegotiationIds.has(player.id);
+                            const isPendingMatch = entry?.status === 'pending_match';
+                            const isRFA = entry?.isRFA ?? false;
+                            const isOtherTeamRFA = isRFA && entry?.originalTeamId && entry.originalTeamId !== myTeam.id;
+
+                            if (isPendingMatch) {
+                                return (
+                                    <span className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-amber-400 whitespace-nowrap">
+                                        매칭 대기
+                                    </span>
+                                );
+                            }
+
                             return (
-                                <button
-                                    onClick={() => !blocked && setNegotiationTarget({ type: 'fa', playerId: player.id })}
-                                    disabled={blocked}
-                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                                >협상</button>
+                                <div className="flex items-center gap-1.5">
+                                    {isRFA && (
+                                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">RFA</span>
+                                    )}
+                                    <button
+                                        onClick={() => !blocked && setNegotiationTarget({ type: 'fa', playerId: player.id })}
+                                        disabled={blocked}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-white hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap ${isOtherTeamRFA ? 'bg-orange-600 hover:bg-orange-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                                    >
+                                        {isOtherTeamRFA ? '오퍼시트' : '협상'}
+                                    </button>
+                                </div>
                             );
                         }}
                     />
@@ -287,6 +311,10 @@ export const FAView: React.FC<FAViewProps> = ({
                     onClose={() => setNegotiationTarget(null)}
                     onFAOfferAccepted={(playerId, contract, signingType, updatedMarket) => {
                         onOfferAccepted(playerId, contract, signingType, updatedMarket);
+                    }}
+                    onFAOfferSheetSubmitted={(playerId, _offerSheet, updatedMarket) => {
+                        onOfferSheetSubmitted?.(playerId, updatedMarket);
+                        setNegotiationTarget(null);
                     }}
                     onNegotiationBlocked={(playerId) => {
                         setBlockedNegotiationIds(prev => new Set([...prev, playerId]));

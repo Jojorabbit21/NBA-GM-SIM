@@ -7,6 +7,7 @@ import { calculateOvr } from '../../utils/ovrUtils';
 import { assignArchetypes } from './archetypeEvaluator';
 import { decayPopularityOffseason } from '../playerPopularity';
 import { decayMoraleOffseason } from '../moraleService';
+import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -102,12 +103,23 @@ export interface PendingTeamOptionInfo {
     salary: number;
 }
 
+export interface RFACandidateInfo {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    ovr: number;
+    position: string;
+    age: number;
+    qoSalary: number;  // 마지막 루키 연봉 × 1.25
+}
+
 export interface OffseasonResult {
     players: OffseasonPlayerEntry[];
     retiredPlayers: RetiredPlayerInfo[];
     expiredPlayers: ExpiredPlayerInfo[];
     optionDecisions: OptionDecisionInfo[];
     pendingTeamOptions: PendingTeamOptionInfo[];
+    rfaCandidates: RFACandidateInfo[];  // 1라운드 루키(4년) 만료 RFA 후보
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -760,6 +772,7 @@ export function processOffseason(
         expiredPlayers: [],
         optionDecisions: [],
         pendingTeamOptions: [],
+        rfaCandidates: [],
     };
 
     // ── 1단계: 은퇴 판정 (전 리그 확률 롤, 최대 8명 캡) ──
@@ -892,6 +905,23 @@ export function processOffseason(
                         position: player.position,
                         lastSalary: player.salary,
                     });
+                    // 1라운드 루키(4년) 만료 → RFA 후보 등록
+                    if (player.contract.type === 'rookie' && player.contract.years.length === 4) {
+                        const lastSal = player.contract.years[player.contract.years.length - 1];
+                        const cap = LEAGUE_FINANCIALS.SALARY_CAP;
+                        const vetMin = Math.round(cap * 0.017); // ~1.7% of cap
+                        const maxAllowed = Math.round(cap * 0.35);
+                        const qoSalary = Math.max(vetMin, Math.min(maxAllowed, Math.round(lastSal * 1.25)));
+                        result.rfaCandidates.push({
+                            playerId: player.id,
+                            playerName: player.name,
+                            teamId: team.id,
+                            ovr: player.ovr,
+                            position: player.position,
+                            age: newAge,
+                            qoSalary,
+                        });
+                    }
                 }
 
                 // 연봉/잔여 연차 업데이트 (만료/은퇴가 아닌 경우)
