@@ -88,7 +88,7 @@ function statusBadge(status: FAMarketEntry['status']) {
 // CapStatus — 상단 팀 재정 요약
 // ─────────────────────────────────────────────────────────────
 
-const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; primaryColor: string; currentSeason: string }> = ({ myTeam, usedMLE, primaryColor, currentSeason }) => {
+const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; primaryColor: string; currentSeason: string }> = ({ myTeam, usedMLE, currentSeason }) => {
     const payroll   = calcTeamPayroll(myTeam);
     const deadTotal = (myTeam.deadMoney ?? []).reduce((s, d) => s + d.amount, 0);
     const cap       = LEAGUE_FINANCIALS.SALARY_CAP;
@@ -109,54 +109,46 @@ const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; prim
                            '#dc2626';  // 2nd 에이프런 초과 — 다크레드
 
     return (
-        <div className="flex-shrink-0 px-6 py-3 border-b border-slate-800 bg-slate-950">
-            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                {/* WidgetHeader */}
-                <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: primaryColor }}>
-                    <span className="text-sm font-bold text-white">샐러리 캡 현황</span>
-                    <span className="text-xs font-mono text-white/70">{currentSeason}</span>
+        <div className="flex-shrink-0 border-b border-slate-800 bg-slate-950 flex items-center divide-x divide-slate-800">
+            <div className="px-6 py-3 min-w-[120px]">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
+                <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
+            </div>
+            {deadTotal > 0 && (
+                <div className="px-6 py-3 min-w-[100px]">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
+                    <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
                 </div>
-                {/* 정보 */}
-                <div className="flex items-center divide-x divide-slate-800 flex-wrap">
-                    <div className="px-4 py-2 min-w-[110px]">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
-                        <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
-                    </div>
-                    {deadTotal > 0 && (
-                        <div className="px-4 py-2 min-w-[90px]">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
-                            <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
-                        </div>
-                    )}
-                    <div className="px-4 py-2 min-w-[90px]">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
-                        <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{remaining > 0 ? fmtM(remaining) : '캡 초과'}</div>
-                    </div>
-                    <div className="px-4 py-2 min-w-[130px]">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">MLE</div>
-                        <div className={`text-sm font-bold ${mleUsed ? 'text-slate-500 line-through' : 'text-indigo-400'}`}>
-                            {mleUsed ? '사용됨' : payroll < apron1 ? '논택스 ($14.1M)' : payroll < apron2 ? '택스페이어 ($5.7M)' : '없음'}
-                        </div>
-                    </div>
-                    {/* Cap bar */}
-                    <div className="flex-1 min-w-[180px] px-4 py-2">
-                        <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-1">
-                            <span>캡 {fmtM(cap)}</span>
-                            <span>택스 {fmtM(tax)}</span>
-                            <span>에이프런 {fmtM(apron1)}</span>
-                        </div>
-                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
-                            <div
-                                className="h-full rounded-full transition-all"
-                                style={{ width: `${capBarPct}%`, backgroundColor: capBarColor }}
-                            />
-                            {/* CAP marker */}
-                            <div className="absolute top-0 bottom-0 w-px bg-indigo-500/60" style={{ left: `${(cap / apron2) * 100}%` }} />
-                            {/* TAX marker */}
-                            <div className="absolute top-0 bottom-0 w-px bg-amber-500/60" style={{ left: `${(tax / apron2) * 100}%` }} />
-                        </div>
-                    </div>
+            )}
+            <div className="px-6 py-3 min-w-[100px]">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
+                <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {remaining > 0 ? fmtM(remaining) : '캡 초과'}
                 </div>
+            </div>
+            <div className="px-6 py-3 min-w-[160px]">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">MLE</div>
+                <div className={`text-sm font-bold ${mleUsed ? 'text-slate-500 line-through' : 'text-indigo-400'}`}>
+                    {mleUsed ? '사용됨' : payroll < apron1 ? '논택스 ($14.1M)' : payroll < apron2 ? '택스페이어 ($5.7M)' : '없음'}
+                </div>
+            </div>
+            <div className="flex-1 px-6 py-3 min-w-[200px]">
+                <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-1.5">
+                    <span>캡 {fmtM(cap)}</span>
+                    <span>택스 {fmtM(tax)}</span>
+                    <span>에이프런 {fmtM(apron1)}</span>
+                </div>
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
+                    <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${capBarPct}%`, backgroundColor: capBarColor }}
+                    />
+                    <div className="absolute top-0 bottom-0 w-px bg-indigo-500/60" style={{ left: `${(cap / apron2) * 100}%` }} />
+                    <div className="absolute top-0 bottom-0 w-px bg-amber-500/60" style={{ left: `${(tax / apron2) * 100}%` }} />
+                </div>
+            </div>
+            <div className="px-6 py-3">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{currentSeason}</div>
             </div>
         </div>
     );
@@ -219,9 +211,6 @@ export const FAView: React.FC<FAViewProps> = ({
             });
     }, [market, faPlayerMap]);
 
-    const availableCount = market?.entries.filter(e => e.status === 'available').length ?? 0;
-    const signedCount    = market?.entries.filter(e => e.status === 'signed').length ?? 0;
-
     // RosterGrid용 FA 선수 임시 team
     const faTeamForGrid = useMemo(() => ({
         ...myTeam,
@@ -240,20 +229,7 @@ export const FAView: React.FC<FAViewProps> = ({
 
     return (
         <div className="relative h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
-            {/* ── 탭 네비게이션 ── */}
-            <div className="flex-shrink-0 px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14">
-                <div className="flex items-center gap-8 h-full">
-                    <button
-                        className="flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm text-indigo-400 border-indigo-400"
-                    >FA 시장</button>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-mono">
-                    <span className="text-emerald-400">{availableCount} 가용</span>
-                    <span className="text-slate-500">{signedCount} 서명</span>
-                </div>
-            </div>
-
-            {/* ── 팀 캡 상황 ── */}
+            {/* ── 캡 상황 (풀바디) ── */}
             <CapStatus myTeam={myTeam} usedMLE={usedMLE} primaryColor={primaryColor} currentSeason={currentSeason} />
 
             {/* ── FA 시장 콘텐츠 ── */}
