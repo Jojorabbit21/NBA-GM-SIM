@@ -4,12 +4,15 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
-import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP } from '../../data/attributeConfig';
+import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP, ATTR_AVG_KEYS } from '../../data/attributeConfig';
 
 interface RosterGridProps {
     team: Team;
     tab: 'roster' | 'stats';
     onPlayerClick: (player: Player) => void;
+    showFooter?: boolean;
+    hideAvgColumns?: boolean;
+    renderRowAction?: (player: Player) => React.ReactNode;
 }
 
 type SortConfig = { key: string; direction: 'asc' | 'desc'; };
@@ -40,7 +43,7 @@ const STATS_COLS = [
 ];
 
 
-export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick }) => {
+export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, hideAvgColumns = false, renderRowAction }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     const handleSort = (key: string) => {
@@ -150,8 +153,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <col style={{ width: WIDTHS.POS }} />
                     <col style={{ width: WIDTHS.AGE }} />
                     <col style={{ width: WIDTHS.OVR }} />
-                    {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
+                    {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k)).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
                     {tab === 'stats' && STATS_COLS.map((_, i) => <col key={`stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
+                    {renderRowAction && <col style={{ width: 80 }} />}
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                     {/* Header Row 1: Groups */}
@@ -161,13 +165,17 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <span className="text-xs font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
                             </div>
                         </th>
-                        {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                <div className="h-full flex items-center justify-center">
-                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
-                                </div>
-                            </th>
-                        ))}
+                        {tab === 'roster' && ATTR_GROUPS.map(g => {
+                            const visibleKeys = hideAvgColumns ? g.keys.filter(k => !ATTR_AVG_KEYS.has(k)) : g.keys;
+                            if (visibleKeys.length === 0) return null;
+                            return (
+                                <th key={g.id} colSpan={visibleKeys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                                    <div className="h-full flex items-center justify-center">
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
+                                    </div>
+                                </th>
+                            );
+                        })}
                         {tab === 'stats' && (
                             <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
@@ -175,6 +183,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 </div>
                             </th>
                         )}
+                        {renderRowAction && <th className="bg-slate-950 border-b border-slate-800" />}
                     </tr>
                     {/* Header Row 2: Labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
@@ -200,8 +209,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
                         >OVR</TableHeaderCell>
                         
-                        {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            g.keys.map(k => (
+                        {tab === 'roster' && ATTR_GROUPS.map(g =>
+                            g.keys
+                                .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
+                                .map(k => (
                                     <TableHeaderCell
                                         key={k}
                                         width={WIDTHS.ATTR}
@@ -213,11 +224,12 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     >
                                         {ATTR_LABEL[k] || k}
                                     </TableHeaderCell>
-                            ))
-                        ))}
+                                ))
+                        )}
                         {tab === 'stats' && STATS_COLS.map(c => (
                             <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
                         ))}
+                        {renderRowAction && <th className="bg-slate-950 border-b border-slate-800 w-20" />}
                     </tr>
                 </thead>
                 <TableBody>
@@ -246,9 +258,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
-                            {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                                <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
-                            ))}
+                            {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
+                                .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
+                                .map(k => (
+                                    <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
+                                ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
                                 if (p.stats.mp === 0) {
@@ -280,10 +294,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     </TableCell>
                                 );
                             })}
+                            {renderRowAction && (
+                                <TableCell className="px-3 py-1.5">{renderRowAction(p)}</TableCell>
+                            )}
                         </TableRow>
                     ))}
                 </TableBody>
-                <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                {showFooter && <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         {/* Use inline styles to force border removal and width locking */}
                         <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-xs uppercase tracking-widest">팀 평균</TableCell>
@@ -296,9 +313,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
                         </TableCell>
 
-                        {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
-                        ))}
+                        {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
+                            .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
+                            .map(k => (
+                                <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
+                            ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             // G, GS, MIN은 팀 평균에서 제외 (빈칸 처리)
                             if (['g', 'gs', 'mp'].includes(c.key)) {
@@ -330,7 +349,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             );
                         })}
                     </tr>
-                </TableFoot>
+                </TableFoot>}
             </Table>
             </div>
             )}

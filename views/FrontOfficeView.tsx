@@ -2,13 +2,17 @@
 import React, { useMemo } from 'react';
 import { useTabParam } from '../hooks/useTabParam';
 import { Team, Player } from '../types';
+import type { ReleaseType } from '../types';
 import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets } from '../types/draftAssets';
+import type { PlayerContract } from '../types/player';
+import type { OffseasonPhase } from '../types/app';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
+import { ContractManagementTab } from '../components/frontoffice/ContractManagementTab';
 import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
@@ -16,7 +20,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
-type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks' | 'contracts';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -31,10 +35,17 @@ interface FrontOfficeViewProps {
     leagueGMProfiles?: LeagueGMProfiles | null;
     userNickname?: string;
     seasonShort?: string;
+    // 계약 관리 탭용 props (선택적)
+    offseasonPhase?: OffseasonPhase;
+    onReleasePlayer?: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
+    onTeamOptionDecide?: (playerId: string, exercised: boolean) => void;
+    onExtensionOffer?: (playerId: string, contract: PlayerContract) => void;
+    tendencySeed?: string;
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
+    offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -61,6 +72,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <button onClick={() => setActiveTab('payroll')} className={tabClass('payroll')}>
                             <span>샐러리</span>
                         </button>
+                        <button onClick={() => setActiveTab('contracts')} className={tabClass('contracts')}>
+                            <span>계약 관리</span>
+                        </button>
                         <button onClick={() => setActiveTab('coaching')} className={tabClass('coaching')}>
                             <span>코칭 스태프</span>
                         </button>
@@ -77,6 +91,26 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     )}
                     {activeTab === 'payroll' && (
                         <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} onViewPlayer={onViewPlayer} />
+                    )}
+                    {activeTab === 'contracts' && onReleasePlayer && onTeamOptionDecide && onExtensionOffer && (
+                        <ContractManagementTab
+                            myTeam={team}
+                            teams={teams}
+                            tendencySeed={tendencySeed}
+                            currentSeasonYear={new Date(currentSimDate).getFullYear()}
+                            currentSeason={seasonShort}
+                            offseasonPhase={offseasonPhase}
+                            onReleasePlayer={onReleasePlayer}
+                            onTeamOptionDecide={onTeamOptionDecide}
+                            onExtensionOffer={onExtensionOffer}
+                            onViewPlayer={onViewPlayer ? (player) => onViewPlayer(player) : undefined}
+                            currentDate={currentSimDate}
+                        />
+                    )}
+                    {activeTab === 'contracts' && (!onReleasePlayer || !onTeamOptionDecide || !onExtensionOffer) && (
+                        <div className="text-center text-slate-500 py-20 text-sm">
+                            계약 관리 데이터를 불러올 수 없습니다.
+                        </div>
                     )}
                     {activeTab === 'coaching' && (
                         <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
