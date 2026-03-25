@@ -773,7 +773,7 @@ B팀이 3년 × $8M = $24M 계약 체결
 | FA_SIGNING / FA_RELEASE / FA_LEAGUE_NEWS 메시지 | `types/message.ts` + renderer | ✅ 완료 |
 | 사이드바 FA Market 상시 표시 + NEW 배지 | `components/Sidebar.tsx` | ✅ 완료 |
 | DB 영속화 (`league_fa_market` 컬럼) | `services/persistence.ts` | ✅ 완료 |
-| 데드캡 영속화 (`team_finances` JSONB 포함) | `hooks/useGameData.ts` | ✅ 완료 |
+| 데드캡 영속화 (`getFinancesSnapshot` → `team_finances` JSONB) | `hooks/useGameData.ts`, `financeEngine/budgetManager.ts` | ✅ 완료 |
 | `ReleaseType`, `DeadMoneyEntry` 타입 + `Team.deadMoney[]` | `types/team.ts` | ✅ 완료 |
 | `calcTeamPayroll` 데드캡 합산 | `faMarketBuilder.ts` | ✅ 완료 |
 | 웨이브/바이아웃/스트레치 방출 방식 선택 모달 | `views/FAView.tsx` | ✅ 완료 |

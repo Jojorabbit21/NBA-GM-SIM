@@ -86,24 +86,6 @@ export class BudgetManager {
     }
 
     /**
-     * 시즌 종료 시 럭셔리 택스 확정
-     */
-    finalizeLuxuryTax(): void {
-        for (const [teamId, finance] of Object.entries(this.finances)) {
-            const payroll = finance.expenses.payroll;
-            const taxLevel = LEAGUE_FINANCIALS.TAX_LEVEL;
-
-            if (payroll > taxLevel) {
-                finance.expenses.luxuryTax = calculateLuxuryTax(payroll, taxLevel);
-            } else {
-                finance.expenses.luxuryTax = 0;
-            }
-
-            this.recalculateIncome(teamId);
-        }
-    }
-
-    /**
      * 팀 재정 상태 조회
      */
     getFinance(teamId: string): TeamFinance | undefined {
@@ -268,4 +250,24 @@ export function getBudgetManager(): BudgetManager {
 
 export function resetBudgetManager(): void {
     _instance = null;
+}
+
+/**
+ * BudgetManager 재정 스냅샷 + Team.deadMoney 통합 직렬화.
+ * forceSave 및 archiveCurrentSeason 양쪽에서 공통 사용.
+ */
+export function getFinancesSnapshot(teams: Team[]): SavedTeamFinances {
+    const finances = getBudgetManager().toSaveData();
+    for (const t of teams) {
+        if (t.deadMoney?.length) {
+            finances[t.id] ??= {
+                revenue: { gate: 0, broadcasting: 0, localMedia: 0, sponsorship: 0, merchandise: 0, other: 0 },
+                expenses: { payroll: 0, luxuryTax: 0, operations: 0, coachSalary: 0, scouting: 0, marketing: 0, administration: 0 },
+                budget: 0,
+                gamesPlayed: 0,
+            };
+            finances[t.id].deadMoney = [...t.deadMoney];
+        }
+    }
+    return finances;
 }

@@ -362,8 +362,10 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         // 인기도 (생성 선수용 — meta_players는 별도 경로로 세팅됨)
         popularity: baseAttrs.popularity ?? undefined,
 
-        // 커리어 스탯 (meta_players.career_history JSONB)
-        career_history: Array.isArray(raw.career_history) ? raw.career_history : undefined,
+        // 커리어 스탯 (meta_players.career_history JSONB, 또는 생성 선수의 base_attributes.career_history)
+        career_history: Array.isArray(raw.career_history) ? raw.career_history
+            : Array.isArray(baseAttrs?.career_history) ? baseAttrs.career_history
+            : undefined,
     };
 
     // 계약 데이터 구성 (JSONB contract 또는 salary/contractYears fallback)

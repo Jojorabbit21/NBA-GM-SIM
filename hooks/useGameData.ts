@@ -22,7 +22,7 @@ import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { LeagueCoachingData } from '../types/coaching';
 import { SavedTeamFinances } from '../types/finance';
 import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
-import { getBudgetManager, resetBudgetManager } from '../services/financeEngine';
+import { getBudgetManager, resetBudgetManager, getFinancesSnapshot } from '../services/financeEngine';
 import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
@@ -838,16 +838,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const _saveStart = performance.now();
                     const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
                     const coaching = ov?.coachingData || gameStateRef.current.coachingData;
-                    const finances = getBudgetManager().toSaveData();
-                    // 데드캡 정보를 finances에 포함 (별도 컬럼 없이 team_finances 활용)
-                    currentTeams?.forEach((t: Team) => {
-                        if (t.deadMoney && t.deadMoney.length > 0) {
-                            if (!finances[t.id]) {
-                                (finances as any)[t.id] = { revenue: { gate: 0, broadcasting: 0, localMedia: 0, sponsorship: 0, merchandise: 0, other: 0 }, expenses: { payroll: 0, luxuryTax: 0, operations: 0, coachSalary: 0, scouting: 0, marketing: 0, administration: 0 }, budget: 0, gamesPlayed: 0 };
-                            }
-                            (finances as any)[t.id].deadMoney = t.deadMoney;
-                        }
-                    });
+                    const finances = getFinancesSnapshot(currentTeams ?? []);
                     const pickAssets = ov?.leaguePickAssets || gameStateRef.current.leaguePickAssets;
                     const tradeBlocks = ov?.leagueTradeBlocks || gameStateRef.current.leagueTradeBlocks;
                     const tradeOffers = ov?.leagueTradeOffers || gameStateRef.current.leagueTradeOffers;
@@ -933,12 +924,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 stretchYearsTotal: 5,
                 stretchYearsRemaining: 5,
             }],
-            'mil': [{ // Damian Lillard buyout (July 2025)
+            'mil': [{ // Damian Lillard stretch provision (July 2025, 5yr $112.6M total → $22.5M/yr)
                 playerId: 'damian-lillard-deadcap',
                 playerName: '데미안 릴라드',
                 amount: 22516603,
                 season: '2025-26',
-                releaseType: 'buyout',
+                releaseType: 'stretch',
+                stretchYearsTotal: 5,
+                stretchYearsRemaining: 5,
             }],
             'por': [{ // Deandre Ayton buyout
                 playerId: 'deandre-ayton-deadcap',

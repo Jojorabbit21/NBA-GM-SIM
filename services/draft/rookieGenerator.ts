@@ -15,7 +15,7 @@
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
-import { PlayerContract, PlayerPopularity, PrevSeasonStats } from '../../types/player';
+import { CareerSeasonStat, PlayerContract, PlayerPopularity } from '../../types/player';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ── 상수 ──
@@ -573,72 +573,133 @@ function calcPrevSalary(ovr: number, yos: number, cap: number, rng: SeededRandom
 }
 
 /**
- * 능력치 기반 직전 시즌 성적 생성
- * attrs: buildAttrMap 결과 (SKILL_KEYS 기반 단축키), position, ovr, rng
+ * 능력치 기반 직전 시즌 성적 생성 — CareerSeasonStat 형식
+ * PlayerDetailView 기록 탭과 NegotiationScreen 직전 시즌 섹션에서 공통 사용
  */
-function generatePrevSeasonStats(
+function generateCareerStatRow(
     attrs: Record<string, number>,
     position: string,
     ovr: number,
+    age: number,
+    seasonStartYear: number,  // 시즌 시작 연도 (예: 2024 → "2024-25")
     rng: SeededRandom
-): PrevSeasonStats {
+): CareerSeasonStat {
     // ±15% 분산 적용 헬퍼
     const vary = (val: number): number => {
         const factor = 1 + (rng.next() * 0.30 - 0.15);
         return Math.max(0, val * factor);
     };
 
-    // GP: 40~75 (부상 가능성 반영)
+    const isBig = position === 'PF' || position === 'C';
+    const isGuard = position === 'PG' || position === 'SG';
+
+    // GP, GS, MIN
     const gp = rng.intRange(40, 75);
-
-    // MPG: OVR 기반 기대 출전시간 (15~36분)
+    const starterRate = ovr >= 75 ? 0.90 : ovr >= 65 ? 0.60 : 0.25;
+    const gs = Math.round(gp * clamp(rng.next() * starterRate + (ovr >= 75 ? 0.05 : 0), 0, 1));
     const baseMpg = ovr >= 80 ? 30 : ovr >= 70 ? 24 : ovr >= 60 ? 20 : 16;
-    const mpg = clamp(Math.round(vary(baseMpg)), 15, 36);
+    const min = clamp(Math.round(vary(baseMpg)), 14, 36);
 
-    // PPG: closeShot/layup/dunk/mid + scoring 능력치 기반
-    const scoringBase = (
-        (attrs['close'] ?? 60) * 0.20 +
-        (attrs['lay'] ?? 60) * 0.20 +
-        (attrs['mid'] ?? 60) * 0.15 +
-        (attrs['3t'] ?? 55) * 0.10 +
-        (attrs['dnk'] ?? 55) * 0.15 +
-        (attrs['siq'] ?? 60) * 0.20
-    );
-    const ppgScale = mpg / 36;
-    const ppg = clamp(Math.round(vary((scoringBase - 50) / 4 * ppgScale + 8 * ppgScale) * 10) / 10, 2, 35);
+    // FG% — 슛 능력치 기반
+    const fgBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
+    const fg_pct = clamp(Math.round(vary(fgBase / 200 + 0.38) * 1000) / 1000, 0.35, 0.65);
 
-    // RPG: offReb + defReb 기반, 빅맨 보너스
+    const threeBase = ((attrs['3c'] ?? 50) + (attrs['3_45'] ?? 50) + (attrs['3t'] ?? 50)) / 3;
+    const fg3_pct = clamp(Math.round(vary(threeBase / 300 + 0.28) * 1000) / 1000, 0.20, 0.45);
+
+    const ftBase = attrs['ft'] ?? 70;
+    const ft_pct = clamp(Math.round(vary(ftBase / 140 + 0.45) * 1000) / 1000, 0.40, 0.95);
+
+    // FGA per game — OVR 기반 사용률
+    const baseUsage = ovr >= 80 ? 0.26 : ovr >= 70 ? 0.21 : ovr >= 60 ? 0.17 : 0.14;
+    const fga = clamp(Math.round(vary(min * baseUsage) * 10) / 10, 3, 22);
+
+    // 3PA per game — 포지션별 3점 성향
+    const threePARate = isGuard ? 0.44 : position === 'SF' ? 0.33 : 0.13;
+    const fg3a = clamp(Math.round(vary(fga * threePARate) * 10) / 10, 0, fga * 0.75);
+
+    // FTA per game — drawFoul 능력치 기반
+    const fta = clamp(Math.round(vary((attrs['draw'] ?? 55) / 100 * 4.5) * 10) / 10, 0.5, 9);
+
+    // Makes per game
+    const fgm = Math.round(fga * fg_pct * 10) / 10;
+    const fg3m = Math.round(fg3a * fg3_pct * 10) / 10;
+    const ftm = Math.round(fta * ft_pct * 10) / 10;
+
+    // pts = 2*FGM + FG3M + FTM  (FG3M already counted once in FGM)
+    const pts = Math.round((2 * fgm + fg3m + ftm) * 10) / 10;
+
+    // REB
     const rebBase = ((attrs['oreb'] ?? 55) + (attrs['dreb'] ?? 55)) / 2;
     const posFactor = position === 'C' ? 1.4 : position === 'PF' ? 1.2 : position === 'SF' ? 0.9 : 0.6;
-    const rpg = clamp(Math.round(vary((rebBase - 50) / 6 * posFactor + 5 * posFactor) * 10) / 10, 0.5, 15);
+    const reb = clamp(Math.round(vary((rebBase - 50) / 6 * posFactor + 5 * posFactor) * 10) / 10, 0.5, 15);
+    const orebRatio = isBig ? 0.33 : 0.18;
+    const oreb = Math.round(reb * orebRatio * 10) / 10;
+    const dreb = Math.round((reb - oreb) * 10) / 10;
 
-    // APG: passAcc + passIq 기반, 가드 보너스
+    // AST
     const passBase = ((attrs['pacc'] ?? 55) + (attrs['piq'] ?? 55)) / 2;
     const guardFactor = position === 'PG' ? 1.5 : position === 'SG' ? 0.9 : position === 'SF' ? 0.7 : 0.4;
-    const apg = clamp(Math.round(vary((passBase - 50) / 5 * guardFactor + 4 * guardFactor) * 10) / 10, 0.5, 12);
+    const ast = clamp(Math.round(vary((passBase - 50) / 5 * guardFactor + 4 * guardFactor) * 10) / 10, 0.5, 12);
 
-    // SPG: perDef + steal 기반
+    // STL, BLK, TOV, PF
     const stlBase = ((attrs['pdef'] ?? 55) + (attrs['stl'] ?? 55)) / 2;
-    const spg = clamp(Math.round(vary((stlBase - 50) / 15 + 0.9) * 10) / 10, 0.3, 3.0);
+    const stl = clamp(Math.round(vary((stlBase - 50) / 15 + 0.9) * 10) / 10, 0.3, 3.0);
 
-    // BPG: intDef + blk 기반, 센터 보너스
     const blkBase = ((attrs['idef'] ?? 55) + (attrs['blk'] ?? 55)) / 2;
     const centerFactor = position === 'C' ? 1.5 : position === 'PF' ? 1.1 : 0.5;
-    const bpg = clamp(Math.round(vary((blkBase - 50) / 15 * centerFactor + 0.6 * centerFactor) * 10) / 10, 0.1, 3.5);
+    const blk = clamp(Math.round(vary((blkBase - 50) / 15 * centerFactor + 0.6 * centerFactor) * 10) / 10, 0.1, 3.5);
 
-    // FG%: closeShot + layup + shotIq 기반
-    const fgBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
-    const fgPct = clamp(Math.round(vary(fgBase / 200 + 0.38) * 1000) / 1000, 0.35, 0.65);
+    const tov = clamp(Math.round(vary(ast * 0.20 + 0.5) * 10) / 10, 0.3, 4.0);
+    const pf = clamp(Math.round(vary(2.1) * 10) / 10, 1.0, 4.0);
 
-    // 3P%: 3c + 3_45 + 3t 기반
-    const threeBase = ((attrs['3c'] ?? 50) + (attrs['3_45'] ?? 50) + (attrs['3t'] ?? 50)) / 3;
-    const fg3Pct = clamp(Math.round(vary(threeBase / 300 + 0.28) * 1000) / 1000, 0.20, 0.45);
+    // Advanced stats
+    const ts_pct = Math.round(pts / (2 * (fga + 0.44 * fta) || 1) * 1000) / 1000;
+    const efg_pct = Math.round((fgm + 0.5 * fg3m) / (fga || 1) * 1000) / 1000;
+    const tov_pct = Math.round(tov / ((fga + 0.44 * fta + tov) || 1) * 1000) / 1000;
+    const fg3a_rate = Math.round(fg3a / (fga || 1) * 1000) / 1000;
+    const fta_rate = Math.round(fta / (fga || 1) * 1000) / 1000;
 
-    // FT%: ft 기반
-    const ftBase = attrs['ft'] ?? 70;
-    const ftPct = clamp(Math.round(vary(ftBase / 140 + 0.45) * 1000) / 1000, 0.40, 0.95);
+    // 시즌 문자열: "2024-25" 형식
+    const season = `${seasonStartYear}-${String(seasonStartYear + 1).slice(-2)}`;
 
-    return { gp, mpg, ppg, rpg, apg, spg, bpg, fgPct, fg3Pct, ftPct };
+    return {
+        season,
+        team: '---',
+        age,
+        gp, gs, min, pts,
+        oreb, dreb, reb, ast, stl, blk, tov, pf,
+        fgm, fga, fg3m, fg3a, ftm, fta,
+        fg_pct, fg3_pct, ft_pct,
+        ts_pct, efg_pct, tov_pct, fg3a_rate, fta_rate,
+    };
+}
+
+/**
+ * 시즌별 OVR 커리어 아크 계산
+ * 현재 OVR에서 역산해 해당 시즌 나이에 맞는 OVR 추정:
+ * - 전성기(28세) 이전: 선형 성장
+ * - 전성기 이후: 0.75 OVR/년 하락
+ */
+const ROOKIE_ENTRY_AGE = 18; // NBA 최소 입단 나이 (ratio 기준점)
+
+/** age → baseline 기간 내 선형 성장 비율 (0~1) */
+const growthRatio = (age: number, baseline: number): number =>
+    Math.max(0, (age - ROOKIE_ENTRY_AGE) / Math.max(1, baseline - ROOKIE_ENTRY_AGE));
+
+function calcSeasonOvr(currentOvr: number, seasonAge: number, currentAge: number): number {
+    if (seasonAge >= currentAge) return currentOvr;
+    const peakAge = 28;
+    if (currentAge <= peakAge) {
+        // 아직 성장 중 — 초기 시즌일수록 비례적으로 낮음
+        return clamp(Math.round(currentOvr * (0.78 + 0.22 * growthRatio(seasonAge, currentAge))), 38, currentOvr);
+    }
+    // 전성기 지남 — 전성기 OVR 역산 후 아크 적용
+    const peakOvr = currentOvr + (currentAge - peakAge) * 0.75;
+    if (seasonAge <= peakAge) {
+        return clamp(Math.round(peakOvr * (0.78 + 0.22 * growthRatio(seasonAge, peakAge))), 38, Math.round(peakOvr));
+    }
+    return clamp(Math.round(peakOvr - (seasonAge - peakAge) * 0.75), 38, Math.round(peakOvr));
 }
 
 /**
@@ -649,7 +710,7 @@ function generatePrevSeasonStats(
 function generatePopularity(
     ovr: number,
     age: number,
-    stats: PrevSeasonStats,
+    stats: CareerSeasonStat,
     rng: SeededRandom,
 ): PlayerPopularity {
     // OVR 기반 national 기준값
@@ -666,7 +727,7 @@ function generatePopularity(
                  : 0;
 
     // 성적 보정: PPG 20+ +4, 15+ +2
-    const statMod = stats.ppg >= 20 ? 4 : stats.ppg >= 15 ? 2 : 0;
+    const statMod = stats.pts >= 20 ? 4 : stats.pts >= 15 ? 2 : 0;
 
     const national = clamp(Math.round(base + ageMod + statMod), 0, 100);
 
@@ -769,11 +830,18 @@ export function generateInitialFAPool(
         // 직전 팀 tenure: 1 ~ min(4, yos)
         const prevTeamTenure = Math.max(1, rng.intRange(1, Math.min(4, yos)));
 
-        // 직전 시즌 성적
-        const prevSeasonStats = generatePrevSeasonStats(attrs, position, approxOvr, rng);
+        // 전체 커리어 기록 생성 (yos 시즌 × 1행)
+        const careerHistory: CareerSeasonStat[] = [];
+        for (let yr = 0; yr < yos; yr++) {
+            const seasonStartYear = draftYear + yr;           // 예: 2018, 2019, ...
+            const seasonAge = entryAge + yr;                  // 해당 시즌 나이
+            const seasonOvr = calcSeasonOvr(approxOvr, seasonAge, age);
+            careerHistory.push(generateCareerStatRow(attrs, position, seasonOvr, seasonAge, seasonStartYear, rng));
+        }
 
-        // 인기도
-        const popularity = generatePopularity(approxOvr, age, prevSeasonStats, rng);
+        // 인기도: 직전 시즌(마지막 행) 기준으로 산정
+        const lastRow = careerHistory[careerHistory.length - 1];
+        const popularity = generatePopularity(approxOvr, age, lastRow, rng);
 
         const id = `gen_${generateUUID(rng)}`;
 
@@ -803,7 +871,7 @@ export function generateInitialFAPool(
                 draft_year: draftYear,
                 prev_salary: prevSalary,
                 prev_team_tenure: prevTeamTenure,
-                prev_season_stats: prevSeasonStats,
+                career_history: careerHistory,
                 popularity,
             },
             age_at_draft: age,

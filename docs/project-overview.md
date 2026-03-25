@@ -405,6 +405,7 @@ liveEngine.stepPossession()
 ```
 offseasonEventHandler.checkOffseasonEvent()
   POST_FINALS    → detectFinalsEnd() → archiveCurrentSeason()
+                   (getFinancesSnapshot(teams) → user_season_history.team_finances 포함)
   POST_LOTTERY   → runLotteryEngine() → DraftLotteryView 강제 이동
   POST_DRAFT     → RookieDraftView 강제 이동
   FA_OPEN        → openFAMarket() → simulateCPUWaivers() → cpuTradeSimulator

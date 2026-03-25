@@ -32,6 +32,7 @@ import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { LeagueFAMarket } from '../types/fa';
 import { openFAMarket, simulateCPUSigning, releasePlayerToMarket } from '../services/fa/faMarketBuilder';
 import { simulateCPUWaivers } from '../services/fa/cpuWaiverEngine';
+import { getFinancesSnapshot } from '../services/financeEngine';
 
 /**
  * preferTradeBlock 목록을 leagueTradeBlocks에 중복 없이 반영한 새 객체 반환.
@@ -649,7 +650,7 @@ export const useSimulation = (
                     // 현재 시즌 아카이브
                     const myTeam = newTeams.find(t => t.id === myTeamId);
                     if (!isGuestMode && session?.user?.id && myTeam && seasonConfig) {
-                        archiveCurrentSeason(session.user.id, seasonConfig, myTeam, newTeams, newPlayoffSeries)
+                        archiveCurrentSeason(session.user.id, seasonConfig, myTeam, newTeams, newPlayoffSeries, getFinancesSnapshot(newTeams))
                             .catch(e => console.warn('⚠️ Season archive failed (non-critical):', e));
                     }
                     setOffseasonPhase?.(finalsDetection.updates.offseasonPhase);

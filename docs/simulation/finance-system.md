@@ -71,14 +71,19 @@ revenue:
   other         — 기타 (주차, 이벤트 등)
 
 expenses:
-  payroll       — 선수 연봉 총액
-  luxuryTax     — 럭셔리 택스 (시즌 종료 시 확정)
+  payroll       — 활성 로스터 연봉 총액 (BudgetManager 내부 추적용)
+  luxuryTax     — 럭셔리 택스 (offseasonEventHandler에서 확정)
   operations    — 구장 운영비 (좌석수 기반 고정)
   coachSalary   — 감독/코치 연봉
 
 operatingIncome — 총수익 - 총지출
 budget          — 시즌 지출 가능 예산 (구단주 승인)
 ```
+
+> **payroll vs calcTeamPayroll 구분**
+> `expenses.payroll`은 BudgetManager 내부 재정 보고용으로 **활성 로스터 연봉만** 합산한다.
+> 샐러리캡 계산(FA 서명 가능 금액·럭셔리 택스 기준 등)에는 반드시 `calcTeamPayroll(team)` 사용.
+> 이 함수는 `rosterTotal + deadTotal`로 **데드캡을 포함**한다.
 
 ---
 
@@ -201,13 +206,23 @@ views/
 |--------|----------|------|
 | `initializeSeason(teams, coachSalaries)` | 시즌 시작 / 체크포인트 로드 | 전팀 재정 초기화 |
 | `processHomeGame(homeTeam, awayTeamId)` | 매 홈 경기 후 | 입장료 + MD 수익 누적 |
-| `updatePayroll(teamId, roster)` | 트레이드/FA 후 | 페이롤 재계산 |
-| `finalizeLuxuryTax()` | 시즌 종료 | 6구간 누진 택스 확정 |
+| `updatePayroll(teamId, roster)` | 트레이드/FA 후 | 페이롤 재계산 (활성 로스터만) |
 | `getFinance(teamId)` | UI 표시 등 | 팀 재정 조회 |
-| `toSaveData()` | 체크포인트 저장 | SavedTeamFinances 생성 |
+| `toSaveData()` | 체크포인트 저장 | SavedTeamFinances 직렬화 (데드캡 미포함) |
 | `loadFromSaveData(data)` | 체크포인트 로드 | 저장 데이터 복원 |
 
 접근: `getBudgetManager()` / `resetBudgetManager()`
+
+**모듈 레벨 헬퍼 (`budgetManager.ts`)**
+
+| 함수 | 역할 |
+|------|------|
+| `getFinancesSnapshot(teams)` | `toSaveData()` + `Team.deadMoney` 통합 직렬화. `forceSave` · `archiveCurrentSeason` 공통 사용 |
+| `calculateLuxuryTax(payroll, taxLevel)` | 6구간 누진 택스 계산 (순수 함수) |
+
+> **럭셔리 택스 확정 경로**: `BudgetManager.finalizeLuxuryTax()`는 제거됨(dead code).
+> 실제 럭셔리 택스는 `offseasonEventHandler.ts`의 `luxuryTaxDay` 이벤트에서
+> `calcTeamPayroll(myTeam)`(데드캡 포함) → `calculateLuxuryTax(payroll, taxLevel)` 순으로 계산됨.
 
 ### 4-3. 데이터 흐름
 
@@ -228,13 +243,22 @@ views/
        ├─ calculateMerchandiseRevenue() → MD 누적
        └─ recalculateIncome() → 영업수입 갱신
 
-[시즌 종료]
+[오프시즌 luxuryTaxDay]
   │
-  └─ finalizeLuxuryTax() → 6구간 누진 택스 확정
+  └─ calcTeamPayroll(myTeam)          ← 활성 연봉 + 데드캡 합산
+       └─ calculateLuxuryTax(payroll, taxLevel) → OWNER_LETTER 발송
 
 [체크포인트 저장]
   │
-  └─ toSaveData() → saves.team_finances (JSONB)
+  └─ getFinancesSnapshot(teams)
+       ├─ getBudgetManager().toSaveData()  ← 재정 수익/지출
+       └─ Team.deadMoney 병합              ← 데드캡 포함
+       → saves.team_finances (JSONB)
+
+[파이널 종료 — 시즌 아카이브]
+  │
+  └─ getFinancesSnapshot(teams) → archiveCurrentSeason()
+       → user_season_history.team_finances (JSONB)
 ```
 
 ### 4-4. 시뮬레이션 파이프라인 연동
@@ -272,22 +296,85 @@ ALTER TABLE saves ADD COLUMN team_finances JSONB DEFAULT NULL;
 {
   [teamId: string]: {
     revenue: { gate, broadcasting, localMedia, sponsorship, merchandise, other },
-    expenses: { payroll, luxuryTax, operations, coachSalary },
+    expenses: { payroll, luxuryTax, operations, coachSalary, scouting, marketing, administration },
     budget: number,
     gamesPlayed: number,
+    totalAttendance?: number,
+    monthlyAttendance?: Record<string, { games, total }>,
+    deadMoney?: DeadMoneyEntry[],   // 방출 선수 잔여 계약금 (waive/buyout/stretch)
   }
 }
 ```
 
+`deadMoney`는 `BudgetManager.toSaveData()`가 직렬화하지 않으므로,
+**반드시 `getFinancesSnapshot(teams)`를 통해 저장**해야 한다.
+이 함수가 `Team.deadMoney`를 병합한다.
+
 ### 복원 로직 (`useGameData.ts`)
 
-1. 체크포인트에 `team_finances` 있으면 → `loadFromSaveData()` 복원
+1. 체크포인트에 `team_finances` 있으면 → `loadFromSaveData()` 복원 + `team_finances[t.id].deadMoney` → `Team.deadMoney` 복원
 2. 없으면 (기존 세이브) → `initializeSeason()` 새로 초기화
-3. 저장 시 → `getBudgetManager().toSaveData()` → payload에 포함
+3. 저장 시 → `getFinancesSnapshot(currentTeams)` → payload에 포함 (데드캡 포함)
 
 ---
 
-## 6. UI: 프론트 오피스 (FrontOfficeView)
+## 6. 데드캡 (Dead Cap)
+
+### 개요
+
+선수를 방출할 때 잔여 계약금 일부가 팀의 샐러리캡에 계속 산정되는 구조.
+`Team.deadMoney: DeadMoneyEntry[]`에 저장되며 `calcTeamPayroll()`에 포함된다.
+
+### DeadMoneyEntry 구조
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `playerId` | string | 방출된 선수 ID (또는 `*-deadcap` 식별자) |
+| `playerName` | string | 선수 이름 |
+| `amount` | number | 해당 시즌 캡에 산정되는 금액 ($) |
+| `season` | string | 발생 시즌 라벨 (`'2025-26'`) |
+| `releaseType` | `'waive' \| 'buyout' \| 'stretch'` | 방출 방식 |
+| `stretchYearsTotal?` | number | 스트레치 총 분산 연수 |
+| `stretchYearsRemaining?` | number | 남은 분산 연수 (매 오프시즌 -1) |
+
+### 방출 방식별 데드캡 계산
+
+| 방식 | 데드캡 금액 | 기간 |
+|------|------------|------|
+| **waive** | 잔여 총액 - 당해 연봉 | 1시즌 |
+| **buyout** | 잔여 총액 × 70% | 1시즌 |
+| **stretch** | 잔여 총액 ÷ (2×잔여연수-1) | `stretchYearsTotal` 시즌 |
+
+### 초기 데드캡 시딩 (2025-26 개막 기준)
+
+게임 시작 시 `useGameData.ts`의 `LEAGUE_INITIAL_DEAD_CAP` 상수에서 각 팀의
+실제 데드캡을 `saves.team_finances[teamId].deadMoney`에 주입한다.
+
+주요 항목:
+- **MIL**: 데미안 릴라드 스트레치 ($22.5M/yr × 5년, `stretchYearsRemaining: 5`)
+- **POR**: 디안드레 에이튼 바이아웃
+
+### 캡 반영 경로
+
+```
+calcTeamPayroll(team)
+  = team.roster.reduce(salary)   ← 활성 연봉
+  + team.deadMoney.reduce(amount) ← 데드캡
+
+→ FA 서명 가능 금액 계산
+→ 럭셔리 택스 기준 계산 (luxuryTaxDay 이벤트)
+→ 트레이드 샐러리 매칭
+```
+
+### 멀티시즌 처리
+
+`offseasonEventHandler.ts`가 매 오프시즌 `moratoriumStart` 시점에:
+- `waive` / `buyout` → 제거 (1회성)
+- `stretch` → `stretchYearsRemaining -= 1`, 0이 되면 제거
+
+---
+
+## 7. UI: 프론트 오피스 (FrontOfficeView)
 
 사이드바 "프론트 오피스" 메뉴 → `AppView = 'FrontOffice'`
 
@@ -301,7 +388,7 @@ ALTER TABLE saves ADD COLUMN team_finances JSONB DEFAULT NULL;
 
 ---
 
-## 7. 동적 샐러리 캡 시스템 (멀티시즌)
+## 8. 동적 샐러리 캡 시스템 (멀티시즌)
 
 ### 개요
 
@@ -382,7 +469,7 @@ ALTER TABLE saves ADD COLUMN league_cap_history JSONB DEFAULT NULL;
 
 ---
 
-## 8. 30팀 정적 데이터
+## 9. 30팀 정적 데이터
 
 `data/teamFinanceData.ts`에 하드코딩. 실제 NBA 데이터 기반 + 가상 경기장 이름.
 
@@ -418,7 +505,7 @@ ALTER TABLE saves ADD COLUMN league_cap_history JSONB DEFAULT NULL;
 
 ---
 
-## 8. 후속 과제
+## 10. 후속 과제
 
 - **샐러리캡 연동** (`docs/plan/salary-cap-plan.md`): budget ↔ 샐러리캡 연결, spendingWillingness → 택스 납부 의지
 - **입장료 조정**: 유저가 입장료를 올리면 수익↑ 관중↓, 내리면 반대

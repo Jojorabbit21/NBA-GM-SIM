@@ -465,6 +465,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         return null;
     }, [faEntry, isFA, myTeam]);
 
+    const lastSeasonStat = player.career_history?.at(-1) ?? null;
+
     // 2023 CBA: Second Apron 초과 팀은 신규 계약에 NTC 삽입 불가
     const isAboveSecondApron = useMemo(() => {
         if (!isFA) return false;
@@ -974,19 +976,21 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                         </div>
 
                         {/* 직전 시즌 성적 (생성 FA 선수용) */}
-                        {player.prevSeasonStats && (
+                        {lastSeasonStat && (
                             <div className="px-4 py-3 space-y-1">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">직전 시즌</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                                    직전 시즌 <span className="text-slate-600 font-normal">({lastSeasonStat.season})</span>
+                                </div>
                                 {[
-                                    { label: '출전', value: `${player.prevSeasonStats.gp}G / ${player.prevSeasonStats.mpg.toFixed(1)}MPG` },
-                                    { label: 'PPG', value: player.prevSeasonStats.ppg.toFixed(1) },
-                                    { label: 'RPG', value: player.prevSeasonStats.rpg.toFixed(1) },
-                                    { label: 'APG', value: player.prevSeasonStats.apg.toFixed(1) },
-                                    { label: 'SPG', value: player.prevSeasonStats.spg.toFixed(1) },
-                                    { label: 'BPG', value: player.prevSeasonStats.bpg.toFixed(1) },
-                                    { label: 'FG%', value: `${(player.prevSeasonStats.fgPct * 100).toFixed(1)}%` },
-                                    { label: '3P%', value: `${(player.prevSeasonStats.fg3Pct * 100).toFixed(1)}%` },
-                                    { label: 'FT%', value: `${(player.prevSeasonStats.ftPct * 100).toFixed(1)}%` },
+                                    { label: '출전', value: `${lastSeasonStat.gp}G / ${lastSeasonStat.min.toFixed(1)}MPG` },
+                                    { label: 'PPG', value: lastSeasonStat.pts.toFixed(1) },
+                                    { label: 'RPG', value: lastSeasonStat.reb.toFixed(1) },
+                                    { label: 'APG', value: lastSeasonStat.ast.toFixed(1) },
+                                    { label: 'SPG', value: lastSeasonStat.stl.toFixed(1) },
+                                    { label: 'BPG', value: lastSeasonStat.blk.toFixed(1) },
+                                    { label: 'FG%', value: `${(lastSeasonStat.fg_pct * 100).toFixed(1)}%` },
+                                    { label: '3P%', value: `${(lastSeasonStat.fg3_pct * 100).toFixed(1)}%` },
+                                    { label: 'FT%', value: `${(lastSeasonStat.ft_pct * 100).toFixed(1)}%` },
                                 ].map(({ label, value }) => (
                                     <div key={label} className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">{label}</span>

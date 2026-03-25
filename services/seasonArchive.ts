@@ -9,6 +9,7 @@ import { supabase } from './supabaseClient';
 import { Team, Player, PlayoffSeries, PlayerStats } from '../types';
 import { SeasonConfig } from '../utils/seasonConfig';
 import { LotteryResult } from './draft/lotteryEngine';
+import { SavedTeamFinances } from '../types/finance';
 
 // ── 타입 정의 ──
 
@@ -23,6 +24,7 @@ export interface SeasonArchiveEntry {
     playerOverrides: Record<string, PlayerOverrideSnapshot> | null;
     awards: any | null;
     lotteryResult: LotteryResult | null;
+    teamFinances: SavedTeamFinances | null;
 }
 
 export interface PlayerOverrideSnapshot {
@@ -51,7 +53,8 @@ export async function archiveCurrentSeason(
     seasonConfig: SeasonConfig,
     myTeam: Team,
     allTeams: Team[],
-    playoffSeries: PlayoffSeries[]
+    playoffSeries: PlayoffSeries[],
+    teamFinances: SavedTeamFinances | null = null
 ): Promise<void> {
     // 플레이오프 결과 판정
     const playoffResult = determinePlayoffResult(myTeam.id, playoffSeries);
@@ -93,6 +96,7 @@ export async function archiveCurrentSeason(
         player_overrides: playerOverrides,
         awards: null, // 추후 오프시즌 어워드 콘텐츠에서 채움
         lottery_result: null, // 로터리 날짜 도달 시 updateSeasonArchiveLottery로 업데이트
+        team_finances: teamFinances,
     };
 
     const { error } = await supabase
