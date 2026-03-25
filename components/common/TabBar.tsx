@@ -9,7 +9,7 @@ interface TabBarProps<T extends string> {
 
 export function TabBar<T extends string>({ tabs, activeTab, onTabChange }: TabBarProps<T>) {
     return (
-        <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center gap-8 h-12 flex-shrink-0">
+        <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center gap-8 h-14 flex-shrink-0">
             {tabs.map(t => (
                 <button
                     key={t.id}

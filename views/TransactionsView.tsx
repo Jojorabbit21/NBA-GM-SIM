@@ -143,7 +143,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
        )}
 
        {/* ── 탭 네비게이션 ── */}
-       <div className="flex-shrink-0 px-8 bg-slate-950 border-b border-slate-800 flex items-center gap-8 h-12">
+       <div className="flex-shrink-0 px-8 bg-slate-950 border-b border-slate-800 flex items-center gap-8 h-14">
            {TAB_IDS.map(tabId => (
                <button
                    key={tabId}

@@ -10,6 +10,7 @@ import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
 import { getExtensionCandidates } from '../services/fa/extensionEngine';
 import { NegotiationScreen } from './NegotiationScreen';
+import { RosterGrid } from '../components/roster/RosterGrid';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -187,10 +188,7 @@ export const FAView: React.FC<FAViewProps> = ({
     currentDate = '',
     offseasonPhase,
 }) => {
-    const [activeTab, setActiveTab]       = useTabParam<'market' | 'roster'>('market');
-    const [roleFilter, setRoleFilter]     = useState<FARole | 'all'>('all');
-    const [statusFilter, setStatusFilter] = useState<'available' | 'all'>('available');
-    const [sortBy, setSortBy]             = useState<'ovr' | 'salary'>('ovr');
+    const [activeTab, setActiveTab] = useTabParam<'market' | 'roster'>('market');
 
     // 협상 타깃 (NegotiationScreen 오버레이를 열 때 사용)
     const [negotiationTarget, setNegotiationTarget] = useState<{
@@ -215,24 +213,18 @@ export const FAView: React.FC<FAViewProps> = ({
     const market = leagueFAMarket;
     const usedMLE = market?.usedMLE ?? {};
 
-    // 필터링 + 정렬
+    // available 선수만 OVR 내림차순
     const filteredEntries = useMemo(() => {
         if (!market) return [];
         return market.entries
-            .filter(e => {
-                if (statusFilter === 'available' && e.status !== 'available') return false;
-                if (roleFilter !== 'all' && e.faRole !== roleFilter) return false;
-                return true;
-            })
+            .filter(e => e.status === 'available')
             .sort((a, b) => {
                 const pa = faPlayerMap[a.playerId];
                 const pb = faPlayerMap[b.playerId];
                 if (!pa || !pb) return 0;
-                if (sortBy === 'ovr')    return pb.ovr - pa.ovr;
-                if (sortBy === 'salary') return b.askingSalary - a.askingSalary;
-                return 0;
+                return pb.ovr - pa.ovr;
             });
-    }, [market, statusFilter, roleFilter, sortBy, faPlayerMap]);
+    }, [market, faPlayerMap]);
 
     const sortedRoster = useMemo(
         () => [...myTeam.roster].sort((a, b) => b.ovr - a.ovr),
@@ -260,10 +252,14 @@ export const FAView: React.FC<FAViewProps> = ({
         [sortedRoster, isOffseasonPhase],
     );
 
-    const roles: FARole[] = ['lead_guard', 'combo_guard', '3and_d', 'shot_creator', 'stretch_big', 'rim_big', 'floor_big'];
-
     const availableCount = market?.entries.filter(e => e.status === 'available').length ?? 0;
     const signedCount    = market?.entries.filter(e => e.status === 'signed').length ?? 0;
+
+    // RosterGrid용 FA 선수 임시 team
+    const faTeamForGrid = useMemo(() => ({
+        ...myTeam,
+        roster: filteredEntries.map(e => faPlayerMap[e.playerId]).filter(Boolean) as Player[],
+    }), [myTeam, filteredEntries, faPlayerMap]);
 
     // 익스텐션 후보
     const extensionCandidates = useMemo(() => getExtensionCandidates(myTeam), [myTeam.roster]);
@@ -327,124 +323,17 @@ export const FAView: React.FC<FAViewProps> = ({
                             </div>
                         </div>
                     ) : (
-                        <>
-                            {/* ── 필터 바 ── */}
-                            <div className="flex-shrink-0 px-6 py-2.5 border-b border-slate-800 bg-slate-950/50 flex flex-wrap items-center gap-3">
-                                {/* 롤 필터 */}
-                                <div className="flex gap-1.5">
-                                    <button
-                                        onClick={() => setRoleFilter('all')}
-                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${roleFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                    >All</button>
-                                    {roles.map(role => (
-                                        <button
-                                            key={role}
-                                            onClick={() => setRoleFilter(role)}
-                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${roleFilter === role ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                        >{FA_ROLE_LABELS[role]}</button>
-                                    ))}
-                                </div>
-                                <div className="h-4 w-px bg-slate-700" />
-                                {/* 상태 필터 */}
-                                <div className="flex gap-1.5">
-                                    {(['available', 'all'] as const).map(s => (
-                                        <button
-                                            key={s}
-                                            onClick={() => setStatusFilter(s)}
-                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${statusFilter === s ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                        >{s === 'available' ? '가용' : '전체'}</button>
-                                    ))}
-                                </div>
-                                <div className="h-4 w-px bg-slate-700 ml-auto" />
-                                {/* 정렬 */}
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">정렬</span>
-                                    {(['ovr', 'salary'] as const).map(s => (
-                                        <button
-                                            key={s}
-                                            onClick={() => setSortBy(s)}
-                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${sortBy === s ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                        >{{ ovr: 'OVR', salary: '연봉' }[s]}</button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* ── 메인 컨텐츠 ── */}
-                            <div className="flex-1 min-h-0 flex overflow-hidden">
-                                {/* FA 선수 목록 */}
-                                <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse text-xs">
-                                            <thead className="sticky top-0 z-10">
-                                                <tr className="bg-slate-800 border-b border-slate-700">
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">선수</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">포지션</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">나이</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">키·체중</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-l border-slate-700">INS</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">OUT</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">PLM</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">DEF</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">REB</th>
-                                                    <th className="px-3 py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">ATH</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">롤</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">요구 연봉</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">상태</th>
-                                                    <th className="px-4 py-2"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredEntries.length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan={14} className="py-16 text-center text-slate-500 text-sm">조건에 맞는 선수가 없습니다.</td>
-                                                    </tr>
-                                                ) : (
-                                                    filteredEntries.map(entry => {
-                                                        const player = faPlayerMap[entry.playerId];
-                                                        if (!player) return null;
-                                                        const unavailable = entry.status !== 'available' || blockedNegotiationIds.has(entry.playerId);
-                                                        return (
-                                                            <tr
-                                                                key={entry.playerId}
-                                                                className={`group border-b border-slate-800 transition-all hover:bg-slate-800/50 ${unavailable ? 'opacity-50' : ''}`}
-                                                            >
-                                                                <td className="px-4 py-2 whitespace-nowrap">
-                                                                    <button
-                                                                        onClick={() => onViewPlayer?.(player)}
-                                                                        className="font-bold text-white hover:text-indigo-400 transition-colors ko-tight"
-                                                                    >{player.name}</button>
-                                                                </td>
-                                                                <td className="px-4 py-2 font-mono text-slate-400">{player.position}</td>
-                                                                <td className="px-4 py-2 font-mono text-slate-400">{player.age}</td>
-                                                                <td className="px-4 py-2 font-mono text-slate-500 whitespace-nowrap text-[11px]">
-                                                                    {player.height ?? '-'}cm · {player.weight ?? '-'}kg
-                                                                </td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center border-l border-slate-800/60 ${attrColor(player.ins ?? 50)}`}>{player.ins ?? '-'}</td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.out ?? 50)}`}>{player.out ?? '-'}</td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.plm ?? 50)}`}>{player.plm ?? '-'}</td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.def ?? 50)}`}>{player.def ?? '-'}</td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center ${attrColor(player.reb ?? 50)}`}>{player.reb ?? '-'}</td>
-                                                                <td className={`px-3 py-2 font-mono font-black text-center border-r border-slate-800/60 ${attrColor(player.ath ?? 50)}`}>{player.ath ?? '-'}</td>
-                                                                <td className="px-4 py-2 font-bold text-indigo-300 whitespace-nowrap">{FA_ROLE_LABELS[entry.faRole]}</td>
-                                                                <td className="px-4 py-2 font-mono font-bold text-amber-400 whitespace-nowrap">{fmtM(entry.askingSalary)}</td>
-                                                                <td className="px-4 py-2">{statusBadge(entry.status)}</td>
-                                                                <td className="px-4 py-2">
-                                                                    <button
-                                                                        onClick={() => !unavailable && setNegotiationTarget({ type: 'fa', playerId: entry.playerId })}
-                                                                        disabled={unavailable}
-                                                                        className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-600/30 bg-indigo-600/15 text-indigo-400 hover:bg-indigo-600/25 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                                                                    >계약 협상</button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                            <RosterGrid
+                                team={faTeamForGrid}
+                                tab="roster"
+                                onPlayerClick={(player) => {
+                                    if (!blockedNegotiationIds.has(player.id)) {
+                                        setNegotiationTarget({ type: 'fa', playerId: player.id });
+                                    }
+                                }}
+                            />
+                        </div>
                     )}
                 </>
             )}
