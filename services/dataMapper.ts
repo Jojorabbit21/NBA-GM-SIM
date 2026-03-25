@@ -359,6 +359,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         // 직전 시즌 성적 (생성 선수용)
         prevSeasonStats: baseAttrs.prev_season_stats ?? undefined,
 
+        // 인기도 (생성 선수용 — meta_players는 별도 경로로 세팅됨)
+        popularity: baseAttrs.popularity ?? undefined,
+
         // 커리어 스탯 (meta_players.career_history JSONB)
         career_history: Array.isArray(raw.career_history) ? raw.career_history : undefined,
     };

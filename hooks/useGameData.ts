@@ -630,6 +630,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
                                 if (genFA.length > 0) {
                                     setGeneratedFreeAgents(genFA);
+                                    // leagueFAMarket.players를 DB에서 새로 불러온 데이터로 갱신
+                                    // (기존 세이브의 players[]는 prevSeasonStats 등 최신 필드가 없을 수 있음)
+                                    const genFAById = new Map(genFA.map(p => [p.id, p]));
+                                    setLeagueFAMarket(prev => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            players: (prev.players ?? []).map(p => genFAById.get(p.id) ?? p),
+                                        };
+                                    });
                                     console.log(`🏀 Injected ${genFA.length} generated FA, ${genPlayers.length - genFA.length} drafted/other`);
                                 }
                             }
@@ -911,7 +921,42 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             }
         }
         getBudgetManager().initializeSeason(teams, coachSalaries);
-        setTeamFinances(getBudgetManager().toSaveData());
+
+        // 2025-26 시즌 초기 데드캡 적용
+        const LEAGUE_INITIAL_DEAD_CAP: Record<string, DeadMoneyEntry[]> = {
+            'phx': [{ // Bradley Beal stretch provision (5yr, $96.9M total)
+                playerId: 'bradley-beal-deadcap',
+                playerName: '브래들리 빌',
+                amount: 19383010,
+                season: '2025-26',
+                releaseType: 'stretch',
+                stretchYearsTotal: 5,
+                stretchYearsRemaining: 5,
+            }],
+            'mil': [{ // Damian Lillard buyout (July 2025)
+                playerId: 'damian-lillard-deadcap',
+                playerName: '데미안 릴라드',
+                amount: 22516603,
+                season: '2025-26',
+                releaseType: 'buyout',
+            }],
+            'por': [{ // Deandre Ayton buyout
+                playerId: 'deandre-ayton-deadcap',
+                playerName: '디안드레 에이튼',
+                amount: 25500000,
+                season: '2025-26',
+                releaseType: 'buyout',
+            }],
+        };
+        const initialFinances = getBudgetManager().toSaveData() as Record<string, any>;
+        Object.entries(LEAGUE_INITIAL_DEAD_CAP).forEach(([tid, entries]) => {
+            if (initialFinances[tid]) initialFinances[tid].deadMoney = entries;
+        });
+        setTeamFinances(initialFinances);
+        setTeams(prev => prev.map(t => {
+            const dc = LEAGUE_INITIAL_DEAD_CAP[t.id];
+            return dc ? { ...t, deadMoney: dc } : t;
+        }));
 
         // 드래프트 픽 자산 초기화
         const newPickAssets = initializeLeaguePickAssets();

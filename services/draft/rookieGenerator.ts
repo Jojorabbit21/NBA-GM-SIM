@@ -15,7 +15,7 @@
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
-import { PlayerContract, PrevSeasonStats } from '../../types/player';
+import { PlayerContract, PlayerPopularity, PrevSeasonStats } from '../../types/player';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ── 상수 ──
@@ -641,6 +641,41 @@ function generatePrevSeasonStats(
     return { gp, mpg, ppg, rpg, apg, spg, bpg, fgPct, fg3Pct, ftPct };
 }
 
+/**
+ * OVR / 나이 / 커리어 성적 기반 선수 인기도 생성
+ * national: 전국 인기 (OVR 주도)
+ * local:    연고지 인기 (national ± 편차, 약간 높은 경향)
+ */
+function generatePopularity(
+    ovr: number,
+    age: number,
+    stats: PrevSeasonStats,
+    rng: SeededRandom,
+): PlayerPopularity {
+    // OVR 기반 national 기준값
+    let base: number;
+    if (ovr >= 85)      base = 58 + rng.next() * 20;  // 58~78
+    else if (ovr >= 78) base = 35 + rng.next() * 22;  // 35~57
+    else if (ovr >= 70) base = 14 + rng.next() * 20;  // 14~34
+    else                base =  2 + rng.next() * 12;  //  2~14
+
+    // 나이 보정: 전성기(27-31) +4, 노장(35+) -6, 어린 선수(23-) -2
+    const ageMod = age >= 27 && age <= 31 ?  4
+                 : age >= 35              ? -6
+                 : age <= 23             ? -2
+                 : 0;
+
+    // 성적 보정: PPG 20+ +4, 15+ +2
+    const statMod = stats.ppg >= 20 ? 4 : stats.ppg >= 15 ? 2 : 0;
+
+    const national = clamp(Math.round(base + ageMod + statMod), 0, 100);
+
+    // local: national 기준 ±12 노이즈, 약간 높은 경향(+4)
+    const local = clamp(Math.round(national + 4 + (rng.next() * 24 - 12)), 0, 100);
+
+    return { national, local };
+}
+
 // ── 초기 FA 풀 생성 ──
 
 export const DEFAULT_FA_POOL_SIZE = 65;
@@ -737,6 +772,9 @@ export function generateInitialFAPool(
         // 직전 시즌 성적
         const prevSeasonStats = generatePrevSeasonStats(attrs, position, approxOvr, rng);
 
+        // 인기도
+        const popularity = generatePopularity(approxOvr, age, prevSeasonStats, rng);
+
         const id = `gen_${generateUUID(rng)}`;
 
         players.push({
@@ -766,6 +804,7 @@ export function generateInitialFAPool(
                 prev_salary: prevSalary,
                 prev_team_tenure: prevTeamTenure,
                 prev_season_stats: prevSeasonStats,
+                popularity,
             },
             age_at_draft: age,
         });
