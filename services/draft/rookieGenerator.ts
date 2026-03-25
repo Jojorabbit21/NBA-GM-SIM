@@ -550,26 +550,12 @@ function getEntryAge(position: string, tierIdx: number, rng: SeededRandom): numb
 }
 
 /**
- * OVR + YOS 기반 직전 계약 연봉 추정
- * YOS가 많을수록 최대 10% 가산
+ * FA 요구 연봉 기반 직전 계약 연봉 추정
+ * asking salary의 85~115% 범위에서 노이즈 적용 — 두 값이 항상 일관된 스케일을 유지
  */
-function calcPrevSalary(ovr: number, yos: number, cap: number, rng: SeededRandom): number {
-    let baseRatioMin: number;
-    let baseRatioMax: number;
-    if (ovr >= 85) {
-        baseRatioMin = 0.25; baseRatioMax = 0.35;
-    } else if (ovr >= 75) {
-        baseRatioMin = 0.10; baseRatioMax = 0.20;
-    } else if (ovr >= 65) {
-        baseRatioMin = 0.04; baseRatioMax = 0.10;
-    } else {
-        baseRatioMin = 0.02; baseRatioMax = 0.05;
-    }
-    const baseRatio = baseRatioMin + rng.next() * (baseRatioMax - baseRatioMin);
-    // YOS 가산: 연수당 0.5%, 최대 10%
-    const yosBonusRatio = Math.min(yos * 0.005, 0.10);
-    const totalRatio = baseRatio + yosBonusRatio;
-    return Math.round(cap * totalRatio);
+function calcPrevSalary(askingSalary: number, rng: SeededRandom): number {
+    const ratio = 0.85 + rng.next() * 0.30; // 0.85 ~ 1.15
+    return Math.round(askingSalary * ratio);
 }
 
 /**
@@ -582,6 +568,7 @@ function generateCareerStatRow(
     ovr: number,
     age: number,
     seasonStartYear: number,  // 시즌 시작 연도 (예: 2024 → "2024-25")
+    team: string,
     rng: SeededRandom
 ): CareerSeasonStat {
     // ±15% 분산 적용 헬퍼
@@ -665,7 +652,7 @@ function generateCareerStatRow(
 
     return {
         season,
-        team: '---',
+        team,
         age,
         gp, gs, min, pts,
         oreb, dreb, reb, ast, stl, blk, tov, pf,
@@ -682,6 +669,35 @@ function generateCareerStatRow(
  * - 전성기 이후: 0.75 OVR/년 하락
  */
 const ROOKIE_ENTRY_AGE = 18; // NBA 최소 입단 나이 (ratio 기준점)
+
+/** 30개 팀 약어 (생성 선수 커리어 팀 배정용) */
+const NBA_TEAM_IDS = [
+    'atl','bos','bkn','cha','chi','cle','dal','den','det','gs',
+    'hou','ind','law','lam','mem','mia','mil','min','no','nyk',
+    'okc','orl','phi','phx','por','sac','sa','tor','uta','was',
+] as const;
+
+/**
+ * yos 시즌 분량의 팀 시퀀스를 생성한다.
+ * - 매 시즌 약 22% 확률로 팀 이동 (평균 4~5시즌 한 팀 체류)
+ * - 스타(ovr ≥ 75)는 이동 빈도 약간 낮춤 (더 오래 한 팀에 머묾)
+ */
+function generateTeamSequence(yos: number, ovr: number, rng: SeededRandom): string[] {
+    const moveProb = ovr >= 75 ? 0.17 : 0.23;
+    const teams: string[] = [];
+    let current = NBA_TEAM_IDS[rng.intRange(0, NBA_TEAM_IDS.length - 1)];
+    for (let i = 0; i < yos; i++) {
+        if (i > 0 && rng.next() < moveProb) {
+            // 같은 팀으로 이동하지 않도록 다른 팀 선택
+            let next: string;
+            do { next = NBA_TEAM_IDS[rng.intRange(0, NBA_TEAM_IDS.length - 1)]; }
+            while (next === current);
+            current = next;
+        }
+        teams.push(current);
+    }
+    return teams;
+}
 
 /** age → baseline 기간 내 선형 성장 비율 (0~1) */
 const growthRatio = (age: number, baseline: number): number =>
@@ -824,19 +840,24 @@ export function generateInitialFAPool(
         const yos = Math.max(1, age - entryAge); // 최소 1년 보장
         const draftYear = currentSeasonYear - yos;
 
-        // 직전 계약 연봉
-        const prevSalary = calcPrevSalary(approxOvr, yos, LEAGUE_FINANCIALS.SALARY_CAP, rng);
-
-        // 직전 팀 tenure: 1 ~ min(4, yos)
-        const prevTeamTenure = Math.max(1, rng.intRange(1, Math.min(4, yos)));
+        // 직전 계약 연봉: asking salary 기반 (일관된 스케일 유지)
+        const prevSalary = calcPrevSalary(salary, rng);
 
         // 전체 커리어 기록 생성 (yos 시즌 × 1행)
+        const teamSequence = generateTeamSequence(yos, approxOvr, rng);
+
+        // 직전 팀 tenure: 마지막 팀에서 연속으로 뛴 시즌 수
+        const lastTeamId = teamSequence[teamSequence.length - 1];
+        let prevTeamTenure = 0;
+        for (let i = teamSequence.length - 1; i >= 0 && teamSequence[i] === lastTeamId; i--) {
+            prevTeamTenure++;
+        }
         const careerHistory: CareerSeasonStat[] = [];
         for (let yr = 0; yr < yos; yr++) {
-            const seasonStartYear = draftYear + yr;           // 예: 2018, 2019, ...
-            const seasonAge = entryAge + yr;                  // 해당 시즌 나이
+            const seasonStartYear = draftYear + yr;
+            const seasonAge = entryAge + yr;
             const seasonOvr = calcSeasonOvr(approxOvr, seasonAge, age);
-            careerHistory.push(generateCareerStatRow(attrs, position, seasonOvr, seasonAge, seasonStartYear, rng));
+            careerHistory.push(generateCareerStatRow(attrs, position, seasonOvr, seasonAge, seasonStartYear, teamSequence[yr], rng));
         }
 
         // 인기도: 직전 시즌(마지막 행) 기준으로 산정

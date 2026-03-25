@@ -114,10 +114,13 @@ function getSlotSalaryCap(
         case 'tax_mle':    return Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, maxAllowed);
         case 'bird_full':  return maxAllowed;
         case 'bird_early': {
-            const prevSalary = player.salary ?? 0;
-            return Math.min(maxAllowed, Math.max(prevSalary * 1.75, LEAGUE_FINANCIALS.SALARY_CAP * 1.05));
+            const base = player.prevSalary ?? player.salary ?? 0;
+            return Math.min(maxAllowed, Math.max(base * 1.75, LEAGUE_FINANCIALS.SALARY_CAP * 1.05));
         }
-        case 'bird_non':   return Math.min(maxAllowed, (player.salary ?? 0) * 1.20);
+        case 'bird_non': {
+            const base = player.prevSalary ?? player.salary ?? 0;
+            return Math.min(maxAllowed, base * 1.20);
+        }
         case 'vet_min':    return vetMin;
         default:           return vetMin;
     }

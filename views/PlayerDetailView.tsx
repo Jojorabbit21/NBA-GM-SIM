@@ -840,48 +840,72 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                         {/* ── 위젯 6: 계약 정보 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="계약 정보" style={sectionBg} />
-                            {!player.contract || player.contract.years.length === 0 ? (
-                                <div className="flex items-center justify-center h-20">
-                                    <span className="text-slate-500 text-xs">계약 정보가 없습니다</span>
-                                </div>
-                            ) : (
-                                <div className="px-4 py-3 space-y-1">
-                                    {player.contract.years.map((sal, i) => {
-                                        const baseYear    = parseInt(seasonShort.split('-')[0]);
-                                        const yearStart   = baseYear - player.contract!.currentYear + i;
-                                        const seasonLabel = `${yearStart}-${String(yearStart + 1).slice(-2)}`;
-                                        const isCurrent   = i === player.contract!.currentYear;
-                                        const isCompleted = i < player.contract!.currentYear;
-                                        const opt         = player.contract!.option;
-                                        const isOptionYear = opt && opt.year === i;
-                                        return (
-                                            <div key={i} className="flex justify-between items-center text-xs">
-                                                <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-500'}`}>
-                                                    {seasonLabel}
-                                                    {isCurrent && <span className="text-indigo-400 font-black">현재</span>}
-                                                    {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
-                                                </span>
-                                                <span className={`font-mono font-bold ${isCompleted ? 'text-slate-600' : 'text-slate-200'}`}>
-                                                    {formatMoney(sal)}
+                            {player.prevSalary != null ? (
+                                // 생성 FA 선수: 직전 계약 표시
+                                <>
+                                    <SectionHeader title="직전 계약" style={sectionBg} />
+                                    <div className="px-4 py-3 space-y-1">
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">직전 연봉</span>
+                                            <span className="font-mono font-bold text-slate-200">{formatMoney(player.prevSalary)}</span>
+                                        </div>
+                                        {player.contract && (
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">유형</span>
+                                                <span className="text-slate-400">
+                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
                                                 </span>
                                             </div>
-                                        );
-                                    })}
-                                    <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
-                                        <span className="text-slate-500">AAV</span>
-                                        <span className="font-mono text-slate-300">
-                                            {formatMoney(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}
-                                        </span>
+                                        )}
                                     </div>
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-500">유형</span>
-                                        <span className="text-slate-400 flex items-center gap-1">
-                                            {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
-                                            {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
-                                        </span>
-                                    </div>
-                                </div>
+                                </>
+                            ) : (
+                                // 일반 선수: 현재 계약 표시
+                                <>
+                                    <SectionHeader title="계약 정보" style={sectionBg} />
+                                    {!player.contract || player.contract.years.length === 0 ? (
+                                        <div className="flex items-center justify-center h-20">
+                                            <span className="text-slate-500 text-xs">계약 정보가 없습니다</span>
+                                        </div>
+                                    ) : (
+                                        <div className="px-4 py-3 space-y-1">
+                                            {player.contract.years.map((sal, i) => {
+                                                const baseYear    = parseInt(seasonShort.split('-')[0]);
+                                                const yearStart   = baseYear - player.contract!.currentYear + i;
+                                                const seasonLabel = `${yearStart}-${String(yearStart + 1).slice(-2)}`;
+                                                const isCurrent   = i === player.contract!.currentYear;
+                                                const isCompleted = i < player.contract!.currentYear;
+                                                const opt         = player.contract!.option;
+                                                const isOptionYear = opt && opt.year === i;
+                                                return (
+                                                    <div key={i} className="flex justify-between items-center text-xs">
+                                                        <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-500'}`}>
+                                                            {seasonLabel}
+                                                            {isCurrent && <span className="text-indigo-400 font-black">현재</span>}
+                                                            {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
+                                                        </span>
+                                                        <span className={`font-mono font-bold ${isCompleted ? 'text-slate-600' : 'text-slate-200'}`}>
+                                                            {formatMoney(sal)}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
+                                                <span className="text-slate-500">AAV</span>
+                                                <span className="font-mono text-slate-300">
+                                                    {formatMoney(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">유형</span>
+                                                <span className="text-slate-400 flex items-center gap-1">
+                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
+                                                    {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
 

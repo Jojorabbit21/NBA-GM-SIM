@@ -376,6 +376,11 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     player.salary = contract.years[contract.currentYear] ?? baseSalary;
     player.contractYears = contract.years.length - contract.currentYear;
 
+    // 생성 FA 선수: 직전 계약 연봉 (Bird Rights 계산 및 UI 표시용)
+    if (baseAttrs?.prev_salary != null) {
+        player.prevSalary = normalizeSalary(Number(baseAttrs.prev_salary));
+    }
+
     return player;
 };
 
