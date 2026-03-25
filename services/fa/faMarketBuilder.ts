@@ -322,13 +322,14 @@ export function simulateCPUSigning(
             const roleNeed = roleCoverage[entry.faRole] ?? 80;
             if (roleNeed >= 75) continue; // 이미 충분히 커버됨
 
-            // 슬롯 확인
+            // 슬롯 확인 (prevTeamId/prevTeamTenure 전달 → CPU 팀도 Bird Rights 사용 가능)
             const slots = getAvailableSigningSlots(
                 teamObj,
                 player,
-                undefined, // CPU는 Bird Rights 자팀 여부 간단히 생략
+                entry.prevTeamId,
                 updatedMarket.usedMLE,
                 entry.isBuyout,
+                entry.prevTeamTenure,
             );
             if (slots.length === 0) continue;
 
@@ -351,7 +352,8 @@ export function simulateCPUSigning(
             }
             if (!bestSlot || offerSalary <= 0) continue;
 
-            const offerYears = Math.min(entry.askingYears, bestSlot === 'tax_mle' ? 2 : 4);
+            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'tax_mle' || bestSlot === 'vet_min' ? 2 : 4;
+            const offerYears = Math.min(entry.askingYears, slotMaxYears);
             const seed = `${tendencySeed}:cpu:${team.id}:${player.id}`;
 
             const accepted = evaluateFAOffer(
@@ -470,8 +472,12 @@ export function processUserOffer(
         return { accepted: false, reason: `제시 연봉이 베테랑 미니멈($${(vetMin / 1_000_000).toFixed(1)}M) 미만입니다.` };
     }
 
-    // 연수 검증
-    const maxYears = offer.signingType === 'tax_mle' ? 2 : 5;
+    // 연수 검증 (슬롯별 CBA 상한 — UI SLOT_MAX_YEARS와 동일하게 유지)
+    const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
+        bird_full: 5, bird_early: 4, bird_non: 4,
+        cap_space: 4, non_tax_mle: 4, tax_mle: 2, vet_min: 2,
+    };
+    const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
     if (offer.years < 1 || offer.years > maxYears) {
         return { accepted: false, reason: `연수는 1~${maxYears}년 사이여야 합니다.` };
     }

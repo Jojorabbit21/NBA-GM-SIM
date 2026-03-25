@@ -164,11 +164,11 @@ const GM_OFFER_PHRASES = [
 
 const SLOT_MAX_YEARS: Record<SigningType, number> = {
     bird_full:   5,
-    bird_early:  5,
+    bird_early:  4,  // CBA: 4년 (5년 아님)
     bird_non:    4,
     cap_space:   4,
     non_tax_mle: 4,
-    tax_mle:     3,
+    tax_mle:     2,  // CBA: 2년 (3년 아님)
     vet_min:     2,
 };
 
