@@ -162,6 +162,16 @@ const GM_OFFER_PHRASES = [
     '우리 팀의 미래를 같이 만들어나갔으면 합니다.',
 ];
 
+const SLOT_MAX_YEARS: Record<SigningType, number> = {
+    bird_full:   5,
+    bird_early:  5,
+    bird_non:    4,
+    cap_space:   4,
+    non_tax_mle: 4,
+    tax_mle:     3,
+    vet_min:     2,
+};
+
 const SLOT_ESCALATOR: Record<SigningType, number> = {
     bird_full: 0.08, bird_early: 0.08, bird_non: 0.05,
     cap_space: 0.05, non_tax_mle: 0.05, tax_mle: 0.05, vet_min: 0.00,
@@ -463,12 +473,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     const [selectedSlot, setSelectedSlot]   = useState<SigningType>(() => slots[0] ?? 'vet_min');
     const [faOfferSalaries, setFaOfferSalaries] = useState<number[]>(() => {
+        const initSlot = slots[0] ?? 'vet_min';
+        const maxYears = SLOT_MAX_YEARS[initSlot] ?? 4;
         const base     = faEntry?.askingSalary ?? 0;
-        const years    = faEntry?.askingYears  ?? 2;
-        const initRate = SLOT_ESCALATOR[slots[0] ?? 'vet_min'] ?? 0.05;
+        const years    = Math.min(faEntry?.askingYears ?? 2, maxYears);
+        const initRate = SLOT_ESCALATOR[initSlot] ?? 0.05;
         return generateEscalatedSalaries(base, initRate, years);
     });
-    const [faOfferYears, setFaOfferYears] = useState(() => faEntry?.askingYears ?? 2);
+    const [faOfferYears, setFaOfferYears] = useState(() => {
+        const initSlot = slots[0] ?? 'vet_min';
+        const maxYears = SLOT_MAX_YEARS[initSlot] ?? 4;
+        return Math.min(faEntry?.askingYears ?? 2, maxYears);
+    });
     const [faResult, setFaResult]           = useState<{ accepted: boolean; reason?: string } | null>(persistedFAResult ?? null);
     const [faRound, setFaRound]             = useState(persistedFARound ?? 0);
 
@@ -487,16 +503,6 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     const currentSlotMax = slotMaxMap[selectedSlot] ?? vetMin;
 
-    // NBA CBA 기준 슬롯별 최대 계약 연수
-    const SLOT_MAX_YEARS: Record<SigningType, number> = {
-        bird_full:   5,  // 풀 버드권 (자기 팀 재계약)
-        bird_early:  5,  // 얼리 버드권
-        bird_non:    4,  // 논버드
-        cap_space:   4,  // 캡 스페이스
-        non_tax_mle: 4,  // 논택스 MLE
-        tax_mle:     3,  // 택스페이어 MLE
-        vet_min:     2,  // 베테랑 미니멈
-    };
     const faMaxYears = SLOT_MAX_YEARS[selectedSlot] ?? 4;
 
     const faEscalateRate  = SLOT_ESCALATOR[selectedSlot] ?? 0.05;
@@ -966,6 +972,29 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             ))}
                         </div>
+
+                        {/* 직전 시즌 성적 (생성 FA 선수용) */}
+                        {player.prevSeasonStats && (
+                            <div className="px-4 py-3 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">직전 시즌</div>
+                                {[
+                                    { label: '출전', value: `${player.prevSeasonStats.gp}G / ${player.prevSeasonStats.mpg.toFixed(1)}MPG` },
+                                    { label: 'PPG', value: player.prevSeasonStats.ppg.toFixed(1) },
+                                    { label: 'RPG', value: player.prevSeasonStats.rpg.toFixed(1) },
+                                    { label: 'APG', value: player.prevSeasonStats.apg.toFixed(1) },
+                                    { label: 'SPG', value: player.prevSeasonStats.spg.toFixed(1) },
+                                    { label: 'BPG', value: player.prevSeasonStats.bpg.toFixed(1) },
+                                    { label: 'FG%', value: `${(player.prevSeasonStats.fgPct * 100).toFixed(1)}%` },
+                                    { label: '3P%', value: `${(player.prevSeasonStats.fg3Pct * 100).toFixed(1)}%` },
+                                    { label: 'FT%', value: `${(player.prevSeasonStats.ftPct * 100).toFixed(1)}%` },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">{label}</span>
+                                        <span className="font-mono text-slate-200">{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         {/* 현재 계약 */}
                         {player.contract && (
