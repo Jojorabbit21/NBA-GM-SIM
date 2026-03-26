@@ -67,7 +67,7 @@ export async function runBatchSeason(
     depthChart: DepthChart | null,
     tendencySeed: string | undefined,
     userId: string | undefined,
-    onProgress: (current: number, total: number, date: string) => void,
+    onProgress: (current: number, total: number, date: string, opponentName?: string) => void,
     cancelToken: { cancelled: boolean },
     simSettings?: SimSettings,
     coachingData?: LeagueCoachingData | null,
@@ -108,7 +108,9 @@ export async function runBatchSeason(
         }
     }
 
-    let total = unplayedDates.length;
+    let total = stopDate
+        ? unplayedDates.filter(d => d <= stopDate).length
+        : unplayedDates.length;
     let current = 0;
     let lastDate = unplayedDates[unplayedDates.length - 1] ?? '';
 
@@ -488,7 +490,10 @@ export async function runBatchSeason(
         // 5. 진행 상황 보고 + UI yield
         current++;
         lastDate = date;
-        onProgress(current, total, date);
+        const progressGame = schedule.find(g => g.date === date && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
+        const progressOpponentId = progressGame ? (progressGame.homeTeamId === myTeamId ? progressGame.awayTeamId : progressGame.homeTeamId) : undefined;
+        const progressOpponentName = progressOpponentId ? teams.find(t => t.id === progressOpponentId)?.name : undefined;
+        onProgress(current, total, date, progressOpponentName);
         await new Promise<void>(r => setTimeout(r, 0));
     }
 

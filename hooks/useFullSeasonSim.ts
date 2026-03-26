@@ -31,6 +31,7 @@ export interface BatchProgress {
     total: number;
     currentDate: string;
     phase: 'simulating' | 'saving' | 'done';
+    opponentName?: string;
 }
 
 export const useFullSeasonSim = (
@@ -117,9 +118,9 @@ export const useFullSeasonSim = (
                 depthChart ?? null,
                 tendencySeed,
                 session?.user?.id,
-                (current, total, date) => {
+                (current, total, date, opponentName) => {
                     setBatchProgress(prev =>
-                        prev ? { ...prev, current, total, currentDate: date } : null
+                        prev ? { ...prev, current, total, currentDate: date, opponentName } : null
                     );
                 },
                 cancelTokenRef.current,
