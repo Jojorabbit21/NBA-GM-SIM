@@ -906,6 +906,18 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
                                                 </span>
                                             </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">드래프트</span>
+                                                <span className="text-slate-400">
+                                                    {player.draftRound === 1
+                                                        ? `1라운드 ${player.draftPick}픽`
+                                                        : player.draftRound === 2
+                                                        ? `2라운드 ${player.draftPick! - 30}픽`
+                                                        : player.draftRound === null
+                                                        ? '언드래프트'
+                                                        : '-'}
+                                                </span>
+                                            </div>
                                         </div>
                                     ) : (
                                         // 폴백: 기존 DB 선수 (prev_contract 없음)

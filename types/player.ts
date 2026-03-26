@@ -258,6 +258,8 @@ export interface Player {
     career_history?: CareerSeasonStat[];
     contract?: PlayerContract;
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
+    draftRound?: 1 | 2 | null;  // 드래프트 라운드 (null = 언드래프트)
+    draftPick?: number | null;  // 픽 번호 (1~30: 1라운드, 31~60: 2라운드, null: 언드래프트)
     teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     prevSeasonStats?: PrevSeasonStats; // 직전 시즌 성적 (생성 선수용, FA 가치 산정에 활용)
     prevSalary?: number;               // 직전 계약 연봉 AAV (생성 FA 선수용 — Bird Rights 기준)

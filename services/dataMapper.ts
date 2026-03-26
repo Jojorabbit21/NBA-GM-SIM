@@ -386,6 +386,12 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     if (baseAttrs?.prev_contract?.years?.length) {
         player.prevContract = baseAttrs.prev_contract as import('../types/player').PlayerContract;
     }
+    if (baseAttrs?.draft_round !== undefined) {
+        player.draftRound = baseAttrs.draft_round as 1 | 2 | null;
+    }
+    if (baseAttrs?.draft_pick !== undefined) {
+        player.draftPick = baseAttrs.draft_pick as number | null;
+    }
 
     return player;
 };

@@ -15,7 +15,7 @@
  */
 
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
-import { CareerSeasonStat, PlayerContract, PlayerPopularity } from '../../types/player';
+import { CareerSeasonStat, ContractType, PlayerContract, PlayerPopularity } from '../../types/player';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 // ── 상수 ──
@@ -549,33 +549,100 @@ function getEntryAge(position: string, tierIdx: number, rng: SeededRandom): numb
     return rng.intRange(biasedMin, biasedMax);
 }
 
+/** 2025-26 루키 스케일 Year 1 연봉 (1~30픽, 인덱스 0=1픽) */
+const ROOKIE_SCALE_Y1: readonly number[] = [
+    14_758_000, 13_081_000, 11_486_000, 10_291_000,  9_397_000,
+     8_679_000,  8_067_000,  7_567_000,  7_137_000,  6_792_000,
+     6_532_000,  6_314_000,  6_109_000,  5_945_000,  5_786_000,
+     5_673_000,  5_554_000,  5_454_000,  5_355_000,  5_280_000,
+     5_205_000,  5_132_000,  5_077_000,  5_020_000,  4_966_000,
+     4_923_000,  4_869_000,  4_828_000,  4_787_000,  4_747_000,
+] as const;
+const ROOKIE_SCALE_RAISE = 0.08;   // 루키 스케일 연간 인상률
+
+/** 드래프트 정보 */
+type DraftInfo = { round: 1 | 2 | null; pick: number | null };
+
 /**
- * FA 요구 연봉 기반 직전 계약 연봉 추정
- * asking salary의 85~115% 범위에서 노이즈 적용 — 두 값이 항상 일관된 스케일을 유지
+ * 능력치(OVR)에 따라 드래프트 라운드/픽 번호를 생성한다.
+ * usedPicks로 연도별 중복 배정을 방지한다.
+ * - 1라운드: 1~30픽, 2라운드: 31~60픽, null: 언드래프트
  */
-function calcPrevSalary(askingSalary: number, rng: SeededRandom): number {
-    const ratio = 0.85 + rng.next() * 0.30; // 0.85 ~ 1.15
-    return Math.round(askingSalary * ratio);
+function generateDraftPick(
+    approxOvr: number,
+    draftYear: number,
+    usedPicks: Map<number, Set<number>>,
+    rng: SeededRandom,
+): DraftInfo {
+    const yearUsed = usedPicks.get(draftYear) ?? new Set<number>();
+    if (!usedPicks.has(draftYear)) usedPicks.set(draftYear, yearUsed);
+
+    // OVR 기반 선호 픽 범위 결정
+    let pickRange: [number, number] | null;
+    if (approxOvr >= 84)      pickRange = [1,  5];
+    else if (approxOvr >= 78) pickRange = [1, 14];
+    else if (approxOvr >= 72) pickRange = [15, 30];
+    else if (approxOvr >= 66) pickRange = rng.next() < 0.30 ? [25, 30] : [31, 45];
+    else if (approxOvr >= 58) pickRange = rng.next() < 0.65 ? [31, 60] : null;
+    else                      pickRange = rng.next() < 0.25 ? [45, 60] : null;
+
+    if (pickRange == null) return { round: null, pick: null };
+
+    const [min, max] = pickRange;
+    // 선호 범위 내 미사용 픽 → 소진 시 1~60 전체 폴백
+    const preferred = Array.from({ length: max - min + 1 }, (_, i) => min + i)
+        .filter(p => !yearUsed.has(p));
+    const pool = preferred.length > 0
+        ? preferred
+        : Array.from({ length: 60 }, (_, i) => i + 1).filter(p => !yearUsed.has(p));
+
+    if (pool.length === 0) return { round: null, pick: null }; // 해당 연도 전 픽 소진
+
+    const pick = pool[rng.intRange(0, pool.length - 1)];
+    yearUsed.add(pick);
+    return { round: pick <= 30 ? 1 : 2, pick };
 }
 
 /**
- * 직전 계약 연도별 연봉 배열 생성
- * prevSalary(AAV)를 기반으로 5% 연간 인상률을 역산해 첫 해 연봉을 구하고
- * yos(서비스 연수)에 맞는 계약 기간을 결정한다.
+ * 드래프트 픽 기반 직전 계약 생성 (CBA 규정 준수)
+ *
+ * yos <= 4:
+ *   1라운드 → 루키 스케일 계약 (NBA CBA 필수, 슬롯 연봉 × 1.08/yr)
+ *   2라운드 / 언드래프트 → 미니멈 수준
+ * yos > 4: 루키 이후 베테랑/미니멈 계약 (FA 오퍼 역산)
  */
-function generatePrevContractYears(
-    prevSalary: number,
+function generatePrevContract(
+    draftInfo: DraftInfo,
     yos: number,
+    salary: number,
+    faType: ContractType,
     rng: SeededRandom,
-): number[] {
-    const len = yos >= 4 ? rng.intRange(3, 5)
-              : yos >= 2 ? rng.intRange(2, 4)
-              : 1;
+): { years: number[]; type: ContractType } {
+    if (yos <= 4) {
+        if (draftInfo.round === 1 && draftInfo.pick != null) {
+            // 1라운드: 루키 스케일 (4년 계약 중 yos년분)
+            const year1 = ROOKIE_SCALE_Y1[draftInfo.pick - 1];
+            const years = Array.from(
+                { length: yos },
+                (_, i) => Math.round(year1 * Math.pow(1 + ROOKIE_SCALE_RAISE, i))
+            );
+            return { years, type: 'rookie' };
+        }
+        // 2라운드 / 언드래프트: 미니멈 수준 단기 계약
+        const base = draftInfo.round === 2 ? 2_100_000 : 1_930_000;
+        return {
+            years: Array.from({ length: yos }, (_, i) => Math.round(base * Math.pow(1.05, i))),
+            type: 'min',
+        };
+    }
+
+    // yos > 4: 루키 이후 계약 (FA 오퍼 연봉 기반 역산)
     const rate = 0.05;
-    // base * sum(1.05^i, i=0..n-1) / n = AAV → base 역산
+    const aav = salary * (0.85 + rng.next() * 0.30);
+    const len = yos >= 7 ? rng.intRange(3, 5) : rng.intRange(2, 4);
     const factors = Array.from({ length: len }, (_, i) => Math.pow(1 + rate, i));
-    const base = Math.round(prevSalary * len / factors.reduce((a, b) => a + b, 0));
-    return factors.map(f => Math.round(base * f));
+    const base = Math.round(aav * len / factors.reduce((a, b) => a + b, 0));
+    return { years: factors.map(f => Math.round(base * f)), type: faType };
 }
 
 /**
@@ -607,9 +674,9 @@ function generateCareerStatRow(
     const baseMpg = ovr >= 80 ? 30 : ovr >= 70 ? 24 : ovr >= 60 ? 20 : 16;
     const min = clamp(Math.round(vary(baseMpg)), 14, 36);
 
-    // FG% — 슛 능력치 기반 (avg attr~60 → ~48%, elite~85 → ~56%)
-    const fgBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
-    const fg_pct = clamp(Math.round(vary(fgBase / 300 + 0.28) * 1000) / 1000, 0.35, 0.65);
+    // 2점슛 성공률 — close/lay/siq 기반 (내부 계산용, 직접 저장 안 함)
+    const twoPtBase = ((attrs['close'] ?? 60) + (attrs['lay'] ?? 60) + (attrs['siq'] ?? 65)) / 3;
+    const twoPt_pct = clamp(vary(twoPtBase / 250 + 0.32), 0.38, 0.72);
 
     // 3P% (avg attr~50 → ~33%, elite~85 → ~41%)
     const threeBase = ((attrs['3c'] ?? 50) + (attrs['3_45'] ?? 50) + (attrs['3t'] ?? 50)) / 3;
@@ -626,6 +693,13 @@ function generateCareerStatRow(
     // 3PA per game — 포지션별 3점 성향
     const threePARate = isGuard ? 0.44 : position === 'SF' ? 0.33 : 0.13;
     const fg3a = clamp(Math.round(vary(fga * threePARate) * 10) / 10, 0, fga * 0.75);
+
+    // FG% = 2점슛/3점슛 성공의 가중 평균 (3점 시도 비중 반영)
+    const twoPA = Math.max(fga - fg3a, 0);
+    const fg_pct = clamp(
+        Math.round(((twoPA * twoPt_pct + fg3a * fg3_pct) / (fga || 1)) * 1000) / 1000,
+        0.30, 0.65
+    );
 
     // FTA per game — per-36분 기준 능력치 산출 후 실제 분 환산
     const ftaPer36 = (attrs['draw'] ?? 55) / 10 - 2.5; // draw=60→3.5, draw=80→5.5
@@ -822,6 +896,9 @@ export function generateInitialFAPool(
     const shuffledPositions = rng.shuffle(positionPool);
     const poolWeights = NAME_POOLS.map(p => p.weight);
 
+    // 드래프트 연도별 사용된 픽 번호 추적 (같은 연도 중복 배정 방지)
+    const usedPicks = new Map<number, Set<number>>();
+
     for (let i = 0; i < count; i++) {
         const position = shuffledPositions[i];
         const tierIdx = rng.weightedIndex(FA_TIER_WEIGHTS); // 0=High, 1=Mid, 2=Low
@@ -868,8 +945,12 @@ export function generateInitialFAPool(
         const draftYear = currentSeasonYear - yos;
 
         // 직전 계약 연봉: asking salary 기반 (일관된 스케일 유지)
-        const prevSalary = calcPrevSalary(salary, rng);
-        const prevContractYears = generatePrevContractYears(prevSalary, yos, rng);
+        // 드래프트 픽 생성 (OVR 기반, 연도별 중복 방지)
+        const draftInfo = generateDraftPick(approxOvr, draftYear, usedPicks, rng);
+
+        // 직전 계약 생성 (픽 기반 루키 스케일 or 베테랑)
+        const prevContract = generatePrevContract(draftInfo, yos, salary, contractType, rng);
+        const prevSalary = Math.round(prevContract.years.reduce((a, b) => a + b, 0) / prevContract.years.length);
 
         // 전체 커리어 기록 생성 (yos 시즌 × 1행)
         const teamSequence = generateTeamSequence(yos, approxOvr, rng);
@@ -919,12 +1000,14 @@ export function generateInitialFAPool(
                 },
                 // 히스토리 필드 (mapRawPlayerToRuntimePlayer에서 Player로 매핑)
                 draft_year: draftYear,
+                draft_round: draftInfo.round,
+                draft_pick: draftInfo.pick,
                 prev_salary: prevSalary,
                 prev_team_tenure: prevTeamTenure,
                 prev_contract: {
-                    years: prevContractYears,
-                    currentYear: prevContractYears.length, // 이미 완료된 계약
-                    type: contractType,
+                    years: prevContract.years,
+                    currentYear: prevContract.years.length, // 이미 완료된 계약
+                    type: prevContract.type,
                 },
                 career_history: careerHistory,
                 popularity,
