@@ -37,13 +37,18 @@ export const replayGameState = (
         : gameResults;
     const sortedResults = [...filteredResults].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
+    const scheduleIdxMap = new Map<string, number>();
+    schedule.forEach((g, i) => scheduleIdxMap.set(g.id, i));
+
     sortedResults.forEach((res) => {
-        const gameIdx = schedule.findIndex(g => g.id === res.game_id);
+        let gameIdx = scheduleIdxMap.get(res.game_id) ?? -1;
         if (gameIdx !== -1) {
             schedule[gameIdx].played = true;
             schedule[gameIdx].homeScore = res.home_score;
             schedule[gameIdx].awayScore = res.away_score;
         } else if (res.is_playoff) {
+            gameIdx = schedule.length;
+            scheduleIdxMap.set(res.game_id, gameIdx);
             schedule.push({
                 id: res.game_id,
                 homeTeamId: res.home_team_id,
@@ -59,7 +64,7 @@ export const replayGameState = (
 
         const homeTeam = teamMap.get(res.home_team_id);
         const awayTeam = teamMap.get(res.away_team_id);
-        
+
         if (homeTeam && awayTeam && !res.is_playoff) {
             const homeWon = res.home_score > res.away_score;
             if (homeWon) {
@@ -79,7 +84,7 @@ export const replayGameState = (
         if (res.box_score) {
             // Attach team-level aggregates to the schedule Game object
             // so that useLeaderboardData can use exact opponent stats
-            const idx = schedule.findIndex(g => g.id === res.game_id);
+            const idx = scheduleIdxMap.get(res.game_id) ?? -1;
             if (idx !== -1) {
                 if (res.box_score.home) (schedule[idx] as any).homeStats = sumTeamBoxScore(res.box_score.home);
                 if (res.box_score.away) (schedule[idx] as any).awayStats = sumTeamBoxScore(res.box_score.away);

@@ -3,19 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { TEAM_DATA } from '../data/teamData';
 import { SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
 
-const LOADING_TITLES = [
-    '단장 사무실에 집기 채워넣는 중 ...',
-    '스카우트 보고서 검토하는 중 ...',
-    '드래프트 전략 수립하는 중 ...',
-    '트레이드 제안서 검토하는 중 ...',
-    '선수 계약 협상하는 중 ...',
-    '로스터 재정비하는 중 ...',
-    '코치진과 작전 회의하는 중 ...',
-    '구단주에게 보고서 작성하는 중 ...',
-    '연봉 협상 자료 준비하는 중 ...',
-    '원정 일정 조율하는 중 ...',
-];
-
 const shimmerStyle: React.CSSProperties = {
     backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
     backgroundSize: '200% 100%',
@@ -49,14 +36,6 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
     const data = getLastTeamData();
     const sidebarBg = data?.teamStatic?.colors?.primary ?? '#0f172a';
     const iconColor = data ? (SIDEBAR_ICON_COLORS[data.teamId] ?? 'rgba(255,255,255,0.35)') : 'rgba(255,255,255,0.35)';
-
-    const [titleIndex, setTitleIndex] = useState(() => Math.floor(Math.random() * LOADING_TITLES.length));
-    useEffect(() => {
-        const id = setInterval(() => {
-            setTitleIndex(i => (i + 1) % LOADING_TITLES.length);
-        }, 2500);
-        return () => clearInterval(id);
-    }, []);
 
     // 스켈레톤은 800ms 후에 페이드인 — 로더 shimmer가 먼저 안정된 뒤 표시
     const [showSkeleton, setShowSkeleton] = useState(false);
@@ -164,41 +143,63 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0, message }
             {/* 배경 블러 오버레이 — 피그마: backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)] */}
             <div className="fixed inset-0 z-40 backdrop-blur-[6px] bg-[rgba(15,23,42,0.7)]" />
 
-            {/* Loading Banner — 피그마 LoadingIndicator */}
+            {/* Loading Banner — 피그마 LoadingIndicator (35px 단일 바) */}
+            {/* bg: blue-gray/800 = #1e293b, shadow: /shadow/md */}
             <div
-                className="fixed top-0 left-0 right-0 z-50 shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-1px_rgba(0,0,0,0.06)]"
-                style={{ backgroundColor: '#1e293b', height: '123px' }}
+                className="fixed top-0 left-0 right-0 z-50 overflow-hidden shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-1px_rgba(0,0,0,0.06)]"
+                style={{ backgroundColor: '#1e293b', height: '35px' }}
             >
-                {/* 상단: 고정 타이틀 */}
-                <div className="flex items-center px-8" style={{ height: '88px' }}>
-                    <p className="font-['Inter','Noto_Sans_KR',sans-serif] text-2xl font-medium text-white whitespace-nowrap">
-                        {LOADING_TITLES[titleIndex]}
-                    </p>
-                </div>
-                {/* 프로그레스 바: % + 단계별 작업 메시지 */}
-                <div className="relative overflow-hidden bg-slate-800" style={{ height: '35px' }}>
-                    {/* shimmer — transform 기반 (GPU 가속) */}
-                    <div className="animate-shimmer absolute inset-0 pointer-events-none"
-                        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)' }}
-                    />
-                    <div
-                        className="absolute left-0 top-0 h-full"
+                {/* Layer 1: 에메랄드 프로그레스 바 (emerald/600 = #059669) */}
+                <div
+                    className="absolute left-0 top-0 h-full"
+                    style={{
+                        width: `${progress}%`,
+                        backgroundColor: '#059669',
+                        transition: 'width 0.3s ease',
+                    }}
+                />
+
+                {/* Layer 2: 텍스처 shimmer 오버레이 */}
+                <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'shimmer 1.8s ease-in-out infinite',
+                    }}
+                />
+
+                {/* Layer 3: 텍스트 — left-[31px], Inter Bold 16px / lh 24px, gap 16px */}
+                <div
+                    className="absolute inset-0 flex items-center gap-[16px] whitespace-nowrap"
+                    style={{ left: '31px' }}
+                >
+                    {/* 진행률 텍스트 */}
+                    <span
+                        className="font-bold text-white shrink-0"
                         style={{
-                            width: `${progress}%`,
-                            backgroundColor: '#059669',
-                            transition: 'width 0.3s ease',
+                            fontFamily: "'Inter', 'Noto Sans KR', sans-serif",
+                            fontSize: '16px',
+                            lineHeight: '24px',
+                            fontWeight: 700,
                         }}
-                    />
-                    <div className="absolute inset-0 flex items-center">
-                        <span className="font-['Inter',sans-serif] text-2xl font-medium text-white whitespace-nowrap" style={{ marginLeft: '31px' }}>
-                            {progress}%
+                    >
+                        로딩 중... {progress}%
+                    </span>
+                    {/* 메시지 텍스트 (Loading / Simulating 타입에서만 표시) */}
+                    {message && (
+                        <span
+                            className="font-bold text-white shrink-0"
+                            style={{
+                                fontFamily: "'Inter', 'Noto Sans KR', sans-serif",
+                                fontSize: '16px',
+                                lineHeight: '24px',
+                                fontWeight: 700,
+                            }}
+                        >
+                            {message}
                         </span>
-                        {message && (
-                            <span className="font-['Inter',sans-serif] text-base font-bold text-white truncate" style={{ marginLeft: '12px' }}>
-                                {message}
-                            </span>
-                        )}
-                    </div>
+                    )}
                 </div>
             </div>
         </>

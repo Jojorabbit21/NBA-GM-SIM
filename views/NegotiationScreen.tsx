@@ -1035,6 +1035,52 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             </div>
                         )}
 
+                        {/* 직전 계약 (생성 FA 선수용) */}
+                        {player.prevSalary != null && (
+                            <div className="px-4 py-3 space-y-1">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">직전 계약</div>
+                                {player.prevContract && player.prevContract.years.length > 0 ? (
+                                    <>
+                                        {player.prevContract.years.map((sal, i) => {
+                                            const n = player.prevContract!.years.length;
+                                            const seasonLabel = player.career_history?.[n - 1 - i]?.season ?? `Year ${i + 1}`;
+                                            return (
+                                                <div key={i} className="flex justify-between items-center text-xs">
+                                                    <span className="text-slate-600">{seasonLabel}</span>
+                                                    <span className="font-mono text-slate-500">{fmtM(sal)}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="flex justify-between items-center text-xs pt-0.5 border-t border-slate-800">
+                                            <span className="text-slate-500">AAV</span>
+                                            <span className="font-mono text-slate-400">{fmtM(player.prevContract.years.reduce((a, b) => a + b, 0) / player.prevContract.years.length)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">유형</span>
+                                            <span className="text-slate-400">
+                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
+                                            </span>
+                                        </div>
+                                        {player.draftRound != null && (
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">드래프트</span>
+                                                <span className="text-slate-400">
+                                                    {player.draftRound === 1
+                                                        ? `1라운드 ${player.draftPick}픽`
+                                                        : `2라운드 ${player.draftPick! - 30}픽`}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500">AAV</span>
+                                        <span className="font-mono text-slate-400">{fmtM(player.prevSalary)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* 현재 계약 */}
                         {player.contract && (
                             <div className="px-4 py-3 space-y-1">

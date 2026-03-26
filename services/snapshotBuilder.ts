@@ -182,8 +182,11 @@ export const hydrateFromSnapshot = (
     }
 
     // 3. Apply schedule results
+    const scheduleIdxMap = new Map<string, number>();
+    schedule.forEach((g, i) => scheduleIdxMap.set(g.id, i));
+
     for (const [gameId, result] of Object.entries(snapshot.schedule_results)) {
-        const idx = schedule.findIndex(g => g.id === gameId);
+        const idx = scheduleIdxMap.get(gameId) ?? -1;
         if (idx !== -1) {
             schedule[idx].played = true;
             schedule[idx].homeScore = result.homeScore;
@@ -195,7 +198,8 @@ export const hydrateFromSnapshot = (
 
     // 4. Append played playoff games to schedule
     for (const pg of snapshot.playoff_schedule) {
-        if (!schedule.some(g => g.id === pg.id)) {
+        if (!scheduleIdxMap.has(pg.id)) {
+            scheduleIdxMap.set(pg.id, schedule.length);
             schedule.push({
                 id: pg.id,
                 homeTeamId: pg.homeTeamId,
@@ -213,7 +217,8 @@ export const hydrateFromSnapshot = (
     // 5. Append pending (unplayed) playoff games — 원래 날짜 그대로 복원
     if (snapshot.pending_playoff_games) {
         for (const pg of snapshot.pending_playoff_games) {
-            if (!schedule.some(g => g.id === pg.id)) {
+            if (!scheduleIdxMap.has(pg.id)) {
+                scheduleIdxMap.set(pg.id, schedule.length);
                 schedule.push({
                     id: pg.id,
                     homeTeamId: pg.homeTeamId,
