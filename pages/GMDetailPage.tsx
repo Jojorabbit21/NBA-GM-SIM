@@ -5,7 +5,7 @@ import { useGame } from '../hooks/useGameContext';
 
 const GMDetailPage: React.FC = () => {
     const { teamId } = useParams<{ teamId: string }>();
-    const { gameData } = useGame();
+    const { session, gameData } = useGame();
     const navigate = useNavigate();
 
     if (!teamId || !gameData.leagueGMProfiles?.[teamId]) {
@@ -18,6 +18,10 @@ const GMDetailPage: React.FC = () => {
             gmProfile={gameData.leagueGMProfiles[teamId]}
             teamId={teamId}
             onBack={() => navigate(-1)}
+            leagueGMProfiles={gameData.leagueGMProfiles}
+            allTeams={gameData.teams}
+            myTeamId={gameData.myTeamId ?? undefined}
+            userNickname={session?.user?.email?.split('@')[0]}
         />
     );
 };

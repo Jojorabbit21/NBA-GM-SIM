@@ -29,6 +29,8 @@ const CoachDetailPage: React.FC = () => {
             coach={coachData.coach}
             teamId={coachData.teamId}
             onBack={() => navigate(-1)}
+            coachingData={gameData.coachingData ?? undefined}
+            allTeams={gameData.teams}
         />
     );
 };

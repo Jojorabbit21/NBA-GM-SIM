@@ -1,7 +1,8 @@
 
-import React, { useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { HeadCoach } from '../types/coaching';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { HeadCoach, LeagueCoachingData } from '../types/coaching';
+import { Team } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
@@ -12,6 +13,8 @@ interface CoachDetailViewProps {
     coach: HeadCoach;
     teamId: string;
     onBack: () => void;
+    coachingData?: LeagueCoachingData;
+    allTeams?: Team[];
 }
 
 // ── 선호 축별 전술 용어 매핑 (값 → 짧은 자연어) ──
@@ -125,10 +128,30 @@ export const PREF_ORDER: PrefKey[] = [
     'defenseStyle', 'helpScheme', 'zonePreference',
 ];
 
-export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack }) => {
-    const teamInfo = TEAM_DATA[teamId];
-    const teamColors = teamInfo?.colors || null;
-    const theme = getTeamTheme(teamId, teamColors);
+const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-800">
+        <span className="text-xs text-slate-500 w-20 shrink-0">{label}</span>
+        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5 min-w-0">{children}</span>
+    </div>
+);
+
+export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack, coachingData, allTeams }) => {
+    const [currentTeamId, setCurrentTeamId] = useState(teamId);
+    const [teamDropOpen, setTeamDropOpen] = useState(false);
+    const teamDropRef = useRef<HTMLDivElement>(null);
+
+    const currentCoach = coachingData?.[currentTeamId]?.headCoach ?? coach;
+
+    const teamInfo = TEAM_DATA[currentTeamId];
+    const theme = getTeamTheme(currentTeamId, teamInfo?.colors ?? null);
+
+    const offenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'offense');
+    const defenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'defense');
+
+    const sortedTeams = useMemo(() =>
+        allTeams ? [...allTeams].sort((a, b) => a.name.localeCompare(b.name)) : [],
+        [allTeams]
+    );
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
@@ -136,123 +159,171 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
         return () => window.removeEventListener('keydown', handleKey);
     }, [onBack]);
 
-    const offenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'offense');
-    const defenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'defense');
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (teamDropRef.current && !teamDropRef.current.contains(e.target as Node)) {
+                setTeamDropOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
 
-                {/* ═══ HEADER ═══ */}
-                <div className="border-b border-white/5 relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
-                    <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+            {/* ═══ 브레드크럼 바 ═══ */}
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-white/10 shrink-0"
+                style={{ backgroundColor: theme.bg }}>
 
-                    {/* Back button */}
-                    <div className="px-6 pt-5 pb-4 relative z-10">
-                        <button
-                            onClick={onBack}
-                            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5 rounded-lg transition-colors"
-                            style={{ color: theme.text }}
-                        >
-                            <ArrowLeft size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
-                        </button>
-                    </div>
+                {/* 뒤로 버튼 */}
+                <button
+                    onClick={onBack}
+                    className="flex items-center justify-center w-7 h-7 rounded-md bg-black/30 hover:bg-black/50 transition-colors shrink-0"
+                    style={{ color: theme.text }}
+                >
+                    <ArrowLeft size={14} />
+                </button>
 
-                    {/* Coach name */}
-                    <div className="px-6 pt-1 pb-4 relative z-10 flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center">
-                            <span className="text-xl font-black" style={{ color: theme.accent }}>HC</span>
+                <span className="text-white/30 text-sm mx-1">/</span>
+
+                {/* 팀 드롭다운 */}
+                <div ref={teamDropRef} className="relative">
+                    <button
+                        onClick={() => setTeamDropOpen(o => !o)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors"
+                        style={{ color: theme.text }}
+                    >
+                        <img src={getTeamLogoUrl(currentTeamId)} className="w-4 h-4 object-contain" alt="" />
+                        <span className="text-xs font-bold">
+                            {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : currentTeamId.toUpperCase()}
+                        </span>
+                        {allTeams && <ChevronDown size={11} className="opacity-60" />}
+                    </button>
+                    {teamDropOpen && allTeams && (
+                        <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+                            {sortedTeams.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => { setCurrentTeamId(t.id); setTeamDropOpen(false); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${t.id === currentTeamId ? 'text-white font-bold' : 'text-slate-300'}`}
+                                >
+                                    <img src={getTeamLogoUrl(t.id)} className="w-4 h-4 object-contain shrink-0" alt="" />
+                                    <span className="truncate">{t.name}</span>
+                                </button>
+                            ))}
                         </div>
-                        <h2 className="text-3xl font-black uppercase tracking-tight" style={{ color: theme.text }}>
-                            {coach.name}
-                        </h2>
-                    </div>
-
-                    <div className="mx-6" />
-
-                    {/* Info table */}
-                    <div className="px-6 py-3 relative z-10">
-                        <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
-                            <thead>
-                                <tr className="text-xs uppercase tracking-wider border-b border-white/15" style={{ opacity: 0.5 }}>
-                                    <th className="pr-8 pb-2 text-left font-bold">팀</th>
-                                    <th className="pr-8 pb-2 text-left font-bold">연봉</th>
-                                    <th className="pr-8 pb-2 text-left font-bold">계약기간</th>
-                                    <th className="pb-2 text-left font-bold">잔여기간</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className="font-bold">
-                                    <td className="pr-8 pt-2">
-                                        <span className="flex items-center gap-1.5">
-                                            <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />
-                                            {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : teamId.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td className="pr-8 pt-2">{formatMoney(coach.contractSalary)}</td>
-                                    <td className="pr-8 pt-2">{coach.contractYears}년</td>
-                                    <td className="pt-2">{coach.contractYearsRemaining}년</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="h-6" />
+                    )}
                 </div>
 
-                {/* ═══ BODY ═══ */}
-                <div className="bg-slate-950">
+                <span className="text-white/30 text-sm mx-1">›</span>
+                <span className="text-xs font-bold" style={{ color: theme.text, opacity: 0.8 }}>감독</span>
+            </div>
 
-                    {/* ═══ 공격 전술 ═══ */}
-                    <div className="px-4 py-2.5 bg-slate-800 border-b border-slate-700">
-                        <span className="text-xs font-black text-white uppercase tracking-widest">공격 전술</span>
-                    </div>
-                    <Table className="border-0 !rounded-none shadow-none">
-                        <TableHead>
-                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
-                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
-                            <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
-                        </TableHead>
-                        <TableBody>
-                            {offenseKeys.map(key => {
-                                const axis = PREF_AXES[key];
-                                const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
-                                return (
-                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
-                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
+            {/* ═══ 스크롤 영역 ═══ */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
+                <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
 
-                    {/* ═══ 수비 전술 ═══ */}
-                    <div className="px-4 py-2.5 bg-slate-800 border-y border-slate-700">
-                        <span className="text-xs font-black text-white uppercase tracking-widest">수비 전술</span>
+                    {/* ── 좌열: 인물 정보 카드 ── */}
+                    <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        {/* 헤더 */}
+                        <div className="relative overflow-hidden border-b border-white/5" style={{ backgroundColor: theme.bg }}>
+                            <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+                            <div className="px-4 py-4 relative z-10 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+                                    <span className="text-sm font-black" style={{ color: theme.accent }}>HC</span>
+                                </div>
+                                <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
+                                    {currentCoach?.name ?? '-'}
+                                </h2>
+                            </div>
+                        </div>
+
+                        {/* 정보 행들 */}
+                        <InfoRow label="팀">
+                            <img src={getTeamLogoUrl(currentTeamId)} className="w-4 h-4 object-contain" alt="" />
+                            {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : currentTeamId.toUpperCase()}
+                        </InfoRow>
+                        {currentCoach ? (
+                            <>
+                                <InfoRow label="연봉">
+                                    <span className="text-emerald-400 font-mono tabular-nums">{formatMoney(currentCoach.contractSalary)}</span>
+                                </InfoRow>
+                                <InfoRow label="계약기간">
+                                    <span className="font-mono tabular-nums">{currentCoach.contractYears}년</span>
+                                </InfoRow>
+                                <InfoRow label="잔여기간">
+                                    <span className="font-mono tabular-nums">{currentCoach.contractYearsRemaining}년</span>
+                                </InfoRow>
+                            </>
+                        ) : (
+                            <>
+                                <InfoRow label="연봉"><span className="text-slate-600">-</span></InfoRow>
+                                <InfoRow label="계약기간"><span className="text-slate-600">-</span></InfoRow>
+                                <InfoRow label="잔여기간"><span className="text-slate-600">-</span></InfoRow>
+                            </>
+                        )}
                     </div>
-                    <Table className="border-0 !rounded-none shadow-none">
-                        <TableHead>
-                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
-                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
-                            <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
-                        </TableHead>
-                        <TableBody>
-                            {defenseKeys.map(key => {
-                                const axis = PREF_AXES[key];
-                                const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
-                                return (
-                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
-                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
+
+                    {/* ── 우열: 전술 테이블 ── */}
+                    <div className="flex flex-col gap-4">
+                        {/* 공격 전술 */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">공격 전술</span>
+                            </div>
+                            <Table className="border-0 !rounded-none shadow-none">
+                                <TableHead>
+                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {offenseKeys.map(key => {
+                                        const axis = PREF_AXES[key];
+                                        const val = currentCoach?.preferences[key] ?? 5;
+                                        const { tag, desc } = getAxisResult(axis, val);
+                                        return (
+                                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+
+                        {/* 수비 전술 */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">수비 전술</span>
+                            </div>
+                            <Table className="border-0 !rounded-none shadow-none">
+                                <TableHead>
+                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {defenseKeys.map(key => {
+                                        const axis = PREF_AXES[key];
+                                        const val = currentCoach?.preferences[key] ?? 5;
+                                        const { tag, desc } = getAxisResult(axis, val);
+                                        return (
+                                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>
