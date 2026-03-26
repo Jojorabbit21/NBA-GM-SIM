@@ -556,20 +556,33 @@ const PayrollTab: React.FC<{
         return { players: sorted, seasonColumns: cols, totals: colTotals };
     }, [team.roster, seasonShort]);
 
+    // 이름 컬럼 너비: 가장 긴 이름에서 동적 계산 (한글 ~15px/글자 + 패딩)
+    const nameColWidth = useMemo(() => {
+        const maxLen = Math.max(...players.map(p => p.name.length), 2);
+        return maxLen * 15 + 32;
+    }, [players]);
+    const actionColWidth = 110;
+    const seasonColWidth = `calc((100% - ${nameColWidth}px - ${showActions ? actionColWidth : 0}px) / ${seasonColumns.length})`;
+
     return (
         <div className="p-4 animate-in fade-in duration-500 flex gap-4 items-start">
             {/* 좌: 선수 급여 테이블 */}
             <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-xs">
+                    <table className="w-full border-collapse text-xs table-fixed">
+                        <colgroup>
+                            <col style={{ width: `${nameColWidth}px` }} />
+                            {seasonColumns.map((_, i) => <col key={i} style={{ width: seasonColWidth }} />)}
+                            {showActions && <col style={{ width: `${actionColWidth}px` }} />}
+                        </colgroup>
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 w-px whitespace-nowrap">선수</th>
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap">선수</th>
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
                                 ))}
-                                {showActions && <th className="px-3 py-2 w-px" />}
+                                {showActions && <th className="px-3 py-2" />}
                             </tr>
                         </thead>
                         <tbody>
@@ -591,7 +604,7 @@ const PayrollTab: React.FC<{
                                 />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
-                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 w-px whitespace-nowrap">합계</td>
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap">합계</td>
                                 {totals.map((t, i) => (
                                     <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap">
                                         {t > 0 ? fmtSalary(t) : ''}
@@ -669,7 +682,7 @@ const PayrollRow: React.FC<{
 
     return (
         <tr className="group border-b border-slate-800 hover:bg-slate-800">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 w-px whitespace-nowrap">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 whitespace-nowrap">
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
@@ -685,7 +698,7 @@ const PayrollRow: React.FC<{
                 </td>
             ))}
             {(onExtension || onRelease) && (
-                <td className="px-3 py-1.5 text-right w-px whitespace-nowrap">
+                <td className="px-3 py-1.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
                         {onExtension && (
                             <button
