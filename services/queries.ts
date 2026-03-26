@@ -5,7 +5,7 @@ import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
 import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame, postProcessAllPlayersOVR } from './dataMapper';
 import { populateTeamData } from '../data/teamData';
-import { populateCoachData } from './coachingStaff/coachGenerator';
+import { populateStaffData } from './coachingStaff/coachGenerator';
 import { populateGMData } from './tradeEngine/gmProfiler';
 import { rebuildDerivedConstants } from '../utils/constants';
 
@@ -34,11 +34,11 @@ export const useBaseData = (enabled: boolean = true) => {
                 console.warn("⚠️ 'meta_teams' empty/error, using fallback hardcoded data", teamsRes.error);
             }
 
-            // 1-b. meta_coaches → COACH_DATA 갱신
+            // 1-b. meta_coaches → STAFF_DATA 갱신 (전 직무)
             if (!coachesRes.error && coachesRes.data && coachesRes.data.length > 0) {
-                populateCoachData(coachesRes.data);
+                populateStaffData(coachesRes.data);
             } else {
-                console.warn("⚠️ 'meta_coaches' empty/error, using fallback hardcoded data", coachesRes.error);
+                console.warn("⚠️ 'meta_coaches' empty/error, using fallback seed-based data", coachesRes.error);
             }
 
             // 1-c. meta_gms → GM_DATA 갱신

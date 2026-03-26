@@ -49,6 +49,8 @@ import DraftRoomPage from './pages/DraftRoomPage';
 import DraftBoardPage from './pages/DraftBoardPage';
 import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
+import CoachMarketPage from './pages/CoachMarketPage';
+import TrainingPage from './pages/TrainingPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
@@ -287,6 +289,8 @@ const App: React.FC = () => {
                         <Route path="/draft-board" element={<DraftBoardPage />} />
                         <Route path="/draft-history" element={<DraftHistoryPage />} />
                         <Route path="/tactics" element={<TacticsPage />} />
+                        <Route path="/coach-market" element={<CoachMarketPage />} />
+                        <Route path="/training" element={<TrainingPage />} />
                         {/* 404 → 홈으로 */}
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Route>

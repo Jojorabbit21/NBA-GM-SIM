@@ -44,6 +44,7 @@ export interface TeamFinance {
         scouting: number;          // 스카우팅/선수 개발비 ($)
         marketing: number;         // 마케팅/홍보비 ($)
         administration: number;    // 일반 관리비 — 프런트오피스+원정경비+보험 ($)
+        trainingBudget: number;    // 오프시즌 훈련 예산 ($0~$20M, 기본 $3M)
     };
     operatingIncome: number;       // 수익 - 지출 ($)
     budget: number;                // 시즌 지출 가능 예산 ($, 구단주 승인)

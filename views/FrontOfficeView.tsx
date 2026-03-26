@@ -6,6 +6,8 @@ import type { ReleaseType } from '../types';
 import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
+import type { CoachFAPool, StaffRole } from '../types/coaching';
+import type { LeagueTrainingConfigs, TeamTrainingConfig } from '../types/training';
 import { LeaguePickAssets } from '../types/draftAssets';
 import type { PlayerContract } from '../types/player';
 import type { OffseasonPhase } from '../types/app';
@@ -44,12 +46,17 @@ interface FrontOfficeViewProps {
     tendencySeed?: string;
     initialNegotiateId?: string;                          // 자동 오픈 선수 ID
     initialNegotiateType?: 'extension' | 'release';       // 자동 오픈 협상 타입
+    coachFAPool?: CoachFAPool | null;
+    leagueTrainingConfigs?: LeagueTrainingConfigs | null;
+    onCoachMarketOpen?: () => void;   // 코치 마켓 뷰 열기
+    onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
+    coachFAPool, leagueTrainingConfigs, onCoachMarketOpen, onTrainingViewOpen,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -119,9 +126,83 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             </div>
                             {/* 코칭 스태프 */}
                             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <WidgetHeader title="코칭 스태프" primaryColor={primaryColor} />
+                                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800/60">
+                                    <span className="text-xs font-black text-white uppercase tracking-widest">코칭 스태프</span>
+                                    {team.id === myTeamId && (
+                                        <button
+                                            onClick={onCoachMarketOpen}
+                                            className="text-xs px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-colors font-bold"
+                                        >
+                                            코치 영입
+                                        </button>
+                                    )}
+                                </div>
                                 <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
+                                {/* OC / DC / Dev / Trainer 요약 */}
+                                {(() => {
+                                    const staff = coachingData?.[team.id];
+                                    if (!staff) return null;
+                                    const rows: { label: string; name: string | undefined; salary: number }[] = [
+                                        { label: '공격 코디', name: staff.offenseCoordinator?.name, salary: staff.offenseCoordinator?.contractSalary ?? 0 },
+                                        { label: '수비 코디', name: staff.defenseCoordinator?.name, salary: staff.defenseCoordinator?.contractSalary ?? 0 },
+                                        { label: '디벨롭먼트', name: staff.developmentCoach?.name, salary: staff.developmentCoach?.contractSalary ?? 0 },
+                                        { label: '트레이닝', name: staff.trainingCoach?.name, salary: staff.trainingCoach?.contractSalary ?? 0 },
+                                    ];
+                                    return (
+                                        <div className="border-t border-slate-800">
+                                            {rows.map(r => (
+                                                <div key={r.label} className="flex items-center gap-3 px-4 py-2 border-b border-slate-800/50 last:border-b-0">
+                                                    <span className="text-xs text-slate-500 w-24 shrink-0">{r.label}</span>
+                                                    {r.name ? (
+                                                        <>
+                                                            <span className="text-xs text-slate-200 flex-1">{r.name}</span>
+                                                            <span className="text-xs font-mono tabular-nums text-emerald-400">{r.salary > 0 ? `$${(r.salary / 1_000_000).toFixed(1)}M` : '-'}</span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-600 italic">공석</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                             </div>
+                            {/* 훈련 계획 (유저 팀 전용) */}
+                            {team.id === myTeamId && (
+                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800/60">
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">훈련 계획</span>
+                                        <button
+                                            onClick={onTrainingViewOpen}
+                                            className="text-xs px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-colors font-bold"
+                                        >
+                                            훈련 설정
+                                        </button>
+                                    </div>
+                                    {(() => {
+                                        const cfg = leagueTrainingConfigs?.[myTeamId];
+                                        const budget = cfg?.budget ?? 3_000_000;
+                                        const totalPts = Math.floor(80 + budget / 250_000);
+                                        const usedPts = cfg ? Object.values(cfg.program).reduce((s, v) => s + v, 0) : 0;
+                                        return (
+                                            <div className="flex items-center gap-6 px-4 py-3">
+                                                <div>
+                                                    <div className="text-xs text-slate-500">훈련 예산</div>
+                                                    <div className="text-sm font-mono tabular-nums text-emerald-400">${(budget / 1_000_000).toFixed(1)}M</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs text-slate-500">총 훈련 포인트</div>
+                                                    <div className="text-sm font-mono tabular-nums text-white">{totalPts}pt</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs text-slate-500">배분된 포인트</div>
+                                                    <div className={`text-sm font-mono tabular-nums ${usedPts > totalPts ? 'text-rose-400' : 'text-slate-200'}`}>{usedPts}pt</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     )}
                     {activeTab === 'draftPicks' && (

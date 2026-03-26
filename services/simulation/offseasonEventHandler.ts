@@ -21,6 +21,9 @@ import { calcTeamPayroll } from '../fa/faMarketBuilder';
 import { TEAM_DATA } from '../../data/teamData';
 import { resolveDraftOrder } from '../draft/draftOrderResolver';
 import type { LeaguePickAssets, ResolvedDraftOrder } from '../../types/draftAssets';
+import { processOffseasonTraining } from '../coachingStaff/trainingEngine';
+import type { LeagueTrainingConfigs } from '../../types/training';
+import type { LeagueCoachingData } from '../../types/coaching';
 
 // ── 결과 타입 ──
 
@@ -178,6 +181,8 @@ export interface DispatchParams {
     hasProspects?: boolean;  // prospectReveal에서 이미 생성됨
     leaguePickAssets?: LeaguePickAssets;  // 픽 자산 (보호/스왑 해석용)
     luxuryTaxPaid?: boolean;  // 럭셔리 택스 이미 처리됨 (멱등성)
+    leagueTrainingConfigs?: LeagueTrainingConfigs;  // 훈련 설정
+    leagueCoachingData?: LeagueCoachingData;        // 코칭스태프
 }
 
 /**
@@ -249,9 +254,12 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
         };
     }
 
-    // ── moratoriumStart: 에이징/은퇴/계약만료/옵션 처리 ──
+    // ── moratoriumStart: 에이징/은퇴/계약만료/옵션 처리 + 오프시즌 훈련 ──
     if (currentDate >= keyDates.moratoriumStart && offseasonPhase === 'POST_DRAFT') {
-        return handleMoratoriumStart(teams, currentSeasonNumber, tendencySeed, userTeamId);
+        return handleMoratoriumStart(
+            teams, currentSeasonNumber, tendencySeed, userTeamId,
+            params.leagueTrainingConfigs, params.leagueCoachingData,
+        );
     }
 
     // ── luxuryTaxDay: 럭셔리 택스 정산 ──
@@ -310,8 +318,16 @@ function handleMoratoriumStart(
     currentSeasonNumber: number,
     tendencySeed: string,
     userTeamId?: string,
+    leagueTrainingConfigs?: LeagueTrainingConfigs,
+    leagueCoachingData?: LeagueCoachingData,
 ): OffseasonEventResult {
     const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber, userTeamId);
+
+    // 오프시즌 훈련 적용 (에이징/계약 처리 직후)
+    if (leagueTrainingConfigs && leagueCoachingData) {
+        processOffseasonTraining(teams, leagueTrainingConfigs, leagueCoachingData);
+        console.log('Offseason training applied');
+    }
 
     // 제거 대상 집합
     const removeIds = new Set<string>();

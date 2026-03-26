@@ -179,6 +179,7 @@ export function initializeTeamFinance(
         scouting,
         marketing,
         administration,
+        trainingBudget: 3_000_000,  // 기본 오프시즌 훈련 예산 $3M
     };
 
     const totalRevenue = Object.values(revenue).reduce((s, v) => s + v, 0);

@@ -1,7 +1,18 @@
 
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
-import { HeadCoach, LeagueCoachingData } from '../types/coaching';
+import {
+    HeadCoach,
+    LeagueCoachingData,
+    CoachingStaff,
+    CoachAbilities,
+    TrainingCoachAbilities,
+    StaffRole,
+    OffenseCoordinator,
+    DefenseCoordinator,
+    DevelopmentCoach,
+    TrainingCoach,
+} from '../types/coaching';
 import { Team } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
@@ -15,6 +26,7 @@ interface CoachDetailViewProps {
     onBack: () => void;
     coachingData?: LeagueCoachingData;
     allTeams?: Team[];
+    staffData?: CoachingStaff;
 }
 
 // ── 선호 축별 전술 용어 매핑 (값 → 짧은 자연어) ──
@@ -128,6 +140,61 @@ export const PREF_ORDER: PrefKey[] = [
     'defenseStyle', 'helpScheme', 'zonePreference',
 ];
 
+// ── 능력치 라벨 ──
+const ABILITY_LABELS: Record<keyof CoachAbilities, string> = {
+    teaching: '지도력',
+    schemeDepth: '전술 깊이',
+    communication: '소통력',
+    playerEval: '선수 평가',
+    motivation: '동기부여',
+    playerRelation: '선수 관계',
+    adaptability: '적응력',
+    developmentVision: '성장 비전',
+    experienceTransfer: '경험 전수',
+    mentalCoaching: '멘탈 코칭',
+};
+
+const TRAINER_ABILITY_LABELS: Record<keyof TrainingCoachAbilities, string> = {
+    athleticTraining: '신체 훈련',
+    recovery: '회복 관리',
+    conditioning: '컨디셔닝',
+};
+
+const ABILITY_ORDER: (keyof CoachAbilities)[] = [
+    'teaching', 'schemeDepth', 'communication', 'playerEval',
+    'motivation', 'playerRelation', 'adaptability',
+    'developmentVision', 'experienceTransfer', 'mentalCoaching',
+];
+
+const TRAINER_ABILITY_ORDER: (keyof TrainingCoachAbilities)[] = [
+    'athleticTraining', 'recovery', 'conditioning',
+];
+
+// ── 직무 라벨 ──
+const ROLE_LABELS: Record<StaffRole, string> = {
+    headCoach: '헤드 코치',
+    offenseCoordinator: '공격 코디네이터',
+    defenseCoordinator: '수비 코디네이터',
+    developmentCoach: '디벨롭먼트 코치',
+    trainingCoach: '트레이닝 코치',
+};
+
+// ── 능력치 바 ──
+const AbilityBar: React.FC<{ value: number }> = ({ value }) => {
+    const filled = Math.round((value / 10) * 15);
+    const color = value >= 7 ? 'bg-emerald-400' : value >= 5 ? 'bg-amber-400' : 'bg-rose-400';
+    return (
+        <div className="flex gap-0.5">
+            {Array.from({ length: 15 }).map((_, i) => (
+                <div
+                    key={i}
+                    className={`w-2.5 h-2 rounded-sm ${i < filled ? color : 'bg-slate-700'}`}
+                />
+            ))}
+        </div>
+    );
+};
+
 const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-800">
         <span className="text-xs text-slate-500 w-20 shrink-0">{label}</span>
@@ -135,12 +202,28 @@ const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
     </div>
 );
 
-export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack, coachingData, allTeams }) => {
+type SelectedRole = StaffRole;
+
+function getCoachFromStaff(staff: CoachingStaff | null | undefined, role: SelectedRole) {
+    if (!staff) return null;
+    switch (role) {
+        case 'headCoach': return staff.headCoach;
+        case 'offenseCoordinator': return staff.offenseCoordinator;
+        case 'defenseCoordinator': return staff.defenseCoordinator;
+        case 'developmentCoach': return staff.developmentCoach;
+        case 'trainingCoach': return staff.trainingCoach;
+    }
+}
+
+export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack, coachingData, allTeams, staffData }) => {
     const [currentTeamId, setCurrentTeamId] = useState(teamId);
     const [teamDropOpen, setTeamDropOpen] = useState(false);
+    const [selectedRole, setSelectedRole] = useState<SelectedRole>('headCoach');
     const teamDropRef = useRef<HTMLDivElement>(null);
 
-    const currentCoach = coachingData?.[currentTeamId]?.headCoach ?? coach;
+    const currentStaff = coachingData?.[currentTeamId] ?? staffData ?? null;
+    const currentCoach = currentStaff?.headCoach ?? coach;
+    const selectedCoach = getCoachFromStaff(currentStaff, selectedRole);
 
     const teamInfo = TEAM_DATA[currentTeamId];
     const theme = getTeamTheme(currentTeamId, teamInfo?.colors ?? null);
@@ -168,6 +251,80 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
     }, []);
+
+    const ROLE_ABBRS: Record<StaffRole, string> = {
+        headCoach: 'HC',
+        offenseCoordinator: 'OC',
+        defenseCoordinator: 'DC',
+        developmentCoach: 'DEV',
+        trainingCoach: 'TRN',
+    };
+
+    const renderAbilitiesTable = () => {
+        if (!selectedCoach) {
+            return (
+                <div className="flex items-center justify-center h-24">
+                    <span className="text-xs text-slate-600">해당 직무 코치 공석</span>
+                </div>
+            );
+        }
+
+        if (selectedRole === 'trainingCoach') {
+            const abilities = (selectedCoach as TrainingCoach).abilities as TrainingCoachAbilities;
+            return (
+                <Table className="border-0 !rounded-none shadow-none">
+                    <TableHead>
+                        <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">능력치</TableHeaderCell>
+                        <TableHeaderCell className="text-xs w-12 py-2 border-r border-slate-800/50">수치</TableHeaderCell>
+                        <TableHeaderCell className="text-xs py-2" align="left">그래프</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
+                        {TRAINER_ABILITY_ORDER.map(key => (
+                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{TRAINER_ABILITY_LABELS[key]}</TableCell>
+                                <TableCell className="text-xs font-mono font-black py-2 border-r border-slate-800/50 text-center">
+                                    <span className={abilities[key] >= 7 ? 'text-emerald-400' : abilities[key] >= 5 ? 'text-amber-400' : 'text-rose-400'}>
+                                        {abilities[key]}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="py-2">
+                                    <AbilityBar value={abilities[key]} />
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            );
+        }
+
+        const abilities = (selectedCoach as HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach).abilities as CoachAbilities;
+        return (
+            <Table className="border-0 !rounded-none shadow-none">
+                <TableHead>
+                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">능력치</TableHeaderCell>
+                    <TableHeaderCell className="text-xs w-12 py-2 border-r border-slate-800/50">수치</TableHeaderCell>
+                    <TableHeaderCell className="text-xs py-2" align="left">그래프</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {ABILITY_ORDER.map(key => (
+                        <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                            <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{ABILITY_LABELS[key]}</TableCell>
+                            <TableCell className="text-xs font-mono font-black py-2 border-r border-slate-800/50 text-center">
+                                <span className={abilities[key] >= 7 ? 'text-emerald-400' : abilities[key] >= 5 ? 'text-amber-400' : 'text-rose-400'}>
+                                    {abilities[key]}
+                                </span>
+                            </TableCell>
+                            <TableCell className="py-2">
+                                <AbilityBar value={abilities[key]} />
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        );
+    };
+
+    const ALL_ROLES: StaffRole[] = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'];
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
@@ -225,103 +382,157 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                 <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
 
                     {/* ── 좌열: 인물 정보 카드 ── */}
-                    <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                        {/* 헤더 */}
-                        <div className="relative overflow-hidden border-b border-white/5" style={{ backgroundColor: theme.bg }}>
-                            <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-                            <div className="px-4 py-4 relative z-10 flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-                                    <span className="text-sm font-black" style={{ color: theme.accent }}>HC</span>
+                    <div className="flex flex-col gap-3">
+                        {/* HC 카드 */}
+                        <div
+                            className={`flex flex-col bg-slate-900 border rounded-xl overflow-hidden cursor-pointer transition-all ${selectedRole === 'headCoach' ? 'border-indigo-500/60 ring-1 ring-indigo-500/30' : 'border-slate-800 hover:border-slate-700'}`}
+                            onClick={() => setSelectedRole('headCoach')}
+                        >
+                            <div className="relative overflow-hidden border-b border-white/5" style={{ backgroundColor: theme.bg }}>
+                                <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+                                <div className="px-4 py-4 relative z-10 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+                                        <span className="text-sm font-black" style={{ color: theme.accent }}>HC</span>
+                                    </div>
+                                    <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
+                                        {currentCoach?.name ?? '-'}
+                                    </h2>
                                 </div>
-                                <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
-                                    {currentCoach?.name ?? '-'}
-                                </h2>
                             </div>
+                            <InfoRow label="팀">
+                                <img src={getTeamLogoUrl(currentTeamId)} className="w-4 h-4 object-contain" alt="" />
+                                {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : currentTeamId.toUpperCase()}
+                            </InfoRow>
+                            {currentCoach ? (
+                                <>
+                                    <InfoRow label="연봉">
+                                        <span className="text-emerald-400 font-mono tabular-nums">{formatMoney(currentCoach.contractSalary)}</span>
+                                    </InfoRow>
+                                    <InfoRow label="계약기간">
+                                        <span className="font-mono tabular-nums">{currentCoach.contractYears}년</span>
+                                    </InfoRow>
+                                    <InfoRow label="잔여기간">
+                                        <span className="font-mono tabular-nums">{currentCoach.contractYearsRemaining}년</span>
+                                    </InfoRow>
+                                </>
+                            ) : (
+                                <>
+                                    <InfoRow label="연봉"><span className="text-slate-600">-</span></InfoRow>
+                                    <InfoRow label="계약기간"><span className="text-slate-600">-</span></InfoRow>
+                                    <InfoRow label="잔여기간"><span className="text-slate-600">-</span></InfoRow>
+                                </>
+                            )}
                         </div>
 
-                        {/* 정보 행들 */}
-                        <InfoRow label="팀">
-                            <img src={getTeamLogoUrl(currentTeamId)} className="w-4 h-4 object-contain" alt="" />
-                            {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : currentTeamId.toUpperCase()}
-                        </InfoRow>
-                        {currentCoach ? (
-                            <>
-                                <InfoRow label="연봉">
-                                    <span className="text-emerald-400 font-mono tabular-nums">{formatMoney(currentCoach.contractSalary)}</span>
-                                </InfoRow>
-                                <InfoRow label="계약기간">
-                                    <span className="font-mono tabular-nums">{currentCoach.contractYears}년</span>
-                                </InfoRow>
-                                <InfoRow label="잔여기간">
-                                    <span className="font-mono tabular-nums">{currentCoach.contractYearsRemaining}년</span>
-                                </InfoRow>
-                            </>
-                        ) : (
-                            <>
-                                <InfoRow label="연봉"><span className="text-slate-600">-</span></InfoRow>
-                                <InfoRow label="계약기간"><span className="text-slate-600">-</span></InfoRow>
-                                <InfoRow label="잔여기간"><span className="text-slate-600">-</span></InfoRow>
-                            </>
-                        )}
+                        {/* OC / DC / Dev / Trainer 카드 */}
+                        {(['offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'] as StaffRole[]).map(role => {
+                            const roleCoach = getCoachFromStaff(currentStaff, role);
+                            const isSelected = selectedRole === role;
+                            return (
+                                <div
+                                    key={role}
+                                    className={`flex items-center gap-3 px-3 py-3 bg-slate-900 border rounded-xl cursor-pointer transition-all ${isSelected ? 'border-indigo-500/60 ring-1 ring-indigo-500/30' : 'border-slate-800 hover:border-slate-700'}`}
+                                    onClick={() => setSelectedRole(role)}
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-slate-800 ring-1 ring-slate-700 flex items-center justify-center shrink-0">
+                                        <span className="text-[10px] font-black text-slate-400">{ROLE_ABBRS[role]}</span>
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{ROLE_LABELS[role]}</span>
+                                        <span className={`text-xs font-bold truncate ${roleCoach ? 'text-slate-200' : 'text-slate-600'}`}>
+                                            {roleCoach ? roleCoach.name : '공석'}
+                                        </span>
+                                        {roleCoach && (
+                                            <span className="text-[10px] text-emerald-500 font-mono tabular-nums">
+                                                {formatMoney(roleCoach.contractSalary)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
 
-                    {/* ── 우열: 전술 테이블 ── */}
+                    {/* ── 우열: 전술 테이블 + 능력치 테이블 ── */}
                     <div className="flex flex-col gap-4">
-                        {/* 공격 전술 */}
+
+                        {/* HC 선택 시 공격/수비 전술 표시 */}
+                        {selectedRole === 'headCoach' && (
+                            <>
+                                {/* 공격 전술 */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                                    <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">공격 전술</span>
+                                    </div>
+                                    <Table className="border-0 !rounded-none shadow-none">
+                                        <TableHead>
+                                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">항목</TableHeaderCell>
+                                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50" align="left">성향</TableHeaderCell>
+                                            <TableHeaderCell className="text-xs py-2" align="left">설명</TableHeaderCell>
+                                        </TableHead>
+                                        <TableBody>
+                                            {offenseKeys.map(key => {
+                                                const axis = PREF_AXES[key];
+                                                const val = currentCoach?.preferences[key] ?? 5;
+                                                const { tag, desc } = getAxisResult(axis, val);
+                                                return (
+                                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                {/* 수비 전술 */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                                    <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">수비 전술</span>
+                                    </div>
+                                    <Table className="border-0 !rounded-none shadow-none">
+                                        <TableHead>
+                                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">항목</TableHeaderCell>
+                                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50" align="left">성향</TableHeaderCell>
+                                            <TableHeaderCell className="text-xs py-2" align="left">설명</TableHeaderCell>
+                                        </TableHead>
+                                        <TableBody>
+                                            {defenseKeys.map(key => {
+                                                const axis = PREF_AXES[key];
+                                                const val = currentCoach?.preferences[key] ?? 5;
+                                                const { tag, desc } = getAxisResult(axis, val);
+                                                return (
+                                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </>
+                        )}
+
+                        {/* 능력치 테이블 (모든 직무) */}
                         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                            <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">공격 전술</span>
+                            <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
+                                <span className="text-xs font-black text-white uppercase tracking-widest">
+                                    {ROLE_LABELS[selectedRole]} 능력치
+                                </span>
+                                {selectedCoach && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-400">{selectedCoach.name}</span>
+                                        <span className="text-xs font-mono text-emerald-400">{formatMoney(selectedCoach.contractSalary)}</span>
+                                    </div>
+                                )}
                             </div>
-                            <Table className="border-0 !rounded-none shadow-none">
-                                <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
-                                </TableHead>
-                                <TableBody>
-                                    {offenseKeys.map(key => {
-                                        const axis = PREF_AXES[key];
-                                        const val = currentCoach?.preferences[key] ?? 5;
-                                        const { tag, desc } = getAxisResult(axis, val);
-                                        return (
-                                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
-                                                <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
+                            {renderAbilitiesTable()}
                         </div>
 
-                        {/* 수비 전술 */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                            <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-widest">수비 전술</span>
-                            </div>
-                            <Table className="border-0 !rounded-none shadow-none">
-                                <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
-                                </TableHead>
-                                <TableBody>
-                                    {defenseKeys.map(key => {
-                                        const axis = PREF_AXES[key];
-                                        const val = currentCoach?.preferences[key] ?? 5;
-                                        const { tag, desc } = getAxisResult(axis, val);
-                                        return (
-                                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
-                                                <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </div>
                     </div>
 
                 </div>

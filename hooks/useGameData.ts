@@ -19,9 +19,10 @@ import { DraftPoolType } from '../types';
 import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
 import { assignArchetypes } from '../services/playerDevelopment/archetypeEvaluator';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
-import { LeagueCoachingData } from '../types/coaching';
+import { LeagueCoachingData, CoachFAPool } from '../types/coaching';
 import { SavedTeamFinances } from '../types/finance';
-import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
+import { LeagueTrainingConfigs, getDefaultTrainingConfig } from '../types/training';
+import { generateLeagueStaff, generateCoachFAPool, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 import { getBudgetManager, resetBudgetManager, getFinancesSnapshot } from '../services/financeEngine';
 import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
@@ -66,6 +67,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [hofId, setHofId] = useState<string | null>(null); // HoF 제출용 세이브 식별자
     const [simSettings, setSimSettings] = useState<SimSettings>(DEFAULT_SIM_SETTINGS);
     const [coachingData, setCoachingData] = useState<LeagueCoachingData | null>(null);
+    const [leagueTrainingConfigs, setLeagueTrainingConfigs] = useState<LeagueTrainingConfigs | null>(null);
+    const [coachFAPool, setCoachFAPool] = useState<CoachFAPool | null>(null);
     const [teamFinances, setTeamFinances] = useState<SavedTeamFinances | null>(null);
     const [leaguePickAssets, setLeaguePickAssets] = useState<LeaguePickAssets | null>(null);
     const [leagueTradeBlocks, setLeagueTradeBlocks] = useState<LeagueTradeBlocks>({});
@@ -96,10 +99,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
     const [currentSeason, setCurrentSeason] = useState<string>(DEFAULT_SEASON_CONFIG.seasonLabel);
     const [offseasonPhase, setOffseasonPhase] = useState<OffseasonPhase>(null);
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leagueTrainingConfigs, coachFAPool, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leagueTrainingConfigs, coachFAPool, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData, leagueTrainingConfigs, coachFAPool, leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, leagueGMProfiles, transactions, seasonNumber, currentSeason, lotteryResult, offseasonPhase, leagueFAPool, retiredPlayerIds, leagueFAMarket, leagueCapHistory]);
 
     // --- Season Config (derived from seasonNumber) ---
     const seasonConfig = useMemo<SeasonConfig>(() => buildSeasonConfig(seasonNumber), [seasonNumber]);
@@ -501,11 +504,31 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setCoachingData(checkpoint.coaching_staff);
                     } else if (checkpoint.tendency_seed) {
                         const teamIds = loadedTeams!.map(t => t.id);
-                        const generated = generateLeagueCoaches(teamIds, checkpoint.tendency_seed);
+                        const generated = generateLeagueStaff(teamIds, checkpoint.tendency_seed);
                         setCoachingData(generated);
                         // 비동기 저장 (non-blocking)
                         saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
                             undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
+                    }
+
+                    // 훈련 설정 복원 (없으면 기본값 초기화)
+                    const savedTrainingConfigs = (checkpoint as any).league_training_configs as LeagueTrainingConfigs | null;
+                    if (savedTrainingConfigs && Object.keys(savedTrainingConfigs).length > 0) {
+                        setLeagueTrainingConfigs(savedTrainingConfigs);
+                    } else if (loadedTeams) {
+                        const defaultConfigs: LeagueTrainingConfigs = {};
+                        for (const t of loadedTeams) {
+                            defaultConfigs[t.id] = getDefaultTrainingConfig();
+                        }
+                        setLeagueTrainingConfigs(defaultConfigs);
+                    }
+
+                    // 코치 FA 풀 복원 (없으면 신규 생성)
+                    const savedCoachFAPool = (checkpoint as any).coach_fa_pool as CoachFAPool | null;
+                    if (savedCoachFAPool) {
+                        setCoachFAPool(savedCoachFAPool);
+                    } else if (checkpoint.tendency_seed) {
+                        setCoachFAPool(generateCoachFAPool(checkpoint.tendency_seed));
                     }
 
                     // 팀 재정 로드 (저장된 값 우선, 없으면 초기화)
@@ -851,7 +874,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const savRetiredIds = ov?.retiredPlayerIds !== undefined ? ov.retiredPlayerIds : gameStateRef.current.retiredPlayerIds;
                     const savFAMarket = ov?.leagueFAMarket !== undefined ? ov.leagueFAMarket : gameStateRef.current.leagueFAMarket;
                     const savCapHistory = ov?.leagueCapHistory !== undefined ? ov.leagueCapHistory : gameStateRef.current.leagueCapHistory;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket, savCapHistory);
+                    const savTrainingConfigs = ov?.leagueTrainingConfigs !== undefined ? ov.leagueTrainingConfigs : gameStateRef.current.leagueTrainingConfigs;
+                    const savCoachFAPool = ov?.coachFAPool !== undefined ? ov.coachFAPool : gameStateRef.current.coachFAPool;
+                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket, savCapHistory, savTrainingConfigs, savCoachFAPool);
                     const rosterKeys = Object.keys(rosterState).length;
                     console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
@@ -888,8 +913,19 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
         // 30팀 코칭 스태프 생성 (tendencySeed 기반 결정론적)
         const teamIds = teams.map(t => t.id);
-        const newCoachingData = generateLeagueCoaches(teamIds, newSeed);
+        const newCoachingData = generateLeagueStaff(teamIds, newSeed);
         setCoachingData(newCoachingData);
+
+        // 팀별 훈련 설정 초기화 (기본값: 균등 배분, 예산 $3M)
+        const newTrainingConfigs: LeagueTrainingConfigs = {};
+        for (const tid of teamIds) {
+            newTrainingConfigs[tid] = getDefaultTrainingConfig();
+        }
+        setLeagueTrainingConfigs(newTrainingConfigs);
+
+        // 코치 FA 풀 초기화
+        const newCoachFAPool = generateCoachFAPool(newSeed);
+        setCoachFAPool(newCoachFAPool);
 
         // 코치 선호도를 자동전술에 반영
         if (teamData && newTactics) {
@@ -1011,6 +1047,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             tendencySeed: newSeed,
             coachingData: newCoachingData,
             leaguePickAssets: newPickAssets,
+            leagueTrainingConfigs: newTrainingConfigs,
+            coachFAPool: newCoachFAPool,
             teams,
             ...(initialFAPool ? { leagueFAPool: initialFAPool } : {}),
             ...(initialFAMarket ? { leagueFAMarket: initialFAMarket } : {}),
@@ -1344,6 +1382,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         hofId,
         simSettings, setSimSettings,
         coachingData, setCoachingData,
+        leagueTrainingConfigs, setLeagueTrainingConfigs,
+        coachFAPool, setCoachFAPool,
         leaguePickAssets, setLeaguePickAssets,
         leagueTradeBlocks, setLeagueTradeBlocks,
         leagueTradeOffers, setLeagueTradeOffers,

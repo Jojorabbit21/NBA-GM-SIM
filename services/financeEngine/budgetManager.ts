@@ -163,6 +163,7 @@ export class BudgetManager {
             if (expenses.scouting === undefined) expenses.scouting = calculateScoutingExpense(teamId);
             if (expenses.marketing === undefined) expenses.marketing = calculateMarketingExpense(teamId);
             if (expenses.administration === undefined) expenses.administration = calculateAdministrationExpense(teamId);
+            if (expenses.trainingBudget === undefined) expenses.trainingBudget = 3_000_000;
 
             this.finances[teamId] = {
                 revenue: { ...saved.revenue },
@@ -262,7 +263,7 @@ export function getFinancesSnapshot(teams: Team[]): SavedTeamFinances {
         if (t.deadMoney?.length) {
             finances[t.id] ??= {
                 revenue: { gate: 0, broadcasting: 0, localMedia: 0, sponsorship: 0, merchandise: 0, other: 0 },
-                expenses: { payroll: 0, luxuryTax: 0, operations: 0, coachSalary: 0, scouting: 0, marketing: 0, administration: 0 },
+                expenses: { payroll: 0, luxuryTax: 0, operations: 0, coachSalary: 0, scouting: 0, marketing: 0, administration: 0, trainingBudget: 3_000_000 },
                 budget: 0,
                 gamesPlayed: 0,
             };
