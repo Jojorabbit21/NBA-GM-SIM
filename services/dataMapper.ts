@@ -212,31 +212,25 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
 
-    // [Fix] Handle Known Injuries - Enhanced Matching Logic
+    // Handle Injuries: DB base_attributes 우선, KNOWN_INJURIES는 레거시 fallback
     let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
-    let injuryType = undefined;
-    let returnDate = undefined;
+    let injuryType: string | undefined = getCol(p, ['injuryType']) || undefined;
+    let returnDate: string | undefined = getCol(p, ['returnDate']) || undefined;
 
-    // 1. Try Exact Match
-    if (KNOWN_INJURIES[name]) {
+    if (injuryType && returnDate) {
+        // DB에 부상 정보가 있으면 그대로 사용
         health = 'Injured';
-        injuryType = KNOWN_INJURIES[name].type;
-        returnDate = KNOWN_INJURIES[name].returnDate;
     } else {
-        // 2. Try Partial Match (for cases like "Dereck Lively II" vs "Dereck Lively")
-        // Loop through keys and see if one includes the other
+        // KNOWN_INJURIES fallback (레거시 — 향후 DB 마이그레이션 완료 후 제거 예정)
         const nameLower = name.toLowerCase().trim();
-        for (const key in KNOWN_INJURIES) {
-             const keyLower = key.toLowerCase().trim();
-             // Check if the DB name contains the Key OR the Key contains the DB name
-             // e.g. "Dereck Lively II" contains "Dereck Lively"
-             if (nameLower.includes(keyLower) || keyLower.includes(nameLower)) {
-                 health = 'Injured';
-                 injuryType = KNOWN_INJURIES[key].type;
-                 returnDate = KNOWN_INJURIES[key].returnDate;
-                 // console.log(`[Injury Matched] ${name} matched with key: ${key}`);
-                 break;
-             }
+        const injuryKey = Object.keys(KNOWN_INJURIES).find(key => {
+            const keyLower = key.toLowerCase().trim();
+            return nameLower === keyLower || nameLower.includes(keyLower) || keyLower.includes(nameLower);
+        });
+        if (injuryKey) {
+            health = 'Injured';
+            injuryType = KNOWN_INJURIES[injuryKey].type;
+            returnDate = KNOWN_INJURIES[injuryKey].returnDate;
         }
     }
 
