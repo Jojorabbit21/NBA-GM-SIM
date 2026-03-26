@@ -1,7 +1,7 @@
 
 import React from 'react';
 import type { CoachingStaff, StaffRole, CoachAbilities, TrainingCoachAbilities } from '../../types/coaching';
-import { Table, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { formatMoney } from '../../utils/formatMoney';
 
 interface CoachStaffTableProps {
@@ -19,15 +19,20 @@ const TRAINER_GROUP: { label: string; keys: (keyof TrainingCoachAbilities)[]; sh
     label: '신체 훈련', keys: ['athleticTraining', 'recovery', 'conditioning'], shorts: ['신체', '회복', '컨디'],
 };
 
-const COACH_COLS   = COACH_GROUPS.flatMap(g => g.keys.map((k, i) => ({ key: k as string, short: g.shorts[i] })));
-const TRAINER_COLS = TRAINER_GROUP.keys.map((k, i) => ({ key: k as string, short: TRAINER_GROUP.shorts[i] }));
+// isGroupEnd: 그룹 마지막 컬럼 여부 → 진한 구분선 적용
+const COACH_COLS = COACH_GROUPS.flatMap(g =>
+    g.keys.map((k, i) => ({ key: k as string, short: g.shorts[i], isGroupEnd: i === g.keys.length - 1 }))
+);
+const TRAINER_COLS = TRAINER_GROUP.keys.map((k, i) => ({
+    key: k as string, short: TRAINER_GROUP.shorts[i], isGroupEnd: i === TRAINER_GROUP.keys.length - 1,
+}));
 
-const STAFF_ROWS: { role: StaffRole; label: string; fullName: string }[] = [
-    { role: 'headCoach',          label: '감독',       fullName: '감독'      },
-    { role: 'offenseCoordinator', label: '공격 코디',  fullName: '공격코치'  },
-    { role: 'defenseCoordinator', label: '수비 코디',  fullName: '수비코치'  },
-    { role: 'developmentCoach',   label: '디벨롭먼트', fullName: '디벨롭'   },
-    { role: 'trainingCoach',      label: '트레이닝',   fullName: '트레이너'  },
+const STAFF_ROWS: { role: StaffRole; fullName: string }[] = [
+    { role: 'headCoach',          fullName: '감독'    },
+    { role: 'offenseCoordinator', fullName: '공격코치' },
+    { role: 'defenseCoordinator', fullName: '수비코치' },
+    { role: 'developmentCoach',   fullName: '디벨롭'  },
+    { role: 'trainingCoach',      fullName: '트레이너' },
 ];
 
 function getCoachFromStaff(staff: CoachingStaff, role: StaffRole) {
@@ -48,8 +53,9 @@ const sticky = (left: number, width: number): React.CSSProperties => ({
     left, width, minWidth: width, maxWidth: width, position: 'sticky', zIndex: 30,
 });
 
-const renderAttrCell = (key: string, val: number | undefined) => (
-    <TableCell key={key} align="center" className="font-mono font-black text-xs border-r border-slate-800/30 tabular-nums">
+// isGroupEnd=true → 진한 구분선 / false → 연한 구분선
+const renderAttrCell = (key: string, val: number | undefined, isGroupEnd: boolean) => (
+    <TableCell key={key} align="center" className={`font-mono font-black text-xs tabular-nums ${isGroupEnd ? 'border-r border-slate-800' : 'border-r border-slate-800/30'}`}>
         {val !== undefined
             ? <span className={valColor(val)}>{val}</span>
             : <span className="text-slate-700">-</span>}
@@ -76,8 +82,9 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
 
                 {/* ═══ 헤더 ═══ */}
                 <thead className="bg-slate-950 sticky top-0 z-40">
-                    {/* Row 1 — 그룹 */}
+                    {/* Row 1 — 그룹 헤더 */}
                     <tr className="h-9">
+                        {/* 코치 정보: 이름+직무+연봉+계약 = 4열 */}
                         <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle text-center">
                             <span className="text-xs font-black text-slate-500 uppercase tracking-widest">코치 정보</span>
                         </th>
@@ -93,11 +100,17 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                     {/* Row 2 — 개별 컬럼 라벨 */}
                     <tr className="h-9 text-slate-500 text-xs font-black uppercase tracking-widest">
                         <TableHeaderCell style={{ ...sticky(0, W.NAME), zIndex: 50 }}         align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
-                        <TableHeaderCell style={{ ...sticky(LEFT_ROLE, W.ROLE), zIndex: 50 }} className="bg-slate-950 border-r border-slate-800">직무</TableHeaderCell>
+                        {/* 직무: border-r 없음 — "코치 정보" 그룹 경계는 계약 뒤 */}
+                        <TableHeaderCell style={{ ...sticky(LEFT_ROLE, W.ROLE), zIndex: 50 }} className="bg-slate-950">직무</TableHeaderCell>
                         <TableHeaderCell width={W.SALARY}>연봉</TableHeaderCell>
-                        <TableHeaderCell width={W.CONTRACT}>계약</TableHeaderCell>
-                        {COACH_COLS.map(c   => <TableHeaderCell key={c.key} width={W.ATTR} className="border-r border-slate-800/50">{c.short}</TableHeaderCell>)}
-                        {TRAINER_COLS.map(c => <TableHeaderCell key={c.key} width={W.ATTR} className="border-r border-slate-800/50">{c.short}</TableHeaderCell>)}
+                        {/* 계약: 코치 정보 그룹 마지막 → 진한 border-r */}
+                        <TableHeaderCell width={W.CONTRACT} className="border-r border-slate-800">계약</TableHeaderCell>
+                        {COACH_COLS.map(c => (
+                            <TableHeaderCell key={c.key} width={W.ATTR} className={c.isGroupEnd ? 'border-r border-slate-800' : 'border-r border-slate-800/30'}>{c.short}</TableHeaderCell>
+                        ))}
+                        {TRAINER_COLS.map(c => (
+                            <TableHeaderCell key={c.key} width={W.ATTR} className={c.isGroupEnd ? 'border-r border-slate-800' : 'border-r border-slate-800/30'}>{c.short}</TableHeaderCell>
+                        ))}
                     </tr>
                 </thead>
 
@@ -123,9 +136,9 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                                         <span className="text-xs text-slate-600 italic">공석</span>
                                     )}
                                 </TableCell>
-                                {/* 직무 배지 */}
-                                <TableCell style={sticky(LEFT_ROLE, W.ROLE)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center border-r border-slate-800">
-                                    <span className="text-xs font-black text-slate-400 bg-slate-800 ring-1 ring-slate-700 rounded px-1.5 py-0.5 truncate">{r.fullName}</span>
+                                {/* 직무 배지: border-r 없음 */}
+                                <TableCell style={sticky(LEFT_ROLE, W.ROLE)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                                    <span className="text-xs font-black text-slate-400 bg-slate-800 ring-1 ring-slate-700 rounded px-1.5 py-0.5">{r.fullName}</span>
                                 </TableCell>
                                 {/* 연봉 */}
                                 <TableCell align="right" className="pr-3 font-mono text-xs tabular-nums">
@@ -133,14 +146,14 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                                         ? <span className="text-slate-200">{formatMoney(coach.contractSalary)}</span>
                                         : <span className="text-slate-700">-</span>}
                                 </TableCell>
-                                {/* 잔여 계약 */}
-                                <TableCell align="center">
+                                {/* 계약: 코치 정보 그룹 마지막 → 진한 border-r */}
+                                <TableCell align="center" className="border-r border-slate-800">
                                     {coach
                                         ? <span className="text-xs font-mono text-slate-500 tabular-nums">{coach.contractYearsRemaining}년</span>
                                         : <span className="text-slate-700 text-xs">-</span>}
                                 </TableCell>
-                                {COACH_COLS.map(c => renderAttrCell(c.key, !isTrainer && abilities ? abilities[c.key] : undefined))}
-                                {TRAINER_COLS.map(c => renderAttrCell(c.key, isTrainer && abilities ? abilities[c.key] : undefined))}
+                                {COACH_COLS.map(c => renderAttrCell(c.key, !isTrainer && abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
+                                {TRAINER_COLS.map(c => renderAttrCell(c.key, isTrainer && abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
                             </TableRow>
                         );
                     })}
