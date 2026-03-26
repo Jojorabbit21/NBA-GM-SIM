@@ -6,7 +6,8 @@ import type { ReleaseType } from '../types';
 import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
-import type { CoachFAPool, StaffRole, CoachAbilities, TrainingCoachAbilities } from '../types/coaching';
+import type { CoachFAPool, StaffRole } from '../types/coaching';
+import { CoachStaffTable } from '../components/dashboard/CoachStaffTable';
 import type { LeagueTrainingConfigs, TeamTrainingConfig } from '../types/training';
 import { LeaguePickAssets } from '../types/draftAssets';
 import type { PlayerContract } from '../types/player';
@@ -136,103 +137,10 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                         </button>
                                     )}
                                 </div>
-                                {/* 5명 통합 스태프 테이블 */}
-                                {(() => {
-                                    const staff = coachingData?.[team.id];
-
-                                    const COACH_ABILITY_SHORTS: { key: keyof CoachAbilities; short: string }[] = [
-                                        { key: 'teaching',           short: '지도' },
-                                        { key: 'schemeDepth',        short: '전술' },
-                                        { key: 'communication',      short: '소통' },
-                                        { key: 'playerEval',         short: '평가' },
-                                        { key: 'motivation',         short: '동기' },
-                                        { key: 'playerRelation',     short: '관계' },
-                                        { key: 'adaptability',       short: '적응' },
-                                        { key: 'developmentVision',  short: '성장' },
-                                        { key: 'experienceTransfer', short: '전수' },
-                                        { key: 'mentalCoaching',     short: '멘탈' },
-                                    ];
-                                    const TRAINER_ABILITY_SHORTS: { key: keyof TrainingCoachAbilities; short: string }[] = [
-                                        { key: 'athleticTraining', short: '신체' },
-                                        { key: 'recovery',         short: '회복' },
-                                        { key: 'conditioning',     short: '컨디' },
-                                    ];
-
-                                    function getCoachOvr(abilities: CoachAbilities | TrainingCoachAbilities | undefined): number | null {
-                                        if (!abilities) return null;
-                                        const vals = Object.values(abilities) as number[];
-                                        return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
-                                    }
-
-                                    function valColor(v: number) {
-                                        if (v >= 7) return 'text-emerald-400';
-                                        if (v >= 5) return 'text-amber-400';
-                                        return 'text-rose-400';
-                                    }
-
-                                    const staffRows: { role: StaffRole; label: string; abbr: string; coach: { name: string; contractSalary: number; contractYearsRemaining: number; abilities?: CoachAbilities | TrainingCoachAbilities } | null }[] = [
-                                        { role: 'headCoach',          label: '감독',       abbr: 'HC',  coach: staff?.headCoach ?? null },
-                                        { role: 'offenseCoordinator', label: '공격 코디',  abbr: 'OC',  coach: staff?.offenseCoordinator ?? null },
-                                        { role: 'defenseCoordinator', label: '수비 코디',  abbr: 'DC',  coach: staff?.defenseCoordinator ?? null },
-                                        { role: 'developmentCoach',   label: '디벨롭먼트', abbr: 'DEV', coach: staff?.developmentCoach ?? null },
-                                        { role: 'trainingCoach',      label: '트레이닝',   abbr: 'TRN', coach: staff?.trainingCoach ?? null },
-                                    ];
-                                    return (
-                                        <div>
-                                            {staffRows.map(r => {
-                                                const ovr = r.coach ? getCoachOvr(r.coach.abilities) : null;
-                                                const isTrainer = r.role === 'trainingCoach';
-                                                const abilList = isTrainer ? TRAINER_ABILITY_SHORTS : COACH_ABILITY_SHORTS;
-                                                return (
-                                                    <div key={r.role} className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition-colors">
-                                                        {/* 역할 배지 */}
-                                                        <div className="w-8 h-8 rounded-lg bg-slate-800 ring-1 ring-slate-700 flex items-center justify-center shrink-0">
-                                                            <span className="text-[10px] font-black text-slate-400">{r.abbr}</span>
-                                                        </div>
-                                                        {/* 역할 라벨 */}
-                                                        <span className="text-xs text-slate-500 w-20 shrink-0">{r.label}</span>
-                                                        {r.coach ? (
-                                                            <>
-                                                                {/* 이름 */}
-                                                                <button
-                                                                    className="text-xs font-bold text-slate-200 hover:text-indigo-400 transition-colors w-36 text-left truncate shrink-0"
-                                                                    onClick={() => onCoachClick?.(team.id, r.role)}
-                                                                >
-                                                                    {r.coach.name}
-                                                                </button>
-                                                                {/* OVR */}
-                                                                {ovr !== null && (
-                                                                    <span className={`text-xs font-black font-mono tabular-nums w-6 text-center shrink-0 ${valColor(ovr)}`}>
-                                                                        {ovr}
-                                                                    </span>
-                                                                )}
-                                                                {/* 전체 능력치 */}
-                                                                <div className="flex items-center gap-2.5 flex-1 min-w-0 flex-wrap">
-                                                                    {abilList.map(a => {
-                                                                        const val = r.coach?.abilities ? (r.coach.abilities as any)[a.key] as number | undefined : undefined;
-                                                                        return val !== undefined ? (
-                                                                            <div key={a.key} className="flex items-center gap-0.5 shrink-0">
-                                                                                <span className="text-[9px] text-slate-600 leading-none">{a.short}</span>
-                                                                                <span className={`text-[10px] font-black font-mono tabular-nums leading-none ${valColor(val)}`}>{val}</span>
-                                                                            </div>
-                                                                        ) : null;
-                                                                    })}
-                                                                </div>
-                                                                {/* 계약 */}
-                                                                <span className="text-xs text-slate-600 font-mono tabular-nums shrink-0">{r.coach.contractYearsRemaining}년</span>
-                                                                <span className="text-xs font-mono tabular-nums text-emerald-400 w-14 text-right shrink-0">
-                                                                    {r.coach.contractSalary > 0 ? `$${(r.coach.contractSalary / 1_000_000).toFixed(1)}M` : '-'}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-xs text-slate-600 italic flex-1">공석</span>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    );
-                                })()}
+                                <CoachStaffTable
+                                    staff={coachingData?.[team.id]}
+                                    onCoachClick={(role) => onCoachClick?.(team.id, role)}
+                                />
                             </div>
                             {/* 훈련 계획 (유저 팀 전용) */}
                             {team.id === myTeamId && (
