@@ -562,14 +562,14 @@ const PayrollTab: React.FC<{
             <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="border-collapse text-xs">
+                    <table className="w-full border-collapse text-xs">
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap">선수</th>
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 w-px whitespace-nowrap">선수</th>
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
                                 ))}
-                                {showActions && <th className="px-3 py-2" />}
+                                {showActions && <th className="px-3 py-2 w-px" />}
                             </tr>
                         </thead>
                         <tbody>
@@ -591,7 +591,7 @@ const PayrollTab: React.FC<{
                                 />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
-                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap">합계</td>
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 w-px whitespace-nowrap">합계</td>
                                 {totals.map((t, i) => (
                                     <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap">
                                         {t > 0 ? fmtSalary(t) : ''}
@@ -669,7 +669,7 @@ const PayrollRow: React.FC<{
 
     return (
         <tr className="group border-b border-slate-800 hover:bg-slate-800">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 whitespace-nowrap">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 w-px whitespace-nowrap">
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
@@ -685,7 +685,7 @@ const PayrollRow: React.FC<{
                 </td>
             ))}
             {(onExtension || onRelease) && (
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-right w-px whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
                         {onExtension && (
                             <button
