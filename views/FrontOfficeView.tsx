@@ -556,23 +556,16 @@ const PayrollTab: React.FC<{
         return { players: sorted, seasonColumns: cols, totals: colTotals };
     }, [team.roster, seasonShort]);
 
-    const COL_W = 120;
-
     return (
         <div className="p-4 animate-in fade-in duration-500 flex gap-4 items-start">
             {/* 좌: 선수 급여 테이블 */}
             <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length + (showActions ? 130 : 0)}px` }}>
-                        <colgroup>
-                            <col style={{ width: '160px' }} />
-                            {seasonColumns.map(col => <col key={col} style={{ width: `${COL_W}px` }} />)}
-                            {showActions && <col style={{ width: '130px' }} />}
-                        </colgroup>
+                    <table className="border-collapse text-xs">
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20">선수</th>
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap">선수</th>
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
                                 ))}
@@ -598,9 +591,9 @@ const PayrollTab: React.FC<{
                                 />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
-                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10">합계</td>
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap">합계</td>
                                 {totals.map((t, i) => (
-                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white">
+                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap">
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
@@ -676,19 +669,18 @@ const PayrollRow: React.FC<{
 
     return (
         <tr className="group border-b border-slate-800 hover:bg-slate-800">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 whitespace-nowrap">
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
-                        className="hover:text-white hover:underline transition-colors text-left truncate block"
-                        style={{ maxWidth: '128px' }}
+                        className="hover:text-white hover:underline transition-colors text-left"
                     >
                         {player.name}
                     </button>
-                ) : <span className="truncate block" style={{ maxWidth: '128px' }}>{player.name}</span>}
+                ) : player.name}
             </td>
             {cells.map((cell, i) => (
-                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
+                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}
                 </td>
             ))}
