@@ -142,42 +142,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                     onCoachClick={(role) => onCoachClick?.(team.id, role)}
                                 />
                             </div>
-                            {/* 훈련 계획 (유저 팀 전용) */}
-                            {team.id === myTeamId && (
-                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800/60">
-                                        <span className="text-xs font-black text-white uppercase tracking-widest">훈련 계획</span>
-                                        <button
-                                            onClick={onTrainingViewOpen}
-                                            className="text-xs px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-colors font-bold"
-                                        >
-                                            훈련 설정
-                                        </button>
-                                    </div>
-                                    {(() => {
-                                        const cfg = leagueTrainingConfigs?.[myTeamId];
-                                        const budget = cfg?.budget ?? 3_000_000;
-                                        const totalPts = Math.floor(80 + budget / 250_000);
-                                        const usedPts = cfg ? Object.values(cfg.program).reduce((s, v) => s + v, 0) : 0;
-                                        return (
-                                            <div className="flex items-center gap-6 px-4 py-3">
-                                                <div>
-                                                    <div className="text-xs text-slate-500">훈련 예산</div>
-                                                    <div className="text-sm font-mono tabular-nums text-emerald-400">${(budget / 1_000_000).toFixed(1)}M</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs text-slate-500">총 훈련 포인트</div>
-                                                    <div className="text-sm font-mono tabular-nums text-white">{totalPts}pt</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs text-slate-500">배분된 포인트</div>
-                                                    <div className={`text-sm font-mono tabular-nums ${usedPts > totalPts ? 'text-rose-400' : 'text-slate-200'}`}>{usedPts}pt</div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
                         </div>
                     )}
                     {activeTab === 'draftPicks' && (
