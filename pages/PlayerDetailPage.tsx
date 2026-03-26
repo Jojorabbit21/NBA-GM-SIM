@@ -33,8 +33,8 @@ const PlayerDetailPage: React.FC = () => {
                 seasonShort={seasonShort}
                 myTeamId={myTeamId}
                 onBack={() => { setViewPlayerData(null); navigate(-1); }}
-                onExtension={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'extension' } }) : undefined}
-                onRelease={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'release' } }) : undefined}
+                onExtension={isMyTeam ? () => navigate('/front-office?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'extension' } }) : undefined}
+                onRelease={isMyTeam ? () => navigate('/front-office?tab=contracts', { state: { autoNegotiateId: player.id, negotiateType: 'release' } }) : undefined}
             />
         );
     }
@@ -58,9 +58,9 @@ const PlayerDetailPage: React.FC = () => {
             seasonShort={seasonShort}
             myTeamId={myTeamId}
             onBack={() => { setViewPlayerData(null); navigate(-1); }}
-            onNegotiate={isFA ? () => navigate('/fa', { state: { autoNegotiateId: data.player.id } }) : undefined}
-            onExtension={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'extension' } }) : undefined}
-            onRelease={isMyTeam ? () => navigate('/frontoffice?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'release' } }) : undefined}
+            onNegotiate={isFA ? () => navigate('/fa-market', { state: { autoNegotiateId: data.player.id } }) : undefined}
+            onExtension={isMyTeam ? () => navigate('/front-office?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'extension' } }) : undefined}
+            onRelease={isMyTeam ? () => navigate('/front-office?tab=contracts', { state: { autoNegotiateId: data.player.id, negotiateType: 'release' } }) : undefined}
         />
     );
 };

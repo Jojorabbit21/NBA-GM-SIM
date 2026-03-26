@@ -688,6 +688,43 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         </div>
                     )}
                 </div>
+
+                {/* 액션 버튼 그룹 — 브레드크럼 우측 끝 */}
+                {((!teamId && onNegotiate) || (myTeamId && teamId === myTeamId && (onExtension || onRelease))) && (
+                    <div className="ml-auto flex items-center gap-2 pl-2 shrink-0">
+                        {!teamId && onNegotiate && (
+                            <button
+                                onClick={onNegotiate}
+                                className="px-3 py-1 rounded text-xs font-bold active:scale-95 transition-all whitespace-nowrap"
+                                style={{ backgroundColor: theme.text, color: theme.bg }}
+                            >
+                                계약 협상
+                            </button>
+                        )}
+                        {myTeamId && teamId === myTeamId && (
+                            <>
+                                {onExtension && (
+                                    <button
+                                        onClick={onExtension}
+                                        className="px-3 py-1 rounded text-xs font-bold active:scale-95 transition-all whitespace-nowrap"
+                                        style={{ backgroundColor: theme.text, color: theme.bg }}
+                                    >
+                                        계약 연장
+                                    </button>
+                                )}
+                                {onRelease && (
+                                    <button
+                                        onClick={onRelease}
+                                        className="px-3 py-1 rounded text-xs font-bold active:scale-95 transition-all whitespace-nowrap"
+                                        style={{ backgroundColor: theme.text, color: theme.bg }}
+                                    >
+                                        방출
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
@@ -710,42 +747,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                                 {/* ─ 헤더: OVR + 이름 + 액션 버튼 ─ */}
                                 <div className="p-4 rounded-t-lg" style={{ backgroundColor: theme.bg }}>
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <OvrBadge value={calculatedOvr} size="md" />
-                                            <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
-                                        </div>
-                                        {/* 액션 버튼 그룹 */}
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            {!teamId && onNegotiate && (
-                                                <button
-                                                    onClick={onNegotiate}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 transition-all whitespace-nowrap"
-                                                >
-                                                    계약 협상
-                                                </button>
-                                            )}
-                                            {myTeamId && teamId === myTeamId && (
-                                                <>
-                                                    {onExtension && (
-                                                        <button
-                                                            onClick={onExtension}
-                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600/80 text-white hover:bg-indigo-500 active:scale-95 transition-all whitespace-nowrap"
-                                                        >
-                                                            계약 연장
-                                                        </button>
-                                                    )}
-                                                    {onRelease && (
-                                                        <button
-                                                            onClick={onRelease}
-                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-700/80 text-white hover:bg-red-600 active:scale-95 transition-all whitespace-nowrap"
-                                                        >
-                                                            방출
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <OvrBadge value={calculatedOvr} size="md" />
+                                        <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
                                     </div>
                                 </div>
 
