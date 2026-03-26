@@ -16,11 +16,9 @@ export const FullSeasonSimModal: React.FC<Props> = ({ progress, onCancel }) => {
 
     const label = progress.phase === 'saving'
         ? '결과 저장 중...'
-        : progress.phase === 'done'
-            ? '시뮬레이션 완료!'
-            : progress.opponentName
-                ? `${formatDate(progress.currentDate)}  vs ${progress.opponentName}  경기 시뮬레이션 중...`
-                : `${formatDate(progress.currentDate)}  경기 시뮬레이션 중...`;
+        : progress.opponentName
+            ? `${formatDate(progress.currentDate)}  vs ${progress.opponentName}  경기 시뮬레이션 중...`
+            : `${formatDate(progress.currentDate)}  경기 시뮬레이션 중...`;
 
     return (
         <>

@@ -30,7 +30,7 @@ export interface BatchProgress {
     current: number;
     total: number;
     currentDate: string;
-    phase: 'simulating' | 'saving' | 'done';
+    phase: 'simulating' | 'saving';
     opponentName?: string;
 }
 
@@ -386,16 +386,7 @@ export const useFullSeasonSim = (
                 await forceSave(saveOverrides);
             }
 
-            setBatchProgress({
-                isRunning: false,
-                current: result.userGameCount,
-                total: result.userGameCount,
-                currentDate: result.finalDate,
-                phase: 'done',
-            });
-
-            // 3초 후 progress 제거
-            setTimeout(() => setBatchProgress(null), 3000);
+            setBatchProgress(null);
 
             return result;
         } catch (e) {

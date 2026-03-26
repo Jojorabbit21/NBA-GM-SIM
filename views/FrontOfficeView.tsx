@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useTabParam } from '../hooks/useTabParam';
 import { Team, Player } from '../types';
 import type { ReleaseType } from '../types';
@@ -12,7 +12,8 @@ import type { OffseasonPhase } from '../types/app';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
-import { ContractManagementTab } from '../components/frontoffice/ContractManagementTab';
+import { NegotiationScreen } from './NegotiationScreen';
+import type { NegotiationState } from '../services/fa/extensionEngine';
 import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
@@ -20,7 +21,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
-type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks' | 'contracts';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -75,9 +76,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <button onClick={() => setActiveTab('payroll')} className={tabClass('payroll')}>
                             <span>샐러리</span>
                         </button>
-                        <button onClick={() => setActiveTab('contracts')} className={tabClass('contracts')}>
-                            <span>계약 관리</span>
-                        </button>
                         <button onClick={() => setActiveTab('coaching')} className={tabClass('coaching')}>
                             <span>코칭 스태프</span>
                         </button>
@@ -93,29 +91,20 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <ClubTab finData={finData} finance={finance} myTeamId={myTeamId} />
                     )}
                     {activeTab === 'payroll' && (
-                        <PayrollTab team={team} seasonShort={seasonShort} myTeamId={myTeamId} onViewPlayer={onViewPlayer} />
-                    )}
-                    {activeTab === 'contracts' && onReleasePlayer && onTeamOptionDecide && onExtensionOffer && (
-                        <ContractManagementTab
-                            myTeam={team}
+                        <PayrollTab
+                            team={team}
+                            seasonShort={seasonShort}
+                            myTeamId={myTeamId}
+                            onViewPlayer={onViewPlayer}
                             teams={teams}
-                            tendencySeed={tendencySeed}
-                            currentSeasonYear={new Date(currentSimDate).getFullYear()}
-                            currentSeason={seasonShort}
-                            offseasonPhase={offseasonPhase}
                             onReleasePlayer={onReleasePlayer}
-                            onTeamOptionDecide={onTeamOptionDecide}
                             onExtensionOffer={onExtensionOffer}
-                            onViewPlayer={onViewPlayer ? (player) => onViewPlayer(player) : undefined}
-                            currentDate={currentSimDate}
+                            tendencySeed={tendencySeed}
+                            currentSimDate={currentSimDate}
+                            offseasonPhase={offseasonPhase}
                             initialNegotiateId={initialNegotiateId}
                             initialNegotiateType={initialNegotiateType}
                         />
-                    )}
-                    {activeTab === 'contracts' && (!onReleasePlayer || !onTeamOptionDecide || !onExtensionOffer) && (
-                        <div className="text-center text-slate-500 py-20 text-sm">
-                            계약 관리 데이터를 불러올 수 없습니다.
-                        </div>
                     )}
                     {activeTab === 'coaching' && (
                         <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
@@ -517,9 +506,32 @@ const PayrollTab: React.FC<{
     seasonShort: string;
     myTeamId: string;
     onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer }) => {
+    teams?: Team[];
+    onReleasePlayer?: (playerId: string, releaseType: ReleaseType, buyoutAmount?: number) => void;
+    onExtensionOffer?: (playerId: string, contract: PlayerContract) => void;
+    tendencySeed?: string;
+    currentSimDate?: string;
+    offseasonPhase?: OffseasonPhase;
+    initialNegotiateId?: string;
+    initialNegotiateType?: 'extension' | 'release';
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
+    const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
+
+    const [negotiationTarget, setNegotiationTarget] = useState<{ type: 'extension' | 'release'; playerId: string } | null>(null);
+    const [blockedNegotiationIds, setBlockedNegotiationIds] = useState<Set<string>>(new Set());
+    const [cooldownMap, setCooldownMap] = useState<Record<string, string>>({});
+    const [extNegStates, setExtNegStates] = useState<Record<string, NegotiationState>>({});
+
+    useEffect(() => {
+        if (initialNegotiateId && initialNegotiateType) {
+            setNegotiationTarget({ type: initialNegotiateType, playerId: initialNegotiateId });
+        }
+    }, [initialNegotiateId, initialNegotiateType]);
+
+    const ntPlayer = negotiationTarget ? team.roster.find(p => p.id === negotiationTarget.playerId) ?? null : null;
+    const showActions = !!(onReleasePlayer && onExtensionOffer);
 
     const { players, seasonColumns, totals } = useMemo(() => {
         const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
@@ -552,10 +564,11 @@ const PayrollTab: React.FC<{
             <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                 <WidgetHeader title="선수 급여" primaryColor={primaryColor} />
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length}px` }}>
+                    <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: `${160 + COL_W * seasonColumns.length + (showActions ? 130 : 0)}px` }}>
                         <colgroup>
                             <col style={{ width: '160px' }} />
                             {seasonColumns.map(col => <col key={col} style={{ width: `${COL_W}px` }} />)}
+                            {showActions && <col style={{ width: '130px' }} />}
                         </colgroup>
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
@@ -563,6 +576,7 @@ const PayrollTab: React.FC<{
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
                                 ))}
+                                {showActions && <th className="px-3 py-2" />}
                             </tr>
                         </thead>
                         <tbody>
@@ -574,6 +588,13 @@ const PayrollTab: React.FC<{
                                     myTeamId={myTeamId}
                                     teamName={teamName}
                                     onViewPlayer={onViewPlayer}
+                                    onExtension={showActions ? (id) => {
+                                        if (!blockedNegotiationIds.has(id)) setNegotiationTarget({ type: 'extension', playerId: id });
+                                    } : undefined}
+                                    onRelease={showActions ? (id) => setNegotiationTarget({ type: 'release', playerId: id }) : undefined}
+                                    isExtensionBlocked={blockedNegotiationIds.has(p.id)}
+                                    primaryColor={primaryColor}
+                                    textColor={textColor}
                                 />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
@@ -583,6 +604,7 @@ const PayrollTab: React.FC<{
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
+                                {showActions && <td />}
                             </tr>
                         </tbody>
                     </table>
@@ -592,6 +614,34 @@ const PayrollTab: React.FC<{
             <div className="flex-[3] min-w-0">
                 <CapSidePanel team={team} primaryColor={primaryColor} />
             </div>
+
+            {/* NegotiationScreen 오버레이 */}
+            {negotiationTarget && ntPlayer && onReleasePlayer && onExtensionOffer && (
+                <NegotiationScreen
+                    negotiationType={negotiationTarget.type}
+                    player={ntPlayer}
+                    myTeam={team}
+                    teams={teams}
+                    tendencySeed={tendencySeed}
+                    currentSeasonYear={new Date(currentSimDate).getFullYear()}
+                    currentSeason={seasonShort}
+                    usedMLE={{}}
+                    extensionNotYet={
+                        negotiationTarget.type === 'extension' &&
+                        (ntPlayer.contract ? ntPlayer.contract.years.length - (ntPlayer.contract.currentYear ?? 0) : 0) > 1
+                    }
+                    onClose={() => setNegotiationTarget(null)}
+                    onExtensionSigned={(playerId, contract) => { onExtensionOffer(playerId, contract); }}
+                    onNegotiationBlocked={(playerId) => { setBlockedNegotiationIds(prev => new Set([...prev, playerId])); }}
+                    onCooldownStarted={(playerId, nextOfferDate) => { setCooldownMap(prev => ({ ...prev, [playerId]: nextOfferDate })); }}
+                    onNegStateChange={(playerId, state) => { setExtNegStates(prev => ({ ...prev, [playerId]: state })); }}
+                    persistedNegState={extNegStates[negotiationTarget.playerId]}
+                    currentDate={currentSimDate}
+                    cooldownNextDate={cooldownMap[negotiationTarget.playerId]}
+                    onReleasePlayer={onReleasePlayer}
+                    onViewPlayer={onViewPlayer ? (p) => onViewPlayer(p, myTeamId, teamName) : undefined}
+                />
+            )}
         </div>
     );
 };
@@ -602,7 +652,12 @@ const PayrollRow: React.FC<{
     myTeamId: string;
     teamName: string;
     onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
-}> = ({ player, seasonColumns, myTeamId, teamName, onViewPlayer }) => {
+    onExtension?: (playerId: string) => void;
+    onRelease?: (playerId: string) => void;
+    isExtensionBlocked?: boolean;
+    primaryColor?: string;
+    textColor?: string;
+}> = ({ player, seasonColumns, myTeamId, teamName, onViewPlayer, onExtension, onRelease, isExtensionBlocked, primaryColor = '#4f46e5', textColor = '#FFFFFF' }) => {
     const cells = useMemo(() => {
         const result: (string | null)[] = new Array(seasonColumns.length).fill(null);
         if (!player.contract) return result;
@@ -636,6 +691,31 @@ const PayrollRow: React.FC<{
                     {cell ?? '-'}
                 </td>
             ))}
+            {(onExtension || onRelease) && (
+                <td className="px-3 py-1.5 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                        {onExtension && (
+                            <button
+                                onClick={() => onExtension(player.id)}
+                                disabled={isExtensionBlocked}
+                                className="px-2 py-0.5 rounded text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                                style={{ backgroundColor: primaryColor, color: textColor }}
+                            >
+                                연장
+                            </button>
+                        )}
+                        {onRelease && (
+                            <button
+                                onClick={() => onRelease(player.id)}
+                                className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
+                                style={{ backgroundColor: primaryColor, color: textColor }}
+                            >
+                                방출
+                            </button>
+                        )}
+                    </div>
+                </td>
+            )}
         </tr>
     );
 };
