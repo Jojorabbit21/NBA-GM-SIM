@@ -676,15 +676,15 @@ const PayrollRow: React.FC<{
 
     return (
         <tr className="group border-b border-slate-800 hover:bg-slate-800">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 overflow-hidden">
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
-                        className="hover:text-white hover:underline transition-colors text-left"
+                        className="hover:text-white hover:underline transition-colors text-left truncate block w-full"
                     >
                         {player.name}
                     </button>
-                ) : player.name}
+                ) : <span className="truncate block">{player.name}</span>}
             </td>
             {cells.map((cell, i) => (
                 <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
