@@ -559,6 +559,26 @@ function calcPrevSalary(askingSalary: number, rng: SeededRandom): number {
 }
 
 /**
+ * 직전 계약 연도별 연봉 배열 생성
+ * prevSalary(AAV)를 기반으로 5% 연간 인상률을 역산해 첫 해 연봉을 구하고
+ * yos(서비스 연수)에 맞는 계약 기간을 결정한다.
+ */
+function generatePrevContractYears(
+    prevSalary: number,
+    yos: number,
+    rng: SeededRandom,
+): number[] {
+    const len = yos >= 4 ? rng.intRange(3, 5)
+              : yos >= 2 ? rng.intRange(2, 4)
+              : 1;
+    const rate = 0.05;
+    // base * sum(1.05^i, i=0..n-1) / n = AAV → base 역산
+    const factors = Array.from({ length: len }, (_, i) => Math.pow(1 + rate, i));
+    const base = Math.round(prevSalary * len / factors.reduce((a, b) => a + b, 0));
+    return factors.map(f => Math.round(base * f));
+}
+
+/**
  * 능력치 기반 직전 시즌 성적 생성 — CareerSeasonStat 형식
  * PlayerDetailView 기록 탭과 NegotiationScreen 직전 시즌 섹션에서 공통 사용
  */
@@ -849,6 +869,7 @@ export function generateInitialFAPool(
 
         // 직전 계약 연봉: asking salary 기반 (일관된 스케일 유지)
         const prevSalary = calcPrevSalary(salary, rng);
+        const prevContractYears = generatePrevContractYears(prevSalary, yos, rng);
 
         // 전체 커리어 기록 생성 (yos 시즌 × 1행)
         const teamSequence = generateTeamSequence(yos, approxOvr, rng);
@@ -900,6 +921,11 @@ export function generateInitialFAPool(
                 draft_year: draftYear,
                 prev_salary: prevSalary,
                 prev_team_tenure: prevTeamTenure,
+                prev_contract: {
+                    years: prevContractYears,
+                    currentYear: prevContractYears.length, // 이미 완료된 계약
+                    type: contractType,
+                },
                 career_history: careerHistory,
                 popularity,
             },

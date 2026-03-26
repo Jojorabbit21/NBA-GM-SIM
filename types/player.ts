@@ -260,8 +260,9 @@ export interface Player {
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
     teamTenure?: number;    // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
     prevSeasonStats?: PrevSeasonStats; // 직전 시즌 성적 (생성 선수용, FA 가치 산정에 활용)
-    prevSalary?: number;               // 직전 계약 연봉 (생성 FA 선수용 — Bird Rights 기준)
+    prevSalary?: number;               // 직전 계약 연봉 AAV (생성 FA 선수용 — Bird Rights 기준)
     prevTeamTenure?: number;           // 직전 팀 재직 연수 (생성 FA 선수용)
+    prevContract?: PlayerContract;     // 직전 계약 연도별 상세 (생성 FA 선수용, UI 표시용)
     archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
     popularity?: PlayerPopularity;          // 런타임, 저장 경로: SavedPlayerState
     morale?: PlayerMorale;                  // 런타임, 저장 경로: SavedPlayerState

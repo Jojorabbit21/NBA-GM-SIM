@@ -878,13 +878,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 위젯 6: 계약 정보 ── */}
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             {player.prevSalary != null ? (
-                                // 생성 FA 선수: 직전 계약 전체 연도 표시 (모두 완료됨)
+                                // 생성 FA 선수: 직전 계약 전체 연도 표시
                                 <>
                                     <SectionHeader title="직전 계약" style={sectionBg} />
-                                    {player.contract && player.contract.years.length > 0 ? (
+                                    {player.prevContract && player.prevContract.years.length > 0 ? (
                                         <div className="px-4 py-3 space-y-1">
-                                            {player.contract.years.map((sal, i) => {
-                                                const n = player.contract!.years.length;
+                                            {player.prevContract.years.map((sal, i) => {
+                                                const n = player.prevContract!.years.length;
                                                 // career_history는 최신순(index 0 = 가장 최근) → 계약 첫 해 = history[n-1]
                                                 const seasonLabel = player.career_history?.[n - 1 - i]?.season;
                                                 return (
@@ -897,17 +897,18 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
                                                 <span className="text-slate-500">AAV</span>
                                                 <span className="font-mono text-slate-400">
-                                                    {formatMoney(player.contract.years.reduce((a, b) => a + b, 0) / player.contract.years.length)}
+                                                    {formatMoney(player.prevContract.years.reduce((a, b) => a + b, 0) / player.prevContract.years.length)}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center text-xs">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400">
-                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
+                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
                                                 </span>
                                             </div>
                                         </div>
-                                    ) : player.prevSalary != null ? (
+                                    ) : (
+                                        // 폴백: 기존 DB 선수 (prev_contract 없음)
                                         <div className="px-4 py-3 space-y-1">
                                             <div className="flex justify-between items-center text-xs">
                                                 <span className="text-slate-500">연평균 연봉</span>
@@ -920,7 +921,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 </div>
                                             )}
                                         </div>
-                                    ) : null}
+                                    )}
                                 </>
                             ) : (
                                 // 일반 선수: 현재 계약 표시

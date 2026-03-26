@@ -383,6 +383,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     if (baseAttrs?.prev_team_tenure != null) {
         player.prevTeamTenure = Number(baseAttrs.prev_team_tenure);
     }
+    if (baseAttrs?.prev_contract?.years?.length) {
+        player.prevContract = baseAttrs.prev_contract as import('../types/player').PlayerContract;
+    }
 
     return player;
 };
