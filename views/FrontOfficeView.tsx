@@ -578,9 +578,9 @@ const PayrollTab: React.FC<{
                         </colgroup>
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap">선수</th>
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap border-r border-slate-700">선수</th>
                                 {seasonColumns.map(col => (
-                                    <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{col}</th>
+                                    <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">{col}</th>
                                 ))}
                                 {showActions && <th className="px-3 py-2" />}
                             </tr>
@@ -604,9 +604,9 @@ const PayrollTab: React.FC<{
                                 />
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
-                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap">합계</td>
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap border-r border-slate-700">합계</td>
                                 {totals.map((t, i) => (
-                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap">
+                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap border-r border-slate-700">
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
@@ -682,7 +682,7 @@ const PayrollRow: React.FC<{
 
     return (
         <tr className="group border-b border-slate-800 hover:bg-slate-800">
-            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 whitespace-nowrap">
+            <td className="px-4 py-1.5 text-xs text-slate-200 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 whitespace-nowrap border-r border-slate-700">
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
@@ -693,7 +693,7 @@ const PayrollRow: React.FC<{
                 ) : player.name}
             </td>
             {cells.map((cell, i) => (
-                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
+                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700 ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
                     {cell ?? '-'}
                 </td>
             ))}
