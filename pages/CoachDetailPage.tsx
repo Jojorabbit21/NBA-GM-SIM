@@ -10,7 +10,7 @@ const CoachDetailPage: React.FC = () => {
     const navigate = useNavigate();
 
     // location.state 우선 (FrontOfficePage/RosterPage에서 navigate 시 state 전달)
-    const stateData = state as { coach: any; teamId: string } | null;
+    const stateData = state as { coach: any; teamId: string; initialRole?: string } | null;
 
     // fallback: coachingData에서 coachId로 탐색
     const coachData = stateData ?? (() => {
@@ -31,6 +31,7 @@ const CoachDetailPage: React.FC = () => {
             onBack={() => navigate(-1)}
             coachingData={gameData.coachingData ?? undefined}
             allTeams={gameData.teams}
+            initialRole={(stateData?.initialRole as any) ?? undefined}
         />
     );
 };

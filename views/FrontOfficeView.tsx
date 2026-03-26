@@ -17,7 +17,6 @@ import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
 import { NegotiationScreen } from './NegotiationScreen';
 import type { NegotiationState } from '../services/fa/extensionEngine';
 import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
-import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
 import { LeagueGMProfiles } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
@@ -31,7 +30,7 @@ interface FrontOfficeViewProps {
     currentSimDate: string;
     myTeamId: string;
     coachingData?: LeagueCoachingData | null;
-    onCoachClick?: (teamId: string) => void;
+    onCoachClick?: (teamId: string, role?: StaffRole) => void;
     onGMClick?: (teamId: string) => void;
     onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
     leaguePickAssets?: LeaguePickAssets | null;
@@ -137,29 +136,39 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                         </button>
                                     )}
                                 </div>
-                                <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
-                                {/* OC / DC / Dev / Trainer 요약 */}
+                                {/* 5명 통합 스태프 테이블 */}
                                 {(() => {
                                     const staff = coachingData?.[team.id];
-                                    if (!staff) return null;
-                                    const rows: { label: string; name: string | undefined; salary: number }[] = [
-                                        { label: '공격 코디', name: staff.offenseCoordinator?.name, salary: staff.offenseCoordinator?.contractSalary ?? 0 },
-                                        { label: '수비 코디', name: staff.defenseCoordinator?.name, salary: staff.defenseCoordinator?.contractSalary ?? 0 },
-                                        { label: '디벨롭먼트', name: staff.developmentCoach?.name, salary: staff.developmentCoach?.contractSalary ?? 0 },
-                                        { label: '트레이닝', name: staff.trainingCoach?.name, salary: staff.trainingCoach?.contractSalary ?? 0 },
+                                    const staffRows: { role: StaffRole; label: string; abbr: string; coach: { name: string; contractSalary: number; contractYearsRemaining: number } | null }[] = [
+                                        { role: 'headCoach',          label: '감독',       abbr: 'HC',  coach: staff?.headCoach ?? null },
+                                        { role: 'offenseCoordinator', label: '공격 코디',  abbr: 'OC',  coach: staff?.offenseCoordinator ?? null },
+                                        { role: 'defenseCoordinator', label: '수비 코디',  abbr: 'DC',  coach: staff?.defenseCoordinator ?? null },
+                                        { role: 'developmentCoach',   label: '디벨롭먼트', abbr: 'DEV', coach: staff?.developmentCoach ?? null },
+                                        { role: 'trainingCoach',      label: '트레이닝',   abbr: 'TRN', coach: staff?.trainingCoach ?? null },
                                     ];
                                     return (
-                                        <div className="border-t border-slate-800">
-                                            {rows.map(r => (
-                                                <div key={r.label} className="flex items-center gap-3 px-4 py-2 border-b border-slate-800/50 last:border-b-0">
-                                                    <span className="text-xs text-slate-500 w-24 shrink-0">{r.label}</span>
-                                                    {r.name ? (
+                                        <div>
+                                            {staffRows.map(r => (
+                                                <div key={r.role} className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition-colors group">
+                                                    <div className="w-8 h-8 rounded-lg bg-slate-800 ring-1 ring-slate-700 flex items-center justify-center shrink-0">
+                                                        <span className="text-[10px] font-black text-slate-400">{r.abbr}</span>
+                                                    </div>
+                                                    <span className="text-xs text-slate-500 w-20 shrink-0">{r.label}</span>
+                                                    {r.coach ? (
                                                         <>
-                                                            <span className="text-xs text-slate-200 flex-1">{r.name}</span>
-                                                            <span className="text-xs font-mono tabular-nums text-emerald-400">{r.salary > 0 ? `$${(r.salary / 1_000_000).toFixed(1)}M` : '-'}</span>
+                                                            <button
+                                                                className="text-xs font-bold text-slate-200 hover:text-indigo-400 transition-colors flex-1 text-left truncate"
+                                                                onClick={() => onCoachClick?.(team.id, r.role)}
+                                                            >
+                                                                {r.coach.name}
+                                                            </button>
+                                                            <span className="text-xs text-slate-600 font-mono tabular-nums shrink-0">{r.coach.contractYearsRemaining}년</span>
+                                                            <span className="text-xs font-mono tabular-nums text-emerald-400 w-14 text-right shrink-0">
+                                                                {r.coach.contractSalary > 0 ? `$${(r.coach.contractSalary / 1_000_000).toFixed(1)}M` : '-'}
+                                                            </span>
                                                         </>
                                                     ) : (
-                                                        <span className="text-xs text-slate-600 italic">공석</span>
+                                                        <span className="text-xs text-slate-600 italic flex-1">공석</span>
                                                     )}
                                                 </div>
                                             ))}

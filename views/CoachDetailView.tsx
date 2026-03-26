@@ -27,6 +27,7 @@ interface CoachDetailViewProps {
     coachingData?: LeagueCoachingData;
     allTeams?: Team[];
     staffData?: CoachingStaff;
+    initialRole?: StaffRole;
 }
 
 // ── 선호 축별 전술 용어 매핑 (값 → 짧은 자연어) ──
@@ -215,10 +216,10 @@ function getCoachFromStaff(staff: CoachingStaff | null | undefined, role: Select
     }
 }
 
-export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack, coachingData, allTeams, staffData }) => {
+export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack, coachingData, allTeams, staffData, initialRole }) => {
     const [currentTeamId, setCurrentTeamId] = useState(teamId);
     const [teamDropOpen, setTeamDropOpen] = useState(false);
-    const [selectedRole, setSelectedRole] = useState<SelectedRole>('headCoach');
+    const [selectedRole, setSelectedRole] = useState<SelectedRole>(initialRole ?? 'headCoach');
     const teamDropRef = useRef<HTMLDivElement>(null);
 
     const currentStaff = coachingData?.[currentTeamId] ?? staffData ?? null;
