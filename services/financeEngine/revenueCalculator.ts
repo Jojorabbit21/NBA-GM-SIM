@@ -27,6 +27,7 @@ export function calculateFixedRevenue(
     teamId: string,
     prevSeasonWinPct?: number,
     roster?: Player[],
+    marketingBonus?: number,
 ): Pick<TeamFinance['revenue'], 'broadcasting' | 'localMedia' | 'sponsorship'> {
     const finData = TEAM_FINANCE_DATA[teamId];
     if (!finData) {
@@ -46,7 +47,8 @@ export function calculateFixedRevenue(
         ? 1 + (prevSeasonWinPct - 0.5) * 0.3  // 70% 승률 → ×1.06, 30% → ×0.94
         : 1.0;
     const nationalPopBonus = roster ? getNationalPopBonus(roster) : 0;
-    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus * (1 + nationalPopBonus)));
+    const mktBonus = marketingBonus ?? 0;
+    const sponsorship = jitter(Math.round(market.sponsorshipBase * winPctBonus * (1 + nationalPopBonus) * (1 + mktBonus)));
 
     return { broadcasting, localMedia, sponsorship };
 }

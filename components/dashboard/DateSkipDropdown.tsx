@@ -10,6 +10,8 @@ const KEY_DATE_LABELS: Record<keyof SeasonKeyDates, string> = {
     freeAgencyClose: 'FA 시장 마감',
     trainingCamp: '트레이닝 캠프',
     rosterDeadline: '로스터 확정',
+    luxuryTaxDay: '럭셔리 택스 정산',
+    ownerBudgetDay: '구단주 예산 배분',
     openingNight: '개막일',
     christmasDay: '크리스마스 데이',
     tradeDeadline: '트레이드 데드라인',

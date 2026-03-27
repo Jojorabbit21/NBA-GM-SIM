@@ -24,6 +24,8 @@ import type { LeaguePickAssets, ResolvedDraftOrder } from '../../types/draftAsse
 import { processOffseasonTraining } from '../coachingStaff/trainingEngine';
 import type { LeagueTrainingConfigs } from '../../types/training';
 import type { LeagueCoachingData } from '../../types/coaching';
+import type { LeagueInvestmentState } from '../../types/finance';
+import { initializeLeagueInvestmentState } from '../financeEngine/investmentEngine';
 
 // ── 결과 타입 ──
 
@@ -61,6 +63,7 @@ export interface OffseasonEventResult {
             msg: string;
         };
         luxuryTaxPaid?: boolean;                // 멱등성 플래그
+        leagueInvestmentState?: LeagueInvestmentState; // 구단주 예산 배분 상태
     };
 }
 
@@ -183,6 +186,9 @@ export interface DispatchParams {
     luxuryTaxPaid?: boolean;  // 럭셔리 택스 이미 처리됨 (멱등성)
     leagueTrainingConfigs?: LeagueTrainingConfigs;  // 훈련 설정
     leagueCoachingData?: LeagueCoachingData;        // 코칭스태프
+    investmentConfirmed?: boolean;                  // 구단주 예산 배분 완료 여부 (멱등성)
+    teamOperatingIncomes?: Record<string, number>;  // 팀별 영업이익 (discretionaryBudget 계산용)
+    leagueInvestmentState?: LeagueInvestmentState;  // 현 시즌 투자 상태 (훈련 효과 적용용)
 }
 
 /**
@@ -259,6 +265,7 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
         return handleMoratoriumStart(
             teams, currentSeasonNumber, tendencySeed, userTeamId,
             params.leagueTrainingConfigs, params.leagueCoachingData,
+            params.leagueInvestmentState,
         );
     }
 
@@ -303,6 +310,26 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
         };
     }
 
+    // ── ownerBudgetDay: 구단주 예산 배분 (PRE_SEASON 단계) ──
+    if (keyDates.ownerBudgetDay
+        && currentDate >= keyDates.ownerBudgetDay
+        && offseasonPhase === 'PRE_SEASON'
+        && !params.investmentConfirmed) {
+        const incomes = params.teamOperatingIncomes ?? {};
+        const invState = initializeLeagueInvestmentState(
+            userTeamId ?? '',
+            Object.fromEntries(teams.map(t => [t.id, { operatingIncome: incomes[t.id] ?? 0 }])),
+            currentSeasonNumber,
+        );
+        console.log(`💼 Owner budget day: discretionary budgets calculated for ${teams.length} teams`);
+        return {
+            fired: true,
+            blocked: true,
+            navigateTo: 'OwnerBudget',
+            updates: { leagueInvestmentState: invState },
+        };
+    }
+
     // ── openingNight: 새 시즌 개막 ──
     if (currentDate >= keyDates.openingNight && (offseasonPhase === 'FA_OPEN' || offseasonPhase === 'PRE_SEASON')) {
         return handleOpeningNight(teams, currentSeasonNumber, userTeamId);
@@ -320,13 +347,23 @@ function handleMoratoriumStart(
     userTeamId?: string,
     leagueTrainingConfigs?: LeagueTrainingConfigs,
     leagueCoachingData?: LeagueCoachingData,
+    leagueInvestmentState?: LeagueInvestmentState,
 ): OffseasonEventResult {
     const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber, userTeamId);
 
-    // 오프시즌 훈련 적용 (에이징/계약 처리 직후)
+    // 오프시즌 훈련 적용 (에이징/계약 처리 직후) — 이전 시즌 투자 효과 반영
     if (leagueTrainingConfigs && leagueCoachingData) {
-        processOffseasonTraining(teams, leagueTrainingConfigs, leagueCoachingData);
-        console.log('Offseason training applied');
+        const trainingInvestmentMults: Record<string, number> = {};
+        if (leagueInvestmentState) {
+            for (const [tid, state] of Object.entries(leagueInvestmentState)) {
+                if (state.effects?.trainingMultiplier) {
+                    trainingInvestmentMults[tid] = state.effects.trainingMultiplier;
+                }
+            }
+        }
+        processOffseasonTraining(teams, leagueTrainingConfigs, leagueCoachingData,
+            Object.keys(trainingInvestmentMults).length > 0 ? trainingInvestmentMults : undefined);
+        console.log('Offseason training applied', Object.keys(trainingInvestmentMults).length > 0 ? 'with investment mults' : '');
     }
 
     // 제거 대상 집합

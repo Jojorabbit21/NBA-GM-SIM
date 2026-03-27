@@ -52,11 +52,13 @@ import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
 import CoachMarketPage from './pages/CoachMarketPage';
 import TrainingPage from './pages/TrainingPage';
+import OwnerBudgetPage from './pages/OwnerBudgetPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
     DraftLottery: '/draft-lottery',
     DraftRoom:    '/draft/',
+    OwnerBudget:  '/owner-budget',
 };
 
 const App: React.FC = () => {
@@ -137,6 +139,8 @@ const App: React.FC = () => {
         gameData.setRetiredPlayerIds,
         gameData.setLeagueFAMarket,
         gameData.leagueFAMarket,
+        gameData.myTeamId ? (gameData.leagueInvestmentState[gameData.myTeamId]?.allocationConfirmed ?? false) : false,
+        gameData.setLeagueInvestmentState,
     );
 
     // ─── useFullSeasonSim ─────────────────────────────────────────────────────
@@ -293,6 +297,7 @@ const App: React.FC = () => {
                         <Route path="/tactics" element={<TacticsPage />} />
                         <Route path="/coach-market" element={<CoachMarketPage />} />
                         <Route path="/training" element={<TrainingPage />} />
+                        <Route path="/owner-budget" element={<OwnerBudgetPage />} />
                         {/* 404 → 홈으로 */}
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Route>

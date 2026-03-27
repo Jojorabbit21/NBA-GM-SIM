@@ -30,6 +30,7 @@ const BIG_MARKET_TEAMS = new Set([
 export function calculateGameAttendance(
     homeTeam: Team,
     awayTeamId: string,
+    facilityBonus?: number,
 ): { attendance: number; occupancyRate: number } {
     const finData = TEAM_FINANCE_DATA[homeTeam.id];
     if (!finData) {
@@ -56,6 +57,11 @@ export function calculateGameAttendance(
     // 3. 상대팀 인기도 보정
     if (BIG_MARKET_TEAMS.has(awayTeamId)) {
         occupancy += 0.05;
+    }
+
+    // 4. 시설 투자 보정 (최대 +15%)
+    if (facilityBonus && facilityBonus > 0) {
+        occupancy += facilityBonus;
     }
 
     // 최소 25%, 최대 100%
@@ -93,6 +99,7 @@ export function calculateMerchandiseRevenue(
     homeTeamId: string,
     attendance: number,
     roster?: Player[],
+    marketingBonus?: number,
 ): number {
     const finData = TEAM_FINANCE_DATA[homeTeamId];
     if (!finData) return 0;
@@ -108,5 +115,8 @@ export function calculateMerchandiseRevenue(
         mdSpend = Math.round(mdSpend * mdMultiplier);
     }
 
-    return attendance * mdSpend;
+    // 마케팅 투자 보정 (최대 +10% → marketingBonus * 0.5)
+    const mktMult = 1 + ((marketingBonus ?? 0) * 0.5);
+
+    return Math.round(attendance * mdSpend * mktMult);
 }

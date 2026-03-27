@@ -32,7 +32,7 @@ import { SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { LeagueFAMarket } from '../types/fa';
 import { openFAMarket, simulateCPUSigning, releasePlayerToMarket, resolveExpiredOfferSheets } from '../services/fa/faMarketBuilder';
 import { simulateCPUWaivers } from '../services/fa/cpuWaiverEngine';
-import { getFinancesSnapshot } from '../services/financeEngine';
+import { getFinancesSnapshot, getBudgetManager } from '../services/financeEngine';
 
 /**
  * preferTradeBlock 목록을 leagueTradeBlocks에 중복 없이 반영한 새 객체 반환.
@@ -120,6 +120,8 @@ export const useSimulation = (
     setRetiredPlayerIds?: React.Dispatch<React.SetStateAction<string[]>>,
     setLeagueFAMarket?: React.Dispatch<React.SetStateAction<LeagueFAMarket | null>>,
     leagueFAMarket?: LeagueFAMarket | null,
+    investmentConfirmed?: boolean,
+    setLeagueInvestmentState?: React.Dispatch<React.SetStateAction<import('../types/finance').LeagueInvestmentState>>,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -785,6 +787,13 @@ export const useSimulation = (
                 // ★ 오프시즌 Key Date 이벤트 디스패처
                 const currentPhase = finalsDetection.updates?.offseasonPhase ?? offseasonPhase ?? null;
                 if (currentPhase !== null && seasonConfig?.keyDates) {
+                    // 팀별 영업이익 수집 (ownerBudgetDay 예산 계산용)
+                    const allFinances = getBudgetManager().getAllFinances();
+                    const teamOperatingIncomes: Record<string, number> = {};
+                    for (const [tid, fin] of Object.entries(allFinances)) {
+                        teamOperatingIncomes[tid] = fin.operatingIncome;
+                    }
+
                     const offseasonEvent = await dispatchOffseasonEvent({
                         currentDate: nextDate,
                         keyDates: seasonConfig.keyDates,
@@ -799,6 +808,10 @@ export const useSimulation = (
                         hasProspects: (prospects?.length ?? 0) > 0,
                         leaguePickAssets: leaguePickAssets ?? undefined,
                         luxuryTaxPaid: luxuryTaxPaidRef.current,
+                        investmentConfirmed: investmentConfirmed,
+                        teamOperatingIncomes,
+                        leagueInvestmentState: getBudgetManager().getInvestmentState(),
+                        leagueCoachingData: coachingData ?? undefined,
                     });
 
                     if (offseasonEvent.fired && offseasonEvent.updates) {
@@ -835,6 +848,27 @@ export const useSimulation = (
                         }
 
                         // blocking 이벤트 (draftLottery 등): 뷰 전환 후 중단
+                        if (offseasonEvent.blocked && offseasonEvent.navigateTo === 'OwnerBudget') {
+                            advanceDate(nextDate, {});
+                            if (u.leagueInvestmentState) {
+                                setLeagueInvestmentState?.(u.leagueInvestmentState);
+                                getBudgetManager().setInvestmentState(u.leagueInvestmentState);
+                            }
+                            setSimProgress(null);
+                            setIsSimulating(false);
+                            if (!isGuestMode) {
+                                forceSave({
+                                    currentSimDate: nextDate,
+                                    teams: newTeams,
+                                    schedule: newSchedule,
+                                    withSnapshot: false,
+                                    offseasonPhase: currentPhase,
+                                });
+                            }
+                            onOffseasonEvent?.(offseasonEvent.navigateTo);
+                            return;
+                        }
+
                         if (offseasonEvent.blocked && offseasonEvent.navigateTo) {
                             advanceDate(nextDate, {});
                             if (u.lotteryResult) setLotteryResult?.(u.lotteryResult);

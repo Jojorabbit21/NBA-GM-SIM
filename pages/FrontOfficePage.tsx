@@ -47,10 +47,14 @@ const FrontOfficePage: React.FC = () => {
             leagueTrainingConfigs={gameData.leagueTrainingConfigs}
             onCoachMarketOpen={() => navigate('/coach-market')}
             onTrainingViewOpen={() => navigate('/training')}
+            onExtendCoach={(role) => navigate('/coach-market', { state: { extendRole: role } })}
+            onFireCoach={(role) => navigate('/coach-market', { state: { fireRole: role } })}
             offseasonPhase={gameData.offseasonPhase}
             tendencySeed={gameData.tendencySeed || ''}
             initialNegotiateId={(state as any)?.autoNegotiateId}
             initialNegotiateType={(state as any)?.negotiateType}
+            onInvestmentTabOpen={() => navigate('/owner-budget')}
+            investmentConfirmed={gameData.myTeamId ? (gameData.leagueInvestmentState[gameData.myTeamId]?.allocationConfirmed ?? false) : false}
             onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                 const player = myTeam?.roster.find((p: Player) => p.id === playerId);
                 if (!player) return;

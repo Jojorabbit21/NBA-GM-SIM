@@ -1,10 +1,11 @@
 
-import { TeamFinance, SavedTeamFinances, MonthlyAttendanceData } from '../../types/finance';
+import { TeamFinance, SavedTeamFinances, MonthlyAttendanceData, LeagueInvestmentState, InvestmentEffects } from '../../types/finance';
 import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
 import { Team } from '../../types/team';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 import { calculateGameAttendance, calculateGateRevenue, calculateMerchandiseRevenue } from './attendanceModel';
 import { initializeTeamFinance, calculateScoutingExpense, calculateMarketingExpense, calculateAdministrationExpense } from './revenueCalculator';
+import { createDefaultInvestmentState } from './investmentEngine';
 
 /**
  * 리그 전체 재정 상태 관리
@@ -14,6 +15,7 @@ export class BudgetManager {
     private gamesPlayed: Record<string, number> = {};
     private totalAttendance: Record<string, number> = {};
     private monthlyAttendance: Record<string, Record<string, MonthlyAttendanceData>> = {};
+    private investmentState: LeagueInvestmentState = {};
 
     /**
      * 시즌 시작 시 전팀 재정 초기화
@@ -48,9 +50,11 @@ export class BudgetManager {
             return { attendance: 0, gateRevenue: 0, mdRevenue: 0 };
         }
 
-        const { attendance } = calculateGameAttendance(homeTeam, awayTeamId);
+        const facilityBonus = this.investmentState[homeTeam.id]?.effects.facilityBonus;
+        const { attendance } = calculateGameAttendance(homeTeam, awayTeamId, facilityBonus);
+        const marketingBonus = this.investmentState[homeTeam.id]?.effects.marketingBonus ?? 0;
         const gateRevenue = calculateGateRevenue(homeTeam.id, attendance);
-        const mdRevenue = calculateMerchandiseRevenue(homeTeam.id, attendance, homeTeam.roster);
+        const mdRevenue = calculateMerchandiseRevenue(homeTeam.id, attendance, homeTeam.roster, marketingBonus);
 
         finance.revenue.gate += gateRevenue;
         finance.revenue.merchandise += mdRevenue;
@@ -124,6 +128,20 @@ export class BudgetManager {
         };
     }
 
+    // ── 투자 상태 관리 ──
+
+    setInvestmentState(state: LeagueInvestmentState): void {
+        this.investmentState = state;
+    }
+
+    getInvestmentState(): LeagueInvestmentState {
+        return this.investmentState;
+    }
+
+    getTeamInvestmentEffects(teamId: string): InvestmentEffects | undefined {
+        return this.investmentState[teamId]?.effects;
+    }
+
     /**
      * 저장용 데이터 생성
      */
@@ -137,6 +155,7 @@ export class BudgetManager {
                 gamesPlayed: this.gamesPlayed[teamId] ?? 0,
                 totalAttendance: this.totalAttendance[teamId] ?? 0,
                 monthlyAttendance: this.monthlyAttendance[teamId] ?? {},
+                investmentState: this.investmentState[teamId],
             };
         }
         return result;
@@ -174,6 +193,8 @@ export class BudgetManager {
             this.gamesPlayed[teamId] = saved.gamesPlayed;
             this.totalAttendance[teamId] = saved.totalAttendance ?? 0;
             this.monthlyAttendance[teamId] = saved.monthlyAttendance ?? {};
+            // 투자 상태 복원 (구세이브 폴백)
+            this.investmentState[teamId] = saved.investmentState ?? createDefaultInvestmentState(1);
             this.recalculateIncome(teamId);
         }
     }

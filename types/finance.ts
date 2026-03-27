@@ -56,6 +56,30 @@ export interface MonthlyAttendanceData {
     total: number;
 }
 
+// ── 투자 카테고리 ──
+export type InvestmentCategory = 'facility' | 'training' | 'scouting' | 'marketing';
+
+// ── 투자 효과 (시즌 내 적용값) ──
+export interface InvestmentEffects {
+    facilityBonus: number;        // 0.0~0.15 (관중 점유율 보정)
+    trainingMultiplier: number;   // 1.0~1.5 (성장 배율)
+    scoutingAccuracy: number;     // 0.0~1.0 (포텐셜 노이즈 감소율)
+    marketingBonus: number;       // 0.0~0.20 (수익 보정)
+}
+
+// ── 팀 투자 상태 (오프시즌 배분 + 효과 캐시) ──
+export interface TeamInvestmentState {
+    discretionaryBudget: number;
+    remainingBudget: number;
+    allocations: Record<InvestmentCategory, number>;
+    effects: InvestmentEffects;
+    allocationConfirmed: boolean;
+    seasonNumber: number;
+}
+
+// ── 리그 전체 투자 상태 ──
+export type LeagueInvestmentState = Record<string, TeamInvestmentState>;
+
 // ── 저장용 팀 재정 상태 (saves 테이블) ──
 export interface SavedTeamFinances {
     [teamId: string]: {
@@ -67,5 +91,7 @@ export interface SavedTeamFinances {
         monthlyAttendance?: Record<string, MonthlyAttendanceData>;
         /** 방출 선수 잔여 계약금 (데드캡) */
         deadMoney?: import('./team').DeadMoneyEntry[];
+        /** 오프시즌 투자 배분 상태 */
+        investmentState?: TeamInvestmentState;
     };
 }

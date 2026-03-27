@@ -20,7 +20,8 @@ import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDev
 import { assignArchetypes } from '../services/playerDevelopment/archetypeEvaluator';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { LeagueCoachingData, CoachFAPool } from '../types/coaching';
-import { SavedTeamFinances } from '../types/finance';
+import { SavedTeamFinances, LeagueInvestmentState, InvestmentCategory } from '../types/finance';
+import { computeInvestmentEffects } from '../services/financeEngine/investmentEngine';
 import { LeagueTrainingConfigs, getDefaultTrainingConfig } from '../types/training';
 import { generateLeagueStaff, generateCoachFAPool, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 import { getBudgetManager, resetBudgetManager, getFinancesSnapshot } from '../services/financeEngine';
@@ -82,6 +83,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [retiredPlayerIds, setRetiredPlayerIds] = useState<string[]>([]);
     const [leagueFAMarket, setLeagueFAMarket] = useState<LeagueFAMarket | null>(null);
     const [leagueCapHistory, setLeagueCapHistory] = useState<Record<number, number>>({});
+    const [leagueInvestmentState, setLeagueInvestmentState] = useState<LeagueInvestmentState>({});
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
@@ -535,6 +537,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     if (checkpoint.team_finances) {
                         setTeamFinances(checkpoint.team_finances);
                         getBudgetManager().loadFromSaveData(checkpoint.team_finances);
+                        // 투자 상태 복원 (loadFromSaveData에서 investmentState를 싱글턴에 로드함)
+                        const restoredInvState = getBudgetManager().getInvestmentState();
+                        if (Object.keys(restoredInvState).length > 0) {
+                            setLeagueInvestmentState(restoredInvState);
+                        }
                     } else if (loadedTeams) {
                         resetBudgetManager();
                         const coachSalaries: Record<string, number> = {};
@@ -1361,6 +1368,45 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          });
     };
 
+    // ── 투자 확정 콜백 ──
+    const handleInvestmentConfirm = useCallback((
+        allocations: Record<InvestmentCategory, number>,
+        investmentConfirmedSignal: () => void,
+    ) => {
+        const teamId = gameStateRef.current.myTeamId;
+        if (!teamId) return;
+
+        const effects = computeInvestmentEffects(allocations);
+        const prev = leagueInvestmentState[teamId];
+        if (!prev) return;
+
+        const updated: LeagueInvestmentState = {
+            ...leagueInvestmentState,
+            [teamId]: {
+                ...prev,
+                allocations,
+                effects,
+                remainingBudget: prev.discretionaryBudget - Object.values(allocations).reduce((s, v) => s + v, 0),
+                allocationConfirmed: true,
+            },
+        };
+        setLeagueInvestmentState(updated);
+        getBudgetManager().setInvestmentState(updated);
+
+        // 훈련 예산 동기화
+        const currentTrainingConfigs = gameStateRef.current.leagueTrainingConfigs;
+        if (currentTrainingConfigs && allocations.training > 0) {
+            const updatedConfigs = {
+                ...currentTrainingConfigs,
+                [teamId]: { ...currentTrainingConfigs[teamId], budget: allocations.training },
+            };
+            setLeagueTrainingConfigs(updatedConfigs);
+        }
+
+        forceSave({ leagueInvestmentState: updated });
+        investmentConfirmedSignal();
+    }, [leagueInvestmentState, forceSave]);
+
     // FA 시장 선수 맵 (playerId → Player) — leagueFAMarket.players 기반
     const faPlayerMap = useMemo<Record<string, Player>>(() => {
         if (!leagueFAMarket?.players) return {};
@@ -1419,6 +1465,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         retiredPlayerIds, setRetiredPlayerIds,
         leagueFAMarket, setLeagueFAMarket,
         leagueCapHistory, setLeagueCapHistory,
+        leagueInvestmentState, setLeagueInvestmentState,
+        handleInvestmentConfirm,
         faPlayerMap,
 
         hasInitialLoadRef,

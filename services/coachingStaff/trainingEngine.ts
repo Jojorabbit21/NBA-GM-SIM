@@ -47,6 +47,7 @@ function getAgeMult(age: number, programKey: TrainingProgramKey): number {
 export function computeTrainingEfficiency(
     staff: CoachingStaff,
     budget: number,
+    trainingInvestmentMult?: number,
 ): TrainingEfficiency {
     const oc = staff.offenseCoordinator?.abilities;
     const dc = staff.defenseCoordinator?.abilities;
@@ -102,10 +103,11 @@ export function computeTrainingEfficiency(
         (dev ? dev.schemeDepth * 0.3 + dev.teaching * 0.2 : 0);
     const defTacticsEff = (hc || dev) ? norm(defTacticsRaw) : 0.5;
 
-    // HC 전체 보정 (globalMult)
-    const globalMult = hc
+    // HC 전체 보정 (globalMult) × 훈련 투자 보정
+    const baseGlobalMult = hc
         ? 1.0 + (hc.motivation * 0.3 + hc.playerRelation * 0.4 + hc.adaptability * 0.3) / 10 * 0.2
         : 1.0;
+    const globalMult = baseGlobalMult * (trainingInvestmentMult ?? 1.0);
 
     // Dev 코치 보정 배율 (선수 나이 조건은 processOffseasonTraining에서 판단)
     const youngPlayerMult = dev
@@ -221,6 +223,7 @@ export function processOffseasonTraining(
     teams: Team[],
     trainingConfigs: LeagueTrainingConfigs | null | undefined,
     coachingData: LeagueCoachingData | null | undefined,
+    trainingInvestmentMults?: Record<string, number>,
 ): void {
     if (!trainingConfigs || !coachingData) return;
 
@@ -229,7 +232,8 @@ export function processOffseasonTraining(
         const staff = coachingData[team.id];
         if (!config || !staff) continue;
 
-        const eff = computeTrainingEfficiency(staff, config.budget);
+        const investMult = trainingInvestmentMults?.[team.id] ?? 1.0;
+        const eff = computeTrainingEfficiency(staff, config.budget, investMult);
         const totalPoints = eff.totalPoints;
 
         // 프로그램별 포인트 배분 (개별 최대 cap: totalPoints × 0.5)

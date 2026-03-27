@@ -23,7 +23,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
-type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks' | 'investment';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -50,6 +50,10 @@ interface FrontOfficeViewProps {
     leagueTrainingConfigs?: LeagueTrainingConfigs | null;
     onCoachMarketOpen?: () => void;   // 코치 마켓 뷰 열기
     onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
+    onExtendCoach?: (role: StaffRole) => void;
+    onFireCoach?: (role: StaffRole) => void;
+    onInvestmentTabOpen?: () => void; // 구단주 투자 뷰 열기
+    investmentConfirmed?: boolean;    // 현 시즌 투자 배분 완료 여부
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
@@ -57,6 +61,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
     coachFAPool, leagueTrainingConfigs, onCoachMarketOpen, onTrainingViewOpen,
+    onExtendCoach, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -89,6 +94,12 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         <button onClick={() => setActiveTab('draftPicks')} className={tabClass('draftPicks')}>
                             <span>드래프트 픽</span>
                         </button>
+                        <button onClick={() => setActiveTab('investment')} className={tabClass('investment')}>
+                            <span>구단주 투자</span>
+                            {investmentConfirmed === false && (
+                                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                            )}
+                        </button>
                     </div>
                 </div>
 
@@ -112,6 +123,8 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             initialNegotiateId={initialNegotiateId}
                             initialNegotiateType={initialNegotiateType}
                             coachingData={coachingData}
+                            onExtendCoach={onExtendCoach}
+                            onFireCoach={onFireCoach}
                         />
                     )}
                     {activeTab === 'coaching' && (
@@ -147,6 +160,35 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     )}
                     {activeTab === 'draftPicks' && (
                         <DraftPicksPanel teamId={myTeamId} leaguePickAssets={leaguePickAssets} primaryColor={primaryColor} />
+                    )}
+                    {activeTab === 'investment' && (
+                        <div className="p-6 flex flex-col gap-4 animate-in fade-in duration-500">
+                            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                                <div className="text-xs font-black text-white uppercase tracking-widest mb-3">
+                                    구단주 투자 현황
+                                </div>
+                                {finData ? (
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400">배분 상태</span>
+                                            <span className={investmentConfirmed ? 'text-green-400' : 'text-yellow-400'}>
+                                                {investmentConfirmed ? '배분 완료' : '미배분'}
+                                            </span>
+                                        </div>
+                                        {!investmentConfirmed && (
+                                            <button
+                                                onClick={onInvestmentTabOpen}
+                                                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg transition-colors text-sm"
+                                            >
+                                                지금 배분하기
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-slate-500 text-sm">재정 데이터를 불러올 수 없습니다.</div>
+                                )}
+                            </div>
+                        </div>
                     )}
                     {!finData && activeTab === 'club' && (
                         <div className="text-center text-slate-500 py-20">
@@ -544,7 +586,9 @@ const PayrollTab: React.FC<{
     initialNegotiateId?: string;
     initialNegotiateType?: 'extension' | 'release';
     coachingData?: LeagueCoachingData | null;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData }) => {
+    onExtendCoach?: (role: StaffRole) => void;
+    onFireCoach?: (role: StaffRole) => void;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoach, onFireCoach }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -675,6 +719,7 @@ const PayrollTab: React.FC<{
                         <colgroup>
                             <col style={{ width: `${nameColWidth}px` }} />
                             {seasonColumns.map((_, i) => <col key={i} style={{ width: seasonColWidth }} />)}
+                            {(onExtendCoach || onFireCoach) && <col style={{ width: `${actionColWidth}px` }} />}
                         </colgroup>
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
@@ -682,6 +727,7 @@ const PayrollTab: React.FC<{
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">{col}</th>
                                 ))}
+                                {(onExtendCoach || onFireCoach) && <th className="px-3 py-2" />}
                             </tr>
                         </thead>
                         <tbody>
@@ -695,6 +741,29 @@ const PayrollTab: React.FC<{
                                             {s !== null ? fmtSalary(s) : <span className="text-slate-700">–</span>}
                                         </td>
                                     ))}
+                                    {(onExtendCoach || onFireCoach) && (
+                                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {onExtendCoach && (
+                                                    <button
+                                                        onClick={() => onExtendCoach(r.key)}
+                                                        className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
+                                                        style={{ backgroundColor: primaryColor, color: textColor }}
+                                                    >
+                                                        연장
+                                                    </button>
+                                                )}
+                                                {onFireCoach && (
+                                                    <button
+                                                        onClick={() => onFireCoach(r.key)}
+                                                        className="px-2 py-0.5 rounded text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                                                    >
+                                                        해고
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                             <tr className="bg-slate-800 border-t-2 border-slate-700">
@@ -704,6 +773,7 @@ const PayrollTab: React.FC<{
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
+                                {(onExtendCoach || onFireCoach) && <td />}
                             </tr>
                         </tbody>
                     </table>

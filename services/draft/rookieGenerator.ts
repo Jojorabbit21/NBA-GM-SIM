@@ -274,7 +274,8 @@ export function generateDraftClass(
     userId: string,
     seasonNumber: number,
     seed: string,
-    count: number = 60
+    count: number = 60,
+    scoutingAccuracy: number = 0,
 ): GeneratedPlayerRow[] {
     const rng = new SeededRandom(`${seed}_draft_${seasonNumber}`);
     const players: GeneratedPlayerRow[] = [];
@@ -309,8 +310,8 @@ export function generateDraftClass(
         // 능력치 생성
         const attrs = generateAttributes(rng, position, rank, count);
 
-        // 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 롤
-        const pot = generatePotential(rng, rank, potOffset);
+        // 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 롤 (스카우팅 투자 시 노이즈 감소)
+        const pot = generatePotential(rng, rank, potOffset, scoutingAccuracy);
 
         // 연봉 (현재 캡 기준 비율 보정)
         const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
@@ -457,14 +458,16 @@ function generateHeight(rng: SeededRandom, position: string): number {
  * 포텐셜 생성
  * classGrade 기반 오프셋 + 제너레이셔널 탤런트 초희귀 롤
  */
-function generatePotential(rng: SeededRandom, rank: number, potOffset: number): number {
+function generatePotential(rng: SeededRandom, rank: number, potOffset: number, scoutingAccuracy: number = 0): number {
     // 제너레이셔널 탤런트: 1~5픽 한정, 3% 확률
     if (rank <= 5 && rng.next() < 0.03) {
         return rng.intRange(95, 99);
     }
 
     const potBase = rank <= 5 ? 82 : rank <= 14 ? 76 : rank <= 30 ? 70 : 65;
-    return clamp(Math.round(rng.normal(potBase + potOffset, 4)), 55, 99);
+    // 스카우팅 정확도가 높을수록 노이즈(stddev) 감소: 0.0 → stddev 4, 1.0 → stddev 1.2
+    const potStddev = 4 * (1 - scoutingAccuracy * 0.7);
+    return clamp(Math.round(rng.normal(potBase + potOffset, potStddev)), 55, 99);
 }
 
 /**

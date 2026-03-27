@@ -49,6 +49,7 @@ export interface SeasonKeyDates {
     freeAgencyClose: string;     // 9월 2번째 금요일
     trainingCamp: string;        // 9월 마지막 화요일
     rosterDeadline: string;      // 10월 3번째 월요일
+    ownerBudgetDay: string;      // 로스터 마감 +7일 (구단주 예산 배분일)
     // 정규시즌
     openingNight: string;        // 10월 3번째 화요일
     prospectReveal: string;      // 1월 1번째 월요일 — 드래프트 풀 공개
@@ -122,6 +123,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
     const freeAgencyClose = nthDayOfMonth(endYear, 8, 5, 2);                  // 9월 2번째 금요일
     const trainingCamp    = lastDayOfWeekInMonth(endYear, 8, 2);              // 9월 마지막 화요일
     const rosterDeadline  = nthDayOfMonth(endYear, 9, 1, 3);                  // 10월 3번째 월요일
+    const ownerBudgetDay  = addDays(rosterDeadline, 7);                       // 로스터 마감 +7일 (구단주 예산 배분일)
     const openingNight    = nthDayOfMonth(endYear, 9, 2, 3);                  // 10월 3번째 화요일 (다음 시즌 개막)
 
     const keyDates: SeasonKeyDates = {
@@ -134,6 +136,7 @@ export function buildSeasonConfig(seasonNumber: number): SeasonConfig {
         freeAgencyClose: fmt(freeAgencyClose),
         trainingCamp: fmt(trainingCamp),
         rosterDeadline: fmt(rosterDeadline),
+        ownerBudgetDay: fmt(ownerBudgetDay),
         // 정규시즌
         openingNight: fmt(openingNight),
         prospectReveal: fmt(prospectReveal),
