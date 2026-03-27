@@ -84,14 +84,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
           {tab === 'coaching' && (
               <div className="h-full overflow-y-auto custom-scrollbar">
                   {/* GM */}
-                  {isMyTeam ? (
-                      <GMProfileCard userNickname={userNickname || 'You'} />
-                  ) : (
-                      <GMProfileCard
-                          gmProfile={leagueGMProfiles?.[selectedTeam.id]}
-                          onGMClick={() => onGMClick?.(selectedTeam.id)}
-                      />
-                  )}
+                  <GMProfileCard
+                      gmProfile={leagueGMProfiles?.[selectedTeam.id]}
+                      onGMClick={() => onGMClick?.(selectedTeam.id)}
+                  />
 
                   {/* Coach */}
                   <HeadCoachTable

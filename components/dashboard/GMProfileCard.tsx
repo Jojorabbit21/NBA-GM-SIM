@@ -6,8 +6,6 @@ import { getGMSliderResult, getGMSliderLabel } from '../../services/tradeEngine/
 interface GMProfileCardProps {
     gmProfile?: GMProfile | null | undefined;
     onGMClick?: () => void;
-    /** 사용자 팀일 경우 닉네임 전달 — CPU GM 대신 사용자 표시 */
-    userNickname?: string;
 }
 
 const SLIDER_KEYS: (keyof GMSliders)[] = [
@@ -33,9 +31,7 @@ const SLIDER_COLORS: Record<keyof GMSliders, string> = {
 const thBase = "py-3 px-1.5 text-xs font-black uppercase tracking-widest text-slate-500 whitespace-nowrap border-b border-slate-800 text-center";
 const tdBase = "py-2 px-3 whitespace-nowrap border-b border-slate-800/50";
 
-export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMClick, userNickname }) => {
-    const isUser = userNickname !== undefined;
-
+export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMClick }) => {
     return (
         <div className="overflow-x-auto">
             <table className="w-full border-separate border-spacing-0" style={{ minWidth: '600px' }}>
@@ -64,21 +60,12 @@ export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMCli
                     <tr className="group hover:bg-white/5">
                         {/* 이름 */}
                         <td className={`${tdBase} pl-4 border-r border-slate-800 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10 transition-colors`}>
-                            {isUser ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-indigo-400">{userNickname || 'You'}</span>
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal">
-                                        사용자
-                                    </span>
-                                </div>
-                            ) : (
-                                <span
-                                    className={`text-xs text-slate-200 ${onGMClick ? 'hover:text-indigo-400 cursor-pointer transition-colors' : ''}`}
-                                    onClick={onGMClick}
-                                >
-                                    {gmProfile?.name ?? '-'}
-                                </span>
-                            )}
+                            <span
+                                className={`text-xs text-slate-200 ${onGMClick ? 'hover:text-indigo-400 cursor-pointer transition-colors' : ''}`}
+                                onClick={onGMClick}
+                            >
+                                {gmProfile?.name ?? '-'}
+                            </span>
                         </td>
                         {/* 성격 */}
                         <td className={`${tdBase} border-r border-slate-800 text-center`}>

@@ -133,11 +133,10 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             {/* 단장 */}
                             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                                 <WidgetHeader title="단장" primaryColor={primaryColor} />
-                                {team.id === myTeamId ? (
-                                    <GMProfileCard userNickname={userNickname || 'You'} />
-                                ) : (
-                                    <GMProfileCard gmProfile={leagueGMProfiles?.[team.id]} onGMClick={() => onGMClick?.(team.id)} />
-                                )}
+                                <GMProfileCard
+                                    gmProfile={leagueGMProfiles?.[team.id]}
+                                    onGMClick={() => onGMClick?.(team.id)}
+                                />
                             </div>
                             {/* 코칭 스태프 */}
                             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
