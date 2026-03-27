@@ -24,6 +24,7 @@ let COACH_FA_DATA: CoachFAPool = { coaches: [] };
 type CoachBaseAttributes = {
     role: 'hc' | 'oc' | 'dc' | 'dev' | 'tr' | null;
     current_team: string | null;
+    age?: number | null;
     abilities?: CoachAbilities | null;
     preferences?: HeadCoachPreferences | null;
     contract: { years: number; salary: number; years_remaining: number };
@@ -59,8 +60,9 @@ export function populateStaffData(rows: MetaCoachRow[]): void {
         const coach: Coach = {
             id: row.id,
             name: row.coach_name,
+            age: attrs.age ?? generateCoachAge(idSeed),
             abilities: attrs.abilities ?? generateCoachAbilities(idSeed),
-            ...(attrs.preferences ? { preferences: attrs.preferences } : {}),
+            preferences: attrs.preferences ?? generatePreferences(idSeed),
             contractYears: contract.years,
             contractSalary,
             contractYearsRemaining: contract.years_remaining,
@@ -72,7 +74,6 @@ export function populateStaffData(rows: MetaCoachRow[]): void {
         } else {
             if (!newStaffData[teamId]) newStaffData[teamId] = {};
             if (role === 'hc') {
-                if (!coach.preferences) continue; // HC는 preferences 필수
                 newCoachData[teamId] = coach;
                 newStaffData[teamId].headCoach = coach;
             } else if (role === 'oc') {
@@ -149,6 +150,26 @@ function generateCoachName(seed: number): string {
     const fi = Math.floor(seededRandom(seed) * COACH_FIRST_NAMES.length);
     const li = Math.floor(seededRandom(seed + 31) * COACH_LAST_NAMES.length);
     return `${COACH_FIRST_NAMES[fi]} ${COACH_LAST_NAMES[li]}`;
+}
+
+// ── CoachPreferences / Age 생성 ──
+
+/** 7개 전술 선호도 생성 — 모든 코치 공통 */
+function generatePreferences(baseSeed: number): HeadCoachPreferences {
+    return {
+        offenseIdentity: seededNormalInt(baseSeed + 1,  5.5, 2, 1, 10),
+        tempo:           seededNormalInt(baseSeed + 2,  5.5, 2, 1, 10),
+        scoringFocus:    seededNormalInt(baseSeed + 3,  5.5, 2, 1, 10),
+        pnrEmphasis:     seededNormalInt(baseSeed + 4,  5.5, 2, 1, 10),
+        defenseStyle:    seededNormalInt(baseSeed + 5,  5.5, 2, 1, 10),
+        helpScheme:      seededNormalInt(baseSeed + 6,  5.5, 2, 1, 10),
+        zonePreference:  seededNormalInt(baseSeed + 7,  5.5, 2, 1, 10),
+    };
+}
+
+/** 코치 나이 생성 — 35~72, 평균 48 */
+function generateCoachAge(baseSeed: number): number {
+    return seededNormalInt(baseSeed + 500, 48, 8, 35, 72);
 }
 
 // ── CoachAbilities 생성 ──
@@ -269,23 +290,14 @@ export function generateHeadCoach(teamId: string, tendencySeed: string): HeadCoa
         return { ...COACH_DATA[teamId] };
     }
     const baseSeed = stringToHash(tendencySeed + ':hc:' + teamId);
-    const name = generateCoachName(baseSeed);
-    const preferences: HeadCoachPreferences = {
-        offenseIdentity: seededNormalInt(baseSeed + 1, 5.5, 2, 1, 10),
-        tempo:           seededNormalInt(baseSeed + 2, 5.5, 2, 1, 10),
-        scoringFocus:    seededNormalInt(baseSeed + 3, 5.5, 2, 1, 10),
-        pnrEmphasis:     seededNormalInt(baseSeed + 4, 5.5, 2, 1, 10),
-        defenseStyle:    seededNormalInt(baseSeed + 5, 5.5, 2, 1, 10),
-        helpScheme:      seededNormalInt(baseSeed + 6, 5.5, 2, 1, 10),
-        zonePreference:  seededNormalInt(baseSeed + 7, 5.5, 2, 1, 10),
-    };
     const abilities = generateCoachAbilities(baseSeed + 100);
     const ovr = calcOVRFromAbilities(abilities, 'headCoach');
     const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'headCoach');
     return {
         id: `coach_hc_${teamId}`,
-        name,
-        preferences,
+        name: generateCoachName(baseSeed),
+        age: generateCoachAge(baseSeed),
+        preferences: generatePreferences(baseSeed),
         abilities,
         contractYears,
         contractSalary,
@@ -301,6 +313,8 @@ export function generateOffenseCoordinator(seed: string): OffenseCoordinator {
     return {
         id: `coach_oc_${baseSeed}`,
         name: generateCoachName(baseSeed),
+        age: generateCoachAge(baseSeed),
+        preferences: generatePreferences(baseSeed),
         abilities,
         contractYears,
         contractSalary,
@@ -316,6 +330,8 @@ export function generateDefenseCoordinator(seed: string): DefenseCoordinator {
     return {
         id: `coach_dc_${baseSeed}`,
         name: generateCoachName(baseSeed),
+        age: generateCoachAge(baseSeed),
+        preferences: generatePreferences(baseSeed),
         abilities,
         contractYears,
         contractSalary,
@@ -331,6 +347,8 @@ export function generateDevelopmentCoach(seed: string): DevelopmentCoach {
     return {
         id: `coach_dev_${baseSeed}`,
         name: generateCoachName(baseSeed),
+        age: generateCoachAge(baseSeed),
+        preferences: generatePreferences(baseSeed),
         abilities,
         contractYears,
         contractSalary,
@@ -346,6 +364,8 @@ export function generateTrainingCoach(seed: string): TrainingCoach {
     return {
         id: `coach_trainer_${baseSeed}`,
         name: generateCoachName(baseSeed),
+        age: generateCoachAge(baseSeed),
+        preferences: generatePreferences(baseSeed),
         abilities,
         contractYears,
         contractSalary,
@@ -439,6 +459,8 @@ export function generateCoachFAPool(tendencySeed: string): CoachFAPool {
         coaches.push({
             id: `fa_coach_${seed}`,
             name: generateCoachName(seed),
+            age: generateCoachAge(seed),
+            preferences: generatePreferences(seed),
             abilities,
             contractYears,
             contractSalary,
@@ -446,6 +468,44 @@ export function generateCoachFAPool(tendencySeed: string): CoachFAPool {
         });
     }
     return { coaches };
+}
+
+// ── 기존 세이브 마이그레이션 ──
+
+/**
+ * 세이브에서 로드된 코치에 age/preferences가 없으면 시드 기반으로 채워줌.
+ * (이전 버전 세이브 데이터 호환용)
+ */
+export function normalizeCoach(raw: any): Coach {
+    const idSeed = stringToHash(raw.id ?? '');
+    return {
+        ...raw,
+        age:         raw.age         ?? generateCoachAge(idSeed),
+        preferences: raw.preferences ?? generatePreferences(idSeed),
+        abilities:   raw.abilities   ?? generateCoachAbilities(idSeed),
+    };
+}
+
+/** CoachingStaff 전체를 normalizeCoach 적용 */
+export function normalizeCoachingData(raw: any): LeagueCoachingData {
+    const result: LeagueCoachingData = {};
+    for (const [teamId, staff] of Object.entries(raw ?? {})) {
+        const s = staff as any;
+        result[teamId] = {
+            headCoach:          s.headCoach          ? normalizeCoach(s.headCoach)          : null,
+            offenseCoordinator: s.offenseCoordinator ? normalizeCoach(s.offenseCoordinator) : null,
+            defenseCoordinator: s.defenseCoordinator ? normalizeCoach(s.defenseCoordinator) : null,
+            developmentCoach:   s.developmentCoach   ? normalizeCoach(s.developmentCoach)   : null,
+            trainingCoach:      s.trainingCoach       ? normalizeCoach(s.trainingCoach)       : null,
+        };
+    }
+    return result;
+}
+
+/** CoachFAPool 전체를 normalizeCoach 적용 */
+export function normalizeCoachFAPool(raw: any): CoachFAPool {
+    if (!raw?.coaches) return { coaches: [] };
+    return { coaches: (raw.coaches as any[]).map(normalizeCoach) };
 }
 
 // ── 기존 호환 함수 ──

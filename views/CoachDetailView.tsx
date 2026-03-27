@@ -368,6 +368,9 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                             </InfoRow>
                             {currentCoach ? (
                                 <>
+                                    <InfoRow label="나이">
+                                        <span className="font-mono tabular-nums">{currentCoach.age}세</span>
+                                    </InfoRow>
                                     <InfoRow label="연봉">
                                         <span className="text-emerald-400 font-mono tabular-nums">{formatMoney(currentCoach.contractSalary)}</span>
                                     </InfoRow>

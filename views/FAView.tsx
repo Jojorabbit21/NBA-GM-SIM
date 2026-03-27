@@ -139,12 +139,13 @@ const StaffFATab: React.FC<{
         );
     }, [coachFAPool]);
 
-    // 총 컬럼 수: 이름(1) + 능력치(13) + 요구연봉(1) + 계약(1) + 고용(1) = 17
+    // 총 컬럼 수: 이름(1) + 나이(1) + 능력치(13) + 요구연봉(1) + 계약(1) + 고용(1) = 18
     return (
         <div className="flex-1 min-h-0 overflow-hidden">
             <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
                 <colgroup>
                     <col style={{ width: 180 }} />
+                    <col style={{ width: 46 }} />
                     {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
                     <col style={{ width: 130 }} />
                     <col style={{ width: 60 }} />
@@ -153,7 +154,7 @@ const StaffFATab: React.FC<{
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                     {/* Row 1: category spans */}
                     <tr className="h-10">
-                        <th className="bg-slate-950 border-b border-r border-slate-800 align-middle">
+                        <th colSpan={2} className="bg-slate-950 border-b border-r border-slate-800 align-middle">
                             <div className="flex items-center justify-center h-full">
                                 <span className="text-xs font-black text-slate-500 uppercase tracking-widest">코치 정보</span>
                             </div>
@@ -176,7 +177,8 @@ const StaffFATab: React.FC<{
                     </tr>
                     {/* Row 2: column labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
-                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800">이름</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800/40">이름</TableHeaderCell>
+                        <TableHeaderCell className="bg-slate-950 border-r border-slate-800">나이</TableHeaderCell>
                         {ALL_ABILITY_COLS.map(([, label]) => (
                             <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>
                         ))}
@@ -188,17 +190,20 @@ const StaffFATab: React.FC<{
                 <TableBody>
                     {coaches.length === 0 ? (
                         <TableRow>
-                            <td colSpan={17} className="py-12 text-center text-slate-600 text-xs">FA 코치가 없습니다</td>
+                            <td colSpan={18} className="py-12 text-center text-slate-600 text-xs">FA 코치가 없습니다</td>
                         </TableRow>
                     ) : coaches.map(coach => (
                         <TableRow key={coach.id} className="group">
-                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800">
+                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/40">
                                 <span
                                     className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
                                     onClick={() => navigate(`/coach/${coach.id}`, { state: { coach, teamId: '' } })}
                                 >
                                     {coach.name}
                                 </span>
+                            </TableCell>
+                            <TableCell align="center" className="font-mono text-slate-400 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                                {coach.age}
                             </TableCell>
                             {ALL_ABILITY_COLS.map(([key]) => (
                                 <TableCell key={key} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">

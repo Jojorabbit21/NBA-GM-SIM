@@ -41,8 +41,9 @@ export interface CoachAbilities {
 export interface Coach {
     id: string;
     name: string;
+    age: number;
     abilities: CoachAbilities;
-    preferences?: HeadCoachPreferences; // HC 슬롯 배치 시에만 의미 있음
+    preferences: HeadCoachPreferences;
     contractYears: number;
     contractSalary: number;
     contractYearsRemaining: number;

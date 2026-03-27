@@ -41,7 +41,7 @@ const ABILITY_LABELS: Record<keyof CoachAbilities, string> = {
     teaching: '지도', schemeDepth: '전술', communication: '소통', playerEval: '평가',
     motivation: '동기', playerRelation: '관계', adaptability: '적응',
     developmentVision: '성장', experienceTransfer: '전수', mentalCoaching: '멘탈',
-    athleticTraining: '신체', recovery: '회복', conditioning: '컨디',
+    athleticTraining: '신체', recovery: '회복', conditioning: '체력',
 };
 
 const PREF_LABELS: Record<keyof HeadCoachPreferences, [string, string]> = {
@@ -254,27 +254,25 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         </div>
 
                         {/* 전술 선호도 */}
-                        {coach.preferences && (
-                            <div className="px-4 py-3 space-y-1.5 border-t border-slate-800">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">전술 선호도</div>
-                                {(Object.entries(coach.preferences) as [keyof HeadCoachPreferences, number][]).map(([key, val]) => {
-                                    const [lo, hi] = PREF_LABELS[key];
-                                    return (
-                                        <div key={key} className="text-xs space-y-0.5">
-                                            <div className="flex justify-between text-[10px] text-slate-600">
-                                                <span>{lo}</span><span>{hi}</span>
-                                            </div>
-                                            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full rounded-full bg-indigo-500/70"
-                                                    style={{ width: `${(val / 10) * 100}%` }}
-                                                />
-                                            </div>
+                        <div className="px-4 py-3 space-y-1.5 border-t border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">전술 선호도</div>
+                            {(Object.entries(coach.preferences) as [keyof HeadCoachPreferences, number][]).map(([key, val]) => {
+                                const [lo, hi] = PREF_LABELS[key];
+                                return (
+                                    <div key={key} className="text-xs space-y-0.5">
+                                        <div className="flex justify-between text-[10px] text-slate-600">
+                                            <span>{lo}</span><span>{hi}</span>
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-indigo-500/70"
+                                                style={{ width: `${(val / 10) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
 
                         {/* 현재 계약 (별도 하위 섹션) */}
                         <div className="px-4 py-3 border-t border-slate-800 space-y-1">

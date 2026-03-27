@@ -23,7 +23,7 @@ import { LeagueCoachingData, CoachFAPool } from '../types/coaching';
 import { SavedTeamFinances, LeagueInvestmentState, InvestmentCategory } from '../types/finance';
 import { computeInvestmentEffects } from '../services/financeEngine/investmentEngine';
 import { LeagueTrainingConfigs, getDefaultTrainingConfig } from '../types/training';
-import { generateLeagueStaff, generateCoachFAPool, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
+import { generateLeagueStaff, generateCoachFAPool, getCoachPreferences, normalizeCoachingData, normalizeCoachFAPool } from '../services/coachingStaff/coachGenerator';
 import { getBudgetManager, resetBudgetManager, getFinancesSnapshot } from '../services/financeEngine';
 import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
@@ -504,7 +504,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
                     // 코칭 스태프 로드 (저장된 값 우선, 없으면 생성)
                     if (checkpoint.coaching_staff) {
-                        setCoachingData(checkpoint.coaching_staff);
+                        setCoachingData(normalizeCoachingData(checkpoint.coaching_staff));
                     } else if (checkpoint.tendency_seed) {
                         const teamIds = loadedTeams!.map(t => t.id);
                         const generated = generateLeagueStaff(teamIds, checkpoint.tendency_seed);
@@ -529,7 +529,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     // 코치 FA 풀 복원 (없으면 신규 생성)
                     const savedCoachFAPool = (checkpoint as any).coach_fa_pool as CoachFAPool | null;
                     if (savedCoachFAPool) {
-                        setCoachFAPool(savedCoachFAPool);
+                        setCoachFAPool(normalizeCoachFAPool(savedCoachFAPool));
                     } else if (checkpoint.tendency_seed) {
                         setCoachFAPool(generateCoachFAPool(checkpoint.tendency_seed));
                     }

@@ -504,7 +504,7 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: st
         const diff = payroll - threshold;
         return diff >= 0
             ? <span className={`font-bold font-mono tabular-nums ${overColor}`}>{fmtM(diff)} 초과</span>
-            : <span className="font-bold font-mono tabular-nums text-emerald-400">+{fmtM(-diff)}</span>;
+            : <span className="font-bold font-mono tabular-nums text-emerald-400">{fmtM(-diff)} 미만</span>;
     };
 
     const releaseLabel: Record<string, string> = {
