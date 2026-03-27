@@ -541,26 +541,6 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: st
                 </div>
             </div>
 
-            {/* ② 데드캡 내역 (있을 때만) */}
-            {deadMoney.length > 0 && (
-                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                    <WidgetHeader title="데드캡 내역" primaryColor={primaryColor} />
-                    <DataRow label="데드캡 총액" value={<span className="font-bold font-mono tabular-nums text-red-400">{fmtM(deadTotal)}</span>} />
-                    {deadMoney.map((d, i) => (
-                        <div key={i} className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800 last:border-0">
-                            <div className="flex flex-col min-w-0">
-                                <span className="text-slate-200 truncate">{d.playerName}</span>
-                                <span className="text-slate-500">
-                                    {releaseLabel[d.releaseType] ?? d.releaseType}
-                                    {d.stretchYearsRemaining != null && ` · ${d.stretchYearsRemaining}년 잔여`}
-                                </span>
-                            </div>
-                            <span className="font-bold font-mono tabular-nums text-red-400 shrink-0 ml-4">{fmtM(d.amount)}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-
             {/* ③ 서명 예외 가용 여부 */}
             {(() => {
                 const { SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
@@ -781,14 +761,10 @@ const PayrollTab: React.FC<{
                                     </tr>
                                     {(team.deadMoney ?? []).map((d, i) => {
                                         const colIdx = seasonColumns.indexOf(d.season);
-                                        const typeLabel: Record<string, string> = { waive: 'Waive', buyout: 'Buyout', stretch: 'Stretch' };
                                         return (
                                             <tr key={i} className="border-b border-slate-800 last:border-0">
                                                 <td className="px-4 py-1.5 sticky left-0 bg-slate-900 z-10 border-r border-slate-700 whitespace-nowrap">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-xs text-slate-400">{d.playerName}</span>
-                                                        <span className="text-xs font-bold text-red-400/70">{typeLabel[d.releaseType] ?? d.releaseType}</span>
-                                                    </div>
+                                                    <span className="text-xs text-slate-400">{d.playerName}</span>
                                                 </td>
                                                 {seasonColumns.map((_, ci) => (
                                                     <td key={ci} className="px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700/50">
