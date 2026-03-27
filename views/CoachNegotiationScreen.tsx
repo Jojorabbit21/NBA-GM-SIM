@@ -1,10 +1,9 @@
 /**
  * CoachNegotiationScreen — 코치 채용/연장 오버레이
- * 3패널: 좌(코치 정보) | 중(채팅) | 우(오퍼 폼)
+ * NegotiationScreen과 동일한 3패널 디자인: 좌(코치정보) | 중(채팅) | 우(오퍼폼)  —  비율 2:5:3
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
 import type { Coach, StaffRole, CoachAbilities } from '../types/coaching';
 import { calcCoachDemandSalary, calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { formatMoney } from '../utils/formatMoney';
@@ -82,26 +81,14 @@ function abilityColor(v: number): string {
     return 'text-rose-400';
 }
 
-function abilityBarColor(v: number): string {
-    if (v >= 7) return '#34d399';
-    if (v >= 5) return '#fbbf24';
-    return '#f87171';
-}
-
 function pickMsg(arr: string[], seed: number): string {
     return arr[seed % arr.length];
 }
 
-function evaluateOffer(
-    offerSalary: number,
-    demandSalary: number,
-    round: number,
-): 'accept' | 'counter' | 'reject' {
+function evaluateOffer(offerSalary: number, demandSalary: number, round: number): 'accept' | 'counter' | 'reject' {
     const ratio = offerSalary / demandSalary;
     if (ratio >= 0.95) return 'accept';
-    if (round >= MAX_ROUNDS - 1) {
-        return ratio >= 0.82 ? 'accept' : 'reject';
-    }
+    if (round >= MAX_ROUNDS - 1) return ratio >= 0.82 ? 'accept' : 'reject';
     if (ratio >= 0.78) return 'counter';
     return 'reject';
 }
@@ -113,9 +100,8 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
 }) => {
     const primaryColor = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
     const ovr = calcCoachOVR(coach, role);
-
-    // ── 협상 모드 state ──
     const baseDemand = calcCoachDemandSalary(coach, role, negotiationType === 'extension' ? 'extension' : 'fa');
+
     const [offerSalary, setOfferSalary] = useState(() => Math.round(baseDemand * 0.82));
     const [offerYears, setOfferYears] = useState(3);
     const [round, setRound] = useState(0);
@@ -126,10 +112,8 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     const nextId = () => { idRef.current += 1; return idRef.current; };
-
-    const addMsg = (msgRole: ChatMsg['role'], text: string, isSuccess?: boolean) => {
+    const addMsg = (msgRole: ChatMsg['role'], text: string, isSuccess?: boolean) =>
         setChatMessages(prev => [...prev, { id: nextId(), role: msgRole, text, isSuccess }]);
-    };
 
     // 초기 인사
     useEffect(() => {
@@ -152,11 +136,8 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
 
     const handleSubmitOffer = () => {
         if (phase !== 'negotiating') return;
-
         addMsg('gm', `${formatMoney(offerSalary)}, ${offerYears}년 계약을 제안합니다.`);
-
         const result = evaluateOffer(offerSalary, currentDemand, round);
-
         setTimeout(() => {
             if (result === 'accept') {
                 addMsg('coach', pickMsg(COACH_ACCEPT_MSGS, round + Math.floor(offerSalary / 1_000_000)), true);
@@ -167,17 +148,13 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
             } else if (result === 'reject') {
                 addMsg('coach', pickMsg(COACH_REJECT_MSGS, round));
                 setTimeout(() => {
-                    addMsg('status', '협상 결렬. 코치가 오퍼를 거절했습니다.');
+                    addMsg('status', '협상 결렬. 코치가 오퍼를 거절했습니다.', false);
                     setPhase('rejected');
                 }, 500);
             } else {
                 const ratio = offerSalary / currentDemand;
-                const newDemand = ratio >= 0.88
-                    ? Math.round(currentDemand * 0.97)
-                    : currentDemand;
-                const counterText = pickMsg(COACH_COUNTER_MSGS, round)
-                    .replace('{demand}', formatMoney(newDemand));
-                addMsg('coach', counterText);
+                const newDemand = ratio >= 0.88 ? Math.round(currentDemand * 0.97) : currentDemand;
+                addMsg('coach', pickMsg(COACH_COUNTER_MSGS, round).replace('{demand}', formatMoney(newDemand)));
                 setCurrentDemand(newDemand);
                 setRound(prev => prev + 1);
             }
@@ -189,139 +166,192 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
     const sliderMax = Math.round(baseDemand * 1.30);
     const keyAbilities = ROLE_KEY_ABILITIES[role];
 
-    // 배지
     const typeBadgeLabel = negotiationType === 'hire' ? 'FA 영입' : '계약 연장';
     const typeBadgeClass = negotiationType === 'hire'
         ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
         : 'bg-violet-500/20 text-violet-400 border border-violet-500/30';
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 animate-in fade-in duration-300">
-            {/* 헤더 */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${typeBadgeClass}`}>
-                        {typeBadgeLabel}
-                    </span>
-                    <span className="text-sm font-black text-white">{coach.name}</span>
-                    <span className="text-xs text-slate-500">{ROLE_LABELS[role]}</span>
-                </div>
+        <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col text-slate-200 animate-in fade-in duration-200">
+
+            {/* ── 헤더 ── */}
+            <div className="flex-shrink-0 h-12 px-5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
                 <button
                     onClick={onClose}
-                    className="w-7 h-7 rounded-md bg-slate-800 hover:bg-slate-700 transition-colors flex items-center justify-center text-slate-400"
+                    className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors flex-shrink-0"
                 >
-                    <X size={14} />
+                    <span>←</span>
+                    <span>뒤로</span>
                 </button>
             </div>
 
-            {/* 3패널 바디 */}
-            <div className="flex-1 min-h-0 flex">
+            {/* ── 3패널 메인 ── */}
+            <div className="flex-1 flex overflow-hidden min-h-0 p-3 gap-3">
 
                 {/* ── 좌: 코치 정보 ── */}
-                <div className="w-[220px] flex-shrink-0 border-r border-slate-800 bg-slate-950 flex flex-col overflow-y-auto">
-                    {/* OVR + 역할 */}
-                    <div className="px-5 pt-6 pb-4 border-b border-slate-800">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                {ROLE_LABELS[role]}
-                            </span>
-                            <span className={`text-2xl font-black font-mono tabular-nums ${abilityColor(ovr)}`}>
-                                {ovr}
-                            </span>
+                <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
+
+                    {/* 팀컬러 헤더 */}
+                    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-sm font-bold text-white">코치 정보</span>
+                    </div>
+
+                    {/* 스크롤 영역 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                        {/* 이름 */}
+                        <div className="px-4 pt-4 pb-2">
+                            <div className="text-base font-black text-white ko-tight leading-tight">{coach.name}</div>
                         </div>
-                        <div className="text-sm font-black text-white leading-tight mt-1">{coach.name}</div>
-                        <div className="mt-2">
+
+                        {/* 기본 정보 */}
+                        <div className="px-4 pb-3 space-y-1">
+                            {[
+                                { label: '역할',   value: ROLE_LABELS[role] },
+                                { label: 'OVR',    value: String(ovr) },
+                                { label: '연봉',   value: formatMoney(coach.contractSalary) },
+                                { label: '계약',   value: `${coach.contractYears}년` },
+                            ].map(({ label, value }) => (
+                                <div key={label} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">{label}</span>
+                                    <span className="font-mono text-slate-200">{value}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 핵심 능력치 */}
+                        <div className="px-4 py-3 space-y-1">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">핵심 능력치</div>
+                            {keyAbilities.map(k => (
+                                <div key={k} className="flex justify-between items-center text-xs gap-2">
+                                    <span className="text-slate-500 flex-shrink-0">{ABILITY_SHORT[k]}</span>
+                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: `${(coach.abilities[k] / 10) * 100}%`,
+                                                backgroundColor: coach.abilities[k] >= 7 ? '#34d399' : coach.abilities[k] >= 5 ? '#fbbf24' : '#f87171',
+                                            }}
+                                        />
+                                    </div>
+                                    <span className={`font-mono font-bold w-4 text-right flex-shrink-0 ${abilityColor(coach.abilities[k])}`}>
+                                        {coach.abilities[k]}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 전체 능력치 */}
+                        <div className="px-4 py-3 space-y-1">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">전체 능력치</div>
+                            {(Object.entries(coach.abilities) as [keyof CoachAbilities, number][]).map(([key, val]) => (
+                                <div key={key} className="flex justify-between items-center text-xs gap-2">
+                                    <span className="text-slate-500 flex-shrink-0">{ABILITY_SHORT[key]}</span>
+                                    <span className={`font-mono font-bold ${val >= 8 ? 'text-emerald-400' : val >= 6 ? 'text-slate-200' : val >= 4 ? 'text-slate-400' : 'text-red-400'}`}>
+                                        {val}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 요구 조건 */}
+                        <div className="px-4 py-3 space-y-1">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                                {negotiationType === 'extension' ? '연장 요구 조건' : '요구 조건'}
+                            </div>
+                            {negotiationType === 'extension' && (
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">현재 연봉</span>
+                                    <span className="font-mono text-slate-400">{formatMoney(coach.contractSalary)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">요구 연봉</span>
+                                <span className="font-mono font-bold text-emerald-400">{formatMoney(baseDemand)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">요구 계약</span>
+                                <span className="font-mono text-slate-300">{coach.contractYears}년</span>
+                            </div>
+                            {negotiationType === 'extension' && (
+                                <div className="pt-1 text-[9px] text-slate-600">* 현재 연봉 대비 10% 할인 적용</div>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+
+                {/* ── 중앙: 채팅 ── */}
+                <div className="flex-[5] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
+
+                    {/* 팀컬러 헤더 */}
+                    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-sm font-bold text-white">코치와 대화</span>
+                    </div>
+
+                    {/* 채팅 서브헤더 */}
+                    <div className="flex-shrink-0 p-4 border-b border-slate-800 bg-slate-800/50 flex items-center gap-3">
+                        <div
+                            className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
+                            style={{ backgroundColor: primaryColor }}
+                        >
+                            {coach.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white ko-tight">{coach.name}</div>
+                            <div className="text-xs text-slate-500">{ROLE_LABELS[role]} · OVR {ovr}</div>
+                        </div>
+                        <div className="flex-shrink-0">
                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${typeBadgeClass}`}>
                                 {typeBadgeLabel}
                             </span>
                         </div>
                     </div>
 
-                    {/* 핵심 능력치 */}
-                    <div className="px-5 py-4 border-b border-slate-800">
-                        <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-3">핵심 능력치</div>
-                        <div className="flex flex-col gap-2">
-                            {keyAbilities.map(k => (
-                                <div key={k} className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] text-slate-400 w-8 shrink-0">{ABILITY_SHORT[k]}</span>
-                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full rounded-full transition-all"
-                                            style={{
-                                                width: `${(coach.abilities[k] / 10) * 100}%`,
-                                                backgroundColor: abilityBarColor(coach.abilities[k]),
-                                            }}
-                                        />
+                    {/* 메시지 목록 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                        {chatMessages.map(msg => {
+                            if (msg.role === 'status') {
+                                if (msg.isSuccess) {
+                                    return (
+                                        <div key={msg.id} className="flex flex-col items-center gap-2">
+                                            <span className="text-xs text-emerald-400 font-bold text-center">{msg.text}</span>
+                                            <button
+                                                onClick={() => onAccept(offerSalary, offerYears)}
+                                                className="px-6 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                                            >계약 체결</button>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div key={msg.id} className="flex flex-col items-center gap-2">
+                                        <span className="text-xs text-slate-500 italic">{msg.text}</span>
+                                        <button
+                                            onClick={onClose}
+                                            className="px-6 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                                        >닫기</button>
                                     </div>
-                                    <span className={`text-[10px] font-black font-mono tabular-nums w-4 text-right shrink-0 ${abilityColor(coach.abilities[k])}`}>
-                                        {coach.abilities[k]}
-                                    </span>
+                                );
+                            }
+                            if (msg.role === 'gm') {
+                                return (
+                                    <div key={msg.id} className="flex flex-col items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                        <span className="text-xs font-bold text-indigo-400 px-1">GM</span>
+                                        <div className="max-w-[85%] bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-br-sm px-4 py-3">
+                                            <p className="text-sm text-white leading-relaxed">{msg.text}</p>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div key={msg.id} className="flex flex-col items-start gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                    <span className="text-xs font-bold text-slate-400 px-1">{coach.name}</span>
+                                    <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
+                                        <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 계약 정보 */}
-                    <div className="px-5 py-4">
-                        <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">
-                            {negotiationType === 'extension' ? '연장 요구 조건' : '요구 조건'}
-                        </div>
-                        {negotiationType === 'extension' && (
-                            <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-[10px] text-slate-500">현재 연봉</span>
-                                <span className="text-[10px] font-mono text-slate-400">{formatMoney(coach.contractSalary)}</span>
-                            </div>
-                        )}
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] text-slate-400">요구 연봉</span>
-                            <span className="text-xs font-black font-mono text-emerald-400">{formatMoney(coach.contractSalary)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-slate-400">요구 계약</span>
-                            <span className="text-[10px] font-mono text-slate-300">{coach.contractYears}년</span>
-                        </div>
-                        {negotiationType === 'extension' && (
-                            <div className="mt-2 text-[9px] text-slate-600">
-                                * 현재 연봉 대비 10% 할인 적용
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── 중: 채팅 ── */}
-                <div className="flex-1 min-w-0 flex flex-col bg-slate-950">
-                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-5 py-4 flex flex-col gap-3">
-                        {chatMessages.map(msg => (
-                            <div
-                                key={msg.id}
-                                className={`flex ${msg.role === 'gm' ? 'justify-end' : msg.role === 'status' ? 'justify-center' : 'justify-start'}`}
-                            >
-                                {msg.role === 'status' ? (
-                                    <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${msg.isSuccess ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
-                                        {msg.text}
-                                    </div>
-                                ) : msg.role === 'gm' ? (
-                                    <div className="max-w-[75%]">
-                                        <div className="text-[9px] font-black uppercase tracking-wider text-slate-500 text-right mb-0.5">GM</div>
-                                        <div
-                                            className="px-3 py-2 rounded-xl rounded-br-sm text-xs text-white"
-                                            style={{ backgroundColor: primaryColor + '40', border: `1px solid ${primaryColor}50` }}
-                                        >
-                                            {msg.text}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="max-w-[75%]">
-                                        <div className="text-[9px] font-black uppercase tracking-wider text-slate-500 mb-0.5">
-                                            {coach.name}
-                                        </div>
-                                        <div className="px-3 py-2 rounded-xl rounded-bl-sm text-xs text-slate-200 bg-slate-800 border border-slate-700">
-                                            {msg.text}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                         <div ref={chatEndRef} />
                     </div>
 
@@ -332,9 +362,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                             <button
                                 onClick={() => onAccept(offerSalary, offerYears)}
                                 className="px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-                            >
-                                계약 체결
-                            </button>
+                            >계약 체결</button>
                         </div>
                     )}
                     {phase === 'rejected' && (
@@ -343,30 +371,31 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                             <button
                                 onClick={onClose}
                                 className="px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                            >
-                                닫기
-                            </button>
+                            >닫기</button>
                         </div>
                     )}
                 </div>
 
-                {/* ── 우: 계약 제안 ── */}
-                <div className="w-[240px] flex-shrink-0 border-l border-slate-800 bg-slate-900 flex flex-col">
-                    <div className="px-4 py-3 border-b border-slate-800">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">계약 제안</div>
+                {/* ── 우측: 계약 제안 ── */}
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${phase !== 'negotiating' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+
+                    {/* 팀컬러 헤더 */}
+                    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-sm font-bold text-white">계약 제안</span>
                     </div>
 
-                    <div className="flex-1 px-4 py-4 flex flex-col gap-4 overflow-y-auto">
+                    {/* 폼 스크롤 영역 */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
+
                         {/* 계약 기간 */}
                         <div>
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">계약 기간</div>
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">계약 기간</div>
                             <div className="flex gap-1.5">
                                 {[2, 3, 4].map(y => (
                                     <button
                                         key={y}
                                         onClick={() => setOfferYears(y)}
-                                        disabled={phase !== 'negotiating'}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors disabled:opacity-50 ${
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors ${
                                             offerYears === y
                                                 ? 'bg-indigo-600 text-white'
                                                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -381,7 +410,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         {/* 연봉 슬라이더 */}
                         <div>
                             <div className="flex items-center justify-between mb-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">연봉/년</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연봉/년</div>
                                 <div className="text-sm font-black font-mono text-white">{formatMoney(offerSalary)}</div>
                             </div>
                             <input
@@ -391,8 +420,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                                 step={50_000}
                                 value={offerSalary}
                                 onChange={e => setOfferSalary(Number(e.target.value))}
-                                disabled={phase !== 'negotiating'}
-                                className="w-full accent-indigo-500 disabled:opacity-50"
+                                className="w-full accent-indigo-500"
                             />
                             <div className="flex justify-between text-[9px] text-slate-600 mt-1">
                                 <span>{formatMoney(sliderMin)}</span>
@@ -401,23 +429,21 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         </div>
 
                         {/* 요약 */}
-                        <div className="bg-slate-800 rounded-xl px-3 py-3 flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-slate-400">총액</span>
-                                <span className="text-xs font-mono text-slate-300">{formatMoney(offerSalary * offerYears)}</span>
+                        <div className="bg-slate-800 rounded-xl px-4 py-3 flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-400">총액</span>
+                                <span className="font-mono text-slate-200">{formatMoney(offerSalary * offerYears)}</span>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-slate-400">요구 대비</span>
-                                <span className={`text-[10px] font-black font-mono ${
-                                    ratio >= 0.95 ? 'text-emerald-400' : ratio >= 0.82 ? 'text-amber-400' : 'text-rose-400'
-                                }`}>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-400">요구 대비</span>
+                                <span className={`font-black font-mono ${ratio >= 0.95 ? 'text-emerald-400' : ratio >= 0.82 ? 'text-amber-400' : 'text-rose-400'}`}>
                                     {(ratio * 100).toFixed(0)}%
                                 </span>
                             </div>
                             {round > 0 && (
-                                <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 mt-0.5">
-                                    <span className="text-[10px] text-slate-500">협상 라운드</span>
-                                    <span className="text-[10px] font-mono text-slate-400">{round} / {MAX_ROUNDS}</span>
+                                <div className="flex justify-between items-center text-xs border-t border-slate-700 pt-1.5">
+                                    <span className="text-slate-500">협상 라운드</span>
+                                    <span className="font-mono text-slate-400">{round} / {MAX_ROUNDS}</span>
                                 </div>
                             )}
                         </div>
@@ -425,18 +451,21 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         <div className="text-[9px] text-slate-600 text-center">
                             현재 요구: {formatMoney(currentDemand)} / {coach.contractYears}년
                         </div>
+
                     </div>
 
-                    <div className="px-4 pb-4 flex-shrink-0">
+                    {/* 제출 버튼 */}
+                    <div className="p-4 border-t border-slate-800 flex-shrink-0">
                         <button
                             onClick={handleSubmitOffer}
                             disabled={phase !== 'negotiating'}
-                            className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="w-full py-2.5 rounded-xl text-sm font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            {phase === 'negotiating' ? '오퍼 제출' : phase === 'accepted' ? '수락됨' : '거절됨'}
+                            오퍼 제출
                         </button>
                     </div>
                 </div>
+
             </div>
         </div>
     );

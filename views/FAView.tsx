@@ -7,12 +7,11 @@ import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
 import { NegotiationScreen } from './NegotiationScreen';
 import { RosterGrid } from '../components/roster/RosterGrid';
-import type { CoachFAPool, CoachingStaff, StaffRole, CoachAbilities } from '../types/coaching';
+import type { CoachFAPool, StaffRole, CoachAbilities } from '../types/coaching';
 import type { Coach } from '../types/coaching';
 import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 import { formatMoney } from '../utils/formatMoney';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
-import { getStaffSlot } from '../services/coachingStaff/coachHiringEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -39,7 +38,6 @@ interface FAViewProps {
     initialNegotiateId?: string;  // PlayerDetailView에서 직접 협상 진입 시 자동 오픈
     // 코칭 스태프 탭
     coachFAPool?: CoachFAPool | null;
-    myTeamStaff?: CoachingStaff | null;
     onHireCoach?: (role: StaffRole, coachId: string, finalSalary?: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
 }
@@ -104,21 +102,6 @@ const STAFF_ROLE_LABELS_FA: Record<StaffRole, string> = {
     developmentCoach: '디벨롭', trainingCoach: '트레이너',
 };
 
-const ROLE_MAIN_ABILITIES_FA: Record<StaffRole, [keyof CoachAbilities, keyof CoachAbilities, keyof CoachAbilities]> = {
-    headCoach:          ['teaching', 'schemeDepth', 'motivation'],
-    offenseCoordinator: ['schemeDepth', 'communication', 'playerEval'],
-    defenseCoordinator: ['adaptability', 'mentalCoaching', 'schemeDepth'],
-    developmentCoach:   ['developmentVision', 'experienceTransfer', 'teaching'],
-    trainingCoach:      ['athleticTraining', 'recovery', 'conditioning'],
-};
-
-const ABILITY_SHORT_FA: Record<keyof CoachAbilities, string> = {
-    teaching: '지도', schemeDepth: '전술', communication: '소통', playerEval: '평가',
-    motivation: '동기', playerRelation: '관계', adaptability: '적응',
-    developmentVision: '성장', experienceTransfer: '전수', mentalCoaching: '멘탈',
-    athleticTraining: '신체', recovery: '회복', conditioning: '컨디',
-};
-
 const ALL_STAFF_ROLES_FA: StaffRole[] = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'];
 
 function coachValColor(v: number): string {
@@ -127,136 +110,92 @@ function coachValColor(v: number): string {
     return 'text-rose-400';
 }
 
+const FIXED_ABILITY_COLS: Array<[keyof CoachAbilities, string]> = [
+    ['teaching', '지도'],
+    ['schemeDepth', '전술'],
+    ['adaptability', '적응'],
+    ['developmentVision', '성장'],
+    ['athleticTraining', '신체'],
+];
+
 const StaffFATab: React.FC<{
     coachFAPool?: CoachFAPool | null;
-    myTeamStaff?: CoachingStaff | null;
     onNegotiateCoach?: (coach: Coach, role: StaffRole) => void;
-    onCoachFireTarget?: (coach: Coach, role: StaffRole) => void;
-}> = ({ coachFAPool, myTeamStaff, onNegotiateCoach, onCoachFireTarget }) => {
-    const [selectedRole, setSelectedRole] = useState<StaffRole>('headCoach');
-
-    const mainAbilKeys = ROLE_MAIN_ABILITIES_FA[selectedRole];
+}> = ({ coachFAPool, onNegotiateCoach }) => {
+    const [hireRoles, setHireRoles] = useState<Record<string, StaffRole>>({});
 
     const coaches = useMemo(() => {
         if (!coachFAPool?.coaches) return [];
         return [...coachFAPool.coaches].sort(
-            (a, b) => calcCoachOVR(b, selectedRole) - calcCoachOVR(a, selectedRole)
+            (a, b) => calcCoachOVR(b, 'headCoach') - calcCoachOVR(a, 'headCoach')
         );
-    }, [coachFAPool, selectedRole]);
-
-    const currentCoach = myTeamStaff ? getStaffSlot(myTeamStaff, selectedRole) : null;
+    }, [coachFAPool]);
 
     return (
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
-            {/* Role selector */}
-            <div className="flex gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl flex-shrink-0">
-                {ALL_STAFF_ROLES_FA.map(role => (
-                    <button
-                        key={role}
-                        onClick={() => setSelectedRole(role)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${
-                            selectedRole === role ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                        }`}
-                    >
-                        {STAFF_ROLE_LABELS_FA[role]}
-                    </button>
-                ))}
-            </div>
-
-            {/* 현재 배치 */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex-shrink-0">
-                <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
-                    <span className="text-xs font-black text-white uppercase tracking-widest">현재 배치</span>
-                    <span className="text-xs text-slate-500">{STAFF_ROLE_LABELS_FA[selectedRole]}</span>
-                </div>
-                {currentCoach ? (
-                    <div className="flex items-center gap-3 px-4 py-3">
-                        <div className="flex flex-col flex-1 min-w-0">
-                            <span className="text-sm font-black text-white truncate">{currentCoach.name}</span>
-                            <div className="flex items-center gap-3 mt-0.5">
-                                <span className="text-xs font-mono text-emerald-400">{formatMoney(currentCoach.contractSalary)}</span>
-                                <span className="text-xs text-slate-500">잔여 {currentCoach.contractYearsRemaining}년</span>
-                                <span className={`text-xs font-black font-mono ${coachValColor(calcCoachOVR(currentCoach, selectedRole))}`}>
-                                    OVR {calcCoachOVR(currentCoach, selectedRole)}
-                                </span>
-                            </div>
-                        </div>
-                        {onCoachFireTarget && currentCoach && (
-                            <button
-                                onClick={() => {
-                                    const coach = myTeamStaff ? getStaffSlot(myTeamStaff, selectedRole) : null;
-                                    if (coach) onCoachFireTarget(coach, selectedRole);
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 transition-colors shrink-0"
-                            >
-                                해고
-                            </button>
-                        )}
-                    </div>
-                ) : (
-                    <div className="px-4 py-3">
-                        <span className="text-xs text-slate-600 font-bold">공석 — FA 풀에서 코치를 고용하세요</span>
-                    </div>
-                )}
-            </div>
-
-            {/* FA 코치 테이블 */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
-                    <span className="text-xs font-black text-white uppercase tracking-widest">FA 코치 풀</span>
-                    <span className="text-xs text-slate-500">{coaches.length}명</span>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-xs">
-                        <thead className="sticky top-0 z-10">
-                            <tr className="bg-slate-800 border-b border-slate-700">
-                                <th className="px-4 py-2 text-left font-bold uppercase tracking-wider text-slate-400">이름</th>
-                                <th className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-12">OVR</th>
-                                {mainAbilKeys.map(k => (
-                                    <th key={k} className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-12">{ABILITY_SHORT_FA[k]}</th>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+            <table className="w-full border-collapse text-xs">
+                <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-900 border-b border-slate-700">
+                        <th className="px-4 py-2.5 text-left font-bold uppercase tracking-wider text-slate-400">이름</th>
+                        <th className="px-3 py-2.5 text-center font-bold uppercase tracking-wider text-slate-400 w-12">OVR</th>
+                        {FIXED_ABILITY_COLS.map(([, label]) => (
+                            <th key={label} className="px-3 py-2.5 text-center font-bold uppercase tracking-wider text-slate-400 w-12">{label}</th>
+                        ))}
+                        <th className="px-3 py-2.5 text-right font-bold uppercase tracking-wider text-slate-400">요구 연봉</th>
+                        <th className="px-3 py-2.5 text-center font-bold uppercase tracking-wider text-slate-400 w-14">계약</th>
+                        <th className="px-3 py-2.5 text-center font-bold uppercase tracking-wider text-slate-400 w-24">직무</th>
+                        <th className="px-3 py-2.5 w-14" />
+                    </tr>
+                </thead>
+                <tbody>
+                    {coaches.length === 0 ? (
+                        <tr>
+                            <td colSpan={11} className="px-4 py-12 text-center text-slate-600">FA 코치가 없습니다</td>
+                        </tr>
+                    ) : coaches.map(coach => {
+                        const role = hireRoles[coach.id] ?? 'headCoach';
+                        const avg = calcCoachOVR(coach, role);
+                        return (
+                            <tr key={coach.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
+                                <td className="px-4 py-2 font-semibold text-slate-200 whitespace-nowrap">{coach.name}</td>
+                                <td className="px-3 py-2 text-center">
+                                    <span className={`font-black font-mono tabular-nums ${coachValColor(avg)}`}>{avg}</span>
+                                </td>
+                                {FIXED_ABILITY_COLS.map(([key]) => (
+                                    <td key={key} className="px-3 py-2 text-center">
+                                        <span className={`font-black font-mono tabular-nums ${coachValColor(coach.abilities[key] ?? 0)}`}>
+                                            {coach.abilities[key] ?? 0}
+                                        </span>
+                                    </td>
                                 ))}
-                                <th className="px-3 py-2 text-right font-bold uppercase tracking-wider text-slate-400">요구 연봉</th>
-                                <th className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-16">계약</th>
-                                <th className="px-3 py-2 w-16" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {coaches.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-600">FA 코치가 없습니다</td>
-                                </tr>
-                            ) : coaches.map(coach => {
-                                const avg = calcCoachOVR(coach, selectedRole);
-                                return (
-                                    <tr key={coach.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-2 font-semibold text-slate-200 whitespace-nowrap">{coach.name}</td>
-                                        <td className="px-3 py-2 text-center">
-                                            <span className={`font-black font-mono tabular-nums ${coachValColor(avg)}`}>{avg}</span>
-                                        </td>
-                                        {mainAbilKeys.map(k => (
-                                            <td key={k} className="px-3 py-2 text-center">
-                                                <span className={`font-black font-mono tabular-nums ${coachValColor(coach.abilities[k])}`}>{coach.abilities[k]}</span>
-                                            </td>
+                                <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{formatMoney(coach.contractSalary)}</td>
+                                <td className="px-3 py-2 text-center text-slate-400 font-mono">{coach.contractYears}년</td>
+                                <td className="px-3 py-2">
+                                    <select
+                                        value={role}
+                                        onChange={e => setHireRoles(prev => ({ ...prev, [coach.id]: e.target.value as StaffRole }))}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                                    >
+                                        {ALL_STAFF_ROLES_FA.map(r => (
+                                            <option key={r} value={r}>{STAFF_ROLE_LABELS_FA[r]}</option>
                                         ))}
-                                        <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{formatMoney(coach.contractSalary)}</td>
-                                        <td className="px-3 py-2 text-center text-slate-400 font-mono">{coach.contractYears}년</td>
-                                        <td className="px-3 py-2 text-right">
-                                            {onNegotiateCoach && (
-                                                <button
-                                                    onClick={() => onNegotiateCoach?.(coach, selectedRole)}
-                                                    className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                                >
-                                                    고용
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                                    </select>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                    {onNegotiateCoach && (
+                                        <button
+                                            onClick={() => onNegotiateCoach(coach, role)}
+                                            className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                                        >
+                                            고용
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
         </div>
     );
 };
@@ -357,7 +296,6 @@ export const FAView: React.FC<FAViewProps> = ({
     currentDate = '',
     initialNegotiateId,
     coachFAPool,
-    myTeamStaff,
     onHireCoach,
     onFireCoach,
 }) => {
@@ -490,9 +428,7 @@ export const FAView: React.FC<FAViewProps> = ({
             {mainTab === 'staff' && (
                 <StaffFATab
                     coachFAPool={coachFAPool}
-                    myTeamStaff={myTeamStaff}
                     onNegotiateCoach={(coach, role) => setCoachNegTarget({ coach, role })}
-                    onCoachFireTarget={(coach, role) => setCoachFireTarget({ coach, role })}
                 />
             )}
 
