@@ -14,6 +14,7 @@ import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 import { formatMoney } from '../utils/formatMoney';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { Table, TableBody, TableRow, TableCell, TableHeaderCell } from '../components/common/Table';
+import { TabBar } from '../components/common/TabBar';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -397,19 +398,14 @@ export const FAView: React.FC<FAViewProps> = ({
     return (
         <div className="relative h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
             {/* ── 탭 바 ── */}
-            <div className="flex-shrink-0 border-b border-slate-800 bg-slate-950 flex items-center px-6 h-12 gap-8">
-                {(['players', 'staff'] as const).map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setMainTab(tab)}
-                        className={`h-full border-b-2 text-sm font-black uppercase tracking-wide transition-all ${
-                            mainTab === tab ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent hover:text-slate-300'
-                        }`}
-                    >
-                        {tab === 'players' ? '선수' : '스태프'}
-                    </button>
-                ))}
-            </div>
+            <TabBar
+                tabs={[
+                    { id: 'players', label: '선수' },
+                    { id: 'staff', label: '스태프' },
+                ]}
+                activeTab={mainTab}
+                onTabChange={setMainTab}
+            />
 
             {/* ── 선수 탭 ── */}
             {mainTab === 'players' && (!market ? (

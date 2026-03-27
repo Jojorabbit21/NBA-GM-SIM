@@ -8,7 +8,6 @@ import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
 import type { Coach, CoachFAPool, StaffRole } from '../types/coaching';
 import { CoachNegotiationScreen } from './CoachNegotiationScreen';
-import { CoachStaffTable } from '../components/dashboard/CoachStaffTable';
 import type { LeagueTrainingConfigs, TeamTrainingConfig } from '../types/training';
 import { LeaguePickAssets } from '../types/draftAssets';
 import type { PlayerContract } from '../types/player';
@@ -19,8 +18,7 @@ import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
 import { NegotiationScreen } from './NegotiationScreen';
 import type { NegotiationState } from '../services/fa/extensionEngine';
 import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
-import { GMProfileCard } from '../components/dashboard/GMProfileCard';
-import { LeagueGMProfiles } from '../types/gm';
+import { LeagueGMProfiles, GM_PERSONALITY_LABELS, DIRECTION_LABELS } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
@@ -129,36 +127,131 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             onCoachClick={onCoachClick}
                         />
                     )}
-                    {activeTab === 'coaching' && (
-                        <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
-                            {/* 단장 */}
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <WidgetHeader title="단장" primaryColor={primaryColor} />
-                                <GMProfileCard
-                                    gmProfile={leagueGMProfiles?.[team.id]}
-                                    onGMClick={() => onGMClick?.(team.id)}
-                                />
-                            </div>
-                            {/* 코칭 스태프 */}
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-800/60">
-                                    <span className="text-xs font-black text-white uppercase tracking-widest">코칭 스태프</span>
-                                    {team.id === myTeamId && (
-                                        <button
-                                            onClick={onCoachMarketOpen}
-                                            className="text-xs px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-colors font-bold"
-                                        >
-                                            코치 영입
-                                        </button>
-                                    )}
+                    {activeTab === 'coaching' && (() => {
+                        const gm = leagueGMProfiles?.[team.id];
+                        const staff = coachingData?.[team.id];
+                        const simYear = parseInt(currentSimDate.slice(0, 4));
+                        const thCls = 'px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700';
+                        const tdCls = 'px-4 py-1.5 text-xs whitespace-nowrap border-r border-slate-700';
+                        return (
+                            <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
+                                {/* ── 단장 테이블 ── */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                    <WidgetHeader title="단장" primaryColor={primaryColor} />
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-800 border-b border-slate-700">
+                                                    <th className={`${thCls} text-left sticky left-0 bg-slate-800 z-10`}>직무</th>
+                                                    <th className={`${thCls} text-left`}>이름</th>
+                                                    <th className={`${thCls} text-right`}>나이</th>
+                                                    <th className={`${thCls} text-left`}>성격</th>
+                                                    <th className={`${thCls} text-left`}>노선</th>
+                                                    {GM_SLIDER_LABELS.map(([, label]) => (
+                                                        <th key={label} className={`${thCls} text-right`}>{label}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {gm ? (
+                                                    <tr className="group border-b border-slate-800 hover:bg-slate-800">
+                                                        <td className={`${tdCls} text-slate-400 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10`}>단장</td>
+                                                        <td className={`${tdCls}`}>
+                                                            <button
+                                                                onClick={() => onGMClick?.(team.id)}
+                                                                className="text-slate-200 hover:text-indigo-400 transition-colors font-semibold"
+                                                            >
+                                                                {gm.name}
+                                                            </button>
+                                                        </td>
+                                                        <td className={`${tdCls} text-right font-mono tabular-nums text-slate-300`}>
+                                                            {gm.birthYear ? simYear - gm.birthYear : '—'}
+                                                        </td>
+                                                        <td className={`${tdCls} text-slate-300`}>{GM_PERSONALITY_LABELS[gm.personalityType]}</td>
+                                                        <td className={`${tdCls} text-slate-300`}>{DIRECTION_LABELS[gm.direction]}</td>
+                                                        {GM_SLIDER_LABELS.map(([key]) => (
+                                                            <td key={key} className={`${tdCls} text-right font-mono tabular-nums font-bold ${coachValColor((gm.sliders as any)[key] ?? 0)}`}>
+                                                                {(gm.sliders as any)[key] ?? '—'}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan={10} className="py-8 text-center text-slate-600 text-xs">단장 정보 없음</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                                <CoachStaffTable
-                                    staff={coachingData?.[team.id]}
-                                    onCoachClick={(role) => onCoachClick?.(team.id, role)}
-                                />
+
+                                {/* ── 코칭 스태프 테이블 ── */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                    <div className="px-4 py-2 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: primaryColor }}>
+                                        <span className="text-sm font-bold text-white">코칭 스태프</span>
+                                        {team.id === myTeamId && (
+                                            <button
+                                                onClick={onCoachMarketOpen}
+                                                className="text-xs px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors font-bold"
+                                            >
+                                                코치 영입
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-slate-800 border-b border-slate-700">
+                                                    <th className={`${thCls} text-left sticky left-0 bg-slate-800 z-10`}>직무</th>
+                                                    <th className={`${thCls} text-left`}>이름</th>
+                                                    <th className={`${thCls} text-right`}>나이</th>
+                                                    <th className={`${thCls} text-right`}>연봉</th>
+                                                    {COACH_ABILITY_LABELS.map(([, label]) => (
+                                                        <th key={label} className={`${thCls} text-right`}>{label}</th>
+                                                    ))}
+                                                    <th className={`${thCls} text-right`}>계약</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {STAFF_ROLES.map(r => {
+                                                    const coach = (staff as any)?.[r.key] as import('../types/coaching').Coach | undefined | null;
+                                                    return (
+                                                        <tr key={r.key} className="group border-b border-slate-800 hover:bg-slate-800">
+                                                            <td className={`${tdCls} text-slate-400 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10`}>{r.label}</td>
+                                                            <td className={`${tdCls}`}>
+                                                                {coach ? (
+                                                                    <button
+                                                                        onClick={() => onCoachClick?.(team.id, r.key)}
+                                                                        className="text-slate-200 hover:text-indigo-400 transition-colors font-semibold"
+                                                                    >
+                                                                        {coach.name}
+                                                                    </button>
+                                                                ) : <span className="text-slate-700">—</span>}
+                                                            </td>
+                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                                {coach?.age ?? '—'}
+                                                            </td>
+                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
+                                                                {coach ? fmtSalary(coach.contractSalary) : '—'}
+                                                            </td>
+                                                            {COACH_ABILITY_LABELS.map(([key]) => (
+                                                                <td key={key} className={`${tdCls} text-right font-mono tabular-nums font-bold ${coach ? coachValColor(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : 'text-slate-700'}`}>
+                                                                    {coach?.abilities[key as keyof typeof coach.abilities] ?? '—'}
+                                                                </td>
+                                                            ))}
+                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                                {coach?.contractYears ? `${coach.contractYears}년` : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                     {activeTab === 'draftPicks' && (
                         <DraftPicksPanel teamId={myTeamId} leaguePickAssets={leaguePickAssets} primaryColor={primaryColor} />
                     )}
@@ -602,6 +695,21 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: st
     );
 };
 
+// ── 코칭 탭 상수 ──
+const COACH_ABILITY_LABELS: [string, string][] = [
+    ['teaching', '지도'], ['schemeDepth', '전술'], ['communication', '소통'],
+    ['playerEval', '평가'], ['motivation', '동기'], ['playerRelation', '관계'],
+    ['adaptability', '적응'], ['developmentVision', '성장'], ['experienceTransfer', '경험'],
+    ['mentalCoaching', '멘탈'], ['athleticTraining', '신체'], ['recovery', '회복'],
+    ['conditioning', '컨디션'],
+];
+const GM_SLIDER_LABELS: [string, string][] = [
+    ['aggressiveness', '공격성'], ['starWillingness', '스타'], ['youthBias', '유스'],
+    ['riskTolerance', '리스크'], ['pickWillingness', '픽'],
+];
+const coachValColor = (v: number) =>
+    v >= 8 ? 'text-emerald-400' : v >= 6 ? 'text-slate-200' : v >= 4 ? 'text-slate-400' : 'text-slate-600';
+
 // ── 선수 급여 탭 ──
 const STAFF_ROLES: { key: 'headCoach' | 'offenseCoordinator' | 'defenseCoordinator' | 'developmentCoach' | 'trainingCoach'; label: string }[] = [
     { key: 'headCoach',          label: '감독'    },
@@ -778,7 +886,7 @@ const PayrollTab: React.FC<{
                                                         {activeColSet.has(ci) ? fmtSalary(d.amount) : '-'}
                                                     </td>
                                                 ))}
-                                                {showActions && <td />}
+                                                {showActions && <td className="px-3 py-1.5" />}
                                             </tr>
                                         );
                                     })}
@@ -791,7 +899,7 @@ const PayrollTab: React.FC<{
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
-                                {showActions && <td />}
+                                {showActions && <td className="px-3 py-1.5" />}
                             </tr>
                         </tbody>
                     </table>
