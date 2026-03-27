@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { ChevronRight, Check, UserCircle2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ChevronRight, Check } from 'lucide-react';
 import {
     GMPersonalityType,
     GM_PERSONALITY_TYPES,
@@ -15,19 +15,10 @@ interface GMCreationViewProps {
         lastName: string;
         birthYear: number;
         personalityType: GMPersonalityType;
+        sliders: GMSliders;
     }) => Promise<void>;
     isLoading?: boolean;
 }
-
-const PERSONALITY_DESCRIPTIONS: Record<GMPersonalityType, string> = {
-    balanced:       '팀 전력과 미래를 균형 있게 운영',
-    winNow:         '현재 우승을 위해 모든 것을 올인',
-    rebuilder:      '장기적 재건을 통한 강팀 구축',
-    starHunter:     '슈퍼스타 영입으로 팀 전력 극대화',
-    valueTrader:    '가성비 선수 발굴로 효율 추구',
-    defenseFocused: '탄탄한 수비 조직을 바탕으로 승부',
-    youthMovement:  '젊은 선수 육성으로 미래를 향해',
-};
 
 const SLIDER_LABELS: Record<keyof GMSliders, string> = {
     aggressiveness:  '공격성',
@@ -38,64 +29,67 @@ const SLIDER_LABELS: Record<keyof GMSliders, string> = {
 };
 
 const SLIDER_COLORS: Record<keyof GMSliders, string> = {
-    aggressiveness:  'bg-red-500',
-    starWillingness: 'bg-yellow-400',
-    youthBias:       'bg-emerald-400',
-    riskTolerance:   'bg-orange-400',
-    pickWillingness: 'bg-sky-400',
+    aggressiveness:  '#ef4444',
+    starWillingness: '#facc15',
+    youthBias:       '#34d399',
+    riskTolerance:   '#fb923c',
+    pickWillingness: '#38bdf8',
 };
 
-// ─── Mini Slider Bar ──────────────────────────────────────────────────────────
+const DEFAULT_SLIDERS: GMSliders = { aggressiveness: 5, starWillingness: 5, youthBias: 5, riskTolerance: 5, pickWillingness: 5 };
 
-const MiniSliderBar: React.FC<{ label: string; value: number; colorClass: string }> = ({ label, value, colorClass }) => (
-    <div className="flex items-center gap-2">
-        <span className="text-[10px] text-slate-500 w-14 flex-shrink-0 truncate">{label}</span>
-        <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${value * 10}%` }} />
-        </div>
-        <span className="text-[10px] text-slate-600 w-3 text-right">{value}</span>
-    </div>
-);
+/** 슬라이더 값에서 가장 가까운 성격 타입 자동 결정 */
+function findClosestPersonality(sliders: GMSliders): GMPersonalityType {
+    let best: GMPersonalityType = 'balanced';
+    let minDist = Infinity;
+    for (const type of GM_PERSONALITY_TYPES) {
+        const p = GM_SLIDER_PRESETS[type];
+        const dist =
+            (sliders.aggressiveness  - p.aggressiveness)  ** 2 +
+            (sliders.starWillingness - p.starWillingness) ** 2 +
+            (sliders.youthBias       - p.youthBias)       ** 2 +
+            (sliders.riskTolerance   - p.riskTolerance)   ** 2 +
+            (sliders.pickWillingness - p.pickWillingness) ** 2;
+        if (dist < minDist) { minDist = dist; best = type; }
+    }
+    return best;
+}
 
-// ─── Personality Card ─────────────────────────────────────────────────────────
+// ─── Slider Row ───────────────────────────────────────────────────────────────
 
-const PersonalityCard: React.FC<{
-    type: GMPersonalityType;
-    selected: boolean;
-    onClick: () => void;
-}> = ({ type, selected, onClick }) => {
-    const presets = GM_SLIDER_PRESETS[type];
+const SliderRow: React.FC<{
+    sliderKey: keyof GMSliders;
+    value: number;
+    onChange: (val: number) => void;
+}> = ({ sliderKey, value, onChange }) => {
+    const color = SLIDER_COLORS[sliderKey];
+    const pct = ((value - 1) / 9) * 100;
     return (
-        <button
-            onClick={onClick}
-            className={`relative text-left p-4 rounded-2xl border transition-all duration-200 cursor-pointer
-                ${selected
-                    ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-900/20'
-                    : 'border-slate-700 bg-slate-800/50 hover:border-slate-600 hover:bg-slate-800'
-                }`}
-        >
-            {selected && (
-                <div className="absolute top-3 right-3 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center">
-                    <Check size={11} className="text-white" />
-                </div>
-            )}
-            <p className={`font-black text-sm mb-0.5 ${selected ? 'text-indigo-300' : 'text-white'}`}>
-                {GM_PERSONALITY_LABELS[type]}
-            </p>
-            <p className="text-[11px] text-slate-500 mb-3 leading-snug">
-                {PERSONALITY_DESCRIPTIONS[type]}
-            </p>
-            <div className="space-y-1.5">
-                {(Object.keys(presets) as Array<keyof GMSliders>).map(key => (
-                    <MiniSliderBar
-                        key={key}
-                        label={SLIDER_LABELS[key]}
-                        value={presets[key]}
-                        colorClass={SLIDER_COLORS[key]}
-                    />
-                ))}
+        <div className="space-y-1.5">
+            <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-slate-300">{SLIDER_LABELS[sliderKey]}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color }}>{value}</span>
             </div>
-        </button>
+            <div className="relative h-8 flex items-center">
+                {/* Track background */}
+                <div className="w-full h-1.5 rounded-full bg-slate-700 relative overflow-hidden">
+                    <div
+                        className="absolute left-0 top-0 h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                    />
+                </div>
+                <input
+                    type="range"
+                    min={1} max={10} step={1}
+                    value={value}
+                    onChange={e => onChange(Number(e.target.value))}
+                    className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
+                />
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-600 px-0.5">
+                <span>1</span><span>5</span><span>10</span>
+            </div>
+        </div>
     );
 };
 
@@ -106,50 +100,64 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
     const [lastName,   setLastName]   = useState('');
     const [firstName,  setFirstName]  = useState('');
     const [birthYearStr, setBirthYearStr] = useState('');
-    const [personality, setPersonality] = useState<GMPersonalityType | null>(null);
+    const [sliders, setSliders] = useState<GMSliders>(DEFAULT_SLIDERS);
 
     const birthYear = parseInt(birthYearStr, 10);
     const step1Valid = lastName.trim() !== '' && firstName.trim() !== '' &&
         !isNaN(birthYear) && birthYear >= 1940 && birthYear <= 2000;
 
+    const closestPersonality = useMemo(() => findClosestPersonality(sliders), [sliders]);
+
+    const setSlider = (key: keyof GMSliders, val: number) =>
+        setSliders(prev => ({ ...prev, [key]: val }));
+
+    const goToStep = (n: 1 | 2) => {
+        if (n === 2 && !step1Valid) return;
+        setStep(n);
+    };
+
     const handleSubmit = async () => {
-        if (!personality || !step1Valid || isLoading) return;
+        if (!step1Valid || isLoading) return;
         await onComplete({
             firstName: firstName.trim(),
             lastName:  lastName.trim(),
             birthYear,
-            personalityType: personality,
+            personalityType: closestPersonality,
+            sliders,
         });
     };
 
     return (
-        <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 lg:p-8 relative overflow-hidden ko-normal pretendard">
+        <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden ko-normal pretendard">
             {/* Background */}
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-indigo-600/5 rounded-full blur-3xl" />
                 <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-indigo-900/10 rounded-full blur-3xl" />
             </div>
 
-            <div className="max-w-2xl w-full relative">
-                {/* Header */}
-                <div className="text-center mb-8">
-                    <div className="inline-flex items-center gap-2 mb-3">
-                        <UserCircle2 size={20} className="text-indigo-400" />
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em]">GM Profile Setup</span>
-                    </div>
+            <div className="max-w-md w-full relative">
+                {/* Title */}
+                <div className="text-center mb-6">
                     <h1 className="text-2xl font-black text-white uppercase tracking-tight">단장 프로필 생성</h1>
                 </div>
 
                 {/* Step Indicator */}
-                <div className="flex items-center justify-center gap-3 mb-8">
-                    {[1, 2].map(n => (
+                <div className="flex items-center justify-center gap-3 mb-6">
+                    {([1, 2] as const).map(n => (
                         <React.Fragment key={n}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black transition-all
-                                ${step === n ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40'
-                                  : step > n ? 'bg-indigo-800 text-indigo-300'
-                                  : 'bg-slate-800 text-slate-500'}`}>
+                            <button
+                                onClick={() => goToStep(n)}
+                                disabled={n === 2 && !step1Valid}
+                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black transition-all
+                                    ${step === n
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40'
+                                        : step > n
+                                            ? 'bg-indigo-800 text-indigo-300 hover:bg-indigo-700 cursor-pointer'
+                                            : 'bg-slate-800 text-slate-500 cursor-default'
+                                    }`}
+                            >
                                 {step > n ? <Check size={14} /> : n}
-                            </div>
+                            </button>
                             {n < 2 && (
                                 <div className={`h-px w-16 transition-all ${step > 1 ? 'bg-indigo-700' : 'bg-slate-800'}`} />
                             )}
@@ -158,9 +166,7 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                 </div>
 
                 {/* Card */}
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden">
-                    <div className="h-1 w-full bg-gradient-to-r from-indigo-700 via-indigo-400 to-indigo-700" />
-
+                <div className="bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden">
                     <div className="p-8">
                         {/* ── Step 1 ── */}
                         {step === 1 && (
@@ -170,31 +176,31 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
 
                                 <div className="flex gap-4 mb-4">
                                     <div className="flex-1">
-                                        <label className="text-xs font-semibold text-slate-400 mb-2 block">성</label>
+                                        <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">성</label>
                                         <input
                                             type="text"
                                             value={lastName}
                                             onChange={e => setLastName(e.target.value)}
                                             maxLength={10}
                                             placeholder="홍"
-                                            className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-3.5 px-4 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
+                                            className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
                                         />
                                     </div>
                                     <div className="flex-1">
-                                        <label className="text-xs font-semibold text-slate-400 mb-2 block">이름</label>
+                                        <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">이름</label>
                                         <input
                                             type="text"
                                             value={firstName}
                                             onChange={e => setFirstName(e.target.value)}
                                             maxLength={10}
                                             placeholder="길동"
-                                            className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-3.5 px-4 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
+                                            className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
                                         />
                                     </div>
                                 </div>
 
                                 <div className="mb-8">
-                                    <label className="text-xs font-semibold text-slate-400 mb-2 block">출생 연도</label>
+                                    <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">출생 연도</label>
                                     <input
                                         type="number"
                                         value={birthYearStr}
@@ -202,15 +208,15 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                         min={1940}
                                         max={2000}
                                         placeholder="1980"
-                                        className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-3.5 px-4 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
+                                        className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
                                     />
-                                    <p className="text-[11px] text-slate-600 mt-1.5 ml-1">1940 ~ 2000 사이 연도를 입력하세요.</p>
+                                    <p className="text-[10px] font-medium text-slate-600 mt-1.5 ml-1">1940 ~ 2000 사이 연도를 입력하세요.</p>
                                 </div>
 
                                 <button
                                     onClick={() => setStep(2)}
                                     disabled={!step1Valid}
-                                    className="w-full flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black rounded-xl transition-all duration-200 shadow-lg shadow-indigo-900/30 disabled:shadow-none"
+                                    className="w-full flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black rounded-xl transition-all duration-200 shadow-lg shadow-indigo-900/20 disabled:shadow-none uppercase tracking-widest active:scale-[0.98]"
                                 >
                                     다음
                                     <ChevronRight size={18} />
@@ -222,7 +228,7 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                         {step === 2 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                 <div className="flex items-center justify-between mb-1">
-                                    <h2 className="text-lg font-black text-white">단장 성격 선택</h2>
+                                    <h2 className="text-lg font-black text-white">단장 성향 설정</h2>
                                     <button
                                         onClick={() => setStep(1)}
                                         className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
@@ -230,32 +236,34 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                         ← 이전
                                     </button>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-5">성격에 따라 트레이드·FA 전략이 결정됩니다.</p>
+                                <p className="text-sm text-slate-500 mb-6">슬라이더로 트레이드·FA 전략 성향을 직접 설정하세요.</p>
 
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    {GM_PERSONALITY_TYPES.map(type => (
-                                        <PersonalityCard
-                                            key={type}
-                                            type={type}
-                                            selected={personality === type}
-                                            onClick={() => setPersonality(type)}
+                                {/* Sliders */}
+                                <div className="space-y-5 mb-6">
+                                    {(Object.keys(DEFAULT_SLIDERS) as Array<keyof GMSliders>).map(key => (
+                                        <SliderRow
+                                            key={key}
+                                            sliderKey={key}
+                                            value={sliders[key]}
+                                            onChange={val => setSlider(key, val)}
                                         />
                                     ))}
                                 </div>
 
+                                {/* Closest personality badge */}
+                                <div className="flex items-center gap-2 mb-6 px-1">
+                                    <span className="text-xs text-slate-500">현재 성향</span>
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-indigo-600/20 text-indigo-300 border border-indigo-500/30">
+                                        {GM_PERSONALITY_LABELS[closestPersonality]}
+                                    </span>
+                                </div>
+
                                 <button
                                     onClick={handleSubmit}
-                                    disabled={!personality || isLoading}
-                                    className="w-full flex items-center justify-center gap-3 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black rounded-xl transition-all duration-200 shadow-lg shadow-indigo-900/30 disabled:shadow-none"
+                                    disabled={isLoading}
+                                    className="w-full flex items-center justify-center py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black rounded-xl transition-all duration-200 shadow-lg shadow-indigo-900/20 disabled:shadow-none uppercase tracking-widest active:scale-[0.98]"
                                 >
-                                    {isLoading ? (
-                                        <span className="animate-pulse">저장 중...</span>
-                                    ) : (
-                                        <>
-                                            <UserCircle2 size={18} />
-                                            단장 취임
-                                        </>
-                                    )}
+                                    {isLoading ? <span className="animate-pulse">저장 중...</span> : '프로필 생성'}
                                 </button>
                             </div>
                         )}

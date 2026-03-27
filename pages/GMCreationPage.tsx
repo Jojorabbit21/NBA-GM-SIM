@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { GMCreationView } from '../views/GMCreationView';
 import { useGame } from '../hooks/useGameContext';
 import { supabase } from '../services/supabaseClient';
-import type { GMPersonalityType, GMProfile } from '../types/gm';
-import { GM_SLIDER_PRESETS } from '../types/gm';
+import type { GMPersonalityType, GMProfile, GMSliders } from '../types/gm';
 
 const GMCreationPage: React.FC = () => {
     const { gameData, session } = useGame();
@@ -22,6 +21,7 @@ const GMCreationPage: React.FC = () => {
         lastName: string;
         birthYear: number;
         personalityType: GMPersonalityType;
+        sliders: GMSliders;
     }) => {
         if (!session?.user || isLoading) return;
         setIsLoading(true);
@@ -43,7 +43,7 @@ const GMCreationPage: React.FC = () => {
                 lastName: data.lastName,
                 birthYear: data.birthYear,
                 personalityType: data.personalityType,
-                sliders: GM_SLIDER_PRESETS[data.personalityType],
+                sliders: data.sliders,
                 direction: 'standPat',
             };
             const updatedProfiles = {

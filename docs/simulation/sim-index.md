@@ -45,6 +45,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | [trade-system.md](trade-system.md) | 트레이드 엔진 (블록, 오퍼, CBA, 픽 밸류) | tradeExecutor.ts, tradeBlockManager.ts, pickValueEngine.ts |
 | [cpu-trade-engine.md](cpu-trade-engine.md) | CPU 트레이드 AI 아키텍처 (5단계 파이프라인, GM 슬라이더, TradeUtility) | cpuTradeSimulator.ts, tradeGoalEngine.ts, tradeUtilityEngine.ts |
 | [finance-system.md](finance-system.md) | 예산/수익/지출 시뮬레이션 | financeEngine.ts |
+| [investment-system.md](investment-system.md) | 구단주 재량 예산 할당 & 4카테고리 투자 효과 시스템 | investmentEngine.ts, OwnerBudgetPage.tsx, InvestmentPanel.tsx |
 | [popularity-system.md](popularity-system.md) | 선수 인기도 시스템 (관중·MD·스폰서십 재정 연결) | playerPopularity.ts, attendanceModel.ts |
 | [morale-system.md](morale-system.md) | 선수 기분 시스템 (PBP 히트레이트 보정 ±1.8%p) | moraleService.ts, possessionHandler.ts |
 
@@ -56,7 +57,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | 파일 | 문서 |
 |------|------|
 | seasonService.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
-| offseasonEventHandler.ts | [draft-lottery.md](draft-lottery.md), [rookie-generator.md](rookie-generator.md) |
+| offseasonEventHandler.ts | [draft-lottery.md](draft-lottery.md), [rookie-generator.md](rookie-generator.md), [investment-system.md](investment-system.md) |
 | batchSeasonService.ts | [sim-structure.md](sim-structure.md) |
 | userGameService.ts | [sim-structure.md](sim-structure.md) |
 | cpuGameService.ts | [sim-structure.md](sim-structure.md) |
@@ -88,7 +89,7 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | scheduleGenerator.ts | [schedule-generator.md](schedule-generator.md) |
 | playoffLogic.ts | [playoff-system.md](playoff-system.md) |
 | tiebreaker.ts | [playoff-system.md](playoff-system.md), [draft-lottery.md](draft-lottery.md) |
-| seasonConfig.ts | [sim-structure.md](sim-structure.md), [draft-lottery.md](draft-lottery.md) |
+| seasonConfig.ts | [sim-structure.md](sim-structure.md), [draft-lottery.md](draft-lottery.md), [investment-system.md](investment-system.md) |
 
 ### 온보딩 (`views/`, `pages/`)
 | 파일 | 문서 |
@@ -100,9 +101,21 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 ### 훅 (`hooks/`)
 | 파일 | 문서 |
 |------|------|
-| useSimulation.ts | [sim-structure.md](sim-structure.md) |
+| useSimulation.ts | [sim-structure.md](sim-structure.md), [investment-system.md](investment-system.md) |
 | useFullSeasonSim.ts | [sim-structure.md](sim-structure.md) |
-| useGameData.ts | [snapshot-caching.md](snapshot-caching.md) |
+| useGameData.ts | [snapshot-caching.md](snapshot-caching.md), [investment-system.md](investment-system.md) |
+
+### 투자 시스템 (`services/financeEngine/`, `pages/`, `components/`)
+| 파일 | 문서 |
+|------|------|
+| services/financeEngine/investmentEngine.ts | [investment-system.md](investment-system.md) |
+| services/financeEngine/budgetManager.ts | [finance-system.md](finance-system.md), [investment-system.md](investment-system.md) |
+| services/financeEngine/attendanceModel.ts | [investment-system.md](investment-system.md) |
+| services/financeEngine/revenueCalculator.ts | [investment-system.md](investment-system.md) |
+| services/coachingStaff/trainingEngine.ts | [investment-system.md](investment-system.md) |
+| services/draft/rookieGenerator.ts | [rookie-generator.md](rookie-generator.md), [investment-system.md](investment-system.md) |
+| pages/OwnerBudgetPage.tsx | [investment-system.md](investment-system.md) |
+| components/frontoffice/InvestmentPanel.tsx | [investment-system.md](investment-system.md) |
 
 ### 영속성 (`services/`)
 | 파일 | 문서 |

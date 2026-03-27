@@ -17,6 +17,7 @@ interface GMDetailViewProps {
     allTeams?: Team[];
     myTeamId?: string;
     userNickname?: string;
+    seasonYear?: number;
 }
 
 const SLIDER_KEYS: (keyof GMSliders)[] = [
@@ -40,7 +41,7 @@ const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 
 export const GMDetailView: React.FC<GMDetailViewProps> = ({
     gmProfile, teamId, onBack,
-    leagueGMProfiles, allTeams, myTeamId, userNickname,
+    leagueGMProfiles, allTeams, myTeamId, userNickname, seasonYear,
 }) => {
     const [currentTeamId, setCurrentTeamId] = useState(teamId);
     const [teamDropOpen, setTeamDropOpen] = useState(false);
@@ -138,20 +139,16 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                                     <span className="text-sm font-black" style={{ color: theme.accent }}>GM</span>
                                 </div>
                                 <div className="min-w-0">
-                                    {isMyTeam ? (
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
-                                                {userNickname || 'You'}
-                                            </span>
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal shrink-0">
-                                                사용자
-                                            </span>
-                                        </div>
-                                    ) : (
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
-                                            {currentProfile?.name ?? '-'}
+                                            {currentProfile?.name ?? userNickname ?? '-'}
                                         </h2>
-                                    )}
+                                        {isMyTeam && (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ko-normal shrink-0">
+                                                나
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -161,24 +158,25 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                             <img src={getTeamLogoUrl(currentTeamId)} className="w-4 h-4 object-contain" alt="" />
                             {teamInfo ? `${teamInfo.city} ${teamInfo.name}` : currentTeamId.toUpperCase()}
                         </InfoRow>
-                        {!isMyTeam && currentProfile && (
+                        {currentProfile && (
                             <>
+                                {isMyTeam && currentProfile.birthYear && seasonYear && (
+                                    <InfoRow label="나이">
+                                        <span className="text-slate-200">{seasonYear - currentProfile.birthYear}세</span>
+                                        <span className="text-slate-600 font-mono text-[10px]">({currentProfile.birthYear}년생)</span>
+                                    </InfoRow>
+                                )}
                                 <InfoRow label="성격 타입">
                                     <span className="text-indigo-400 ko-normal">{GM_PERSONALITY_LABELS[currentProfile.personalityType]}</span>
                                 </InfoRow>
                                 <InfoRow label="현재 노선">
                                     <span className="text-slate-200 ko-normal">{DIRECTION_LABELS[currentProfile.direction]}</span>
                                 </InfoRow>
-                                <InfoRow label="노선 확정일">
-                                    <span className="text-slate-400 font-mono">{currentProfile.directionSetDate || '미확정'}</span>
-                                </InfoRow>
-                            </>
-                        )}
-                        {(isMyTeam || !currentProfile) && (
-                            <>
-                                <InfoRow label="성격 타입"><span className="text-slate-600">-</span></InfoRow>
-                                <InfoRow label="현재 노선"><span className="text-slate-600">-</span></InfoRow>
-                                <InfoRow label="노선 확정일"><span className="text-slate-600">-</span></InfoRow>
+                                {!isMyTeam && (
+                                    <InfoRow label="노선 확정일">
+                                        <span className="text-slate-400 font-mono">{currentProfile.directionSetDate || '미확정'}</span>
+                                    </InfoRow>
+                                )}
                             </>
                         )}
                     </div>
@@ -188,7 +186,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                         <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
                             <span className="text-xs font-black text-white uppercase tracking-widest">GM 성향</span>
                         </div>
-                        {(!isMyTeam && currentProfile) ? (
+                        {currentProfile ? (
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
                                     <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
@@ -214,7 +212,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                             </Table>
                         ) : (
                             <div className="flex items-center justify-center py-12 text-slate-600 text-xs ko-normal">
-                                사용자 단장의 성향 정보는 표시되지 않습니다.
+                                단장 정보가 없습니다.
                             </div>
                         )}
                     </div>

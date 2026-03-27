@@ -234,6 +234,15 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   </div>
                 )}
                 <div className="p-1.5 space-y-0.5">
+                  {gmDisplayName && team?.id && (
+                    <button
+                      onClick={() => { navigate(`/gm/${team.id}`); setIsMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all text-left"
+                    >
+                      <CircleUser size={14} />
+                      <span className="text-xs font-bold">내 프로필</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => { navigate('/hall-of-fame'); setIsMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all text-left"
