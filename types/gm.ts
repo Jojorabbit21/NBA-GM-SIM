@@ -30,6 +30,10 @@ export interface GMProfile {
     sliders: GMSliders;
     direction: TeamDirection;
     directionSetDate?: string;
+    // User GM only
+    firstName?: string;
+    lastName?: string;
+    birthYear?: number;
 }
 
 export type LeagueGMProfiles = Record<string, GMProfile>;

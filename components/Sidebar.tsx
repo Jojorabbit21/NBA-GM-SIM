@@ -27,6 +27,7 @@ interface SidebarProps {
   hasProspects: boolean;
   offseasonPhase?: OffseasonPhase | null;
   userEmail?: string;
+  gmDisplayName?: string;
   onResetClick: () => void;
   onEditorClick: () => void;
   onSimSettingsClick: () => void;
@@ -87,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   hasProspects,
   offseasonPhase,
   userEmail,
+  gmDisplayName,
   onResetClick,
   onEditorClick,
   onSimSettingsClick,
@@ -205,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             <Nav
               active={isMenuOpen}
               icon={<CircleUser />}
-              label={userEmail || '프로필'}
+              label={gmDisplayName || userEmail || '프로필'}
               onClick={handleProfileClick}
               buttonRef={profileBtnRef}
             />
@@ -222,10 +224,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   border: '1px solid rgba(255,255,255,0.1)',
                 }}
               >
-                {userEmail && (
+                {(gmDisplayName || userEmail) && (
                   <div className="px-3 py-2.5 border-b border-slate-700">
-                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">계정</p>
-                    <p className="text-xs text-slate-300 font-medium truncate mt-0.5">{userEmail}</p>
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">단장</p>
+                    <p className="text-xs text-slate-300 font-medium truncate mt-0.5">{gmDisplayName || userEmail}</p>
+                    {gmDisplayName && userEmail && (
+                      <p className="text-[10px] text-slate-600 truncate mt-0.5">{userEmail}</p>
+                    )}
                   </div>
                 )}
                 <div className="p-1.5 space-y-0.5">

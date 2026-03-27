@@ -30,6 +30,14 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 
 ---
 
+## 온보딩 & GM 시스템
+
+| 문서 | 설명 | 핵심 파일 |
+|------|------|----------|
+| [gm-profile-creation.md](gm-profile-creation.md) | GM 프로필 생성 시퀀스 (2단계 위저드, 성격 선택, DB 저장) | GMCreationView.tsx, GMCreationPage.tsx, types/gm.ts |
+
+---
+
 ## 트레이드 & 재정
 
 | 문서 | 설명 | 핵심 파일 |
@@ -81,6 +89,13 @@ PBP 경기 엔진 **외부**의 시뮬레이션 운영 시스템 문서.
 | playoffLogic.ts | [playoff-system.md](playoff-system.md) |
 | tiebreaker.ts | [playoff-system.md](playoff-system.md), [draft-lottery.md](draft-lottery.md) |
 | seasonConfig.ts | [sim-structure.md](sim-structure.md), [draft-lottery.md](draft-lottery.md) |
+
+### 온보딩 (`views/`, `pages/`)
+| 파일 | 문서 |
+|------|------|
+| views/GMCreationView.tsx | [gm-profile-creation.md](gm-profile-creation.md) |
+| pages/GMCreationPage.tsx | [gm-profile-creation.md](gm-profile-creation.md) |
+| pages/TeamSelectPage.tsx | [gm-profile-creation.md](gm-profile-creation.md) |
 
 ### 훅 (`hooks/`)
 | 파일 | 문서 |

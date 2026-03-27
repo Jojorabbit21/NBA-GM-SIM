@@ -24,6 +24,7 @@ import AuthPage from './pages/AuthPage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
 import TeamSelectPage from './pages/TeamSelectPage';
+import GMCreationPage from './pages/GMCreationPage';
 import OnboardingPage from './pages/OnboardingPage';
 
 // Pages — 보호 라우트
@@ -261,6 +262,7 @@ const App: React.FC = () => {
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
                     <Route path="/select-team" element={<TeamSelectPage />} />
+                    <Route path="/gm-creation" element={<GMCreationPage />} />
                     <Route path="/onboarding" element={<OnboardingPage />} />
 
                     {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}

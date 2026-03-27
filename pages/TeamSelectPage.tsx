@@ -32,7 +32,7 @@ const TeamSelectPage: React.FC = () => {
                 return false;
             }
             await refreshUnreadCount();
-            navigate('/onboarding', { replace: true });
+            navigate('/gm-creation', { replace: true });
             return success;
         } finally {
             setIsSelecting(false);

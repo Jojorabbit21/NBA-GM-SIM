@@ -2,7 +2,7 @@
 // ── 구단주 프로필 ──
 export interface OwnerProfile {
     name: string;
-    netWorth: number;              // 순자산 ($B)
+    netWorth: number;              // 순자산 (실제 달러, 예: 13400000000)
     spendingWillingness: number;   // 1~10 — 택스 납부 의지
     winNowPriority: number;        // 1~10 — 단기 우승 vs 장기 육성
     marketingFocus: number;        // 1~10 — 수익 극대화 vs 팬 서비스

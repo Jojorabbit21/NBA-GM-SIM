@@ -32,6 +32,11 @@ const ProtectedLayout: React.FC = () => {
     const location   = useLocation();
     const myTeam     = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
 
+    const userGMProfile = gameData.leagueGMProfiles?.[gameData.myTeamId ?? ''];
+    const gmDisplayName = userGMProfile?.firstName && userGMProfile?.lastName
+        ? `${userGMProfile.lastName} ${userGMProfile.firstName}`
+        : undefined;
+
     // ─── GameResult 네비게이션 ────────────────────────────────────────────
     useEffect(() => {
         if (!sim.lastGameResult) return;
@@ -92,6 +97,7 @@ const ProtectedLayout: React.FC = () => {
                 isGuestMode,
                 unreadMessagesCount: unreadCount,
                 userEmail: session?.user?.email,
+                gmDisplayName,
                 pendingOffseasonAction,
                 hasProspects: (gameData.prospects?.length ?? 0) > 0,
                 offseasonPhase: gameData.offseasonPhase,

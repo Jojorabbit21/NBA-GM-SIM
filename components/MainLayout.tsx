@@ -21,6 +21,7 @@ interface MainLayoutProps {
         isGuestMode: boolean;
         unreadMessagesCount: number;
         userEmail?: string;
+        gmDisplayName?: string;
         onResetClick: () => void;
         onEditorClick: () => void;
         onSimSettingsClick: () => void;
@@ -163,6 +164,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 isGuestMode={sidebarProps.isGuestMode}
                 unreadMessagesCount={sidebarProps.unreadMessagesCount}
                 userEmail={sidebarProps.userEmail}
+                gmDisplayName={sidebarProps.gmDisplayName}
                 isRegularSeasonOver={isRegularSeasonOver}
                 isPostseasonOver={isPostseasonOver}
                 pendingOffseasonAction={sidebarProps.pendingOffseasonAction}

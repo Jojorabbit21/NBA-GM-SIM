@@ -11,6 +11,8 @@ const OnboardingPage: React.FC = () => {
     if (!myTeam) { navigate('/select-team', { replace: true }); return null; }
 
     const seasonShort: string = gameData.seasonConfig?.seasonShort ?? '2025-26';
+    const userGMProfile = gameData.leagueGMProfiles?.[gameData.myTeamId ?? ''];
+    const gmLastName = userGMProfile?.lastName;
 
     return (
         <div className="fixed inset-0 z-[500]">
@@ -18,6 +20,7 @@ const OnboardingPage: React.FC = () => {
                 team={myTeam}
                 onComplete={() => navigate('/', { replace: true })}
                 seasonShort={seasonShort}
+                gmLastName={gmLastName}
             />
         </div>
     );

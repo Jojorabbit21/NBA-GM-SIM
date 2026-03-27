@@ -111,6 +111,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             offseasonPhase={offseasonPhase}
                             initialNegotiateId={initialNegotiateId}
                             initialNegotiateType={initialNegotiateType}
+                            coachingData={coachingData}
                         />
                     )}
                     {activeTab === 'coaching' && (
@@ -521,6 +522,14 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, pr
 };
 
 // ── 선수 급여 탭 ──
+const STAFF_ROLES: { key: 'headCoach' | 'offenseCoordinator' | 'defenseCoordinator' | 'developmentCoach' | 'trainingCoach'; label: string }[] = [
+    { key: 'headCoach',          label: '감독'    },
+    { key: 'offenseCoordinator', label: '공격코치' },
+    { key: 'defenseCoordinator', label: '수비코치' },
+    { key: 'developmentCoach',   label: '디벨롭'  },
+    { key: 'trainingCoach',      label: '트레이너' },
+];
+
 const PayrollTab: React.FC<{
     team: Team;
     seasonShort: string;
@@ -534,7 +543,8 @@ const PayrollTab: React.FC<{
     offseasonPhase?: OffseasonPhase;
     initialNegotiateId?: string;
     initialNegotiateType?: 'extension' | 'release';
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType }) => {
+    coachingData?: LeagueCoachingData | null;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -575,6 +585,26 @@ const PayrollTab: React.FC<{
 
         return { players: sorted, seasonColumns: cols, totals: colTotals };
     }, [team.roster, seasonShort]);
+
+    const { staffRows, staffTotals } = useMemo(() => {
+        const staff = coachingData?.[team.id];
+        const baseYear = seasonShort ? parseInt(seasonShort) : 2025;
+        const colCount = 6;
+        const colTotals = new Array(colCount).fill(0);
+
+        const rows = STAFF_ROLES.map(r => {
+            const coach = staff?.[r.key];
+            const salary = coach?.contractSalary ?? 0;
+            const yearsRemaining = coach?.contractYearsRemaining ?? 0;
+            const salaries: (number | null)[] = Array.from({ length: colCount }, (_, i) =>
+                coach && i < yearsRemaining ? salary : null
+            );
+            salaries.forEach((s, i) => { if (s) colTotals[i] += s; });
+            return { key: r.key, label: r.label, name: coach?.name ?? null, salaries };
+        });
+
+        return { staffRows: rows, staffTotals: colTotals };
+    }, [coachingData, team.id, seasonShort]);
 
     // 이름 컬럼 너비: 가장 긴 이름에서 동적 계산 (한글 ~15px/글자 + 패딩)
     const nameColWidth = useMemo(() => {
@@ -631,6 +661,48 @@ const PayrollTab: React.FC<{
                                     </td>
                                 ))}
                                 {showActions && <td />}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {/* 코칭스태프 급여 테이블 */}
+            <div className="flex-[7] min-w-0 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                <WidgetHeader title="코칭스태프 급여" primaryColor={primaryColor} />
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs table-fixed">
+                        <colgroup>
+                            <col style={{ width: `${nameColWidth}px` }} />
+                            {seasonColumns.map((_, i) => <col key={i} style={{ width: seasonColWidth }} />)}
+                        </colgroup>
+                        <thead className="sticky top-0 z-10">
+                            <tr className="bg-slate-800 border-b border-slate-700">
+                                <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-800 z-20 whitespace-nowrap border-r border-slate-700">코치</th>
+                                {seasonColumns.map(col => (
+                                    <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">{col}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {staffRows.filter(r => r.name !== null).map(r => (
+                                <tr key={r.key} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-4 py-2 sticky left-0 bg-slate-900 hover:bg-slate-800/50 z-10 border-r border-slate-700 whitespace-nowrap">
+                                        <span className="text-xs font-semibold text-slate-200">{r.name}</span>
+                                    </td>
+                                    {r.salaries.map((s, i) => (
+                                        <td key={i} className="px-4 py-2 text-right text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-r border-slate-700">
+                                            {s !== null ? fmtSalary(s) : <span className="text-slate-700">–</span>}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                            <tr className="bg-slate-800 border-t-2 border-slate-700">
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap border-r border-slate-700">합계</td>
+                                {staffTotals.map((t, i) => (
+                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap border-r border-slate-700">
+                                        {t > 0 ? fmtSalary(t) : ''}
+                                    </td>
+                                ))}
                             </tr>
                         </tbody>
                     </table>
@@ -758,9 +830,18 @@ function fmtFull(v: number): string {
     return `$${Math.round(v).toLocaleString()}`;
 }
 
-/** $B 값을 전체 달러 표기로 변환 (예: 120 → $120,000,000,000) */
+/** 실제 달러 값을 $B/$M 단위로 표기 (예: 13400000000 → $13.4B) */
 function fmtFullB(v: number): string {
-    const dollars = Math.round(v * 1_000_000_000);
-    return `$${dollars.toLocaleString()}`;
+    if (v >= 1_000_000_000) {
+        const b = v / 1_000_000_000;
+        const formatted = b % 1 === 0 ? b.toString() : parseFloat(b.toFixed(2)).toString();
+        return `$${formatted}B`;
+    }
+    if (v >= 1_000_000) {
+        const m = v / 1_000_000;
+        const formatted = m % 1 === 0 ? m.toString() : parseFloat(m.toFixed(1)).toString();
+        return `$${formatted}M`;
+    }
+    return `$${v.toLocaleString()}`;
 }
 

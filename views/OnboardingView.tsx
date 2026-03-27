@@ -9,9 +9,10 @@ interface OnboardingViewProps {
   team: Team;
   onComplete: () => void;
   seasonShort?: string;
+  gmLastName?: string;
 }
 
-export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete, seasonShort = '2025-26' }) => {
+export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete, seasonShort = '2025-26', gmLastName }) => {
   const [visibleLines, setVisibleLines] = useState(0);
 
   useEffect(() => {
@@ -71,7 +72,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
           <div className="space-y-8 relative z-10 min-h-[300px]">
             <div className={`transition-all duration-700 ${visibleLines >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <p className="text-lg font-bold text-slate-100">
-                신임 단장님께,
+                {gmLastName ? `${gmLastName} 단장님께,` : '신임 단장님께,'}
               </p>
               <p className="text-slate-400 mt-2 font-medium leading-relaxed">
                 {seasonShort} 시즌, 우리 <span className="font-bold text-slate-200">{team.name}</span>의 지휘봉을 잡게 된 것을 진심으로 환영합니다. 구단주 그룹과 팬들은 당신의 비전과 리더십에 큰 기대를 걸고 있습니다.

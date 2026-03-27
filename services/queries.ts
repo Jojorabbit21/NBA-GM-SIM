@@ -5,6 +5,7 @@ import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
 import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame, postProcessAllPlayersOVR } from './dataMapper';
 import { populateTeamData } from '../data/teamData';
+import { populateFinanceData } from '../data/teamFinanceData';
 import { populateStaffData } from './coachingStaff/coachGenerator';
 import { populateGMData } from './tradeEngine/gmProfiler';
 import { rebuildDerivedConstants } from '../utils/constants';
@@ -29,6 +30,7 @@ export const useBaseData = (enabled: boolean = true) => {
             // 1. meta_teams → TEAM_DATA 갱신 (mapPlayersToTeams보다 먼저!)
             if (!teamsRes.error && teamsRes.data && teamsRes.data.length > 0) {
                 populateTeamData(teamsRes.data);
+                populateFinanceData(teamsRes.data);
                 rebuildDerivedConstants();
             } else {
                 console.warn("⚠️ 'meta_teams' empty/error, using fallback hardcoded data", teamsRes.error);
