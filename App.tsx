@@ -50,7 +50,6 @@ import DraftRoomPage from './pages/DraftRoomPage';
 import DraftBoardPage from './pages/DraftBoardPage';
 import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
-import CoachMarketPage from './pages/CoachMarketPage';
 import TrainingPage from './pages/TrainingPage';
 import OwnerBudgetPage from './pages/OwnerBudgetPage';
 
@@ -295,7 +294,6 @@ const App: React.FC = () => {
                         <Route path="/draft-board" element={<DraftBoardPage />} />
                         <Route path="/draft-history" element={<DraftHistoryPage />} />
                         <Route path="/tactics" element={<TacticsPage />} />
-                        <Route path="/coach-market" element={<CoachMarketPage />} />
                         <Route path="/training" element={<TrainingPage />} />
                         <Route path="/owner-budget" element={<OwnerBudgetPage />} />
                         {/* 404 → 홈으로 */}

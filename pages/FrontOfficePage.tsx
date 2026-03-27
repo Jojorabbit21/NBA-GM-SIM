@@ -47,7 +47,6 @@ const FrontOfficePage: React.FC = () => {
             userNickname={gameData.leagueGMProfiles?.[gameData.myTeamId ?? '']?.name ?? session?.user?.email?.split('@')[0]}
             coachFAPool={gameData.coachFAPool}
             leagueTrainingConfigs={gameData.leagueTrainingConfigs}
-            onCoachMarketOpen={() => navigate('/coach-market')}
             onTrainingViewOpen={() => navigate('/training')}
             onExtendCoachAccepted={(role: StaffRole, salary: number, years: number) => {
                 if (!gameData.myTeamId || !gameData.coachingData) return;

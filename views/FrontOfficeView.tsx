@@ -47,7 +47,6 @@ interface FrontOfficeViewProps {
     initialNegotiateType?: 'extension' | 'release';       // 자동 오픈 협상 타입
     coachFAPool?: CoachFAPool | null;
     leagueTrainingConfigs?: LeagueTrainingConfigs | null;
-    onCoachMarketOpen?: () => void;   // 코치 마켓 뷰 열기
     onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
@@ -59,7 +58,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
-    coachFAPool, leagueTrainingConfigs, onCoachMarketOpen, onTrainingViewOpen,
+    coachFAPool, leagueTrainingConfigs, onTrainingViewOpen,
     onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
@@ -189,14 +188,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                 <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                                     <div className="px-4 py-2 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: primaryColor }}>
                                         <span className="text-sm font-bold text-white">코칭 스태프</span>
-                                        {team.id === myTeamId && (
-                                            <button
-                                                onClick={onCoachMarketOpen}
-                                                className="text-xs px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors font-bold"
-                                            >
-                                                코치 영입
-                                            </button>
-                                        )}
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full border-collapse text-xs">
