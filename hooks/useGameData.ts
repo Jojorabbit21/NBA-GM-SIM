@@ -548,8 +548,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const coachSalaries: Record<string, number> = {};
                         const staffData = checkpoint.coaching_staff || coachingData;
                         if (staffData) {
+                            const STAFF_ROLE_KEYS = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'] as const;
                             for (const tid of Object.keys(staffData)) {
-                                coachSalaries[tid] = staffData[tid]?.headCoach?.contractSalary ?? 7_000_000;
+                                const total = STAFF_ROLE_KEYS.reduce((s, r) => s + ((staffData[tid] as any)?.[r]?.contractSalary ?? 0), 0);
+                                coachSalaries[tid] = total || 7_000_000;
                             }
                         }
                         getBudgetManager().initializeSeason(loadedTeams, coachSalaries);
@@ -951,8 +953,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         resetBudgetManager();
         const coachSalaries: Record<string, number> = {};
         if (newCoachingData) {
+            const STAFF_ROLE_KEYS = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'] as const;
             for (const tid of teamIds) {
-                coachSalaries[tid] = newCoachingData[tid]?.headCoach?.contractSalary ?? 7_000_000;
+                const total = STAFF_ROLE_KEYS.reduce((s, r) => s + ((newCoachingData[tid] as any)?.[r]?.contractSalary ?? 0), 0);
+                coachSalaries[tid] = total || 7_000_000;
             }
         }
         getBudgetManager().initializeSeason(teams, coachSalaries);

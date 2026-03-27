@@ -62,8 +62,11 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
+    const [coachingTabExtNeg, setCoachingTabExtNeg] = useState<{ role: StaffRole; coach: Coach } | null>(null);
+    const [coachingTabFireTarget, setCoachingTabFireTarget] = useState<{ role: StaffRole; coach: Coach } | null>(null);
 
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
+    const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const finData = TEAM_FINANCE_DATA[myTeamId];
     const finance = getBudgetManager().getFinance(myTeamId);
 
@@ -75,6 +78,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
         }`;
 
     return (
+        <>
         <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">
             <div className="w-full flex flex-col flex-1 min-h-0">
                 {/* Tab Navigation — Dashboard 스타일 */}
@@ -124,6 +128,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             onExtendCoachAccepted={onExtendCoachAccepted}
                             onFireCoach={onFireCoach}
                             onCoachClick={onCoachClick}
+                            userNickname={userNickname}
                         />
                     )}
                     {activeTab === 'coaching' && (() => {
@@ -196,11 +201,14 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                     <th className={`${thCls} text-left sticky left-0 bg-slate-800 z-10`}>직무</th>
                                                     <th className={`${thCls} text-left`}>이름</th>
                                                     <th className={`${thCls} text-right`}>나이</th>
-                                                    <th className={`${thCls} text-right`}>연봉</th>
                                                     {COACH_ABILITY_LABELS.map(([, label]) => (
                                                         <th key={label} className={`${thCls} text-right`}>{label}</th>
                                                     ))}
                                                     <th className={`${thCls} text-right`}>계약</th>
+                                                    <th className={`${thCls} text-right`}>연봉</th>
+                                                    {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
+                                                        <th className="px-3 py-2 bg-slate-800" />
+                                                    )}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -222,9 +230,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                             <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
                                                                 {coach?.age ?? '—'}
                                                             </td>
-                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
-                                                                {coach ? fmtSalary(coach.contractSalary) : '—'}
-                                                            </td>
                                                             {COACH_ABILITY_LABELS.map(([key]) => (
                                                                 <td key={key} className={`${tdCls} text-right font-mono tabular-nums font-bold ${coach ? coachValColor(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : 'text-slate-700'}`}>
                                                                     {coach?.abilities[key as keyof typeof coach.abilities] ?? '—'}
@@ -233,6 +238,35 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                             <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
                                                                 {coach?.contractYears ? `${coach.contractYears}년` : '—'}
                                                             </td>
+                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
+                                                                {coach ? fmtSalary(coach.contractSalary) : '—'}
+                                                            </td>
+                                                            {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
+                                                                <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                                                                    {coach && (
+                                                                        <div className="flex items-center justify-end gap-1.5">
+                                                                            {onExtendCoachAccepted && (
+                                                                                <button
+                                                                                    onClick={() => setCoachingTabExtNeg({ role: r.key, coach })}
+                                                                                    className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
+                                                                                    style={{ backgroundColor: primaryColor, color: textColor }}
+                                                                                >
+                                                                                    연장
+                                                                                </button>
+                                                                            )}
+                                                                            {onFireCoach && (
+                                                                                <button
+                                                                                    onClick={() => setCoachingTabFireTarget({ role: r.key, coach })}
+                                                                                    className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
+                                                                                    style={{ backgroundColor: primaryColor, color: textColor }}
+                                                                                >
+                                                                                    해고
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            )}
                                                         </tr>
                                                     );
                                                 })}
@@ -283,6 +317,43 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                 </div>
             </div>
         </div>
+
+        {/* 코칭 탭 — 코치 연장 협상 */}
+        {coachingTabExtNeg && onExtendCoachAccepted && (
+            <CoachNegotiationScreen
+                coach={coachingTabExtNeg.coach}
+                role={coachingTabExtNeg.role}
+                negotiationType="extension"
+                myTeam={team}
+                userNickname={userNickname}
+                onClose={() => setCoachingTabExtNeg(null)}
+                onAccept={(finalSalary, finalYears) => {
+                    onExtendCoachAccepted(coachingTabExtNeg.role, finalSalary, finalYears);
+                    setCoachingTabExtNeg(null);
+                }}
+            />
+        )}
+
+        {/* 코칭 탭 — 코치 해고 */}
+        {coachingTabFireTarget && onFireCoach && (
+            <NegotiationScreen
+                negotiationType="release"
+                coach={coachingTabFireTarget.coach}
+                coachRole={coachingTabFireTarget.role}
+                myTeam={team}
+                teams={teams}
+                tendencySeed={tendencySeed ?? ''}
+                currentSeasonYear={new Date(currentSimDate).getFullYear()}
+                currentSeason={seasonShort ?? ''}
+                usedMLE={{}}
+                onClose={() => setCoachingTabFireTarget(null)}
+                onFireCoach={(role, buyoutAmount) => {
+                    onFireCoach(role, buyoutAmount);
+                    setCoachingTabFireTarget(null);
+                }}
+            />
+        )}
+        </>
     );
 };
 
@@ -727,7 +798,8 @@ const PayrollTab: React.FC<{
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
     onCoachClick?: (teamId: string, role?: StaffRole) => void;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach, onCoachClick }) => {
+    userNickname?: string;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach, onCoachClick, userNickname }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -869,11 +941,11 @@ const PayrollTab: React.FC<{
                                         }
                                         return (
                                             <tr key={i} className="group border-b border-slate-800">
-                                                <td className="px-4 py-1.5 text-xs text-slate-400 sticky left-0 bg-slate-900 z-10 whitespace-nowrap border-r border-slate-700">
+                                                <td className="px-4 py-1.5 text-xs text-slate-400 italic sticky left-0 bg-slate-900 z-10 whitespace-nowrap border-r border-slate-700">
                                                     {d.playerName}
                                                 </td>
                                                 {seasonColumns.map((_, ci) => (
-                                                    <td key={ci} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700 ${activeColSet.has(ci) ? 'text-red-400 font-bold' : 'text-slate-700'}`}>
+                                                    <td key={ci} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums italic whitespace-nowrap border-r border-slate-700 ${activeColSet.has(ci) ? 'text-slate-300' : 'text-slate-700'}`}>
                                                         {activeColSet.has(ci) ? fmtSalary(d.amount) : '-'}
                                                     </td>
                                                 ))}
