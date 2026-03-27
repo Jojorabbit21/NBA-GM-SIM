@@ -6,7 +6,8 @@ import type { ReleaseType } from '../types';
 import { DeadMoneyEntry } from '../types/team';
 import { TeamFinance } from '../types/finance';
 import { LeagueCoachingData } from '../types/coaching';
-import type { CoachFAPool, StaffRole } from '../types/coaching';
+import type { Coach, CoachFAPool, StaffRole } from '../types/coaching';
+import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 import { CoachStaffTable } from '../components/dashboard/CoachStaffTable';
 import type { LeagueTrainingConfigs, TeamTrainingConfig } from '../types/training';
 import { LeaguePickAssets } from '../types/draftAssets';
@@ -51,7 +52,8 @@ interface FrontOfficeViewProps {
     onCoachMarketOpen?: () => void;   // 코치 마켓 뷰 열기
     onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
     onExtendCoach?: (role: StaffRole) => void;
-    onFireCoach?: (role: StaffRole) => void;
+    onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
+    onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
     onInvestmentTabOpen?: () => void; // 구단주 투자 뷰 열기
     investmentConfirmed?: boolean;    // 현 시즌 투자 배분 완료 여부
 }
@@ -61,7 +63,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
     coachFAPool, leagueTrainingConfigs, onCoachMarketOpen, onTrainingViewOpen,
-    onExtendCoach, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
+    onExtendCoach, onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -124,6 +126,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             initialNegotiateType={initialNegotiateType}
                             coachingData={coachingData}
                             onExtendCoach={onExtendCoach}
+                            onExtendCoachAccepted={onExtendCoachAccepted}
                             onFireCoach={onFireCoach}
                         />
                     )}
@@ -469,7 +472,7 @@ const CapBar: React.FC<{ payroll: number }> = ({ payroll }) => {
 };
 
 // ── 캡 우측 위젯 전체 ──
-const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, primaryColor }) => {
+const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: string }> = ({ team, primaryColor, seasonShort }) => {
     const { SALARY_FLOOR, SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
     const payroll = calcTeamPayroll(team);
@@ -559,6 +562,67 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string }> = ({ team, pr
                     ))}
                 </div>
             )}
+
+            {/* ③ 서명 예외 가용 여부 */}
+            {(() => {
+                const { SALARY_CAP, TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
+                const { NON_TAX_MLE, TAXPAYER_MLE, BAE } = SIGNING_EXCEPTIONS;
+                const currentSeasonStartYear = parseInt(seasonShort?.split('-')[0] ?? '2025');
+                const baeUsedThisSeason = (team as any).usedBAEyear === currentSeasonStartYear;
+
+                const hasNonTaxMLE  = payroll < FIRST_APRON;
+                const hasTaxMLE     = payroll >= FIRST_APRON && payroll < SECOND_APRON;
+                const hasBAE        = payroll < TAX_LEVEL && !baeUsedThisSeason;
+                const hasRoomEx     = payroll < SALARY_CAP;
+                const roomAmount    = Math.max(0, SALARY_CAP - payroll);
+
+                const rows = [
+                    {
+                        label: '논택스 MLE',
+                        available: hasNonTaxMLE,
+                        detail: hasNonTaxMLE ? `${fmtM(NON_TAX_MLE)} · 최대 4년` : '1차 에이프런 초과',
+                        note: '1차 에이프런 미만 팀',
+                    },
+                    {
+                        label: '택스페이어 MLE',
+                        available: hasTaxMLE,
+                        detail: hasTaxMLE ? `${fmtM(TAXPAYER_MLE)} · 최대 2년` : (payroll < FIRST_APRON ? '논택스 MLE 적용' : '2차 에이프런 초과'),
+                        note: '1차~2차 에이프런 사이',
+                    },
+                    {
+                        label: '바이어뉴얼 (BAE)',
+                        available: hasBAE,
+                        detail: hasBAE ? `${fmtM(BAE)} · 최대 2년` : (payroll >= TAX_LEVEL ? '납세자 팀 불가' : '이미 사용됨'),
+                        note: '비납세자 · 격년 1회',
+                    },
+                    {
+                        label: '룸 익셉션',
+                        available: hasRoomEx,
+                        detail: hasRoomEx ? `${fmtM(roomAmount)} (잔여 캡)` : '캡 초과',
+                        note: '캡 스페이스 팀만',
+                    },
+                ];
+
+                return (
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        <WidgetHeader title="서명 예외" primaryColor={primaryColor} />
+                        {rows.map(row => (
+                            <div key={row.label} className="flex items-center justify-between px-4 py-2 border-b border-slate-800 last:border-0">
+                                <div className="flex flex-col min-w-0 pr-2">
+                                    <span className="text-xs text-slate-300">{row.label}</span>
+                                    <span className="text-[10px] text-slate-500">{row.note}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">{row.detail}</span>
+                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${row.available ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700/60 text-slate-500'}`}>
+                                        {row.available ? '가용' : '불가'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
         </div>
     );
 };
@@ -587,8 +651,9 @@ const PayrollTab: React.FC<{
     initialNegotiateType?: 'extension' | 'release';
     coachingData?: LeagueCoachingData | null;
     onExtendCoach?: (role: StaffRole) => void;
-    onFireCoach?: (role: StaffRole) => void;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoach, onFireCoach }) => {
+    onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
+    onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoach, onExtendCoachAccepted, onFireCoach }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -597,6 +662,8 @@ const PayrollTab: React.FC<{
     const [blockedNegotiationIds, setBlockedNegotiationIds] = useState<Set<string>>(new Set());
     const [cooldownMap, setCooldownMap] = useState<Record<string, string>>({});
     const [extNegStates, setExtNegStates] = useState<Record<string, NegotiationState>>({});
+    const [coachExtNeg, setCoachExtNeg] = useState<{ role: StaffRole; coach: Coach } | null>(null);
+    const [coachFireTarget, setCoachFireTarget] = useState<{ role: StaffRole; coach: Coach } | null>(null);
 
     useEffect(() => {
         if (initialNegotiateId && initialNegotiateType) {
@@ -744,9 +811,19 @@ const PayrollTab: React.FC<{
                                     {(onExtendCoach || onFireCoach) && (
                                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                                             <div className="flex items-center justify-end gap-1.5">
-                                                {onExtendCoach && (
+                                                {(onExtendCoach || onExtendCoachAccepted) && (
                                                     <button
-                                                        onClick={() => onExtendCoach(r.key)}
+                                                        onClick={() => {
+                                                            const coach = (coachingData?.[myTeamId] as any)?.[r.key] as Coach | undefined;
+                                                            if (coach && onExtendCoachAccepted) {
+                                                                setCoachExtNeg({
+                                                                    role: r.key as StaffRole,
+                                                                    coach,
+                                                                });
+                                                            } else if (onExtendCoach) {
+                                                                onExtendCoach(r.key);
+                                                            }
+                                                        }}
                                                         className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
                                                         style={{ backgroundColor: primaryColor, color: textColor }}
                                                     >
@@ -755,8 +832,11 @@ const PayrollTab: React.FC<{
                                                 )}
                                                 {onFireCoach && (
                                                     <button
-                                                        onClick={() => onFireCoach(r.key)}
-                                                        className="px-2 py-0.5 rounded text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                                                        onClick={() => {
+                                                            const coach = (coachingData?.[myTeamId] as any)?.[r.key] as Coach | undefined;
+                                                            if (coach) setCoachFireTarget({ role: r.key as StaffRole, coach });
+                                                        }}
+                                                        className="px-2 py-0.5 rounded text-xs font-bold bg-rose-900/60 hover:bg-rose-800/80 text-rose-300 transition-colors"
                                                     >
                                                         해고
                                                     </button>
@@ -782,8 +862,38 @@ const PayrollTab: React.FC<{
             </div>{/* 좌측 스택 닫기 */}
             {/* 우: 샐러리 캡 패널 */}
             <div className="flex-[3] min-w-0">
-                <CapSidePanel team={team} primaryColor={primaryColor} />
+                <CapSidePanel team={team} primaryColor={primaryColor} seasonShort={seasonShort} />
             </div>
+
+            {/* 코치 연장 협상 화면 */}
+            {coachExtNeg && onExtendCoachAccepted && (
+                <CoachNegotiationScreen
+                    coach={coachExtNeg.coach}
+                    role={coachExtNeg.role}
+                    negotiationType="extension"
+                    myTeam={team}
+                    onClose={() => setCoachExtNeg(null)}
+                    onAccept={(finalSalary, finalYears) => {
+                        onExtendCoachAccepted(coachExtNeg.role, finalSalary, finalYears);
+                        setCoachExtNeg(null);
+                    }}
+                />
+            )}
+
+            {/* 코치 해고 화면 */}
+            {coachFireTarget && onFireCoach && (
+                <CoachNegotiationScreen
+                    coach={coachFireTarget.coach}
+                    role={coachFireTarget.role}
+                    negotiationType="fire"
+                    myTeam={team}
+                    onClose={() => setCoachFireTarget(null)}
+                    onAccept={(buyoutAmount) => {
+                        onFireCoach(coachFireTarget.role, buyoutAmount);
+                        setCoachFireTarget(null);
+                    }}
+                />
+            )}
 
             {/* NegotiationScreen 오버레이 */}
             {negotiationTarget && ntPlayer && onReleasePlayer && onExtensionOffer && (

@@ -18,12 +18,12 @@ const CoachMarketPage: React.FC = () => {
         );
     }
 
-    const handleHire = (role: StaffRole, coachId: string) => {
+    const handleHire = (role: StaffRole, coachId: string, demandSalary?: number) => {
         const teamStaff = gameData.coachingData![myTeamId] ?? {
             headCoach: null, offenseCoordinator: null, defenseCoordinator: null,
             developmentCoach: null, trainingCoach: null,
         };
-        const { staff: newStaff, pool: newPool } = hireCoach(teamStaff, gameData.coachFAPool!, role, coachId);
+        const { staff: newStaff, pool: newPool } = hireCoach(teamStaff, gameData.coachFAPool!, role, coachId, demandSalary);
         const newCoachingData = { ...gameData.coachingData!, [myTeamId]: newStaff };
         gameData.setCoachingData(newCoachingData);
         gameData.setCoachFAPool(newPool);

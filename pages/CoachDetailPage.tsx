@@ -12,12 +12,13 @@ const CoachDetailPage: React.FC = () => {
     // location.state 우선 (FrontOfficePage/RosterPage에서 navigate 시 state 전달)
     const stateData = state as { coach: any; teamId: string; initialRole?: string } | null;
 
-    // fallback: coachingData에서 coachId로 탐색
+    // fallback: coachingData 전 직무에서 coachId로 탐색
     const coachData = stateData ?? (() => {
         if (!coachId) return null;
         for (const [teamId, staff] of Object.entries(gameData.coachingData ?? {})) {
-            const coach = staff?.headCoach;
-            if (coach?.id === coachId) return { coach, teamId };
+            const slots = [staff?.headCoach, staff?.offenseCoordinator, staff?.defenseCoordinator, staff?.developmentCoach, staff?.trainingCoach];
+            const coach = slots.find(c => c?.id === coachId);
+            if (coach) return { coach, teamId };
         }
         return null;
     })();

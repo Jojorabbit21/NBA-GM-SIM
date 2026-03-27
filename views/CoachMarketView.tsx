@@ -1,18 +1,14 @@
 
 import React, { useState } from 'react';
-import { ArrowLeft, Users } from 'lucide-react';
+import { ArrowLeft, Users, X } from 'lucide-react';
+import { calcCoachDemandSalary } from '../services/coachingStaff/coachGenerator';
 import {
+    Coach,
     CoachFAPool,
     CoachingStaff,
     LeagueCoachingData,
     StaffRole,
-    HeadCoach,
-    OffenseCoordinator,
-    DefenseCoordinator,
-    DevelopmentCoach,
-    TrainingCoach,
     CoachAbilities,
-    TrainingCoachAbilities,
 } from '../types/coaching';
 import { formatMoney } from '../utils/formatMoney';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
@@ -21,7 +17,7 @@ interface CoachMarketViewProps {
     coachFAPool: CoachFAPool;
     coachingData: LeagueCoachingData;
     userTeamId: string;
-    onHire: (role: StaffRole, coachId: string) => void;
+    onHire: (role: StaffRole, coachId: string, demandSalary?: number) => void;
     onFire: (role: StaffRole) => void;
     onBack: () => void;
 }
@@ -61,12 +57,18 @@ const ABILITY_LABELS: Record<keyof CoachAbilities, string> = {
     developmentVision: '성장 비전',
     experienceTransfer: '경험 전수',
     mentalCoaching: '멘탈 코칭',
-};
-
-const TRAINER_ABILITY_LABELS: Record<keyof TrainingCoachAbilities, string> = {
     athleticTraining: '신체 훈련',
     recovery: '회복 관리',
     conditioning: '컨디셔닝',
+};
+
+// 슬롯별 핵심 능력치
+const ROLE_MAIN_ABILITY: Record<StaffRole, keyof CoachAbilities> = {
+    headCoach: 'teaching',
+    offenseCoordinator: 'schemeDepth',
+    defenseCoordinator: 'adaptability',
+    developmentCoach: 'developmentVision',
+    trainingCoach: 'athleticTraining',
 };
 
 function getAbilityColor(val: number): string {
@@ -75,73 +77,41 @@ function getAbilityColor(val: number): string {
     return 'text-red-400';
 }
 
-function getMainAbility(role: StaffRole, coach: HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach | TrainingCoach): { label: string; value: number } {
-    if (role === 'trainingCoach') {
-        const abilities = (coach as TrainingCoach).abilities as TrainingCoachAbilities;
-        return { label: '신체 훈련', value: abilities.athleticTraining };
-    }
-    const abilities = (coach as HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach).abilities as CoachAbilities;
-    return { label: '지도력', value: abilities.teaching };
+function getMainAbility(role: StaffRole, coach: Coach): { label: string; value: number } {
+    const key = ROLE_MAIN_ABILITY[role];
+    return { label: ABILITY_LABELS[key], value: coach.abilities[key] };
 }
 
-function getAverageAbility(role: StaffRole, coach: HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach | TrainingCoach): number {
+function getAverageAbility(role: StaffRole, coach: Coach): number {
+    const a = coach.abilities;
     if (role === 'trainingCoach') {
-        const abilities = (coach as TrainingCoach).abilities as TrainingCoachAbilities;
-        const vals = Object.values(abilities) as number[];
-        return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        return Math.round((a.athleticTraining + a.recovery + a.conditioning) / 3);
     }
-    const abilities = (coach as HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach).abilities as CoachAbilities;
-    const vals = Object.values(abilities) as number[];
-    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    const vals = [a.teaching, a.schemeDepth, a.communication, a.playerEval,
+        a.motivation, a.playerRelation, a.adaptability,
+        a.developmentVision, a.experienceTransfer, a.mentalCoaching];
+    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
 }
 
-type AnyCoach = HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach | TrainingCoach;
-
-const AbilityTooltip: React.FC<{ role: StaffRole; coach: AnyCoach }> = ({ role, coach }) => {
-    if (role === 'trainingCoach') {
-        const abilities = (coach as TrainingCoach).abilities as TrainingCoachAbilities;
-        return (
-            <div className="flex flex-col gap-1">
-                {(Object.keys(TRAINER_ABILITY_LABELS) as (keyof TrainingCoachAbilities)[]).map(key => (
-                    <div key={key} className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] text-slate-400">{TRAINER_ABILITY_LABELS[key]}</span>
-                        <span className={`text-[10px] font-black font-mono tabular-nums ${getAbilityColor(abilities[key])}`}>{abilities[key]}</span>
-                    </div>
-                ))}
+const AbilityTooltip: React.FC<{ role: StaffRole; coach: Coach }> = ({ coach }) => (
+    <div className="flex flex-col gap-1">
+        {(Object.keys(ABILITY_LABELS) as (keyof CoachAbilities)[]).map(key => (
+            <div key={key} className="flex items-center justify-between gap-3">
+                <span className="text-[10px] text-slate-400">{ABILITY_LABELS[key]}</span>
+                <span className={`text-[10px] font-black font-mono tabular-nums ${getAbilityColor(coach.abilities[key])}`}>{coach.abilities[key]}</span>
             </div>
-        );
-    }
-    const abilities = (coach as HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach).abilities as CoachAbilities;
-    return (
-        <div className="flex flex-col gap-1">
-            {(Object.keys(ABILITY_LABELS) as (keyof CoachAbilities)[]).map(key => (
-                <div key={key} className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-slate-400">{ABILITY_LABELS[key]}</span>
-                    <span className={`text-[10px] font-black font-mono tabular-nums ${getAbilityColor(abilities[key])}`}>{abilities[key]}</span>
-                </div>
-            ))}
-        </div>
-    );
-};
+        ))}
+    </div>
+);
 
-function getPoolForRole(pool: CoachFAPool, role: StaffRole): AnyCoach[] {
-    switch (role) {
-        case 'headCoach': return pool.headCoaches;
-        case 'offenseCoordinator': return pool.offenseCoordinators;
-        case 'defenseCoordinator': return pool.defenseCoordinators;
-        case 'developmentCoach': return pool.developmentCoaches;
-        case 'trainingCoach': return pool.trainingCoaches;
-    }
-}
-
-function getCurrentCoachForRole(staff: CoachingStaff | undefined, role: StaffRole): AnyCoach | null {
+function getCurrentCoachForRole(staff: CoachingStaff | undefined, role: StaffRole): Coach | null {
     if (!staff) return null;
     switch (role) {
-        case 'headCoach': return staff.headCoach;
-        case 'offenseCoordinator': return staff.offenseCoordinator;
-        case 'defenseCoordinator': return staff.defenseCoordinator;
-        case 'developmentCoach': return staff.developmentCoach;
-        case 'trainingCoach': return staff.trainingCoach;
+        case 'headCoach': return staff.headCoach ?? null;
+        case 'offenseCoordinator': return staff.offenseCoordinator ?? null;
+        case 'defenseCoordinator': return staff.defenseCoordinator ?? null;
+        case 'developmentCoach': return staff.developmentCoach ?? null;
+        case 'trainingCoach': return staff.trainingCoach ?? null;
     }
 }
 
@@ -155,14 +125,15 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
 }) => {
     const [selectedRole, setSelectedRole] = useState<StaffRole>('headCoach');
     const [tooltipId, setTooltipId] = useState<string | null>(null);
+    const [pendingHire, setPendingHire] = useState<{ coach: Coach; role: StaffRole; demandSalary: number } | null>(null);
 
     const userStaff = coachingData[userTeamId];
     const currentCoach = getCurrentCoachForRole(userStaff, selectedRole);
-    const faPool = getPoolForRole(coachFAPool, selectedRole);
 
-    const sortedPool = [...faPool].sort((a, b) => {
-        return getAverageAbility(selectedRole, b) - getAverageAbility(selectedRole, a);
-    });
+    // FA 풀은 단일 배열 — 선택된 슬롯 기준 평균으로 정렬
+    const sortedPool = [...coachFAPool.coaches].sort((a, b) =>
+        getAverageAbility(selectedRole, b) - getAverageAbility(selectedRole, a)
+    );
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden bg-slate-950">
@@ -258,7 +229,7 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
                                     <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50" align="left">코치명</TableHeaderCell>
                                     <TableHeaderCell className="text-xs w-20 py-2 border-r border-slate-800/50">주요 능력</TableHeaderCell>
                                     <TableHeaderCell className="text-xs w-16 py-2 border-r border-slate-800/50">평균</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-24 py-2 border-r border-slate-800/50">연봉</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-24 py-2 border-r border-slate-800/50">요구 연봉</TableHeaderCell>
                                     <TableHeaderCell className="text-xs w-16 py-2 border-r border-slate-800/50">계약</TableHeaderCell>
                                     <TableHeaderCell className="text-xs w-16 py-2">고용</TableHeaderCell>
                                 </TableHead>
@@ -298,14 +269,18 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
                                                     <span className={`text-xs font-black font-mono tabular-nums ${getAbilityColor(avg)}`}>{avg}</span>
                                                 </TableCell>
                                                 <TableCell className="py-2 border-r border-slate-800/50 text-center">
-                                                    <span className="text-xs font-mono text-emerald-400 tabular-nums">{formatMoney(coach.contractSalary)}</span>
+                                                    <span className="text-xs font-mono text-emerald-400 tabular-nums">{formatMoney(calcCoachDemandSalary(coach, selectedRole, 'fa'))}</span>
                                                 </TableCell>
                                                 <TableCell className="py-2 border-r border-slate-800/50 text-center">
                                                     <span className="text-xs text-slate-400 font-mono">{coach.contractYears}년</span>
                                                 </TableCell>
                                                 <TableCell className="py-2 text-center">
                                                     <button
-                                                        onClick={() => onHire(selectedRole, coach.id)}
+                                                        onClick={() => setPendingHire({
+                                                            coach,
+                                                            role: selectedRole,
+                                                            demandSalary: calcCoachDemandSalary(coach, selectedRole, 'fa'),
+                                                        })}
                                                         className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
                                                     >
                                                         고용
@@ -321,6 +296,65 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
 
                 </div>
             </div>
+
+        {/* ═══ 고용 확인 모달 ═══ */}
+        {pendingHire && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-80 overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+                        <span className="text-sm font-black text-white uppercase tracking-widest">코치 영입 확인</span>
+                        <button onClick={() => setPendingHire(null)} className="text-slate-500 hover:text-slate-300 transition-colors">
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <div className="px-5 py-4 flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800 ring-1 ring-slate-700 flex items-center justify-center shrink-0">
+                                <span className="text-xs font-black text-indigo-400">{ROLE_ABBRS[pendingHire.role]}</span>
+                            </div>
+                            <div>
+                                <div className="text-sm font-black text-white">{pendingHire.coach.name}</div>
+                                <div className="text-xs text-slate-400">{ROLE_LABELS[pendingHire.role]}</div>
+                            </div>
+                        </div>
+                        <div className="bg-slate-800 rounded-xl px-4 py-3 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-400">OVR</span>
+                                <span className={`text-xs font-black font-mono ${getAbilityColor(getAverageAbility(pendingHire.role, pendingHire.coach))}`}>
+                                    {getAverageAbility(pendingHire.role, pendingHire.coach)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-400">계약 기간</span>
+                                <span className="text-xs font-mono text-slate-200">{pendingHire.coach.contractYears}년</span>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 mt-0.5">
+                                <span className="text-xs font-bold text-slate-300">요구 연봉</span>
+                                <span className="text-sm font-black font-mono text-emerald-400">{formatMoney(pendingHire.demandSalary)}</span>
+                            </div>
+                        </div>
+                        <div className="text-xs text-slate-500 text-center">이 조건으로 계약을 체결하시겠습니까?</div>
+                    </div>
+                    <div className="px-5 pb-4 flex gap-2">
+                        <button
+                            onClick={() => setPendingHire(null)}
+                            className="flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wide bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                        >
+                            취소
+                        </button>
+                        <button
+                            onClick={() => {
+                                onHire(pendingHire.role, pendingHire.coach.id, pendingHire.demandSalary);
+                                setPendingHire(null);
+                            }}
+                            className="flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                        >
+                            계약 체결
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         </div>
     );
 };

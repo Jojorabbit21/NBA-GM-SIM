@@ -1,111 +1,95 @@
 
 import {
-    HeadCoach, HeadCoachPreferences, CoachAbilities, TrainingCoachAbilities,
+    Coach, HeadCoach, HeadCoachPreferences, CoachAbilities,
     OffenseCoordinator, DefenseCoordinator, DevelopmentCoach, TrainingCoach,
     CoachingStaff, CoachFAPool, LeagueCoachingData, StaffRole,
 } from '../../types/coaching';
 
+
 // ── DB에서 로드된 스태프 데이터 싱글턴 ──
-let COACH_DATA: Record<string, HeadCoach> = {};
+let COACH_DATA: Record<string, Coach> = {};
 
 type StaffPerTeam = {
-    headCoach?: HeadCoach;
-    offenseCoordinator?: OffenseCoordinator;
-    defenseCoordinator?: DefenseCoordinator;
-    developmentCoach?: DevelopmentCoach;
-    trainingCoach?: TrainingCoach;
+    headCoach?: Coach;
+    offenseCoordinator?: Coach;
+    defenseCoordinator?: Coach;
+    developmentCoach?: Coach;
+    trainingCoach?: Coach;
 };
 let STAFF_DATA: Record<string, StaffPerTeam> = {};
 
+let COACH_FA_DATA: CoachFAPool = { coaches: [] };
+
+// ── 새 DB 스키마: id(UUID) + base_attributes JSONB ──
+type CoachBaseAttributes = {
+    role: 'hc' | 'oc' | 'dc' | 'dev' | 'tr' | null;
+    current_team: string | null;
+    abilities?: CoachAbilities | null;
+    preferences?: HeadCoachPreferences | null;
+    contract: { years: number; salary: number; years_remaining: number };
+};
+
 type MetaCoachRow = {
-    team_id: string;
-    role?: string | null;
+    id: string;
     coach_name: string;
-    preferences?: HeadCoachPreferences | string | null;
-    abilities?: CoachAbilities | TrainingCoachAbilities | string | null;
-    contract_years: number;
-    contract_salary: number;
-    contract_years_remaining: number;
+    base_attributes: CoachBaseAttributes | string;
 };
 
 /**
- * meta_coaches DB 데이터(전 직무)로 싱글턴 교체
+ * meta_coaches DB 데이터(전 직무)로 싱글턴 교체.
+ * current_team이 null인 코치는 FA풀로 분류.
  * queries.ts의 useBaseData()에서 앱 시작 시 호출
  */
 export function populateStaffData(rows: MetaCoachRow[]): void {
-    const newCoachData: Record<string, HeadCoach> = {};
+    const newCoachData: Record<string, Coach> = {};
     const newStaffData: Record<string, StaffPerTeam> = {};
+    const newFAData: CoachFAPool = { coaches: [] };
 
     for (const row of rows) {
-        const teamId = row.team_id;
-        if (!newStaffData[teamId]) newStaffData[teamId] = {};
+        const attrs: CoachBaseAttributes = typeof row.base_attributes === 'string'
+            ? JSON.parse(row.base_attributes)
+            : row.base_attributes;
 
-        const contractSalary = row.contract_salary < 1000
-            ? Math.round(row.contract_salary * 1_000_000)
-            : row.contract_salary;
-        const abilities = row.abilities
-            ? (typeof row.abilities === 'string' ? JSON.parse(row.abilities) : row.abilities)
-            : undefined;
+        const { role, current_team: teamId, contract } = attrs;
+        const contractSalary = contract.salary < 1000
+            ? Math.round(contract.salary * 1_000_000)
+            : contract.salary;
+        const idSeed = stringToHash(row.id);
 
-        const role = row.role ?? 'head_coach';
+        const coach: Coach = {
+            id: row.id,
+            name: row.coach_name,
+            abilities: attrs.abilities ?? generateCoachAbilities(idSeed),
+            ...(attrs.preferences ? { preferences: attrs.preferences } : {}),
+            contractYears: contract.years,
+            contractSalary,
+            contractYearsRemaining: contract.years_remaining,
+        };
 
-        if (role === 'head_coach') {
-            const prefs = row.preferences
-                ? (typeof row.preferences === 'string' ? JSON.parse(row.preferences) : row.preferences)
-                : null;
-            if (!prefs) continue; // HC는 preferences 필수
-            const hc: HeadCoach = {
-                id: `coach_${teamId}`,
-                name: row.coach_name,
-                preferences: prefs,
-                abilities: (abilities as CoachAbilities) ?? generateDefaultCoachAbilities(stringToHash(teamId + ':hc')),
-                contractYears: row.contract_years,
-                contractSalary,
-                contractYearsRemaining: row.contract_years_remaining,
-            };
-            newCoachData[teamId] = hc;
-            newStaffData[teamId].headCoach = hc;
-        } else if (role === 'offense_coord') {
-            newStaffData[teamId].offenseCoordinator = {
-                id: `coach_oc_${teamId}`,
-                name: row.coach_name,
-                abilities: (abilities as CoachAbilities) ?? generateOCAbilities(stringToHash(teamId + ':oc')),
-                contractYears: row.contract_years,
-                contractSalary,
-                contractYearsRemaining: row.contract_years_remaining,
-            };
-        } else if (role === 'defense_coord') {
-            newStaffData[teamId].defenseCoordinator = {
-                id: `coach_dc_${teamId}`,
-                name: row.coach_name,
-                abilities: (abilities as CoachAbilities) ?? generateDCAbilities(stringToHash(teamId + ':dc')),
-                contractYears: row.contract_years,
-                contractSalary,
-                contractYearsRemaining: row.contract_years_remaining,
-            };
-        } else if (role === 'development') {
-            newStaffData[teamId].developmentCoach = {
-                id: `coach_dev_${teamId}`,
-                name: row.coach_name,
-                abilities: (abilities as CoachAbilities) ?? generateDevAbilities(stringToHash(teamId + ':dev')),
-                contractYears: row.contract_years,
-                contractSalary,
-                contractYearsRemaining: row.contract_years_remaining,
-            };
-        } else if (role === 'training') {
-            newStaffData[teamId].trainingCoach = {
-                id: `coach_trainer_${teamId}`,
-                name: row.coach_name,
-                abilities: (abilities as TrainingCoachAbilities) ?? generateTrainerAbilities(stringToHash(teamId + ':trainer')),
-                contractYears: row.contract_years,
-                contractSalary,
-                contractYearsRemaining: row.contract_years_remaining,
-            };
+        if (!teamId) {
+            // FA 풀 — role=null, 슬롯 무관
+            newFAData.coaches.push(coach);
+        } else {
+            if (!newStaffData[teamId]) newStaffData[teamId] = {};
+            if (role === 'hc') {
+                if (!coach.preferences) continue; // HC는 preferences 필수
+                newCoachData[teamId] = coach;
+                newStaffData[teamId].headCoach = coach;
+            } else if (role === 'oc') {
+                newStaffData[teamId].offenseCoordinator = coach;
+            } else if (role === 'dc') {
+                newStaffData[teamId].defenseCoordinator = coach;
+            } else if (role === 'dev') {
+                newStaffData[teamId].developmentCoach = coach;
+            } else if (role === 'tr') {
+                newStaffData[teamId].trainingCoach = coach;
+            }
         }
     }
 
     COACH_DATA = newCoachData;
     STAFF_DATA = newStaffData;
+    COACH_FA_DATA = newFAData;
 }
 
 /**
@@ -139,146 +123,142 @@ function seededNormalInt(seed: number, mean: number, stdev: number, min: number,
     return Math.max(min, Math.min(max, Math.round(mean + z * stdev)));
 }
 
-const FIRST_NAMES = [
-    'James', 'Mike', 'Steve', 'Tom', 'Rick', 'Doc', 'Gregg', 'Erik',
-    'Tyronn', 'Billy', 'Monty', 'Ime', 'Chauncey', 'Wes', 'Taylor',
-    'Darvin', 'Joe', 'Mark', 'Nate', 'Dwane', 'Nick', 'Terry',
-    'Quin', 'Jason', 'Kenny', 'Chris', 'Jacque', 'Willie', 'Adrian',
-    'J.B.', 'Alvin', 'Scott', 'Kevin', 'Dan', 'Stephen', 'Larry',
-    'Brian', 'Rex', 'Patrick', 'Marcus', 'David', 'Anthony', 'Robert',
-    'Charles', 'Paul', 'Andrew', 'Ryan', 'Sean', 'Derek', 'Aaron',
+const COACH_FIRST_NAMES = [
+    '에런', '아담', '앨런', '앤디', '배리', '벤', '빌', '밥', '브래드', '브라이언',
+    '카를로스', '채드', '크리스', '크레이그', '댄', '데이브', '데니스', '데릭', '돈', '더그',
+    '드류', '에드', '에릭', '프랭크', '프레드', '게리', '조지', '글렌', '그렉', '잭',
+    '제임스', '제이슨', '제이', '제프', '제리', '짐', '조', '존', '조쉬', '저스틴',
+    '키스', '케빈', '래리', '루크', '마크', '매트', '마이클', '마이크', '네이트', '닉',
+    '팻', '폴', '필', '랜디', '레이', '릭', '롭', '론', '라이언', '샘',
+    '스콧', '숀', '스탠', '스티브', '테일러', '테리', '팀', '토드', '톰', '토니',
+    '트래비스', '타일러', '빅터', '웨이드', '월터', '웨인', '윌',
 ];
 
-const LAST_NAMES = [
-    'Williams', 'Johnson', 'Brown', 'Davis', 'Miller', 'Wilson', 'Anderson',
-    'Thomas', 'Jackson', 'Harris', 'Martin', 'Thompson', 'Robinson', 'Clark',
-    'Lewis', 'Walker', 'Hall', 'Allen', 'Young', 'King', 'Wright', 'Hill',
-    'Scott', 'Green', 'Adams', 'Baker', 'Nelson', 'Carter', 'Mitchell', 'Turner',
-    'Phillips', 'Campbell', 'Parker', 'Evans', 'Edwards', 'Collins', 'Stewart',
-    'Morris', 'Rogers', 'Reed', 'Cooper', 'Bailey', 'Rivera', 'Cox',
-    'Howard', 'Ward', 'Torres', 'Peterson', 'Gray', 'Ramirez',
+const COACH_LAST_NAMES = [
+    '애덤스', '앨런', '앤더슨', '베이커', '반스', '벨', '브라운', '번스', '카터', '클라크',
+    '콜', '콜린스', '쿡', '쿠퍼', '콕스', '데이비스', '에드워즈', '에반스', '피셔', '포스터',
+    '가르시아', '깁슨', '그레이엄', '그랜트', '그린', '그리핀', '홀', '해리스', '하트', '힐',
+    '하워드', '휴즈', '헌터', '잭슨', '젠킨스', '존슨', '존스', '조던', '켈리', '킹',
+    '리', '루이스', '롱', '마틴', '마르티네스', '밀러', '미첼', '무어', '모건', '모리스',
+    '넬슨', '파커', '패터슨', '필립스', '프라이스', '리드', '리처드슨', '로버츠', '로빈슨', '로저스',
+    '로스', '스콧', '심슨', '스미스', '스튜어트', '테일러', '토마스', '톰슨', '터너', '워커',
+    '워드', '왓슨', '화이트', '윌리엄스', '윌슨', '우드', '라이트', '영',
 ];
 
 function generateCoachName(seed: number): string {
-    const fi = Math.floor(seededRandom(seed) * FIRST_NAMES.length);
-    const li = Math.floor(seededRandom(seed + 31) * LAST_NAMES.length);
-    return `${FIRST_NAMES[fi]} ${LAST_NAMES[li]}`;
+    const fi = Math.floor(seededRandom(seed) * COACH_FIRST_NAMES.length);
+    const li = Math.floor(seededRandom(seed + 31) * COACH_LAST_NAMES.length);
+    return `${COACH_FIRST_NAMES[fi]} ${COACH_LAST_NAMES[li]}`;
 }
 
-// ── CoachAbilities 생성 (역할별 주력 능력치 편향) ──
+// ── CoachAbilities 생성 ──
 
 /**
- * 기본 CoachAbilities 생성 (균등)
+ * 코치 전체 수준 1~10. min(U1,U2)×10 → 가파른 우측 치우침.
+ * P(q≤3)≈51%, P(q≤5)≈75%, P(q≥8)≈4%
  */
-function generateDefaultCoachAbilities(baseSeed: number): CoachAbilities {
-    return {
-        teaching:            seededNormalInt(baseSeed + 1,  5, 1, 2, 10),
-        schemeDepth:         seededNormalInt(baseSeed + 2,  5, 1, 2, 10),
-        communication:       seededNormalInt(baseSeed + 3,  5, 1, 2, 10),
-        playerEval:          seededNormalInt(baseSeed + 4,  5, 1, 2, 10),
-        motivation:          seededNormalInt(baseSeed + 5,  5, 1, 2, 10),
-        playerRelation:      seededNormalInt(baseSeed + 6,  5, 1, 2, 10),
-        adaptability:        seededNormalInt(baseSeed + 7,  5, 1, 2, 10),
-        developmentVision:   seededNormalInt(baseSeed + 8,  5, 1, 2, 10),
-        experienceTransfer:  seededNormalInt(baseSeed + 9,  5, 1, 2, 10),
-        mentalCoaching:      seededNormalInt(baseSeed + 10, 5, 1, 2, 10),
-    };
+function coachQuality(seed: number): number {
+    const u1 = seededRandom(seed);
+    const u2 = seededRandom(seed + 1009);
+    return Math.max(1, Math.min(10, Math.round(Math.min(u1, u2) * 10)));
 }
 
-/**
- * HC 특화 능력치 (motivation, playerRelation, adaptability, mentalCoaching 상향)
- */
-function generateHCAbilities(baseSeed: number): CoachAbilities {
-    return {
-        teaching:            seededNormalInt(baseSeed + 1,  5, 1, 2, 10),
-        schemeDepth:         seededNormalInt(baseSeed + 2,  5, 1, 2, 10),
-        communication:       seededNormalInt(baseSeed + 3,  6, 1, 3, 10),
-        playerEval:          seededNormalInt(baseSeed + 4,  6, 1, 3, 10),
-        motivation:          seededNormalInt(baseSeed + 5,  7, 1, 4, 10), // HC 주력
-        playerRelation:      seededNormalInt(baseSeed + 6,  7, 1, 4, 10), // HC 주력
-        adaptability:        seededNormalInt(baseSeed + 7,  6, 1, 3, 10), // HC 주력
-        developmentVision:   seededNormalInt(baseSeed + 8,  5, 1, 2,  9),
-        experienceTransfer:  seededNormalInt(baseSeed + 9,  5, 1, 2,  9),
-        mentalCoaching:      seededNormalInt(baseSeed + 10, 7, 1, 4, 10), // HC 주력
-    };
+/** quality 주변 ±2 noise로 개별 능력치 생성 */
+function abilityVal(seed: number, quality: number): number {
+    const noise = seededNormalInt(seed, 0, 1, -2, 2);
+    return Math.max(1, Math.min(10, quality + noise));
 }
 
 /**
- * OC 특화 능력치 (teaching, schemeDepth, communication 상향)
+ * 모든 코치 공통 13개 능력치 생성 (슬롯 무관).
+ * quality가 전체 수준을 결정, 각 능력치는 ±2 noise로 독립 생성.
  */
-function generateOCAbilities(baseSeed: number): CoachAbilities {
+function generateCoachAbilities(baseSeed: number): CoachAbilities {
+    const q = coachQuality(baseSeed);
     return {
-        teaching:            seededNormalInt(baseSeed + 1,  7, 1, 4, 10), // OC 주력
-        schemeDepth:         seededNormalInt(baseSeed + 2,  7, 1, 4, 10), // OC 주력
-        communication:       seededNormalInt(baseSeed + 3,  7, 1, 4, 10), // OC 주력
-        playerEval:          seededNormalInt(baseSeed + 4,  6, 1, 3,  9),
-        motivation:          seededNormalInt(baseSeed + 5,  5, 1, 2,  9),
-        playerRelation:      seededNormalInt(baseSeed + 6,  5, 1, 2,  9),
-        adaptability:        seededNormalInt(baseSeed + 7,  5, 1, 2,  9),
-        developmentVision:   seededNormalInt(baseSeed + 8,  4, 1, 1,  8),
-        experienceTransfer:  seededNormalInt(baseSeed + 9,  4, 1, 1,  8),
-        mentalCoaching:      seededNormalInt(baseSeed + 10, 5, 1, 2,  8),
+        teaching:           abilityVal(baseSeed + 1,  q),
+        schemeDepth:        abilityVal(baseSeed + 2,  q),
+        communication:      abilityVal(baseSeed + 3,  q),
+        playerEval:         abilityVal(baseSeed + 4,  q),
+        motivation:         abilityVal(baseSeed + 5,  q),
+        playerRelation:     abilityVal(baseSeed + 6,  q),
+        adaptability:       abilityVal(baseSeed + 7,  q),
+        developmentVision:  abilityVal(baseSeed + 8,  q),
+        experienceTransfer: abilityVal(baseSeed + 9,  q),
+        mentalCoaching:     abilityVal(baseSeed + 10, q),
+        athleticTraining:   abilityVal(baseSeed + 11, q),
+        recovery:           abilityVal(baseSeed + 12, q),
+        conditioning:       abilityVal(baseSeed + 13, q),
     };
 }
 
-/**
- * DC 특화 능력치 (teaching, schemeDepth, communication 상향 — OC와 유사 구조)
- */
-function generateDCAbilities(baseSeed: number): CoachAbilities {
-    return {
-        teaching:            seededNormalInt(baseSeed + 1,  7, 1, 4, 10), // DC 주력
-        schemeDepth:         seededNormalInt(baseSeed + 2,  7, 1, 4, 10), // DC 주력
-        communication:       seededNormalInt(baseSeed + 3,  7, 1, 4, 10), // DC 주력
-        playerEval:          seededNormalInt(baseSeed + 4,  6, 1, 3,  9),
-        motivation:          seededNormalInt(baseSeed + 5,  5, 1, 2,  9),
-        playerRelation:      seededNormalInt(baseSeed + 6,  5, 1, 2,  9),
-        adaptability:        seededNormalInt(baseSeed + 7,  5, 1, 2,  9),
-        developmentVision:   seededNormalInt(baseSeed + 8,  4, 1, 1,  8),
-        experienceTransfer:  seededNormalInt(baseSeed + 9,  4, 1, 1,  8),
-        mentalCoaching:      seededNormalInt(baseSeed + 10, 5, 1, 2,  8),
-    };
+// ── 역할별 연봉 밴드 ──
+
+const SALARY_BANDS: Record<StaffRole, { min: number; max: number }> = {
+    headCoach:          { min: 3_000_000, max: 15_000_000 },
+    offenseCoordinator: { min:   600_000, max:  3_500_000 },
+    defenseCoordinator: { min:   600_000, max:  3_500_000 },
+    developmentCoach:   { min:   200_000, max:  2_000_000 },
+    trainingCoach:      { min:   150_000, max:  1_200_000 },
+};
+
+// ── OVR 계산 ──
+
+/** 역할별 핵심 능력치 가중 평균 → 1~10 OVR (abilities 직접 받음) */
+function calcOVRFromAbilities(abilities: CoachAbilities, role: StaffRole): number {
+    const a = abilities;
+    if (role === 'trainingCoach') {
+        return Math.round((a.athleticTraining + a.recovery + a.conditioning) / 3);
+    }
+    if (role === 'developmentCoach') {
+        const vals = [a.teaching, a.developmentVision, a.experienceTransfer, a.communication, a.playerRelation, a.motivation];
+        return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+    if (role === 'offenseCoordinator' || role === 'defenseCoordinator') {
+        const vals = [a.schemeDepth, a.adaptability, a.communication, a.teaching, a.mentalCoaching, a.playerEval];
+        return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+    // headCoach: 코칭 능력치 10개 평균
+    const vals = [a.teaching, a.schemeDepth, a.communication, a.playerEval, a.motivation,
+                  a.playerRelation, a.adaptability, a.developmentVision, a.experienceTransfer, a.mentalCoaching];
+    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+}
+
+/** 코치 OVR (외부 공개) */
+export function calcCoachOVR(coach: Coach, role: StaffRole): number {
+    return calcOVRFromAbilities(coach.abilities, role);
 }
 
 /**
- * Dev 특화 능력치 (developmentVision, experienceTransfer, playerEval, playerRelation 상향)
+ * 코치 요구 연봉.
+ * @param situation 'fa' = FA 신규 영입 (시장가), 'extension' = 계약 연장 (10% 잔류 할인)
  */
-function generateDevAbilities(baseSeed: number): CoachAbilities {
-    return {
-        teaching:            seededNormalInt(baseSeed + 1,  6, 1, 3,  9),
-        schemeDepth:         seededNormalInt(baseSeed + 2,  6, 1, 3,  9),
-        communication:       seededNormalInt(baseSeed + 3,  6, 1, 3,  9),
-        playerEval:          seededNormalInt(baseSeed + 4,  7, 1, 4, 10), // Dev 주력
-        motivation:          seededNormalInt(baseSeed + 5,  6, 1, 3,  9),
-        playerRelation:      seededNormalInt(baseSeed + 6,  7, 1, 4, 10), // Dev 주력
-        adaptability:        seededNormalInt(baseSeed + 7,  6, 1, 3,  9),
-        developmentVision:   seededNormalInt(baseSeed + 8,  7, 1, 4, 10), // Dev 주력
-        experienceTransfer:  seededNormalInt(baseSeed + 9,  7, 1, 4, 10), // Dev 주력
-        mentalCoaching:      seededNormalInt(baseSeed + 10, 6, 1, 3, 10), // Dev 주력
-    };
-}
-
-/**
- * Trainer 특화 능력치 (athleticTraining, recovery, conditioning)
- */
-function generateTrainerAbilities(baseSeed: number): TrainingCoachAbilities {
-    return {
-        athleticTraining: seededNormalInt(baseSeed + 1, 6, 1, 3, 10),
-        recovery:         seededNormalInt(baseSeed + 2, 6, 1, 3, 10),
-        conditioning:     seededNormalInt(baseSeed + 3, 6, 1, 3, 10),
-    };
+export function calcCoachDemandSalary(
+    coach: Coach,
+    role: StaffRole,
+    situation: 'fa' | 'extension' = 'fa',
+): number {
+    const ovr = calcOVRFromAbilities(coach.abilities, role);
+    const { min, max } = SALARY_BANDS[role];
+    const market = Math.round(min + (max - min) * ((ovr - 1) / 9));
+    return situation === 'extension' ? Math.round(market * 0.9) : market;
 }
 
 // ── 계약 생성 헬퍼 ──
 
-function generateContract(baseSeed: number, baseSalary: number, salaryVariance: number): {
+/** OVR 기반 계약 생성 — 시드 편차 ±15% */
+function generateContractByOVR(baseSeed: number, ovr: number, role: StaffRole): {
     contractYears: number;
     contractSalary: number;
     contractYearsRemaining: number;
 } {
+    const { min, max } = SALARY_BANDS[role];
     const contractYears = seededNormalInt(baseSeed + 20, 3, 0.8, 2, 4);
-    const contractSalary = Math.round(
-        Math.max(500_000, seededNormalInt(baseSeed + 21, baseSalary, salaryVariance, baseSalary * 0.5, baseSalary * 2))
-    );
+    const base = Math.round(min + (max - min) * ((ovr - 1) / 9));
+    const variance = Math.round(base * 0.15);
+    const contractSalary = Math.max(min, Math.min(max,
+        seededNormalInt(baseSeed + 21, base, variance, min, max)
+    ));
     return { contractYears, contractSalary, contractYearsRemaining: contractYears };
 }
 
@@ -299,15 +279,14 @@ export function generateHeadCoach(teamId: string, tendencySeed: string): HeadCoa
         helpScheme:      seededNormalInt(baseSeed + 6, 5.5, 2, 1, 10),
         zonePreference:  seededNormalInt(baseSeed + 7, 5.5, 2, 1, 10),
     };
-    const extremity = Object.values(preferences).reduce((sum, v) => sum + Math.abs(v - 5.5), 0) / 7;
-    const { contractYears, contractSalary, contractYearsRemaining } = generateContract(
-        baseSeed, Math.round((6 + extremity * 2) * 1_000_000), 1_500_000
-    );
+    const abilities = generateCoachAbilities(baseSeed + 100);
+    const ovr = calcOVRFromAbilities(abilities, 'headCoach');
+    const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'headCoach');
     return {
         id: `coach_hc_${teamId}`,
         name,
         preferences,
-        abilities: generateHCAbilities(baseSeed + 100),
+        abilities,
         contractYears,
         contractSalary,
         contractYearsRemaining,
@@ -316,13 +295,13 @@ export function generateHeadCoach(teamId: string, tendencySeed: string): HeadCoa
 
 export function generateOffenseCoordinator(seed: string): OffenseCoordinator {
     const baseSeed = stringToHash(seed);
-    const { contractYears, contractSalary, contractYearsRemaining } = generateContract(
-        baseSeed, 2_500_000, 800_000
-    );
+    const abilities = generateCoachAbilities(baseSeed + 100);
+    const ovr = calcOVRFromAbilities(abilities, 'offenseCoordinator');
+    const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'offenseCoordinator');
     return {
         id: `coach_oc_${baseSeed}`,
         name: generateCoachName(baseSeed),
-        abilities: generateOCAbilities(baseSeed + 100),
+        abilities,
         contractYears,
         contractSalary,
         contractYearsRemaining,
@@ -331,13 +310,13 @@ export function generateOffenseCoordinator(seed: string): OffenseCoordinator {
 
 export function generateDefenseCoordinator(seed: string): DefenseCoordinator {
     const baseSeed = stringToHash(seed);
-    const { contractYears, contractSalary, contractYearsRemaining } = generateContract(
-        baseSeed, 2_500_000, 800_000
-    );
+    const abilities = generateCoachAbilities(baseSeed + 100);
+    const ovr = calcOVRFromAbilities(abilities, 'defenseCoordinator');
+    const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'defenseCoordinator');
     return {
         id: `coach_dc_${baseSeed}`,
         name: generateCoachName(baseSeed),
-        abilities: generateDCAbilities(baseSeed + 100),
+        abilities,
         contractYears,
         contractSalary,
         contractYearsRemaining,
@@ -346,13 +325,13 @@ export function generateDefenseCoordinator(seed: string): DefenseCoordinator {
 
 export function generateDevelopmentCoach(seed: string): DevelopmentCoach {
     const baseSeed = stringToHash(seed);
-    const { contractYears, contractSalary, contractYearsRemaining } = generateContract(
-        baseSeed, 2_000_000, 600_000
-    );
+    const abilities = generateCoachAbilities(baseSeed + 100);
+    const ovr = calcOVRFromAbilities(abilities, 'developmentCoach');
+    const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'developmentCoach');
     return {
         id: `coach_dev_${baseSeed}`,
         name: generateCoachName(baseSeed),
-        abilities: generateDevAbilities(baseSeed + 100),
+        abilities,
         contractYears,
         contractSalary,
         contractYearsRemaining,
@@ -361,13 +340,13 @@ export function generateDevelopmentCoach(seed: string): DevelopmentCoach {
 
 export function generateTrainingCoach(seed: string): TrainingCoach {
     const baseSeed = stringToHash(seed);
-    const { contractYears, contractSalary, contractYearsRemaining } = generateContract(
-        baseSeed, 1_500_000, 500_000
-    );
+    const abilities = generateCoachAbilities(baseSeed + 100);
+    const ovr = calcOVRFromAbilities(abilities, 'trainingCoach');
+    const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(baseSeed, ovr, 'trainingCoach');
     return {
         id: `coach_trainer_${baseSeed}`,
         name: generateCoachName(baseSeed),
-        abilities: generateTrainerAbilities(baseSeed + 100),
+        abilities,
         contractYears,
         contractSalary,
         contractYearsRemaining,
@@ -440,35 +419,33 @@ const FA_POOL_SIZES: Record<StaffRole, number> = {
 };
 
 /**
- * 코치 FA 풀 초기 생성
- * 각 직무별 FA_POOL_SIZES 만큼 생성
+ * 코치 FA 풀 반환.
+ * DB에 FA 코치(current_team=null)가 있으면 그것을 우선 사용.
+ * 없으면 시드 기반으로 생성(폴백).
  */
 export function generateCoachFAPool(tendencySeed: string): CoachFAPool {
-    const pool: CoachFAPool = {
-        headCoaches:         [],
-        offenseCoordinators: [],
-        defenseCoordinators: [],
-        developmentCoaches:  [],
-        trainingCoaches:     [],
-    };
+    if (COACH_FA_DATA.coaches.length > 0) return { coaches: [...COACH_FA_DATA.coaches] };
 
-    for (let i = 0; i < FA_POOL_SIZES.headCoach; i++) {
-        pool.headCoaches.push(generateHeadCoach(`fa_hc_${i}`, tendencySeed));
+    // 폴백: DB에 FA 코치가 없을 때 코드 생성 (슬롯 무관 — 역할은 headCoach로 OVR 계산)
+    const total = Object.values(FA_POOL_SIZES).reduce((a, b) => a + b, 0);
+    const coaches: Coach[] = [];
+    for (let i = 0; i < total; i++) {
+        const seed = stringToHash(`${tendencySeed}:fa:${i}`);
+        const abilities = generateCoachAbilities(seed + 100);
+        // FA 풀은 슬롯 무관이므로 일반 코칭 능력치(headCoach 기준)로 OVR 산출 후
+        // OC/DC 밴드 범위로 계약 생성 (중간 티어 기준)
+        const ovr = calcOVRFromAbilities(abilities, 'offenseCoordinator');
+        const { contractYears, contractSalary, contractYearsRemaining } = generateContractByOVR(seed, ovr, 'offenseCoordinator');
+        coaches.push({
+            id: `fa_coach_${seed}`,
+            name: generateCoachName(seed),
+            abilities,
+            contractYears,
+            contractSalary,
+            contractYearsRemaining,
+        });
     }
-    for (let i = 0; i < FA_POOL_SIZES.offenseCoordinator; i++) {
-        pool.offenseCoordinators.push(generateOffenseCoordinator(`${tendencySeed}:fa_oc_${i}`));
-    }
-    for (let i = 0; i < FA_POOL_SIZES.defenseCoordinator; i++) {
-        pool.defenseCoordinators.push(generateDefenseCoordinator(`${tendencySeed}:fa_dc_${i}`));
-    }
-    for (let i = 0; i < FA_POOL_SIZES.developmentCoach; i++) {
-        pool.developmentCoaches.push(generateDevelopmentCoach(`${tendencySeed}:fa_dev_${i}`));
-    }
-    for (let i = 0; i < FA_POOL_SIZES.trainingCoach; i++) {
-        pool.trainingCoaches.push(generateTrainingCoach(`${tendencySeed}:fa_trainer_${i}`));
-    }
-
-    return pool;
+    return { coaches };
 }
 
 // ── 기존 호환 함수 ──

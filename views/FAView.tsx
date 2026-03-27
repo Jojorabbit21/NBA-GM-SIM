@@ -7,6 +7,9 @@ import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
 import { NegotiationScreen } from './NegotiationScreen';
 import { RosterGrid } from '../components/roster/RosterGrid';
+import type { CoachFAPool, CoachingStaff, StaffRole, CoachAbilities } from '../types/coaching';
+import type { Coach } from '../types/coaching';
+import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -31,6 +34,11 @@ interface FAViewProps {
     onViewPlayer?: (player: Player) => void;
     currentDate?: string;
     initialNegotiateId?: string;  // PlayerDetailView에서 직접 협상 진입 시 자동 오픈
+    // 코칭 스태프 탭
+    coachFAPool?: CoachFAPool | null;
+    myTeamStaff?: CoachingStaff | null;
+    onHireCoach?: (role: StaffRole, coachId: string, finalSalary?: number) => void;
+    onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -87,6 +95,182 @@ function statusBadge(status: FAMarketEntry['status']) {
         case 'withdrawn': return <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">철수</span>;
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Staff FA Tab
+// ─────────────────────────────────────────────────────────────
+
+const STAFF_ROLE_LABELS_FA: Record<StaffRole, string> = {
+    headCoach: '감독', offenseCoordinator: '공격', defenseCoordinator: '수비',
+    developmentCoach: '디벨롭', trainingCoach: '트레이너',
+};
+
+const ROLE_MAIN_ABILITIES_FA: Record<StaffRole, [keyof CoachAbilities, keyof CoachAbilities, keyof CoachAbilities]> = {
+    headCoach:          ['teaching', 'schemeDepth', 'motivation'],
+    offenseCoordinator: ['schemeDepth', 'communication', 'playerEval'],
+    defenseCoordinator: ['adaptability', 'mentalCoaching', 'schemeDepth'],
+    developmentCoach:   ['developmentVision', 'experienceTransfer', 'teaching'],
+    trainingCoach:      ['athleticTraining', 'recovery', 'conditioning'],
+};
+
+const ABILITY_SHORT_FA: Record<keyof CoachAbilities, string> = {
+    teaching: '지도', schemeDepth: '전술', communication: '소통', playerEval: '평가',
+    motivation: '동기', playerRelation: '관계', adaptability: '적응',
+    developmentVision: '성장', experienceTransfer: '전수', mentalCoaching: '멘탈',
+    athleticTraining: '신체', recovery: '회복', conditioning: '컨디',
+};
+
+const ALL_STAFF_ROLES_FA: StaffRole[] = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'];
+
+function getCoachAvgFA(role: StaffRole, abilities: CoachAbilities): number {
+    if (role === 'trainingCoach') {
+        return Math.round((abilities.athleticTraining + abilities.recovery + abilities.conditioning) / 3);
+    }
+    const vals = [abilities.teaching, abilities.schemeDepth, abilities.communication, abilities.playerEval,
+        abilities.motivation, abilities.playerRelation, abilities.adaptability,
+        abilities.developmentVision, abilities.experienceTransfer, abilities.mentalCoaching];
+    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+}
+
+function coachValColor(v: number): string {
+    if (v >= 7) return 'text-emerald-400';
+    if (v >= 5) return 'text-amber-400';
+    return 'text-rose-400';
+}
+
+const StaffFATab: React.FC<{
+    coachFAPool?: CoachFAPool | null;
+    myTeamStaff?: CoachingStaff | null;
+    onNegotiateCoach?: (coach: Coach, role: StaffRole) => void;
+    onCoachFireTarget?: (coach: Coach, role: StaffRole) => void;
+}> = ({ coachFAPool, myTeamStaff, onNegotiateCoach, onCoachFireTarget }) => {
+    const [selectedRole, setSelectedRole] = useState<StaffRole>('headCoach');
+
+    const mainAbilKeys = ROLE_MAIN_ABILITIES_FA[selectedRole];
+
+    const coaches = useMemo(() => {
+        if (!coachFAPool?.coaches) return [];
+        return [...coachFAPool.coaches].sort(
+            (a, b) => getCoachAvgFA(selectedRole, b.abilities) - getCoachAvgFA(selectedRole, a.abilities)
+        );
+    }, [coachFAPool, selectedRole]);
+
+    const currentCoach = myTeamStaff ? (myTeamStaff as Record<string, any>)[selectedRole] as ({ name: string; contractSalary: number; contractYearsRemaining: number; abilities: CoachAbilities } | null) : null;
+
+    return (
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
+            {/* Role selector */}
+            <div className="flex gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl flex-shrink-0">
+                {ALL_STAFF_ROLES_FA.map(role => (
+                    <button
+                        key={role}
+                        onClick={() => setSelectedRole(role)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${
+                            selectedRole === role ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                    >
+                        {STAFF_ROLE_LABELS_FA[role]}
+                    </button>
+                ))}
+            </div>
+
+            {/* 현재 배치 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex-shrink-0">
+                <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
+                    <span className="text-xs font-black text-white uppercase tracking-widest">현재 배치</span>
+                    <span className="text-xs text-slate-500">{STAFF_ROLE_LABELS_FA[selectedRole]}</span>
+                </div>
+                {currentCoach ? (
+                    <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex flex-col flex-1 min-w-0">
+                            <span className="text-sm font-black text-white truncate">{currentCoach.name}</span>
+                            <div className="flex items-center gap-3 mt-0.5">
+                                <span className="text-xs font-mono text-emerald-400">{fmtM(currentCoach.contractSalary)}</span>
+                                <span className="text-xs text-slate-500">잔여 {currentCoach.contractYearsRemaining}년</span>
+                                <span className={`text-xs font-black font-mono ${coachValColor(getCoachAvgFA(selectedRole, currentCoach.abilities))}`}>
+                                    OVR {getCoachAvgFA(selectedRole, currentCoach.abilities)}
+                                </span>
+                            </div>
+                        </div>
+                        {onCoachFireTarget && currentCoach && (
+                            <button
+                                onClick={() => {
+                                    const coach = myTeamStaff ? (myTeamStaff as Record<string, any>)[selectedRole] as (Coach | null) : null;
+                                    if (coach) onCoachFireTarget(coach, selectedRole);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 transition-colors shrink-0"
+                            >
+                                해고
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="px-4 py-3">
+                        <span className="text-xs text-slate-600 font-bold">공석 — FA 풀에서 코치를 고용하세요</span>
+                    </div>
+                )}
+            </div>
+
+            {/* FA 코치 테이블 */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
+                    <span className="text-xs font-black text-white uppercase tracking-widest">FA 코치 풀</span>
+                    <span className="text-xs text-slate-500">{coaches.length}명</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                        <thead className="sticky top-0 z-10">
+                            <tr className="bg-slate-800 border-b border-slate-700">
+                                <th className="px-4 py-2 text-left font-bold uppercase tracking-wider text-slate-400">이름</th>
+                                <th className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-12">OVR</th>
+                                {mainAbilKeys.map(k => (
+                                    <th key={k} className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-12">{ABILITY_SHORT_FA[k]}</th>
+                                ))}
+                                <th className="px-3 py-2 text-right font-bold uppercase tracking-wider text-slate-400">요구 연봉</th>
+                                <th className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-400 w-16">계약</th>
+                                <th className="px-3 py-2 w-16" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {coaches.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-600">FA 코치가 없습니다</td>
+                                </tr>
+                            ) : coaches.map(coach => {
+                                const avg = getCoachAvgFA(selectedRole, coach.abilities);
+                                return (
+                                    <tr key={coach.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
+                                        <td className="px-4 py-2 font-semibold text-slate-200 whitespace-nowrap">{coach.name}</td>
+                                        <td className="px-3 py-2 text-center">
+                                            <span className={`font-black font-mono tabular-nums ${coachValColor(avg)}`}>{avg}</span>
+                                        </td>
+                                        {mainAbilKeys.map(k => (
+                                            <td key={k} className="px-3 py-2 text-center">
+                                                <span className={`font-black font-mono tabular-nums ${coachValColor(coach.abilities[k])}`}>{coach.abilities[k]}</span>
+                                            </td>
+                                        ))}
+                                        <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{fmtM(coach.contractSalary)}</td>
+                                        <td className="px-3 py-2 text-center text-slate-400 font-mono">{coach.contractYears}년</td>
+                                        <td className="px-3 py-2 text-right">
+                                            {onNegotiateCoach && (
+                                                <button
+                                                    onClick={() => onNegotiateCoach?.(coach, selectedRole)}
+                                                    className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                                                >
+                                                    고용
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ─────────────────────────────────────────────────────────────
 // CapStatus — 상단 팀 재정 요약
@@ -183,6 +367,10 @@ export const FAView: React.FC<FAViewProps> = ({
     onViewPlayer,
     currentDate = '',
     initialNegotiateId,
+    coachFAPool,
+    myTeamStaff,
+    onHireCoach,
+    onFireCoach,
 }) => {
     // 협상 타깃 (NegotiationScreen 오버레이를 열 때 사용) — fa 타입만
     const [negotiationTarget, setNegotiationTarget] = useState<{
@@ -204,7 +392,9 @@ export const FAView: React.FC<FAViewProps> = ({
     // FA 협상 상태 영속화: playerId → { round, result }
     const [faSessionStates, setFaSessionStates] = useState<Record<string, { round: number; result: { accepted: boolean; reason?: string } | null }>>({});
 
-
+    const [mainTab, setMainTab] = useState<'players' | 'staff'>('players');
+    const [coachNegTarget, setCoachNegTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
+    const [coachFireTarget, setCoachFireTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
 
     const market = leagueFAMarket;
     const usedMLE = market?.usedMLE ?? {};
@@ -240,11 +430,23 @@ export const FAView: React.FC<FAViewProps> = ({
 
     return (
         <div className="relative h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
-            {/* ── 캡 상황 (풀바디) ── */}
-            <CapStatus myTeam={myTeam} usedMLE={usedMLE} primaryColor={primaryColor} currentSeason={currentSeason} />
+            {/* ── 탭 바 ── */}
+            <div className="flex-shrink-0 border-b border-slate-800 bg-slate-950 flex items-center px-6 h-12 gap-8">
+                {(['players', 'staff'] as const).map(tab => (
+                    <button
+                        key={tab}
+                        onClick={() => setMainTab(tab)}
+                        className={`h-full border-b-2 text-sm font-black uppercase tracking-wide transition-all ${
+                            mainTab === tab ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent hover:text-slate-300'
+                        }`}
+                    >
+                        {tab === 'players' ? '선수' : '스태프'}
+                    </button>
+                ))}
+            </div>
 
-            {/* ── FA 시장 콘텐츠 ── */}
-            {!market ? (
+            {/* ── 선수 탭 ── */}
+            {mainTab === 'players' && (!market ? (
                 <div className="flex-1 flex items-center justify-center text-slate-500">
                     <div className="text-center space-y-2">
                         <div className="text-4xl mb-3">🏀</div>
@@ -293,6 +495,46 @@ export const FAView: React.FC<FAViewProps> = ({
                         }}
                     />
                 </div>
+            ))}
+
+            {/* ── 스태프 탭 ── */}
+            {mainTab === 'staff' && (
+                <StaffFATab
+                    coachFAPool={coachFAPool}
+                    myTeamStaff={myTeamStaff}
+                    onNegotiateCoach={(coach, role) => setCoachNegTarget({ coach, role })}
+                    onCoachFireTarget={(coach, role) => setCoachFireTarget({ coach, role })}
+                />
+            )}
+
+            {/* ── CoachNegotiationScreen 오버레이 (고용) ── */}
+            {coachNegTarget && (
+                <CoachNegotiationScreen
+                    coach={coachNegTarget.coach}
+                    role={coachNegTarget.role}
+                    negotiationType="hire"
+                    myTeam={myTeam}
+                    onClose={() => setCoachNegTarget(null)}
+                    onAccept={(finalSalary, finalYears) => {
+                        onHireCoach?.(coachNegTarget.role, coachNegTarget.coach.id, finalSalary);
+                        setCoachNegTarget(null);
+                    }}
+                />
+            )}
+
+            {/* ── CoachNegotiationScreen 오버레이 (해고) ── */}
+            {coachFireTarget && onFireCoach && (
+                <CoachNegotiationScreen
+                    coach={coachFireTarget.coach}
+                    role={coachFireTarget.role}
+                    negotiationType="fire"
+                    myTeam={myTeam}
+                    onClose={() => setCoachFireTarget(null)}
+                    onAccept={(buyoutAmount) => {
+                        onFireCoach(coachFireTarget.role, buyoutAmount);
+                        setCoachFireTarget(null);
+                    }}
+                />
             )}
 
             {/* ── NegotiationScreen 오버레이 (fa 타입만) ── */}

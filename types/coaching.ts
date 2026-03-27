@@ -13,96 +13,60 @@ export interface HeadCoachPreferences {
     zonePreference: number;   // 1=대인 전용 ... 10=존 위주
 }
 
-// 공통 코치 능력치 (헤드코치·오펜스·디펜스·디벨롭먼트 동일 — 오프시즌 훈련 효율에만 영향)
+/**
+ * 모든 코치 공통 능력치 (슬롯 무관 — 13개 필드).
+ * HC/OC/DC/Dev/Trainer 구분 없이 동일한 능력치 집합을 보유.
+ * 트레이너 슬롯에 배치된 코치는 athleticTraining/recovery/conditioning 값이 높은 경향.
+ */
 export interface CoachAbilities {
-    // 훈련 효율 직접 기여
-    teaching: number;           // 0~10: 지도력 — 담당 훈련 카테고리 효율의 핵심 가중치
-    schemeDepth: number;        // 0~10: 전술 깊이 — 공격/수비/전술 훈련의 깊이 (IQ 계열 성장)
-    communication: number;      // 0~10: 소통력 — 훈련 피드백 전달력
-    playerEval: number;         // 0~10: 선수 평가 — potential 소프트캡 완화
+    // 코칭 능력치 (10개)
+    teaching: number;           // 지도력 — 훈련 효율 핵심
+    schemeDepth: number;        // 전술 깊이 — IQ 계열 성장
+    communication: number;      // 소통력 — 피드백 전달력
+    playerEval: number;         // 선수 평가 — potential 소프트캡 완화
+    motivation: number;         // 동기부여 — 팀 전체 훈련 참여도
+    playerRelation: number;     // 선수 관계 — 훈련 흡수율
+    adaptability: number;       // 적응력 — 다양한 아키타입 균등 훈련
+    developmentVision: number;  // 성장 비전 — age≤25 효율 추가 배율
+    experienceTransfer: number; // 경험 전수 — age≤22 효율 추가 배율
+    mentalCoaching: number;     // 멘탈 코칭 — offTactics/defTactics 훈련 효율
 
-    // 팀 전체 보정 (globalMult — HC 주력)
-    motivation: number;         // 0~10: 동기부여 — 팀 전체 훈련 참여도
-    playerRelation: number;     // 0~10: 선수 관계 — 훈련 흡수율
-    adaptability: number;       // 0~10: 적응력 — 다양한 아키타입 선수 균등 훈련
-
-    // 젊은 선수 특화 (Dev 주력)
-    developmentVision: number;  // 0~10: 성장 비전 — age≤25 훈련 효율 추가 배율
-    experienceTransfer: number; // 0~10: 경험 전수 — age≤22 훈련 효율 추가 배율
-
-    // 전술 훈련 효율 (HC + Dev 주력)
-    mentalCoaching: number;     // 0~10: 멘탈 코칭 — offTactics/defTactics 훈련 효율
+    // 메디컬/신체 훈련 능력치 (3개)
+    athleticTraining: number;   // 신체 훈련 — 폭발력 훈련 효율
+    recovery: number;           // 회복 관리 — 부상 위험 감소
+    conditioning: number;       // 컨디셔닝 — 근력·지구력 훈련 효율
 }
 
-// 트레이닝 코치 전용 능력치 (신체/의료 전문)
-export interface TrainingCoachAbilities {
-    athleticTraining: number;  // 0~10: 신체 훈련 — 폭발력 훈련 효율 주력
-    recovery: number;          // 0~10: 회복 관리 — 훈련 후 부상 위험 감소
-    conditioning: number;      // 0~10: 컨디셔닝 — 근력·지구력 훈련 효율 주력
-}
-
-export interface HeadCoach {
-    id: string;
-    name: string;
-    preferences: HeadCoachPreferences;
-    abilities: CoachAbilities;
-    contractYears: number;
-    contractSalary: number;
-    contractYearsRemaining: number;
-}
-
-export interface OffenseCoordinator {
+/** 슬롯 무관 단일 코치 타입. 어떤 슬롯에 배치할지는 GM이 결정. */
+export interface Coach {
     id: string;
     name: string;
     abilities: CoachAbilities;
+    preferences?: HeadCoachPreferences; // HC 슬롯 배치 시에만 의미 있음
     contractYears: number;
     contractSalary: number;
     contractYearsRemaining: number;
 }
 
-export interface DefenseCoordinator {
-    id: string;
-    name: string;
-    abilities: CoachAbilities;
-    contractYears: number;
-    contractSalary: number;
-    contractYearsRemaining: number;
-}
-
-export interface DevelopmentCoach {
-    id: string;
-    name: string;
-    abilities: CoachAbilities;
-    contractYears: number;
-    contractSalary: number;
-    contractYearsRemaining: number;
-}
-
-export interface TrainingCoach {
-    id: string;
-    name: string;
-    abilities: TrainingCoachAbilities;
-    contractYears: number;
-    contractSalary: number;
-    contractYearsRemaining: number;
-}
+// 슬롯별 타입 — 모두 Coach와 동일 (하위 호환용 별칭)
+export type HeadCoach          = Coach;
+export type OffenseCoordinator = Coach;
+export type DefenseCoordinator = Coach;
+export type DevelopmentCoach   = Coach;
+export type TrainingCoach      = Coach;
 
 // 팀 코칭 스태프 전체 (모든 슬롯 optional — 빈 슬롯은 훈련 효율 50% 기본값)
 export interface CoachingStaff {
-    headCoach:            HeadCoach | null;
-    offenseCoordinator:   OffenseCoordinator | null;
-    defenseCoordinator:   DefenseCoordinator | null;
-    developmentCoach:     DevelopmentCoach | null;
-    trainingCoach:        TrainingCoach | null;
+    headCoach?:            Coach | null;
+    offenseCoordinator?:   Coach | null;
+    defenseCoordinator?:   Coach | null;
+    developmentCoach?:     Coach | null;
+    trainingCoach?:        Coach | null;
 }
 
-// 코치 FA 풀 (saves에 저장)
+/** FA 코치 풀 — role=null(미배치) 코치 전체. 슬롯 구분 없이 단일 배열. */
 export interface CoachFAPool {
-    headCoaches:         HeadCoach[];
-    offenseCoordinators: OffenseCoordinator[];
-    defenseCoordinators: DefenseCoordinator[];
-    developmentCoaches:  DevelopmentCoach[];
-    trainingCoaches:     TrainingCoach[];
+    coaches: Coach[];
 }
 
 export type StaffRole =

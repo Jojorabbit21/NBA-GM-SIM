@@ -6,8 +6,10 @@ import { sendMessage } from '../services/messageService';
 import { releasePlayerToMarket } from '../services/fa/faMarketBuilder';
 import { writeTransaction } from '../services/persistence';
 import type { Team, Player, ReleaseType } from '../types';
+import type { Coach, StaffRole } from '../types/coaching';
 import type { PlayerContract } from '../types/player';
 import type { DeadMoneyEntry } from '../types';
+import { fireCoach } from '../services/coachingStaff/coachHiringEngine';
 import type { ExtensionSignedContent, FAReleaseContent } from '../types/message';
 
 const FrontOfficePage: React.FC = () => {
@@ -48,7 +50,50 @@ const FrontOfficePage: React.FC = () => {
             onCoachMarketOpen={() => navigate('/coach-market')}
             onTrainingViewOpen={() => navigate('/training')}
             onExtendCoach={(role) => navigate('/coach-market', { state: { extendRole: role } })}
-            onFireCoach={(role) => navigate('/coach-market', { state: { fireRole: role } })}
+            onExtendCoachAccepted={(role: StaffRole, salary: number, years: number) => {
+                if (!gameData.myTeamId || !gameData.coachingData) return;
+                const staff = gameData.coachingData[gameData.myTeamId];
+                if (!staff) return;
+                const coach = (staff as any)[role];
+                if (!coach) return;
+                const updatedCoach = { ...coach, contractYears: years, contractSalary: salary, contractYearsRemaining: years };
+                const newStaff = { ...staff, [role]: updatedCoach };
+                const newCoachingData = { ...gameData.coachingData, [gameData.myTeamId]: newStaff };
+                gameData.setCoachingData(newCoachingData);
+                gameData.forceSave({ coachingData: newCoachingData });
+            }}
+            onFireCoach={(role, buyoutAmount) => {
+                if (!gameData.myTeamId || !gameData.coachingData || !gameData.coachFAPool) return;
+                const teamStaff = gameData.coachingData[gameData.myTeamId];
+                if (!teamStaff) return;
+                const coach = (teamStaff as any)[role] as Coach | undefined;
+                if (!coach) return;
+
+                // 코치 해고 → FA 풀 반환
+                const { staff: newStaff, pool: newPool } = fireCoach(teamStaff, gameData.coachFAPool, role);
+                const newCoachingData = { ...gameData.coachingData, [gameData.myTeamId]: newStaff };
+
+                // 위로금 → dead cap 처리
+                const totalRemaining = coach.contractSalary * coach.contractYearsRemaining;
+                const releaseType: 'waive' | 'buyout' = buyoutAmount >= totalRemaining ? 'waive' : 'buyout';
+                const deadEntry: DeadMoneyEntry = {
+                    playerId: coach.id,
+                    playerName: coach.name,
+                    amount: buyoutAmount,
+                    season: gameData.currentSeason ?? '',
+                    releaseType,
+                };
+                const newTeams = gameData.teams.map((t: Team) =>
+                    t.id === gameData.myTeamId
+                        ? { ...t, deadMoney: [...(t.deadMoney ?? []), deadEntry] }
+                        : t
+                );
+
+                gameData.setCoachingData(newCoachingData);
+                gameData.setCoachFAPool(newPool);
+                gameData.setTeams(newTeams);
+                gameData.forceSave({ coachingData: newCoachingData, coachFAPool: newPool, teams: newTeams });
+            }}
             offseasonPhase={gameData.offseasonPhase}
             tendencySeed={gameData.tendencySeed || ''}
             initialNegotiateId={(state as any)?.autoNegotiateId}

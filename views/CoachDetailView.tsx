@@ -2,16 +2,12 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import {
+    Coach,
     HeadCoach,
     LeagueCoachingData,
     CoachingStaff,
     CoachAbilities,
-    TrainingCoachAbilities,
     StaffRole,
-    OffenseCoordinator,
-    DefenseCoordinator,
-    DevelopmentCoach,
-    TrainingCoach,
 } from '../types/coaching';
 import { Team } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -141,7 +137,7 @@ export const PREF_ORDER: PrefKey[] = [
     'defenseStyle', 'helpScheme', 'zonePreference',
 ];
 
-// ── 능력치 라벨 ──
+// ── 능력치 라벨 (13개 통합) ──
 const ABILITY_LABELS: Record<keyof CoachAbilities, string> = {
     teaching: '지도력',
     schemeDepth: '전술 깊이',
@@ -153,9 +149,6 @@ const ABILITY_LABELS: Record<keyof CoachAbilities, string> = {
     developmentVision: '성장 비전',
     experienceTransfer: '경험 전수',
     mentalCoaching: '멘탈 코칭',
-};
-
-const TRAINER_ABILITY_LABELS: Record<keyof TrainingCoachAbilities, string> = {
     athleticTraining: '신체 훈련',
     recovery: '회복 관리',
     conditioning: '컨디셔닝',
@@ -165,9 +158,6 @@ const ABILITY_ORDER: (keyof CoachAbilities)[] = [
     'teaching', 'schemeDepth', 'communication', 'playerEval',
     'motivation', 'playerRelation', 'adaptability',
     'developmentVision', 'experienceTransfer', 'mentalCoaching',
-];
-
-const TRAINER_ABILITY_ORDER: (keyof TrainingCoachAbilities)[] = [
     'athleticTraining', 'recovery', 'conditioning',
 ];
 
@@ -270,35 +260,7 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
             );
         }
 
-        if (selectedRole === 'trainingCoach') {
-            const abilities = (selectedCoach as TrainingCoach).abilities as TrainingCoachAbilities;
-            return (
-                <Table className="border-0 !rounded-none shadow-none">
-                    <TableHead>
-                        <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">능력치</TableHeaderCell>
-                        <TableHeaderCell className="text-xs w-12 py-2 border-r border-slate-800/50">수치</TableHeaderCell>
-                        <TableHeaderCell className="text-xs py-2" align="left">그래프</TableHeaderCell>
-                    </TableHead>
-                    <TableBody>
-                        {TRAINER_ABILITY_ORDER.map(key => (
-                            <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{TRAINER_ABILITY_LABELS[key]}</TableCell>
-                                <TableCell className="text-xs font-mono font-black py-2 border-r border-slate-800/50 text-center">
-                                    <span className={abilities[key] >= 7 ? 'text-emerald-400' : abilities[key] >= 5 ? 'text-amber-400' : 'text-rose-400'}>
-                                        {abilities[key]}
-                                    </span>
-                                </TableCell>
-                                <TableCell className="py-2">
-                                    <AbilityBar value={abilities[key]} />
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            );
-        }
-
-        const abilities = (selectedCoach as HeadCoach | OffenseCoordinator | DefenseCoordinator | DevelopmentCoach).abilities as CoachAbilities;
+        const abilities = (selectedCoach as Coach).abilities;
         return (
             <Table className="border-0 !rounded-none shadow-none">
                 <TableHead>

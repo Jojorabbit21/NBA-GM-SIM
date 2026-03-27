@@ -1,6 +1,6 @@
 
 import React from 'react';
-import type { CoachingStaff, StaffRole, CoachAbilities, TrainingCoachAbilities } from '../../types/coaching';
+import type { CoachingStaff, StaffRole, CoachAbilities } from '../../types/coaching';
 import { TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { formatMoney } from '../../utils/formatMoney';
 
@@ -15,7 +15,7 @@ const COACH_GROUPS: { label: string; keys: (keyof CoachAbilities)[]; shorts: str
     { label: '팀 관리',   keys: ['motivation', 'playerRelation', 'adaptability', 'mentalCoaching'], shorts: ['동기', '관계', '적응', '멘탈'] },
     { label: '선수 육성', keys: ['developmentVision', 'experienceTransfer'],                        shorts: ['성장', '전수'] },
 ];
-const TRAINER_GROUP: { label: string; keys: (keyof TrainingCoachAbilities)[]; shorts: string[] } = {
+const TRAINER_GROUP: { label: string; keys: (keyof CoachAbilities)[]; shorts: string[] } = {
     label: '신체 훈련', keys: ['athleticTraining', 'recovery', 'conditioning'], shorts: ['신체', '회복', '컨디'],
 };
 
@@ -118,7 +118,6 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                 <TableBody>
                     {STAFF_ROWS.map(r => {
                         const coach = staff ? getCoachFromStaff(staff, r.role) : null;
-                        const isTrainer = r.role === 'trainingCoach';
                         const abilities = coach?.abilities as Record<string, number> | undefined;
 
                         return (
@@ -152,8 +151,8 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                                         ? <span className="text-xs font-mono text-slate-500 tabular-nums">{coach.contractYearsRemaining}년</span>
                                         : <span className="text-slate-700 text-xs">-</span>}
                                 </TableCell>
-                                {COACH_COLS.map(c => renderAttrCell(c.key, !isTrainer && abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
-                                {TRAINER_COLS.map(c => renderAttrCell(c.key, isTrainer && abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
+                                {COACH_COLS.map(c => renderAttrCell(c.key, abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
+                                {TRAINER_COLS.map(c => renderAttrCell(c.key, abilities ? abilities[c.key] : undefined, c.isGroupEnd))}
                             </TableRow>
                         );
                     })}
