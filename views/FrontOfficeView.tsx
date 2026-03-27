@@ -965,7 +965,7 @@ const PayrollRow: React.FC<{
                 {onViewPlayer ? (
                     <button
                         onClick={() => onViewPlayer(player, myTeamId, teamName)}
-                        className="hover:text-white hover:underline transition-colors text-left"
+                        className="hover:text-indigo-400 transition-colors text-left"
                     >
                         {player.name}
                     </button>

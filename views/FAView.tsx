@@ -119,8 +119,12 @@ const ALL_ABILITY_COLS: Array<[keyof CoachAbilities, string]> = [
     ['mentalCoaching', '멘탈'],
     ['athleticTraining', '신체'],
     ['recovery', '회복'],
-    ['conditioning', '컨디'],
+    ['conditioning', '체력'],
 ];
+
+function formatFullSalary(n: number): string {
+    return '$' + n.toLocaleString('en-US');
+}
 
 const StaffFATab: React.FC<{
     coachFAPool?: CoachFAPool | null;
@@ -142,9 +146,9 @@ const StaffFATab: React.FC<{
                 <colgroup>
                     <col style={{ width: 180 }} />
                     {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
-                    <col style={{ width: 110 }} />
+                    <col style={{ width: 130 }} />
                     <col style={{ width: 60 }} />
-                    <col style={{ width: 72 }} />
+                    <col style={{ width: 56 }} />
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                     {/* Row 1: category spans */}
@@ -172,7 +176,7 @@ const StaffFATab: React.FC<{
                     </tr>
                     {/* Row 2: column labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
-                        <TableHeaderCell align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800">이름</TableHeaderCell>
                         {ALL_ABILITY_COLS.map(([, label]) => (
                             <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>
                         ))}
@@ -188,7 +192,7 @@ const StaffFATab: React.FC<{
                         </TableRow>
                     ) : coaches.map(coach => (
                         <TableRow key={coach.id} className="group">
-                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800">
                                 <span
                                     className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
                                     onClick={() => navigate(`/coach/${coach.id}`, { state: { coach, teamId: '' } })}
@@ -203,17 +207,17 @@ const StaffFATab: React.FC<{
                                     </span>
                                 </TableCell>
                             ))}
-                            <TableCell align="right" className="pr-4 font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
-                                {formatMoney(coach.contractSalary)}
+                            <TableCell align="right" className="pr-3 font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                                {formatFullSalary(coach.contractSalary)}
                             </TableCell>
                             <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
                                 {coach.contractYears}년
                             </TableCell>
-                            <TableCell align="right" className="pr-3 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                            <TableCell align="center" className="px-1 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 {onNegotiateCoach && (
                                     <button
                                         onClick={() => onNegotiateCoach(coach, 'headCoach')}
-                                        className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                                        className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors whitespace-nowrap"
                                     >
                                         고용
                                     </button>
