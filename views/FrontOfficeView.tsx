@@ -669,10 +669,18 @@ const PayrollTab: React.FC<{
             }
         }
 
-        // 데드캡도 합계에 포함
+        // 데드캡도 합계에 포함 (스트레치는 해당 연도 전체에 반영)
         for (const d of (team.deadMoney ?? [])) {
-            const ci = cols.indexOf(d.season);
-            if (ci >= 0) colTotals[ci] += d.amount;
+            if (d.releaseType === 'stretch' && d.stretchYearsTotal) {
+                const startYear = parseInt(d.season);
+                for (let y = startYear; y < startYear + d.stretchYearsTotal; y++) {
+                    const ci = cols.indexOf(`${y}-${String(y + 1).slice(-2)}`);
+                    if (ci >= 0) colTotals[ci] += d.amount;
+                }
+            } else {
+                const ci = cols.indexOf(d.season);
+                if (ci >= 0) colTotals[ci] += d.amount;
+            }
         }
 
         return { players: sorted, seasonColumns: cols, totals: colTotals };
@@ -749,15 +757,25 @@ const PayrollTab: React.FC<{
                             {(team.deadMoney ?? []).length > 0 && (
                                 <>
                                     {(team.deadMoney ?? []).map((d, i) => {
-                                        const colIdx = seasonColumns.indexOf(d.season);
+                                        const startYear = parseInt(d.season);
+                                        const activeColSet = new Set<number>();
+                                        if (d.releaseType === 'stretch' && d.stretchYearsTotal) {
+                                            for (let y = startYear; y < startYear + d.stretchYearsTotal; y++) {
+                                                const ci = seasonColumns.indexOf(`${y}-${String(y + 1).slice(-2)}`);
+                                                if (ci >= 0) activeColSet.add(ci);
+                                            }
+                                        } else {
+                                            const ci = seasonColumns.indexOf(d.season);
+                                            if (ci >= 0) activeColSet.add(ci);
+                                        }
                                         return (
-                                            <tr key={i} className="border-b border-slate-800 last:border-0">
-                                                <td className="px-4 py-1.5 sticky left-0 bg-slate-900 z-10 border-r border-slate-700 whitespace-nowrap">
-                                                    <span className="text-xs text-slate-400">{d.playerName}</span>
+                                            <tr key={i} className="group border-b border-slate-800">
+                                                <td className="px-4 py-1.5 text-xs text-slate-400 sticky left-0 bg-slate-900 z-10 whitespace-nowrap border-r border-slate-700">
+                                                    {d.playerName}
                                                 </td>
                                                 {seasonColumns.map((_, ci) => (
-                                                    <td key={ci} className="px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700/50">
-                                                        {ci === colIdx ? <span className="text-red-400 font-bold">{fmtSalary(d.amount)}</span> : ''}
+                                                    <td key={ci} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700 ${activeColSet.has(ci) ? 'text-red-400 font-bold' : 'text-slate-700'}`}>
+                                                        {activeColSet.has(ci) ? fmtSalary(d.amount) : '-'}
                                                     </td>
                                                 ))}
                                                 {showActions && <td />}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
@@ -356,7 +356,9 @@ export const FAView: React.FC<FAViewProps> = ({
     // FA 협상 상태 영속화: playerId → { round, result }
     const [faSessionStates, setFaSessionStates] = useState<Record<string, { round: number; result: { accepted: boolean; reason?: string } | null }>>({});
 
-    const [mainTab, setMainTab] = useState<'players' | 'staff'>('players');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const mainTab = (searchParams.get('tab') as 'players' | 'staff') ?? 'players';
+    const setMainTab = (tab: 'players' | 'staff') => setSearchParams({ tab }, { replace: true });
     const [coachNegTarget, setCoachNegTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
     const [coachFireTarget, setCoachFireTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
 
