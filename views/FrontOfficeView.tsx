@@ -669,8 +669,14 @@ const PayrollTab: React.FC<{
             }
         }
 
+        // 데드캡도 합계에 포함
+        for (const d of (team.deadMoney ?? [])) {
+            const ci = cols.indexOf(d.season);
+            if (ci >= 0) colTotals[ci] += d.amount;
+        }
+
         return { players: sorted, seasonColumns: cols, totals: colTotals };
-    }, [team.roster, seasonShort]);
+    }, [team.roster, team.deadMoney, seasonShort]);
 
     const { staffRows, staffTotals } = useMemo(() => {
         const staff = coachingData?.[team.id];
@@ -740,25 +746,8 @@ const PayrollTab: React.FC<{
                                     textColor={textColor}
                                 />
                             ))}
-                            <tr className="bg-slate-800 border-t-2 border-slate-700">
-                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap border-r border-slate-700">합계</td>
-                                {totals.map((t, i) => (
-                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap border-r border-slate-700">
-                                        {t > 0 ? fmtSalary(t) : ''}
-                                    </td>
-                                ))}
-                                {showActions && <td />}
-                            </tr>
                             {(team.deadMoney ?? []).length > 0 && (
                                 <>
-                                    <tr>
-                                        <td
-                                            colSpan={seasonColumns.length + 1 + (showActions ? 1 : 0)}
-                                            className="px-4 py-1.5 text-xs font-black uppercase tracking-widest text-red-400/80 bg-slate-950 border-t border-slate-700"
-                                        >
-                                            데드캡
-                                        </td>
-                                    </tr>
                                     {(team.deadMoney ?? []).map((d, i) => {
                                         const colIdx = seasonColumns.indexOf(d.season);
                                         return (
@@ -777,6 +766,15 @@ const PayrollTab: React.FC<{
                                     })}
                                 </>
                             )}
+                            <tr className="bg-slate-800 border-t-2 border-slate-700">
+                                <td className="px-4 py-2 text-xs font-bold text-white sticky left-0 bg-slate-800 z-10 whitespace-nowrap border-r border-slate-700">합계</td>
+                                {totals.map((t, i) => (
+                                    <td key={i} className="px-4 py-2 text-right text-xs font-bold font-mono tabular-nums text-white whitespace-nowrap border-r border-slate-700">
+                                        {t > 0 ? fmtSalary(t) : ''}
+                                    </td>
+                                ))}
+                                {showActions && <td />}
+                            </tr>
                         </tbody>
                     </table>
                 </div>
