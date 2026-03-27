@@ -502,7 +502,7 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: st
     // 럭셔리 택스·에이프런: 미만=여유(초록), 초과=초과분(오렌지/빨강)
     const thresholdVal = (threshold: number, overColor: string) => {
         const diff = payroll - threshold;
-        return diff > 0
+        return diff >= 0
             ? <span className={`font-bold font-mono tabular-nums ${overColor}`}>{fmtM(diff)} 초과</span>
             : <span className="font-bold font-mono tabular-nums text-emerald-400">+{fmtM(-diff)}</span>;
     };
@@ -603,16 +603,13 @@ const CapSidePanel: React.FC<{ team: Team; primaryColor: string; seasonShort: st
 
                 return (
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                        <WidgetHeader title="서명 예외" primaryColor={primaryColor} />
+                        <WidgetHeader title="예외 조항 현황" primaryColor={primaryColor} />
                         {rows.map(row => (
-                            <div key={row.label} className="flex items-center justify-between px-4 py-2 border-b border-slate-800 last:border-0">
-                                <div className="flex flex-col min-w-0 pr-2">
-                                    <span className="text-xs text-slate-300">{row.label}</span>
-                                    <span className="text-[10px] text-slate-500">{row.note}</span>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">{row.detail}</span>
-                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${row.available ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700/60 text-slate-500'}`}>
+                            <div key={row.label} className="flex items-center justify-between px-4 py-1.5 text-xs border-b border-slate-800 last:border-0">
+                                <span className="text-slate-300">{row.label}</span>
+                                <div className="flex items-center gap-3 shrink-0">
+                                    <span className="font-mono text-slate-400 whitespace-nowrap">{row.detail}</span>
+                                    <span className={`font-bold ${row.available ? 'text-emerald-400' : 'text-slate-500'}`}>
                                         {row.available ? '가용' : '불가'}
                                     </span>
                                 </div>
