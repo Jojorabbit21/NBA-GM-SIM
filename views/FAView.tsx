@@ -10,6 +10,9 @@ import { RosterGrid } from '../components/roster/RosterGrid';
 import type { CoachFAPool, CoachingStaff, StaffRole, CoachAbilities } from '../types/coaching';
 import type { Coach } from '../types/coaching';
 import { CoachNegotiationScreen } from './CoachNegotiationScreen';
+import { formatMoney } from '../utils/formatMoney';
+import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
+import { getStaffSlot } from '../services/coachingStaff/coachHiringEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -77,10 +80,6 @@ const SLOT_CAPS: Record<SigningType, string> = {
     vet_min:     '미니멈',
 };
 
-function fmtM(val: number): string {
-    return `$${(val / 1_000_000).toFixed(1)}M`;
-}
-
 function attrColor(v: number): string {
     if (v >= 90) return 'text-fuchsia-400';
     if (v >= 80) return 'text-emerald-400';
@@ -122,16 +121,6 @@ const ABILITY_SHORT_FA: Record<keyof CoachAbilities, string> = {
 
 const ALL_STAFF_ROLES_FA: StaffRole[] = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'];
 
-function getCoachAvgFA(role: StaffRole, abilities: CoachAbilities): number {
-    if (role === 'trainingCoach') {
-        return Math.round((abilities.athleticTraining + abilities.recovery + abilities.conditioning) / 3);
-    }
-    const vals = [abilities.teaching, abilities.schemeDepth, abilities.communication, abilities.playerEval,
-        abilities.motivation, abilities.playerRelation, abilities.adaptability,
-        abilities.developmentVision, abilities.experienceTransfer, abilities.mentalCoaching];
-    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
-}
-
 function coachValColor(v: number): string {
     if (v >= 7) return 'text-emerald-400';
     if (v >= 5) return 'text-amber-400';
@@ -151,11 +140,11 @@ const StaffFATab: React.FC<{
     const coaches = useMemo(() => {
         if (!coachFAPool?.coaches) return [];
         return [...coachFAPool.coaches].sort(
-            (a, b) => getCoachAvgFA(selectedRole, b.abilities) - getCoachAvgFA(selectedRole, a.abilities)
+            (a, b) => calcCoachOVR(b, selectedRole) - calcCoachOVR(a, selectedRole)
         );
     }, [coachFAPool, selectedRole]);
 
-    const currentCoach = myTeamStaff ? (myTeamStaff as Record<string, any>)[selectedRole] as ({ name: string; contractSalary: number; contractYearsRemaining: number; abilities: CoachAbilities } | null) : null;
+    const currentCoach = myTeamStaff ? getStaffSlot(myTeamStaff, selectedRole) : null;
 
     return (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
@@ -185,17 +174,17 @@ const StaffFATab: React.FC<{
                         <div className="flex flex-col flex-1 min-w-0">
                             <span className="text-sm font-black text-white truncate">{currentCoach.name}</span>
                             <div className="flex items-center gap-3 mt-0.5">
-                                <span className="text-xs font-mono text-emerald-400">{fmtM(currentCoach.contractSalary)}</span>
+                                <span className="text-xs font-mono text-emerald-400">{formatMoney(currentCoach.contractSalary)}</span>
                                 <span className="text-xs text-slate-500">잔여 {currentCoach.contractYearsRemaining}년</span>
-                                <span className={`text-xs font-black font-mono ${coachValColor(getCoachAvgFA(selectedRole, currentCoach.abilities))}`}>
-                                    OVR {getCoachAvgFA(selectedRole, currentCoach.abilities)}
+                                <span className={`text-xs font-black font-mono ${coachValColor(calcCoachOVR(currentCoach, selectedRole))}`}>
+                                    OVR {calcCoachOVR(currentCoach, selectedRole)}
                                 </span>
                             </div>
                         </div>
                         {onCoachFireTarget && currentCoach && (
                             <button
                                 onClick={() => {
-                                    const coach = myTeamStaff ? (myTeamStaff as Record<string, any>)[selectedRole] as (Coach | null) : null;
+                                    const coach = myTeamStaff ? getStaffSlot(myTeamStaff, selectedRole) : null;
                                     if (coach) onCoachFireTarget(coach, selectedRole);
                                 }}
                                 className="px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 transition-colors shrink-0"
@@ -237,7 +226,7 @@ const StaffFATab: React.FC<{
                                     <td colSpan={7} className="px-4 py-8 text-center text-slate-600">FA 코치가 없습니다</td>
                                 </tr>
                             ) : coaches.map(coach => {
-                                const avg = getCoachAvgFA(selectedRole, coach.abilities);
+                                const avg = calcCoachOVR(coach, selectedRole);
                                 return (
                                     <tr key={coach.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
                                         <td className="px-4 py-2 font-semibold text-slate-200 whitespace-nowrap">{coach.name}</td>
@@ -249,7 +238,7 @@ const StaffFATab: React.FC<{
                                                 <span className={`font-black font-mono tabular-nums ${coachValColor(coach.abilities[k])}`}>{coach.abilities[k]}</span>
                                             </td>
                                         ))}
-                                        <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{fmtM(coach.contractSalary)}</td>
+                                        <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{formatMoney(coach.contractSalary)}</td>
                                         <td className="px-3 py-2 text-center text-slate-400 font-mono">{coach.contractYears}년</td>
                                         <td className="px-3 py-2 text-right">
                                             {onNegotiateCoach && (
@@ -300,18 +289,18 @@ const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; prim
         <div className="flex-shrink-0 border-b border-slate-800 bg-slate-950 flex items-center divide-x divide-slate-800">
             <div className="px-6 py-3 min-w-[120px]">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">총 페이롤</div>
-                <div className="text-sm font-mono font-bold text-white">{fmtM(payroll)}</div>
+                <div className="text-sm font-mono font-bold text-white">{formatMoney(payroll)}</div>
             </div>
             {deadTotal > 0 && (
                 <div className="px-6 py-3 min-w-[100px]">
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">데드캡</div>
-                    <div className="text-sm font-mono font-bold text-red-400">{fmtM(deadTotal)}</div>
+                    <div className="text-sm font-mono font-bold text-red-400">{formatMoney(deadTotal)}</div>
                 </div>
             )}
             <div className="px-6 py-3 min-w-[100px]">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-0.5">잔여 캡</div>
                 <div className={`text-sm font-mono font-bold ${remaining > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {remaining > 0 ? fmtM(remaining) : '캡 초과'}
+                    {remaining > 0 ? formatMoney(remaining) : '캡 초과'}
                 </div>
             </div>
             <div className="px-6 py-3 min-w-[160px]">
@@ -322,9 +311,9 @@ const CapStatus: React.FC<{ myTeam: Team; usedMLE: Record<string, boolean>; prim
             </div>
             <div className="flex-1 px-6 py-3 min-w-[200px]">
                 <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-1.5">
-                    <span>캡 {fmtM(cap)}</span>
-                    <span>택스 {fmtM(tax)}</span>
-                    <span>에이프런 {fmtM(apron1)}</span>
+                    <span>캡 {formatMoney(cap)}</span>
+                    <span>택스 {formatMoney(tax)}</span>
+                    <span>에이프런 {formatMoney(apron1)}</span>
                 </div>
                 <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
                     <div
@@ -522,16 +511,21 @@ export const FAView: React.FC<FAViewProps> = ({
                 />
             )}
 
-            {/* ── CoachNegotiationScreen 오버레이 (해고) ── */}
+            {/* ── NegotiationScreen 오버레이 (코치 해고) ── */}
             {coachFireTarget && onFireCoach && (
-                <CoachNegotiationScreen
+                <NegotiationScreen
+                    negotiationType="release"
                     coach={coachFireTarget.coach}
-                    role={coachFireTarget.role}
-                    negotiationType="fire"
+                    coachRole={coachFireTarget.role}
                     myTeam={myTeam}
+                    teams={teams}
+                    tendencySeed={tendencySeed}
+                    currentSeasonYear={currentSeasonYear}
+                    currentSeason={currentSeason}
+                    usedMLE={{}}
                     onClose={() => setCoachFireTarget(null)}
-                    onAccept={(buyoutAmount) => {
-                        onFireCoach(coachFireTarget.role, buyoutAmount);
+                    onFireCoach={(role, buyoutAmount) => {
+                        onFireCoach(role, buyoutAmount);
                         setCoachFireTarget(null);
                     }}
                 />

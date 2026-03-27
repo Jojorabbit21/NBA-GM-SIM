@@ -49,7 +49,6 @@ const FrontOfficePage: React.FC = () => {
             leagueTrainingConfigs={gameData.leagueTrainingConfigs}
             onCoachMarketOpen={() => navigate('/coach-market')}
             onTrainingViewOpen={() => navigate('/training')}
-            onExtendCoach={(role) => navigate('/coach-market', { state: { extendRole: role } })}
             onExtendCoachAccepted={(role: StaffRole, salary: number, years: number) => {
                 if (!gameData.myTeamId || !gameData.coachingData) return;
                 const staff = gameData.coachingData[gameData.myTeamId];

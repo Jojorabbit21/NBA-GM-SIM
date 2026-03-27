@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Trophy } from 'lucide-react';
 import { GMProfile, GMSliders, GM_PERSONALITY_LABELS, DIRECTION_LABELS } from '../types/gm';
 import { Team } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -8,6 +8,7 @@ import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
 import { getGMSliderResult, getGMSliderLabel } from '../services/tradeEngine/gmProfiler';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { SeasonArchiveEntry } from '../services/seasonArchive';
 
 interface GMDetailViewProps {
     gmProfile: GMProfile;
@@ -18,7 +19,17 @@ interface GMDetailViewProps {
     myTeamId?: string;
     userNickname?: string;
     seasonYear?: number;
+    seasonHistory?: SeasonArchiveEntry[];
 }
+
+const PLAYOFF_RESULT_CONFIG: Record<string, { label: string; className: string }> = {
+    Champion: { label: '우승',     className: 'text-amber-400 font-black' },
+    Finals:   { label: '파이널',   className: 'text-slate-300 font-bold' },
+    CF:       { label: '컨파 결승', className: 'text-slate-400' },
+    R2:       { label: '2라운드',  className: 'text-slate-500' },
+    R1:       { label: '1라운드',  className: 'text-slate-500' },
+    'Play-In':{ label: '플레이인', className: 'text-slate-600' },
+};
 
 const SLIDER_KEYS: (keyof GMSliders)[] = [
     'aggressiveness', 'starWillingness', 'youthBias', 'riskTolerance', 'pickWillingness',
@@ -41,7 +52,7 @@ const InfoRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 
 export const GMDetailView: React.FC<GMDetailViewProps> = ({
     gmProfile, teamId, onBack,
-    leagueGMProfiles, allTeams, myTeamId, userNickname, seasonYear,
+    leagueGMProfiles, allTeams, myTeamId, userNickname, seasonYear, seasonHistory,
 }) => {
     const [currentTeamId, setCurrentTeamId] = useState(teamId);
     const [teamDropOpen, setTeamDropOpen] = useState(false);
@@ -128,6 +139,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
             {/* ═══ 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
                 <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
+
 
                     {/* ── 좌열: 인물 정보 카드 ── */}
                     <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -218,6 +230,65 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                     </div>
 
                 </div>
+
+                {/* ═══ 시즌별 성적 (유저 본인 팀만) ═══ */}
+                {isMyTeam && (
+                    <div className="mx-4 mb-4 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-700 flex items-center gap-2">
+                            <span className="text-xs font-black text-white uppercase tracking-widest">시즌 기록</span>
+                        </div>
+                        {seasonHistory && seasonHistory.length > 0 ? (
+                            <Table className="border-0 !rounded-none shadow-none">
+                                <TableHead>
+                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-24">시즌</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-32">팀</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-20">성적</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2">플레이오프</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {[...seasonHistory].reverse().map(entry => {
+                                        const entryTeamInfo = TEAM_DATA[entry.teamId];
+                                        const resultCfg = entry.playoffResult
+                                            ? PLAYOFF_RESULT_CONFIG[entry.playoffResult]
+                                            : null;
+                                        return (
+                                            <TableRow key={entry.season} className="hover:bg-slate-900/40 transition-colors">
+                                                <TableCell className="text-xs font-mono text-slate-400 py-2 border-r border-slate-800/50">
+                                                    {entry.season}
+                                                </TableCell>
+                                                <TableCell className="py-2 border-r border-slate-800/50">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <img src={getTeamLogoUrl(entry.teamId)} className="w-4 h-4 object-contain shrink-0" alt="" />
+                                                        <span className="text-xs text-slate-300 truncate">
+                                                            {entryTeamInfo ? entryTeamInfo.name : entry.teamId.toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs font-mono font-bold text-white py-2 border-r border-slate-800/50">
+                                                    {entry.wins}승 {entry.losses}패
+                                                </TableCell>
+                                                <TableCell className="py-2">
+                                                    {resultCfg ? (
+                                                        <span className={`text-xs ko-normal flex items-center gap-1 ${resultCfg.className}`}>
+                                                            {entry.playoffResult === 'Champion' && <Trophy size={11} />}
+                                                            {resultCfg.label}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-700 ko-normal">—</span>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        ) : (
+                            <div className="flex items-center justify-center py-8 text-slate-600 text-xs ko-normal">
+                                완료된 시즌 기록이 없습니다.
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

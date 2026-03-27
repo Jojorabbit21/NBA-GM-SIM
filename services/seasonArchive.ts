@@ -184,6 +184,7 @@ export async function loadSeasonHistory(userId: string): Promise<SeasonArchiveEn
         playerOverrides: row.player_overrides,
         awards: row.awards,
         lotteryResult: row.lottery_result ?? null,
+        teamFinances: row.team_finances ?? null,
     }));
 }
 

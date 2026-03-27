@@ -31,6 +31,8 @@ import {
 } from '../services/fa/negotiationDialogue';
 import { TEAM_DATA } from '../data/teamData';
 import type { Team } from '../types/team';
+import type { Coach, StaffRole, CoachAbilities } from '../types/coaching';
+import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 
 // ─────────────────────────────────────────────────────────────
@@ -54,7 +56,10 @@ interface ChatMsg {
 
 interface NegotiationScreenProps {
     negotiationType: 'extension' | 'fa' | 'release';
-    player: Player;
+    player?: Player;
+    coach?: Coach;
+    coachRole?: StaffRole;
+    onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
     myTeam: Team;
     teams: Team[];
     tendencySeed: string;
@@ -205,6 +210,9 @@ const TYPE_BADGE = {
 export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     negotiationType,
     player,
+    coach,
+    coachRole,
+    onFireCoach,
     myTeam,
     teams,
     tendencySeed,
@@ -231,17 +239,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     extensionNotYet = false,
 }) => {
     const primaryColor  = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
-    const moraleScore   = player.morale?.score ?? 50;
+    const moraleScore   = player?.morale?.score ?? 50;
     const badge         = TYPE_BADGE[negotiationType];
     const accentColor   = badge.accentColor;
     const isFA  = negotiationType === 'fa';
     const isExt = negotiationType === 'extension';
     const isRel = negotiationType === 'release';
+    const isCoachFire = isRel && !!coach && !!coachRole;
 
     // ─── Tendencies ──────────────────────────────────────────
     const tendencies = useMemo(
-        () => generateSaveTendencies(tendencySeed, player.id),
-        [tendencySeed, player.id],
+        () => generateSaveTendencies(tendencySeed, player?.id ?? coach?.id ?? ''),
+        [tendencySeed, player?.id, coach?.id],
     );
 
     // 선수 성격 기반 FA 협상 최대 라운드
@@ -295,6 +304,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     // ─── 자기 인식 지표 (8개) ─────────────────────────────────
     const selfAssessmentItems = useMemo(() => {
+        if (!player) return [];
         const ego               = tendencies.ego               ?? 0;   // -1 ~ +1
         const loyalty           = tendencies.loyalty           ?? 0.5; // 0 ~ 1
         const financialAmbition = tendencies.financialAmbition ?? 0.5; // 0 ~ 1
@@ -433,17 +443,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const [extTradeKicker,    setExtTradeKicker]     = useState(0);
 
     // ─── FA State ────────────────────────────────────────────
-    const yos              = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const maxCapResult     = getMaxCapPct(player, yos, currentSeasonYear, isExt);
+    const yos              = currentSeasonYear - ((player?.draftYear) ?? currentSeasonYear);
+    const maxCapResult     = getMaxCapPct(player ?? ({} as Player), yos, currentSeasonYear, isExt);
     const capPct           = maxCapResult.pct;
     const capPctReason     = maxCapResult.reason;
     const faMaxAllowed     = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * capPct);
     const vetMin      = yos >= 7 ? 3_000_000 : yos >= 4 ? 2_200_000 : 1_500_000;
 
     // ─── 자격 조건 ───────────────────────────────────────────
-    const isSuperMax  = yos >= 7 && yos <= 9 && isSuperMaxEligible(player, currentSeasonYear);
-    const isRoseRule  = yos < 7 && isRoseRuleEligible(player);
+    const isSuperMax  = yos >= 7 && yos <= 9 && isSuperMaxEligible(player ?? ({} as Player), currentSeasonYear);
+    const isRoseRule  = yos < 7 && isRoseRuleEligible(player ?? ({} as Player));
     const recentAwards = useMemo(() => {
+        if (!player) return { mvp: [], dpoy: [], allNba: [] };
         const fmt = (y: number) => `${y}-${String(y + 1).slice(-2)}`;
         const recentLabels = new Set([fmt(currentSeasonYear - 1), fmt(currentSeasonYear - 2), fmt(currentSeasonYear - 3)]);
         const all = [
@@ -460,7 +471,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     const slots = useMemo(() => {
         if (!isFA || !faEntry) return [] as SigningType[];
-        return getAvailableSigningSlots(myTeam, player, faEntry.prevTeamId, usedMLE, faEntry.isBuyout, faEntry.prevTeamTenure, currentSeasonYear);
+        return getAvailableSigningSlots(myTeam, player ?? ({} as Player), faEntry.prevTeamId, usedMLE, faEntry.isBuyout, faEntry.prevTeamTenure, currentSeasonYear);
     }, [isFA, faEntry, myTeam, player, usedMLE, currentSeasonYear]);
 
     const buyoutRestriction = useMemo(() => {
@@ -471,7 +482,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         return null;
     }, [faEntry, isFA, myTeam]);
 
-    const lastSeasonStat = player.career_history?.[0] ?? null;
+    const lastSeasonStat = player?.career_history?.[0] ?? null;
 
     // 2023 CBA: Second Apron 초과 팀은 신규 계약에 NTC 삽입 불가
     const isAboveSecondApron = useMemo(() => {
@@ -543,14 +554,18 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const [buyoutSlider, setBuyoutSlider]   = useState(70);
     const [isReleaseConfirmed, setIsReleaseConfirmed] = useState(false);
 
-    const releaseContract  = player.contract;
-    const remainingYears   = releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1;
-    const totalRemaining   = releaseContract
-        ? releaseContract.years.slice(releaseContract.currentYear).reduce((s, v) => s + v, 0)
-        : (player.salary ?? 0);
+    const releaseContract  = isCoachFire ? null : player?.contract;
+    const remainingYears   = isCoachFire
+        ? (coach!.contractYearsRemaining)
+        : (releaseContract ? releaseContract.years.length - releaseContract.currentYear : 1);
+    const totalRemaining   = isCoachFire
+        ? coach!.contractSalary * coach!.contractYearsRemaining
+        : (releaseContract
+            ? releaseContract.years.slice(releaseContract.currentYear).reduce((s, v) => s + v, 0)
+            : (player?.salary ?? 0));
     const stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
     const stretchAnnual     = totalRemaining / stretchYearsTotal;
-    const minBuyoutPct = (() => {
+    const minBuyoutPct = isCoachFire ? 50 : (() => {
         const loyalty           = tendencies.loyalty           ?? 0.5;  // 0~1
         const financialAmbition = tendencies.financialAmbition ?? 0.5;  // 0~1
 
@@ -564,7 +579,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         pct += (loyalty - 0.5) * 14;
 
         // OVR: 시장가치를 알고 있어 더 요구 (±5%)
-        pct += (player.ovr - 75) / 25 * 5;
+        pct += ((player?.ovr ?? 75) - 75) / 25 * 5;
 
         // 모랄: 낮을수록 나가고 싶어 할인 수용 (±6%)
         pct += (moraleScore - 50) / 50 * 6;
@@ -643,6 +658,14 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     useEffect(() => {
         const msgs: ChatMsg[] = [];
 
+        // 코치 해고 모드 — 별도 초기화
+        if (isCoachFire && coach) {
+            msgs.push({ id: nextId(), role: 'narration', text: '단장실 — 비공개 면담' });
+            msgs.push({ id: nextId(), role: 'gm', text: `${coach.name} 코치, 오늘 시간 내주셔서 감사합니다. 드리려는 얘기가 쉽지 않은 내용입니다.` });
+            setChatMessages(msgs);
+            return;
+        }
+
         // 1. 장면 설명
         const narration = isExt
             ? `단장실 — ${currentSeason} 계약 연장 협상`
@@ -653,10 +676,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
         // 2. GM 첫 인사
         const gmIntro = isExt
-            ? `${player.name}, 오늘 시간 내줘서 고마워요. 함께할 앞으로의 계획에 대해 솔직하게 얘기 나눠봅시다.`
+            ? `${player!.name}, 오늘 시간 내줘서 고마워요. 함께할 앞으로의 계획에 대해 솔직하게 얘기 나눠봅시다.`
             : isRel
-            ? `${player.name}... 이 시즌 동안 정말 헌신해줘서 고마워요. 오늘 드리려는 얘기가 쉽지 않은 내용이에요.`
-            : `반갑습니다, ${player.name}. 우리 팀에 관심 가져줘서 고마워요. 편하게 앉아요.`;
+            ? `${player!.name}... 이 시즌 동안 정말 헌신해줘서 고마워요. 오늘 드리려는 얘기가 쉽지 않은 내용이에요.`
+            : `반갑습니다, ${player!.name}. 우리 팀에 관심 가져줘서 고마워요. 편하게 앉아요.`;
         msgs.push({ id: nextId(), role: 'gm', text: gmIntro });
 
         // 3. 선수 인사 대사
@@ -670,11 +693,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             round:       0,
             negotiationType: negotiationType as NegotiationType,
         };
-        const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player.id}`);
+        const d = generateDialogue(trigger, ctx, `${tendencySeed}:${player!.id}`);
         const greetingSub = !extensionNotYet && isExt && negState
-            ? generateDemandSubText('extension', negState.demand.openingAsk, negState.demand.askingYears, `${tendencySeed}:${player.id}`)
+            ? generateDemandSubText('extension', negState.demand.openingAsk, negState.demand.askingYears, `${tendencySeed}:${player!.id}`)
             : !extensionNotYet && isFA && faEntry
-            ? generateDemandSubText('fa', faEntry.askingSalary, faEntry.askingYears, `${tendencySeed}:${player.id}`)
+            ? generateDemandSubText('fa', faEntry.askingSalary, faEntry.askingYears, `${tendencySeed}:${player!.id}`)
             : undefined;
         msgs.push({ id: nextId(), role: 'player', text: d, subText: greetingSub });
 
@@ -686,13 +709,13 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const isMounted = useRef(false);
     useEffect(() => {
         if (!isMounted.current) { isMounted.current = true; return; }
-        if (negState) onNegStateChange?.(player.id, negState);
+        if (negState) onNegStateChange?.(player?.id ?? '', negState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [negState]);
 
     useEffect(() => {
         if (!isMounted.current) return;
-        onFAStateChange?.(player.id, faRound, faResult);
+        onFAStateChange?.(player?.id ?? '', faRound, faResult);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [faRound, faResult]);
 
@@ -880,11 +903,21 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     // ─── Release Confirm ─────────────────────────────────────
     const handleReleaseConfirm = () => {
-        const amount = releaseMode === 'buyout' ? buyoutAmount : undefined;
-        onReleasePlayer?.(player.id, releaseMode, amount);
         const modeLabel: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
+        if (isCoachFire && coach && coachRole) {
+            const fireCost = releaseMode === 'buyout' ? buyoutAmount : totalRemaining;
+            onFireCoach?.(coachRole, fireCost);
+            setChatMessages(prev => [...prev,
+                { id: nextId(), role: 'gm', text: `${coach.name} 코치, 그동안 헌신해 주셔서 감사합니다. 아쉽지만 함께하기 어렵게 됐습니다.` },
+                { id: nextId(), role: 'status', text: '해고 완료 — 대화 종료', isSuccess: true },
+            ]);
+            setIsReleaseConfirmed(true);
+            return;
+        }
+        const amount = releaseMode === 'buyout' ? buyoutAmount : undefined;
+        onReleasePlayer?.(player!.id, releaseMode, amount);
         setChatMessages(prev => [...prev,
-            { id: nextId(), role: 'gm',    text: `${player.name} 선수를 ${modeLabel[releaseMode]} 처리합니다. 그동안 함께해 주셔서 감사합니다.` },
+            { id: nextId(), role: 'gm',    text: `${player!.name} 선수를 ${modeLabel[releaseMode]} 처리합니다. 그동안 함께해 주셔서 감사합니다.` },
             { id: nextId(), role: 'status', text: '방출 완료 — 대화 종료', isSuccess: true },
         ]);
         setIsReleaseConfirmed(true);
@@ -910,10 +943,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
 
     // 중앙 패널 오퍼 요약 문장 (FM 스타일)
     const offerSummaryText = (() => {
-        if (isFA)  return `구단은 ${player.name}에게 AAV ${fmtM(faOfferAAV)}, ${faOfferYears}년 계약을 제안합니다.`;
-        if (isExt) return `구단은 ${player.name}의 계약을 AAV ${fmtM(extOfferAAV)}, ${extOfferYears}년 연장 제안합니다.`;
+        if (isFA)  return `구단은 ${player!.name}에게 AAV ${fmtM(faOfferAAV)}, ${faOfferYears}년 계약을 제안합니다.`;
+        if (isExt) return `구단은 ${player!.name}의 계약을 AAV ${fmtM(extOfferAAV)}, ${extOfferYears}년 연장 제안합니다.`;
         const modeNames: Record<ReleaseType, string> = { waive: '웨이브', stretch: '스트레치 웨이브', buyout: '바이아웃' };
-        return `구단은 ${player.name}을(를) ${modeNames[releaseMode]} 방출 처리합니다.`;
+        if (isCoachFire && coach) return `코치와의 계약을 ${modeNames[releaseMode]} 방식으로 종료합니다.`;
+        return `구단은 ${player!.name}을(를) ${modeNames[releaseMode]} 방출 처리합니다.`;
     })();
 
     const totalContractValue = isFA
@@ -964,20 +998,61 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             {/* ── 3-panel Main ── */}
             <div className="flex-1 flex overflow-hidden min-h-0 p-3 gap-3">
 
-                {/* ── 좌측: 선수 정보 ── */}
+                {/* ── 좌측: 선수/코치 정보 ── */}
                 <div className="flex-[2] min-w-0 rounded-2xl border border-slate-800 bg-slate-900/40 flex flex-col overflow-hidden">
 
                     {/* 위젯 헤더 */}
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
-                        <span className="text-sm font-bold text-white">선수 정보</span>
+                        <span className="text-sm font-bold text-white">{isCoachFire ? '코치 정보' : '선수 정보'}</span>
                     </div>
 
                     {/* 스크롤 영역 */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
 
+                    {isCoachFire && coach && coachRole ? (
+                        /* ── 코치 정보 패널 ── */
+                        <>
                         {/* 이름 */}
                         <div className="px-4 pt-4 pb-2">
-                            <div className="text-base font-black text-white ko-tight leading-tight">{player.name}</div>
+                            <div className="text-base font-black text-white ko-tight leading-tight">{coach.name}</div>
+                        </div>
+
+                        {/* 역할 & 계약 */}
+                        <div className="px-4 pb-3 space-y-1">
+                            {([
+                                { label: '역할', value: ({ headCoach: '감독', offenseCoordinator: '공격 코치', defenseCoordinator: '수비 코치', developmentCoach: '디벨롭먼트', trainingCoach: '트레이닝 코치' } as Record<StaffRole, string>)[coachRole] },
+                                { label: 'OVR',  value: String(calcCoachOVR(coach, coachRole)) },
+                                { label: '연봉',   value: fmtM(coach.contractSalary) },
+                                { label: '잔여 연수', value: `${coach.contractYearsRemaining}년` },
+                                { label: '잔여 총액', value: fmtM(coach.contractSalary * coach.contractYearsRemaining) },
+                            ]).map(({ label, value }) => (
+                                <div key={label} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">{label}</span>
+                                    <span className="font-mono text-slate-200">{value}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 핵심 능력치 */}
+                        <div className="px-4 py-3 space-y-1">
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">코칭 능력치</div>
+                            {(Object.entries(coach.abilities) as [keyof CoachAbilities, number][]).map(([key, val]) => (
+                                <div key={key} className="flex justify-between items-center text-xs gap-2">
+                                    <span className="text-slate-500 flex-shrink-0">
+                                        {({ teaching: '지도', schemeDepth: '전술', communication: '소통', playerEval: '평가', motivation: '동기', playerRelation: '관계', adaptability: '적응', developmentVision: '성장', experienceTransfer: '전수', mentalCoaching: '멘탈', athleticTraining: '신체', recovery: '회복', conditioning: '컨디' } as Record<keyof CoachAbilities, string>)[key]}
+                                    </span>
+                                    <span className={`font-mono font-bold ${val >= 8 ? 'text-emerald-400' : val >= 6 ? 'text-slate-200' : val >= 4 ? 'text-slate-400' : 'text-red-400'}`}>{val}</span>
+                                </div>
+                            ))}
+                        </div>
+                        </>
+                    ) : (
+                        /* ── 선수 정보 패널 (기존) ── */
+                        <>
+
+                        {/* 이름 */}
+                        <div className="px-4 pt-4 pb-2">
+                            <div className="text-base font-black text-white ko-tight leading-tight">{player!.name}</div>
                         </div>
 
                         {/* 프로필 */}
@@ -1193,6 +1268,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 </div>
                             ))}
                         </div>
+                        </>
+                    )}
 
                     </div>
                 </div>

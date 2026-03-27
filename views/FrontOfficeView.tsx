@@ -51,7 +51,6 @@ interface FrontOfficeViewProps {
     leagueTrainingConfigs?: LeagueTrainingConfigs | null;
     onCoachMarketOpen?: () => void;   // 코치 마켓 뷰 열기
     onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
-    onExtendCoach?: (role: StaffRole) => void;
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
     onInvestmentTabOpen?: () => void; // 구단주 투자 뷰 열기
@@ -63,7 +62,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
     coachFAPool, leagueTrainingConfigs, onCoachMarketOpen, onTrainingViewOpen,
-    onExtendCoach, onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
+    onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
 
@@ -125,7 +124,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             initialNegotiateId={initialNegotiateId}
                             initialNegotiateType={initialNegotiateType}
                             coachingData={coachingData}
-                            onExtendCoach={onExtendCoach}
                             onExtendCoachAccepted={onExtendCoachAccepted}
                             onFireCoach={onFireCoach}
                         />
@@ -650,10 +648,9 @@ const PayrollTab: React.FC<{
     initialNegotiateId?: string;
     initialNegotiateType?: 'extension' | 'release';
     coachingData?: LeagueCoachingData | null;
-    onExtendCoach?: (role: StaffRole) => void;
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoach, onExtendCoachAccepted, onFireCoach }) => {
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -786,7 +783,7 @@ const PayrollTab: React.FC<{
                         <colgroup>
                             <col style={{ width: `${nameColWidth}px` }} />
                             {seasonColumns.map((_, i) => <col key={i} style={{ width: seasonColWidth }} />)}
-                            {(onExtendCoach || onFireCoach) && <col style={{ width: `${actionColWidth}px` }} />}
+                            {(onExtendCoachAccepted || onFireCoach) && <col style={{ width: `${actionColWidth}px` }} />}
                         </colgroup>
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 border-b border-slate-700">
@@ -794,7 +791,7 @@ const PayrollTab: React.FC<{
                                 {seasonColumns.map(col => (
                                     <th key={col} className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap border-r border-slate-700">{col}</th>
                                 ))}
-                                {(onExtendCoach || onFireCoach) && <th className="px-3 py-2" />}
+                                {(onExtendCoachAccepted || onFireCoach) && <th className="px-3 py-2" />}
                             </tr>
                         </thead>
                         <tbody>
@@ -808,20 +805,18 @@ const PayrollTab: React.FC<{
                                             {s !== null ? fmtSalary(s) : <span className="text-slate-700">–</span>}
                                         </td>
                                     ))}
-                                    {(onExtendCoach || onFireCoach) && (
+                                    {(onExtendCoachAccepted || onFireCoach) && (
                                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                                             <div className="flex items-center justify-end gap-1.5">
-                                                {(onExtendCoach || onExtendCoachAccepted) && (
+                                                {onExtendCoachAccepted && (
                                                     <button
                                                         onClick={() => {
                                                             const coach = (coachingData?.[myTeamId] as any)?.[r.key] as Coach | undefined;
-                                                            if (coach && onExtendCoachAccepted) {
+                                                            if (coach) {
                                                                 setCoachExtNeg({
                                                                     role: r.key as StaffRole,
                                                                     coach,
                                                                 });
-                                                            } else if (onExtendCoach) {
-                                                                onExtendCoach(r.key);
                                                             }
                                                         }}
                                                         className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
@@ -853,7 +848,7 @@ const PayrollTab: React.FC<{
                                         {t > 0 ? fmtSalary(t) : ''}
                                     </td>
                                 ))}
-                                {(onExtendCoach || onFireCoach) && <td />}
+                                {(onExtendCoachAccepted || onFireCoach) && <td />}
                             </tr>
                         </tbody>
                     </table>
@@ -882,14 +877,19 @@ const PayrollTab: React.FC<{
 
             {/* 코치 해고 화면 */}
             {coachFireTarget && onFireCoach && (
-                <CoachNegotiationScreen
+                <NegotiationScreen
+                    negotiationType="release"
                     coach={coachFireTarget.coach}
-                    role={coachFireTarget.role}
-                    negotiationType="fire"
+                    coachRole={coachFireTarget.role}
                     myTeam={team}
+                    teams={teams}
+                    tendencySeed={tendencySeed ?? ''}
+                    currentSeasonYear={new Date(currentSimDate).getFullYear()}
+                    currentSeason={seasonShort ?? ''}
+                    usedMLE={{}}
                     onClose={() => setCoachFireTarget(null)}
-                    onAccept={(buyoutAmount) => {
-                        onFireCoach(coachFireTarget.role, buyoutAmount);
+                    onFireCoach={(role, buyoutAmount) => {
+                        onFireCoach(role, buyoutAmount);
                         setCoachFireTarget(null);
                     }}
                 />

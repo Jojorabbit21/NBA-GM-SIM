@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Users, X } from 'lucide-react';
-import { calcCoachDemandSalary } from '../services/coachingStaff/coachGenerator';
+import { calcCoachDemandSalary, calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import {
     Coach,
     CoachFAPool,
@@ -82,17 +82,6 @@ function getMainAbility(role: StaffRole, coach: Coach): { label: string; value: 
     return { label: ABILITY_LABELS[key], value: coach.abilities[key] };
 }
 
-function getAverageAbility(role: StaffRole, coach: Coach): number {
-    const a = coach.abilities;
-    if (role === 'trainingCoach') {
-        return Math.round((a.athleticTraining + a.recovery + a.conditioning) / 3);
-    }
-    const vals = [a.teaching, a.schemeDepth, a.communication, a.playerEval,
-        a.motivation, a.playerRelation, a.adaptability,
-        a.developmentVision, a.experienceTransfer, a.mentalCoaching];
-    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
-}
-
 const AbilityTooltip: React.FC<{ role: StaffRole; coach: Coach }> = ({ coach }) => (
     <div className="flex flex-col gap-1">
         {(Object.keys(ABILITY_LABELS) as (keyof CoachAbilities)[]).map(key => (
@@ -131,8 +120,9 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
     const currentCoach = getCurrentCoachForRole(userStaff, selectedRole);
 
     // FA 풀은 단일 배열 — 선택된 슬롯 기준 평균으로 정렬
-    const sortedPool = [...coachFAPool.coaches].sort((a, b) =>
-        getAverageAbility(selectedRole, b) - getAverageAbility(selectedRole, a)
+    const sortedPool = useMemo(() =>
+        [...coachFAPool.coaches].sort((a, b) => calcCoachOVR(b, selectedRole) - calcCoachOVR(a, selectedRole)),
+        [coachFAPool.coaches, selectedRole]
     );
 
     return (
@@ -190,8 +180,8 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
                                     <div className="flex items-center gap-3 mt-0.5">
                                         <span className="text-xs text-emerald-400 font-mono tabular-nums">{formatMoney(currentCoach.contractSalary)}</span>
                                         <span className="text-xs text-slate-500">잔여 {currentCoach.contractYearsRemaining}년</span>
-                                        <span className={`text-xs font-black font-mono ${getAbilityColor(getAverageAbility(selectedRole, currentCoach))}`}>
-                                            OVR {getAverageAbility(selectedRole, currentCoach)}
+                                        <span className={`text-xs font-black font-mono ${getAbilityColor(calcCoachOVR(currentCoach, selectedRole))}`}>
+                                            OVR {calcCoachOVR(currentCoach, selectedRole)}
                                         </span>
                                     </div>
                                 </div>
@@ -236,7 +226,7 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
                                 <TableBody>
                                     {sortedPool.map(coach => {
                                         const main = getMainAbility(selectedRole, coach);
-                                        const avg = getAverageAbility(selectedRole, coach);
+                                        const avg = calcCoachOVR(coach, selectedRole);
                                         const isTooltipOpen = tooltipId === coach.id;
                                         return (
                                             <TableRow
@@ -320,8 +310,8 @@ export const CoachMarketView: React.FC<CoachMarketViewProps> = ({
                         <div className="bg-slate-800 rounded-xl px-4 py-3 flex flex-col gap-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-slate-400">OVR</span>
-                                <span className={`text-xs font-black font-mono ${getAbilityColor(getAverageAbility(pendingHire.role, pendingHire.coach))}`}>
-                                    {getAverageAbility(pendingHire.role, pendingHire.coach)}
+                                <span className={`text-xs font-black font-mono ${getAbilityColor(calcCoachOVR(pendingHire.coach, pendingHire.role))}`}>
+                                    {calcCoachOVR(pendingHire.coach, pendingHire.role)}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between">
