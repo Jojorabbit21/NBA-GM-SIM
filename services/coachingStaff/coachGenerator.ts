@@ -259,10 +259,13 @@ export function calcCoachDemandSalary(
     role: StaffRole,
     situation: 'fa' | 'extension' = 'fa',
 ): number {
-    const ovr = calcOVRFromAbilities(coach.abilities, role);
     const { min, max } = SALARY_BANDS[role];
-    const market = Math.round(min + (max - min) * ((ovr - 1) / 9));
-    return situation === 'extension' ? Math.round(market * 0.9) : market;
+    // Anchor demand to the coach's actual contractSalary, not a fresh OVR-based market calc.
+    // FA: demand 10% premium over previous salary; extension: slight discount for loyalty.
+    const base = situation === 'extension'
+        ? Math.round(coach.contractSalary * 0.95)
+        : Math.round(coach.contractSalary * 1.1);
+    return Math.max(min, Math.min(max, base));
 }
 
 // ── 계약 생성 헬퍼 ──

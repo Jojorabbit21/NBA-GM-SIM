@@ -368,7 +368,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                     <div className="p-4 flex flex-col gap-3">
 
                         {/* 직무 — 인라인 드랍다운 */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-bold text-slate-400 shrink-0">직무</span>
                             <select
                                 value={offerRole}
@@ -383,7 +383,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         </div>
 
                         {/* 계약 기간 — 인라인 드랍다운 */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-bold text-slate-400 shrink-0">계약 기간</span>
                             <select
                                 value={offerYears}
