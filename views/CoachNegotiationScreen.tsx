@@ -240,7 +240,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">능력치</div>
                             {(Object.entries(coach.abilities) as [keyof CoachAbilities, number][]).map(([key, val]) => (
                                 <div key={key} className="flex items-center gap-1.5 text-xs">
-                                    <span className="text-slate-500 flex-shrink-0 w-8">{ABILITY_LABELS[key]}</span>
+                                    <span className="text-slate-500 flex-1">{ABILITY_LABELS[key]}</span>
                                     <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden flex-shrink-0">
                                         <div
                                             className="h-full rounded-full"
@@ -359,7 +359,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 계약 제안 ── */}
-                <div className={`self-start w-[280px] min-w-0 flex flex-col rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden relative transition-opacity duration-300 ${phase !== 'negotiating' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${phase !== 'negotiating' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
                         <span className="text-sm font-bold text-white">계약 제안</span>
