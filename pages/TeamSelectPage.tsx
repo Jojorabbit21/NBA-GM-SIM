@@ -5,7 +5,7 @@ import { useGame } from '../hooks/useGameContext';
 import { TEAM_DATA } from '../data/teamData';
 
 const TeamSelectPage: React.FC = () => {
-    const { gameData, rosterMode, draftPoolType, refreshUnreadCount } = useGame();
+    const { gameData, rosterMode, draftPoolType } = useGame();
     const navigate = useNavigate();
     const [isSelecting, setIsSelecting] = useState(false);
 
@@ -25,19 +25,18 @@ const TeamSelectPage: React.FC = () => {
                 return true;
             }
 
-            // 기본 모드: handleSelectTeam 완료 후 온보딩 이동 (myTeamId 세팅 보장)
+            // 기본 모드: handleSelectTeam (클라이언트 계산만) → 즉시 /gm-creation 이동
             const success = await gameData.handleSelectTeam(teamId);
             if (!success) {
                 navigate('/', { replace: true });
                 return false;
             }
-            await refreshUnreadCount();
             navigate('/gm-creation', { replace: true });
             return success;
         } finally {
             setIsSelecting(false);
         }
-    }, [gameData, rosterMode, draftPoolType, navigate, refreshUnreadCount]);
+    }, [gameData, rosterMode, draftPoolType, navigate]);
 
     return (
         <TeamSelectView

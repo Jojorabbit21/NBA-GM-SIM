@@ -27,7 +27,7 @@ import { generateLeagueStaff, generateCoachFAPool, getCoachPreferences } from '.
 import { getBudgetManager, resetBudgetManager, getFinancesSnapshot } from '../services/financeEngine';
 import { LeaguePickAssets, ResolvedDraftOrder } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
-import { LeagueGMProfiles } from '../types/gm';
+import { LeagueGMProfiles, GMProfile } from '../types/gm';
 import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
@@ -96,6 +96,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [draftPicksState, setDraftPicksState] = useState<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     const pendingSaveRef = useRef<any>(null);
     const isSavingRef = useRef(false);
+    const pendingFARowsRef = useRef<any[]>([]);
 
     // Refs to avoid stale closures in callbacks
     const [seasonNumber, setSeasonNumber] = useState<number>(1);
@@ -1008,21 +1009,20 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
-        // 초기 FA 풀 생성 및 FA 마켓 구성 (forceSave 전에 수행)
+        // 초기 FA 풀 생성 — DB insert는 handleInitialSave에서 수행
         let initialFAPool: LeagueFAPool | null = null;
         let initialFAMarket: LeagueFAMarket | null = null;
         if (session?.user?.id) {
             try {
                 const faSeasonYear = new Date(INITIAL_DATE).getFullYear();
                 const faRows = generateInitialFAPool(session.user.id, newSeed, undefined, faSeasonYear);
-                await insertDraftClass(faRows);
 
                 const faPlayerObjects = faRows.map(row => mapRawPlayerToRuntimePlayer({
                     id: row.id,
                     base_attributes: row.base_attributes,
                 }));
 
-                // FA 마켓 생성 — faPlayerMap(뷰 렌더링용) 구성을 위해 players 배열 포함
+                // FA 마켓 생성
                 const allRosterPlayers = teams.flatMap((t: Team) => t.roster);
                 const seasonYear = new Date(INITIAL_DATE).getFullYear();
                 initialFAMarket = openFAMarket(
@@ -1041,35 +1041,51 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 setLeagueFAPool(initialFAPool);
                 setGeneratedFreeAgents(faPlayerObjects);
                 setLeagueFAMarket(initialFAMarket);
-                console.log(`🏀 [initFA] Generated ${faRows.length} initial FA players`);
+
+                // DB insert는 handleInitialSave에서 일괄 처리
+                pendingFARowsRef.current = faRows;
+                console.log(`🏀 [initFA] Prepared ${faRows.length} initial FA players (DB insert deferred)`);
             } catch (e) {
                 console.warn('⚠️ [initFA] Failed to generate initial FA pool (non-critical):', e);
+                pendingFARowsRef.current = [];
             }
-        }
-
-        await forceSave({
-            myTeamId: teamId,
-            currentSimDate: INITIAL_DATE,
-            userTactics: newTactics,
-            tendencySeed: newSeed,
-            coachingData: newCoachingData,
-            leaguePickAssets: newPickAssets,
-            leagueTrainingConfigs: newTrainingConfigs,
-            coachFAPool: newCoachFAPool,
-            teams,
-            ...(initialFAPool ? { leagueFAPool: initialFAPool } : {}),
-            ...(initialFAMarket ? { leagueFAMarket: initialFAMarket } : {}),
-        });
-
-        // 시즌 시작 구단주 환영 서신 발송
-        if (session?.user?.id) {
-            const ownerLetter = buildSeasonStartOwnerLetter(teamId);
-            await sendMessage(session.user.id, teamId, INITIAL_DATE, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
         }
 
         hasInitialLoadRef.current = true;
         return true;
-    }, [teams, forceSave, session]);
+    }, [teams, session]);
+
+    /** GM 프로필 생성 완료 후 호출 — DB 일괄 저장 (insertDraftClass + forceSave + sendMessage) */
+    const handleInitialSave = useCallback(async (gmProfile: GMProfile) => {
+        if (!session?.user?.id) return;
+        const userId = session.user.id;
+
+        // 1. FA 선수 DB insert
+        const faRows = pendingFARowsRef.current;
+        if (faRows.length > 0) {
+            try {
+                await insertDraftClass(faRows);
+                console.log(`💾 [handleInitialSave] Inserted ${faRows.length} FA players`);
+            } catch (e) {
+                console.warn('⚠️ [handleInitialSave] insertDraftClass failed (non-critical):', e);
+            }
+            pendingFARowsRef.current = [];
+        }
+
+        // 2. 유저 GM 프로필을 leagueGMProfiles에 병합
+        const updatedGMProfiles = {
+            ...gameStateRef.current.leagueGMProfiles,
+            [gmProfile.teamId]: gmProfile,
+        };
+        setLeagueGMProfiles(updatedGMProfiles);
+
+        // 3. forceSave — 전체 상태 + 유저 GM 프로필 1회 저장
+        await forceSave({ leagueGMProfiles: updatedGMProfiles });
+
+        // 4. 구단주 환영 서신 발송
+        const ownerLetter = buildSeasonStartOwnerLetter(gmProfile.teamId);
+        await sendMessage(userId, gmProfile.teamId, INITIAL_DATE, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
+    }, [session, forceSave]);
 
     const handleResetData = async () => {
         if (!session?.user) return { success: false };
@@ -1449,6 +1465,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         isSaving,
         
         handleSelectTeam,
+        handleInitialSave,
         handleResetData,
         handleDraftComplete,
         handleRookieDraftComplete,

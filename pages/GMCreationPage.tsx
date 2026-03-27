@@ -35,7 +35,7 @@ const GMCreationPage: React.FC = () => {
                 birth_year: data.birthYear,
             });
 
-            // 2. leagueGMProfiles에 유저 팀 프로필 추가
+            // 2. 유저 GM 프로필 구성
             const userGMProfile: GMProfile = {
                 teamId: gameData.myTeamId!,
                 name: `${data.lastName} ${data.firstName}`,
@@ -46,14 +46,9 @@ const GMCreationPage: React.FC = () => {
                 sliders: data.sliders,
                 direction: 'standPat',
             };
-            const updatedProfiles = {
-                ...gameData.leagueGMProfiles,
-                [gameData.myTeamId!]: userGMProfile,
-            };
-            gameData.setLeagueGMProfiles(updatedProfiles);
 
-            // 3. saves.league_gm_profiles 업데이트
-            await gameData.forceSave({ leagueGMProfiles: updatedProfiles });
+            // 3. insertDraftClass + forceSave + sendMessage 일괄 처리
+            await gameData.handleInitialSave(userGMProfile);
 
             navigate('/onboarding', { replace: true });
         } catch (err) {

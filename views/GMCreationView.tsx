@@ -68,16 +68,21 @@ const SliderRow: React.FC<{
         <div className="space-y-1.5">
             <div className="flex justify-between items-center">
                 <span className="text-sm font-semibold text-slate-300">{SLIDER_LABELS[sliderKey]}</span>
-                <span className="text-sm font-black tabular-nums" style={{ color }}>{value}</span>
+                <span className="text-sm font-black tabular-nums text-white">{value}</span>
             </div>
             <div className="relative h-8 flex items-center">
                 {/* Track background */}
-                <div className="w-full h-1.5 rounded-full bg-slate-700 relative overflow-hidden">
+                <div className="w-full h-1.5 rounded-full bg-slate-700 relative">
                     <div
                         className="absolute left-0 top-0 h-full rounded-full transition-all"
                         style={{ width: `${pct}%`, backgroundColor: color }}
                     />
                 </div>
+                {/* Handle */}
+                <div
+                    className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md border border-slate-300 pointer-events-none transition-all"
+                    style={{ left: `calc(${pct}% - ${(pct * 0.14).toFixed(2)}px)` }}
+                />
                 <input
                     type="range"
                     min={1} max={10} step={1}
@@ -85,9 +90,6 @@ const SliderRow: React.FC<{
                     onChange={e => onChange(Number(e.target.value))}
                     className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
                 />
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-600 px-0.5">
-                <span>1</span><span>5</span><span>10</span>
             </div>
         </div>
     );
@@ -227,16 +229,12 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                         {/* ── Step 2 ── */}
                         {step === 2 && (
                             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center justify-between mb-6">
                                     <h2 className="text-lg font-black text-white">단장 성향 설정</h2>
-                                    <button
-                                        onClick={() => setStep(1)}
-                                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                                    >
-                                        ← 이전
-                                    </button>
+                                    <span className="text-sm font-black text-indigo-300">
+                                        {GM_PERSONALITY_LABELS[closestPersonality]}
+                                    </span>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-6">슬라이더로 트레이드·FA 전략 성향을 직접 설정하세요.</p>
 
                                 {/* Sliders */}
                                 <div className="space-y-5 mb-6">
@@ -248,14 +246,6 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                             onChange={val => setSlider(key, val)}
                                         />
                                     ))}
-                                </div>
-
-                                {/* Closest personality badge */}
-                                <div className="flex items-center gap-2 mb-6 px-1">
-                                    <span className="text-xs text-slate-500">현재 성향</span>
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-indigo-600/20 text-indigo-300 border border-indigo-500/30">
-                                        {GM_PERSONALITY_LABELS[closestPersonality]}
-                                    </span>
                                 </div>
 
                                 <button
