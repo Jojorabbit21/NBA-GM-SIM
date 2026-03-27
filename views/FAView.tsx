@@ -147,7 +147,7 @@ const StaffFATab: React.FC<{
                     <col style={{ width: 180 }} />
                     <col style={{ width: 46 }} />
                     {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
-                    <col style={{ width: 130 }} />
+                    <col style={{ width: 90 }} />
                     <col style={{ width: 60 }} />
                     <col style={{ width: 56 }} />
                 </colgroup>
@@ -177,7 +177,7 @@ const StaffFATab: React.FC<{
                     </tr>
                     {/* Row 2: column labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
-                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800/40">이름</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800">이름</TableHeaderCell>
                         <TableHeaderCell className="bg-slate-950 border-r border-slate-800">나이</TableHeaderCell>
                         {ALL_ABILITY_COLS.map(([, label]) => (
                             <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>

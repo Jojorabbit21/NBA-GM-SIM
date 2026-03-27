@@ -44,7 +44,7 @@ const FrontOfficePage: React.FC = () => {
             }}
             leaguePickAssets={gameData.leaguePickAssets}
             leagueGMProfiles={gameData.leagueGMProfiles}
-            userNickname={session?.user?.email?.split('@')[0]}
+            userNickname={gameData.leagueGMProfiles?.[gameData.myTeamId ?? '']?.name ?? session?.user?.email?.split('@')[0]}
             coachFAPool={gameData.coachFAPool}
             leagueTrainingConfigs={gameData.leagueTrainingConfigs}
             onCoachMarketOpen={() => navigate('/coach-market')}

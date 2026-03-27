@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { Coach, StaffRole, CoachAbilities, HeadCoachPreferences } from '../types/coaching';
-import { calcCoachDemandSalary, calcCoachOVR } from '../services/coachingStaff/coachGenerator';
+import { calcCoachDemandSalary } from '../services/coachingStaff/coachGenerator';
 import { formatMoney } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
 import type { Team } from '../types/team';
@@ -52,6 +52,16 @@ const PREF_LABELS: Record<keyof HeadCoachPreferences, [string, string]> = {
     defenseStyle:    ['보수적 대인', '공격적 프레셔'],
     helpScheme:      ['1:1 고수', '헬프로테이션'],
     zonePreference:  ['대인 전용', '존 위주'],
+};
+
+const PREF_CATEGORY_LABELS: Record<keyof HeadCoachPreferences, string> = {
+    offenseIdentity: '공격 정체성',
+    tempo:           '템포',
+    scoringFocus:    '득점 포커스',
+    pnrEmphasis:     'PnR 강조',
+    defenseStyle:    '수비 스타일',
+    helpScheme:      '수비 도움',
+    zonePreference:  '존 디펜스',
 };
 
 const ALL_STAFF_ROLES: StaffRole[] = [
@@ -220,29 +230,18 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
 
-                        {/* 이름 + 직전 연봉/요구 조건 */}
+                        {/* 이름 */}
                         <div className="px-4 pt-4 pb-3 border-b border-slate-800">
-                            <div className="text-base font-black text-white ko-tight leading-tight mb-2">{coach.name}</div>
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <div className="text-xs">
-                                    <span className="text-slate-500">직전 연봉 </span>
-                                    <span className="font-mono text-slate-300">{formatMoney(coach.contractSalary)}</span>
-                                </div>
-                                <div className="w-px h-3 bg-slate-700" />
-                                <div className="text-xs">
-                                    <span className="text-slate-500">요구 </span>
-                                    <span className="font-mono font-bold text-emerald-400">{formatMoney(baseDemandForRole(offerRole))}</span>
-                                </div>
-                            </div>
+                            <div className="text-base font-black text-white ko-tight leading-tight">{coach.name}</div>
                         </div>
 
-                        {/* 능력치 (전체, 슬라이더) */}
-                        <div className="px-4 py-3 space-y-1.5">
+                        {/* 능력치 (슬라이더 narrow) */}
+                        <div className="px-4 py-3 space-y-1">
                             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">능력치</div>
                             {(Object.entries(coach.abilities) as [keyof CoachAbilities, number][]).map(([key, val]) => (
-                                <div key={key} className="flex items-center gap-2 text-xs">
+                                <div key={key} className="flex items-center gap-1.5 text-xs">
                                     <span className="text-slate-500 flex-shrink-0 w-8">{ABILITY_LABELS[key]}</span>
-                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden flex-shrink-0">
                                         <div
                                             className="h-full rounded-full"
                                             style={{ width: `${(val / 10) * 100}%`, backgroundColor: abilityBarColor(val) }}
@@ -253,32 +252,26 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                             ))}
                         </div>
 
-                        {/* 전술 선호도 */}
-                        <div className="px-4 py-3 space-y-1.5 border-t border-slate-800">
+                        {/* 전술 선호도 (라벨만) */}
+                        <div className="px-4 py-3 space-y-1 border-t border-slate-800">
                             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">전술 선호도</div>
                             {(Object.entries(coach.preferences) as [keyof HeadCoachPreferences, number][]).map(([key, val]) => {
                                 const [lo, hi] = PREF_LABELS[key];
+                                const preferredLabel = val >= 6 ? hi : lo;
                                 return (
-                                    <div key={key} className="text-xs space-y-0.5">
-                                        <div className="flex justify-between text-[10px] text-slate-600">
-                                            <span>{lo}</span><span>{hi}</span>
-                                        </div>
-                                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full bg-indigo-500/70"
-                                                style={{ width: `${(val / 10) * 100}%` }}
-                                            />
-                                        </div>
+                                    <div key={key} className="flex items-center justify-between text-xs py-0.5">
+                                        <span className="text-slate-500">{PREF_CATEGORY_LABELS[key]}</span>
+                                        <span className="text-indigo-300 font-bold">{preferredLabel}</span>
                                     </div>
                                 );
                             })}
                         </div>
 
-                        {/* 현재 계약 (별도 하위 섹션) */}
+                        {/* 직전 계약 */}
                         <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">현재 계약</div>
+                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">직전 계약</div>
                             <div className="flex justify-between text-xs">
-                                <span className="text-slate-500">직전 연봉</span>
+                                <span className="text-slate-500">연봉</span>
                                 <span className="font-mono text-slate-300">{formatMoney(coach.contractSalary)}</span>
                             </div>
                             <div className="flex justify-between text-xs">
@@ -366,22 +359,22 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                 </div>
 
                 {/* ── 우측: 계약 제안 ── */}
-                <div className={`flex-[3] min-w-0 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 relative transition-opacity duration-300 ${phase !== 'negotiating' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className={`self-start w-[280px] min-w-0 flex flex-col rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden relative transition-opacity duration-300 ${phase !== 'negotiating' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
                     <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: primaryColor }}>
                         <span className="text-sm font-bold text-white">계약 제안</span>
                     </div>
 
-                    <div className="p-5 flex flex-col gap-4">
+                    <div className="p-4 flex flex-col gap-3">
 
-                        {/* 직무 드랍다운 */}
-                        <div className="space-y-1.5">
-                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">직무</div>
+                        {/* 직무 — 인라인 드랍다운 */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-400 shrink-0">직무</span>
                             <select
                                 value={offerRole}
                                 onChange={e => handleRoleChange(e.target.value as StaffRole)}
                                 disabled={round > 0}
-                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {ALL_STAFF_ROLES.map(r => (
                                     <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -389,31 +382,25 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                             </select>
                         </div>
 
-                        {/* 계약 기간 */}
-                        <div className="space-y-1.5">
-                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">계약 기간</div>
-                            <div className="flex gap-1.5">
+                        {/* 계약 기간 — 인라인 드랍다운 */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-400 shrink-0">계약 기간</span>
+                            <select
+                                value={offerYears}
+                                onChange={e => setOfferYears(Number(e.target.value))}
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                            >
                                 {[2, 3, 4].map(y => (
-                                    <button
-                                        key={y}
-                                        onClick={() => setOfferYears(y)}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors ${
-                                            offerYears === y
-                                                ? 'bg-indigo-600 text-white'
-                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        {y}년
-                                    </button>
+                                    <option key={y} value={y}>{y}년</option>
                                 ))}
-                            </div>
+                            </select>
                         </div>
 
                         {/* 연봉 — 증감 버튼 + 인풋 */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연봉/년</div>
-                                <div className="text-xs font-mono text-slate-400">{formatMoney(offerSalary)}</div>
+                                <span className="text-xs font-bold text-slate-400">연봉/년</span>
+                                <span className="text-xs font-mono text-slate-400">{formatMoney(offerSalary)}</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 {[-500_000, -100_000].map(delta => (
@@ -456,7 +443,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         <button
                             onClick={handleSubmitOffer}
                             disabled={phase !== 'negotiating'}
-                            className="w-full py-2.5 rounded-xl text-sm font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed mt-1"
+                            className="w-full py-2.5 rounded-xl text-sm font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             오퍼 제출
                         </button>
