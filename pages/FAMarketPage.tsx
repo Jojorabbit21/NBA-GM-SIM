@@ -202,6 +202,7 @@ const FAMarketPage: React.FC = () => {
             coachFAPool={gameData.coachFAPool ?? null}
             onHireCoach={handleHireCoach}
             onFireCoach={handleFireCoach}
+            userNickname={session?.user?.email?.split('@')[0]}
         />
     );
 };

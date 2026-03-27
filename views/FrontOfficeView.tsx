@@ -126,6 +126,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             coachingData={coachingData}
                             onExtendCoachAccepted={onExtendCoachAccepted}
                             onFireCoach={onFireCoach}
+                            onCoachClick={onCoachClick}
                         />
                     )}
                     {activeTab === 'coaching' && (
@@ -649,7 +650,8 @@ const PayrollTab: React.FC<{
     coachingData?: LeagueCoachingData | null;
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
-}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach }) => {
+    onCoachClick?: (teamId: string, role?: StaffRole) => void;
+}> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach, onCoachClick }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
     const textColor = TEAM_DATA[myTeamId]?.colors?.text ?? '#FFFFFF';
     const teamName = TEAM_DATA[myTeamId] ? `${TEAM_DATA[myTeamId].city} ${TEAM_DATA[myTeamId].name}` : team.name;
@@ -797,7 +799,12 @@ const PayrollTab: React.FC<{
                             {staffRows.filter(r => r.name !== null).map(r => (
                                 <tr key={r.key} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
                                     <td className="px-4 py-2 sticky left-0 bg-slate-900 hover:bg-slate-800/50 z-10 border-r border-slate-700 whitespace-nowrap">
-                                        <span className="text-xs font-semibold text-slate-200">{r.name}</span>
+                                        <button
+                                            className="text-xs font-semibold text-slate-200 hover:text-indigo-400 transition-colors text-left"
+                                            onClick={() => onCoachClick?.(myTeamId, r.key as StaffRole)}
+                                        >
+                                            {r.name}
+                                        </button>
                                     </td>
                                     {r.salaries.map((s, i) => (
                                         <td key={i} className="px-4 py-2 text-right text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-r border-slate-700">
@@ -830,7 +837,8 @@ const PayrollTab: React.FC<{
                                                             const coach = (coachingData?.[myTeamId] as any)?.[r.key] as Coach | undefined;
                                                             if (coach) setCoachFireTarget({ role: r.key as StaffRole, coach });
                                                         }}
-                                                        className="px-2 py-0.5 rounded text-xs font-bold bg-rose-900/60 hover:bg-rose-800/80 text-rose-300 transition-colors"
+                                                        className="px-2 py-0.5 rounded text-xs font-bold transition-opacity"
+                                                        style={{ backgroundColor: primaryColor, color: textColor }}
                                                     >
                                                         해고
                                                     </button>
@@ -866,6 +874,7 @@ const PayrollTab: React.FC<{
                     role={coachExtNeg.role}
                     negotiationType="extension"
                     myTeam={team}
+                    userNickname={userNickname}
                     onClose={() => setCoachExtNeg(null)}
                     onAccept={(finalSalary, finalYears) => {
                         onExtendCoachAccepted(coachExtNeg.role, finalSalary, finalYears);

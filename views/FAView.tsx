@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Team, Player, ReleaseType } from '../types';
 import type { PlayerContract } from '../types/player';
 import type { FARole, LeagueFAMarket, FAMarketEntry, SigningType } from '../types/fa';
@@ -41,6 +42,7 @@ interface FAViewProps {
     coachFAPool?: CoachFAPool | null;
     onHireCoach?: (role: StaffRole, coachId: string, finalSalary?: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
+    userNickname?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -98,44 +100,33 @@ function statusBadge(status: FAMarketEntry['status']) {
 // Staff FA Tab
 // ─────────────────────────────────────────────────────────────
 
-const STAFF_ROLE_LABELS_FA: Record<StaffRole, string> = {
-    headCoach: '감독', offenseCoordinator: '공격', defenseCoordinator: '수비',
-    developmentCoach: '디벨롭', trainingCoach: '트레이너',
-};
-
-const ALL_STAFF_ROLES_FA: StaffRole[] = ['headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach'];
-
 function coachValColor(v: number): string {
     if (v >= 7) return 'text-emerald-400';
     if (v >= 5) return 'text-amber-400';
     return 'text-rose-400';
 }
 
-const FIXED_ABILITY_COLS: Array<[keyof CoachAbilities, string]> = [
+const ALL_ABILITY_COLS: Array<[keyof CoachAbilities, string]> = [
     ['teaching', '지도'],
     ['schemeDepth', '전술'],
+    ['communication', '소통'],
+    ['playerEval', '평가'],
+    ['motivation', '동기'],
+    ['playerRelation', '관계'],
     ['adaptability', '적응'],
     ['developmentVision', '성장'],
+    ['experienceTransfer', '전수'],
+    ['mentalCoaching', '멘탈'],
     ['athleticTraining', '신체'],
+    ['recovery', '회복'],
+    ['conditioning', '컨디'],
 ];
-
-function coachOvrBadge(avg: number) {
-    let colorClass = '';
-    if (avg >= 8)      colorClass = 'bg-gradient-to-br from-emerald-400 via-emerald-600 to-emerald-800 border border-emerald-400/40';
-    else if (avg >= 6) colorClass = 'bg-gradient-to-br from-amber-500 via-amber-600 to-amber-900 border border-amber-400/30';
-    else               colorClass = 'bg-gradient-to-br from-stone-500 via-stone-600 to-stone-700 border border-stone-400/30';
-    return (
-        <div className={`w-7 h-7 flex items-center justify-center rounded text-[10px] font-black text-white shadow-lg ${colorClass}`}>
-            {avg}
-        </div>
-    );
-}
 
 const StaffFATab: React.FC<{
     coachFAPool?: CoachFAPool | null;
     onNegotiateCoach?: (coach: Coach, role: StaffRole) => void;
 }> = ({ coachFAPool, onNegotiateCoach }) => {
-    const [hireRoles, setHireRoles] = useState<Record<string, StaffRole>>({});
+    const navigate = useNavigate();
 
     const coaches = useMemo(() => {
         if (!coachFAPool?.coaches) return [];
@@ -144,16 +135,15 @@ const StaffFATab: React.FC<{
         );
     }, [coachFAPool]);
 
+    // 총 컬럼 수: 이름(1) + 능력치(13) + 요구연봉(1) + 계약(1) + 고용(1) = 17
     return (
         <div className="flex-1 min-h-0 overflow-hidden">
             <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
                 <colgroup>
                     <col style={{ width: 180 }} />
-                    <col style={{ width: 60 }} />
-                    {FIXED_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
+                    {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
                     <col style={{ width: 110 }} />
                     <col style={{ width: 60 }} />
-                    <col style={{ width: 110 }} />
                     <col style={{ width: 72 }} />
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
@@ -164,7 +154,7 @@ const StaffFATab: React.FC<{
                                 <span className="text-xs font-black text-slate-500 uppercase tracking-widest">코치 정보</span>
                             </div>
                         </th>
-                        <th colSpan={6} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                        <th colSpan={13} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
                             <div className="flex items-center justify-center h-full">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest">능력치</span>
                             </div>
@@ -174,7 +164,7 @@ const StaffFATab: React.FC<{
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest">계약</span>
                             </div>
                         </th>
-                        <th colSpan={2} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
+                        <th className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                             <div className="flex items-center justify-center h-full">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest">고용</span>
                             </div>
@@ -183,69 +173,54 @@ const StaffFATab: React.FC<{
                     {/* Row 2: column labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
                         <TableHeaderCell align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
-                        <TableHeaderCell className="bg-slate-950 border-r border-slate-800">OVR</TableHeaderCell>
-                        {FIXED_ABILITY_COLS.map(([, label]) => (
+                        {ALL_ABILITY_COLS.map(([, label]) => (
                             <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>
                         ))}
                         <TableHeaderCell align="right" className="bg-slate-950 pr-4 border-r border-slate-800">요구 연봉</TableHeaderCell>
                         <TableHeaderCell className="bg-slate-950 border-r border-slate-800">계약</TableHeaderCell>
-                        <TableHeaderCell className="bg-slate-950">직무</TableHeaderCell>
                         <th className="bg-slate-950 border-b border-slate-800" />
                     </tr>
                 </thead>
                 <TableBody>
                     {coaches.length === 0 ? (
                         <TableRow>
-                            <td colSpan={11} className="py-12 text-center text-slate-600 text-xs">FA 코치가 없습니다</td>
+                            <td colSpan={17} className="py-12 text-center text-slate-600 text-xs">FA 코치가 없습니다</td>
                         </TableRow>
-                    ) : coaches.map(coach => {
-                        const role = hireRoles[coach.id] ?? 'headCoach';
-                        const avg = calcCoachOVR(coach, role);
-                        return (
-                            <TableRow key={coach.id} className="group">
-                                <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                    <span className="text-xs font-semibold text-slate-200 truncate">{coach.name}</span>
+                    ) : coaches.map(coach => (
+                        <TableRow key={coach.id} className="group">
+                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <span
+                                    className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                    onClick={() => navigate(`/coach/${coach.id}`, { state: { coach, teamId: '' } })}
+                                >
+                                    {coach.name}
+                                </span>
+                            </TableCell>
+                            {ALL_ABILITY_COLS.map(([key]) => (
+                                <TableCell key={key} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                    <span className={coachValColor(coach.abilities[key] ?? 0)}>
+                                        {coach.abilities[key] ?? 0}
+                                    </span>
                                 </TableCell>
-                                <TableCell align="center" className="bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800">
-                                    <div className="flex justify-center">{coachOvrBadge(avg)}</div>
-                                </TableCell>
-                                {FIXED_ABILITY_COLS.map(([key]) => (
-                                    <TableCell key={key} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                        <span className={coachValColor(coach.abilities[key] ?? 0)}>
-                                            {coach.abilities[key] ?? 0}
-                                        </span>
-                                    </TableCell>
-                                ))}
-                                <TableCell align="right" className="pr-4 font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
-                                    {formatMoney(coach.contractSalary)}
-                                </TableCell>
-                                <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
-                                    {coach.contractYears}년
-                                </TableCell>
-                                <TableCell className="bg-slate-900 group-hover:bg-slate-800 transition-colors px-2">
-                                    <select
-                                        value={role}
-                                        onChange={e => setHireRoles(prev => ({ ...prev, [coach.id]: e.target.value as StaffRole }))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                            ))}
+                            <TableCell align="right" className="pr-4 font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                                {formatMoney(coach.contractSalary)}
+                            </TableCell>
+                            <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                                {coach.contractYears}년
+                            </TableCell>
+                            <TableCell align="right" className="pr-3 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                {onNegotiateCoach && (
+                                    <button
+                                        onClick={() => onNegotiateCoach(coach, 'headCoach')}
+                                        className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
                                     >
-                                        {ALL_STAFF_ROLES_FA.map(r => (
-                                            <option key={r} value={r}>{STAFF_ROLE_LABELS_FA[r]}</option>
-                                        ))}
-                                    </select>
-                                </TableCell>
-                                <TableCell align="right" className="pr-3 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                    {onNegotiateCoach && (
-                                        <button
-                                            onClick={() => onNegotiateCoach(coach, role)}
-                                            className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                        >
-                                            고용
-                                        </button>
-                                    )}
-                                </TableCell>
-                            </TableRow>
-                        );
-                    })}
+                                        고용
+                                    </button>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    ))}
                 </TableBody>
             </Table>
         </div>
@@ -350,6 +325,7 @@ export const FAView: React.FC<FAViewProps> = ({
     coachFAPool,
     onHireCoach,
     onFireCoach,
+    userNickname,
 }) => {
     // 협상 타깃 (NegotiationScreen 오버레이를 열 때 사용) — fa 타입만
     const [negotiationTarget, setNegotiationTarget] = useState<{
@@ -491,6 +467,7 @@ export const FAView: React.FC<FAViewProps> = ({
                     role={coachNegTarget.role}
                     negotiationType="hire"
                     myTeam={myTeam}
+                    userNickname={userNickname}
                     onClose={() => setCoachNegTarget(null)}
                     onAccept={(finalSalary, finalYears) => {
                         onHireCoach?.(coachNegTarget.role, coachNegTarget.coach.id, finalSalary);
