@@ -769,6 +769,38 @@ const PayrollTab: React.FC<{
                                 ))}
                                 {showActions && <td />}
                             </tr>
+                            {(team.deadMoney ?? []).length > 0 && (
+                                <>
+                                    <tr>
+                                        <td
+                                            colSpan={seasonColumns.length + 1 + (showActions ? 1 : 0)}
+                                            className="px-4 py-1.5 text-xs font-black uppercase tracking-widest text-red-400/80 bg-slate-950 border-t border-slate-700"
+                                        >
+                                            데드캡
+                                        </td>
+                                    </tr>
+                                    {(team.deadMoney ?? []).map((d, i) => {
+                                        const colIdx = seasonColumns.indexOf(d.season);
+                                        const typeLabel: Record<string, string> = { waive: 'Waive', buyout: 'Buyout', stretch: 'Stretch' };
+                                        return (
+                                            <tr key={i} className="border-b border-slate-800 last:border-0">
+                                                <td className="px-4 py-1.5 sticky left-0 bg-slate-900 z-10 border-r border-slate-700 whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-xs text-slate-400">{d.playerName}</span>
+                                                        <span className="text-xs font-bold text-red-400/70">{typeLabel[d.releaseType] ?? d.releaseType}</span>
+                                                    </div>
+                                                </td>
+                                                {seasonColumns.map((_, ci) => (
+                                                    <td key={ci} className="px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700/50">
+                                                        {ci === colIdx ? <span className="text-red-400 font-bold">{fmtSalary(d.amount)}</span> : ''}
+                                                    </td>
+                                                ))}
+                                                {showActions && <td />}
+                                            </tr>
+                                        );
+                                    })}
+                                </>
+                            )}
                         </tbody>
                     </table>
                 </div>
