@@ -141,7 +141,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         return (
                             <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
                                 {/* ── 단장 카드 ── */}
-                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                                <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden w-fit">
                                     <WidgetHeader title="단장" primaryColor={primaryColor} />
                                     {gm ? (
                                         <div className="p-4 flex flex-col gap-3">
