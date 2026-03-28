@@ -12,6 +12,7 @@ import type { DeadMoneyEntry } from '../types';
 import type { FASigningContent, FAReleaseContent } from '../types/message';
 import { hireCoach, fireCoach } from '../services/coachingStaff/coachHiringEngine';
 import type { Coach, StaffRole } from '../types/coaching';
+import { updatePlayerStatus } from '../services/draft/rookieRepository';
 
 const FAMarketPage: React.FC = () => {
     const { session, gameData, setViewPlayerData } = useGame();
@@ -122,7 +123,7 @@ const FAMarketPage: React.FC = () => {
                         'FA_SIGNING', `[FA 서명] ${faPlayer.name} 영입 완료`, content);
                 }
                 const faTx = {
-                    id: `fa_${playerId}_${Date.now()}`, date: gameData.currentSimDate,
+                    id: crypto.randomUUID(), date: gameData.currentSimDate,
                     type: 'FASigning' as const, teamId: gameData.myTeamId ?? '',
                     season: seasonShort,
                     description: `FA 서명: ${faPlayer.name} (${signingType})`,
@@ -130,6 +131,10 @@ const FAMarketPage: React.FC = () => {
                 };
                 gameData.setTransactions((prev: any) => [faTx, ...prev]);
                 if (session?.user?.id) writeTransaction(session.user.id, faTx).catch(console.error);
+                // 생성 선수(gen_)인 경우 user_generated_players 상태 업데이트
+                if (playerId.startsWith('gen_')) {
+                    updatePlayerStatus(playerId, 'signed').catch(console.error);
+                }
             }}
             onOfferSheetSubmitted={(playerId, updatedMarket) => {
                 const marketWithPlayers = { ...updatedMarket, players: gameData.leagueFAMarket?.players };

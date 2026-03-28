@@ -7,7 +7,7 @@
  */
 
 /** 생성 선수 상태 */
-export type GeneratedPlayerStatus = 'fa' | 'drafted' | 'retired';
+export type GeneratedPlayerStatus = 'fa' | 'drafted' | 'signed' | 'retired';
 
 /** user_generated_players 테이블 행 */
 export interface GeneratedPlayerRow {
