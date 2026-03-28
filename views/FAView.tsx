@@ -220,7 +220,7 @@ const StaffFATab: React.FC<{
                                 {coach.age}
                             </TableCell>
                             {ALL_ABILITY_COLS.map(([key]) => (
-                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-[9px] bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                     <span className={coachValColor(coach.abilities[key] ?? 0)}>
                                         {coachAbilityLabel(coach.abilities[key] ?? 0)}
                                     </span>
