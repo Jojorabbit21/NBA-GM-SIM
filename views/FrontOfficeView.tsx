@@ -201,12 +201,12 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                 <tr className="bg-slate-800 border-b border-slate-700">
                                                     <th className={`${thCls} text-left sticky left-0 bg-slate-800 z-10`}>직무</th>
                                                     <th className={`${thCls} text-left`}>이름</th>
-                                                    <th className={`${thCls} text-right`}>나이</th>
+                                                    <th className={`${thCls} text-center`}>나이</th>
                                                     {COACH_ABILITY_LABELS.map(([, label]) => (
-                                                        <th key={label} className={`${thCls} text-right`}>{label}</th>
+                                                        <th key={label} className={`${thCls} text-center`}>{label}</th>
                                                     ))}
-                                                    <th className={`${thCls} text-right`}>계약</th>
-                                                    <th className={`${thCls} text-right`}>연봉</th>
+                                                    <th className={`${thCls} text-center`}>계약</th>
+                                                    <th className={`${thCls} text-center`}>연봉</th>
                                                     {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
                                                         <th className="px-3 py-2 bg-slate-800" />
                                                     )}
@@ -228,7 +228,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                                     </button>
                                                                 ) : <span className="text-slate-700">—</span>}
                                                             </td>
-                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                            <td className={`${tdCls} text-center font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
                                                                 {coach?.age ?? '—'}
                                                             </td>
                                                             {COACH_ABILITY_LABELS.map(([key]) => (
@@ -236,10 +236,10 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                                     {coach ? coachAbilityLabel(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : '—'}
                                                                 </td>
                                                             ))}
-                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                            <td className={`${tdCls} text-center font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
                                                                 {coach?.contractYears ? `${coach.contractYears}년` : '—'}
                                                             </td>
-                                                            <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
+                                                            <td className={`${tdCls} text-center font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
                                                                 {coach ? fmtSalary(coach.contractSalary) : '—'}
                                                             </td>
                                                             {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
