@@ -478,7 +478,6 @@ export const FAView: React.FC<FAViewProps> = ({
                     onClose={() => setCoachNegTarget(null)}
                     onAccept={(finalSalary, finalYears) => {
                         onHireCoach?.(coachNegTarget.role, coachNegTarget.coach.id, finalSalary);
-                        setCoachNegTarget(null);
                     }}
                 />
             )}

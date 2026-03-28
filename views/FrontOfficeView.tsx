@@ -329,7 +329,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                 onClose={() => setCoachingTabExtNeg(null)}
                 onAccept={(finalSalary, finalYears) => {
                     onExtendCoachAccepted(coachingTabExtNeg.role, finalSalary, finalYears);
-                    setCoachingTabExtNeg(null);
                 }}
             />
         )}
@@ -1070,7 +1069,6 @@ const PayrollTab: React.FC<{
                     onClose={() => setCoachExtNeg(null)}
                     onAccept={(finalSalary, finalYears) => {
                         onExtendCoachAccepted(coachExtNeg.role, finalSalary, finalYears);
-                        setCoachExtNeg(null);
                     }}
                 />
             )}

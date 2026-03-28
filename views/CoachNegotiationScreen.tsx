@@ -177,9 +177,12 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
         setTimeout(() => {
             if (result === 'accept') {
                 addMsg('coach', pickMsg(COACH_ACCEPT_MSGS, round + Math.floor(offerSalary / 1_000_000)), true);
+                const acceptedSalary = offerSalary;
+                const acceptedYears  = offerYears;
                 setTimeout(() => {
-                    addMsg('status', `계약 성사: ${formatMoney(offerSalary)}/년 × ${offerYears}년 = 총 ${formatMoney(offerSalary * offerYears)}`, true);
+                    addMsg('status', `계약 성사: ${formatMoney(acceptedSalary)}/년 × ${acceptedYears}년 = 총 ${formatMoney(acceptedSalary * acceptedYears)}`, true);
                     setPhase('accepted');
+                    onAccept(acceptedSalary, acceptedYears);
                 }, 500);
             } else if (result === 'reject') {
                 addMsg('coach', pickMsg(COACH_REJECT_MSGS, round));
@@ -344,25 +347,6 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                         <div ref={chatEndRef} />
                     </div>
 
-                    {/* 결과 바 */}
-                    {phase === 'accepted' && (
-                        <div className="px-5 py-3 border-t border-slate-800 bg-emerald-950/30 flex items-center justify-between gap-3 flex-shrink-0">
-                            <span className="text-xs text-emerald-300 font-bold">계약이 성사되었습니다.</span>
-                            <button
-                                onClick={() => onAccept(offerSalary, offerYears)}
-                                className="px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-                            >계약 체결</button>
-                        </div>
-                    )}
-                    {phase === 'rejected' && (
-                        <div className="px-5 py-3 border-t border-slate-800 bg-red-950/30 flex items-center justify-between gap-3 flex-shrink-0">
-                            <span className="text-xs text-red-300 font-bold">협상이 결렬되었습니다.</span>
-                            <button
-                                onClick={onClose}
-                                className="px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                            >닫기</button>
-                        </div>
-                    )}
                 </div>
 
                 {/* ── 우측: 계약 제안 ── */}
