@@ -12,6 +12,7 @@ import type { CoachFAPool, StaffRole, CoachAbilities, CoachingStaff } from '../t
 import type { Coach } from '../types/coaching';
 import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 import { formatMoney } from '../utils/formatMoney';
+import { coachAbilityLabel, coachAbilityColor } from '../utils/coachAbility';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { Table, TableBody, TableRow, TableCell, TableHeaderCell } from '../components/common/Table';
 import { TabBar } from '../components/common/TabBar';
@@ -102,11 +103,7 @@ function statusBadge(status: FAMarketEntry['status']) {
 // Staff FA Tab
 // ─────────────────────────────────────────────────────────────
 
-function coachValColor(v: number): string {
-    if (v >= 7) return 'text-emerald-400';
-    if (v >= 5) return 'text-amber-400';
-    return 'text-rose-400';
-}
+const coachValColor = coachAbilityColor;
 
 const ALL_ABILITY_COLS: Array<[keyof CoachAbilities, string]> = [
     ['teaching', '지도'],
@@ -163,7 +160,7 @@ const StaffFATab: React.FC<{
                 <colgroup>
                     <col style={{ width: 180 }} />
                     <col style={{ width: 46 }} />
-                    {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 54 }} />)}
+                    {ALL_ABILITY_COLS.map((_, i) => <col key={i} style={{ width: 64 }} />)}
                     <col style={{ width: 90 }} />
                     <col style={{ width: 60 }} />
                     <col style={{ width: 56 }} />
@@ -223,9 +220,9 @@ const StaffFATab: React.FC<{
                                 {coach.age}
                             </TableCell>
                             {ALL_ABILITY_COLS.map(([key]) => (
-                                <TableCell key={key} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-[9px] bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                     <span className={coachValColor(coach.abilities[key] ?? 0)}>
-                                        {coach.abilities[key] ?? 0}
+                                        {coachAbilityLabel(coach.abilities[key] ?? 0)}
                                     </span>
                                 </TableCell>
                             ))}

@@ -18,6 +18,7 @@ import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
 import { NegotiationScreen } from './NegotiationScreen';
 import type { NegotiationState } from '../services/fa/extensionEngine';
 import { getBudgetManager, calculateLuxuryTax } from '../services/financeEngine';
+import { coachAbilityLabel, coachAbilityColor } from '../utils/coachAbility';
 import { LeagueGMProfiles, GM_PERSONALITY_LABELS, DIRECTION_LABELS } from '../types/gm';
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
@@ -231,8 +232,8 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                                 {coach?.age ?? '—'}
                                                             </td>
                                                             {COACH_ABILITY_LABELS.map(([key]) => (
-                                                                <td key={key} className={`${tdCls} text-right font-mono tabular-nums font-bold ${coach ? coachValColor(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : 'text-slate-700'}`}>
-                                                                    {coach?.abilities[key as keyof typeof coach.abilities] ?? '—'}
+                                                                <td key={key} className={`${tdCls} text-center font-bold ${coach ? coachValColor(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : 'text-slate-700'}`}>
+                                                                    {coach ? coachAbilityLabel(coach.abilities[key as keyof typeof coach.abilities] ?? 0) : '—'}
                                                                 </td>
                                                             ))}
                                                             <td className={`${tdCls} text-right font-mono tabular-nums ${coach ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -768,8 +769,7 @@ const GM_SLIDER_LABELS: [string, string][] = [
     ['aggressiveness', '공격성'], ['starWillingness', '스타'], ['youthBias', '유스'],
     ['riskTolerance', '리스크'], ['pickWillingness', '픽'],
 ];
-const coachValColor = (v: number) =>
-    v >= 8 ? 'text-emerald-400' : v >= 6 ? 'text-slate-200' : v >= 4 ? 'text-slate-400' : 'text-slate-600';
+const coachValColor = coachAbilityColor;
 
 // ── 선수 급여 탭 ──
 const STAFF_ROLES: { key: 'headCoach' | 'offenseCoordinator' | 'defenseCoordinator' | 'developmentCoach' | 'trainingCoach'; label: string }[] = [

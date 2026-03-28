@@ -13,6 +13,7 @@ import { Team } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
+import { coachAbilityLabel, coachAbilityColor, coachAbilityBarColor } from '../utils/coachAbility';
 import { formatMoney } from '../utils/formatMoney';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
@@ -173,13 +174,14 @@ const ROLE_LABELS: Record<StaffRole, string> = {
 // ── 능력치 바 ──
 const AbilityBar: React.FC<{ value: number }> = ({ value }) => {
     const filled = Math.round((value / 10) * 15);
-    const color = value >= 7 ? 'bg-emerald-400' : value >= 5 ? 'bg-amber-400' : 'bg-rose-400';
+    const barColor = coachAbilityBarColor(value);
     return (
         <div className="flex gap-0.5">
             {Array.from({ length: 15 }).map((_, i) => (
                 <div
                     key={i}
-                    className={`w-2.5 h-2 rounded-sm ${i < filled ? color : 'bg-slate-700'}`}
+                    className="w-2.5 h-2 rounded-sm"
+                    style={{ backgroundColor: i < filled ? barColor : '#1e293b' }}
                 />
             ))}
         </div>
@@ -265,16 +267,16 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
             <Table className="border-0 !rounded-none shadow-none">
                 <TableHead>
                     <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">능력치</TableHeaderCell>
-                    <TableHeaderCell className="text-xs w-12 py-2 border-r border-slate-800/50">수치</TableHeaderCell>
+                    <TableHeaderCell className="text-xs w-20 py-2 border-r border-slate-800/50">등급</TableHeaderCell>
                     <TableHeaderCell className="text-xs py-2" align="left">그래프</TableHeaderCell>
                 </TableHead>
                 <TableBody>
                     {ABILITY_ORDER.map(key => (
                         <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
                             <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{ABILITY_LABELS[key]}</TableCell>
-                            <TableCell className="text-xs font-mono font-black py-2 border-r border-slate-800/50 text-center">
-                                <span className={abilities[key] >= 7 ? 'text-emerald-400' : abilities[key] >= 5 ? 'text-amber-400' : 'text-rose-400'}>
-                                    {abilities[key]}
+                            <TableCell className="text-[10px] font-bold py-2 border-r border-slate-800/50 text-center">
+                                <span className={coachAbilityColor(abilities[key])}>
+                                    {coachAbilityLabel(abilities[key])}
                                 </span>
                             </TableCell>
                             <TableCell className="py-2">

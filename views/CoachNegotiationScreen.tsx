@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { Coach, StaffRole, CoachAbilities, HeadCoachPreferences, CoachingStaff } from '../types/coaching';
 import { calcCoachDemandSalary } from '../services/coachingStaff/coachGenerator';
 import { formatMoney } from '../utils/formatMoney';
+import { coachAbilityLabel, coachAbilityColor, coachAbilityBarColor } from '../utils/coachAbility';
 import { TEAM_DATA } from '../data/teamData';
 import type { Team } from '../types/team';
 
@@ -93,18 +94,8 @@ const MAX_ROUNDS = 3;
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function abilityColor(v: number): string {
-    if (v >= 8) return 'text-emerald-400';
-    if (v >= 6) return 'text-slate-200';
-    if (v >= 4) return 'text-slate-400';
-    return 'text-red-400';
-}
-
-function abilityBarColor(v: number): string {
-    if (v >= 7) return '#34d399';
-    if (v >= 5) return '#fbbf24';
-    return '#f87171';
-}
+const abilityColor = coachAbilityColor;
+const abilityBarColor = coachAbilityBarColor;
 
 function pickMsg(arr: string[], seed: number): string {
     return arr[seed % arr.length];
@@ -259,7 +250,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                                             style={{ width: `${(val / 10) * 100}%`, backgroundColor: abilityBarColor(val) }}
                                         />
                                     </div>
-                                    <span className={`font-mono font-bold w-4 text-right flex-shrink-0 ${abilityColor(val)}`}>{val}</span>
+                                    <span className={`font-bold text-[9px] w-16 text-right flex-shrink-0 ${abilityColor(val)}`}>{coachAbilityLabel(val)}</span>
                                 </div>
                             ))}
                         </div>

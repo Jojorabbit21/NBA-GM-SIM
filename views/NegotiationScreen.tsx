@@ -32,6 +32,7 @@ import {
 import { TEAM_DATA } from '../data/teamData';
 import type { Team } from '../types/team';
 import type { Coach, StaffRole, CoachAbilities } from '../types/coaching';
+import { coachAbilityLabel, coachAbilityColor } from '../utils/coachAbility';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 
@@ -1041,7 +1042,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     <span className="text-slate-500 flex-shrink-0">
                                         {({ teaching: '지도', schemeDepth: '전술', communication: '소통', playerEval: '평가', motivation: '동기', playerRelation: '관계', adaptability: '적응', developmentVision: '성장', experienceTransfer: '전수', mentalCoaching: '멘탈', athleticTraining: '신체', recovery: '회복', conditioning: '컨디' } as Record<keyof CoachAbilities, string>)[key]}
                                     </span>
-                                    <span className={`font-mono font-bold ${val >= 8 ? 'text-emerald-400' : val >= 6 ? 'text-slate-200' : val >= 4 ? 'text-slate-400' : 'text-red-400'}`}>{val}</span>
+                                    <span className={`font-bold text-[9px] ${coachAbilityColor(val)}`}>{coachAbilityLabel(val)}</span>
                                 </div>
                             ))}
                         </div>

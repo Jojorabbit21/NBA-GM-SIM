@@ -3,6 +3,7 @@ import React from 'react';
 import type { CoachingStaff, StaffRole, CoachAbilities } from '../../types/coaching';
 import { TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { formatMoney } from '../../utils/formatMoney';
+import { coachAbilityLabel, coachAbilityColor } from '../../utils/coachAbility';
 
 interface CoachStaffTableProps {
     staff: CoachingStaff | null | undefined;
@@ -39,14 +40,10 @@ function getCoachFromStaff(staff: CoachingStaff, role: StaffRole) {
     return staff[role];
 }
 
-function valColor(v: number): string {
-    if (v >= 7) return 'text-emerald-400';
-    if (v >= 5) return 'text-amber-400';
-    return 'text-rose-400';
-}
+const valColor = coachAbilityColor;
 
 // ── 컬럼 폭 ──
-const W = { NAME: 160, ROLE: 72, SALARY: 80, CONTRACT: 52, ATTR: 46 };
+const W = { NAME: 160, ROLE: 72, SALARY: 80, CONTRACT: 52, ATTR: 60 };
 const LEFT_ROLE = W.NAME;
 
 const sticky = (left: number, width: number): React.CSSProperties => ({
@@ -55,9 +52,9 @@ const sticky = (left: number, width: number): React.CSSProperties => ({
 
 // isGroupEnd=true → 진한 구분선 / false → 연한 구분선
 const renderAttrCell = (key: string, val: number | undefined, isGroupEnd: boolean) => (
-    <TableCell key={key} align="center" className={`font-mono font-black text-xs tabular-nums ${isGroupEnd ? 'border-r border-slate-800' : 'border-r border-slate-800/30'}`}>
+    <TableCell key={key} align="center" className={`font-bold text-[9px] ${isGroupEnd ? 'border-r border-slate-800' : 'border-r border-slate-800/30'}`}>
         {val !== undefined
-            ? <span className={valColor(val)}>{val}</span>
+            ? <span className={valColor(val)}>{coachAbilityLabel(val)}</span>
             : <span className="text-slate-700">-</span>}
     </TableCell>
 );
