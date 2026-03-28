@@ -8,7 +8,7 @@ import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 import { TEAM_DATA } from '../data/teamData';
 import { NegotiationScreen } from './NegotiationScreen';
 import { RosterGrid } from '../components/roster/RosterGrid';
-import type { CoachFAPool, StaffRole, CoachAbilities } from '../types/coaching';
+import type { CoachFAPool, StaffRole, CoachAbilities, CoachingStaff } from '../types/coaching';
 import type { Coach } from '../types/coaching';
 import { CoachNegotiationScreen } from './CoachNegotiationScreen';
 import { formatMoney } from '../utils/formatMoney';
@@ -41,6 +41,7 @@ interface FAViewProps {
     initialNegotiateId?: string;  // PlayerDetailView에서 직접 협상 진입 시 자동 오픈
     // 코칭 스태프 탭
     coachFAPool?: CoachFAPool | null;
+    myTeamStaff?: CoachingStaff | null;
     onHireCoach?: (role: StaffRole, coachId: string, finalSalary?: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
     userNickname?: string;
@@ -127,11 +128,26 @@ function formatFullSalary(n: number): string {
     return '$' + n.toLocaleString('en-US');
 }
 
+const ALL_STAFF_ROLE_KEYS: StaffRole[] = [
+    'headCoach', 'offenseCoordinator', 'defenseCoordinator', 'developmentCoach', 'trainingCoach',
+];
+
 const StaffFATab: React.FC<{
     coachFAPool?: CoachFAPool | null;
+    myTeamStaff?: CoachingStaff | null;
     onNegotiateCoach?: (coach: Coach, role: StaffRole) => void;
-}> = ({ coachFAPool, onNegotiateCoach }) => {
+}> = ({ coachFAPool, myTeamStaff, onNegotiateCoach }) => {
     const navigate = useNavigate();
+
+    // 빈 슬롯 목록 (null/undefined인 역할)
+    const availableRoles = useMemo(() =>
+        myTeamStaff
+            ? ALL_STAFF_ROLE_KEYS.filter(r => !(myTeamStaff as any)[r])
+            : ALL_STAFF_ROLE_KEYS,
+        [myTeamStaff]
+    );
+    const hasOpenSlot = availableRoles.length > 0;
+    const firstAvailableRole = availableRoles[0] ?? 'headCoach';
 
     const coaches = useMemo(() => {
         if (!coachFAPool?.coaches) return [];
@@ -222,8 +238,10 @@ const StaffFATab: React.FC<{
                             <TableCell align="center" className="px-1 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 {onNegotiateCoach && (
                                     <button
-                                        onClick={() => onNegotiateCoach(coach, 'headCoach')}
-                                        className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors whitespace-nowrap"
+                                        onClick={() => hasOpenSlot && onNegotiateCoach(coach, firstAvailableRole)}
+                                        disabled={!hasOpenSlot}
+                                        title={!hasOpenSlot ? '모든 코치 슬롯이 가득 찼습니다' : undefined}
+                                        className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wide bg-indigo-600 hover:bg-indigo-500 text-white transition-colors whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                                     >
                                         고용
                                     </button>
@@ -333,6 +351,7 @@ export const FAView: React.FC<FAViewProps> = ({
     currentDate = '',
     initialNegotiateId,
     coachFAPool,
+    myTeamStaff,
     onHireCoach,
     onFireCoach,
     userNickname,
@@ -463,6 +482,7 @@ export const FAView: React.FC<FAViewProps> = ({
             {mainTab === 'staff' && (
                 <StaffFATab
                     coachFAPool={coachFAPool}
+                    myTeamStaff={myTeamStaff}
                     onNegotiateCoach={(coach, role) => setCoachNegTarget({ coach, role })}
                 />
             )}
@@ -474,6 +494,7 @@ export const FAView: React.FC<FAViewProps> = ({
                     role={coachNegTarget.role}
                     negotiationType="hire"
                     myTeam={myTeam}
+                    myTeamStaff={myTeamStaff}
                     userNickname={userNickname}
                     onClose={() => setCoachNegTarget(null)}
                     onAccept={(finalSalary, finalYears) => {

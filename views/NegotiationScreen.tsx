@@ -514,11 +514,11 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             non_tax_mle: Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, faMaxAllowed),
             tax_mle:     Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, faMaxAllowed),
             bird_full:   faMaxAllowed,
-            bird_early:  Math.min(faMaxAllowed, (player.salary ?? 0) * 1.75),
-            bird_non:    Math.min(faMaxAllowed, (player.salary ?? 0) * 1.20),
+            bird_early:  Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.75),
+            bird_non:    Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.20),
             vet_min:     vetMin,
         };
-    }, [myTeam, faMaxAllowed, player.salary, vetMin]);
+    }, [myTeam, faMaxAllowed, player?.salary, vetMin]);
 
     const currentSlotMax = slotMaxMap[selectedSlot] ?? vetMin;
 

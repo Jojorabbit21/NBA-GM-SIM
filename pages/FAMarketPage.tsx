@@ -205,6 +205,7 @@ const FAMarketPage: React.FC = () => {
                 navigate(`/player/${player.id}`, { state: { player } });
             }}
             coachFAPool={gameData.coachFAPool ?? null}
+            myTeamStaff={gameData.coachingData?.[myTeam.id] ?? null}
             onHireCoach={handleHireCoach}
             onFireCoach={handleFireCoach}
             userNickname={gameData.leagueGMProfiles?.[gameData.myTeamId ?? '']?.name ?? session?.user?.email?.split('@')[0]}

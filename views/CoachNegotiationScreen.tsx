@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import type { Coach, StaffRole, CoachAbilities, HeadCoachPreferences } from '../types/coaching';
+import type { Coach, StaffRole, CoachAbilities, HeadCoachPreferences, CoachingStaff } from '../types/coaching';
 import { calcCoachDemandSalary } from '../services/coachingStaff/coachGenerator';
 import { formatMoney } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
@@ -24,6 +24,7 @@ export interface CoachNegotiationScreenProps {
     role: StaffRole;
     negotiationType: 'hire' | 'extension';
     myTeam: Team;
+    myTeamStaff?: CoachingStaff | null;
     userNickname?: string;
     onClose: () => void;
     onAccept: (finalSalary: number, finalYears: number) => void;
@@ -120,13 +121,20 @@ function evaluateOffer(offerSalary: number, demandSalary: number, round: number)
 // ─── Component ───────────────────────────────────────────────
 
 export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
-    coach, role, negotiationType, myTeam, userNickname, onClose, onAccept,
+    coach, role, negotiationType, myTeam, myTeamStaff, userNickname, onClose, onAccept,
 }) => {
     const primaryColor = TEAM_DATA[myTeam.id]?.colors?.primary ?? '#4f46e5';
     const gmName = userNickname ?? 'GM';
     const negotiationMode = negotiationType === 'extension' ? 'extension' : 'fa';
 
-    const [offerRole, setOfferRole] = useState<StaffRole>(role);
+    // hire 시 빈 슬롯만 선택 가능 (extension은 현재 슬롯 고정)
+    const availableRoles: StaffRole[] = negotiationType === 'hire' && myTeamStaff
+        ? ALL_STAFF_ROLES.filter(r => !(myTeamStaff as any)[r])
+        : ALL_STAFF_ROLES;
+
+    const initialRole: StaffRole = availableRoles.includes(role) ? role : (availableRoles[0] ?? role);
+
+    const [offerRole, setOfferRole] = useState<StaffRole>(initialRole);
     const baseDemandForRole = (r: StaffRole) => calcCoachDemandSalary(coach, r, negotiationMode);
 
     const [offerSalary, setOfferSalary] = useState(() => Math.round(baseDemandForRole(role) * 0.82));
@@ -367,7 +375,7 @@ export const CoachNegotiationScreen: React.FC<CoachNegotiationScreenProps> = ({
                                 disabled={round > 0}
                                 className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-3 pr-8 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {ALL_STAFF_ROLES.map(r => (
+                                {availableRoles.map(r => (
                                     <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                                 ))}
                             </select>
