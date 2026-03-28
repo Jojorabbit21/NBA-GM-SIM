@@ -140,54 +140,48 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         const tdCls = 'px-4 py-1.5 text-xs whitespace-nowrap border-r border-slate-700';
                         return (
                             <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-500">
-                                {/* ── 단장 테이블 ── */}
+                                {/* ── 단장 카드 ── */}
                                 <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                                     <WidgetHeader title="단장" primaryColor={primaryColor} />
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse text-xs">
-                                            <thead>
-                                                <tr className="bg-slate-800 border-b border-slate-700">
-                                                    <th className={`${thCls} text-left sticky left-0 bg-slate-800 z-10`}>직무</th>
-                                                    <th className={`${thCls} text-left`}>이름</th>
-                                                    <th className={`${thCls} text-right`}>나이</th>
-                                                    <th className={`${thCls} text-left`}>성격</th>
-                                                    <th className={`${thCls} text-left`}>노선</th>
-                                                    {GM_SLIDER_LABELS.map(([, label]) => (
-                                                        <th key={label} className={`${thCls} text-right`}>{label}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {gm ? (
-                                                    <tr className="group border-b border-slate-800 hover:bg-slate-800">
-                                                        <td className={`${tdCls} text-slate-400 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-10`}>단장</td>
-                                                        <td className={`${tdCls}`}>
-                                                            <button
-                                                                onClick={() => onGMClick?.(team.id)}
-                                                                className="text-slate-200 hover:text-indigo-400 transition-colors font-semibold"
-                                                            >
-                                                                {gm.name}
-                                                            </button>
-                                                        </td>
-                                                        <td className={`${tdCls} text-right font-mono tabular-nums text-slate-300`}>
-                                                            {gm.birthYear ? simYear - gm.birthYear : '—'}
-                                                        </td>
-                                                        <td className={`${tdCls} text-slate-300`}>{GM_PERSONALITY_LABELS[gm.personalityType]}</td>
-                                                        <td className={`${tdCls} text-slate-300`}>{DIRECTION_LABELS[gm.direction]}</td>
-                                                        {GM_SLIDER_LABELS.map(([key]) => (
-                                                            <td key={key} className={`${tdCls} text-right font-mono tabular-nums font-bold ${coachValColor((gm.sliders as any)[key] ?? 0)}`}>
-                                                                {(gm.sliders as any)[key] ?? '—'}
-                                                            </td>
-                                                        ))}
-                                                    </tr>
-                                                ) : (
-                                                    <tr>
-                                                        <td colSpan={10} className="py-8 text-center text-slate-600 text-xs">단장 정보 없음</td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    {gm ? (
+                                        <div className="p-4 flex flex-col gap-3">
+                                            {/* 이름 + 기본 정보 */}
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                                                    <span className="text-sm font-black text-slate-300">{gm.name.charAt(0)}</span>
+                                                </div>
+                                                <div>
+                                                    <button
+                                                        onClick={() => onGMClick?.(team.id)}
+                                                        className="text-sm font-bold text-white hover:text-indigo-400 transition-colors leading-tight"
+                                                    >
+                                                        {gm.name}
+                                                    </button>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        {gm.birthYear && (
+                                                            <span className="text-xs text-slate-500 font-mono">{simYear - gm.birthYear}세</span>
+                                                        )}
+                                                        <span className="text-xs text-indigo-400 font-bold">{GM_PERSONALITY_LABELS[gm.personalityType]}</span>
+                                                        <span className="text-xs text-slate-500">·</span>
+                                                        <span className="text-xs text-slate-400">{DIRECTION_LABELS[gm.direction]}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* 슬라이더 */}
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 border-t border-slate-800">
+                                                {GM_SLIDER_LABELS.map(([key, label]) => (
+                                                    <div key={key} className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</span>
+                                                        <span className={`text-xs font-black font-mono ${coachValColor((gm.sliders as any)[key] ?? 0)}`}>
+                                                            {(gm.sliders as any)[key] ?? '—'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="py-8 text-center text-slate-600 text-xs">단장 정보 없음</div>
+                                    )}
                                 </div>
 
                                 {/* ── 코칭 스태프 테이블 ── */}
