@@ -31,9 +31,8 @@ const FrontOfficePage: React.FC = () => {
             myTeamId={gameData.myTeamId!}
             seasonShort={seasonShort}
             coachingData={gameData.coachingData}
-            onCoachClick={(teamId, role) => {
-                const coach = gameData.coachingData?.[teamId]?.headCoach;
-                if (coach) navigate(`/coach/${coach.id}`, { state: { coach, teamId, initialRole: role } });
+            onCoachClick={(teamId, coach, role) => {
+                navigate(`/coach/${coach.id}`, { state: { coach, teamId, initialRole: role } });
             }}
             onGMClick={(teamId) => {
                 if (gameData.leagueGMProfiles?.[teamId]) navigate(`/gm/${teamId}`);

@@ -31,7 +31,7 @@ interface FrontOfficeViewProps {
     currentSimDate: string;
     myTeamId: string;
     coachingData?: LeagueCoachingData | null;
-    onCoachClick?: (teamId: string, role?: StaffRole) => void;
+    onCoachClick?: (teamId: string, coach: Coach, role: StaffRole) => void;
     onGMClick?: (teamId: string) => void;
     onViewPlayer?: (player: Player, teamId?: string, teamName?: string) => void;
     leaguePickAssets?: LeaguePickAssets | null;
@@ -215,7 +215,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                             <td className={`${tdCls}`}>
                                                                 {coach ? (
                                                                     <button
-                                                                        onClick={() => onCoachClick?.(team.id, r.key)}
+                                                                        onClick={() => onCoachClick?.(team.id, coach, r.key)}
                                                                         className="text-slate-200 hover:text-indigo-400 transition-colors font-semibold"
                                                                     >
                                                                         {coach.name}
@@ -790,7 +790,7 @@ const PayrollTab: React.FC<{
     coachingData?: LeagueCoachingData | null;
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
-    onCoachClick?: (teamId: string, role?: StaffRole) => void;
+    onCoachClick?: (teamId: string, coach: Coach, role: StaffRole) => void;
     userNickname?: string;
 }> = ({ team, seasonShort, myTeamId, onViewPlayer, teams = [], onReleasePlayer, onExtensionOffer, tendencySeed = '', currentSimDate = '', offseasonPhase, initialNegotiateId, initialNegotiateType, coachingData, onExtendCoachAccepted, onFireCoach, onCoachClick, userNickname }) => {
     const primaryColor = TEAM_DATA[myTeamId]?.colors?.primary ?? '#4f46e5';
@@ -864,7 +864,7 @@ const PayrollTab: React.FC<{
                 coach && i < yearsRemaining ? salary : null
             );
             salaries.forEach((s, i) => { if (s) colTotals[i] += s; });
-            return { key: r.key, label: r.label, name: coach?.name ?? null, salaries };
+            return { key: r.key, label: r.label, name: coach?.name ?? null, salaries, coach: coach ?? null };
         });
 
         return { staffRows: rows, staffTotals: colTotals };
@@ -986,7 +986,7 @@ const PayrollTab: React.FC<{
                                     <td className="px-4 py-2 sticky left-0 bg-slate-900 hover:bg-slate-800/50 z-10 border-r border-slate-700 whitespace-nowrap">
                                         <button
                                             className="text-xs font-semibold text-slate-200 hover:text-indigo-400 transition-colors text-left"
-                                            onClick={() => onCoachClick?.(myTeamId, r.key as StaffRole)}
+                                            onClick={() => r.coach && onCoachClick?.(myTeamId, r.coach, r.key as StaffRole)}
                                         >
                                             {r.name}
                                         </button>

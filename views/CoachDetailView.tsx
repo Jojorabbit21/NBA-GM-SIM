@@ -245,7 +245,7 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
 
                     {/* ── 좌열: 코치 정보 카드 ── */}
                     <div className="flex flex-col gap-3">
-                        <div className="flex flex-col bg-slate-900 border border-indigo-500/40 ring-1 ring-indigo-500/20 rounded-xl overflow-hidden">
+                        <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                             <div className="relative overflow-hidden border-b border-white/5" style={{ backgroundColor: theme.bg }}>
                                 <div className="absolute inset-0 bg-black/40 pointer-events-none" />
                                 <div className="px-4 py-4 relative z-10 flex items-center gap-3">
