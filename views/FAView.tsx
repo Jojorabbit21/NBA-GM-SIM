@@ -196,7 +196,7 @@ const StaffFATab: React.FC<{
                         {ALL_ABILITY_COLS.map(([, label]) => (
                             <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>
                         ))}
-                        <TableHeaderCell align="right" className="bg-slate-950 pr-4 border-r border-slate-800">요구 연봉</TableHeaderCell>
+                        <TableHeaderCell align="center" className="bg-slate-950 border-r border-slate-800">요구 연봉</TableHeaderCell>
                         <TableHeaderCell className="bg-slate-950 border-r border-slate-800">계약</TableHeaderCell>
                         <th className="bg-slate-950 border-b border-slate-800" />
                     </tr>
@@ -226,7 +226,7 @@ const StaffFATab: React.FC<{
                                     </span>
                                 </TableCell>
                             ))}
-                            <TableCell align="right" className="pr-3 font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                            <TableCell align="center" className="font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
                                 {formatFullSalary(coach.contractSalary)}
                             </TableCell>
                             <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
