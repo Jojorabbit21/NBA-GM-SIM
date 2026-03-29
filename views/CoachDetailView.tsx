@@ -200,11 +200,6 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
     const offenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'offense');
     const defenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'defense');
 
-    const ROLE_ABBRS: Record<StaffRole, string> = {
-        headCoach: 'HC', offenseCoordinator: 'OC', defenseCoordinator: 'DC',
-        developmentCoach: 'DEV', trainingCoach: 'TRN',
-    };
-    const roleAbbr  = initialRole ? ROLE_ABBRS[initialRole]  : '—';
     const roleLabel = initialRole ? ROLE_LABELS[initialRole] : '코치';
 
     useEffect(() => {
@@ -248,24 +243,21 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                         <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                             <div className="relative overflow-hidden border-b border-white/5" style={{ backgroundColor: theme.bg }}>
                                 <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-                                <div className="px-4 py-4 relative z-10 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-black/20 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-                                        <span className="text-sm font-black" style={{ color: theme.accent }}>{roleAbbr}</span>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
-                                            {coach.name}
-                                        </h2>
-                                        <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest" style={{ color: theme.text }}>
-                                            {roleLabel}
-                                        </div>
-                                    </div>
+                                <div className="px-4 py-4 relative z-10">
+                                    <h2 className="text-lg font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>
+                                        {coach.name}
+                                    </h2>
                                 </div>
                             </div>
                             {teamInfo && (
                                 <InfoRow label="팀">
                                     <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />
                                     {teamInfo.city} {teamInfo.name}
+                                </InfoRow>
+                            )}
+                            {initialRole && (
+                                <InfoRow label="직무">
+                                    <span>{roleLabel}</span>
                                 </InfoRow>
                             )}
                             <InfoRow label="나이">

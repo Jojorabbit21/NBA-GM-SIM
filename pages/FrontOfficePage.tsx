@@ -46,7 +46,6 @@ const FrontOfficePage: React.FC = () => {
             userNickname={gameData.leagueGMProfiles?.[gameData.myTeamId ?? '']?.name ?? session?.user?.email?.split('@')[0]}
             coachFAPool={gameData.coachFAPool}
             leagueTrainingConfigs={gameData.leagueTrainingConfigs}
-            onTrainingViewOpen={() => navigate('/training')}
             onExtendCoachAccepted={(role: StaffRole, salary: number, years: number) => {
                 if (!gameData.myTeamId || !gameData.coachingData) return;
                 const staff = gameData.coachingData[gameData.myTeamId];
@@ -95,8 +94,6 @@ const FrontOfficePage: React.FC = () => {
             tendencySeed={gameData.tendencySeed || ''}
             initialNegotiateId={(state as any)?.autoNegotiateId}
             initialNegotiateType={(state as any)?.negotiateType}
-            onInvestmentTabOpen={() => navigate('/owner-budget')}
-            investmentConfirmed={gameData.myTeamId ? (gameData.leagueInvestmentState[gameData.myTeamId]?.allocationConfirmed ?? false) : false}
             onReleasePlayer={(playerId, releaseType, buyoutAmount) => {
                 const player = myTeam?.roster.find((p: Player) => p.id === playerId);
                 if (!player) return;

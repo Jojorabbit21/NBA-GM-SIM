@@ -23,7 +23,7 @@ import { LeagueGMProfiles, GM_PERSONALITY_LABELS, DIRECTION_LABELS } from '../ty
 import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../utils/constants';
 import { calcTeamPayroll } from '../services/fa/faMarketBuilder';
 
-type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks' | 'investment';
+type FrontOfficeTab = 'club' | 'payroll' | 'coaching' | 'draftPicks';
 
 interface FrontOfficeViewProps {
     team: Team;
@@ -48,19 +48,16 @@ interface FrontOfficeViewProps {
     initialNegotiateType?: 'extension' | 'release';       // 자동 오픈 협상 타입
     coachFAPool?: CoachFAPool | null;
     leagueTrainingConfigs?: LeagueTrainingConfigs | null;
-    onTrainingViewOpen?: () => void;  // 훈련 계획 뷰 열기
     onExtendCoachAccepted?: (role: StaffRole, salary: number, years: number) => void;
     onFireCoach?: (role: StaffRole, buyoutAmount: number) => void;
-    onInvestmentTabOpen?: () => void; // 구단주 투자 뷰 열기
-    investmentConfirmed?: boolean;    // 현 시즌 투자 배분 완료 여부
 }
 
 export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     team, teams, currentSimDate, myTeamId, coachingData, onCoachClick, onGMClick, onViewPlayer, leaguePickAssets, leagueGMProfiles, userNickname, seasonShort = '2025-26',
     offseasonPhase, onReleasePlayer, onTeamOptionDecide, onExtensionOffer, tendencySeed = '',
     initialNegotiateId, initialNegotiateType,
-    coachFAPool, leagueTrainingConfigs, onTrainingViewOpen,
-    onExtendCoachAccepted, onFireCoach, onInvestmentTabOpen, investmentConfirmed,
+    coachFAPool, leagueTrainingConfigs,
+    onExtendCoachAccepted, onFireCoach,
 }) => {
     const [activeTab, setActiveTab] = useTabParam<FrontOfficeTab>('club');
     const [coachingTabExtNeg, setCoachingTabExtNeg] = useState<{ role: StaffRole; coach: Coach } | null>(null);
@@ -96,12 +93,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                         </button>
                         <button onClick={() => setActiveTab('draftPicks')} className={tabClass('draftPicks')}>
                             <span>드래프트 픽</span>
-                        </button>
-                        <button onClick={() => setActiveTab('investment')} className={tabClass('investment')}>
-                            <span>구단주 투자</span>
-                            {investmentConfirmed === false && (
-                                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                            )}
                         </button>
                     </div>
                 </div>
@@ -274,35 +265,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     })()}
                     {activeTab === 'draftPicks' && (
                         <DraftPicksPanel teamId={myTeamId} leaguePickAssets={leaguePickAssets} primaryColor={primaryColor} />
-                    )}
-                    {activeTab === 'investment' && (
-                        <div className="p-6 flex flex-col gap-4 animate-in fade-in duration-500">
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-                                <div className="text-xs font-black text-white uppercase tracking-widest mb-3">
-                                    구단주 투자 현황
-                                </div>
-                                {finData ? (
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-400">배분 상태</span>
-                                            <span className={investmentConfirmed ? 'text-green-400' : 'text-yellow-400'}>
-                                                {investmentConfirmed ? '배분 완료' : '미배분'}
-                                            </span>
-                                        </div>
-                                        {!investmentConfirmed && (
-                                            <button
-                                                onClick={onInvestmentTabOpen}
-                                                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg transition-colors text-sm"
-                                            >
-                                                지금 배분하기
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="text-slate-500 text-sm">재정 데이터를 불러올 수 없습니다.</div>
-                                )}
-                            </div>
-                        </div>
                     )}
                     {!finData && activeTab === 'club' && (
                         <div className="text-center text-slate-500 py-20">

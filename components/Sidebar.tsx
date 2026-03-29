@@ -7,7 +7,7 @@ import {
   CalendarDays, ArrowLeftRight,
   RotateCcw, LogOut, Globe, Gavel, CircleUser,
   BookOpen, FileText, Wand2, Crown, Settings, Landmark,
-  Sparkles, Dices, Contact, UserPlus, GitPullRequestClosed, TrafficCone,
+  Sparkles, Dices, Contact, UserPlus, GitPullRequestClosed,
   Table2,
 } from 'lucide-react';
 import { Team } from '../types';
@@ -183,7 +183,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           <Nav active={pathname.startsWith('/front-office')} icon={<Landmark />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
           <Nav active={pathname.startsWith('/locker-room')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/locker-room')} />
           <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
-          <Nav active={false} icon={<TrafficCone />} label="훈련 (준비 중)" onClick={() => {}} />
           <Nav active={pathname.startsWith('/standings')} icon={<Table2 />} label="순위표" onClick={() => navigate('/standings')} />
           <Nav active={pathname.startsWith('/leaderboard')} icon={<PieChart />} label="리더보드" onClick={() => navigate('/leaderboard')} />
           <Nav active={pathname.startsWith('/fa-market')} icon={<Contact />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />

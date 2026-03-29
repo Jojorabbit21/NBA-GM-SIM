@@ -8,6 +8,8 @@ import { LeagueTradeBlocks, LeagueTradeOffers, TeamTradeBlock } from '../types/t
 import { LeagueGMProfiles } from '../types/gm';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
+import { executeTrade } from '../services/tradeEngine/tradeExecutor';
+import type { TradeExecutionPayload } from '../services/tradeEngine/tradeExecutor';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult, processInjuryRecovery, computeReturnDate } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
@@ -122,6 +124,7 @@ export const useSimulation = (
     leagueFAMarket?: LeagueFAMarket | null,
     investmentConfirmed?: boolean,
     setLeagueInvestmentState?: React.Dispatch<React.SetStateAction<import('../types/finance').LeagueInvestmentState>>,
+    setLeagueTradeOffers?: React.Dispatch<React.SetStateAction<LeagueTradeOffers>>,
 ) => {
     const seasonShort = seasonConfig?.seasonShort ?? DEFAULT_SEASON_CONFIG.seasonShort;
     const queryClient = useQueryClient();
@@ -494,6 +497,35 @@ export const useSimulation = (
                     if (leagueTradeBlocks && setLeagueTradeBlocks) {
                         setLeagueTradeBlocks({ ...leagueTradeBlocks });
                     }
+                    // T-01: 수락된 유저 제안 실행
+                    if (seasonEvents.acceptedProposals.length > 0 && leaguePickAssets) {
+                        for (const offer of seasonEvents.acceptedProposals) {
+                            const payload: TradeExecutionPayload = {
+                                teamAId: offer.fromTeamId,
+                                teamBId: offer.toTeamId,
+                                teamASentPlayers: offer.offeredPlayers.map(p => p.playerId),
+                                teamASentPicks: offer.offeredPicks,
+                                teamBSentPlayers: offer.requestedPlayers.map(p => p.playerId),
+                                teamBSentPicks: offer.requestedPicks,
+                                date: currentSimDate,
+                                season: seasonConfig?.seasonShort,
+                                isUserTrade: true,
+                            };
+                            const tradeResult = executeTrade(payload, newTeams, leaguePickAssets, leagueTradeBlocks ?? undefined);
+                            if (tradeResult.success) {
+                                newTeams = [...newTeams];
+                                if (tradeResult.updatedPickAssets) setLeaguePickAssets?.(tradeResult.updatedPickAssets);
+                                if (tradeResult.transaction) setTransactions(prev => [tradeResult.transaction!, ...prev]);
+                            }
+                        }
+                    }
+                    // T-02: leagueTradeOffers 상태 업데이트 (새 오퍼 추가 + 만료/응답 반영)
+                    if (leagueTradeOffers) {
+                        if (seasonEvents.newTradeOffers.length > 0) {
+                            leagueTradeOffers.offers.push(...seasonEvents.newTradeOffers);
+                        }
+                        setLeagueTradeOffers?.({ ...leagueTradeOffers });
+                    }
 
                     // 시즌/플레이오프 리뷰 메시지 자동 발송
                     _ft1 = performance.now();
@@ -686,6 +718,35 @@ export const useSimulation = (
                 if (leagueTradeBlocks && setLeagueTradeBlocks) {
                     setLeagueTradeBlocks({ ...leagueTradeBlocks });
                 }
+                // T-01: 수락된 유저 제안 실행
+                if (seasonEvents.acceptedProposals.length > 0 && leaguePickAssets) {
+                    for (const offer of seasonEvents.acceptedProposals) {
+                        const payload: TradeExecutionPayload = {
+                            teamAId: offer.fromTeamId,
+                            teamBId: offer.toTeamId,
+                            teamASentPlayers: offer.offeredPlayers.map(p => p.playerId),
+                            teamASentPicks: offer.offeredPicks,
+                            teamBSentPlayers: offer.requestedPlayers.map(p => p.playerId),
+                            teamBSentPicks: offer.requestedPicks,
+                            date: currentSimDate,
+                            season: seasonConfig?.seasonShort,
+                            isUserTrade: true,
+                        };
+                        const tradeResult = executeTrade(payload, newTeams, leaguePickAssets, leagueTradeBlocks ?? undefined);
+                        if (tradeResult.success) {
+                            newTeams = [...newTeams];
+                            if (tradeResult.updatedPickAssets) setLeaguePickAssets?.(tradeResult.updatedPickAssets);
+                            if (tradeResult.transaction) setTransactions(prev => [tradeResult.transaction!, ...prev]);
+                        }
+                    }
+                }
+                // T-02: leagueTradeOffers 상태 업데이트 (새 오퍼 추가 + 만료/응답 반영)
+                if (leagueTradeOffers) {
+                    if (seasonEvents.newTradeOffers.length > 0) {
+                        leagueTradeOffers.offers.push(...seasonEvents.newTradeOffers);
+                    }
+                    setLeagueTradeOffers?.({ ...leagueTradeOffers });
+                }
 
                 // 시즌/플레이오프 리뷰 메시지 자동 발송
                 setSimProgress({ percent: 80, label: '보고서 생성...' });
@@ -848,27 +909,6 @@ export const useSimulation = (
                         }
 
                         // blocking 이벤트 (draftLottery 등): 뷰 전환 후 중단
-                        if (offseasonEvent.blocked && offseasonEvent.navigateTo === 'OwnerBudget') {
-                            advanceDate(nextDate, {});
-                            if (u.leagueInvestmentState) {
-                                setLeagueInvestmentState?.(u.leagueInvestmentState);
-                                getBudgetManager().setInvestmentState(u.leagueInvestmentState);
-                            }
-                            setSimProgress(null);
-                            setIsSimulating(false);
-                            if (!isGuestMode) {
-                                forceSave({
-                                    currentSimDate: nextDate,
-                                    teams: newTeams,
-                                    schedule: newSchedule,
-                                    withSnapshot: false,
-                                    offseasonPhase: currentPhase,
-                                });
-                            }
-                            onOffseasonEvent?.(offseasonEvent.navigateTo);
-                            return;
-                        }
-
                         if (offseasonEvent.blocked && offseasonEvent.navigateTo) {
                             advanceDate(nextDate, {});
                             if (u.lotteryResult) setLotteryResult?.(u.lotteryResult);
