@@ -192,9 +192,11 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                     ))}
                                                     <th className={`${thCls} text-center`}>계약</th>
                                                     <th className={`${thCls} text-center`}>연봉</th>
+                                                    {/* 연장/해고 버튼 비활성화 (코치 시스템 준비 중)
                                                     {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
                                                         <th className="px-3 py-2 bg-slate-800" />
                                                     )}
+                                                    */}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -227,6 +229,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                             <td className={`${tdCls} text-center font-mono tabular-nums ${coach ? 'text-emerald-400' : 'text-slate-700'}`}>
                                                                 {coach ? fmtSalary(coach.contractSalary) : '—'}
                                                             </td>
+                                                            {/* 연장/해고 버튼 비활성화 (코치 시스템 준비 중)
                                                             {(onExtendCoachAccepted || onFireCoach) && team.id === myTeamId && (
                                                                 <td className="px-3 py-1.5 text-right whitespace-nowrap">
                                                                     {coach && (
@@ -253,6 +256,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                                                                     )}
                                                                 </td>
                                                             )}
+                                                            */}
                                                         </tr>
                                                     );
                                                 })}

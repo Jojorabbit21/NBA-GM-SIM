@@ -57,6 +57,14 @@ const FrontOfficePage: React.FC = () => {
                 const newCoachingData = { ...gameData.coachingData, [gameData.myTeamId]: newStaff };
                 gameData.setCoachingData(newCoachingData);
                 gameData.forceSave({ coachingData: newCoachingData });
+                const tx = {
+                    id: `coach_ext_${coach.id}_${Date.now()}`, date: gameData.currentSimDate,
+                    type: 'CoachExtension' as const, teamId: gameData.myTeamId, season: seasonShort,
+                    description: `코치 계약 연장: ${coach.name} ${years}년 / ${(salary / 1_000_000).toFixed(1)}M`,
+                    details: { coachId: coach.id, coachName: coach.name, role, salary, years },
+                };
+                gameData.setTransactions((prev: any) => [tx, ...prev]);
+                if (session?.user?.id) writeTransaction(session.user.id, tx).catch(console.error);
             }}
             onFireCoach={(role, buyoutAmount) => {
                 if (!gameData.myTeamId || !gameData.coachingData || !gameData.coachFAPool) return;
@@ -89,6 +97,14 @@ const FrontOfficePage: React.FC = () => {
                 gameData.setCoachFAPool(newPool);
                 gameData.setTeams(newTeams);
                 gameData.forceSave({ coachingData: newCoachingData, coachFAPool: newPool, teams: newTeams });
+                const tx = {
+                    id: `coach_fire_${coach.id}_${Date.now()}`, date: gameData.currentSimDate,
+                    type: 'CoachFire' as const, teamId: gameData.myTeamId, season: seasonShort,
+                    description: `코치 해고: ${coach.name} — 바이아웃 ${(buyoutAmount / 1_000_000).toFixed(1)}M`,
+                    details: { coachId: coach.id, coachName: coach.name, role, buyoutAmount, releaseType },
+                };
+                gameData.setTransactions((prev: any) => [tx, ...prev]);
+                if (session?.user?.id) writeTransaction(session.user.id, tx).catch(console.error);
             }}
             offseasonPhase={gameData.offseasonPhase}
             tendencySeed={gameData.tendencySeed || ''}

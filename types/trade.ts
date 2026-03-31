@@ -48,7 +48,7 @@ export interface TradeDetails {
 export interface Transaction {
     id: string;
     date: string;
-    type: 'Trade' | 'Sign' | 'Release' | 'InjuryUpdate' | 'FASigning' | 'FARelease' | 'Extension' | 'TeamOption';
+    type: 'Trade' | 'Sign' | 'Release' | 'InjuryUpdate' | 'FASigning' | 'FARelease' | 'Extension' | 'TeamOption' | 'CoachHire' | 'CoachFire' | 'CoachExtension';
     teamId: string;
     season?: string;
     description: string;

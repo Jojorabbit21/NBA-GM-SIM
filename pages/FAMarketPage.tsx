@@ -30,11 +30,22 @@ const FAMarketPage: React.FC = () => {
             headCoach: null, offenseCoordinator: null, defenseCoordinator: null,
             developmentCoach: null, trainingCoach: null,
         };
+        const coach = gameData.coachFAPool.find((c: Coach) => c.id === coachId);
         const { staff: newStaff, pool: newPool } = hireCoach(teamStaff, gameData.coachFAPool, role, coachId, finalSalary);
         const newCoachingData = { ...gameData.coachingData, [myTeam.id]: newStaff };
         gameData.setCoachingData(newCoachingData);
         gameData.setCoachFAPool(newPool);
         gameData.forceSave({ coachingData: newCoachingData, coachFAPool: newPool });
+        if (coach) {
+            const tx = {
+                id: `coach_hire_${coachId}_${Date.now()}`, date: gameData.currentSimDate,
+                type: 'CoachHire' as const, teamId: myTeam.id, season: seasonShort,
+                description: `코치 영입: ${coach.name} (${finalSalary ? `${(finalSalary / 1_000_000).toFixed(1)}M` : '-'})`,
+                details: { coachId: coach.id, coachName: coach.name, role, salary: finalSalary ?? coach.contractSalary },
+            };
+            gameData.setTransactions((prev: any) => [tx, ...prev]);
+            if (session?.user?.id) writeTransaction(session.user.id, tx).catch(console.error);
+        }
     };
 
     const handleFireCoach = (role: StaffRole, buyoutAmount: number) => {
@@ -67,6 +78,14 @@ const FAMarketPage: React.FC = () => {
         gameData.setCoachFAPool(newPool);
         gameData.setTeams(newTeams);
         gameData.forceSave({ coachingData: newCoachingData, coachFAPool: newPool, teams: newTeams });
+        const tx = {
+            id: `coach_fire_${coach.id}_${Date.now()}`, date: gameData.currentSimDate,
+            type: 'CoachFire' as const, teamId: myTeam.id, season: seasonShort,
+            description: `코치 해고: ${coach.name} — 바이아웃 ${(buyoutAmount / 1_000_000).toFixed(1)}M`,
+            details: { coachId: coach.id, coachName: coach.name, role, buyoutAmount, releaseType },
+        };
+        gameData.setTransactions((prev: any) => [tx, ...prev]);
+        if (session?.user?.id) writeTransaction(session.user.id, tx).catch(console.error);
     };
 
     const currentSeasonYear = new Date(gameData.currentSimDate).getFullYear();

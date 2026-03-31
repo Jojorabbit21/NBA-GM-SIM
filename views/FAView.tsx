@@ -480,7 +480,7 @@ export const FAView: React.FC<FAViewProps> = ({
                 <StaffFATab
                     coachFAPool={coachFAPool}
                     myTeamStaff={myTeamStaff}
-                    onNegotiateCoach={(coach, role) => setCoachNegTarget({ coach, role })}
+                    // onNegotiateCoach 미전달 → 고용 버튼 비활성화 (코치 시스템 준비 중)
                 />
             )}
 

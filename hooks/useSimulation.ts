@@ -1363,6 +1363,35 @@ export const useSimulation = (
             if (leagueTradeBlocks && setLeagueTradeBlocks) {
                 setLeagueTradeBlocks({ ...leagueTradeBlocks });
             }
+            // T-01: 수락된 유저 제안 실행
+            if (seasonEvents.acceptedProposals.length > 0 && leaguePickAssets) {
+                for (const offer of seasonEvents.acceptedProposals) {
+                    const payload: TradeExecutionPayload = {
+                        teamAId: offer.fromTeamId,
+                        teamBId: offer.toTeamId,
+                        teamASentPlayers: offer.offeredPlayers.map(p => p.playerId),
+                        teamASentPicks: offer.offeredPicks,
+                        teamBSentPlayers: offer.requestedPlayers.map(p => p.playerId),
+                        teamBSentPicks: offer.requestedPicks,
+                        date: currentSimDate,
+                        season: seasonConfig?.seasonShort,
+                        isUserTrade: true,
+                    };
+                    const tradeResult = executeTrade(payload, newTeams, leaguePickAssets, leagueTradeBlocks ?? undefined);
+                    if (tradeResult.success) {
+                        newTeams = [...newTeams];
+                        if (tradeResult.updatedPickAssets) setLeaguePickAssets?.(tradeResult.updatedPickAssets);
+                        if (tradeResult.transaction) setTransactions(prev => [tradeResult.transaction!, ...prev]);
+                    }
+                }
+            }
+            // T-02: leagueTradeOffers 상태 업데이트 (새 오퍼 추가 + 만료/응답 반영)
+            if (leagueTradeOffers) {
+                if (seasonEvents.newTradeOffers.length > 0) {
+                    leagueTradeOffers.offers.push(...seasonEvents.newTradeOffers);
+                }
+                setLeagueTradeOffers?.({ ...leagueTradeOffers });
+            }
 
             // 시즌/플레이오프 리뷰 메시지 자동 발송
             await sendReviewMessages(
@@ -1419,7 +1448,8 @@ export const useSimulation = (
             isFinalizingRef.current = false;
         }
     }, [liveGameTarget, myTeamId, teams, schedule, playoffSeries, currentSimDate, session, isGuestMode,
-        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages, simSettings]);
+        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages, simSettings,
+        leaguePickAssets, leagueTradeBlocks, leagueTradeOffers, setLeaguePickAssets, setLeagueTradeBlocks, setLeagueTradeOffers, seasonConfig]);
 
     return {
         handleExecuteSim,
