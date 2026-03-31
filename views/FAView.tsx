@@ -413,7 +413,7 @@ export const FAView: React.FC<FAViewProps> = ({
 
     return (
         <div className="relative h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
-            {/* ── 탭 바 ── */}
+            {/* ── 탭 바 비활성화 (코치 시스템 준비 중 — 탭이 하나뿐이라 숨김)
             <TabBar
                 tabs={[
                     { id: 'players', label: '선수' },
@@ -422,9 +422,10 @@ export const FAView: React.FC<FAViewProps> = ({
                 activeTab={mainTab}
                 onTabChange={setMainTab}
             />
+            */}
 
             {/* ── 선수 탭 ── */}
-            {mainTab === 'players' && (!market ? (
+            {(mainTab === 'players' || mainTab === 'staff') && (!market ? (
                 <div className="flex-1 flex items-center justify-center text-slate-500">
                     <div className="text-center space-y-2">
                         <div className="text-4xl mb-3">🏀</div>
@@ -475,14 +476,15 @@ export const FAView: React.FC<FAViewProps> = ({
                 </div>
             ))}
 
-            {/* ── 스태프 탭 ── */}
+            {/* ── 스태프 탭 비활성화 (코치 시스템 준비 중)
             {mainTab === 'staff' && (
                 <StaffFATab
                     coachFAPool={coachFAPool}
                     myTeamStaff={myTeamStaff}
-                    // onNegotiateCoach 미전달 → 고용 버튼 비활성화 (코치 시스템 준비 중)
+                    onNegotiateCoach={(coach, role) => setCoachNegTarget({ coach, role })}
                 />
             )}
+            */}
 
             {/* ── CoachNegotiationScreen 오버레이 (고용) ── */}
             {coachNegTarget && (
