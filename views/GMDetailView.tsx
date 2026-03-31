@@ -178,6 +178,11 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                                         <span className="text-slate-600 font-mono text-[10px]">({currentProfile.birthYear}년생)</span>
                                     </InfoRow>
                                 )}
+                                {isMyTeam && currentProfile.nationality && (
+                                    <InfoRow label="국적">
+                                        <span className="text-slate-200 ko-normal">{currentProfile.nationality}</span>
+                                    </InfoRow>
+                                )}
                                 <InfoRow label="성격 타입">
                                     <span className="text-indigo-400 ko-normal">{GM_PERSONALITY_LABELS[currentProfile.personalityType]}</span>
                                 </InfoRow>

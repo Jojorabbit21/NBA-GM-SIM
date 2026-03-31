@@ -14,6 +14,7 @@ interface GMCreationViewProps {
         firstName: string;
         lastName: string;
         birthYear: number;
+        nationality: string;
         personalityType: GMPersonalityType;
         sliders: GMSliders;
     }) => Promise<void>;
@@ -102,6 +103,7 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
     const [lastName,   setLastName]   = useState('');
     const [firstName,  setFirstName]  = useState('');
     const [birthYearStr, setBirthYearStr] = useState('');
+    const [nationality, setNationality] = useState('');
     const [sliders, setSliders] = useState<GMSliders>(DEFAULT_SLIDERS);
 
     const birthYear = parseInt(birthYearStr, 10);
@@ -124,6 +126,7 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
             firstName: firstName.trim(),
             lastName:  lastName.trim(),
             birthYear,
+            nationality: nationality.trim(),
             personalityType: closestPersonality,
             sliders,
         });
@@ -201,7 +204,7 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                     </div>
                                 </div>
 
-                                <div className="mb-8">
+                                <div className="mb-4">
                                     <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">출생 연도</label>
                                     <input
                                         type="number"
@@ -213,6 +216,18 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                         className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
                                     />
                                     <p className="text-[10px] font-medium text-slate-600 mt-1.5 ml-1">1940 ~ 2000 사이 연도를 입력하세요.</p>
+                                </div>
+
+                                <div className="mb-8">
+                                    <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">국적 <span className="text-slate-700">(선택)</span></label>
+                                    <input
+                                        type="text"
+                                        value={nationality}
+                                        onChange={e => setNationality(e.target.value)}
+                                        maxLength={30}
+                                        placeholder="대한민국"
+                                        className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
+                                    />
                                 </div>
 
                                 <button

@@ -117,8 +117,7 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                             initialNegotiateId={initialNegotiateId}
                             initialNegotiateType={initialNegotiateType}
                             coachingData={coachingData}
-                            onExtendCoachAccepted={onExtendCoachAccepted}
-                            onFireCoach={onFireCoach}
+                            // onExtendCoachAccepted/onFireCoach 미전달 → 버튼 비활성화 (코치 시스템 준비 중)
                             onCoachClick={onCoachClick}
                             userNickname={userNickname}
                         />

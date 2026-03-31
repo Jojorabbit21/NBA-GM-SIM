@@ -81,6 +81,35 @@ LeagueListView (공개 리그 목록)
 - `views/LeagueListView.tsx` — 참가 가능 리그 목록
 - `views/LeagueWaitingRoomView.tsx` — 드래프트 대기 화면
 
+### GM 프로필 조회 구조 전환
+
+**현재 싱글플레이어 구조:**
+- `profiles` 테이블: 신상 정보만 저장 (이름, 생년도, 국적)
+- `saves.league_gm_profiles` JSONB: personalityType, sliders, direction 등 게임 데이터 저장
+- CPU GM 포함 30팀 전체가 JSONB 한 덩어리에 묶여 있음
+
+**멀티플레이어에서의 문제:**
+- 다른 유저의 GM 프로필(성격, 성향)을 조회하려면 상대방의 `saves` 행을 읽어야 함
+- 30명이 각자의 `saves` → JSONB → 파싱 과정이 필요해 비효율적
+- `league_gm_profiles` JSONB는 원래 CPU GM 30팀을 한꺼번에 관리하기 위한 구조로, 멀티에서는 불필요
+
+**전환 방향:**
+- `profiles` 테이블에 `personality_type TEXT`, `gm_sliders JSONB` 컬럼 추가
+- 유저 GM 생성 시 `profiles`에도 함께 저장
+- 멀티 리그에서 GM 프로필 조회 = `profiles` 단순 SELECT (saves 조인 불필요)
+- CPU GM은 멀티에서 존재하지 않으므로 `league_gm_profiles` JSONB 의존성 제거 가능
+
+**마이그레이션:**
+```sql
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS personality_type TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gm_sliders JSONB;
+```
+
+**코드 변경 포인트:**
+- `pages/GMCreationPage.tsx` — `profiles` upsert에 `personality_type`, `gm_sliders` 추가
+- `GMDetailView.tsx` — 상대방 GM 조회 시 `saves` 대신 `profiles` SELECT로 전환
+- `direction`은 멀티에서도 게임 상태이므로 `room_members` 테이블에 별도 컬럼으로 유지
+
 ---
 
 ## Phase 2: 판타지 드래프트 서버사이드

@@ -20,6 +20,7 @@ const GMCreationPage: React.FC = () => {
         firstName: string;
         lastName: string;
         birthYear: number;
+        nationality: string;
         personalityType: GMPersonalityType;
         sliders: GMSliders;
     }) => {
@@ -30,9 +31,11 @@ const GMCreationPage: React.FC = () => {
             await supabase.from('profiles').upsert({
                 id: session.user.id,
                 email: session.user.email,
+                nickname: `${data.lastName} ${data.firstName}`,
                 first_name: data.firstName,
                 last_name: data.lastName,
                 birth_year: data.birthYear,
+                nationality: data.nationality || null,
             });
 
             // 2. 유저 GM 프로필 구성
@@ -42,6 +45,7 @@ const GMCreationPage: React.FC = () => {
                 firstName: data.firstName,
                 lastName: data.lastName,
                 birthYear: data.birthYear,
+                ...(data.nationality && { nationality: data.nationality }),
                 personalityType: data.personalityType,
                 sliders: data.sliders,
                 direction: 'standPat',

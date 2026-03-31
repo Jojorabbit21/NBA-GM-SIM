@@ -34,6 +34,7 @@ export interface GMProfile {
     firstName?: string;
     lastName?: string;
     birthYear?: number;
+    nationality?: string;
 }
 
 export type LeagueGMProfiles = Record<string, GMProfile>;
