@@ -168,12 +168,15 @@ export const saveCheckpoint = async (
         .select('hof_id');
 
     if (error) {
-        // 새 컬럼이 DB에 없을 수 있음 → 해당 필드 제거 후 재시도
-        if (payload.league_trade_blocks !== undefined || payload.league_trade_offers !== undefined) {
-            console.warn('⚠️ [saveCheckpoint] Save failed, retrying without trade columns:', error.message);
-            delete payload.league_trade_blocks;
-            delete payload.league_trade_offers;
-            delete payload.league_gm_profiles;
+        // 새 컬럼이 DB에 없을 수 있음 → 해당 필드 모두 제거 후 재시도
+        const optionalColumns = [
+            'league_trade_blocks', 'league_trade_offers', 'league_gm_profiles',
+            'league_training_configs', 'coach_fa_pool',
+        ] as const;
+        const hasOptionalColumn = optionalColumns.some(k => payload[k] !== undefined);
+        if (hasOptionalColumn) {
+            console.warn('⚠️ [saveCheckpoint] Save failed, retrying without optional columns:', error.message);
+            optionalColumns.forEach(k => delete payload[k]);
             const retry = await supabase
                 .from('saves')
                 .upsert(payload, { onConflict: 'user_id' })

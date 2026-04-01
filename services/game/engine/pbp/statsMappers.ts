@@ -284,24 +284,19 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
 
     } else if (type === 'freethrow') {
-        // Shooting Foul (Always 2 shots for sim simplicity, or 3 if 3PT)
+        // Shooting Foul (2 shots normally, 3 shots if fouled on a 3PT attempt)
 
         if (defender) commitFoul(defender);
 
-        const numShots = 2;
+        const numShots = zone === '3PT' ? 3 : 2;
         let ftMade = 0;
         actor.fta += numShots;
         const ftPct = actor.attr.ft / 100;
 
-        // Shot 1
-        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
-
-        // Shot 2
-        let lastShotMade = false;
-        if (Math.random() < ftPct) {
-            actor.ftm++; actor.pts++; offTeam.score++; ftMade++;
-            lastShotMade = true;
+        for (let i = 0; i < numShots; i++) {
+            if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
         }
+        const lastShotMade = ftMade === numShots;
 
         updatePlusMinus(offTeam, defTeam, ftMade);
         addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);

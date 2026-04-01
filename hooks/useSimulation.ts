@@ -531,7 +531,8 @@ export const useSimulation = (
                     _ft1 = performance.now();
                     await sendReviewMessages(
                         prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
-                        newPlayoffSeries, newTeams, currentSimDate, transactions
+                        newPlayoffSeries, newTeams, currentSimDate,
+                        seasonEvents.newTransactions.length > 0 ? [...seasonEvents.newTransactions, ...transactions] : transactions
                     );
                     _fPerf['3_reviewMessages'] = performance.now() - _ft1;
 
@@ -754,7 +755,8 @@ export const useSimulation = (
                 _t1 = performance.now();
                 await sendReviewMessages(
                     prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
-                    newPlayoffSeries, newTeams, currentSimDate, transactions
+                    newPlayoffSeries, newTeams, currentSimDate,
+                    seasonEvents.newTransactions.length > 0 ? [...seasonEvents.newTransactions, ...transactions] : transactions
                 );
                 _perf['8_reviewMessages'] = performance.now() - _t1;
 
@@ -1142,7 +1144,10 @@ export const useSimulation = (
                                 }
                             }
 
-                            setLeagueFAMarket(cpuResult.market.pendingOfferSheets?.length ? cpuResult.market : null);
+                            const hasActiveFAMarket =
+                                (cpuResult.market.available?.length ?? 0) > 0 ||
+                                (cpuResult.market.pendingOfferSheets?.length ?? 0) > 0;
+                            setLeagueFAMarket(hasActiveFAMarket ? cpuResult.market : null);
 
                             if (!isGuestMode && session?.user?.id && myTeamId && cpuResult.signings.length > 0) {
                                 const newsContent: FALeagueNewsContent = {
@@ -1396,7 +1401,8 @@ export const useSimulation = (
             // 시즌/플레이오프 리뷰 메시지 자동 발송
             await sendReviewMessages(
                 prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
-                newPlayoffSeries, newTeams, currentSimDate, transactions
+                newPlayoffSeries, newTeams, currentSimDate,
+                seasonEvents.newTransactions.length > 0 ? [...seasonEvents.newTransactions, ...transactions] : transactions
             );
 
             // 월간 스카우트 보고서 (월 경계 감지)

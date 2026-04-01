@@ -376,8 +376,6 @@ export const FAView: React.FC<FAViewProps> = ({
     const [searchParams, setSearchParams] = useSearchParams();
     const mainTab = (searchParams.get('tab') as 'players' | 'staff') ?? 'players';
     const setMainTab = (tab: 'players' | 'staff') => setSearchParams({ tab }, { replace: true });
-    const [coachNegTarget, setCoachNegTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
-    const [coachFireTarget, setCoachFireTarget] = useState<{ coach: Coach; role: StaffRole } | null>(null);
 
     const market = leagueFAMarket;
     const usedMLE = market?.usedMLE ?? {};
@@ -486,41 +484,6 @@ export const FAView: React.FC<FAViewProps> = ({
             )}
             */}
 
-            {/* ── CoachNegotiationScreen 오버레이 (고용) ── */}
-            {coachNegTarget && (
-                <CoachNegotiationScreen
-                    coach={coachNegTarget.coach}
-                    role={coachNegTarget.role}
-                    negotiationType="hire"
-                    myTeam={myTeam}
-                    myTeamStaff={myTeamStaff}
-                    userNickname={userNickname}
-                    onClose={() => setCoachNegTarget(null)}
-                    onAccept={(finalSalary, finalYears) => {
-                        onHireCoach?.(coachNegTarget.role, coachNegTarget.coach.id, finalSalary);
-                    }}
-                />
-            )}
-
-            {/* ── NegotiationScreen 오버레이 (코치 해고) ── */}
-            {coachFireTarget && onFireCoach && (
-                <NegotiationScreen
-                    negotiationType="release"
-                    coach={coachFireTarget.coach}
-                    coachRole={coachFireTarget.role}
-                    myTeam={myTeam}
-                    teams={teams}
-                    tendencySeed={tendencySeed}
-                    currentSeasonYear={currentSeasonYear}
-                    currentSeason={currentSeason}
-                    usedMLE={{}}
-                    onClose={() => setCoachFireTarget(null)}
-                    onFireCoach={(role, buyoutAmount) => {
-                        onFireCoach(role, buyoutAmount);
-                        setCoachFireTarget(null);
-                    }}
-                />
-            )}
 
             {/* ── NegotiationScreen 오버레이 (fa 타입만) ── */}
             {negotiationTarget && ntPlayer && (

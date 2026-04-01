@@ -238,20 +238,28 @@ export const hydrateFromSnapshot = (
 // --- Helpers (mirrored from stateReplayer.ts) ---
 
 function applyTrade(teams: Team[], tx: any) {
-    const { acquired, traded, partnerTeamId } = tx.details;
+    // New format: { counterpartTeamId, players: { sent: [{playerId}], received: [{playerId}] } }
+    // Legacy format: { partnerTeamId, traded: [{id}], acquired: [{id}] }
+    const details = tx.details;
+    const partnerTeamId = details.counterpartTeamId ?? details.partnerTeamId;
+    const sentPlayers: any[] = details.players?.sent ?? details.traded ?? [];
+    const receivedPlayers: any[] = details.players?.received ?? details.acquired ?? [];
+
     const myTeamIdx = teams.findIndex(t => t.id === tx.team_id);
     const partnerIdx = teams.findIndex(t => t.id === partnerTeamId);
 
     if (myTeamIdx !== -1 && partnerIdx !== -1) {
-        traded.forEach((p: any) => {
-            const pIndex = teams[myTeamIdx].roster.findIndex(rp => rp.id === p.id);
+        sentPlayers.forEach((p: any) => {
+            const pid = p.playerId ?? p.id;
+            const pIndex = teams[myTeamIdx].roster.findIndex(rp => rp.id === pid);
             if (pIndex !== -1) {
                 const [playerObj] = teams[myTeamIdx].roster.splice(pIndex, 1);
                 teams[partnerIdx].roster.push(playerObj);
             }
         });
-        acquired.forEach((p: any) => {
-            const pIndex = teams[partnerIdx].roster.findIndex(rp => rp.id === p.id);
+        receivedPlayers.forEach((p: any) => {
+            const pid = p.playerId ?? p.id;
+            const pIndex = teams[partnerIdx].roster.findIndex(rp => rp.id === pid);
             if (pIndex !== -1) {
                 const [playerObj] = teams[partnerIdx].roster.splice(pIndex, 1);
                 teams[myTeamIdx].roster.push(playerObj);

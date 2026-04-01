@@ -637,6 +637,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         negSt: NegotiationState | null | undefined,
         sub: string | null,
     ) => {
+        if (!player) return;
         const ctx: DialogueContext = {
             tendencies,
             morale:      moraleScore,

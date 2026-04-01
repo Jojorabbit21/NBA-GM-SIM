@@ -916,7 +916,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     {player.draftRound === 1
                                                         ? `1라운드 ${player.draftPick}픽`
                                                         : player.draftRound === 2
-                                                        ? `2라운드 ${player.draftPick! - 30}픽`
+                                                        ? `2라운드 ${(player.draftPick ?? 0) - 30}픽`
                                                         : player.draftRound === null
                                                         ? '언드래프트'
                                                         : '-'}

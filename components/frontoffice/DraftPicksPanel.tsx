@@ -234,8 +234,8 @@ export const DraftPicksPanel: React.FC<{
 
         // 자기 픽 보유
         if (hasOwnPick) {
-            const ownPick = picks.find(p => p.originalTeamId === teamId)!;
-            entries.push({ label: '보유', color: 'text-indigo-400 font-bold', notes: getPickNotes(ownPick) });
+            const ownPick = picks.find(p => p.originalTeamId === teamId);
+            entries.push({ label: '보유', color: 'text-indigo-400 font-bold', notes: ownPick ? getPickNotes(ownPick) : '' });
         }
 
         // 자기 픽을 넘긴 경우

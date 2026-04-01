@@ -135,7 +135,7 @@ export const ContractManagementTab: React.FC<ContractManagementTabProps> = ({
                         <span className="text-[10px] text-slate-500 ml-1">— 행사하지 않으면 선수가 FA로 이동합니다</span>
                     </div>
                     {pendingTeamOptions.map(player => {
-                        const optionSalary = player.contract!.years[player.contract!.option!.year] ?? 0;
+                        const optionSalary = player.contract?.years[player.contract?.option?.year ?? -1] ?? 0;
                         return (
                             <div
                                 key={player.id}

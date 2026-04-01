@@ -618,7 +618,7 @@ export function applyManualSubstitution(
         if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
 
         if (!state.rotationHistory[inPlayer.playerId]) state.rotationHistory[inPlayer.playerId] = [];
-        state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+        state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: -1 });
 
         state.logs.push({
             quarter: state.quarter,

@@ -71,14 +71,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       };
       onUpdateTactics({ ...tactics, starters: newStarters });
     }
-  }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
-
-  if (!team) return null;
+  }, [healthySorted, tactics.starters, onUpdateTactics]);
 
   const handlePlayerClick = useCallback((p: Player) => {
     const playerTeam = effectiveRoster.some(rp => rp.id === p.id) ? team : teams.find(t => t.roster.some(rp => rp.id === p.id));
     onViewPlayer(p, playerTeam?.id, playerTeam?.name);
   }, [effectiveRoster, team, teams, onViewPlayer]);
+
+  if (!team) return null;
 
   return (
     <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">

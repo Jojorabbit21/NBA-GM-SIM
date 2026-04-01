@@ -82,7 +82,7 @@ export interface ProspectRevealParams {
 const FIRST_SEASON_DRAFT_YEAR = '2026';
 
 /** meta_players raw row → GeneratedPlayerRow 변환 */
-function mapRawRowToGeneratedPlayer(row: any, userId: string): GeneratedPlayerRow {
+function mapRawRowToGeneratedPlayer(row: any, userId: string, debutSeasonNumber: number): GeneratedPlayerRow {
     const attrs = typeof row.base_attributes === 'string'
         ? JSON.parse(row.base_attributes)
         : { ...(row.base_attributes || {}) };
@@ -93,7 +93,7 @@ function mapRawRowToGeneratedPlayer(row: any, userId: string): GeneratedPlayerRo
     return {
         id: String(row.id),
         user_id: userId,
-        season_number: 2,
+        season_number: debutSeasonNumber,
         draft_pick: null,
         draft_team_id: null,
         status: 'fa' as const,
@@ -119,7 +119,7 @@ export async function checkProspectReveal(params: ProspectRevealParams): Promise
     if (currentSeasonNumber === 1) {
         // 첫 시즌: meta_players에서 사전 입력된 루키 데이터 fetch
         const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
-        draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId || ''));
+        draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId || '', currentSeasonNumber + 1));
         if (draftClass.length > 0) {
             console.log(`📋 Prospect reveal: loaded ${draftClass.length} predefined prospects from meta_players (draft_year=${FIRST_SEASON_DRAFT_YEAR})`);
         }
@@ -236,7 +236,7 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
             if (currentSeasonNumber === 1) {
                 // 첫 시즌 fallback: meta_players에서 fetch
                 const rawRows = await fetchPredefinedDraftClass(FIRST_SEASON_DRAFT_YEAR);
-                draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId));
+                draftClass = rawRows.map((row: any) => mapRawRowToGeneratedPlayer(row, userId, currentSeasonNumber + 1));
                 console.log(`📝 Draft class fallback: loaded ${draftClass.length} predefined prospects`);
             } else {
                 const generated = generateDraftClass(userId, nextSeasonNumber, tendencySeed, 60);

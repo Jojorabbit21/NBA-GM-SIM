@@ -118,8 +118,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     ]);
 
     if (page === 0) setTotalCount(count);
-    const newMessages = page === 0 ? data : [...messages, ...data];
-    setMessages(newMessages);
+    setMessages(prev => page === 0 ? data : [...prev, ...data]);
 
     // Auto-select: initialMessageId 지정 시 해당 메시지, 없으면 첫 번째
     if (page === 0 && data.length > 0 && !selectedMessage) {
@@ -130,7 +129,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     }
 
     setLoading(false);
-  }, [userId, myTeamId, page, activeFilters, handleSelectMessage]);
+  }, [userId, myTeamId, page, activeFilters, handleSelectMessage, selectedMessage, initialMessageId]);
 
   useEffect(() => {
     loadMessages();

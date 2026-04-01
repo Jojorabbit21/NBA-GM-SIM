@@ -159,14 +159,13 @@ export function useLiveGame(
         }, BASE_INTERVAL_MS / speedRef.current);
     }, [syncDisplay]);
 
-    // ── 마운트 시 즉시 시작 ──
+    // ── 마운트 시 즉시 시작 (의도적 빈 deps: startInterval은 intervalRef를 통해 항상 최신 syncDisplay를 참조) ──
     useEffect(() => {
         startInterval();
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ────────────────────────────────────────────────────────
     // 유저 액션

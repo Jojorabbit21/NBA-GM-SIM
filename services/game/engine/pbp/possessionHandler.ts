@@ -277,10 +277,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         });
     }
     if (offTeam.onCourt.some(p => !p) || defTeam.onCourt.some(p => !p)) {
-        console.error('[PBP DEBUG] onCourt has undefined entry!', {
+        console.error('[PBP DEBUG] onCourt has undefined entry — skipping possession as turnover', {
             offUndefined: offTeam.onCourt.map((p, i) => !p ? i : null).filter(i => i !== null),
             defUndefined: defTeam.onCourt.map((p, i) => !p ? i : null).filter(i => i !== null),
         });
+        const safeBallHandler = offTeam.onCourt.find(p => !!p);
+        if (!safeBallHandler) return null as any;
+        return {
+            type: 'turnover' as const,
+            offTeam, defTeam,
+            actor: safeBallHandler,
+            defender: defTeam.onCourt.find(p => !!p) ?? safeBallHandler,
+            points: 0, isAndOne: false,
+            playType: 'Iso' as const, isSwitch: false, isZone: false,
+        };
     }
 
     const sliders = offTeam.tactics.sliders;
@@ -423,7 +433,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     if (Math.random() < shootingFoulRate) {
         return {
             type: 'freethrow',
-            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
+            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+            zone: preferredZone,
         };
     }
 

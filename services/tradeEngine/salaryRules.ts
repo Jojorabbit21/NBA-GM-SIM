@@ -18,7 +18,8 @@ export interface SalaryCheckResult {
 }
 
 export function checkTradeLegalityDetailed(team: Team, incoming: Player[], outgoing: Player[]): SalaryCheckResult {
-    const currentCap = team.roster.reduce((sum, p) => sum + p.salary, 0);
+    const deadMoney = (team.deadMoney ?? []).reduce((sum, d) => sum + d.amount, 0);
+    const currentCap = team.roster.reduce((sum, p) => sum + p.salary, 0) + deadMoney;
     const inSalary = incoming.reduce((sum, p) => sum + p.salary, 0);
     const outSalary = outgoing.reduce((sum, p) => sum + p.salary, 0);
 

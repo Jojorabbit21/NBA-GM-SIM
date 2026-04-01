@@ -115,8 +115,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         if (availablePlayers.length > 0) {
             handleDraft(availablePlayers[0]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [timeRemaining, isUserTurn]);
+    }, [timeRemaining, isUserTurn, handleDraft, availablePlayers]);
 
     // ── Draft action (user pick) ──
     const handleDraft = useCallback((player: Player) => {

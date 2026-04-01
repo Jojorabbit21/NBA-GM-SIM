@@ -132,8 +132,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             setCurrentPickIndex(prev => prev + 1);
             setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [timeRemaining, isDraftComplete]);
+    }, [timeRemaining, isDraftComplete, availablePlayers, isUserTurn, handleDraft, draftOrder, currentPickIndex, makePick, setAnnouncement]);
 
     // ── BoardPick helper ──
     const makePick = useCallback((idx: number, teamId: string, player: Player): BoardPick => ({

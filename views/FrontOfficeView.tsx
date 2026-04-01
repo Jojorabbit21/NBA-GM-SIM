@@ -102,6 +102,9 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
                     {activeTab === 'club' && finData && finance && (
                         <ClubTab finData={finData} finance={finance} myTeamId={myTeamId} />
                     )}
+                    {activeTab === 'club' && finData && !finance && (
+                        <div className="flex items-center justify-center h-48 text-slate-500 text-sm">재정 데이터를 불러오는 중...</div>
+                    )}
                     {activeTab === 'payroll' && (
                         <PayrollTab
                             team={team}

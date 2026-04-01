@@ -96,8 +96,8 @@ NBA-GM-SIM은 NBA 구단 운영 시뮬레이션 게임으로, React 18 + TypeScr
 | 역할 | 폰트 | 크기 | 웨이트 | 비고 |
 |------|------|------|--------|------|
 | 본문 전체 | Pretendard Variable | 가변 | 가변 | `font-sport` 토큰 |
-| 스코어보드 수치 | Seven Segment | 가변 | Regular | `font-digital` 토큰 |
-| 테이블 헤더 | Pretendard | 10–12px | Black (900) | uppercase, tracking-widest |
+| 스코어보드 수치 | Seven Segment | 가변 | Regular | `font-digital` 토큰 | => 미사용 폰트. 선언문 및 관련 코드 삭제 요청
+| 테이블 헤더 | Pretendard | 10–12px | Black (900) | uppercase, tracking-widest | 
 | 한국어 | Pretendard | — | — | `.ko-tight` (-0.025em), `.ko-normal` (-0.01em) 클래스 사용 |
 
 ### 2-3. Border Radius

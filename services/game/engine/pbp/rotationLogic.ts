@@ -297,7 +297,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
                 // 뎁스차트 슬롯 포지션으로 업데이트
                 p.position = getSlotPosition(p.playerId, teamState.depthChart) || p.position;
                 if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
-                state.rotationHistory[p.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+                state.rotationHistory[p.playerId].push({ in: currentTotalSec, out: -1 });
                 p.lastSubInTime = state.gameClock;
                 p.conditionAtSubIn = p.currentCondition;
             }
