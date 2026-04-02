@@ -250,6 +250,10 @@ export const bulkSendMessages = async (
     messages: { user_id: string; team_id: string; date: string; type: MessageType; title: string; content: any }[]
 ): Promise<boolean> => {
     if (messages.length === 0) return true;
+    // Guard: userId 또는 teamId가 없는 메시지 필터링
+    const validMessages = messages.filter(m => m.user_id && m.team_id);
+    if (validMessages.length === 0) return true;
+    messages = validMessages;
 
     const CHUNK = 50;
     for (let i = 0; i < messages.length; i += CHUNK) {

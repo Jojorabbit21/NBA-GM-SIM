@@ -172,6 +172,8 @@ export const hydrateFromSnapshot = (
             if ((pData as any).awards) player.awards = (pData as any).awards;
             if ((pData as any).archetypeState) player.archetypeState = (pData as any).archetypeState;
             if ((pData as any).age !== undefined) player.age = (pData as any).age;
+            if ((pData as any).popularity) player.popularity = (pData as any).popularity;
+            if ((pData as any).morale) player.morale = (pData as any).morale;
             if ((pData as any).contract) {
                 // snapshot contract always takes priority over DB initial contract
                 player.contract = (pData as any).contract;

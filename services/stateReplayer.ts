@@ -65,14 +65,16 @@ export const replayGameState = (
         const homeTeam = teamMap.get(res.home_team_id);
         const awayTeam = teamMap.get(res.away_team_id);
 
-        if (homeTeam && awayTeam && !res.is_playoff) {
+        if (homeTeam && awayTeam) {
             const homeWon = res.home_score > res.away_score;
-            if (homeWon) {
-                homeTeam.wins++;
-                awayTeam.losses++;
-            } else {
-                homeTeam.losses++;
-                awayTeam.wins++;
+            if (!res.is_playoff) {
+                if (homeWon) {
+                    homeTeam.wins++;
+                    awayTeam.losses++;
+                } else {
+                    homeTeam.losses++;
+                    awayTeam.wins++;
+                }
             }
 
             if (res.tactics && res.box_score) {

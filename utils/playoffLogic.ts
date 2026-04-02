@@ -106,8 +106,17 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
  * Handles Play-In -> R1 -> Semis -> Conf Finals -> Finals progression.
  */
 export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], schedule: Game[]): PlayoffSeries[] {
-    let updated = [...seriesList];
+    // 배열과 내부 객체 모두 얕은 복사 — 변이 없이 새 참조 반환 보장
+    let updated = seriesList.map(s => ({ ...s }));
     let changed = false;
+
+    // 헬퍼: id로 배열 내 객체를 찾아 patch 후 교체 (불변 업데이트)
+    const patchSeries = (id: string, patch: Partial<PlayoffSeries>) => {
+        const idx = updated.findIndex(x => x.id === id);
+        if (idx === -1) return;
+        updated[idx] = { ...updated[idx], ...patch };
+        changed = true;
+    };
 
     // --- Phase 1: Play-In Advancement ---
     ['East', 'West'].forEach(conf => {
@@ -117,33 +126,31 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
 
         if (pi7v8?.finished && piDecider?.higherSeedId === 'TBD_7v8_LOSER') {
             const loserId = pi7v8.winnerId === pi7v8.higherSeedId ? pi7v8.lowerSeedId : pi7v8.higherSeedId;
-            piDecider.higherSeedId = loserId;
-            changed = true;
+            patchSeries(`${conf}_PI_8th_Decider`, { higherSeedId: loserId });
         }
 
         if (pi9v10?.finished && piDecider?.lowerSeedId === 'TBD_9v10_WINNER') {
-            piDecider.lowerSeedId = pi9v10.winnerId!;
-            changed = true;
+            patchSeries(`${conf}_PI_8th_Decider`, { lowerSeedId: pi9v10.winnerId! });
         }
     });
 
     // --- Phase 2: Start Round 1 (If Play-In Done) ---
     const playInGames = updated.filter(s => s.round === 0);
     const round1Games = updated.filter(s => s.round === 1);
-    
+
     if (playInGames.length > 0 && playInGames.every(s => s.finished) && round1Games.length === 0) {
         // Generate Round 1
         const getSeeded = (conf: 'East' | 'West') => {
             const comparator = createTiebreakerComparator(teams, schedule);
             const ranked = teams.filter(t => t.conference === conf).sort(comparator);
-            
+
             const pi7v8 = updated.find(s => s.id === `${conf}_PI_7v8`);
             const piDecider = updated.find(s => s.id === `${conf}_PI_8th_Decider`);
-            
+
             // Safety check: if play-in logic failed, fallback to rank
             const seed7 = teams.find(t => t.id === pi7v8?.winnerId) || ranked[6];
             const seed8 = teams.find(t => t.id === piDecider?.winnerId) || ranked[7];
-            
+
             return [...ranked.slice(0, 6), seed7, seed8];
         };
 
@@ -172,7 +179,7 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
     }
 
     // --- Phase 3: Recursive Tree Advancement (R1 -> Semis -> Conf -> Finals) ---
-    // Helper to find or create next round series
+    // Helper to find or create next round series (불변 방식: push 시 새 객체)
     const ensureNextSeries = (id: string, round: number, conf: 'East'|'West'|'BPL', highId: string, lowId: string) => {
         let s = updated.find(x => x.id === id);
         if (!s) {
@@ -195,18 +202,22 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
         // Semis 1 (Winner of M1 vs Winner of M2)
         const m1 = r1s.find(s => s.id.includes('M1'));
         const m2 = r1s.find(s => s.id.includes('M2'));
-        const s1 = ensureNextSeries(`${conf}_SEMIS_S1`, 2, conf as any, m1?.winnerId || 'TBD', m2?.winnerId || 'TBD');
-        
-        if (m1?.winnerId && s1.higherSeedId === 'TBD') { s1.higherSeedId = m1.winnerId; changed = true; }
-        if (m2?.winnerId && s1.lowerSeedId === 'TBD') { s1.lowerSeedId = m2.winnerId; changed = true; }
+        const s1Id = `${conf}_SEMIS_S1`;
+        ensureNextSeries(s1Id, 2, conf as any, m1?.winnerId || 'TBD', m2?.winnerId || 'TBD');
+        const s1 = updated.find(x => x.id === s1Id)!;
+
+        if (m1?.winnerId && s1.higherSeedId === 'TBD') patchSeries(s1Id, { higherSeedId: m1.winnerId });
+        if (m2?.winnerId && s1.lowerSeedId === 'TBD') patchSeries(s1Id, { lowerSeedId: m2.winnerId });
 
         // Semis 2 (Winner of M3 vs Winner of M4)
         const m3 = r1s.find(s => s.id.includes('M3'));
         const m4 = r1s.find(s => s.id.includes('M4'));
-        const s2 = ensureNextSeries(`${conf}_SEMIS_S2`, 2, conf as any, m3?.winnerId || 'TBD', m4?.winnerId || 'TBD');
+        const s2Id = `${conf}_SEMIS_S2`;
+        ensureNextSeries(s2Id, 2, conf as any, m3?.winnerId || 'TBD', m4?.winnerId || 'TBD');
+        const s2 = updated.find(x => x.id === s2Id)!;
 
-        if (m3?.winnerId && s2.higherSeedId === 'TBD') { s2.higherSeedId = m3.winnerId; changed = true; }
-        if (m4?.winnerId && s2.lowerSeedId === 'TBD') { s2.lowerSeedId = m4.winnerId; changed = true; }
+        if (m3?.winnerId && s2.higherSeedId === 'TBD') patchSeries(s2Id, { higherSeedId: m3.winnerId });
+        if (m4?.winnerId && s2.lowerSeedId === 'TBD') patchSeries(s2Id, { lowerSeedId: m4.winnerId });
     });
 
     // 3b. Advance Semis to Conf Finals
@@ -216,10 +227,12 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
 
         const s1 = semis.find(s => s.id.includes('S1'));
         const s2 = semis.find(s => s.id.includes('S2'));
-        const cf = ensureNextSeries(`${conf}_FINALS`, 3, conf as any, s1?.winnerId || 'TBD', s2?.winnerId || 'TBD');
+        const cfId = `${conf}_FINALS`;
+        ensureNextSeries(cfId, 3, conf as any, s1?.winnerId || 'TBD', s2?.winnerId || 'TBD');
+        const cf = updated.find(x => x.id === cfId)!;
 
-        if (s1?.winnerId && cf.higherSeedId === 'TBD') { cf.higherSeedId = s1.winnerId; changed = true; }
-        if (s2?.winnerId && cf.lowerSeedId === 'TBD') { cf.lowerSeedId = s2.winnerId; changed = true; }
+        if (s1?.winnerId && cf.higherSeedId === 'TBD') patchSeries(cfId, { higherSeedId: s1.winnerId });
+        if (s2?.winnerId && cf.lowerSeedId === 'TBD') patchSeries(cfId, { lowerSeedId: s2.winnerId });
     });
 
     // 3c. Advance Conf Finals to BPL Finals
@@ -227,9 +240,11 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
     const westCF = updated.find(s => s.round === 3 && s.conference === 'West');
 
     if (eastCF && westCF) {
-        const finals = ensureNextSeries(`BPL_FINALS`, 4, 'BPL', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
-        if (eastCF?.winnerId && finals.higherSeedId === 'TBD') { finals.higherSeedId = eastCF.winnerId; changed = true; }
-        if (westCF?.winnerId && finals.lowerSeedId === 'TBD') { finals.lowerSeedId = westCF.winnerId; changed = true; }
+        const finalsId = 'BPL_FINALS';
+        ensureNextSeries(finalsId, 4, 'BPL', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
+        const finals = updated.find(x => x.id === finalsId)!;
+        if (eastCF?.winnerId && finals.higherSeedId === 'TBD') patchSeries(finalsId, { higherSeedId: eastCF.winnerId });
+        if (westCF?.winnerId && finals.lowerSeedId === 'TBD') patchSeries(finalsId, { lowerSeedId: westCF.winnerId });
     }
 
     return changed ? updated : seriesList;

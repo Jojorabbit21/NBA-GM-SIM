@@ -148,13 +148,15 @@ function buildPersonalityParams(
     const prospectBias   = clamp(base.prospectBias * (0.5 + youthFactor));
     const riskTolerance  = clamp(base.riskTolerance * (0.5 + riskFactor));
     const patience       = clamp(base.patience * DIRECTION_PATIENCE_MOD[direction]);
+    const winNowBias     = clamp(base.winNowBias + (aggFactor - 0.5) * 0.20);
+    const loyaltyBias    = clamp(base.loyaltyBias - (aggFactor - 0.5) * 0.15);
     const maxWaivers     = Math.max(1,
         base.maxWaivers
         + DIRECTION_MAX_WAIVER_DELTA[direction]
         + (aggFactor >= 0.8 ? 1 : 0)
     );
 
-    return { ...base, patience, prospectBias, riskTolerance, churnTendency, maxWaivers };
+    return { ...base, patience, prospectBias, riskTolerance, churnTendency, winNowBias, loyaltyBias, maxWaivers };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -200,10 +202,11 @@ function calcDevelopmentValue(
     params: WaiverPersonalityParams,
 ): number {
     let ageCurve: number;
-    if (player.age <= 24) {
+    if (player.age <= 22) {
         ageCurve = 1.0;
     } else if (player.age <= 30) {
-        ageCurve = normalize(30 - player.age, 0, 6);
+        // 22→30세 구간에서 연속적으로 감소 (1.0 → 0)
+        ageCurve = normalize(30 - player.age, 0, 8);
     } else {
         ageCurve = 0;
     }
@@ -229,7 +232,7 @@ function calcContractValue(player: Player): number {
     const salaryM   = salary / 1_000_000;
     const remaining = getRemainingYears(player);
 
-    const salaryEfficiency = normalize(salaryM > 0 ? player.ovr / salaryM : 20, 0, 20);
+    const salaryEfficiency = salaryM > 0 ? normalize(player.ovr / salaryM, 0, 20) : 0.5;
 
     // 잔여 연수 유연성: 잔여 적을수록 높음 (0년=0.8, 1~3년=0.5, 4년+=감점)
     let guaranteeFlex: number;

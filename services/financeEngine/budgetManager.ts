@@ -90,6 +90,17 @@ export class BudgetManager {
     }
 
     /**
+     * 럭셔리 택스 정산 후 expenses.luxuryTax 업데이트
+     */
+    updateLuxuryTax(teamId: string, taxAmount: number): void {
+        const finance = this.finances[teamId];
+        if (!finance) return;
+
+        finance.expenses.luxuryTax = taxAmount;
+        this.recalculateIncome(teamId);
+    }
+
+    /**
      * 팀 재정 상태 조회
      */
     getFinance(teamId: string): TeamFinance | undefined {

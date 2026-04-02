@@ -1052,11 +1052,15 @@ export const useSimulation = (
                             forceSave({ teams: newTeams, leagueFAMarket: openingMarket });
                         }
 
-                        // 럭셔리 택스 정산: luxuryTaxDay → OWNER_LETTER 발송
+                        // 럭셔리 택스 정산: luxuryTaxDay → OWNER_LETTER 발송 + expenses.luxuryTax 업데이트
                         if (u.luxuryTaxResult) {
                             luxuryTaxPaidRef.current = true;
+                            const ltr = u.luxuryTaxResult;
+                            // expenses.luxuryTax 필드 업데이트
+                            if (myTeamId) {
+                                getBudgetManager().updateLuxuryTax(myTeamId, ltr.myTeamTax);
+                            }
                             if (!isGuestMode && session?.user?.id && myTeamId) {
-                                const ltr = u.luxuryTaxResult;
                                 sendMessage(session.user.id, myTeamId, nextDate, 'OWNER_LETTER', `[서신] ${ltr.title}`, {
                                     ownerName: ltr.ownerName,
                                     title: ltr.title,

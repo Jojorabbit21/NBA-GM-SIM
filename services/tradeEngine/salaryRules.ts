@@ -1,6 +1,6 @@
 
 import { Player, Team } from '../../types';
-import { TRADE_CONFIG as C } from './tradeConfig';
+import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 function formatSalary(v: number): string {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
@@ -23,9 +23,15 @@ export function checkTradeLegalityDetailed(team: Team, incoming: Player[], outgo
     const inSalary = incoming.reduce((sum, p) => sum + p.salary, 0);
     const outSalary = outgoing.reduce((sum, p) => sum + p.salary, 0);
 
+    // Dynamic cap thresholds from LEAGUE_FINANCIALS (updated each season)
+    const CAP_LINE  = LEAGUE_FINANCIALS.SALARY_CAP;
+    const TAX_LINE  = LEAGUE_FINANCIALS.TAX_LEVEL;
+    const APRON_1   = LEAGUE_FINANCIALS.FIRST_APRON;
+    const APRON_2   = LEAGUE_FINANCIALS.SECOND_APRON;
+
     // Cap space team: can absorb up to remaining cap space
-    if (currentCap < C.SALARY.CAP_LINE) {
-        const remainingCap = C.SALARY.CAP_LINE - currentCap;
+    if (currentCap < CAP_LINE) {
+        const remainingCap = CAP_LINE - currentCap;
         if (inSalary > outSalary + remainingCap) {
             return {
                 valid: false,
@@ -35,7 +41,7 @@ export function checkTradeLegalityDetailed(team: Team, incoming: Player[], outgo
         return { valid: true };
     }
 
-    if (currentCap >= C.SALARY.APRON_2) {
+    if (currentCap >= APRON_2) {
         if (outgoing.length > 1 && incoming.length === 1) {
             return {
                 valid: false,
@@ -48,14 +54,14 @@ export function checkTradeLegalityDetailed(team: Team, incoming: Player[], outgo
                 reason: `2차 에이프런 — 수신 연봉 ${formatSalary(inSalary)} > 송신 연봉 ${formatSalary(outSalary)} (100% 매칭 필요)`,
             };
         }
-    } else if (currentCap >= C.SALARY.APRON_1) {
+    } else if (currentCap >= APRON_1) {
         if (inSalary > outSalary) {
             return {
                 valid: false,
                 reason: `1차 에이프런 — 수신 연봉 ${formatSalary(inSalary)} > 송신 연봉 ${formatSalary(outSalary)} (100% 매칭 필요)`,
             };
         }
-    } else if (currentCap >= C.SALARY.TAX_LINE) {
+    } else if (currentCap >= TAX_LINE) {
         const maxIn = outSalary * 1.10;
         if (inSalary > maxIn) {
             return {

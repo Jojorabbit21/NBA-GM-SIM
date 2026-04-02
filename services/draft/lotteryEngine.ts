@@ -165,17 +165,21 @@ function assignLotteryOdds(
     // 팀 수가 14보다 적거나 많은 경우 대응
     const teamCount = sorted.length;
 
+    const rawWeights = sorted.map((_, i) => {
+        if (allZero || teamCount !== LOTTERY_TEAM_COUNT) {
+            // 균등 배분 (나머지 무시 — 아래에서 정규화)
+            return Math.floor(LOTTERY_POOL_SIZE / teamCount);
+        }
+        return LOTTERY_WEIGHTS[i];
+    });
+
+    // 실제 가중치 합계 기준으로 odds를 1.0으로 정규화
+    const totalWeight = rawWeights.reduce((sum, w) => sum + w, 0);
+
     return sorted.map((team, i) => {
         const total = team.wins + team.losses;
         const winPct = total > 0 ? team.wins / total : 0;
-
-        let weight: number;
-        if (allZero || teamCount !== LOTTERY_TEAM_COUNT) {
-            // 균등 배분
-            weight = Math.floor(LOTTERY_POOL_SIZE / teamCount);
-        } else {
-            weight = LOTTERY_WEIGHTS[i];
-        }
+        const weight = rawWeights[i];
 
         return {
             teamId: team.id,
@@ -184,7 +188,7 @@ function assignLotteryOdds(
             winPct,
             preLotteryRank: i + 1,
             lotteryWeight: weight,
-            odds: weight / LOTTERY_POOL_SIZE,
+            odds: totalWeight > 0 ? weight / totalWeight : 1 / teamCount,
         };
     });
 }

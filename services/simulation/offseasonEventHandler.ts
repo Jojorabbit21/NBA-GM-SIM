@@ -267,6 +267,14 @@ export async function dispatchOffseasonEvent(params: DispatchParams): Promise<Of
     if (keyDates.luxuryTaxDay && currentDate >= keyDates.luxuryTaxDay
         && offseasonPhase === 'FA_OPEN' && !params.luxuryTaxPaid) {
         const myTeam = userTeamId ? teams.find(t => t.id === userTeamId) : null;
+        if (!myTeam) {
+            // 유저 팀이 없으면 정산 스킵하되 멱등성 플래그는 세워 재진입 방지
+            return {
+                fired: true,
+                blocked: false,
+                updates: { luxuryTaxPaid: true },
+            };
+        }
         if (myTeam) {
             const myTeamPayroll = calcTeamPayroll(myTeam);
             const taxLevel = LEAGUE_FINANCIALS.TAX_LEVEL;
@@ -320,6 +328,17 @@ function handleMoratoriumStart(
     tendencySeed: string,
     userTeamId?: string,
 ): OffseasonEventResult {
+    // prevTenureMap/prevTeamIdMap: processOffseason()이 teamTenure를 0으로 리셋하기 전에
+    // 모든 선수의 팀 ID와 재직 연수를 미리 스냅샷해 Bird Rights 판정에 사용한다
+    const preTenureMap: Record<string, number> = {};
+    const preTeamIdMap: Record<string, string> = {};
+    for (const team of teams) {
+        for (const player of team.roster) {
+            preTeamIdMap[player.id] = team.id;
+            preTenureMap[player.id] = player.teamTenure ?? 0;
+        }
+    }
+
     const offseasonResult = processOffseason(teams, tendencySeed, currentSeasonNumber, userTeamId);
 
     // 제거 대상 집합
@@ -356,8 +375,7 @@ function handleMoratoriumStart(
     }
 
     // FA 선수 전체 객체 수집 (로스터 필터링 전 — FA 시장 개설 시 사용)
-    // prevTenureMap: teamTenure는 processOffseason()에서 0으로 리셋되므로
-    // 로스터 필터링 전(리셋 전) 값을 여기서 스냅샷해 Bird Rights 판정에 사용한다
+    // prevTenureMap/prevTeamIdMap은 processOffseason() 호출 이전에 캡처한 값을 사용한다
     const expiredPlayerObjects: Team['roster'] = [];
     const prevTeamIdMap: Record<string, string> = {};
     const prevTenureMap: Record<string, number> = {};
@@ -365,8 +383,8 @@ function handleMoratoriumStart(
         for (const player of team.roster) {
             if (removeIds.has(player.id) && !offseasonResult.retiredPlayers.some(r => r.playerId === player.id)) {
                 expiredPlayerObjects.push(player);
-                prevTeamIdMap[player.id] = team.id;
-                prevTenureMap[player.id] = player.teamTenure ?? 0;
+                prevTeamIdMap[player.id] = preTeamIdMap[player.id] ?? team.id;
+                prevTenureMap[player.id] = preTenureMap[player.id] ?? 0;
             }
         }
     }

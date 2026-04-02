@@ -96,17 +96,19 @@ NBA-GM-SIM은 NBA 구단 운영 시뮬레이션 게임으로, React 18 + TypeScr
 | 역할 | 폰트 | 크기 | 웨이트 | 비고 |
 |------|------|------|--------|------|
 | 본문 전체 | Pretendard Variable | 가변 | 가변 | `font-sport` 토큰 |
-| 스코어보드 수치 | Seven Segment | 가변 | Regular | `font-digital` 토큰 | => 미사용 폰트. 선언문 및 관련 코드 삭제 요청
+| 스코어보드 수치 | ~~Seven Segment~~ | — | — | ~~`font-digital`~~ | **미사용 폰트 — 삭제 예정** (index.css, tailwind.config.js, ScoreGraph.tsx)
 | 테이블 헤더 | Pretendard | 10–12px | Black (900) | uppercase, tracking-widest | 
 | 한국어 | Pretendard | — | — | `.ko-tight` (-0.025em), `.ko-normal` (-0.01em) 클래스 사용 |
 
 ### 2-3. Border Radius
-| 토큰 | 값 | 용도 |
-|------|-----|------|
-| `card` | `1.5rem` (24px) | 카드·패널 |
-| `button` | `1rem` (16px) | 버튼 |
-| `element` | `0.75rem` (12px) | 작은 요소 |
-| — | `9999px` (full) | 배지·아바타 |
+> **커스텀 alias 제거됨** — `rounded-card`, `rounded-button`, `rounded-element` 토큰 삭제. Tailwind 표준 클래스 직접 사용.
+
+| 기존 토큰 | 대체 클래스 | 값 |
+|----------|------------|-----|
+| ~~`card`~~ | `rounded-3xl` | 24px |
+| ~~`button`~~ | `rounded-2xl` | 16px |
+| ~~`element`~~ | `rounded-xl` | 12px |
+| — | `rounded-full` | 9999px |
 
 ### 2-4. Shadow / Glow
 | 토큰 | 값 | 용도 |
@@ -123,7 +125,7 @@ NBA-GM-SIM은 NBA 구단 운영 시뮬레이션 게임으로, React 18 + TypeScr
 핵심 변화:
 - 배경 색조: **blue-tinted dark → neutral dark** (slate → zinc)
 - 액센트: **고정 indigo → 팀컬러 동적 주입** (`--team-primary` CSS 변수)
-- 폰트: **Pretendard → Inter** (한국어 폴백: Noto Sans KR)
+- 폰트: **Pretendard → Pretendard Variable (단일)** (Inter/Noto Sans 미사용으로 확정)
 - 네비게이션: **80px 아이콘 사이드바 → 40px 슬림 사이드바 + 상단 수평 텍스트 nav**
 
 ---
@@ -134,8 +136,9 @@ NBA-GM-SIM은 NBA 구단 운영 시뮬레이션 게임으로, React 18 + TypeScr
 
 ```
 베이스 팔레트: zinc (회색 계열, 파란기 없는 뉴트럴)
-  zinc-900 (#18181b) → 앱 전체 배경
-  zinc-800 (#27272a) → 사이드바·카드
+  zinc-950 (#09090b) → 앱 전체 배경 (body)
+  zinc-900 (#18181b) → 사이드바
+  zinc-800 (#27272a) → 카드·패널
   zinc-700 (#3f3f46) → 테두리
   zinc-600 (#52525b) → 입력창 테두리
   zinc-500 (#71717a) → 비활성 텍스트
@@ -149,8 +152,8 @@ NBA-GM-SIM은 NBA 구단 운영 시뮬레이션 게임으로, React 18 + TypeScr
 ### 3-2. 타이포그래피 방향
 
 ```
-주 폰트: Inter
-한국어 폴백: Noto Sans KR
+주 폰트: Pretendard Variable (단일 — 영문/한국어 모두)
+Seven Segment: 미사용 → 선언문 및 관련 코드 삭제 예정
 ```
 
 ### 3-3. 레이아웃 방향
@@ -235,7 +238,7 @@ NBA 30팀 컬러 (팀별 primary / secondary / text 3값씩, 총 90개):
 
 ```
 Surface
-  surface/bg          → zinc-900   앱 전체 배경
+  surface/bg          → zinc-950   앱 전체 배경 (body)
   surface/card        → zinc-800   카드·패널
   surface/elevated    → zinc-800 + border  드롭다운·모달
   surface/hover       → white/5    인터랙션 오버레이
@@ -275,7 +278,7 @@ Semantic States
 
 ### 1-2. Typography Scale
 
-피그마 Text Styles로 등록.
+피그마 Text Styles로 등록. **Font Family: Pretendard Variable (전체 공통)**
 
 | 스타일명 | 크기 | 웨이트 | Line Height | Letter Spacing | 용도 |
 |---------|------|--------|-------------|----------------|------|
@@ -349,8 +352,8 @@ elevation/glow  → 0 0 15px var(--team-primary)/30%  팀컬러 글로우
 
 | 요소 | 설명 |
 |------|------|
-| 배경 | `surface/card` (zinc-800) |
-| 우측 보더 | `border/subtle` |
+| 배경 | `surface/card` (zinc-900 `#18181b`) |
+| 우측 보더 | `border/default` (zinc-700 `#3f3f46`) |
 
 **아이콘 버튼 (SidebarIconButton)**
 
@@ -358,7 +361,7 @@ elevation/glow  → 0 0 15px var(--team-primary)/30%  팀컬러 글로우
 |------|--------|
 | Default | 아이콘 opacity 70%, 배경 없음 |
 | Hover | 아이콘 opacity 100%, `surface/hover` 배경 |
-| Active | 아이콘 opacity 100%, 팀컬러 틴트 배경 |
+| Active | 아이콘 opacity 100%, `zinc-950` 단색 배경 |
 
 **아이콘 목록** (상단 그룹 12개, 하단 그룹 2개)
 
@@ -369,57 +372,65 @@ elevation/glow  → 0 0 15px var(--team-primary)/30%  팀컬러 글로우
 
 ### 2-2. Top Navigation Bar
 
-**크기**: 1880px × 60px
+> **피그마 디자인 최우선 적용**
+
+**크기**: 1880px × 80px (로고 60px + 상하 여백 포함)
 
 **영역 구성**:
 
 ```
-[Left — 팀 정보 영역]
-  팀 로고 (60px 원형, zinc-800 배경)
-  팀명 (Heading, text/primary)
-  W-L (Subheading, success/text)
-  오늘 경기 (Body-M, text/muted)
+[Left — 팀 정보 영역] left: 32px
+  팀 로고 (60×60px, zinc-800 배경, border 4px, rounded-full)
+  팀명 (20px SemiBold, white)
+  W-L (18px Medium, success-500 #12b76a)
+  DateSkipperDropdown — "오늘 10월 22일 vs 차저스" (14px Medium, white)
+    → 클릭 시 날짜 이동 드롭다운 열림
 
-[Center — 네비게이션]
-  메뉴 버튼 5개 (Home / Mailbox / League / Front Office / Team)
-  검색창 (SearchInput 컴포넌트)
+[Center — 네비게이션] left: 409px
+  MenuButton 5개: 홈 / 받은 메일함 / 리그 / 구단 / 팀
+  SearchInput (260px, zinc-900 배경, zinc-600 2px 보더, rounded-lg)
 
-[Right — 액션]
-  Split Button "경기 시작" (팀컬러 배경)
+[Right — 경기 시작] left: 1663px
+  SplitButton "경기 시작" (팀컬러 배경, rounded-lg)
 ```
 
 **MenuButton 컴포넌트**
 
 | Variant | 스타일 |
 |---------|--------|
-| Default | 텍스트만, `text/muted`, Body-L SemiBold |
-| Selected | 팀컬러 배경, `text/primary`, `radius/sm` |
-| Expanded | Selected + chevron 아이콘 (하위 메뉴 열림 상태) |
+| Default | 16px SemiBold, `zinc-500`(#71717a), 배경 없음 |
+| Selected | 팀컬러 배경, white, `rounded-lg`(8px), chevron 없음 |
+| Expanded | 팀컬러 배경, white, `rounded-lg`(8px), chevron 아이콘 포함 |
+
+- 홈·받은메일함: chevron 없음 (Selected/Default만)
+- 리그·구단·팀: chevron 포함 (Expanded 상태 가능)
 
 ---
 
 ### 2-3. Dropdown Menu Panel (NavDropdown)
 
+> **피그마 디자인 최우선 적용**
+
 **공통 스타일**:
-- 배경: `surface/elevated`
-- 보더: `border/default`, `radius/sm`
-- 그림자: `elevation/md`
+- 배경: `black` (`#000000`)
+- 보더: `zinc-700`(#3f3f46) 1px, `rounded-lg`(8px)
+- 내부 padding: 8px, item gap: 4px
 
 **DropdownItem 컴포넌트**
 
 | 상태 | 스타일 |
 |------|--------|
-| Default | `text/primary`, Body-S Medium |
+| Default | 12px Medium, white, `rounded-lg`(8px) |
 | Hover | `surface/hover` 배경 |
-| Selected | 팀컬러 배경, `radius/sm` |
+| Selected | 팀컬러 배경, white, `rounded-lg`(8px) |
 
-**3가지 메뉴 패널 별도 작업**:
+**3가지 메뉴 패널**:
 
 | 메뉴 | 항목 |
 |------|------|
-| League | Playoffs / Standings / Leaderboards / Schedules / Transactions / Free Agents |
-| Front Office | General / Salaries / Coaching Staffs / Future Draft Picks / `[divider]` / My Profile |
-| Team | Roster / Rotation & Depth / Opponent Analysis / Team Schedule / `[divider]` / Strategy |
+| 리그 | 플레이오프 / 순위표 / 리더보드 / 리그 일정 / 선수 이동 / 자유 계약 |
+| 구단 | 프론트 오피스 / 샐러리 캡 / 코칭 스태프 / 드래프트 픽 / `[divider]` / John Smith(프로필) |
+| 팀 | 로스터 / 뎁스차트&로테이션 / 다음 경기 분석 / 팀 일정 / `[divider]` / 전술 설정 |
 
 ---
 
@@ -431,7 +442,7 @@ elevation/glow  → 0 0 15px var(--team-primary)/30%  팀컬러 글로우
 전체 구조
   Sidebar (40px 고정)
   Body (1880px)
-    TopNav (60px 고정)
+    TopNav (80px 고정)
     Content Area (5-column grid)
       columns: repeat(5, 1fr)
       gap: 16px

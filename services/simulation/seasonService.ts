@@ -183,7 +183,7 @@ export const handleSeasonEvents = async (
         const isFinished = updatedSeries.some(s => s.round === 4 && s.finished);
         const championId = isFinished ? updatedSeries.find(s => s.round === 4)?.winnerId : undefined;
 
-        savePlayoffState(userId, myTeamId, updatedSeries, currentRound, isFinished, championId)
+        savePlayoffState(userId, myTeamId, updatedSeries, currentRound, isFinished, championId, seasonConfig?.seasonLabel)
             .catch(e => console.warn("⚠️ savePlayoffState failed (non-critical):", e));
     }
 

@@ -87,6 +87,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
+    const [hasInitError, setHasInitError] = useState(false);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [loadingMessage, setLoadingMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -265,10 +266,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         // count가 -1이면 DB 에러 — 스냅샷 검증 불가, full replay로 fallback
                         const countsReliable = counts.games >= 0 && counts.playoffs >= 0 && counts.transactions >= 0;
                         if (!countsReliable) console.warn('⚠️ countUserData returned errors, falling back to full replay');
+                        // tx는 스냅샷 이후에도 추가될 수 있으므로 >= 로 비교
+                        // (스냅샷 hydration 시 모든 tx를 적용하므로 이후 추가된 tx도 반영됨)
                         const isValid = countsReliable &&
                             snapshot.game_count === counts.games &&
                             snapshot.playoff_game_count === counts.playoffs &&
-                            snapshot.transaction_count === counts.transactions;
+                            counts.transactions >= snapshot.transaction_count;
 
                         if (isValid) {
                             console.log("⚡ Snapshot valid — skipping full replay");
@@ -758,6 +761,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
             } catch (e) {
                 console.error("❌ Initialization Failed:", e);
+                setHasInitError(true);
             } finally {
                 setLoadingProgress(100);
                 setLoadingMessage('');
@@ -1372,6 +1376,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setCoachingData(null);
          setLeaguePickAssets(null);
          setLeagueCapHistory({});
+         setLeagueTradeBlocks({});
+         setLeagueTradeOffers({ offers: [] });
+         setLeagueGMProfiles({});
          setSeasonNumber(1);
          setCurrentSeason(DEFAULT_SEASON_CONFIG.seasonLabel);
          setOffseasonPhase(null);
@@ -1464,6 +1471,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         isBaseDataLoading,
         isBaseDataError,
         isSaveLoading,
+        hasInitError,
         loadingProgress,
         loadingMessage,
         isSaving,

@@ -23,7 +23,7 @@ function identifyDefender(
     targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
     isZone: boolean,  // Pre-calculated in simulatePossession (probabilistic: zoneFreq*0.08)
     screener?: LivePlayer  // OffBallScreen: 스크리너 (수비 스위치 기준)
-): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean, pnrCoverage: PnrCoverage, screenerDefender?: LivePlayer } {
+): { defender: LivePlayer | undefined, isSwitch: boolean, isBotchedSwitch: boolean, pnrCoverage: PnrCoverage, screenerDefender?: LivePlayer } {
 
     const sliders = defTeam.tactics.sliders;
 
@@ -54,8 +54,8 @@ function identifyDefender(
             actorPosition: actor.position,
             teamId: defTeam.id,
         });
-        // 최후의 fallback: 코트에 아무나
-        defender = defTeam.onCourt[0];
+        // 최후의 fallback: 코트에 아무나 (비어있으면 undefined 반환)
+        defender = defTeam.onCourt.length > 0 ? defTeam.onCourt[0] : undefined;
     }
 
     // 3. Switch Logic

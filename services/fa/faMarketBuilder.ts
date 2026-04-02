@@ -30,7 +30,7 @@ function calcInterestedTeamIds(
             const payroll = calcTeamPayroll(t);
             const hasCapOrMLE =
                 payroll < LEAGUE_FINANCIALS.SALARY_CAP ||
-                payroll < LEAGUE_FINANCIALS.FIRST_APRON;
+                payroll < LEAGUE_FINANCIALS.SECOND_APRON;
             const roleStrength = t.roster
                 .filter(p => determineFARole(p) === faRole)
                 .reduce((max, p) => Math.max(max, p.ovr), 0);
@@ -227,6 +227,7 @@ export function openFAMarket(
         closeDate,
         entries,
         usedMLE: {},
+        players: expiredPlayers,
     };
 }
 
@@ -382,7 +383,7 @@ export function simulateCPUSigning(
             }
             if (!bestSlot || offerSalary <= 0) continue;
 
-            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'tax_mle' || bestSlot === 'bae' || bestSlot === 'vet_min' ? 2 : 4;
+            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'bird_early' || bestSlot === 'cap_space' || bestSlot === 'non_tax_mle' ? 4 : bestSlot === 'bird_non' ? 2 : 2;
             const offerYears = Math.min(entry.askingYears, slotMaxYears);
             const seed = `${tendencySeed}:cpu:${team.id}:${player.id}`;
 
@@ -463,13 +464,13 @@ export function simulateCPUSigning(
                     };
                 }
 
-                // Set-Off Rule: B팀 총 계약액만큼 원팀 waive 데드캡 차감
+                // Set-Off Rule: B팀 총 계약액만큼 원팀 데드캡 차감 (waive/buyout/stretch 모두 적용)
                 if (entry.prevTeamId) {
                     const prevTeam = updatedTeams.find(t => t.id === entry.prevTeamId);
                     if (prevTeam) {
                         const bTeamTotal = offerSalary * offerYears;
                         prevTeam.deadMoney = (prevTeam.deadMoney ?? []).reduce((acc, d) => {
-                            if (d.playerId === player.id && d.releaseType === 'waive') {
+                            if (d.playerId === player.id && (d.releaseType === 'waive' || d.releaseType === 'buyout' || d.releaseType === 'stretch')) {
                                 const remaining = d.amount - bTeamTotal;
                                 if (remaining > 0) acc.push({ ...d, amount: remaining });
                             } else {
@@ -538,7 +539,7 @@ export function processUserOffer(
 
     // 연수 검증 (슬롯별 CBA 상한 — UI SLOT_MAX_YEARS와 동일하게 유지)
     const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
-        bird_full: 5, bird_early: 4, bird_non: 4,
+        bird_full: 5, bird_early: 4, bird_non: 2,
         cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
     };
     const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
@@ -550,7 +551,7 @@ export function processUserOffer(
     let effectiveSalary = offer.salary;
     if (offer.option?.type === 'player') effectiveSalary *= 1.08;  // 선수 옵션: 이탈 자유 → 선수에게 유리
     // 팀 옵션: 마지막 1년이 불확실 → 계약 연수 비례 패널티 (짧을수록 타격 큼)
-    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / offer.years) * 0.55);
+    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / Math.max(1, offer.years)) * 0.55);
     if (offer.noTrade)                   effectiveSalary *= 1.05;  // NTC: 이적 거부권 → 선수에게 유리
     if (offer.tradeKicker)               effectiveSalary *= (1 + offer.tradeKicker * 0.3);
 
@@ -631,7 +632,7 @@ export function processOfferSheet(
     }
 
     const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
-        bird_full: 5, bird_early: 4, bird_non: 4,
+        bird_full: 5, bird_early: 4, bird_non: 2,
         cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
     };
     const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
@@ -642,7 +643,7 @@ export function processOfferSheet(
     // 선수 수락 여부 판정 (RFA도 walkAway/askingSalary 기준 동일)
     let effectiveSalary = offer.salary;
     if (offer.option?.type === 'player') effectiveSalary *= 1.08;
-    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / offer.years) * 0.55);
+    if (offer.option?.type === 'team')   effectiveSalary *= (1 - (1 / Math.max(1, offer.years)) * 0.55);
     if (offer.noTrade)                   effectiveSalary *= 1.05;
     if (offer.tradeKicker)               effectiveSalary *= (1 + offer.tradeKicker * 0.3);
 

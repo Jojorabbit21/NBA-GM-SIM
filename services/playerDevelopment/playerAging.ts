@@ -793,7 +793,9 @@ export function processOffseason(
     let rollSeed = hash;
 
     for (const cand of retirementCandidates) {
-        if (retiredIds.size >= 8) break;
+        // 42세 이상(prob === 1)은 상한(8명)과 무관하게 강제 은퇴
+        const isMandatory = cand.player.age >= 42;
+        if (!isMandatory && retiredIds.size >= 8) break;
         // 간이 PRNG (결정론적)
         rollSeed = (rollSeed * 1664525 + 1013904223) >>> 0;
         const roll = (rollSeed & 0xffff) / 0x10000;

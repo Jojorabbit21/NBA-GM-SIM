@@ -258,11 +258,14 @@ export async function runBatchSeason(
                 ...(seasonConfig?.seasonLabel && { season: seasonConfig.seasonLabel }),
             };
             if (isPlayoffGame && userGame.seriesId) {
+                const userSeries = playoffSeries.find(s => s.id === userGame.seriesId);
+                const userRoundNumber = userSeries?.round ?? 0;
+                const userGameNumber = userSeries ? userSeries.higherSeedWins + userSeries.lowerSeedWins : 0;
                 allPlayoffResultsToSave.push({
                     ...payload,
                     series_id: userGame.seriesId,
-                    round_number: 0,
-                    game_number: 0,
+                    round_number: userRoundNumber,
+                    game_number: userGameNumber,
                 });
             } else {
                 allGameResultsToSave.push(payload);
@@ -512,6 +515,10 @@ export async function runBatchSeason(
 
         const offseasonDates = generateDateRange(loopStart, stopDate);
 
+        // 루프 간 멱등성 플래그 누적 (매 이터레이션 초기화 방지)
+        let loopLuxuryTaxPaid = false;
+        let loopHasProspects = false;
+
         for (const date of offseasonDates) {
             if (cancelToken.cancelled) break;
 
@@ -526,7 +533,8 @@ export async function runBatchSeason(
                 tendencySeed: tendencySeed ?? '',
                 userId,
                 userTeamId: myTeamId,
-                hasProspects: false,
+                hasProspects: loopHasProspects,
+                luxuryTaxPaid: loopLuxuryTaxPaid,
                 leaguePickAssets: leaguePickAssets ?? undefined,
             });
 
@@ -538,6 +546,10 @@ export async function runBatchSeason(
 
             const u = event.updates!;
             if (u.offseasonPhase !== undefined) finalOffseasonPhase = u.offseasonPhase;
+
+            // 멱등성 플래그 누적 — 한 번 true가 되면 루프 내내 유지
+            if (u.luxuryTaxPaid) loopLuxuryTaxPaid = true;
+            if (u.generatedDraftClass) loopHasProspects = true;
 
             // draftLottery / rookieDraft: blocked → 여기서 중단 (useFullSeasonSim의 effectiveStopDate가 막아줘야 하지만 방어적 처리)
             if (event.blocked) break;
@@ -899,7 +911,11 @@ function processCpuGamesInPlace(
         if (res.isPlayoff && res.seriesId) {
             updateSeriesState(playoffSeries, res.seriesId, res.homeTeamId, res.awayTeamId, res.homeScore, res.awayScore);
             if (resultData) {
-                playoff.push({ ...resultData, series_id: res.seriesId, round_number: 0, game_number: 0 });
+                const cpuSeries = playoffSeries.find(s => s.id === res.seriesId);
+                const cpuRoundNumber = cpuSeries?.round ?? 0;
+                // updateSeriesState 호출 이후이므로 현재 wins 합산이 이 경기 번호가 됨
+                const cpuGameNumber = cpuSeries ? cpuSeries.higherSeedWins + cpuSeries.lowerSeedWins : 0;
+                playoff.push({ ...resultData, series_id: res.seriesId, round_number: cpuRoundNumber, game_number: cpuGameNumber });
             }
         } else if (resultData) {
             regular.push(resultData);

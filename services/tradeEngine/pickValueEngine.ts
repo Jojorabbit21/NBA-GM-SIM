@@ -25,11 +25,15 @@ function projectDraftSlot(originalTeamId: string, teams: Team[]): number {
 
 /**
  * 현재 시뮬 날짜부터 픽 시즌까지의 연도 거리 계산.
+ * NBA 드래프트는 6월에 개최되므로, 시즌 시작(10월) 이후에는 다음 해 드래프트가 현재 시즌.
+ * 예: 2025-10-20 → 현재 드래프트 시즌 = 2026
  */
 function getYearsAway(pickSeason: number, currentDate: string): number {
-    const currentYear = new Date(currentDate).getFullYear();
-    // 시뮬이 2025-26 시즌이면 2026 드래프트가 현재 시즌
-    const currentDraftSeason = currentYear; // 대략적 기준
+    const d = new Date(currentDate);
+    const currentYear = d.getFullYear();
+    const currentMonth = d.getMonth() + 1; // 1-12
+    // 드래프트(6월) 이전이면 올해 드래프트가 현재 시즌, 이후면 내년 드래프트가 현재 시즌
+    const currentDraftSeason = currentMonth >= 7 ? currentYear + 1 : currentYear;
     return Math.max(0, pickSeason - currentDraftSeason);
 }
 
@@ -80,11 +84,13 @@ export function getPickTradeValue(
         }
 
         // fallback 가치 계산 (보호 발동 시 대체 픽)
+        // 폴백 픽은 별도 슬롯을 계산해야 함 — 보호 발동 시 미래에 전달되므로 팀 상황이 달라질 수 있어 중간값(15) 사용
         let fallbackValue = 0;
         if (pick.protection.fallbackSeason) {
             const fallbackYears = getYearsAway(pick.protection.fallbackSeason, currentDate);
             const fallbackRound = pick.protection.fallbackRound ?? 2;
-            const fallbackSlot = PV.SLOT_VALUE_CURVE[projectedSlot - 1] ?? 0.10;
+            const fallbackSlotIdx = fallbackRound === 1 ? 14 : 25; // 1R 폴백: 중간(15위), 2R 폴백: 후순위
+            const fallbackSlot = PV.SLOT_VALUE_CURVE[fallbackSlotIdx] ?? 0.10;
             fallbackValue = fallbackSlot
                 * (fallbackRound === 2 ? PV.ROUND_2_DISCOUNT : 1)
                 * Math.pow(PV.YEAR_DISCOUNT_RATE, fallbackYears);

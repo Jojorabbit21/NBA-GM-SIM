@@ -67,6 +67,23 @@ const ProtectedLayout: React.FC = () => {
 
     if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} message={gameData.loadingMessage} />;
 
+    // ─── 초기화 에러 가드 (세이브 덮어쓰기 방지) ─────────────────────────
+
+    if (gameData.hasInitError) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-950 text-white gap-4">
+                <p className="text-red-400 text-lg font-semibold">게임 데이터를 불러오는 중 오류가 발생했습니다.</p>
+                <p className="text-gray-400 text-sm">페이지를 새로고침하거나 잠시 후 다시 시도해 주세요.</p>
+                <button
+                    className="mt-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm"
+                    onClick={() => window.location.reload()}
+                >
+                    새로고침
+                </button>
+            </div>
+        );
+    }
+
     // ─── 팀 선택 가드 ────────────────────────────────────────────────────
 
     if (!gameData.myTeamId) {

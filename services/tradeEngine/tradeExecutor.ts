@@ -191,6 +191,10 @@ export function executeTrade(
     const aSentPlayers = teamA.roster.filter(p => aSentPlayerIds.has(p.id));
     const bSentPlayers = teamB.roster.filter(p => bSentPlayerIds.has(p.id));
 
+    // teamTenure 리셋: Bird Rights는 새 팀에서 재산정되어야 함
+    aSentPlayers.forEach(p => { p.teamTenure = 0; });
+    bSentPlayers.forEach(p => { p.teamTenure = 0; });
+
     teamA.roster = [...teamA.roster.filter(p => !aSentPlayerIds.has(p.id)), ...bSentPlayers];
     teamB.roster = [...teamB.roster.filter(p => !bSentPlayerIds.has(p.id)), ...aSentPlayers];
 

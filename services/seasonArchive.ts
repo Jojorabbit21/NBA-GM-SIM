@@ -54,7 +54,8 @@ export async function archiveCurrentSeason(
     myTeam: Team,
     allTeams: Team[],
     playoffSeries: PlayoffSeries[],
-    teamFinances: SavedTeamFinances | null = null
+    teamFinances: SavedTeamFinances | null = null,
+    lotteryResult: LotteryResult | null = null
 ): Promise<void> {
     // 플레이오프 결과 판정
     const playoffResult = determinePlayoffResult(myTeam.id, playoffSeries);
@@ -95,7 +96,7 @@ export async function archiveCurrentSeason(
         player_stats: playerStats,
         player_overrides: playerOverrides,
         awards: null, // 추후 오프시즌 어워드 콘텐츠에서 채움
-        lottery_result: null, // 로터리 날짜 도달 시 updateSeasonArchiveLottery로 업데이트
+        lottery_result: lotteryResult ?? null, // 이미 알고 있으면 바로 저장, 아니면 updateSeasonArchiveLottery로 추후 업데이트
         team_finances: teamFinances,
     };
 
@@ -119,17 +120,37 @@ export async function updateSeasonArchiveLottery(
     seasonLabel: string,
     lotteryResult: LotteryResult
 ): Promise<void> {
-    const { error } = await supabase
+    // 기존 아카이브 레코드가 있으면 update, 없으면 조용히 실패하므로
+    // update 후 영향받은 행이 없으면 upsert로 폴백해 lotteryResult를 보존한다.
+    const { error, count } = await supabase
         .from('user_season_history')
         .update({ lottery_result: lotteryResult })
         .eq('user_id', userId)
-        .eq('season', seasonLabel);
+        .eq('season', seasonLabel)
+        .select('*', { count: 'exact', head: true });
 
     if (error) {
         console.error('❌ [seasonArchive] Failed to update lottery result:', error);
-    } else {
-        console.log(`✅ Lottery result archived for season ${seasonLabel}.`);
+        return;
     }
+
+    if (count === 0) {
+        // 아카이브 레코드가 없는 경우 — 최소 필드로 upsert해 lottery_result를 보존
+        const { error: upsertError } = await supabase
+            .from('user_season_history')
+            .upsert(
+                { user_id: userId, season: seasonLabel, lottery_result: lotteryResult },
+                { onConflict: 'user_id, season' }
+            );
+        if (upsertError) {
+            console.error('❌ [seasonArchive] Failed to upsert lottery result (fallback):', upsertError);
+        } else {
+            console.log(`✅ Lottery result upserted (fallback) for season ${seasonLabel}.`);
+        }
+        return;
+    }
+
+    console.log(`✅ Lottery result archived for season ${seasonLabel}.`);
 }
 
 // ── 이전 시즌 기록 조회 ──

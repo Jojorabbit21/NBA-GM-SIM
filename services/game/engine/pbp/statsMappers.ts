@@ -293,10 +293,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.fta += numShots;
         const ftPct = actor.attr.ft / 100;
 
+        let lastShotMade = false;
         for (let i = 0; i < numShots; i++) {
-            if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+            const made = Math.random() < ftPct;
+            if (made) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+            if (i === numShots - 1) lastShotMade = made;
         }
-        const lastShotMade = ftMade === numShots;
 
         updatePlusMinus(offTeam, defTeam, ftMade);
         addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);

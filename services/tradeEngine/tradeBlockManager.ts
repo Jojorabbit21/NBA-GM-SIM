@@ -101,38 +101,49 @@ export function syncCPUTradeBlocks(
         // 픽 블록: direction에 따른 픽 방출 의향
         const teamPicks = leaguePickAssets[team.id] || [];
 
+        const hasPickInEntries = (season: number, round: number, originalTeamId: string) =>
+            entries.some(e => e.type === 'pick' && e.pick.season === season && e.pick.round === round && e.pick.originalTeamId === originalTeamId);
+
         for (const pick of teamPicks) {
             // 컨텐더(winNow/buyer): 먼 미래 픽 내놓기 가능
             if (needs.isContender && pick.round === 1 && pick.season >= new Date(currentDate).getFullYear() + 3) {
-                entries.push({
-                    type: 'pick',
-                    pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
-                    addedDate: currentDate,
-                });
+                if (!hasPickInEntries(pick.season, pick.round, pick.originalTeamId)) {
+                    entries.push({
+                        type: 'pick',
+                        pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
+                        addedDate: currentDate,
+                    });
+                }
             }
             // winNow: 가까운 미래 1라운드도 내놓음
             if (needs.direction === 'winNow' && pick.round === 1 && pick.season >= new Date(currentDate).getFullYear() + 1) {
-                entries.push({
-                    type: 'pick',
-                    pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
-                    addedDate: currentDate,
-                });
+                if (!hasPickInEntries(pick.season, pick.round, pick.originalTeamId)) {
+                    entries.push({
+                        type: 'pick',
+                        pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
+                        addedDate: currentDate,
+                    });
+                }
             }
             // 2라운드 픽은 누구나
             if (pick.round === 2) {
-                entries.push({
-                    type: 'pick',
-                    pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
-                    addedDate: currentDate,
-                });
+                if (!hasPickInEntries(pick.season, pick.round, pick.originalTeamId)) {
+                    entries.push({
+                        type: 'pick',
+                        pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
+                        addedDate: currentDate,
+                    });
+                }
             }
             // 셀러: 가까운 미래 1라운드도 내놓음 (다른 팀 원래 픽)
             if (needs.isSeller && pick.round === 1 && pick.originalTeamId !== team.id) {
-                entries.push({
-                    type: 'pick',
-                    pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
-                    addedDate: currentDate,
-                });
+                if (!hasPickInEntries(pick.season, pick.round, pick.originalTeamId)) {
+                    entries.push({
+                        type: 'pick',
+                        pick: { season: pick.season, round: pick.round, originalTeamId: pick.originalTeamId },
+                        addedDate: currentDate,
+                    });
+                }
             }
         }
 

@@ -132,9 +132,10 @@ export function calculateHitRate(
 
     // [defConsist] 수비 일관성 반영
     // 1. Flat modifier: defConsist 70 기준 ±0.3/pt
-    defRating += (defender.attr.defConsist - 70) * 0.3;
+    const defConsist = (defender.attr?.defConsist ?? 50);
+    defRating += (defConsist - 70) * 0.3;
     // 2. Defensive lapse: defConsist 낮을수록 간헐적 집중력 저하
-    const lapseChance = Math.max(0, (70 - defender.attr.defConsist) * 0.003);
+    const lapseChance = Math.max(0, (70 - defConsist) * 0.003);
     if (lapseChance > 0 && Math.random() < lapseChance) {
         defRating *= 0.7;
     }
@@ -310,8 +311,10 @@ export function calculateHitRate(
         if (isGuardOnBig || isBigOnGuard || skillGap >= 15) {
             isMismatch = true;
             // 격차에 비례한 공격 이점, 최대 +12%
-            const intensity     = Math.max(skillGap, 15);
-            const mismatchBonus = Math.min(0.12, (intensity / 100) * 0.3);
+            // skillGap이 음수이면 보너스 없음 (수비수 스킬이 더 높음)
+            const effectiveGap  = Math.max(skillGap, 0);
+            const intensity     = Math.max(effectiveGap, 15);
+            const mismatchBonus = effectiveGap > 0 ? Math.min(0.12, (intensity / 100) * 0.3) : 0;
             hitRate += mismatchBonus;
         } else {
             // 성공적 스위치: 미스매치 없이 포지션을 잘 잡은 수비자 → 공격자 공간 축소

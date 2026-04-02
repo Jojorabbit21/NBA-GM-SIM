@@ -70,12 +70,6 @@ export default {
           subtle: '#64748b',              // slate-500
         },
       },
-      // === 보더 래디우스 토큰 ===
-      borderRadius: {
-        'card': '1.5rem',                // 카드 (= rounded-3xl)
-        'button': '1rem',                // 버튼 (= rounded-2xl)
-        'element': '0.75rem',            // 작은 요소 (= rounded-xl)
-      },
       // === 폰트 패밀리 ===
       fontFamily: {
         'sport': ['Pretendard Variable', 'Pretendard', 'sans-serif'],

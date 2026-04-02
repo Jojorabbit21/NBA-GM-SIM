@@ -494,6 +494,14 @@ export function evaluateExtensionOffer(
 ): { response: NegotiationResponse; updatedState: NegotiationState } {
     const { demand, personality } = state;
 
+    // ── 규칙 0: WALKED_AWAY 상태 유지 — 상태 변이 전에 먼저 체크
+    if (state.walkedAway) {
+        return {
+            response: { outcome: 'WALKED_AWAY', message: '협상이 이미 결렬되었습니다.' },
+            updatedState: state,
+        };
+    }
+
     // 계약 옵션 보정 — 수락 판정에만 사용 (저장 연봉은 offer.annualSalary 원본)
     let effectiveAAV = offer.annualSalary;
     if (offer.option?.type === 'player') effectiveAAV *= 1.08;
@@ -529,14 +537,6 @@ export function evaluateExtensionOffer(
                 message: `이 제안은 모욕적입니다. (최소 ${formatMoney(demand.insultThreshold)} 이상)`,
             },
             updatedState: next,
-        };
-    }
-
-    // ── 규칙 2: WALKED_AWAY 상태 유지
-    if (state.walkedAway) {
-        return {
-            response: { outcome: 'WALKED_AWAY', message: '협상이 이미 결렬되었습니다.' },
-            updatedState: state,
         };
     }
 
