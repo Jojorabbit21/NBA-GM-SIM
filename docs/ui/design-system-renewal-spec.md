@@ -2237,7 +2237,7 @@ TabBar/Pill
 **디자인 원칙:**
 
 - **컨테이너**: 배경 `surface/card` #27272A, 보더 1px `border/default` #3F3F46, border-radius 16px
-- **Shadow**: `0 20px 40px rgba(0,0,0,0.4)`
+- **Shadow**: `shadow/xl` — `0 20px 25px -5px rgba(0,0,0,0.10)` + `0 10px 10px -5px rgba(0,0,0,0.04)`
 - **오버레이**: `surface/background` #18181B, opacity 80%, backdrop-blur
 - **구성**: 헤더(타이틀 + 닫기 버튼) + 콘텐츠(스크롤) + 푸터(우측 정렬 액션) — 필요한 슬롯만 사용
 - **Size**: sm 400px / md 560px / lg 720px / xl 960px
@@ -2332,108 +2332,241 @@ TabBar/Pill
 
 ### 4-4. Dropdown (Select)
 
-> **범위**: 이 섹션은 "값/데이터 선택" 목적의 Select 패턴을 다룬다. 액션 실행 목적의 Dropdown(Sidebar 프로필 메뉴 등)은 2-3 NavDropdown, Split Button의 액션 드롭다운은 3-1 Split Button 섹션 참조.
+> **범위**: "값/데이터 선택" 목적의 Select 패턴. 액션 실행 목적 Dropdown은 2-3 NavDropdown 참조.
+>
+> **단일 타입으로 통일**: 검색창 포함 Searchable Select 폐기. 팀 선택(트레이드 물색 포함) 역시 동일한 스크롤 목록 패턴 사용. 아이템에 아이콘(팀 로고 등) 포함 여부만 다르다.
 
-#### 케이스 분류
+#### 사용처
 
-| 타입 | 트리거 | 패널 | 현재 사용처 |
-|------|--------|------|-----------|
-| **Select** | 선택된 값 텍스트 + ChevronDown | 단순 목록 | LeaderboardToolbar 뷰 모드·스탯 카테고리 |
-| **Searchable Select** | 아이콘 + 선택된 값(또는 플레이스홀더) + ChevronDown | 검색창 + 목록 | 트레이드 상대 팀 선택 |
-| **Multi-select** | 레이블 + 선택 개수 배지 | 체크박스 목록 | LeaderboardToolbar 팀·포지션 필터 |
-| **Native `<select>` 교체 대상** | — | — | 계약 연수·전술 슬롯·rows 수 등 숫자/단순 옵션 |
+| 사용처 | 선택 방식 | 아이템 구성 |
+|--------|---------|-----------|
+| LeaderboardToolbar — 뷰 모드/카테고리 | 단일 선택 | 텍스트만 |
+| LeaderboardToolbar — 팀/포지션 필터 | 다중 선택 | 텍스트 (+ 팀 로고 선택 가능) |
+| TradeNegotiationBuilder — 상대팀 선택 | 단일 선택 | 팀 로고 + 텍스트 |
+| CoachNegotiationScreen — 직무/계약기간 | 단일 선택 | 텍스트만 (native `<select>` 교체) |
+| NegotiationScreen — 계약기간/옵션 | 단일 선택 | 텍스트만 (native `<select>` 교체) |
 
 ---
 
-#### 공통 Panel 스타일
+#### Trigger
+
+```
+┌────────────────────────────────┐
+│  [아이콘]  선택된 값 또는 플레이스홀더  ∨  │
+└────────────────────────────────┘
+```
 
 | 속성 | 값 |
 |------|----|
 | 배경 | `surface/card` #27272A |
-| 보더 | `border/default` #3F3F46, 1px |
-| border-radius | 12px |
-| shadow | `elevation/md`: `0 4px 6px rgba(0,0,0,0.15)` + `0 2px 4px rgba(0,0,0,0.10)` |
-| 내부 padding | 8px (패널 자체) |
-| 최소 너비 | 트리거 너비 이상 |
-| 위치 | portal 기반, 트리거 하단 4px gap |
-
-#### DropdownItem 상태별 스펙
-
-| State | 배경 | 텍스트 | 아이콘 |
-|-------|------|--------|--------|
-| Default | transparent | `text/muted` #A1A1AA | `text/muted` |
-| Hover | `surface/inset` #09090B (8% opacity) | `text/primary` #FAFAFA | `text/primary` |
-| Selected | `cta/default` 10% | `cta/subtle` #A5B4FC | `cta/subtle` (체크마크 우측 표시) |
-| Disabled | transparent | `text/disabled` #71717A | `text/disabled` |
-
-- 아이템 padding: 8px 12px
-- 아이템 border-radius: 8px
-- 아이템 높이: 36px
-- 텍스트: 14px Regular
-
----
-
-#### Type 1 — Select
-
-단일 값 선택. 선택된 값이 트리거에 반영됨.
-
-**Trigger**
-
-| 속성 | 값 |
-|------|----|
-| 배경 | `surface/card` #27272A |
-| 보더 | `border/default` #3F3F46, 1px |
+| 보더 | 1px `border/default` #3F3F46 |
 | border-radius | 8px |
-| padding | 8px 12px |
+| padding | 상하 8px / 좌우 12px |
 | 높이 | 36px |
-| 텍스트 | 선택된 값, 14px Medium, `text/primary` |
-| 우측 아이콘 | ChevronDown 16px (닫힘) / ChevronUp (열림), `text/muted` |
+| 텍스트 | 14px Medium, `text/primary` #FAFAFA (선택값) / `text/muted` #A1A1AA (플레이스홀더) |
+| 좌측 아이콘 | 16px, 선택 사항 (팀 로고 등) + gap 8px |
+| 우측 아이콘 | ChevronDown 16px `text/muted` (닫힘) / ChevronUp (열림) |
 
-**Panel**
+**Trigger 상태:**
 
-- 공통 Panel 스타일 적용
-- 현재 선택 아이템에 Selected 상태 스타일
+| State | 보더 | 배경 |
+|-------|------|------|
+| Default | `border/default` #3F3F46 | `surface/card` #27272A |
+| Hover | `border/emphasis` #52525B | `surface/card` #27272A |
+| Selected / Open (패널 열림) | `cta/default` #6366F1 | `surface/card` #27272A |
+| Disabled | 없음 | `surface/disabled` #3F3F46 |
 
----
+**다중 선택 시 Trigger 추가 요소:**
 
-#### Type 2 — Searchable Select
+선택된 항목이 1개 이상이면 우측 ChevronDown 왼쪽에 카운트 Badge 표시.
 
-목록이 길거나(팀 30개 등) 검색이 필요한 경우.
-
-**Trigger**
-
-Select Trigger와 동일 구조. 선택된 값 없을 시 플레이스홀더 (`text/muted`).  
-아이콘이 있는 경우 좌측에 16px 아이콘 + 8px gap.
-
-**Panel**
-
-- 상단: 검색 Input 컨테이너 (8px padding, border-bottom `border/default` 1px)
-  - Input height 32px, placeholder "검색...", 14px, `text/muted`
-  - 검색 아이콘 좌측 16px
-- 하단: 스크롤 가능한 목록 (최대 높이 240px, `overflow-y: auto`)
-- 아이템 좌측에 16px 아이콘(TeamLogo 등) + 8px gap 허용
+| 속성 | Default/Hover/Selected | Disabled |
+|------|----------------------|---------|
+| Badge 배경 | `cta/default` #6366F1 | `border/dim` #27272A |
+| Badge 텍스트 색상 | white | `text/disabled` #71717A |
+| Badge 텍스트 | 10px Bold | 10px Bold |
+| Badge 크기 | 16px × 16px, 50% radius | 16px × 16px, 50% radius |
 
 ---
 
-#### Type 3 — Multi-select Filter
+#### Panel
 
-팀·포지션 등 복수 선택 필터. 주로 리스트/테이블 상단 필터 바에서 사용.
+```
+┌────────────────────────────────┐   ← 트리거 하단 4px gap
+│  □  모두 선택                   │   ← showSelectAll (다중 선택 전용)
+│  ────────────────────────────  │   ← showDivider (8px)
+│  □  [아이콘]  아이템 1           │
+│  □  [아이콘]  아이템 2           │
+│  □  [아이콘]  아이템 3           │
+│               ...              │
+└────────────────────────────────┘
+```
 
-**Trigger**
+**Panel Props:**
 
-| 상태 | 스타일 |
-|------|--------|
-| 기본 | `surface/card` 배경, `border/default` 1px, `text/muted` 레이블 |
-| 1개 이상 선택됨 | `border/emphasis` #52525B (또는 `cta/default` 20%), 선택 개수 Badge 우측 표시 |
+| Prop | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `showSelectAll` | boolean | true | "모두 선택" 행 표시 (다중 선택 모드) |
+| `showDivider` | boolean | true | "모두 선택" 아래 구분선 표시 |
 
-선택 개수 Badge: `cta/default` 배경, white 텍스트, 12px Bold, 16px × 16px circle
+**Panel 스타일:**
 
-**Panel**
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/card` #27272A |
+| 보더 | 1px `border/default` #3F3F46 |
+| border-radius | 12px |
+| shadow | `shadow/xl` |
+| padding | 8px (사방 균일) |
+| 최대 높이 | 240px, `overflow-y: auto` |
+| 위치 | portal 기반, 트리거 하단 4px |
+| Divider 높이 | 8px |
 
-- 맨 위: "전체 선택/해제" 아이템 (굵기 Medium)
-- 구분선 이후: 개별 아이템 목록
-- 각 아이템: 16px 체크박스(선택 시 `cta/default` fill) + 레이블
-- 아이콘 허용 (TeamLogo 등)
+---
+
+**DropdownItem Props:**
+
+| Prop | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `multiple` | boolean | true | 다중 선택 모드 (체크박스 표시) |
+| `showCheckbox` | boolean | true | 체크박스 표시 (multiple 모드) |
+| `showCheckedIcon` | boolean | true | 우측 체크마크 (단일 Selected) |
+| `showTeamLogo` | boolean | true | 좌측 아이콘 슬롯 |
+
+**DropdownItem — 단일 선택 (multiple=false):**
+
+| State | 배경 | 텍스트 |
+|-------|------|--------|
+| Default | transparent | `text/muted` #A1A1AA |
+| Hover | `cta/default` 10% `rgba(99,102,241,0.1)` | `text/primary` #FAFAFA |
+| Selected | `cta/default` 50% `rgba(99,102,241,0.5)` | `base/white` white |
+| Disabled | transparent | `text/disabled` #71717A |
+
+| 속성 | 값 |
+|------|----|
+| padding | 상하 6px / 좌우 16px |
+| 텍스트 | 14px Medium |
+| 좌측 아이콘 | 16px, 선택 사항 (팀 로고 등), gap 8px |
+| Selected 체크마크 | CheckIcon 14px, 우측 정렬 |
+
+**DropdownItem — 다중 선택 (multiple=true):**
+
+| State | 배경 | 텍스트 |
+|-------|------|--------|
+| Default | transparent | `text/muted` #A1A1AA |
+| Disabled | transparent | `text/disabled` #71717A |
+
+| 속성 | 값 |
+|------|----|
+| padding | 상하 6px / 좌 10px / 우 16px |
+| 체크박스 | 14px, border-2 `border/default`, border-radius 4px, 좌측 배치, gap 14px |
+| 좌측 아이콘 | 16px, 선택 사항, gap 8px |
+| 텍스트 | 14px Medium |
+
+---
+
+#### 코드 구현 메모
+
+- `TradeNegotiationBuilder` 상대팀 선택: 기존 패널 내 검색창 제거, 스크롤 목록으로 대체
+- `CoachNegotiationScreen` / `NegotiationScreen`: native `<select>` → 공통 Dropdown 컴포넌트로 교체
+- `components/common/Dropdown.tsx` 기존 컴포넌트 기반으로 Trigger 스타일 리뉴얼
+
+---
+
+### 4-4-B. Autocomplete (Command Search)
+
+> **범위**: 텍스트를 타이핑하면 결과 패널이 자동으로 펼쳐지는 검색 패턴. 값 선택이 아닌 **탐색/이동** 목적. 4-4 Dropdown Select와 별개.
+>
+> **현재 구현체**: `components/dashboard/GlobalSearch.tsx` — 완전 커스텀, 리뉴얼 대상.
+>
+> **위치**: 2-2 Top Navigation Bar 내 중앙 검색창.
+
+#### 피그마 작업 범위
+
+- **Input**: 3-3-A Input 컴포넌트 그대로 사용 (별도 디자인 불필요)
+- **결과 패널 + 아이템**: 신규 디자인 필요
+
+#### 구조
+
+```
+┌─────────────────────────────────────────┐
+│ 🔍  팀, 선수, 코칭스태프 검색         [✕] │  ← 3-3-A Input 컴포넌트 사용
+└─────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  팀                                     │  ← 카테고리 헤더
+│  [로고]  Los Angeles Lakers             │
+│  [로고]  Los Angeles Clippers           │
+│  선수                                   │  ← 카테고리 헤더
+│  [OVR]  LeBron James    LAL   SF        │
+│  ...                                    │
+└─────────────────────────────────────────┘
+```
+
+#### 결과 패널
+
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/card` #27272A |
+| 보더 | 1px `border/default` #3F3F46 |
+| border-radius | 12px |
+| shadow | `shadow/xl` |
+| 너비 | 240px |
+| 최대 높이 | 320px, `overflow-y: auto` |
+| 위치 | 인풋 하단 4px, 좌측 정렬 |
+| 노출 조건 | 입력값 1자 이상일 때만 표시 |
+
+**공통 (모든 타입):**
+
+| 속성 | 값 |
+|------|----|
+| padding | 상하 8px / 좌우 12px |
+| 텍스트 | 12px SemiBold, `text/muted` #A1A1AA |
+
+**Category Header 타입:**
+
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/sidebar` #18181B |
+
+**Team / Player / Staff 타입:**
+
+| 속성 | 값 |
+|------|----|
+| 너비 | 240px (Team 타입 제외) |
+| gap (내부) | 12px |
+| Default 배경 | transparent |
+| Hover 배경 | `surface/hover` #52525B |
+
+**NoResult 타입:**
+
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/sidebar` #18181B |
+| 너비 | 240px |
+| 텍스트 | "검색 결과 없음", 12px SemiBold, `text/muted`, 좌측 정렬 |
+
+#### 카테고리별 아이템 구성
+
+| 카테고리 | 좌측 엘리먼트 | 중앙 (이름) | 우측 |
+|---------|------------|------------|------|
+| 팀 | TeamLogo 24px | 팀명 | — |
+| 선수 | OVR Badge s (16px) | 이름 | Team Badge + Position Badge |
+| 단장/코치 | Info Badge ("GM" / "코치") | 이름 | Team Badge |
+
+**뱃지 스펙:**
+
+| 뱃지 | 배경 | 텍스트 |
+|------|------|--------|
+| Team Badge (우측) | `accent/primary` #31006F | `accent/secondary` #FDB927 |
+| Position Badge (우측) | `surface/card` #27272A | `text/secondary` #E4E4E7 |
+| Info Badge (GM/코치, 좌측) | `status/info/muted` rgba(14,165,233,0.1) | `status/info/text` #38BDF8 |
+
+#### 동작
+
+- 타이핑 즉시 결과 갱신 (debounce 불필요 — 클라이언트 사이드 필터)
+- 결과 클릭 시 해당 팀/선수 상세 뷰로 이동, 입력값 초기화
+- `Esc` 키 → 패널 닫힘 + 입력값 초기화
+- 외부 클릭 → 패널 닫힘
 
 ---
 
