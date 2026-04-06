@@ -7,7 +7,7 @@ import { ResetDataModal } from './ResetDataModal';
 import { EditorModal } from './EditorModal';
 import { SimSettingsModal } from './SimSettingsModal';
 import MainLayout from './MainLayout';
-import SkeletonLoader from './SkeletonLoader';
+import Loader from './Loader';
 import type { Player } from '../types';
 
 // ─── ProtectedLayout ─────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ const ProtectedLayout: React.FC = () => {
 
     // ─── 데이터 로딩 ─────────────────────────────────────────────────────
 
-    if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} message={gameData.loadingMessage} />;
+    if (gameData.isSaveLoading) return <Loader progress={gameData.loadingProgress} message={gameData.loadingMessage} />;
 
     // ─── 초기화 에러 가드 (세이브 덮어쓰기 방지) ─────────────────────────
 

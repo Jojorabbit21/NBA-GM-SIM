@@ -6,7 +6,7 @@ import { Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
 import { PendingOffseasonAction, OffseasonPhase } from '../types/app';
 import { GMProfile } from '../types/gm';
 import { SeasonKeyDates } from '../utils/seasonConfig';
-import { ContentSkeleton } from './SkeletonLoader';
+import { ContentLoader } from './Loader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
 import type { UpcomingGame } from './dashboard/DateSkipDropdown';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -212,7 +212,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 )}
 
                 <div className={`flex-1 ${isFullHeightView || isNoPaddingView ? 'min-h-0' : 'p-8 lg:p-12'}`}>
-                    <Suspense fallback={<ContentSkeleton />}>
+                    <Suspense fallback={<ContentLoader />}>
                         {children}
                     </Suspense>
                 </div>

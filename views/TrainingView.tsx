@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Dumbbell } from 'lucide-react';
+import { SliderControl } from '../components/common/SliderControl';
 import {
     TeamTrainingConfig,
     TrainingProgramKey,
@@ -147,14 +148,15 @@ export const TrainingView: React.FC<TrainingViewProps> = ({
                                     <span className="text-xs font-black text-indigo-400 font-mono">{totalPoints}pts</span>
                                 </div>
                             </div>
-                            <input
-                                type="range"
+                            <SliderControl
+                                label="훈련 예산"
+                                value={budget}
                                 min={0}
                                 max={MAX_BUDGET}
-                                step={BUDGET_STEP}
-                                value={budget}
-                                onChange={e => setBudget(Number(e.target.value))}
-                                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-indigo-500"
+                                onChange={setBudget}
+                                subLabel={formatMoney(budget)}
+                                leftLabel="$0"
+                                rightLabel="$20M"
                             />
                             <div className="flex justify-between text-[10px] text-slate-600 font-mono">
                                 <span>$0</span>

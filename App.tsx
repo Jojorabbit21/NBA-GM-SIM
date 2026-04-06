@@ -16,7 +16,7 @@ import { UpdateToast } from './components/UpdateToast';
 import GameContext from './hooks/useGameContext';
 import type { GameContextValue } from './hooks/useGameContext';
 
-import FullScreenLoader, { DatabaseErrorView } from './components/FullScreenLoader';
+import Loader, { DatabaseErrorView } from './components/Loader';
 import ProtectedLayout from './components/ProtectedLayout';
 
 // Pages — 비보호 라우트
@@ -248,7 +248,7 @@ const App: React.FC = () => {
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
 
     // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
-    if (authLoading) return <FullScreenLoader message="잠시만 기다려주세요..." />;
+    if (authLoading) return <Loader message="잠시만 기다려주세요..." />;
     if (gameData.isBaseDataError) {
         return <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} />;
     }

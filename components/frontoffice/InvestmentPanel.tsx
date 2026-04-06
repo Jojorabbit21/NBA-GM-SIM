@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentCategory, TeamInvestmentState } from '../../types/finance';
 import { computeInvestmentEffects } from '../../services/financeEngine/investmentEngine';
+import { SliderControl } from '../common/SliderControl';
 
 interface InvestmentPanelProps {
     teamId: string;
@@ -117,19 +118,16 @@ export const InvestmentPanel: React.FC<InvestmentPanelProps> = ({
                                 <div className="text-green-400 text-xs">{effectLabel(key)}</div>
                             </div>
                         </div>
-                        <input
-                            type="range"
+                        <SliderControl
+                            label=""
+                            value={allocations[key]}
                             min={0}
                             max={max}
-                            step={step}
-                            value={allocations[key]}
-                            onChange={e => handleSlider(key, Number(e.target.value))}
-                            className="w-full accent-indigo-500"
+                            onChange={val => handleSlider(key, val)}
+                            subLabel={fmtM(allocations[key])}
+                            leftLabel="$0"
+                            rightLabel={fmtM(max)}
                         />
-                        <div className="flex justify-between text-xs text-gray-600 mt-1">
-                            <span>$0</span>
-                            <span>{fmtM(max)}</span>
-                        </div>
                     </div>
                 ))}
             </div>

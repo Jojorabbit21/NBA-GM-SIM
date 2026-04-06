@@ -48,32 +48,32 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                     <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">게임 운영</h4>
                         <SliderControl label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
-                            steps={SLIDER_STEPS.pace} tooltip="빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316" />
+                            steps={SLIDER_STEPS.pace} tooltip="빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다." />
                         <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
-                            steps={SLIDER_STEPS.ballMovement} tooltip="패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." fillColor="#f97316" />
+                            steps={SLIDER_STEPS.ballMovement} tooltip="패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." />
                         <SliderControl label="공격 리바운드" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
-                            steps={SLIDER_STEPS.offReb} tooltip="적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다." fillColor="#f97316" />
+                            steps={SLIDER_STEPS.offReb} tooltip="적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다." />
 
                         <div className="h-px bg-slate-800 my-2" />
 
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">슈팅 전략</h4>
                         <SliderControl label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
-                            steps={SLIDER_STEPS.shot_3pt} tooltip="팀의 3점 시도 빈도를 결정합니다." fillColor="#10b981" />
+                            steps={SLIDER_STEPS.shot_3pt} tooltip="팀의 3점 시도 빈도를 결정합니다." />
                         <SliderControl label="골밑 공격 빈도" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
-                            steps={SLIDER_STEPS.shot_rim} tooltip="가장 효율적인 슛 구역으로, 드라이브/컷 능력과 연계됩니다." fillColor="#10b981" />
+                            steps={SLIDER_STEPS.shot_rim} tooltip="가장 효율적인 슛 구역으로, 드라이브/컷 능력과 연계됩니다." />
                         <SliderControl label="중거리 슛 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
-                            steps={SLIDER_STEPS.shot_mid} tooltip="중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요." fillColor="#10b981" />
+                            steps={SLIDER_STEPS.shot_mid} tooltip="중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요." />
                     </div>
 
                     {/* Right col: 코칭 철학 */}
                     <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">코칭 철학</h4>
                         <SliderControl label="공격 스타일" value={sliders.playStyle} onChange={v => updateSlider('playStyle', v)}
-                            steps={SLIDER_STEPS.playStyle} tooltip="히어로 볼은 스타 선수의 1:1 창조력에 의존합니다. 시스템 농구는 팀 전체의 패싱/무빙으로 오픈 슛을 만듭니다." fillColor="#3b82f6" />
+                            steps={SLIDER_STEPS.playStyle} tooltip="히어로 볼은 스타 선수의 1:1 창조력에 의존합니다. 시스템 농구는 팀 전체의 패싱/무빙으로 오픈 슛을 만듭니다." />
                         <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
-                            steps={SLIDER_STEPS.insideOut} tooltip="인사이드는 페인트존 공격(포스트업, 컷, 롤)을 강조합니다. 아웃사이드는 외곽 슈팅(캐치앤슛, 팝, 드라이브킥)을 강조합니다." fillColor="#3b82f6" />
+                            steps={SLIDER_STEPS.insideOut} tooltip="인사이드는 페인트존 공격(포스트업, 컷, 롤)을 강조합니다. 아웃사이드는 외곽 슈팅(캐치앤슛, 팝, 드라이브킥)을 강조합니다." />
                         <SliderControl label="P&R 의존도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
-                            steps={SLIDER_STEPS.pnrFreq} tooltip="높을수록 픽앤롤 관련 플레이(핸들러, 롤, 팝) 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적." fillColor="#3b82f6" />
+                            steps={SLIDER_STEPS.pnrFreq} tooltip="높을수록 픽앤롤 관련 플레이(핸들러, 롤, 팝) 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적." />
                     </div>
                 </div>
 
@@ -86,26 +86,26 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                     <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">온볼 수비</h4>
                         <SliderControl label="수비 압박 강도" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
-                            steps={SLIDER_STEPS.defIntensity} tooltip="타이트할수록 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1" />
+                            steps={SLIDER_STEPS.defIntensity} tooltip="타이트할수록 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." />
                         <SliderControl label="스위치 수비" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
-                            steps={SLIDER_STEPS.switchFreq} tooltip="스크린 대처 방식입니다. 스위치할수록 미스매치 위험이 있지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1" />
+                            steps={SLIDER_STEPS.switchFreq} tooltip="스크린 대처 방식입니다. 스위치할수록 미스매치 위험이 있지만 오픈 찬스는 줄어듭니다." />
                         <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
                             steps={PNR_STEPS}
                             tooltip="드랍: 빅맨이 뒤로 빠져 림 보호(미드레인지 허용). 헷지: 빅맨이 순간 나와 핸들러 지연 후 복귀. 블리츠: 빅맨이 볼 핸들러를 더블팀(턴오버 유발, 킥아웃 3점 허용)."
-                            fillColor="#6366f1" />
+                            />
                         <SliderControl label="풀코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
-                            steps={SLIDER_STEPS.fullCourtPress} tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#6366f1" />
+                            steps={SLIDER_STEPS.fullCourtPress} tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." />
                     </div>
 
                     {/* Right col: 오프볼 수비 */}
                     <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">오프볼 수비</h4>
                         <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
-                            steps={SLIDER_STEPS.helpDef} tooltip="적극 지원할수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#d946ef" />
+                            steps={SLIDER_STEPS.helpDef} tooltip="적극 지원할수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." />
                         <SliderControl label="지역 방어" value={sliders.zoneFreq} onChange={v => { updateSlider('zoneFreq', v); updateSlider('zoneUsage', v); }}
-                            steps={SLIDER_STEPS.zoneFreq} tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." fillColor="#d946ef" />
+                            steps={SLIDER_STEPS.zoneFreq} tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." />
                         <SliderControl label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
-                            steps={SLIDER_STEPS.defReb} tooltip="박스아웃할수록 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef" />
+                            steps={SLIDER_STEPS.defReb} tooltip="박스아웃할수록 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." />
                     </div>
                 </div>
 

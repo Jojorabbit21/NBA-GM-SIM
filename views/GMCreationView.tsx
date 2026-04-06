@@ -8,6 +8,7 @@ import {
     GM_SLIDER_PRESETS,
     GMSliders,
 } from '../types/gm';
+import { SliderControl } from '../components/common/SliderControl';
 
 interface GMCreationViewProps {
     onComplete: (data: {
@@ -29,14 +30,6 @@ const SLIDER_LABELS: Record<keyof GMSliders, string> = {
     pickWillingness: '픽 활용',
 };
 
-const SLIDER_COLORS: Record<keyof GMSliders, string> = {
-    aggressiveness:  '#ef4444',
-    starWillingness: '#facc15',
-    youthBias:       '#34d399',
-    riskTolerance:   '#fb923c',
-    pickWillingness: '#38bdf8',
-};
-
 const DEFAULT_SLIDERS: GMSliders = { aggressiveness: 5, starWillingness: 5, youthBias: 5, riskTolerance: 5, pickWillingness: 5 };
 
 /** 슬라이더 값에서 가장 가까운 성격 타입 자동 결정 */
@@ -55,46 +48,6 @@ function findClosestPersonality(sliders: GMSliders): GMPersonalityType {
     }
     return best;
 }
-
-// ─── Slider Row ───────────────────────────────────────────────────────────────
-
-const SliderRow: React.FC<{
-    sliderKey: keyof GMSliders;
-    value: number;
-    onChange: (val: number) => void;
-}> = ({ sliderKey, value, onChange }) => {
-    const color = SLIDER_COLORS[sliderKey];
-    const pct = ((value - 1) / 9) * 100;
-    return (
-        <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-slate-300">{SLIDER_LABELS[sliderKey]}</span>
-                <span className="text-sm font-black tabular-nums text-white">{value}</span>
-            </div>
-            <div className="relative h-8 flex items-center">
-                {/* Track background */}
-                <div className="w-full h-1.5 rounded-full bg-slate-700 relative">
-                    <div
-                        className="absolute left-0 top-0 h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, backgroundColor: color }}
-                    />
-                </div>
-                {/* Handle */}
-                <div
-                    className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md border border-slate-300 pointer-events-none transition-all"
-                    style={{ left: `calc(${pct}% - ${(pct * 0.14).toFixed(2)}px)` }}
-                />
-                <input
-                    type="range"
-                    min={1} max={10} step={1}
-                    value={value}
-                    onChange={e => onChange(Number(e.target.value))}
-                    className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
-                />
-            </div>
-        </div>
-    );
-};
 
 // ─── Main View ────────────────────────────────────────────────────────────────
 
@@ -254,10 +207,12 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
                                 {/* Sliders */}
                                 <div className="space-y-5 mb-6">
                                     {(Object.keys(DEFAULT_SLIDERS) as Array<keyof GMSliders>).map(key => (
-                                        <SliderRow
+                                        <SliderControl
                                             key={key}
-                                            sliderKey={key}
+                                            label={SLIDER_LABELS[key]}
                                             value={sliders[key]}
+                                            min={1}
+                                            max={10}
                                             onChange={val => setSlider(key, val)}
                                         />
                                     ))}

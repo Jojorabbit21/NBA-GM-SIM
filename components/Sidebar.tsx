@@ -3,19 +3,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Home, LayoutDashboard, Trophy, PieChart,
-  CalendarDays, ArrowLeftRight,
-  RotateCcw, LogOut, Globe, Gavel, CircleUser,
-  BookOpen, FileText, Wand2, Crown, Settings, Landmark,
-  Sparkles, Dices, Contact, UserPlus, GitPullRequestClosed,
-  Table2,
+  House, Inbox, Landmark, CircleDollarSign, Users, GitPullRequestClosed,
+  ListOrdered, ChartNoAxesColumn, ArrowLeftRight, ZoomIn, Calendar, Medal,
+  CircleUser, Settings,
+  RotateCcw, LogOut, Crown, BookOpen, FileText, Wand2, Gavel, Sparkles, Dices,
 } from 'lucide-react';
 import { Team } from '../types';
 import { PendingOffseasonAction, type OffseasonPhase } from '../types/app';
-import { TEAM_DATA } from '../data/teamData';
-
 import { LegalModal } from './LegalModal';
-import { getTeamTheme, SIDEBAR_ICON_COLORS } from '../utils/teamTheme';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -41,30 +36,19 @@ const NavItem: React.FC<{
   onClick: () => void;
   badge?: number;
   textBadge?: string;
-  iconColor: string;
-  whiteBg?: boolean;
   buttonRef?: React.RefObject<HTMLButtonElement>;
-}> = ({ active, icon, label, onClick, badge, textBadge, iconColor, whiteBg, buttonRef }) => {
-  const selectedBg = whiteBg ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
-  const hoverCls = whiteBg
-    ? 'hover:bg-[rgba(255,255,255,0.1)] hover:outline-[rgba(255,255,255,0.2)]'
-    : 'hover:bg-[rgba(0,0,0,0.15)] hover:outline-[rgba(0,0,0,0.2)]';
-  return (
+}> = ({ active, icon, label, onClick, badge, textBadge, buttonRef }) => (
   <button
     ref={buttonRef}
     onClick={onClick}
     title={label}
-    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 outline outline-2 outline-transparent ${
+    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 ${
       active
-        ? 'shadow-[0px_10px_15px_0px_rgba(0,0,0,0.1),0px_4px_6px_0px_rgba(0,0,0,0.05)]'
-        : `opacity-70 ${hoverCls}`
+        ? 'bg-[rgba(0,0,0,0.5)]'
+        : 'opacity-70 hover:opacity-100 hover:bg-[rgba(255,255,255,0.05)]'
     }`}
-    style={active ? { backgroundColor: selectedBg } : undefined}
   >
-    {React.cloneElement(icon as React.ReactElement<any>, {
-      size: 24,
-      color: iconColor,
-    })}
+    {React.cloneElement(icon as React.ReactElement<any>, { size: 24, color: 'white' })}
     {badge !== undefined && badge > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
         {badge > 9 ? '9+' : badge}
@@ -76,8 +60,9 @@ const NavItem: React.FC<{
       </span>
     )}
   </button>
-  );
-};
+);
+
+const Divider = () => <div className="w-6 h-px bg-zinc-800 shrink-0" />;
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
@@ -95,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onLogout,
 }) => {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -104,23 +89,15 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const [dropdownBottom, setDropdownBottom] = useState(0);
   const [dropdownLeft, setDropdownLeft] = useState(0);
 
-  const teamStatic = team ? TEAM_DATA[team.id] : null;
-  const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
+  const isSalaryTab = search.includes('tab=salary');
 
-  // 사이드바 배경: 항상 팀 primary 색 (Figma 기준)
-  const sidebarBg = teamStatic?.colors?.primary ?? '#0f172a';
-
-  // 비선택 아이콘: Figma {TEAM}/secondary 기준
-  const iconColor = team ? (SIDEBAR_ICON_COLORS[team.id] ?? '#ffffff') : '#ffffff';
-
-  // 프로필 드롭다운 외부 클릭 닫기
   useEffect(() => {
     if (!isMenuOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      const inBtn = menuRef.current?.contains(target);
-      const inDropdown = dropdownRef.current?.contains(target);
-      if (!inBtn && !inDropdown) setIsMenuOpen(false);
+      if (!menuRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setIsMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -135,33 +112,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     setIsMenuOpen(prev => !prev);
   };
 
-  const isWhiteBg = team?.id === 'sa';
-
-  // NavItem 래퍼 — iconColor/whiteBg 자동 주입
-  const Nav = (props: Omit<React.ComponentProps<typeof NavItem>, 'iconColor' | 'whiteBg'>) => (
-    <NavItem {...props} iconColor={iconColor} whiteBg={isWhiteBg} />
-  );
-
   return (
     <>
-      <aside
-        className="w-20 shrink-0 flex flex-col h-screen z-20 relative"
-        style={{
-          backgroundColor: sidebarBg,
-          borderRight: '1px solid rgba(255,255,255,0.2)',
-        }}
-      >
-        {/* 그라디언트 오버레이: 좌(투명) → 우(약 12% 검정) */}
-        <div
-          className="absolute inset-0 pointer-events-none z-0"
-          style={{
-            background: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.12) 100%)',
-          }}
-        />
+      <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-[#18181b] border-r border-[#27272a]">
 
-        {/* 메인 네비게이션 */}
-        <nav className="flex-1 flex flex-col gap-6 px-5 pt-6 pb-2 relative z-10">
-          {/* 오프시즌 이벤트 버튼 */}
+        {/* Upper navigation */}
+        <nav className="flex-1 flex flex-col items-center gap-6 pt-6 pb-2 relative z-10">
+
+          {/* Offseason action */}
           {pendingOffseasonAction && (() => {
             const cfg = pendingOffseasonAction === 'lottery'
               ? { path: '/draft-lottery', icon: <Dices size={22} color="white" />, label: '로터리 추첨' }
@@ -178,32 +136,105 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             );
           })()}
 
-          <Nav active={pathname === '/'} icon={<Home />} label="홈" onClick={() => navigate('/')} />
-          <Nav active={pathname.startsWith('/inbox')} icon={<Globe />} label="받은 메세지" onClick={() => navigate('/inbox')} badge={unreadMessagesCount} />
-          <Nav active={pathname.startsWith('/front-office')} icon={<Landmark />} label="프론트 오피스" onClick={() => navigate('/front-office')} />
-          <Nav active={pathname.startsWith('/locker-room')} icon={<LayoutDashboard />} label="라커룸" onClick={() => navigate('/locker-room')} />
-          <Nav active={pathname.startsWith('/tactics')} icon={<GitPullRequestClosed />} label="전술" onClick={() => navigate('/tactics')} />
-          <Nav active={pathname.startsWith('/standings')} icon={<Table2 />} label="순위표" onClick={() => navigate('/standings')} />
-          <Nav active={pathname.startsWith('/leaderboard')} icon={<PieChart />} label="리더보드" onClick={() => navigate('/leaderboard')} />
-          <Nav active={pathname.startsWith('/fa-market')} icon={<Contact />} label="FA 시장" onClick={() => navigate('/fa-market')} textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined} />
-          <Nav active={pathname.startsWith('/schedule')} icon={<CalendarDays />} label="리그 일정" onClick={() => navigate('/schedule')} />
+          <NavItem
+            active={pathname === '/'}
+            icon={<House />}
+            label="홈"
+            onClick={() => navigate('/')}
+          />
+          <NavItem
+            active={pathname.startsWith('/inbox')}
+            icon={<Inbox />}
+            label="받은 메일함"
+            onClick={() => navigate('/inbox')}
+            badge={unreadMessagesCount}
+          />
+
+          <Divider />
+
+          {/* My Team */}
+          <NavItem
+            active={pathname.startsWith('/front-office') && !isSalaryTab}
+            icon={<Landmark />}
+            label="프론트 오피스"
+            onClick={() => navigate('/front-office')}
+          />
+          <NavItem
+            active={pathname.startsWith('/front-office') && isSalaryTab}
+            icon={<CircleDollarSign />}
+            label="샐러리"
+            onClick={() => navigate('/front-office?tab=salary')}
+          />
+          <NavItem
+            active={pathname.startsWith('/locker-room')}
+            icon={<Users />}
+            label="로스터"
+            onClick={() => navigate('/locker-room')}
+          />
+          <NavItem
+            active={pathname.startsWith('/tactics')}
+            icon={<GitPullRequestClosed />}
+            label="전술"
+            onClick={() => navigate('/tactics')}
+          />
+          {/* TrafficCone — 훈련 기능 활성화 시 표시 예정 */}
+
+          <Divider />
+
+          {/* League */}
+          <NavItem
+            active={pathname.startsWith('/standings')}
+            icon={<ListOrdered />}
+            label="순위표"
+            onClick={() => navigate('/standings')}
+          />
+          <NavItem
+            active={pathname.startsWith('/leaderboard')}
+            icon={<ChartNoAxesColumn />}
+            label="리더보드"
+            onClick={() => navigate('/leaderboard')}
+          />
+          <NavItem
+            active={pathname.startsWith('/transactions')}
+            icon={<ArrowLeftRight />}
+            label="선수 이동"
+            onClick={() => navigate('/transactions')}
+          />
+          <NavItem
+            active={pathname.startsWith('/fa-market')}
+            icon={<ZoomIn />}
+            label="자유 계약"
+            onClick={() => navigate('/fa-market')}
+            textBadge={offseasonPhase === 'FA_OPEN' ? 'NEW' : undefined}
+          />
+          <NavItem
+            active={pathname.startsWith('/schedule')}
+            icon={<Calendar />}
+            label="리그 일정"
+            onClick={() => navigate('/schedule')}
+          />
           {isRegularSeasonOver && (
-            <Nav active={pathname.startsWith('/playoffs')} icon={<Trophy />} label="플레이오프" onClick={() => navigate('/playoffs')} />
+            <NavItem
+              active={pathname.startsWith('/playoffs')}
+              icon={<Medal />}
+              label="플레이오프"
+              onClick={() => navigate('/playoffs')}
+            />
           )}
-          <Nav active={pathname.startsWith('/transactions')} icon={<ArrowLeftRight />} label="트레이드" onClick={() => navigate('/transactions')} />
           {hasProspects && (
-            <Nav active={pathname.startsWith('/draft-board')} icon={<UserPlus />} label="드래프트" onClick={() => navigate('/draft-board')} />
+            <NavItem
+              active={pathname.startsWith('/draft-board')}
+              icon={<Sparkles />}
+              label="드래프트"
+              onClick={() => navigate('/draft-board')}
+            />
           )}
         </nav>
 
-        {/* 하단 프로필/설정 영역 */}
-        <div
-          className="flex flex-col gap-6 px-5 py-6 shrink-0 relative z-10"
-          style={{ background: 'rgba(0,0,0,0.15)' }}
-        >
-          {/* 프로필 버튼 (드롭다운 위 방향 오픈) */}
-          <div ref={menuRef} className="relative">
-            <Nav
+        {/* Lower — Profile / Settings */}
+        <div className="flex flex-col items-center gap-6 py-6 shrink-0 relative z-10">
+          <div ref={menuRef} className="relative w-full">
+            <NavItem
               active={isMenuOpen}
               icon={<CircleUser />}
               label={gmDisplayName || userEmail || '프로필'}
@@ -211,7 +242,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               buttonRef={profileBtnRef}
             />
 
-            {/* 드롭다운 — Portal로 body에 렌더링 (스태킹 컨텍스트 탈출) */}
             {isMenuOpen && createPortal(
               <div
                 ref={dropdownRef}
@@ -219,16 +249,16 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 style={{
                   bottom: `${dropdownBottom}px`,
                   left: `${dropdownLeft}px`,
-                  background: '#1e293b',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: '#18181b',
+                  border: '1px solid #3f3f46',
                 }}
               >
                 {(gmDisplayName || userEmail) && (
-                  <div className="px-3 py-2.5 border-b border-slate-700">
-                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">단장</p>
-                    <p className="text-xs text-slate-300 font-medium truncate mt-0.5">{gmDisplayName || userEmail}</p>
+                  <div className="px-3 py-2.5 border-b border-zinc-700">
+                    <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">단장</p>
+                    <p className="text-xs text-zinc-300 font-medium truncate mt-0.5">{gmDisplayName || userEmail}</p>
                     {gmDisplayName && userEmail && (
-                      <p className="text-[10px] text-slate-600 truncate mt-0.5">{userEmail}</p>
+                      <p className="text-[10px] text-zinc-600 truncate mt-0.5">{userEmail}</p>
                     )}
                   </div>
                 )}
@@ -249,47 +279,47 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     <Crown size={14} />
                     <span className="text-xs font-bold">명예의 전당</span>
                   </button>
-                  <div className="my-1 border-t border-slate-700" />
+                  <div className="my-1 border-t border-zinc-700" />
                   <button
                     onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
                   >
                     <Gavel size={14} />
                     <span className="text-xs font-bold">드래프트 기록</span>
                   </button>
                   <button
                     onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
                   >
                     <Wand2 size={14} />
                     <span className="text-xs font-bold">에디터</span>
                   </button>
-                  <div className="my-1 border-t border-slate-700" />
+                  <div className="my-1 border-t border-zinc-700" />
                   <button
                     onClick={() => { onResetClick(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
                   >
                     <RotateCcw size={14} />
                     <span className="text-xs font-bold">데이터 초기화</span>
                   </button>
                   <button
                     onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
                   >
                     <BookOpen size={14} />
                     <span className="text-xs font-bold">초보자 가이드</span>
                   </button>
                   <button
                     onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
                   >
                     <FileText size={14} />
                     <span className="text-xs font-bold">이용약관</span>
                   </button>
-                  <div className="my-1 border-t border-slate-700" />
+                  <div className="my-1 border-t border-zinc-700" />
                   <button
                     onClick={() => { onLogout(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
                   >
                     <LogOut size={14} />
                     <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>
@@ -300,8 +330,12 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             )}
           </div>
 
-          {/* 시뮬레이션 설정 버튼 */}
-          <Nav active={false} icon={<Settings />} label="시뮬레이션 설정" onClick={onSimSettingsClick} />
+          <NavItem
+            active={false}
+            icon={<Settings />}
+            label="시뮬레이션 설정"
+            onClick={onSimSettingsClick}
+          />
         </div>
       </aside>
 

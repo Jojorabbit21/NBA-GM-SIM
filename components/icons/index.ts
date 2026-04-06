@@ -1,0 +1,40 @@
+// Lucide icon aliases for NBA-GM-SIM
+// Sidebar / Navigation icons
+export { House } from 'lucide-react';
+export { Globe } from 'lucide-react';
+export { Landmark } from 'lucide-react';
+export { Network } from 'lucide-react';
+export { Users } from 'lucide-react';
+export { UserPlus } from 'lucide-react';
+export { CircleUser } from 'lucide-react';
+export { MailOpen } from 'lucide-react';
+export { Inbox } from 'lucide-react';
+export { Calendar } from 'lucide-react';
+export { ChartNoAxesColumn } from 'lucide-react';
+export { ListOrdered } from 'lucide-react';
+export { ArrowLeftRight } from 'lucide-react';
+export { Trophy } from 'lucide-react';
+export { Medal } from 'lucide-react';
+export { CircleFadingPlus } from 'lucide-react';
+export { TrafficCone } from 'lucide-react';
+export { GitPullRequestClosed } from 'lucide-react';
+export { CircleDollarSign } from 'lucide-react';
+export { Rocket } from 'lucide-react';
+export { Settings } from 'lucide-react';
+export { Wrench } from 'lucide-react';
+export { WandSparkles } from 'lucide-react';
+export { ZoomIn } from 'lucide-react';
+export { FastForward } from 'lucide-react';
+export { Search } from 'lucide-react';
+
+// Chevron icons
+export { ChevronDown } from 'lucide-react';
+export { ChevronLeft } from 'lucide-react';
+export { ChevronRight } from 'lucide-react';
+export { ChevronUp } from 'lucide-react';
+export { ChevronsDownUp } from 'lucide-react';
+export { ChevronsLeft } from 'lucide-react';
+export { ChevronsLeftRight } from 'lucide-react';
+export { ChevronsRight } from 'lucide-react';
+export { ChevronsRightLeft } from 'lucide-react';
+export { ChevronsUpDown } from 'lucide-react';
