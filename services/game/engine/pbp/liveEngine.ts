@@ -141,8 +141,8 @@ function checkAITimeout(state: GameState): string | null {
     const runTeamId = m.activeRun.teamId;
     const victimTeam = runTeamId === state.home.id ? state.away : state.home;
 
-    // 라이브 모드: 유저 팀은 자동 타임아웃 스킵
-    if (state.userTeamId && victimTeam.id === state.userTeamId) return null;
+    // 라이브 모드: 유저 팀은 자동 타임아웃 스킵 (단, 코치 위임 중이면 발동 허용)
+    if (state.userTeamId && victimTeam.id === state.userTeamId && !state.isUserDelegated) return null;
 
     if (victimTeam.timeouts <= 0) return null;
 
@@ -198,6 +198,7 @@ export function createGameState(
             activeRun: null,
         },
         userTeamId,
+        isUserDelegated: false,
         originalRotationMap: {},
         activeOverrides: [],
         possessionTimeAccum: {

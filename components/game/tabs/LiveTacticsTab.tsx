@@ -32,6 +32,8 @@ interface LiveTacticsTabProps {
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
     isUserHome: boolean;
+    /** 코치 위임 중 — 슬라이더 인터랙션 차단 */
+    disabled?: boolean;
 }
 
 /** 엔진 PlayType → 표시 그룹 매핑 */
@@ -180,7 +182,7 @@ const XIcon: React.FC<{ size?: number; className?: string; strokeWidth?: number 
 
 export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
     userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames,
-    avgPossessionTime, homeBox, awayBox, isUserHome
+    avgPossessionTime, homeBox, awayBox, isUserHome, disabled = false,
 }) => {
     const { sliders } = userTactics;
     const teamColor = TEAM_DATA[userTeamId]?.colors.primary || '#6366f1';
@@ -297,10 +299,17 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
     return (
         <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
 
+            {/* 코치 위임 중 안내 배너 */}
+            {disabled && (
+                <div className="px-3 py-1.5 bg-amber-600/15 border-l-2 border-amber-500 text-amber-300 text-xs">
+                    코치 지휘 중 — 전술 변경이 잠겨 있습니다
+                </div>
+            )}
+
             {/* ══════════════════════════════════════════════════════ */}
             {/* TOP: 슬라이더 5그룹 수평 배치                          */}
             {/* ══════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-5 gap-4">
+            <div className={`grid grid-cols-5 gap-4${disabled ? ' pointer-events-none opacity-60' : ''}`}>
 
                 {/* 1. 게임 운영 */}
                 <div className="flex flex-col gap-1">

@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { RosterMode, DraftPoolType, Player } from '../types';
+import type { PlayMode } from '../types/app';
 import type { PendingOffseasonAction } from '../types/app';
 import type { useGameData } from './useGameData';
 import type { useSimulation } from './useSimulation';
@@ -36,7 +37,11 @@ export interface GameContextValue {
     // 오프시즌 대기 액션
     pendingOffseasonAction: PendingOffseasonAction;
 
-    // 모드
+    // 플레이 모드 (싱글/멀티)
+    playMode: PlayMode | null;
+    setPlayMode: (mode: PlayMode | null) => void;
+
+    // 로스터 모드
     rosterMode: RosterMode | null;
     setRosterMode: (mode: RosterMode | null) => void;
     draftPoolType: DraftPoolType | null;

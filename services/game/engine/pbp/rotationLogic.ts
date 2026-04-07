@@ -547,8 +547,9 @@ export function checkTemporaryReturns(
                 shouldReturn = !recheck.shouldBench;
             }
         } else if (override.reason === 'shutdown') {
-            // 체력 회복 + 셧다운 해제되면 복귀
-            if (!player.isShutdown && player.currentCondition > 70) {
+            // 체력 회복 + 셧다운 해제되면 복귀 (선수별 returnThreshold 적용, 기본 70)
+            const returnThreshold = team.tactics.playerTactics?.[player.playerId]?.returnThreshold ?? 70;
+            if (!player.isShutdown && player.currentCondition > returnThreshold) {
                 const orig = state.originalRotationMap[player.playerId];
                 if (orig && orig[currentMinute]) {
                     // 원본 맵에서 지금 출전 예정 → 즉시 복귀

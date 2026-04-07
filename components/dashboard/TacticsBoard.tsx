@@ -4,10 +4,13 @@ import { RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-r
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
 import { DefensiveStats } from '../../utils/defensiveStats';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
+import { PlayerTacticsPanel } from './tactics/PlayerTacticsPanel';
 import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
 import { fetchPresets, savePreset, deletePreset } from '../../services/tacticsService';
 import { PresetRenameModal } from './tactics/PresetRenameModal';
 import { supabase } from '../../services/supabaseClient';
+
+type TacticsTab = 'team' | 'player';
 
 interface TacticsBoardProps {
   team: Team;
@@ -21,6 +24,7 @@ interface TacticsBoardProps {
 }
 
 const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName }) => {
+    const [activeTab, setActiveTab] = useState<TacticsTab>('team');
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -208,16 +212,47 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                 </div>
             )}
 
+            {/* Tab Bar */}
+            <div className="flex border-b border-slate-700 flex-shrink-0">
+                {([
+                    { id: 'team' as TacticsTab, label: '팀 전술' },
+                    { id: 'player' as TacticsTab, label: '개인 전술' },
+                ] as const).map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-6 py-3 text-xs font-bold transition-colors border-b-2 ${
+                            activeTab === tab.id
+                                ? 'border-indigo-500 text-white'
+                                : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="p-8 pb-20">
-                    <TacticsSlidersPanel
-                        tactics={tactics}
-                        onUpdateTactics={onUpdateTactics}
-                        roster={roster}
-                        defensiveStats={defensiveStats}
-                    />
-                </div>
+                {activeTab === 'team' && (
+                    <div className="p-8 pb-20">
+                        <TacticsSlidersPanel
+                            tactics={tactics}
+                            onUpdateTactics={onUpdateTactics}
+                            roster={roster}
+                            defensiveStats={defensiveStats}
+                        />
+                    </div>
+                )}
+                {activeTab === 'player' && (
+                    <div className="p-6 pb-20">
+                        <PlayerTacticsPanel
+                            tactics={tactics}
+                            roster={roster}
+                            onUpdateTactics={onUpdateTactics}
+                        />
+                    </div>
+                )}
             </div>
 
             <PresetRenameModal

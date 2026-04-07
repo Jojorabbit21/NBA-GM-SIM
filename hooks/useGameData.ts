@@ -470,6 +470,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         if (!tactics.rotationMap) {
                             tactics.rotationMap = {};
                         }
+                        if (!tactics.playerTactics) {
+                            tactics.playerTactics = {};
+                        }
                         if (tactics.sliders && 'play_pnr' in tactics.sliders && !('playStyle' in tactics.sliders)) {
                             const { play_pnr = 5, play_iso = 5, play_post = 5, play_cns = 5, play_drive = 5, ...rest } = tactics.sliders as any;
                             const heroInd = (play_iso + play_post) / 2;

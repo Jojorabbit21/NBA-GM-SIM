@@ -2,6 +2,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
 import { SimSettings } from '../types/simSettings';
+import { HeadCoachPreferences } from '../types/coaching';
 import { GameState, LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
 import {
     createGameState,
@@ -10,6 +11,7 @@ import {
     applyTimeout,
     applyManualSubstitution,
 } from '../services/game/engine/pbp/liveEngine';
+import { formatTime } from '../services/game/engine/pbp/timeEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -72,6 +74,11 @@ export interface UseLiveGameReturn {
     setSpeed: (s: GameSpeed) => void;
     // 경기 끝까지 즉시 진행
     skipToEnd: () => void;
+    // 코치 위임
+    isDelegated: boolean;
+    canDelegate: boolean;
+    delegateToCoach: () => void;
+    takeBackControl: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -88,7 +95,8 @@ export function useLiveGame(
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachPrefs?: HeadCoachPreferences | null
 ): UseLiveGameReturn {
 
     // ── GameState는 ref로 보유 (리렌더 방지) ──
@@ -101,6 +109,11 @@ export function useLiveGame(
     const pauseReasonRef = useRef<PauseReason | null>(null);
     const isGameEndRef  = useRef(false);
     const speedRef = useRef<GameSpeed>(1);
+
+    // 위임 관련 refs/state
+    const [isDelegated, setIsDelegated] = useState(false);
+    const delegationBaseSlidersRef = useRef<GameTactics['sliders'] | null>(null);
+    const applyCoachTacticsRef = useRef<() => void>(() => {});
 
     const [displayState, setDisplayState] = useState<LiveDisplayState>(() =>
         _buildDisplay(gameStateRef.current, null, false, 1, userTeamId)
@@ -142,6 +155,10 @@ export function useLiveGame(
                 const reason: PauseReason =
                     state.quarter === 2 ? 'halftime' : 'quarterEnd';
                 pauseReasonRef.current = reason;
+                // 위임 중이면 쿼터/하프타임 전환 시 코치 전술 재평가
+                if (state.isUserDelegated) {
+                    applyCoachTacticsRef.current();
+                }
                 syncDisplay();
                 return;
             }
@@ -168,12 +185,84 @@ export function useLiveGame(
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ────────────────────────────────────────────────────────
+    // 코치 위임 액션
+    // ────────────────────────────────────────────────────────
+
+    // 위임 시작 시점에 저장한 기준 슬라이더를 바탕으로 코치 성향 40% 블렌딩
+    // (blendWithCoach logic 인라인 — tacticGenerator.ts:53-85 참조)
+    const applyCoachTactics = useCallback(() => {
+        if (!userTeamId || !coachPrefs || !delegationBaseSlidersRef.current) return;
+        const state = gameStateRef.current;
+        const userTeam = state.home.id === userTeamId ? state.home : state.away;
+        const base = delegationBaseSlidersRef.current;
+        const W = 0.4;
+        const clamp = (v: number) => Math.max(1, Math.min(10, v));
+        const lerp = (a: number, b: number) => clamp(Math.round(a * (1 - W) + b * W));
+
+        userTeam.tactics.sliders = {
+            ...base,
+            playStyle:      lerp(base.playStyle,      coachPrefs.offenseIdentity),
+            ballMovement:   lerp(base.ballMovement,   coachPrefs.offenseIdentity),
+            pace:           lerp(base.pace,           coachPrefs.tempo),
+            offReb:         lerp(base.offReb,         11 - coachPrefs.tempo),
+            insideOut:      lerp(base.insideOut,      coachPrefs.scoringFocus),
+            shot_3pt:       lerp(base.shot_3pt,       coachPrefs.scoringFocus),
+            shot_rim:       lerp(base.shot_rim,       11 - coachPrefs.scoringFocus),
+            pnrFreq:        lerp(base.pnrFreq,        coachPrefs.pnrEmphasis),
+            defIntensity:   lerp(base.defIntensity,   coachPrefs.defenseStyle),
+            fullCourtPress: lerp(base.fullCourtPress, coachPrefs.defenseStyle),
+            helpDef:        lerp(base.helpDef,        coachPrefs.helpScheme),
+            switchFreq:     lerp(base.switchFreq,     coachPrefs.helpScheme),
+            zoneFreq:       lerp(base.zoneFreq,       coachPrefs.zonePreference),
+            zoneUsage:      lerp(base.zoneUsage,      coachPrefs.zonePreference),
+        };
+
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: userTeam.id,
+            text: `코치가 전술을 조정했습니다`,
+            type: 'info',
+        });
+    }, [userTeamId, coachPrefs]);
+
+    // applyCoachTactics를 ref에 동기화 (startInterval stale closure 방지)
+    applyCoachTacticsRef.current = applyCoachTactics;
+
+    const delegateToCoach = useCallback(() => {
+        if (!userTeamId || !coachPrefs) return;
+        const state = gameStateRef.current;
+        const userTeam = state.home.id === userTeamId ? state.home : state.away;
+        // 현재 슬라이더를 기준값으로 스냅샷 저장
+        delegationBaseSlidersRef.current = { ...userTeam.tactics.sliders };
+        state.isUserDelegated = true;
+        setIsDelegated(true);
+        applyCoachTacticsRef.current();
+        syncDisplay();
+    }, [userTeamId, coachPrefs, syncDisplay]);
+
+    const takeBackControl = useCallback(() => {
+        const state = gameStateRef.current;
+        state.isUserDelegated = false;
+        setIsDelegated(false);
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: userTeamId ?? 'SYSTEM',
+            text: `직접 지휘로 복귀`,
+            type: 'info',
+        });
+        syncDisplay();
+    }, [userTeamId, syncDisplay]);
+
+    // ────────────────────────────────────────────────────────
     // 유저 액션
     // ────────────────────────────────────────────────────────
 
     const callTimeout = useCallback(() => {
         if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
+        if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         if (userTeam.timeouts <= 0) return;
         if (pauseReasonRef.current !== null) return; // 이미 pause 중
@@ -191,6 +280,7 @@ export function useLiveGame(
     const applyTactics = useCallback((newSliders: GameTactics['sliders']) => {
         if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
+        if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         // sliders만 교체 — rotationMap 보존 필수
         userTeam.tactics.sliders = { ...newSliders };
@@ -200,6 +290,7 @@ export function useLiveGame(
     const applyRotationMap = useCallback((newMap: Record<string, boolean[]>) => {
         if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
+        if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         userTeam.tactics.rotationMap = { ...newMap };
 
@@ -218,6 +309,7 @@ export function useLiveGame(
 
     const makeSubstitution = useCallback((outId: string, inId: string) => {
         if (!userTeamId) return; // spectate mode
+        if (gameStateRef.current.isUserDelegated) return; // 위임 중
         applyManualSubstitution(gameStateRef.current, userTeamId, outId, inId);
         syncDisplay();
     }, [userTeamId, syncDisplay]);
@@ -293,6 +385,10 @@ export function useLiveGame(
         userBench: userTeam.bench,
         setSpeed,
         skipToEnd,
+        isDelegated,
+        canDelegate: !!coachPrefs,
+        delegateToCoach,
+        takeBackControl,
     };
 }
 

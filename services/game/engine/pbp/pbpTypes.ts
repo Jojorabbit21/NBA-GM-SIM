@@ -245,6 +245,9 @@ export interface GameState {
 
     // [New] User-adjustable simulation settings
     simSettings: SimSettings;
+
+    // 유저가 코치에게 경기 운영을 위임한 경우 true (AI 타임아웃 활성화)
+    isUserDelegated: boolean;
 }
 
 // ── Court Position Visualization ──

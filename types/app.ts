@@ -1,6 +1,7 @@
 
 export type RosterMode = 'default' | 'custom';
 export type DraftPoolType = 'current' | 'alltime';
+export type PlayMode = 'single' | 'multi';
 
 /** 오프시즌 진행 단계 (null = 인시즌) */
 export type OffseasonPhase =

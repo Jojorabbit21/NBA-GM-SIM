@@ -15,6 +15,7 @@ import type { Player } from '../types';
 const ProtectedLayout: React.FC = () => {
     const {
         session, isGuestMode, gameData, sim,
+        playMode,
         rosterMode, draftPoolType,
         toastMessage, setToastMessage,
         unreadCount, pendingOffseasonAction,
@@ -62,6 +63,10 @@ const ProtectedLayout: React.FC = () => {
     // ─── 인증 가드 (hooks 이후에 위치) ───────────────────────────────────
 
     if (!session && !isGuestMode) return <Navigate to="/auth" replace />;
+
+    // ─── 플레이 모드 가드 ────────────────────────────────────────────────
+
+    if (!playMode) return <Navigate to="/play-mode-select" replace />;
 
     // ─── 데이터 로딩 ─────────────────────────────────────────────────────
 
@@ -163,6 +168,7 @@ const ProtectedLayout: React.FC = () => {
                         awayDepthChart={liveAwayDepth}
                         tendencySeed={gameData.tendencySeed || undefined}
                         simSettings={gameData.simSettings}
+                        coachPrefs={gameData.myTeamId ? (gameData.coachingData?.[gameData.myTeamId]?.headCoach?.preferences ?? null) : null}
                         onGameEnd={async (result) => {
                             // finalizeLiveGame 내부에서 setLastGameResult → 상단 useEffect가 /result/:gameId 로 navigate
                             await sim.finalizeLiveGame(result);

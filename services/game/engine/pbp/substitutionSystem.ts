@@ -148,6 +148,53 @@ export function checkSubstitutionsV2(
     const { tactics } = team;
     const scoreDiff = Math.abs(state.home.score - state.away.score);
 
+    // ── Priority 0: 클러치 정책 (Q4 마지막 6분, currentMinute >= 42) ──
+    const isClutch = state.quarter === 4 && currentMinute >= 42;
+    if (isClutch) {
+        const clutchRequests: SubRequestV2[] = [];
+
+        // must-bench: 코트 위 선수 중 필수 벤치 선수 → 영구 교체
+        team.onCourt.forEach(p => {
+            if (p.benchReason) return;
+            const cfg = tactics.playerTactics?.[p.playerId];
+            if (cfg?.clutchPolicy === 'must-bench') {
+                clutchRequests.push({
+                    outPlayer: p,
+                    reason: '클러치 보호(벤치)',
+                    exitType: 'permanent',
+                    returnMinute: null,
+                    benchReason: 'garbage',
+                });
+            }
+        });
+
+        // must-play: 벤치에 있는 필수 투입 선수 → rotationMap 강제 활성화 (다음 포세션 투입)
+        team.bench.forEach(p => {
+            if (p.health === 'Injured' || p.pf >= 6) return;
+            const cfg = tactics.playerTactics?.[p.playerId];
+            if (cfg?.clutchPolicy === 'must-play') {
+                if (!tactics.rotationMap![p.playerId]) {
+                    tactics.rotationMap![p.playerId] = Array(48).fill(false);
+                }
+                for (let i = currentMinute; i < 48; i++) {
+                    tactics.rotationMap![p.playerId][i] = true;
+                }
+                // 가장 OVR 낮은 비-must-play 코트 위 선수 슬롯 해제 (스왑 준비)
+                const swapCandidates = team.onCourt
+                    .filter(c => tactics.playerTactics?.[c.playerId]?.clutchPolicy !== 'must-play')
+                    .sort((a, b) => a.ovr - b.ovr);
+                const swap = swapCandidates[0];
+                if (swap && tactics.rotationMap![swap.playerId]) {
+                    for (let i = currentMinute; i < 48; i++) {
+                        tactics.rotationMap![swap.playerId][i] = false;
+                    }
+                }
+            }
+        });
+
+        if (clutchRequests.length > 0) return clutchRequests;
+    }
+
     // ── 가비지 타임: Q4 잔여 2:30 이내 + 15점차 이상 → 코트 위 5명 전원 일괄 교체 ──
     const isGarbage = state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
         && !team.garbageApplied;   // 이미 적용된 팀은 재실행 방지
@@ -155,7 +202,12 @@ export function checkSubstitutionsV2(
     if (isGarbage) {
         team.garbageApplied = true;
         return team.onCourt
-            .filter(p => p.health !== 'Injured' && p.pf < 6)
+            .filter(p => {
+                if (p.health === 'Injured' || p.pf >= 6) return false;
+                const cfg = tactics.playerTactics?.[p.playerId];
+                // 'play'(출전) → 가비지타임 멤버, 일괄 교체 대상에서 제외
+                return cfg?.garbagePolicy !== 'play';
+            })
             .map(p => ({
                 outPlayer: p,
                 reason: '가비지 타임',
@@ -166,10 +218,28 @@ export function checkSubstitutionsV2(
 
     const requests: SubRequestV2[] = [];
 
+    // ── 가비지타임 'bench'(미출전): Q4 + 15점차 이상이면 즉시 벤치 (트리거보다 일찍) ──
+    if (state.quarter >= 4 && scoreDiff >= 15) {
+        team.onCourt.forEach(p => {
+            if (p.benchReason) return;
+            const cfg = tactics.playerTactics?.[p.playerId];
+            if (cfg?.garbagePolicy === 'bench') {
+                requests.push({
+                    outPlayer: p,
+                    reason: '가비지타임 미출전',
+                    exitType: 'permanent',
+                    returnMinute: null,
+                    benchReason: 'garbage',
+                });
+            }
+        });
+    }
+
     team.onCourt.forEach(p => {
         // 이미 benchReason이 있는 선수는 스킵 (중복 처리 방지)
         if (p.benchReason) return;
 
+        const playerConfig = tactics.playerTactics?.[p.playerId];
         const isScheduled = tactics.rotationMap?.[p.playerId]?.[currentMinute];
 
         // --- Priority 1: 영구 긴급 (맵 무시) ---
@@ -182,20 +252,25 @@ export function checkSubstitutionsV2(
             return;
         }
 
-        // --- Priority 2: 탈진 (스케줄 무관, 무조건 임시 벤치) ---
+        // --- Priority 2: 탈진 / 개인 휴식 임계치 (스케줄 무관, 무조건 임시 벤치) ---
         //     benchWithOverride가 맵을 보존하고, 체력 회복 시 checkTemporaryReturns가 원상 복구함.
-        //     (기존: isScheduled일 때 스킵 → 체력 0%에도 계속 기용되는 버그)
-        if (p.currentCondition <= HARD_FLOOR) {
+        const restThreshold = playerConfig?.restThreshold ?? 0;
+        const effectiveFloor = Math.max(HARD_FLOOR, restThreshold);
+        if (p.currentCondition <= effectiveFloor) {
             p.isShutdown = true;
             requests.push({
-                outPlayer: p, reason: '탈진(Shutdown)', exitType: 'temporary',
-                returnMinute: null, benchReason: 'shutdown'
+                outPlayer: p,
+                reason: restThreshold > HARD_FLOOR ? `휴식(${restThreshold}% 임계치)` : '탈진(Shutdown)',
+                exitType: 'temporary',
+                returnMinute: null,
+                benchReason: 'shutdown',
             });
             return;
         }
 
-        // --- Priority 3: 파울 트러블 (매트릭스 기반, 맵 설정 시 무시) ---
-        if (!isScheduled) {
+        // --- Priority 3: 파울 트러블 (매트릭스 기반, 맵 설정 시 무시 / ignoreFoul 설정 시 무시) ---
+        const ignoreFoul = playerConfig?.foulPolicy === 'ignore';
+        if (!isScheduled && !ignoreFoul) {
             const action = evaluateFoulTroubleAction(state, team, p, currentMinute);
             if (action.shouldBench) {
                 requests.push({

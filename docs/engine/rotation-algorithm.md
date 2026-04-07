@@ -79,7 +79,9 @@ Record<string, boolean[]>   // playerId → 48개 boolean (분 단위)
 
 ## 5. 임시 벤치 — 맵 보존 + 자동 복귀 (benchWithOverride)
 
-**트리거**: 파울 트러블, 탈진(Shutdown)
+**트리거**: 파울 트러블, 탈진(Shutdown), **개인 전술 휴식 임계치(restThreshold)**
+
+> 개인 전술 시스템 전체: [player-tactics.md](player-tactics.md)
 
 **핵심 차이**: `forceSubstitution`과 달리 승계 로직을 호출하지 않음.
 
@@ -117,8 +119,8 @@ activeOverrides: RotationOverride[];              // 임시 교체 추적 스택
 - 복귀 전 `evaluateFoulTroubleAction()` 재평가 → 아직 위험하면 연장
 
 **탈진(Shutdown) 복귀 조건**:
-- `isShutdown === false` (벤치에서 체력 70 초과 시 자동 해제)
-- `currentCondition > 70`
+- `isShutdown === false` (벤치에서 체력 회복 시 자동 해제)
+- `currentCondition > returnThreshold` (선수별 개인 전술 설정값, 기본 70)
 - `originalRotationMap`에 현재 또는 이후 분에 출전 슬롯이 있음
 
 **복귀 처리**:

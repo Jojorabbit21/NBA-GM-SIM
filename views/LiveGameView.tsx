@@ -29,6 +29,7 @@ interface LiveGameViewProps {
     awayDepthChart?: DepthChart | null;
     tendencySeed?: string;
     simSettings?: import('../types/simSettings').SimSettings;
+    coachPrefs?: import('../types/coaching').HeadCoachPreferences | null;
     onGameEnd: (result: SimulationResult) => void;
 }
 
@@ -834,15 +835,18 @@ const LiveShotChart: React.FC<{
 
 export const LiveGameView: React.FC<LiveGameViewProps> = ({
     homeTeam, awayTeam, userTeamId, userTactics,
-    isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings, onGameEnd,
+    isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings,
+    coachPrefs, onGameEnd,
 }) => {
     const {
         displayState, callTimeout, applyTactics, applyRotationMap,
         makeSubstitution, resume, pause, getResult,
         setSpeed, skipToEnd,
+        isDelegated, canDelegate, delegateToCoach, takeBackControl,
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
-        isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings
+        isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings,
+        coachPrefs
     );
 
     const {
@@ -897,14 +901,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     }, [applyRotationMap]);
     const handleViewPlayerNoop = useCallback(() => {}, []);
 
-    // 30초 카운트다운
+    // 카운트다운 (위임 중: 5초, 일반: 30초)
+    const PAUSE_COUNTDOWN_SEC = isDelegated ? 5 : 30;
     useEffect(() => {
         if (countdownRef.current) clearInterval(countdownRef.current);
         if (pauseReason === null || isGameEnd) {
-            setPauseCountdown(30);
+            setPauseCountdown(PAUSE_COUNTDOWN_SEC);
             return;
         }
-        setPauseCountdown(30);
+        setPauseCountdown(PAUSE_COUNTDOWN_SEC);
         countdownRef.current = setInterval(() => {
             setPauseCountdown(prev => {
                 if (prev <= 1) {
@@ -919,7 +924,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         return () => {
             if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
         };
-    }, [pauseReason, isGameEnd]);
+    }, [pauseReason, isGameEnd, isDelegated]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 경기 종료 처리 (onGameEnd 이중 호출 방지: onGameEnd이 인라인 함수라 매 렌더마다
     // 새 레퍼런스 → deps 변경 → effect 재실행 → finalizeLiveGame 이중 호출 위험)
@@ -1094,15 +1099,29 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 ))}
                             </div>
                             {!isSpectateMode && (
-                                <button
-                                    onClick={callTimeout}
-                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0}
-                                    className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                               disabled:opacity-40 disabled:cursor-not-allowed
-                                               text-white text-xs font-bold transition-colors"
-                                >
-                                    타임아웃 ({userTimeoutsLeft})
-                                </button>
+                                <>
+                                    <button
+                                        onClick={callTimeout}
+                                        disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
+                                        className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                                   disabled:opacity-40 disabled:cursor-not-allowed
+                                                   text-white text-xs font-bold transition-colors"
+                                    >
+                                        타임아웃 ({userTimeoutsLeft})
+                                    </button>
+                                    {canDelegate && (
+                                        <button
+                                            onClick={isDelegated ? takeBackControl : delegateToCoach}
+                                            className={`px-3 py-0.5 rounded-lg text-white text-xs font-bold transition-colors ${
+                                                isDelegated
+                                                    ? 'bg-emerald-700 hover:bg-emerald-600'
+                                                    : 'bg-slate-700 hover:bg-slate-600'
+                                            }`}
+                                        >
+                                            {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
+                                        </button>
+                                    )}
+                                </>
                             )}
                             <button
                                 onClick={skipToEnd}
@@ -1145,9 +1164,21 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             >
                                 경기 종료까지 ▶▶
                             </button>
+                            {canDelegate && (
+                                <button
+                                    onClick={isDelegated ? takeBackControl : delegateToCoach}
+                                    className={`px-3 py-0.5 rounded-lg text-white text-xs font-bold transition-colors ${
+                                        isDelegated
+                                            ? 'bg-emerald-700 hover:bg-emerald-600'
+                                            : 'bg-slate-700 hover:bg-slate-600'
+                                    }`}
+                                >
+                                    {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
+                                </button>
+                            )}
                             <button
                                 onClick={callTimeout}
-                                disabled={pauseReason !== null || userTimeoutsLeft <= 0}
+                                disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
                                 className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
                                            disabled:opacity-40 disabled:cursor-not-allowed
                                            text-white text-xs font-bold transition-colors"
@@ -1186,7 +1217,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <OnCourtPanel
                                 onCourt={awayOnCourt}
                                 bench={awayBench}
-                                isUser={!isSpectateMode && !isUserHome}
+                                isUser={!isSpectateMode && !isUserHome && !isDelegated}
                                 onSubstitute={makeSubstitution}
                                 teamColor={awayColor}
                                 teamTextColor={awayData?.colors.text}
@@ -1387,7 +1418,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <OnCourtPanel
                                 onCourt={homeOnCourt}
                                 bench={homeBench}
-                                isUser={!isSpectateMode && isUserHome}
+                                isUser={!isSpectateMode && isUserHome && !isDelegated}
                                 onSubstitute={makeSubstitution}
                                 teamColor={homeColor}
                                 teamTextColor={homeData?.colors.text}
@@ -1439,7 +1470,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             liveMode
                             currentMinute={currentMinute}
                             lockedBefore={currentMinute}
-                            readOnly={!canEditRotation}
+                            readOnly={!canEditRotation || isDelegated}
                         />
                     </div>
                 )}
@@ -1457,6 +1488,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         homeBox={homeBox}
                         awayBox={awayBox}
                         isUserHome={isUserHome}
+                        disabled={isDelegated}
                     />
                 )}
             </div>

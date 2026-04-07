@@ -49,6 +49,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | [rotation-algorithm.md](rotation-algorithm.md) | 로테이션 매트릭스 기반 선수 교체 | rotationLogic.ts, substitutionSystem.ts |
 | [rebound-logic.md](rebound-logic.md) | 2단계 리바운드 시스템 (ORB%→리바운더) | reboundLogic.ts |
 | [momentum-system.md](momentum-system.md) | 모멘텀/런 시스템 | possessionHandler.ts |
+| [coach-delegation.md](coach-delegation.md) | 코치 위임 시스템 (라이브 전술/타임아웃 자동 결정) | useLiveGame.ts, liveEngine.ts, LiveGameView.tsx |
 
 ---
 
@@ -58,6 +59,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 |------|------|----------|
 | [tendency-system.md](tendency-system.md) | 히든 텐던시 (5종 성향 파라미터) | hiddenTendencies.ts |
 | [tactic-system.md](tactic-system.md) | 전술 자동생성, 슬라이더, 분 배분 | tacticGenerator.ts, tacticPresets.ts, sliderSteps.ts, minutesManager.ts |
+| [player-tactics.md](player-tactics.md) | 개인 전술 (체력 휴식·파울 무시·가비지타임·클러치 기용 정책) | substitutionSystem.ts, rotationLogic.ts, PlayerTacticsPanel.tsx |
 
 ---
 
@@ -98,7 +100,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | 파일 | 문서 |
 |------|------|
 | main.ts | [sim-structure.md](../simulation/sim-structure.md) |
-| liveEngine.ts | [sim-structure.md](../simulation/sim-structure.md) |
+| liveEngine.ts | [sim-structure.md](../simulation/sim-structure.md), [coach-delegation.md](coach-delegation.md) |
 | possessionHandler.ts | [pbp-engine.md](pbp-engine.md) |
 | flowEngine.ts | [pbp-engine.md](pbp-engine.md), [hidden-archetypes.md](hidden-archetypes.md) |
 | playTypes.ts | [pbp-engine.md](pbp-engine.md), [player-usage.md](player-usage.md) |
@@ -112,7 +114,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | initializer.ts | [sim-structure.md](../simulation/sim-structure.md) |
 | pbpTypes.ts | [pbp-engine.md](pbp-engine.md) |
 | rotationLogic.ts | [rotation-algorithm.md](rotation-algorithm.md) |
-| substitutionSystem.ts | [rotation-algorithm.md](rotation-algorithm.md) |
+| substitutionSystem.ts | [rotation-algorithm.md](rotation-algorithm.md), [player-tactics.md](player-tactics.md) |
 | handlers/statUtils.ts | [stat-handlers.md](stat-handlers.md) |
 | handlers/visUtils.ts | [stat-handlers.md](stat-handlers.md) |
 

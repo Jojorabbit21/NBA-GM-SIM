@@ -6,7 +6,7 @@ import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
 import { useSimulation } from './hooks/useSimulation';
 import { RosterMode, DraftPoolType, Player } from './types';
-import { PendingOffseasonAction } from './types/app';
+import { PendingOffseasonAction, PlayMode } from './types/app';
 import { fetchUnreadMessageCount } from './services/messageService';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
@@ -21,6 +21,7 @@ import ProtectedLayout from './components/ProtectedLayout';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
+import PlayModeSelectPage from './pages/PlayModeSelectPage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
 import TeamSelectPage from './pages/TeamSelectPage';
@@ -62,6 +63,15 @@ const App: React.FC = () => {
     const navigate = useNavigate();
     const { session, isGuestMode, authLoading, handleLogout } = useAuth();
     const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
+    const [playModeState, setPlayModeState] = useState<PlayMode | null>(() => {
+        const stored = localStorage.getItem('nbagm:playMode');
+        return stored === 'single' || stored === 'multi' ? stored : null;
+    });
+    const setPlayMode = useCallback((mode: PlayMode | null) => {
+        setPlayModeState(mode);
+        if (mode) localStorage.setItem('nbagm:playMode', mode);
+        else      localStorage.removeItem('nbagm:playMode');
+    }, []);
     const gameData = useGameData(session, isGuestMode, rosterMode);
 
     // ─── App-level state ──────────────────────────────────────────────────────
@@ -179,8 +189,9 @@ const App: React.FC = () => {
             gameData.cleanupData();
             setRosterMode(null);
             setDraftPoolType(null);
+            setPlayMode(null);
         });
-    }, [handleLogout, gameData, setRosterMode, setDraftPoolType]);
+    }, [handleLogout, gameData, setRosterMode, setDraftPoolType, setPlayMode]);
 
     // ─── handleResetConfirm ───────────────────────────────────────────────────
     const handleResetConfirm = async () => {
@@ -188,6 +199,7 @@ const App: React.FC = () => {
         await gameData.handleResetData();
         setRosterMode(null);
         setDraftPoolType(null);
+        setPlayMode(null);
         setIsResetting(false);
         setIsResetModalOpen(false);
     };
@@ -207,6 +219,8 @@ const App: React.FC = () => {
         unreadCount,
         refreshUnreadCount,
         pendingOffseasonAction,
+        playMode: playModeState,
+        setPlayMode,
         rosterMode,
         setRosterMode,
         draftPoolType,
@@ -260,6 +274,7 @@ const App: React.FC = () => {
                 <Routes>
                     {/* ── 비보호 라우트 ── */}
                     <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/play-mode-select" element={<PlayModeSelectPage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
                     <Route path="/select-team" element={<TeamSelectPage />} />

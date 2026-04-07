@@ -1,4 +1,16 @@
 
+export type FoulTroublePolicy = 'auto' | 'ignore';
+export type GarbageTimePolicy = 'auto' | 'play' | 'bench'; // play=출전, bench=미출전
+export type ClutchPolicy = 'auto' | 'must-play' | 'must-bench';
+
+export interface PlayerTacticConfig {
+    restThreshold?: number;     // 0~80, 0=비활성. 이 값 이하 체력에서 자동 임시 벤치
+    returnThreshold?: number;   // 50~95, 기본 70. 이 값 이상 체력 회복 시 복귀
+    foulPolicy?: FoulTroublePolicy;   // 'auto'=기본 매트릭스 | 'ignore'=파울 트러블 무시 (6파울 퇴장은 항상 적용)
+    garbagePolicy?: GarbageTimePolicy; // 'auto' | 'play'=가비지타임 멤버(빠지지 않음) | 'bench'=가비지타임 무조건 미출전
+    clutchPolicy?: ClutchPolicy;      // 'auto' | 'must-play'=Q4 마지막 6분 강제 투입 | 'must-bench'=필수 벤치
+}
+
 export interface TacticalSliders {
     // A. Offense Style
     pace: number;          // 1-10: Game speed & transition frequency
@@ -43,6 +55,7 @@ export interface GameTactics {
     stopperId?: string;
     minutesLimits: Record<string, number>;
     depthChart?: DepthChart;
+    playerTactics?: Record<string, PlayerTacticConfig>;
 }
 
 export interface TacticalSnapshot {
