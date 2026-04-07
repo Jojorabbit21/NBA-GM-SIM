@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Home, Inbox, Landmark, CircleDollarSign, Users, GitPullRequestClosed,
-  ListOrdered, ChartNoAxesColumn, ArrowLeftRight, ZoomIn, Calendar, Medal,
+  ListOrdered, BarChart2, ArrowLeftRight, ZoomIn, Calendar, Medal,
   CircleUser, Settings,
   RotateCcw, LogOut, Crown, BookOpen, FileText, Wand2, Gavel, Sparkles, Dices,
 } from 'lucide-react';
@@ -190,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           />
           <NavItem
             active={pathname.startsWith('/leaderboard')}
-            icon={<ChartNoAxesColumn />}
+            icon={<BarChart2 />}
             label="리더보드"
             onClick={() => navigate('/leaderboard')}
           />
