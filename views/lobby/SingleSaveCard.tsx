@@ -1,13 +1,13 @@
 
 import React from 'react';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronRight, Plus, Play } from 'lucide-react';
 import type { SaveSummary, OffseasonPhase } from '../../types/app';
 import { formatRelativeTime } from '../../utils/formatRelativeTime';
 
 interface SingleSaveCardProps {
-    summary:   SaveSummary | null;
-    teamName?: string;
-    teamLogo?: string;
+    summary:    SaveSummary | null;
+    teamName?:  string;
+    teamLogo?:  string;
     onContinue: () => void;
     onNewGame:  () => void;
 }
@@ -25,34 +25,45 @@ function phaseLabel(phase: OffseasonPhase): string {
 export const SingleSaveCard: React.FC<SingleSaveCardProps> = ({
     summary, teamName, teamLogo, onContinue, onNewGame,
 }) => {
-    // 세이브 없음 — 신규 유저
+    // ── 신규 유저 ─────────────────────────────────────────
     if (!summary) {
         return (
             <button
                 onClick={onNewGame}
-                className="group w-72 bg-indigo-500/8 border border-indigo-500/30 rounded-3xl p-8 text-left transition-all hover:bg-indigo-500/15 hover:border-indigo-500/50 hover:shadow-[0_0_40px_rgba(99,102,241,0.15)] active:scale-[0.98] shrink-0"
+                className="group relative overflow-hidden rounded-2xl p-6 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 shadow-lg hover:shadow-indigo-500/30"
             >
-                <div className="space-y-4">
-                    <div className="w-12 h-12 rounded-full border-2 border-dashed border-indigo-500/40 flex items-center justify-center group-hover:border-indigo-400/60 transition-colors">
-                        <Plus size={22} className="text-indigo-500/60 group-hover:text-indigo-400 transition-colors" />
+                {/* 배경 glow */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+                <div className="relative space-y-4">
+                    {/* 라벨 */}
+                    <p className="text-xs font-bold text-indigo-200 uppercase tracking-wider">싱글플레이</p>
+
+                    {/* 아이콘 */}
+                    <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
+                        <Plus size={22} className="text-white" />
                     </div>
+
+                    {/* 타이틀 */}
                     <div>
-                        <h2 className="text-lg font-black text-indigo-300 ko-tight">새 시즌 시작</h2>
-                        <p className="text-xs text-slate-400 mt-1.5 leading-relaxed ko-normal">
-                            단장이 되어 구단을 운영하고
-                            <br />
-                            첫 챔피언십을 향해 나아가세요.
+                        <h2 className="text-xl font-black text-white ko-tight">새 시즌 시작</h2>
+                        <p className="text-sm text-indigo-200 mt-1 ko-normal leading-relaxed">
+                            단장이 되어 구단을 운영하고<br />
+                            챔피언십을 향해 나아가세요.
                         </p>
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                        시작하기 <ChevronRight size={14} />
+
+                    {/* CTA */}
+                    <div className="flex items-center gap-2 text-sm font-bold text-white mt-2">
+                        시작하기
+                        <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                     </div>
                 </div>
             </button>
         );
     }
 
-    // 세이브 있음 — 기존 유저
+    // ── 기존 유저 ─────────────────────────────────────────
     const seasonLabel = summary.currentSeason
         ? `${summary.currentSeason} · Y${summary.seasonNumber}`
         : `Season ${summary.seasonNumber}`;
@@ -60,44 +71,48 @@ export const SingleSaveCard: React.FC<SingleSaveCardProps> = ({
     return (
         <button
             onClick={onContinue}
-            className="group w-72 bg-indigo-500/8 border border-indigo-500/30 rounded-3xl p-8 text-left transition-all hover:bg-indigo-500/15 hover:border-indigo-500/50 hover:shadow-[0_0_40px_rgba(99,102,241,0.15)] active:scale-[0.98] shrink-0"
+            className="group relative overflow-hidden rounded-2xl p-6 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 shadow-lg hover:shadow-indigo-500/30"
         >
-            <div className="space-y-4">
+            {/* 배경 glow */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+            <div className="relative space-y-4">
+                {/* 라벨 */}
+                <p className="text-xs font-bold text-indigo-200 uppercase tracking-wider">싱글플레이</p>
+
                 {/* 팀 로고 */}
-                <div className="w-12 h-12">
+                <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center overflow-hidden">
                     {teamLogo ? (
-                        <img src={teamLogo} alt={teamName ?? ''} className="w-full h-full object-contain" />
+                        <img src={teamLogo} alt={teamName ?? ''} className="w-10 h-10 object-contain" />
                     ) : (
-                        <div className="w-full h-full rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 text-lg font-black">
-                            {(teamName ?? '?')[0]}
-                        </div>
+                        <span className="text-white text-lg font-black">{(teamName ?? '?')[0]}</span>
                     )}
                 </div>
 
                 {/* 팀 이름 + 시즌 */}
                 <div>
-                    <h2 className="text-base font-black text-white ko-tight leading-tight">
+                    <h2 className="text-xl font-black text-white ko-tight leading-tight">
                         {teamName ?? '내 구단'}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">{seasonLabel}</p>
+                    <p className="text-xs text-indigo-200 mt-0.5">{seasonLabel}</p>
                 </div>
 
-                {/* 구분선 + W-L + 컨텍스트 */}
-                <div className="border-t border-slate-700/50 pt-3 space-y-1">
-                    <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-white tabular-nums">
-                            {summary.wins} - {summary.losses}
-                        </span>
-                        <span className="text-xs text-slate-400 ko-normal">{phaseLabel(summary.offseasonPhase)}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 ko-normal">
-                        {formatRelativeTime(summary.updatedAt)} 저장됨
-                    </p>
+                {/* W-L + 컨텍스트 */}
+                <div className="flex items-center gap-3 bg-black/20 rounded-xl px-3 py-2">
+                    <span className="text-lg font-black text-white tabular-nums">
+                        {summary.wins} - {summary.losses}
+                    </span>
+                    <span className="text-xs text-indigo-200 ko-normal">{phaseLabel(summary.offseasonPhase)}</span>
+                    <span className="ml-auto text-[10px] text-indigo-300/70 ko-normal">
+                        {formatRelativeTime(summary.updatedAt)} 저장
+                    </span>
                 </div>
 
-                {/* Continue 화살표 */}
-                <div className="flex items-center gap-1 text-xs text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                    이어하기 <ChevronRight size={14} />
+                {/* CTA */}
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                    <Play size={14} fill="white" />
+                    이어하기
+                    <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                 </div>
             </div>
         </button>
