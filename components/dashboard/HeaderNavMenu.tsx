@@ -111,7 +111,7 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
 
   const orgItems = [
     { label: '프론트 오피스', path: '/front-office' },
-    { label: '샐러리', path: '/front-office?tab=salary' },
+    { label: '샐러리', path: '/front-office?tab=payroll' },
     ...(hasProspects ? [{ label: '드래프트 보드', path: '/draft-board' }] : []),
     ...(gmDisplayName ? [{ label: '내 프로필', path: `/gm/${teamId}` }] : []),
   ];

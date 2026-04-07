@@ -89,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const [dropdownBottom, setDropdownBottom] = useState(0);
   const [dropdownLeft, setDropdownLeft] = useState(0);
 
-  const isSalaryTab = search.includes('tab=salary');
+  const isSalaryTab = search.includes('tab=payroll');
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -163,7 +163,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             active={pathname.startsWith('/front-office') && isSalaryTab}
             icon={<CircleDollarSign />}
             label="샐러리"
-            onClick={() => navigate('/front-office?tab=salary')}
+            onClick={() => navigate('/front-office?tab=payroll')}
           />
           <NavItem
             active={pathname.startsWith('/locker-room')}

@@ -36,13 +36,13 @@ export const UpdateToast: React.FC<UpdateToastProps> = ({ onRefresh, onDismiss }
                 <div className="flex justify-end gap-2.5">
                     <button
                         onClick={onDismiss}
-                        className="px-3 py-1.5 text-[10px] font-semibold text-text-primary border border-border-default rounded-md transition-colors hover:border-border-emphasis"
+                        className="px-4 py-2 text-base font-semibold text-text-primary border border-border-default rounded-md transition-colors hover:border-border-emphasis"
                     >
                         나중에
                     </button>
                     <button
                         onClick={onRefresh}
-                        className="px-3 py-1.5 text-[10px] font-semibold text-white border border-cta-border rounded-md transition-all hover:brightness-110"
+                        className="px-4 py-2 text-base font-semibold text-white border border-cta-border rounded-md transition-all hover:brightness-110"
                         style={{ background: 'linear-gradient(to bottom, #4F46E5, #3730A3)' }}
                     >
                         새로고침

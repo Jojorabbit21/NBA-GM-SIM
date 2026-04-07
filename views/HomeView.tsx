@@ -225,15 +225,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 <div className="flex items-center gap-4">
                                     <TeamLogo teamId={nextOpponent.id} size="custom" className="w-12 h-12 shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-text-primary font-bold text-sm leading-5">
+                                        <div className="text-white font-bold text-sm leading-5">
                                             {isNextGameHome ? 'vs' : '@'} {nextOppData ? `${nextOppData.city} ${nextOppData.name}` : nextOpponent.name}
                                         </div>
-                                        <div className="text-text-muted text-xs mt-1">{formatDateKo(nextGame.date)}</div>
-                                        <div className="text-text-disabled text-xs mt-0.5">{isNextGameHome ? '홈 경기' : '원정 경기'}</div>
+                                        <div className="text-slate-400 text-xs mt-1">{formatDateKo(nextGame.date)}</div>
+                                        <div className="text-slate-500 text-xs mt-0.5">{isNextGameHome ? '홈 경기' : '원정 경기'}</div>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-text-disabled text-xs text-center py-2">남은 경기 없음</div>
+                                <div className="text-slate-500 text-xs text-center py-2">남은 경기 없음</div>
                             )}
                         </div>
                     </div>
@@ -263,19 +263,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             <div className="text-xs text-text-muted font-bold mb-3">{l10.w}승 {l10.l}패</div>
 
                             {last10Games.length === 0 ? (
-                                <div className="text-text-disabled text-xs text-center py-1">아직 경기 결과 없음</div>
+                                <div className="text-slate-500 text-xs text-center py-1">아직 경기 결과 없음</div>
                             ) : (
                                 <div className="flex flex-col">
                                     {last10Games.map(g => {
                                         const { won, myScore, oppScore, opp, isHome } = getGameResult(g);
                                         return (
-                                            <div key={g.id} className="flex items-center gap-2 py-1.5 border-b border-border-dim last:border-0 text-xs">
-                                                <span className="text-text-disabled font-mono w-8 shrink-0">{formatDate(g.date)}</span>
+                                            <div key={g.id} className="flex items-center gap-2 py-1.5 border-b border-slate-800 last:border-0 text-xs">
+                                                <span className="text-slate-500 font-mono w-8 shrink-0">{formatDate(g.date)}</span>
                                                 <TeamLogo teamId={opp?.id ?? ''} size="xs" />
-                                                <span className="flex-1 text-text-secondary truncate">
+                                                <span className="flex-1 text-slate-300 truncate">
                                                     {isHome ? 'vs' : '@'} {opp ? (TEAM_DATA[opp.id]?.name ?? opp.name) : '???'}
                                                 </span>
-                                                <span className="font-mono text-text-muted tabular-nums">{myScore}-{oppScore}</span>
+                                                <span className="font-mono text-slate-400 tabular-nums">{myScore}-{oppScore}</span>
                                                 <span className={`font-black w-4 text-center ${won ? 'text-status-success-text' : 'text-status-danger-text'}`}>{won ? 'W' : 'L'}</span>
                                             </div>
                                         );
@@ -304,14 +304,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     return (
                                         <div
                                             key={t.id}
-                                            className={`flex items-center gap-2 px-4 py-1.5 text-xs ${isMe ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                                            className={`flex items-center gap-2 px-4 py-1.5 text-xs ${isMe ? 'bg-slate-800' : 'hover:bg-slate-800/50'}`}
                                         >
-                                            <span className={`w-4 font-mono font-bold shrink-0 text-center ${isMe ? 'text-text-primary' : 'text-text-disabled'}`}>{i + 1}</span>
+                                            <span className={`w-4 font-mono font-bold shrink-0 text-center ${isMe ? 'text-white' : 'text-slate-500'}`}>{i + 1}</span>
                                             <TeamLogo teamId={t.id} size="xs" />
-                                            <span className={`flex-1 font-bold truncate ${isMe ? 'text-text-primary' : 'text-text-secondary'}`}>
+                                            <span className={`flex-1 font-bold truncate ${isMe ? 'text-white' : 'text-slate-300'}`}>
                                                 {TEAM_DATA[t.id]?.name ?? t.name}
                                             </span>
-                                            <span className="font-mono text-text-muted tabular-nums">
+                                            <span className="font-mono text-slate-400 tabular-nums">
                                                 {stats ? `${stats.wins}-${stats.losses}` : `${t.wins}-${t.losses}`}
                                             </span>
                                         </div>
@@ -334,7 +334,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 action={{ label: '전체 보기', onClick: () => onNavigate('Inbox') }}
                             />
                             {recentMessages.length === 0 ? (
-                                <div className="px-4 py-4 text-xs text-text-disabled text-center">새 메시지가 없습니다</div>
+                                <div className="px-4 py-4 text-xs text-slate-500 text-center">새 메시지가 없습니다</div>
                             ) : (() => {
                                 const totalPages = Math.ceil(recentMessages.length / INBOX_PAGE_SIZE);
                                 const pageMessages = recentMessages.slice(inboxPage * INBOX_PAGE_SIZE, (inboxPage + 1) * INBOX_PAGE_SIZE);
@@ -345,32 +345,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                                 <div
                                                     key={msg.id}
                                                     onClick={() => onNavigate('Inbox', msg.id)}
-                                                    className="flex items-center gap-3 px-4 py-2.5 border-b border-border-dim last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
+                                                    className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800 last:border-0 hover:bg-slate-800/50 cursor-pointer transition-colors"
                                                 >
                                                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${msg.is_read ? 'bg-transparent' : 'bg-cta-border'}`} />
-                                                    <span className="text-text-disabled font-mono text-xs shrink-0 w-12">{formatDate(msg.created_at)}</span>
-                                                    <span className={`flex-1 text-sm truncate ${msg.is_read ? 'text-text-disabled' : 'text-text-primary font-bold'}`}>
+                                                    <span className="text-slate-500 font-mono text-xs shrink-0 w-12">{formatDate(msg.created_at)}</span>
+                                                    <span className={`flex-1 text-sm truncate ${msg.is_read ? 'text-slate-500' : 'text-white font-bold'}`}>
                                                         {msg.title}
                                                     </span>
                                                 </div>
                                             ))}
                                         </div>
                                         {totalPages > 1 && (
-                                            <div className="flex items-center justify-between px-4 py-2 border-t border-border-dim">
+                                            <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800">
                                                 <button
                                                     onClick={() => setInboxPage(p => Math.max(0, p - 1))}
                                                     disabled={inboxPage === 0}
-                                                    className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                                 >
                                                     <ChevronLeft size={13} /> 이전
                                                 </button>
-                                                <span className="text-xs text-text-disabled">
+                                                <span className="text-xs text-slate-500">
                                                     {inboxPage + 1} / {totalPages}
                                                 </span>
                                                 <button
                                                     onClick={() => setInboxPage(p => Math.min(totalPages - 1, p + 1))}
                                                     disabled={inboxPage >= totalPages - 1}
-                                                    className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                                 >
                                                     다음 <ChevronRight size={13} />
                                                 </button>
@@ -391,19 +391,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         />
                         <table className="w-full text-xs">
                             <thead>
-                                <tr className="border-b border-border-dim">
-                                    <th className="text-left px-4 py-2 text-text-muted font-semibold">포지션</th>
-                                    <th className="text-left px-4 py-2 text-text-muted font-semibold">이름</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">나이</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">OVR</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">PTS</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">REB</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">AST</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">STL</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">BLK</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">FG%</th>
-                                    <th className="text-right px-2 py-2 text-text-muted font-semibold">3P%</th>
-                                    <th className="text-right px-4 py-2 text-text-muted font-semibold">연봉</th>
+                                <tr className="border-b border-slate-800">
+                                    <th className="text-left px-4 py-2 text-slate-500 font-semibold">포지션</th>
+                                    <th className="text-left px-4 py-2 text-slate-500 font-semibold">이름</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">나이</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">OVR</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">PTS</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">REB</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">AST</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">STL</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">BLK</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">FG%</th>
+                                    <th className="text-right px-2 py-2 text-slate-500 font-semibold">3P%</th>
+                                    <th className="text-right px-4 py-2 text-slate-500 font-semibold">연봉</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -422,21 +422,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     return (
                                         <tr
                                             key={p.id}
-                                            className="border-b border-border-dim last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
+                                            className="border-b border-slate-800 last:border-0 hover:bg-slate-800/50 cursor-pointer transition-colors"
                                             onClick={() => onViewPlayer(p, team.id, teamFullName)}
                                         >
-                                            <td className="px-4 py-2 text-text-muted font-bold">{p.position}</td>
-                                            <td className="px-4 py-2 text-text-primary font-semibold whitespace-nowrap">{p.name}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-muted">{(p as any).age ?? '–'}</td>
-                                            <td className="px-2 py-2 text-right font-mono font-bold text-text-primary">{ovr}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-secondary">{pts}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-secondary">{reb}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-secondary">{ast}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-muted">{stl}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-muted">{blk}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-muted">{fgPct}</td>
-                                            <td className="px-2 py-2 text-right font-mono text-text-muted">{p3Pct}</td>
-                                            <td className="px-4 py-2 text-right font-mono text-text-muted">{salaryStr}</td>
+                                            <td className="px-4 py-2 text-slate-400 font-bold">{p.position}</td>
+                                            <td className="px-4 py-2 text-white font-semibold whitespace-nowrap">{p.name}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{(p as any).age ?? '–'}</td>
+                                            <td className="px-2 py-2 text-right font-mono font-bold text-white">{ovr}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{pts}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{reb}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-300">{ast}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{stl}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{blk}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{fgPct}</td>
+                                            <td className="px-2 py-2 text-right font-mono text-slate-400">{p3Pct}</td>
+                                            <td className="px-4 py-2 text-right font-mono text-slate-400">{salaryStr}</td>
                                         </tr>
                                     );
                                 })}
@@ -451,7 +451,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     {/* 팀 스탯 */}
                     <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
                         <SectionHeader title="팀 스탯" primaryColor={primaryColor} />
-                        <div className="divide-y divide-border-dim">
+                        <div className="divide-y divide-slate-800">
                             {([
                                 { label: '시즌 기록', value: `${team.wins}W - ${team.losses}L` },
                                 { label: '승률', value: myStats ? `${(myStats.pct * 100).toFixed(1)}%` : '–' },
@@ -461,8 +461,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 { label: '원정 기록', value: myStats ? `${myStats.away.w}-${myStats.away.l}` : '–' },
                             ] as { label: string; value: string }[]).map(({ label, value }) => (
                                 <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
-                                    <span className="text-text-muted">{label}</span>
-                                    <span className="text-text-primary font-bold">{value}</span>
+                                    <span className="text-slate-400">{label}</span>
+                                    <span className="text-white font-bold">{value}</span>
                                 </div>
                             ))}
                             {/* 리그 순위 스탯 */}
@@ -476,10 +476,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                 { label: '3P%', val: `${(leagueStatRanks.my.p3Pct * 100).toFixed(1)}%`, rank: leagueStatRanks.p3Pct },
                             ]).map(({ label, val, rank }) => (
                                 <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
-                                    <span className="text-text-muted">{label}</span>
-                                    <span className="text-text-primary font-bold">
+                                    <span className="text-slate-400">{label}</span>
+                                    <span className="text-white font-bold">
                                         {val}
-                                        <span className="ml-1.5 text-text-disabled font-normal">({rank}위)</span>
+                                        <span className="ml-1.5 text-slate-500 font-normal">({rank}위)</span>
                                     </span>
                                 </div>
                             ))}
@@ -492,17 +492,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         {injuredPlayers.length === 0 ? (
                             <div className="px-4 py-3 text-xs text-status-success-text font-bold text-center">전원 건강 상태 양호</div>
                         ) : (
-                            <div className="divide-y divide-border-dim">
+                            <div className="divide-y divide-slate-800">
                                 {injuredPlayers.map(p => (
                                     <div key={p.id} className="flex items-center justify-between px-4 py-2 text-xs">
                                         <div>
-                                            <span className="text-text-muted font-bold mr-1.5">{p.position}</span>
-                                            <span className="text-text-primary font-semibold">{p.name}</span>
+                                            <span className="text-slate-400 font-bold mr-1.5">{p.position}</span>
+                                            <span className="text-white font-semibold">{p.name}</span>
                                         </div>
                                         <div className="text-right">
                                             <div className="text-status-danger-text font-bold">{(p as any).injuryType ?? 'Injured'}</div>
                                             {(p as any).returnDate && (
-                                                <div className="text-text-disabled">{(p as any).returnDate}</div>
+                                                <div className="text-slate-500">{(p as any).returnDate}</div>
                                             )}
                                         </div>
                                     </div>
@@ -518,7 +518,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             primaryColor={primaryColor}
                             action={{ label: '프론트 오피스', onClick: () => onNavigate('FrontOffice') }}
                         />
-                        <div className="divide-y divide-border-dim">
+                        <div className="divide-y divide-slate-800">
                             {(() => {
                                 const fin = teamFinances?.[team.id];
                                 const gate = fin?.revenue?.gate ?? 0;
@@ -547,8 +547,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     },
                                 ] as { label: string; value: string; highlight: boolean }[]).map(({ label, value, highlight }) => (
                                     <div key={label} className="flex items-center justify-between px-4 py-2 text-xs">
-                                        <span className="text-text-muted">{label}</span>
-                                        <span className={`font-bold ${highlight ? 'text-status-warning-text' : 'text-text-primary'}`}>
+                                        <span className="text-slate-400">{label}</span>
+                                        <span className={`font-bold ${highlight ? 'text-status-warning-text' : 'text-white'}`}>
                                             {value}
                                         </span>
                                     </div>
