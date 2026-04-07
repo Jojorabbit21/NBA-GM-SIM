@@ -21,7 +21,6 @@ import ProtectedLayout from './components/ProtectedLayout';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
-import PlayModeSelectPage from './pages/PlayModeSelectPage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
 import TeamSelectPage from './pages/TeamSelectPage';
@@ -274,7 +273,6 @@ const App: React.FC = () => {
                 <Routes>
                     {/* ── 비보호 라우트 ── */}
                     <Route path="/auth" element={<AuthPage />} />
-                    <Route path="/play-mode-select" element={<PlayModeSelectPage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
                     <Route path="/select-team" element={<TeamSelectPage />} />

@@ -6,7 +6,7 @@ import { SavedTeamFinances } from '../types/finance';
 import { LeaguePickAssets } from '../types/draftAssets';
 import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
 import { LeagueGMProfiles } from '../types/gm';
-import { OffseasonPhase } from '../types/app';
+import { OffseasonPhase, type SaveSummary } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
 import { LeagueFAMarket } from '../types/fa';
 import type { LeagueTrainingConfigs } from '../types/training';
@@ -316,4 +316,24 @@ export const bulkWriteTransactions = async (userId: string, txList: Transaction[
         console.error('❌ [bulkWriteTransactions]:', res.error);
         throw res.error;
     }
+};
+
+// 로비 화면용 경량 세이브 메타 조회 (풀 리플레이 로드 없이 팀/시즌/W-L만)
+export const loadSaveSummary = async (userId: string): Promise<SaveSummary | null> => {
+    const { data, error } = await supabase
+        .from('saves')
+        .select('team_id, current_season, season_number, offseason_phase, updated_at, replay_snapshot')
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (error || !data?.team_id) return null;
+    const teamData = (data.replay_snapshot as any)?.teams_data?.[data.team_id];
+    return {
+        teamId:         data.team_id,
+        currentSeason:  (data as any).current_season ?? null,
+        seasonNumber:   (data as any).season_number ?? 1,
+        offseasonPhase: (data as any).offseason_phase ?? null,
+        updatedAt:      data.updated_at ?? new Date().toISOString(),
+        wins:           teamData?.wins ?? 0,
+        losses:         teamData?.losses ?? 0,
+    };
 };

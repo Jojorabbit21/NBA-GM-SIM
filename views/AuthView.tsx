@@ -1,16 +1,26 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { AuthInput } from '../components/AuthInput';
 import { OtpInput } from '../components/OtpInput';
 import { APP_NAME, APP_YEAR } from '../utils/constants';
+import type { Team } from '../types';
+import { LobbyPanel } from './lobby/LobbyPanel';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
 interface AuthViewProps {
   onGuestLogin: () => void;
+  // 로그인 상태일 때 로비 렌더에 필요한 props
+  session?:    Session | null;
+  teams?:      Team[];
+  nickname?:   string;
+  onContinue?: () => void;
+  onNewGame?:  () => void;
+  onLogout?:   () => void;
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
@@ -25,7 +35,15 @@ const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode
     );
 };
 
-export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin }) => {
+export const AuthView: React.FC<AuthViewProps> = ({
+    onGuestLogin: _onGuestLogin,
+    session,
+    teams = [],
+    nickname = '',
+    onContinue,
+    onNewGame,
+    onLogout,
+}) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -193,6 +211,22 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
       }, 100);
     }
   };
+
+  // 로그인 상태 → Lobby 패널
+  if (session && onContinue && onNewGame && onLogout) {
+      return (
+          <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 pretendard">
+              <LobbyPanel
+                  session={session}
+                  teams={teams}
+                  nickname={nickname}
+                  onContinue={onContinue}
+                  onNewGame={onNewGame}
+                  onLogout={onLogout}
+              />
+          </div>
+      );
+  }
 
   return (
     <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-text-primary">

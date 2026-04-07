@@ -14,3 +14,14 @@ export type OffseasonPhase =
 
 /** 사이드바/헤더에서 대기 중인 오프시즌 액션 (null = 차단 없음) */
 export type PendingOffseasonAction = 'lottery' | 'draft' | null;
+
+/** 로비 화면에서 빠르게 표시하는 세이브 메타 정보 */
+export interface SaveSummary {
+    teamId:         string;
+    currentSeason:  string | null;
+    seasonNumber:   number;
+    offseasonPhase: OffseasonPhase;
+    updatedAt:      string;
+    wins:           number;
+    losses:         number;
+}

@@ -66,7 +66,7 @@ const ProtectedLayout: React.FC = () => {
 
     // ─── 플레이 모드 가드 ────────────────────────────────────────────────
 
-    if (!playMode) return <Navigate to="/play-mode-select" replace />;
+    if (!playMode) return <Navigate to="/auth" replace />;
 
     // ─── 데이터 로딩 ─────────────────────────────────────────────────────
 
