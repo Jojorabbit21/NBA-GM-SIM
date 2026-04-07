@@ -39,11 +39,11 @@ export const OutgoingOffersPanel: React.FC<OutgoingOffersPanelProps> = ({
         <div className="border-t border-slate-700">
             <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="w-full px-5 py-2.5 bg-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-800/80"
+                className="w-full px-6 py-2.5 bg-slate-800 flex items-center justify-between cursor-pointer hover:bg-slate-800/80"
             >
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">
+                <span className="text-xs font-bold uppercase text-slate-500">
                     발신 오퍼 ({pendingOutgoing.length + respondedOutgoing.length})
-                </h3>
+                </span>
                 <span className="text-[10px] font-bold text-slate-500">
                     {collapsed ? '펼치기' : '접기'}
                 </span>

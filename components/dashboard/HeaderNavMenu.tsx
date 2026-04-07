@@ -24,6 +24,12 @@ interface HeaderNavMenuProps {
 
 type DropdownId = 'league' | 'org' | 'team' | null;
 
+interface DropdownItem {
+  label: string;
+  path: string;
+  dividerBefore?: boolean;
+}
+
 export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
   teamId,
   teamPrimaryColor,
@@ -70,7 +76,10 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
       return pathname === itemPathname && search === `?${itemQuery}`;
     }
     if (itemPathname === '/front-office') {
-      return pathname.startsWith('/front-office') && !search.includes('tab=salary');
+      return pathname === '/front-office' && (!search || search === '?tab=club');
+    }
+    if (itemPathname === '/locker-room') {
+      return pathname === '/locker-room' && !search;
     }
     return pathname.startsWith(itemPathname);
   };
@@ -100,29 +109,34 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
     'flex items-center gap-1 px-3 py-0.5 rounded-lg text-base font-semibold transition-colors duration-150 cursor-pointer whitespace-nowrap select-none';
   const tabDefault = 'text-zinc-500 hover:text-zinc-300';
 
-  const leagueItems = [
-    { label: '순위표', path: '/standings' },
+  const leagueItems: DropdownItem[] = [
+    ...(isRegularSeasonOver ? [{ label: '플레이오프', path: '/playoffs' }] : []),
+    { label: '순위표', path: '/standings', dividerBefore: isRegularSeasonOver },
     { label: '리더보드', path: '/leaderboard' },
+    { label: '리그 일정', path: '/schedule' },
     { label: '선수 이동', path: '/transactions' },
     { label: '자유 계약', path: '/fa-market' },
-    { label: '리그 일정', path: '/schedule' },
-    ...(isRegularSeasonOver ? [{ label: '플레이오프', path: '/playoffs' }] : []),
   ];
 
-  const orgItems = [
+  const orgItems: DropdownItem[] = [
     { label: '프론트 오피스', path: '/front-office' },
-    { label: '샐러리', path: '/front-office?tab=payroll' },
+    { label: '샐러리 캡', path: '/front-office?tab=payroll' },
+    { label: '코칭 스태프', path: '/front-office?tab=coaching' },
+    { label: '드래프트 픽', path: '/front-office?tab=draftPicks' },
     ...(hasProspects ? [{ label: '드래프트 보드', path: '/draft-board' }] : []),
-    ...(gmDisplayName ? [{ label: '내 프로필', path: `/gm/${teamId}` }] : []),
+    ...(gmDisplayName && teamId ? [{ label: '내 프로필', path: `/gm/${teamId}`, dividerBefore: true }] : []),
   ];
 
-  const teamItems = [
-    { label: '로스터', path: '/locker-room' },
-    { label: '전술', path: '/tactics' },
+  const teamItems: DropdownItem[] = [
+    { label: '로스터', path: '/locker-room?tab=roster' },
+    { label: '뎁스차트&로테이션', path: '/locker-room?tab=rotation' },
+    { label: '다음 경기 분석', path: '/locker-room?tab=opponent' },
+    { label: '팀 일정', path: '/locker-room?tab=schedule' },
+    { label: '전술 설정', path: '/tactics' },
   ];
 
   const DropdownPanel: React.FC<{
-    items: { label: string; path: string }[];
+    items: DropdownItem[];
     minWidth?: string;
   }> = ({ items, minWidth = '160px' }) => (
     <div
@@ -132,17 +146,19 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
       {items.map(item => {
         const active = isItemActive(item.path);
         return (
-          <button
-            key={item.path}
-            onClick={() => handleNav(item.path)}
-            className={`px-3 py-1 text-xs rounded text-left transition-colors ${
-              active
-                ? 'bg-white/15 text-white font-semibold'
-                : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            {item.label}
-          </button>
+          <React.Fragment key={item.path}>
+            {item.dividerBefore && <div className="my-1 border-t border-zinc-700" />}
+            <button
+              onClick={() => handleNav(item.path)}
+              className={`px-3 py-1 text-xs rounded text-left transition-colors ${
+                active
+                  ? 'bg-white/15 text-white font-semibold'
+                  : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </button>
+          </React.Fragment>
         );
       })}
     </div>

@@ -8,10 +8,9 @@ import { OvrBadge } from '../../common/OvrBadge';
 import { TeamLogo } from '../../common/TeamLogo';
 import { OfferInboxPanel } from '../OfferInboxPanel';
 import { TradeNegotiationBuilder } from '../TradeNegotiationBuilder';
-import { calculatePlayerOvr, getTeamLogoUrl } from '../../../utils/constants';
+import { calculatePlayerOvr } from '../../../utils/constants';
 import { formatMoney } from '../../../utils/formatMoney';
 import { LeagueGMProfiles, TeamDirection, DIRECTION_LABELS } from '../../../types/gm';
-import { TEAM_DATA } from '../../../data/teamData';
 
 const DIRECTION_COLORS: Record<TeamDirection, string> = {
     winNow: 'text-red-400',
@@ -310,59 +309,9 @@ export const LeagueBlockTab: React.FC<LeagueBlockTabProps> = ({
                         </div>
                     )}
 
-                    {/* 리그 노선 현황 (블록이 없어도 표시) */}
-                    {leagueGMProfiles && Object.keys(leagueGMProfiles).length > 0 && (
-                        <LeagueDirectionOverview leagueGMProfiles={leagueGMProfiles} />
-                    )}
                 </div>
             </div>
         </div>
     );
 };
 
-// ── 리그 노선 현황 (TradeBlockTab에서 이식) ──
-
-const DIRECTION_ORDER: TeamDirection[] = ['winNow', 'buyer', 'standPat', 'seller', 'tanking'];
-
-const LeagueDirectionOverview: React.FC<{ leagueGMProfiles: LeagueGMProfiles }> = ({ leagueGMProfiles }) => {
-    const groups = DIRECTION_ORDER.map(dir => ({
-        direction: dir,
-        teamIds: Object.entries(leagueGMProfiles)
-            .filter(([, p]) => p.direction === dir)
-            .map(([id]) => id),
-    }));
-
-    return (
-        <div className="border-t border-slate-700 mt-2">
-            <div className="px-5 py-2.5 bg-slate-800">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">리그 노선 현황</span>
-            </div>
-            <div className="px-5 py-3 space-y-2">
-                {groups.map(({ direction, teamIds }) => (
-                    <div key={direction} className="flex items-start gap-2">
-                        <div className="w-16 flex-shrink-0 pt-0.5">
-                            <span className={`text-[10px] font-black uppercase ${DIRECTION_COLORS[direction]}`}>
-                                {DIRECTION_LABELS[direction]}
-                            </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                            {teamIds.length === 0 ? (
-                                <span className="text-[10px] text-slate-700 ko-normal">-</span>
-                            ) : (
-                                teamIds.map(id => (
-                                    <span
-                                        key={id}
-                                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-800/60 border border-slate-700/50 text-[10px] text-slate-400 ko-normal"
-                                    >
-                                        <img src={getTeamLogoUrl(id)} className="w-3 h-3 object-contain" alt="" />
-                                        {TEAM_DATA[id]?.name || id.toUpperCase()}
-                                    </span>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};

@@ -175,8 +175,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
            ) : null}
        </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0 p-6">
-         <div className="flex-1 overflow-hidden relative bg-slate-800/50 border border-slate-700 rounded-lg">
+      <div className="flex-1 overflow-hidden relative min-h-0">
             <div className={`absolute inset-0 flex flex-col ${activeTab === 'Explore' ? '' : 'hidden'}`}>
                 <ExploreOffersTab
                     team={team}
@@ -258,7 +257,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     currentSimDate={currentSimDate}
                 />
             </div>
-         </div>
       </div>
     </div>
   );

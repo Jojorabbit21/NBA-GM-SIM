@@ -270,13 +270,13 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
     };
 
     return (
-        <div className="flex flex-1 min-h-0 h-full gap-3 p-3">
+        <div className="flex flex-1 min-h-0 h-full">
 
-            {/* ── 좌측 카드: 상대 로스터 ── */}
-            <div className="flex-1 flex flex-col rounded-2xl border border-slate-800 overflow-hidden min-w-0 bg-slate-900">
+            {/* ── 좌측 패널: 상대 로스터 ── */}
+            <div className="w-[380px] lg:w-[420px] border-r border-slate-700 flex flex-col flex-shrink-0">
 
                 {/* 헤더 */}
-                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/60 flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <div className="flex items-center gap-2.5">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">상대 로스터</span>
                         {selectedTargetTeam && leagueGMProfiles?.[selectedTargetTeam.id] && (
@@ -350,7 +350,7 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
 
                 {/* 바디 */}
                 {selectedTargetTeam ? (
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                         {/* 픽 요청 섹션 */}
                         {showTargetPicks && targetPicks.length > 0 && (
                             <div className="mx-3 mt-3 mb-1 rounded-xl border border-red-500/20 bg-red-500/5 overflow-hidden">
@@ -402,7 +402,7 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-600">
+                    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-600 bg-slate-900">
                         <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
                             <Search size={20} className="text-slate-600" />
                         </div>
@@ -411,11 +411,11 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                 )}
             </div>
 
-            {/* ── 우측 카드: 내 제안 ── */}
-            <div className="w-[420px] lg:w-[480px] flex flex-col rounded-2xl border border-slate-800 overflow-hidden flex-shrink-0 min-w-0 bg-slate-900">
+            {/* ── 우측 패널: 내 제안 ── */}
+            <div className="flex-1 flex flex-col min-w-0">
 
                 {/* 헤더 */}
-                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/60 flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <div className="flex items-center gap-2.5">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">내 제안 자산</span>
                         {userPicks.length > 0 && (
@@ -454,7 +454,7 @@ export const TradeNegotiationBuilder: React.FC<TradeNegotiationBuilderProps> = (
                 </div>
 
                 {/* 바디 */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
 
                     {/* 픽 추가 섹션 */}
                     {showMyPicks && (
