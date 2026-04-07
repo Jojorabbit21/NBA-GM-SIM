@@ -3,14 +3,112 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design Token CSS Variables (Figma token 호환) ─────────────────── */
+:root {
+  /* Surface */
+  --surface\/background: #18181B;
+  --surface\/sidebar:    #18181B;
+  --surface\/card:       #27272A;
+  --surface\/elevated:   #27272A;
+  --surface\/hover:      #52525B;
+  --surface\/disabled:   #3F3F46;
+  --surface\/flat:       rgba(9,9,11,0.4);
+  --surface\/sunken:     rgba(9,9,11,0.6);
+  --surface\/subtle:     rgba(9,9,11,0.2);
+
+  /* Overlay */
+  --overlay\/dim: rgba(9,9,11,0.8);
+
+  /* Border */
+  --border\/dim:      #27272A;
+  --border\/default:  #3F3F46;
+  --border\/emphasis: #52525B;
+  --border\/subtle:   rgba(255,255,255,0.05);
+  --border\/subtler:  rgba(255,255,255,0.10);
+  --border\/inverse:  #E4E4E7;
+
+  /* Text */
+  --text\/primary:   #FAFAFA;
+  --text\/secondary: #E4E4E7;
+  --text\/muted:     #A1A1AA;
+  --text\/disabled:  #71717A;
+  --text\/inverse:   #27272A;
+  --text\/link:      #F59E0B;
+
+  /* CTA */
+  --cta\/subtle:   #A5B4FC;
+  --cta\/border:   #818CF8;
+  --cta\/default:  #6366F1;
+  --cta\/strong:   #4F46E5;
+  --cta\/stronger: #3730A3;
+  --cta\/muted:    rgba(99,102,241,0.1);
+
+  /* Status */
+  --status\/success\/default: #10B981;
+  --status\/success\/strong:  #059669;
+  --status\/success\/text:    #34D399;
+  --status\/success\/muted:   rgba(16,185,129,0.1);
+
+  --status\/danger\/default:  #EF4444;
+  --status\/danger\/strong:   #DC2626;
+  --status\/danger\/deeper:   #B91C1C;
+  --status\/danger\/border:   #F87171;
+  --status\/danger\/text:     #F87171;
+  --status\/danger\/subtle:   #FCA5A5;
+  --status\/danger\/muted:    rgba(239,68,68,0.1);
+
+  --status\/warning\/default: #F59E0B;
+  --status\/warning\/strong:  #D97706;
+  --status\/warning\/text:    #FBBF24;
+  --status\/warning\/muted:   rgba(245,158,11,0.1);
+
+  --status\/info\/default:    #0EA5E9;
+  --status\/info\/strong:     #0284C7;
+  --status\/info\/text:       #38BDF8;
+  --status\/info\/muted:      rgba(14,165,233,0.1);
+
+  /* Attribute */
+  --attribute\/s: #E879F9;
+  --attribute\/a: #34D399;
+  --attribute\/b: #FBBF24;
+  --attribute\/c: #A1A1AA;
+  --attribute\/d: #71717A;
+
+  /* Rank */
+  --rank\/gold:   #FBBF24;
+  --rank\/silver: #D4D4D8;
+  --rank\/bronze: #B45309;
+
+  /* Spacing */
+  --4px:  4px;
+  --6px:  6px;
+  --8px:  8px;
+  --12px: 12px;
+  --16px: 16px;
+  --20px: 20px;
+  --24px: 24px;
+  --32px: 32px;
+  --40px: 40px;
+  --48px: 48px;
+
+  /* Border Radius */
+  --rounded-sm: 4px;
+  --rounded:    4px;
+  --rounded-md: 6px;
+  --rounded-lg: 8px;
+  --rounded-xl: 12px;
+  --rounded-2xl: 16px;
+  --rounded-3xl: 24px;
+}
+
 /* 커스텀 스크롤바 스타일 (기존 index.html의 스타일 이관) */
 html {
     overscroll-behavior: none;
 }
 
 body {
-    background-color: #0f172a;
-    color: #f8fafc;
+    background-color: #18181B; /* surface/background — zinc-900 */
+    color: #FAFAFA;            /* text/primary — zinc-50 */
     -webkit-font-smoothing: antialiased;
     overscroll-behavior: none;
 }
@@ -84,23 +182,23 @@ body {
     height: 10px;
 }
 ::-webkit-scrollbar-track {
-    background: #0f172a;
+    background: #18181B; /* surface/background */
 }
 ::-webkit-scrollbar-thumb {
-    background: #334155;
+    background: #3F3F46; /* border/default */
     border-radius: 5px;
-    border: 2px solid #0f172a;
+    border: 2px solid #18181B;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #4f46e5;
+    background: #6366F1; /* cta/default */
 }
 ::-webkit-scrollbar-thumb:active {
-    background: #6366f1;
+    background: #4F46E5; /* cta/strong */
 }
 ::-webkit-scrollbar-corner {
-    background: #0f172a;
+    background: #18181B; /* surface/background */
 }
 * {
     scrollbar-width: thin;
-    scrollbar-color: #334155 #0f172a;
+    scrollbar-color: #3F3F46 #18181B;
 }

@@ -44,8 +44,8 @@ const NavItem: React.FC<{
     title={label}
     className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 ${
       active
-        ? 'bg-[rgba(0,0,0,0.5)]'
-        : 'opacity-70 hover:opacity-100 hover:bg-[rgba(255,255,255,0.05)]'
+        ? 'bg-zinc-950'
+        : 'opacity-70 hover:opacity-100 hover:bg-surface-hover'
     }`}
   >
     {React.cloneElement(icon as React.ReactElement<any>, { size: 24, color: 'white' })}
@@ -62,7 +62,7 @@ const NavItem: React.FC<{
   </button>
 );
 
-const Divider = () => <div className="w-6 h-px bg-zinc-800 shrink-0" />;
+const Divider = () => <div className="w-6 h-px bg-border-dim shrink-0" />;
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
@@ -114,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   return (
     <>
-      <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-[#18181b] border-r border-[#27272a]">
+      <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-surface-sidebar border-r border-border-default">
 
         {/* Upper navigation */}
         <nav className="flex-1 flex flex-col items-center gap-6 pt-6 pb-2 relative z-10">
@@ -245,12 +245,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             {isMenuOpen && createPortal(
               <div
                 ref={dropdownRef}
-                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300]"
+                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300] bg-surface-elevated border border-border-default"
                 style={{
                   bottom: `${dropdownBottom}px`,
                   left: `${dropdownLeft}px`,
-                  background: '#18181b',
-                  border: '1px solid #3f3f46',
                 }}
               >
                 {(gmDisplayName || userEmail) && (
@@ -282,14 +280,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   <div className="my-1 border-t border-zinc-700" />
                   <button
                     onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
                   >
                     <Gavel size={14} />
                     <span className="text-xs font-bold">드래프트 기록</span>
                   </button>
                   <button
                     onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
                   >
                     <Wand2 size={14} />
                     <span className="text-xs font-bold">에디터</span>
@@ -304,14 +302,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   </button>
                   <button
                     onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
                   >
                     <BookOpen size={14} />
                     <span className="text-xs font-bold">초보자 가이드</span>
                   </button>
                   <button
                     onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
                   >
                     <FileText size={14} />
                     <span className="text-xs font-bold">이용약관</span>
@@ -319,7 +317,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   <div className="my-1 border-t border-zinc-700" />
                   <button
                     onClick={() => { onLogout(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
                   >
                     <LogOut size={14} />
                     <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>

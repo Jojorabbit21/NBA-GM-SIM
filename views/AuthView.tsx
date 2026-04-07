@@ -14,9 +14,11 @@ interface AuthViewProps {
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
-    let style = type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    const style = type === 'error'
+        ? 'bg-status-danger-muted text-status-danger-text border-status-danger-default/20'
+        : 'bg-status-success-muted text-status-success-text border-status-success-default/20';
     return (
-      <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 border ${style}`}>
+      <div className={`p-4 rounded-xl flex items-start gap-3 text-sm font-medium animate-in zoom-in-95 duration-200 mb-6 border ${style}`}>
         <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
         <div className="flex-1 overflow-hidden">{children}</div>
       </div>
@@ -119,7 +121,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
         setOtp('');
         setOtpAttempts(0);
         setMode('verify');
-        // 인증번호 재발송
         try {
           await supabase.auth.resend({ type: 'signup', email });
           setResendCooldown(RESEND_COOLDOWN_SEC);
@@ -194,10 +195,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
-      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
+    <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-text-primary">
+      <div className="w-full max-w-md bg-surface-card/80 border border-border-default backdrop-blur-md rounded-3xl p-8 shadow-elevation-lg relative z-10">
         <div className={`text-center ${mode === 'verify' ? 'mb-6' : 'mb-10'}`}>
-          <h1 className="text-2xl font-black text-white leading-tight tracking-tighter uppercase pretendard">
+          <h1 className="text-2xl font-black text-text-primary leading-tight tracking-tighter uppercase">
             {APP_NAME}<br />{APP_YEAR}
           </h1>
         </div>
@@ -208,19 +209,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
 
             <div className="text-center space-y-1">
               {message ? (
-                <p className={`text-sm pretendard font-medium ${message.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
+                <p className={`text-sm font-medium ${message.type === 'error' ? 'text-status-danger-text' : 'text-status-success-text'}`}>
                   {message.text}
                 </p>
               ) : (
-                <p className="text-sm text-slate-400 pretendard font-medium">
-                  <span className="text-white">{signupEmail}</span> 으로 인증번호가 발송되었습니다.
+                <p className="text-sm text-text-muted font-medium">
+                  <span className="text-text-primary">{signupEmail}</span> 으로 인증번호가 발송되었습니다.
                 </p>
               )}
             </div>
 
             {loading && (
               <div className="flex justify-center">
-                <Loader2 className="animate-spin text-indigo-400" size={24} />
+                <Loader2 className="animate-spin text-cta-border" size={24} />
               </div>
             )}
 
@@ -229,17 +230,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
                 type="button"
                 onClick={handleResendOtp}
                 disabled={loading || resendCooldown > 0}
-                className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all disabled:opacity-50"
+                className="text-text-disabled hover:text-cta-default font-medium text-sm transition-all disabled:opacity-50"
               >
-                {resendCooldown > 0 ? <span className="text-slate-300">재발송 대기 ({resendCooldown}초)</span> : '인증번호 재발송'}
+                {resendCooldown > 0 ? <span className="text-text-secondary">재발송 대기 ({resendCooldown}초)</span> : '인증번호 재발송'}
               </button>
             </div>
 
-            <div className="border-t border-slate-800 pt-4">
+            <div className="border-t border-border-dim pt-4">
               <button
                 type="button"
                 onClick={() => { setMode('login'); setMessage(null); setOtp(''); setPassword(''); setConfirmPassword(''); }}
-                className="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-slate-300 pretendard font-medium text-sm transition-all"
+                className="w-full flex items-center justify-center gap-2 text-text-disabled hover:text-text-secondary font-medium text-sm transition-all"
               >
                 <ArrowLeft size={14} />
                 로그인으로 돌아가기
@@ -261,15 +262,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
+                  className="w-full bg-cta-strong hover:bg-cta-default disabled:bg-surface-disabled text-white font-semibold py-4 rounded-xl transition-all shadow-elevation-md flex items-center justify-center gap-3 active:scale-[0.98]"
                 >
-                  {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></> : <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>)}
+                  {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span>로그인</span></> : <><UserPlus size={20} /> <span>회원가입</span></>)}
                 </button>
               </div>
             </form>
 
-            <div className="mt-8 text-center border-t border-slate-800 pt-6">
-              <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
+            <div className="mt-8 text-center border-t border-border-dim pt-6">
+              <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-text-disabled hover:text-cta-default font-medium text-sm transition-all">
                 {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
               </button>
             </div>

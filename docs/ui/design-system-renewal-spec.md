@@ -6,11 +6,37 @@
 
 ---
 
+## 피그마 → 코드 구현 원칙
+
+> 피그마는 **시각적 결과물의 Single Source of Truth**이지, 코드 구조의 설계도가 아니다.
+> 피그마에서 컴포넌트를 구조화하는 방식(props, variant, nested 구조 등)과 코드 구현 방식은 **다를 수 있으며, 다른 것이 정상이다.**
+
+### 기준
+
+- **피그마를 따라야 하는 것**: 색상, 크기, 간격, 타이포그래피 등 **시각적 수치**
+- **코드에서 자유롭게 선택하는 것**: 컴포넌트 구조, props 설계, 상태 관리 방식, 반복 처리 방식
+
+### 적용 예시
+
+| 피그마 구현 | 코드 구현 |
+|-----------|---------|
+| 모든 Cell에 stripe props 적용 | Row에서 `nth-child` 또는 Context로 일괄 처리 |
+| Sticky Cell마다 배경색 variant 지정 | Row stripe 상태를 CSS 변수로 전달, Sticky Cell에서 참조 |
+| 상태별 컴포넌트를 별도 variant로 분리 | 단일 컴포넌트 + 조건부 클래스로 처리 |
+| Auto layout 중첩 구조 | CSS Grid / Flexbox로 간결하게 재구성 |
+
+> **코드 구현 시 피그마를 1:1로 따르지 않아도 된다. 시각적 결과가 동일하면 구현 방식은 가장 효율적인 방법을 선택한다.**
+
+---
+
 ## 코드 구현 TODO
 
 > 디자인 작업 중 발견된 코드 구현 필요 항목. 디자인 완료 후 일괄 처리.
 
 - [ ] `tailwind.config.js` — `fontSize`에 `text-2xs` 추가 (10px / line-height 14px)
+- [ ] **Leaderboard Heatmap Cell** — 피그마 디자인 작업 제외, 코드 구현만 필요. 리더보드 테이블에서 스탯 수치에 컬럼 내 상대값 기준으로 컬러 스케일(낮음→높음) 배경색을 적용하는 Body Cell variant. 현재 구현체: `components/leaderboard/LeaderboardTable.tsx`
+- [ ] **Standings CutoffRow** — 피그마 작업 제외, 코드 구현만 필요. DataRow에 `cutoffType` prop 추가: `playoff` → 행 하단 2px `status/success` (#10B981) / `playin` → 행 하단 2px `status/warning` (#F59E0B). 현재 구현체: `views/StandingsView.tsx`
+- [ ] **Table EmptyRow** — 피그마 작업 제외, 코드 구현만 필요. 테이블 데이터가 없을 때 `<td colSpan={N}>` 단일 셀. "데이터 없음" 메시지, 12px Medium `text/muted`, 가로 중앙, padding 상하 32px. `Table.tsx`에 `emptyMessage` prop으로 처리.
 
 ---
 
@@ -339,6 +365,18 @@ Status (status/ prefix로 네임스페이스 구분)
 OVR (Semantic에서 미작업 — 전부 #FFFFFF 플레이스홀더)
   ovr/s / ovr/a-plus / ovr/a / ovr/b-plus / ovr/b / ovr/c / ovr/d
   → 실제값은 Colors 그룹의 ovr/* 참조 (Primitive Colors 섹션 참고)
+
+Attribute (선수 능력치 등급 — Table Body Cell 전용)
+  attribute/s   → fuchsia/400  (#E879F9)    97+ (최상급)
+  attribute/a   → emerald/300  (#34D399)    88+ (우수)
+  attribute/b   → amber/400    (#FBBF24)    77+ (평균 이상)
+  attribute/c   → zinc/400     (#A1A1AA)    66+ (평균 이하) ← text/muted 재사용
+  attribute/d   → zinc/500     (#71717A)    ~65 (하위)      ← text/disabled 재사용
+
+Rank (순위 메달 색상 — Table Rank Cell 전용)
+  rank/gold     → amber/400    (#FBBF24)    1위
+  rank/silver   → zinc/300     (#D4D4D8)    2위
+  rank/bronze   → amber/700    (#B45309)    3위
 ```
 
 ---
@@ -3016,53 +3054,191 @@ TabBar/Pill
 ## Phase 5 — Table System
 
 > 서비스에서 가장 많이 쓰이는 복잡한 컴포넌트 그룹.
-> **Cell → Row → Table Pattern** 3개 레이어로 분리해서 작업하면 조합이 자유로워진다.
+> **Table Base → Cell → Row → Table Pattern** 순서로 작업한다. Base 규칙이 모든 Cell과 Row의 기준이 된다.
 
 ---
 
-### Layer 1-A. Header Cell (4종)
+### Table Base (공통 규칙)
 
-모든 Header Cell 공통 스타일: **Label 타이포** (uppercase, Bold, tracking-wide), `text/muted`
+> 모든 테이블 컴포넌트에 공통으로 적용되는 토큰·수치. Cell/Row 작업 전에 반드시 확정할 것.
 
-| 종류 | 설명 | 추가 요소 |
-|------|------|----------|
-| `Default` | 기본 레이블 | — |
-| `Sortable` | 정렬 가능 컬럼 | ColumnSortIcon (Neutral / Ascending / Descending) |
-| `Group` | 2단 헤더 상단 (그룹명) | 가운데 정렬, 하단 border, colspan 역할 |
-| `Sticky` | 좌측 고정 컬럼 | 배경색 강조, 우측 border |
+#### 컨테이너
+
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/card` #27272A |
+| 보더 | 1px `border/default` #3F3F46 |
+| border-radius | 12px |
+| shadow | `shadow/md` |
+
+---
+
+#### Header Cell 공통
+
+| 속성 | 값 |
+|------|----|
+| 행 높이 | 40px |
+| padding | 상하 8px / 좌우 12px |
+| 폰트 크기 | 12px |
+| 폰트 굵기 | Bold |
+| uppercase | 영문 컬럼명에만 적용 (피그마 미지정, 코드에서 판단) |
+| 텍스트 색상 (Default) | `text/muted` #A1A1AA |
+| 텍스트 색상 (Hover) | `text/primary` #FAFAFA |
+| 텍스트 색상 (Sort 활성) | `cta/subtle` #A5B4FC |
+| 배경 | `surface/sidebar` #18181B |
+| 열 구분선 | 1px `border/default` #3F3F46 (우측) |
+| header↔body 구분선 | 1px `border/default` #3F3F46 (하단) |
+
+**상태 4종 (피그마 실측):**
+
+| 상태 | 텍스트 색상 | Sort 아이콘 |
+|------|-----------|-----------|
+| Default | `text/muted` #A1A1AA | 없음 |
+| Hover | `text/primary` #FAFAFA | 없음 |
+| Asc | `cta/subtle` #A5B4FC | ↑ 12px SVG, gap 4px |
+| Desc | `cta/subtle` #A5B4FC | ↓ 12px SVG, gap 4px |
+
+---
+
+#### Body Cell 공통
+
+| 속성 | 값 |
+|------|----|
+| 행 높이 | 36px |
+| padding | 상하 8px / 좌우 12px |
+| 기본 텍스트 | 12px Medium, `text/secondary` #E4E4E7 |
+| Muted 텍스트 | 12px Medium, `text/muted` #A1A1AA |
+| 수치 폰트 | Mono, SemiBold (medium/semibold/bold 혼재 → SemiBold 통일) |
+| 행 구분선 | 없음 (stripe로 행 구분) |
+| 열 구분선 | 1px `border/default` #3F3F46 (우측, border-r) |
+| Hover 배경 | `surface/hover` #52525B (stripe 색상 위에 override) |
+
+---
+
+#### 교차 색상 (Stripe)
+
+행 수·컬럼 수·용도에 따라 3단계로 구분 적용.
+
+| Case | 적용 조건 | Even 행 | Odd 행 | 사용 화면 |
+|------|---------|---------|--------|---------|
+| **None** | 행 수 적음 (10행 이하), 단순 나열 | transparent | transparent | DepthChart, GM Profile, Coach Detail, Contract Table |
+| **Subtle** | 일반 데이터 테이블 | transparent | `base/white/transparent/5` rgba(255,255,255,0.05) | Standings, FA Market, Trade History, Payroll |
+| **Dense** | 컬럼 15개 이상, 스탯 집약 테이블 | transparent | `base/white/transparent/10` rgba(255,255,255,0.10) | BoxScore, RosterGrid, Leaderboard, TeamGameLog, 커리어 기록 |
+| **Tinted** | 팀 컬러 테마 적용 화면 | 팀컬러 6% opacity | 팀컬러 12% opacity | PlayerDetailView 커리어·게임로그 |
+
+**Sticky 컬럼 stripe 처리:**
+- Sticky 셀은 배경이 불투명이므로 행의 stripe 색상을 별도로 지정해야 함
+- Even 행 Sticky: `surface/card` #27272A
+- Odd 행 Sticky (Subtle): #2E2E31 (white 5% over #27272A)
+- Odd 행 Sticky (Dense): #333336 (white 10% over #27272A)
+- Hover는 모든 케이스에서 `surface/hover` #52525B로 override
+
+---
+
+#### 텍스트 정렬 원칙
+
+| 데이터 유형 | 정렬 |
+|-----------|------|
+| 이름, 텍스트 | 좌측 |
+| 수치, 연봉, 스탯 | 우측 |
+| 배지, OVR, 아이콘 | 중앙 |
+
+---
+
+#### Sticky 컬럼
+
+| 속성 | 값 |
+|------|----|
+| Header 배경 | `surface/sidebar` #18181B |
+| Body 배경 (Even) | `surface/card` #27272A |
+| Body 배경 (Odd/Subtle) | #2E2E31 |
+| Body 배경 (Odd/Dense) | #333336 |
+| Body Hover 배경 | `surface/hover` #52525B |
+| 우측 경계 | 1px `border/default` #3F3F46 (shadow 방식 사용 금지) |
+
+---
+
+#### Footer Row
+
+| 속성 | 값 |
+|------|----|
+| 배경 | `surface/sidebar` #18181B |
+| 상단 구분선 | 2px `border/emphasis` #52525B |
+| padding 상하 | 12px |
+
+---
+
+### Layer 1-A. Header Cell (2종)
+
+모든 Header Cell 공통 스타일: Table Base Header Cell 규칙 준수 (12px Bold, `text/muted` #A1A1AA, `surface/sidebar` #18181B 배경)
+
+| 종류 | 설명 | 상태 |
+|------|------|------|
+| `Default` | 정렬 불가 컬럼 | Default / Hover |
+| `Sortable` | 정렬 가능 컬럼 | Default / Hover / Asc / Desc |
+
+> **Group·Sticky는 Row 레벨 prop으로 처리** — 컬럼 구조가 고정이 아니므로 별도 Cell 종류로 만들지 않음.
+> Group Header는 GroupRow 내 셀이며 가운데 정렬 + 12px Bold 동일 스타일.
+> Sticky는 배경색만 다르므로 코드에서 `isSticky` prop으로 분기 처리.
 
 ---
 
 ### Layer 1-B. Body Cell (12종)
 
-| 종류 | 용도 | 표현 방식 | Variant / 상태 |
-|------|------|----------|---------------|
-| `Text` | 기본 문자열 | Body-M | Default / Muted |
-| `Number` | 순수 수치 | Body-M, 우측 정렬 | Default / Muted |
-| `Stat` | 경기 스탯 수치 | Body-M, 컬러 코딩 | Positive(success) / Negative(danger) / Neutral |
-| `Attribute` | 선수 능력치 | Body-M + 배경 색상 | S(97+) / A(88+) / B(77+) / C(66+) / D(~65) |
-| `Player` | 선수 정보 인라인 | Avatar(sm) + 이름 + 서브텍스트 | Default / Injured / Clickable |
-| `Team` | 팀 정보 인라인 | TeamLogo(sm) + 팀명 | Default / Clickable / Eliminated(muted) |
-| `OVR` | OVR 배지 | OvrBadge 컴포넌트 재사용 | (배지 자체 티어로 구분) |
-| `Rank` | 순위 숫자 | Body-M | 1st(amber) / 2nd(zinc-300) / 3rd(amber-700) / Rest(muted) |
-| `Badge` | 상태·포지션 배지 | Badge 컴포넌트 재사용 | (배지 variant로 구분) |
-| `Contract` | 연봉 금액 | Mono, 우측 정렬 | Current / Future / Option / Expired(strikethrough) / DeadCap(danger muted) |
-| `Action` | 인라인 버튼 | Button(xs or sm) | — |
-| `Empty` | 빈 값 | "—" 텍스트, `text/muted` | — |
+#### 피그마 펀더멘털 구조
+
+Body Cell은 3종의 펀더멘털 컴포넌트로 구성. 12종 셀 모두 이 3종을 베이스로 조합.
+
+| 펀더멘털 | 커버하는 셀 | 특이사항 |
+|---------|-----------|---------|
+| **Body Cell Base** | Text, Number, Stat, Rank, Badge, OVR, Action, Empty, Contract | Mono 셀은 폰트 스타일만 교체, 별도 펀더멘털 불필요 |
+| **Body Cell Clickable/Person** | Player | 텍스트만. Hover: underline + `cta/border` #818CF8 텍스트 |
+| **Body Cell Clickable/Team** | Team | TeamLogo(16px) + 텍스트, gap 6px. Hover: 동일 |
+| **Body Cell Attribute** | Attribute | 등급별 배경색이 stripe를 override. S/A/B/C/D 5단계 |
+
+> **Body Cell Base 폰트 확정 (피그마 실측)**: 12px **Bold**, `text/primary` #FAFAFA
+> **Attribute 배경 override 원칙**: stripe 배경보다 attribute 등급 배경이 항상 위에 위치
+> **Stripe 처리 분리 원칙**: 피그마에서는 **Row 레벨**에서 stripe 배경 설정. Cell 펀더멘털은 투명 배경 유지, Row 배경 상속. 단 Sticky Cell은 `position: sticky` 특성상 불투명 배경을 별도 명시 필요 (Stripe Case별 계산값 적용). 코드 구현은 Row props / CSS `nth-child` / Context 중 구현에 유리한 방식으로 자유 선택.
 
 ---
 
-### Layer 2. Row (5종)
+#### 셀 종류별 상세
+
+| 종류 | 정렬 | 폰트 | 색상 / Variant |
+|------|------|------|--------------|
+| `Text` | 좌 | 12px Bold | Default: `text/primary` / Muted: `text/muted` |
+| `Number` | 우 | 12px Mono Bold | Default: `text/primary` / Muted: `text/muted` |
+| `Stat` | 우 | 12px Mono Bold | Positive: `status/success/text` #4ADE80 / Negative: `status/danger/text` #F87171 / Neutral: `text/primary` |
+| `Attribute` | 중앙 | 12px Mono Bold | S: `attribute/s` #E879F9 / A: `attribute/a` #34D399 / B: `attribute/b` #FBBF24 / C: `attribute/c` #A1A1AA / D: `attribute/d` #71717A |
+| `Clickable/Person` | 좌 | 12px Bold | Default: `text/primary` #FAFAFA / Hover: underline + #818CF8 텍스트 |
+| `Clickable/Team` | 좌 | 12px Bold, TeamLogo 16px + gap 6px | Default: `text/primary` #FAFAFA / Hover: underline + #818CF8 텍스트 |
+| `OVR` | 중앙 | OVR Badge base (20px), padding 상하 **6px** | — |
+| `Rank` | 중앙 | 12px Mono Bold | 1st: `rank/gold` #FBBF24 / 2nd: `rank/silver` #D4D4D8 / 3rd: `rank/bronze` **#B45309** / Rest: `text/muted` |
+| `Badge` | 중앙 | Badge 컴포넌트 재사용, padding 상하 **4px** | — |
+| `Contract` | 우 | 12px Mono Bold | Current: `text/primary` / Future: `text/muted` / Option: `status/warning/text` / Expired: strikethrough `text/disabled` / DeadCap: `status/danger/text` + danger muted bg |
+| `Action` | 중앙 | Button xs, padding 상하 **4px** | — |
+| `Empty` | 중앙 | 12px | "—", `text/muted` |
+
+---
+
+### Layer 2. Row (3종)
+
+> **CutoffRow·EmptyRow 피그마 작업 제외** — 코드 구현 TODO 참조.
 
 | 종류 | 설명 | 배경 / 스타일 |
 |------|------|--------------|
-| `DataRow` | 일반 데이터 행 | Default(투명) / Hover(`surface/hover`) / Highlighted(amber-900/10) |
-| `GroupRow` | 그룹 구분 헤더 행 | `surface/flat`, Label 타이포, `text/muted`, uppercase |
-| `CutoffRow` | 하단 컷오프 라인 포함 행 | DataRow + 하단 2px 라인 (Playoff=success / PlayIn=warning) |
-| `FooterRow` | 합계·평균 행 | `surface/card`, 상단 `border/emphasis` |
-| `SkeletonRow` | 로딩 중 임시 행 | TableRow Skeleton 패턴, shimmer 효과 |
+| `DataRow` | 일반 데이터 행 | Stripe Case에 따라 Even/Odd 적용. Hover: `surface/hover` #52525B override |
+| `GroupRow` | 그룹 구분 헤더 행 | `surface/elevated` #27272A, 10px Bold uppercase `text/muted`, 행 높이 32px. Stripe 적용 안 함 |
+| `FooterRow` | 합계·평균 행 | `surface/sidebar` #18181B, 상단 2px `border/emphasis`. Stripe 적용 안 함 |
 
-추가: `EmptyRow` — colspan 전체, 중앙 정렬 "데이터 없음" 텍스트
+**DataRow Stripe 배경 요약:**
+
+| Stripe Case | Even 행 | Odd 행 | Highlighted 행 |
+|------------|---------|--------|---------------|
+| None | transparent | transparent | `status/warning` 10% |
+| Subtle | transparent | rgba(255,255,255,0.05) | `status/warning` 10% |
+| Dense | transparent | rgba(255,255,255,0.10) | `status/warning` 10% |
+| Tinted | 팀컬러 6% | 팀컬러 12% | — |
 
 ---
 

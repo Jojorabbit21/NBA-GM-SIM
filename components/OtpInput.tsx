@@ -21,12 +21,10 @@ export const OtpInput: React.FC<OtpInputProps> = ({ length, value, onChange, dis
     if (e.key === 'Backspace') {
       e.preventDefault();
       if (digits[index]) {
-        // Clear current digit
         const arr = digits.slice();
         arr[index] = '';
         onChange(arr.join(''));
       } else if (index > 0) {
-        // Move to previous and clear it
         const arr = digits.slice();
         arr[index - 1] = '';
         onChange(arr.join(''));
@@ -79,12 +77,11 @@ export const OtpInput: React.FC<OtpInputProps> = ({ length, value, onChange, dis
           onPaste={handlePaste}
           onFocus={(e) => e.target.select()}
           className={`
-            w-11 h-12 text-center text-lg font-bold text-white
-            bg-slate-950 border border-slate-800 rounded-xl
+            w-11 h-12 text-center text-lg font-bold text-text-primary
+            bg-surface-sunken border border-border-default rounded-xl
             outline-none transition-all duration-200
-            focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10
+            focus:border-cta-border focus:ring-4 focus:ring-indigo-500/10
             disabled:opacity-50 disabled:cursor-not-allowed
-            pretendard
           `}
           autoComplete="one-time-code"
         />
