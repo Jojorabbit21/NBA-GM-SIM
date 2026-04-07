@@ -8,6 +8,7 @@ import { PlayerTacticsPanel } from './tactics/PlayerTacticsPanel';
 import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
 import { fetchPresets, savePreset, deletePreset } from '../../services/tacticsService';
 import { PresetRenameModal } from './tactics/PresetRenameModal';
+import { TabBar } from '../common/TabBar';
 import { supabase } from '../../services/supabaseClient';
 
 type TacticsTab = 'team' | 'player';
@@ -134,6 +135,16 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
 
     return (
         <div className="flex flex-col h-full bg-slate-900 relative">
+            {/* Tab Bar — 바디 최상단 */}
+            <TabBar
+                tabs={[
+                    { id: 'team' as TacticsTab, label: '팀 전술' },
+                    { id: 'player' as TacticsTab, label: '개인 전술' },
+                ]}
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab as TacticsTab)}
+            />
+
             {/* Header Controls */}
             <div className="px-8 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 relative z-20">
 
@@ -191,61 +202,42 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                 </div>
             </div>
 
-            {/* Paste Input Area */}
-            {showPasteInput && (
-                <div className="px-8 py-3 bg-slate-900/60 border-b border-slate-800 flex items-start gap-3 flex-shrink-0">
-                    <textarea
-                        value={pasteValue}
-                        onChange={e => setPasteValue(e.target.value)}
-                        placeholder='{"sliders": { "pace": 6, ... }}'
-                        rows={4}
-                        className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500"
-                    />
-                    <div className="flex flex-col gap-1.5">
-                        <button onClick={handlePasteApply} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors">
-                            적용
-                        </button>
-                        <button onClick={() => { setShowPasteInput(false); setPasteValue(''); }} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-lg transition-colors">
-                            취소
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Tab Bar */}
-            <div className="flex border-b border-slate-700 flex-shrink-0">
-                {([
-                    { id: 'team' as TacticsTab, label: '팀 전술' },
-                    { id: 'player' as TacticsTab, label: '개인 전술' },
-                ] as const).map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`px-6 py-3 text-xs font-bold transition-colors border-b-2 ${
-                            activeTab === tab.id
-                                ? 'border-indigo-500 text-white'
-                                : 'border-transparent text-slate-400 hover:text-slate-200'
-                        }`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {activeTab === 'team' && (
-                    <div className="p-8 pb-20">
-                        <TacticsSlidersPanel
-                            tactics={tactics}
-                            onUpdateTactics={onUpdateTactics}
-                            roster={roster}
-                            defensiveStats={defensiveStats}
-                        />
-                    </div>
+                    <>
+                        {/* Paste Input Area — 팀 전술 탭에서만 표시 */}
+                        {showPasteInput && (
+                            <div className="px-8 py-3 bg-slate-900/60 border-b border-slate-800 flex items-start gap-3">
+                                <textarea
+                                    value={pasteValue}
+                                    onChange={e => setPasteValue(e.target.value)}
+                                    placeholder='{"sliders": { "pace": 6, ... }}'
+                                    rows={4}
+                                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500"
+                                />
+                                <div className="flex flex-col gap-1.5">
+                                    <button onClick={handlePasteApply} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors">
+                                        적용
+                                    </button>
+                                    <button onClick={() => { setShowPasteInput(false); setPasteValue(''); }} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-lg transition-colors">
+                                        취소
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        <div className="p-8 pb-20">
+                            <TacticsSlidersPanel
+                                tactics={tactics}
+                                onUpdateTactics={onUpdateTactics}
+                                roster={roster}
+                                defensiveStats={defensiveStats}
+                            />
+                        </div>
+                    </>
                 )}
                 {activeTab === 'player' && (
-                    <div className="p-6 pb-20">
+                    <div className="pb-20">
                         <PlayerTacticsPanel
                             tactics={tactics}
                             roster={roster}
