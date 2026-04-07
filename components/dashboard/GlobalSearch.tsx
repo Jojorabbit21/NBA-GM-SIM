@@ -213,37 +213,43 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                                                 <span className="text-xs font-semibold text-text-muted truncate flex-1">{result.teamName}</span>
                                             </>
                                         )}
-                                        {result.type === 'player' && (
-                                            <>
-                                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                    <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-4 !h-4 !text-[10px] shrink-0" />
-                                                    <span className="text-xs font-semibold text-text-muted truncate">{result.player.name}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ backgroundColor: '#31006f', color: '#fdb927' }}>
+                                        {result.type === 'player' && (() => {
+                                            const tc = TEAM_DATA[result.teamId]?.colors;
+                                            return (
+                                                <>
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-4 !h-4 !text-[10px] shrink-0" />
+                                                        <span className="text-xs font-semibold text-text-muted truncate">{result.player.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ backgroundColor: tc?.primary ?? '#3f3f46', color: tc?.text ?? '#ffffff' }}>
+                                                            {result.teamId.toUpperCase()}
+                                                        </span>
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-card text-text-secondary border border-border-default whitespace-nowrap">
+                                                            {result.player.position}
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
+                                        {(result.type === 'gm' || result.type === 'coach') && (() => {
+                                            const tc = TEAM_DATA[result.teamId]?.colors;
+                                            return (
+                                                <>
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-info-muted text-status-info-text shrink-0 whitespace-nowrap">
+                                                            {result.type === 'gm' ? 'GM' : '코치'}
+                                                        </span>
+                                                        <span className="text-xs font-semibold text-text-muted truncate">
+                                                            {result.type === 'gm' ? result.profile.name : result.coach.name}
+                                                        </span>
+                                                    </div>
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 whitespace-nowrap" style={{ backgroundColor: tc?.primary ?? '#3f3f46', color: tc?.text ?? '#ffffff' }}>
                                                         {result.teamId.toUpperCase()}
                                                     </span>
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-card text-text-secondary border border-border-default whitespace-nowrap">
-                                                        {result.player.position}
-                                                    </span>
-                                                </div>
-                                            </>
-                                        )}
-                                        {(result.type === 'gm' || result.type === 'coach') && (
-                                            <>
-                                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-info-muted text-status-info-text shrink-0 whitespace-nowrap">
-                                                        {result.type === 'gm' ? 'GM' : '코치'}
-                                                    </span>
-                                                    <span className="text-xs font-semibold text-text-muted truncate">
-                                                        {result.type === 'gm' ? result.profile.name : result.coach.name}
-                                                    </span>
-                                                </div>
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 whitespace-nowrap" style={{ backgroundColor: '#31006f', color: '#fdb927' }}>
-                                                    {result.teamId.toUpperCase()}
-                                                </span>
-                                            </>
-                                        )}
+                                                </>
+                                            );
+                                        })()}
                                     </button>
                                 ))}
                             </div>

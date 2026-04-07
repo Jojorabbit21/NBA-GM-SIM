@@ -63,6 +63,18 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
     navigate(path);
   };
 
+  // 드롭다운 항목 active 판별
+  const isItemActive = (itemPath: string): boolean => {
+    const [itemPathname, itemQuery] = itemPath.split('?');
+    if (itemQuery) {
+      return pathname === itemPathname && search === `?${itemQuery}`;
+    }
+    if (itemPathname === '/front-office') {
+      return pathname.startsWith('/front-office') && !search.includes('tab=salary');
+    }
+    return pathname.startsWith(itemPathname);
+  };
+
   const isHomeActive = pathname === '/';
   const isInboxActive = pathname.startsWith('/inbox');
   const isLeagueActive =
@@ -117,15 +129,22 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
       className="absolute top-full left-0 mt-2 bg-black border border-zinc-700 rounded-lg p-2 flex flex-col gap-0.5 z-[200]"
       style={{ minWidth }}
     >
-      {items.map(item => (
-        <button
-          key={item.path}
-          onClick={() => handleNav(item.path)}
-          className="px-3 py-1 text-xs font-medium text-white hover:bg-white/10 rounded text-left transition-colors"
-        >
-          {item.label}
-        </button>
-      ))}
+      {items.map(item => {
+        const active = isItemActive(item.path);
+        return (
+          <button
+            key={item.path}
+            onClick={() => handleNav(item.path)}
+            className={`px-3 py-1 text-xs rounded text-left transition-colors ${
+              active
+                ? 'bg-white/15 text-white font-semibold'
+                : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 

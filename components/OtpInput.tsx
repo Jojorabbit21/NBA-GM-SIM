@@ -78,10 +78,11 @@ export const OtpInput: React.FC<OtpInputProps> = ({ length, value, onChange, dis
           onFocus={(e) => e.target.select()}
           className={`
             w-11 h-12 text-center text-lg font-bold text-text-primary
-            bg-surface-sunken border border-border-default rounded-xl
+            bg-surface-background border border-border-default rounded-xl
             outline-none transition-all duration-200
-            focus:border-cta-border focus:ring-4 focus:ring-indigo-500/10
-            disabled:opacity-50 disabled:cursor-not-allowed
+            hover:border-cta-stronger
+            focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]
+            disabled:bg-surface-disabled disabled:border-transparent disabled:opacity-50 disabled:cursor-not-allowed
           `}
           autoComplete="one-time-code"
         />

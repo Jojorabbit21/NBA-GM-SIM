@@ -100,7 +100,7 @@ export const ActionButtonPrimary: React.FC<ActionButtonPrimaryProps> = ({
       onMouseLeave={() => { setHovered(false); setPressed(false); }}
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
-      className={`flex items-center rounded-xl transition-all duration-150 select-none overflow-hidden w-full ${height} ${
+      className={`flex items-center rounded-xl transition-all duration-150 select-none overflow-hidden ${height} ${
         disabled || loading ? 'cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'
       } ${className}`}
       style={getStyle()}
