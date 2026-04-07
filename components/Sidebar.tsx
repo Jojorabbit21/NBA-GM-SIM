@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  House, Inbox, Landmark, CircleDollarSign, Users, GitPullRequestClosed,
+  Home, Inbox, Landmark, CircleDollarSign, Users, GitPullRequestClosed,
   ListOrdered, ChartNoAxesColumn, ArrowLeftRight, ZoomIn, Calendar, Medal,
   CircleUser, Settings,
   RotateCcw, LogOut, Crown, BookOpen, FileText, Wand2, Gavel, Sparkles, Dices,
@@ -138,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
           <NavItem
             active={pathname === '/'}
-            icon={<House />}
+            icon={<Home />}
             label="홈"
             onClick={() => navigate('/')}
           />
