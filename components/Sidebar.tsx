@@ -42,13 +42,13 @@ const NavItem: React.FC<{
     ref={buttonRef}
     onClick={onClick}
     title={label}
-    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-all duration-150 ${
+    className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-colors duration-150 ${
       active
-        ? 'bg-zinc-950'
-        : 'opacity-70 hover:opacity-100 hover:bg-surface-hover'
+        ? 'text-white'
+        : 'text-zinc-700 hover:text-zinc-400'
     }`}
   >
-    {React.cloneElement(icon as React.ReactElement<any>, { size: 24, color: 'white' })}
+    {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
     {badge !== undefined && badge > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold shadow">
         {badge > 9 ? '9+' : badge}

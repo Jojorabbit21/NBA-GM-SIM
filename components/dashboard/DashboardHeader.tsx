@@ -9,7 +9,7 @@ import { getTeamTheme } from '../../utils/teamTheme';
 import { SeasonKeyDates } from '../../utils/seasonConfig';
 import { PendingOffseasonAction } from '../../types/app';
 import { DateSkipDropdown, formatDateKorean, UpcomingGame } from './DateSkipDropdown';
-import { GlobalSearch } from './GlobalSearch';
+import { HeaderNavMenu } from './HeaderNavMenu';
 import { GMProfile } from '../../types/gm';
 
 interface DashboardHeaderProps {
@@ -38,6 +38,11 @@ interface DashboardHeaderProps {
   tomorrowOpponentName?: string;
   // 데이트 스키퍼 드롭다운용 미래 5경기
   upcomingGames?: UpcomingGame[];
+  // 헤더 네비게이션 메뉴
+  isRegularSeasonOver?: boolean;
+  hasProspects?: boolean;
+  gmDisplayName?: string;
+  unreadMessagesCount?: number;
   // 검색 기능
   allTeams?: Team[];
   coachingData?: Record<string, { headCoach: any }>;
@@ -67,6 +72,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   streak, conferenceName, isSeasonOver, pendingOffseasonAction, keyDates,
   onSkipToDate, onSimulateFullSeason,
   todayOpponentName, tomorrowDate, tomorrowOpponentName, upcomingGames,
+  isRegularSeasonOver, hasProspects, gmDisplayName, unreadMessagesCount,
   allTeams, coachingData, leagueGMProfiles,
   onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
 }) => {
@@ -169,19 +175,23 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         </div>
       </div>
 
-      {/* ② 가운데: 검색창 (절대 중앙) */}
+      {/* ② 가운데: 네비게이션 메뉴 + 검색창 (절대 중앙) */}
       <div className="absolute left-1/2 -translate-x-1/2 z-10">
-        {allTeams && onSearchViewPlayer && onSearchViewTeam && onSearchViewGM && onSearchViewCoach && (
-          <GlobalSearch
-            allTeams={allTeams}
-            coachingData={coachingData}
-            leagueGMProfiles={leagueGMProfiles}
-            onViewPlayer={onSearchViewPlayer}
-            onViewTeam={onSearchViewTeam}
-            onViewGM={onSearchViewGM}
-            onViewCoach={onSearchViewCoach}
-          />
-        )}
+        <HeaderNavMenu
+          teamId={team.id}
+          teamPrimaryColor={teamColors?.primary}
+          isRegularSeasonOver={!!isRegularSeasonOver}
+          hasProspects={!!hasProspects}
+          gmDisplayName={gmDisplayName}
+          unreadMessagesCount={unreadMessagesCount ?? 0}
+          allTeams={allTeams}
+          coachingData={coachingData}
+          leagueGMProfiles={leagueGMProfiles}
+          onSearchViewPlayer={onSearchViewPlayer}
+          onSearchViewTeam={onSearchViewTeam}
+          onSearchViewGM={onSearchViewGM}
+          onSearchViewCoach={onSearchViewCoach}
+        />
       </div>
 
       {/* ③ 오른쪽: 액션 버튼 */}
@@ -194,6 +204,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           loadingLabel={simProgress?.label ?? '처리 중'}
           showChevron={isGameToday}
           size="medium"
+          className="w-[200px]"
         />
         {isGameToday && onAutoSimClick && (
           <ActionButtonSecondary

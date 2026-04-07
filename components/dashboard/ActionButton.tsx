@@ -39,6 +39,7 @@ interface ActionButtonPrimaryProps {
   /** 경기 당일: 우측에 chevron 분리 영역 표시 */
   showChevron?: boolean;
   size?: 'medium' | 'small'; // medium=48px, small=40px
+  className?: string;
 }
 
 interface ActionButtonSecondaryProps {
@@ -57,6 +58,7 @@ export const ActionButtonPrimary: React.FC<ActionButtonPrimaryProps> = ({
   loadingLabel,
   showChevron = false,
   size = 'medium',
+  className = '',
 }) => {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -100,7 +102,7 @@ export const ActionButtonPrimary: React.FC<ActionButtonPrimaryProps> = ({
       onMouseUp={() => setPressed(false)}
       className={`flex items-center rounded-xl transition-all duration-150 select-none overflow-hidden w-full ${height} ${
         disabled || loading ? 'cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'
-      }`}
+      } ${className}`}
       style={getStyle()}
     >
       {showChevron ? (
