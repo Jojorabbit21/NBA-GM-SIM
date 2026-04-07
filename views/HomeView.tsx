@@ -218,7 +218,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <div className="w-[280px] shrink-0 flex flex-col gap-4">
 
                     {/* 다음 경기 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader title="다음 경기" primaryColor={primaryColor} />
                         <div className="p-4">
                             {nextGame && nextOpponent ? (
@@ -239,7 +239,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     </div>
 
                     {/* 최근 10경기 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader
                             title="최근 10경기 성적"
                             primaryColor={primaryColor}
@@ -260,7 +260,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                                     <div key={`e-${i}`} className="flex-1 h-2 rounded-full bg-zinc-700/40" />
                                 ))}
                             </div>
-                            <div className="text-xs text-text-muted font-bold mb-3">{l10.w}승 {l10.l}패</div>
+                            <div className="text-xs text-slate-400 font-bold mb-3">{l10.w}승 {l10.l}패</div>
 
                             {last10Games.length === 0 ? (
                                 <div className="text-slate-500 text-xs text-center py-1">아직 경기 결과 없음</div>
@@ -286,7 +286,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     </div>
 
                     {/* 현재 순위 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader
                             title={`현재 순위 (${myConference === 'East' ? '동부' : '서부'})`}
                             primaryColor={primaryColor}
@@ -327,7 +327,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     {/* 메일함 */}
                     {userId && (
-                        <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader
                                 title={`메일함${unreadCount > 0 ? ` (${unreadCount}개 미읽음)` : ''}`}
                                 primaryColor={primaryColor}
@@ -383,7 +383,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     )}
 
                     {/* 로스터 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader
                             title="로스터"
                             primaryColor={primaryColor}
@@ -449,7 +449,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <div className="w-[260px] shrink-0 flex flex-col gap-4">
 
                     {/* 팀 스탯 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader title="팀 스탯" primaryColor={primaryColor} />
                         <div className="divide-y divide-slate-800">
                             {([
@@ -487,7 +487,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     </div>
 
                     {/* 부상자 명단 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader title="부상자 명단" primaryColor={primaryColor} />
                         {injuredPlayers.length === 0 ? (
                             <div className="px-4 py-3 text-xs text-status-success-text font-bold text-center">전원 건강 상태 양호</div>
@@ -512,7 +512,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     </div>
 
                     {/* 재정 */}
-                    <div className="bg-surface-card border border-border-dim rounded-lg overflow-hidden">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                         <SectionHeader
                             title="재정"
                             primaryColor={primaryColor}
