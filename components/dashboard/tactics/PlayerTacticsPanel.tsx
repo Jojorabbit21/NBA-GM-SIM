@@ -108,7 +108,8 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
             <Table fullHeight={false} className="!rounded-none !border-x-0 !border-t-0 !shadow-none">
                 <TableHead noRow>
                     <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell align="left" className="pl-8 w-52">선수</TableHeaderCell>
+                        <TableHeaderCell align="center" className="w-16">포지션</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-4">선수</TableHeaderCell>
                         <TableHeaderCell className="w-28">
                             <div>휴식 임계치</div>
                             <div className="text-slate-600 font-normal text-[10px] normal-case tracking-normal">0=비활성</div>
@@ -126,17 +127,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                     {sections.map(pos => {
                         const players = groupedRoster[pos];
                         if (!players || players.length === 0) return null;
-                        return (
-                            <React.Fragment key={pos}>
-                                {/* 포지션 구분 행 */}
-                                <tr className="bg-slate-950/60">
-                                    <td colSpan={6} className="py-1 pl-8 border-b border-slate-800/50">
-                                        <span className="text-[10px] font-black text-slate-500 tracking-widest uppercase">
-                                            {posLabels[pos] ?? pos}
-                                        </span>
-                                    </td>
-                                </tr>
-                                {players.map(player => {
+                        return players.map((player, idx) => {
                                     const ovr = calculatePlayerOvr(player);
                                     const cfg = getConfig(player.id);
                                     const restVal = cfg.restThreshold ?? 0;
@@ -144,21 +135,27 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                     const foulVal = cfg.foulPolicy ?? 'auto';
                                     const garbageVal = cfg.garbagePolicy ?? 'auto';
                                     const clutchVal = cfg.clutchPolicy ?? 'auto';
+                                    const label = posLabels[pos] ?? pos;
 
                                     return (
                                         <TableRow key={player.id}>
+                                            {/* 포지션 컬럼 — 첫 번째 선수에만 라벨 표시 */}
+                                            <TableCell align="center" className="text-[10px] font-black text-slate-500 tracking-widest uppercase">
+                                                {idx === 0 ? label : ''}
+                                            </TableCell>
+
                                             {/* 선수명 */}
-                                            <TableCell align="left" className="pl-8">
+                                            <TableCell align="left" className="pl-4">
                                                 <div className="flex items-center gap-2">
                                                     <OvrBadge value={ovr} size="sm" />
-                                                    <span className="text-xs text-slate-200 font-medium truncate max-w-[120px]">
+                                                    <span className="text-xs text-slate-200 font-medium truncate max-w-[160px]">
                                                         {player.name}
                                                     </span>
                                                 </div>
                                             </TableCell>
 
                                             {/* 휴식 임계치 */}
-                                            <TableCell>
+                                            <TableCell align="center">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <input
                                                         type="number"
@@ -178,7 +175,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                             </TableCell>
 
                                             {/* 복귀 임계치 */}
-                                            <TableCell>
+                                            <TableCell align="center">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <input
                                                         type="number"
@@ -198,7 +195,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                             </TableCell>
 
                                             {/* 파울 정책 */}
-                                            <TableCell>
+                                            <TableCell align="center">
                                                 <select
                                                     value={foulVal}
                                                     onChange={e => updateConfig(player.id, { foulPolicy: e.target.value as 'auto' | 'ignore' })}
@@ -211,7 +208,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                             </TableCell>
 
                                             {/* 가비지타임 */}
-                                            <TableCell>
+                                            <TableCell align="center">
                                                 <select
                                                     value={garbageVal}
                                                     onChange={e => updateConfig(player.id, { garbagePolicy: e.target.value as 'auto' | 'play' | 'bench' })}
@@ -225,7 +222,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                             </TableCell>
 
                                             {/* 클러치 정책 */}
-                                            <TableCell>
+                                            <TableCell align="center">
                                                 <select
                                                     value={clutchVal}
                                                     onChange={e => updateConfig(player.id, { clutchPolicy: e.target.value as 'auto' | 'must-play' | 'must-bench' })}
@@ -239,9 +236,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                             </TableCell>
                                         </TableRow>
                                     );
-                                })}
-                            </React.Fragment>
-                        );
+                                });
                     })}
                 </TableBody>
             </Table>
