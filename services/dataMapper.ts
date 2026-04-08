@@ -14,6 +14,21 @@ import {
 } from '../utils/ovrUtils';
 import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
 
+/** CSV 약칭 → Player 런타임 키 매핑 (custom_overrides 적용 시 공용) */
+export const CSV_TO_RUNTIME_KEY: Record<string, string> = {
+    close: 'closeShot', mid: 'midRange', '3c': 'threeCorner',
+    '3_45': 'three45', '3t': 'threeTop', siq: 'shotIq',
+    ocon: 'offConsist', lay: 'layup', dnk: 'dunk',
+    post: 'postPlay', draw: 'drawFoul', pacc: 'passAcc',
+    handl: 'handling', spwb: 'spdBall', piq: 'passIq',
+    pvis: 'passVision', obm: 'offBallMovement', idef: 'intDef', pdef: 'perDef',
+    stl: 'steal', hdef: 'helpDefIq', pper: 'passPerc',
+    dcon: 'defConsist', oreb: 'offReb', dreb: 'defReb', box: 'boxOut',
+    spd: 'speed', agi: 'agility', str: 'strength',
+    vert: 'vertical', sta: 'stamina', hus: 'hustle',
+    dur: 'durability',
+};
+
 /** DB 연봉 값 정규화: $M 단위(< 1000)면 달러로 변환 */
 const normalizeSalary = (val: number): number => {
     if (val < 1000) return Math.round(val * 1_000_000);
@@ -273,20 +288,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         zone_atb3_r_m: 0, zone_atb3_r_a: 0
     };
 
-    // [New] custom_overrides 저장 (적용은 useGameData에서 모드별로)
-    const CSV_TO_RUNTIME_KEY: Record<string, string> = {
-        close: 'closeShot', mid: 'midRange', '3c': 'threeCorner',
-        '3_45': 'three45', '3t': 'threeTop', siq: 'shotIq',
-        ocon: 'offConsist', lay: 'layup', dnk: 'dunk',
-        post: 'postPlay', draw: 'drawFoul', pacc: 'passAcc',
-        handl: 'handling', spwb: 'spdBall', piq: 'passIq',
-        pvis: 'passVision', obm: 'offBallMovement', idef: 'intDef', pdef: 'perDef',
-        stl: 'steal', hdef: 'helpDefIq', pper: 'passPerc',
-        dcon: 'defConsist', oreb: 'offReb', dreb: 'defReb', box: 'boxOut',
-        spd: 'speed', agi: 'agility', str: 'strength',
-        vert: 'vertical', sta: 'stamina', hus: 'hustle',
-        dur: 'durability',
-    };
+    // custom_overrides 적용 시 사용 (모듈 레벨 export로 외부에서도 재사용 가능)
     let customOverrides: Record<string, number> | undefined;
     const rawOverrides = baseAttrs.custom_overrides;
     if (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides)) {

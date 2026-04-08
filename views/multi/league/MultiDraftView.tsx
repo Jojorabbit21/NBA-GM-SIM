@@ -7,6 +7,7 @@ import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft';
 import type { Player } from '../../../types';
+import { CSV_TO_RUNTIME_KEY } from '../../../services/dataMapper';
 
 import { DraftHeader } from '../../../components/draft/DraftHeader';
 import { DraftBoard } from '../../../components/draft/DraftBoard';
@@ -20,21 +21,30 @@ const POSITION_COLORS: Record<string, string> = {
 };
 
 /** DraftPoolPlayer(meta_players row) → Player 어댑터.
- *  base_attributes를 spread하면 adaptPlayerToInput이 ins/out/ath 등을 찾아
- *  calculatePlayerOvr이 정상 작동한다. ovr/age 모두 base_attributes 안에 있다.
+ *  custom_overrides가 있으면 base_attributes에 머지 후 반환 (싱글 custom mode와 동일 메커니즘).
  */
 function toPlayer(p: DraftPoolPlayer): Player {
-    const attrs = p.base_attributes as any;
+    const base = { ...(p.base_attributes as any) };
+
+    // custom_overrides 적용 — CSV 키는 런타임 키로 변환 후 머지
+    const overrides = base.custom_overrides;
+    if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+        for (const [k, v] of Object.entries(overrides)) {
+            if (typeof v !== 'number') continue;
+            base[CSV_TO_RUNTIME_KEY[k] ?? k] = v;
+        }
+    }
+
     return {
-        ...attrs,
+        ...base,
         id:       p.id,
         name:     p.name,
         position: p.position,
-        ovr:      attrs?.ovr  ?? 70,
-        salary:   attrs?.salary ?? p.salary ?? 0,
-        age:      attrs?.age  ?? 25,
-        contract: attrs?.contract ?? { salary: p.salary ?? 0, years: 1 },
-        team:     attrs?.team ?? '',
+        ovr:      base.ovr    ?? 70,
+        salary:   base.salary ?? p.salary ?? 0,
+        age:      base.age    ?? 25,
+        contract: base.contract ?? { salary: p.salary ?? 0, years: 1 },
+        team:     base.team   ?? '',
     } as unknown as Player;
 }
 

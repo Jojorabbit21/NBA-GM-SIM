@@ -73,11 +73,11 @@ Deno.serve(async (req) => {
         teamId: m.team_id as string,
     }));
 
-    // ── 드래프트 풀 구성 (meta_players, 2026 루키 제외) ──────────────────────
+    // ── 드래프트 풀 구성 (in_multi_pool = true 선수만) ──────────────────────
     const { data: poolPlayers } = await supabase
         .from('meta_players')
         .select('id')
-        .or('draft_year.is.null,draft_year.neq.2026');
+        .eq('in_multi_pool', true);
 
     const poolIds = (poolPlayers ?? []).map((p: any) => p.id);
 

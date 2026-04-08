@@ -55,15 +55,13 @@ export function useLeagueDraft(
             const state = room.draft_state as MultiDraftState | null;
             if (state) {
                 setDraftState(state);
-                // 선수 풀 로드 (poolIds 기준, OVR 내림차순)
+                // 선수 풀 로드 — draft_state.poolIds 기준으로 필터링
+                const poolIds = state.poolIds ?? [];
                 const { data } = await supabase
                     .from('meta_players')
-                    .select('id, name, position, salary, base_attributes');
-                // ovr은 base_attributes 안에 있으므로 클라이언트에서 정렬
-                const sorted = (data ?? []).sort((a: any, b: any) =>
-                    ((b.base_attributes?.ovr ?? 0) as number) - ((a.base_attributes?.ovr ?? 0) as number)
-                );
-                if (!cancelled) setPoolPlayers(sorted as DraftPoolPlayer[]);
+                    .select('id, name, position, salary, base_attributes')
+                    .in('id', poolIds);
+                if (!cancelled) setPoolPlayers((data ?? []) as DraftPoolPlayer[]);
             }
             if (!cancelled) setIsLoading(false);
         })();
