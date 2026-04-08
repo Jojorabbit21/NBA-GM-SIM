@@ -58,7 +58,7 @@ export function useLeagueDraft(
                 // 선수 풀 로드 (poolIds 기준, OVR 내림차순)
                 const { data } = await supabase
                     .from('meta_players')
-                    .select('id, name, position, ovr, salary')
+                    .select('id, name, position, ovr, salary, age, base_attributes')
                     .order('ovr', { ascending: false });
                 if (!cancelled) setPoolPlayers((data ?? []) as DraftPoolPlayer[]);
             }

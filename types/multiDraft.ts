@@ -49,9 +49,11 @@ export interface MultiDraftState {
 
 /** useLeagueDraft가 반환하는 드래프트 풀 선수 (display 전용) */
 export interface DraftPoolPlayer {
-    id:       string;
-    name:     string;
-    position: string;
-    ovr:      number;
-    salary:   number;
+    id:               string;
+    name:             string;
+    position:         string;
+    ovr:              number;
+    salary:           number;
+    age?:             number;
+    base_attributes?: Record<string, unknown>;
 }
