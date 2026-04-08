@@ -5,14 +5,14 @@ import { generateSnakePickOrder, seededShuffle } from '../_shared/multiDraftEngi
 const TOTAL_ROUNDS      = 10;
 const PICK_DURATION_SEC = 30;
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin':  '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
-        return new Response(null, {
-            headers: {
-                'Access-Control-Allow-Origin':  '*',
-                'Access-Control-Allow-Headers': 'authorization, content-type',
-            },
-        });
+        return new Response(null, { headers: CORS_HEADERS });
     }
 
     // ── 인증 ─────────────────────────────────────────────────────────────────
@@ -118,9 +118,6 @@ Deno.serve(async (req) => {
 function json(body: unknown, status = 200) {
     return new Response(JSON.stringify(body), {
         status,
-        headers: {
-            'Content-Type':                'application/json',
-            'Access-Control-Allow-Origin': '*',
-        },
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
     });
 }
