@@ -15,10 +15,11 @@ interface LobbyPanelProps {
     onContinue:   () => void;
     onNewGame:    () => void;
     onLogout:     () => void;
+    onMultiPlay:  () => void;
 }
 
 export const LobbyPanel: React.FC<LobbyPanelProps> = ({
-    session, teams, nickname, onContinue, onNewGame, onLogout,
+    session, teams, nickname, onContinue, onNewGame, onLogout, onMultiPlay,
 }) => {
     const { data: summary, isLoading } = useSaveSummary(session.user.id);
     const email = session.user.email ?? '';
@@ -71,7 +72,7 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                         onNewGame={onNewGame}
                     />
                 )}
-                <MultiPlayCard />
+                <MultiPlayCard onClick={onMultiPlay} />
             </div>
         </div>
     );

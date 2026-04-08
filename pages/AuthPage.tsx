@@ -23,6 +23,11 @@ const AuthPage: React.FC = () => {
         navigate('/', { replace: true });
     }, [setPlayMode, navigate]);
 
+    const handleMultiPlay = useCallback(() => {
+        setPlayMode('multi');
+        navigate('/multi');
+    }, [setPlayMode, navigate]);
+
     return (
         <AuthView
             onGuestLogin={() => {}}
@@ -32,6 +37,7 @@ const AuthPage: React.FC = () => {
             onContinue={handleContinue}
             onNewGame={handleNewGame}
             onLogout={logout}
+            onMultiPlay={handleMultiPlay}
         />
     );
 };

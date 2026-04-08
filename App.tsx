@@ -18,6 +18,11 @@ import type { GameContextValue } from './hooks/useGameContext';
 
 import Loader, { DatabaseErrorView } from './components/Loader';
 import ProtectedLayout from './components/ProtectedLayout';
+import MultiProtectedLayout from './components/MultiProtectedLayout';
+
+// Multi Pages — 비동기 로드
+import LeagueListView from './views/multi/league/LeagueListView';
+import LeagueLobbyView from './views/multi/league/LeagueLobbyView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -278,6 +283,13 @@ const App: React.FC = () => {
                     <Route path="/select-team" element={<TeamSelectPage />} />
                     <Route path="/gm-creation" element={<GMCreationPage />} />
                     <Route path="/onboarding" element={<OnboardingPage />} />
+
+                    {/* ── 멀티플레이어 라우트 (기존 싱글 라우트와 완전 분리) ── */}
+                    <Route element={<MultiProtectedLayout />}>
+                        <Route path="/multi"                              element={<LeagueListView />} />
+                        <Route path="/multi/leagues/:leagueId/lobby"     element={<LeagueLobbyView />} />
+                        {/* M2 이후 추가: /multi/leagues/:leagueId/draft, /season, /roster … */}
+                    </Route>
 
                     {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}
                     <Route element={<ProtectedLayout />}>

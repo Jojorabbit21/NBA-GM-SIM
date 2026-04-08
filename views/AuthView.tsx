@@ -15,12 +15,13 @@ const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6
 interface AuthViewProps {
   onGuestLogin: () => void;
   // 로그인 상태일 때 로비 렌더에 필요한 props
-  session?:    Session | null;
-  teams?:      Team[];
-  nickname?:   string;
-  onContinue?: () => void;
-  onNewGame?:  () => void;
-  onLogout?:   () => void;
+  session?:     Session | null;
+  teams?:       Team[];
+  nickname?:    string;
+  onContinue?:  () => void;
+  onNewGame?:   () => void;
+  onLogout?:    () => void;
+  onMultiPlay?: () => void;
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
@@ -43,6 +44,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     onContinue,
     onNewGame,
     onLogout,
+    onMultiPlay,
 }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -223,6 +225,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   onContinue={onContinue}
                   onNewGame={onNewGame}
                   onLogout={onLogout}
+                  onMultiPlay={onMultiPlay ?? (() => {})}
               />
           </div>
       );
