@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Users, Loader2, AlertCircle, Play } from 'lucide-react';
+import { ArrowLeft, Users, Loader2, AlertCircle, Play, Crown } from 'lucide-react';
 import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
 import { joinLeague } from '../../../services/multi/leagueService';
 import { useGame } from '../../../hooks/useGameContext';
@@ -112,7 +112,7 @@ const LeagueLobbyView: React.FC = () => {
             </div>
 
             {/* 참가 버튼 */}
-            {!isMember ? (
+            {!isMember && (
                 <div className="space-y-2">
                     {joinError && (
                         <p className="text-red-400 text-xs ko-normal">{joinError}</p>
@@ -128,7 +128,32 @@ const LeagueLobbyView: React.FC = () => {
                         }
                     </button>
                 </div>
-            ) : (
+            )}
+
+            {/* 어드민 드래프트 시작 버튼 */}
+            {isAdmin && league.status === 'recruiting' && (
+                <div className="space-y-2">
+                    {startError && (
+                        <p className="text-red-400 text-xs ko-normal">{startError}</p>
+                    )}
+                    <button
+                        onClick={handleStartDraft}
+                        disabled={starting || members.length < 1}
+                        className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl py-3 text-sm font-bold text-white transition-colors"
+                    >
+                        {starting
+                            ? <><Loader2 size={14} className="animate-spin" /> 드래프트 시작 중…</>
+                            : <><Crown size={14} /> 드래프트 시작 (어드민)</>
+                        }
+                    </button>
+                    {members.length < 1 && (
+                        <p className="text-xs text-slate-500 text-center ko-normal">참가자가 1명 이상이어야 시작 가능합니다.</p>
+                    )}
+                </div>
+            )}
+
+            {/* 참가 완료 대기 메시지 (비어드민 멤버) */}
+            {isMember && !isAdmin && league.status === 'recruiting' && (
                 <div className="bg-indigo-600/10 border border-indigo-500/30 rounded-xl px-4 py-3 text-sm text-indigo-300 ko-normal text-center">
                     참가 완료 — 드래프트 시작을 기다리는 중입니다.
                 </div>
