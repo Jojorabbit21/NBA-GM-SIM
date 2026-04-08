@@ -47,13 +47,22 @@ export interface MultiDraftState {
     draftedIds: string[];             // 빠른 중복 검사용
 }
 
+/** 멀티 리그 사용자 팀 메타 (room_members에서 로드) */
+export interface RoomTeamMeta {
+    teamId:         string;   // room_members.team_id (lowercase 슬러그)
+    name:           string;   // team_name
+    abbr:           string;   // team_abbr (대문자)
+    colorPrimary:   string;   // team_color_primary  (#RRGGBB, 로고 배경)
+    colorSecondary: string;   // team_color_secondary (#RRGGBB, 로고 보더라인)
+}
+
+export type RoomTeamMetaMap = Record<string /* teamId */, RoomTeamMeta>;
+
 /** useLeagueDraft가 반환하는 드래프트 풀 선수 (display 전용) */
 export interface DraftPoolPlayer {
-    id:               string;
-    name:             string;
-    position:         string;
-    ovr:              number;
-    salary:           number;
-    age?:             number;
-    base_attributes?: Record<string, unknown>;
+    id:              string;
+    name:            string;
+    position:        string;
+    salary:          number;
+    base_attributes: Record<string, unknown>;  // ovr, age, ins, out … 전부 여기에 있음
 }

@@ -2,14 +2,17 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { BoardPick } from './DraftBoard';
+import type { RoomTeamMetaMap } from '../../types/multiDraft';
+import { resolveTeamDisplay } from './teamMetaLookup';
 
 interface PickHistoryProps {
     picks: BoardPick[];
     totalRounds: number;
     userTeamId: string;
+    teamMeta?: RoomTeamMetaMap;
 }
 
-export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId }) => {
+export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId, teamMeta }) => {
     const [roundFilter, setRoundFilter] = useState<number | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const topRef = useRef<HTMLDivElement>(null);
@@ -91,8 +94,8 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                                 {pick.position}
                             </span>
                             {/* Team abbreviation */}
-                            <span className="text-xs font-semibold text-slate-400 w-10 shrink-0 uppercase">
-                                {pick.teamId.toUpperCase()}
+                            <span className="text-xs font-semibold text-slate-400 w-10 shrink-0">
+                                {resolveTeamDisplay(pick.teamId, teamMeta).abbr}
                             </span>
                             {/* Player name */}
                             <span className={`text-xs font-semibold truncate flex-1 ${isUserPick ? 'text-emerald-300' : 'text-slate-200'}`}>

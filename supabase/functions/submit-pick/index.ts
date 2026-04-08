@@ -23,14 +23,16 @@ Deno.serve(async (req) => {
     const { roomId, playerId } = await req.json() as { roomId: string; playerId: string };
     if (!roomId || !playerId) return json({ error: 'roomId and playerId required' }, 400);
 
-    // ── 선수 정보 조회 ────────────────────────────────────────────────────────
+    // ── 선수 정보 조회 (ovr은 base_attributes 안에 있음) ──────────────────────
     const { data: player } = await supabase
         .from('meta_players')
-        .select('id, name, position, ovr')
+        .select('id, name, position, base_attributes')
         .eq('id', playerId)
         .single();
 
     if (!player) return json({ error: 'player not found' }, 404);
+
+    const ovr = (player.base_attributes as any)?.ovr ?? 0;
 
     // ── 원자적 픽 처리 (PostgreSQL RPC) ──────────────────────────────────────
     const { data, error } = await supabase.rpc('submit_draft_pick', {
@@ -39,7 +41,7 @@ Deno.serve(async (req) => {
         p_player_id:   playerId,
         p_player_name: player.name,
         p_position:    player.position,
-        p_ovr:         player.ovr,
+        p_ovr:         ovr,
     });
 
     if (error) {

@@ -123,6 +123,10 @@ export interface RoomMemberRow {
     room_id: string;
     user_id: string;
     team_id: string | null;
+    team_name: string | null;
+    team_abbr: string | null;
+    team_color_primary: string | null;
+    team_color_secondary: string | null;
     tactics: unknown | null;
     depth_chart: unknown | null;
     is_ai: boolean;

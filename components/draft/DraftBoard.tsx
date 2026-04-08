@@ -1,6 +1,7 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { TEAM_DATA } from '../../data/teamData';
+import type { RoomTeamMetaMap } from '../../types/multiDraft';
+import { resolveTeamDisplay } from './teamMetaLookup';
 
 export interface BoardPick {
     pickNumber?: number;  // 루키 드래프트: 1~60 (슬롯 매핑용)
@@ -20,6 +21,7 @@ interface DraftBoardProps {
     draftOrder: string[];
     userTeamId: string;
     positionColors: Record<string, string>;
+    teamMeta?: RoomTeamMetaMap;
 }
 
 export const DraftBoard: React.FC<DraftBoardProps> = ({
@@ -30,6 +32,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     draftOrder,
     userTeamId,
     positionColors,
+    teamMeta,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -94,22 +97,22 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         {/* Team column headers */}
                         {teamIds.map(teamId => {
                             const isUser = teamId === userTeamId;
-                            const teamData = TEAM_DATA[teamId];
-                            const teamColor = teamData?.colors.primary || '#6366f1';
-                            const teamTextColor = teamData?.colors.text || '#FFFFFF';
+                            const td = resolveTeamDisplay(teamId, teamMeta);
                             return (
                                 <th
                                     key={teamId}
-                                    className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-xs font-bold uppercase"
+                                    className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-xs font-bold"
+                                    title={td.name}
                                     style={{
-                                        backgroundColor: teamColor,
-                                        color: teamTextColor,
+                                        backgroundColor: td.colorPrimary,
+                                        color: td.textColor,
+                                        borderBottom: `2px solid ${td.colorSecondary}`,
                                         boxShadow: isUser
                                             ? `inset 0 0 0 2px rgba(245,158,11,0.7), 1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)`
                                             : '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
                                     }}
                                 >
-                                    {teamId.toUpperCase()}
+                                    {td.abbr}
                                 </th>
                             );
                         })}

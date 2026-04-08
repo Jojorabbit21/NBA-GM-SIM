@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play } from 'lucide-react';
 import { TeamLogo } from '../common/TeamLogo';
-import { TEAM_DATA } from '../../data/teamData';
+import type { RoomTeamMetaMap } from '../../types/multiDraft';
+import { resolveTeamDisplay } from './teamMetaLookup';
 
 export const PICK_TIME_LIMIT = 30;
 
@@ -47,6 +48,7 @@ interface DraftHeaderProps {
     nextPickTeamId?: string;
     announcement?: { pickNumber: number; teamId: string; playerName: string; position: string } | null;
     onBack?: () => void;
+    teamMeta?: RoomTeamMetaMap;
 }
 
 export const DraftHeader: React.FC<DraftHeaderProps> = ({
@@ -64,12 +66,13 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     nextPickTeamId,
     announcement,
     onBack,
+    teamMeta,
 }) => {
     // Announcement 중에는 픽한 팀의 배경/로고 유지
     const displayTeamId = announcement ? announcement.teamId : currentTeamId;
-    const displayTeamData = TEAM_DATA[displayTeamId];
-    const displayTeamColor = displayTeamData?.colors.primary || '#6366f1';
-    const currentTeamData = TEAM_DATA[currentTeamId];
+    const displayDisplay = resolveTeamDisplay(displayTeamId, teamMeta);
+    const displayTeamColor = displayDisplay.colorPrimary;
+    const currentDisplay = resolveTeamDisplay(currentTeamId, teamMeta);
     const timerStr = `00:${String(Math.max(0, timeRemaining)).padStart(2, '0')}`;
     const timerPct = (Math.max(0, timeRemaining) / PICK_TIME_LIMIT) * 100;
 
@@ -93,7 +96,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
         if (isUserTurn) setDropdownOpen(false);
     }, [isUserTurn]);
 
-    const nextTeamData = nextPickTeamId ? TEAM_DATA[nextPickTeamId] : null;
+    const nextDisplay = nextPickTeamId ? resolveTeamDisplay(nextPickTeamId, teamMeta) : null;
 
     return (
         <div className="shrink-0 relative z-30" style={{ backgroundColor: displayTeamColor }}>
@@ -102,9 +105,26 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
             {/* Background team logo watermark */}
             <div className="absolute inset-0 overflow-hidden flex items-center justify-center pointer-events-none">
-                <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
-                    <TeamLogo teamId={displayTeamId} size="3xl" />
-                </div>
+                {displayDisplay.isCustom ? (
+                    <div
+                        className="flex items-center justify-center rounded-3xl font-black"
+                        style={{
+                            width: '240px',
+                            height: '240px',
+                            backgroundColor: displayDisplay.colorPrimary,
+                            border: `8px solid ${displayDisplay.colorSecondary}`,
+                            color: '#ffffff',
+                            fontSize: '96px',
+                            opacity: 0.18,
+                        }}
+                    >
+                        {displayDisplay.abbr}
+                    </div>
+                ) : (
+                    <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
+                        <TeamLogo teamId={displayTeamId} size="3xl" />
+                    </div>
+                )}
             </div>
 
             {/* Main content — 3-column grid */}
@@ -132,7 +152,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             style={{ animation: 'draft-flash 0.6s ease-in-out 2' }}
                             key={announcement.pickNumber}
                         >
-                            {getAnnouncementText(announcement, TEAM_DATA[announcement.teamId]?.name || announcement.teamId.toUpperCase())}
+                            {getAnnouncementText(announcement, resolveTeamDisplay(announcement.teamId, teamMeta).name)}
                         </div>
                     ) : (
                         <>
@@ -151,9 +171,22 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-white/50 font-medium">현재 차례</span>
-                        <TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />
+                        {currentDisplay.isCustom ? (
+                            <div
+                                className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shrink-0"
+                                style={{
+                                    backgroundColor: currentDisplay.colorPrimary,
+                                    border: `1.5px solid ${currentDisplay.colorSecondary}`,
+                                    color: '#fff',
+                                }}
+                            >
+                                {currentDisplay.abbr.slice(0, 3)}
+                            </div>
+                        ) : (
+                            <TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />
+                        )}
                         <span className="text-xs font-bold text-white">
-                            {currentTeamData?.name || currentTeamId.toUpperCase()}
+                            {currentDisplay.name}
                         </span>
                     </div>
 
@@ -180,7 +213,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                                 className="px-3 py-2 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
                             >
                                 <Play size={10} fill="currentColor" />
-                                다음 픽(#{nextPickNumber}, {nextTeamData?.abbr || nextPickTeamId?.toUpperCase()}) 진행하기
+                                다음 픽(#{nextPickNumber}, {nextDisplay?.abbr ?? ''}) 진행하기
                             </button>
 
                             {/* Chevron trigger: opens dropdown */}

@@ -5,7 +5,7 @@ import { Loader2, GripHorizontal } from 'lucide-react';
 import { useGame } from '../../../hooks/useGameContext';
 import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
-import type { DraftPoolPlayer } from '../../../types/multiDraft';
+import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft';
 import type { Player } from '../../../types';
 
 import { DraftHeader } from '../../../components/draft/DraftHeader';
@@ -21,19 +21,20 @@ const POSITION_COLORS: Record<string, string> = {
 
 /** DraftPoolPlayer(meta_players row) → Player 어댑터.
  *  base_attributes를 spread하면 adaptPlayerToInput이 ins/out/ath 등을 찾아
- *  calculatePlayerOvr이 정상 작동한다.
+ *  calculatePlayerOvr이 정상 작동한다. ovr/age 모두 base_attributes 안에 있다.
  */
 function toPlayer(p: DraftPoolPlayer): Player {
+    const attrs = p.base_attributes as any;
     return {
-        ...(p.base_attributes ?? {}),
+        ...attrs,
         id:       p.id,
         name:     p.name,
         position: p.position,
-        ovr:      p.ovr,
-        salary:   p.salary ?? 0,
-        age:      p.age ?? (p.base_attributes as any)?.age ?? 25,
-        contract: { salary: p.salary ?? 0, years: 1 },
-        team:     '',
+        ovr:      attrs?.ovr  ?? 70,
+        salary:   attrs?.salary ?? p.salary ?? 0,
+        age:      attrs?.age  ?? 25,
+        contract: attrs?.contract ?? { salary: p.salary ?? 0, years: 1 },
+        team:     attrs?.team ?? '',
     } as unknown as Player;
 }
 
@@ -41,7 +42,7 @@ const MultiDraftView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const navigate     = useNavigate();
     const { session }  = useGame();
-    const { room }     = useCurrentLeague();
+    const { room, members } = useCurrentLeague();
     const userId       = session?.user?.id ?? null;
 
     const {
@@ -97,6 +98,22 @@ const MultiDraftView: React.FC = () => {
         () => (draftState?.pickOrder ?? []).map(e => e.teamId),
         [draftState?.pickOrder],
     );
+
+    const teamMeta = useMemo((): RoomTeamMetaMap => {
+        const map: RoomTeamMetaMap = {};
+        members.forEach(m => {
+            if (m.team_id && m.team_name && m.team_abbr && m.team_color_primary && m.team_color_secondary) {
+                map[m.team_id] = {
+                    teamId:         m.team_id,
+                    name:           m.team_name,
+                    abbr:           m.team_abbr,
+                    colorPrimary:   m.team_color_primary,
+                    colorSecondary: m.team_color_secondary,
+                };
+            }
+        });
+        return map;
+    }, [members]);
 
     const boardPicks = useMemo((): BoardPick[] =>
         (draftState?.picks ?? []).map(p => ({
@@ -199,6 +216,7 @@ const MultiDraftView: React.FC = () => {
                 showAdvance={false}
                 nextPickNumber={draftState.currentPickIndex + 1}
                 nextPickTeamId={currentPickEntry?.teamId}
+                teamMeta={teamMeta}
             />
 
             {/* ── 드래프트 보드 (리사이즈 가능) ── */}
@@ -212,6 +230,7 @@ const MultiDraftView: React.FC = () => {
                         draftOrder={draftOrder}
                         userTeamId={myTeamId ?? ''}
                         positionColors={POSITION_COLORS}
+                        teamMeta={teamMeta}
                     />
                 </div>
             </div>
@@ -233,6 +252,7 @@ const MultiDraftView: React.FC = () => {
                         picks={boardPicks}
                         totalRounds={draftState.totalRounds}
                         userTeamId={myTeamId ?? ''}
+                        teamMeta={teamMeta}
                     />
                 </div>
 

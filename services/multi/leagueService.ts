@@ -186,6 +186,54 @@ export const joinLeague = async (
     return { roomId: room.id, error: null };
 };
 
+// ─── 팀 명칭 설정 ────────────────────────────────────────────────────────────
+
+export interface SetMemberTeamParams {
+    roomId:         string;
+    userId:         string;
+    name:           string;   // 팀 풀네임 (1~24자)
+    abbr:           string;   // 팀 약어 (2~4자, 영문/숫자)
+    colorPrimary:   string;   // #RRGGBB — 로고 배경
+    colorSecondary: string;   // #RRGGBB — 로고 보더라인
+}
+
+export const setMemberTeam = async (
+    p: SetMemberTeamParams
+): Promise<{ error: string | null }> => {
+    const abbr = p.abbr.trim().toUpperCase();
+    const slug  = abbr.toLowerCase();
+    const name  = p.name.trim();
+    const hexRe = /^#[0-9a-fA-F]{6}$/;
+
+    if (!/^[A-Z0-9]{2,4}$/.test(abbr))
+        return { error: '약어는 2~4자 영문/숫자여야 합니다' };
+    if (!hexRe.test(p.colorPrimary))
+        return { error: 'Primary 색상은 #RRGGBB 형식이어야 합니다' };
+    if (!hexRe.test(p.colorSecondary))
+        return { error: 'Secondary 색상은 #RRGGBB 형식이어야 합니다' };
+    if (name.length < 1 || name.length > 24)
+        return { error: '팀명은 1~24자여야 합니다' };
+
+    const { error } = await supabase
+        .from('room_members')
+        .update({
+            team_id:              slug,
+            team_name:            name,
+            team_abbr:            abbr,
+            team_color_primary:   p.colorPrimary,
+            team_color_secondary: p.colorSecondary,
+        })
+        .eq('room_id', p.roomId)
+        .eq('user_id', p.userId);
+
+    if (error) {
+        if ((error as any).code === '23505')
+            return { error: `약어 "${abbr}"는 이미 같은 방에서 사용 중입니다` };
+        return { error: error.message };
+    }
+    return { error: null };
+};
+
 // ─── 리그 상태 갱신 ───────────────────────────────────────────────────────────
 
 export const updateLeagueStatus = async (

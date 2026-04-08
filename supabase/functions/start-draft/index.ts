@@ -47,40 +47,31 @@ Deno.serve(async (req) => {
         return json({ error: 'draft already started' }, 400);
     }
 
-    // ── 멤버 조회 + 팀 배정 ──────────────────────────────────────────────────
+    // ── 멤버 조회 ────────────────────────────────────────────────────────────
     const { data: members } = await supabase
         .from('room_members')
-        .select('user_id, team_id, is_ai')
+        .select('user_id, team_id, team_name, team_abbr, team_color_primary, team_color_secondary, is_ai')
         .eq('room_id', room.id);
 
     if (!members?.length) return json({ error: 'no members' }, 400);
 
-    const { data: metaTeams } = await supabase
-        .from('meta_teams')
-        .select('id')
-        .order('id');
-
-    const seed          = room.tendency_seed ?? room.id;
-    const shuffledTeams = seededShuffle(metaTeams!.map(t => t.id), seed);
-
-    // 팀 미배정 멤버에게 랜덤 팀 배정
-    const assignedMembers: { userId: string; teamId: string }[] = [];
-    const teamUpdates: Promise<unknown>[] = [];
-
-    for (let i = 0; i < members.length; i++) {
-        const m      = members[i];
-        const teamId = m.team_id ?? shuffledTeams[i];
-        if (!m.team_id) {
-            teamUpdates.push(
-                supabase.from('room_members')
-                    .update({ team_id: teamId })
-                    .eq('room_id', room.id)
-                    .eq('user_id', m.user_id)
-            );
-        }
-        assignedMembers.push({ userId: m.user_id, teamId });
+    // 팀 미설정 멤버(AI 제외) 검증 — UI가 먼저 막지만 서버에서 최종 보증
+    const unsetMembers = members.filter((m: any) => !m.is_ai && !m.team_id);
+    if (unsetMembers.length > 0) {
+        return json({
+            error:        'team not set',
+            message:      `${unsetMembers.length}명의 멤버가 팀을 설정하지 않았습니다`,
+            unsetUserIds: unsetMembers.map((m: any) => m.user_id),
+        }, 400);
     }
-    await Promise.all(teamUpdates);
+
+    const seed = room.tendency_seed ?? room.id;
+
+    // 사용자가 직접 설정한 team_id 사용 (자동 배정 없음)
+    const assignedMembers: { userId: string; teamId: string }[] = members.map((m: any) => ({
+        userId: m.user_id,
+        teamId: m.team_id as string,
+    }));
 
     // ── 드래프트 풀 구성 (meta_players, 2026 루키 제외) ──────────────────────
     const { data: poolPlayers } = await supabase
