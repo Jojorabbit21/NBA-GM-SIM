@@ -1,23 +1,41 @@
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Loader2, AlertCircle } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Users, Loader2, AlertCircle, Play } from 'lucide-react';
 import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
 import { joinLeague } from '../../../services/multi/leagueService';
 import { useGame } from '../../../hooks/useGameContext';
+import { supabase } from '../../../services/supabaseClient';
 
 import { TIER_LABEL } from './leagueConstants';
 
 const LeagueLobbyView: React.FC = () => {
-    const navigate     = useNavigate();
-    const { session }  = useGame();
+    const navigate          = useNavigate();
+    const { leagueId }      = useParams<{ leagueId: string }>();
+    const { session }       = useGame();
     const { league, room, members, isLoading, error, reload } = useCurrentLeague();
 
-    const [joining,   setJoining]   = React.useState(false);
-    const [joinError, setJoinError] = React.useState<string | null>(null);
+    const [joining,      setJoining]      = React.useState(false);
+    const [joinError,    setJoinError]    = React.useState<string | null>(null);
+    const [starting,     setStarting]     = React.useState(false);
+    const [startError,   setStartError]   = React.useState<string | null>(null);
 
-    const userId   = session?.user?.id ?? null;
-    const isMember = members.some(m => m.user_id === userId);
+    const userId    = session?.user?.id ?? null;
+    const isMember  = members.some(m => m.user_id === userId);
+    const isAdmin   = !!(league && userId && league.admin_user_id === userId);
+    const canStart  = isAdmin && league?.status === 'recruiting' && members.length >= 2;
+
+    const handleStartDraft = async () => {
+        if (!leagueId) return;
+        setStarting(true);
+        setStartError(null);
+        const { error: err } = await supabase.functions.invoke('start-draft', {
+            body: { leagueId },
+        });
+        setStarting(false);
+        if (err) { setStartError(err.message); return; }
+        navigate(`/multi/leagues/${leagueId}/draft`);
+    };
 
     const handleJoin = async () => {
         if (!league || !userId) return;

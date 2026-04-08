@@ -23,6 +23,7 @@ import MultiProtectedLayout from './components/MultiProtectedLayout';
 // Multi Pages — 비동기 로드
 import LeagueListView from './views/multi/league/LeagueListView';
 import LeagueLobbyView from './views/multi/league/LeagueLobbyView';
+import MultiDraftView from './views/multi/league/MultiDraftView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -288,7 +289,7 @@ const App: React.FC = () => {
                     <Route element={<MultiProtectedLayout />}>
                         <Route path="/multi"                              element={<LeagueListView />} />
                         <Route path="/multi/leagues/:leagueId/lobby"     element={<LeagueLobbyView />} />
-                        {/* M2 이후 추가: /multi/leagues/:leagueId/draft, /season, /roster … */}
+                        <Route path="/multi/leagues/:leagueId/draft"     element={<MultiDraftView />} />
                     </Route>
 
                     {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}
