@@ -218,9 +218,8 @@ export const saveGameResults = async (results: any[]) => {
     
     if (error) {
         console.error("❌ Save Full Game Results Error:", error.message);
-        
-        // 2. Fallback: If error is due to missing columns, retry without heavy logs
-        // Postgres error code 42703 is "undefined_column", but Supabase/Postgrest message checking is safer
+
+        // 2. Fallback: schema mismatch (missing column) → retry without heavy columns
         if (error.message && (error.message.includes('column') || error.message.includes('does not exist'))) {
             console.warn("⚠️ DB Schema mismatch detected. Retrying save WITHOUT 'pbp_logs', 'shot_events', 'quarter_scores'. PLEASE RUN SQL MIGRATION.");
 
@@ -228,7 +227,7 @@ export const saveGameResults = async (results: any[]) => {
                 const { pbp_logs, shot_events, quarter_scores, game_number, series_id, round_number, ...rest } = r;
                 return rest;
             });
-            
+
             const { error: retryError } = await supabase.from('user_game_results').insert(safeResults);
 
             if (retryError) {
@@ -237,18 +236,26 @@ export const saveGameResults = async (results: any[]) => {
             } else {
                 console.log("✅ Saved game results (Partial Data - Logs Dropped) to DB.");
             }
+        } else {
+            throw error;
         }
     } else {
         console.log(`✅ Saved ${results.length} game results (Full Data) to DB.`);
     }
 };
 
-/** 배치 시뮬레이션용: 대량 결과를 50건씩 청크로 나눠 저장 */
+/** 배치 시뮬레이션용: 대량 결과를 청크로 나눠 저장.
+ *  pbp_logs 포함 시 1경기당 ~125KB → chunkSize 자동으로 1로 줄임 */
 export const bulkSaveGameResults = async (results: any[], chunkSize = 50) => {
     if (!results || results.length === 0) return;
+    const hasPbpLogs = results.some(r => r.pbp_logs && r.pbp_logs.length > 0);
+    const effectiveChunkSize = hasPbpLogs ? 1 : chunkSize;
+    if (hasPbpLogs) {
+        console.log(`ℹ️ pbp_logs detected — saving 1 game per request to avoid payload overflow (${results.length} games total).`);
+    }
     let failedChunks = 0;
-    for (let i = 0; i < results.length; i += chunkSize) {
-        const chunk = results.slice(i, i + chunkSize);
+    for (let i = 0; i < results.length; i += effectiveChunkSize) {
+        const chunk = results.slice(i, i + effectiveChunkSize);
         try {
             await saveGameResults(chunk);
         } catch (e) {
@@ -256,7 +263,7 @@ export const bulkSaveGameResults = async (results: any[], chunkSize = 50) => {
             console.error(`❌ Chunk ${Math.floor(i / chunkSize) + 1} save failed, continuing...`, e);
         }
     }
-    const totalChunks = Math.ceil(results.length / chunkSize);
+    const totalChunks = Math.ceil(results.length / effectiveChunkSize);
     if (failedChunks > 0) {
         console.warn(`⚠️ Bulk save: ${failedChunks}/${totalChunks} chunks failed.`);
     } else {
