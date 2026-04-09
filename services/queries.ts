@@ -21,7 +21,7 @@ export const useBaseData = (enabled: boolean = true) => {
             // 4개 meta 테이블 병렬 fetch
             const [teamsRes, playersRes, scheduleRes, coachesRes, gmsRes] = await Promise.all([
                 supabase.from('meta_teams').select('*'),
-                supabase.from('meta_players').select('*').or('draft_year.is.null,draft_year.neq.2026'),
+                supabase.from('meta_players').select('*').or('draft_year.is.null,draft_year.neq.2026,include_alltime.eq.true'),
                 supabase.from('meta_schedule').select('*'),
                 supabase.from('meta_coaches').select('*'),
                 supabase.from('meta_gms').select('*'),
