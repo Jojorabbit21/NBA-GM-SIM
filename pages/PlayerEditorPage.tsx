@@ -502,7 +502,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                 onRemoveYear={removeContractYear}
                                 onSetContractField={setContractField}
                                 onSetSalary={v => setField('salary', v)}
-                                startYear={2025}
+                                startYear={2025 - ((draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
                         <Section label="CO 계약">
@@ -524,7 +524,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                 onRemoveYear={removeCoContractYear}
                                 onSetContractField={setCoContractField}
                                 onSetSalary={v => setCoField('salary', v)}
-                                startYear={2025}
+                                startYear={2025 - ((draft.custom_overrides?.contract?.currentYear) ?? (draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
 
