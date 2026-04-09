@@ -289,12 +289,14 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     };
 
     // custom_overrides 적용 시 사용 (모듈 레벨 export로 외부에서도 재사용 가능)
-    let customOverrides: Record<string, number> | undefined;
+    // 숫자 능력치 외에 position/team 문자열 키도 허용
+    const STRING_CO_KEYS = new Set(['position', 'team']);
+    let customOverrides: Record<string, any> | undefined;
     const rawOverrides = baseAttrs.custom_overrides;
     if (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides)) {
         customOverrides = {};
         for (const [csvKey, val] of Object.entries(rawOverrides)) {
-            if (typeof val !== 'number') continue;
+            if (typeof val !== 'number' && !(typeof val === 'string' && STRING_CO_KEYS.has(csvKey))) continue;
             const runtimeKey = CSV_TO_RUNTIME_KEY[csvKey] || csvKey;
             customOverrides[runtimeKey] = val;
         }

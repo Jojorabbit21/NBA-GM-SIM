@@ -470,51 +470,98 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                         </div>
                     </div>
 
-                    {/* ── 인적 정보 — 풀 너비 ── */}
+                    {/* ── 인적 정보 — base / CO ── */}
                     <Section label="인적 정보">
-                        <div className="grid grid-cols-3 gap-x-6">
-                            {[
-                                { key: 'age',    label: '나이',   note: '세' },
-                                { key: 'num',    label: '등번호', note: '' },
-                                { key: 'height', label: '키',     note: 'cm' },
-                                { key: 'weight', label: '몸무게', note: 'kg' },
-                            ].map(({ key, label, note }) => (
-                                <div key={key} className="flex items-center gap-2 mb-2">
-                                    <span className="text-slate-400 text-xs w-14 shrink-0">{label}</span>
-                                    <input
-                                        className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                        value={draft[key] ?? ''}
-                                        onChange={e => setField(key, e.target.value)}
-                                    />
-                                    {note && <span className="text-slate-500 text-xs w-6 shrink-0">{note}</span>}
-                                </div>
-                            ))}
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-slate-400 text-xs w-14 shrink-0">포지션</span>
-                                <select
-                                    className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                    value={draft.position ?? ''}
-                                    onChange={e => setField('position', e.target.value)}
-                                >
-                                    <option value="">— 선택 —</option>
-                                    {POSITION_OPTIONS.map(p => (
-                                        <option key={p} value={p}>{p}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2 mb-2 col-span-2">
-                                <span className="text-slate-400 text-xs w-14 shrink-0">팀</span>
-                                <select
-                                    className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                    value={draft.team ?? ''}
-                                    onChange={e => setField('team', e.target.value)}
-                                >
-                                    {TEAM_OPTIONS.map(t => (
-                                        <option key={t.id} value={t.id}>{t.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
+                        <table className="w-full text-sm border-collapse">
+                            <thead>
+                                <tr className="text-slate-400 text-xs border-b border-slate-700">
+                                    <th className="text-left py-1 pr-3 font-normal">필드</th>
+                                    <th className="text-center py-1 pr-2 font-normal text-slate-500 w-10">키</th>
+                                    <th className="text-center py-1 px-1 font-normal w-28">base</th>
+                                    <th className="text-center py-1 px-1 font-normal w-28">CO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* 숫자 필드 */}
+                                {([
+                                    { key: 'age',    label: '나이' },
+                                    { key: 'num',    label: '등번호' },
+                                    { key: 'height', label: '키 (cm)' },
+                                    { key: 'weight', label: '몸무게 (kg)' },
+                                ] as const).map(({ key, label }) => (
+                                    <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
+                                        <td className="py-1 pr-3 text-slate-300 text-xs">{label}</td>
+                                        <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">{key}</td>
+                                        <td className="py-1 px-1">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500"
+                                                value={draft[key] ?? ''}
+                                                onChange={e => setField(key, e.target.value)}
+                                            />
+                                        </td>
+                                        <td className="py-1 px-1">
+                                            <input
+                                                type="number"
+                                                placeholder="—"
+                                                className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500 placeholder-slate-600"
+                                                value={co[key] ?? ''}
+                                                onChange={e => setCoField(key, e.target.value)}
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                                {/* 포지션 */}
+                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
+                                    <td className="py-1 pr-3 text-slate-300 text-xs">포지션</td>
+                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">position</td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={draft.position ?? ''}
+                                            onChange={e => setField('position', e.target.value)}
+                                        >
+                                            <option value="">— 선택 —</option>
+                                            {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={co.position ?? ''}
+                                            onChange={e => setCoField('position', e.target.value)}
+                                        >
+                                            <option value="">— (base)</option>
+                                            {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
+                                    </td>
+                                </tr>
+                                {/* 팀 */}
+                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
+                                    <td className="py-1 pr-3 text-slate-300 text-xs">팀</td>
+                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">team</td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={draft.team ?? ''}
+                                            onChange={e => setField('team', e.target.value)}
+                                        >
+                                            {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={co.team ?? ''}
+                                            onChange={e => setCoField('team', e.target.value)}
+                                        >
+                                            <option value="">— (base)</option>
+                                            {TEAM_OPTIONS.filter(t => t.id !== '').map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                        </select>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </Section>
 
                     {/* ── 2컬럼 그리드 ── */}

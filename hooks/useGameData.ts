@@ -184,7 +184,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             try {
                 if (isGuestMode) {
                     setLoadingProgress(100);
-                    setTeams(JSON.parse(JSON.stringify(baseData.teams)));
+                    const guestTeams: Team[] = JSON.parse(JSON.stringify(baseData.teams));
+                    setTeams(rosterMode === 'custom'
+                        ? guestTeams.map(t => ({ ...t, roster: t.roster.map(applyCustomMode) }))
+                        : guestTeams
+                    );
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
                     setIsSaveLoading(false);
                     hasInitialLoadRef.current = true;
@@ -453,7 +457,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     }
 
                     setMyTeamId(checkpoint.team_id);
-                    setTeams(loadedTeams!);
+                    setTeams(rosterMode === 'custom'
+                        ? loadedTeams!.map(t => ({ ...t, roster: t.roster.map(applyCustomMode) }))
+                        : loadedTeams!
+                    );
                     setSchedule(loadedSchedule!);
                     setCurrentSimDate(checkpoint.sim_date || INITIAL_DATE);
 
@@ -757,7 +764,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 } else {
                     console.log("🆕 New Game Started");
                     setLoadingProgress(100);
-                    setTeams(JSON.parse(JSON.stringify(baseData.teams)));
+                    const newGameTeams: Team[] = JSON.parse(JSON.stringify(baseData.teams));
+                    setTeams(rosterMode === 'custom'
+                        ? newGameTeams.map(t => ({ ...t, roster: t.roster.map(applyCustomMode) }))
+                        : newGameTeams
+                    );
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
                     hasInitialLoadRef.current = true; // 재진입 방지 (baseData 재조회 시 중복 실행 차단)
                 }

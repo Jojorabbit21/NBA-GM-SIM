@@ -239,8 +239,9 @@ export interface Player {
         'passIq' | 'passVision' | 'offBallMovement' | 'intDef' | 'perDef' | 'steal' | 'blk' |
         'helpDefIq' | 'passPerc' | 'defConsist' | 'offReb' | 'defReb' | 'boxOut' |
         'speed' | 'agility' | 'strength' | 'vertical' | 'stamina' |
-        'hustle' | 'durability' | 'intangibles'
-    >>;
+        'hustle' | 'durability' | 'intangibles' |
+        'ovr' | 'age' | 'height' | 'weight' | 'potential' | 'position'
+    >> & { team?: string };
     // 올타임 드래프트 풀 포함 여부 (DB include_alltime 컬럼, 기본 true)
     includeAlltime?: boolean;
     stats: PlayerStats;
