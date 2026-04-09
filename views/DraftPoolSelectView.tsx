@@ -34,24 +34,32 @@ export const DraftPoolSelectView: React.FC<DraftPoolSelectViewProps> = ({ onSele
             </div>
 
             {/* Cards */}
-            <div className="flex gap-6">
+            <div className="flex gap-4">
                 {/* Current Players Only */}
                 <button
                     onClick={() => onSelectPool('current')}
-                    className="group relative w-80 bg-emerald-500/8 border border-emerald-500/30 rounded-3xl p-10 text-left transition-all hover:bg-emerald-500/15 hover:border-emerald-500/40 hover:shadow-[0_0_40px_rgba(16,185,129,0.15)] active:scale-[0.98]"
+                    className="group relative overflow-hidden rounded-2xl p-6 w-72 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 shadow-lg hover:shadow-emerald-500/30"
                 >
-                    <div className="space-y-5">
-                        <Users size={32} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+                    <div className="relative space-y-4">
+                        <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">현역 선수</p>
+
+                        <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
+                            <Users size={22} className="text-white" />
+                        </div>
+
                         <div>
-                            <h2 className="text-xl font-black text-emerald-300 ko-tight">현역 선수</h2>
-                            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed ko-normal">
-                                2025-26 시즌 현역 선수들만 드래프트 풀에
-                                <br />
-                                포함됩니다. 현실적인 구성을 원한다면 추천합니다.
+                            <h2 className="text-xl font-black text-white ko-tight">현역 선수</h2>
+                            <p className="text-sm text-emerald-200 mt-1 ko-normal leading-relaxed">
+                                현역 선수들만 드래프트 풀에<br />
+                                포함됩니다. 현실적인 구성 추천.
                             </p>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                            선택 <ChevronRight size={14} />
+
+                        <div className="flex items-center gap-2 text-sm font-bold text-white mt-2">
+                            선택하기
+                            <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                         </div>
                     </div>
                 </button>
@@ -59,20 +67,28 @@ export const DraftPoolSelectView: React.FC<DraftPoolSelectViewProps> = ({ onSele
                 {/* All-Time Legends */}
                 <button
                     onClick={() => onSelectPool('alltime')}
-                    className="group relative w-80 bg-fuchsia-500/8 border border-fuchsia-500/30 rounded-3xl p-10 text-left transition-all hover:bg-fuchsia-500/15 hover:border-fuchsia-500/40 hover:shadow-[0_0_40px_rgba(217,70,239,0.15)] active:scale-[0.98]"
+                    className="group relative overflow-hidden rounded-2xl p-6 w-72 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-fuchsia-600 to-purple-700 hover:from-fuchsia-500 hover:to-purple-600 shadow-lg hover:shadow-fuchsia-500/30"
                 >
-                    <div className="space-y-5">
-                        <Crown size={32} className="text-fuchsia-400 group-hover:scale-110 transition-transform" />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+                    <div className="relative space-y-4">
+                        <p className="text-xs font-bold text-fuchsia-200 uppercase tracking-wider">올타임 레전드</p>
+
+                        <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
+                            <Crown size={22} className="text-white" />
+                        </div>
+
                         <div>
-                            <h2 className="text-xl font-black text-fuchsia-300 ko-tight">올타임 레전드</h2>
-                            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed ko-normal">
-                                현역 선수에 더해 역대 레전드 선수들까지
-                                <br />
-                                드래프트 풀에 포함됩니다. 드림팀을 만들어보세요.
+                            <h2 className="text-xl font-black text-white ko-tight">올타임 레전드</h2>
+                            <p className="text-sm text-fuchsia-200 mt-1 ko-normal leading-relaxed">
+                                역대 레전드 선수들까지 포함됩니다.<br />
+                                드림팀을 만들어보세요.
                             </p>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-fuchsia-400 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                            선택 <ChevronRight size={14} />
+
+                        <div className="flex items-center gap-2 text-sm font-bold text-white mt-2">
+                            선택하기
+                            <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                         </div>
                     </div>
                 </button>

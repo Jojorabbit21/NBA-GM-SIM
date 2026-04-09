@@ -245,25 +245,42 @@ export const saveGameResults = async (results: any[]) => {
 };
 
 /** 배치 시뮬레이션용: 대량 결과를 청크로 나눠 저장.
- *  pbp_logs 포함 시 1경기당 ~125KB → chunkSize 자동으로 1로 줄임 */
+ *  pbp_logs 있는 경기(~125KB)는 1개씩, 없는 경기는 chunkSize개씩 묶어서 저장 */
 export const bulkSaveGameResults = async (results: any[], chunkSize = 50) => {
     if (!results || results.length === 0) return;
-    const hasPbpLogs = results.some(r => r.pbp_logs && r.pbp_logs.length > 0);
-    const effectiveChunkSize = hasPbpLogs ? 1 : chunkSize;
-    if (hasPbpLogs) {
-        console.log(`ℹ️ pbp_logs detected — saving 1 game per request to avoid payload overflow (${results.length} games total).`);
+
+    const withLogs = results.filter(r => r.pbp_logs && r.pbp_logs.length > 0);
+    const withoutLogs = results.filter(r => !r.pbp_logs || r.pbp_logs.length === 0);
+
+    if (withLogs.length > 0) {
+        console.log(`ℹ️ pbp_logs detected — ${withLogs.length}개 경기는 1개씩, ${withoutLogs.length}개 경기는 ${chunkSize}개씩 저장.`);
     }
+
     let failedChunks = 0;
-    for (let i = 0; i < results.length; i += effectiveChunkSize) {
-        const chunk = results.slice(i, i + effectiveChunkSize);
+
+    // pbp_logs 없는 경기: chunkSize개씩 묶어서 저장
+    for (let i = 0; i < withoutLogs.length; i += chunkSize) {
+        const chunk = withoutLogs.slice(i, i + chunkSize);
         try {
             await saveGameResults(chunk);
         } catch (e) {
             failedChunks++;
-            console.error(`❌ Chunk ${Math.floor(i / chunkSize) + 1} save failed, continuing...`, e);
+            console.error(`❌ Chunk save failed`, e);
         }
     }
-    const totalChunks = Math.ceil(results.length / effectiveChunkSize);
+
+    // pbp_logs 있는 경기: 5개씩 저장 (5경기 × ~125KB = ~625KB, 1MB 한도 이내)
+    for (let i = 0; i < withLogs.length; i += 5) {
+        const chunk = withLogs.slice(i, i + 5);
+        try {
+            await saveGameResults(chunk);
+        } catch (e) {
+            failedChunks++;
+            console.error(`❌ pbp_logs chunk save failed`, e);
+        }
+    }
+
+    const totalChunks = Math.ceil(withoutLogs.length / chunkSize) + Math.ceil(withLogs.length / 5);
     if (failedChunks > 0) {
         console.warn(`⚠️ Bulk save: ${failedChunks}/${totalChunks} chunks failed.`);
     } else {

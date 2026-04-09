@@ -25,24 +25,32 @@ export const ModeSelectView: React.FC<ModeSelectViewProps> = ({ onSelectMode }) 
             </div>
 
             {/* Cards */}
-            <div className="flex gap-6">
+            <div className="flex gap-4">
                 {/* Default Roster */}
                 <button
                     onClick={() => onSelectMode('default')}
-                    className="group relative w-80 bg-emerald-500/8 border border-emerald-500/30 rounded-3xl p-10 text-left transition-all hover:bg-emerald-500/15 hover:border-emerald-500/40 hover:shadow-[0_0_40px_rgba(16,185,129,0.15)] active:scale-[0.98]"
+                    className="group relative overflow-hidden rounded-2xl p-6 w-72 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 shadow-lg hover:shadow-indigo-500/30"
                 >
-                    <div className="space-y-5">
-                        <Shield size={32} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+                    <div className="relative space-y-4">
+                        <p className="text-xs font-bold text-indigo-200 uppercase tracking-wider">기본 모드</p>
+
+                        <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
+                            <Shield size={22} className="text-white" />
+                        </div>
+
                         <div>
-                            <h2 className="text-xl font-black text-emerald-300 ko-tight">기본 로스터</h2>
-                            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed ko-normal">
-                                기본 로스터 구성 그대로 시즌을 시작합니다.
-                                <br />
+                            <h2 className="text-xl font-black text-white ko-tight">기본 로스터</h2>
+                            <p className="text-sm text-indigo-200 mt-1 ko-normal leading-relaxed">
+                                기본 로스터 그대로 시즌을 시작합니다.<br />
                                 즉시 경기를 진행할 수 있습니다.
                             </p>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                            바로 시작 <ChevronRight size={14} />
+
+                        <div className="flex items-center gap-2 text-sm font-bold text-white mt-2">
+                            바로 시작
+                            <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                         </div>
                     </div>
                 </button>
@@ -50,20 +58,28 @@ export const ModeSelectView: React.FC<ModeSelectViewProps> = ({ onSelectMode }) 
                 {/* Custom Roster (Draft) */}
                 <button
                     onClick={() => onSelectMode('custom')}
-                    className="group relative w-80 bg-amber-500/8 border border-amber-500/30 rounded-3xl p-10 text-left transition-all hover:bg-amber-500/15 hover:border-amber-500/40 hover:shadow-[0_0_40px_rgba(245,158,11,0.15)] active:scale-[0.98]"
+                    className="group relative overflow-hidden rounded-2xl p-6 w-72 text-left transition-all active:scale-[0.98] bg-gradient-to-br from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 shadow-lg hover:shadow-amber-500/30"
                 >
-                    <div className="space-y-5">
-                        <Shuffle size={32} className="text-amber-400 group-hover:scale-110 transition-transform" />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
+
+                    <div className="relative space-y-4">
+                        <p className="text-xs font-bold text-amber-200 uppercase tracking-wider">커스텀 모드</p>
+
+                        <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
+                            <Shuffle size={22} className="text-white" />
+                        </div>
+
                         <div>
-                            <h2 className="text-xl font-black text-amber-300 ko-tight">커스텀 로스터</h2>
-                            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed ko-normal">
-                                30개 팀이 드래프트에 참가해 로스터를 새롭게
-                                <br />
-                                구성합니다. 나만의 드림팀을 만들어보세요.
+                            <h2 className="text-xl font-black text-white ko-tight">커스텀 로스터</h2>
+                            <p className="text-sm text-amber-200 mt-1 ko-normal leading-relaxed">
+                                30개 팀이 드래프트에 참가해<br />
+                                나만의 드림팀을 만들어보세요.
                             </p>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                            드래프트 설정 <ChevronRight size={14} />
+
+                        <div className="flex items-center gap-2 text-sm font-bold text-white mt-2">
+                            드래프트 설정
+                            <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                         </div>
                     </div>
                 </button>
