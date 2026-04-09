@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { searchPlayers, fetchPlayerById, updateBaseAttributes, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { resolveTeamId } from '../utils/constants';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -156,7 +157,13 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         const fresh = await fetchPlayerById(row.id);
         if (!fresh) return;
         setSelected(fresh);
-        setDraft(JSON.parse(JSON.stringify(fresh.base_attributes)));
+        const attrs = JSON.parse(JSON.stringify(fresh.base_attributes));
+        // base_attributes.team이 "LA 레이커스" 같은 원본 팀명일 수 있으므로 슬러그로 정규화
+        if (attrs.team) {
+            const slug = resolveTeamId(attrs.team);
+            attrs.team = slug !== 'unknown' ? slug : '';
+        }
+        setDraft(attrs);
         setShowDropdown(false);
         setQuery(row.name);
         setSaveMsg(null);
