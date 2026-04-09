@@ -36,6 +36,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const [activeFilters, setActiveFilters] = useState<Set<MessageFilterCategory>>(() => new Set(MESSAGE_FILTER_CATEGORIES));
   const contentCache = useRef<Map<string, any>>(new Map());
   const silentRefreshRef = useRef(false);
+  const selectedMessageRef = useRef<MessageListItem | null>(null);
 
   const handleTeamOptionDecide = useCallback(async (playerId: string, exercised: boolean) => {
       if (!selectedMessage || !selectedContent?.pendingTeamOptions) return;
@@ -82,6 +83,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   }, [selectedMessage, selectedContent, onRFAMatchDecide]);
 
   const handleSelectMessage = useCallback(async (msg: MessageListItem) => {
+      selectedMessageRef.current = msg;
       setSelectedMessage(msg);
       setSelectedContent(null);
 
@@ -121,7 +123,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     setMessages(prev => page === 0 ? data : [...prev, ...data]);
 
     // Auto-select: initialMessageId 지정 시 해당 메시지, 없으면 첫 번째
-    if (page === 0 && data.length > 0 && !selectedMessage) {
+    if (page === 0 && data.length > 0 && !selectedMessageRef.current) {
         const target = initialMessageId
             ? data.find(m => m.id === initialMessageId) ?? data[0]
             : data[0];
@@ -129,7 +131,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     }
 
     setLoading(false);
-  }, [userId, myTeamId, page, activeFilters, handleSelectMessage, selectedMessage, initialMessageId]);
+  }, [userId, myTeamId, page, activeFilters, handleSelectMessage, initialMessageId]);
 
   useEffect(() => {
     loadMessages();
@@ -164,6 +166,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       setMessages(prev => prev.filter(m => !ids.includes(m.id)));
       setTotalCount(prev => Math.max(0, prev - ids.length));
       if (selectedMessage && ids.includes(selectedMessage.id)) {
+          selectedMessageRef.current = null;
           setSelectedMessage(null);
           setSelectedContent(null);
       }
@@ -174,6 +177,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       await clearAllMessages(userId, myTeamId);
       setMessages([]);
       setTotalCount(0);
+      selectedMessageRef.current = null;
       setSelectedMessage(null);
       setSelectedContent(null);
       await onUpdateUnreadCount();
@@ -232,7 +236,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
               }}
               onSelectMessage={handleSelectMessage}
               onMarkAllRead={handleMarkAllRead}
-              onRefresh={() => { setPage(0); setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
+              onRefresh={() => { setPage(0); selectedMessageRef.current = null; setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
               onLoadMore={() => { setPage(p => p + 1); }}
               onDeleteMessages={handleDeleteMessages}
               onClearAll={handleClearAll}
