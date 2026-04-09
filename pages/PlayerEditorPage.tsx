@@ -167,6 +167,9 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
             const slug = resolveTeamId(attrs.team);
             attrs.team = slug !== 'unknown' ? slug : '';
         }
+        // base_attributes에 position/name이 없는 구형 선수는 테이블 컬럼 값으로 보완
+        if (!attrs.position && fresh.position) attrs.position = fresh.position;
+        if (!attrs.name && fresh.name) attrs.name = fresh.name;
         originalAttrsRef.current = JSON.parse(JSON.stringify(attrs));
         setDraft(attrs);
         setEditLog(log);
