@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, insertEditLog, fetchEditLog, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { resolveTeamId } from '../utils/constants';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
@@ -132,6 +132,8 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [draft, setDraft] = useState<Record<string, any>>({});
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState<string | null>(null);
+    const [editLog, setEditLog] = useState<EditLogEntry[]>([]);
+    const originalAttrsRef = useRef<Record<string, any>>({});
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,16 +156,20 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     }, [results.length]);
 
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
-        const fresh = await fetchPlayerById(row.id);
+        const [fresh, log] = await Promise.all([
+            fetchPlayerById(row.id),
+            fetchEditLog(row.id).catch(() => [] as EditLogEntry[]),
+        ]);
         if (!fresh) return;
         setSelected(fresh);
         const attrs = JSON.parse(JSON.stringify(fresh.base_attributes));
-        // base_attributes.team이 "LA 레이커스" 같은 원본 팀명일 수 있으므로 슬러그로 정규화
         if (attrs.team) {
             const slug = resolveTeamId(attrs.team);
             attrs.team = slug !== 'unknown' ? slug : '';
         }
+        originalAttrsRef.current = JSON.parse(JSON.stringify(attrs));
         setDraft(attrs);
+        setEditLog(log);
         setShowDropdown(false);
         setQuery(row.name);
         setSaveMsg(null);
@@ -299,12 +305,15 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         setSaving(true);
         setSaveMsg(null);
         try {
+            const diff = computeDiff(originalAttrsRef.current, draft);
             await updateBaseAttributes(selected.id, draft);
-            const fresh = await fetchPlayerById(selected.id);
-            if (fresh) {
-                setSelected(fresh);
-                setDraft(JSON.parse(JSON.stringify(fresh.base_attributes)));
+            if (Object.keys(diff).length > 0) {
+                const entry = await insertEditLog(selected.id, selected.name, diff);
+                if (entry) setEditLog(prev => [entry, ...prev]);
             }
+            originalAttrsRef.current = JSON.parse(JSON.stringify(draft));
+            const fresh = await fetchPlayerById(selected.id);
+            if (fresh) setSelected(fresh);
             setSaveMsg('✓ 저장 완료');
         } catch (e: any) {
             setSaveMsg(`✗ 저장 실패: ${e.message}`);
@@ -551,11 +560,63 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                             {saving ? '저장 중...' : '적용'}
                         </button>
                     </div>
+
+                    {/* 편집 이력 */}
+                    <div className="mt-10 border-t border-slate-800 pt-6">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">편집 이력</h3>
+                        {editLog.length === 0 ? (
+                            <p className="text-slate-600 text-xs">저장된 편집 이력이 없습니다.</p>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                {editLog.map(entry => (
+                                    <div key={entry.id} className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+                                        <div className="text-xs text-slate-500 mb-2">
+                                            {new Date(entry.edited_at).toLocaleString('ko-KR')}
+                                        </div>
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                            {Object.entries(entry.changes).map(([key, { before, after }]) => (
+                                                <span key={key} className="text-xs font-mono">
+                                                    <span className="text-slate-400">{key}</span>
+                                                    {' '}
+                                                    <span className="text-red-400">{JSON.stringify(before) ?? '없음'}</span>
+                                                    <span className="text-slate-600"> → </span>
+                                                    <span className="text-emerald-400">{JSON.stringify(after) ?? '없음'}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </>
             )}
         </div>
     );
 };
+
+function computeDiff(
+    before: Record<string, any>,
+    after: Record<string, any>
+): Record<string, { before: any; after: any }> {
+    const changes: Record<string, { before: any; after: any }> = {};
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of allKeys) {
+        if (key === 'custom_overrides') continue;
+        if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+            changes[key] = { before: before[key], after: after[key] };
+        }
+    }
+    const bco: Record<string, any> = before.custom_overrides ?? {};
+    const aco: Record<string, any> = after.custom_overrides ?? {};
+    const coKeys = new Set([...Object.keys(bco), ...Object.keys(aco)]);
+    for (const k of coKeys) {
+        if (JSON.stringify(bco[k]) !== JSON.stringify(aco[k])) {
+            changes[`co.${k}`] = { before: bco[k], after: aco[k] };
+        }
+    }
+    return changes;
+}
 
 function formatSalary(n: number | undefined): string {
     if (n === undefined || n === null || isNaN(n)) return '';

@@ -47,3 +47,35 @@ export async function updateBaseAttributes(
         .eq('id', id);
     if (error) throw error;
 }
+
+export interface EditLogEntry {
+    id: number;
+    player_name: string;
+    edited_at: string;
+    changes: Record<string, { before: any; after: any }>;
+}
+
+export async function insertEditLog(
+    playerId: string,
+    playerName: string,
+    changes: Record<string, { before: any; after: any }>
+): Promise<EditLogEntry | null> {
+    const { data, error } = await supabase
+        .from('player_edit_log')
+        .insert({ player_id: playerId, player_name: playerName, changes })
+        .select('id, player_name, edited_at, changes')
+        .single();
+    if (error) { console.error('edit log insert failed:', error); return null; }
+    return data;
+}
+
+export async function fetchEditLog(playerId: string): Promise<EditLogEntry[]> {
+    const { data, error } = await supabase
+        .from('player_edit_log')
+        .select('id, player_name, edited_at, changes')
+        .eq('player_id', playerId)
+        .order('edited_at', { ascending: false })
+        .limit(30);
+    if (error) throw error;
+    return data ?? [];
+}
