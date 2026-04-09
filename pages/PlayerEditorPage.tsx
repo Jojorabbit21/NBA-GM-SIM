@@ -383,7 +383,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                     onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 />
                 {showDropdown && results.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 max-h-56 overflow-y-auto overscroll-contain shadow-xl">
+                    <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 overflow-y-auto overscroll-contain shadow-xl" style={{ maxHeight: '224px' }}>
                         {results.map(r => (
                             <button
                                 key={r.id}
