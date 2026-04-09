@@ -17,66 +17,62 @@ export const FullSeasonSimModal: React.FC<Props> = ({ progress, onCancel }) => {
     const label = progress.phase === 'saving'
         ? '결과 저장 중...'
         : progress.opponentName
-            ? `${formatDate(progress.currentDate)}  vs ${progress.opponentName}  경기 시뮬레이션 중`
-            : `${formatDate(progress.currentDate)}  경기 시뮬레이션 중`;
+            ? `${formatDate(progress.currentDate)}  vs ${progress.opponentName}  경기 시뮬레이션 중...`
+            : `${formatDate(progress.currentDate)}  경기 시뮬레이션 중...`;
 
     return (
         <>
-        {/* 배경 블러 오버레이 — 클릭 차단 */}
-        <div className="fixed inset-0 z-[1999] backdrop-blur-[3px] bg-slate-950/50" />
+            <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
 
-        <div className="fixed top-0 left-0 right-0 z-[2000] bg-slate-950 border-b border-slate-800 overflow-hidden shadow-2xl" style={{ height: '48px' }}>
+            {/* 배경 블러 오버레이 — 클릭 차단 */}
+            <div className="fixed inset-0 z-[1999] backdrop-blur-[3px] bg-slate-950/50" />
 
-            {/* 배경 프로그레스 fill (반투명 인디고) */}
             <div
-                className="absolute left-0 top-0 h-full bg-indigo-600/20 transition-all duration-300"
-                style={{ width: `${pct}%` }}
-            />
-
-            {/* 하단 씬 라인 프로그레스 */}
-            <div
-                className="absolute bottom-0 left-0 h-[2px] bg-indigo-500 transition-all duration-300"
-                style={{ width: `${pct}%` }}
-            />
-
-            {/* 프로그레스 엣지 글로우 */}
-            {pct > 0 && pct < 100 && (
+                className="fixed top-0 left-0 right-0 z-[2000] overflow-hidden"
+                style={{
+                    backgroundColor: '#18181B',
+                    height: '35px',
+                    boxShadow: '0px 4px 6px -1px rgba(0,0,0,0.1), 0px 2px 4px -1px rgba(0,0,0,0.06)',
+                }}
+            >
+                {/* 프로그레스 바 (그라디언트 + 우측 border + glow) */}
                 <div
-                    className="absolute bottom-0 w-[3px] h-[2px] bg-indigo-300 transition-all duration-300"
+                    className="absolute left-0 top-0 h-full"
                     style={{
-                        left: `calc(${pct}% - 1px)`,
-                        boxShadow: '0 0 8px 2px rgba(99,102,241,0.8)',
+                        width: `${pct}%`,
+                        background: 'linear-gradient(to right, rgba(16,185,129,0.1), rgba(16,185,129,0.5))',
+                        borderRight: '2px solid #34D399',
+                        boxShadow: '0 0 10px 0 #34D399',
+                        transition: 'width 0.3s ease',
                     }}
                 />
-            )}
 
-            {/* 콘텐츠 */}
-            <div className="absolute inset-0 flex items-center justify-between px-6">
-                <div className="flex items-center gap-3 min-w-0">
-                    {/* 활성 인디케이터 */}
-                    <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-400 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.7)]" />
-                    <span className="font-black ko-tight text-white text-sm whitespace-nowrap truncate">
+                {/* Shimmer 텍스처 */}
+                <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'shimmer 1.8s ease-in-out infinite',
+                    }}
+                />
+
+                {/* 텍스트 + 취소 버튼 */}
+                <div className="absolute inset-0 flex items-center justify-between" style={{ paddingLeft: '31px', paddingRight: '12px' }}>
+                    <span className="font-bold text-white shrink-0 whitespace-nowrap" style={{ fontSize: '16px', lineHeight: '24px' }}>
                         {label}
-                    </span>
-                </div>
-
-                <div className="flex items-center gap-4 shrink-0 pl-4">
-                    {/* 퍼센트 표시 */}
-                    <span className="font-mono font-black text-indigo-400 text-sm tabular-nums">
-                        {Math.round(pct)}%
                     </span>
 
                     {progress.phase === 'simulating' && (
                         <button
                             onClick={onCancel}
-                            className="text-xs font-black text-slate-400 hover:text-white transition-colors"
+                            className="shrink-0 text-slate-400 hover:text-white transition-colors text-xs font-bold"
                         >
                             취소
                         </button>
                     )}
                 </div>
             </div>
-        </div>
         </>
     );
 };
