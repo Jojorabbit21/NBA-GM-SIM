@@ -98,8 +98,13 @@ const ProtectedLayout: React.FC = () => {
     }
 
     // ─── 미완료 드래프트 감지 (커스텀 모드 초기 진입 시) ─────────────────
+    // 이미 /draft-lottery 또는 /draft/ 안에 있을 때는 리다이렉트 하지 않음 (무한루프 방지)
 
-    if (gameData.draftPicks?.order && !gameData.draftPicks?.teams && rosterMode === 'custom') {
+    if (
+        location.pathname !== '/draft-lottery' &&
+        !location.pathname.startsWith('/draft/') &&
+        gameData.draftPicks?.order && !gameData.draftPicks?.teams && rosterMode === 'custom'
+    ) {
         return <Navigate to="/draft-lottery" replace />;
     }
 

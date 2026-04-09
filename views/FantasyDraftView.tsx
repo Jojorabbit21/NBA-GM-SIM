@@ -109,14 +109,6 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         return () => clearInterval(interval);
     }, [currentPickIndex]);
 
-    // ── User auto-pick on timeout ──
-    useEffect(() => {
-        if (timeRemaining !== 0 || !isUserTurn) return;
-        if (availablePlayers.length > 0) {
-            handleDraft(availablePlayers[0]);
-        }
-    }, [timeRemaining, isUserTurn, handleDraft, availablePlayers]);
-
     // ── Draft action (user pick) ──
     const handleDraft = useCallback((player: Player) => {
         if (!isUserTurn) return;
@@ -132,6 +124,14 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         setCurrentPickIndex(prev => prev + 1);
         setSelectedPlayerId(null);
     }, [isUserTurn, currentRound, myTeamId]);
+
+    // ── User auto-pick on timeout ──
+    useEffect(() => {
+        if (timeRemaining !== 0 || !isUserTurn) return;
+        if (availablePlayers.length > 0) {
+            handleDraft(availablePlayers[0]);
+        }
+    }, [timeRemaining, isUserTurn, handleDraft, availablePlayers]);
 
     // ── Batch-simulate picks until stopCondition returns true ──
     const simulatePicks = useCallback((stopCondition?: (teamId: string) => boolean) => {

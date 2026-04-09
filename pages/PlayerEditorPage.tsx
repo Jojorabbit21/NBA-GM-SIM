@@ -383,7 +383,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                     onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 />
                 {showDropdown && results.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 max-h-60 overflow-y-auto shadow-xl">
+                    <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 max-h-56 overflow-y-auto overscroll-contain shadow-xl">
                         {results.map(r => (
                             <button
                                 key={r.id}
@@ -426,92 +426,57 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                         </div>
                     </div>
 
-                    {/* ── 2컬럼 그리드 레이아웃 ── */}
+                    {/* ── 인적 정보 — 풀 너비 ── */}
+                    <Section label="인적 정보">
+                        <div className="grid grid-cols-3 gap-x-6">
+                            {[
+                                { key: 'age',    label: '나이',   note: '세' },
+                                { key: 'num',    label: '등번호', note: '' },
+                                { key: 'height', label: '키',     note: 'cm' },
+                                { key: 'weight', label: '몸무게', note: 'kg' },
+                            ].map(({ key, label, note }) => (
+                                <div key={key} className="flex items-center gap-2 mb-2">
+                                    <span className="text-slate-400 text-xs w-14 shrink-0">{label}</span>
+                                    <input
+                                        className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                                        value={draft[key] ?? ''}
+                                        onChange={e => setField(key, e.target.value)}
+                                    />
+                                    {note && <span className="text-slate-500 text-xs w-6 shrink-0">{note}</span>}
+                                </div>
+                            ))}
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-slate-400 text-xs w-14 shrink-0">포지션</span>
+                                <select
+                                    className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                                    value={draft.position ?? ''}
+                                    onChange={e => setField('position', e.target.value)}
+                                >
+                                    <option value="">— 선택 —</option>
+                                    {POSITION_OPTIONS.map(p => (
+                                        <option key={p} value={p}>{p}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2 col-span-2">
+                                <span className="text-slate-400 text-xs w-14 shrink-0">팀</span>
+                                <select
+                                    className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                                    value={draft.team ?? ''}
+                                    onChange={e => setField('team', e.target.value)}
+                                >
+                                    {TEAM_OPTIONS.map(t => (
+                                        <option key={t.id} value={t.id}>{t.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </Section>
+
+                    {/* ── 2컬럼 그리드 ── */}
                     <div className="grid grid-cols-2 gap-x-8 items-start">
 
-                        {/* Row 1: 인적 정보 — full width */}
-                        <Section label="인적 정보" className="col-span-2">
-                            <table className="w-full text-sm border-collapse">
-                                <thead>
-                                    <tr className="text-slate-400 text-xs border-b border-slate-700">
-                                        <th className="text-left py-1 pr-4 font-normal w-24">필드</th>
-                                        <th className="text-left py-1 pr-4 font-normal">값</th>
-                                        <th className="text-left py-1 font-normal text-slate-500">비고</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {/* 나이 */}
-                                    <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">나이</td>
-                                        <td className="py-1 pr-4">
-                                            <input
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft.age ?? ''}
-                                                onChange={e => setField('age', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="py-1 text-slate-500 text-xs">세</td>
-                                    </tr>
-                                    {/* 키 */}
-                                    <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">키</td>
-                                        <td className="py-1 pr-4">
-                                            <input
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft.height ?? ''}
-                                                onChange={e => setField('height', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="py-1 text-slate-500 text-xs">cm</td>
-                                    </tr>
-                                    {/* 몸무게 */}
-                                    <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">몸무게</td>
-                                        <td className="py-1 pr-4">
-                                            <input
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft.weight ?? ''}
-                                                onChange={e => setField('weight', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="py-1 text-slate-500 text-xs">kg</td>
-                                    </tr>
-                                    {/* 포지션 — 드롭다운 */}
-                                    <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">포지션</td>
-                                        <td className="py-1 pr-4" colSpan={2}>
-                                            <select
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft.position ?? ''}
-                                                onChange={e => setField('position', e.target.value)}
-                                            >
-                                                <option value="">— 선택 —</option>
-                                                {POSITION_OPTIONS.map(p => (
-                                                    <option key={p} value={p}>{p}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                    {/* 팀 — 드롭다운 */}
-                                    <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">팀</td>
-                                        <td className="py-1 pr-4" colSpan={2}>
-                                            <select
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft.team ?? ''}
-                                                onChange={e => setField('team', e.target.value)}
-                                            >
-                                                {TEAM_OPTIONS.map(t => (
-                                                    <option key={t.id} value={t.id}>{t.label}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </Section>
-
-                        {/* Row 2: Base 계약 | CO 계약 */}
+                        {/* Row 1: Base 계약 | CO 계약 */}
                         <Section label="Base 계약">
                             <ContractForm
                                 contract={draft.contract ?? {}}
@@ -525,38 +490,26 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                             />
                         </Section>
                         <Section label="CO 계약">
-                            {draft.custom_overrides?.contract === undefined ? (
-                                <div className="flex flex-col gap-3">
-                                    <p className="text-slate-500 text-xs">CO 계약 없음 — base 계약 그대로 사용</p>
+                            {draft.custom_overrides?.contract !== undefined && (
+                                <div className="flex justify-end mb-2">
                                     <button
-                                        onClick={initCoContract}
-                                        className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-800 rounded px-3 py-1 self-start"
+                                        onClick={clearCoContract}
+                                        className="text-xs text-red-500 hover:text-red-400 border border-red-900 rounded px-2 py-0.5"
                                     >
-                                        + Base에서 복사
+                                        CO 계약 삭제
                                     </button>
                                 </div>
-                            ) : (
-                                <>
-                                    <div className="flex justify-end mb-2">
-                                        <button
-                                            onClick={clearCoContract}
-                                            className="text-xs text-red-500 hover:text-red-400 border border-red-900 rounded px-2 py-0.5"
-                                        >
-                                            CO 계약 삭제
-                                        </button>
-                                    </div>
-                                    <ContractForm
-                                        contract={draft.custom_overrides.contract}
-                                        salary={draft.custom_overrides?.salary}
-                                        onSetContractYear={setCoContractYear}
-                                        onAddYear={addCoContractYear}
-                                        onRemoveYear={removeCoContractYear}
-                                        onSetContractField={setCoContractField}
-                                        onSetSalary={v => setCoField('salary', v)}
-                                        startYear={2025}
-                                    />
-                                </>
                             )}
+                            <ContractForm
+                                contract={draft.custom_overrides?.contract ?? {}}
+                                salary={draft.custom_overrides?.salary}
+                                onSetContractYear={setCoContractYear}
+                                onAddYear={addCoContractYear}
+                                onRemoveYear={removeCoContractYear}
+                                onSetContractField={setCoContractField}
+                                onSetSalary={v => setCoField('salary', v)}
+                                startYear={2025}
+                            />
                         </Section>
 
                         {/* Row 3: 인사이드 | 아웃사이드 */}
