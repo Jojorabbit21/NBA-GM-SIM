@@ -68,7 +68,15 @@ const App: React.FC = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const { session, isGuestMode, authLoading, handleLogout } = useAuth();
-    const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
+    const [rosterMode, setRosterModeState] = useState<RosterMode | null>(() => {
+        const stored = localStorage.getItem('nbagm:rosterMode');
+        return stored === 'custom' || stored === 'standard' ? stored : null;
+    });
+    const setRosterMode = useCallback((mode: RosterMode | null) => {
+        setRosterModeState(mode);
+        if (mode) localStorage.setItem('nbagm:rosterMode', mode);
+        else      localStorage.removeItem('nbagm:rosterMode');
+    }, []);
     const [playModeState, setPlayModeState] = useState<PlayMode | null>(() => {
         const stored = localStorage.getItem('nbagm:playMode');
         return stored === 'single' || stored === 'multi' ? stored : null;
@@ -90,7 +98,15 @@ const App: React.FC = () => {
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
-    const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
+    const [draftPoolType, setDraftPoolTypeState] = useState<DraftPoolType | null>(() => {
+        const stored = localStorage.getItem('nbagm:draftPoolType');
+        return stored === 'current' || stored === 'alltime' ? stored : null;
+    });
+    const setDraftPoolType = useCallback((type: DraftPoolType | null) => {
+        setDraftPoolTypeState(type);
+        if (type) localStorage.setItem('nbagm:draftPoolType', type);
+        else      localStorage.removeItem('nbagm:draftPoolType');
+    }, []);
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
     const updateAvailable = useUpdateChecker();
     const [updateDismissed, setUpdateDismissed] = useState(false);
