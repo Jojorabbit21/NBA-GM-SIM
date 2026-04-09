@@ -303,6 +303,14 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         });
     }, []);
 
+    const clearSectionCo = useCallback((keys: string[]) => {
+        setDraft(prev => {
+            const co: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
+            keys.forEach(k => delete co[k]);
+            return { ...prev, custom_overrides: co };
+        });
+    }, []);
+
     const handleSave = useCallback(async () => {
         if (!selected) return;
         setSaving(true);
@@ -335,7 +343,10 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
 
     const co: Record<string, any> = draft.custom_overrides ?? {};
 
-    const renderStatSection = (section: typeof STAT_SECTIONS[0]) => (
+    const renderStatSection = (section: typeof STAT_SECTIONS[0]) => {
+        const sectionKeys = section.keys.map(k => k.key);
+        const hasSectionCo = sectionKeys.some(k => co[k] !== undefined);
+        return (
         <Section key={section.label} label={section.label}>
             <table className="w-full text-sm border-collapse">
                 <thead>
@@ -343,7 +354,20 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                         <th className="text-left py-1 pr-3 font-normal">능력치</th>
                         <th className="text-center py-1 pr-2 font-normal text-slate-500 w-10">키</th>
                         <th className="text-center py-1 px-1 font-normal w-16">base</th>
-                        <th className="text-center py-1 px-1 font-normal w-16">CO</th>
+                        <th className="text-center py-1 px-1 font-normal w-16">
+                            <span className="flex items-center justify-center gap-1">
+                                CO
+                                {hasSectionCo && (
+                                    <button
+                                        onClick={() => clearSectionCo(sectionKeys)}
+                                        className="text-[9px] text-slate-500 hover:text-red-400 border border-slate-700 hover:border-red-800 rounded px-1 leading-4 transition-colors"
+                                        title="이 섹션 CO 값 전체 초기화"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -379,7 +403,8 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                 </tbody>
             </table>
         </Section>
-    );
+        );
+    };
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-200 pretendard p-4 md:p-6">
