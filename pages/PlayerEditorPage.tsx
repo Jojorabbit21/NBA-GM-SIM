@@ -77,19 +77,8 @@ const STAT_SECTIONS = [
         label: '특수 & 무형',
         keys: [
             { key: 'intangibles', label: '무형 (IQ/리더십/클러치)' },
-            { key: 'lock',        label: '락다운 수비' },
         ],
     },
-];
-
-const CO_KEYS = [
-    'close','lay','dnk','post','draw','hands',
-    'mid','3c','3_45','3t','ft','siq','ocon',
-    'pacc','handl','spwb','pvis','piq','obm',
-    'idef','pdef','stl','blk','hdef','pper','dcon',
-    'oreb','dreb','box',
-    'spd','agi','str','vert','sta','hus','dur',
-    'intangibles','lock','ovr',
 ];
 
 function getColor(v: number | undefined): string {
@@ -110,13 +99,11 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [results, setResults] = useState<MetaPlayerRow[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const [selected, setSelected] = useState<MetaPlayerRow | null>(null);
-    // 편집 중인 base_attributes 전체 (deep copy)
     const [draft, setDraft] = useState<Record<string, any>>({});
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState<string | null>(null);
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // 검색 — 빈 값이면 전체 목록
     const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const v = e.target.value;
         setQuery(v);
@@ -129,7 +116,6 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         }, 200);
     }, []);
 
-    // 포커스 시 전체 목록 로드
     const handleFocus = useCallback(async () => {
         if (results.length === 0) {
             try { setResults(await searchPlayers('')); } catch { /* noop */ }
@@ -137,7 +123,6 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         setShowDropdown(true);
     }, [results.length]);
 
-    // 선수 선택
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
         const fresh = await fetchPlayerById(row.id);
         if (!fresh) return;
@@ -148,13 +133,51 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         setSaveMsg(null);
     }, []);
 
-    // 루트 필드 (스탯 + 메타 포함) 변경
     const setField = useCallback((key: string, raw: string) => {
         const num = Number(raw);
         setDraft(prev => ({ ...prev, [key]: isNaN(num) ? raw : num }));
     }, []);
 
-    // custom_overrides 필드 변경 (빈 값이면 키 제거)
+    const setContractYear = useCallback((idx: number, raw: string) => {
+        const num = Number(raw.replace(/,/g, ''));
+        setDraft(prev => {
+            const contract = { ...(prev.contract ?? {}), years: [...(prev.contract?.years ?? [])] };
+            contract.years[idx] = isNaN(num) ? 0 : num;
+            const cur = contract.currentYear ?? 0;
+            const newSalary = contract.years[cur] ?? prev.salary;
+            return { ...prev, contract, salary: newSalary };
+        });
+    }, []);
+
+    const addContractYear = useCallback(() => {
+        setDraft(prev => {
+            const years = [...(prev.contract?.years ?? [])];
+            years.push(0);
+            return { ...prev, contract: { ...(prev.contract ?? {}), years } };
+        });
+    }, []);
+
+    const removeContractYear = useCallback((idx: number) => {
+        setDraft(prev => {
+            const years = [...(prev.contract?.years ?? [])];
+            years.splice(idx, 1);
+            const contract = { ...(prev.contract ?? {}), years };
+            if ((contract.currentYear ?? 0) >= years.length) {
+                contract.currentYear = Math.max(0, years.length - 1);
+            }
+            const cur = contract.currentYear ?? 0;
+            const newSalary = years[cur] ?? prev.salary;
+            return { ...prev, contract, salary: newSalary };
+        });
+    }, []);
+
+    const setContractField = useCallback((key: string, val: any) => {
+        setDraft(prev => ({
+            ...prev,
+            contract: { ...(prev.contract ?? {}), [key]: val },
+        }));
+    }, []);
+
     const setCoField = useCallback((key: string, raw: string) => {
         setDraft(prev => {
             const co: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
@@ -168,7 +191,6 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         });
     }, []);
 
-    // 저장
     const handleSave = useCallback(async () => {
         if (!selected) return;
         setSaving(true);
@@ -197,6 +219,57 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     }
 
     const co: Record<string, any> = draft.custom_overrides ?? {};
+
+    const renderStatSection = (section: typeof STAT_SECTIONS[0]) => (
+        <Section key={section.label} label={section.label}>
+            <table className="w-full text-sm border-collapse">
+                <thead>
+                    <tr className="text-slate-400 text-xs border-b border-slate-700">
+                        <th className="text-left py-1 pr-3 font-normal">능력치</th>
+                        <th className="text-center py-1 pr-2 font-normal text-slate-500 w-10">키</th>
+                        <th className="text-center py-1 px-1 font-normal w-16">base</th>
+                        <th className="text-center py-1 px-1 font-normal w-16 text-indigo-400">CO</th>
+                        <th className="text-center py-1 px-1 font-normal w-12 text-slate-500">적용</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {section.keys.map(({ key, label }) => {
+                        const baseVal = draft[key] as number | undefined;
+                        const coVal   = co[key]   as number | undefined;
+                        const applied = coVal !== undefined ? coVal : baseVal;
+                        return (
+                            <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
+                                <td className="py-1 pr-3 text-slate-300 text-xs">{label}</td>
+                                <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">{key}</td>
+                                <td className="py-1 px-1">
+                                    <input
+                                        type="number"
+                                        min={0} max={99}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500"
+                                        value={baseVal ?? ''}
+                                        onChange={e => setField(key, e.target.value)}
+                                    />
+                                </td>
+                                <td className="py-1 px-1">
+                                    <input
+                                        type="number"
+                                        min={0} max={99}
+                                        placeholder="—"
+                                        className="w-full bg-slate-900 border border-indigo-800/50 rounded px-1 py-0.5 text-center text-indigo-300 text-xs focus:outline-none focus:border-indigo-500 placeholder-slate-600"
+                                        value={coVal ?? ''}
+                                        onChange={e => setCoField(key, e.target.value)}
+                                    />
+                                </td>
+                                <td className={`py-1 px-1 text-center font-mono text-xs font-bold ${getColor(applied)}`}>
+                                    {applied ?? '—'}
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </Section>
+    );
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-200 pretendard p-4 md:p-6">
@@ -265,130 +338,71 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                         </div>
                     </div>
 
-                    {/* ── 메타 정보 ── */}
-                    <Section label="인적 정보 & 계약">
-                        <table className="w-full text-sm border-collapse">
-                            <thead>
-                                <tr className="text-slate-400 text-xs border-b border-slate-700">
-                                    <th className="text-left py-1 pr-4 font-normal w-40">필드</th>
-                                    <th className="text-left py-1 pr-4 font-normal w-36">값</th>
-                                    <th className="text-left py-1 font-normal text-slate-500">비고</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {[
-                                    { key: 'age',           label: '나이',        note: '세' },
-                                    { key: 'height',        label: '키',          note: 'cm' },
-                                    { key: 'weight',        label: '몸무게',       note: 'kg' },
-                                    { key: 'position',      label: '포지션',       note: 'PG/SG/SF/PF/C' },
-                                    { key: 'team',          label: '팀',          note: '' },
-                                    { key: 'salary',        label: '연봉',         note: '달러' },
-                                    { key: 'contractyears', label: '계약 잔여',    note: '년' },
-                                    { key: 'potential',     label: 'Potential',   note: '25~99' },
-                                    { key: 'archetype',     label: '아키타입',     note: '' },
-                                ].map(({ key, label, note }) => (
-                                    <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-400">{label}</td>
-                                        <td className="py-1 pr-4">
-                                            <input
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                value={draft[key] ?? ''}
-                                                onChange={e => setField(key, e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="py-1 text-slate-500 text-xs">{note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </Section>
+                    {/* ── 2컬럼 그리드 레이아웃 ── */}
+                    <div className="grid grid-cols-2 gap-x-8 items-start">
 
-                    {/* ── 능력치 섹션들 ── */}
-                    {STAT_SECTIONS.map(section => (
-                        <Section key={section.label} label={section.label}>
+                        {/* Row 1: 인적 정보 | 계약 정보 */}
+                        <Section label="인적 정보">
                             <table className="w-full text-sm border-collapse">
                                 <thead>
                                     <tr className="text-slate-400 text-xs border-b border-slate-700">
-                                        <th className="text-left py-1 pr-4 font-normal w-44">능력치</th>
-                                        <th className="text-left py-1 pr-2 font-normal w-8 text-center text-slate-500">키</th>
-                                        <th className="text-center py-1 px-2 font-normal w-24">base</th>
-                                        <th className="text-center py-1 px-2 font-normal w-24 text-indigo-400">CO</th>
-                                        <th className="text-center py-1 px-2 font-normal w-16 text-slate-500">적용값</th>
+                                        <th className="text-left py-1 pr-4 font-normal w-24">필드</th>
+                                        <th className="text-left py-1 pr-4 font-normal">값</th>
+                                        <th className="text-left py-1 font-normal text-slate-500">비고</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {section.keys.map(({ key, label }) => {
-                                        const baseVal = draft[key] as number | undefined;
-                                        const coVal   = co[key]   as number | undefined;
-                                        const applied = coVal !== undefined ? coVal : baseVal;
-                                        return (
-                                            <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
-                                                <td className="py-1 pr-4 text-slate-300">{label}</td>
-                                                <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">{key}</td>
-                                                {/* base */}
-                                                <td className="py-1 px-2">
-                                                    <input
-                                                        type="number"
-                                                        min={0} max={99}
-                                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-center text-white text-sm focus:outline-none focus:border-slate-500"
-                                                        value={baseVal ?? ''}
-                                                        onChange={e => setField(key, e.target.value)}
-                                                    />
-                                                </td>
-                                                {/* custom_overrides */}
-                                                <td className="py-1 px-2">
-                                                    <input
-                                                        type="number"
-                                                        min={0} max={99}
-                                                        placeholder="—"
-                                                        className="w-full bg-slate-900 border border-indigo-800/50 rounded px-2 py-0.5 text-center text-indigo-300 text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-600"
-                                                        value={coVal ?? ''}
-                                                        onChange={e => setCoField(key, e.target.value)}
-                                                    />
-                                                </td>
-                                                {/* 적용값 (읽기 전용) */}
-                                                <td className={`py-1 px-2 text-center font-mono text-sm font-bold ${getColor(applied)}`}>
-                                                    {applied ?? '—'}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                    {[
+                                        { key: 'age',       label: '나이',      note: '세' },
+                                        { key: 'height',    label: '키',        note: 'cm' },
+                                        { key: 'weight',    label: '몸무게',    note: 'kg' },
+                                        { key: 'position',  label: '포지션',    note: 'PG/SG/SF/PF/C' },
+                                        { key: 'team',      label: '팀',        note: '' },
+                                        { key: 'potential', label: 'Potential', note: '25~99' },
+                                    ].map(({ key, label, note }) => (
+                                        <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
+                                            <td className="py-1 pr-4 text-slate-400">{label}</td>
+                                            <td className="py-1 pr-4">
+                                                <input
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                                                    value={draft[key] ?? ''}
+                                                    onChange={e => setField(key, e.target.value)}
+                                                />
+                                            </td>
+                                            <td className="py-1 text-slate-500 text-xs">{note}</td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </Section>
-                    ))}
 
-                    {/* ── custom_overrides 전용 키 (ovr, lock 등 위 섹션에 없는 것) ── */}
-                    <Section label="custom_overrides 전용 키">
-                        <p className="text-slate-500 text-xs mb-2">base_attributes에는 없고 custom_overrides에만 있는 키 (전성기 OVR 고정 등)</p>
-                        <table className="w-full text-sm border-collapse">
-                            <thead>
-                                <tr className="text-slate-400 text-xs border-b border-slate-700">
-                                    <th className="text-left py-1 pr-4 font-normal w-32">키</th>
-                                    <th className="text-left py-1 font-normal w-24 text-indigo-400">CO 값</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {['ovr'].map(key => (
-                                    <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-4 text-slate-300 font-mono text-xs">{key}</td>
-                                        <td className="py-1">
-                                            <input
-                                                type="number"
-                                                min={0} max={99}
-                                                placeholder="—"
-                                                className="w-24 bg-slate-900 border border-indigo-800/50 rounded px-2 py-0.5 text-center text-indigo-300 text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-600"
-                                                value={co['ovr'] ?? ''}
-                                                onChange={e => setCoField('ovr', e.target.value)}
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </Section>
+                        <ContractSection
+                            draft={draft}
+                            onSetField={setField}
+                            onSetContractYear={setContractYear}
+                            onAddYear={addContractYear}
+                            onRemoveYear={removeContractYear}
+                            onSetContractField={setContractField}
+                        />
 
-                    {/* 저장 버튼 (하단 고정) */}
+                        {/* Row 2: 인사이드 | 아웃사이드 */}
+                        {renderStatSection(STAT_SECTIONS[0])}
+                        {renderStatSection(STAT_SECTIONS[1])}
+
+                        {/* Row 3: 패스&플레이메이킹 | 수비 */}
+                        {renderStatSection(STAT_SECTIONS[2])}
+                        {renderStatSection(STAT_SECTIONS[3])}
+
+                        {/* Row 4: 리바운드 + 특수&무형 | 운동 능력 */}
+                        <div>
+                            {renderStatSection(STAT_SECTIONS[4])}
+                            {renderStatSection(STAT_SECTIONS[6])}
+                        </div>
+                        {renderStatSection(STAT_SECTIONS[5])}
+
+                    </div>
+
+                    {/* 저장 버튼 (하단) */}
                     <div className="mt-8 flex justify-end gap-3">
                         {saveMsg && (
                             <span className={`text-sm self-center ${saveMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -406,6 +420,195 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                 </>
             )}
         </div>
+    );
+};
+
+// ── 계약 섹션 ──────────────────────────────────────────────────────────────────
+interface ContractSectionProps {
+    draft: Record<string, any>;
+    onSetField: (key: string, val: string) => void;
+    onSetContractYear: (idx: number, val: string) => void;
+    onAddYear: () => void;
+    onRemoveYear: (idx: number) => void;
+    onSetContractField: (key: string, val: any) => void;
+}
+
+function formatSalary(n: number | undefined): string {
+    if (n === undefined || n === null || isNaN(n)) return '';
+    return n.toLocaleString('en-US');
+}
+
+const ContractSection: React.FC<ContractSectionProps> = ({
+    draft, onSetField, onSetContractYear, onAddYear, onRemoveYear, onSetContractField,
+}) => {
+    const contract: Record<string, any> = draft.contract ?? {};
+    const years: number[] = contract.years ?? [];
+    const currentYear: number = contract.currentYear ?? 0;
+    const contractType: string = contract.type ?? 'veteran';
+    const noTrade: boolean = !!contract.noTrade;
+    const option = contract.option ?? null;
+
+    const startYear = 2025;
+
+    return (
+        <Section label="계약 정보">
+            {/* 계약 타입 + 옵션 */}
+            <div className="flex flex-wrap gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs w-20">계약 타입</span>
+                    <select
+                        className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                        value={contractType}
+                        onChange={e => onSetContractField('type', e.target.value)}
+                    >
+                        {['veteran','rookie','max','extension','min','two-way','10-day'].map(t => (
+                            <option key={t} value={t}>{t}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs w-20">현재 시즌</span>
+                    <input
+                        type="number"
+                        min={0}
+                        max={Math.max(0, years.length - 1)}
+                        className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm text-center focus:outline-none focus:border-indigo-500"
+                        value={currentYear}
+                        onChange={e => onSetContractField('currentYear', Number(e.target.value))}
+                    />
+                    <span className="text-slate-500 text-xs">(0부터, 현재=활성 시즌 인덱스)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={noTrade}
+                            onChange={e => onSetContractField('noTrade', e.target.checked ? true : undefined)}
+                            className="accent-indigo-500"
+                        />
+                        <span className="text-slate-300 text-xs">NTC (No-Trade Clause)</span>
+                    </label>
+                </div>
+            </div>
+
+            {/* 옵션 */}
+            <div className="flex flex-wrap gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs w-20">옵션 타입</span>
+                    <select
+                        className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                        value={option?.type ?? 'none'}
+                        onChange={e => {
+                            const v = e.target.value;
+                            if (v === 'none') onSetContractField('option', undefined);
+                            else onSetContractField('option', { ...option, type: v });
+                        }}
+                    >
+                        <option value="none">없음</option>
+                        <option value="player">Player Option</option>
+                        <option value="team">Team Option</option>
+                    </select>
+                </div>
+                {option && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-slate-400 text-xs w-24">옵션 적용 년도</span>
+                        <input
+                            type="number"
+                            min={0}
+                            max={Math.max(0, years.length - 1)}
+                            className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm text-center focus:outline-none focus:border-indigo-500"
+                            value={option.year ?? 0}
+                            onChange={e => onSetContractField('option', { ...option, year: Number(e.target.value) })}
+                        />
+                        <span className="text-slate-500 text-xs">(인덱스 기준)</span>
+                    </div>
+                )}
+            </div>
+
+            {/* 년도별 연봉 */}
+            <table className="w-full text-sm border-collapse mb-3">
+                <thead>
+                    <tr className="text-slate-400 text-xs border-b border-slate-700">
+                        <th className="text-left py-1 pr-4 font-normal w-12">년도</th>
+                        <th className="text-left py-1 pr-4 font-normal w-28">시즌</th>
+                        <th className="text-left py-1 pr-4 font-normal">연봉 (달러)</th>
+                        <th className="text-left py-1 font-normal w-20 text-slate-500">$ 단위</th>
+                        <th className="py-1 w-8"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {years.map((sal, idx) => {
+                        const isCurrent = idx === currentYear;
+                        const isOpt = option && option.year === idx;
+                        return (
+                            <tr key={idx} className={`border-b border-slate-800 ${isCurrent ? 'bg-indigo-950/40' : 'hover:bg-slate-800/30'}`}>
+                                <td className="py-1 pr-4">
+                                    <span className={`font-mono text-xs ${isCurrent ? 'text-indigo-300 font-bold' : 'text-slate-400'}`}>
+                                        Y{idx + 1}
+                                        {isCurrent && <span className="ml-1 text-indigo-400">●</span>}
+                                    </span>
+                                </td>
+                                <td className="py-1 pr-4 text-slate-400 text-xs">
+                                    {startYear + idx}–{(startYear + idx + 1).toString().slice(2)}
+                                    {isOpt && (
+                                        <span className="ml-1 text-amber-400 text-[10px]">
+                                            [{option.type === 'player' ? 'PO' : 'TO'}]
+                                        </span>
+                                    )}
+                                </td>
+                                <td className="py-1 pr-4">
+                                    <input
+                                        type="text"
+                                        className={`w-full bg-slate-800 border rounded px-2 py-0.5 text-sm text-right focus:outline-none ${
+                                            isCurrent
+                                                ? 'border-indigo-600 text-indigo-200 focus:border-indigo-400'
+                                                : 'border-slate-700 text-white focus:border-slate-500'
+                                        }`}
+                                        value={formatSalary(sal)}
+                                        onChange={e => onSetContractYear(idx, e.target.value)}
+                                    />
+                                </td>
+                                <td className="py-1 pr-4 text-slate-500 text-xs font-mono">
+                                    {sal ? `$${(sal / 1_000_000).toFixed(2)}M` : '—'}
+                                </td>
+                                <td className="py-1 text-center">
+                                    <button
+                                        onClick={() => onRemoveYear(idx)}
+                                        className="text-slate-600 hover:text-red-400 text-xs px-1"
+                                        title="이 년도 삭제"
+                                    >✕</button>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={onAddYear}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-800 rounded px-3 py-1"
+                >
+                    + 년도 추가
+                </button>
+                <span className="text-slate-500 text-xs">
+                    총 {years.length}년 계약 · 현재 Y{currentYear + 1} ({startYear + currentYear}–{(startYear + currentYear + 1).toString().slice(2)})
+                    · 잔여 {years.length - currentYear}년
+                </span>
+            </div>
+
+            {/* 루트 salary 동기화 표시 */}
+            <div className="mt-3 flex items-center gap-2">
+                <span className="text-slate-400 text-xs w-20">루트 salary</span>
+                <input
+                    type="text"
+                    className="w-44 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-sm text-right focus:outline-none focus:border-indigo-500"
+                    value={formatSalary(draft.salary)}
+                    onChange={e => onSetField('salary', e.target.value.replace(/,/g, ''))}
+                />
+                <span className="text-slate-500 text-xs">(현재 시즌 Y{currentYear + 1}과 자동 동기화)</span>
+            </div>
+        </Section>
     );
 };
 
