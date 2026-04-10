@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { searchPlayers, fetchPlayerById, updateBaseAttributes, insertEditLog, fetchEditLog, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { resolveTeamId } from '../utils/constants';
+import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -41,6 +42,34 @@ const TEAM_OPTIONS = [
 ];
 
 const POSITION_OPTIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+
+// 인기도 드롭다운 옵션 (0~100, 10단위)
+const POPULARITY_OPTIONS: { value: number; label: string }[] = [
+    { value: 0,   label: '0 — 신인 수준' },
+    { value: 10,  label: '10 — 거의 알려지지 않음' },
+    { value: 20,  label: '20 — 인지도 형성 중' },
+    { value: 30,  label: '30 — 팀 팬에게 알려짐' },
+    { value: 40,  label: '40 — 어느 정도 인지됨' },
+    { value: 50,  label: '50 — 팬들에게 알려짐' },
+    { value: 60,  label: '60 — 팬들에게 사랑받음' },
+    { value: 70,  label: '70 — 연고지 인기 선수' },
+    { value: 80,  label: '80 — 홈팀 스타' },
+    { value: 90,  label: '90 — 팀 아이콘' },
+    { value: 100, label: '100 — 전설적 인기' },
+];
+const NATIONAL_POPULARITY_OPTIONS: { value: number; label: string }[] = [
+    { value: 0,   label: '0 — 완전 무명' },
+    { value: 10,  label: '10 — 거의 무명' },
+    { value: 20,  label: '20 — 인지도 낮음' },
+    { value: 30,  label: '30 — 일부에게 알려짐' },
+    { value: 40,  label: '40 — 팬층 있음' },
+    { value: 50,  label: '50 — 어느 정도 알려짐' },
+    { value: 60,  label: '60 — 인기 선수' },
+    { value: 70,  label: '70 — 적당히 유명함' },
+    { value: 80,  label: '80 — 전국적으로 유명함' },
+    { value: 90,  label: '90 — 슈퍼스타' },
+    { value: 100, label: '100 — 글로벌 아이콘' },
+];
 
 // ── DB 키 정의 ─────────────────────────────────────────────────────────────────
 const STAT_SECTIONS = [
@@ -558,6 +587,124 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                             <option value="">— (base)</option>
                                             {TEAM_OPTIONS.filter(t => t.id !== '').map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                                         </select>
+                                    </td>
+                                </tr>
+                                {/* ── 인기도 ── */}
+                                <tr className="border-b border-slate-700 bg-slate-900/40">
+                                    <td colSpan={4} className="py-1.5 px-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                                        인기도 (0~100)
+                                    </td>
+                                </tr>
+                                {/* 지역 인기 */}
+                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
+                                    <td className="py-1 pr-3 text-slate-300 text-xs">연고지 인기</td>
+                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">pop.local</td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={draft.popularity?.local ?? ''}
+                                            onChange={e => {
+                                                const v = Number(e.target.value);
+                                                setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), local: v } }));
+                                            }}
+                                        >
+                                            <option value="">— 미설정 —</option>
+                                            {POPULARITY_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                        {draft.popularity?.local !== undefined && (
+                                            <div className="text-[9px] text-slate-500 mt-0.5 text-center">
+                                                {getLocalPopularityLabel(draft.popularity.local)}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={co.popularity?.local ?? ''}
+                                            onChange={e => {
+                                                const raw = e.target.value;
+                                                setDraft(prev => {
+                                                    const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
+                                                    if (raw === '') {
+                                                        const pop = { ...(c.popularity ?? {}) };
+                                                        delete pop.local;
+                                                        if (Object.keys(pop).length === 0) delete c.popularity;
+                                                        else c.popularity = pop;
+                                                    } else {
+                                                        c.popularity = { ...(c.popularity ?? {}), local: Number(raw) };
+                                                    }
+                                                    return { ...prev, custom_overrides: c };
+                                                });
+                                            }}
+                                        >
+                                            <option value="">— (base)</option>
+                                            {POPULARITY_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                        {co.popularity?.local !== undefined && (
+                                            <div className="text-[9px] text-indigo-400 mt-0.5 text-center">
+                                                CO: {getLocalPopularityLabel(co.popularity.local)}
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                                {/* 전국 인기 */}
+                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
+                                    <td className="py-1 pr-3 text-slate-300 text-xs">전국 인기</td>
+                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">pop.national</td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={draft.popularity?.national ?? ''}
+                                            onChange={e => {
+                                                const v = Number(e.target.value);
+                                                setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), national: v } }));
+                                            }}
+                                        >
+                                            <option value="">— 미설정 —</option>
+                                            {NATIONAL_POPULARITY_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                        {draft.popularity?.national !== undefined && (
+                                            <div className="text-[9px] text-slate-500 mt-0.5 text-center">
+                                                {getNationalPopularityLabel(draft.popularity.national)}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="py-1 px-1">
+                                        <select
+                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
+                                            value={co.popularity?.national ?? ''}
+                                            onChange={e => {
+                                                const raw = e.target.value;
+                                                setDraft(prev => {
+                                                    const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
+                                                    if (raw === '') {
+                                                        const pop = { ...(c.popularity ?? {}) };
+                                                        delete pop.national;
+                                                        if (Object.keys(pop).length === 0) delete c.popularity;
+                                                        else c.popularity = pop;
+                                                    } else {
+                                                        c.popularity = { ...(c.popularity ?? {}), national: Number(raw) };
+                                                    }
+                                                    return { ...prev, custom_overrides: c };
+                                                });
+                                            }}
+                                        >
+                                            <option value="">— (base)</option>
+                                            {NATIONAL_POPULARITY_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                        {co.popularity?.national !== undefined && (
+                                            <div className="text-[9px] text-indigo-400 mt-0.5 text-center">
+                                                CO: {getNationalPopularityLabel(co.popularity.national)}
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             </tbody>

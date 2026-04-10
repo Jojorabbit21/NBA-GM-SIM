@@ -1,7 +1,6 @@
 
 import type { Player, PlayerPopularity } from '../types/player';
 import type { PlayerBoxScore } from '../types/engine';
-import { PLAYER_POPULARITY_SEEDS } from './popularitySeeds';
 import { stringToHash, seededRandom } from '../utils/hiddenTendencies';
 
 // ─────────────────────────────────────────────────────────────
@@ -15,30 +14,13 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /**
- * 선수 인기도 초기값 생성
- *
- * 우선순위:
- *   1. popularitySeeds에 이름이 있으면 → seed 값 + 소량 지터 (±3)
- *   2. 없으면 → OVR 기반 자동 계산 (레전드·신인·생성선수 대상)
- *
- * 호출: updatePopularityFromGame() 내부에서 popularity 미설정 선수 첫 접근 시
+ * 선수 인기도 초기값 생성 (fallback — DB에 없는 생성 선수용)
+ * OVR 기반 자동 계산. meta_players 선수는 DB base_attributes.popularity에서 직접 로드됨.
  */
 export function generateInitialPopularity(player: Player): PlayerPopularity {
-    // 선수 ID 기반 결정론적 시드 — 동일 선수는 항상 같은 초기값 생성
     const baseSeed = stringToHash(player.id + player.name);
-    const jitter   = (offset: number) => Math.floor(seededRandom(baseSeed + offset) * 7) - 3; // -3~+3
-    const rand     = (offset: number) => Math.floor(seededRandom(baseSeed + offset) * 11) - 5; // -5~+5
+    const rand = (offset: number) => Math.floor(seededRandom(baseSeed + offset) * 11) - 5;
 
-    // ── 1. 시드값 우선 적용 ──
-    const seed = PLAYER_POPULARITY_SEEDS.get(player.name);
-    if (seed) {
-        return {
-            local:    clamp(seed.local    + jitter(0), 0, 100),
-            national: clamp(seed.national + jitter(1), 0, 100),
-        };
-    }
-
-    // ── 2. OVR 기반 자동 생성 (레전드·신인·생성선수) ──
     const ovr = player.ovr;
     const tenure = player.teamTenure ?? 0;
     const hasAwards = (player.awards?.length ?? 0) > 0;
