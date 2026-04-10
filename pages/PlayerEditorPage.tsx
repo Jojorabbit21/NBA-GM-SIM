@@ -165,8 +165,9 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [includeAlltime, setIncludeAlltimeState] = useState<boolean>(true);
     const [alltimeToggling, setAlltimeToggling] = useState(false);
     // 테이블 필터/페이지네이션
-    const [filterTeam, setFilterTeam] = useState<string>('all');  // 'all'|'fa'|'rookie'|팀슬러그
-    const [filterPos, setFilterPos] = useState<string>('all');    // 'all'|'PG'|'SG'|'SF'|'PF'|'C'
+    const [filterTeam, setFilterTeam] = useState<string>('all');     // 'all'|'fa'|'rookie'|팀슬러그
+    const [filterPos, setFilterPos] = useState<string>('all');       // 'all'|'PG'|'SG'|'SF'|'PF'|'C'
+    const [filterAlltime, setFilterAlltime] = useState<string>('all'); // 'all'|'alltime_only'|'current_only'
     const [tablePage, setTablePage] = useState(0);
     const originalAttrsRef = useRef<Record<string, any>>({});
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,33 +200,41 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     }, [results.length]);
 
     // 테이블 필터 적용
+    // draft_year = '2026' 인 선수만 드래프트 클래스(신인) 선수로 간주
+    // 다른 연도(2010, 2013 등)는 실제 NBA 드래프트 입단 연도이므로 제외
+    const DRAFT_CLASS_YEAR = '2026';
     const TABLE_PAGE_SIZE = 10;
     const filteredResults = useMemo(() => {
         return results.filter(r => {
             const rawTeam = (r.base_attributes?.team ?? '').trim();
-            const isDraftYear = !!(r.draft_year ?? r.base_attributes?.draft_year);
+            const isDraftClass = r.draft_year === DRAFT_CLASS_YEAR;
             // resolveTeamId로 정규화 (case 차이, 구 약어 등 통일)
             const teamSlug = rawTeam ? resolveTeamId(rawTeam) : '';
-            const isFa = !rawTeam || teamSlug === 'unknown';
+            const isFa = !isDraftClass && (!rawTeam || teamSlug === 'unknown');
 
             if (filterTeam === 'fa') {
-                if (!isFa || isDraftYear) return false;
+                if (!isFa) return false;
             } else if (filterTeam === 'rookie') {
-                if (!isDraftYear) return false;
+                if (!isDraftClass) return false;
             } else if (filterTeam !== 'all') {
-                if (teamSlug !== filterTeam) return false;
+                if (isDraftClass || teamSlug !== filterTeam) return false;
             }
 
             if (filterPos !== 'all' && (r.position ?? r.base_attributes?.position) !== filterPos) return false;
+
+            if (filterAlltime === 'alltime_only' && !r.include_alltime) return false;
+            if (filterAlltime === 'current_only' && r.include_alltime) return false;
+
             return true;
         });
-    }, [results, filterTeam, filterPos]);
+    }, [results, filterTeam, filterPos, filterAlltime]);
 
     const tablePageCount = Math.max(1, Math.ceil(filteredResults.length / TABLE_PAGE_SIZE));
     const tableRows = filteredResults.slice(tablePage * TABLE_PAGE_SIZE, (tablePage + 1) * TABLE_PAGE_SIZE);
 
-    const handleFilterTeam = useCallback((v: string) => { setFilterTeam(v); setTablePage(0); }, []);
-    const handleFilterPos  = useCallback((v: string) => { setFilterPos(v);  setTablePage(0); }, []);
+    const handleFilterTeam    = useCallback((v: string) => { setFilterTeam(v);    setTablePage(0); }, []);
+    const handleFilterPos     = useCallback((v: string) => { setFilterPos(v);     setTablePage(0); }, []);
+    const handleFilterAlltime = useCallback((v: string) => { setFilterAlltime(v); setTablePage(0); }, []);
 
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
         const [fresh, log] = await Promise.all([
@@ -534,7 +543,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                 {results.length > 0 && (
                     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                         {/* 필터 바 */}
-                        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800 flex-wrap">
+                        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-slate-800 flex-wrap">
                             <span className="text-xs text-slate-500 shrink-0">필터</span>
                             {/* 팀 필터 */}
                             <select
@@ -558,6 +567,16 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                 <option value="all">전체 포지션</option>
                                 {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
+                            {/* 올타임 풀 필터 */}
+                            <select
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                value={filterAlltime}
+                                onChange={e => handleFilterAlltime(e.target.value)}
+                            >
+                                <option value="all">전체 풀</option>
+                                <option value="alltime_only">올타임 포함만</option>
+                                <option value="current_only">올타임 제외만</option>
+                            </select>
                             <span className="ml-auto text-xs text-slate-500">
                                 {filteredResults.length}명
                             </span>
@@ -567,12 +586,12 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                         <table className="w-full text-xs">
                             <thead>
                                 <tr className="text-slate-500 border-b border-slate-800 bg-slate-950/50">
-                                    <th className="text-left px-4 py-2 font-normal">이름</th>
-                                    <th className="text-center px-2 py-2 font-normal w-10">포지션</th>
-                                    <th className="text-center px-2 py-2 font-normal w-16">팀</th>
-                                    <th className="text-center px-2 py-2 font-normal w-10">나이</th>
-                                    <th className="text-center px-2 py-2 font-normal w-12">OVR</th>
-                                    <th className="text-center px-2 py-2 font-normal w-16">올타임</th>
+                                    <th className="text-left px-3 py-1 font-normal">이름</th>
+                                    <th className="text-center px-2 py-1 font-normal w-10">포지션</th>
+                                    <th className="text-center px-2 py-1 font-normal w-16">팀</th>
+                                    <th className="text-center px-2 py-1 font-normal w-10">나이</th>
+                                    <th className="text-center px-2 py-1 font-normal w-12">OVR</th>
+                                    <th className="text-center px-2 py-1 font-normal w-16">올타임</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -583,8 +602,8 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                 ) : tableRows.map(r => {
                                     const isSelected = selected?.id === r.id;
                                     const rawTeamVal = (r.base_attributes?.team ?? '').trim();
-                                    const isDraft = !!(r.draft_year ?? r.base_attributes?.draft_year);
-                                    const draftYear = r.draft_year ?? r.base_attributes?.draft_year;
+                                    const isDraft = r.draft_year === DRAFT_CLASS_YEAR;
+                                    const draftYear = r.draft_year;
                                     const teamSlugVal = rawTeamVal ? resolveTeamId(rawTeamVal) : '';
                                     const isFaRow = !rawTeamVal || teamSlugVal === 'unknown';
                                     const teamLabel = isDraft
@@ -602,10 +621,10 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                                     : 'hover:bg-slate-800/60'
                                             }`}
                                         >
-                                            <td className="px-4 py-2 text-white font-medium">{r.name}</td>
-                                            <td className="px-2 py-2 text-center text-slate-400">{r.position}</td>
-                                            <td className="px-2 py-2 text-center">
-                                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                            <td className="px-3 py-0.5 text-white font-medium">{r.name}</td>
+                                            <td className="px-2 py-0.5 text-center text-slate-400">{r.position}</td>
+                                            <td className="px-2 py-0.5 text-center">
+                                                <span className={`px-1 py-px rounded text-[10px] ${
                                                     isDraft
                                                         ? 'bg-amber-900/40 text-amber-400'
                                                         : isFaRow
@@ -615,9 +634,9 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                                     {teamLabel}
                                                 </span>
                                             </td>
-                                            <td className="px-2 py-2 text-center text-slate-400">{r.base_attributes?.age ?? '—'}</td>
-                                            <td className="px-2 py-2 text-center font-bold text-white">{r.base_attributes?.ovr ?? '—'}</td>
-                                            <td className="px-2 py-2 text-center">
+                                            <td className="px-2 py-0.5 text-center text-slate-400">{r.base_attributes?.age ?? '—'}</td>
+                                            <td className="px-2 py-0.5 text-center font-bold text-white">{r.base_attributes?.ovr ?? '—'}</td>
+                                            <td className="px-2 py-0.5 text-center">
                                                 <span className={`text-[10px] ${r.include_alltime ? 'text-indigo-400' : 'text-slate-600'}`}>
                                                     {r.include_alltime ? '포함' : '제외'}
                                                 </span>
@@ -630,7 +649,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
 
                         {/* 페이지네이션 */}
                         {tablePageCount > 1 && (
-                            <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-800">
+                            <div className="flex items-center justify-between px-3 py-1.5 border-t border-slate-800">
                                 <button
                                     disabled={tablePage === 0}
                                     onClick={() => setTablePage(p => p - 1)}
