@@ -199,14 +199,23 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     }, [results.length]);
 
     // 테이블 필터 적용
-    const TABLE_PAGE_SIZE = 25;
+    const TABLE_PAGE_SIZE = 10;
     const filteredResults = useMemo(() => {
         return results.filter(r => {
-            const team = r.base_attributes?.team ?? '';
-            const isDraftYear = !!r.base_attributes?.draft_year;
-            if (filterTeam === 'fa' && (team !== '' && !isDraftYear)) return false;
-            if (filterTeam === 'rookie' && !isDraftYear) return false;
-            if (filterTeam !== 'all' && filterTeam !== 'fa' && filterTeam !== 'rookie' && team !== filterTeam) return false;
+            const rawTeam = (r.base_attributes?.team ?? '').trim();
+            const isDraftYear = !!(r.draft_year ?? r.base_attributes?.draft_year);
+            // resolveTeamId로 정규화 (case 차이, 구 약어 등 통일)
+            const teamSlug = rawTeam ? resolveTeamId(rawTeam) : '';
+            const isFa = !rawTeam || teamSlug === 'unknown';
+
+            if (filterTeam === 'fa') {
+                if (!isFa || isDraftYear) return false;
+            } else if (filterTeam === 'rookie') {
+                if (!isDraftYear) return false;
+            } else if (filterTeam !== 'all') {
+                if (teamSlug !== filterTeam) return false;
+            }
+
             if (filterPos !== 'all' && (r.position ?? r.base_attributes?.position) !== filterPos) return false;
             return true;
         });
@@ -573,13 +582,16 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                     </tr>
                                 ) : tableRows.map(r => {
                                     const isSelected = selected?.id === r.id;
-                                    const teamVal = r.base_attributes?.team ?? '';
-                                    const isDraft = !!r.base_attributes?.draft_year;
+                                    const rawTeamVal = (r.base_attributes?.team ?? '').trim();
+                                    const isDraft = !!(r.draft_year ?? r.base_attributes?.draft_year);
+                                    const draftYear = r.draft_year ?? r.base_attributes?.draft_year;
+                                    const teamSlugVal = rawTeamVal ? resolveTeamId(rawTeamVal) : '';
+                                    const isFaRow = !rawTeamVal || teamSlugVal === 'unknown';
                                     const teamLabel = isDraft
-                                        ? `신인 '${r.base_attributes.draft_year}`
-                                        : teamVal
-                                            ? (TEAM_OPTIONS.find(t => t.id === teamVal)?.label.split(' · ')[0] ?? teamVal.toUpperCase())
-                                            : 'FA';
+                                        ? `신인 '${draftYear}`
+                                        : isFaRow
+                                            ? 'FA'
+                                            : (TEAM_OPTIONS.find(t => t.id === teamSlugVal)?.label.split(' · ')[0] ?? teamSlugVal.toUpperCase());
                                     return (
                                         <tr
                                             key={r.id}
@@ -596,9 +608,9 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                                 <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                                                     isDraft
                                                         ? 'bg-amber-900/40 text-amber-400'
-                                                        : teamVal
-                                                            ? 'bg-slate-800 text-slate-300'
-                                                            : 'bg-slate-800/50 text-slate-500'
+                                                        : isFaRow
+                                                            ? 'bg-slate-800/50 text-slate-500'
+                                                            : 'bg-slate-800 text-slate-300'
                                                 }`}>
                                                     {teamLabel}
                                                 </span>

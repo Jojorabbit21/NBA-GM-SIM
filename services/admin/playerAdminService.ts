@@ -12,12 +12,13 @@ export interface MetaPlayerRow {
     position: string;
     base_attributes: Record<string, any>;
     include_alltime: boolean;
+    draft_year: string | null;
 }
 
 export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     let q = supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, include_alltime')
+        .select('id, name, position, base_attributes, include_alltime, draft_year')
         .order('name');
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
@@ -30,7 +31,7 @@ export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, include_alltime')
+        .select('id, name, position, base_attributes, include_alltime, draft_year')
         .eq('id', id)
         .single();
     if (error) throw error;
