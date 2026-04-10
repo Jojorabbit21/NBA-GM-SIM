@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, insertEditLog, fetchEditLog, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updateIncludeAlltime, insertEditLog, fetchEditLog, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 
@@ -162,12 +162,26 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState<string | null>(null);
     const [editLog, setEditLog] = useState<EditLogEntry[]>([]);
+    const [includeAlltime, setIncludeAlltimeState] = useState<boolean>(true);
+    const [alltimeToggling, setAlltimeToggling] = useState(false);
+    // 테이블 필터/페이지네이션
+    const [filterTeam, setFilterTeam] = useState<string>('all');  // 'all'|'fa'|'rookie'|팀슬러그
+    const [filterPos, setFilterPos] = useState<string>('all');    // 'all'|'PG'|'SG'|'SF'|'PF'|'C'
+    const [tablePage, setTablePage] = useState(0);
     const originalAttrsRef = useRef<Record<string, any>>({});
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // 초기 진입 시 전체 목록 자동 로드
+    useEffect(() => {
+        if (isAdmin) {
+            searchPlayers('').then(setResults).catch(() => {});
+        }
+    }, [isAdmin]);
 
     const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const v = e.target.value;
         setQuery(v);
+        setTablePage(0);
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
         searchTimeout.current = setTimeout(async () => {
             try {
@@ -184,6 +198,26 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         setShowDropdown(true);
     }, [results.length]);
 
+    // 테이블 필터 적용
+    const TABLE_PAGE_SIZE = 25;
+    const filteredResults = useMemo(() => {
+        return results.filter(r => {
+            const team = r.base_attributes?.team ?? '';
+            const isDraftYear = !!r.base_attributes?.draft_year;
+            if (filterTeam === 'fa' && (team !== '' && !isDraftYear)) return false;
+            if (filterTeam === 'rookie' && !isDraftYear) return false;
+            if (filterTeam !== 'all' && filterTeam !== 'fa' && filterTeam !== 'rookie' && team !== filterTeam) return false;
+            if (filterPos !== 'all' && (r.position ?? r.base_attributes?.position) !== filterPos) return false;
+            return true;
+        });
+    }, [results, filterTeam, filterPos]);
+
+    const tablePageCount = Math.max(1, Math.ceil(filteredResults.length / TABLE_PAGE_SIZE));
+    const tableRows = filteredResults.slice(tablePage * TABLE_PAGE_SIZE, (tablePage + 1) * TABLE_PAGE_SIZE);
+
+    const handleFilterTeam = useCallback((v: string) => { setFilterTeam(v); setTablePage(0); }, []);
+    const handleFilterPos  = useCallback((v: string) => { setFilterPos(v);  setTablePage(0); }, []);
+
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
         const [fresh, log] = await Promise.all([
             fetchPlayerById(row.id),
@@ -191,6 +225,7 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         ]);
         if (!fresh) return;
         setSelected(fresh);
+        setIncludeAlltimeState(fresh.include_alltime ?? true);
         const attrs = JSON.parse(JSON.stringify(fresh.base_attributes));
         if (attrs.team) {
             const slug = resolveTeamId(attrs.team);
@@ -362,6 +397,19 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
         }
     }, [selected, draft]);
 
+    const handleIncludeAlltimeToggle = useCallback(async (newVal: boolean) => {
+        if (!selected) return;
+        setAlltimeToggling(true);
+        try {
+            await updateIncludeAlltime(selected.id, newVal);
+            setIncludeAlltimeState(newVal);
+        } catch (e: any) {
+            setSaveMsg(`✗ 드래프트 풀 설정 실패: ${e.message}`);
+        } finally {
+            setAlltimeToggling(false);
+        }
+    }, [selected]);
+
     if (!isAdmin) {
         return (
             <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">
@@ -445,33 +493,176 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                 <h1 className="text-lg font-bold text-white">선수 능력치 편집기</h1>
             </div>
 
-            {/* 검색 */}
-            <div className="relative mb-6 max-w-sm">
-                <input
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="선수 이름 검색 (비워두면 전체 목록)..."
-                    value={query}
-                    onChange={handleSearch}
-                    onFocus={handleFocus}
-                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                />
-                {showDropdown && results.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 overflow-y-auto overscroll-contain shadow-xl" style={{ maxHeight: '224px' }}>
-                        {results.map(r => (
-                            <button
-                                key={r.id}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-700 flex justify-between items-center"
-                                onClick={() => handleSelect(r)}
+            {/* 검색 + 테이블 */}
+            <div className="mb-6">
+                {/* 검색 인풋 */}
+                <div className="relative mb-3 max-w-sm">
+                    <input
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        placeholder="선수 이름 검색 (비워두면 전체 목록)..."
+                        value={query}
+                        onChange={handleSearch}
+                        onFocus={handleFocus}
+                        onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    />
+                    {showDropdown && results.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 z-20 bg-slate-800 border border-slate-700 rounded-lg mt-1 overflow-y-auto overscroll-contain shadow-xl" style={{ maxHeight: '224px' }}>
+                            {results.map(r => (
+                                <button
+                                    key={r.id}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-700 flex justify-between items-center"
+                                    onClick={() => handleSelect(r)}
+                                >
+                                    <span className="text-white">{r.name}</span>
+                                    <span className="text-slate-400 text-xs">{r.position} · {r.base_attributes?.team ?? '—'}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* 필터 + 테이블 */}
+                {results.length > 0 && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        {/* 필터 바 */}
+                        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800 flex-wrap">
+                            <span className="text-xs text-slate-500 shrink-0">필터</span>
+                            {/* 팀 필터 */}
+                            <select
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                value={filterTeam}
+                                onChange={e => handleFilterTeam(e.target.value)}
                             >
-                                <span className="text-white">{r.name}</span>
-                                <span className="text-slate-400 text-xs">{r.position} · {r.base_attributes?.team ?? '—'}</span>
-                            </button>
-                        ))}
+                                <option value="all">전체 팀</option>
+                                <option value="fa">FA</option>
+                                <option value="rookie">신인(드래프트)</option>
+                                {TEAM_OPTIONS.filter(t => t.id !== '').map(t => (
+                                    <option key={t.id} value={t.id}>{t.label}</option>
+                                ))}
+                            </select>
+                            {/* 포지션 필터 */}
+                            <select
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                value={filterPos}
+                                onChange={e => handleFilterPos(e.target.value)}
+                            >
+                                <option value="all">전체 포지션</option>
+                                {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                            <span className="ml-auto text-xs text-slate-500">
+                                {filteredResults.length}명
+                            </span>
+                        </div>
+
+                        {/* 선수 테이블 */}
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="text-slate-500 border-b border-slate-800 bg-slate-950/50">
+                                    <th className="text-left px-4 py-2 font-normal">이름</th>
+                                    <th className="text-center px-2 py-2 font-normal w-10">포지션</th>
+                                    <th className="text-center px-2 py-2 font-normal w-16">팀</th>
+                                    <th className="text-center px-2 py-2 font-normal w-10">나이</th>
+                                    <th className="text-center px-2 py-2 font-normal w-12">OVR</th>
+                                    <th className="text-center px-2 py-2 font-normal w-16">올타임</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {tableRows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-6 text-slate-600">검색 결과 없음</td>
+                                    </tr>
+                                ) : tableRows.map(r => {
+                                    const isSelected = selected?.id === r.id;
+                                    const teamVal = r.base_attributes?.team ?? '';
+                                    const isDraft = !!r.base_attributes?.draft_year;
+                                    const teamLabel = isDraft
+                                        ? `신인 '${r.base_attributes.draft_year}`
+                                        : teamVal
+                                            ? (TEAM_OPTIONS.find(t => t.id === teamVal)?.label.split(' · ')[0] ?? teamVal.toUpperCase())
+                                            : 'FA';
+                                    return (
+                                        <tr
+                                            key={r.id}
+                                            onClick={() => handleSelect(r)}
+                                            className={`border-b border-slate-800 cursor-pointer transition-colors ${
+                                                isSelected
+                                                    ? 'bg-indigo-900/40 hover:bg-indigo-900/50'
+                                                    : 'hover:bg-slate-800/60'
+                                            }`}
+                                        >
+                                            <td className="px-4 py-2 text-white font-medium">{r.name}</td>
+                                            <td className="px-2 py-2 text-center text-slate-400">{r.position}</td>
+                                            <td className="px-2 py-2 text-center">
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                                    isDraft
+                                                        ? 'bg-amber-900/40 text-amber-400'
+                                                        : teamVal
+                                                            ? 'bg-slate-800 text-slate-300'
+                                                            : 'bg-slate-800/50 text-slate-500'
+                                                }`}>
+                                                    {teamLabel}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-2 text-center text-slate-400">{r.base_attributes?.age ?? '—'}</td>
+                                            <td className="px-2 py-2 text-center font-bold text-white">{r.base_attributes?.ovr ?? '—'}</td>
+                                            <td className="px-2 py-2 text-center">
+                                                <span className={`text-[10px] ${r.include_alltime ? 'text-indigo-400' : 'text-slate-600'}`}>
+                                                    {r.include_alltime ? '포함' : '제외'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+
+                        {/* 페이지네이션 */}
+                        {tablePageCount > 1 && (
+                            <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-800">
+                                <button
+                                    disabled={tablePage === 0}
+                                    onClick={() => setTablePage(p => p - 1)}
+                                    className="px-3 py-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+                                >
+                                    ← 이전
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: tablePageCount }, (_, i) => {
+                                        if (tablePageCount <= 7 || Math.abs(i - tablePage) <= 2 || i === 0 || i === tablePageCount - 1) {
+                                            return (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => setTablePage(i)}
+                                                    className={`w-7 h-7 text-xs rounded transition-colors ${
+                                                        i === tablePage
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                                                    }`}
+                                                >
+                                                    {i + 1}
+                                                </button>
+                                            );
+                                        }
+                                        if (Math.abs(i - tablePage) === 3) {
+                                            return <span key={i} className="text-slate-600 text-xs px-0.5">…</span>;
+                                        }
+                                        return null;
+                                    })}
+                                </div>
+                                <button
+                                    disabled={tablePage === tablePageCount - 1}
+                                    onClick={() => setTablePage(p => p + 1)}
+                                    className="px-3 py-1 text-xs text-slate-400 hover:text-white disabled:opacity-30 border border-slate-700 rounded hover:border-slate-500 transition-colors"
+                                >
+                                    다음 →
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
 
-            {!selected && <p className="text-slate-500 text-sm">선수를 검색해서 선택하세요.</p>}
+            {!selected && results.length === 0 && <p className="text-slate-500 text-sm">선수를 검색해서 선택하세요.</p>}
 
             {selected && (
                 <>
@@ -705,6 +896,32 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                                 CO: {getNationalPopularityLabel(co.popularity.national)}
                                             </div>
                                         )}
+                                    </td>
+                                </tr>
+                                {/* ── 드래프트 풀 포함 여부 ── */}
+                                <tr className="border-b border-slate-700 bg-slate-900/40">
+                                    <td colSpan={4} className="py-1.5 px-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                                        드래프트 풀
+                                    </td>
+                                </tr>
+                                <tr className="hover:bg-slate-800/30">
+                                    <td className="py-2 pr-3 text-slate-300 text-xs">올타임 드래프트 풀 포함</td>
+                                    <td className="py-2 pr-2 text-center text-slate-500 text-xs font-mono">include_alltime</td>
+                                    <td colSpan={2} className="py-2 px-1">
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                disabled={alltimeToggling}
+                                                onClick={() => handleIncludeAlltimeToggle(!includeAlltime)}
+                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${includeAlltime ? 'bg-indigo-600' : 'bg-slate-700'}`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${includeAlltime ? 'translate-x-4' : 'translate-x-0.5'}`}
+                                                />
+                                            </button>
+                                            <span className={`text-xs ${includeAlltime ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                                {alltimeToggling ? '저장 중...' : includeAlltime ? '포함 (올타임 풀에 등장)' : '제외 (현역 풀에만 등장)'}
+                                            </span>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>

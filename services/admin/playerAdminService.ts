@@ -11,17 +11,17 @@ export interface MetaPlayerRow {
     name: string;
     position: string;
     base_attributes: Record<string, any>;
+    include_alltime: boolean;
 }
 
 export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     let q = supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes')
+        .select('id, name, position, base_attributes, include_alltime')
         .order('name');
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
     }
-    // 최대 500명 (모든 선수 커버)
     const { data, error } = await q.limit(500);
     if (error) throw error;
     return data ?? [];
@@ -30,7 +30,7 @@ export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes')
+        .select('id, name, position, base_attributes, include_alltime')
         .eq('id', id)
         .single();
     if (error) throw error;
@@ -44,6 +44,17 @@ export async function updateBaseAttributes(
     const { error } = await supabase
         .from('meta_players')
         .update({ base_attributes: baseAttrs })
+        .eq('id', id);
+    if (error) throw error;
+}
+
+export async function updateIncludeAlltime(
+    id: string,
+    value: boolean
+): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ include_alltime: value })
         .eq('id', id);
     if (error) throw error;
 }
