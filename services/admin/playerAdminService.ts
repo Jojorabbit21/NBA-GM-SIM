@@ -25,7 +25,7 @@ export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
     }
-    const { data, error } = await q.limit(500);
+    const { data, error } = await q.limit(1000);
     if (error) throw error;
     return data ?? [];
 }
