@@ -200,15 +200,16 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     }, [results.length]);
 
     // 테이블 필터 적용
-    // draft_year = '2026' 인 선수만 드래프트 클래스(신인) 선수로 간주
-    // 다른 연도(2010, 2013 등)는 실제 NBA 드래프트 입단 연도이므로 제외
-    const DRAFT_CLASS_YEAR = '2026';
+    // draft_year = 2026 (numeric) 인 선수만 드래프트 클래스(신인)로 간주
+    // 다른 연도(2010, 2013 등)는 실제 입단 연도이므로 신인 아님
+    // 팀 기준: base_team_id (top-level 컬럼) — 시뮬레이터와 동일한 소스
+    const DRAFT_CLASS_YEAR = 2026;
     const TABLE_PAGE_SIZE = 10;
     const filteredResults = useMemo(() => {
         return results.filter(r => {
-            const rawTeam = (r.base_attributes?.team ?? '').trim();
             const isDraftClass = r.draft_year === DRAFT_CLASS_YEAR;
-            // resolveTeamId로 정규화 (case 차이, 구 약어 등 통일)
+            // base_team_id를 resolveTeamId로 정규화 (시뮬레이터와 동일 경로)
+            const rawTeam = (r.base_team_id ?? '').trim();
             const teamSlug = rawTeam ? resolveTeamId(rawTeam) : '';
             const isFa = !isDraftClass && (!rawTeam || teamSlug === 'unknown');
 
@@ -601,11 +602,11 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                     </tr>
                                 ) : tableRows.map(r => {
                                     const isSelected = selected?.id === r.id;
-                                    const rawTeamVal = (r.base_attributes?.team ?? '').trim();
+                                    const rawTeamVal = (r.base_team_id ?? '').trim();
                                     const isDraft = r.draft_year === DRAFT_CLASS_YEAR;
                                     const draftYear = r.draft_year;
                                     const teamSlugVal = rawTeamVal ? resolveTeamId(rawTeamVal) : '';
-                                    const isFaRow = !rawTeamVal || teamSlugVal === 'unknown';
+                                    const isFaRow = !isDraft && (!rawTeamVal || teamSlugVal === 'unknown');
                                     const teamLabel = isDraft
                                         ? `신인 '${draftYear}`
                                         : isFaRow

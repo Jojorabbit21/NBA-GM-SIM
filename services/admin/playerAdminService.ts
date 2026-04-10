@@ -10,15 +10,17 @@ export interface MetaPlayerRow {
     id: string;
     name: string;
     position: string;
+    base_team_id: string | null;   // 시뮬레이터 팀 배정 기준 (top-level 컬럼)
     base_attributes: Record<string, any>;
     include_alltime: boolean;
-    draft_year: string | null;
+    in_multi_pool: boolean;
+    draft_year: number | null;     // numeric 컬럼 — 2026이면 드래프트 클래스 선수
 }
 
 export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     let q = supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, include_alltime, draft_year')
+        .select('id, name, position, base_team_id, base_attributes, include_alltime, in_multi_pool, draft_year')
         .order('name');
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
@@ -31,7 +33,7 @@ export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, include_alltime, draft_year')
+        .select('id, name, position, base_team_id, base_attributes, include_alltime, in_multi_pool, draft_year')
         .eq('id', id)
         .single();
     if (error) throw error;
