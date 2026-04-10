@@ -208,10 +208,9 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const filteredResults = useMemo(() => {
         return results.filter(r => {
             const isDraftClass = r.draft_year === DRAFT_CLASS_YEAR;
-            // base_team_id를 resolveTeamId로 정규화 (시뮬레이터와 동일 경로)
-            const rawTeam = (r.base_team_id ?? '').trim();
-            const teamSlug = rawTeam ? resolveTeamId(rawTeam) : '';
-            const isFa = !isDraftClass && (!rawTeam || teamSlug === 'unknown');
+            // base_team_id는 이미 정규화된 슬러그('atl', 'gs' 등) — resolveTeamId 불필요
+            const teamSlug = (r.base_team_id ?? '').trim().toLowerCase();
+            const isFa = !isDraftClass && !teamSlug;
 
             if (filterTeam === 'fa') {
                 if (!isFa) return false;
@@ -602,11 +601,10 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                                     </tr>
                                 ) : tableRows.map(r => {
                                     const isSelected = selected?.id === r.id;
-                                    const rawTeamVal = (r.base_team_id ?? '').trim();
                                     const isDraft = r.draft_year === DRAFT_CLASS_YEAR;
                                     const draftYear = r.draft_year;
-                                    const teamSlugVal = rawTeamVal ? resolveTeamId(rawTeamVal) : '';
-                                    const isFaRow = !isDraft && (!rawTeamVal || teamSlugVal === 'unknown');
+                                    const teamSlugVal = (r.base_team_id ?? '').trim().toLowerCase();
+                                    const isFaRow = !isDraft && !teamSlugVal;
                                     const teamLabel = isDraft
                                         ? `신인 '${draftYear}`
                                         : isFaRow
