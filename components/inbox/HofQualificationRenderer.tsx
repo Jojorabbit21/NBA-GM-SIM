@@ -35,7 +35,7 @@ export const HofQualificationRenderer: React.FC<HofQualificationRendererProps> =
         <div className="space-y-10 max-w-5xl mx-auto">
             {/* Trophy Header */}
             <div className="text-center space-y-4">
-                <img src="/images/hof.png" alt="Hall of Fame" className="mx-auto h-40 object-contain" />
+                <img src="/images/hof.webp" alt="Hall of Fame" className="mx-auto h-40 object-contain" />
                 <h2 className="text-3xl font-black text-white tracking-tight">
                     {TEAM_DATA[teamId]?.city ?? ''} {hof.teamName}
                 </h2>

@@ -406,7 +406,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                 <div className="space-y-8 max-w-5xl mx-auto">
                     {/* Hero Section */}
                     <div className="text-center space-y-4">
-                        <img src="/images/fmvp.png" alt="Finals MVP Trophy" className="mx-auto h-40 object-contain" />
+                        <img src="/images/fmvp.webp" alt="Finals MVP Trophy" className="mx-auto h-40 object-contain" />
                         <h2 className="text-3xl font-black text-white tracking-tight">{fm.mvpPlayerName}</h2>
                         <p className="text-sm font-bold text-slate-400">
                             {TEAM_DATA[fm.mvpTeamId]?.city ?? ''} {fm.mvpTeamName}&nbsp;&nbsp;|&nbsp;&nbsp;시리즈 {fm.seriesScore}

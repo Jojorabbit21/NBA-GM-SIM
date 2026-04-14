@@ -72,7 +72,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                 {mvpWinner && (
                     <div className="text-center space-y-3">
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">MVP {seasonShort}</p>
-                        <img src="/images/mvp.png" alt="MVP Trophy" className="mx-auto h-32 object-contain" />
+                        <img src="/images/mvp.webp" alt="MVP Trophy" className="mx-auto h-32 object-contain" />
                         <div className="flex items-center justify-center gap-2">
                             <span className="text-lg font-black text-white">{mvpWinner.playerName}</span>
                             <OvrBadge value={mvpWinner.ovr} size="sm" />
@@ -88,7 +88,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                 {dpoyWinner && (
                     <div className="text-center space-y-3">
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">DPOY {seasonShort}</p>
-                        <img src="/images/dpoy.png" alt="DPOY Trophy" className="mx-auto h-32 object-contain" />
+                        <img src="/images/dpoy.webp" alt="DPOY Trophy" className="mx-auto h-32 object-contain" />
                         <div className="flex items-center justify-center gap-2">
                             <span className="text-lg font-black text-white">{dpoyWinner.playerName}</span>
                             <OvrBadge value={dpoyWinner.ovr} size="sm" />

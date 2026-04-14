@@ -18,11 +18,11 @@ interface AwardMeta {
 }
 
 const AWARD_META: Record<PlayerAwardType, AwardMeta> = {
-    CHAMPION:             { name: '챔피언',         detail: '우승',   shortLabel: '우승',  img: '/images/final.png', color: 'text-amber-400',  order: 0 },
-    REG_SEASON_CHAMPION:  { name: '정규시즌 우승',  detail: '우승',   shortLabel: 'RS',    img: '/images/reg.png',   color: 'text-amber-300',  order: 1 },
-    MVP:                  { name: 'MVP',            detail: '수상',   shortLabel: 'MVP',   img: '/images/mvp.png',   color: 'text-yellow-400', order: 2 },
-    FINALS_MVP:           { name: '파이널 MVP',     detail: '수상',   shortLabel: 'FMVP',  img: '/images/fmvp.png',  color: 'text-yellow-300', order: 3 },
-    DPOY:                 { name: 'DPOY',           detail: '수상',   shortLabel: 'DPOY',  img: '/images/dpoy.png',  color: 'text-blue-400',   order: 4 },
+    CHAMPION:             { name: '챔피언',         detail: '우승',   shortLabel: '우승',  img: '/images/final.webp', color: 'text-amber-400',  order: 0 },
+    REG_SEASON_CHAMPION:  { name: '정규시즌 우승',  detail: '우승',   shortLabel: 'RS',    img: '/images/reg.webp',   color: 'text-amber-300',  order: 1 },
+    MVP:                  { name: 'MVP',            detail: '수상',   shortLabel: 'MVP',   img: '/images/mvp.webp',   color: 'text-yellow-400', order: 2 },
+    FINALS_MVP:           { name: '파이널 MVP',     detail: '수상',   shortLabel: 'FMVP',  img: '/images/fmvp.webp',  color: 'text-yellow-300', order: 3 },
+    DPOY:                 { name: 'DPOY',           detail: '수상',   shortLabel: 'DPOY',  img: '/images/dpoy.webp',  color: 'text-blue-400',   order: 4 },
     ALL_NBA_1:            { name: '올-오펜시브 팀',     detail: '1st',    shortLabel: '1st',   icon: 'trophy',           color: 'text-amber-400',  order: 5 },
     ALL_NBA_2:            { name: '올-오펜시브 팀',     detail: '2nd',    shortLabel: '2nd',   icon: 'trophy',           color: 'text-slate-300',  order: 6 },
     ALL_NBA_3:            { name: '올-오펜시브 팀',     detail: '3rd',    shortLabel: '3rd',   icon: 'trophy',           color: 'text-slate-400',  order: 7 },

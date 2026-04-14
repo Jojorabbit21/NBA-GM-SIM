@@ -94,7 +94,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, c
             {/* Hero Banner */}
             <div className="flex flex-col items-center pt-12 pb-6">
                 <img
-                    src="/images/hof.png"
+                    src="/images/hof.webp"
                     alt="Hall of Fame"
                     className="w-[160px] object-contain"
                 />

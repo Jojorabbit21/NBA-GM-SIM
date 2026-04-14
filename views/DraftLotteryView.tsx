@@ -505,7 +505,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             {/* Background Image */}
             <div className="absolute inset-0 pointer-events-none">
                 <img
-                    src="/images/lottery.png"
+                    src="/images/lottery.webp"
                     alt=""
                     className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setBgLoaded(true)}

@@ -23,7 +23,7 @@ export const RegSeasonChampionRenderer: React.FC<RegSeasonChampionRendererProps>
         <div className="space-y-10 max-w-5xl mx-auto">
             {/* Trophy Header */}
             <div className="text-center space-y-4">
-                <img src="/images/reg.png" alt="Regular Season Champion" className="mx-auto h-40 object-contain" />
+                <img src="/images/reg.webp" alt="Regular Season Champion" className="mx-auto h-40 object-contain" />
                 <h2 className="text-3xl font-black text-white tracking-tight">
                     {TEAM_DATA[championTeamId]?.city ?? ''} {rc.championTeamName}
                 </h2>
