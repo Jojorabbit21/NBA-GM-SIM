@@ -142,7 +142,7 @@ const STAT_SECTIONS = [
     {
         label: '특수 & 무형',
         keys: [
-            { key: 'potential',   label: 'Potential (잠재력)' },
+            { key: 'pot',         label: 'Potential (잠재력)' },
             { key: 'intangibles', label: '무형 (IQ/리더십/클러치)' },
         ],
     },
