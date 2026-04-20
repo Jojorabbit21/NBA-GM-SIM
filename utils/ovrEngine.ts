@@ -100,6 +100,9 @@ export type OvrArchetype =
   | 'SLASHING_WING'
   | 'SHOT_CREATOR_WING'
   | 'CONNECTOR_FORWARD'
+  | 'AERIAL_WING'
+  | 'POST_SCORING_WING'
+  | 'WING_PROTECTOR'
   | 'POST_SCORING_BIG'
   | 'RIM_RUNNER_BIG'
   | 'STRETCH_BIG'
@@ -451,14 +454,43 @@ function calcArchetypeScore(mod: ModuleScores, arch: OvrArchetype): number {
         [mod.teamDefense, 0.12],
         [mod.rimProtection, 0.10],
       ]);
+
+    case 'AERIAL_WING':
+      return wavg([
+        [mod.rimFinishing, 0.40],
+        [mod.rebounding, 0.18],
+        [mod.postCraft, 0.12],
+        [mod.teamDefense, 0.10],
+        [mod.poaDefense, 0.08],
+        [mod.motorAvailability, 0.12],
+      ]);
+
+    case 'POST_SCORING_WING':
+      return wavg([
+        [mod.postCraft, 0.32],
+        [mod.rimFinishing, 0.22],
+        [mod.shotCreation, 0.14],
+        [mod.rebounding, 0.12],
+        [mod.teamDefense, 0.08],
+        [mod.motorAvailability, 0.12],
+      ]);
+
+    case 'WING_PROTECTOR':
+      return wavg([
+        [mod.rimProtection, 0.30],
+        [mod.poaDefense, 0.24],
+        [mod.teamDefense, 0.20],
+        [mod.rebounding, 0.14],
+        [mod.motorAvailability, 0.12],
+      ]);
   }
 }
 
 const ARCHETYPE_CANDIDATES: Record<OvrPosition, OvrArchetype[]> = {
   PG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D'],
   SG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING'],
-  SF: ['MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING', 'CONNECTOR_FORWARD'],
-  PF: ['TWO_WAY_WING', 'CONNECTOR_FORWARD', 'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG'],
+  SF: ['MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING', 'CONNECTOR_FORWARD', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR'],
+  PF: ['TWO_WAY_WING', 'CONNECTOR_FORWARD', 'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR'],
   C:  ['POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG'],
 };
 
@@ -561,8 +593,9 @@ function calcPositionBase(pos: OvrPosition, mod: ModuleScores): number {
 
     case 'SF':
       return r1(wavg([
-        [mod.spotUpShooting, 0.18],
-        [mod.shotCreation, 0.15],
+        [mod.postCraft, 0.10],
+        [mod.spotUpShooting, 0.14],
+        [mod.shotCreation, 0.12],
         [mod.rimFinishing, 0.13],
         [mod.playmaking, 0.09],
         [mod.poaDefense, 0.14],

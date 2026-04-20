@@ -51,11 +51,13 @@ const POSITION_ELIGIBLE: Record<string, ArchetypeType[]> = {
     'SF': [
         'movement_shooter', 'perimeter_3nd', 'two_way_wing', 'slashing_wing',
         'shot_creator_wing', 'connector_forward', 'playmaking_big',
+        'aerial_wing', 'post_scoring_wing', 'wing_protector',
     ],
     'PF': [
         'perimeter_3nd', 'two_way_wing', 'connector_forward',
         'post_scoring_big', 'rim_runner_big', 'stretch_big',
         'rim_protector_anchor', 'playmaking_big',
+        'aerial_wing', 'post_scoring_wing', 'wing_protector',
     ],
     'C': [
         'post_scoring_big', 'rim_runner_big', 'stretch_big',
@@ -126,6 +128,18 @@ export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType
         case 'playmaking_big':
             return m.playmaking * 0.26 + m.postCraft * 0.20 + m.spotUpShooting * 0.16 +
                    m.rebounding * 0.16 + m.teamDefense * 0.12 + m.rimProtection * 0.10;
+
+        case 'aerial_wing':
+            return m.rimFinishing * 0.40 + m.rebounding * 0.18 + m.postCraft * 0.12 +
+                   m.teamDefense * 0.10 + m.poaDefense * 0.08 + m.motorAvailability * 0.12;
+
+        case 'post_scoring_wing':
+            return m.postCraft * 0.32 + m.rimFinishing * 0.22 + m.shotCreation * 0.14 +
+                   m.rebounding * 0.12 + m.teamDefense * 0.08 + m.motorAvailability * 0.12;
+
+        case 'wing_protector':
+            return m.rimProtection * 0.30 + m.poaDefense * 0.24 + m.teamDefense * 0.20 +
+                   m.rebounding * 0.14 + m.motorAvailability * 0.12;
 
         default:
             return 0;
@@ -308,6 +322,9 @@ const ARCHETYPE_DISPLAY: Record<ArchetypeType, ArchetypeDisplayInfo> = {
     'slashing_wing':          { label: 'Slashing Wing',      description: '돌파 & 컷인형 윙',       color: 'orange',  group: 'wing'  },
     'shot_creator_wing':      { label: 'Shot Creator',       description: '볼핸들링 득점형 윙',     color: 'amber',   group: 'wing'  },
     'connector_forward':      { label: 'Connector Forward',  description: '패스 & 허슬형 포워드',   color: 'lime',    group: 'wing'  },
+    'aerial_wing':            { label: 'Aerial Wing',        description: '에어리얼 림 어태커',      color: 'fuchsia', group: 'wing'  },
+    'post_scoring_wing':      { label: 'Post Scoring Wing',  description: '포스트 스킬형 윙',        color: 'pink',    group: 'wing'  },
+    'wing_protector':         { label: 'Wing Protector',     description: '버서타일 수비 앵커',      color: 'zinc',    group: 'wing'  },
     'post_scoring_big':       { label: 'Post Scorer',        description: '로우포스트 스코어러',    color: 'red',     group: 'big'   },
     'rim_runner_big':         { label: 'Rim Runner',         description: '롤맨 & 마무리형 빅',     color: 'rose',    group: 'big'   },
     'stretch_big':            { label: 'Stretch Big',        description: '외곽슛 가능한 빅',       color: 'cyan',    group: 'big'   },

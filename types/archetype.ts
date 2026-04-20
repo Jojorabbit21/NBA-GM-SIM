@@ -6,7 +6,7 @@ import type { FARole } from './fa';
 // Player identity / playstyle system — separate from PBP engine archetypes
 // ─────────────────────────────────────────────────────────────
 
-// 13 archetype types across 3 positional groups
+// 16 archetype types across 3 positional groups
 export type ArchetypeType =
     // Guard (PG/SG)
     | 'primary_creator_guard'
@@ -18,6 +18,9 @@ export type ArchetypeType =
     | 'slashing_wing'
     | 'shot_creator_wing'
     | 'connector_forward'
+    | 'aerial_wing'
+    | 'post_scoring_wing'
+    | 'wing_protector'
     // Big (PF/C)
     | 'post_scoring_big'
     | 'rim_runner_big'
@@ -84,6 +87,9 @@ export const ARCHETYPE_TO_FA_ROLE: Record<ArchetypeType, FARole> = {
     'slashing_wing':         'shot_creator',
     'shot_creator_wing':     'shot_creator',
     'connector_forward':     'floor_big',
+    'aerial_wing':           'shot_creator',
+    'post_scoring_wing':     'floor_big',
+    'wing_protector':        'rim_big',
     'post_scoring_big':      'floor_big',
     'rim_runner_big':        'rim_big',
     'stretch_big':           'stretch_big',

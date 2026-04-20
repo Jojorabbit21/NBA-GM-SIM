@@ -56,7 +56,7 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 
 ---
 
-## 2. 13개 아키타입
+## 2. 16개 아키타입
 
 ### 가드 계열 (PG/SG)
 
@@ -75,6 +75,9 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 | `slashing_wing` | 돌파 & 컷인형 윙 | rim×0.34 + shotC×0.16 + offball×0.14 + poa×0.12 + team×0.10 + motor×0.14 |
 | `shot_creator_wing` | 볼핸들링 득점형 윙 | shotC×0.30 + rim×0.18 + spot×0.16 + play×0.10 + poa×0.10 + motor×0.16 |
 | `connector_forward` | 패스 & 허슬형 포워드 | play×0.24 + spot×0.18 + team×0.16 + reb×0.14 + offball×0.10 + rim×0.08 + motor×0.10 |
+| `aerial_wing` | 에어리얼 림 어태커 | rim×0.40 + reb×0.18 + post×0.12 + team×0.10 + poa×0.08 + motor×0.12 |
+| `post_scoring_wing` | 포스트 스킬형 윙 | post×0.32 + rim×0.22 + shotC×0.14 + reb×0.12 + team×0.08 + motor×0.12 |
+| `wing_protector` | 버서타일 수비 앵커 | rimProt×0.30 + poa×0.24 + team×0.20 + reb×0.14 + motor×0.12 |
 
 ### 빅 계열 (PF/C)
 
@@ -96,8 +99,10 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 PG  → primary_creator_guard, scoring_combo_guard, movement_shooter
 SG  → 가드 4종 + two_way_wing, slashing_wing, shot_creator_wing
 SF  → movement_shooter, perimeter_3nd, two_way_wing, slashing_wing,
-       shot_creator_wing, connector_forward, playmaking_big
+       shot_creator_wing, connector_forward, playmaking_big,
+       aerial_wing, post_scoring_wing, wing_protector
 PF  → perimeter_3nd, two_way_wing, connector_forward + 빅 5종
+       + aerial_wing, post_scoring_wing, wing_protector
 C   → post_scoring_big, rim_runner_big, stretch_big,
        rim_protector_anchor, playmaking_big
 ```
@@ -201,6 +206,9 @@ two_way_wing           → 3and_d
 slashing_wing          → shot_creator
 shot_creator_wing      → shot_creator
 connector_forward      → floor_big
+aerial_wing            → shot_creator
+post_scoring_wing      → floor_big
+wing_protector         → rim_big
 post_scoring_big       → floor_big
 rim_runner_big         → rim_big
 stretch_big            → stretch_big

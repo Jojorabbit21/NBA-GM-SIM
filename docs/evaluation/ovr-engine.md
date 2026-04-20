@@ -450,7 +450,70 @@ import { getOVRThreshold, OvrTier } from '../utils/constants';
 
 ---
 
-## 8. 변경 이력
+## 8. 목표 OVR 스케일 (역사적 위상 기준)
+
+올타임 레전드 로스터 작업 시, 선수의 역사적 위상에 따라 아래 스케일을 기준으로 목표 OVR(= `pot` 값)을 설정한다.
+
+| OVR 구간 | 등급 |
+|---------|------|
+| 99~96 | 시대의 지배자 / 올타임 레전드 / 포지션 고트 |
+| 95~93 | 역사상 탑 30 레벨 / 올-데케이드 팀 |
+| 92~90 | 올스타 |
+| 89~85 | 팀 주전 자원 |
+| 84~80 | 좋은 로테이션 자원 |
+| 79~76 | 보통의 로테이션 자원 |
+
+**운영 원칙:**
+- 현재 엔진이 전체적으로 낮게 계산되는 문제가 있어, 엔진 개편 전까지 `pot` 값에 목표 OVR을 설정해 역사적 위상을 보존한다.
+- 엔진이 이 스케일에 부합하도록 수렴하는 것이 튜닝의 최종 목표다.
+- 슈팅 부재(벤 시몬스, 밥 쿠지 등 CorePositionPenalty 최대치 선수)처럼 구조적 한계로 display OVR이 목표에 도달하지 못하는 경우에도 `pot`으로 위상을 표현한다.
+
+---
+
+## 9. 엔진 수정 시 필수 검증 절차
+
+### 반드시 검증해야 하는 3가지 항목
+
+아래 세 항목을 수정할 때는 **단순 수치 변경으로 끝내지 말고**, 반드시 전체 선수(445명) OVR 분포를 재계산하여 인플레이션 여부를 확인해야 한다.
+
+| 항목 | 위험 이유 |
+|------|---------|
+| `calcCorePositionPenalty()` 수치 완화 | 슈팅 없는 PG(시몬스, 쿠지 등) rawOVR 선택적 폭등 |
+| `sizeFit` 패널티 완화 | 대형 PG(6'10" 이상) OVR 선택적 폭등 |
+| `calcTagBonus()` threshold 하향 | 엘리트 모듈 보유 선수 전반 OVR 상승 |
+
+### 검증 방법
+
+수정 전후 전체 선수 OVR 분포 히스토그램을 비교한다:
+
+```ts
+// 검증 스크립트 예시 (개발용)
+import { postProcessAllPlayersOVR } from '../services/dataMapper';
+
+function validateOVRDistribution(before: number[], after: number[]) {
+  const tiers = [76, 80, 85, 90, 93, 96];
+  tiers.forEach(threshold => {
+    const beforeCount = before.filter(v => v >= threshold).length;
+    const afterCount  = after.filter(v => v >= threshold).length;
+    console.log(`OVR≥${threshold}: ${beforeCount} → ${afterCount} (Δ${afterCount - beforeCount})`);
+  });
+}
+```
+
+### 허용 기준 (가이드라인)
+
+| OVR 구간 | 현재 선수 수(약) | 수정 후 허용 변동 |
+|---------|--------------|----------------|
+| 96+ | ≤ 5명 | ±1명 이내 |
+| 93+ | ≤ 15명 | ±3명 이내 |
+| 90+ | ≤ 35명 | ±5명 이내 |
+| 85+ | ≤ 80명 | ±10명 이내 |
+
+> 이 기준을 초과하면 특정 선수 군에 편향된 인플레이션이 발생한 것으로 판단하고, 수정 범위를 좁혀 재검토해야 한다.
+
+---
+
+## 10. 변경 이력
 
 | 버전 | 날짜 | 주요 변경 |
 |------|------|---------|
