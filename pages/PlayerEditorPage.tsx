@@ -210,41 +210,52 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     // ── 실시간 OVR / 아키타입 / 태그 계산 ────────────────────────────────────
     const livePreview = useMemo(() => {
         if (!selected || Object.keys(draft).length === 0) return null;
-        try {
-            const pos = (draft.position ?? selected.position ?? 'SF') as string;
-            // CSV 단축키 → 런타임 키 변환
-            const mapped: Record<string, any> = {};
-            for (const [k, v] of Object.entries(draft)) {
-                mapped[DRAFT_KEY_TO_RUNTIME[k] ?? k] = v;
-            }
-            const input = adaptPlayerToInput(mapped, pos);
-            const result = evaluatePlayerRawOVR(input);
-            const dist = getLeagueDistribution();
-            const displayOvr = mapRawOVRToDisplayOVR(result.rawCurrentOVR, dist);
 
-            const m = result.modules;
-            const r = input.ratings;
-            const tags: string[] = [];
-            if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
-            if (r.drawFoul >= 88)                                  tags.push('foul_merchant');
-            if (m.shotCreation >= 85)                              tags.push('shotmaker');
-            if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
-            if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
-            if (m.playmaking >= 82)                                tags.push('plus_playmaker');
-            if (m.poaDefense >= 84)                                tags.push('poa_stopper');
-            if (m.teamDefense >= 84)                               tags.push('team_defender');
-            if (m.rimProtection >= 85)                             tags.push('rim_protector');
-            if (m.rebounding >= 84)                                tags.push('glass_cleaner');
-            if (m.motorAvailability >= 85)                         tags.push('high_motor');
-            if (r.durability >= 90 && r.stamina >= 85)             tags.push('ironman');
-            if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && r.offensiveConsistency <= 65)
-                                                                   tags.push('streaky_scorer');
-            if (r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75)
-                                                                   tags.push('reliable_two_way');
-            return { displayOvr, rawOvr: result.rawCurrentOVR, primaryArchetype: result.primaryArchetype, secondaryArchetype: result.secondaryArchetype, modules: m, tags };
-        } catch {
-            return null;
-        }
+        const NON_STAT_CO_KEYS = new Set(['contract', 'popularity', 'position', 'name', 'team', 'num', 'salary', 'lock', 'draft_year']);
+
+        const computePreview = (attrs: Record<string, any>) => {
+            try {
+                const pos = (attrs.position ?? selected.position ?? 'SF') as string;
+                const mapped: Record<string, any> = {};
+                for (const [k, v] of Object.entries(attrs)) {
+                    if (k === 'custom_overrides') continue;
+                    mapped[DRAFT_KEY_TO_RUNTIME[k] ?? k] = v;
+                }
+                const input = adaptPlayerToInput(mapped, pos);
+                const result = evaluatePlayerRawOVR(input);
+                const dist = getLeagueDistribution();
+                const displayOvr = mapRawOVRToDisplayOVR(result.rawCurrentOVR, dist);
+                const m = result.modules;
+                const r = input.ratings;
+                const tags: string[] = [];
+                if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
+                if (r.drawFoul >= 88)                                  tags.push('foul_merchant');
+                if (m.shotCreation >= 85)                              tags.push('shotmaker');
+                if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
+                if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
+                if (m.playmaking >= 82)                                tags.push('plus_playmaker');
+                if (m.poaDefense >= 84)                                tags.push('poa_stopper');
+                if (m.teamDefense >= 84)                               tags.push('team_defender');
+                if (m.rimProtection >= 85)                             tags.push('rim_protector');
+                if (m.rebounding >= 84)                                tags.push('glass_cleaner');
+                if (m.motorAvailability >= 85)                         tags.push('high_motor');
+                if (r.durability >= 90 && r.stamina >= 85)             tags.push('ironman');
+                if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && r.offensiveConsistency <= 65)
+                                                                       tags.push('streaky_scorer');
+                if (r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75)
+                                                                       tags.push('reliable_two_way');
+                return { displayOvr, rawOvr: result.rawCurrentOVR, primaryArchetype: result.primaryArchetype, secondaryArchetype: result.secondaryArchetype, modules: m, tags };
+            } catch {
+                return null;
+            }
+        };
+
+        const co = (draft.custom_overrides ?? {}) as Record<string, any>;
+        const hasStatCo = Object.keys(co).some(k => !NON_STAT_CO_KEYS.has(k));
+        return {
+            base: computePreview(draft),
+            co: hasStatCo ? computePreview({ ...draft, ...co }) : null,
+        };
     }, [draft, selected]);
 
     // 초기 진입 시 전체 목록 자동 로드
@@ -796,71 +807,47 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                     </div>
 
                     {/* ── 실시간 OVR / 아키타입 미리보기 ── */}
-                    {livePreview && (
-                        <div className="mb-4 bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-start gap-4 flex-wrap">
-                            {/* OVR 뱃지 */}
-                            <div className="flex-shrink-0 text-center w-14">
-                                <div className={`text-4xl font-black tabular-nums leading-none ${
-                                    livePreview.displayOvr >= 95 ? 'text-amber-400' :
-                                    livePreview.displayOvr >= 90 ? 'text-violet-400' :
-                                    livePreview.displayOvr >= 85 ? 'text-indigo-400' :
-                                    livePreview.displayOvr >= 80 ? 'text-cyan-400' :
-                                    livePreview.displayOvr >= 75 ? 'text-emerald-400' : 'text-slate-400'
-                                }`}>{livePreview.displayOvr}</div>
-                                <div className="text-[9px] text-slate-600 mt-1">raw {livePreview.rawOvr.toFixed(1)}</div>
-                            </div>
-
-                            {/* 아키타입 + 태그 */}
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap mb-2">
-                                    <span className="bg-indigo-900/60 text-indigo-300 text-xs font-bold px-2 py-0.5 rounded">
-                                        {ARCHETYPE_LABEL[livePreview.primaryArchetype.archetype] ?? livePreview.primaryArchetype.archetype}
-                                    </span>
-                                    <span className="text-slate-600 text-xs">{livePreview.primaryArchetype.score.toFixed(1)}</span>
-                                    <span className="text-slate-600 text-[10px]">/</span>
-                                    <span className="bg-slate-800 text-slate-400 text-xs px-2 py-0.5 rounded">
-                                        {ARCHETYPE_LABEL[livePreview.secondaryArchetype.archetype] ?? livePreview.secondaryArchetype.archetype}
-                                    </span>
-                                    <span className="text-slate-600 text-xs">{livePreview.secondaryArchetype.score.toFixed(1)}</span>
-                                </div>
-                                {livePreview.tags.length > 0 ? (
-                                    <div className="flex gap-1 flex-wrap">
-                                        {livePreview.tags.map(tag => (
-                                            <span key={tag} className="bg-emerald-900/40 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-900/60">
-                                                {TAG_LABEL[tag] ?? tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <span className="text-slate-600 text-[10px]">태그 없음</span>
-                                )}
-                            </div>
-
-                            {/* 모듈 스코어 */}
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] flex-shrink-0">
-                                {([
-                                    ['스팟업', livePreview.modules.spotUpShooting],
-                                    ['샷 창조', livePreview.modules.shotCreation],
-                                    ['림 피니쉬', livePreview.modules.rimFinishing],
-                                    ['포스트', livePreview.modules.postCraft],
-                                    ['플메', livePreview.modules.playmaking],
-                                    ['오프볼', livePreview.modules.offballAttack],
-                                    ['POA 수비', livePreview.modules.poaDefense],
-                                    ['팀 수비', livePreview.modules.teamDefense],
-                                    ['림 보호', livePreview.modules.rimProtection],
-                                    ['리바운드', livePreview.modules.rebounding],
-                                    ['모터', livePreview.modules.motorAvailability],
-                                ] as [string, number][]).map(([label, val]) => (
-                                    <div key={label} className="flex items-center gap-1">
-                                        <span className="text-slate-500 w-14 shrink-0">{label}</span>
-                                        <span className={`font-mono font-bold ${
-                                            val >= 90 ? 'text-amber-400' :
-                                            val >= 82 ? 'text-indigo-300' :
-                                            val >= 70 ? 'text-slate-300' : 'text-slate-500'
-                                        }`}>{val.toFixed(1)}</span>
-                                    </div>
-                                ))}
-                            </div>
+                    {livePreview?.base && (
+                        <div className="mb-4">
+                            <table className="w-full text-xs border-collapse">
+                                <thead>
+                                    <tr className="text-slate-500 border-b border-slate-700">
+                                        <th className="text-left py-1 px-2 font-normal w-28">항목</th>
+                                        <th className="text-center py-1 px-2 font-normal">Base</th>
+                                        {livePreview.co && <th className="text-center py-1 px-2 font-normal text-amber-400">CO 적용</th>}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {([
+                                        ['OVR', String(livePreview.base.displayOvr), livePreview.co ? String(livePreview.co.displayOvr) : null],
+                                        ['raw OVR', livePreview.base.rawOvr.toFixed(1), livePreview.co ? livePreview.co.rawOvr.toFixed(1) : null],
+                                        ['1차 아키타입', `${ARCHETYPE_LABEL[livePreview.base.primaryArchetype.archetype] ?? livePreview.base.primaryArchetype.archetype} (${livePreview.base.primaryArchetype.score.toFixed(1)})`, livePreview.co ? `${ARCHETYPE_LABEL[livePreview.co.primaryArchetype.archetype] ?? livePreview.co.primaryArchetype.archetype} (${livePreview.co.primaryArchetype.score.toFixed(1)})` : null],
+                                        ['2차 아키타입', `${ARCHETYPE_LABEL[livePreview.base.secondaryArchetype.archetype] ?? livePreview.base.secondaryArchetype.archetype} (${livePreview.base.secondaryArchetype.score.toFixed(1)})`, livePreview.co ? `${ARCHETYPE_LABEL[livePreview.co.secondaryArchetype.archetype] ?? livePreview.co.secondaryArchetype.archetype} (${livePreview.co.secondaryArchetype.score.toFixed(1)})` : null],
+                                        ['태그', livePreview.base.tags.map((t: string) => TAG_LABEL[t] ?? t).join(', ') || '—', livePreview.co ? (livePreview.co.tags.map((t: string) => TAG_LABEL[t] ?? t).join(', ') || '—') : null],
+                                        ['스팟업', livePreview.base.modules.spotUpShooting.toFixed(1), livePreview.co ? livePreview.co.modules.spotUpShooting.toFixed(1) : null],
+                                        ['샷 창조', livePreview.base.modules.shotCreation.toFixed(1), livePreview.co ? livePreview.co.modules.shotCreation.toFixed(1) : null],
+                                        ['림 피니쉬', livePreview.base.modules.rimFinishing.toFixed(1), livePreview.co ? livePreview.co.modules.rimFinishing.toFixed(1) : null],
+                                        ['포스트', livePreview.base.modules.postCraft.toFixed(1), livePreview.co ? livePreview.co.modules.postCraft.toFixed(1) : null],
+                                        ['플메', livePreview.base.modules.playmaking.toFixed(1), livePreview.co ? livePreview.co.modules.playmaking.toFixed(1) : null],
+                                        ['오프볼', livePreview.base.modules.offballAttack.toFixed(1), livePreview.co ? livePreview.co.modules.offballAttack.toFixed(1) : null],
+                                        ['POA 수비', livePreview.base.modules.poaDefense.toFixed(1), livePreview.co ? livePreview.co.modules.poaDefense.toFixed(1) : null],
+                                        ['팀 수비', livePreview.base.modules.teamDefense.toFixed(1), livePreview.co ? livePreview.co.modules.teamDefense.toFixed(1) : null],
+                                        ['림 보호', livePreview.base.modules.rimProtection.toFixed(1), livePreview.co ? livePreview.co.modules.rimProtection.toFixed(1) : null],
+                                        ['리바운드', livePreview.base.modules.rebounding.toFixed(1), livePreview.co ? livePreview.co.modules.rebounding.toFixed(1) : null],
+                                        ['모터', livePreview.base.modules.motorAvailability.toFixed(1), livePreview.co ? livePreview.co.modules.motorAvailability.toFixed(1) : null],
+                                    ] as [string, string, string | null][]).map(([label, baseVal, coVal]) => (
+                                        <tr key={label} className="border-b border-slate-800/60">
+                                            <td className="py-0.5 px-2 text-slate-500">{label}</td>
+                                            <td className="py-0.5 px-2 text-center text-slate-200 font-mono">{baseVal}</td>
+                                            {livePreview.co && (
+                                                <td className={`py-0.5 px-2 text-center font-mono ${coVal !== baseVal ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+                                                    {coVal}
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     )}
 
