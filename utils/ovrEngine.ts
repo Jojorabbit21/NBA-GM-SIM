@@ -536,6 +536,7 @@ function calcTagBonus(pos: OvrPosition, r: PlayerRatings, mod: ModuleScores): nu
   if (mod.poaDefense >= 86) bonuses.push(0.55);
   if (mod.teamDefense >= 86) bonuses.push(0.45);
   if (mod.rimProtection >= 88) bonuses.push(0.70);
+  if (mod.postCraft >= 90) bonuses.push(pos === 'PF' || pos === 'C' ? 0.70 : 0.50);
   if (mod.rebounding >= 86) bonuses.push(0.45);
   if (mod.motorAvailability >= 86) bonuses.push(0.30);
   if (r.durability >= 90 && r.stamina >= 85) bonuses.push(0.25);

@@ -181,6 +181,32 @@ C   → post_scoring_big, rim_runner_big, stretch_big,
 
 ---
 
+## 6-A. OVR 엔진 TagBonus (`calcTagBonus` in `ovrEngine.ts`)
+
+아키타입 특성 태그와 별개로 OVR 계산 시 적용되는 보너스. 아키타입 시스템(archetypeEvaluator.ts)의 TraitTag와 **다른 레이어**이며 UI에 직접 표시되지 않는다.
+
+| 조건 | 보너스 | 비고 |
+|------|--------|------|
+| rimFinishing ≥ 88 | +0.55 | |
+| drawFoul ≥ 90 | +0.25 | |
+| shotCreation ≥ 88 | +0.65 | |
+| spotUpShooting ≥ 86 | +0.50 | |
+| offballAttack ≥ 84 AND spotUpShooting ≥ 84 | +0.70 | |
+| playmaking ≥ 86 | +0.65 (PF/C: +0.95) | 빅맨 패스 메이커 가산 |
+| poaDefense ≥ 86 | +0.55 | |
+| teamDefense ≥ 86 | +0.45 | |
+| rimProtection ≥ 88 | +0.70 | |
+| **postCraft ≥ 90** | **+0.70 (PF/C), +0.50 (SF)** | 포스트 스코어러 보정 — PF/C 비중 가산 |
+| rebounding ≥ 86 | +0.45 | |
+| motorAvailability ≥ 86 | +0.30 | |
+| durability ≥ 90 AND stamina ≥ 85 | +0.25 | |
+| atkAvg ≥ 82 AND defAvg ≥ 82 AND oConsist ≥ 75 AND dConsist ≥ 75 | +0.80 | 양방향 기여 보너스 |
+
+> 감쇄 가중치 적용: 상위 4개 보너스만 반영, 가중치 [1.0, 0.65, 0.40, 0.20].
+> 최종 tagBonus 범위: -1.5 ~ +1.8.
+
+---
+
 ## 7. 갱신 주기
 
 | 시점 | 동작 |

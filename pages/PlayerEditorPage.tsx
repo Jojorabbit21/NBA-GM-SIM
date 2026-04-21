@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { searchPlayers, fetchPlayerById, updateBaseAttributes, updateIncludeAlltime, insertEditLog, fetchEditLog, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
+import { adaptPlayerToInput, getLeagueDistribution } from '../utils/ovrUtils';
+import { evaluatePlayerRawOVR, mapRawOVRToDisplayOVR } from '../utils/ovrEngine';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -148,6 +150,39 @@ const STAT_SECTIONS = [
     },
 ];
 
+// ── base_attributes CSV 단축키 → adaptPlayerToInput 런타임 키 매핑 ──────────────
+const DRAFT_KEY_TO_RUNTIME: Record<string, string> = {
+    close: 'closeShot', lay: 'layup', dnk: 'dunk', post: 'postPlay', draw: 'drawFoul',
+    mid: 'midRange', '3c': 'threeCorner', '3_45': 'three45', '3t': 'threeTop',
+    siq: 'shotIq', ocon: 'offConsist',
+    pacc: 'passAcc', handl: 'handling', spwb: 'spdBall', pvis: 'passVision',
+    piq: 'passIq', obm: 'offBallMovement',
+    idef: 'intDef', pdef: 'perDef', stl: 'steal',
+    hdef: 'helpDefIq', pper: 'passPerc', dcon: 'defConsist',
+    oreb: 'offReb', dreb: 'defReb', box: 'boxOut',
+    spd: 'speed', agi: 'agility', str: 'strength', vert: 'vertical',
+    sta: 'stamina', hus: 'hustle', dur: 'durability',
+};
+
+const ARCHETYPE_LABEL: Record<string, string> = {
+    PRIMARY_CREATOR_GUARD: '1차 창조자 가드', SCORING_COMBO_GUARD: '스코어링 콤보 가드',
+    MOVEMENT_SHOOTER: '무브먼트 슈터',       PERIMETER_3D: '3&D 가드',
+    TWO_WAY_WING: '투웨이 윙',               SLASHING_WING: '슬래싱 윙',
+    SHOT_CREATOR_WING: '샷 크리에이터 윙',   CONNECTOR_FORWARD: '커넥터 FW',
+    AERIAL_WING: '에어리얼 윙',              POST_SCORING_WING: '포스트 스코어링 윙',
+    WING_PROTECTOR: '윙 프로텍터',           POST_SCORING_BIG: '포스트 스코어링 빅',
+    RIM_RUNNER_BIG: '림 러너 빅',            STRETCH_BIG: '스트레치 빅',
+    RIM_PROTECTOR_ANCHOR: '림 프로텍터',     PLAYMAKING_BIG: '플레이메이킹 빅',
+};
+
+const TAG_LABEL: Record<string, string> = {
+    elite_finisher: '엘리트 피니셔', foul_merchant: '파울 유도', shotmaker: '샷메이커',
+    floor_spacer: '플로어 스페이서', off_ball_mover: '오프볼 무버', plus_playmaker: '+플레이메이커',
+    poa_stopper: 'POA 스토퍼', team_defender: '팀 디펜더', rim_protector: '림 프로텍터',
+    glass_cleaner: '리바운더', high_motor: '하이 모터', ironman: '아이언맨',
+    streaky_scorer: '스트리키', reliable_two_way: '투웨이',
+};
+
 // ── PlayerEditorPage ──────────────────────────────────────────────────────────
 
 const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
@@ -171,6 +206,46 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [tablePage, setTablePage] = useState(0);
     const originalAttrsRef = useRef<Record<string, any>>({});
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── 실시간 OVR / 아키타입 / 태그 계산 ────────────────────────────────────
+    const livePreview = useMemo(() => {
+        if (!selected || Object.keys(draft).length === 0) return null;
+        try {
+            const pos = (draft.position ?? selected.position ?? 'SF') as string;
+            // CSV 단축키 → 런타임 키 변환
+            const mapped: Record<string, any> = {};
+            for (const [k, v] of Object.entries(draft)) {
+                mapped[DRAFT_KEY_TO_RUNTIME[k] ?? k] = v;
+            }
+            const input = adaptPlayerToInput(mapped, pos);
+            const result = evaluatePlayerRawOVR(input);
+            const dist = getLeagueDistribution();
+            const displayOvr = mapRawOVRToDisplayOVR(result.rawCurrentOVR, dist);
+
+            const m = result.modules;
+            const r = input.ratings;
+            const tags: string[] = [];
+            if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
+            if (r.drawFoul >= 88)                                  tags.push('foul_merchant');
+            if (m.shotCreation >= 85)                              tags.push('shotmaker');
+            if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
+            if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
+            if (m.playmaking >= 82)                                tags.push('plus_playmaker');
+            if (m.poaDefense >= 84)                                tags.push('poa_stopper');
+            if (m.teamDefense >= 84)                               tags.push('team_defender');
+            if (m.rimProtection >= 85)                             tags.push('rim_protector');
+            if (m.rebounding >= 84)                                tags.push('glass_cleaner');
+            if (m.motorAvailability >= 85)                         tags.push('high_motor');
+            if (r.durability >= 90 && r.stamina >= 85)             tags.push('ironman');
+            if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && r.offensiveConsistency <= 65)
+                                                                   tags.push('streaky_scorer');
+            if (r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75)
+                                                                   tags.push('reliable_two_way');
+            return { displayOvr, rawOvr: result.rawCurrentOVR, primaryArchetype: result.primaryArchetype, secondaryArchetype: result.secondaryArchetype, modules: m, tags };
+        } catch {
+            return null;
+        }
+    }, [draft, selected]);
 
     // 초기 진입 시 전체 목록 자동 로드
     useEffect(() => {
@@ -719,6 +794,75 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                             </button>
                         </div>
                     </div>
+
+                    {/* ── 실시간 OVR / 아키타입 미리보기 ── */}
+                    {livePreview && (
+                        <div className="mb-4 bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-start gap-4 flex-wrap">
+                            {/* OVR 뱃지 */}
+                            <div className="flex-shrink-0 text-center w-14">
+                                <div className={`text-4xl font-black tabular-nums leading-none ${
+                                    livePreview.displayOvr >= 95 ? 'text-amber-400' :
+                                    livePreview.displayOvr >= 90 ? 'text-violet-400' :
+                                    livePreview.displayOvr >= 85 ? 'text-indigo-400' :
+                                    livePreview.displayOvr >= 80 ? 'text-cyan-400' :
+                                    livePreview.displayOvr >= 75 ? 'text-emerald-400' : 'text-slate-400'
+                                }`}>{livePreview.displayOvr}</div>
+                                <div className="text-[9px] text-slate-600 mt-1">raw {livePreview.rawOvr.toFixed(1)}</div>
+                            </div>
+
+                            {/* 아키타입 + 태그 */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-2">
+                                    <span className="bg-indigo-900/60 text-indigo-300 text-xs font-bold px-2 py-0.5 rounded">
+                                        {ARCHETYPE_LABEL[livePreview.primaryArchetype.archetype] ?? livePreview.primaryArchetype.archetype}
+                                    </span>
+                                    <span className="text-slate-600 text-xs">{livePreview.primaryArchetype.score.toFixed(1)}</span>
+                                    <span className="text-slate-600 text-[10px]">/</span>
+                                    <span className="bg-slate-800 text-slate-400 text-xs px-2 py-0.5 rounded">
+                                        {ARCHETYPE_LABEL[livePreview.secondaryArchetype.archetype] ?? livePreview.secondaryArchetype.archetype}
+                                    </span>
+                                    <span className="text-slate-600 text-xs">{livePreview.secondaryArchetype.score.toFixed(1)}</span>
+                                </div>
+                                {livePreview.tags.length > 0 ? (
+                                    <div className="flex gap-1 flex-wrap">
+                                        {livePreview.tags.map(tag => (
+                                            <span key={tag} className="bg-emerald-900/40 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-900/60">
+                                                {TAG_LABEL[tag] ?? tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="text-slate-600 text-[10px]">태그 없음</span>
+                                )}
+                            </div>
+
+                            {/* 모듈 스코어 */}
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] flex-shrink-0">
+                                {([
+                                    ['스팟업', livePreview.modules.spotUpShooting],
+                                    ['샷 창조', livePreview.modules.shotCreation],
+                                    ['림 피니쉬', livePreview.modules.rimFinishing],
+                                    ['포스트', livePreview.modules.postCraft],
+                                    ['플메', livePreview.modules.playmaking],
+                                    ['오프볼', livePreview.modules.offballAttack],
+                                    ['POA 수비', livePreview.modules.poaDefense],
+                                    ['팀 수비', livePreview.modules.teamDefense],
+                                    ['림 보호', livePreview.modules.rimProtection],
+                                    ['리바운드', livePreview.modules.rebounding],
+                                    ['모터', livePreview.modules.motorAvailability],
+                                ] as [string, number][]).map(([label, val]) => (
+                                    <div key={label} className="flex items-center gap-1">
+                                        <span className="text-slate-500 w-14 shrink-0">{label}</span>
+                                        <span className={`font-mono font-bold ${
+                                            val >= 90 ? 'text-amber-400' :
+                                            val >= 82 ? 'text-indigo-300' :
+                                            val >= 70 ? 'text-slate-300' : 'text-slate-500'
+                                        }`}>{val.toFixed(1)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* ── 인적 정보 — base / CO ── */}
                     <Section label="인적 정보">
