@@ -22,6 +22,7 @@ interface DraftBoardProps {
     userTeamId: string;
     positionColors: Record<string, string>;
     teamMeta?: RoomTeamMetaMap;
+    onlineTeamIds?: Set<string>;
 }
 
 export const DraftBoard: React.FC<DraftBoardProps> = ({
@@ -33,6 +34,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     userTeamId,
     positionColors,
     teamMeta,
+    onlineTeamIds,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +79,9 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     const currentTeamId = draftOrder[currentPickIndex] || '';
     const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
 
+    const ROUND_COL_W = 90;   // px — 라운드 열 고정 너비
+    const MIN_TEAM_W  = 120;  // px — 팀 열 최소 너비 (이보다 좁아지지 않음)
+
     return (
         <div
             ref={scrollContainerRef}
@@ -84,24 +89,41 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             style={{ scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' } as React.CSSProperties}
         >
             {/* Transposed: columns = teams, rows = rounds */}
-            <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px', margin: '-2px' }}>
+            {/* table-layout:fixed + width:100% → 팀 열 균등 확장
+                minWidth → 팀 수 많을 때 최소 너비 보장 후 스크롤 */}
+            <table
+                style={{
+                    tableLayout: 'fixed',
+                    width: '100%',
+                    minWidth: `${ROUND_COL_W + teamIds.length * MIN_TEAM_W}px`,
+                    borderCollapse: 'separate',
+                    borderSpacing: '2px',
+                    margin: '-2px',
+                }}
+            >
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
-                        {/* Round column header (sticky left) */}
+                        {/* Round column header (sticky left) — 고정 너비 */}
                         <th
-                            className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-center font-bold text-slate-500 text-xs"
-                            style={{ boxShadow: '1px 0 0 0 rgb(2,6,23), 0 1px 0 0 rgb(2,6,23)' }}
+                            className="sticky left-0 z-30 bg-slate-950 px-2 py-2 text-center font-bold text-slate-500 text-xs"
+                            style={{
+                                width: ROUND_COL_W,
+                                minWidth: ROUND_COL_W,
+                                maxWidth: ROUND_COL_W,
+                                boxShadow: '1px 0 0 0 rgb(2,6,23), 0 1px 0 0 rgb(2,6,23)',
+                            }}
                         >
                             라운드
                         </th>
-                        {/* Team column headers */}
+                        {/* Team column headers — 너비 미지정 → table-layout:fixed가 균등 분배 */}
                         {teamIds.map(teamId => {
-                            const isUser = teamId === userTeamId;
+                            const isUser   = teamId === userTeamId;
+                            const isOnline = onlineTeamIds ? onlineTeamIds.has(teamId) : undefined;
                             const td = resolveTeamDisplay(teamId, teamMeta);
                             return (
                                 <th
                                     key={teamId}
-                                    className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-xs font-bold"
+                                    className="px-1 py-2.5 text-center text-xs font-bold"
                                     title={td.name}
                                     style={{
                                         backgroundColor: td.colorPrimary,
@@ -112,7 +134,22 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                             : '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
                                     }}
                                 >
-                                    {td.abbr}
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span>{td.abbr}</span>
+                                        {isOnline !== undefined && (
+                                            <span
+                                                title={isOnline ? '접속 중' : '오프라인'}
+                                                style={{
+                                                    display: 'inline-block',
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
+                                                    flexShrink: 0,
+                                                }}
+                                            />
+                                        )}
+                                    </div>
                                 </th>
                             );
                         })}
@@ -132,7 +169,12 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                     className={`sticky left-0 px-2 py-1 z-10 text-center ${
                                         isCurrentRound ? 'bg-indigo-950' : 'bg-slate-950'
                                     }`}
-                                    style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
+                                    style={{
+                                        width: ROUND_COL_W,
+                                        minWidth: ROUND_COL_W,
+                                        maxWidth: ROUND_COL_W,
+                                        boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)',
+                                    }}
                                 >
                                     <div className="flex flex-col items-center gap-0.5">
                                         <span className={`text-[11px] font-black whitespace-nowrap ${

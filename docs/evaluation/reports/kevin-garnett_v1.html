@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>선수 스카우팅 보고서 — 케빈 가넷</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #d0d0d0;
+      font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+      font-size: 12px;
+      color: #000;
+      padding: 30px;
+    }
+
+    .page {
+      background: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 0;
+    }
+
+    .report-title-bar {
+      background: #1a3a6b;
+      color: #fff;
+      text-align: center;
+      padding: 8px 0 6px;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 0.3em;
+      border-bottom: 2px solid #000;
+    }
+
+    .section {
+      border-bottom: 2px solid #000;
+      padding: 0;
+    }
+    .section-header {
+      background: #c0c8d8;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-bottom: 1px solid #000;
+      letter-spacing: 0.05em;
+    }
+    .section-body {
+      padding: 6px 8px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .info-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .info-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .info-table .value {
+      min-width: 100px;
+    }
+    .info-table .value.accent {
+      font-weight: bold;
+      font-size: 14px;
+      color: #1a3a6b;
+    }
+
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .arch-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .arch-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 90px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .arch-primary   { font-weight: bold; color: #1a3a6b; font-size: 12px; }
+    .arch-secondary { color: #444; }
+    .tag-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag {
+      border: 1px solid #1a3a6b;
+      color: #1a3a6b;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      background: #e8ecf2;
+    }
+
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .module-table th, .module-table td {
+      border: 1px solid #999;
+      padding: 3px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .module-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .module-table td.name-col {
+      text-align: left;
+      width: 130px;
+    }
+    .bar-cell { width: 260px; }
+    .bar-outer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border: 1px solid #aaa;
+    }
+    .bar-inner { height: 100%; }
+    .bar-s { background: #1a3a6b; }
+    .bar-a { background: #2e7d32; }
+    .bar-b { background: #1565c0; }
+    .bar-c { background: #e65100; }
+    .bar-d { background: #b71c1c; }
+
+    .grade { font-weight: bold; width: 36px; }
+    .grade-S { color: #1a3a6b; }
+    .grade-A { color: #2e7d32; }
+    .grade-B { color: #1565c0; }
+    .grade-C { color: #e65100; }
+    .grade-D { color: #b71c1c; }
+
+    .career-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .career-table th, .career-table td {
+      border: 1px solid #bbb;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .career-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 10px;
+    }
+    .career-table td:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #1a3a6b;
+    }
+    .career-table tr.prime-row {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .career-table tfoot tr.avg-row {
+      background: #e8ecf2;
+      font-weight: bold;
+      border-top: 2px solid #999;
+    }
+    .career-table td.na-cell {
+      color: #aaa;
+    }
+    .career-group-header {
+      background: #1a3a6b; color: #fff; font-weight: bold; font-size: 12px;
+      padding: 6px 10px; margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .career-type-label {
+      background: #d0d8e8; color: #1a3a6b; font-weight: bold; font-size: 11px;
+      padding: 4px 10px; margin-top: 8px;
+    }
+
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .attr-table th, .attr-table td {
+      border: 1px solid #999;
+      padding: 3px 6px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .attr-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .attr-table td.cat-header {
+      background: #d4daea;
+      font-weight: bold;
+      font-size: 11px;
+      color: #1a3a6b;
+      text-align: left;
+      padding: 4px 10px;
+      border-top: 1px solid #666;
+      letter-spacing: 0.03em;
+    }
+    .attr-table td.attr-name {
+      text-align: left;
+      width: 130px;
+      padding-left: 8px;
+    }
+    .attr-table td.attr-val {
+      width: 44px;
+      font-weight: bold;
+    }
+    .attr-table td.attr-delta {
+      width: 58px;
+      font-size: 11px;
+    }
+    .delta-up   { color: #1a6b1a; font-weight: bold; }
+    .delta-down { color: #b71c1c; font-weight: bold; }
+
+    .sw-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .sw-table td {
+      border: 1px solid #999;
+      padding: 5px 8px;
+      vertical-align: top;
+      width: 50%;
+    }
+    .sw-table .sw-header {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    .sw-item { margin-bottom: 6px; }
+    .sw-item-title { font-weight: bold; margin-bottom: 2px; }
+    .sw-item-title.str { color: #1a6b1a; }
+    .sw-item-title.wkn { color: #b71c1c; }
+    .sw-item-body { color: #333; line-height: 1.5; }
+
+    .notes-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .notes-table td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    .notes-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .notes-text {
+      line-height: 1.7;
+      color: #111;
+    }
+    .comp-label { font-weight: bold; width: 70px; }
+
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .footer-table td {
+      border: 1px solid #999;
+      padding: 4px 10px;
+      text-align: center;
+    }
+    .footer-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      width: 70px;
+    }
+    .footer-note {
+      background: #f5f5f5;
+      font-size: 10px;
+      color: #666;
+      text-align: right;
+      padding: 3px 8px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 타이틀 -->
+  <div class="report-title-bar">선 수 스 카 우 팅 보 고 서</div>
+
+  <!-- 기본 정보 -->
+  <div class="section">
+    <div class="section-header">■ 기본 정보</div>
+    <div class="section-body">
+      <table class="info-table">
+        <tr>
+          <td class="label">선수명</td>
+          <td class="value" style="font-weight:bold; font-size:14px;">케빈 가넷</td>
+          <td class="label">포지션</td>
+          <td class="value accent">PF</td>
+          <td class="label">등번호</td>
+          <td class="value accent"># 21</td>
+          <td class="label">소속팀</td>
+          <td class="value">FA (MIN)</td>
+        </tr>
+        <tr>
+          <td class="label">나이</td>
+          <td class="value">27세</td>
+          <td class="label">전성기</td>
+          <td class="value">2003-04 MIN</td>
+          <td class="label">예상 OVR</td>
+          <td class="value accent">95</td>
+          <td class="label">연봉</td>
+          <td class="value">$28,000,000</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 아키타입 -->
+  <div class="section">
+    <div class="section-header">■ 아키타입 &amp; 태그</div>
+    <div class="section-body">
+      <table class="arch-table">
+        <tr>
+          <td class="label">1차 아키타입</td>
+          <td class="arch-primary">Rim Protector</td>
+          <td class="label">2차 아키타입</td>
+          <td class="arch-secondary">Wing Protector</td>
+        </tr>
+        <tr>
+          <td class="label">태그</td>
+          <td colspan="3">
+            <div class="tag-cell">
+              <span class="tag">◆ POA Stopper</span>
+              <span class="tag">◆ Team Defender</span>
+              <span class="tag">◆ Rim Protector</span>
+              <span class="tag">◆ Glass Cleaner</span>
+              <span class="tag">◆ High Motor</span>
+              <span class="tag">◆ Reliable 2-Way</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 모듈 스코어 -->
+  <div class="section">
+    <div class="section-header">■ 모듈 스코어</div>
+    <div class="section-body">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th class="name-col">모듈</th>
+            <th class="bar-cell">수준</th>
+            <th style="width:52px;">점수</th>
+            <th style="width:36px;">등급</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name-col">림 프로텍션</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-s" style="width:91.6%"></div></div></td>
+            <td>91.6</td>
+            <td class="grade grade-S">S+</td>
+          </tr>
+          <tr>
+            <td class="name-col">모터 / 가용성</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-s" style="width:90.3%"></div></div></td>
+            <td>90.3</td>
+            <td class="grade grade-S">S+</td>
+          </tr>
+          <tr>
+            <td class="name-col">팀 수비</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-s" style="width:88.7%"></div></div></td>
+            <td>88.7</td>
+            <td class="grade grade-S">S+</td>
+          </tr>
+          <tr>
+            <td class="name-col">리바운드</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-s" style="width:86.5%"></div></div></td>
+            <td>86.5</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <tr>
+            <td class="name-col">POA 수비</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-s" style="width:85.0%"></div></div></td>
+            <td>85.0</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <tr>
+            <td class="name-col">포스트 크래프트</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:83.2%"></div></div></td>
+            <td>83.2</td>
+            <td class="grade grade-A">A+</td>
+          </tr>
+          <tr>
+            <td class="name-col">림 피니시</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:81.6%"></div></div></td>
+            <td>81.6</td>
+            <td class="grade grade-A">A+</td>
+          </tr>
+          <tr>
+            <td class="name-col">플레이메이킹</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:80.2%"></div></div></td>
+            <td>80.2</td>
+            <td class="grade grade-A">A+</td>
+          </tr>
+          <tr>
+            <td class="name-col">오프볼 어택</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-b" style="width:72.3%"></div></div></td>
+            <td>72.3</td>
+            <td class="grade grade-B">B+</td>
+          </tr>
+          <tr>
+            <td class="name-col">슛 창출</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-b" style="width:72.2%"></div></div></td>
+            <td>72.2</td>
+            <td class="grade grade-B">B+</td>
+          </tr>
+          <tr>
+            <td class="name-col">스팟업 슈팅</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-d" style="width:42.6%"></div></div></td>
+            <td>42.6</td>
+            <td class="grade grade-D">D</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:10px; color:#666; margin-top:4px;">
+        모듈 등급 기준: S(85+) A+(80-84) A(75-79) A-(72-74) B+(70-71) B(65-69) B-(60-64) C+(55-59) C(50-54) C-(45-49) D(&lt;45)
+      </div>
+    </div>
+  </div>
+
+  <!-- 커리어 기록 -->
+  <div class="section">
+    <div class="section-header">■ 커리어 기록</div>
+    <div class="section-body" style="padding:6px 8px;">
+
+      <!-- 정규시즌 Traditional -->
+      <div class="career-group-header">정규시즌</div>
+      <div class="career-type-label">Traditional</div>
+      <div style="overflow-x:auto; margin-bottom:4px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+              <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th>
+              <th>STL</th><th>BLK</th><th>TOV</th><th>PF</th>
+              <th>FGM</th><th>FGA</th><th>FG%</th>
+              <th>3PM</th><th>3PA</th><th>3P%</th>
+              <th>FTM</th><th>FTA</th><th>FT%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1995-96</td><td>MIN</td><td>19</td><td>80</td><td>43</td><td>28.7</td>
+              <td>10.4</td><td>2.2</td><td>4.1</td><td>6.3</td><td>1.8</td>
+              <td>1.1</td><td>1.6</td><td>1.4</td><td>2.4</td>
+              <td>4.5</td><td>9.2</td><td>.491</td>
+              <td>0.1</td><td>0.3</td><td>.286</td>
+              <td>1.3</td><td>1.9</td><td>.705</td>
+            </tr>
+            <tr>
+              <td>1996-97</td><td>MIN</td><td>20</td><td>77</td><td>77</td><td>38.9</td>
+              <td>17.0</td><td>2.5</td><td>5.6</td><td>8.0</td><td>3.1</td>
+              <td>1.4</td><td>2.1</td><td>2.3</td><td>2.6</td>
+              <td>7.1</td><td>14.3</td><td>.499</td>
+              <td>0.1</td><td>0.3</td><td>.286</td>
+              <td>2.7</td><td>3.5</td><td>.754</td>
+            </tr>
+            <tr>
+              <td>1997-98</td><td>MIN</td><td>21</td><td>82</td><td>82</td><td>39.3</td>
+              <td>18.5</td><td>2.7</td><td>6.9</td><td>9.6</td><td>4.2</td>
+              <td>1.7</td><td>1.8</td><td>2.3</td><td>2.7</td>
+              <td>7.7</td><td>15.8</td><td>.491</td>
+              <td>0.0</td><td>0.2</td><td>.188</td>
+              <td>3.0</td><td>4.0</td><td>.738</td>
+            </tr>
+            <tr>
+              <td>1998-99</td><td>MIN</td><td>22</td><td>47</td><td>47</td><td>37.9</td>
+              <td>20.8</td><td>3.5</td><td>6.9</td><td>10.4</td><td>4.3</td>
+              <td>1.7</td><td>1.8</td><td>2.9</td><td>3.2</td>
+              <td>8.8</td><td>19.1</td><td>.460</td>
+              <td>0.1</td><td>0.3</td><td>.286</td>
+              <td>3.1</td><td>4.4</td><td>.704</td>
+            </tr>
+            <tr>
+              <td>1999-00</td><td>MIN</td><td>23</td><td>81</td><td>81</td><td>40.0</td>
+              <td>22.9</td><td>2.8</td><td>9.0</td><td>11.8</td><td>5.0</td>
+              <td>1.5</td><td>1.6</td><td>3.3</td><td>2.5</td>
+              <td>9.4</td><td>18.8</td><td>.497</td>
+              <td>0.4</td><td>1.0</td><td>.370</td>
+              <td>3.8</td><td>5.0</td><td>.765</td>
+            </tr>
+            <tr>
+              <td>2000-01</td><td>MIN</td><td>24</td><td>81</td><td>81</td><td>39.5</td>
+              <td>22.0</td><td>2.7</td><td>8.7</td><td>11.4</td><td>5.0</td>
+              <td>1.4</td><td>1.8</td><td>2.8</td><td>2.5</td>
+              <td>8.7</td><td>18.2</td><td>.477</td>
+              <td>0.2</td><td>0.8</td><td>.288</td>
+              <td>4.4</td><td>5.8</td><td>.764</td>
+            </tr>
+            <tr>
+              <td>2001-02</td><td>MIN</td><td>25</td><td>81</td><td>81</td><td>39.2</td>
+              <td>21.2</td><td>3.0</td><td>9.1</td><td>12.1</td><td>5.2</td>
+              <td>1.2</td><td>1.6</td><td>2.8</td><td>2.3</td>
+              <td>8.1</td><td>17.3</td><td>.470</td>
+              <td>0.5</td><td>1.4</td><td>.319</td>
+              <td>4.4</td><td>5.5</td><td>.801</td>
+            </tr>
+            <tr>
+              <td>2002-03</td><td>MIN</td><td>26</td><td>82</td><td>82</td><td>40.5</td>
+              <td>23.0</td><td>3.0</td><td>10.5</td><td>13.4</td><td>6.0</td>
+              <td>1.4</td><td>1.6</td><td>2.8</td><td>2.4</td>
+              <td>9.1</td><td>18.1</td><td>.502</td>
+              <td>0.2</td><td>0.9</td><td>.282</td>
+              <td>4.6</td><td>6.1</td><td>.751</td>
+            </tr>
+            <tr class="prime-row">
+              <td>2003-04</td><td>MIN</td><td>27</td><td>82</td><td>82</td><td>39.4</td>
+              <td>24.2</td><td>3.0</td><td>10.9</td><td>13.9</td><td>5.0</td>
+              <td>1.5</td><td>2.2</td><td>2.6</td><td>2.5</td>
+              <td>9.8</td><td>19.6</td><td>.499</td>
+              <td>0.1</td><td>0.5</td><td>.256</td>
+              <td>4.5</td><td>5.7</td><td>.791</td>
+            </tr>
+            <tr>
+              <td>2004-05</td><td>MIN</td><td>28</td><td>82</td><td>82</td><td>38.1</td>
+              <td>22.2</td><td>3.0</td><td>10.5</td><td>13.5</td><td>5.7</td>
+              <td>1.5</td><td>1.4</td><td>2.7</td><td>2.5</td>
+              <td>8.3</td><td>16.6</td><td>.502</td>
+              <td>0.1</td><td>0.3</td><td>.240</td>
+              <td>5.4</td><td>6.7</td><td>.811</td>
+            </tr>
+            <tr>
+              <td>2005-06</td><td>MIN</td><td>29</td><td>76</td><td>76</td><td>38.9</td>
+              <td>21.8</td><td>2.8</td><td>9.9</td><td>12.7</td><td>4.1</td>
+              <td>1.4</td><td>1.4</td><td>2.4</td><td>2.7</td>
+              <td>8.2</td><td>15.7</td><td>.526</td>
+              <td>0.1</td><td>0.4</td><td>.267</td>
+              <td>5.2</td><td>6.4</td><td>.810</td>
+            </tr>
+            <tr>
+              <td>2006-07</td><td>MIN</td><td>30</td><td>76</td><td>76</td><td>39.4</td>
+              <td>22.4</td><td>2.4</td><td>10.4</td><td>12.8</td><td>4.1</td>
+              <td>1.2</td><td>1.7</td><td>2.7</td><td>2.4</td>
+              <td>8.4</td><td>17.6</td><td>.476</td>
+              <td>0.2</td><td>0.7</td><td>.214</td>
+              <td>5.5</td><td>6.6</td><td>.835</td>
+            </tr>
+            <tr>
+              <td>2007-08</td><td>BOS</td><td>31</td><td>71</td><td>71</td><td>32.8</td>
+              <td>18.8</td><td>1.9</td><td>7.3</td><td>9.2</td><td>3.4</td>
+              <td>1.4</td><td>1.3</td><td>1.9</td><td>2.3</td>
+              <td>7.5</td><td>13.9</td><td>.539</td>
+              <td>0.0</td><td>0.2</td><td>.000</td>
+              <td>3.8</td><td>4.7</td><td>.801</td>
+            </tr>
+            <tr>
+              <td>2008-09</td><td>BOS</td><td>32</td><td>57</td><td>57</td><td>31.1</td>
+              <td>15.8</td><td>1.4</td><td>7.1</td><td>8.5</td><td>2.5</td>
+              <td>1.1</td><td>1.2</td><td>1.6</td><td>2.2</td>
+              <td>6.9</td><td>13.0</td><td>.531</td>
+              <td>0.0</td><td>0.1</td><td>.250</td>
+              <td>1.9</td><td>2.3</td><td>.841</td>
+            </tr>
+            <tr>
+              <td>2009-10</td><td>BOS</td><td>33</td><td>69</td><td>69</td><td>29.9</td>
+              <td>14.3</td><td>1.1</td><td>6.2</td><td>7.3</td><td>2.7</td>
+              <td>1.0</td><td>0.8</td><td>1.5</td><td>2.5</td>
+              <td>5.8</td><td>11.2</td><td>.521</td>
+              <td>0.0</td><td>0.1</td><td>.200</td>
+              <td>2.7</td><td>3.2</td><td>.837</td>
+            </tr>
+            <tr>
+              <td>2010-11</td><td>BOS</td><td>34</td><td>71</td><td>71</td><td>31.3</td>
+              <td>14.9</td><td>1.2</td><td>7.7</td><td>8.9</td><td>2.4</td>
+              <td>1.3</td><td>0.8</td><td>1.6</td><td>2.1</td>
+              <td>6.1</td><td>11.6</td><td>.528</td>
+              <td>0.0</td><td>0.1</td><td>.200</td>
+              <td>2.6</td><td>3.1</td><td>.862</td>
+            </tr>
+            <tr>
+              <td>2011-12</td><td>BOS</td><td>35</td><td>60</td><td>60</td><td>31.1</td>
+              <td>15.8</td><td>1.1</td><td>7.1</td><td>8.2</td><td>2.9</td>
+              <td>0.9</td><td>1.0</td><td>1.8</td><td>2.4</td>
+              <td>6.5</td><td>12.9</td><td>.503</td>
+              <td>0.1</td><td>0.1</td><td>.333</td>
+              <td>2.7</td><td>3.1</td><td>.857</td>
+            </tr>
+            <tr>
+              <td>2012-13</td><td>BOS</td><td>36</td><td>68</td><td>68</td><td>29.7</td>
+              <td>14.8</td><td>1.1</td><td>6.7</td><td>7.8</td><td>2.3</td>
+              <td>1.1</td><td>0.9</td><td>1.6</td><td>2.3</td>
+              <td>6.2</td><td>12.5</td><td>.496</td>
+              <td>0.0</td><td>0.2</td><td>.125</td>
+              <td>2.3</td><td>3.0</td><td>.786</td>
+            </tr>
+            <tr>
+              <td>2013-14</td><td>BKN</td><td>37</td><td>54</td><td>54</td><td>20.5</td>
+              <td>6.5</td><td>1.1</td><td>5.5</td><td>6.6</td><td>1.3</td>
+              <td>0.8</td><td>0.7</td><td>1.3</td><td>2.3</td>
+              <td>2.9</td><td>6.6</td><td>.441</td>
+              <td>0.0</td><td>0.1</td><td>.000</td>
+              <td>0.7</td><td>0.9</td><td>.809</td>
+            </tr>
+            <tr>
+              <td>2014-15</td><td>BKN/MIN</td><td>38</td><td>47</td><td>47</td><td>20.2</td>
+              <td>6.9</td><td>1.0</td><td>5.6</td><td>6.6</td><td>1.6</td>
+              <td>1.0</td><td>0.4</td><td>1.0</td><td>2.3</td>
+              <td>3.1</td><td>6.5</td><td>.474</td>
+              <td>0.0</td><td>0.1</td><td>.000</td>
+              <td>0.8</td><td>1.0</td><td>.774</td>
+            </tr>
+            <tr>
+              <td>2015-16</td><td>MIN</td><td>39</td><td>38</td><td>38</td><td>14.6</td>
+              <td>3.2</td><td>0.4</td><td>3.6</td><td>3.9</td><td>1.6</td>
+              <td>0.7</td><td>0.3</td><td>0.4</td><td>1.8</td>
+              <td>1.4</td><td>3.0</td><td>.470</td>
+              <td>0.0</td><td>0.0</td><td class="na-cell">—</td>
+              <td>0.4</td><td>0.6</td><td>.667</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>커리어 평균</td><td>—</td><td>—</td><td>1,462</td><td>—</td><td>33.0</td>
+              <td>17.8</td><td>2.0</td><td>8.0</td><td>10.0</td><td>3.7</td>
+              <td>1.3</td><td>1.4</td><td>2.1</td><td>2.4</td>
+              <td>7.3</td><td>14.6</td><td>.497</td>
+              <td>0.1</td><td>0.4</td><td>.275</td>
+              <td>3.3</td><td>4.2</td><td>.789</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 정규시즌 Advanced -->
+      <div class="career-type-label">Advanced</div>
+      <div style="overflow-x:auto; margin-bottom:16px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th>
+              <th>TS%</th><th>eFG%</th><th>TOV%</th>
+              <th>3PAr</th><th>FTr</th><th>USG%</th>
+              <th>AST%</th><th>ORB%</th><th>DRB%</th><th>TRB%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1995-96</td><td>MIN</td><td>19</td>
+              <td>.522</td><td>.497</td><td>12.1%</td>
+              <td>.038</td><td>.203</td><td>17.6%</td>
+              <td>10.6%</td><td>9.1%</td><td>17.0%</td><td>13.1%</td>
+            </tr>
+            <tr>
+              <td>1996-97</td><td>MIN</td><td>20</td>
+              <td>.537</td><td>.502</td><td>12.5%</td>
+              <td>.019</td><td>.247</td><td>21.3%</td>
+              <td>14.1%</td><td>7.6%</td><td>16.8%</td><td>12.2%</td>
+            </tr>
+            <tr>
+              <td>1997-98</td><td>MIN</td><td>21</td>
+              <td>.527</td><td>.492</td><td>11.8%</td>
+              <td>.012</td><td>.257</td><td>22.5%</td>
+              <td>18.2%</td><td>7.9%</td><td>19.7%</td><td>13.9%</td>
+            </tr>
+            <tr>
+              <td>1998-99</td><td>MIN</td><td>22</td>
+              <td>.493</td><td>.462</td><td>12.0%</td>
+              <td>.016</td><td>.229</td><td>27.8%</td>
+              <td>21.3%</td><td>9.7%</td><td>22.0%</td><td>15.4%</td>
+            </tr>
+            <tr>
+              <td>1999-00</td><td>MIN</td><td>23</td>
+              <td>.545</td><td>.507</td><td>13.6%</td>
+              <td>.053</td><td>.265</td><td>27.4%</td>
+              <td>21.5%</td><td>7.9%</td><td>26.6%</td><td>17.1%</td>
+            </tr>
+            <tr>
+              <td>2000-01</td><td>MIN</td><td>24</td>
+              <td>.531</td><td>.484</td><td>12.0%</td>
+              <td>.045</td><td>.317</td><td>27.0%</td>
+              <td>21.8%</td><td>7.7%</td><td>25.3%</td><td>16.4%</td>
+            </tr>
+            <tr>
+              <td>2001-02</td><td>MIN</td><td>25</td>
+              <td>.536</td><td>.484</td><td>12.5%</td>
+              <td>.083</td><td>.320</td><td>26.0%</td>
+              <td>22.4%</td><td>9.0%</td><td>26.5%</td><td>17.8%</td>
+            </tr>
+            <tr>
+              <td>2002-03</td><td>MIN</td><td>26</td>
+              <td>.553</td><td>.508</td><td>11.9%</td>
+              <td>.048</td><td>.339</td><td>26.4%</td>
+              <td>25.8%</td><td>8.6%</td><td>28.5%</td><td>18.8%</td>
+            </tr>
+            <tr class="prime-row">
+              <td>2003-04</td><td>MIN</td><td>27</td>
+              <td>.547</td><td>.502</td><td>10.5%</td>
+              <td>.027</td><td>.289</td><td>29.6%</td>
+              <td>24.4%</td><td>9.1%</td><td>30.0%</td><td>20.1%</td>
+            </tr>
+            <tr>
+              <td>2004-05</td><td>MIN</td><td>28</td>
+              <td>.567</td><td>.504</td><td>12.2%</td>
+              <td>.018</td><td>.404</td><td>27.1%</td>
+              <td>27.1%</td><td>9.5%</td><td>30.2%</td><td>20.3%</td>
+            </tr>
+            <tr>
+              <td>2005-06</td><td>MIN</td><td>29</td>
+              <td>.589</td><td>.529</td><td>11.3%</td>
+              <td>.025</td><td>.411</td><td>25.5%</td>
+              <td>20.2%</td><td>8.9%</td><td>29.7%</td><td>19.6%</td>
+            </tr>
+            <tr>
+              <td>2006-07</td><td>MIN</td><td>30</td>
+              <td>.546</td><td>.480</td><td>11.6%</td>
+              <td>.042</td><td>.371</td><td>27.4%</td>
+              <td>19.5%</td><td>7.5%</td><td>30.8%</td><td>19.5%</td>
+            </tr>
+            <tr>
+              <td>2007-08</td><td>BOS</td><td>31</td>
+              <td>.588</td><td>.539</td><td>10.8%</td>
+              <td>.011</td><td>.339</td><td>25.5%</td>
+              <td>19.9%</td><td>7.3%</td><td>25.1%</td><td>16.8%</td>
+            </tr>
+            <tr>
+              <td>2008-09</td><td>BOS</td><td>32</td>
+              <td>.563</td><td>.532</td><td>10.1%</td>
+              <td>.011</td><td>.178</td><td>23.4%</td>
+              <td>14.7%</td><td>5.6%</td><td>26.7%</td><td>16.6%</td>
+            </tr>
+            <tr>
+              <td>2009-10</td><td>BOS</td><td>33</td>
+              <td>.569</td><td>.521</td><td>10.4%</td>
+              <td>.006</td><td>.286</td><td>22.1%</td>
+              <td>15.7%</td><td>4.8%</td><td>24.8%</td><td>15.1%</td>
+            </tr>
+            <tr>
+              <td>2010-11</td><td>BOS</td><td>34</td>
+              <td>.575</td><td>.529</td><td>11.1%</td>
+              <td>.006</td><td>.264</td><td>22.3%</td>
+              <td>13.5%</td><td>4.9%</td><td>28.7%</td><td>17.5%</td>
+            </tr>
+            <tr>
+              <td>2011-12</td><td>BOS</td><td>35</td>
+              <td>.550</td><td>.505</td><td>11.1%</td>
+              <td>.012</td><td>.243</td><td>24.9%</td>
+              <td>17.9%</td><td>4.4%</td><td>25.8%</td><td>15.6%</td>
+            </tr>
+            <tr>
+              <td>2012-13</td><td>BOS</td><td>36</td>
+              <td>.535</td><td>.498</td><td>10.5%</td>
+              <td>.019</td><td>.236</td><td>24.5%</td>
+              <td>14.4%</td><td>4.5%</td><td>25.8%</td><td>15.5%</td>
+            </tr>
+            <tr>
+              <td>2013-14</td><td>BKN</td><td>37</td>
+              <td>.467</td><td>.441</td><td>15.5%</td>
+              <td>.008</td><td>.132</td><td>18.9%</td>
+              <td>12.4%</td><td>6.5%</td><td>32.1%</td><td>19.3%</td>
+            </tr>
+            <tr>
+              <td>2014-15</td><td>BKN/MIN</td><td>38</td>
+              <td>.499</td><td>.474</td><td>12.7%</td>
+              <td>.017</td><td>.151</td><td>17.8%</td>
+              <td>13.1%</td><td>5.7%</td><td>31.0%</td><td>18.3%</td>
+            </tr>
+            <tr>
+              <td>2015-16</td><td>MIN</td><td>39</td>
+              <td>.491</td><td>.470</td><td>11.4%</td>
+              <td>.009</td><td>.183</td><td>11.3%</td>
+              <td>16.4%</td><td>3.2%</td><td>27.9%</td><td>15.7%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 능력치 -->
+  <div class="section">
+    <div class="section-header">■ 능력치 (전성기 기준, 2003-04 MIN)</div>
+    <div class="section-body">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th class="attr-name" style="text-align:left;">카테고리 / 능력치</th>
+            <th class="attr-val">값</th>
+            <th class="attr-delta">변화</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- ① 인사이드 스코어링 -->
+          <tr><td class="cat-header" colspan="3">① 인사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">closeShot</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"><span class="delta-down">▼ -6</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">layup</td>
+            <td class="attr-val">85</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">dunk</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">postPlay</td>
+            <td class="attr-val">85</td>
+            <td class="attr-delta"><span class="delta-up">▲ +3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">drawFoul</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"><span class="delta-up">▲ +10</span></td>
+          </tr>
+          <!-- ② 아웃사이드 스코어링 -->
+          <tr><td class="cat-header" colspan="3">② 아웃사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">midRange</td>
+            <td class="attr-val">88</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">threeCorner</td>
+            <td class="attr-val">35</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">three45</td>
+            <td class="attr-val">32</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">threeTop</td>
+            <td class="attr-val">30</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">ft</td>
+            <td class="attr-val">79</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">shotIq</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"><span class="delta-down">▼ -3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">spdBall</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">offConsist</td>
+            <td class="attr-val">88</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ③ 플레이메이킹 -->
+          <tr><td class="cat-header" colspan="3">③ 플레이메이킹</td></tr>
+          <tr>
+            <td class="attr-name">handling</td>
+            <td class="attr-val">75</td>
+            <td class="attr-delta"><span class="delta-up">▲ +7</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">passIq</td>
+            <td class="attr-val">90</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">passVision</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">passAcc</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">passPerc</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">offBallMovement</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ④ 운동 능력 -->
+          <tr><td class="cat-header" colspan="3">④ 운동 능력</td></tr>
+          <tr>
+            <td class="attr-name">speed</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">agility</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">vertical</td>
+            <td class="attr-val">80</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">strength</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">durability</td>
+            <td class="attr-val">88</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">stamina</td>
+            <td class="attr-val">90</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">hustle</td>
+            <td class="attr-val">95</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">intangibles</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ⑤ 수비 -->
+          <tr><td class="cat-header" colspan="3">⑤ 수비</td></tr>
+          <tr>
+            <td class="attr-name">perDef</td>
+            <td class="attr-val">90</td>
+            <td class="attr-delta"><span class="delta-up">▲ +8</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">intDef</td>
+            <td class="attr-val">95</td>
+            <td class="attr-delta"><span class="delta-up">▲ +3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">helpDefIq</td>
+            <td class="attr-val">95</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">steal</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">blk</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"><span class="delta-up">▲ +10</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">defConsist</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ⑥ 리바운드 -->
+          <tr><td class="cat-header" colspan="3">⑥ 리바운드</td></tr>
+          <tr>
+            <td class="attr-name">defReb</td>
+            <td class="attr-val">90</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name">offReb</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"><span class="delta-up">▲ +14</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name">boxOut</td>
+            <td class="attr-val">85</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- OVR -->
+          <tr>
+            <td class="cat-header" style="text-align:left; padding-left:10px;">OVR</td>
+            <td class="attr-val" style="background:#d4daea; font-weight:bold; font-size:13px; color:#1a3a6b;">95</td>
+            <td class="attr-delta" style="background:#d4daea;"><span class="delta-up">▲ +6</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 강점 / 약점 -->
+  <div class="section">
+    <div class="section-header">■ 강점 &amp; 약점</div>
+    <div class="section-body" style="padding:0;">
+      <table class="sw-table">
+        <tr>
+          <td class="sw-header">강점</td>
+          <td class="sw-header">약점</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title str">① 역대급 양방향 수비 도미넌스</div>
+              <div class="sw-item-body">
+                2003-04 BLK% 4.0%(리그 1위), All-Def 1st 6회 연속, 퍼리미터에서 7피트 장신이 가드를 수비하는 수직 커버리지가 리그 역사상 전무. intDef 95 / perDef 90 / helpDefIq 95로 인테리어-퍼리미터 모두 제어.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">② 리바운드 지배력</div>
+              <div class="sw-item-body">
+                2003-04 DRB% 30.0%, ORB% 9.1%, 13.9 리바운드(리그 1위). 공격 리바운드까지 적극 가담(3.0개/경기)하여 공수 전환 리바운드를 사실상 독점. defReb 90 / offReb 82.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">③ PF 최고 수준의 패싱 능력</div>
+              <div class="sw-item-body">
+                AST% 24.4%는 포워드 역사상 손꼽히는 수치. 5.0 어시스트/경기(MVP 시즌)로 포스트업 후 더블팀 붕괴시 정확한 킥아웃 패스 구현. passIq 90이 이를 반영.
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">① 3점 슛 부재</div>
+              <div class="sw-item-body">
+                커리어 3PA 0.5개/경기, 3P% 25.6%(2003-04). 3점 라인 밖에서는 실질적으로 위협이 없어 현대 스트레치 PF 요구 사항을 충족하지 못함. threeCorner 35 / three45 32 / threeTop 30.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">② 제한구역 근거리 피니시 한계</div>
+              <div class="sw-item-body">
+                페인트 비제한구역 FG% 48.4%로 동급 빅맨 대비 평범한 수준. 포스트 공격 폼이 미드레인지 페이더웨이 위주라 밀어붙이는 피니시가 약함. closeShot 82.
+              </div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 스카우트 노트 -->
+  <div class="section">
+    <div class="section-header">■ 스카우트 노트</div>
+    <div class="section-body">
+      <table class="notes-table">
+        <tr>
+          <td class="label">총평</td>
+          <td class="notes-text">
+            케빈 가넷은 포워드 포지션의 수비 개념을 재정의한 선수다. 211cm의 신장으로 가드를 스위치하면서도 림 프로텍션을 동시에 수행하는 버사틸리티는 당대 누구도 구현하지 못했다. 2003-04 MVP 시즌에는 24.2pts / 13.9reb / 5.0ast / 2.2blk를 기록, 스코어링-리바운딩-패싱-블로킹 전 영역에서 동시에 리그 최상위권이었다. 미드레인지 페이더웨이와 허리를 낮춘 포스트 공격이 주 무기이며, 파울 유도 능력도 FTA 5.7개/경기로 상위권이었다. 단, 3점 라인 밖은 절대적 사각지대로 현대 스페이싱 중심 농구에서는 이 부분이 유일한 구조적 한계로 작용한다.
+          </td>
+        </tr>
+        <tr>
+          <td class="label">비교 선수</td>
+          <td class="notes-text">
+            <strong>COMP — 드레이먼드 그린 + 팀 던컨 합성형</strong> (양방향 영향력에서 드레이먼드, 포스트 스코어링·내구성에서 던컨을 합친 2000년대 완성형)
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="section" style="border-bottom:none;">
+    <div class="section-header">■ 계약 정보</div>
+    <div class="section-body">
+      <table class="footer-table">
+        <tr>
+          <td class="label">등번호</td>
+          <td># 21 (MIN 2003-04 기준 / StatMuse)</td>
+          <td class="label">연봉</td>
+          <td>$28,000,000 (2003-04 시즌 기준)</td>
+        </tr>
+        <tr>
+          <td class="label">계약</td>
+          <td>include_alltime = TRUE (올타임 레전드 로스터)</td>
+          <td class="label">평가일</td>
+          <td>2026-04-23 · v1</td>
+        </tr>
+      </table>
+      <div class="footer-note">
+        스카우팅 보고서 v1 | 전성기 기준: 2003-04 MIN (MVP 시즌) | eval-player.ts OVR: 95
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

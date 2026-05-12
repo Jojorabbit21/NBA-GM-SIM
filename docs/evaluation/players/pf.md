@@ -17,16 +17,16 @@
 | A | 엘빈 헤이즈 | 78.6 | dreb=90 idef=82 lay=88 post=95 3pt=25 pdef=72 oreb=82 intang=85 str=92 |
 | A | 칼 말론 | 78.3 | dreb=85 idef=78 lay=92 post=97 3pt=32 pdef=72 oreb=72 intang=85 str=97 |
 | A | 케빈 맥헤일 | 78.0 | dreb=82 idef=85 lay=92 post=99 3pt=22 pdef=72 oreb=75 intang=90 str=88 |
-| A | 크리스 웨버 | 77.5 | dreb=88 idef=78 lay=88 post=92 3pt=40 pdef=72 oreb=72 intang=78 str=88 |
+| A | 크리스 웨버 | 78.8 | dreb=85 idef=82 lay=88 post=92 3pt=40 pdef=75 oreb=75 intang=85 str=90 |
 | A | 더크 노비츠키 | 77.5 | dreb=84 idef=66 lay=76 post=86 3pt=86.7 pdef=60 oreb=62 intang=96 str=82 |
 | A | 에반 모블리 | 77.3 | dreb=78 idef=92 lay=78 post=68 3pt=70 pdef=85 oreb=62 intang=85 str=72 |
 | A- | 라시드 월리스 | 76.0 | dreb=72 idef=82 lay=82 post=82 3pt=70 pdef=72 oreb=58 intang=85 str=82 |
 | A- | 지미 버틀러 3세 | 75.5 | dreb=62 idef=83 lay=88 post=80 3pt=72 pdef=80 oreb=55 intang=80 str=82 |
 | A- | 자렌 잭슨 주니어 | 75.3 | dreb=65 idef=90 lay=75 post=83 3pt=78 pdef=72 oreb=52 intang=82 str=79 |
-| A- | 데니스 로드먼 | 75.1 | dreb=99 idef=88 lay=75 post=42 3pt=20 pdef=88 oreb=99 intang=82 str=92 |
 | A- | 카메론 부저 | 75.1 | dreb=82 idef=78 lay=78 post=76 3pt=68 pdef=70 oreb=80 intang=60 str=76 |
 | A- | 줄리어스 랜들 | 74.3 | dreb=72 idef=65 lay=88 post=82 3pt=76 pdef=62 oreb=62 intang=82 str=82 |
 | B+ | 래리 존슨 | 73.8 | dreb=78 idef=68 lay=85 post=82 3pt=52 pdef=62 oreb=75 intang=78 str=90 |
+| B+ | 데니스 로드먼 | 73.2 | dreb=99 idef=82 lay=68 post=40 3pt=20 pdef=88 oreb=99 intang=82 str=92 |
 | B+ | 폴 조지 | 72.7 | dreb=55 idef=72 lay=85 post=68 3pt=87 pdef=85 oreb=50 intang=85 str=72 |
 | B+ | 애런 고든 | 72.7 | dreb=62 idef=72 lay=82 post=78 3pt=74 pdef=78 oreb=55 intang=85 str=71 |
 | B+ | 드레이먼드 그린 | 72.6 | dreb=72 idef=85 lay=72 post=68 3pt=55 pdef=85 oreb=52 intang=90 str=78 |
@@ -35,10 +35,10 @@
 | B+ | 타리 이슨 | 72.0 | dreb=72 idef=73 lay=78 post=64 3pt=65 pdef=83 oreb=71 intang=72 str=70 |
 | B+ | 세르지 이바카 | 71.9 | dreb=68 idef=82 lay=72 post=76 3pt=70 pdef=65 oreb=52 intang=85 str=78 |
 | B+ | P.J. 워싱턴 | 71.8 | dreb=74 idef=79 lay=78 post=55 3pt=76 pdef=77 oreb=57 intang=78 str=66 |
-| B+ | 보비 존스 | 71.6 | dreb=78 idef=88 lay=82 post=65 3pt=20 pdef=82 oreb=72 intang=85 str=75 |
+| B+ | 바비 존스 | 71.6 | dreb=78 idef=88 lay=82 post=65 3pt=20 pdef=82 oreb=72 intang=85 str=75 |
 | B+ | 자이언 윌리엄슨 | 71.4 | dreb=72 idef=58 lay=92 post=80 3pt=60 pdef=55 oreb=72 intang=72 str=88 |
 | B+ | 스펜서 헤이우드 | 71.4 | dreb=85 idef=68 lay=85 post=85 3pt=21 pdef=62 oreb=80 intang=78 str=82 |
-| B+ | 라마커스 올드리지 | 71.1 | dreb=78 idef=72 lay=85 post=92 3pt=35 pdef=55 oreb=62 intang=78 str=82 |
+| B+ | 라마커스 알드리지 | 73.5 | dreb=75 idef=75 lay=84 post=92 3pt=51 pdef=55 oreb=68 intang=80 str=82 |
 | B+ | 콜린 머레이-보일스 | 71.1 | dreb=57 idef=70 lay=74 post=68 3pt=84 pdef=72 oreb=82 intang=68 str=71 |
 | B | 스카티 반스 | 70.9 | dreb=55 idef=80 lay=85 post=65 3pt=70 pdef=80 oreb=52 intang=85 str=70 |
 | B | 블레이크 그리핀 | 70.9 | dreb=75 idef=58 lay=90 post=78 3pt=42 pdef=68 oreb=72 intang=78 str=85 |

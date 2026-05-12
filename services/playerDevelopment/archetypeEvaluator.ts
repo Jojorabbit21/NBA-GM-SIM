@@ -43,25 +43,34 @@ export function calcModuleScores(player: Player): ArchetypeModuleScores {
 const POSITION_ELIGIBLE: Record<string, ArchetypeType[]> = {
     'PG': [
         'primary_creator_guard', 'scoring_combo_guard', 'movement_shooter',
+        'floor_general_guard', 'scoring_point_guard', 'defensive_guard',
+        'three_level_scorer',
     ],
     'SG': [
         'primary_creator_guard', 'scoring_combo_guard', 'movement_shooter',
         'perimeter_3nd', 'two_way_wing', 'slashing_wing', 'shot_creator_wing',
+        'floor_general_guard', 'scoring_point_guard', 'defensive_guard',
+        'three_level_scorer', 'lockdown_wing',
     ],
     'SF': [
         'movement_shooter', 'perimeter_3nd', 'two_way_wing', 'slashing_wing',
         'shot_creator_wing', 'connector_forward', 'playmaking_big',
         'aerial_wing', 'post_scoring_wing', 'wing_protector',
+        'three_level_scorer', 'lockdown_wing',
     ],
     'PF': [
         'perimeter_3nd', 'two_way_wing', 'connector_forward',
         'post_scoring_big', 'rim_runner_big', 'stretch_big',
         'rim_protector_anchor', 'playmaking_big',
         'aerial_wing', 'post_scoring_wing', 'wing_protector',
+        'three_level_scorer', 'lockdown_wing', 'switchable_anchor',
+        'two_way_big', 'rebounding_big',
     ],
     'C': [
         'post_scoring_big', 'rim_runner_big', 'stretch_big',
         'rim_protector_anchor', 'playmaking_big',
+        'three_level_scorer', 'switchable_anchor',
+        'two_way_big', 'rebounding_big',
     ],
 };
 
@@ -122,8 +131,8 @@ export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType
                    m.teamDefense * 0.12 + m.postCraft * 0.10 + m.motorAvailability * 0.10;
 
         case 'rim_protector_anchor':
-            return m.rimProtection * 0.38 + m.rebounding * 0.26 + m.teamDefense * 0.14 +
-                   m.motorAvailability * 0.10 + m.postCraft * 0.12;
+            return m.rimProtection * 0.40 + m.rebounding * 0.28 + m.teamDefense * 0.18 +
+                   m.motorAvailability * 0.14;
 
         case 'playmaking_big':
             return m.playmaking * 0.26 + m.postCraft * 0.20 + m.spotUpShooting * 0.16 +
@@ -140,6 +149,38 @@ export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType
         case 'wing_protector':
             return m.rimProtection * 0.30 + m.poaDefense * 0.24 + m.teamDefense * 0.20 +
                    m.rebounding * 0.14 + m.motorAvailability * 0.12;
+
+        case 'floor_general_guard':
+            return m.playmaking * 0.42 + m.teamDefense * 0.16 + m.poaDefense * 0.12 +
+                   m.spotUpShooting * 0.10 + m.motorAvailability * 0.10 + m.offballAttack * 0.10;
+
+        case 'scoring_point_guard':
+            return m.shotCreation * 0.28 + m.playmaking * 0.20 + m.rimFinishing * 0.18 +
+                   m.spotUpShooting * 0.14 + m.motorAvailability * 0.10 + m.poaDefense * 0.10;
+
+        case 'defensive_guard':
+            return m.poaDefense * 0.32 + m.teamDefense * 0.18 + m.playmaking * 0.14 +
+                   m.spotUpShooting * 0.14 + m.motorAvailability * 0.12 + m.rebounding * 0.10;
+
+        case 'three_level_scorer':
+            return m.shotCreation * 0.26 + m.rimFinishing * 0.24 + m.spotUpShooting * 0.24 +
+                   m.motorAvailability * 0.10 + m.playmaking * 0.08 + m.poaDefense * 0.08;
+
+        case 'lockdown_wing':
+            return m.poaDefense * 0.34 + m.teamDefense * 0.22 + m.motorAvailability * 0.16 +
+                   m.rebounding * 0.12 + m.rimFinishing * 0.08 + m.playmaking * 0.08;
+
+        case 'switchable_anchor':
+            return m.poaDefense * 0.20 + m.teamDefense * 0.18 + m.rimProtection * 0.18 +
+                   m.playmaking * 0.14 + m.rebounding * 0.14 + m.motorAvailability * 0.16;
+
+        case 'two_way_big':
+            return m.postCraft * 0.22 + m.rimFinishing * 0.18 + m.rimProtection * 0.24 +
+                   m.rebounding * 0.16 + m.teamDefense * 0.12 + m.motorAvailability * 0.08;
+
+        case 'rebounding_big':
+            return m.rebounding * 0.44 + m.rimFinishing * 0.20 + m.rimProtection * 0.16 +
+                   m.motorAvailability * 0.12 + m.teamDefense * 0.08;
 
         default:
             return 0;
@@ -210,6 +251,38 @@ export function calcStatStyleFit(stats: PlayerStats): Partial<Record<ArchetypeTy
         bonuses['scoring_combo_guard'] = 3;
         bonuses['shot_creator_wing'] = 2;
     }
+
+    const stlPG = stats.stl / g;
+
+    // Pass-first PG: high assists + defensive contribution
+    if (astPG >= 6 && (stlPG + blkPG) >= 1.5) bonuses['floor_general_guard'] = 4;
+    else if (astPG >= 7) bonuses['floor_general_guard'] = 3;
+
+    // Scoring PG: high scoring + moderate assists
+    if (ptsPG >= 20 && astPG >= 4 && astPG < 7) bonuses['scoring_point_guard'] = 4;
+
+    // Defensive guard: elite steals + low scoring
+    if (stlPG >= 1.5 && ptsPG < 16) bonuses['defensive_guard'] = 5;
+    else if (stlPG >= 1.2 && ptsPG < 14) bonuses['defensive_guard'] = 3;
+
+    // 3-Level Scorer: high scoring from all three zones
+    if (ptsPG >= 18 && rimPG >= 4 && p3aPG >= 4) bonuses['three_level_scorer'] = 5;
+    else if (ptsPG >= 15 && rimPG >= 3 && p3aPG >= 3) bonuses['three_level_scorer'] = 3;
+
+    // Lockdown wing: elite steals + low scoring (wing)
+    if (stlPG >= 1.2 && ptsPG < 10) bonuses['lockdown_wing'] = 5;
+    else if (stlPG >= 1.0 && ptsPG < 12) bonuses['lockdown_wing'] = 3;
+
+    // Switchable anchor: blocks + steals + rebounds (versatile big)
+    if (blkPG >= 1.0 && stlPG >= 0.8 && rebPG >= 7) bonuses['switchable_anchor'] = 4;
+
+    // Two-way big: scoring + rim protection + rebounding all decent
+    if (ptsPG >= 14 && blkPG >= 1.2 && rebPG >= 8) bonuses['two_way_big'] = 5;
+    else if (ptsPG >= 12 && blkPG >= 1.0 && rebPG >= 7) bonuses['two_way_big'] = 3;
+
+    // Glass cleaner: elite rebounding, low scoring
+    if (rebPG >= 12 && ptsPG < 14) bonuses['rebounding_big'] = 5;
+    else if (rebPG >= 10 && ptsPG < 12) bonuses['rebounding_big'] = 3;
 
     return bonuses;
 }
@@ -330,6 +403,15 @@ const ARCHETYPE_DISPLAY: Record<ArchetypeType, ArchetypeDisplayInfo> = {
     'stretch_big':            { label: 'Stretch Big',        description: '외곽슛 가능한 빅',       color: 'cyan',    group: 'big'   },
     'rim_protector_anchor':   { label: 'Rim Protector',      description: '수비 앵커형 센터',       color: 'slate',   group: 'big'   },
     'playmaking_big':         { label: 'Playmaking Big',     description: '패스 허브형 빅',         color: 'indigo',  group: 'big'   },
+    // New archetypes (22종)
+    'floor_general_guard':    { label: 'Floor General',      description: '패스 퍼스트 게임 메이커', color: 'purple',  group: 'guard' },
+    'scoring_point_guard':    { label: 'Scoring PG',         description: '득점형 포인트 가드',      color: 'rose',    group: 'guard' },
+    'defensive_guard':        { label: 'Defensive Guard',    description: '퍼리미터 락다운 가드',    color: 'emerald', group: 'guard' },
+    'three_level_scorer':     { label: '3-Level Scorer',     description: '3레벨 스코어러',          color: 'amber',   group: 'wing'  },
+    'lockdown_wing':          { label: 'Lockdown Wing',      description: '순수 수비형 윙',          color: 'teal',    group: 'wing'  },
+    'switchable_anchor':      { label: 'Switchable Anchor',  description: '스위치 가능한 수비 앵커',  color: 'zinc',    group: 'big'   },
+    'two_way_big':            { label: 'Two-Way Big',        description: '공수 균형형 빅',           color: 'sky',     group: 'big'   },
+    'rebounding_big':          { label: 'Rebounding Big',     description: '리바운드 전문 빅',         color: 'stone',   group: 'big'   },
 };
 
 export function getArchetypeDisplayInfo(type: ArchetypeType): ArchetypeDisplayInfo {

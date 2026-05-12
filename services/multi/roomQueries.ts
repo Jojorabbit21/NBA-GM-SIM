@@ -41,7 +41,7 @@ export interface LeagueRow {
     id: string;
     type: 'main_league' | 'tournament';
     group_id: string | null;
-    tier: 'pro' | 'dleague' | 'uleague' | null;
+    tier: 'd1' | 'd2' | 'd3' | null;
     name: string;
     admin_user_id: string;
     status: 'recruiting' | 'drafting' | 'in_progress' | 'finished';
@@ -59,8 +59,10 @@ export interface LeagueRow {
     draft_format: string;
     draft_pool_strategy: string;
     draft_pick_duration_sec: number;
+    draft_total_rounds: number;
     rookie_pool_inclusion: boolean;
     draft_scheduled_at: string | null;
+    lottery_scheduled_at: string | null;
     tournament_format: string | null;
     match_format: string | null;
     bracket_data: unknown | null;
@@ -78,6 +80,77 @@ export const listOpenLeagues = async (): Promise<LeagueRow[]> => {
 
     if (error) { console.error('[listOpenLeagues]', error.message); return []; }
     return data ?? [];
+};
+
+// ─── 리그 목록 (인원 수 + 참가 여부 포함) ─────────────────────────────────────
+
+export interface LeagueListEntry {
+    league:      LeagueRow;
+    roomId:      string | null;
+    memberCount: number;   // 실제 참가 인원 (is_ai=false)
+    maxPlayers:  number;
+    isJoined:    boolean;
+}
+
+export const listLeaguesWithStats = async (
+    userId: string | null
+): Promise<LeagueListEntry[]> => {
+    // 1. 오픈 리그 목록
+    const { data: leagues, error } = await supabase
+        .from('leagues')
+        .select('*')
+        .in('status', ['recruiting', 'drafting', 'in_progress'])
+        .order('created_at', { ascending: false });
+
+    if (error || !leagues?.length) return [];
+
+    const leagueIds = leagues.map(l => l.id);
+
+    // 2. 방 목록 + 유저 참가 여부 병렬 조회
+    const [roomsRes, membershipRes] = await Promise.all([
+        supabase
+            .from('rooms')
+            .select('id, league_id, max_players')
+            .in('league_id', leagueIds)
+            .eq('status', 'active'),
+        userId
+            ? supabase
+                  .from('room_members')
+                  .select('room_id')
+                  .eq('user_id', userId)
+                  .eq('is_ai', false)
+            : Promise.resolve({ data: [] as { room_id: string }[], error: null }),
+    ]);
+
+    const rooms            = roomsRes.data ?? [];
+    const joinedRoomIds    = new Set((membershipRes.data ?? []).map(m => m.room_id));
+    const roomByLeague     = Object.fromEntries(rooms.map(r => [r.league_id, r]));
+    const roomIds          = rooms.map(r => r.id);
+
+    // 3. 방별 인원 수 (AI 제외)
+    let memberCounts: Record<string, number> = {};
+    if (roomIds.length > 0) {
+        const { data: members } = await supabase
+            .from('room_members')
+            .select('room_id')
+            .in('room_id', roomIds)
+            .eq('is_ai', false);
+
+        (members ?? []).forEach(m => {
+            memberCounts[m.room_id] = (memberCounts[m.room_id] ?? 0) + 1;
+        });
+    }
+
+    return leagues.map(league => {
+        const room = roomByLeague[league.id];
+        return {
+            league,
+            roomId:      room?.id      ?? null,
+            memberCount: room ? (memberCounts[room.id] ?? 0) : 0,
+            maxPlayers:  room?.max_players ?? league.max_teams,
+            isJoined:    room ? joinedRoomIds.has(room.id) : false,
+        };
+    });
 };
 
 export const listLeaguesByGroup = async (groupId: string): Promise<LeagueRow[]> => {
@@ -194,6 +267,35 @@ export const listUserActiveRooms = async (userId: string): Promise<RoomRow[]> =>
     return data ?? [];
 };
 
+// ─── league_teams ─────────────────────────────────────────────────────────────
+
+export interface LeagueTeamRow {
+    id: string;
+    room_id: string;
+    team_slug: string;
+    team_name: string;
+    team_abbr: string;
+    color_primary: string;
+    color_secondary: string;
+    conference: string | null;
+    user_id: string | null;
+    is_ai: boolean;
+    draft_order: number | null;
+    roster: string[];           // player_id[]
+    created_at: string;
+}
+
+export const listLeagueTeams = async (roomId: string): Promise<LeagueTeamRow[]> => {
+    const { data, error } = await supabase
+        .from('league_teams')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('team_slug');
+
+    if (error) { console.error('[listLeagueTeams]', error.message); return []; }
+    return data ?? [];
+};
+
 // ─── 승강 / 이력 ──────────────────────────────────────────────────────────────
 
 export interface PromotionRow {
@@ -202,8 +304,8 @@ export interface PromotionRow {
     from_season: number;
     to_season: number;
     user_id: string;
-    from_tier: 'pro' | 'dleague' | 'uleague';
-    to_tier:   'pro' | 'dleague' | 'uleague';
+    from_tier: 'd1' | 'd2' | 'd3';
+    to_tier:   'd1' | 'd2' | 'd3';
     final_rank: number;
     movement: 'promoted' | 'relegated' | 'stayed';
     created_at: string;

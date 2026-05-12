@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>선수 스카우팅 보고서 — 엘빈 헤이즈</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #d0d0d0;
+      font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+      font-size: 12px;
+      color: #000;
+      padding: 30px;
+    }
+
+    .page {
+      background: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 0;
+    }
+
+    .report-title-bar {
+      background: #1a3a6b;
+      color: #fff;
+      text-align: center;
+      padding: 8px 0 6px;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 0.3em;
+      border-bottom: 2px solid #000;
+    }
+
+    .section {
+      border-bottom: 2px solid #000;
+      padding: 0;
+    }
+    .section-header {
+      background: #c0c8d8;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-bottom: 1px solid #000;
+      letter-spacing: 0.05em;
+    }
+    .section-body {
+      padding: 6px 8px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .info-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .info-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .info-table .value {
+      min-width: 100px;
+    }
+    .info-table .value.accent {
+      font-weight: bold;
+      font-size: 14px;
+      color: #1a3a6b;
+    }
+
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .arch-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .arch-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 90px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .arch-primary   { font-weight: bold; color: #1a3a6b; font-size: 12px; }
+    .arch-secondary { color: #444; }
+    .tag-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag {
+      border: 1px solid #1a3a6b;
+      color: #1a3a6b;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      background: #e8ecf2;
+    }
+
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .module-table th, .module-table td {
+      border: 1px solid #999;
+      padding: 3px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .module-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .module-table td.name-col {
+      text-align: left;
+      width: 130px;
+    }
+    .bar-cell { width: 260px; }
+    .bar-outer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border: 1px solid #aaa;
+    }
+    .bar-inner { height: 100%; }
+    .bar-s { background: #1a3a6b; }
+    .bar-a { background: #2e7d32; }
+    .bar-b { background: #1565c0; }
+    .bar-c { background: #e65100; }
+    .bar-d { background: #b71c1c; }
+
+    .grade { font-weight: bold; width: 36px; }
+    .grade-S { color: #1a3a6b; }
+    .grade-A { color: #2e7d32; }
+    .grade-B { color: #1565c0; }
+    .grade-C { color: #e65100; }
+    .grade-D { color: #b71c1c; }
+
+    .career-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .career-table th, .career-table td {
+      border: 1px solid #bbb;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .career-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 10px;
+    }
+    .career-table td:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #1a3a6b;
+    }
+    .career-table tr.prime-row {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .career-table tfoot tr.avg-row {
+      background: #e8ecf2;
+      font-weight: bold;
+      border-top: 2px solid #999;
+    }
+    .career-table td.na-cell {
+      color: #aaa;
+    }
+    .career-group-header {
+      background: #1a3a6b; color: #fff; font-weight: bold; font-size: 12px;
+      padding: 6px 10px; margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .career-type-label {
+      background: #d0d8e8; color: #1a3a6b; font-weight: bold; font-size: 11px;
+      padding: 4px 10px; margin-top: 8px;
+    }
+
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .attr-table th, .attr-table td {
+      border: 1px solid #999;
+      padding: 3px 6px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .attr-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .attr-table td.cat-header {
+      background: #d4daea;
+      font-weight: bold;
+      font-size: 11px;
+      color: #1a3a6b;
+      text-align: left;
+      padding: 4px 10px;
+      border-top: 1px solid #666;
+      letter-spacing: 0.03em;
+    }
+    .attr-table td.attr-name {
+      text-align: left;
+      width: 130px;
+      padding-left: 8px;
+    }
+    .attr-table td.attr-val {
+      width: 44px;
+      font-weight: bold;
+    }
+    .attr-table td.attr-delta {
+      width: 58px;
+      font-size: 11px;
+    }
+    .delta-up   { color: #1a6b1a; font-weight: bold; }
+    .delta-down { color: #b71c1c; font-weight: bold; }
+
+    .sw-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .sw-table td {
+      border: 1px solid #999;
+      padding: 5px 8px;
+      vertical-align: top;
+      width: 50%;
+    }
+    .sw-table .sw-header {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    .sw-item { margin-bottom: 6px; }
+    .sw-item-title { font-weight: bold; margin-bottom: 2px; }
+    .sw-item-title.str { color: #1a6b1a; }
+    .sw-item-title.wkn { color: #b71c1c; }
+    .sw-item-body { color: #333; line-height: 1.5; }
+
+    .notes-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .notes-table td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    .notes-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .notes-text {
+      line-height: 1.7;
+      color: #111;
+    }
+    .comp-label { font-weight: bold; width: 70px; }
+
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .footer-table td {
+      border: 1px solid #999;
+      padding: 4px 10px;
+      text-align: center;
+    }
+    .footer-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      width: 70px;
+    }
+    .footer-note {
+      background: #f5f5f5;
+      font-size: 10px;
+      color: #666;
+      text-align: right;
+      padding: 3px 8px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 타이틀 -->
+  <div class="report-title-bar">선 수 스 카 우 팅 보 고 서</div>
+
+  <!-- 기본 정보 -->
+  <div class="section">
+    <div class="section-header">■ 기본 정보</div>
+    <div class="section-body">
+      <table class="info-table">
+        <tr>
+          <td class="label">선수명</td>
+          <td class="value accent">엘빈 헤이즈</td>
+          <td class="label">포지션</td>
+          <td class="value">PF</td>
+          <td class="label">등번호</td>
+          <td class="value">#11</td>
+        </tr>
+        <tr>
+          <td class="label">나이</td>
+          <td class="value">28세 (1973-74)</td>
+          <td class="label">소속팀</td>
+          <td class="value">캐피탈 불릿츠 (CAP)</td>
+          <td class="label">OVR</td>
+          <td class="value accent">82</td>
+        </tr>
+        <tr>
+          <td class="label">체격</td>
+          <td class="value">206cm / 107kg</td>
+          <td class="label">전성기</td>
+          <td class="value">1973-74 캐피탈 불릿츠</td>
+          <td class="label">연봉</td>
+          <td class="value">$1,000,000</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 아키타입 & 태그 -->
+  <div class="section">
+    <div class="section-header">■ 아키타입 &amp; 태그</div>
+    <div class="section-body">
+      <table class="arch-table">
+        <tr>
+          <td class="label">아키타입</td>
+          <td>
+            <span class="arch-primary">Post Scorer</span>
+            &nbsp;/&nbsp;
+            <span class="arch-secondary">Rebounding Big</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">태그</td>
+          <td>
+            <div class="tag-cell">
+              <span class="tag">Glass Cleaner</span>
+              <span class="tag">High Motor</span>
+              <span class="tag">Reliable 2-Way</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 모듈 스코어 -->
+  <div class="section">
+    <div class="section-header">■ 모듈 스코어</div>
+    <div class="section-body">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th class="name-col">모듈</th>
+            <th class="bar-cell">바 차트</th>
+            <th>점수</th>
+            <th>등급</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rebounding 87.4 S -->
+          <tr>
+            <td class="name-col">Rebounding</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-s" style="width:87.4%"></div></div></td>
+            <td>87.4</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <!-- motorAvailability 85.7 S -->
+          <tr>
+            <td class="name-col">Motor / Avail</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-s" style="width:85.7%"></div></div></td>
+            <td>85.7</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <!-- postCraft 86.7 S -->
+          <tr>
+            <td class="name-col">Post Craft</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-s" style="width:86.7%"></div></div></td>
+            <td>86.7</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <!-- rimProtection 83.2 A+ -->
+          <tr>
+            <td class="name-col">Rim Protection</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:83.2%"></div></div></td>
+            <td>83.2</td>
+            <td class="grade grade-A">A+</td>
+          </tr>
+          <!-- rimFinishing 82.6 A+ -->
+          <tr>
+            <td class="name-col">Rim Finishing</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:82.6%"></div></div></td>
+            <td>82.6</td>
+            <td class="grade grade-A">A+</td>
+          </tr>
+          <!-- teamDefense 78.3 A -->
+          <tr>
+            <td class="name-col">Team Defense</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:78.3%"></div></div></td>
+            <td>78.3</td>
+            <td class="grade grade-A">A</td>
+          </tr>
+          <!-- poaDefense 74.7 A- -->
+          <tr>
+            <td class="name-col">POA Defense</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:74.7%"></div></div></td>
+            <td>74.7</td>
+            <td class="grade grade-A">A-</td>
+          </tr>
+          <!-- offballAttack 66.4 B -->
+          <tr>
+            <td class="name-col">Off-Ball Attack</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-b" style="width:66.4%"></div></div></td>
+            <td>66.4</td>
+            <td class="grade grade-B">B</td>
+          </tr>
+          <!-- shotCreation 62.7 B- -->
+          <tr>
+            <td class="name-col">Shot Creation</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-b" style="width:62.7%"></div></div></td>
+            <td>62.7</td>
+            <td class="grade grade-B">B-</td>
+          </tr>
+          <!-- playmaking 56.3 C+ -->
+          <tr>
+            <td class="name-col">Playmaking</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-c" style="width:56.3%"></div></div></td>
+            <td>56.3</td>
+            <td class="grade grade-C">C+</td>
+          </tr>
+          <!-- spotUpShooting 35.4 D -->
+          <tr>
+            <td class="name-col">Spot-Up Shooting</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-d" style="width:35.4%"></div></div></td>
+            <td>35.4</td>
+            <td class="grade grade-D">D</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:10px; color:#555; padding:4px 2px;">
+        모듈 등급 기준: S(85+) &nbsp; A+(80-84) &nbsp; A(75-79) &nbsp; A-(72-74) &nbsp; B+(70-71) &nbsp; B(65-69) &nbsp; B-(60-64) &nbsp; C+(55-59) &nbsp; C(50-54) &nbsp; C-(45-49) &nbsp; D(&lt;45)
+      </div>
+    </div>
+  </div>
+
+  <!-- 커리어 기록 -->
+  <div class="section">
+    <div class="section-header">■ 커리어 기록</div>
+    <div class="section-body">
+
+      <div class="career-group-header">정규시즌</div>
+      <div class="career-type-label">Traditional</div>
+      <table class="career-table">
+        <thead>
+          <tr>
+            <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+            <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TOV</th><th>PF</th>
+            <th>FGM</th><th>FGA</th><th>FG%</th><th>3PM</th><th>3PA</th><th>3P%</th><th>FTM</th><th>FTA</th><th>FT%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1968-69</td><td>SDR</td><td>23</td><td>82</td><td>—</td><td>45.1</td>
+            <td>28.4</td><td>—</td><td>—</td><td>17.1</td><td>1.4</td><td>—</td><td>—</td><td>—</td><td>3.2</td>
+            <td>11.3</td><td>25.4</td><td>.447</td><td>—</td><td>—</td><td>—</td><td>5.7</td><td>9.1</td><td>.626</td>
+          </tr>
+          <tr>
+            <td>1969-70</td><td>SDR</td><td>24</td><td>82</td><td>—</td><td>44.7</td>
+            <td>27.5</td><td>—</td><td>—</td><td>16.9</td><td>2.0</td><td>—</td><td>—</td><td>—</td><td>3.3</td>
+            <td>11.1</td><td>24.6</td><td>.452</td><td>—</td><td>—</td><td>—</td><td>5.2</td><td>7.6</td><td>.688</td>
+          </tr>
+          <tr>
+            <td>1970-71</td><td>SDR</td><td>25</td><td>82</td><td>—</td><td>44.3</td>
+            <td>28.7</td><td>—</td><td>—</td><td>16.6</td><td>2.3</td><td>—</td><td>—</td><td>—</td><td>2.7</td>
+            <td>11.6</td><td>27.0</td><td>.428</td><td>—</td><td>—</td><td>—</td><td>5.5</td><td>8.2</td><td>.672</td>
+          </tr>
+          <tr>
+            <td>1971-72</td><td>HOU</td><td>26</td><td>82</td><td>—</td><td>42.2</td>
+            <td>25.2</td><td>—</td><td>—</td><td>14.6</td><td>3.3</td><td>—</td><td>—</td><td>—</td><td>2.8</td>
+            <td>10.1</td><td>23.4</td><td>.434</td><td>—</td><td>—</td><td>—</td><td>4.9</td><td>7.5</td><td>.649</td>
+          </tr>
+          <tr>
+            <td>1972-73</td><td>BAL</td><td>27</td><td>81</td><td>—</td><td>41.3</td>
+            <td>21.2</td><td>—</td><td>—</td><td>14.5</td><td>1.6</td><td>—</td><td>—</td><td>—</td><td>2.9</td>
+            <td>8.8</td><td>19.8</td><td>.444</td><td>—</td><td>—</td><td>—</td><td>3.6</td><td>5.4</td><td>.671</td>
+          </tr>
+          <tr class="prime-row">
+            <td>1973-74 ★</td><td>CAP</td><td>28</td><td>81</td><td>—</td><td>44.5</td>
+            <td>21.4</td><td>4.4</td><td>13.7</td><td>18.1</td><td>2.0</td><td>1.1</td><td>3.0</td><td>—</td><td>3.1</td>
+            <td>8.5</td><td>20.1</td><td>.423</td><td>—</td><td>—</td><td>—</td><td>4.4</td><td>6.1</td><td>.721</td>
+          </tr>
+          <tr>
+            <td>1974-75</td><td>WAS</td><td>29</td><td>82</td><td>—</td><td>42.3</td>
+            <td>23.0</td><td>2.7</td><td>9.5</td><td>12.2</td><td>2.5</td><td>1.9</td><td>2.3</td><td>—</td><td>2.9</td>
+            <td>9.0</td><td>20.3</td><td>.443</td><td>—</td><td>—</td><td>—</td><td>5.0</td><td>6.5</td><td>.766</td>
+          </tr>
+          <tr>
+            <td>1975-76</td><td>WAS</td><td>30</td><td>80</td><td>—</td><td>37.2</td>
+            <td>19.8</td><td>2.6</td><td>8.4</td><td>11.0</td><td>1.5</td><td>1.3</td><td>2.5</td><td>—</td><td>3.7</td>
+            <td>8.1</td><td>17.3</td><td>.470</td><td>—</td><td>—</td><td>—</td><td>3.6</td><td>5.7</td><td>.628</td>
+          </tr>
+          <tr>
+            <td>1976-77</td><td>WAS</td><td>31</td><td>82</td><td>—</td><td>41.0</td>
+            <td>23.7</td><td>3.5</td><td>9.0</td><td>12.5</td><td>1.9</td><td>1.1</td><td>2.7</td><td>—</td><td>3.8</td>
+            <td>9.3</td><td>18.5</td><td>.501</td><td>—</td><td>—</td><td>—</td><td>5.1</td><td>7.5</td><td>.687</td>
+          </tr>
+          <tr>
+            <td>1977-78</td><td>WAS</td><td>32</td><td>81</td><td>—</td><td>40.1</td>
+            <td>19.7</td><td>4.1</td><td>9.1</td><td>13.3</td><td>1.8</td><td>1.2</td><td>2.0</td><td>2.8</td><td>3.9</td>
+            <td>7.9</td><td>17.4</td><td>.451</td><td>—</td><td>—</td><td>—</td><td>4.0</td><td>6.3</td><td>.634</td>
+          </tr>
+          <tr>
+            <td>1978-79</td><td>WAS</td><td>33</td><td>82</td><td>—</td><td>37.9</td>
+            <td>21.8</td><td>3.8</td><td>8.3</td><td>12.1</td><td>1.7</td><td>0.9</td><td>2.3</td><td>2.9</td><td>3.8</td>
+            <td>8.8</td><td>18.0</td><td>.487</td><td>—</td><td>—</td><td>—</td><td>4.3</td><td>6.5</td><td>.654</td>
+          </tr>
+          <tr>
+            <td>1979-80</td><td>WAS</td><td>34</td><td>81</td><td>—</td><td>39.3</td>
+            <td>23.0</td><td>3.3</td><td>7.7</td><td>11.1</td><td>1.6</td><td>0.8</td><td>2.3</td><td>2.7</td><td>3.8</td>
+            <td>9.4</td><td>20.7</td><td>.454</td><td>0</td><td>0.2</td><td>.231</td><td>4.1</td><td>5.9</td><td>.699</td>
+          </tr>
+          <tr>
+            <td>1980-81</td><td>WAS</td><td>35</td><td>81</td><td>—</td><td>36.2</td>
+            <td>17.8</td><td>2.9</td><td>6.8</td><td>9.7</td><td>1.2</td><td>0.8</td><td>2.1</td><td>2.3</td><td>3.7</td>
+            <td>7.2</td><td>16.0</td><td>.451</td><td>0</td><td>0.1</td><td>.000</td><td>3.3</td><td>5.4</td><td>.617</td>
+          </tr>
+          <tr>
+            <td>1981-82</td><td>HOU</td><td>36</td><td>82</td><td>82</td><td>37.0</td>
+            <td>16.1</td><td>3.3</td><td>5.9</td><td>9.1</td><td>1.8</td><td>0.8</td><td>1.3</td><td>2.5</td><td>3.5</td>
+            <td>6.3</td><td>13.4</td><td>.472</td><td>0</td><td>0.1</td><td>.000</td><td>3.4</td><td>5.1</td><td>.664</td>
+          </tr>
+          <tr>
+            <td>1982-83</td><td>HOU</td><td>37</td><td>81</td><td>43</td><td>28.4</td>
+            <td>12.9</td><td>2.5</td><td>5.1</td><td>7.6</td><td>2.0</td><td>0.6</td><td>1.0</td><td>2.5</td><td>2.9</td>
+            <td>5.2</td><td>11.0</td><td>.476</td><td>0</td><td>0</td><td>.500</td><td>2.4</td><td>3.5</td><td>.683</td>
+          </tr>
+          <tr>
+            <td>1983-84</td><td>HOU</td><td>38</td><td>81</td><td>4</td><td>12.3</td>
+            <td>5.0</td><td>1.1</td><td>2.1</td><td>3.2</td><td>0.9</td><td>0.2</td><td>0.3</td><td>1.0</td><td>1.5</td>
+            <td>2.0</td><td>4.8</td><td>.406</td><td>0</td><td>0</td><td>.000</td><td>1.1</td><td>1.6</td><td>.652</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="avg-row">
+            <td>커리어 평균</td><td>—</td><td>—</td><td>82</td><td>—</td><td>38.3</td>
+            <td>21.0</td><td>—</td><td>—</td><td>12.5</td><td>1.8</td><td>—</td><td>—</td><td>—</td><td>3.2</td>
+            <td>8.5</td><td>18.3</td><td>.452</td><td>—</td><td>—</td><td>—</td><td>4.3</td><td>6.2</td><td>.669</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="career-group-header" style="margin-top:16px;">플레이오프</div>
+      <div class="career-type-label">Traditional</div>
+      <table class="career-table">
+        <thead>
+          <tr>
+            <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>MIN</th>
+            <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>PF</th>
+            <th>FGM</th><th>FGA</th><th>FG%</th><th>FTM</th><th>FTA</th><th>FT%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1968-69</td><td>SDR</td><td>23</td><td>6</td><td>46.3</td>
+            <td>25.8</td><td>—</td><td>—</td><td>13.8</td><td>0.8</td><td>—</td><td>—</td><td>3.5</td>
+            <td>10.0</td><td>19.0</td><td>.526</td><td>5.8</td><td>8.8</td><td>.660</td>
+          </tr>
+          <tr>
+            <td>1972-73</td><td>BAL</td><td>27</td><td>5</td><td>45.6</td>
+            <td>25.8</td><td>—</td><td>—</td><td>11.4</td><td>1.0</td><td>—</td><td>—</td><td>3.2</td>
+            <td>10.6</td><td>21.0</td><td>.505</td><td>4.6</td><td>6.6</td><td>.697</td>
+          </tr>
+          <tr class="prime-row">
+            <td>1973-74 ★</td><td>CAP</td><td>28</td><td>7</td><td>46.1</td>
+            <td>25.9</td><td>4.4</td><td>11.4</td><td>15.9</td><td>3.0</td><td>0.7</td><td>2.1</td><td>3.3</td>
+            <td>10.9</td><td>20.4</td><td>.531</td><td>4.1</td><td>5.9</td><td>.707</td>
+          </tr>
+          <tr>
+            <td>1974-75</td><td>WAS</td><td>29</td><td>17</td><td>44.2</td>
+            <td>25.5</td><td>2.7</td><td>8.2</td><td>10.9</td><td>2.2</td><td>1.5</td><td>2.3</td><td>4.1</td>
+            <td>10.2</td><td>21.9</td><td>.468</td><td>5.1</td><td>7.5</td><td>.677</td>
+          </tr>
+          <tr>
+            <td>1975-76</td><td>WAS</td><td>30</td><td>7</td><td>43.6</td>
+            <td>20.0</td><td>2.3</td><td>10.3</td><td>12.6</td><td>1.4</td><td>0.7</td><td>4.0</td><td>3.4</td>
+            <td>7.7</td><td>17.4</td><td>.443</td><td>4.6</td><td>7.9</td><td>.582</td>
+          </tr>
+          <tr>
+            <td>1976-77</td><td>WAS</td><td>31</td><td>9</td><td>45.0</td>
+            <td>21.0</td><td>3.2</td><td>10.3</td><td>13.6</td><td>1.9</td><td>1.1</td><td>2.4</td><td>4.3</td>
+            <td>8.2</td><td>19.2</td><td>.428</td><td>4.6</td><td>6.6</td><td>.695</td>
+          </tr>
+          <tr>
+            <td>1977-78</td><td>WAS</td><td>32</td><td>21</td><td>41.3</td>
+            <td>21.8</td><td>4.9</td><td>8.4</td><td>13.3</td><td>2.0</td><td>1.5</td><td>2.5</td><td>4.1</td>
+            <td>9.0</td><td>18.3</td><td>.491</td><td>3.8</td><td>6.3</td><td>.594</td>
+          </tr>
+          <tr>
+            <td>1978-79</td><td>WAS</td><td>33</td><td>19</td><td>41.4</td>
+            <td>22.5</td><td>4.9</td><td>9.1</td><td>14.0</td><td>2.0</td><td>0.9</td><td>2.7</td><td>4.2</td>
+            <td>8.9</td><td>20.8</td><td>.429</td><td>4.6</td><td>6.8</td><td>.669</td>
+          </tr>
+          <tr>
+            <td>1979-80</td><td>WAS</td><td>34</td><td>2</td><td>46.0</td>
+            <td>20.0</td><td>5.0</td><td>6.0</td><td>11.0</td><td>3.0</td><td>0</td><td>2.0</td><td>4.0</td>
+            <td>8.0</td><td>20.5</td><td>.390</td><td>4.0</td><td>5.0</td><td>.800</td>
+          </tr>
+          <tr>
+            <td>1981-82</td><td>HOU</td><td>36</td><td>3</td><td>41.3</td>
+            <td>14.0</td><td>2.3</td><td>7.7</td><td>10.0</td><td>1.0</td><td>0.7</td><td>3.3</td><td>4.0</td>
+            <td>5.7</td><td>16.7</td><td>.340</td><td>2.7</td><td>5.0</td><td>.533</td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <!-- 능력치 -->
+  <div class="section">
+    <div class="section-header">■ 능력치 (Base Attributes)</div>
+    <div class="section-body">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th style="width:130px;">카테고리</th>
+            <th>능력치</th>
+            <th>값</th>
+            <th>변화</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- ① 인사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">① 인사이드 스코어링</td></tr>
+          <tr><td></td><td class="attr-name">closeShot</td><td class="attr-val">92</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">layup</td><td class="attr-val">88</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">dunk</td><td class="attr-val">85</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">postPlay</td><td class="attr-val">90</td><td class="attr-delta"><span class="delta-down">▼ -5</span></td></tr>
+          <tr><td></td><td class="attr-name">drawFoul</td><td class="attr-val">75</td><td class="attr-delta"><span class="delta-down">▼ -7</span></td></tr>
+
+          <!-- ② 아웃사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">② 아웃사이드 스코어링</td></tr>
+          <tr><td></td><td class="attr-name">midRange</td><td class="attr-val">78</td><td class="attr-delta"><span class="delta-down">▼ -7</span></td></tr>
+          <tr><td></td><td class="attr-name">threeCorner</td><td class="attr-val">28</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">three45</td><td class="attr-val">25</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">threeTop</td><td class="attr-val">22</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">ft</td><td class="attr-val">70</td><td class="attr-delta"><span class="delta-up">▲ +3</span></td></tr>
+          <tr><td></td><td class="attr-name">shotIq</td><td class="attr-val">78</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">spdBall</td><td class="attr-val">65</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">offConsist</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+
+          <!-- ③ 플레이메이킹 -->
+          <tr><td colspan="4" class="cat-header">③ 플레이메이킹</td></tr>
+          <tr><td></td><td class="attr-name">handling</td><td class="attr-val">52</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">passIq</td><td class="attr-val">62</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">passVision</td><td class="attr-val">52</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">passAcc</td><td class="attr-val">55</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">passPerc</td><td class="attr-val">75</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">offBallMovement</td><td class="attr-val">65</td><td class="attr-delta"><span class="delta-down">▼ -13</span></td></tr>
+
+          <!-- ④ 운동 능력 -->
+          <tr><td colspan="4" class="cat-header">④ 운동 능력</td></tr>
+          <tr><td></td><td class="attr-name">speed</td><td class="attr-val">78</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">agility</td><td class="attr-val">75</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">vertical</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">strength</td><td class="attr-val">92</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">durability</td><td class="attr-val">85</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">stamina</td><td class="attr-val">90</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">hustle</td><td class="attr-val">85</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">intangibles</td><td class="attr-val">85</td><td class="attr-delta"></td></tr>
+
+          <!-- ⑤ 수비 -->
+          <tr><td colspan="4" class="cat-header">⑤ 수비</td></tr>
+          <tr><td></td><td class="attr-name">perDef</td><td class="attr-val">72</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">intDef</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">helpDefIq</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">steal</td><td class="attr-val">65</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">blk</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">defConsist</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+
+          <!-- ⑥ 리바운드 -->
+          <tr><td colspan="4" class="cat-header">⑥ 리바운드</td></tr>
+          <tr><td></td><td class="attr-name">defReb</td><td class="attr-val">90</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">offReb</td><td class="attr-val">82</td><td class="attr-delta"></td></tr>
+          <tr><td></td><td class="attr-name">boxOut</td><td class="attr-val">88</td><td class="attr-delta"></td></tr>
+
+          <!-- OVR -->
+          <tr>
+            <td colspan="2" style="text-align:right; font-weight:bold; padding-right:8px; background:#e8ecf2;">OVR</td>
+            <td class="attr-val" style="background:#1a3a6b; color:#fff; font-size:14px;">82</td>
+            <td class="attr-delta"><span class="delta-down">▼ -6</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 강점 / 약점 -->
+  <div class="section">
+    <div class="section-header">■ 강점 / 약점</div>
+    <div class="section-body">
+      <table class="sw-table">
+        <tr>
+          <td class="sw-header">STRENGTHS</td>
+          <td class="sw-header">WEAKNESSES</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title str">① 역대급 리바운드 능력</div>
+              <div class="sw-item-body">1973-74 시즌 경기당 18.1개 리바운드로 리그 1위. Per 36 환산 11.1 수비 리바운드는 엘리트(88-94) 밴드 적정. defReb=90, offReb=82, boxOut=88로 3개 수치 모두 우수선발~엘리트 구간. rebounding 모듈 87.4(S등급).</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">② 포스트업 지배력</div>
+              <div class="sw-item-body">근거리 및 포스트 마무리를 기반으로 한 스코어러. 1973-74 플레이오프 FG% .531, 커리어 최고 시즌인 1976-77 FG% .501. closeShot=92, postPlay=90으로 인사이드 공격이 핵심 무기. postCraft 모듈 86.7(S등급).</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">③ 고체력 · 고허슬 플레이</div>
+              <div class="sw-item-body">16년 연속 80경기 이상 출전, 44분 이상 소화. stamina=90, durability=85, hustle=85로 motorAvailability 모듈 85.7(S등급). 매 경기 전력질주와 루즈볼 전쟁을 마다하지 않는 스타일.</div>
+            </div>
+          </td>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">① 3점 슈팅 부재</div>
+              <div class="sw-item-body">3점 라인 시대 이전 선수로 사실상 외곽 슛팅 없음. threeCorner=28, three45=25, threeTop=22로 spotUpShooting 모듈 35.4(D등급). 현대 PF 역할 기준으로 페리미터 위협 없음.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">② 자유투 불안정</div>
+              <div class="sw-item-body">전성기 시즌에도 FT%가 .626~.766 사이를 오가며 일관성이 낮음. 커리어 평균 .669. ft=70으로 리그평균 중간 수준. 파울 유발 빈도(drawFoul=75)도 포스트 빅맨치고 낮은 편.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">③ 패스 메이킹 제한</div>
+              <div class="sw-item-body">볼핸들링과 패스 비전이 포스트 전용 수준. handling=52, passVision=52로 이중 커버 상황 대처 능력 제한적. AST 커리어 평균 1.8개/경기, 더블팀 이후 킥아웃 패스에서 약점 노출.</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 스카우트 노트 -->
+  <div class="section">
+    <div class="section-header">■ 스카우트 노트</div>
+    <div class="section-body">
+      <table class="notes-table">
+        <tr>
+          <td class="label">NOTES</td>
+          <td class="notes-text">
+            엘빈 헤이즈는 "The Big E"라는 별명처럼 페인트 구역을 지배하는 올드스쿨 빅맨의 정수다. 1968년 드래프트 1픽으로 입단해 16시즌 동안 2만 7,313점을 기록, 역사상 단 8명뿐인 통산 2만 점–1만 6천 리바운드 클럽에 이름을 올렸다. 전성기인 1973-74 시즌에는 경기당 18.1개 리바운드로 리그를 압도했으며, 1977-78 챔피언십 우승 당시에는 플레이오프 내내 평균 21.8점-13.3리바운드를 기록하며 팀의 중심을 잡았다. 그의 가장 큰 한계는 3점 시대 이전 선수라는 점으로, 현대 PF가 요구하는 페리미터 스페이싱을 전혀 제공하지 못한다. 그러나 페인트 내 존재감, 철인 출전 기록, 블록–리바운드 연계 수비력만으로도 역사상 손꼽히는 파워포워드 중 하나로 평가받는다.
+          </td>
+        </tr>
+        <tr>
+          <td class="label">COMP</td>
+          <td>
+            <span class="comp-label">밥 페팃</span> — 동시대 이전 포스트 지배형 PF, 비슷한 리바운드 우선 스타일과 인사이드 스코어링 의존도
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="section" style="border-bottom:none;">
+    <div class="section-header">■ 계약 정보</div>
+    <div class="section-body">
+      <table class="footer-table">
+        <tr>
+          <td class="label">등번호</td>
+          <td>#11 (StatMuse — 1973-74 CAP 기준)</td>
+          <td class="label">연봉</td>
+          <td>$1,000,000 (1970년대 초반 연봉 데이터 미수록 — 고정값 적용)</td>
+        </tr>
+        <tr>
+          <td class="label">계약</td>
+          <td>1년 (올타임 FA 고정)</td>
+          <td class="label">include_alltime</td>
+          <td>TRUE</td>
+        </tr>
+      </table>
+      <div class="footer-note">
+        평가일: 2026-04-23 &nbsp;|&nbsp; 버전: v1 &nbsp;|&nbsp; DB ID: 6537fc0c-dd98-4877-ae8c-5b32291f0b58 &nbsp;|&nbsp; 전성기 시즌: 1973-74 캐피탈 불릿츠 (28세)
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

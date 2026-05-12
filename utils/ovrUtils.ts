@@ -2,54 +2,35 @@
 import type { Player } from '../types';
 import {
   evaluatePlayerRawOVR,
-  mapRawOVRToDisplayOVR,
   calculateFutureOVR,
   type PlayerInput,
   type PlayerRatings,
-  type LeagueDistribution,
   type OvrPosition,
 } from './ovrEngine';
 
-// ─── OVR Tier Thresholds (percentile-based) ──────────────────────────────────
-// z-score 기반 리그 퍼센타일 정의. OVR 공식이 바뀌어도 z-score 의미는 불변.
-// 445명 리그 기준 대략적 해당 인원:
-//   SUPERSTAR: z=1.8  → ~상위 8명   (MVP/All-NBA First)
-//   STAR:      z=1.1  → ~상위 23명  (올스타급)
-//   STARTER:   z=0.35 → ~상위 60명  (주전 수준)
-//   ROLE:      z=-0.25 → 로테이션
-//   FRINGE:    z=-0.9  → FA/컷 후보
-const OVR_TIER_Z: Record<string, number> = {
-  SUPERSTAR: 1.8,
-  STAR:      1.1,
-  STARTER:   0.35,
-  ROLE:     -0.25,
-  FRINGE:   -0.9,
+// ─── OVR Tier Thresholds (hardcoded, absolute) ───────────────────────────────
+// z-score 기반 상대 분포 제거 — rawCurrentOVR이 곧 displayOVR이므로 절댓값 사용.
+// 632명 로스터 기준 대략적 해당 인원:
+//   SUPERSTAR: 93+  → All-NBA First Team급 (상위 ~8명)
+//   STAR:      88+  → All-Star급 (상위 ~25명)
+//   STARTER:   80+  → 주전 수준 (상위 ~60명)
+//   ROLE:      73+  → 로테이션 수준
+//   FRINGE:    68+  → FA/컷 후보 수준
+const OVR_TIER_THRESHOLDS: Record<string, number> = {
+  SUPERSTAR: 93,
+  STAR:      88,
+  STARTER:   80,
+  ROLE:      73,
+  FRINGE:    68,
 };
 
 export type OvrTier = 'SUPERSTAR' | 'STAR' | 'STARTER' | 'ROLE' | 'FRINGE';
 
 /**
- * 현재 리그 분포 기준으로 특정 티어의 display OVR 임계값을 반환한다.
- * 초기화 전에는 fallback 분포(mean=75, std=7)로 계산되므로
- * 게임 데이터 로드 완료 후 값이 자동으로 안정된다.
+ * 특정 티어의 OVR 임계값을 반환한다. (절댓값, 리그 분포 독립)
  */
 export function getOVRThreshold(tier: OvrTier): number {
-  const rawOVR = _leagueDist.meanRawOVR + OVR_TIER_Z[tier] * _leagueDist.stdRawOVR;
-  return Math.round(mapRawOVRToDisplayOVR(rawOVR, _leagueDist));
-}
-
-// ─── League Distribution Cache ───────────────────────────────────────────────
-// Initialised to a reasonable fallback so OVR is usable before all players load.
-// Call setLeagueDistribution() once after the full roster is available.
-
-let _leagueDist: LeagueDistribution = { meanRawOVR: 75.0, stdRawOVR: 7.0 };
-
-export function setLeagueDistribution(dist: LeagueDistribution): void {
-  _leagueDist = dist;
-}
-
-export function getLeagueDistribution(): LeagueDistribution {
-  return _leagueDist;
+  return OVR_TIER_THRESHOLDS[tier] ?? 70;
 }
 
 // ─── Player → PlayerInput Adapter ────────────────────────────────────────────
@@ -143,16 +124,15 @@ export function adaptPlayerToInput(p: Player | any, positionOverride?: string): 
 // ─── Public OVR APIs ─────────────────────────────────────────────────────────
 
 /**
- * Calculates displayCurrentOVR for a single player.
- * Uses cached league distribution (updated by setLeagueDistribution after full load).
- *
- * This is a Pure Function from the perspective of caller code.
- * (It reads module-level distribution cache, but that is stable after startup.)
+ * Calculates OVR for a single player.
+ * rawCurrentOVR is returned directly — no z-score normalization.
+ * OVR values are absolute (not league-relative), so a single player's change
+ * does not affect any other player's OVR.
  */
 export const calculateOvr = (attributes: Player | any, position?: string): number => {
   const input = adaptPlayerToInput(attributes, position);
   const raw   = evaluatePlayerRawOVR(input);
-  return mapRawOVRToDisplayOVR(raw.rawCurrentOVR, _leagueDist);
+  return Math.round(raw.rawCurrentOVR);
 };
 
 /**
@@ -169,10 +149,10 @@ export const calculateRawOvr = (attributes: Player | any, position?: string): nu
  * Calculates futureOVR (potential-based, separate from current OVR).
  */
 export const calculateFutureOvr = (p: Player | any, position?: string): number => {
-  const input         = adaptPlayerToInput(p, position);
-  const raw           = evaluatePlayerRawOVR(input);
-  const displayOvr    = mapRawOVRToDisplayOVR(raw.rawCurrentOVR, _leagueDist);
-  return calculateFutureOVR(displayOvr, input.potential, input.age);
+  const input      = adaptPlayerToInput(p, position);
+  const raw        = evaluatePlayerRawOVR(input);
+  const currentOvr = Math.round(raw.rawCurrentOVR);
+  return calculateFutureOVR(currentOvr, input.potential, input.age);
 };
 
 /**
@@ -198,5 +178,4 @@ export const getPlayerStarRating = (ovr: number): number => {
 };
 
 // Re-export engine types that callers may need
-export type { LeagueDistribution, OvrPosition } from './ovrEngine';
-export { calculateLeagueDistribution } from './ovrEngine';
+export type { OvrPosition } from './ovrEngine';

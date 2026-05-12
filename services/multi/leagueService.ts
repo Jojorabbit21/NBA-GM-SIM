@@ -1,6 +1,7 @@
 
 import { supabase } from '../supabaseClient';
-import type { LeagueGroupRow, LeagueRow } from './roomQueries';
+import type { LeagueGroupRow, LeagueRow, LeagueTeamRow } from './roomQueries';
+import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 
 // ─── 리그 그룹 생성 (메인리그 운영자) ────────────────────────────────────────
 
@@ -35,7 +36,7 @@ export interface CreateLeagueParams {
     adminUserId: string;
     // 메인리그 필드
     groupId?:       string;
-    tier?:          'pro' | 'dleague' | 'uleague';
+    tier?:          'd1' | 'd2' | 'd3';
     seasonNumber?:  number;
     maxTeams?:      number;
     // 토너먼트 필드
@@ -55,6 +56,7 @@ export interface CreateLeagueParams {
         draftFormat:          string;
         draftPoolStrategy:    string;
         draftPickDurationSec: number;
+        draftTotalRounds:     number;
         rookiePoolInclusion:  boolean;
         seasonStartDate:      string;
         realTimePace:         string;
@@ -98,6 +100,7 @@ export const createLeague = async (
     if (opts.draftFormat          !== undefined) payload.draft_format            = opts.draftFormat;
     if (opts.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = opts.draftPoolStrategy;
     if (opts.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = opts.draftPickDurationSec;
+    if (opts.draftTotalRounds     !== undefined) payload.draft_total_rounds      = opts.draftTotalRounds;
     if (opts.rookiePoolInclusion  !== undefined) payload.rookie_pool_inclusion   = opts.rookiePoolInclusion;
     if (opts.seasonStartDate      !== undefined) payload.season_start_date       = opts.seasonStartDate;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
@@ -191,7 +194,7 @@ export const joinLeague = async (
 export interface SetMemberTeamParams {
     roomId:         string;
     userId:         string;
-    name:           string;   // 팀 풀네임 (1~24자)
+    name:           string;   // 팀 풀네임 (1~16자)
     abbr:           string;   // 팀 약어 (2~4자, 영문/숫자)
     colorPrimary:   string;   // #RRGGBB — 로고 배경
     colorSecondary: string;   // #RRGGBB — 로고 보더라인
@@ -211,8 +214,8 @@ export const setMemberTeam = async (
         return { error: 'Primary 색상은 #RRGGBB 형식이어야 합니다' };
     if (!hexRe.test(p.colorSecondary))
         return { error: 'Secondary 색상은 #RRGGBB 형식이어야 합니다' };
-    if (name.length < 1 || name.length > 24)
-        return { error: '팀명은 1~24자여야 합니다' };
+    if (name.length < 1 || name.length > 16)
+        return { error: '팀명은 1~16자여야 합니다' };
 
     const { error } = await supabase
         .from('room_members')
@@ -246,6 +249,199 @@ export const updateLeagueStatus = async (
         .eq('id', leagueId);
 
     return { error: error?.message ?? null };
+};
+
+// ─── 세션 설정 업데이트 (어드민) ──────────────────────────────────────────────
+
+export interface UpdateLeagueSettingsParams {
+    leagueId:            string;
+    maxTeams?:           number;
+    lotteryScheduledAt?: string | null;
+    draftScheduledAt?:   string | null;
+    draftPickDurationSec?: number;
+    draftTotalRounds?:   number;
+    draftPool?:          string;
+}
+
+export const updateLeagueSettings = async (
+    p: UpdateLeagueSettingsParams
+): Promise<{ error: string | null }> => {
+    const payload: Record<string, unknown> = {};
+    if (p.maxTeams             !== undefined) payload.max_teams               = p.maxTeams;
+    if (p.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = p.lotteryScheduledAt;
+    if (p.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = p.draftScheduledAt;
+    if (p.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = p.draftPickDurationSec;
+    if (p.draftTotalRounds     !== undefined) payload.draft_total_rounds      = p.draftTotalRounds;
+    if (p.draftPool            !== undefined) payload.draft_pool              = p.draftPool;
+
+    const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
+    return { error: error?.message ?? null };
+};
+
+// ─── league_teams 초기화 ──────────────────────────────────────────────────────
+// 세션 생성 후 TEAM_DATA 기반으로 N개 팀을 league_teams에 삽입
+
+function shuffleArray<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+export const initializeLeagueTeams = async (
+    roomId:   string,
+    maxTeams: number
+): Promise<{ error: string | null }> => {
+    const allTeams = Object.values(TEAM_DATA);
+    const selected = maxTeams >= allTeams.length
+        ? allTeams
+        : shuffleArray(allTeams).slice(0, maxTeams);
+
+    const teamsJson = selected.map(t => ({
+        team_slug:       t.id,
+        team_name:       `${t.city} ${t.name}`,
+        team_abbr:       t.id.toUpperCase().slice(0, 3),
+        color_primary:   t.colors.primary,
+        color_secondary: t.colors.secondary,
+        conference:      t.conference,
+    }));
+
+    const { error } = await supabase.rpc('initialize_league_teams', {
+        p_room_id: roomId,
+        p_teams:   teamsJson,
+    });
+    return { error: error?.message ?? null };
+};
+
+// ─── 팀 선점 / 반환 ───────────────────────────────────────────────────────────
+
+export const claimTeam = async (
+    roomId:  string,
+    teamId:  string,   // league_teams.id (UUID)
+    userId:  string
+): Promise<{ data: LeagueTeamRow | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('claim_team', {
+        p_room_id:  roomId,
+        p_team_id:  teamId,
+        p_user_id:  userId,
+    });
+    if (error) {
+        const msg = error.message ?? '';
+        if (msg.includes('team_already_claimed'))   return { data: null, error: '이미 다른 유저가 선점한 팀입니다.' };
+        if (msg.includes('draft_already_ordered'))  return { data: null, error: '드래프트 추첨 후에는 팀을 변경할 수 없습니다.' };
+        return { data: null, error: msg };
+    }
+    return { data: data as LeagueTeamRow, error: null };
+};
+
+export const releaseTeam = async (
+    roomId: string,
+    userId: string
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('release_team', {
+        p_room_id: roomId,
+        p_user_id: userId,
+    });
+    return { error: error?.message ?? null };
+};
+
+export const updateTeamProfile = async (
+    teamId:         string,
+    userId:         string,
+    teamName:       string,
+    teamAbbr:       string,
+    colorPrimary:   string,
+    colorSecondary: string
+): Promise<{ data: LeagueTeamRow | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('update_team_profile', {
+        p_team_id:         teamId,
+        p_user_id:         userId,
+        p_team_name:       teamName,
+        p_team_abbr:       teamAbbr,
+        p_color_primary:   colorPrimary,
+        p_color_secondary: colorSecondary,
+    });
+    if (error) return { data: null, error: error.message };
+    return { data: data as LeagueTeamRow, error: null };
+};
+
+// ─── 드래프트 추첨 (어드민 수동) ──────────────────────────────────────────────
+
+export const runDraftLottery = async (
+    roomId:  string,
+    userId:  string
+): Promise<{ data: LeagueTeamRow[] | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('run_draft_lottery', {
+        p_room_id:  roomId,
+        p_admin_id: userId,
+    });
+    if (error) {
+        const msg = error.message ?? '';
+        if (msg.includes('lottery_already_done')) return { data: null, error: '이미 추첨이 완료되었습니다.' };
+        return { data: null, error: msg };
+    }
+    return { data: data as LeagueTeamRow[], error: null };
+};
+
+// ─── 탈퇴 (room_members + 팀 반환) ────────────────────────────────────────────
+
+export const leaveLeague = async (
+    roomId: string,
+    userId: string
+): Promise<{ error: string | null }> => {
+    // 팀 반환
+    await releaseTeam(roomId, userId);
+    // room_members 삭제
+    const { error } = await supabase
+        .from('room_members')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', userId);
+    return { error: error?.message ?? null };
+};
+
+// ─── 리그 삭제 (어드민 전용) ──────────────────────────────────────────────────
+// leagues 삭제 → rooms / room_members / league_teams 등 CASCADE 자동 정리
+
+export const deleteLeague = async (
+    leagueId: string,
+    userId: string
+): Promise<{ error: string | null }> => {
+    // 어드민 본인인지 서버에서 재검증 (RLS가 admin_user_id 체크)
+    const { error } = await supabase
+        .from('leagues')
+        .delete()
+        .eq('id', leagueId)
+        .eq('admin_user_id', userId);
+
+    if (error) return { error: error.message };
+    return { error: null };
+};
+
+// ─── 드래프트 즉시 시작 (어드민, start-draft Edge Function 호출) ───────────────
+
+export const startDraft = async (
+    leagueId: string,
+    accessToken?: string
+): Promise<{ error: string | null }> => {
+    // accessToken이 없으면 현재 세션에서 가져옴
+    const token = accessToken ?? (await supabase.auth.getSession()).data.session?.access_token;
+    const { error } = await supabase.functions.invoke('start-draft', {
+        body: { leagueId },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (error) {
+        const msg = (error as any)?.context?.message ?? error.message ?? '드래프트 시작 실패';
+        try {
+            const parsed = JSON.parse(msg);
+            return { error: parsed.message ?? parsed.error ?? msg };
+        } catch {
+            return { error: msg };
+        }
+    }
+    return { error: null };
 };
 
 export const updateLeagueGroupStatus = async (

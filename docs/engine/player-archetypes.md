@@ -21,7 +21,7 @@ Player 능력치
     ▼
 calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
     │
-    ├─ calcArchetypeScore()  ← 13개 아키타입 점수 (모듈 가중 합산)
+    ├─ calcArchetypeScore()  ← 22개 아키타입 점수 (모듈 가중 합산)
     │      + 포지션 게이트
     │      + 시즌 성적 StyleFit 보정 (±5)
     │      + 기존 아키타입 관성 보너스 (+5)
@@ -56,9 +56,9 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 
 ---
 
-## 2. 16개 아키타입
+## 2. 22개 아키타입
 
-### 가드 계열 (PG/SG)
+### 가드 계열 (PG/SG) — 7종
 
 | 아키타입 | 설명 | 핵심 모듈 |
 |---------|------|---------|
@@ -66,8 +66,11 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 | `scoring_combo_guard` | 득점형 콤보 가드 | shotC×0.32 + rim×0.20 + spot×0.18 + play×0.12 + offball×0.08 + motor×0.10 |
 | `movement_shooter` | 오프볼 무브먼트 슈터 | spot×0.40 + offball×0.28 + motor×0.12 + poa×0.10 + team×0.10 |
 | `perimeter_3nd` | 외곽 수비 & 슈터 | spot×0.30 + poa×0.28 + team×0.20 + offball×0.10 + motor×0.12 |
+| `floor_general_guard` | 패스 퍼스트 게임 메이커 | play×0.42 + team×0.16 + poa×0.12 + spot×0.10 + motor×0.10 + offball×0.10 |
+| `scoring_point_guard` | 득점형 포인트 가드 | shotC×0.28 + play×0.20 + rim×0.18 + spot×0.14 + motor×0.10 + poa×0.10 |
+| `defensive_guard` | 퍼리미터 락다운 가드 | poa×0.32 + team×0.18 + play×0.14 + spot×0.14 + motor×0.12 + reb×0.10 |
 
-### 윙 계열 (SG/SF/PF)
+### 윙 계열 (SG/SF/PF) — 9종
 
 | 아키타입 | 설명 | 핵심 모듈 |
 |---------|------|---------|
@@ -78,8 +81,10 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 | `aerial_wing` | 에어리얼 림 어태커 | rim×0.40 + reb×0.18 + post×0.12 + team×0.10 + poa×0.08 + motor×0.12 |
 | `post_scoring_wing` | 포스트 스킬형 윙 | post×0.32 + rim×0.22 + shotC×0.14 + reb×0.12 + team×0.08 + motor×0.12 |
 | `wing_protector` | 버서타일 수비 앵커 | rimProt×0.30 + poa×0.24 + team×0.20 + reb×0.14 + motor×0.12 |
+| `three_level_scorer` | 3레벨 스코어러 (전 포지션) | shotC×0.26 + rim×0.24 + spot×0.24 + motor×0.10 + play×0.08 + poa×0.08 |
+| `lockdown_wing` | 순수 수비형 윙 | poa×0.34 + team×0.22 + motor×0.16 + reb×0.12 + rim×0.08 + play×0.08 |
 
-### 빅 계열 (PF/C)
+### 빅 계열 (PF/C) — 6종
 
 | 아키타입 | 설명 | 핵심 모듈 |
 |---------|------|---------|
@@ -88,6 +93,7 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 | `stretch_big` | 외곽슛 가능한 빅 | spot×0.30 + reb×0.20 + rimProt×0.18 + team×0.12 + post×0.10 + motor×0.10 |
 | `rim_protector_anchor` | 수비 앵커형 센터 | rimProt×0.38 + reb×0.26 + team×0.14 + motor×0.10 + post×0.12 |
 | `playmaking_big` | 패스 허브형 빅 | play×0.26 + post×0.20 + spot×0.16 + reb×0.16 + team×0.12 + rimProt×0.10 |
+| `switchable_anchor` | 스위치 가능한 수비 앵커 | poa×0.20 + team×0.18 + rimProt×0.18 + play×0.14 + reb×0.14 + motor×0.16 |
 
 ---
 
@@ -96,16 +102,29 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 아키타입 후보를 포지션으로 1차 필터링한다. 경계 포지션(SG, PF)은 중복 허용.
 
 ```
-PG  → primary_creator_guard, scoring_combo_guard, movement_shooter
-SG  → 가드 4종 + two_way_wing, slashing_wing, shot_creator_wing
+PG  → primary_creator_guard, scoring_combo_guard, movement_shooter,
+       floor_general_guard, scoring_point_guard, defensive_guard, three_level_scorer
+       (7종)
+
+SG  → 가드 7종 + two_way_wing, slashing_wing, shot_creator_wing,
+       three_level_scorer, lockdown_wing
+       (12종, three_level_scorer 중복 제외 시 12종)
+
 SF  → movement_shooter, perimeter_3nd, two_way_wing, slashing_wing,
-       shot_creator_wing, connector_forward, playmaking_big,
-       aerial_wing, post_scoring_wing, wing_protector
-PF  → perimeter_3nd, two_way_wing, connector_forward + 빅 5종
-       + aerial_wing, post_scoring_wing, wing_protector
+       shot_creator_wing, connector_forward, aerial_wing, post_scoring_wing,
+       wing_protector, three_level_scorer, lockdown_wing, playmaking_big
+       (12종)
+
+PF  → perimeter_3nd, two_way_wing, connector_forward + 빅 6종
+       + aerial_wing, post_scoring_wing, wing_protector, three_level_scorer, lockdown_wing
+       (14종)
+
 C   → post_scoring_big, rim_runner_big, stretch_big,
-       rim_protector_anchor, playmaking_big
+       rim_protector_anchor, playmaking_big, switchable_anchor, three_level_scorer
+       (7종)
 ```
+
+> `three_level_scorer`는 전 포지션 eligible — rim/shotC/spot 3개 모듈이 고르게 높아야 하므로 자연적으로 소수 엘리트만 해당.
 
 ---
 
@@ -155,6 +174,16 @@ C   → post_scoring_big, rim_runner_big, stretch_big,
 | ast/g ≥ 4 && pts/g < 14 | `connector_forward` +4, `playmaking_big` +3 |
 | pts/g ≥ 22 && ast/g < 5 | `scoring_combo_guard` +5, `shot_creator_wing` +3 |
 | pts/g ≥ 18 && fga/g ≥ 14 && ast/g < 5 | `scoring_combo_guard` +3, `shot_creator_wing` +2 |
+| ast/g ≥ 6 && (stl+blk)/g ≥ 1.5 | `floor_general_guard` +4 |
+| ast/g ≥ 7 (단독) | `floor_general_guard` +3 |
+| pts/g ≥ 20 && 4 ≤ ast/g < 7 | `scoring_point_guard` +4 |
+| stl/g ≥ 1.5 && pts/g < 16 | `defensive_guard` +5 |
+| stl/g ≥ 1.2 && pts/g < 14 | `defensive_guard` +3 |
+| pts/g ≥ 18 && rimA/g ≥ 4 && 3PA/g ≥ 4 | `three_level_scorer` +5 |
+| pts/g ≥ 15 && rimA/g ≥ 3 && 3PA/g ≥ 3 | `three_level_scorer` +3 |
+| stl/g ≥ 1.2 && pts/g < 10 | `lockdown_wing` +5 |
+| stl/g ≥ 1.0 && pts/g < 12 | `lockdown_wing` +3 |
+| blk/g ≥ 1.0 && stl/g ≥ 0.8 && reb/g ≥ 7 | `switchable_anchor` +4 |
 
 ---
 
@@ -224,22 +253,33 @@ C   → post_scoring_big, rim_runner_big, stretch_big,
 FA 연봉 산정 엔진의 `FARole` (7종)으로 매핑된다.
 
 ```ts
+// Guard (7종)
 primary_creator_guard  → lead_guard
+floor_general_guard    → lead_guard
 scoring_combo_guard    → combo_guard
+scoring_point_guard    → combo_guard
 movement_shooter       → 3and_d
 perimeter_3nd          → 3and_d
+defensive_guard        → 3and_d
+
+// Wing (9종)
 two_way_wing           → 3and_d
+lockdown_wing          → 3and_d
 slashing_wing          → shot_creator
 shot_creator_wing      → shot_creator
-connector_forward      → floor_big
+three_level_scorer     → shot_creator
 aerial_wing            → shot_creator
+connector_forward      → floor_big
 post_scoring_wing      → floor_big
 wing_protector         → rim_big
+
+// Big (6종)
 post_scoring_big       → floor_big
-rim_runner_big         → rim_big
-stretch_big            → stretch_big
-rim_protector_anchor   → rim_big
 playmaking_big         → floor_big
+stretch_big            → stretch_big
+rim_runner_big         → rim_big
+rim_protector_anchor   → rim_big
+switchable_anchor      → rim_big
 ```
 
 `ARCHETYPE_TO_FA_ROLE` 매핑은 `types/archetype.ts`에 정의.
@@ -251,7 +291,7 @@ playmaking_big         → floor_big
 ```
 types/
 ├── archetype.ts                           ← 모든 타입 + ARCHETYPE_TO_FA_ROLE 매핑
-│       ArchetypeType (13종)
+│       ArchetypeType (22종)
 │       TraitTag (14종)
 │       ArchetypeModuleScores
 │       PlayerArchetypeState
@@ -271,6 +311,7 @@ services/playerDevelopment/
 │       getTraitTagDisplayInfo()
 └── playerAging.ts                         ← 오프시즌 시 assignArchetypes() 호출
 
+utils/ovrEngine.ts                         ← OvrArchetype (22종), calcFatalWeaknessPenalty
 hooks/useGameData.ts                       ← roster_state 저장/복원 경로
 services/snapshotBuilder.ts               ← replay_snapshot 저장/복원 경로
 views/PlayerDetailView.tsx                ← Primary/Secondary 배지 + 태그 렌더링

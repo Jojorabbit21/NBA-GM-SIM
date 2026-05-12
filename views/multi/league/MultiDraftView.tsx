@@ -1,13 +1,14 @@
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, GripHorizontal } from 'lucide-react';
+import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
 import { useGame } from '../../../hooks/useGameContext';
-import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
+import { useLeagueContext } from './LeagueLayout';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
+import { useDraftPresence } from '../../../hooks/useDraftPresence';
 import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft';
 import type { Player } from '../../../types';
-import { CSV_TO_RUNTIME_KEY } from '../../../services/dataMapper';
+import { ATTR_GROUPS, ATTR_AVG_KEYS } from '../../../data/attributeConfig';
 
 import { DraftHeader } from '../../../components/draft/DraftHeader';
 import { DraftBoard } from '../../../components/draft/DraftBoard';
@@ -15,6 +16,7 @@ import type { BoardPick } from '../../../components/draft/DraftBoard';
 import { PickHistory } from '../../../components/draft/PickHistory';
 import { PlayerPool } from '../../../components/draft/PlayerPool';
 import { MyRoster } from '../../../components/draft/MyRoster';
+import { DraftAdminPanel } from '../../../components/draft/DraftAdminPanel';
 
 const POSITION_COLORS: Record<string, string> = {
     PG: '#22d3ee', SG: '#34d399', SF: '#fbbf24', PF: '#fb7185', C: '#a78bfa',
@@ -24,14 +26,28 @@ const POSITION_COLORS: Record<string, string> = {
  *  custom_overrides가 있으면 base_attributes에 머지 후 반환 (싱글 custom mode와 동일 메커니즘).
  */
 function toPlayer(p: DraftPoolPlayer): Player {
-    const base = { ...(p.base_attributes as any) };
+    // DB는 런타임 키로 저장 (2026-04-21 마이그레이션 완료)
+    const base: Record<string, any> = { ...(p.base_attributes as any) };
 
-    // custom_overrides 적용 — CSV 키는 런타임 키로 변환 후 머지
+    // custom_overrides 적용 (이미 런타임 키로 저장됨)
     const overrides = base.custom_overrides;
     if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
         for (const [k, v] of Object.entries(overrides)) {
             if (typeof v !== 'number') continue;
-            base[CSV_TO_RUNTIME_KEY[k] ?? k] = v;
+            base[k] = v;
+        }
+    }
+
+    // 카테고리 평균(ins/out/plm/def/reb/ath)이 없으면 개별 능력치에서 계산
+    for (const group of ATTR_GROUPS) {
+        const avgKey = group.keys[0];
+        if (!ATTR_AVG_KEYS.has(avgKey)) continue;
+        if (base[avgKey] == null) {
+            const subKeys = group.keys.slice(1);
+            const vals = subKeys.map((k: string) => base[k] ?? 0).filter((v: number) => v > 0);
+            if (vals.length > 0) {
+                base[avgKey] = Math.round(vals.reduce((s: number, v: number) => s + v, 0) / vals.length);
+            }
         }
     }
 
@@ -52,8 +68,9 @@ const MultiDraftView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const navigate     = useNavigate();
     const { session }  = useGame();
-    const { room, members } = useCurrentLeague();
+    const { room, members, league, leagueTeams } = useLeagueContext();
     const userId       = session?.user?.id ?? null;
+    const isAdmin      = !!(userId && league?.admin_user_id === userId);
 
     const {
         draftState, poolPlayers, isLoading,
@@ -61,8 +78,20 @@ const MultiDraftView: React.FC = () => {
         submitPick, isSubmitting,
     } = useLeagueDraft(room?.id ?? null, session);
 
+    const onlineUserIds = useDraftPresence(room?.id ?? null, userId);
+
     const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
     const [pickError,        setPickError]        = useState<string | null>(null);
+
+    // ── 낙관적 타이머 동결 (pause 클릭 즉시 표시, Realtime 확정 전까지 유지) ──
+    const [frozenTime, setFrozenTime] = useState<number | null>(null);
+    const handleOptimisticPause  = useCallback(() => setFrozenTime(timeRemaining), [timeRemaining]);
+    const handleOptimisticRevert = useCallback(() => setFrozenTime(null), []);
+    // Realtime으로 active 상태 수신 시 동결 해제 (resume 후 확정)
+    useEffect(() => {
+        if (draftState?.status === 'active') setFrozenTime(prev => prev !== null ? null : prev);
+    }, [draftState?.status]);
+    const displayTimeRemaining = frozenTime ?? timeRemaining;
 
     // ── 리사이즈 divider ─────────────────────────────────────────────────────
     const containerRef  = useRef<HTMLDivElement>(null);
@@ -109,21 +138,31 @@ const MultiDraftView: React.FC = () => {
         [draftState?.pickOrder],
     );
 
-    const teamMeta = useMemo((): RoomTeamMetaMap => {
-        const map: RoomTeamMetaMap = {};
-        members.forEach(m => {
-            if (m.team_id && m.team_name && m.team_abbr && m.team_color_primary && m.team_color_secondary) {
-                map[m.team_id] = {
-                    teamId:         m.team_id,
-                    name:           m.team_name,
-                    abbr:           m.team_abbr,
-                    colorPrimary:   m.team_color_primary,
-                    colorSecondary: m.team_color_secondary,
-                };
+    // onlineUserIds → onlineTeamIds 변환 (league_teams의 user_id 필드 참조)
+    const onlineTeamIds = useMemo((): Set<string> => {
+        const set = new Set<string>();
+        leagueTeams.forEach(t => {
+            if (t.user_id && onlineUserIds.has(t.user_id)) {
+                set.add(t.team_slug);
             }
         });
+        return set;
+    }, [leagueTeams, onlineUserIds]);
+
+    // league_teams가 팀명/약어/색상의 단일 소스 — 로비와 동일한 데이터 사용
+    const teamMeta = useMemo((): RoomTeamMetaMap => {
+        const map: RoomTeamMetaMap = {};
+        leagueTeams.forEach(t => {
+            map[t.team_slug] = {
+                teamId:         t.team_slug,
+                name:           t.team_name,
+                abbr:           t.team_abbr,
+                colorPrimary:   t.color_primary,
+                colorSecondary: t.color_secondary,
+            };
+        });
         return map;
-    }, [members]);
+    }, [leagueTeams]);
 
     const boardPicks = useMemo((): BoardPick[] =>
         (draftState?.picks ?? []).map(p => ({
@@ -215,6 +254,28 @@ const MultiDraftView: React.FC = () => {
     return (
         <div ref={containerRef} className="pretendard flex flex-col h-screen bg-slate-950">
 
+            {/* ── 로비 복귀 버튼 ── */}
+            <div className="shrink-0 flex items-center px-3 h-8 bg-slate-900/80 border-b border-slate-800/60">
+                <button
+                    onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
+                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-200 transition-colors"
+                >
+                    <ChevronLeft size={13} />
+                    <span className="ko-normal">로비</span>
+                </button>
+            </div>
+
+            {/* ── 어드민 패널 (admin_user_id 일치 시만 표시) ── */}
+            {isAdmin && leagueId && room?.id && (
+                <DraftAdminPanel
+                    draftState={draftState}
+                    leagueId={leagueId}
+                    roomId={room.id}
+                    onOptimisticPause={handleOptimisticPause}
+                    onOptimisticRevert={handleOptimisticRevert}
+                />
+            )}
+
             {/* ── 헤더 ── */}
             <DraftHeader
                 currentRound={currentRound}
@@ -222,7 +283,9 @@ const MultiDraftView: React.FC = () => {
                 currentTeamId={currentPickEntry?.teamId ?? ''}
                 isUserTurn={isMyTurn}
                 picksUntilUser={picksUntilUser}
-                timeRemaining={timeRemaining}
+                timeRemaining={displayTimeRemaining}
+                pickDurationSec={draftState.pickDurationSec}
+                isPaused={draftState.status === 'paused'}
                 showAdvance={false}
                 nextPickNumber={draftState.currentPickIndex + 1}
                 nextPickTeamId={currentPickEntry?.teamId}
@@ -241,6 +304,7 @@ const MultiDraftView: React.FC = () => {
                         userTeamId={myTeamId ?? ''}
                         positionColors={POSITION_COLORS}
                         teamMeta={teamMeta}
+                        onlineTeamIds={onlineTeamIds}
                     />
                 </div>
             </div>

@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>선수 스카우팅 보고서 — 라마커스 알드리지</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #d0d0d0;
+      font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+      font-size: 12px;
+      color: #000;
+      padding: 30px;
+    }
+
+    .page {
+      background: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 0;
+    }
+
+    .report-title-bar {
+      background: #1a3a6b;
+      color: #fff;
+      text-align: center;
+      padding: 8px 0 6px;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 0.3em;
+      border-bottom: 2px solid #000;
+    }
+
+    .section {
+      border-bottom: 2px solid #000;
+      padding: 0;
+    }
+    .section-header {
+      background: #c0c8d8;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-bottom: 1px solid #000;
+      letter-spacing: 0.05em;
+    }
+    .section-body {
+      padding: 6px 8px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .info-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .info-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .info-table .value {
+      min-width: 100px;
+    }
+    .info-table .value.accent {
+      font-weight: bold;
+      font-size: 14px;
+      color: #1a3a6b;
+    }
+
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .arch-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .arch-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 90px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .arch-primary   { font-weight: bold; color: #1a3a6b; font-size: 12px; }
+    .arch-secondary { color: #444; }
+    .tag-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag {
+      border: 1px solid #1a3a6b;
+      color: #1a3a6b;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      background: #e8ecf2;
+    }
+
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .module-table th, .module-table td {
+      border: 1px solid #999;
+      padding: 3px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .module-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .module-table td.name-col {
+      text-align: left;
+      width: 130px;
+    }
+    .bar-cell { width: 260px; }
+    .bar-outer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border: 1px solid #aaa;
+    }
+    .bar-inner { height: 100%; }
+    .bar-s { background: #1a3a6b; }
+    .bar-a { background: #2e7d32; }
+    .bar-b { background: #1565c0; }
+    .bar-c { background: #e65100; }
+    .bar-d { background: #b71c1c; }
+
+    .grade { font-weight: bold; width: 36px; }
+    .grade-S { color: #1a3a6b; }
+    .grade-A { color: #2e7d32; }
+    .grade-B { color: #1565c0; }
+    .grade-C { color: #e65100; }
+    .grade-D { color: #b71c1c; }
+
+    .career-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .career-table th, .career-table td {
+      border: 1px solid #bbb;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .career-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 10px;
+    }
+    .career-table td:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #1a3a6b;
+    }
+    .career-table tr.prime-row {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .career-table tfoot tr.avg-row {
+      background: #e8ecf2;
+      font-weight: bold;
+      border-top: 2px solid #999;
+    }
+    .career-table td.na-cell {
+      color: #aaa;
+    }
+    .career-group-header {
+      background: #1a3a6b; color: #fff; font-weight: bold; font-size: 12px;
+      padding: 6px 10px; margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .career-type-label {
+      background: #d0d8e8; color: #1a3a6b; font-weight: bold; font-size: 11px;
+      padding: 4px 10px; margin-top: 8px;
+    }
+
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .attr-table th, .attr-table td {
+      border: 1px solid #999;
+      padding: 3px 6px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .attr-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .attr-table td.cat-header {
+      background: #d4daea;
+      font-weight: bold;
+      font-size: 11px;
+      color: #1a3a6b;
+      text-align: left;
+      padding: 4px 10px;
+      border-top: 1px solid #666;
+      letter-spacing: 0.03em;
+    }
+    .attr-table td.attr-name {
+      text-align: left;
+      width: 130px;
+      padding-left: 8px;
+    }
+    .attr-table td.attr-val {
+      width: 44px;
+      font-weight: bold;
+    }
+    .attr-table td.attr-delta {
+      width: 58px;
+      font-size: 11px;
+    }
+    .delta-up   { color: #1a6b1a; font-weight: bold; }
+    .delta-down { color: #b71c1c; font-weight: bold; }
+
+    .sw-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .sw-table td {
+      border: 1px solid #999;
+      padding: 5px 8px;
+      vertical-align: top;
+      width: 50%;
+    }
+    .sw-table .sw-header {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    .sw-item { margin-bottom: 6px; }
+    .sw-item-title { font-weight: bold; margin-bottom: 2px; }
+    .sw-item-title.str { color: #1a6b1a; }
+    .sw-item-title.wkn { color: #b71c1c; }
+    .sw-item-body { color: #333; line-height: 1.5; }
+
+    .notes-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .notes-table td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    .notes-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .notes-text {
+      line-height: 1.7;
+      color: #111;
+    }
+    .comp-label { font-weight: bold; width: 70px; }
+
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .footer-table td {
+      border: 1px solid #999;
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+    .footer-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 타이틀 바 -->
+  <div class="report-title-bar">SCOUTING REPORT</div>
+
+  <!-- 헤더 -->
+  <div class="section">
+    <div class="section-header">PLAYER INFO</div>
+    <div class="section-body">
+      <table class="info-table">
+        <tr>
+          <td class="label">이름</td>
+          <td class="value accent" colspan="3">라마커스 알드리지</td>
+          <td class="label">포지션</td>
+          <td class="value accent">PF</td>
+          <td class="label">OVR</td>
+          <td class="value accent">79</td>
+        </tr>
+        <tr>
+          <td class="label">나이</td>
+          <td class="value">32세 (2017-18)</td>
+          <td class="label">팀</td>
+          <td class="value">SAS (전성기)</td>
+          <td class="label">등번호</td>
+          <td class="value"># 12</td>
+          <td class="label">키/몸무게</td>
+          <td class="value">211 cm / 118 kg</td>
+        </tr>
+        <tr>
+          <td class="label">전성기</td>
+          <td class="value" colspan="7">2017-18 SAS — 23.1pts / 8.5reb / 2.0ast / 1.2blk, FG% 51.0%, TS% 57.0%  |  All-NBA 2nd Team, 6× All-Star</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 아키타입 & 태그 -->
+  <div class="section">
+    <div class="section-header">ARCHETYPE &amp; TAGS</div>
+    <div class="section-body">
+      <table class="arch-table">
+        <tr>
+          <td class="label">아키타입</td>
+          <td><span class="arch-primary">Post Scorer</span>&nbsp;&nbsp;/&nbsp;&nbsp;<span class="arch-secondary">Post Scoring Wing</span></td>
+        </tr>
+        <tr>
+          <td class="label">태그</td>
+          <td>
+            <div class="tag-cell">
+              <span style="color:#888; font-size:11px;">— (해당 없음)</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 모듈 스코어 -->
+  <div class="section">
+    <div class="section-header">MODULE SCORES</div>
+    <div class="section-body">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th class="name-col">모듈</th>
+            <th class="bar-cell">바 차트</th>
+            <th>점수</th>
+            <th>등급</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- postCraft 85.3 → S -->
+          <tr>
+            <td class="name-col">Post Craft</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-s" style="width:85.3%"></div></div></td>
+            <td>85.3</td>
+            <td class="grade grade-S">S</td>
+          </tr>
+          <!-- rimFinishing 75.4 → A- -->
+          <tr>
+            <td class="name-col">Rim Finishing</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:75.4%"></div></div></td>
+            <td>75.4</td>
+            <td class="grade grade-A">A-</td>
+          </tr>
+          <!-- motorAvailability 76.9 → A- -->
+          <tr>
+            <td class="name-col">Motor / Avail.</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:76.9%"></div></div></td>
+            <td>76.9</td>
+            <td class="grade grade-A">A-</td>
+          </tr>
+          <!-- rebounding 73.1 → A- -->
+          <tr>
+            <td class="name-col">Rebounding</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:73.1%"></div></div></td>
+            <td>73.1</td>
+            <td class="grade grade-A">A-</td>
+          </tr>
+          <!-- rimProtection 72.6 → A- -->
+          <tr>
+            <td class="name-col">Rim Protection</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-a" style="width:72.6%"></div></div></td>
+            <td>72.6</td>
+            <td class="grade grade-A">A-</td>
+          </tr>
+          <!-- offballAttack 68.9 → B -->
+          <tr>
+            <td class="name-col">Off-Ball Attack</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-b" style="width:68.9%"></div></div></td>
+            <td>68.9</td>
+            <td class="grade grade-B">B</td>
+          </tr>
+          <!-- shotCreation 68.1 → B -->
+          <tr>
+            <td class="name-col">Shot Creation</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-b" style="width:68.1%"></div></div></td>
+            <td>68.1</td>
+            <td class="grade grade-B">B</td>
+          </tr>
+          <!-- teamDefense 65.7 → B- -->
+          <tr>
+            <td class="name-col">Team Defense</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-b" style="width:65.7%"></div></div></td>
+            <td>65.7</td>
+            <td class="grade grade-B">B-</td>
+          </tr>
+          <!-- poaDefense 60.4 → C+ -->
+          <tr>
+            <td class="name-col">POA Defense</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-c" style="width:60.4%"></div></div></td>
+            <td>60.4</td>
+            <td class="grade grade-C">C+</td>
+          </tr>
+          <!-- spotUpShooting 58.4 → C -->
+          <tr>
+            <td class="name-col">Spot-Up Shooting</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-c" style="width:58.4%"></div></div></td>
+            <td>58.4</td>
+            <td class="grade grade-C">C</td>
+          </tr>
+          <!-- playmaking 56.8 → C -->
+          <tr>
+            <td class="name-col">Playmaking</td>
+            <td class="bar-cell"><div class="bar-outer"><div class="bar-inner bar-c" style="width:56.8%"></div></div></td>
+            <td>56.8</td>
+            <td class="grade grade-C">C</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:10px; color:#666; margin-top:4px;">
+        모듈 등급 기준: S(85+) A+(80-84) A(75-79) A-(72-74) B+(70-71) B(65-69) B-(60-64) C+(55-59) C(50-54) C-(45-49) D(&lt;45)
+      </div>
+    </div>
+  </div>
+
+  <!-- 커리어 기록 -->
+  <div class="section">
+    <div class="section-header">CAREER STATS</div>
+    <div class="section-body">
+
+      <div class="career-group-header">REGULAR SEASON</div>
+      <div class="career-type-label">Traditional</div>
+      <table class="career-table">
+        <thead>
+          <tr>
+            <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+            <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th>
+            <th>STL</th><th>BLK</th><th>TOV</th><th>PF</th>
+            <th>FGM</th><th>FGA</th><th>FG%</th>
+            <th>3PM</th><th>3PA</th><th>3P%</th>
+            <th>FTM</th><th>FTA</th><th>FT%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2006-07</td><td>POR</td><td>21</td><td>63</td><td>22</td><td>22.1</td>
+            <td>9.0</td><td>2.3</td><td>2.7</td><td>5.0</td><td>0.4</td>
+            <td>0.3</td><td>1.2</td><td>0.7</td><td>3.0</td>
+            <td>3.8</td><td>7.6</td><td>.503</td>
+            <td>0.0</td><td>0.0</td><td class="na-cell">—</td>
+            <td>1.3</td><td>1.8</td><td>.722</td>
+          </tr>
+          <tr>
+            <td>2007-08</td><td>POR</td><td>22</td><td>76</td><td>76</td><td>34.9</td>
+            <td>17.8</td><td>2.9</td><td>4.7</td><td>7.6</td><td>1.6</td>
+            <td>0.7</td><td>1.2</td><td>1.7</td><td>3.2</td>
+            <td>7.4</td><td>15.3</td><td>.484</td>
+            <td>0.0</td><td>0.1</td><td>.143</td>
+            <td>3.0</td><td>3.9</td><td>.762</td>
+          </tr>
+          <tr>
+            <td>2008-09</td><td>POR</td><td>23</td><td>81</td><td>81</td><td>37.1</td>
+            <td>18.1</td><td>2.9</td><td>4.6</td><td>7.5</td><td>1.9</td>
+            <td>1.0</td><td>1.0</td><td>1.5</td><td>2.6</td>
+            <td>7.4</td><td>15.3</td><td>.484</td>
+            <td>0.1</td><td>0.3</td><td>.250</td>
+            <td>3.2</td><td>4.1</td><td>.781</td>
+          </tr>
+          <tr>
+            <td>2009-10</td><td>POR</td><td>24</td><td>78</td><td>78</td><td>37.5</td>
+            <td>17.9</td><td>2.5</td><td>5.6</td><td>8.0</td><td>2.1</td>
+            <td>0.9</td><td>0.6</td><td>1.3</td><td>3.0</td>
+            <td>7.4</td><td>15.0</td><td>.495</td>
+            <td>0.1</td><td>0.2</td><td>.313</td>
+            <td>2.9</td><td>3.9</td><td>.757</td>
+          </tr>
+          <tr>
+            <td>2010-11</td><td>POR</td><td>25</td><td>81</td><td>81</td><td>39.6</td>
+            <td>21.8</td><td>3.4</td><td>5.3</td><td>8.8</td><td>2.1</td>
+            <td>1.0</td><td>1.2</td><td>1.9</td><td>2.7</td>
+            <td>8.7</td><td>17.5</td><td>.500</td>
+            <td>0.0</td><td>0.3</td><td>.174</td>
+            <td>4.3</td><td>5.5</td><td>.791</td>
+          </tr>
+          <tr>
+            <td>2011-12</td><td>POR</td><td>26</td><td>55</td><td>55</td><td>36.3</td>
+            <td>21.7</td><td>2.7</td><td>5.3</td><td>8.0</td><td>2.4</td>
+            <td>0.9</td><td>0.8</td><td>2.0</td><td>2.8</td>
+            <td>8.8</td><td>17.1</td><td>.512</td>
+            <td>0.0</td><td>0.2</td><td>.182</td>
+            <td>4.1</td><td>5.0</td><td>.814</td>
+          </tr>
+          <tr>
+            <td>2012-13</td><td>POR</td><td>27</td><td>74</td><td>74</td><td>37.7</td>
+            <td>21.1</td><td>2.4</td><td>6.7</td><td>9.1</td><td>2.6</td>
+            <td>0.8</td><td>1.2</td><td>1.9</td><td>2.5</td>
+            <td>8.6</td><td>17.8</td><td>.484</td>
+            <td>0.0</td><td>0.2</td><td>.143</td>
+            <td>3.8</td><td>4.7</td><td>.810</td>
+          </tr>
+          <tr>
+            <td>2013-14</td><td>POR</td><td>28</td><td>69</td><td>69</td><td>36.2</td>
+            <td>23.2</td><td>2.4</td><td>8.7</td><td>11.1</td><td>2.6</td>
+            <td>0.9</td><td>1.0</td><td>1.8</td><td>2.1</td>
+            <td>9.4</td><td>20.6</td><td>.458</td>
+            <td>0.0</td><td>0.2</td><td>.200</td>
+            <td>4.3</td><td>5.2</td><td>.822</td>
+          </tr>
+          <tr>
+            <td>2014-15</td><td>POR</td><td>29</td><td>71</td><td>71</td><td>35.4</td>
+            <td>23.4</td><td>2.5</td><td>7.7</td><td>10.2</td><td>1.7</td>
+            <td>0.7</td><td>1.0</td><td>1.7</td><td>1.8</td>
+            <td>9.3</td><td>19.9</td><td>.466</td>
+            <td>0.5</td><td>1.5</td><td>.352</td>
+            <td>4.3</td><td>5.1</td><td>.845</td>
+          </tr>
+          <tr>
+            <td>2015-16</td><td>SAS</td><td>30</td><td>74</td><td>74</td><td>30.6</td>
+            <td>18.0</td><td>2.4</td><td>6.2</td><td>8.5</td><td>1.5</td>
+            <td>0.5</td><td>1.1</td><td>1.3</td><td>2.0</td>
+            <td>7.2</td><td>14.1</td><td>.513</td>
+            <td>0.0</td><td>0.2</td><td class="na-cell">—</td>
+            <td>3.5</td><td>4.1</td><td>.858</td>
+          </tr>
+          <tr>
+            <td>2016-17</td><td>SAS</td><td>31</td><td>72</td><td>72</td><td>32.4</td>
+            <td>17.3</td><td>2.4</td><td>4.9</td><td>7.3</td><td>1.9</td>
+            <td>0.6</td><td>1.2</td><td>1.4</td><td>2.2</td>
+            <td>6.9</td><td>14.6</td><td>.477</td>
+            <td>0.3</td><td>0.8</td><td>.411</td>
+            <td>3.1</td><td>3.8</td><td>.812</td>
+          </tr>
+          <tr class="prime-row">
+            <td>2017-18</td><td>SAS</td><td>32</td><td>75</td><td>75</td><td>33.5</td>
+            <td>23.1</td><td>3.3</td><td>5.2</td><td>8.5</td><td>2.0</td>
+            <td>0.6</td><td>1.2</td><td>1.5</td><td>2.1</td>
+            <td>9.2</td><td>18.0</td><td>.510</td>
+            <td>0.4</td><td>1.2</td><td>.293</td>
+            <td>4.5</td><td>5.3</td><td>.837</td>
+          </tr>
+          <tr>
+            <td>2018-19</td><td>SAS</td><td>33</td><td>81</td><td>81</td><td>33.2</td>
+            <td>21.3</td><td>3.1</td><td>6.1</td><td>9.2</td><td>2.4</td>
+            <td>0.5</td><td>1.3</td><td>1.8</td><td>2.2</td>
+            <td>8.4</td><td>16.3</td><td>.519</td>
+            <td>0.1</td><td>0.5</td><td>.238</td>
+            <td>4.3</td><td>5.1</td><td>.847</td>
+          </tr>
+          <tr>
+            <td>2019-20</td><td>SAS</td><td>34</td><td>53</td><td>53</td><td>33.1</td>
+            <td>18.9</td><td>1.9</td><td>5.5</td><td>7.4</td><td>2.4</td>
+            <td>0.7</td><td>1.6</td><td>1.4</td><td>2.4</td>
+            <td>7.4</td><td>15.0</td><td>.493</td>
+            <td>1.2</td><td>3.0</td><td>.389</td>
+            <td>3.0</td><td>3.6</td><td>.827</td>
+          </tr>
+          <tr>
+            <td>2020-21</td><td>SAS</td><td>35</td><td>21</td><td>18</td><td>25.9</td>
+            <td>13.7</td><td>0.8</td><td>3.7</td><td>4.5</td><td>1.7</td>
+            <td>0.4</td><td>0.9</td><td>1.0</td><td>1.7</td>
+            <td>5.5</td><td>11.8</td><td>.464</td>
+            <td>1.3</td><td>3.6</td><td>.360</td>
+            <td>1.5</td><td>1.8</td><td>.838</td>
+          </tr>
+          <tr>
+            <td>2020-21</td><td>BRK</td><td>35</td><td>5</td><td>5</td><td>26.0</td>
+            <td>12.8</td><td>0.4</td><td>4.4</td><td>4.8</td><td>2.6</td>
+            <td>0.6</td><td>2.2</td><td>1.4</td><td>2.2</td>
+            <td>5.0</td><td>9.6</td><td>.521</td>
+            <td>0.8</td><td>1.0</td><td>.800</td>
+            <td>2.0</td><td>2.0</td><td>1.000</td>
+          </tr>
+          <tr>
+            <td>2021-22</td><td>BRK</td><td>36</td><td>47</td><td>12</td><td>22.3</td>
+            <td>12.9</td><td>1.6</td><td>3.9</td><td>5.5</td><td>0.9</td>
+            <td>0.3</td><td>1.0</td><td>0.9</td><td>1.7</td>
+            <td>5.4</td><td>9.7</td><td>.550</td>
+            <td>0.3</td><td>1.0</td><td>.304</td>
+            <td>1.9</td><td>2.2</td><td>.873</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="avg-row">
+            <td colspan="3">커리어 평균</td>
+            <td></td><td></td>
+            <td>33.1</td>
+            <td>19.4</td><td>2.5</td><td>5.6</td><td>8.1</td><td>1.9</td>
+            <td>0.7</td><td>1.1</td><td>1.5</td><td>2.4</td>
+            <td>8.1</td><td>16.5</td><td>.490</td>
+            <td>0.3</td><td>0.9</td><td>.332</td>
+            <td>3.5</td><td>4.3</td><td>.804</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="career-group-header" style="margin-top:12px;">PLAYOFFS</div>
+      <div class="career-type-label">Traditional</div>
+      <table class="career-table">
+        <thead>
+          <tr>
+            <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+            <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th>
+            <th>STL</th><th>BLK</th><th>TOV</th><th>PF</th>
+            <th>FGM</th><th>FGA</th><th>FG%</th>
+            <th>3PM</th><th>3PA</th><th>3P%</th>
+            <th>FTM</th><th>FTA</th><th>FT%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2008-09</td><td>POR</td><td>23</td><td>6</td><td>6</td><td>39.5</td>
+            <td>19.5</td><td>1.5</td><td>6.0</td><td>7.5</td><td>1.3</td>
+            <td>0.5</td><td>1.7</td><td>1.7</td><td>2.7</td>
+            <td>8.5</td><td>17.3</td><td>.490</td>
+            <td>0.2</td><td>0.7</td><td>.250</td>
+            <td>2.3</td><td>3.3</td><td>.700</td>
+          </tr>
+          <tr>
+            <td>2013-14</td><td>POR</td><td>28</td><td>11</td><td>11</td><td>40.1</td>
+            <td>26.2</td><td>2.7</td><td>7.9</td><td>10.6</td><td>1.5</td>
+            <td>0.6</td><td>1.6</td><td>1.7</td><td>3.6</td>
+            <td>10.3</td><td>22.7</td><td>.452</td>
+            <td>0.2</td><td>0.3</td><td>.667</td>
+            <td>5.5</td><td>6.8</td><td>.800</td>
+          </tr>
+          <tr>
+            <td>2014-15</td><td>POR</td><td>29</td><td>5</td><td>5</td><td>41.6</td>
+            <td>21.8</td><td>4.2</td><td>7.0</td><td>11.2</td><td>1.8</td>
+            <td>0.4</td><td>2.4</td><td>1.6</td><td>3.2</td>
+            <td>7.4</td><td>22.4</td><td>.330</td>
+            <td>0.6</td><td>2.2</td><td>.273</td>
+            <td>6.4</td><td>7.2</td><td>.889</td>
+          </tr>
+          <tr>
+            <td>2015-16</td><td>SAS</td><td>30</td><td>10</td><td>10</td><td>33.7</td>
+            <td>21.9</td><td>2.2</td><td>6.1</td><td>8.3</td><td>1.0</td>
+            <td>0.4</td><td>1.4</td><td>1.1</td><td>1.8</td>
+            <td>8.8</td><td>16.9</td><td>.521</td>
+            <td>0.2</td><td>0.2</td><td>1.000</td>
+            <td>4.1</td><td>4.6</td><td>.891</td>
+          </tr>
+          <tr>
+            <td>2016-17</td><td>SAS</td><td>31</td><td>16</td><td>16</td><td>33.6</td>
+            <td>16.5</td><td>2.7</td><td>4.8</td><td>7.4</td><td>1.5</td>
+            <td>0.6</td><td>1.0</td><td>1.8</td><td>2.6</td>
+            <td>6.9</td><td>15.0</td><td>.458</td>
+            <td>0.1</td><td>0.9</td><td>.143</td>
+            <td>2.6</td><td>3.4</td><td>.764</td>
+          </tr>
+          <tr class="prime-row">
+            <td>2017-18</td><td>SAS</td><td>32</td><td>5</td><td>5</td><td>35.4</td>
+            <td>23.6</td><td>2.6</td><td>6.6</td><td>9.2</td><td>2.4</td>
+            <td>0.6</td><td>0.4</td><td>1.8</td><td>1.8</td>
+            <td>7.4</td><td>16.0</td><td>.463</td>
+            <td>0.6</td><td>1.0</td><td>.600</td>
+            <td>8.2</td><td>8.4</td><td>.976</td>
+          </tr>
+          <tr>
+            <td>2018-19</td><td>SAS</td><td>33</td><td>7</td><td>7</td><td>34.9</td>
+            <td>20.0</td><td>2.7</td><td>6.9</td><td>9.6</td><td>2.7</td>
+            <td>0.7</td><td>1.0</td><td>1.0</td><td>3.0</td>
+            <td>7.9</td><td>17.3</td><td>.455</td>
+            <td>0.4</td><td>1.6</td><td>.273</td>
+            <td>3.9</td><td>4.7</td><td>.818</td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+  <!-- 능력치 -->
+  <div class="section">
+    <div class="section-header">ATTRIBUTES</div>
+    <div class="section-body">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th colspan="2">카테고리 / 능력치</th>
+            <th>값</th>
+            <th>변화</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- ① 인사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">① 인사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">closeShot</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">layup</td>
+            <td class="attr-val">84</td>
+            <td class="attr-delta"><span class="delta-up">▲ +2</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">dunk</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">postPlay</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">drawFoul</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ② 아웃사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">② 아웃사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">midRange</td>
+            <td class="attr-val">92</td>
+            <td class="attr-delta"><span class="delta-down">▼ -3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">threeCorner</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"><span class="delta-up">▲ +34</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">three45</td>
+            <td class="attr-val">45</td>
+            <td class="attr-delta"><span class="delta-up">▲ +10</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">threeTop</td>
+            <td class="attr-val">35</td>
+            <td class="attr-delta"><span class="delta-up">▲ +3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">ft</td>
+            <td class="attr-val">83</td>
+            <td class="attr-delta"><span class="delta-up">▲ +1</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">shotIq</td>
+            <td class="attr-val">80</td>
+            <td class="attr-delta"><span class="delta-up">▲ +5</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">spdBall</td>
+            <td class="attr-val">58</td>
+            <td class="attr-delta"><span class="delta-up">▲ +6</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">offConsist</td>
+            <td class="attr-val">85</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ③ 플레이메이킹 -->
+          <tr><td colspan="4" class="cat-header">③ 플레이메이킹</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">handling</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">passIq</td>
+            <td class="attr-val">65</td>
+            <td class="attr-delta"><span class="delta-up">▲ +3</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">passVision</td>
+            <td class="attr-val">52</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">passAcc</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">passPerc</td>
+            <td class="attr-val">65</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">offBallMovement</td>
+            <td class="attr-val">68</td>
+            <td class="attr-delta"><span class="delta-down">▼ -4</span></td>
+          </tr>
+          <!-- ④ 운동 능력 -->
+          <tr><td colspan="4" class="cat-header">④ 운동 능력</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">speed</td>
+            <td class="attr-val">62</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">agility</td>
+            <td class="attr-val">58</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">vertical</td>
+            <td class="attr-val">65</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">strength</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">durability</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">stamina</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">hustle</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">intangibles</td>
+            <td class="attr-val">80</td>
+            <td class="attr-delta"><span class="delta-up">▲ +2</span></td>
+          </tr>
+          <!-- ⑤ 수비 -->
+          <tr><td colspan="4" class="cat-header">⑤ 수비</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">perDef</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">intDef</td>
+            <td class="attr-val">75</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">helpDefIq</td>
+            <td class="attr-val">68</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">steal</td>
+            <td class="attr-val">52</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">blk</td>
+            <td class="attr-val">68</td>
+            <td class="attr-delta"><span class="delta-down">▼ -4</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">defConsist</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- ⑥ 리바운드 -->
+          <tr><td colspan="4" class="cat-header">⑥ 리바운드</td></tr>
+          <tr>
+            <td class="attr-name" colspan="2">defReb</td>
+            <td class="attr-val">75</td>
+            <td class="attr-delta"><span class="delta-down">▼ -7</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">offReb</td>
+            <td class="attr-val">68</td>
+            <td class="attr-delta"><span class="delta-up">▲ +6</span></td>
+          </tr>
+          <tr>
+            <td class="attr-name" colspan="2">boxOut</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+          </tr>
+          <!-- OVR -->
+          <tr style="border-top: 2px solid #666;">
+            <td colspan="2" style="font-weight:bold; background:#e8ecf2; padding:4px 10px; font-size:12px;">OVR</td>
+            <td class="attr-val" style="font-size:14px; color:#1a3a6b;">79</td>
+            <td class="attr-delta"><span class="delta-down">▼ -3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 강점 / 약점 -->
+  <div class="section">
+    <div class="section-header">STRENGTHS &amp; WEAKNESSES</div>
+    <div class="section-body">
+      <table class="sw-table">
+        <tr>
+          <td class="sw-header">STRENGTHS</td>
+          <td class="sw-header">WEAKNESSES</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title str">① 엘리트 포스트 & 미드레인지 스코어링</div>
+              <div class="sw-item-body">2017-18 FG% 51.0%, 총 1,347회 슈팅 시도 중 미드레인지 426회를 포함한 광범위한 득점 옵션. 포스트업에서 페이더웨이까지 연계되는 그의 점수 패턴은 수비가 단독으로 막기 불가능한 수준이다. postPlay 92 + midRange 92가 이를 뒷받침한다.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">② 높은 FG 효율과 자유투 능력</div>
+              <div class="sw-item-body">전성기 시즌 FG% 51.0%, FT% 83.7%로 빅맨 중 최상위 효율을 기록. TS% 57.0%는 단순 득점 기계가 아닌 효율적인 옵션임을 증명한다. 파울 유도 후 자유투 전환 능력도 안정적이다.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">③ 출전 가능성과 내구성</div>
+              <div class="sw-item-body">커리어 통산 POR 시절 9시즌 중 7시즌을 69경기 이상 출전. 2018-19에는 81경기 전경기 선발 출전. motorAvailability 76.9로 높은 출전 신뢰도를 반영한다.</div>
+            </div>
+          </td>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">① 퍼리미터 수비 취약</div>
+              <div class="sw-item-body">perDef 55로 오픈코트 및 1대1 수비에서 약점이 명확하다. 빠른 포워드나 스위치 상황에서 실점 허용이 잦았으며, 팀 수비 로테이션 의존도가 높다.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">② 제한적인 3점 레퍼토리</div>
+              <div class="sw-item-body">2017-18 전체 3점 29.3%(92회). 코너 3점은 52.6%로 인상적이나 시도가 38회에 불과하고, 윙 3점은 실질 성공률이 약 13%에 불과하다. 공간 생성력이 현대 PF 기준에서 제한적이다.</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">③ 패스/플레이메이킹 제한</div>
+              <div class="sw-item-body">2017-18 ast/36 2.1개. 포스트업 위주의 공격 패턴으로 패스 창출력이 낮고, 더블팀 상황에서 킥아웃 결정이 느리다. playmaking 56.8로 빅맨 중 하위권 수준.</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 스카우트 노트 -->
+  <div class="section">
+    <div class="section-header">SCOUT NOTES &amp; COMP</div>
+    <div class="section-body">
+      <table class="notes-table">
+        <tr>
+          <td class="label">Notes</td>
+          <td class="notes-text">
+            라마커스 알드리지는 16시즌에 걸쳐 일관성과 효율을 유지한 올드스쿨 PF의 전형이다. 포스트업-페이더웨이 연계는 당대 최고 수준이었으며, 샌안토니오 이적 후 FG% 51%대로 효율이 정점에 달했다. 팀 선택이 빛난 케이스로, 포포비치 시스템 안에서 경기당 23.1점을 올리며 All-NBA 2nd Team에 선정됐다. 다만 현대 농구에서 요구하는 스위치 수비, 3점 슈팅, 패스 창출 측면에서 제한적이며, 이로 인해 OVR 79라는 수치는 그의 포스트 스코어링 가치와 현대 농구 적합성 사이의 균형점을 반영한다.
+          </td>
+        </tr>
+        <tr>
+          <td class="label">COMP</td>
+          <td class="notes-text">
+            <strong>밥 페팃</strong> (포스트 & 미드레인지 특화 PF, 시대를 앞서간 효율적 빅맨 스코어러)
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="section" style="border-bottom: none;">
+    <div class="section-header">RECORD</div>
+    <div class="section-body">
+      <table class="footer-table">
+        <tr>
+          <td class="label">등번호</td>
+          <td># 12</td>
+          <td class="label">연봉</td>
+          <td>$16,000,000 (기존 유지)</td>
+          <td class="label">계약</td>
+          <td>Veteran / 1년</td>
+        </tr>
+        <tr>
+          <td class="label">평가일</td>
+          <td>2026-04-24</td>
+          <td class="label">버전</td>
+          <td>v1</td>
+          <td class="label">평가자</td>
+          <td>player-evaluator (Claude)</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

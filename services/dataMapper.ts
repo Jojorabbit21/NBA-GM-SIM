@@ -7,12 +7,8 @@ import {
     calculateOvr,
     calculateRawOvr,
     calculateFutureOvr,
-    setLeagueDistribution,
-    calculateLeagueDistribution,
-    adaptPlayerToInput,
     getOVRThreshold,
 } from '../utils/ovrUtils';
-import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
 
 /** CSV 약칭 → Player 런타임 키 매핑 (custom_overrides 적용 시 공용) */
 export const CSV_TO_RUNTIME_KEY: Record<string, string> = {
@@ -288,17 +284,16 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         zone_atb3_r_m: 0, zone_atb3_r_a: 0
     };
 
-    // custom_overrides 적용 시 사용 (모듈 레벨 export로 외부에서도 재사용 가능)
+    // custom_overrides 파싱 — DB는 런타임 키로 저장 (2026-04-21 마이그레이션 완료)
     // 숫자 능력치 외에 position/team 문자열 키도 허용
     const STRING_CO_KEYS = new Set(['position', 'team']);
     let customOverrides: Record<string, any> | undefined;
     const rawOverrides = baseAttrs.custom_overrides;
     if (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides)) {
         customOverrides = {};
-        for (const [csvKey, val] of Object.entries(rawOverrides)) {
-            if (typeof val !== 'number' && !(typeof val === 'string' && STRING_CO_KEYS.has(csvKey))) continue;
-            const runtimeKey = CSV_TO_RUNTIME_KEY[csvKey] || csvKey;
-            customOverrides[runtimeKey] = val;
+        for (const [key, val] of Object.entries(rawOverrides)) {
+            if (typeof val !== 'number' && !(typeof val === 'string' && STRING_CO_KEYS.has(key))) continue;
+            customOverrides[key] = val;
         }
         if (Object.keys(customOverrides).length === 0) customOverrides = undefined;
     }
@@ -395,32 +390,18 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
 };
 
 /**
- * 전체 선수 로드 후 1회 호출: 리그 분포 기반 OVR 재계산
+ * 전체 선수 로드 후 1회 호출: OVR / futureOvr 최종 확정
  *
- * 이유: calculateOvr()는 mapRawPlayerToRuntimePlayer() 내에서 모듈 캐시 분포로 먼저
- * 계산되므로, 전체 선수가 모인 후 정확한 리그 평균/표준편차로 OVR을 보정해야 한다.
+ * z-score 파이프라인 제거 후 리그 분포 재계산은 불필요.
+ * calculateOvr()는 rawCurrentOVR을 직접 반환하므로 호출 시점과 무관하게 일관된 값.
  */
 export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): void => {
-    // 1. 전체 선수 수집
     const allPlayers: Player[] = [
         ...teams.flatMap(t => t.roster),
         ...freeAgents,
     ];
-
     if (allPlayers.length === 0) return;
 
-    // 2. 모든 선수의 rawOvr 계산 → 리그 분포 산출
-    const rawValues: number[] = allPlayers.map(p => {
-        const input = adaptPlayerToInput(p);
-        return evaluatePlayerRawOVR(input).rawCurrentOVR;
-    });
-
-    const dist = calculateLeagueDistribution(rawValues);
-    setLeagueDistribution(dist);
-
-    console.log(`[OVR Engine] 리그 분포 세팅: mean=${dist.meanRawOVR.toFixed(1)}, std=${dist.stdRawOVR.toFixed(1)}, 선수 수=${allPlayers.length}`);
-
-    // 3. 분포 반영 후 ovr / rawOvr / futureOvr 업데이트
     for (const p of allPlayers) {
         p.ovr = calculateOvr(p);
         p.rawOvr = calculateRawOvr(p);

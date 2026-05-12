@@ -6,14 +6,17 @@ import type { FARole } from './fa';
 // Player identity / playstyle system — separate from PBP engine archetypes
 // ─────────────────────────────────────────────────────────────
 
-// 16 archetype types across 3 positional groups
+// 24 archetype types across 3 positional groups
 export type ArchetypeType =
     // Guard (PG/SG)
     | 'primary_creator_guard'
     | 'scoring_combo_guard'
     | 'movement_shooter'
     | 'perimeter_3nd'
-    // Wing (SG/SF/PF)
+    | 'floor_general_guard'
+    | 'scoring_point_guard'
+    | 'defensive_guard'
+    // Wing (SG/SF/PF) + Cross-position
     | 'two_way_wing'
     | 'slashing_wing'
     | 'shot_creator_wing'
@@ -21,12 +24,17 @@ export type ArchetypeType =
     | 'aerial_wing'
     | 'post_scoring_wing'
     | 'wing_protector'
+    | 'three_level_scorer'
+    | 'lockdown_wing'
     // Big (PF/C)
     | 'post_scoring_big'
     | 'rim_runner_big'
     | 'stretch_big'
     | 'rim_protector_anchor'
-    | 'playmaking_big';
+    | 'playmaking_big'
+    | 'switchable_anchor'
+    | 'two_way_big'
+    | 'rebounding_big';
 
 // 14 trait tags (threshold-based, fast-changing vs slow archetype)
 export type TraitTag =
@@ -79,10 +87,15 @@ export interface ArchetypeDisplayInfo {
 
 // FA system bridge: maps archetype → FA role
 export const ARCHETYPE_TO_FA_ROLE: Record<ArchetypeType, FARole> = {
+    // Guard
     'primary_creator_guard': 'lead_guard',
     'scoring_combo_guard':   'combo_guard',
     'movement_shooter':      '3and_d',
     'perimeter_3nd':         '3and_d',
+    'floor_general_guard':   'lead_guard',
+    'scoring_point_guard':   'combo_guard',
+    'defensive_guard':       '3and_d',
+    // Wing + Cross-position
     'two_way_wing':          '3and_d',
     'slashing_wing':         'shot_creator',
     'shot_creator_wing':     'shot_creator',
@@ -90,9 +103,15 @@ export const ARCHETYPE_TO_FA_ROLE: Record<ArchetypeType, FARole> = {
     'aerial_wing':           'shot_creator',
     'post_scoring_wing':     'floor_big',
     'wing_protector':        'rim_big',
+    'three_level_scorer':    'shot_creator',
+    'lockdown_wing':         '3and_d',
+    // Big
     'post_scoring_big':      'floor_big',
     'rim_runner_big':        'rim_big',
     'stretch_big':           'stretch_big',
     'rim_protector_anchor':  'rim_big',
     'playmaking_big':        'floor_big',
+    'switchable_anchor':     'rim_big',
+    'two_way_big':           'rim_big',
+    'rebounding_big':        'rim_big',
 };

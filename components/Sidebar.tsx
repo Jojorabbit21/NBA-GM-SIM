@@ -137,10 +137,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           })()}
 
           <NavItem
-            active={pathname === '/'}
+            active={pathname === '/home'}
             icon={<Home />}
             label="홈"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/home')}
           />
           <NavItem
             active={pathname.startsWith('/inbox')}
@@ -315,6 +315,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     <span className="text-xs font-bold">이용약관</span>
                   </button>
                   <div className="my-1 border-t border-zinc-700" />
+                  <button
+                    onClick={() => { navigate('/'); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                  >
+                    <Home size={14} />
+                    <span className="text-xs font-bold">메인화면으로</span>
+                  </button>
                   <button
                     onClick={() => { onLogout(); setIsMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"

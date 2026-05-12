@@ -5,6 +5,7 @@ import { TeamLogo } from '../common/TeamLogo';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
 
+// 싱글/루키 드래프트뷰에서 사용하는 기본 픽 제한 시간 (멀티는 pickDurationSec prop으로 전달)
 export const PICK_TIME_LIMIT = 30;
 
 // Commissioner-style announcement templates
@@ -40,6 +41,8 @@ interface DraftHeaderProps {
     isUserTurn: boolean;
     picksUntilUser: number;
     timeRemaining: number;
+    pickDurationSec?: number;
+    isPaused?: boolean;
     onAdvanceOnePick?: () => void;
     onSkipToMyTurn?: () => void;
     onAutoCompleteAll?: () => void;
@@ -58,6 +61,8 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     isUserTurn,
     picksUntilUser,
     timeRemaining,
+    pickDurationSec = 30,
+    isPaused = false,
     onAdvanceOnePick,
     onSkipToMyTurn,
     onAutoCompleteAll,
@@ -74,7 +79,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     const displayTeamColor = displayDisplay.colorPrimary;
     const currentDisplay = resolveTeamDisplay(currentTeamId, teamMeta);
     const timerStr = `00:${String(Math.max(0, timeRemaining)).padStart(2, '0')}`;
-    const timerPct = (Math.max(0, timeRemaining) / PICK_TIME_LIMIT) * 100;
+    const timerPct = (Math.max(0, timeRemaining) / pickDurationSec) * 100;
 
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -144,7 +149,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     </span>
                 </div>
 
-                {/* Center: Announcement or Timer + Round/Pick — fixed height */}
+                {/* Center: Announcement or Paused or Timer + Round/Pick — fixed height */}
                 <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
                     {announcement ? (
                         <div
@@ -156,8 +161,8 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                         </div>
                     ) : (
                         <>
-                            <div className="pretendard font-black text-xl tracking-wider text-white leading-none">
-                                {timerStr}
+                            <div className={`pretendard font-black text-xl tracking-wider leading-none ${isPaused ? 'text-amber-400' : 'text-white'}`}>
+                                {isPaused ? '일시정지' : timerStr}
                             </div>
                             <div className="text-xs text-white/60 font-bold mt-0.5">
                                 {currentRound}라운드 #{currentPickInRound}픽
@@ -253,7 +258,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
             {/* Timer progress bar at bottom border */}
             <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-black/20">
                 <div
-                    className="h-full bg-blue-500 transition-all duration-1000 ease-linear"
+                    className={`h-full ${isPaused ? 'bg-amber-500' : 'bg-blue-500 transition-all duration-1000 ease-linear'}`}
                     style={{ width: `${timerPct}%` }}
                 />
             </div>

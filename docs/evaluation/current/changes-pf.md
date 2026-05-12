@@ -2,8 +2,456 @@
 
 ## 수정 요약
 - 점검 대상: PF 포지션 현역 + 2026 드래프트 프로스펙트 117명
-- 수정 선수: 13명
-- 수정 능력치: 총 31개 항목
+- 수정 선수: 14명
+- 수정 능력치: 총 44개 항목
+
+---
+
+### 2026-04-23 능력치 수정 — 데니스 로드먼 (30세, 올타임, 전성기: 1991-92 DET)
+
+**전성기 시즌**: 1991-92 DET (30세) — 9.8pts / 18.7reb / 2.3ast, FG% .539, TS% 57.4%
+리바운드 커리어 최고, DRB% 34.1, ORB% 18.1, All-Def 1st Team, All-NBA 3rd Team.
+**아키타입**: Rim Protector (primary) / Rebounding Big (secondary)
+**태그**: POA Stopper, Team Defender, Rim Protector, Glass Cleaner, High Motor
+**OVR**: 83 (rawOVR 86.7, eval-player.ts 실행값)
+**등번호**: 10번 (StatMuse — 1991-92 DET 기준)
+**연봉**: $1,075,000 (eskimo.com 1991-92 시즌 기준)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| closeShot | 65 | 62 | 주득점이 근거리 피니시이나 스코어링 레퍼토리 제한적 — 리그평균 하단 |
+| layup | 75 | 72 | 리바운드 후 레이업 위주, 능동적 드라이브 없음 — 리그평균 중단 |
+| dunk | 72 | 75 | 201cm/100kg, 리바운드 덩크 실재, 수직 점프 우수 — 리그평균 상단 |
+| postPlay | 42 | 40 | 포스트업 스코어링 없음. 9.8pts/g 전성기조차 포스트 공격 아님 — 심각한 약점 |
+| drawFoul | 45 | 48 | FTA 1.7/g, 파울 유도 제한적 — 심각한 약점 상단 |
+| midRange | 35 | 30 | 미드레인지 없음. FG 대부분 페인트 근거리 — 심각한 약점 |
+| shotIq | 65 | 62 | USG% 11.1%, 슈팅 판단보다 리바운드 기회 극대화 — 리그평균 하단 |
+| offConsist | 42 | 45 | 리바운드는 매우 일관, 스코어링 불안정 — 약간 상향 |
+| handling | 48 | 45 | 볼핸들링 거의 없는 선수 — 심각한 약점 상단 |
+| passIq | 65 | 60 | AST% 8.2%, 단순 전달 수준 — 로테이션 하단 |
+| passVision | 58 | 52 | 패스 비전 제한적 — 로테이션 |
+| passPerc | 85 | 82 | 수비 읽기 우수하나 85는 과도 — 우수선발 하단 |
+| offBallMovement | 65 | 55 | 공격 오프볼 무브먼트 없음. 리바운드 포지셔닝은 수비 범주 — 로테이션 |
+| speed | 82 | 80 | PF 기준 평균~우수 — 우수선발 하단 |
+| vertical | 82 | 85 | 18.7reb/g, 리바운드 점프 역대급 — 우수선발 상단 |
+| durability | 88 | 85 | 커리어 부상·결장 다수 — 우수선발 중단 |
+| stamina | 90 | 88 | 40.3분 출전 우수하나 88이 더 적정 |
+| perDef | 88 | 90 | All-Def 1st Team 7회 — 엘리트 하단 |
+| steal | 68 | 65 | STL 0.8/g, Per 36 ~0.8/g — 리그평균 하단 |
+| blk | 52 | 55 | BLK 0.9/g — 로테이션 상단 |
+| defConsist | 92 | 94 | 7년 연속 리바운드 왕, All-Def 다수 — 엘리트 하단 |
+| boxOut | 95 | 97 | 박스아웃으로 리바운드 지배, 역대급 — 엘리트 상단 |
+
+---
+
+### 2026-04-23 능력치 수정 — 더크 노비츠키 (28세, 올타임, 전성기: 2006-07 DAL)
+
+**전성기 시즌**: 2006-07 DAL (28세) — 24.6pts / 8.9reb / 3.4ast, FG% .502 / 3P% .416 / FT% .904
+50-40-90 클럽 달성, WS 리그 1위 (16.3), NBA MVP (유럽인 최초), All-NBA 1st Team. TS% 60.5%.
+**아키타입**: 3-Level Scorer (primary) / Post Scoring Wing (secondary)
+**태그**: Foul Merchant, Shotmaker, Floor Spacer
+**OVR**: 81 (rawOVR 82.3, eval-player.ts 실행값)
+**등번호**: 41번 (StatMuse — 전 커리어 DAL)
+**연봉**: $15,101,625 (eskimo.com 2006-07 시즌 기준)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| closeShot | 82 | 85 | FG% 50.2%, 페이더웨이/포스트 피니시 능수능란 — 우수선발 상단 |
+| midRange | 98 | 95 | 역대 최고 수준이나 98(역대 Top 3)보다 95(엘리트 상단) 적정 |
+| threeCorner | 78 | 82 | 3P% 41.6%, 코너보다 윙이 주무기이나 코너도 수준급 — 우수선발 상단 |
+| three45 | 85 | 88 | 45도 3점이 주 구역, 41.6% + 스트레치 PF 역대급 기준 — 엘리트 하단 |
+| dunk | 62 | 60 | 덩크가 주무기가 아님 — 로테이션 하단 |
+| postPlay | 82 | 84 | 포스트업 능력 우수, 우수선발 상단 |
+| handling | 80 | 78 | 빅맨 치고 우수하나 실제 핸들링은 우수선발 중단 |
+| passIq | 80 | 78 | AST% 17.8%이나 빅맨 기준으로 재산정 |
+| passVision | 78 | 75 | 패스 비전 리그평균 상단 |
+| passAcc | 78 | 76 | 패스 정확도 리그평균 상단 |
+| offBallMovement | 76 | 78 | 오프볼 포지셔닝·커팅 수준급 |
+| shotIq | 88 | 92 | TS% 60.5%, FTr 0.411 — 슛 선택 탁월, 엘리트 상단 |
+| perDef | 60 | 58 | 퍼리미터 수비 약점 — 리그평균 하단 |
+| helpDefIq | 70 | 68 | 헬프 수비 소극적 |
+| blk | 58 | 60 | blk_pct 1.7%, 0.8개/경기 — 리그평균 하단 소폭 |
+| defConsist | 68 | 65 | 수비 집중력 불안정 |
+| offReb | 65 | 62 | ORB% 5.3%, 1.6개/경기 — 리그평균 하단 |
+| agility | 64 | 62 | 수비 풋워크 약점 |
+| hustle | 82 | 80 | 허슬 플레이 평균 이상이나 82는 과평가 |
+| age | 28 | 28 | 전성기 나이 유지 |
+| popularity | custom_overrides | local:80/national:80 | include_alltime=TRUE — 고정값 적용 |
+| num | 41 | 41 | StatMuse 조회 확인 (전 커리어 착용) |
+| salary | 35,000,000 | 15,101,625 | eskimo.com 2006-07 실제 연봉으로 수정 |
+| custom_overrides | (기존) | 36개 전성기 능력치 전체 설정 | 올타임 모드 전성기 복원 |
+
+---
+
+### 2026-04-23 능력치 수정 — 댄 이셀 (23세, 올타임, 전성기: 1971-72 KEN)
+
+**전성기 시즌**: 1971-72 KEN ABA (23세) — 30.6pts / 11.2reb / 2.3ast, FG% .486 / FT% .785
+커리어 최고 득점 시즌. All-ABA 1st Team, ABA All-Star Game MVP.
+NBA 이후 전성기(1979-80): 23.8pts / 8.8reb, FG% .505 — 82경기 전경기 선발.
+**아키타입**: Post Scorer (primary) / Rebounding Big (secondary)
+**태그**: High Motor, Ironman
+**OVR**: 80 (rawOVR 81.2, eval-player.ts 실행값)
+**등번호**: 44번 (StatMuse — 1977-78 이후 전 커리어)
+**연봉**: $1,000,000 (1985년 이전 전성기 — 연봉 데이터 미수록 고정값 적용)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| steal | 55 | 68 | NBA 전성기 Per 36 스틸 1.0-1.2개 — 65-77 밴드 하단 |
+| age | 27 | 23 | 전성기 1971-72 시즌 기준 나이 (생년 1948년) |
+| popularity | local:50/national:55 | local:80/national:80 | include_alltime=TRUE — 고정값 적용 |
+| ovr | 87 | 80 | eval-player.ts 재계산 결과 반영 |
+| num | — | 44 | StatMuse 조회 (1977-78 이후 착용) |
+| salary | 20 | 1,000,000 | 전성기 1985년 이전 — 고정값 적용 |
+
+---
+
+### 2026-04-23 능력치 수정 — 호레이스 그랜트 (28세, 올타임, 전성기: 1993-94 CHI)
+
+**전성기 시즌**: 1993-94 CHI (28세) — 15.1pts / 11.0reb / 3.4ast / 1.1stl / 1.2blk, FG% .524 / TS% .540
+커리어 최고 득점·리바운드 시즌. ORB% 13.9%, DRB% 21.1%, AST% 14.3%.
+All-Defensive 2nd Team, DPOY 투표 10위.
+**아키타입**: Rim Protector (primary) / Rebounding Big (secondary)
+**태그**: Reliable 2-Way
+**OVR**: 80 (rawOVR 79.8, eval-player.ts 실행값)
+**등번호**: 54번 (StatMuse — 전 커리어 동일)
+**연봉**: $1,950,000 (eskimo.com 1993-94 시즌 기준)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| blk | 65 | 72 | 1.2blk/g, BLK% 2.2%(1993-94) → 리그평균 상단 |
+| offReb | 68 | 78 | ORB% 13.9%, 4.4oreb/g(1993-94) → 우수선발 하단 |
+| defReb | 78 | 82 | DRB% 21.1%, 6.6dreb/g(1993-94) → 우수선발 |
+| perDef | 75 | 78 | All-Def 2nd Team 3회 연속 → 우수선발 하단 |
+| steal | 58 | 65 | 1.1stl/g, STL% 1.5% → 리그평균 하단 |
+| passIq | 62 | 70 | AST% 14.3%, 3.4ast/g → PF 최고 수준, 리그평균 상단 |
+| postPlay | 65 | 70 | 15pts 스코어러, FG% 52.4% → 리그평균 상단 |
+| ft | 67 | 65 | 1993-94 FT% 59.6%, 커리어 69.2% → 50-64 상단 |
+| offConsist | 72 | 75 | 7시즌 연속 12pts+ → 안정적인 공격 일관성 |
+| popularity | {"local":49,"national":54} | {"local":80,"national":80} | include_alltime=TRUE 레전드 고정값 |
+| ovr | 84 | 80 | eval-player.ts 실제 엔진 계산값 반영 |
+
+---
+
+### 2026-04-23 능력치 수정 — 팀 던컨 (26세, 올타임, 전성기: 2002-03 SAS)
+
+**전성기 시즌**: 2002-03 SAS (26세) — 23.3pts / 12.9reb / 3.9ast / 0.7stl / 2.9blk, FG% .513 / TS% .564
+MVP(2회 연속) + Finals MVP + 챔피언십. BPG 2.9(커리어 최고), BLK% 4.4%, DRB% 27.3%, AST% 19.5%.
+All-NBA 1st Team, All-Defensive 1st Team, NBA 챔피언.
+**아키타입**: Rim Protector (primary) / Two-Way Big (secondary)
+**태그**: Team Defender / Rim Protector / Glass Cleaner / High Motor / Reliable 2-Way
+**OVR**: 86 (rawOVR 90.9, eval-player.ts 실행값)
+**등번호**: 21번 (StatMuse 2002-03 SAS 기준)
+**연봉**: $12,072,500 (eskimo.com 2002-03 시즌 기준)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| midRange | 85 | 88 | 뱅크샷 전문가, 미드레인지 FG% ~48-50%, 시도량 매우 높음 → 엘리트 하단 |
+| dunk | 72 | 78 | 211cm 빅맨, 림 근처 덩크 가능 → 리그평균 상단 |
+| passIq | 82 | 84 | AST 3.9/게임, AST% 19.5% (PF 역사상 최상위권), 더블팀 킥아웃 탁월 |
+| passVision | 68 | 72 | 빅맨 기준 탁월한 패스 시야 → 리그평균 상단 상향 |
+| perDef | 72 | 80 | All-Defensive 1st Team 8회, PF치고 우수한 퍼리미터 수비 → 우수선발 |
+| blk | 90 | 92 | BPG 2.9(커리어 최고), BLK% 4.4%, 리그 탑3 블로커 → 엘리트 상단 |
+| defReb | 88 | 92 | DREB/36 ~8.9개, DRB% 27.3%(커리어 최고 수준) → 엘리트 |
+| offReb | 78 | 80 | OREB/36 ~2.93개, ORB% 9.9% → 우수선발 상단 |
+| ovr | 90 | 86 | eval-player.ts 실제 엔진 계산값 반영 |
+| popularity | {"local":55,"national":60} | {"local":80,"national":80} | include_alltime=TRUE 레전드 고정값 |
+
+---
+
+### 2026-04-23 능력치 수정 — 크리스 웨버 (28세, 올타임, 전성기: 2001-02 SAC)
+
+**전성기 시즌**: 2001-02 SAC (28세) — 24.5pts / 10.1reb / 4.8ast / 1.7stl, FG% .495 / TS% .540
+5년 연속 All-NBA 선발 구간 중 종합 고급스탯(TS%, AST%, WS) 최고 시즌. FTA/36 5.88로 전성기 내 파울 유도 피크.
+**아키타입**: Post Scorer (primary) / Two-Way Big (secondary)
+**태그**: Elite Finisher / +Playmaker / Reliable 2-Way
+**OVR**: 83 (rawOVR 85.8, eval-player.ts 실행값)
+**Position Score**: 78.8 (PF A 등급)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| ft | 62 | 72 | 전성기 FT% .749(2001-02), .751(1999-00) → 65-77 상단 |
+| defReb | 88 | 85 | DREB/36 ~7.3 (2001-02 10.1reb, OREB 2.8 → DREB 7.3) → 78-87 중단 |
+| drawFoul | 75 | 80 | FTA/36 5.88 (2001-02 최고) → 78-87 하단 |
+| shotIq | 82 | 78 | TS% .540 (리그평균 상단) — 82는 과대평가 |
+| passPerc | 72 | 75 | 킹스 더블팀 탈출·패싱레인 판단 우수 → 65-77 상단 |
+| passAcc | 85 | 88 | AST% 21.9, 정확한 포스트 탈출 패스 → 88-94 하단 |
+| handling | 78 | 82 | TOV% 11.4 (낮음), PF 역사상 최고 볼핸들러 중 하나 → 78-87 |
+| intangibles | 78 | 85 | 5회 All-NBA 1st/2nd, 킹스 프랜차이즈 리더십 → 78-87 상단 |
+| helpDefIq | 75 | 80 | 킹스 시절 팀 수비 로테이션 핵심 → 65-77 상단 |
+| intDef | 78 | 82 | 전성기 BLK/36 1.86(1998-99) → 65-77 상단, 포스트 수비 능력 반영 |
+| perDef | 72 | 75 | 킹스 시절 2-way 기여, 전성기 STL/36 1.56 → 65-77 상단 |
+| defConsist | 75 | 78 | 킹스 시절 꾸준한 수비 집중력 → 65-77 상단 |
+| boxOut | 82 | 88 | 커리어 10RPG 유지, 신체 강점 활용한 박스아웃 → 78-87 상단 |
+| offReb | 72 | 75 | OREB/36 2.6~3.1 → 65-77 상단 |
+| strength | 88 | 90 | 포스트 배틀 우위, 근육질 체형 → 88-94 하단 |
+| vertical | 85 | 88 | 덩크·리바운드 도약력 → 78-87 상단 |
+| popularity | {"local":53,"national":58} | {"local":80,"national":80} | include_alltime=TRUE 레전드 고정값 |
+
+---
+
+### 2026-04-23 능력치 수정 — 톰 챔버스 (30세, 올타임, 전성기: 1989-90 PHX)
+
+**전성기 시즌**: 1989-90 PHX (30세) — 27.2pts / 7.0reb / 2.3ast, FG% .501 / TS% .579, PER 20.9
+4회 올스타, 올스타 게임 MVP(1988), All-NBA 2nd Team 2회(1989/1990). 당대 최고 PF 득점 스코어러.
+**아키타입**: Post Scoring Wing (primary) / Post Scorer (secondary)
+**태그**: 없음 (모든 모듈 임계값 미달)
+**OVR**: 77 (rawOVR 74.1, eval-player.ts 실행값)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| postPlay | 85 | 90 | 전성기 FG% 50.1%, 27.2ppg 주 무기 포스트업 — 당대 최고 PF 스코어러 → 88-94 하단 |
+| ft | 85 | 87 | 전성기 FT% 86.1%, 커리어 안정적 82-86% 구간 → 우수선발 상단 87 |
+| defReb | 65 | 74 | 1988-89 DRB 6.7/g, DRB% 18.4%, 1989-90 DRB% 15.2% → 65-77 상단 74 |
+| shotIq | 75 | 78 | TS% 57.9% (1989-90), 고효율 공격 판단 → 우수선발 하단 78 |
+| steal | 55 | 60 | 1.1 STL/게임 꾸준 → 65-77 하단 60 |
+| drawFoul | 72 | 75 | FTr 0.40 (1989-90), Per 36 FTA 약 7.7개 → 65-77 상단 75 |
+| offConsist | 75 | 78 | 27.2ppg / 81경기 풀시즌 안정적 → 65-77 최상단 78 |
+| intangibles | 72 | 75 | 4회 올스타, 올스타 MVP, 프랜차이즈 에이스 → 65-77 상단 75 |
+| age | 29 | 30 | 전성기 1989-90 기준 (생년 1959-06-21) |
+| dunk | 85 | 82 | 30세 기준, 덩크 빈도 감소 → 78-87 하단 |
+| offReb | 55 | 52 | OREB/36 1.44 (1989-90), OREB% 4.7% → 50-64 하단 |
+| boxOut | 68 | 65 | 리바운드 포지셔닝 평균 수준, 운동성 의존 → 65-77 하단 |
+| perDef | 48 | 50 | 수비 약세이나 최소한의 퍼리미터 수비 시도 → 50 |
+| intDef | 52 | 55 | 포스트 수비 제한적이나 PF 역할 수행 → 55 |
+| helpDefIq | 52 | 55 | 헬프 로테이션 평균 이하 → 55 |
+| speed | 78 | 80 | PF 중 빠른 편, 전성기 30세 → 80 |
+| agility | 78 | 80 | 방향전환 능력, 드라이브 가능 PF → 80 |
+| durability | 72 | 75 | 1989-90 81경기 출전 → 75 |
+| stamina | 78 | 80 | 37.6분/게임 전성기 유지 → 80 |
+| hustle | 68 | 70 | 평균 이상 허슬 → 70 |
+| passIq | 58 | 60 | AST 2.3/게임 (PF 평균 이상) → 60 |
+| passAcc | 58 | 60 | 기본 패스 정확도 → 60 |
+| three45 | 50 | 52 | 1986-87 3P% 37.2% 기록, 시도수 제한 → 52 |
+| threeTop | 48 | 50 | 탑오브더키 27-30% 수준 → 50 |
+| spdBall | 68 | 70 | 포스트 위치 스팟업 가능 → 70 |
+| popularity | {"local":48,"national":53} | {"local":80,"national":80} | include_alltime=TRUE 레전드 고정값 |
+
+---
+
+### 2026-04-23 능력치 수정 — 크리스 보쉬 (25세, 올타임, 전성기: 2009-10 TOR)
+
+**전성기 시즌**: 2009-10 TOR (25세) — 24.0pts / 10.8reb / 2.4ast / FG% .518 / TS% 59.2% / PER 25.0
+커리어 최고 득점·PER·TS% 동시 달성. 올스타 6회 연속 마지막 TOR 시즌.
+**아키타입**: Post Scorer (primary) / Two-Way Big (secondary)
+**OVR**: 81 (rawOVR 82.3, eval-player.ts 실행값)
+※ OVR 조정 알림: TOR 전성기 기준 3점 거의 없음(연 22회 시도) → spotUpShooting 41.2로 급락 → PF OVR 구조적 페널티. 스타일 유지 시 달성 가능 최대 OVR.
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| threeCorner | 62 | 32 | 2009-10 TOR 3PA 연 22회(0.3/경기), 시도 극소 → 20-49 밴드 |
+| three45 | 60 | 32 | 동일 이유 |
+| threeTop | 58 | 30 | 동일 이유 |
+| defReb | 88 | 82 | Per 36 7.9개 → 78-87 하단 (88은 과대평가) |
+| offReb | 65 | 68 | Per 36 2.9개 → 65-77 중단으로 소폭 상향 |
+| drawFoul | 78 | 84 | 2009-10 FTA/36 = 8.41개 → 78-87 우수선발 상단 |
+| passIq | 78 | 65 | Per 36 AST 2.37개, 포스트 빅맨 기준 → 65-77 평균 하단 |
+| passVision | 75 | 60 | 패싱 빅맨 아님 → 50-64 |
+| passAcc | 78 | 65 | 동일 이유 |
+| offBallMovement | 78 | 72 | 포스트 중심 플레이어 → 리그 평균 |
+| intangibles | 90 | 88 | 6회 올스타, 팀 리더 → 엘리트 88-94 하단 |
+| closeShot | 88 | 90 | 포스트 피니시 FG% .518 → 엘리트 진입 |
+| layup | 88 | 90 | 드라이빙 피니시 우수 → 소폭 상향 |
+| intDef | 82 | 85 | PF 인테리어 수비 평균 이상, helpDefIq 강화 |
+| helpDefIq | 75 | 78 | 팀 수비 보조 역할 양호 |
+| age | 26 | 25 | 2009-10 전성기 시즌 실제 나이 (1984년 3월생) |
+| popularity | local:48, national:53 | local:80, national:80 | include_alltime=TRUE 고정값 적용 |
+| num | — | 4 | StatMuse 조회 — TOR 2003-10 착용 번호 |
+| salary | 24 | 15,779,912 | eskimo.com 2009-10 시즌 기준 |
+
+---
+
+### 2026-04-23 능력치 수정 — 케빈 맥헤일 (29세, 올타임, 전성기: 1986-87 BOS)
+
+**전성기 시즌**: 1986-87 BOS (29세) — 26.1pts / 9.9reb / 2.6ast / 2.2blk / FG% .604 / FT% .836 / TS% .655
+NBA 역사상 최초 FG%60+·FT%80+ 동시 달성. All-NBA 1st Team + All-Def 1st Team 동시 수상.
+**아키타입**: Post Scorer (primary) / Two-Way Big (secondary)
+**OVR**: 84 (rawOVR 87.6, eval-player.ts 실행값)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| dunk | 78 | 72 | 208cm PF이나 덩크보다 포스트무브 의존, 수직점프 보통 → 65-77 밴드 |
+| drawFoul | 78 | 85 | 1986-87 FTA 6.6개/경기, Per 36 FTA ~6.0개 → 78-87 상단 |
+| midRange | 80 | 85 | 포스트 페이더웨이 포함 FG% .604 → 우수선발 상단 조정 |
+| threeCorner | 25 | 20 | 3점 시도 0.1/경기, 커리어 내내 3점 거의 없음 → 20-49 최하단 |
+| three45 | 22 | 20 | 동일 이유 |
+| ft | 80 | 87 | 1986-87 FT% .836, 1989-90 .893 → 우수선발 상단 |
+| offConsist | 88 | 90 | 60.4% FG%, 매우 일관된 포스트 공격 → 엘리트 하단 |
+| handling | 55 | 50 | 순수 포스트 빅맨, 볼핸들링 제한적 → 로테이션 하단 |
+| passIq | 72 | 70 | APG 2.6 빅맨 기준 양호하나 패스 IQ는 리그평균 하단 |
+| passVision | 62 | 60 | 포스트 킥아웃 패스 가능하나 패스 비전 제한적 |
+| passAcc | 72 | 70 | 유사 조정 |
+| passPerc | 78 | 75 | 수비 읽기 보통 수준으로 하향 |
+| offBallMovement | 78 | 72 | 포스트 빅맨으로 오프볼 무브먼트 제한 |
+| speed | 68 | 65 | 빅맨 기준 느린 편 → 리그평균 하단 |
+| agility | 72 | 68 | 전체 어질리티는 보통 (포스트 풋워크는 좋으나) |
+| vertical | 75 | 72 | 덩크보다 포스트 의존, 수직점프 보통 |
+| strength | 88 | 90 | 포스트 배틀 지배, 강한 몸싸움 → 엘리트 하단 |
+| durability | 72 | 75 | 전성기엔 건강 (후반 발 부상은 전성기 이후) |
+| stamina | 82 | 80 | 39.7분/경기 소화, 보통 수준 |
+| hustle | 82 | 80 | 허슬 있으나 극단적 허슬러는 아님 |
+| perDef | 72 | 68 | All-Def이지만 포스트 수비 특화, 퍼리미터 1대1은 보통 |
+| intDef | 85 | 92 | All-Def 1st x3, BLK% 3.1%, 인테리어 수비 엘리트 → 엘리트 밴드 |
+| helpDefIq | 82 | 85 | 팀 수비 IQ 매우 높음 → 우수선발 상단 |
+| steal | 62 | 58 | SPG 0.5, 빅맨 기준 보통 이하 |
+| blk | 85 | 88 | 1986-87 2.2 BPG, ~2.0/36 → 엘리트 88-94 진입 |
+| defConsist | 85 | 88 | All-Def 1st 3회, 수비 집중도 매우 높음 |
+| defReb | 82 | 85 | 1986-87 DREB 6.7/경기, DRB% 17.5% → 우수선발 상단 |
+| offReb | 75 | 78 | 1986-87 OREB 3.2/경기, ORB% 9.9% → 우수선발 하단 |
+| boxOut | 85 | 88 | 포스트 포지셔닝 엘리트 → 엘리트 하단 |
+| intangibles | 90 | 92 | 3회 챔피언십, 리더십, 클러치 → 엘리트 하단 |
+| popularity | local:54, national:59 | local:80, national:80 | include_alltime=TRUE 고정값 적용 |
+
+---
+
+### 2026-04-23 능력치 수정 — 케빈 가넷 (27세, 올타임, 전성기: 2003-04 MIN)
+
+**전성기 시즌**: 2003-04 MIN (27세) — 24.2pts / 13.9reb / 5.0ast / 1.5stl / 2.2blk, FG% 49.9%, TS% 54.7%, BLK% 4.0%, AST% 24.4%, DRB% 30.0%, ORB% 9.1%, MVP-1, All-NBA 1st, All-Def 1st
+**아키타입**: Rim Protector (primary) / Wing Protector (secondary)
+**OVR**: 95 (rawOVR 91.7, eval-player.ts 실행값)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| blk | 82 | 92 | 2003-04 Per 36 블록 2.01개, BLK% 4.0% 리그 1위 → 엘리트 88-94 상단 |
+| offReb | 68 | 82 | 2003-04 ORB% 9.1%, Per 36 2.74개 → 78-87 우수선발 밴드 |
+| intDef | 92 | 95 | BLK% 4.0%, All-Def 1st 6회 연속, 역대 최고 PF 인테리어 수비 → 88-94 상단 |
+| perDef | 82 | 90 | 211cm PG까지 스위치, All-Def 1st 전방위 수비 → 엘리트 밴드 |
+| closeShot | 88 | 82 | 페인트 비제한구역 FG% 48.4% → 65-77 밴드, 기존 과평가 |
+| postPlay | 82 | 85 | 미드레인지 페이더웨이 포스트업 핵심 무기, 포스트 볼륨 높음 → 78-87 상단 |
+| drawFoul | 72 | 82 | 2003-04 FTA 5.7개/경기, FTr .289, Per 36 FTA 5.21개 → 78-87 밴드 |
+| handling | 68 | 75 | TOV% 10.5% 우수, AST% 24.4%, PF 치고 볼핸들링 양호 → 리그평균 상단 |
+| shotIq | 85 | 82 | TS% 54.7% 당시 리그평균 수준 → 78-87 하단 조정 |
+| popularity | local:54, national:59 | local:80, national:80 | include_alltime=TRUE 고정값 적용 |
+
+---
+
+### 2026-04-23 능력치 수정 — 칼 말론 (33세, 올타임, 전성기: 1996-97 UTA)
+
+**전성기 시즌**: 1996-97 UTA (33세) — 27.4pts / 9.9reb / 4.5ast, FG% .550, TS% .600, MVP-1, All-NBA 1st, All-Def 1st
+**아키타입**: Post Scorer (primary) / Post Scoring Wing (secondary)
+**OVR**: 84 (rawOVR 88.2, 엔진 계산)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| ft | 74 | 76 | 1996-97 FT% .755 → 리그평균 상단 적정 |
+| blk | 55 | 52 | Per 36 블록 0.59개 → 50-64 밴드 (현재 과평가) |
+| dunk | 88 | 90 | The Mailman 별명, 강력한 덩크 플레이어 → 엘리트 하단 |
+| steal | 62 | 65 | 1.4개/game, STL% 2.0% → 65-77 하단 |
+| defReb | 85 | 88 | Per 36 수비리바 7.38개, DRB% 24.2% → 78-87 상단 |
+| passIq | 78 | 80 | 4.5 APG, AST% 24.5% → PF 기준 우수 |
+| intDef | 78 | 82 | 체격·힘 기반 인테리어 수비 강함, 99 strength → 우수선발 |
+| helpDefIq | 72 | 75 | 헬프 수비 준수, All-Def 수상 → 리그평균 상단 |
+| offBallMovement | 82 | 80 | PF 오프볼 이동 적정 수준 → 조정 |
+| spdBall | 75 | 72 | 와이드오픈 캐치&슛 제한적 역할 |
+| drawFoul | 88 | 90 | FTr .439, Per 36 FTA 8.27개 → 엘리트 하단 |
+| strength | 97 | 99 | 역대 최강 수준 PF 체력/힘 → 역대급 |
+| durability | 99 | 97 | 1476경기 역대 최다 출전 수준, 부상이력 거의 없음 |
+| intangibles | 85 | 88 | 2회 MVP, 14회 올스타, 역대 No.2 스코어러 → 엘리트 |
+| offConsist | 88 | 90 | 19시즌 동안 극도의 일관성 → 엘리트 |
+| defConsist | 75 | 78 | All-Def 수상, 수비 헌신 높음 → 우수선발 하단 |
+| midRange | 85 | 82 | 미드레인지 FG% ~48-50% 수준 → 우수선발 하단 |
+| threeCorner | 35 | 30 | 3점 시도 극소, 비3점 선수 |
+| three45 | 32 | 28 | 동일 |
+| threeTop | 30 | 28 | 동일 |
+| perDef | 72 | 70 | 퍼리미터 수비 PF 기준 평균 수준 |
+| handling | 68 | 65 | TOV% 11.1% 양호하나 핸들링 제한적 |
+| passAcc | 72 | 70 | 패스 정확도 적정 수준 |
+| age | 29 | 33 | 전성기 1996-97 시즌 기준 나이 수정 |
+| popularity | local:55, national:60 | local:80, national:80 | include_alltime=TRUE 고정값 적용 |
+
+---
+
+### 2026-04-23 능력치 수정 — 카를로스 부저 (25세, 올타임, 전성기: 2006-07 UTA)
+
+**전성기 시즌**: 2006-07 UTA (25세) — 20.9pts / 11.7reb / 3.0ast, FG% .561, PER 24.1, WS 9.9, BPM 4.6, VORP 4.3, 올스타 선발
+**아키타입**: Post Scorer (primary) / Rebounding Big (secondary)
+**OVR**: 77 (rawOVR 75.1, 엔진 계산)
+
+| 능력치 | 전 | 후 | 이유 |
+|--------|----|----|------|
+| postPlay | 78 | 85 | FG% .561 페인트 지배, PER 24.1 → 우수선발 상단 |
+| closeShot | 85 | 85 | RA FG% .720 → 우수선발 상단 유지 |
+| strength | 85 | 90 | 리그 최강 수준 포스트 배틀 → 엘리트 상단 |
+| defReb | 77 | 82 | DRB% 29.9% → 우수선발 상단 |
+| offReb | 69 | 74 | ORB% 11.2% → 리그평균 상단 |
+| boxOut | 76 | 82 | 리바운드 포지셔닝 우수 → 우수선발 하단 |
+| intDef | 55 | 70 | 포스트 몸싸움 강함, 사이즈로 버팀 → 리그평균 상단 |
+| intangibles | 75 | 78 | 2x 올스타, 팀 리더십 → 우수선발 하단 |
+| drawFoul | 70 | 75 | FTr .322, Per 36 FTA 5.2개 → 리그평균 상단 |
+| shotIq | 75 | 78 | TS% .588 → 우수선발 하단 |
+| midRange | 80 | 72 | Mid-Range FG% .385, 전성기 주무기 아님 → 리그평균 |
+| spdBall | 68 | 45 | 3점 시도 없음, 스팟업 역할 없음 → 심각한 약점 |
+| threeCorner | 36 | 28 | 커리어 코너3점 시도 극히 적음 → 심각한 약점 |
+| three45 | 33 | 28 | 동일 |
+| threeTop | 30 | 28 | 동일 |
+| blk | 54 | 45 | Per 36 블록 0.3개, BLK% .7% → 심각한 약점 |
+| perDef | 61 | 58 | DBPM 0.2, 퍼리미터 수비 약함 → 로테이션 |
+| steal | 59 | 55 | Per 36 스틸 1.0개 → 리그평균 하단 |
+| ft | 72 | 70 | FT% .685 → 리그평균 하단 |
+| offConsist | 70 | 74 | 전성기 FG% 안정 → 리그평균 상단 |
+| defConsist | 70 | 66 | 수비 집중도 보통 → 리그평균 |
+| hustle | 71 | 75 | 공격 리바운드/포스트 경합 → 리그평균 상단 |
+| handling | 55 | 52 | TOV% 12.8%, 빅맨 수준 → 로테이션 |
+| passIq | 70 | 68 | AST% 16.6%, 빅맨치고 보통 |
+| speed | 72 | 68 | 포스트 빅맨, 빠르지 않음 |
+| agility | 70 | 66 | 방향전환 보통 |
+| vertical | 72 | 68 | 덩크 가능하나 폭발적이지 않음 |
+| stamina | 74 | 72 | 34분/게임 → 리그평균 |
+| age | 27 | 25 | 전성기 2006-07 기준으로 교정 |
+| num | - | 5 | StatMuse — 2006-07 UTA 기준 |
+| salary | 16 | 11260483 | eskimo.com 2006-07 시즌 기준 |
+| popularity | - | {local:80,national:80} | include_alltime=TRUE 고정값 |
+| ovr | 82 | 77 | eval-player.ts 재계산 |
+
+---
+
+### 2026-04-23 신규 선수 추가 — 아마레 스타더마이어 (Amar'e Stoudemire, 42세, 올타임)
+
+**전성기 시즌**: 2007-08 PHX (25세) — 25.2pts / 9.1reb / 2.1blk, FG% 59.0%, TS% 65.6%(커리어 최고), BLK/36 2.19, FTA/36 9.29
+**아키타입**: Post Scorer (primary) / Two-Way Big (secondary)
+**OVR**: 79 (rawOVR 77.7, 엔진 계산)
+**Position Score (PF 공식)**: 신규 등록
+
+| 능력치 | 초기값 | 이유 |
+|--------|--------|------|
+| closeShot | 86 | FG% 59.0%, 페인트 피니시 탁월 → 우수선발 상단 |
+| layup | 85 | 드라이빙 레이업 운동능력 기반 → 우수선발 |
+| dunk | 88 | 전성기 최정상급 수직점프+윙스팬 → 엘리트 |
+| postPlay | 82 | 포스트 스코어링 가능, 주무기는 픽앤롤 → 우수선발 하단 |
+| drawFoul | 87 | FTA/36 9.29 → 우수선발 상단 |
+| midRange | 72 | 주무기 아님 → 리그평균 하단 |
+| threeCorner | 35 | 3점 비시도 → 심각한 약점 |
+| three45 | 33 | 동일 |
+| threeTop | 30 | 동일 |
+| ft | 81 | FT% 80.5% → 우수선발 하단 |
+| shotIq | 78 | TS% 65.6% → 우수선발 하단 |
+| spdBall | 42 | 스팟업 3점 없음 → 심각한 약점 |
+| offConsist | 80 | 피닉스 시절 꾸준한 효율 → 우수선발 |
+| handling | 55 | 빅맨 제한적 핸들 → 로테이션 |
+| passIq | 58 | AST/36 1.59 → 로테이션 상단 |
+| passVision | 52 | 패싱 빅 아님 → 로테이션 |
+| passAcc | 60 | 기본 패스 충분 → 로테이션 상단 |
+| passPerc | 55 | 패싱레인 읽기 평균 이하 → 로테이션 |
+| offBallMovement | 72 | 픽앤롤 스크린 후 움직임 → 리그평균 |
+| speed | 72 | PF 기준 양호 → 리그평균 |
+| agility | 75 | 수비 풋워크 포함 민첩 → 리그평균 상단 |
+| vertical | 90 | 전성기 최정상급 수직점프 → 엘리트 |
+| strength | 82 | 강한 하체 파워 → 우수선발 하단 |
+| durability | 55 | 반복 무릎 부상 이력 → 로테이션 |
+| stamina | 72 | 평균 34분 출장 → 리그평균 |
+| hustle | 75 | 공격 리바운드 허슬 → 리그평균 상단 |
+| intangibles | 72 | 6회 올스타, 리더십 보통 → 리그평균 |
+| perDef | 52 | 퍼리미터 수비 약점 → 로테이션 |
+| intDef | 80 | 인테리어 수비+블록 → 우수선발 |
+| helpDefIq | 68 | 헬프 로테이션 평균 → 리그평균 |
+| steal | 55 | STL/36 0.86 → 로테이션 (기준: <1.0→50-64) |
+| blk | 82 | BLK/36 2.19 → 우수선발 상단 |
+| defConsist | 58 | 수비 일관성 낮음 → 로테이션 상단 |
+| defReb | 78 | DREB/36 6.8 → 우수선발 하단 |
+| offReb | 72 | OREB/36 2.3 → 리그평균 |
+| boxOut | 76 | 박스아웃 피지컬 우수 → 리그평균 상단 |
+| num | — | 1 (PHX 2006-10 기준) |
+| salary | — | $13,762,775 (eskimo.com 2007-08) |
+| popularity | — | {"local":80,"national":80} (올타임 고정) |
 
 ---
 

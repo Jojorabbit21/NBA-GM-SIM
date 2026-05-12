@@ -42,8 +42,6 @@ export interface ShotZones {
 export interface PlayerTendencies {
     lateral_bias: number; // 0: Strong Left, 1: Left, 2: Right, 3: Strong Right
     zones: ShotZones;
-    touch?: number; // Optional
-    foul?: number;  // Optional
 }
 
 export interface HiddenTendencies {
@@ -275,6 +273,7 @@ export interface Player {
 }
 
 // 과거 시즌 커리어 스탯 (meta_players.career_history JSONB, NBA Stats API에서 수집)
+// null = 해당 시대에 공식 집계되지 않은 스탯 (0과 구분)
 export interface CareerSeasonStat {
     season:   string;  // "2023-24"
     team:     string;  // "DEN"
@@ -282,18 +281,21 @@ export interface CareerSeasonStat {
     // Traditional per game
     gp:  number;  gs:  number;
     min: number;  pts: number;
-    oreb: number; dreb: number; reb: number;
-    ast: number;  stl: number;  blk: number;
-    tov: number;  pf:  number;
+    oreb: number | null;  dreb: number | null;  reb: number;  // oreb/dreb: ~1973-74 이전 null
+    ast: number;
+    stl: number | null;   // ~1973-74 이전 null
+    blk: number | null;   // ~1973-74 이전 null
+    tov: number | null;   // ~1977-78 이전 null
+    pf:  number;
     fgm: number;  fga: number;
-    fg3m: number; fg3a: number;
+    fg3m: number | null;  fg3a: number | null;  // ~1979-80 이전 null
     ftm: number;  fta: number;
-    fg_pct:  number;  fg3_pct: number; ft_pct: number;
+    fg_pct:  number;  fg3_pct: number | null;  ft_pct: number;  // fg3_pct: ~1979-80 이전 null
     // Advanced (locally calculated from totals)
     ts_pct:    number;
     efg_pct:   number;
-    tov_pct:   number;
-    fg3a_rate: number;
+    tov_pct:   number | null;   // tov 미집계 시즌 null
+    fg3a_rate: number | null;   // fg3a 미집계 시즌 null
     fta_rate:  number;
     // Advanced (team-context, from LeagueDashPlayerStats)
     usg_pct?: number;

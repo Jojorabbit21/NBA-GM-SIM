@@ -1,5 +1,5 @@
 
-import { useCurrentLeague } from './useCurrentLeague';
+import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import type { LeagueRow } from '../services/multi/roomQueries';
 
 // ─── LeagueContext 차별 유니온 ────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export type LeagueContext =
     | {
         mode:     'main_league';
         leagueId: string;
-        tier:     'pro' | 'dleague' | 'uleague';
+        tier:     'd1' | 'd2' | 'd3';
         groupId:  string;
         options:  MainLeagueOptions;
         season:   number;
@@ -65,7 +65,7 @@ export type LeagueContext =
  * 싱글 코드는 절대 호출하지 말 것.
  */
 export function useLeagueConfig(): LeagueContext {
-    const { league, isLoading, error } = useCurrentLeague();
+    const { league, isLoading, error } = useLeagueContext();
 
     if (isLoading) return { mode: 'loading', isLoading: true };
     if (error || !league) return { mode: 'error', error: error ?? 'league not found', isLoading: false };
@@ -76,7 +76,7 @@ export function useLeagueConfig(): LeagueContext {
         return {
             mode:      'main_league',
             leagueId:  league.id,
-            tier:      league.tier as 'pro' | 'dleague' | 'uleague',
+            tier:      league.tier as 'd1' | 'd2' | 'd3',
             groupId:   league.group_id!,
             options,
             season:    league.season_number,

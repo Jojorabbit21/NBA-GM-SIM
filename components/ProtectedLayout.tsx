@@ -62,11 +62,11 @@ const ProtectedLayout: React.FC = () => {
 
     // ─── 인증 가드 (hooks 이후에 위치) ───────────────────────────────────
 
-    if (!session && !isGuestMode) return <Navigate to="/auth" replace />;
+    if (!session && !isGuestMode) return <Navigate to="/" replace />;
 
     // ─── 플레이 모드 가드 ────────────────────────────────────────────────
 
-    if (!playMode) return <Navigate to="/auth" replace />;
+    if (!playMode) return <Navigate to="/" replace />;
 
     // ─── 데이터 로딩 ─────────────────────────────────────────────────────
 

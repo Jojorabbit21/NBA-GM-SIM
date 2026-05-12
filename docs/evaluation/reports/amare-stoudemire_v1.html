@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>선수 스카우팅 보고서 — 아마레 스타더마이어</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #d0d0d0;
+      font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+      font-size: 12px;
+      color: #000;
+      padding: 30px;
+    }
+
+    .page {
+      background: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 0;
+    }
+
+    /* ── 최상단 타이틀 바 ── */
+    .report-title-bar {
+      background: #1a3a6b;
+      color: #fff;
+      text-align: center;
+      padding: 8px 0 6px;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 0.3em;
+      border-bottom: 2px solid #000;
+    }
+
+    /* ── 공통 섹션 래퍼 ── */
+    .section {
+      border-bottom: 2px solid #000;
+      padding: 0;
+    }
+    .section-header {
+      background: #c0c8d8;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-bottom: 1px solid #000;
+      letter-spacing: 0.05em;
+    }
+    .section-body {
+      padding: 6px 8px;
+    }
+
+    /* ── 선수 기본정보 ── */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .info-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .info-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .info-table .value {
+      min-width: 100px;
+    }
+    .info-table .value.accent {
+      font-weight: bold;
+      font-size: 14px;
+      color: #1a3a6b;
+    }
+
+    /* ── 아키타입 / 태그 ── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .arch-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .arch-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 90px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .arch-primary   { font-weight: bold; color: #1a3a6b; font-size: 12px; }
+    .arch-secondary { color: #444; }
+    .tag-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag {
+      border: 1px solid #1a3a6b;
+      color: #1a3a6b;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      background: #e8ecf2;
+    }
+    .no-tag { color: #999; font-style: italic; font-size: 11px; }
+
+    /* ── 모듈 스코어 ── */
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .module-table th, .module-table td {
+      border: 1px solid #999;
+      padding: 3px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .module-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .module-table td.name-col {
+      text-align: left;
+      width: 130px;
+    }
+    .bar-cell { width: 260px; }
+    .bar-outer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border: 1px solid #aaa;
+    }
+    .bar-inner { height: 100%; }
+    .bar-s { background: #1a3a6b; }
+    .bar-a { background: #2e7d32; }
+    .bar-b { background: #1565c0; }
+    .bar-c { background: #e65100; }
+    .bar-d { background: #b71c1c; }
+
+    .grade { font-weight: bold; width: 36px; }
+    .grade-S  { color: #1a3a6b; }
+    .grade-Ap { color: #1a6b2e; }
+    .grade-A  { color: #2e7d32; }
+    .grade-Am { color: #388e3c; }
+    .grade-Bp { color: #1565c0; }
+    .grade-B  { color: #1976d2; }
+    .grade-Bm { color: #1e88e5; }
+    .grade-Cp { color: #e65100; }
+    .grade-C  { color: #f57c00; }
+    .grade-Cm { color: #ef6c00; }
+    .grade-D  { color: #b71c1c; }
+
+    /* ── 커리어 기록 테이블 ── */
+    .career-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .career-table th, .career-table td {
+      border: 1px solid #bbb;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .career-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 10px;
+    }
+    .career-table td:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #1a3a6b;
+    }
+    .career-table tr.prime-row {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .career-table tfoot tr.avg-row {
+      background: #e8ecf2;
+      font-weight: bold;
+      border-top: 2px solid #999;
+    }
+    .career-table td.na-cell {
+      color: #aaa;
+    }
+    .career-group-header {
+      background: #1a3a6b; color: #fff; font-weight: bold; font-size: 12px;
+      padding: 6px 10px; margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .career-type-label {
+      background: #d0d8e8; color: #1a3a6b; font-weight: bold; font-size: 11px;
+      padding: 4px 10px; margin-top: 8px;
+    }
+
+    /* ── 능력치 테이블 ── */
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .attr-table th, .attr-table td {
+      border: 1px solid #999;
+      padding: 3px 6px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .attr-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .attr-table td.cat-header {
+      background: #d4daea;
+      font-weight: bold;
+      font-size: 11px;
+      color: #1a3a6b;
+      text-align: left;
+      padding: 4px 10px;
+      border-top: 1px solid #666;
+      letter-spacing: 0.03em;
+    }
+    .attr-table td.attr-name {
+      text-align: left;
+      width: 130px;
+      padding-left: 8px;
+    }
+    .attr-table td.attr-val {
+      width: 44px;
+      font-weight: bold;
+    }
+    .attr-table td.attr-delta {
+      width: 58px;
+      font-size: 11px;
+    }
+    .delta-up   { color: #1a6b1a; font-weight: bold; }
+    .delta-down { color: #b71c1c; font-weight: bold; }
+
+    /* ── 강점 / 약점 ── */
+    .sw-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .sw-table td {
+      border: 1px solid #999;
+      padding: 5px 8px;
+      vertical-align: top;
+      width: 50%;
+    }
+    .sw-table .sw-header {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    .sw-item { margin-bottom: 6px; }
+    .sw-item-title { font-weight: bold; margin-bottom: 2px; }
+    .sw-item-title.str { color: #1a6b1a; }
+    .sw-item-title.wkn { color: #b71c1c; }
+    .sw-item-body { color: #333; line-height: 1.5; }
+
+    /* ── 스카우트 노트 ── */
+    .notes-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .notes-table td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    .notes-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .notes-text {
+      line-height: 1.7;
+      color: #111;
+    }
+    .comp-label { font-weight: bold; width: 70px; }
+
+    /* ── 푸터 ── */
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .footer-table td {
+      border: 1px solid #999;
+      padding: 4px 10px;
+      text-align: center;
+    }
+    .footer-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      width: 70px;
+    }
+    .footer-note {
+      background: #f5f5f5;
+      font-size: 10px;
+      color: #666;
+      text-align: right;
+      padding: 3px 8px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 타이틀 -->
+  <div class="report-title-bar">선 수 스 카 우 팅 보 고 서</div>
+
+  <!-- 기본 정보 -->
+  <div class="section">
+    <div class="section-header">■ 기본 정보</div>
+    <div class="section-body">
+      <table class="info-table">
+        <tr>
+          <td class="label">선수명</td>
+          <td class="value" style="font-weight:bold; font-size:14px;">아마레 스타더마이어</td>
+          <td class="label">포지션</td>
+          <td class="value accent">PF</td>
+          <td class="label">등번호</td>
+          <td class="value accent"># 1</td>
+          <td class="label">소속팀</td>
+          <td class="value">FA</td>
+        </tr>
+        <tr>
+          <td class="label">나이</td>
+          <td class="value">25세 (2007-08)</td>
+          <td class="label">전성기</td>
+          <td class="value">2007-08 PHX</td>
+          <td class="label">예상 OVR</td>
+          <td class="value accent">79</td>
+          <td class="label">연봉</td>
+          <td class="value">$13,762,775</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 아키타입 -->
+  <div class="section">
+    <div class="section-header">■ 아키타입 &amp; 태그</div>
+    <div class="section-body">
+      <table class="arch-table">
+        <tr>
+          <td class="label">1차 아키타입</td>
+          <td class="arch-primary">Post Scorer</td>
+          <td class="label">2차 아키타입</td>
+          <td class="arch-secondary">Two-Way Big</td>
+        </tr>
+        <tr>
+          <td class="label">태그</td>
+          <td colspan="3">
+            <div class="tag-cell">
+              <span class="no-tag">— (활성 태그 없음)</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 모듈 스코어 -->
+  <div class="section">
+    <div class="section-header">■ 모듈 스코어</div>
+    <div class="section-body">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th class="name-col">모듈</th>
+            <th class="bar-cell">수준</th>
+            <th style="width:52px;">점수</th>
+            <th style="width:36px;">등급</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- A+(80-84) -->
+          <tr>
+            <td class="name-col">포스트 크래프트</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:81.9%"></div></div></td>
+            <td>81.9</td>
+            <td class="grade grade-Ap">A+</td>
+          </tr>
+          <!-- A+(80-84) -->
+          <tr>
+            <td class="name-col">림 피니시</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:81.1%"></div></div></td>
+            <td>81.1</td>
+            <td class="grade grade-Ap">A+</td>
+          </tr>
+          <!-- A-(72-74) -->
+          <tr>
+            <td class="name-col">림 프로텍션</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:77.8%"></div></div></td>
+            <td>77.8</td>
+            <td class="grade grade-A">A</td>
+          </tr>
+          <!-- A(75-79) -->
+          <tr>
+            <td class="name-col">리바운드</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-a" style="width:76.2%"></div></div></td>
+            <td>76.2</td>
+            <td class="grade grade-A">A</td>
+          </tr>
+          <!-- B(65-69) -->
+          <tr>
+            <td class="name-col">오프볼 어택</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-b" style="width:68.7%"></div></div></td>
+            <td>68.7</td>
+            <td class="grade grade-B">B</td>
+          </tr>
+          <!-- B(65-69) -->
+          <tr>
+            <td class="name-col">팀 수비</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-b" style="width:64.7%"></div></div></td>
+            <td>64.7</td>
+            <td class="grade grade-Bm">B-</td>
+          </tr>
+          <!-- B-(60-64) -->
+          <tr>
+            <td class="name-col">모터 / 가용성</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-b" style="width:66.1%"></div></div></td>
+            <td>66.1</td>
+            <td class="grade grade-B">B</td>
+          </tr>
+          <!-- B-(60-64) -->
+          <tr>
+            <td class="name-col">슛 창출</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-c" style="width:61.1%"></div></div></td>
+            <td>61.1</td>
+            <td class="grade grade-Bm">B-</td>
+          </tr>
+          <!-- C+(55-59) -->
+          <tr>
+            <td class="name-col">POA 수비</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-c" style="width:59.7%"></div></div></td>
+            <td>59.7</td>
+            <td class="grade grade-Cp">C+</td>
+          </tr>
+          <!-- C+(55-59) -->
+          <tr>
+            <td class="name-col">플레이메이킹</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-c" style="width:55.3%"></div></div></td>
+            <td>55.3</td>
+            <td class="grade grade-Cp">C+</td>
+          </tr>
+          <!-- D(<45) -->
+          <tr>
+            <td class="name-col">스팟업 슈팅</td>
+            <td><div class="bar-outer"><div class="bar-inner bar-d" style="width:42.3%"></div></div></td>
+            <td>42.3</td>
+            <td class="grade grade-D">D</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:10px; color:#666; padding:4px 2px;">
+        등급 기준: S(85+) A+(80-84) A(75-79) A-(72-74) B+(70-71) B(65-69) B-(60-64) C+(55-59) C(50-54) C-(45-49) D(&lt;45)
+      </div>
+    </div>
+  </div>
+
+  <!-- 커리어 기록 -->
+  <div class="section">
+    <div class="section-header">■ 커리어 기록</div>
+    <div class="section-body" style="padding:6px 8px;">
+      <div style="font-size:10px; color:#888; margin-bottom:4px;">※ career_history NULL — StatMuse 수집 데이터 기반 재구성. 전성기 행: 노란색.</div>
+
+      <!-- 정규시즌 Traditional -->
+      <div class="career-group-header">정규시즌</div>
+      <div class="career-type-label">Traditional</div>
+      <div style="overflow-x:auto; margin-bottom:4px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+              <th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TOV</th>
+              <th>FG%</th><th>3P%</th><th>FT%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2002-03</td><td>PHX</td><td>19</td><td>82</td><td>82</td><td>31.3</td>
+              <td>13.5</td><td>8.8</td><td>1.0</td><td>0.8</td><td>1.1</td><td>1.3</td>
+              <td>.472</td><td class="na-cell">—</td><td>.661</td>
+            </tr>
+            <tr>
+              <td>2003-04</td><td>PHX</td><td>20</td><td>55</td><td>55</td><td>36.0</td>
+              <td>20.6</td><td>9.0</td><td>1.4</td><td>1.2</td><td>1.6</td><td>2.0</td>
+              <td>.475</td><td class="na-cell">—</td><td>.713</td>
+            </tr>
+            <tr>
+              <td>2004-05</td><td>PHX</td><td>22</td><td>80</td><td>80</td><td>36.1</td>
+              <td>26.0</td><td>8.9</td><td>1.6</td><td>1.0</td><td>1.6</td><td>2.4</td>
+              <td>.559</td><td class="na-cell">—</td><td>.733</td>
+            </tr>
+            <tr>
+              <td>2005-06</td><td>PHX</td><td>23</td><td>3</td><td>3</td><td>31.3</td>
+              <td>8.7</td><td>5.3</td><td>0.7</td><td>0.3</td><td>1.0</td><td>1.0</td>
+              <td>.333</td><td class="na-cell">—</td><td>.889</td>
+            </tr>
+            <tr>
+              <td>2006-07</td><td>PHX</td><td>24</td><td>82</td><td>82</td><td>32.7</td>
+              <td>20.4</td><td>9.6</td><td>1.0</td><td>1.0</td><td>1.3</td><td>2.0</td>
+              <td>.575</td><td class="na-cell">—</td><td>.781</td>
+            </tr>
+            <tr class="prime-row">
+              <td>2007-08 ★</td><td>PHX</td><td>25</td><td>79</td><td>79</td><td>34.1</td>
+              <td>25.2</td><td>9.1</td><td>1.5</td><td>0.8</td><td>2.1</td><td>2.3</td>
+              <td>.590</td><td class="na-cell">—</td><td>.805</td>
+            </tr>
+            <tr>
+              <td>2008-09</td><td>PHX</td><td>26</td><td>53</td><td>53</td><td>36.7</td>
+              <td>21.4</td><td>8.1</td><td>2.0</td><td>0.9</td><td>1.1</td><td>2.5</td>
+              <td>.539</td><td class="na-cell">—</td><td>.835</td>
+            </tr>
+            <tr>
+              <td>2009-10</td><td>PHX</td><td>27</td><td>82</td><td>82</td><td>34.6</td>
+              <td>23.1</td><td>8.9</td><td>1.0</td><td>0.6</td><td>1.0</td><td>2.5</td>
+              <td>.557</td><td class="na-cell">—</td><td>.771</td>
+            </tr>
+            <tr>
+              <td>2010-11</td><td>NYK</td><td>28</td><td>82</td><td>82</td><td>36.9</td>
+              <td>25.3</td><td>8.2</td><td>2.6</td><td>0.9</td><td>1.9</td><td>2.9</td>
+              <td>.502</td><td class="na-cell">—</td><td>.792</td>
+            </tr>
+            <tr>
+              <td>2011-12</td><td>NYK</td><td>29</td><td>47</td><td>47</td><td>32.5</td>
+              <td>17.5</td><td>7.8</td><td>1.1</td><td>0.8</td><td>1.0</td><td>1.7</td>
+              <td>.483</td><td class="na-cell">—</td><td>.765</td>
+            </tr>
+            <tr>
+              <td>2012-13</td><td>NYK</td><td>30</td><td>29</td><td>7</td><td>23.5</td>
+              <td>14.2</td><td>5.0</td><td>0.4</td><td>0.3</td><td>0.7</td><td>1.2</td>
+              <td>.577</td><td class="na-cell">—</td><td>.808</td>
+            </tr>
+            <tr>
+              <td>2013-14</td><td>NYK</td><td>31</td><td>47</td><td>38</td><td>22.6</td>
+              <td>11.9</td><td>4.9</td><td>0.5</td><td>0.4</td><td>0.6</td><td>1.1</td>
+              <td>.557</td><td class="na-cell">—</td><td>.739</td>
+            </tr>
+            <tr>
+              <td>2014-15</td><td>TOT</td><td>32</td><td>39</td><td>28</td><td>21.8</td>
+              <td>11.5</td><td>5.6</td><td>0.8</td><td>0.5</td><td>0.6</td><td>1.1</td>
+              <td>.557</td><td class="na-cell">—</td><td>.720</td>
+            </tr>
+            <tr>
+              <td>2015-16</td><td>MIA</td><td>33</td><td>59</td><td>6</td><td>14.7</td>
+              <td>5.8</td><td>4.3</td><td>0.5</td><td>0.3</td><td>0.8</td><td>0.7</td>
+              <td>.566</td><td class="na-cell">—</td><td>.746</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>커리어</td><td>—</td><td>—</td><td>846</td><td>—</td><td>—</td>
+              <td>18.9</td><td>7.8</td><td>1.3</td><td>0.7</td><td>1.2</td><td>1.9</td>
+              <td>.559</td><td class="na-cell">—</td><td>.769</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 정규시즌 Advanced -->
+      <div class="career-type-label">Advanced (주요 지표)</div>
+      <div style="overflow-x:auto; margin-bottom:16px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th><th>TS%</th><th>USG%</th>
+              <th>BLK/36</th><th>REB/36</th><th>FTA/36</th><th>AST/36</th><th>STL/36</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2002-03</td><td>PHX</td><td>19</td><td>53.0%</td><td>21.3%</td>
+              <td>1.22</td><td>10.1</td><td>6.78</td><td>1.09</td><td>0.87</td>
+            </tr>
+            <tr>
+              <td>2003-04</td><td>PHX</td><td>20</td><td>53.6%</td><td>27.3%</td>
+              <td>1.58</td><td>8.82</td><td>7.73</td><td>1.39</td><td>1.14</td>
+            </tr>
+            <tr>
+              <td>2004-05</td><td>PHX</td><td>22</td><td>61.7%</td><td>28.1%</td>
+              <td>1.62</td><td>8.88</td><td>9.91</td><td>1.63</td><td>0.96</td>
+            </tr>
+            <tr>
+              <td>2005-06</td><td>PHX</td><td>23</td><td>42.0%</td><td>28.5%</td>
+              <td class="na-cell">—</td><td class="na-cell">—</td><td>6.48</td><td>1.44</td><td>0.72</td>
+            </tr>
+            <tr>
+              <td>2006-07</td><td>PHX</td><td>24</td><td>63.7%</td><td>25.7%</td>
+              <td>1.47</td><td>10.52</td><td>7.83</td><td>1.12</td><td>1.04</td>
+            </tr>
+            <tr class="prime-row">
+              <td>2007-08 ★</td><td>PHX</td><td>25</td><td>65.6%</td><td>28.0%</td>
+              <td>2.19</td><td>9.67</td><td>9.29</td><td>1.59</td><td>0.86</td>
+            </tr>
+            <tr>
+              <td>2008-09</td><td>PHX</td><td>26</td><td>61.7%</td><td>24.1%</td>
+              <td class="na-cell">—</td><td>7.95</td><td>7.15</td><td>1.92</td><td>0.91</td>
+            </tr>
+            <tr>
+              <td>2009-10</td><td>PHX</td><td>27</td><td>61.5%</td><td>27.2%</td>
+              <td class="na-cell">—</td><td>9.29</td><td>8.02</td><td>1.04</td><td>0.66</td>
+            </tr>
+            <tr>
+              <td>2010-11</td><td>NYK</td><td>28</td><td>56.5%</td><td>30.8%</td>
+              <td class="na-cell">—</td><td>7.98</td><td>7.49</td><td>2.53</td><td>0.89</td>
+            </tr>
+            <tr>
+              <td>2011-12</td><td>NYK</td><td>29</td><td>54.1%</td><td>25.3%</td>
+              <td class="na-cell">—</td><td>8.56</td><td>5.67</td><td>1.21</td><td>0.89</td>
+            </tr>
+            <tr>
+              <td>2015-16</td><td>MIA</td><td>33</td><td>59.9%</td><td>17.8%</td>
+              <td class="na-cell">—</td><td>10.49</td><td>3.17</td><td>1.28</td><td>0.85</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>커리어</td><td>—</td><td>—</td><td>59.7%</td><td>—</td>
+              <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 능력치 -->
+  <div class="section">
+    <div class="section-header">■ 능력치 (base_attributes)</div>
+    <div class="section-body">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th style="width:160px;">카테고리 / 능력치</th>
+            <th style="width:44px;">값</th>
+            <th style="width:58px;">변화</th>
+            <th>평가 근거</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- ① 인사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">① 인사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">closeShot</td>
+            <td class="attr-val">86</td>
+            <td class="attr-delta"></td>
+            <td>페인트 근거리 피니시 탁월, FG% 59% 기반 우수선발</td>
+          </tr>
+          <tr>
+            <td class="attr-name">layup</td>
+            <td class="attr-val">85</td>
+            <td class="attr-delta"></td>
+            <td>드라이빙 레이업 능숙, 운동능력 기반 우수선발</td>
+          </tr>
+          <tr>
+            <td class="attr-name">dunk</td>
+            <td class="attr-val">88</td>
+            <td class="attr-delta"></td>
+            <td>전성기 파워풀 덩크, 91인치 윙스팬 + 최정상급 수직점프 기반 엘리트</td>
+          </tr>
+          <tr>
+            <td class="attr-name">postPlay</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+            <td>포스트 스코어링 가능, 주무기는 픽앤롤이므로 우수선발 하단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">drawFoul</td>
+            <td class="attr-val">87</td>
+            <td class="attr-delta"></td>
+            <td>FTA/36 9.29 (2007-08) → 우수선발 상단 (기준: 7+→88-94)</td>
+          </tr>
+
+          <!-- ② 아웃사이드 스코어링 -->
+          <tr><td colspan="4" class="cat-header">② 아웃사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">midRange</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>미드레인지 시도는 있으나 주무기 아님, 리그평균 하단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">threeCorner</td>
+            <td class="attr-val">35</td>
+            <td class="attr-delta"></td>
+            <td>커리어 3PA 극소, 3점슛 없는 포스트 빅맨 → 심각한 약점</td>
+          </tr>
+          <tr>
+            <td class="attr-name">three45</td>
+            <td class="attr-val">33</td>
+            <td class="attr-delta"></td>
+            <td>동일, 3점 비시도 선수 → 심각한 약점</td>
+          </tr>
+          <tr>
+            <td class="attr-name">threeTop</td>
+            <td class="attr-val">30</td>
+            <td class="attr-delta"></td>
+            <td>동일, 3점 비시도 선수 → 심각한 약점</td>
+          </tr>
+          <tr>
+            <td class="attr-name">ft</td>
+            <td class="attr-val">81</td>
+            <td class="attr-delta"></td>
+            <td>전성기 FT% 80.5% (2007-08) → 우수선발 하단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">shotIq</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+            <td>TS% 65.6% → 우수선발 하단 (기준: 61%+→88-94)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">spdBall</td>
+            <td class="attr-val">42</td>
+            <td class="attr-delta"></td>
+            <td>스팟업 3점슈터 아님, 와이드오픈 3점 시도 없음 → 심각한 약점</td>
+          </tr>
+          <tr>
+            <td class="attr-name">offConsist</td>
+            <td class="attr-val">80</td>
+            <td class="attr-delta"></td>
+            <td>피닉스 시절 꾸준한 효율, 부상 제외 시 안정적 → 우수선발</td>
+          </tr>
+
+          <!-- ③ 플레이메이킹 -->
+          <tr><td colspan="4" class="cat-header">③ 플레이메이킹</td></tr>
+          <tr>
+            <td class="attr-name">handling</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+            <td>빅맨 볼핸들 제한적, 픽앤롤 수령 후 공격 위주 → 로테이션</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passIq</td>
+            <td class="attr-val">58</td>
+            <td class="attr-delta"></td>
+            <td>AST/36 1.59 → 패스 IQ 로테이션급 (기준: &lt;2→50-64)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passVision</td>
+            <td class="attr-val">52</td>
+            <td class="attr-delta"></td>
+            <td>패싱 빅 아님, 공간 인식 제한적 → 로테이션</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passAcc</td>
+            <td class="attr-val">60</td>
+            <td class="attr-delta"></td>
+            <td>기본 패스 정확도 충분 → 로테이션 상단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passPerc</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+            <td>패싱레인 읽기 평균 이하 → 로테이션</td>
+          </tr>
+          <tr>
+            <td class="attr-name">offBallMovement</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>픽앤롤·픽앤팝 후 공간 창출 우수 → 리그평균</td>
+          </tr>
+
+          <!-- ④ 운동 능력 -->
+          <tr><td colspan="4" class="cat-header">④ 운동 능력</td></tr>
+          <tr>
+            <td class="attr-name">speed</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>포워드급 오픈코트 속도, PF 기준 양호 → 리그평균</td>
+          </tr>
+          <tr>
+            <td class="attr-name">agility</td>
+            <td class="attr-val">75</td>
+            <td class="attr-delta"></td>
+            <td>수비 풋워크 포함 민첩성, PF 기준 우수 → 리그평균 상단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">vertical</td>
+            <td class="attr-val">90</td>
+            <td class="attr-delta"></td>
+            <td>전성기 최정상급 수직점프, 91인치 윙스팬, 덩크/블록 지원 → 엘리트</td>
+          </tr>
+          <tr>
+            <td class="attr-name">strength</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+            <td>강한 하체 파워, 포스트 전투 우세 → 우수선발 하단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">durability</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+            <td>2005-06 무릎 부상(시즌 거의 아웃), 이후 반복 부상 이력 → 로테이션</td>
+          </tr>
+          <tr>
+            <td class="attr-name">stamina</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>전성기 평균 34분 출장, 체력 양호 → 리그평균</td>
+          </tr>
+          <tr>
+            <td class="attr-name">hustle</td>
+            <td class="attr-val">75</td>
+            <td class="attr-delta"></td>
+            <td>공격 리바운드 허슬·루즈볼 추구 양호 → 리그평균 상단</td>
+          </tr>
+          <tr>
+            <td class="attr-name">intangibles</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>6회 올스타 선정, 팀 리더십은 보통 수준 → 리그평균</td>
+          </tr>
+
+          <!-- ⑤ 수비 -->
+          <tr><td colspan="4" class="cat-header">⑤ 수비</td></tr>
+          <tr>
+            <td class="attr-name">perDef</td>
+            <td class="attr-val">52</td>
+            <td class="attr-delta"></td>
+            <td>퍼리미터 수비 명백한 약점, 오프볼 집중력 낮음 → 로테이션</td>
+          </tr>
+          <tr>
+            <td class="attr-name">intDef</td>
+            <td class="attr-val">80</td>
+            <td class="attr-delta"></td>
+            <td>인테리어 수비·림 보호 능숙, 전성기 리버스·블록 우수 → 우수선발</td>
+          </tr>
+          <tr>
+            <td class="attr-name">helpDefIq</td>
+            <td class="attr-val">68</td>
+            <td class="attr-delta"></td>
+            <td>헬프 로테이션 평균 수준, 적극적 참여는 있음 → 리그평균</td>
+          </tr>
+          <tr>
+            <td class="attr-name">steal</td>
+            <td class="attr-val">55</td>
+            <td class="attr-delta"></td>
+            <td>STL/36 0.86 → 로테이션 밴드 (기준: &lt;1.0→50-64)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">blk</td>
+            <td class="attr-val">82</td>
+            <td class="attr-delta"></td>
+            <td>BLK/36 2.19 (2007-08) → 우수선발 상단 (기준: 2.5+→78-87 / 3.0+→88-94 사이)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">defConsist</td>
+            <td class="attr-val">58</td>
+            <td class="attr-delta"></td>
+            <td>수비 일관성 낮음, 오프볼 집중력 부족 → 로테이션 상단</td>
+          </tr>
+
+          <!-- ⑥ 리바운드 -->
+          <tr><td colspan="4" class="cat-header">⑥ 리바운드</td></tr>
+          <tr>
+            <td class="attr-name">defReb</td>
+            <td class="attr-val">78</td>
+            <td class="attr-delta"></td>
+            <td>DREB/36 6.8 (2007-08) → 우수선발 하단 (기준: 8-9→78-87)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">offReb</td>
+            <td class="attr-val">72</td>
+            <td class="attr-delta"></td>
+            <td>OREB/36 2.3 (2007-08) → 리그평균 (기준: 2-3→65-77)</td>
+          </tr>
+          <tr>
+            <td class="attr-name">boxOut</td>
+            <td class="attr-val">76</td>
+            <td class="attr-delta"></td>
+            <td>박스아웃 피지컬 활용 우수, 포스트 포지셔닝 능숙 → 리그평균 상단</td>
+          </tr>
+
+          <!-- OVR -->
+          <tr>
+            <td class="attr-name" style="font-weight:bold; color:#1a3a6b;">OVR</td>
+            <td class="attr-val" style="font-weight:bold; color:#1a3a6b; font-size:14px;">79</td>
+            <td class="attr-delta"></td>
+            <td style="font-weight:bold;">엔진 계산 (rawOVR 77.7 → Display 79)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 강점 / 약점 -->
+  <div class="section">
+    <div class="section-header">■ 강점 / 약점</div>
+    <div class="section-body" style="padding:0;">
+      <table class="sw-table">
+        <tr>
+          <td class="sw-header">STRENGTHS</td>
+          <td class="sw-header">WEAKNESSES</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title str">① 폭발적인 픽앤롤 피니셔</div>
+              <div class="sw-item-body">
+                전성기(2007-08) FG% 59.0%, TS% 65.6%는 커리어 최고치. 내쉬와의 픽앤롤 콤비는 시대를 앞선 전술의 정수였으며, 수직점프(vertical=90)와 강력한 하체 파워를 바탕으로 림 어택이 거의 막히지 않았다.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">② 파울 유도 능력</div>
+              <div class="sw-item-body">
+                FTA/36 9.29 (2007-08)는 리그 최상위권. 공격 접촉을 유도하는 능력이 탁월하여 자유투 기회 창출 면에서 상위 5~10% 수준. 자유투 성공률 80.5%로 실점 전환도 안정적.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">③ 림 어라운드 블록 능력</div>
+              <div class="sw-item-body">
+                BLK/36 2.19 (2007-08), 전성기 시즌 Total 163블록. 91인치 윙스팬과 최정상급 수직점프로 인테리어 수비 시 강력한 블록 위협을 제공했다. intDef=80으로 림 보호 역할을 충분히 수행.
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">① 3점 슈팅 전무</div>
+              <div class="sw-item-body">
+                커리어 전체 3PA가 극히 적으며, 현대 농구 표준인 스트레치 능력이 완전 부재. threeCorner=35, three45=33, threeTop=30으로 spdBall=42와 함께 팀 스페이싱에 기여하지 못한다.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">② 퍼리미터 수비 및 지속성 부재</div>
+              <div class="sw-item-body">
+                perDef=52, defConsist=58로 외곽 수비에서 명확한 약점. 온볼 수비 시 미스매치 노출 가능성이 높으며, 집중력 유지 측면에서도 제한적.
+              </div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">③ 부상 내구성</div>
+              <div class="sw-item-body">
+                durability=55로 커리어 전반에 걸쳐 반복되는 무릎 부상 이력. 2005-06 시즌(3경기), 2008-09 시즌(53경기), 2011-12 시즌(47경기) 등 출장 제한이 빈번해 팀 의존도에 리스크 요소.
+              </div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 스카우트 노트 -->
+  <div class="section">
+    <div class="section-header">■ 스카우트 노트</div>
+    <div class="section-body">
+      <table class="notes-table">
+        <tr>
+          <td class="label">NOTES</td>
+          <td>
+            <div class="notes-text">
+              아마레 스타더마이어는 2000년대 중반 피닉스 선즈의 7 Seconds or Less 시스템이 낳은 최대 수혜자이자 픽앤롤 피니셔의 교과서적 존재였다. 스티브 내쉬와의 2인 플레이에서 그는 수직점프와 순발력을 극대화하여 상대 빅맨이 감당하기 어려운 공격 템포를 만들어냈다. 그러나 3점 슈팅 완전 부재와 퍼리미터 수비 약점은 포지션 전환기를 거치며 점차 부각되었고, 반복되는 무릎 부상은 그의 커리어 정점이 짧았음을 설명한다. 올타임 로스터에서는 빠른 템포 팀의 픽앤롤 롤맨으로 배치할 때 OVR 이상의 가치를 창출하며, 엘리트 패싱 PG와의 시너지가 필수 조건이다.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">COMP</td>
+          <td>
+            <span class="comp-label">DeAndre Jordan (세대 이후)</span> — 픽앤롤 의존형 림런너 빅맨, 3점 전무, 림 피니시+블록+리바운드 특화, 퍼리미터 수비 약점이라는 동일 프로파일. 스타더마이어 쪽이 포스트 스코어링·FT·인텔리전스 측면에서 한 단계 우위.
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="section" style="border-bottom:none;">
+    <div class="section-header">■ 기록 정보</div>
+    <div class="section-body">
+      <table class="footer-table">
+        <tr>
+          <td class="label">등번호</td>
+          <td># 1 (PHX 2006-10 / NYK / DAL 기준)</td>
+          <td class="label">연봉</td>
+          <td>$13,762,775 (eskimo.com 2007-08 PHX)</td>
+          <td class="label">계약</td>
+          <td>1년 (올타임 FA)</td>
+        </tr>
+        <tr>
+          <td class="label">전성기</td>
+          <td>2007-08 PHX (TS% 65.6% 커리어 최고)</td>
+          <td class="label">포지션</td>
+          <td>PF</td>
+          <td class="label">아키타입</td>
+          <td>Post Scorer / Two-Way Big</td>
+        </tr>
+      </table>
+      <div class="footer-note">
+        평가일: 2026-04-23 &nbsp;|&nbsp; 버전: v1 &nbsp;|&nbsp; 평가 에이전트: player-evaluator &nbsp;|&nbsp; DB ID: f1526b64-e00d-4665-815c-8b10ef1a8492
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

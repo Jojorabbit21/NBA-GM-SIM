@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
@@ -19,11 +19,14 @@ import type { GameContextValue } from './hooks/useGameContext';
 import Loader, { DatabaseErrorView } from './components/Loader';
 import ProtectedLayout from './components/ProtectedLayout';
 import MultiProtectedLayout from './components/MultiProtectedLayout';
+import MultiDraftLayout from './components/MultiDraftLayout';
 
 // Multi Pages — 비동기 로드
 import LeagueListView from './views/multi/league/LeagueListView';
 import LeagueLobbyView from './views/multi/league/LeagueLobbyView';
+import LeagueSettingsView from './views/multi/league/LeagueSettingsView';
 import MultiDraftView from './views/multi/league/MultiDraftView';
+import { LeagueLayout } from './views/multi/league/LeagueLayout';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -67,6 +70,7 @@ const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
 const App: React.FC = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
     const { session, isGuestMode, authLoading, handleLogout } = useAuth();
     const [rosterMode, setRosterModeState] = useState<RosterMode | null>(() => {
         const stored = localStorage.getItem('nbagm:rosterMode');
@@ -86,7 +90,7 @@ const App: React.FC = () => {
         if (mode) localStorage.setItem('nbagm:playMode', mode);
         else      localStorage.removeItem('nbagm:playMode');
     }, []);
-    const gameData = useGameData(session, isGuestMode, rosterMode);
+    const gameData = useGameData(session, isGuestMode, rosterMode, pathname.startsWith('/multi'));
 
     // ─── App-level state ──────────────────────────────────────────────────────
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -298,6 +302,7 @@ const App: React.FC = () => {
                     <Route path="/admin/player-editor" element={<PlayerEditorPage userId={session?.user?.id} />} />
 
                     {/* ── 비보호 라우트 ── */}
+                    <Route path="/" element={<AuthPage />} />
                     <Route path="/auth" element={<AuthPage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
@@ -307,14 +312,24 @@ const App: React.FC = () => {
 
                     {/* ── 멀티플레이어 라우트 (기존 싱글 라우트와 완전 분리) ── */}
                     <Route element={<MultiProtectedLayout />}>
-                        <Route path="/multi"                              element={<LeagueListView />} />
-                        <Route path="/multi/leagues/:leagueId/lobby"     element={<LeagueLobbyView />} />
-                        <Route path="/multi/leagues/:leagueId/draft"     element={<MultiDraftView />} />
+                        <Route path="/multi" element={<LeagueListView />} />
+                        {/* LeagueLayout: 리그 데이터를 한 번만 로드하여 서브라우트에 공유 */}
+                        <Route element={<LeagueLayout />}>
+                            <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
+                            <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
+                        </Route>
+                    </Route>
+
+                    {/* 드래프트 — nav 없는 풀스크린 전용 레이아웃 */}
+                    <Route element={<MultiDraftLayout />}>
+                        <Route element={<LeagueLayout />}>
+                            <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+                        </Route>
                     </Route>
 
                     {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}
                     <Route element={<ProtectedLayout />}>
-                        <Route path="/" element={<HomePage />} />
+                        <Route path="/home" element={<HomePage />} />
                         <Route path="/locker-room" element={<DashboardPage />} />
                         <Route path="/roster" element={<RosterPage />} />
                         <Route path="/roster/:teamId" element={<RosterPage />} />
@@ -339,7 +354,7 @@ const App: React.FC = () => {
                         <Route path="/draft-history" element={<DraftHistoryPage />} />
                         <Route path="/tactics" element={<TacticsPage />} />
                         {/* 404 → 홈으로 */}
-                        <Route path="*" element={<Navigate to="/" replace />} />
+                        <Route path="*" element={<Navigate to="/home" replace />} />
                     </Route>
                 </Routes>
 

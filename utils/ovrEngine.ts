@@ -96,6 +96,9 @@ export type OvrArchetype =
   | 'SCORING_COMBO_GUARD'
   | 'MOVEMENT_SHOOTER'
   | 'PERIMETER_3D'
+  | 'FLOOR_GENERAL_GUARD'
+  | 'SCORING_POINT_GUARD'
+  | 'DEFENSIVE_GUARD'
   | 'TWO_WAY_WING'
   | 'SLASHING_WING'
   | 'SHOT_CREATOR_WING'
@@ -103,11 +106,16 @@ export type OvrArchetype =
   | 'AERIAL_WING'
   | 'POST_SCORING_WING'
   | 'WING_PROTECTOR'
+  | 'THREE_LEVEL_SCORER'
+  | 'LOCKDOWN_WING'
   | 'POST_SCORING_BIG'
   | 'RIM_RUNNER_BIG'
   | 'STRETCH_BIG'
   | 'RIM_PROTECTOR_ANCHOR'
-  | 'PLAYMAKING_BIG';
+  | 'PLAYMAKING_BIG'
+  | 'SWITCHABLE_ANCHOR'
+  | 'TWO_WAY_BIG'
+  | 'REBOUNDING_BIG';
 
 export interface LeagueDistribution {
   meanRawOVR: number;
@@ -221,8 +229,8 @@ export function calculateModules(r: PlayerRatings, pos: OvrPosition): ModuleScor
   ]);
 
   const postCraft = wavg([
-    [r.postPlay, 0.34],
-    [r.closeShot, 0.18],
+    [r.postPlay, 0.26],
+    [r.closeShot, 0.26],
     [r.strength, 0.14],
     [r.drawFoul, 0.10],
     [r.hands, 0.10],
@@ -271,12 +279,12 @@ export function calculateModules(r: PlayerRatings, pos: OvrPosition): ModuleScor
   ]);
 
   const rimProtection = wavg([
-    [r.interiorDefense, 0.34],
-    [r.block, 0.24],
-    [r.helpDefenseIQ, 0.12],
-    [r.strength, 0.10],
-    [r.vertical, 0.10],
-    [r.defensiveConsistency, 0.10],
+    [r.interiorDefense, 0.42],
+    [r.block, 0.14],
+    [r.helpDefenseIQ, 0.18],
+    [r.strength, 0.12],
+    [r.vertical, 0.08],
+    [r.defensiveConsistency, 0.06],
   ]);
 
   const rebounding = wavg([
@@ -438,11 +446,10 @@ function calcArchetypeScore(mod: ModuleScores, arch: OvrArchetype): number {
 
     case 'RIM_PROTECTOR_ANCHOR':
       return wavg([
-        [mod.rimProtection, 0.38],
-        [mod.rebounding, 0.26],
-        [mod.teamDefense, 0.14],
-        [mod.motorAvailability, 0.10],
-        [mod.postCraft, 0.12],
+        [mod.rimProtection, 0.40],
+        [mod.rebounding, 0.28],
+        [mod.teamDefense, 0.18],
+        [mod.motorAvailability, 0.14],
       ]);
 
     case 'PLAYMAKING_BIG':
@@ -483,15 +490,103 @@ function calcArchetypeScore(mod: ModuleScores, arch: OvrArchetype): number {
         [mod.rebounding, 0.14],
         [mod.motorAvailability, 0.12],
       ]);
+
+    case 'FLOOR_GENERAL_GUARD':
+      return wavg([
+        [mod.playmaking, 0.42],
+        [mod.teamDefense, 0.16],
+        [mod.poaDefense, 0.12],
+        [mod.spotUpShooting, 0.10],
+        [mod.motorAvailability, 0.10],
+        [mod.offballAttack, 0.10],
+      ]);
+
+    case 'SCORING_POINT_GUARD':
+      return wavg([
+        [mod.shotCreation, 0.28],
+        [mod.playmaking, 0.20],
+        [mod.rimFinishing, 0.18],
+        [mod.spotUpShooting, 0.14],
+        [mod.motorAvailability, 0.10],
+        [mod.poaDefense, 0.10],
+      ]);
+
+    case 'DEFENSIVE_GUARD':
+      return wavg([
+        [mod.poaDefense, 0.32],
+        [mod.teamDefense, 0.18],
+        [mod.playmaking, 0.14],
+        [mod.spotUpShooting, 0.14],
+        [mod.motorAvailability, 0.12],
+        [mod.rebounding, 0.10],
+      ]);
+
+    case 'THREE_LEVEL_SCORER':
+      return wavg([
+        [mod.shotCreation, 0.26],
+        [mod.rimFinishing, 0.24],
+        [mod.spotUpShooting, 0.24],
+        [mod.motorAvailability, 0.10],
+        [mod.playmaking, 0.08],
+        [mod.poaDefense, 0.08],
+      ]);
+
+    case 'LOCKDOWN_WING':
+      return wavg([
+        [mod.poaDefense, 0.34],
+        [mod.teamDefense, 0.22],
+        [mod.motorAvailability, 0.16],
+        [mod.rebounding, 0.12],
+        [mod.rimFinishing, 0.08],
+        [mod.playmaking, 0.08],
+      ]);
+
+    case 'SWITCHABLE_ANCHOR':
+      return wavg([
+        [mod.poaDefense, 0.20],
+        [mod.teamDefense, 0.18],
+        [mod.rimProtection, 0.18],
+        [mod.playmaking, 0.14],
+        [mod.rebounding, 0.14],
+        [mod.motorAvailability, 0.16],
+      ]);
+
+    case 'TWO_WAY_BIG':
+      return wavg([
+        [mod.postCraft, 0.22],
+        [mod.rimFinishing, 0.18],
+        [mod.rimProtection, 0.24],
+        [mod.rebounding, 0.16],
+        [mod.teamDefense, 0.12],
+        [mod.motorAvailability, 0.08],
+      ]);
+
+    case 'REBOUNDING_BIG':
+      return wavg([
+        [mod.rebounding, 0.44],
+        [mod.rimFinishing, 0.20],
+        [mod.rimProtection, 0.16],
+        [mod.motorAvailability, 0.12],
+        [mod.teamDefense, 0.08],
+      ]);
   }
 }
 
 const ARCHETYPE_CANDIDATES: Record<OvrPosition, OvrArchetype[]> = {
-  PG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D'],
-  SG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING'],
-  SF: ['MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING', 'CONNECTOR_FORWARD', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR'],
-  PF: ['TWO_WAY_WING', 'CONNECTOR_FORWARD', 'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR'],
-  C:  ['POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG'],
+  PG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D',
+       'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD', 'THREE_LEVEL_SCORER'],
+  SG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D',
+       'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING',
+       'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD',
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING'],
+  SF: ['MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING',
+       'CONNECTOR_FORWARD', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR',
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING'],
+  PF: ['TWO_WAY_WING', 'CONNECTOR_FORWARD', 'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG',
+       'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR',
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG'],
+  C:  ['POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG',
+       'THREE_LEVEL_SCORER', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG'],
 };
 
 function selectPrimarySecondary(
@@ -523,42 +618,42 @@ function calcTagBonus(pos: OvrPosition, r: PlayerRatings, mod: ModuleScores): nu
   const bonuses: number[] = [];
   let negBonus = 0;
 
-  if (mod.rimFinishing >= 88) bonuses.push(0.55);
-  if (r.drawFoul >= 90) bonuses.push(0.25);
-  if (mod.shotCreation >= 88) bonuses.push(0.65);
-  if (mod.spotUpShooting >= 86) bonuses.push(0.50);
-  if (mod.offballAttack >= 84 && mod.spotUpShooting >= 84) bonuses.push(0.70);
+  if (mod.rimFinishing >= 88) bonuses.push(0.85);
+  if (r.drawFoul >= 90) bonuses.push(0.40);
+  if (mod.shotCreation >= 88) bonuses.push(1.00);
+  if (mod.spotUpShooting >= 86) bonuses.push(0.75);
+  if (mod.offballAttack >= 84 && mod.spotUpShooting >= 84) bonuses.push(1.10);
 
   if (mod.playmaking >= 86) {
-    bonuses.push(pos === 'PF' || pos === 'C' ? 0.95 : 0.65);
+    bonuses.push(pos === 'PF' || pos === 'C' ? 1.50 : 1.00);
   }
 
-  if (mod.poaDefense >= 86) bonuses.push(0.55);
-  if (mod.teamDefense >= 86) bonuses.push(0.45);
-  if (mod.rimProtection >= 88) bonuses.push(0.70);
-  if (mod.postCraft >= 90) bonuses.push(pos === 'PF' || pos === 'C' ? 0.70 : 0.50);
-  if (mod.rebounding >= 86) bonuses.push(0.45);
-  if (mod.motorAvailability >= 86) bonuses.push(0.30);
-  if (r.durability >= 90 && r.stamina >= 85) bonuses.push(0.25);
+  if (mod.poaDefense >= 86) bonuses.push(0.85);
+  if (mod.teamDefense >= 86) bonuses.push(0.70);
+  if (mod.rimProtection >= 88) bonuses.push(1.10);
+  if (mod.postCraft >= 90) bonuses.push(pos === 'PF' || pos === 'C' ? 1.10 : 0.75);
+  if (mod.rebounding >= 86) bonuses.push(0.70);
+  if (mod.motorAvailability >= 86) bonuses.push(0.50);
+  if (r.durability >= 90 && r.stamina >= 85) bonuses.push(0.40);
 
   const atkAvg = avg([mod.spotUpShooting, mod.shotCreation, mod.rimFinishing]);
   const defAvg = avg([mod.poaDefense, mod.teamDefense, mod.rimProtection]);
   if (atkAvg >= 82 && defAvg >= 82 && r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75) {
-    bonuses.push(0.80);
+    bonuses.push(1.40);
   }
 
   if ((mod.shotCreation >= 82 || mod.spotUpShooting >= 82) && r.offensiveConsistency <= 60) {
-    negBonus -= 0.9;
+    negBonus -= 1.20;
   }
 
   // Diminishing returns for stacked tags
   const sorted = bonuses.sort((a, b) => b - a);
-  const diminishingWeights = [1.0, 0.65, 0.40, 0.20];
+  const diminishingWeights = [1.0, 0.70, 0.50, 0.30];
   const posBonus = sorted
     .slice(0, diminishingWeights.length)
     .reduce((sum, bonus, i) => sum + bonus * diminishingWeights[i], 0);
 
-  return r1(clamp(posBonus + negBonus, -1.5, 1.8));
+  return r1(clamp(posBonus + negBonus, -2.0, 4.0));
 }
 
 // ─── 4) Position Base ────────────────────────────────────────────────────────
@@ -609,31 +704,31 @@ function calcPositionBase(pos: OvrPosition, mod: ModuleScores): number {
 
     case 'PF':
       return r1(wavg([
-        [mod.postCraft, 0.14],
+        [mod.postCraft, 0.08],
         [mod.spotUpShooting, 0.10],
-        [mod.rimFinishing, 0.10],
-        [mod.playmaking, 0.07],
-        [mod.rimProtection, 0.16],
-        [mod.rebounding, 0.13],
-        [mod.teamDefense, 0.09],
-        [mod.poaDefense, 0.05],
-        [mod.athleticism, 0.07],
-        [mod.motorAvailability, 0.04],
-        [mod.sizeFit, 0.05],
+        [mod.rimFinishing, 0.11],
+        [mod.playmaking, 0.06],
+        [mod.rimProtection, 0.21],
+        [mod.rebounding, 0.17],
+        [mod.teamDefense, 0.11],
+        [mod.poaDefense, 0.06],
+        [mod.athleticism, 0.06],
+        [mod.motorAvailability, 0.03],
+        [mod.sizeFit, 0.01],
       ]));
 
     case 'C':
       return r1(wavg([
-        [mod.postCraft, 0.18],
+        [mod.postCraft, 0.08],
         [mod.spotUpShooting, 0.05],
         [mod.rimFinishing, 0.10],
-        [mod.playmaking, 0.09],
-        [mod.rimProtection, 0.19],
-        [mod.rebounding, 0.19],
-        [mod.teamDefense, 0.09],
+        [mod.playmaking, 0.08],
+        [mod.rimProtection, 0.24],
+        [mod.rebounding, 0.27],
+        [mod.teamDefense, 0.10],
         [mod.athleticism, 0.05],
-        [mod.motorAvailability, 0.03],
-        [mod.sizeFit, 0.03],
+        [mod.motorAvailability, 0.02],
+        [mod.sizeFit, 0.01],
       ]));
   }
 }
@@ -657,33 +752,62 @@ function calcSignatureSkillBonus(mod: ModuleScores): number {
   const second = pool[1];
 
   function bonusFrom(v: number): number {
-    if (v >= 98) return 1.8 + (v - 98) * 0.10;
-    if (v >= 95) return 1.2 + (v - 95) * 0.20;
-    if (v >= 90) return 0.5 + (v - 90) * 0.14;
+    if (v >= 98) return 4.0 + (v - 98) * 0.25;  // 98→4.0, 99→4.25
+    if (v >= 95) return 2.4 + (v - 95) * 0.53;  // 95→2.4, 97→3.5, 98→4.0
+    if (v >= 90) return 1.0 + (v - 90) * 0.28;  // 90→1.0, 93→1.8, 95→2.4
     return 0;
   }
 
-  const bonus = bonusFrom(best) + bonusFrom(second) * 0.28;
-  return r1(clamp(bonus, 0, 2.2));
+  const bonus = bonusFrom(best) + bonusFrom(second) * 0.45;
+  return r1(clamp(bonus, 0, 6.0));
 }
 
 // ─── 6) Rare Combo Bonus ─────────────────────────────────────────────────────
 
-function calcRareComboBonus(pos: OvrPosition, mod: ModuleScores): number {
+function calcRareComboBonus(pos: OvrPosition, mod: ModuleScores, r: PlayerRatings): number {
   let bonus = 0;
 
-  if ((pos === 'PG' || pos === 'SG') && mod.playmaking >= 90 && mod.spotUpShooting >= 92) bonus += 1.4;
-  if ((pos === 'PG' || pos === 'SG') && mod.spotUpShooting >= 98) bonus += 0.9;
+  // ── PG / SG ──────────────────────────────────────────────────────────────
+  // 패스형 크리에이터 + 슈팅 (Magic/CP3 유형)
+  if ((pos === 'PG' || pos === 'SG') && mod.playmaking >= 90 && mod.spotUpShooting >= 92) bonus += 3.5;
+  // 역대급 스팟업 슈터
+  if ((pos === 'PG' || pos === 'SG') && mod.spotUpShooting >= 98) bonus += 2.5;
+  // 볼핸들링 슈터 (커리, 하든 — 핸들러 기반 슈팅 기회 창출)
+  if ((pos === 'PG' || pos === 'SG') && r.ballHandling >= 93 && mod.spotUpShooting >= 95) bonus += 4.5;
+  // [tier 2] 역대급 볼핸들링 슈터 — GOAT급 핸들러+슈터 (커리 전용 티어)
+  if ((pos === 'PG' || pos === 'SG') && r.ballHandling >= 96 && mod.spotUpShooting >= 97) bonus += 3.0;
 
-  if ((pos === 'SG' || pos === 'SF') && mod.shotCreation >= 90 && mod.spotUpShooting >= 88) bonus += 1.2;
-  if ((pos === 'SG' || pos === 'SF') && mod.spotUpShooting >= 88 && mod.poaDefense >= 88) bonus += 0.9;
+  // ── SG / SF ──────────────────────────────────────────────────────────────
+  // 슛 창조 + 슈팅 (KD, 레이 앨런 유형)
+  if ((pos === 'SG' || pos === 'SF') && mod.shotCreation >= 90 && mod.spotUpShooting >= 88) bonus += 3.0;
+  // 슈팅 + 외곽 수비 양면 (클레이, 폴 조지 유형)
+  if ((pos === 'SG' || pos === 'SF') && mod.spotUpShooting >= 88 && mod.poaDefense >= 88) bonus += 2.5;
+  // 미드레인지 득점 + 수비 (조던, 코비, 카와이 유형 — 3점 없이도 GOAT급)
+  if ((pos === 'SG' || pos === 'SF') && mod.shotCreation >= 88 && mod.poaDefense >= 90) bonus += 3.5;
+  // [tier 2] GOAT급 득점+수비 양면 — 역대 최고 수준의 득점-수비 (조던, 코비 최상위 티어)
+  if ((pos === 'SG' || pos === 'SF') && mod.shotCreation >= 93 && mod.poaDefense >= 93) bonus += 2.5;
 
-  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 88 && mod.postCraft >= 82) bonus += 1.4;
-  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 94) bonus += 1.1;
-  if ((pos === 'PF' || pos === 'C') && mod.spotUpShooting >= 84 && mod.rimProtection >= 88) bonus += 1.0;
-  if ((pos === 'PF' || pos === 'C') && mod.rebounding >= 90 && mod.rimProtection >= 92) bonus += 0.8;
+  // ── SF / PF ──────────────────────────────────────────────────────────────
+  // 피니셔 + 플레이메이커 (르브론 유형 — 포워드로서 패스+피니싱 최상위)
+  if ((pos === 'SF' || pos === 'PF') && mod.rimFinishing >= 88 && mod.playmaking >= 90) bonus += 5.5;
+  // [신규] 슈퍼 애슬릿 포워드 — 압도적 운동능력 + 림피니싱 (르브론, 야니스 유형)
+  if ((pos === 'SF' || pos === 'PF') && mod.rimFinishing >= 90 && mod.athleticism >= 88) bonus += 2.5;
 
-  return r1(clamp(bonus, 0, 2.5));
+  // ── PF / C ───────────────────────────────────────────────────────────────
+  // 플레이메이킹 빅 + 포스트 (요키치 유형 — 가장 희귀)
+  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 88 && mod.postCraft >= 82) bonus += 4.5;
+  // 플레이메이킹 빅 + 포스트 엘리트 (요키치 특화 추가 보너스)
+  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 88 && mod.postCraft >= 90) bonus += 2.0;
+  // [신규] GOAT급 플레이메이킹 빅 — 플레이메이킹+포스트 역대 최상위 (요키치, 올라주원 티어)
+  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 90 && mod.postCraft >= 88) bonus += 2.5;
+  // 트루 포인트 센터 (플레이메이킹 최상위)
+  if ((pos === 'PF' || pos === 'C') && mod.playmaking >= 94) bonus += 2.5;
+  // 스트레치 + 림프로텍션 (KAT, 야니스 early 유형)
+  if ((pos === 'PF' || pos === 'C') && mod.spotUpShooting >= 84 && mod.rimProtection >= 88) bonus += 2.5;
+  // 리바운딩 + 림프로텍션 최상위 — 임계값 상향 (체임벌린, 러셀 전용 — 역대 최고 수준만 해당)
+  if ((pos === 'PF' || pos === 'C') && mod.rebounding >= 95 && mod.rimProtection >= 96) bonus += 2.5;
+
+  return r1(clamp(bonus, 0, 10.0));
 }
 
 // ─── 7) Fatal Weakness Penalty ───────────────────────────────────────────────
@@ -735,28 +859,82 @@ function calcFatalWeaknessPenalty(
       break;
 
     case 'POST_SCORING_BIG':
-      penalty += scoreRangeLinear(80 - mod.postCraft, 14, 6.5);
+      penalty += scoreRangeLinear(76 - mod.postCraft, 14, 6.0);
       break;
 
     case 'RIM_RUNNER_BIG':
-      penalty += scoreRangeLinear(82 - mod.rimFinishing, 14, 5.5);
-      penalty += scoreRangeLinear(76 - mod.rebounding, 14, 4.5);
+      penalty += scoreRangeLinear(76 - mod.rimFinishing, 14, 5.0);
+      penalty += scoreRangeLinear(70 - mod.rebounding, 14, 3.5);
       break;
 
     case 'STRETCH_BIG':
-      penalty += scoreRangeLinear(80 - mod.spotUpShooting, 14, 5.5);
+      penalty += scoreRangeLinear(76 - mod.spotUpShooting, 14, 5.0);
       break;
 
     case 'RIM_PROTECTOR_ANCHOR':
-      penalty += scoreRangeLinear(82 - mod.rimProtection, 14, 7.5);
-      penalty += scoreRangeLinear(76 - mod.rebounding, 14, 4.5);
+      penalty += scoreRangeLinear(72 - mod.rimProtection, 14, 4.5);
+      penalty += scoreRangeLinear(68 - mod.rebounding, 14, 2.5);
       break;
 
     case 'PLAYMAKING_BIG':
-      penalty += scoreRangeLinear(84 - mod.playmaking, 14, 6.5);
-      if (mod.postCraft < 72 && mod.spotUpShooting < 74) {
-        penalty += 2.5;
+      penalty += scoreRangeLinear(78 - mod.playmaking, 14, 5.5);
+      if (mod.postCraft < 68 && mod.spotUpShooting < 70) {
+        penalty += 2.0;
       }
+      break;
+
+    // ── New archetypes (6) ──
+    case 'FLOOR_GENERAL_GUARD':
+      penalty += scoreRangeLinear(80 - mod.playmaking, 14, 7.0);
+      break;
+
+    case 'SCORING_POINT_GUARD':
+      penalty += scoreRangeLinear(76 - mod.shotCreation, 14, 5.5);
+      penalty += scoreRangeLinear(72 - mod.playmaking, 14, 3.5);
+      break;
+
+    case 'DEFENSIVE_GUARD':
+      penalty += scoreRangeLinear(80 - mod.poaDefense, 14, 6.5);
+      break;
+
+    case 'THREE_LEVEL_SCORER':
+      penalty += scoreRangeLinear(74 - mod.rimFinishing, 14, 4.0);
+      penalty += scoreRangeLinear(74 - mod.shotCreation, 14, 4.0);
+      penalty += scoreRangeLinear(74 - mod.spotUpShooting, 14, 4.0);
+      break;
+
+    case 'LOCKDOWN_WING':
+      penalty += scoreRangeLinear(82 - mod.poaDefense, 14, 6.5);
+      break;
+
+    case 'SWITCHABLE_ANCHOR':
+      penalty += scoreRangeLinear(74 - mod.poaDefense, 14, 4.5);
+      penalty += scoreRangeLinear(74 - mod.rimProtection, 14, 4.5);
+      break;
+
+    case 'TWO_WAY_BIG':
+      // Post skill is the offensive identity — independent penalties
+      penalty += scoreRangeLinear(70 - mod.postCraft, 14, 4.5);
+      penalty += scoreRangeLinear(70 - mod.rimProtection, 14, 4.0);
+      break;
+
+    case 'REBOUNDING_BIG':
+      // Rebounding is the sole identity — penalty only for non-elite rebounders
+      penalty += scoreRangeLinear(78 - mod.rebounding, 14, 5.5);
+      break;
+
+    // ── Previously missing cases (3) ──
+    case 'AERIAL_WING':
+      penalty += scoreRangeLinear(82 - mod.rimFinishing, 14, 6.5);
+      break;
+
+    case 'POST_SCORING_WING':
+      penalty += scoreRangeLinear(78 - mod.postCraft, 14, 5.5);
+      break;
+
+    case 'WING_PROTECTOR':
+      penalty += scoreRangeLinear(78 - mod.rimProtection, 14, 5.0);
+      penalty += scoreRangeLinear(76 - mod.poaDefense, 14, 4.0);
       break;
   }
 
@@ -788,13 +966,21 @@ function calcCorePositionPenalty(pos: OvrPosition, mod: ModuleScores): number {
       break;
 
     case 'PF':
-      penalty += scoreRangeLinear(72 - mod.rebounding, 16, 3.5);
-      penalty += scoreRangeLinear(70 - mod.rimProtection, 16, 3.0);
+      // Only truly deficient PFs get penalized (both far below position average)
+      if (mod.rebounding < 64 && mod.rimProtection < 61) {
+        penalty += 3.5;
+      } else if (mod.rebounding < 57 && mod.rimProtection < 57) {
+        penalty += 5.0;
+      }
       break;
 
     case 'C':
-      penalty += scoreRangeLinear(74 - mod.rebounding, 16, 4.5);
-      penalty += scoreRangeLinear(72 - mod.rimProtection, 16, 5.0);
+      // Only truly deficient Cs get penalized (both far below position average)
+      if (mod.rebounding < 65 && mod.rimProtection < 62) {
+        penalty += 4.0;
+      } else if (mod.rebounding < 58 && mod.rimProtection < 58) {
+        penalty += 5.5;
+      }
       break;
   }
 
@@ -817,7 +1003,7 @@ export function evaluatePlayerRawOVR(player: PlayerInput): RawOVRResult {
   const posBase = calcPositionBase(player.primaryPosition, mod);
   const tagBonus = calcTagBonus(player.primaryPosition, player.ratings, mod);
   const sigBonus = calcSignatureSkillBonus(mod);
-  const rareBonus = calcRareComboBonus(player.primaryPosition, mod);
+  const rareBonus = calcRareComboBonus(player.primaryPosition, mod, player.ratings);
   const weakPenalty = calcFatalWeaknessPenalty(primary.archetype, player.ratings, mod);
   const corePenalty = calcCorePositionPenalty(player.primaryPosition, mod);
   const intBonus = intangibleBonus(player.ratings.intangible);
@@ -826,6 +1012,16 @@ export function evaluatePlayerRawOVR(player: PlayerInput): RawOVRResult {
   // not as full scores. This prevents archetype inflation.
   const primaryAdj = (primary.score - posBase) * 0.18;
   const secondaryAdj = (secondary.score - posBase) * 0.08;
+
+  // Positional calibration: big-man key modules (rimProtection, rebounding) and SF modules
+  // score lower in absolute value than guard modules due to attribute distribution.
+  // C calibration is conditional: pure defensive Cs with no rim offense (Ben Wallace type)
+  // get reduced calibration so they don't inflate past their real two-way value.
+  let calAdj = ({ SF: 4.0, PF: 5.0 } as Partial<Record<OvrPosition, number>>)[player.primaryPosition] ?? 0;
+  if (player.primaryPosition === 'C') {
+    const cHasOffense = mod.postCraft >= 62 || mod.rimFinishing >= 72;
+    calAdj = cHasOffense ? 5.0 : 1.0;
+  }
 
   const rawCurrentOVR = clamp(
     posBase +
@@ -836,7 +1032,8 @@ export function evaluatePlayerRawOVR(player: PlayerInput): RawOVRResult {
     rareBonus -
     weakPenalty -
     corePenalty +
-    intBonus,
+    intBonus +
+    calAdj,
     40,
     99,
   );

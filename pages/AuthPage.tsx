@@ -15,12 +15,12 @@ const AuthPage: React.FC = () => {
 
     const handleContinue = useCallback(() => {
         setPlayMode('single');
-        navigate('/', { replace: true });
+        navigate('/home', { replace: true });
     }, [setPlayMode, navigate]);
 
     const handleNewGame = useCallback(() => {
         setPlayMode('single');
-        navigate('/', { replace: true });
+        navigate('/home', { replace: true });
     }, [setPlayMode, navigate]);
 
     const handleMultiPlay = useCallback(() => {

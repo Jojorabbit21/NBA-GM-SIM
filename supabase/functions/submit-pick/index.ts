@@ -13,17 +13,19 @@ Deno.serve(async (req) => {
 
     // ── 인증 ─────────────────────────────────────────────────────────────────
     const authHeader = req.headers.get('Authorization') ?? '';
+    const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
     const supabase   = createClient(
         Deno.env.get('SUPABASE_URL')!,
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
-    const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (!token) return json({ error: 'Unauthorized' }, 401);
+    const { data: { user } } = await supabase.auth.getUser(token);
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
     const { roomId, playerId } = await req.json() as { roomId: string; playerId: string };
     if (!roomId || !playerId) return json({ error: 'roomId and playerId required' }, 400);
 
-    // ── 선수 정보 조회 (ovr은 base_attributes 안에 있음) ──────────────────────
+    // ── 선수 정보 조회 ────────────────────────────────────────────────────────
     const { data: player } = await supabase
         .from('meta_players')
         .select('id, name, position, base_attributes')
@@ -34,8 +36,10 @@ Deno.serve(async (req) => {
 
     const ovr = (player.base_attributes as any)?.ovr ?? 0;
 
-    // ── 원자적 픽 처리 (PostgreSQL RPC) ──────────────────────────────────────
-    const { data, error } = await supabase.rpc('submit_draft_pick', {
+    // ── 원자적 픽 처리 (PostgreSQL RPC v2)
+    // 구조: INSERT draft_picks (1행) + UPDATE rooms.draft_cursor (100바이트)
+    // 구 submit_draft_pick RPC (draft_state JSONB 전체 read-modify-write) 대비 ~10배 빠름
+    const { data, error } = await supabase.rpc('submit_draft_pick_v2', {
         p_room_id:     roomId,
         p_user_id:     user.id,
         p_player_id:   playerId,
@@ -52,7 +56,7 @@ Deno.serve(async (req) => {
         return json({ error: msg }, 500);
     }
 
-    return json({ ok: true, draftState: data });
+    return json({ ok: true, cursor: data });
 });
 
 function json(body: unknown, status = 200) {

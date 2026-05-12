@@ -272,20 +272,32 @@ targetSalary = CAP × scoreToCapShare(marketValueScore)
 아키타입 기반 (우선) → 포지션+능력치 폴백:
 
 ```ts
-// ARCHETYPE_TO_FA_ROLE 매핑 (types/archetype.ts)
-'primary_creator_guard' → 'lead_guard'
-'scoring_combo_guard'   → 'combo_guard'
-'movement_shooter'      → '3and_d'
-'perimeter_3nd'         → '3and_d'
-'two_way_wing'          → '3and_d'
-'slashing_wing'         → 'shot_creator'
-'shot_creator_wing'     → 'shot_creator'
-'connector_forward'     → 'floor_big'
-'post_scoring_big'      → 'floor_big'
-'rim_runner_big'        → 'rim_big'
-'stretch_big'           → 'stretch_big'
-'rim_protector_anchor'  → 'rim_big'
-'playmaking_big'        → 'floor_big'
+// ARCHETYPE_TO_FA_ROLE 매핑 (types/archetype.ts) — 22종 → 7 FARole
+// Guard (7종)
+'primary_creator_guard'  → 'lead_guard'
+'floor_general_guard'    → 'lead_guard'
+'scoring_combo_guard'    → 'combo_guard'
+'scoring_point_guard'    → 'combo_guard'
+'movement_shooter'       → '3and_d'
+'perimeter_3nd'          → '3and_d'
+'defensive_guard'        → '3and_d'
+// Wing (9종)
+'two_way_wing'           → '3and_d'
+'lockdown_wing'          → '3and_d'
+'slashing_wing'          → 'shot_creator'
+'shot_creator_wing'      → 'shot_creator'
+'three_level_scorer'     → 'shot_creator'
+'aerial_wing'            → 'shot_creator'
+'connector_forward'      → 'floor_big'
+'post_scoring_wing'      → 'floor_big'
+'wing_protector'         → 'rim_big'
+// Big (6종)
+'post_scoring_big'       → 'floor_big'
+'playmaking_big'         → 'floor_big'
+'stretch_big'            → 'stretch_big'
+'rim_runner_big'         → 'rim_big'
+'rim_protector_anchor'   → 'rim_big'
+'switchable_anchor'      → 'rim_big'
 ```
 
 ### Step 2: 롤 퍼포먼스 스코어 (`calcRoleScore()`)

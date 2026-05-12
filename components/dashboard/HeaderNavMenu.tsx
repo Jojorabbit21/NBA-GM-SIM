@@ -84,7 +84,7 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
     return pathname.startsWith(itemPathname);
   };
 
-  const isHomeActive = pathname === '/';
+  const isHomeActive = pathname === '/home';
   const isInboxActive = pathname.startsWith('/inbox');
   const isLeagueActive =
     pathname.startsWith('/standings') ||
@@ -170,7 +170,7 @@ export const HeaderNavMenu: React.FC<HeaderNavMenuProps> = ({
       <div className="flex items-center gap-12">
         {/* 홈 */}
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/home')}
           className={`${tabBase} ${isHomeActive ? '' : tabDefault}`}
           style={isHomeActive ? activeStyle : undefined}
         >

@@ -99,27 +99,39 @@ function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
     const valid = rows.filter(r => r.team !== '2TM' && (r.gp ?? 0) > 0);
     if (valid.length === 0) return {};
     const totalGP = valid.reduce((s, r) => s + (r.gp ?? 0), 0);
+    // 항상 집계되는 스탯 — null 없음
     const wavg = (key: string) =>
         valid.reduce((s, r) => s + ((r[key] ?? 0) * (r.gp ?? 0)), 0) / totalGP;
+    // 시대 미집계 가능 스탯 — null 시즌 제외 후 평균, 전부 null이면 null 반환
+    const wavgNullable = (key: string): number | null => {
+        const tracked = valid.filter(r => r[key] != null);
+        if (tracked.length === 0) return null;
+        const gpSum = tracked.reduce((s, r) => s + (r.gp ?? 0), 0);
+        return tracked.reduce((s, r) => s + (r[key] * (r.gp ?? 0)), 0) / gpSum;
+    };
     // 슈팅% 는 성분 스탯에서 재계산
     const tot = (key: string) => valid.reduce((s, r) => s + ((r[key] ?? 0) * (r.gp ?? 0)), 0);
     const fga = tot('fga'); const fg3a = tot('fg3a'); const fta = tot('fta');
+    // fg3a: 집계된 시즌이 하나라도 있어야 fg3_pct 계산
+    const hasFg3 = valid.some(r => r.fg3a != null);
     return {
         season: `${valid.length}시즌`, team: teamLabel, age: null,
         gp: totalGP,
         gs: valid.reduce((s, r) => s + (r.gs ?? 0), 0),
         min: wavg('min'), pts: wavg('pts'),
-        oreb: wavg('oreb'), dreb: wavg('dreb'), reb: wavg('reb'),
-        ast: wavg('ast'), stl: wavg('stl'), blk: wavg('blk'),
-        tov: wavg('tov'), pf: wavg('pf'),
+        oreb: wavgNullable('oreb'), dreb: wavgNullable('dreb'), reb: wavg('reb'),
+        ast: wavg('ast'),
+        stl: wavgNullable('stl'), blk: wavgNullable('blk'), tov: wavgNullable('tov'),
+        pf: wavg('pf'),
         fgm: wavg('fgm'), fga: wavg('fga'),
         fg_pct: fga > 0 ? tot('fgm') / fga : null,
-        fg3m: wavg('fg3m'), fg3a: wavg('fg3a'),
-        fg3_pct: fg3a > 0 ? tot('fg3m') / fg3a : null,
+        fg3m: wavgNullable('fg3m'), fg3a: wavgNullable('fg3a'),
+        fg3_pct: (hasFg3 && fg3a > 0) ? tot('fg3m') / fg3a : null,
         ftm: wavg('ftm'), fta: wavg('fta'),
         ft_pct: fta > 0 ? tot('ftm') / fta : null,
-        ts_pct: wavg('ts_pct'), efg_pct: wavg('efg_pct'), tov_pct: wavg('tov_pct'),
-        fg3a_rate: wavg('fg3a_rate'), fta_rate: wavg('fta_rate'),
+        ts_pct: wavg('ts_pct'), efg_pct: wavg('efg_pct'),
+        tov_pct: wavgNullable('tov_pct'),
+        fg3a_rate: wavgNullable('fg3a_rate'), fta_rate: wavg('fta_rate'),
         usg_pct: wavg('usg_pct'), ast_pct: wavg('ast_pct'),
         orb_pct: wavg('orb_pct'), drb_pct: wavg('drb_pct'), trb_pct: wavg('trb_pct'),
     };

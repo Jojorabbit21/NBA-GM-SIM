@@ -1,9 +1,15 @@
 
 /**
- * draft-cron — 매 30초마다 실행 (Supabase Cron 또는 외부 cron 호출).
- * 픽 시간이 초과된 드래프트를 찾아 OVR 최고 선수로 자동 픽.
+ * draft-cron — 매 10초마다 실행 (Supabase Cron 또는 외부 cron 호출).
+ * - AI 팀 차례: AI_MIN_THINK_SEC 경과 후 자동픽 (최소 3초 "생각" 시간)
+ * - 인간 팀 차례: 픽 시간 초과 시 자동픽 (타임아웃)
+ *
+ * 개선 (2026-04-21): draft_state JSONB 대신 draft_config + draft_cursor + draft_picks 사용
  */
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const AI_MIN_THINK_SEC = 3;
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin':  '*',
@@ -20,61 +26,80 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // ── 활성 드래프트 방 전체 조회 ─────────────────────────────────────────
+    // ── 활성 드래프트 방 전체 조회 (cursor만 읽음 — config는 RPC에서 처리) ──
     const { data: rooms } = await supabase
         .from('rooms')
-        .select('id, draft_state')
+        .select('id, draft_config, draft_cursor')
         .eq('status', 'active')
-        .not('draft_state', 'is', null);
+        .not('draft_cursor', 'is', null);
 
     if (!rooms?.length) return json({ ok: true, processed: 0 });
 
     let processed = 0;
 
     for (const room of rooms) {
-        const state = room.draft_state as any;
-        if (state?.status !== 'active') continue;
+        const config = room.draft_config as any;
+        const cursor = room.draft_cursor as any;
 
-        const startedAt  = new Date(state.currentPickStartedAt).getTime();
-        const elapsedSec = (Date.now() - startedAt) / 1000;
+        if (cursor?.status !== 'active') continue;
+        if (!config?.pickOrder) continue;
 
-        if (elapsedSec < state.pickDurationSec) continue; // 아직 시간 남음
+        // 첫 번째 픽이 액션 대상인지 확인
+        const firstEntry = config.pickOrder[cursor.currentPickIndex];
+        if (!firstEntry) continue;
+        const firstElapsed = (Date.now() - new Date(cursor.currentPickStartedAt).getTime()) / 1000;
+        if (!firstEntry.isAi && firstElapsed < config.pickDurationSec) continue;
+        if ( firstEntry.isAi && firstElapsed < AI_MIN_THINK_SEC)       continue;
 
-        // ── 자동 픽 처리 ───────────────────────────────────────────────────
-        const currentEntry = state.pickOrder[state.currentPickIndex];
-        if (!currentEntry) continue;
+        // 루프 전 1회만 조회 — 루프 안에서 로컬 Set 갱신으로 N+1 방지
+        const { data: draftedRows } = await supabase
+            .from('draft_picks')
+            .select('player_id')
+            .eq('room_id', room.id);
+        const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => r.player_id));
 
-        // 선수 풀 조회 (ovr은 base_attributes 안에 있음 — JS에서 정렬)
         const { data: poolPlayers } = await supabase
             .from('meta_players')
-            .select('id, name, position, base_attributes')
-            .limit(600);
+            .select('id')
+            .eq('in_multi_pool', true)
+            .order('base_attributes->ovr' as any, { ascending: false })
+            .limit(200);
 
         if (!poolPlayers?.length) continue;
 
-        // OVR 내림차순 정렬 후 미드래프트 선수 중 최고 선수 선택
-        const sorted = poolPlayers
-            .slice()
-            .sort((a: any, b: any) =>
-                ((b.base_attributes?.ovr ?? 0) as number) - ((a.base_attributes?.ovr ?? 0) as number)
-            );
+        // AI 연속 픽 루프 — 다음 인간 턴이 나올 때까지 연속 처리
+        let activeCursor = cursor;
+        const MAX_AUTO_PICKS = 60;
 
-        const draftedSet = new Set<string>(state.draftedIds ?? []);
-        const best = sorted.find((p: any) => !draftedSet.has(p.id));
-        if (!best) continue;
+        for (let pickLoop = 0; pickLoop < MAX_AUTO_PICKS; pickLoop++) {
+            const entry = config.pickOrder[activeCursor.currentPickIndex];
+            if (!entry) break;
 
-        const ovr = (best.base_attributes as any)?.ovr ?? 0;
+            const isAiTurn = entry.isAi === true;
+            const elapsed  = (Date.now() - new Date(activeCursor.currentPickStartedAt).getTime()) / 1000;
+            if (!isAiTurn && elapsed < config.pickDurationSec) break;
+            if ( isAiTurn && elapsed < AI_MIN_THINK_SEC)       break;
 
-        const { error } = await supabase.rpc('submit_draft_pick', {
-            p_room_id:     room.id,
-            p_user_id:     currentEntry.userId,
-            p_player_id:   best.id,
-            p_player_name: best.name,
-            p_position:    best.position,
-            p_ovr:         ovr,
-        });
+            const best = poolPlayers.find((p: any) => !draftedSet.has(p.id));
+            if (!best) break;
 
-        if (!error) processed++;
+            const { data: newCursor, error } = await supabase.rpc('submit_draft_pick_v2', {
+                p_room_id:   room.id,
+                p_player_id: best.id,
+                p_user_id:   entry.userId,
+            });
+
+            if (error) break;
+            draftedSet.add(best.id); // 로컬 Set 갱신 — DB 재조회 불필요
+            processed++;
+
+            if (!isAiTurn) break; // 인간 타임아웃은 1회 처리 후 중단
+
+            const next = newCursor as any;
+            if (!next || next.status !== 'active') break;
+            // Postgres now() ↔ Deno Date.now() 클락 스큐 방지: 로컬 시간으로 덮어씀
+            activeCursor = { ...next, currentPickStartedAt: new Date().toISOString() };
+        }
     }
 
     return json({ ok: true, processed });

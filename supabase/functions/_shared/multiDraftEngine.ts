@@ -8,6 +8,7 @@
 export interface PickOrderEntry {
     userId: string;
     teamId: string;
+    isAi?: boolean;   // AI 팀 여부 — draft-cron이 즉시 자동픽에 사용
 }
 
 /** Snake 드래프트 순서 생성 */

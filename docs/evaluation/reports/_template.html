@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>선수 스카우팅 보고서 — {{PLAYER_NAME}}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #d0d0d0;
+      font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+      font-size: 12px;
+      color: #000;
+      padding: 30px;
+    }
+
+    .page {
+      background: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 0;
+    }
+
+    /* ── 최상단 타이틀 바 ── */
+    .report-title-bar {
+      background: #1a3a6b;
+      color: #fff;
+      text-align: center;
+      padding: 8px 0 6px;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 0.3em;
+      border-bottom: 2px solid #000;
+    }
+
+    /* ── 공통 섹션 래퍼 ── */
+    .section {
+      border-bottom: 2px solid #000;
+      padding: 0;
+    }
+    .section-header {
+      background: #c0c8d8;
+      font-weight: bold;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-bottom: 1px solid #000;
+      letter-spacing: 0.05em;
+    }
+    .section-body {
+      padding: 6px 8px;
+    }
+
+    /* ── 선수 기본정보 ── */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .info-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .info-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 80px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .info-table .value {
+      min-width: 100px;
+    }
+    .info-table .value.accent {
+      font-weight: bold;
+      font-size: 14px;
+      color: #1a3a6b;
+    }
+
+    /* ── 아키타입 / 태그 ── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .arch-table td {
+      border: 1px solid #999;
+      padding: 4px 8px;
+      vertical-align: middle;
+    }
+    .arch-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 90px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .arch-primary   { font-weight: bold; color: #1a3a6b; font-size: 12px; }
+    .arch-secondary { color: #444; }
+    .tag-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag {
+      border: 1px solid #1a3a6b;
+      color: #1a3a6b;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      background: #e8ecf2;
+    }
+
+    /* ── 모듈 스코어 ── */
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .module-table th, .module-table td {
+      border: 1px solid #999;
+      padding: 3px 7px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .module-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .module-table td.name-col {
+      text-align: left;
+      width: 130px;
+    }
+    .bar-cell { width: 260px; }
+    .bar-outer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border: 1px solid #aaa;
+    }
+    .bar-inner { height: 100%; }
+    .bar-s { background: #1a3a6b; }
+    .bar-a { background: #2e7d32; }
+    .bar-b { background: #1565c0; }
+    .bar-c { background: #e65100; }
+    .bar-d { background: #b71c1c; }
+
+    .grade { font-weight: bold; width: 36px; }
+    .grade-S { color: #1a3a6b; }
+    .grade-A { color: #2e7d32; }
+    .grade-B { color: #1565c0; }
+    .grade-C { color: #e65100; }
+    .grade-D { color: #b71c1c; }
+
+    /* ── 커리어 기록 테이블 ── */
+    .career-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .career-table th, .career-table td {
+      border: 1px solid #bbb;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .career-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 10px;
+    }
+    .career-table td:first-child {
+      text-align: left;
+      font-weight: bold;
+      color: #1a3a6b;
+    }
+    .career-table tr.prime-row {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .career-table tfoot tr.avg-row {
+      background: #e8ecf2;
+      font-weight: bold;
+      border-top: 2px solid #999;
+    }
+    .career-table td.na-cell {
+      color: #aaa;
+    }
+    .career-group-header {
+      background: #1a3a6b; color: #fff; font-weight: bold; font-size: 12px;
+      padding: 6px 10px; margin-top: 16px; letter-spacing: 0.5px;
+    }
+    .career-type-label {
+      background: #d0d8e8; color: #1a3a6b; font-weight: bold; font-size: 11px;
+      padding: 4px 10px; margin-top: 8px;
+    }
+
+    /* ── 능력치 테이블 ── */
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .attr-table th, .attr-table td {
+      border: 1px solid #999;
+      padding: 3px 6px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .attr-table th {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .attr-table td.cat-header {
+      background: #d4daea;
+      font-weight: bold;
+      font-size: 11px;
+      color: #1a3a6b;
+      text-align: left;
+      padding: 4px 10px;
+      border-top: 1px solid #666;
+      letter-spacing: 0.03em;
+    }
+    .attr-table td.attr-name {
+      text-align: left;
+      width: 130px;
+      padding-left: 8px;
+    }
+    .attr-table td.attr-val {
+      width: 44px;
+      font-weight: bold;
+    }
+    .attr-table td.attr-delta {
+      width: 58px;
+      font-size: 11px;
+    }
+    .delta-up   { color: #1a6b1a; font-weight: bold; }
+    .delta-down { color: #b71c1c; font-weight: bold; }
+
+    /* ── 강점 / 약점 ── */
+    .sw-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .sw-table td {
+      border: 1px solid #999;
+      padding: 5px 8px;
+      vertical-align: top;
+      width: 50%;
+    }
+    .sw-table .sw-header {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    .sw-item { margin-bottom: 6px; }
+    .sw-item-title { font-weight: bold; margin-bottom: 2px; }
+    .sw-item-title.str { color: #1a6b1a; }
+    .sw-item-title.wkn { color: #b71c1c; }
+    .sw-item-body { color: #333; line-height: 1.5; }
+
+    /* ── 스카우트 노트 ── */
+    .notes-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .notes-table td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    .notes-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .notes-text {
+      line-height: 1.7;
+      color: #111;
+    }
+    .comp-label { font-weight: bold; width: 70px; }
+
+    /* ── 푸터 ── */
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .footer-table td {
+      border: 1px solid #999;
+      padding: 4px 10px;
+      text-align: center;
+    }
+    .footer-table .label {
+      background: #e8ecf2;
+      font-weight: bold;
+      font-size: 11px;
+      width: 70px;
+    }
+    .footer-note {
+      background: #f5f5f5;
+      font-size: 10px;
+      color: #666;
+      text-align: right;
+      padding: 3px 8px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 타이틀 -->
+  <div class="report-title-bar">선 수 스 카 우 팅 보 고 서</div>
+
+  <!-- ① 기본 정보 -->
+  <div class="section">
+    <div class="section-header">■ 기본 정보</div>
+    <div class="section-body">
+      <table class="info-table">
+        <tr>
+          <td class="label">선수명</td>
+          <td class="value" style="font-weight:bold; font-size:14px;">{{PLAYER_NAME}}</td>
+          <td class="label">포지션</td>
+          <td class="value accent">{{POSITION}}</td>
+          <td class="label">등번호</td>
+          <td class="value accent"># {{NUMBER}}</td>
+          <td class="label">소속팀</td>
+          <td class="value">{{TEAM}}</td>
+        </tr>
+        <tr>
+          <td class="label">나이</td>
+          <td class="value">{{AGE}}세</td>
+          <td class="label">전성기</td>
+          <td class="value">{{PRIME_SEASON}}</td>
+          <td class="label">예상 OVR</td>
+          <td class="value accent">{{OVR}}</td>
+          <td class="label">연봉</td>
+          <td class="value">{{SALARY}}</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ② 아키타입 & 태그 -->
+  <div class="section">
+    <div class="section-header">■ 아키타입 &amp; 태그</div>
+    <div class="section-body">
+      <table class="arch-table">
+        <tr>
+          <td class="label">1차 아키타입</td>
+          <td class="arch-primary">{{PRIMARY_ARCHETYPE}}</td>
+          <td class="label">2차 아키타입</td>
+          <td class="arch-secondary">{{SECONDARY_ARCHETYPE}}</td>
+          <!-- 2차 아키타입 없으면: <td class="arch-secondary">—</td> -->
+        </tr>
+        <tr>
+          <td class="label">태그</td>
+          <td colspan="3">
+            <div class="tag-cell">
+              <!-- 태그 없으면: <span style="color:#aaa;">—</span> -->
+              <!-- 태그 있으면: <span class="tag">◆ TAG_NAME</span> 반복 -->
+              {{TAGS}}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ③ 모듈 스코어 (12개, 점수 높은 순 정렬) -->
+  <!-- 바 색상 규칙: S/S+(85+)→bar-s, A+/A/A-(72+)→bar-a, B+/B/B-(60+)→bar-b, C+/C/C-(45+)→bar-c, D(<45)→bar-d -->
+  <!-- 등급 색상 규칙: grade-S / grade-A / grade-B / grade-C / grade-D -->
+  <!-- 등급 기준: S+(88+) S(85-87) A+(80-84) A(75-79) A-(72-74) B+(70-71) B(65-69) B-(60-64) C+(55-59) C(50-54) C-(45-49) D(<45) -->
+  <div class="section">
+    <div class="section-header">■ 모듈 스코어</div>
+    <div class="section-body">
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th class="name-col">모듈</th>
+            <th class="bar-cell">수준</th>
+            <th style="width:52px;">점수</th>
+            <th style="width:36px;">등급</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 모듈명(한국어) 대응표:
+               spotUpShooting → 스팟업 슈팅
+               shotCreation   → 슛 창출
+               rimFinishing   → 림 피니시
+               postCraft      → 포스트 크래프트
+               playmaking     → 플레이메이킹
+               offballAttack  → 오프볼 어택
+               poaDefense     → POA 수비
+               teamDefense    → 팀 수비
+               rimProtection  → 림 프로텍션
+               rebounding     → 리바운드
+               athleticism    → 운동 능력
+               motorAvail     → 모터 / 가용성
+          -->
+          <!-- 점수 높은 순으로 12개 모두 작성. style="width:{{SCORE}}%" -->
+          <tr>
+            <td class="name-col">{{MODULE_1_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_1_BAR_CLASS}}" style="width:{{MODULE_1_SCORE}}%"></div></div></td>
+            <td>{{MODULE_1_SCORE}}</td>
+            <td class="grade {{MODULE_1_GRADE_CLASS}}">{{MODULE_1_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_2_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_2_BAR_CLASS}}" style="width:{{MODULE_2_SCORE}}%"></div></div></td>
+            <td>{{MODULE_2_SCORE}}</td>
+            <td class="grade {{MODULE_2_GRADE_CLASS}}">{{MODULE_2_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_3_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_3_BAR_CLASS}}" style="width:{{MODULE_3_SCORE}}%"></div></div></td>
+            <td>{{MODULE_3_SCORE}}</td>
+            <td class="grade {{MODULE_3_GRADE_CLASS}}">{{MODULE_3_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_4_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_4_BAR_CLASS}}" style="width:{{MODULE_4_SCORE}}%"></div></div></td>
+            <td>{{MODULE_4_SCORE}}</td>
+            <td class="grade {{MODULE_4_GRADE_CLASS}}">{{MODULE_4_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_5_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_5_BAR_CLASS}}" style="width:{{MODULE_5_SCORE}}%"></div></div></td>
+            <td>{{MODULE_5_SCORE}}</td>
+            <td class="grade {{MODULE_5_GRADE_CLASS}}">{{MODULE_5_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_6_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_6_BAR_CLASS}}" style="width:{{MODULE_6_SCORE}}%"></div></div></td>
+            <td>{{MODULE_6_SCORE}}</td>
+            <td class="grade {{MODULE_6_GRADE_CLASS}}">{{MODULE_6_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_7_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_7_BAR_CLASS}}" style="width:{{MODULE_7_SCORE}}%"></div></div></td>
+            <td>{{MODULE_7_SCORE}}</td>
+            <td class="grade {{MODULE_7_GRADE_CLASS}}">{{MODULE_7_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_8_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_8_BAR_CLASS}}" style="width:{{MODULE_8_SCORE}}%"></div></div></td>
+            <td>{{MODULE_8_SCORE}}</td>
+            <td class="grade {{MODULE_8_GRADE_CLASS}}">{{MODULE_8_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_9_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_9_BAR_CLASS}}" style="width:{{MODULE_9_SCORE}}%"></div></div></td>
+            <td>{{MODULE_9_SCORE}}</td>
+            <td class="grade {{MODULE_9_GRADE_CLASS}}">{{MODULE_9_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_10_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_10_BAR_CLASS}}" style="width:{{MODULE_10_SCORE}}%"></div></div></td>
+            <td>{{MODULE_10_SCORE}}</td>
+            <td class="grade {{MODULE_10_GRADE_CLASS}}">{{MODULE_10_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_11_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_11_BAR_CLASS}}" style="width:{{MODULE_11_SCORE}}%"></div></div></td>
+            <td>{{MODULE_11_SCORE}}</td>
+            <td class="grade {{MODULE_11_GRADE_CLASS}}">{{MODULE_11_GRADE}}</td>
+          </tr>
+          <tr>
+            <td class="name-col">{{MODULE_12_NAME}}</td>
+            <td><div class="bar-outer"><div class="bar-inner {{MODULE_12_BAR_CLASS}}" style="width:{{MODULE_12_SCORE}}%"></div></div></td>
+            <td>{{MODULE_12_SCORE}}</td>
+            <td class="grade {{MODULE_12_GRADE_CLASS}}">{{MODULE_12_GRADE}}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ④ 커리어 기록 (DB career_history 기준. NULL이면 섹션 전체 생략하고 주석 처리) -->
+  <div class="section">
+    <div class="section-header">■ 커리어 기록</div>
+    <div class="section-body" style="padding:6px 8px;">
+
+      <!-- 정규시즌 Traditional -->
+      <div class="career-group-header">정규시즌</div>
+      <div class="career-type-label">Traditional</div>
+      <div style="overflow-x:auto; margin-bottom:4px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th><th>G</th><th>GS</th><th>MIN</th>
+              <th>PTS</th><th>OREB</th><th>DREB</th><th>REB</th><th>AST</th>
+              <th>STL</th><th>BLK</th><th>TOV</th><th>PF</th>
+              <th>FGM</th><th>FGA</th><th>FG%</th>
+              <th>3PM</th><th>3PA</th><th>3P%</th>
+              <th>FTM</th><th>FTA</th><th>FT%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 전성기 행에 class="prime-row" 추가 -->
+            <!-- DB 필드: season, team, age, gp, gs, min, pts, oreb, dreb, reb, ast, stl, blk, tov, pf, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct -->
+            <!-- NULL 값은 <td class="na-cell">—</td> 로 표시 -->
+            <!-- {{REGULAR_SEASON_TRADITIONAL_ROWS}} -->
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>커리어 평균</td><td>—</td><td>—</td>
+              <!-- {{CAREER_AVG_TRADITIONAL}} -->
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 정규시즌 Advanced -->
+      <div class="career-type-label">Advanced</div>
+      <div style="overflow-x:auto; margin-bottom:16px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>나이</th>
+              <th>TS%</th><th>eFG%</th><th>TOV%</th><th>3PAr</th><th>FTr</th>
+              <th>USG%</th><th>AST%</th><th>ORB%</th><th>DRB%</th><th>TRB%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- DB 필드: ts_pct, efg_pct, tov_pct, fg3a_rate, fta_rate, usg_pct, ast_pct, orb_pct, drb_pct, trb_pct -->
+            <!-- NULL 값은 <td class="na-cell">—</td> 로 표시 -->
+            <!-- {{REGULAR_SEASON_ADVANCED_ROWS}} -->
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>커리어 평균</td><td>—</td><td>—</td>
+              <!-- {{CAREER_AVG_ADVANCED}} -->
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 플레이오프 (playoff=true 행이 있을 때만 표시. 없으면 아래 블록 전체 생략) -->
+      <div class="career-group-header">플레이오프</div>
+      <div class="career-type-label">Traditional</div>
+      <div style="overflow-x:auto; margin-bottom:4px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th><th>G</th><th>MIN</th>
+              <th>PTS</th><th>REB</th><th>AST</th>
+              <th>STL</th><th>BLK</th><th>TOV</th>
+              <th>FGM</th><th>FGA</th><th>FG%</th>
+              <th>3PM</th><th>3PA</th><th>3P%</th>
+              <th>FTM</th><th>FTA</th><th>FT%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- {{PLAYOFF_TRADITIONAL_ROWS}} -->
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>플레이오프 통산</td><td>—</td>
+              <!-- {{PLAYOFF_AVG_TRADITIONAL}} -->
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 플레이오프 Advanced -->
+      <div class="career-type-label">Advanced</div>
+      <div style="overflow-x:auto; margin-bottom:16px;">
+        <table class="career-table">
+          <thead>
+            <tr>
+              <th>시즌</th><th>팀</th>
+              <th>TS%</th><th>eFG%</th><th>TOV%</th><th>3PAr</th><th>FTr</th>
+              <th>USG%</th><th>AST%</th><th>ORB%</th><th>DRB%</th><th>TRB%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- {{PLAYOFF_ADVANCED_ROWS}} -->
+          </tbody>
+          <tfoot>
+            <tr class="avg-row">
+              <td>플레이오프 통산</td><td>—</td>
+              <!-- {{PLAYOFF_AVG_ADVANCED}} -->
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ⑤ 능력치 (6개 카테고리 × 36개 능력치. 2열 레이아웃. 변경 있는 항목만 delta 표시) -->
+  <div class="section">
+    <div class="section-header">■ 전체 능력치 — 전성기 {{PRIME_SEASON}} 기준</div>
+    <div class="section-body">
+      <table class="attr-table">
+        <thead>
+          <tr>
+            <th style="width:160px; text-align:left; padding-left:8px;">능력치</th>
+            <th style="width:44px;">값</th>
+            <th style="width:58px;">변화</th>
+            <th style="width:160px; text-align:left; padding-left:8px;">능력치</th>
+            <th style="width:44px;">값</th>
+            <th style="width:58px;">변화</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- ① 인사이드 스코어링 -->
+          <tr><td colspan="6" class="cat-header">① 인사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">closeShot</td><td class="attr-val">{{closeShot}}</td><td class="attr-delta {{closeShot_DELTA_CLASS}}">{{closeShot_DELTA}}</td>
+            <td class="attr-name">layup</td><td class="attr-val">{{layup}}</td><td class="attr-delta {{layup_DELTA_CLASS}}">{{layup_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">dunk</td><td class="attr-val">{{dunk}}</td><td class="attr-delta {{dunk_DELTA_CLASS}}">{{dunk_DELTA}}</td>
+            <td class="attr-name">postPlay</td><td class="attr-val">{{postPlay}}</td><td class="attr-delta {{postPlay_DELTA_CLASS}}">{{postPlay_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">drawFoul</td><td class="attr-val">{{drawFoul}}</td><td class="attr-delta {{drawFoul_DELTA_CLASS}}">{{drawFoul_DELTA}}</td>
+            <td colspan="3" style="background:#fafafa;"></td>
+          </tr>
+
+          <!-- ② 아웃사이드 스코어링 -->
+          <tr><td colspan="6" class="cat-header">② 아웃사이드 스코어링</td></tr>
+          <tr>
+            <td class="attr-name">midRange</td><td class="attr-val">{{midRange}}</td><td class="attr-delta {{midRange_DELTA_CLASS}}">{{midRange_DELTA}}</td>
+            <td class="attr-name">threeCorner</td><td class="attr-val">{{threeCorner}}</td><td class="attr-delta {{threeCorner_DELTA_CLASS}}">{{threeCorner_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">three45</td><td class="attr-val">{{three45}}</td><td class="attr-delta {{three45_DELTA_CLASS}}">{{three45_DELTA}}</td>
+            <td class="attr-name">threeTop</td><td class="attr-val">{{threeTop}}</td><td class="attr-delta {{threeTop_DELTA_CLASS}}">{{threeTop_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">ft</td><td class="attr-val">{{ft}}</td><td class="attr-delta {{ft_DELTA_CLASS}}">{{ft_DELTA}}</td>
+            <td class="attr-name">shotIq</td><td class="attr-val">{{shotIq}}</td><td class="attr-delta {{shotIq_DELTA_CLASS}}">{{shotIq_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">spdBall</td><td class="attr-val">{{spdBall}}</td><td class="attr-delta {{spdBall_DELTA_CLASS}}">{{spdBall_DELTA}}</td>
+            <td class="attr-name">offConsist</td><td class="attr-val">{{offConsist}}</td><td class="attr-delta {{offConsist_DELTA_CLASS}}">{{offConsist_DELTA}}</td>
+          </tr>
+
+          <!-- ③ 플레이메이킹 -->
+          <tr><td colspan="6" class="cat-header">③ 플레이메이킹</td></tr>
+          <tr>
+            <td class="attr-name">handling</td><td class="attr-val">{{handling}}</td><td class="attr-delta {{handling_DELTA_CLASS}}">{{handling_DELTA}}</td>
+            <td class="attr-name">passIq</td><td class="attr-val">{{passIq}}</td><td class="attr-delta {{passIq_DELTA_CLASS}}">{{passIq_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passVision</td><td class="attr-val">{{passVision}}</td><td class="attr-delta {{passVision_DELTA_CLASS}}">{{passVision_DELTA}}</td>
+            <td class="attr-name">passAcc</td><td class="attr-val">{{passAcc}}</td><td class="attr-delta {{passAcc_DELTA_CLASS}}">{{passAcc_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">passPerc</td><td class="attr-val">{{passPerc}}</td><td class="attr-delta {{passPerc_DELTA_CLASS}}">{{passPerc_DELTA}}</td>
+            <td class="attr-name">offBallMovement</td><td class="attr-val">{{offBallMovement}}</td><td class="attr-delta {{offBallMovement_DELTA_CLASS}}">{{offBallMovement_DELTA}}</td>
+          </tr>
+
+          <!-- ④ 운동 능력 -->
+          <tr><td colspan="6" class="cat-header">④ 운동 능력</td></tr>
+          <tr>
+            <td class="attr-name">speed</td><td class="attr-val">{{speed}}</td><td class="attr-delta {{speed_DELTA_CLASS}}">{{speed_DELTA}}</td>
+            <td class="attr-name">agility</td><td class="attr-val">{{agility}}</td><td class="attr-delta {{agility_DELTA_CLASS}}">{{agility_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">vertical</td><td class="attr-val">{{vertical}}</td><td class="attr-delta {{vertical_DELTA_CLASS}}">{{vertical_DELTA}}</td>
+            <td class="attr-name">strength</td><td class="attr-val">{{strength}}</td><td class="attr-delta {{strength_DELTA_CLASS}}">{{strength_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">durability</td><td class="attr-val">{{durability}}</td><td class="attr-delta {{durability_DELTA_CLASS}}">{{durability_DELTA}}</td>
+            <td class="attr-name">stamina</td><td class="attr-val">{{stamina}}</td><td class="attr-delta {{stamina_DELTA_CLASS}}">{{stamina_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">hustle</td><td class="attr-val">{{hustle}}</td><td class="attr-delta {{hustle_DELTA_CLASS}}">{{hustle_DELTA}}</td>
+            <td class="attr-name">intangibles</td><td class="attr-val">{{intangibles}}</td><td class="attr-delta {{intangibles_DELTA_CLASS}}">{{intangibles_DELTA}}</td>
+          </tr>
+
+          <!-- ⑤ 수비 -->
+          <tr><td colspan="6" class="cat-header">⑤ 수비</td></tr>
+          <tr>
+            <td class="attr-name">perDef</td><td class="attr-val">{{perDef}}</td><td class="attr-delta {{perDef_DELTA_CLASS}}">{{perDef_DELTA}}</td>
+            <td class="attr-name">intDef</td><td class="attr-val">{{intDef}}</td><td class="attr-delta {{intDef_DELTA_CLASS}}">{{intDef_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">helpDefIq</td><td class="attr-val">{{helpDefIq}}</td><td class="attr-delta {{helpDefIq_DELTA_CLASS}}">{{helpDefIq_DELTA}}</td>
+            <td class="attr-name">steal</td><td class="attr-val">{{steal}}</td><td class="attr-delta {{steal_DELTA_CLASS}}">{{steal_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">blk</td><td class="attr-val">{{blk}}</td><td class="attr-delta {{blk_DELTA_CLASS}}">{{blk_DELTA}}</td>
+            <td class="attr-name">defConsist</td><td class="attr-val">{{defConsist}}</td><td class="attr-delta {{defConsist_DELTA_CLASS}}">{{defConsist_DELTA}}</td>
+          </tr>
+
+          <!-- ⑥ 리바운드 -->
+          <tr><td colspan="6" class="cat-header">⑥ 리바운드</td></tr>
+          <tr>
+            <td class="attr-name">defReb</td><td class="attr-val">{{defReb}}</td><td class="attr-delta {{defReb_DELTA_CLASS}}">{{defReb_DELTA}}</td>
+            <td class="attr-name">offReb</td><td class="attr-val">{{offReb}}</td><td class="attr-delta {{offReb_DELTA_CLASS}}">{{offReb_DELTA}}</td>
+          </tr>
+          <tr>
+            <td class="attr-name">boxOut</td><td class="attr-val">{{boxOut}}</td><td class="attr-delta {{boxOut_DELTA_CLASS}}">{{boxOut_DELTA}}</td>
+            <td colspan="3" style="background:#fafafa;"></td>
+          </tr>
+
+          <!-- OVR -->
+          <tr>
+            <td class="attr-name" style="font-weight:bold; color:#1a3a6b; border-top:2px solid #1a3a6b;">OVR</td>
+            <td class="attr-val" style="font-weight:bold; font-size:14px; color:#1a3a6b; border-top:2px solid #1a3a6b;">{{OVR}}</td>
+            <td class="attr-delta {{OVR_DELTA_CLASS}}" style="border-top:2px solid #1a3a6b;">{{OVR_DELTA}}</td>
+            <td colspan="3" style="background:#fafafa; border-top:2px solid #1a3a6b;"></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⑥ 강점 & 약점 -->
+  <div class="section">
+    <div class="section-header">■ 강점 &amp; 약점</div>
+    <div class="section-body">
+      <table class="sw-table">
+        <tr>
+          <td class="sw-header">강점 (STRENGTHS)</td>
+          <td class="sw-header">약점 (WEAKNESSES)</td>
+        </tr>
+        <tr>
+          <td>
+            <!-- 강점 3개 -->
+            <div class="sw-item">
+              <div class="sw-item-title str">① {{STR_1_TITLE}}</div>
+              <div class="sw-item-body">{{STR_1_BODY}}</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">② {{STR_2_TITLE}}</div>
+              <div class="sw-item-body">{{STR_2_BODY}}</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title str">③ {{STR_3_TITLE}}</div>
+              <div class="sw-item-body">{{STR_3_BODY}}</div>
+            </div>
+          </td>
+          <td>
+            <!-- 약점 2~3개 -->
+            <div class="sw-item">
+              <div class="sw-item-title wkn">① {{WKN_1_TITLE}}</div>
+              <div class="sw-item-body">{{WKN_1_BODY}}</div>
+            </div>
+            <div class="sw-item">
+              <div class="sw-item-title wkn">② {{WKN_2_TITLE}}</div>
+              <div class="sw-item-body">{{WKN_2_BODY}}</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⑦ 스카우트 노트 -->
+  <div class="section">
+    <div class="section-header">■ 스카우트 총평</div>
+    <div class="section-body">
+      <table class="notes-table">
+        <tr>
+          <td class="label">종합 의견</td>
+          <td class="notes-text">{{SCOUT_NOTES}}</td>
+        </tr>
+        <tr>
+          <td class="label">비교 선수</td>
+          <td>{{COMP_PLAYER}} ({{COMP_REASON}})</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⑧ 푸터 -->
+  <div class="section" style="border-bottom:none;">
+    <div class="section-body" style="padding:4px 8px;">
+      <table class="footer-table">
+        <tr>
+          <td class="label">등번호</td>
+          <td># {{NUMBER}}</td>
+          <td class="label">연봉</td>
+          <td>{{SALARY}}</td>
+          <td class="label">계약</td>
+          <td>{{CONTRACT}}</td>
+          <td class="label">평가일</td>
+          <td>{{EVAL_DATE}}</td>
+          <td class="label">버전</td>
+          <td>{{VERSION}}</td>
+        </tr>
+      </table>
+      <div class="footer-note">NBA-GM-SIM Player Evaluation System · 본 보고서는 게임 내 평가 전용 문서입니다.</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

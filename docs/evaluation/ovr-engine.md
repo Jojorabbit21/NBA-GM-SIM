@@ -125,27 +125,34 @@ Player 필드명 → 엔진 내부 `PlayerRatings` 변환:
 
 ---
 
-### Step 2: 아키타입 점수 (13종)
+### Step 2: 아키타입 점수 (22종)
 
 각 아키타입은 관련 모듈의 가중합으로 점수 계산. 포지션별 후보 제한:
 
 | 포지션 | 후보 아키타입 |
 |--------|-------------|
-| PG | Primary Creator Guard, Scoring Combo Guard, Movement Shooter, Perimeter 3&D |
-| SG | PG 후보 전체 + Two-Way Wing, Slashing Wing, Shot Creator Wing |
-| SF | Movement Shooter, Perimeter 3&D, Two-Way Wing, Slashing Wing, Shot Creator Wing, Connector Forward |
-| PF | Two-Way Wing, Connector Forward, Post Scoring Big, Rim Runner Big, Stretch Big, Rim Protector Anchor, Playmaking Big |
-| C | Post Scoring Big, Rim Runner Big, Stretch Big, Rim Protector Anchor, Playmaking Big |
+| PG | Primary Creator Guard, Scoring Combo Guard, Movement Shooter, Floor General Guard, Scoring Point Guard, Defensive Guard, Three-Level Scorer |
+| SG | PG 후보 전체 + Two-Way Wing, Slashing Wing, Shot Creator Wing, Lockdown Wing (12종) |
+| SF | Movement Shooter, Perimeter 3&D, Two-Way Wing, Slashing Wing, Shot Creator Wing, Connector Forward, Aerial Wing, Post Scoring Wing, Wing Protector, Three-Level Scorer, Lockdown Wing, Playmaking Big (12종) |
+| PF | Perimeter 3&D, Two-Way Wing, Connector Forward, Aerial Wing, Post Scoring Wing, Wing Protector, Three-Level Scorer, Lockdown Wing + 빅 6종 (14종) |
+| C | Post Scoring Big, Rim Runner Big, Stretch Big, Rim Protector Anchor, Playmaking Big, Switchable Anchor, Three-Level Scorer (7종) |
+
+> `Three-Level Scorer`는 전 포지션 eligible — rim/shotC/spot 3개 모듈이 고르게 높아야 하므로 자연적으로 소수 엘리트만 해당.
 
 **아키타입별 모듈 가중치 예시:**
 
 | 아키타입 | 핵심 모듈 (상위 3개) |
 |---------|-------------------|
 | Primary Creator Guard | playmaking×0.38, shotCreation×0.22, rimFinishing×0.12 |
+| Floor General Guard | playmaking×0.42, teamDefense×0.16, poaDefense×0.12 |
+| Scoring Point Guard | shotCreation×0.28, playmaking×0.20, rimFinishing×0.18 |
+| Defensive Guard | poaDefense×0.32, teamDefense×0.18, playmaking×0.14 |
 | Movement Shooter | spotUpShooting×0.40, offballAttack×0.28, motorAvailability×0.12 |
-| Perimeter 3&D | spotUpShooting×0.30, poaDefense×0.28, teamDefense×0.20 |
+| Three-Level Scorer | shotCreation×0.26, rimFinishing×0.24, spotUpShooting×0.24 |
+| Lockdown Wing | poaDefense×0.34, teamDefense×0.22, motorAvailability×0.16 |
 | Rim Protector Anchor | rimProtection×0.38, rebounding×0.26, teamDefense×0.14 |
 | Playmaking Big | playmaking×0.26, postCraft×0.20, spotUpShooting×0.16 |
+| Switchable Anchor | poaDefense×0.20, teamDefense×0.18, rimProtection×0.18 |
 
 **주/보조 아키타입 선정:**
 - 점수 1위 = Primary Archetype
@@ -429,7 +436,7 @@ import { getOVRThreshold, OvrTier } from '../utils/constants';
 | `services/dataMapper.ts` | `postProcessAllPlayersOVR()` — 배치 분포 초기화 |
 | `services/queries.ts` | `postProcessAllPlayersOVR` 호출 진입점 |
 | `services/playerDevelopment/archetypeEvaluator.ts` | `calcModuleScores` → `ovrEngine.calculateModules` 재사용 |
-| `types/archetype.ts` | 13 아키타입 / 14 태그 타입 정의 |
+| `types/archetype.ts` | 22 아키타입 / 14 태그 타입 정의 |
 | `types/player.ts` | `Player.rawOvr?`, `Player.futureOvr?` 필드 |
 
 ---
@@ -519,3 +526,4 @@ function validateOVRDistribution(before: number[], after: number[]) {
 |------|------|---------|
 | v1 (초기) | 2026-02 | 모듈/아키타입 기반 엔진 도입, `POSITION_WEIGHTS` 대체 |
 | v2 | 2026-03 | ① 아키타입-조정값 방식으로 전환 (인플레 억제) ② displayOVR 파라미터 재조정 (75+6.5z+0.35z³) ③ 보너스 캡 전면 축소 ④ `CorePositionPenalty` 신규 추가 ⑤ `getOVRThreshold()` z-score 기반 API 추가 ⑥ `overallWeights.ts` 삭제 |
+| v2.1 | 2026-04 | 아키타입 16종 → 22종 확장 (guard +3: floor_general_guard/scoring_point_guard/defensive_guard, wing +2: three_level_scorer/lockdown_wing, big +1: switchable_anchor). `calcFatalWeaknessPenalty` +9 케이스(신규 6 + 기존 누락 3: AERIAL_WING/POST_SCORING_WING/WING_PROTECTOR). `ARCHETYPE_CANDIDATES` 전 포지션 업데이트 |

@@ -23,7 +23,7 @@ const OwnerBudgetPage: React.FC = () => {
     const ownerName = finData?.ownerProfile.name ?? '구단주';
 
     const proceed = useCallback(() => {
-        navigate('/');
+        navigate('/home');
     }, [navigate]);
 
     const handleConfirm = useCallback((allocations: Record<InvestmentCategory, number>) => {

@@ -11,6 +11,7 @@
 export interface PickOrderEntry {
     userId: string;
     teamId: string;
+    isAi?:  boolean;
 }
 
 export interface DraftPickEntry {
@@ -38,9 +39,10 @@ export interface MultiDraftState {
     pickOrder: PickOrderEntry[];
 
     // ── 진행 상태 ────────────────────────────────────────────────────────────
-    status:               'pending' | 'active' | 'completed';
+    status:               'pending' | 'active' | 'paused' | 'completed';
     currentPickIndex:     number;     // 0-based
-    currentPickStartedAt: string;     // ISO — 타이머 기준
+    currentPickStartedAt: string;     // ISO — 타이머 기준 (재개 시 pauseDuration만큼 보정됨)
+    pausedAt?:            string;     // ISO — pause 시각, resume 후 제거
 
     // ── 결과 ─────────────────────────────────────────────────────────────────
     picks:      DraftPickEntry[];

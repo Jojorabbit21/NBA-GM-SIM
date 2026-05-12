@@ -46,7 +46,7 @@ import type { DraftResultContent, DraftResultEntry } from '../types/message';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.startDate;
 
-export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null) => {
+export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null, skipSingleLoad = false) => {
     const queryClient = useQueryClient();
 
     // --- State ---
@@ -174,10 +174,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     //  INIT LOGIC
     // ------------------------------------------------------------------
     useEffect(() => {
+        if (skipSingleLoad) return;
         if (hasInitialLoadRef.current || isResettingRef.current) return;
         if (isBaseDataLoading || !baseData) return;
 
         const initializeGame = async () => {
+            // 멀티플레이어 경로에서는 saves 테이블에 쓰지 않는다.
+            // forceSave() 자체에는 이미 가드가 있으나, 초기 로드 중 saveCheckpoint
+            // 직접 호출은 해당 가드를 우회하므로 여기서 별도로 막는다.
+            const isMultiRoute = window.location.pathname.startsWith('/multi');
+
             setIsSaveLoading(true);
             setLoadingProgress(0);
             setLoadingMessage('');
@@ -353,14 +359,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }
 
                         // Build & save snapshot for next load
-                        try {
-                            const counts = await countUserData(userId);
-                            const newSnapshot = buildReplaySnapshot(loadedTeams, loadedSchedule, counts);
-                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                                undefined, undefined, undefined, undefined, undefined, newSnapshot);
-                            console.log("💾 Snapshot saved for next load");
-                        } catch (e) {
-                            console.warn("⚠️ Failed to save snapshot (non-critical):", e);
+                        if (!isMultiRoute) {
+                            try {
+                                const counts = await countUserData(userId);
+                                const newSnapshot = buildReplaySnapshot(loadedTeams, loadedSchedule, counts);
+                                saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                    undefined, undefined, undefined, undefined, undefined, newSnapshot);
+                                console.log("💾 Snapshot saved for next load");
+                            } catch (e) {
+                                console.warn("⚠️ Failed to save snapshot (non-critical):", e);
+                            }
                         }
                     }
 
@@ -503,7 +511,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     } else {
                         const newSeed = crypto.randomUUID();
                         setTendencySeed(newSeed);
-                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
+                        if (!isMultiRoute) {
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
+                        }
                     }
 
                     // SimSettings 로드 (기존 tactics.tcr 마이그레이션 포함)
@@ -523,8 +533,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const generated = generateLeagueStaff(teamIds, checkpoint.tendency_seed);
                         setCoachingData(generated);
                         // 비동기 저장 (non-blocking)
-                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                            undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
+                        if (!isMultiRoute) {
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
+                        }
                     }
 
                     // 훈련 설정 복원 (없으면 기본값 초기화)
@@ -577,8 +589,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     } else {
                         const newPickAssets = initializeLeaguePickAssets();
                         setLeaguePickAssets(newPickAssets);
-                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newPickAssets);
+                        if (!isMultiRoute) {
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newPickAssets);
+                        }
                     }
 
                     // 트레이드 블록/오퍼 로드
@@ -636,11 +650,13 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const newCapHistory = generateCapHistory(10);
                         setLeagueCapHistory(newCapHistory);
                         updateLeagueFinancials(getSeasonCap(newCapHistory, savedSeasonNumber ?? 1));
-                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                            undefined, undefined, undefined, undefined, undefined, undefined,
-                            undefined, undefined, undefined, undefined, undefined, undefined,
-                            undefined, undefined, undefined, undefined, undefined, undefined,
-                            undefined, undefined, newCapHistory);
+                        if (!isMultiRoute) {
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, newCapHistory);
+                        }
                     }
 
                     // 생성 선수 로드 (시즌 2+ 또는 league_fa_pool 존재 시)
@@ -785,7 +801,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         };
 
         initializeGame();
-    }, [baseData, isBaseDataLoading, isGuestMode, session?.user?.id]);
+    }, [baseData, isBaseDataLoading, isGuestMode, session?.user?.id, skipSingleLoad]);
 
     // ------------------------------------------------------------------
     //  ACTIONS: Save, Select Team, Reset
@@ -793,6 +809,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     const forceSave = useCallback(async (overrides?: any) => {
         if (!session?.user || isGuestMode) return;
+        // 멀티플레이 라우트에서는 싱글플레이 데이터 저장 스킵
+        if (window.location.pathname.startsWith('/multi')) return;
 
         pendingSaveRef.current = overrides ?? {};
         if (isSavingRef.current) return; // 이미 저장 중 → 완료 후 pending 실행됨

@@ -17,12 +17,17 @@ interface TeamSetupModalProps {
     } | null;
     onClose: () => void;
     onSaved: () => void;
+    /** league_teams 기반으로 저장할 때 setMemberTeam 대신 호출되는 override */
+    saveOverride?: (values: {
+        name: string; abbr: string;
+        colorPrimary: string; colorSecondary: string;
+    }) => Promise<{ error: string | null }>;
 }
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
-    open, roomId, userId, existingTeamIds, initial, onClose, onSaved,
+    open, roomId, userId, existingTeamIds, initial, onClose, onSaved, saveOverride,
 }) => {
     const [name,           setName]           = useState('');
     const [abbr,           setAbbr]           = useState('');
@@ -52,8 +57,8 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     const handleSave = async () => {
         const trimName = name.trim();
 
-        if (trimName.length < 1 || trimName.length > 24) {
-            setErr('팀명은 1~24자여야 합니다'); return;
+        if (trimName.length < 1 || trimName.length > 16) {
+            setErr('팀명은 1~16자여야 합니다'); return;
         }
         if (!/^[A-Z0-9]{2,4}$/.test(displayAbbr)) {
             setErr('약어는 2~4자 영문/숫자여야 합니다'); return;
@@ -70,15 +75,16 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
 
         setSaving(true);
         setErr(null);
-        const { error } = await setMemberTeam({
-            roomId, userId,
-            name: trimName,
-            abbr: displayAbbr,
-            colorPrimary,
-            colorSecondary,
-        });
+        let saveError: string | null = null;
+        if (saveOverride) {
+            const res = await saveOverride({ name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary });
+            saveError = res.error;
+        } else {
+            const res = await setMemberTeam({ roomId, userId, name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary });
+            saveError = res.error;
+        }
         setSaving(false);
-        if (error) { setErr(error); return; }
+        if (saveError) { setErr(saveError); return; }
         onSaved();
         onClose();
     };
@@ -120,7 +126,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                             type="text"
                             value={name}
                             onChange={e => setName(e.target.value)}
-                            maxLength={24}
+                            maxLength={16}
                             placeholder="예: 서울 파이어스"
                             className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                         />
