@@ -85,6 +85,17 @@ export async function updateIncludeAlltime(
     if (error) throw error;
 }
 
+export async function updateDraftYear(
+    id: string,
+    draft_year: number | null
+): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ draft_year })
+        .eq('id', id);
+    if (error) throw error;
+}
+
 export async function updateInMultiPool(
     id: string,
     value: boolean

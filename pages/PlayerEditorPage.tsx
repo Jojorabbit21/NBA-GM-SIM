@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { adaptPlayerToInput } from '../utils/ovrUtils';
@@ -299,10 +299,14 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const [editLog, setEditLog] = useState<EditLogEntry[]>([]);
     const [includeAlltime, setIncludeAlltimeState] = useState<boolean>(true);
     const [alltimeToggling, setAlltimeToggling] = useState(false);
+    const [draftYearVal, setDraftYearVal] = useState<string>('');
     const [inMultiPool, setInMultiPoolState] = useState<boolean>(true);
     const [multiPoolToggling, setMultiPoolToggling] = useState(false);
     // 테이블 필터/페이지네이션
-    const [filterTeam, setFilterTeam] = useState<string>('all');     // 'all'|'fa'|'rookie'|팀슬러그
+    const [filterTeams, setFilterTeams] = useState<string[] | null>(null); // null=전체, []=선택없음, ['fa','atl'...]=개별선택
+    const [filterTeamOpen, setFilterTeamOpen] = useState(false);
+    const [filterDraftYearOp, setFilterDraftYearOp] = useState<string>('');  // ''|'<='|'<'|'='|'>'|'>='
+    const [filterDraftYearVal, setFilterDraftYearVal] = useState<string>('');
     const [filterPos, setFilterPos] = useState<string>('all');       // 'all'|'PG'|'SG'|'SF'|'PF'|'C'
     const [filterAlltime, setFilterAlltime] = useState<string>('all'); // 'all'|'alltime_only'|'current_only'
     const [filterArchetype, setFilterArchetype] = useState<string>('all'); // 'all'|OvrArchetype(UPPER_CASE)
@@ -327,6 +331,18 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const bulkAlltimeRef = useRef<HTMLInputElement>(null);
     const bulkMultiRef = useRef<HTMLInputElement>(null);
+    const teamFilterRef = useRef<HTMLDivElement>(null);
+
+    // 팀 필터 패널 click-outside 닫기
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (teamFilterRef.current && !teamFilterRef.current.contains(e.target as Node)) {
+                setFilterTeamOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     // ── 실시간 OVR / 아키타입 / 태그 계산 ────────────────────────────────────
     const livePreview = useMemo(() => {
@@ -458,16 +474,13 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
             const isDraftClass = r.draft_year === DRAFT_CLASS_YEAR;
             // base_team_id는 이미 정규화된 슬러그('atl', 'gs' 등) — resolveTeamId 불필요
             const teamSlug = (r.base_team_id ?? '').trim().toLowerCase();
-            const isFa = !isDraftClass && !teamSlug;
+            const isFa = !teamSlug;
 
-            if (filterTeam === 'fa') {
-                if (!isFa) return false;
-            } else if (filterTeam === 'active') {
-                if (isDraftClass || !teamSlug) return false;
-            } else if (filterTeam === 'rookie') {
-                if (!isDraftClass) return false;
-            } else if (filterTeam !== 'all') {
-                if (isDraftClass || teamSlug !== filterTeam) return false;
+            if (filterTeams !== null) {
+                if (filterTeams.length === 0) return false;
+                const matchFa = filterTeams.includes('fa') && isFa;
+                const matchTeam = !isDraftClass && !!teamSlug && filterTeams.includes(teamSlug);
+                if (!matchFa && !matchTeam) return false;
             }
 
             if (filterPos !== 'all') {
@@ -502,9 +515,20 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
                 if (ovrMax !== null && ovr > ovrMax) return false;
             }
 
+            if (filterDraftYearOp && filterDraftYearVal !== '') {
+                const dy = r.draft_year;
+                const val = Number(filterDraftYearVal);
+                if (dy == null) return false;
+                if (filterDraftYearOp === '<='  && !(dy <= val)) return false;
+                if (filterDraftYearOp === '<'   && !(dy <  val)) return false;
+                if (filterDraftYearOp === '='   && !(dy === val)) return false;
+                if (filterDraftYearOp === '>'   && !(dy >  val)) return false;
+                if (filterDraftYearOp === '>='  && !(dy >= val)) return false;
+            }
+
             return true;
         });
-    }, [results, filterTeam, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
+    }, [results, filterTeams, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, filterDraftYearOp, filterDraftYearVal, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
 
     const sortedResults = useMemo(() => {
         return [...filteredResults].sort((a, b) => {
@@ -537,7 +561,20 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const tablePageCount = Math.max(1, Math.ceil(sortedResults.length / tablePageSize));
     const tableRows = sortedResults.slice(tablePage * tablePageSize, (tablePage + 1) * tablePageSize);
 
-    const handleFilterTeam      = useCallback((v: string) => { setFilterTeam(v);      setTablePage(0); }, []);
+    const ALL_TEAM_IDS = useMemo(() => ['fa', ...TEAM_OPTIONS.filter(t => t.id !== '').map(t => t.id)], []);
+    const handleToggleTeam = useCallback((id: string) => {
+        setFilterTeams(prev => {
+            const base = prev === null ? ALL_TEAM_IDS : prev;
+            const next = base.includes(id) ? base.filter(i => i !== id) : [...base, id];
+            if (next.length >= ALL_TEAM_IDS.length) return null;
+            return next;
+        });
+        setTablePage(0);
+    }, [ALL_TEAM_IDS]);
+    const handleSelectAllTeams = useCallback(() => {
+        setFilterTeams(prev => prev === null ? [] : null);
+        setTablePage(0);
+    }, []);
     const handleFilterPos       = useCallback((v: string) => { setFilterPos(v);       setTablePage(0); }, []);
     const handleFilterAlltime   = useCallback((v: string) => { setFilterAlltime(v);   setTablePage(0); }, []);
     const handleFilterArchetype = useCallback((v: string) => { setFilterArchetype(v); setTablePage(0); }, []);
@@ -617,7 +654,10 @@ td:first-child{text-align:left;font-weight:600}
 .ovr-val{font-weight:700}
 .co-badge{font-size:10px;color:#818cf8;margin-left:4px}
 .hide{display:none}
-.pl-info{font-size:11px;color:#475569;margin-left:auto}
+.pl-info{font-size:11px;color:#475569}
+.pl-copy{margin-left:auto;padding:4px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;font-size:11px;color:#94a3b8;cursor:pointer;transition:border-color .12s,color .12s}
+.pl-copy:hover{border-color:#6366f1;color:#c7d2fe}
+.pl-copy.copied{border-color:#22c55e;color:#86efac}
 </style></head><body>
 <h1>OVR Distribution by Position</h1>
 <p class="sub">ovrEngine 동적 계산값 기준</p>
@@ -651,6 +691,7 @@ td:first-child{text-align:left;font-weight:600}
       <button data-pos="C" onclick="setPosFilter('C')">C</button>
     </div>
     <span class="pl-info" id="pl-info"></span>
+    <button class="pl-copy" id="pl-copy" onclick="copyPlayerList()">텍스트 복사</button>
   </div>
   <table id="pl-table">
     <thead><tr>
@@ -748,6 +789,42 @@ function renderPlayerList(){
   document.querySelectorAll('#pl-table th').forEach(th=>{th.classList.remove('sort-asc','sort-desc');if(th.dataset.col===plSortCol)th.classList.add(plSortDir===1?'sort-asc':'sort-desc');});
 }
 function ovrColor(v){if(v>=90)return'#a78bfa';if(v>=83)return'#818cf8';if(v>=75)return'#6ee7b7';if(v>=68)return'#fcd34d';return'#94a3b8';}
+function copyPlayerList(){
+  const players=[...getPlFiltered()];
+  players.sort((a,b)=>{
+    let av=a[plSortCol],bv=b[plSortCol];
+    if(plSortCol==='ovr'){av=getOvr(a);bv=getOvr(b);}
+    else if(plSortCol==='arch'){av=a.isAlltime&&a.coArch?a.coArch:a.arch;bv=b.isAlltime&&b.coArch?b.coArch:b.arch;}
+    if(typeof av==='string'&&typeof bv==='string')return av.localeCompare(bv,'ko')*plSortDir;
+    return((av??-999)-(bv??-999))*plSortDir;
+  });
+  const cols=['#','이름','포지션','팀','나이','OVR','아키타입'];
+  const rows=players.map((p,i)=>[
+    String(i+1),
+    p.name,
+    p.pos,
+    p.team,
+    p.age!=null?String(p.age):'—',
+    String(getOvr(p)),
+    p.isAlltime&&p.coArch?p.coArch:p.arch,
+  ]);
+  const widths=cols.map((c,ci)=>Math.max(c.length,...rows.map(r=>r[ci].length)));
+  const pad=(s,w)=>s+' '.repeat(Math.max(0,w-s.length));
+  const sep='| '+widths.map(w=>'-'.repeat(w)).join(' | ')+' |';
+  const header='| '+cols.map((c,i)=>pad(c,widths[i])).join(' | ')+' |';
+  const body=rows.map(r=>'| '+r.map((c,i)=>pad(c,widths[i])).join(' | ')+' |').join('\\n');
+  const text=header+'\\n'+sep+'\\n'+body;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn=document.getElementById('pl-copy');
+    btn.textContent='복사됨!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='텍스트 복사';btn.classList.remove('copied');},2000);
+  }).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const btn=document.getElementById('pl-copy');
+    btn.textContent='복사됨!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='텍스트 복사';btn.classList.remove('copied');},2000);
+  });
+}
 function setPosFilter(pos){
   plPosFilter=pos;
   document.querySelectorAll('.pl-posfilter button').forEach(b=>{b.classList.toggle('on',b.dataset.pos===pos);});
@@ -900,6 +977,7 @@ function sortBy(th) {
         setSelected(fresh);
         setIncludeAlltimeState(fresh.include_alltime ?? true);
         setInMultiPoolState(fresh.in_multi_pool ?? true);
+        setDraftYearVal(fresh.draft_year != null ? String(fresh.draft_year) : '');
         const attrs = JSON.parse(JSON.stringify(fresh.base_attributes));
         if (attrs.team) {
             const slug = resolveTeamId(attrs.team);
@@ -1138,6 +1216,15 @@ function sortBy(th) {
             // base_attributes 저장 (name 포함)
             await updateBaseAttributes(selected.id, draft);
 
+            // draft_year 컬럼 동기화 (변경된 경우)
+            const newDraftYear = draftYearVal.trim() === '' ? null : Number(draftYearVal);
+            const prevDraftYear = selected.draft_year ?? null;
+            if (newDraftYear !== prevDraftYear) {
+                await updateDraftYear(selected.id, newDraftYear);
+                diff['draft_year'] = { before: prevDraftYear, after: newDraftYear };
+                setResults(prev => prev.map(r => r.id === selected.id ? { ...r, draft_year: newDraftYear } : r));
+            }
+
             // name 컬럼 동기화 (변경된 경우)
             if (newName && newName !== selected.name) {
                 await updatePlayerName(selected.id, newName);
@@ -1171,7 +1258,7 @@ function sortBy(th) {
         } finally {
             setSaving(false);
         }
-    }, [selected, draft, tendencies]);
+    }, [selected, draft, tendencies, draftYearVal]);
 
     const handleIncludeAlltimeToggle = useCallback(async (newVal: boolean) => {
         if (!selected) return;
@@ -1405,20 +1492,52 @@ function sortBy(th) {
                         {/* 필터 바 */}
                         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-800 flex-wrap">
                             <span className="text-xs text-slate-500 shrink-0">필터</span>
-                            {/* 팀 필터 */}
-                            <select
-                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
-                                value={filterTeam}
-                                onChange={e => handleFilterTeam(e.target.value)}
-                            >
-                                <option value="all">전체 팀</option>
-                                <option value="fa">FA</option>
-                                <option value="active">현역 선수</option>
-                                <option value="rookie">신인(드래프트)</option>
-                                {TEAM_OPTIONS.filter(t => t.id !== '').map(t => (
-                                    <option key={t.id} value={t.id}>{t.label}</option>
-                                ))}
-                            </select>
+                            {/* 팀 필터 — 드롭다운 + 체크박스 */}
+                            <div className="relative" ref={teamFilterRef}>
+                                <button
+                                    onClick={() => setFilterTeamOpen(p => !p)}
+                                    className={`flex items-center gap-1 bg-slate-800 border rounded px-2 py-1 text-xs focus:outline-none transition-colors ${filterTeams !== null ? 'border-indigo-500 text-indigo-300' : 'border-slate-700 text-white'}`}
+                                >
+                                    {filterTeams === null ? '전체 팀' : filterTeams.length === 0 ? '선택 없음' : `${filterTeams.length}개 선택`}
+                                    <span className="text-slate-500 ml-0.5">▾</span>
+                                </button>
+                                {filterTeamOpen && (
+                                    <div className="absolute top-full left-0 z-50 mt-1 w-52 bg-slate-900 border border-slate-700 rounded shadow-xl max-h-72 overflow-y-auto">
+                                        {/* 전체선택 */}
+                                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-slate-800 cursor-pointer border-b border-slate-700 sticky top-0 bg-slate-900">
+                                            <input
+                                                type="checkbox"
+                                                className="accent-indigo-500"
+                                                checked={filterTeams === null}
+                                                onChange={handleSelectAllTeams}
+                                            />
+                                            <span className="text-xs text-slate-200 font-semibold">전체선택</span>
+                                        </label>
+                                        {/* FA */}
+                                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-slate-800 cursor-pointer border-b border-slate-800">
+                                            <input
+                                                type="checkbox"
+                                                className="accent-indigo-500"
+                                                checked={filterTeams === null || filterTeams.includes('fa')}
+                                                onChange={() => handleToggleTeam('fa')}
+                                            />
+                                            <span className="text-xs text-slate-300">FA</span>
+                                        </label>
+                                        {/* 30개 팀 */}
+                                        {TEAM_OPTIONS.filter(t => t.id !== '').map(t => (
+                                            <label key={t.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-indigo-500"
+                                                    checked={filterTeams === null || filterTeams.includes(t.id)}
+                                                    onChange={() => handleToggleTeam(t.id)}
+                                                />
+                                                <span className="text-xs text-slate-300">{t.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             {/* 포지션 필터 */}
                             <select
                                 className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
@@ -1491,10 +1610,33 @@ function sortBy(th) {
                                     className={`w-20 bg-slate-800 border rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 ${filterOvrMax !== '' ? 'border-indigo-500' : 'border-slate-700'}`}
                                 />
                             </div>
+                            {/* draft_year 필터 */}
+                            <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-500 shrink-0">draft_year</span>
+                                <select
+                                    value={filterDraftYearOp}
+                                    onChange={e => { setFilterDraftYearOp(e.target.value); setTablePage(0); }}
+                                    className={`bg-slate-800 border rounded px-1 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 ${filterDraftYearOp ? 'border-indigo-500' : 'border-slate-700'}`}
+                                >
+                                    <option value="">—</option>
+                                    <option value="<=">≤</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="=">=</option>
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&ge;</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    placeholder="연도"
+                                    value={filterDraftYearVal}
+                                    onChange={e => { setFilterDraftYearVal(e.target.value); setTablePage(0); }}
+                                    className={`w-20 bg-slate-800 border rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 ${filterDraftYearVal !== '' ? 'border-indigo-500' : 'border-slate-700'}`}
+                                />
+                            </div>
                             {/* 활성 필터 초기화 */}
-                            {(filterArchetype !== 'all' || filterTag !== 'all' || filterOvrMin !== '' || filterOvrMax !== '') && (
+                            {(filterTeams !== null || filterArchetype !== 'all' || filterTag !== 'all' || filterOvrMin !== '' || filterOvrMax !== '' || filterDraftYearOp !== '' || filterDraftYearVal !== '') && (
                                 <button
-                                    onClick={() => { handleFilterArchetype('all'); handleFilterTag('all'); handleFilterOvrMin(''); handleFilterOvrMax(''); }}
+                                    onClick={() => { setFilterTeams(null); handleFilterArchetype('all'); handleFilterTag('all'); handleFilterOvrMin(''); handleFilterOvrMax(''); setFilterDraftYearOp(''); setFilterDraftYearVal(''); setTablePage(0); }}
                                     className="text-[10px] text-slate-500 hover:text-red-400 border border-slate-700 hover:border-red-800 rounded px-1.5 py-0.5 transition-colors"
                                 >
                                     초기화
@@ -1889,16 +2031,62 @@ function sortBy(th) {
                                 </div>
 
                                 {/* 모듈 스코어 바 */}
-                                <div className="px-3 pt-2.5 pb-3">
-                                    <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-2">Module Scores</div>
-                                    <div className="space-y-2">
-                                        {sorted.map(({ key, label, base, co }) => {
-                                            const { grade, bar, text } = getModuleGradeInfo(base);
-                                            const coInfo = co !== null ? getModuleGradeInfo(co) : null;
-                                            return (
-                                                <div key={key}>
-                                                    {/* Base 바 */}
-                                                    <div className="flex items-center gap-2 mb-0.5">
+                                {livePreview.co ? (
+                                    /* CO 있음 → 좌(Base) / 우(CO) 분할 패널 */
+                                    <div className="flex divide-x divide-slate-700/60">
+                                        {/* Base 패널 */}
+                                        <div className="flex-1 px-3 pt-2.5 pb-3 min-w-0">
+                                            <div className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Base</div>
+                                            <div className="space-y-1.5">
+                                                {sorted.map(({ key, label, base }) => {
+                                                    const { grade, bar, text } = getModuleGradeInfo(base);
+                                                    return (
+                                                        <div key={key} className="flex items-center gap-2">
+                                                            <span className="text-[10px] text-slate-400 w-[72px] shrink-0 truncate">{label}</span>
+                                                            <div className="flex-1 h-2 bg-slate-700/70 rounded-full overflow-hidden">
+                                                                <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(base, 100)}%` }} />
+                                                            </div>
+                                                            <span className="text-[10px] text-slate-300 font-mono w-8 text-right shrink-0">{base.toFixed(1)}</span>
+                                                            <span className={`text-[9px] font-bold w-5 text-right shrink-0 ${text}`}>{grade}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        {/* CO 패널 */}
+                                        <div className="flex-1 px-3 pt-2.5 pb-3 min-w-0 bg-amber-500/[0.03]">
+                                            <div className="text-[9px] text-amber-500 uppercase tracking-widest mb-2">Custom Overrides</div>
+                                            <div className="space-y-1.5">
+                                                {sorted.map(({ key, label, base, co }) => {
+                                                    const coVal = co ?? base;
+                                                    const diff = coVal - base;
+                                                    const coInfo = getModuleGradeInfo(coVal);
+                                                    return (
+                                                        <div key={key} className="flex items-center gap-2">
+                                                            <span className="text-[10px] text-slate-400 w-[72px] shrink-0 truncate">{label}</span>
+                                                            <div className="flex-1 h-2 bg-slate-700/70 rounded-full overflow-hidden">
+                                                                <div className={`h-full rounded-full ${coInfo.bar}`} style={{ width: `${Math.min(coVal, 100)}%` }} />
+                                                            </div>
+                                                            <span className={`text-[10px] font-mono w-8 text-right shrink-0 ${diff !== 0 ? 'text-amber-400 font-bold' : 'text-slate-300'}`}>{coVal.toFixed(1)}</span>
+                                                            <span className={`text-[9px] font-bold w-5 text-right shrink-0 ${coInfo.text}`}>{coInfo.grade}</span>
+                                                            <span className={`text-[9px] font-mono w-7 text-right shrink-0 ${diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-rose-400' : 'text-transparent'}`}>
+                                                                {diff !== 0 ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}` : '·'}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* CO 없음 → 기존 단일 패널 */
+                                    <div className="px-3 pt-2.5 pb-3">
+                                        <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-2">Module Scores</div>
+                                        <div className="space-y-1.5">
+                                            {sorted.map(({ key, label, base }) => {
+                                                const { grade, bar, text } = getModuleGradeInfo(base);
+                                                return (
+                                                    <div key={key} className="flex items-center gap-2">
                                                         <span className="text-[10px] text-slate-400 w-[88px] shrink-0 truncate">{label}</span>
                                                         <div className="flex-1 h-2 bg-slate-700/70 rounded-full overflow-hidden">
                                                             <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(base, 100)}%` }} />
@@ -1906,25 +2094,11 @@ function sortBy(th) {
                                                         <span className="text-[10px] text-slate-300 font-mono w-8 text-right shrink-0">{base.toFixed(1)}</span>
                                                         <span className={`text-[9px] font-bold w-5 text-right shrink-0 ${text}`}>{grade}</span>
                                                     </div>
-                                                    {/* CO 바 */}
-                                                    {livePreview.co && co !== null && (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[9px] text-amber-600/60 w-[88px] shrink-0 text-right">CO</span>
-                                                            <div className="flex-1 h-1.5 bg-slate-700/40 rounded-full overflow-hidden">
-                                                                <div
-                                                                    className={`h-full rounded-full ${co > base ? 'bg-amber-400' : co < base ? 'bg-rose-400' : 'bg-slate-500'}`}
-                                                                    style={{ width: `${Math.min(co, 100)}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className={`text-[10px] font-mono w-8 text-right shrink-0 ${co !== base ? 'text-amber-400 font-bold' : 'text-slate-600'}`}>{co.toFixed(1)}</span>
-                                                            <span className={`text-[9px] font-bold w-5 text-right shrink-0 ${coInfo?.text ?? ''}`}>{coInfo?.grade}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         );
                     })()}
@@ -2154,7 +2328,27 @@ function sortBy(th) {
                                 {/* ── 드래프트 풀 포함 여부 ── */}
                                 <tr className="border-b border-slate-700 bg-slate-900/40">
                                     <td colSpan={4} className="py-1.5 px-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                                        드래프트 풀
+                                        드래프트
+                                    </td>
+                                </tr>
+                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
+                                    <td className="py-1 pr-3 text-slate-300 text-xs">드래프트 연도</td>
+                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">draft_year</td>
+                                    <td colSpan={2} className="py-1 px-1">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                placeholder="없음 (현역/올타임)"
+                                                className="w-40 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500 placeholder-slate-600"
+                                                value={draftYearVal}
+                                                onChange={e => setDraftYearVal(e.target.value)}
+                                            />
+                                            {draftYearVal && (
+                                                <span className="text-xs text-slate-400">
+                                                    {Number(draftYearVal) === 2026 ? '→ 신인 드래프트 클래스' : `→ ${draftYearVal}년 입단`}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr className="border-b border-slate-800 hover:bg-slate-800/30">
