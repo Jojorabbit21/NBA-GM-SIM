@@ -305,9 +305,13 @@ const TagConfigPanel: React.FC<{ tags: TagConfigList; onChange: (t: TagConfigLis
                     </thead>
                     <tbody className={`divide-y divide-slate-800/60 ${STICKY_BG}`}>
                         {tags.map((tag, idx) => (
-                            <React.Fragment key={tag.id}>
+                            <React.Fragment key={idx}>
                                 <tr className={ROW_CLS}>
-                                    <td className="py-1.5 px-2 text-[10px] font-mono text-slate-500 whitespace-nowrap">{tag.id}</td>
+                                    <td className="py-1.5 px-2">
+                                        <input type="text" value={tag.id}
+                                            onChange={e => update(idx, { id: e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_') })}
+                                            className={`${INP_CLS} w-full font-mono text-[10px] text-slate-300`} />
+                                    </td>
                                     <td className="py-1.5 px-2">
                                         <input type="text" value={tag.label}
                                             onChange={e => update(idx, { label: e.target.value })}

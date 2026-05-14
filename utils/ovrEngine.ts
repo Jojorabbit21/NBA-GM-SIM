@@ -689,7 +689,7 @@ function evalTagClauseOvr(clause: { fieldType: string; field: string; op: string
   return clause.op === '>=' ? val >= clause.value : val <= clause.value;
 }
 
-function evalTagConditionOvr(cond: { type: string; clause?: any; clauses?: any[]; orClauses?: any[]; andClauses?: any[] }, r: PlayerRatings, mod: ModuleScores): boolean {
+export function evalTagConditionOvr(cond: { type: string; clause?: any; clauses?: any[]; orClauses?: any[]; andClauses?: any[] }, r: PlayerRatings, mod: ModuleScores): boolean {
   if (cond.type === 'single')   return evalTagClauseOvr(cond.clause, r, mod);
   if (cond.type === 'all_of')   return (cond.clauses ?? []).every((c: any) => evalTagClauseOvr(c, r, mod));
   if (cond.type === 'or_first') return (cond.orClauses ?? []).some((c: any) => evalTagClauseOvr(c, r, mod))

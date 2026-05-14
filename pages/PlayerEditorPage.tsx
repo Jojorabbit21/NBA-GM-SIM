@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
-import { preloadGameConfig, fetchArchetypeLabels } from '../services/admin/gameConfigService';
-import type { ArchetypeLabelConfig } from '../types/gameConfig';
+import { preloadGameConfig, fetchArchetypeLabels, fetchTagConfig } from '../services/admin/gameConfigService';
+import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { adaptPlayerToInput } from '../utils/ovrUtils';
-import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
+import { evaluatePlayerRawOVR, evalTagConditionOvr } from '../utils/ovrEngine';
 import type { ArchetypeModuleScores } from '../types/archetype';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
@@ -225,33 +225,40 @@ const DISPLAY_ONLY_CO_KEYS = new Set([
 type PlayerDataEntry = {
     archetype: string; secondary: string | null; tags: string[]; displayOvr: number;
     groups: { ins: number; out: number; plm: number; def: number; reb: number; ath: number };
+    modules: Record<string, number>;
 };
 
 type CoPlayerDataEntry = PlayerDataEntry & { position: string; team: string; age: number | null };
 
-function computePlayerDataEntry(attrs: Record<string, any>, posOverride?: string): PlayerDataEntry {
+function computePlayerDataEntry(attrs: Record<string, any>, posOverride?: string, tagCfg?: import('../types/gameConfig').TagConfigList): PlayerDataEntry {
     const pos = posOverride ?? (attrs.position as string | undefined) ?? 'SF';
     const input = adaptPlayerToInput(attrs, pos);
     const result = evaluatePlayerRawOVR(input);
     const m = result.modules;
     const ri = input.ratings;
     const tags: string[] = [];
-    if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
-    if (ri.drawFoul >= 88)                                 tags.push('foul_merchant');
-    if (m.shotCreation >= 85)                              tags.push('shotmaker');
-    if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
-    if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
-    if (m.playmaking >= 82)                                tags.push('plus_playmaker');
-    if (m.poaDefense >= 84)                                tags.push('poa_stopper');
-    if (m.teamDefense >= 84)                               tags.push('team_defender');
-    if (m.rimProtection >= 85)                             tags.push('rim_protector');
-    if (m.rebounding >= 84)                                tags.push('glass_cleaner');
-    if (m.motorAvailability >= 85)                         tags.push('high_motor');
-    if (ri.durability >= 90 && ri.stamina >= 85)           tags.push('ironman');
-    if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && ri.offensiveConsistency <= 65)
-                                                           tags.push('streaky_scorer');
-    if (ri.offensiveConsistency >= 75 && ri.defensiveConsistency >= 75)
-                                                           tags.push('reliable_two_way');
+    if (tagCfg && tagCfg.length > 0) {
+        for (const entry of tagCfg) {
+            if (evalTagConditionOvr(entry.condition as any, ri as any, m as any)) tags.push(entry.id);
+        }
+    } else {
+        if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
+        if (ri.drawFoul >= 88)                                 tags.push('foul_merchant');
+        if (m.shotCreation >= 85)                              tags.push('shotmaker');
+        if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
+        if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
+        if (m.playmaking >= 82)                                tags.push('plus_playmaker');
+        if (m.poaDefense >= 84)                                tags.push('poa_stopper');
+        if (m.teamDefense >= 84)                               tags.push('team_defender');
+        if (m.rimProtection >= 85)                             tags.push('rim_protector');
+        if (m.rebounding >= 84)                                tags.push('glass_cleaner');
+        if (m.motorAvailability >= 85)                         tags.push('high_motor');
+        if (ri.durability >= 90 && ri.stamina >= 85)           tags.push('ironman');
+        if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && ri.offensiveConsistency <= 65)
+                                                               tags.push('streaky_scorer');
+        if (ri.offensiveConsistency >= 75 && ri.defensiveConsistency >= 75)
+                                                               tags.push('reliable_two_way');
+    }
     const avg3pt = (ri.cornerThree + ri.fortyFiveThree + ri.topThree) / 3;
     return {
         archetype: result.primaryArchetype.archetype,
@@ -266,6 +273,14 @@ function computePlayerDataEntry(attrs: Record<string, any>, posOverride?: string
             def: Math.round((ri.interiorDefense + ri.perimeterDefense + ri.steal + ri.block + ri.helpDefenseIQ + ri.passPerception + ri.defensiveConsistency) / 7),
             reb: Math.round((ri.offensiveRebounds + ri.defensiveRebounds + ri.boxout) / 3),
             ath: Math.round((ri.speed + ri.agility + ri.strength + ri.vertical + ri.stamina + ri.hustle + ri.durability) / 7),
+        },
+        modules: {
+            spotUpShooting: m.spotUpShooting, shotCreation: m.shotCreation,
+            rimFinishing: m.rimFinishing,     postCraft: m.postCraft,
+            playmaking: m.playmaking,         offballAttack: m.offballAttack,
+            poaDefense: m.poaDefense,         teamDefense: m.teamDefense,
+            rimProtection: m.rimProtection,   rebounding: m.rebounding,
+            motorAvailability: m.motorAvailability,
         },
     };
 }
@@ -320,6 +335,8 @@ const PlayerEditorPage: React.FC = () => {
     const [filterTag, setFilterTag] = useState<string>('all');            // 'all'|TraitTag(snake_case)
     const [filterOvrMin, setFilterOvrMin] = useState<string>('');         // OVR 최솟값
     const [filterOvrMax, setFilterOvrMax] = useState<string>('');         // OVR 최댓값
+    const [filterModule, setFilterModule] = useState<string>('');         // 모듈 키 ('' = 없음)
+    const [filterModuleMin, setFilterModuleMin] = useState<string>('');   // 모듈 최솟값
     const [sortBy,  setSortBy]  = useState<'name' | 'ovr'>('name');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [ovrDisplayMode, setOvrDisplayMode] = useState<'base' | 'custom'>('base');
@@ -340,11 +357,15 @@ const PlayerEditorPage: React.FC = () => {
     const bulkMultiRef = useRef<HTMLInputElement>(null);
     const teamFilterRef = useRef<HTMLDivElement>(null);
     const [labelConfig, setLabelConfig] = useState<ArchetypeLabelConfig>({ ...ARCHETYPE_LABEL });
+    const [tagConfig, setTagConfig] = useState<TagConfigList>([]);
 
     useEffect(() => {
         preloadGameConfig().catch(console.error);
         fetchArchetypeLabels()
             .then(db => { if (Object.keys(db).length > 0) setLabelConfig(db); })
+            .catch(console.error);
+        fetchTagConfig()
+            .then(tags => { if (tags.length > 0) setTagConfig(tags); })
             .catch(console.error);
     }, []);
 
@@ -452,11 +473,11 @@ const PlayerEditorPage: React.FC = () => {
                 if (!attrs) continue;
                 // attrs.position 없는 구형 선수는 top-level r.position으로 폴백 (구버전 동작 유지)
                 const pos = (attrs.position ?? r.position) as string | undefined;
-                map[r.id] = computePlayerDataEntry(attrs, pos);
+                map[r.id] = computePlayerDataEntry(attrs, pos, tagConfig);
             } catch { /* skip */ }
         }
         return map;
-    }, [results]);
+    }, [results, tagConfig]);
 
     // CO 데이터 맵 — custom_overrides를 base에 덮어씌운 전체 파생 데이터
     const playerCoDataMap = useMemo(() => {
@@ -472,7 +493,7 @@ const PlayerEditorPage: React.FC = () => {
                     if (!DISPLAY_ONLY_CO_KEYS.has(k)) merged[k] = v; // position, team, age 포함
                 }
                 const coPos = (co.position ?? attrs.position ?? r.position ?? 'SF') as string;
-                const entry = computePlayerDataEntry(merged, coPos);
+                const entry = computePlayerDataEntry(merged, coPos, tagConfig);
                 map[r.id] = {
                     ...entry,
                     position: coPos,
@@ -482,7 +503,7 @@ const PlayerEditorPage: React.FC = () => {
             } catch { /* skip */ }
         }
         return map;
-    }, [results]);
+    }, [results, tagConfig]);
 
     const filteredResults = useMemo(() => {
         return results.filter(r => {
@@ -541,9 +562,15 @@ const PlayerEditorPage: React.FC = () => {
                 if (filterDraftYearOp === '>='  && !(dy >= val)) return false;
             }
 
+            if (filterModule && filterModuleMin !== '') {
+                const min = parseInt(filterModuleMin, 10);
+                const score = playerArchetypeMap[r.id]?.modules[filterModule] ?? 0;
+                if (score < min) return false;
+            }
+
             return true;
         });
-    }, [results, filterTeams, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, filterDraftYearOp, filterDraftYearVal, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
+    }, [results, filterTeams, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, filterDraftYearOp, filterDraftYearVal, filterModule, filterModuleMin, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
 
     const sortedResults = useMemo(() => {
         return [...filteredResults].sort((a, b) => {
@@ -575,6 +602,11 @@ const PlayerEditorPage: React.FC = () => {
 
     const tablePageCount = Math.max(1, Math.ceil(sortedResults.length / tablePageSize));
     const tableRows = sortedResults.slice(tablePage * tablePageSize, (tablePage + 1) * tablePageSize);
+
+    const tagLabelMap = useMemo<Record<string, string>>(() => {
+        if (tagConfig.length > 0) return Object.fromEntries(tagConfig.map(t => [t.id, t.label]));
+        return { ...TAG_LABEL };
+    }, [tagConfig]);
 
     const ALL_TEAM_IDS = useMemo(() => ['fa', ...TEAM_OPTIONS.filter(t => t.id !== '').map(t => t.id)], []);
     const handleToggleTeam = useCallback((id: string) => {
@@ -894,7 +926,7 @@ function render(){
                 arch ? String(arch.displayOvr) : String(r.base_attributes?.ovr ?? ''),
                 arch ? (labelConfig[arch.archetype] ?? arch.archetype) : '',
                 arch?.secondary ? (labelConfig[arch.secondary] ?? arch.secondary) : '',
-                arch?.tags.length ? arch.tags.map(t => TAG_LABEL[t] ?? t).join(', ') : '',
+                arch?.tags.length ? arch.tags.map(t => tagLabelMap[t] ?? t).join(', ') : '',
             ];
         });
 
@@ -981,7 +1013,7 @@ function sortBy(th) {
             const blob = new Blob([exportHtml], { type: 'text/html' });
             window.open(URL.createObjectURL(blob), '_blank');
         }
-    }, [sortedResults, playerArchetypeMap]);
+    }, [sortedResults, playerArchetypeMap, tagLabelMap]);
 
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
         const [fresh, log] = await Promise.all([
@@ -1592,8 +1624,8 @@ function sortBy(th) {
                                 onChange={e => handleFilterTag(e.target.value)}
                             >
                                 <option value="all">전체 태그</option>
-                                {Object.entries(TAG_LABEL).map(([k, label]) => (
-                                    <option key={k} value={k}>{label}</option>
+                                {(tagConfig.length > 0 ? tagConfig : Object.entries(tagLabelMap).map(([id, label]) => ({ id, label }))).map(t => (
+                                    <option key={t.id} value={t.id}>{t.label}</option>
                                 ))}
                             </select>
                             {/* 기본/커스텀 표시 모드 토글 */}
@@ -1627,6 +1659,30 @@ function sortBy(th) {
                                     className={`w-20 bg-slate-800 border rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 ${filterOvrMax !== '' ? 'border-indigo-500' : 'border-slate-700'}`}
                                 />
                             </div>
+                            {/* 모듈 점수 필터 */}
+                            <div className="flex items-center gap-1">
+                                <select
+                                    value={filterModule}
+                                    onChange={e => { setFilterModule(e.target.value); if (!e.target.value) setFilterModuleMin(''); setTablePage(0); }}
+                                    className={`bg-slate-800 border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 ${filterModule ? 'border-indigo-500 text-indigo-300' : 'border-slate-700'}`}
+                                >
+                                    <option value="">모듈 필터</option>
+                                    {MODULE_ENTRIES.map(({ key, label }) => (
+                                        <option key={key} value={key}>{label}</option>
+                                    ))}
+                                </select>
+                                {filterModule && (
+                                    <>
+                                        <span className="text-slate-600 text-xs">≥</span>
+                                        <input
+                                            type="number" min={0} max={99} placeholder="점수"
+                                            value={filterModuleMin}
+                                            onChange={e => { setFilterModuleMin(e.target.value); setTablePage(0); }}
+                                            className={`w-16 bg-slate-800 border rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 ${filterModuleMin !== '' ? 'border-indigo-500' : 'border-slate-700'}`}
+                                        />
+                                    </>
+                                )}
+                            </div>
                             {/* draft_year 필터 */}
                             <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-slate-500 shrink-0">draft_year</span>
@@ -1651,9 +1707,9 @@ function sortBy(th) {
                                 />
                             </div>
                             {/* 활성 필터 초기화 */}
-                            {(filterTeams !== null || filterArchetype !== 'all' || filterTag !== 'all' || filterOvrMin !== '' || filterOvrMax !== '' || filterDraftYearOp !== '' || filterDraftYearVal !== '') && (
+                            {(filterTeams !== null || filterArchetype !== 'all' || filterTag !== 'all' || filterOvrMin !== '' || filterOvrMax !== '' || filterDraftYearOp !== '' || filterDraftYearVal !== '' || filterModule !== '') && (
                                 <button
-                                    onClick={() => { setFilterTeams(null); handleFilterArchetype('all'); handleFilterTag('all'); handleFilterOvrMin(''); handleFilterOvrMax(''); setFilterDraftYearOp(''); setFilterDraftYearVal(''); setTablePage(0); }}
+                                    onClick={() => { setFilterTeams(null); handleFilterArchetype('all'); handleFilterTag('all'); handleFilterOvrMin(''); handleFilterOvrMax(''); setFilterDraftYearOp(''); setFilterDraftYearVal(''); setFilterModule(''); setFilterModuleMin(''); setTablePage(0); }}
                                     className="text-[10px] text-slate-500 hover:text-red-400 border border-slate-700 hover:border-red-800 rounded px-1.5 py-0.5 transition-colors"
                                 >
                                     초기화
@@ -1828,9 +1884,9 @@ function sortBy(th) {
                                             </td>
                                             {/* 태그 */}
                                             <td className={`px-2 py-1 text-xs hidden xl:table-cell max-w-[160px] ${coInfo ? 'text-indigo-300' : 'text-white'}`}>
-                                                <span className="block truncate" title={displayInfo?.tags.map(t => TAG_LABEL[t] ?? t).join(', ')}>
+                                                <span className="block truncate" title={displayInfo?.tags.map(t => tagLabelMap[t] ?? t).join(', ')}>
                                                     {displayInfo?.tags.length
-                                                        ? displayInfo.tags.map(t => TAG_LABEL[t] ?? t).join(', ')
+                                                        ? displayInfo.tags.map(t => tagLabelMap[t] ?? t).join(', ')
                                                         : '—'
                                                     }
                                                 </span>
@@ -2010,7 +2066,7 @@ function sortBy(th) {
                         const baseArch2 = labelConfig[livePreview.base.secondaryArchetype.archetype] ?? livePreview.base.secondaryArchetype.archetype;
                         const coArch1   = livePreview.co ? (labelConfig[livePreview.co.primaryArchetype.archetype] ?? livePreview.co.primaryArchetype.archetype) : null;
                         const coArch2   = livePreview.co ? (labelConfig[livePreview.co.secondaryArchetype.archetype] ?? livePreview.co.secondaryArchetype.archetype) : null;
-                        const activeTags = (livePreview.co ? livePreview.co.tags : livePreview.base.tags).map((t: string) => TAG_LABEL[t] ?? t);
+                        const activeTags = (livePreview.co ? livePreview.co.tags : livePreview.base.tags).map((t: string) => tagLabelMap[t] ?? t);
 
                         return (
                             <div className="mb-4 bg-slate-900 rounded-xl border border-slate-700/60 overflow-hidden">
