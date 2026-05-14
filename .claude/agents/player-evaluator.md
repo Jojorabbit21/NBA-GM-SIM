@@ -364,7 +364,7 @@ ORDER BY score DESC;
    - **🚨 아키타입 레이블 규칙**: 스크립트 출력의 `archetype.primaryLabel` / `secondaryLabel` 값을 그대로 사용할 것. 절대 임의로 이름을 만들지 않는다.
      ```
      primary_creator_guard → "Primary Creator"    floor_general_guard → "Floor General"
-     scoring_combo_guard   → "Scoring Guard"      scoring_point_guard → "Scoring PG"
+     scoring_combo_guard   → "Dual Guard"          scoring_point_guard → "Pure Scorer"
      movement_shooter      → "Movement Shooter"   defensive_guard     → "Defensive Guard"
      perimeter_3nd         → "Perimeter 3&D"
      two_way_wing          → "Two-Way Wing"        slashing_wing       → "Slashing Wing"
@@ -649,8 +649,8 @@ C   = post×0.08 + spot×0.05 + rim×0.10 + play×0.08 + rimP×0.24 + reb×0.27 
 ```
 primary_creator_guard : play×0.38 + shotC×0.22 + spot×0.12 + rim×0.10 + motor×0.08 + size×0.05 + poa×0.05
 floor_general_guard   : play×0.42 + teamD×0.16 + poa×0.12 + spot×0.10 + motor×0.10 + offball×0.10
-scoring_combo_guard   : shotC×0.32 + rim×0.20 + spot×0.18 + poa×0.10 + motor×0.10 + play×0.10
-scoring_point_guard   : shotC×0.28 + play×0.20 + rim×0.18 + spot×0.14 + motor×0.10 + poa×0.10
+scoring_combo_guard   : shotC×0.28 + play×0.20 + rim×0.18 + spot×0.14 + motor×0.10 + poa×0.10  (Dual Guard)
+scoring_point_guard   : shotC×0.32 + rim×0.20 + spot×0.18 + play×0.12 + offball×0.08 + motor×0.10  (Pure Scorer)
 movement_shooter      : spot×0.40 + offball×0.28 + motor×0.12 + rim×0.10 + poa×0.10
 perimeter_3nd         : spot×0.30 + poa×0.28 + teamD×0.16 + motor×0.14 + rim×0.08 + offball×0.04
 defensive_guard       : poa×0.32 + teamD×0.18 + play×0.14 + spot×0.14 + motor×0.12 + reb×0.10

@@ -1,10 +1,13 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { preloadGameConfig, fetchArchetypeLabels } from '../services/admin/gameConfigService';
+import type { ArchetypeLabelConfig } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { adaptPlayerToInput } from '../utils/ovrUtils';
 import { evaluatePlayerRawOVR } from '../utils/ovrEngine';
+import type { ArchetypeModuleScores } from '../types/archetype';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -190,18 +193,20 @@ const STAT_SECTIONS = [
 ];
 
 const ARCHETYPE_LABEL: Record<string, string> = {
-    PRIMARY_CREATOR_GUARD: 'Primary Creator',  SCORING_COMBO_GUARD: 'Scoring Combo',
-    MOVEMENT_SHOOTER: 'Movement Shooter',      PERIMETER_3D: 'Perimeter 3&D',
+    PRIMARY_CREATOR_GUARD: 'Primary Creator',  SCORING_COMBO_GUARD: 'Dual Guard',
+    MOVEMENT_SHOOTER: 'Outside Shooter',       PERIMETER_3D: 'Perimeter 3&D',
     TWO_WAY_WING: 'Two-Way Wing',              SLASHING_WING: 'Slashing Wing',
     SHOT_CREATOR_WING: 'Shot Creator Wing',    CONNECTOR_FORWARD: 'Connector Fwd',
     AERIAL_WING: 'Aerial Wing',                POST_SCORING_WING: 'Post Scoring Wing',
     WING_PROTECTOR: 'Wing Protector',          POST_SCORING_BIG: 'Post Scoring Big',
     RIM_RUNNER_BIG: 'Rim Runner',              STRETCH_BIG: 'Stretch Big',
     RIM_PROTECTOR_ANCHOR: 'Rim Protector',     PLAYMAKING_BIG: 'Playmaking Big',
-    FLOOR_GENERAL_GUARD: 'Floor General',      SCORING_POINT_GUARD: 'Scoring PG',
+    FLOOR_GENERAL_GUARD: 'Floor General',      SCORING_POINT_GUARD: 'Pure Scorer',
     DEFENSIVE_GUARD: 'Defensive Guard',        THREE_LEVEL_SCORER: '3-Level Scorer',
     LOCKDOWN_WING: 'Lockdown Wing',            SWITCHABLE_ANCHOR: 'Switchable Anchor',
     TWO_WAY_BIG: 'Two-Way Big',                REBOUNDING_BIG: 'Rebounding Big',
+    ISOLATION_SCORER: 'Midrange Menace',       ELBOW_OPERATOR: 'Elbow Operator',
+    ELITE_GUARD: 'Elite Guard',                LOCKDOWN_SHOOTER: 'Lockdown Shooter',
 };
 
 const TAG_LABEL: Record<string, string> = {
@@ -283,10 +288,12 @@ const DEFAULT_PLAYER_ATTRS = (name: string, position: string, team: string): Rec
     speed: 70, agility: 70, strength: 70, vertical: 70, stamina: 70, hustle: 70, durability: 70,
 });
 
+type EditorContext = { userId?: string };
+
 // ── PlayerEditorPage ──────────────────────────────────────────────────────────
 
-const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
-    const navigate = useNavigate();
+const PlayerEditorPage: React.FC = () => {
+    const { userId } = useOutletContext<EditorContext>();
     const isAdmin = userId === ADMIN_USER_ID;
 
     const [query, setQuery] = useState('');
@@ -332,6 +339,14 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
     const bulkAlltimeRef = useRef<HTMLInputElement>(null);
     const bulkMultiRef = useRef<HTMLInputElement>(null);
     const teamFilterRef = useRef<HTMLDivElement>(null);
+    const [labelConfig, setLabelConfig] = useState<ArchetypeLabelConfig>({ ...ARCHETYPE_LABEL });
+
+    useEffect(() => {
+        preloadGameConfig().catch(console.error);
+        fetchArchetypeLabels()
+            .then(db => { if (Object.keys(db).length > 0) setLabelConfig(db); })
+            .catch(console.error);
+    }, []);
 
     // 팀 필터 패널 click-outside 닫기
     useEffect(() => {
@@ -597,8 +612,8 @@ const PlayerEditorPage: React.FC<{ userId?: string }> = ({ userId }) => {
             const teamSlug  = (r.base_team_id ?? '').trim().toUpperCase();
             const teamLabel = isDraft ? `신인 '${r.draft_year}` : (teamSlug || 'FA');
             const age       = r.base_attributes?.age ?? null;
-            const arch      = ARCHETYPE_LABEL[info.archetype] ?? info.archetype;
-            const coArch    = coInfo ? (ARCHETYPE_LABEL[coInfo.archetype] ?? coInfo.archetype) : null;
+            const arch      = labelConfig[info.archetype] ?? info.archetype;
+            const coArch    = coInfo ? (labelConfig[coInfo.archetype] ?? coInfo.archetype) : null;
             return [{ name: r.name, pos, team: teamLabel, age, arch, coArch, ovr: info.displayOvr, coOvr: coInfo?.displayOvr ?? null, isActive, isAlltime, isDraft }];
         });
 
@@ -877,8 +892,8 @@ function render(){
                 teamLabel,
                 String(r.base_attributes?.age ?? ''),
                 arch ? String(arch.displayOvr) : String(r.base_attributes?.ovr ?? ''),
-                arch ? (ARCHETYPE_LABEL[arch.archetype] ?? arch.archetype) : '',
-                arch?.secondary ? (ARCHETYPE_LABEL[arch.secondary] ?? arch.secondary) : '',
+                arch ? (labelConfig[arch.archetype] ?? arch.archetype) : '',
+                arch?.secondary ? (labelConfig[arch.secondary] ?? arch.secondary) : '',
                 arch?.tags.length ? arch.tags.map(t => TAG_LABEL[t] ?? t).join(', ') : '',
             ];
         });
@@ -1382,74 +1397,76 @@ function sortBy(th) {
         const hasSectionCo = sectionKeys.some(k => co[k] !== undefined);
         return (
         <Section key={section.label} label={section.label}>
-            <table className="w-full text-sm border-collapse">
-                <thead>
-                    <tr className="text-slate-400 text-xs border-b border-slate-700">
-                        <th className="text-left py-1 pr-3 font-normal">능력치</th>
-                        <th className="text-center py-1 pr-2 font-normal text-slate-500 w-10">키</th>
-                        <th className="text-center py-1 px-1 font-normal w-16">base</th>
-                        <th className="text-center py-1 px-1 font-normal w-16">
-                            <span className="flex items-center justify-center gap-1">
-                                CO
-                                {hasSectionCo && (
-                                    <button
-                                        onClick={() => clearSectionCo(sectionKeys)}
-                                        className="text-[9px] text-slate-500 hover:text-red-400 border border-slate-700 hover:border-red-800 rounded px-1 leading-4 transition-colors"
-                                        title="이 섹션 CO 값 전체 초기화"
-                                    >
-                                        ✕
-                                    </button>
-                                )}
-                            </span>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {section.keys.map(({ key, label }) => {
-                        const baseVal = draft[key] as number | undefined;
-                        const coVal   = co[key]   as number | undefined;
-                        return (
-                            <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
-                                <td className="py-1 pr-3 text-slate-300 text-xs">{label}</td>
-                                <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">{key}</td>
-                                <td className="py-1 px-1">
-                                    <input
-                                        type="number"
-                                        min={0} max={99}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500"
-                                        value={baseVal ?? ''}
-                                        onChange={e => setField(key, e.target.value)}
-                                    />
-                                </td>
-                                <td className="py-1 px-1">
-                                    <input
-                                        type="number"
-                                        min={0} max={99}
-                                        placeholder="—"
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500 placeholder-slate-600"
-                                        value={coVal ?? ''}
-                                        onChange={e => setCoField(key, e.target.value)}
-                                    />
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+            <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                <table className="min-w-full divide-y divide-white/5">
+                    <thead className="bg-white/5">
+                        <tr>
+                            <th scope="col" className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-400">능력치</th>
+                            <th scope="col" className="w-16 px-3 py-3 text-center text-xs font-semibold text-gray-400">base</th>
+                            <th scope="col" className="w-16 py-3 pl-3 pr-4 text-center text-xs font-semibold text-amber-500/70">
+                                <span className="inline-flex items-center justify-center gap-1">
+                                    CO
+                                    {hasSectionCo && (
+                                        <button
+                                            onClick={() => clearSectionCo(sectionKeys)}
+                                            className="text-[9px] text-gray-600 hover:text-red-400 transition-colors leading-none"
+                                            title="이 섹션 CO 값 전체 초기화"
+                                        >✕</button>
+                                    )}
+                                </span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {section.keys.map(({ key, label }) => {
+                            const baseVal = draft[key] as number | undefined;
+                            const coVal   = co[key]   as number | undefined;
+                            return (
+                                <tr key={key} className="hover:bg-white/5 group transition-colors">
+                                    <td className="py-3 pl-4 pr-3">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {baseVal !== undefined && (
+                                                <span className={`text-xs font-bold font-mono w-5 text-right shrink-0 ${attrColor(baseVal)}`}>
+                                                    {baseVal}
+                                                </span>
+                                            )}
+                                            <span className="text-sm text-gray-300 truncate">{label}</span>
+                                            <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity shrink-0">{key}</span>
+                                        </div>
+                                    </td>
+                                    <td className="w-16 px-3 py-2.5">
+                                        <input
+                                            type="number" min={0} max={99}
+                                            className="w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                            value={baseVal ?? ''}
+                                            onChange={e => setField(key, e.target.value)}
+                                        />
+                                    </td>
+                                    <td className="w-16 py-2.5 pl-3 pr-4">
+                                        <input
+                                            type="number" min={0} max={99}
+                                            placeholder="—"
+                                            className={`w-full rounded px-2 py-0.5 text-sm text-center ring-1 ring-inset focus:outline-none placeholder-gray-700 transition-colors ${
+                                                coVal !== undefined
+                                                    ? 'bg-amber-950/20 text-amber-300 ring-amber-500/40 focus:ring-amber-400'
+                                                    : 'bg-white/[0.03] text-gray-500 ring-white/10 focus:ring-amber-500/50'
+                                            }`}
+                                            value={coVal ?? ''}
+                                            onChange={e => setCoField(key, e.target.value)}
+                                        />
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </Section>
         );
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 pretendard p-4 md:p-6">
-            {/* 헤더 */}
-            <div className="flex items-center gap-4 mb-6">
-                <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-white text-sm">
-                    ← 뒤로
-                </button>
-                <h1 className="text-lg font-bold text-white">선수 능력치 편집기</h1>
-            </div>
-
+        <div>
             {/* 검색 + 테이블 */}
             <div className="mb-6">
                 {/* 검색 인풋 + 새 선수 추가 */}
@@ -1564,7 +1581,7 @@ function sortBy(th) {
                                 onChange={e => handleFilterArchetype(e.target.value)}
                             >
                                 <option value="all">전체 아키타입</option>
-                                {Object.entries(ARCHETYPE_LABEL).map(([k, label]) => (
+                                {Object.entries(labelConfig).map(([k, label]) => (
                                     <option key={k} value={k}>{label}</option>
                                 ))}
                             </select>
@@ -1798,14 +1815,14 @@ function sortBy(th) {
                                             {/* 1차 아키타입 */}
                                             <td className={`px-2 py-1 ${coInfo ? 'text-indigo-300' : 'text-white'}`}>
                                                 {displayInfo
-                                                    ? ARCHETYPE_LABEL[displayInfo.archetype] ?? displayInfo.archetype
+                                                    ? labelConfig[displayInfo.archetype] ?? displayInfo.archetype
                                                     : '—'
                                                 }
                                             </td>
                                             {/* 2차 아키타입 */}
                                             <td className={`px-2 py-1 ${coInfo ? 'text-indigo-300' : 'text-white'}`}>
                                                 {displayInfo?.secondary
-                                                    ? ARCHETYPE_LABEL[displayInfo.secondary] ?? displayInfo.secondary
+                                                    ? labelConfig[displayInfo.secondary] ?? displayInfo.secondary
                                                     : '—'
                                                 }
                                             </td>
@@ -1989,10 +2006,10 @@ function sortBy(th) {
                             .map(({ key, label }) => ({ key, label, base: bm[key] ?? 0, co: cm ? (cm[key] ?? 0) : null }))
                             .sort((a, b) => b.base - a.base);
 
-                        const baseArch1 = ARCHETYPE_LABEL[livePreview.base.primaryArchetype.archetype] ?? livePreview.base.primaryArchetype.archetype;
-                        const baseArch2 = ARCHETYPE_LABEL[livePreview.base.secondaryArchetype.archetype] ?? livePreview.base.secondaryArchetype.archetype;
-                        const coArch1   = livePreview.co ? (ARCHETYPE_LABEL[livePreview.co.primaryArchetype.archetype] ?? livePreview.co.primaryArchetype.archetype) : null;
-                        const coArch2   = livePreview.co ? (ARCHETYPE_LABEL[livePreview.co.secondaryArchetype.archetype] ?? livePreview.co.secondaryArchetype.archetype) : null;
+                        const baseArch1 = labelConfig[livePreview.base.primaryArchetype.archetype] ?? livePreview.base.primaryArchetype.archetype;
+                        const baseArch2 = labelConfig[livePreview.base.secondaryArchetype.archetype] ?? livePreview.base.secondaryArchetype.archetype;
+                        const coArch1   = livePreview.co ? (labelConfig[livePreview.co.primaryArchetype.archetype] ?? livePreview.co.primaryArchetype.archetype) : null;
+                        const coArch2   = livePreview.co ? (labelConfig[livePreview.co.secondaryArchetype.archetype] ?? livePreview.co.secondaryArchetype.archetype) : null;
                         const activeTags = (livePreview.co ? livePreview.co.tags : livePreview.base.tags).map((t: string) => TAG_LABEL[t] ?? t);
 
                         return (
@@ -2105,294 +2122,209 @@ function sortBy(th) {
 
                     {/* ── 인적 정보 — base / CO ── */}
                     <Section label="인적 정보">
-                        <table className="w-full text-sm border-collapse">
-                            <thead>
-                                <tr className="text-slate-400 text-xs border-b border-slate-700">
-                                    <th className="text-left py-1 pr-3 font-normal">필드</th>
-                                    <th className="text-center py-1 pr-2 font-normal text-slate-500 w-10">키</th>
-                                    <th className="text-center py-1 px-1 font-normal w-28">base</th>
-                                    <th className="text-center py-1 px-1 font-normal w-28">CO</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* 이름 */}
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">이름</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">name</td>
-                                    <td className="py-1 px-1">
-                                        <input
-                                            type="text"
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={typeof draft.name === 'string' ? draft.name : (selected?.name ?? '')}
-                                            onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))}
-                                        />
-                                    </td>
-                                    <td className="py-1 px-1 text-center text-slate-600 text-xs">—</td>
-                                </tr>
-                                {/* 숫자 필드 */}
-                                {([
-                                    { key: 'age',    label: '나이' },
-                                    { key: 'num',    label: '등번호' },
-                                    { key: 'height', label: '키 (cm)' },
-                                    { key: 'weight', label: '몸무게 (kg)' },
-                                ] as const).map(({ key, label }) => (
-                                    <tr key={key} className="border-b border-slate-800 hover:bg-slate-800/30">
-                                        <td className="py-1 pr-3 text-slate-300 text-xs">{label}</td>
-                                        <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">{key}</td>
-                                        <td className="py-1 px-1">
-                                            <input
-                                                type="number"
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500"
-                                                value={draft[key] ?? ''}
-                                                onChange={e => setField(key, e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="py-1 px-1">
-                                            <input
-                                                type="number"
-                                                placeholder="—"
-                                                className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500 placeholder-slate-600"
-                                                value={co[key] ?? ''}
-                                                onChange={e => setCoField(key, e.target.value)}
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                                {/* 포지션 */}
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">포지션</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">position</td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={draft.position ?? ''}
-                                            onChange={e => setField('position', e.target.value)}
-                                        >
-                                            <option value="">— 선택 —</option>
-                                            {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={co.position ?? ''}
-                                            onChange={e => setCoField('position', e.target.value)}
-                                        >
-                                            <option value="">— (base)</option>
-                                            {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                                        </select>
-                                    </td>
-                                </tr>
-                                {/* 팀 */}
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">팀</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">team</td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={draft.team ?? ''}
-                                            onChange={e => setField('team', e.target.value)}
-                                        >
-                                            {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={co.team ?? ''}
-                                            onChange={e => setCoField('team', e.target.value)}
-                                        >
-                                            <option value="">— (base)</option>
-                                            {TEAM_OPTIONS.filter(t => t.id !== '').map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                                        </select>
-                                    </td>
-                                </tr>
-                                {/* ── 인기도 ── */}
-                                <tr className="border-b border-slate-700 bg-slate-900/40">
-                                    <td colSpan={4} className="py-1.5 px-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                                        인기도 (0~100)
-                                    </td>
-                                </tr>
-                                {/* 지역 인기 */}
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">연고지 인기</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">pop.local</td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={draft.popularity?.local ?? ''}
-                                            onChange={e => {
-                                                const v = Number(e.target.value);
-                                                setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), local: v } }));
-                                            }}
-                                        >
-                                            <option value="">— 미설정 —</option>
-                                            {POPULARITY_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
+                        {(() => {
+                            const baseCls = 'w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors';
+                            const coCls   = (hasVal: boolean) => `w-full rounded px-2 py-0.5 text-sm ring-1 ring-inset focus:outline-none placeholder-gray-700 transition-colors ${hasVal ? 'bg-amber-950/20 text-amber-300 ring-amber-500/40 focus:ring-amber-400' : 'bg-white/[0.03] text-gray-500 ring-white/10 focus:ring-amber-500/50'}`;
+                            return (
+                                <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                                    <table className="min-w-full divide-y divide-white/5">
+                                        <thead className="bg-white/5">
+                                            <tr>
+                                                <th scope="col" className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-400">필드</th>
+                                                <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400">base</th>
+                                                <th scope="col" className="py-3 pl-3 pr-4 text-left text-xs font-semibold text-amber-500/70">CO</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {/* 이름 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">이름</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">name</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5" colSpan={2}>
+                                                    <input type="text" className={baseCls}
+                                                        value={typeof draft.name === 'string' ? draft.name : (selected?.name ?? '')}
+                                                        onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))} />
+                                                </td>
+                                            </tr>
+                                            {/* 숫자 필드 */}
+                                            {([
+                                                { key: 'age', label: '나이' }, { key: 'num', label: '등번호' },
+                                                { key: 'height', label: '키 (cm)' }, { key: 'weight', label: '몸무게 (kg)' },
+                                            ] as const).map(({ key, label }) => (
+                                                <tr key={key} className="hover:bg-white/5 group transition-colors">
+                                                    <td className="py-3 pl-4 pr-3">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-sm text-gray-300">{label}</span>
+                                                            <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">{key}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-2.5">
+                                                        <input type="number" className={`${baseCls} text-center`}
+                                                            value={draft[key] ?? ''} onChange={e => setField(key, e.target.value)} />
+                                                    </td>
+                                                    <td className="py-2.5 pl-3 pr-4">
+                                                        <input type="number" placeholder="—" className={`${coCls(co[key] !== undefined)} text-center`}
+                                                            value={co[key] ?? ''} onChange={e => setCoField(key, e.target.value)} />
+                                                    </td>
+                                                </tr>
                                             ))}
-                                        </select>
-                                        {draft.popularity?.local !== undefined && (
-                                            <div className="text-[9px] text-slate-500 mt-0.5 text-center">
-                                                {getLocalPopularityLabel(draft.popularity.local)}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={co.popularity?.local ?? ''}
-                                            onChange={e => {
-                                                const raw = e.target.value;
-                                                setDraft(prev => {
-                                                    const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
-                                                    if (raw === '') {
-                                                        const pop = { ...(c.popularity ?? {}) };
-                                                        delete pop.local;
-                                                        if (Object.keys(pop).length === 0) delete c.popularity;
-                                                        else c.popularity = pop;
-                                                    } else {
-                                                        c.popularity = { ...(c.popularity ?? {}), local: Number(raw) };
-                                                    }
-                                                    return { ...prev, custom_overrides: c };
-                                                });
-                                            }}
-                                        >
-                                            <option value="">— (base)</option>
-                                            {POPULARITY_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                            ))}
-                                        </select>
-                                        {co.popularity?.local !== undefined && (
-                                            <div className="text-[9px] text-indigo-400 mt-0.5 text-center">
-                                                CO: {getLocalPopularityLabel(co.popularity.local)}
-                                            </div>
-                                        )}
-                                    </td>
-                                </tr>
-                                {/* 전국 인기 */}
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">전국 인기</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">pop.national</td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={draft.popularity?.national ?? ''}
-                                            onChange={e => {
-                                                const v = Number(e.target.value);
-                                                setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), national: v } }));
-                                            }}
-                                        >
-                                            <option value="">— 미설정 —</option>
-                                            {NATIONAL_POPULARITY_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                            ))}
-                                        </select>
-                                        {draft.popularity?.national !== undefined && (
-                                            <div className="text-[9px] text-slate-500 mt-0.5 text-center">
-                                                {getNationalPopularityLabel(draft.popularity.national)}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="py-1 px-1">
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={co.popularity?.national ?? ''}
-                                            onChange={e => {
-                                                const raw = e.target.value;
-                                                setDraft(prev => {
-                                                    const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) };
-                                                    if (raw === '') {
-                                                        const pop = { ...(c.popularity ?? {}) };
-                                                        delete pop.national;
-                                                        if (Object.keys(pop).length === 0) delete c.popularity;
-                                                        else c.popularity = pop;
-                                                    } else {
-                                                        c.popularity = { ...(c.popularity ?? {}), national: Number(raw) };
-                                                    }
-                                                    return { ...prev, custom_overrides: c };
-                                                });
-                                            }}
-                                        >
-                                            <option value="">— (base)</option>
-                                            {NATIONAL_POPULARITY_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                            ))}
-                                        </select>
-                                        {co.popularity?.national !== undefined && (
-                                            <div className="text-[9px] text-indigo-400 mt-0.5 text-center">
-                                                CO: {getNationalPopularityLabel(co.popularity.national)}
-                                            </div>
-                                        )}
-                                    </td>
-                                </tr>
-                                {/* ── 드래프트 풀 포함 여부 ── */}
-                                <tr className="border-b border-slate-700 bg-slate-900/40">
-                                    <td colSpan={4} className="py-1.5 px-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                                        드래프트
-                                    </td>
-                                </tr>
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-1 pr-3 text-slate-300 text-xs">드래프트 연도</td>
-                                    <td className="py-1 pr-2 text-center text-slate-500 text-xs font-mono">draft_year</td>
-                                    <td colSpan={2} className="py-1 px-1">
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="number"
-                                                placeholder="없음 (현역/올타임)"
-                                                className="w-40 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500 placeholder-slate-600"
-                                                value={draftYearVal}
-                                                onChange={e => setDraftYearVal(e.target.value)}
-                                            />
-                                            {draftYearVal && (
-                                                <span className="text-xs text-slate-400">
-                                                    {Number(draftYearVal) === 2026 ? '→ 신인 드래프트 클래스' : `→ ${draftYearVal}년 입단`}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr className="border-b border-slate-800 hover:bg-slate-800/30">
-                                    <td className="py-2 pr-3 text-slate-300 text-xs">올타임 드래프트 풀 포함</td>
-                                    <td className="py-2 pr-2 text-center text-slate-500 text-xs font-mono">include_alltime</td>
-                                    <td colSpan={2} className="py-2 px-1">
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                disabled={alltimeToggling}
-                                                onClick={() => handleIncludeAlltimeToggle(!includeAlltime)}
-                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${includeAlltime ? 'bg-indigo-600' : 'bg-slate-700'}`}
-                                            >
-                                                <span
-                                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${includeAlltime ? 'translate-x-4' : 'translate-x-0.5'}`}
-                                                />
-                                            </button>
-                                            <span className={`text-xs ${includeAlltime ? 'text-indigo-400' : 'text-slate-500'}`}>
-                                                {alltimeToggling ? '저장 중...' : includeAlltime ? '포함 (올타임 풀에 등장)' : '제외 (현역 풀에만 등장)'}
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr className="hover:bg-slate-800/30">
-                                    <td className="py-2 pr-3 text-slate-300 text-xs">멀티플레이 드래프트 풀 포함</td>
-                                    <td className="py-2 pr-2 text-center text-slate-500 text-xs font-mono">in_multi_pool</td>
-                                    <td colSpan={2} className="py-2 px-1">
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                disabled={multiPoolToggling}
-                                                onClick={() => handleInMultiPoolToggle(!inMultiPool)}
-                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${inMultiPool ? 'bg-emerald-600' : 'bg-slate-700'}`}
-                                            >
-                                                <span
-                                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${inMultiPool ? 'translate-x-4' : 'translate-x-0.5'}`}
-                                                />
-                                            </button>
-                                            <span className={`text-xs ${inMultiPool ? 'text-emerald-400' : 'text-slate-500'}`}>
-                                                {multiPoolToggling ? '저장 중...' : inMultiPool ? '포함 (멀티 드래프트에 등장)' : '제외 (멀티 드래프트에서 숨김)'}
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                            {/* 포지션 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">포지션</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">position</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <select className={baseCls} value={draft.position ?? ''} onChange={e => setField('position', e.target.value)}>
+                                                        <option value="">— 선택 —</option>
+                                                        {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="py-2.5 pl-3 pr-4">
+                                                    <select className={coCls(!!co.position)} value={co.position ?? ''} onChange={e => setCoField('position', e.target.value)}>
+                                                        <option value="">— (base)</option>
+                                                        {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                            {/* 팀 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">팀</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">team</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <select className={baseCls} value={draft.team ?? ''} onChange={e => setField('team', e.target.value)}>
+                                                        {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="py-2.5 pl-3 pr-4">
+                                                    <select className={coCls(!!co.team)} value={co.team ?? ''} onChange={e => setCoField('team', e.target.value)}>
+                                                        <option value="">— (base)</option>
+                                                        {TEAM_OPTIONS.filter(t => t.id !== '').map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                            {/* 인기도 서브헤더 */}
+                                            <tr className="bg-white/[0.03]">
+                                                <td colSpan={3} className="py-2 pl-4 pr-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">인기도 (0~100)</td>
+                                            </tr>
+                                            {/* 연고지 인기 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">연고지 인기</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">pop.local</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <select className={baseCls} value={draft.popularity?.local ?? ''}
+                                                        onChange={e => { const v = Number(e.target.value); setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), local: v } })); }}>
+                                                        <option value="">— 미설정 —</option>
+                                                        {POPULARITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    </select>
+                                                    {draft.popularity?.local !== undefined && <div className="text-[9px] text-gray-500 mt-0.5">{getLocalPopularityLabel(draft.popularity.local)}</div>}
+                                                </td>
+                                                <td className="py-2.5 pl-3 pr-4">
+                                                    <select className={coCls(co.popularity?.local !== undefined)} value={co.popularity?.local ?? ''}
+                                                        onChange={e => { const raw = e.target.value; setDraft(prev => { const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) }; if (raw === '') { const pop = { ...(c.popularity ?? {}) }; delete pop.local; if (Object.keys(pop).length === 0) delete c.popularity; else c.popularity = pop; } else { c.popularity = { ...(c.popularity ?? {}), local: Number(raw) }; } return { ...prev, custom_overrides: c }; }); }}>
+                                                        <option value="">— (base)</option>
+                                                        {POPULARITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    </select>
+                                                    {co.popularity?.local !== undefined && <div className="text-[9px] text-amber-500/80 mt-0.5">{getLocalPopularityLabel(co.popularity.local)}</div>}
+                                                </td>
+                                            </tr>
+                                            {/* 전국 인기 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">전국 인기</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">pop.national</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <select className={baseCls} value={draft.popularity?.national ?? ''}
+                                                        onChange={e => { const v = Number(e.target.value); setDraft(prev => ({ ...prev, popularity: { ...(prev.popularity ?? {}), national: v } })); }}>
+                                                        <option value="">— 미설정 —</option>
+                                                        {NATIONAL_POPULARITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    </select>
+                                                    {draft.popularity?.national !== undefined && <div className="text-[9px] text-gray-500 mt-0.5">{getNationalPopularityLabel(draft.popularity.national)}</div>}
+                                                </td>
+                                                <td className="py-2.5 pl-3 pr-4">
+                                                    <select className={coCls(co.popularity?.national !== undefined)} value={co.popularity?.national ?? ''}
+                                                        onChange={e => { const raw = e.target.value; setDraft(prev => { const c: Record<string, any> = { ...(prev.custom_overrides ?? {}) }; if (raw === '') { const pop = { ...(c.popularity ?? {}) }; delete pop.national; if (Object.keys(pop).length === 0) delete c.popularity; else c.popularity = pop; } else { c.popularity = { ...(c.popularity ?? {}), national: Number(raw) }; } return { ...prev, custom_overrides: c }; }); }}>
+                                                        <option value="">— (base)</option>
+                                                        {NATIONAL_POPULARITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    </select>
+                                                    {co.popularity?.national !== undefined && <div className="text-[9px] text-amber-500/80 mt-0.5">{getNationalPopularityLabel(co.popularity.national)}</div>}
+                                                </td>
+                                            </tr>
+                                            {/* 드래프트 서브헤더 */}
+                                            <tr className="bg-white/[0.03]">
+                                                <td colSpan={3} className="py-2 pl-4 pr-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">드래프트</td>
+                                            </tr>
+                                            {/* 드래프트 연도 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">드래프트 연도</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">draft_year</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5" colSpan={2}>
+                                                    <div className="flex items-center gap-3">
+                                                        <input type="number" placeholder="없음 (현역/올타임)"
+                                                            className="w-36 bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 placeholder-gray-600 transition-colors"
+                                                            value={draftYearVal} onChange={e => setDraftYearVal(e.target.value)} />
+                                                        {draftYearVal && (
+                                                            <span className="text-sm text-gray-400">
+                                                                {Number(draftYearVal) === 2026 ? '→ 신인 드래프트 클래스' : `→ ${draftYearVal}년 입단`}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {/* 토글 행 */}
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td colSpan={3} className="py-3 pl-4 pr-4">
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm text-gray-300">올타임 드래프트 풀</span>
+                                                            <button disabled={alltimeToggling} onClick={() => handleIncludeAlltimeToggle(!includeAlltime)}
+                                                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${includeAlltime ? 'bg-indigo-600' : 'bg-white/10'}`}>
+                                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${includeAlltime ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                            </button>
+                                                            <span className={`text-sm ${includeAlltime ? 'text-indigo-400' : 'text-gray-600'}`}>
+                                                                {alltimeToggling ? '저장 중...' : includeAlltime ? '포함' : '제외'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="w-px h-4 bg-white/10" />
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm text-gray-300">멀티 드래프트 풀</span>
+                                                            <button disabled={multiPoolToggling} onClick={() => handleInMultiPoolToggle(!inMultiPool)}
+                                                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${inMultiPool ? 'bg-emerald-600' : 'bg-white/10'}`}>
+                                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${inMultiPool ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                            </button>
+                                                            <span className={`text-sm ${inMultiPool ? 'text-emerald-400' : 'text-gray-600'}`}>
+                                                                {multiPoolToggling ? '저장 중...' : inMultiPool ? '포함' : '제외'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            );
+                        })()}
                     </Section>
 
                     {/* ── 존 선호도 & Tendencies ── */}
@@ -2426,58 +2358,62 @@ function sortBy(th) {
                             const clearTendencies = () => setTendencies(null);
 
                             return (
-                                <div className="space-y-4">
-                                    {/* 존 비중 */}
-                                    <div>
-                                        <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-2">Shot Zones (합산 자동 정규화)</div>
-                                        <div className="space-y-1.5">
+                                <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                                    <table className="min-w-full divide-y divide-white/5">
+                                        <thead className="bg-white/5">
+                                            <tr>
+                                                <th scope="col" className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-400">존</th>
+                                                <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400">설명</th>
+                                                <th scope="col" className="w-16 px-3 py-3 text-center text-xs font-semibold text-gray-400">가중치</th>
+                                                <th scope="col" className="py-3 pl-3 pr-4 text-right text-xs font-semibold text-gray-400">비율</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
                                             {ZONES.map(({ key, label, desc }) => {
                                                 const val = Number(zones[key]) || 0;
                                                 const pct = (val / total) * 100;
                                                 return (
-                                                    <div key={key} className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-mono text-slate-400 w-8 shrink-0">{label}</span>
-                                                        <span className="text-[9px] text-slate-600 w-16 shrink-0">{desc}</span>
-                                                        <input
-                                                            type="number"
-                                                            min={0}
-                                                            className="w-12 shrink-0 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-xs focus:outline-none focus:border-slate-500"
-                                                            value={val}
-                                                            onChange={e => setZone(key, e.target.value)}
-                                                        />
-                                                        <div className="flex-1 h-2 bg-slate-700/70 rounded-full overflow-hidden">
-                                                            <div
-                                                                className="h-full rounded-full bg-indigo-500 transition-all duration-150"
-                                                                style={{ width: `${pct}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-[10px] font-mono text-slate-400 w-10 text-right shrink-0">{pct.toFixed(1)}%</span>
-                                                    </div>
+                                                    <tr key={key} className="hover:bg-white/5 transition-colors">
+                                                        <td className="py-3 pl-4 pr-3">
+                                                            <span className="text-sm font-mono font-bold text-indigo-400">{label}</span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-sm text-gray-400">{desc}</td>
+                                                        <td className="w-16 px-3 py-2.5">
+                                                            <input type="number" min={0}
+                                                                className="w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                                                value={val} onChange={e => setZone(key, e.target.value)} />
+                                                        </td>
+                                                        <td className="py-3 pl-3 pr-4">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div className="h-full rounded-full bg-indigo-500/70 transition-all" style={{ width: `${pct}%` }} />
+                                                                </div>
+                                                                <span className="text-sm font-mono text-gray-400 w-12 text-right">{pct.toFixed(1)}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
                                                 );
                                             })}
-                                        </div>
-                                    </div>
-
-                                    {/* 편측성 */}
-                                    <div className="w-48">
-                                        <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1">Lateral Bias</div>
-                                        <select
-                                            className="w-full bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-white text-xs focus:outline-none focus:border-slate-500"
-                                            value={tendencies?.lateral_bias ?? 2}
-                                            onChange={e => setTendencies(prev => ({ ...(prev ?? { zones: {} }), lateral_bias: Number(e.target.value) }))}
-                                        >
-                                            {LATERAL_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {tendencies && (
-                                        <button
-                                            onClick={clearTendencies}
-                                            className="text-[10px] text-slate-600 hover:text-red-400 transition-colors"
-                                        >tendencies 초기화 (null로 저장)</button>
-                                    )}
+                                            {/* Lateral Bias */}
+                                            <tr className="bg-white/[0.03] hover:bg-white/5 transition-colors">
+                                                <td colSpan={2} className="py-3 pl-4 pr-3 text-sm text-gray-400">Lateral Bias</td>
+                                                <td colSpan={2} className="py-2.5 pl-3 pr-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <select
+                                                            className="flex-1 bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                                            value={tendencies?.lateral_bias ?? 2}
+                                                            onChange={e => setTendencies(prev => ({ ...(prev ?? { zones: {} }), lateral_bias: Number(e.target.value) }))}
+                                                        >
+                                                            {LATERAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                        </select>
+                                                        {tendencies && (
+                                                            <button onClick={clearTendencies} className="text-sm text-gray-600 hover:text-red-400 transition-colors shrink-0">초기화</button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             );
                         })()}
@@ -2541,61 +2477,51 @@ function sortBy(th) {
 
                     {/* ── 부상 정보 ── */}
                     <Section label="부상 정보">
-                        <div className="flex flex-wrap gap-6 items-start">
-                            {/* 상태 버튼 */}
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1.5">상태</p>
-                                <div className="flex gap-1.5">
-                                    {(['Healthy', 'Day-to-Day', 'Injured'] as const).map(status => {
-                                        const active = (draft.health ?? 'Healthy') === status;
-                                        const activeClass = status === 'Healthy'
-                                            ? 'bg-emerald-800 border-emerald-600 text-emerald-200'
-                                            : status === 'Day-to-Day'
-                                                ? 'bg-amber-800 border-amber-600 text-amber-200'
-                                                : 'bg-red-900 border-red-700 text-red-200';
-                                        return (
-                                            <button
-                                                key={status}
-                                                onClick={() => handleHealthChange(status)}
-                                                className={`px-3 py-1 text-xs rounded border transition-colors ${
-                                                    active
-                                                        ? activeClass
-                                                        : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
-                                                }`}
-                                            >
-                                                {status === 'Healthy' ? '정상' : status === 'Day-to-Day' ? 'Day-to-Day' : '부상 중'}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* 부상 종류 */}
-                            {(draft.health ?? 'Healthy') !== 'Healthy' && (
-                                <div>
-                                    <p className="text-xs text-slate-500 mb-1.5">부상 종류</p>
-                                    <input
-                                        type="text"
-                                        placeholder="예: ACL Tear, Ankle Sprain..."
-                                        value={draft.injuryType ?? ''}
-                                        onChange={e => setField('injuryType', e.target.value)}
-                                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-600 w-56"
-                                    />
-                                </div>
-                            )}
-
-                            {/* 복귀 예정일 */}
-                            {(draft.health ?? 'Healthy') !== 'Healthy' && (
-                                <div>
-                                    <p className="text-xs text-slate-500 mb-1.5">복귀 예정일</p>
-                                    <input
-                                        type="date"
-                                        value={draft.returnDate ?? ''}
-                                        onChange={e => setField('returnDate', e.target.value)}
-                                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-amber-600"
-                                    />
-                                </div>
-                            )}
+                        <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                            <table className="min-w-full divide-y divide-white/5">
+                                <tbody className="divide-y divide-white/5">
+                                    <tr className="hover:bg-white/5 transition-colors">
+                                        <td className="py-3 pl-4 pr-3 text-sm text-gray-400 w-24 whitespace-nowrap">상태</td>
+                                        <td className="px-3 py-3">
+                                            <div className="flex gap-2">
+                                                {(['Healthy', 'Day-to-Day', 'Injured'] as const).map(status => {
+                                                    const active = (draft.health ?? 'Healthy') === status;
+                                                    const activeClass = status === 'Healthy'
+                                                        ? 'ring-1 ring-emerald-500/60 text-emerald-300 bg-emerald-950/40'
+                                                        : status === 'Day-to-Day'
+                                                            ? 'ring-1 ring-amber-500/60 text-amber-300 bg-amber-950/40'
+                                                            : 'ring-1 ring-red-500/60 text-red-300 bg-red-950/40';
+                                                    return (
+                                                        <button key={status} onClick={() => handleHealthChange(status)}
+                                                            className={`px-3 py-1 text-sm rounded-lg transition-colors ${active ? activeClass : 'text-gray-600 hover:text-gray-300 ring-1 ring-white/5 hover:ring-white/10'}`}>
+                                                            {status === 'Healthy' ? '정상' : status === 'Day-to-Day' ? 'Day-to-Day' : '부상 중'}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {(draft.health ?? 'Healthy') !== 'Healthy' && (
+                                        <>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">부상 종류</td>
+                                                <td className="px-3 py-2.5">
+                                                    <input type="text" placeholder="예: ACL Tear, Ankle Sprain..."
+                                                        value={draft.injuryType ?? ''} onChange={e => setField('injuryType', e.target.value)}
+                                                        className="w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white placeholder-gray-700 ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-amber-500/60 transition-colors" />
+                                                </td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">복귀 예정일</td>
+                                                <td className="px-3 py-2.5">
+                                                    <input type="date" value={draft.returnDate ?? ''} onChange={e => setField('returnDate', e.target.value)}
+                                                        className="w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-amber-500/60 transition-colors" />
+                                                </td>
+                                            </tr>
+                                        </>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </Section>
 
@@ -2706,6 +2632,7 @@ function sortBy(th) {
                     </div>
                 </div>
             )}
+
         </div>
     );
 };
@@ -2761,151 +2688,145 @@ const ContractForm: React.FC<ContractFormProps> = ({
     const noTrade: boolean = !!contract.noTrade;
     const option = contract.option ?? null;
 
+    const inputCls = 'w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors';
+
     return (
-        <>
-            {/* 계약 타입 + 현재 시즌 + NTC */}
-            <div className="flex flex-wrap gap-3 mb-3">
-                <div className="flex items-center gap-2">
-                    <span className="text-slate-400 text-xs w-20">계약 타입</span>
-                    <select
-                        className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-xs focus:outline-none focus:border-indigo-500"
-                        value={contractType}
-                        onChange={e => onSetContractField('type', e.target.value)}
-                    >
-                        {['veteran','rookie','max','extension','min','two-way','10-day'].map(t => (
-                            <option key={t} value={t}>{t}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-slate-400 text-xs">현재 시즌</span>
-                    <input
-                        type="number" min={0} max={Math.max(0, years.length - 1)}
-                        className="w-12 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-500"
-                        value={currentYear}
-                        onChange={e => onSetContractField('currentYear', Number(e.target.value))}
-                    />
-                    <span className="text-slate-600 text-xs">(0부터)</span>
-                </div>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                        type="checkbox" checked={noTrade}
-                        onChange={e => onSetContractField('noTrade', e.target.checked ? true : undefined)}
-                        className="accent-indigo-500"
-                    />
-                    <span className="text-slate-300 text-xs">NTC</span>
-                </label>
+        <div className="space-y-3">
+            {/* 메타 */}
+            <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                <table className="min-w-full divide-y divide-white/5">
+                    <tbody className="divide-y divide-white/5">
+                        <tr className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap w-24">계약 타입</td>
+                            <td className="px-3 py-2.5">
+                                <select className={inputCls} value={contractType} onChange={e => onSetContractField('type', e.target.value)}>
+                                    {['veteran','rookie','max','extension','min','two-way','10-day'].map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </td>
+                        </tr>
+                        <tr className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">현재 시즌</td>
+                            <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-2">
+                                    <input type="number" min={0} max={Math.max(0, years.length - 1)}
+                                        className="w-12 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                        value={currentYear} onChange={e => onSetContractField('currentYear', Number(e.target.value))} />
+                                    <span className="text-sm text-gray-600">(0부터)</span>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400">옵션</td>
+                            <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-3">
+                                    <select className="bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                        value={option?.type ?? 'none'}
+                                        onChange={e => { const v = e.target.value; onSetContractField('option', v === 'none' ? undefined : { ...option, type: v }); }}>
+                                        <option value="none">없음</option>
+                                        <option value="player">Player Option</option>
+                                        <option value="team">Team Option</option>
+                                    </select>
+                                    {option && (
+                                        <>
+                                            <span className="text-sm text-gray-500">년도</span>
+                                            <input type="number" min={0} max={Math.max(0, years.length - 1)}
+                                                className="w-10 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                                value={option.year ?? 0} onChange={e => onSetContractField('option', { ...option, year: Number(e.target.value) })} />
+                                            <span className="text-sm text-gray-600">(인덱스)</span>
+                                        </>
+                                    )}
+                                </div>
+                            </td>
+                        </tr>
+                        <tr className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400">NTC</td>
+                            <td className="px-3 py-2.5">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={noTrade}
+                                        onChange={e => onSetContractField('noTrade', e.target.checked ? true : undefined)}
+                                        className="accent-indigo-500" />
+                                    <span className="text-sm text-gray-300">No-Trade Clause</span>
+                                </label>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
-            {/* 옵션 */}
-            <div className="flex flex-wrap gap-3 mb-3">
-                <div className="flex items-center gap-2">
-                    <span className="text-slate-400 text-xs w-20">옵션</span>
-                    <select
-                        className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-xs focus:outline-none focus:border-indigo-500"
-                        value={option?.type ?? 'none'}
-                        onChange={e => {
-                            const v = e.target.value;
-                            onSetContractField('option', v === 'none' ? undefined : { ...option, type: v });
-                        }}
-                    >
-                        <option value="none">없음</option>
-                        <option value="player">Player Option</option>
-                        <option value="team">Team Option</option>
-                    </select>
-                </div>
-                {option && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-slate-400 text-xs">옵션 년도</span>
-                        <input
-                            type="number" min={0} max={Math.max(0, years.length - 1)}
-                            className="w-12 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-xs text-center focus:outline-none focus:border-indigo-500"
-                            value={option.year ?? 0}
-                            onChange={e => onSetContractField('option', { ...option, year: Number(e.target.value) })}
-                        />
-                        <span className="text-slate-600 text-xs">(인덱스)</span>
-                    </div>
-                )}
-            </div>
-
-            {/* 년도별 연봉 */}
-            <table className="w-full text-sm border-collapse mb-2">
-                <thead>
-                    <tr className="text-slate-400 text-xs border-b border-slate-700">
-                        <th className="text-left py-1 pr-3 font-normal w-10">Y</th>
-                        <th className="text-left py-1 pr-3 font-normal w-20">시즌</th>
-                        <th className="text-left py-1 pr-3 font-normal">연봉</th>
-                        <th className="text-left py-1 font-normal w-16 text-slate-500">$M</th>
-                        <th className="py-1 w-6"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {years.map((sal, idx) => {
-                        const isCurrent = idx === currentYear;
-                        const isOpt = option && option.year === idx;
-                        return (
-                            <tr key={idx} className={`border-b border-slate-800 ${isCurrent ? 'bg-indigo-950/40' : 'hover:bg-slate-800/30'}`}>
-                                <td className="py-1 pr-3">
-                                    <span className={`font-mono text-xs ${isCurrent ? 'text-indigo-300 font-bold' : 'text-slate-400'}`}>
-                                        Y{idx + 1}{isCurrent && <span className="ml-0.5 text-indigo-400">●</span>}
-                                    </span>
-                                </td>
-                                <td className="py-1 pr-3 text-slate-400 text-xs">
-                                    {startYear + idx}–{(startYear + idx + 1).toString().slice(2)}
-                                    {isOpt && <span className="ml-1 text-amber-400 text-[10px]">[{option.type === 'player' ? 'PO' : 'TO'}]</span>}
-                                </td>
-                                <td className="py-1 pr-3">
-                                    <input
-                                        type="text"
-                                        className={`w-full bg-slate-800 border rounded px-2 py-0.5 text-xs text-right focus:outline-none ${
-                                            isCurrent ? 'border-indigo-600 text-indigo-200 focus:border-indigo-400' : 'border-slate-700 text-white focus:border-slate-500'
-                                        }`}
-                                        value={formatSalary(sal)}
-                                        onChange={e => onSetContractYear(idx, e.target.value)}
-                                    />
-                                </td>
-                                <td className="py-1 pr-3 text-slate-500 text-xs font-mono">
-                                    {sal ? `$${(sal / 1_000_000).toFixed(1)}M` : '—'}
-                                </td>
-                                <td className="py-1 text-center">
-                                    <button onClick={() => onRemoveYear(idx)} className="text-slate-600 hover:text-red-400 text-xs px-1" title="삭제">✕</button>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-
-            <div className="flex items-center gap-4 mb-3">
-                <button onClick={onAddYear} className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-800 rounded px-2 py-0.5">
-                    + 년도 추가
-                </button>
-                <span className="text-slate-500 text-xs">
-                    총 {years.length}년 · 잔여 {years.length - currentYear}년
-                </span>
+            {/* 연봉 테이블 */}
+            <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                <table className="min-w-full divide-y divide-white/5">
+                    <thead className="bg-white/5">
+                        <tr>
+                            <th scope="col" className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-400 w-10">Y</th>
+                            <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400 w-16">시즌</th>
+                            <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400">연봉</th>
+                            <th scope="col" className="py-3 pl-3 pr-4 text-right text-xs font-semibold text-gray-400 w-14">$M</th>
+                            <th scope="col" className="py-3 pr-4 w-8"></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {years.map((sal, idx) => {
+                            const isCurrent = idx === currentYear;
+                            const isOpt = option && option.year === idx;
+                            return (
+                                <tr key={idx} className={`hover:bg-white/5 transition-colors ${isCurrent ? 'bg-indigo-950/30' : ''}`}>
+                                    <td className="py-3 pl-4 pr-3">
+                                        <span className={`font-mono text-sm ${isCurrent ? 'text-indigo-300 font-bold' : 'text-gray-500'}`}>
+                                            Y{idx + 1}{isCurrent && <span className="text-indigo-400"> ●</span>}
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-3 text-sm text-gray-400 whitespace-nowrap">
+                                        {startYear + idx}–{(startYear + idx + 1).toString().slice(2)}
+                                        {isOpt && <span className="ml-1 text-amber-400 text-xs">[{option.type === 'player' ? 'PO' : 'TO'}]</span>}
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                        <input type="text"
+                                            className={`w-full rounded px-2 py-0.5 text-sm text-right ring-1 ring-inset focus:outline-none transition-colors ${isCurrent ? 'bg-indigo-950/30 text-indigo-200 ring-indigo-500/40 focus:ring-indigo-400' : 'bg-white/5 text-white ring-white/10 focus:ring-indigo-500/60'}`}
+                                            value={formatSalary(sal)} onChange={e => onSetContractYear(idx, e.target.value)} />
+                                    </td>
+                                    <td className="py-3 pl-3 pr-4 text-sm font-mono text-gray-500 text-right whitespace-nowrap">
+                                        {sal ? `$${(sal / 1_000_000).toFixed(1)}M` : '—'}
+                                    </td>
+                                    <td className="py-3 pr-4 text-center">
+                                        <button onClick={() => onRemoveYear(idx)} className="text-gray-700 hover:text-red-400 text-xs transition-colors">✕</button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                    <tfoot className="bg-white/5">
+                        <tr>
+                            <td colSpan={5} className="py-2.5 pl-4 pr-4">
+                                <div className="flex items-center gap-4">
+                                    <button onClick={onAddYear} className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">+ 년도 추가</button>
+                                    <span className="text-sm text-gray-600">총 {years.length}년 · 잔여 {years.length - currentYear}년</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
 
             {/* 루트 salary */}
-            <div className="flex items-center gap-2">
-                <span className="text-slate-400 text-xs w-20">salary (루트)</span>
-                <input
-                    type="text"
-                    className="w-36 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-white text-xs text-right focus:outline-none focus:border-indigo-500"
-                    value={formatSalary(salary)}
-                    onChange={e => onSetSalary(e.target.value.replace(/,/g, ''))}
-                />
-                <span className="text-slate-600 text-xs">(현재 Y{currentYear + 1}과 자동 동기화)</span>
+            <div className="flex items-center gap-3 px-1">
+                <span className="text-sm text-gray-400 shrink-0">salary (루트)</span>
+                <input type="text"
+                    className="w-36 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-right ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                    value={formatSalary(salary)} onChange={e => onSetSalary(e.target.value.replace(/,/g, ''))} />
+                <span className="text-sm text-gray-600">Y{currentYear + 1}과 동기화</span>
             </div>
-        </>
+        </div>
     );
 };
 
 // ── 섹션 래퍼 ──────────────────────────────────────────────────────────────────
 const Section: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => (
-    <div className={`mb-6 ${className ?? ''}`}>
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-800 pb-1">
-            {label}
-        </h3>
+    <div className={`mb-5 ${className ?? ''}`}>
+        <div className="flex items-center gap-2.5 mb-2.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.12em] shrink-0">{label}</span>
+            <div className="flex-1 h-px bg-slate-800" />
+        </div>
         {children}
     </div>
 );

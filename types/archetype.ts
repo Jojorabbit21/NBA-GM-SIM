@@ -10,11 +10,11 @@ import type { FARole } from './fa';
 export type ArchetypeType =
     // Guard (PG/SG)
     | 'primary_creator_guard'
-    | 'scoring_combo_guard'
+    | 'scoring_point_guard'
     | 'movement_shooter'
     | 'perimeter_3nd'
     | 'floor_general_guard'
-    | 'scoring_point_guard'
+    | 'scoring_combo_guard'
     | 'defensive_guard'
     // Wing (SG/SF/PF) + Cross-position
     | 'two_way_wing'
@@ -34,7 +34,11 @@ export type ArchetypeType =
     | 'playmaking_big'
     | 'switchable_anchor'
     | 'two_way_big'
-    | 'rebounding_big';
+    | 'rebounding_big'
+    | 'isolation_scorer'
+    | 'elbow_operator'
+    | 'elite_guard'
+    | 'lockdown_shooter';
 
 // 14 trait tags (threshold-based, fast-changing vs slow archetype)
 export type TraitTag =
@@ -89,11 +93,11 @@ export interface ArchetypeDisplayInfo {
 export const ARCHETYPE_TO_FA_ROLE: Record<ArchetypeType, FARole> = {
     // Guard
     'primary_creator_guard': 'lead_guard',
-    'scoring_combo_guard':   'combo_guard',
+    'scoring_point_guard':   'combo_guard',
     'movement_shooter':      '3and_d',
     'perimeter_3nd':         '3and_d',
     'floor_general_guard':   'lead_guard',
-    'scoring_point_guard':   'combo_guard',
+    'scoring_combo_guard':   'combo_guard',
     'defensive_guard':       '3and_d',
     // Wing + Cross-position
     'two_way_wing':          '3and_d',
@@ -114,4 +118,8 @@ export const ARCHETYPE_TO_FA_ROLE: Record<ArchetypeType, FARole> = {
     'switchable_anchor':     'rim_big',
     'two_way_big':           'rim_big',
     'rebounding_big':        'rim_big',
+    'isolation_scorer':      'shot_creator',
+    'elbow_operator':        'floor_big',
+    'elite_guard':           'lead_guard',
+    'lockdown_shooter':      '3and_d',
 };

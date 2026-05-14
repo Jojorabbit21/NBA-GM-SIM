@@ -8,8 +8,11 @@ import type {
     PlayerArchetypeState,
     ArchetypeDisplayInfo,
 } from '../../types/archetype';
+import type { ArchetypeGateConfig } from '../../types/gameConfig';
 import { calculateModules } from '../../utils/ovrEngine';
 import { adaptPlayerToInput } from '../../utils/ovrUtils';
+import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync } from '../admin/gameConfigService';
+import type { TagClause, TagConditionExpr } from '../../types/gameConfig';
 
 // ─────────────────────────────────────────────────────────────
 // Step 1: Module Score Calculation
@@ -42,21 +45,22 @@ export function calcModuleScores(player: Player): ArchetypeModuleScores {
 
 const POSITION_ELIGIBLE: Record<string, ArchetypeType[]> = {
     'PG': [
-        'primary_creator_guard', 'scoring_combo_guard', 'movement_shooter',
-        'floor_general_guard', 'scoring_point_guard', 'defensive_guard',
-        'three_level_scorer',
+        'primary_creator_guard', 'scoring_point_guard', 'movement_shooter',
+        'floor_general_guard', 'scoring_combo_guard', 'defensive_guard',
+        'three_level_scorer', 'isolation_scorer', 'elite_guard', 'lockdown_shooter',
     ],
     'SG': [
-        'primary_creator_guard', 'scoring_combo_guard', 'movement_shooter',
+        'primary_creator_guard', 'scoring_point_guard', 'movement_shooter',
         'perimeter_3nd', 'two_way_wing', 'slashing_wing', 'shot_creator_wing',
-        'floor_general_guard', 'scoring_point_guard', 'defensive_guard',
-        'three_level_scorer', 'lockdown_wing',
+        'floor_general_guard', 'scoring_combo_guard', 'defensive_guard',
+        'three_level_scorer', 'lockdown_wing', 'isolation_scorer',
+        'elite_guard', 'lockdown_shooter',
     ],
     'SF': [
         'movement_shooter', 'perimeter_3nd', 'two_way_wing', 'slashing_wing',
         'shot_creator_wing', 'connector_forward', 'playmaking_big',
         'aerial_wing', 'post_scoring_wing', 'wing_protector',
-        'three_level_scorer', 'lockdown_wing',
+        'three_level_scorer', 'lockdown_wing', 'elbow_operator',
     ],
     'PF': [
         'perimeter_3nd', 'two_way_wing', 'connector_forward',
@@ -64,18 +68,37 @@ const POSITION_ELIGIBLE: Record<string, ArchetypeType[]> = {
         'rim_protector_anchor', 'playmaking_big',
         'aerial_wing', 'post_scoring_wing', 'wing_protector',
         'three_level_scorer', 'lockdown_wing', 'switchable_anchor',
-        'two_way_big', 'rebounding_big',
+        'two_way_big', 'rebounding_big', 'elbow_operator',
     ],
     'C': [
         'post_scoring_big', 'rim_runner_big', 'stretch_big',
         'rim_protector_anchor', 'playmaking_big',
         'three_level_scorer', 'switchable_anchor',
-        'two_way_big', 'rebounding_big',
+        'two_way_big', 'rebounding_big', 'elbow_operator',
     ],
 };
 
-export function getEligibleArchetypes(position: string): ArchetypeType[] {
-    return POSITION_ELIGIBLE[position] ?? POSITION_ELIGIBLE['SF'];
+export function getEligibleArchetypes(
+    position: string,
+    modules?: ArchetypeModuleScores,
+    gates?: ArchetypeGateConfig,
+): ArchetypeType[] {
+    const hardcoded = POSITION_ELIGIBLE[position] ?? POSITION_ELIGIBLE['SF'];
+    const posConfig = getPositionConfigSync();
+    const custom: ArchetypeType[] = posConfig
+        ? (Object.entries(posConfig)
+            .filter(([, positions]) => positions.includes(position))
+            .map(([key]) => key.toLowerCase() as ArchetypeType)
+            .filter(key => !hardcoded.includes(key)))
+        : [];
+    const candidates = [...hardcoded, ...custom];
+    if (!modules || !gates) return candidates;
+    return candidates.filter(type => {
+        const gate = gates[type];
+        if (!gate) return true;
+        return (Object.entries(gate) as [keyof ArchetypeModuleScores, number][])
+            .every(([mod, min]) => modules[mod] >= min);
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -83,12 +106,21 @@ export function getEligibleArchetypes(position: string): ArchetypeType[] {
 // ─────────────────────────────────────────────────────────────
 
 export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType): number {
+    // DB 캐시에 가중치가 있으면 우선 사용, 없으면 hardcoded fallback
+    const weightConfig = getWeightConfigSync();
+    const dbWeights = weightConfig?.[type];
+    if (dbWeights) {
+        return Object.entries(dbWeights).reduce(
+            (sum, [mod, w]) => sum + (m[mod as keyof ArchetypeModuleScores] ?? 0) * (w as number), 0
+        );
+    }
+
     switch (type) {
         case 'primary_creator_guard':
             return m.playmaking * 0.38 + m.shotCreation * 0.22 + m.rimFinishing * 0.12 +
                    m.spotUpShooting * 0.08 + m.poaDefense * 0.08 + m.motorAvailability * 0.12;
 
-        case 'scoring_combo_guard':
+        case 'scoring_point_guard':
             return m.shotCreation * 0.32 + m.rimFinishing * 0.20 + m.spotUpShooting * 0.18 +
                    m.playmaking * 0.12 + m.offballAttack * 0.08 + m.motorAvailability * 0.10;
 
@@ -154,7 +186,7 @@ export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType
             return m.playmaking * 0.42 + m.teamDefense * 0.16 + m.poaDefense * 0.12 +
                    m.spotUpShooting * 0.10 + m.motorAvailability * 0.10 + m.offballAttack * 0.10;
 
-        case 'scoring_point_guard':
+        case 'scoring_combo_guard':
             return m.shotCreation * 0.28 + m.playmaking * 0.20 + m.rimFinishing * 0.18 +
                    m.spotUpShooting * 0.14 + m.motorAvailability * 0.10 + m.poaDefense * 0.10;
 
@@ -181,6 +213,22 @@ export function calcArchetypeScore(m: ArchetypeModuleScores, type: ArchetypeType
         case 'rebounding_big':
             return m.rebounding * 0.44 + m.rimFinishing * 0.20 + m.rimProtection * 0.16 +
                    m.motorAvailability * 0.12 + m.teamDefense * 0.08;
+
+        case 'isolation_scorer':
+            return m.shotCreation * 0.32 + m.postCraft * 0.24 + m.rimFinishing * 0.12 +
+                   m.playmaking * 0.12 + m.motorAvailability * 0.12 + m.poaDefense * 0.08;
+
+        case 'elbow_operator':
+            return m.postCraft * 0.28 + m.shotCreation * 0.24 + m.rimFinishing * 0.16 +
+                   m.rebounding * 0.14 + m.teamDefense * 0.12 + m.motorAvailability * 0.06;
+
+        case 'elite_guard':
+            return m.shotCreation * 0.26 + m.poaDefense * 0.24 + m.playmaking * 0.20 +
+                   m.rimFinishing * 0.12 + m.teamDefense * 0.10 + m.motorAvailability * 0.08;
+
+        case 'lockdown_shooter':
+            return m.spotUpShooting * 0.35 + m.poaDefense * 0.30 + m.teamDefense * 0.15 +
+                   m.offballAttack * 0.10 + m.motorAvailability * 0.10;
 
         default:
             return 0;
@@ -245,10 +293,10 @@ export function calcStatStyleFit(stats: PlayerStats): Partial<Record<ArchetypeTy
     const ptsPG = stats.pts / g;
     const fgaPG = stats.fga / g;
     if (ptsPG >= 22 && astPG < 5) {
-        bonuses['scoring_combo_guard'] = 5;
+        bonuses['scoring_point_guard'] = 5;
         bonuses['shot_creator_wing'] = 3;
     } else if (ptsPG >= 18 && fgaPG >= 14 && astPG < 5) {
-        bonuses['scoring_combo_guard'] = 3;
+        bonuses['scoring_point_guard'] = 3;
         bonuses['shot_creator_wing'] = 2;
     }
 
@@ -258,8 +306,8 @@ export function calcStatStyleFit(stats: PlayerStats): Partial<Record<ArchetypeTy
     if (astPG >= 6 && (stlPG + blkPG) >= 1.5) bonuses['floor_general_guard'] = 4;
     else if (astPG >= 7) bonuses['floor_general_guard'] = 3;
 
-    // Scoring PG: high scoring + moderate assists
-    if (ptsPG >= 20 && astPG >= 4 && astPG < 7) bonuses['scoring_point_guard'] = 4;
+    // Dual Guard: high scoring + moderate assists
+    if (ptsPG >= 20 && astPG >= 4 && astPG < 7) bonuses['scoring_combo_guard'] = 4;
 
     // Defensive guard: elite steals + low scoring
     if (stlPG >= 1.5 && ptsPG < 16) bonuses['defensive_guard'] = 5;
@@ -291,25 +339,50 @@ export function calcStatStyleFit(stats: PlayerStats): Partial<Record<ArchetypeTy
 // Step 5: Trait Tags (module score thresholds)
 // ─────────────────────────────────────────────────────────────
 
+function evalClause(clause: TagClause, modules: ArchetypeModuleScores, player: Player): boolean {
+    const val = clause.fieldType === 'module'
+        ? (modules as any)[clause.field]
+        : (player as any)[clause.field];
+    if (val === undefined) return false;
+    return clause.op === '>=' ? val >= clause.value : val <= clause.value;
+}
+
+function evalCondition(cond: TagConditionExpr, modules: ArchetypeModuleScores, player: Player): boolean {
+    switch (cond.type) {
+        case 'single':   return evalClause(cond.clause, modules, player);
+        case 'all_of':   return cond.clauses.every(c => evalClause(c, modules, player));
+        case 'or_first': return cond.orClauses.some(c => evalClause(c, modules, player))
+                             && cond.andClauses.every(c => evalClause(c, modules, player));
+    }
+}
+
 export function calcTraitTags(modules: ArchetypeModuleScores, player: Player): TraitTag[] {
+    const dbTags = getTagConfigSync();
+
+    // DB 캐시가 있으면 동적 평가
+    if (dbTags && dbTags.length > 0) {
+        return dbTags
+            .filter(entry => evalCondition(entry.condition, modules, player))
+            .map(entry => entry.id as TraitTag);
+    }
+
+    // Fallback: hardcoded
     const tags: TraitTag[] = [];
-
-    if (modules.rimFinishing >= 85)                       tags.push('elite_finisher');
-    if (player.drawFoul >= 88)                             tags.push('foul_merchant');
-    if (modules.shotCreation >= 85)                        tags.push('shotmaker');
-    if (modules.spotUpShooting >= 85)                      tags.push('floor_spacer');
-    if (modules.offballAttack >= 82 && modules.spotUpShooting >= 82) tags.push('off_ball_mover');
-    if (modules.playmaking >= 82)                          tags.push('plus_playmaker');
-    if (modules.poaDefense >= 84)                          tags.push('poa_stopper');
-    if (modules.teamDefense >= 84)                         tags.push('team_defender');
-    if (modules.rimProtection >= 85)                       tags.push('rim_protector');
-    if (modules.rebounding >= 84)                          tags.push('glass_cleaner');
-    if (modules.motorAvailability >= 85)                   tags.push('high_motor');
-    if (player.durability >= 90 && player.stamina >= 85)   tags.push('ironman');
+    if (modules.rimFinishing >= 85)                                               tags.push('elite_finisher');
+    if (player.drawFoul >= 88)                                                     tags.push('foul_merchant');
+    if (modules.shotCreation >= 85)                                                tags.push('shotmaker');
+    if (modules.spotUpShooting >= 85)                                              tags.push('floor_spacer');
+    if (modules.offballAttack >= 82 && modules.spotUpShooting >= 82)               tags.push('off_ball_mover');
+    if (modules.playmaking >= 82)                                                   tags.push('plus_playmaker');
+    if (modules.poaDefense >= 84)                                                   tags.push('poa_stopper');
+    if (modules.teamDefense >= 84)                                                  tags.push('team_defender');
+    if (modules.rimProtection >= 85)                                                tags.push('rim_protector');
+    if (modules.rebounding >= 84)                                                   tags.push('glass_cleaner');
+    if (modules.motorAvailability >= 85)                                            tags.push('high_motor');
+    if (player.durability >= 90 && player.stamina >= 85)                           tags.push('ironman');
     if ((modules.shotCreation >= 72 || modules.spotUpShooting >= 72) && player.offConsist <= 65)
-                                                           tags.push('streaky_scorer');
-    if (player.offConsist >= 75 && player.defConsist >= 75) tags.push('reliable_two_way');
-
+                                                                                    tags.push('streaky_scorer');
+    if (player.offConsist >= 75 && player.defConsist >= 75)                        tags.push('reliable_two_way');
     return tags;
 }
 
@@ -322,9 +395,10 @@ export function assignArchetypes(
     season: string,
     prevState?: PlayerArchetypeState,
     seasonStats?: PlayerStats,
+    gateConfig?: ArchetypeGateConfig,
 ): PlayerArchetypeState {
     const modules = calcModuleScores(player);
-    const eligible = getEligibleArchetypes(player.position);
+    const eligible = getEligibleArchetypes(player.position, modules, gateConfig);
 
     // Style fit bonus from season stats
     const statFit = seasonStats && seasonStats.g > 0 ? calcStatStyleFit(seasonStats) : {};
@@ -388,8 +462,8 @@ export function assignArchetypes(
 
 const ARCHETYPE_DISPLAY: Record<ArchetypeType, ArchetypeDisplayInfo> = {
     'primary_creator_guard':  { label: 'Primary Creator',   description: '공격 설계자형 가드',    color: 'violet',  group: 'guard' },
-    'scoring_combo_guard':    { label: 'Scoring Guard',      description: '득점형 콤보 가드',       color: 'blue',    group: 'guard' },
-    'movement_shooter':       { label: 'Movement Shooter',   description: '오프볼 무브먼트 슈터',   color: 'sky',     group: 'guard' },
+    'scoring_point_guard':    { label: 'Pure Scorer',        description: '퓨어 스코어러 가드',     color: 'blue',    group: 'guard' },
+    'movement_shooter':       { label: 'Outside Shooter',    description: '오프볼 외곽 슈터',       color: 'sky',     group: 'guard' },
     'perimeter_3nd':          { label: 'Perimeter 3&D',      description: '외곽 수비 & 슈터',       color: 'teal',    group: 'wing'  },
     'two_way_wing':           { label: 'Two-Way Wing',       description: '공수 균형형 윙',         color: 'green',   group: 'wing'  },
     'slashing_wing':          { label: 'Slashing Wing',      description: '돌파 & 컷인형 윙',       color: 'orange',  group: 'wing'  },
@@ -405,13 +479,17 @@ const ARCHETYPE_DISPLAY: Record<ArchetypeType, ArchetypeDisplayInfo> = {
     'playmaking_big':         { label: 'Playmaking Big',     description: '패스 허브형 빅',         color: 'indigo',  group: 'big'   },
     // New archetypes (22종)
     'floor_general_guard':    { label: 'Floor General',      description: '패스 퍼스트 게임 메이커', color: 'purple',  group: 'guard' },
-    'scoring_point_guard':    { label: 'Scoring PG',         description: '득점형 포인트 가드',      color: 'rose',    group: 'guard' },
+    'scoring_combo_guard':    { label: 'Dual Guard',         description: '득점 & 배급형 콤보 가드', color: 'rose',    group: 'guard' },
     'defensive_guard':        { label: 'Defensive Guard',    description: '퍼리미터 락다운 가드',    color: 'emerald', group: 'guard' },
     'three_level_scorer':     { label: '3-Level Scorer',     description: '3레벨 스코어러',          color: 'amber',   group: 'wing'  },
     'lockdown_wing':          { label: 'Lockdown Wing',      description: '순수 수비형 윙',          color: 'teal',    group: 'wing'  },
     'switchable_anchor':      { label: 'Switchable Anchor',  description: '스위치 가능한 수비 앵커',  color: 'zinc',    group: 'big'   },
     'two_way_big':            { label: 'Two-Way Big',        description: '공수 균형형 빅',           color: 'sky',     group: 'big'   },
     'rebounding_big':          { label: 'Rebounding Big',     description: '리바운드 전문 빅',         color: 'stone',   group: 'big'   },
+    'isolation_scorer':        { label: 'Midrange Menace',    description: '미드레인지 & 아이소 득점 전문가', color: 'yellow', group: 'wing'  },
+    'elbow_operator':          { label: 'Elbow Operator',     description: '엘보우 미드레인지 스코어러', color: 'orange',  group: 'big'   },
+    'elite_guard':             { label: 'Elite Guard',        description: '패스·득점·수비 완성형 가드', color: 'indigo',  group: 'guard' },
+    'lockdown_shooter':        { label: 'Lockdown Shooter',   description: '3&D 퍼리미터 스페셜리스트', color: 'emerald', group: 'guard' },
 };
 
 export function getArchetypeDisplayInfo(type: ArchetypeType): ArchetypeDisplayInfo {

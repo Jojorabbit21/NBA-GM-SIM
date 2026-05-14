@@ -63,11 +63,11 @@ calcModuleScores()          ← 11개 역할 모듈 점수 (0~100)
 | 아키타입 | 설명 | 핵심 모듈 |
 |---------|------|---------|
 | `primary_creator_guard` | 공격 설계자형 가드 | play×0.38 + shotC×0.22 + rim×0.12 + spot×0.08 + poa×0.08 + motor×0.12 |
-| `scoring_combo_guard` | 득점형 콤보 가드 | shotC×0.32 + rim×0.20 + spot×0.18 + play×0.12 + offball×0.08 + motor×0.10 |
+| `scoring_combo_guard` | Dual Guard — 득점 & 배급형 콤보 가드 | shotC×0.28 + play×0.20 + rim×0.18 + spot×0.14 + motor×0.10 + poa×0.10 |
 | `movement_shooter` | 오프볼 무브먼트 슈터 | spot×0.40 + offball×0.28 + motor×0.12 + poa×0.10 + team×0.10 |
 | `perimeter_3nd` | 외곽 수비 & 슈터 | spot×0.30 + poa×0.28 + team×0.20 + offball×0.10 + motor×0.12 |
 | `floor_general_guard` | 패스 퍼스트 게임 메이커 | play×0.42 + team×0.16 + poa×0.12 + spot×0.10 + motor×0.10 + offball×0.10 |
-| `scoring_point_guard` | 득점형 포인트 가드 | shotC×0.28 + play×0.20 + rim×0.18 + spot×0.14 + motor×0.10 + poa×0.10 |
+| `scoring_point_guard` | Pure Scorer — 퓨어 스코어러 가드 | shotC×0.32 + rim×0.20 + spot×0.18 + play×0.12 + offball×0.08 + motor×0.10 |
 | `defensive_guard` | 퍼리미터 락다운 가드 | poa×0.32 + team×0.18 + play×0.14 + spot×0.14 + motor×0.12 + reb×0.10 |
 
 ### 윙 계열 (SG/SF/PF) — 9종

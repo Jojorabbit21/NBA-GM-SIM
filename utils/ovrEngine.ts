@@ -10,6 +10,8 @@
  * 5) Keep potential separate from current OVR
  */
 
+import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync } from '../services/admin/gameConfigService';
+
 export type OvrPosition = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 
 /** Canonical rating field names used internally by this engine */
@@ -115,7 +117,11 @@ export type OvrArchetype =
   | 'PLAYMAKING_BIG'
   | 'SWITCHABLE_ANCHOR'
   | 'TWO_WAY_BIG'
-  | 'REBOUNDING_BIG';
+  | 'REBOUNDING_BIG'
+  | 'ISOLATION_SCORER'
+  | 'ELBOW_OPERATOR'
+  | 'ELITE_GUARD'
+  | 'LOCKDOWN_SHOOTER';
 
 export interface LeagueDistribution {
   meanRawOVR: number;
@@ -334,6 +340,17 @@ export function calculateModules(r: PlayerRatings, pos: OvrPosition): ModuleScor
 // ─── 2) Archetype Scores ─────────────────────────────────────────────────────
 
 function calcArchetypeScore(mod: ModuleScores, arch: OvrArchetype): number {
+  // DB 캐시에 가중치가 있으면 우선 사용, 없으면 hardcoded fallback
+  const weightConfig = getWeightConfigSync();
+  const archKey = arch.toLowerCase() as string;
+  const dbWeights = weightConfig?.[archKey as keyof typeof weightConfig];
+  if (dbWeights) {
+    return wavg(
+      (Object.entries(dbWeights) as [string, number][])
+        .map(([modKey, w]) => [mod[modKey as keyof ModuleScores] ?? 0, w])
+    );
+  }
+
   switch (arch) {
     case 'PRIMARY_CREATOR_GUARD':
       return wavg([
@@ -569,24 +586,67 @@ function calcArchetypeScore(mod: ModuleScores, arch: OvrArchetype): number {
         [mod.motorAvailability, 0.12],
         [mod.teamDefense, 0.08],
       ]);
+
+    case 'ISOLATION_SCORER':
+      return wavg([
+        [mod.shotCreation,     0.32],
+        [mod.postCraft,        0.24],
+        [mod.rimFinishing,     0.12],
+        [mod.playmaking,       0.12],
+        [mod.motorAvailability,0.12],
+        [mod.poaDefense,       0.08],
+      ]);
+
+    case 'ELBOW_OPERATOR':
+      return wavg([
+        [mod.postCraft,        0.28],
+        [mod.shotCreation,     0.24],
+        [mod.rimFinishing,     0.16],
+        [mod.rebounding,       0.14],
+        [mod.teamDefense,      0.12],
+        [mod.motorAvailability,0.06],
+      ]);
+
+    case 'ELITE_GUARD':
+      return wavg([
+        [mod.shotCreation,     0.26],
+        [mod.poaDefense,       0.24],
+        [mod.playmaking,       0.20],
+        [mod.rimFinishing,     0.12],
+        [mod.teamDefense,      0.10],
+        [mod.motorAvailability,0.08],
+      ]);
+
+    case 'LOCKDOWN_SHOOTER':
+      return wavg([
+        [mod.spotUpShooting,   0.35],
+        [mod.poaDefense,       0.30],
+        [mod.teamDefense,      0.15],
+        [mod.offballAttack,    0.10],
+        [mod.motorAvailability,0.10],
+      ]);
   }
 }
 
 const ARCHETYPE_CANDIDATES: Record<OvrPosition, OvrArchetype[]> = {
   PG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D',
-       'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD', 'THREE_LEVEL_SCORER'],
+       'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD', 'THREE_LEVEL_SCORER',
+       'ISOLATION_SCORER', 'ELITE_GUARD', 'LOCKDOWN_SHOOTER'],
   SG: ['PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D',
        'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING',
        'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD',
-       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING'],
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING', 'ISOLATION_SCORER',
+       'ELITE_GUARD', 'LOCKDOWN_SHOOTER'],
   SF: ['MOVEMENT_SHOOTER', 'PERIMETER_3D', 'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING',
        'CONNECTOR_FORWARD', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR',
-       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING'],
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING', 'ELBOW_OPERATOR'],
   PF: ['TWO_WAY_WING', 'CONNECTOR_FORWARD', 'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG',
        'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG', 'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR',
-       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG'],
+       'THREE_LEVEL_SCORER', 'LOCKDOWN_WING', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG',
+       'ELBOW_OPERATOR'],
   C:  ['POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR', 'PLAYMAKING_BIG',
-       'THREE_LEVEL_SCORER', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG'],
+       'THREE_LEVEL_SCORER', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG',
+       'ELBOW_OPERATOR'],
 };
 
 function selectPrimarySecondary(
@@ -597,7 +657,14 @@ function selectPrimarySecondary(
   secondary: { archetype: OvrArchetype; score: number };
   blend: number;
 } {
-  const ranked = ARCHETYPE_CANDIDATES[pos]
+  const posConfig = getPositionConfigSync();
+  const customCandidates: OvrArchetype[] = posConfig
+      ? (Object.entries(posConfig)
+          .filter(([, positions]) => positions.includes(pos))
+          .map(([key]) => key as OvrArchetype)
+          .filter(key => !ARCHETYPE_CANDIDATES[pos].includes(key)))
+      : [];
+  const ranked = [...ARCHETYPE_CANDIDATES[pos], ...customCandidates]
     .map(arch => ({ archetype: arch, score: r1(calcArchetypeScore(mod, arch)) }))
     .sort((a, b) => b.score - a.score);
 
@@ -614,36 +681,55 @@ function selectPrimarySecondary(
 
 // ─── 3) Trait Tag Bonus ───────────────────────────────────────────────────────
 
+function evalTagClauseOvr(clause: { fieldType: string; field: string; op: string; value: number }, r: PlayerRatings, mod: ModuleScores): boolean {
+  const val = clause.fieldType === 'module'
+    ? (mod as any)[clause.field]
+    : (r as any)[clause.field];
+  if (val === undefined) return false;
+  return clause.op === '>=' ? val >= clause.value : val <= clause.value;
+}
+
+function evalTagConditionOvr(cond: { type: string; clause?: any; clauses?: any[]; orClauses?: any[]; andClauses?: any[] }, r: PlayerRatings, mod: ModuleScores): boolean {
+  if (cond.type === 'single')   return evalTagClauseOvr(cond.clause, r, mod);
+  if (cond.type === 'all_of')   return (cond.clauses ?? []).every((c: any) => evalTagClauseOvr(c, r, mod));
+  if (cond.type === 'or_first') return (cond.orClauses ?? []).some((c: any) => evalTagClauseOvr(c, r, mod))
+                                     && (cond.andClauses ?? []).every((c: any) => evalTagClauseOvr(c, r, mod));
+  return false;
+}
+
 function calcTagBonus(pos: OvrPosition, r: PlayerRatings, mod: ModuleScores): number {
+  const dbTags = getTagConfigSync();
+
   const bonuses: number[] = [];
   let negBonus = 0;
 
-  if (mod.rimFinishing >= 88) bonuses.push(0.85);
-  if (r.drawFoul >= 90) bonuses.push(0.40);
-  if (mod.shotCreation >= 88) bonuses.push(1.00);
-  if (mod.spotUpShooting >= 86) bonuses.push(0.75);
-  if (mod.offballAttack >= 84 && mod.spotUpShooting >= 84) bonuses.push(1.10);
-
-  if (mod.playmaking >= 86) {
-    bonuses.push(pos === 'PF' || pos === 'C' ? 1.50 : 1.00);
-  }
-
-  if (mod.poaDefense >= 86) bonuses.push(0.85);
-  if (mod.teamDefense >= 86) bonuses.push(0.70);
-  if (mod.rimProtection >= 88) bonuses.push(1.10);
-  if (mod.postCraft >= 90) bonuses.push(pos === 'PF' || pos === 'C' ? 1.10 : 0.75);
-  if (mod.rebounding >= 86) bonuses.push(0.70);
-  if (mod.motorAvailability >= 86) bonuses.push(0.50);
-  if (r.durability >= 90 && r.stamina >= 85) bonuses.push(0.40);
-
-  const atkAvg = avg([mod.spotUpShooting, mod.shotCreation, mod.rimFinishing]);
-  const defAvg = avg([mod.poaDefense, mod.teamDefense, mod.rimProtection]);
-  if (atkAvg >= 82 && defAvg >= 82 && r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75) {
-    bonuses.push(1.40);
-  }
-
-  if ((mod.shotCreation >= 82 || mod.spotUpShooting >= 82) && r.offensiveConsistency <= 60) {
-    negBonus -= 1.20;
+  if (dbTags && dbTags.length > 0) {
+    // DB-driven tag bonus evaluation
+    for (const entry of dbTags) {
+      if (!evalTagConditionOvr(entry.condition as any, r, mod)) continue;
+      const bonus = entry.posOvrBonus?.[pos] ?? entry.ovrBonus;
+      if (bonus < 0) negBonus += bonus;
+      else bonuses.push(bonus);
+    }
+  } else {
+    // Hardcoded fallback
+    if (mod.rimFinishing >= 88) bonuses.push(0.85);
+    if (r.drawFoul >= 90) bonuses.push(0.40);
+    if (mod.shotCreation >= 88) bonuses.push(1.00);
+    if (mod.spotUpShooting >= 86) bonuses.push(0.75);
+    if (mod.offballAttack >= 84 && mod.spotUpShooting >= 84) bonuses.push(1.10);
+    if (mod.playmaking >= 86) bonuses.push(pos === 'PF' || pos === 'C' ? 1.50 : 1.00);
+    if (mod.poaDefense >= 86) bonuses.push(0.85);
+    if (mod.teamDefense >= 86) bonuses.push(0.70);
+    if (mod.rimProtection >= 88) bonuses.push(1.10);
+    if (mod.postCraft >= 90) bonuses.push(pos === 'PF' || pos === 'C' ? 1.10 : 0.75);
+    if (mod.rebounding >= 86) bonuses.push(0.70);
+    if (mod.motorAvailability >= 86) bonuses.push(0.50);
+    if (r.durability >= 90 && r.stamina >= 85) bonuses.push(0.40);
+    const atkAvg = avg([mod.spotUpShooting, mod.shotCreation, mod.rimFinishing]);
+    const defAvg = avg([mod.poaDefense, mod.teamDefense, mod.rimProtection]);
+    if (atkAvg >= 82 && defAvg >= 82 && r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75) bonuses.push(1.40);
+    if ((mod.shotCreation >= 82 || mod.spotUpShooting >= 82) && r.offensiveConsistency <= 60) negBonus -= 1.20;
   }
 
   // Diminishing returns for stacked tags

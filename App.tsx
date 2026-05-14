@@ -60,6 +60,8 @@ import DraftBoardPage from './pages/DraftBoardPage';
 import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
 import PlayerEditorPage from './pages/PlayerEditorPage';
+import EditorLayout from './pages/EditorLayout';
+import ArchetypeConfigPage from './pages/ArchetypeConfigPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
@@ -299,7 +301,12 @@ const App: React.FC = () => {
             <>
                 <Routes>
                     {/* ── Admin 라우트 (비보호 — 페이지 내부에서 admin 체크) ── */}
-                    <Route path="/admin/player-editor" element={<PlayerEditorPage userId={session?.user?.id} />} />
+                    <Route path="/admin/player-editor" element={<Navigate to="/admin/editor/player" replace />} />
+                    <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} />}>
+                        <Route index element={<Navigate to="player" replace />} />
+                        <Route path="player" element={<PlayerEditorPage />} />
+                        <Route path="archetype" element={<ArchetypeConfigPage />} />
+                    </Route>
 
                     {/* ── 비보호 라우트 ── */}
                     <Route path="/" element={<AuthPage />} />
