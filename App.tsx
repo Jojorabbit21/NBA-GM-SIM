@@ -19,6 +19,7 @@ import type { GameContextValue } from './hooks/useGameContext';
 import Loader, { DatabaseErrorView } from './components/Loader';
 import ProtectedLayout from './components/ProtectedLayout';
 import MultiProtectedLayout from './components/MultiProtectedLayout';
+import AdminGuard from './components/AdminGuard';
 import MultiDraftLayout from './components/MultiDraftLayout';
 
 // Multi Pages — 비동기 로드
@@ -300,12 +301,15 @@ const App: React.FC = () => {
         <GameContext.Provider value={contextValue}>
             <>
                 <Routes>
-                    {/* ── Admin 라우트 (비보호 — 페이지 내부에서 admin 체크) ── */}
+                    {/* ── Admin 라우트 (AdminGuard: 미로그인 → /auth?redirect=, 비관리자 → /) ── */}
                     <Route path="/admin/player-editor" element={<Navigate to="/admin/editor/player" replace />} />
-                    <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} />}>
-                        <Route index element={<Navigate to="player" replace />} />
-                        <Route path="player" element={<PlayerEditorPage />} />
-                        <Route path="archetype" element={<ArchetypeConfigPage />} />
+                    <Route element={<AdminGuard />}>
+                        <Route path="/admin" element={<Navigate to="/admin/editor/player" replace />} />
+                        <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} />}>
+                            <Route index element={<Navigate to="player" replace />} />
+                            <Route path="player" element={<PlayerEditorPage />} />
+                            <Route path="archetype" element={<ArchetypeConfigPage />} />
+                        </Route>
                     </Route>
 
                     {/* ── 비보호 라우트 ── */}

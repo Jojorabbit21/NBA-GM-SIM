@@ -52,6 +52,17 @@ export async function updateBaseAttributes(
     if (error) throw error;
 }
 
+export async function updatePosition(
+    id: string,
+    position: string
+): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ position })
+        .eq('id', id);
+    if (error) throw error;
+}
+
 export async function updatePlayerName(
     id: string,
     name: string

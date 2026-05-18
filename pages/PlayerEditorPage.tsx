@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import PlayerCardModal from '../components/PlayerCardModal';
+import type { PlayerCardData } from '../components/PlayerCardModal';
 import { useOutletContext } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { preloadGameConfig, fetchArchetypeLabels, fetchTagConfig } from '../services/admin/gameConfigService';
 import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
@@ -340,6 +342,8 @@ const PlayerEditorPage: React.FC = () => {
     const [sortBy,  setSortBy]  = useState<'name' | 'ovr'>('name');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [ovrDisplayMode, setOvrDisplayMode] = useState<'base' | 'custom'>('base');
+    // 선수 카드 모달
+    const [showCardModal, setShowCardModal] = useState(false);
     // 신규 선수 추가 모달
     const [addModal, setAddModal] = useState<{ name: string; position: string; team: string } | null>(null);
     const [addSaving, setAddSaving] = useState(false);
@@ -458,10 +462,14 @@ const PlayerEditorPage: React.FC = () => {
     }, [results.length]);
 
     // 테이블 필터 적용
-    // draft_year = 2026 (numeric) 인 선수만 드래프트 클래스(신인)로 간주
-    // 다른 연도(2010, 2013 등)는 실제 입단 연도이므로 신인 아님
+    // draft_year >= 현재 연도인 선수 = 아직 입단 안 한 신인 드래프트 클래스
+    // 과거 연도(2010, 2013 등)는 실제 입단 연도이므로 신인 아님
     // 팀 기준: base_team_id (top-level 컬럼) — 시뮬레이터와 동일한 소스
-    const DRAFT_CLASS_YEAR = 2026;
+    const CURRENT_YEAR = new Date().getFullYear();
+    const isDraftClass = (draft_year: number | null | undefined): boolean =>
+        draft_year != null && draft_year >= CURRENT_YEAR;
+    const draftLabel = (draft_year: number): string =>
+        `'${String(draft_year).slice(-2)}년 신인`;
 
 
     // 전체 results에 대해 base 아키타입 + 태그 + 그룹 평균 사전 계산
@@ -507,7 +515,7 @@ const PlayerEditorPage: React.FC = () => {
 
     const filteredResults = useMemo(() => {
         return results.filter(r => {
-            const isDraftClass = r.draft_year === DRAFT_CLASS_YEAR;
+            const isDraftClass_ = isDraftClass(r.draft_year);
             // base_team_id는 이미 정규화된 슬러그('atl', 'gs' 등) — resolveTeamId 불필요
             const teamSlug = (r.base_team_id ?? '').trim().toLowerCase();
             const isFa = !teamSlug;
@@ -515,7 +523,7 @@ const PlayerEditorPage: React.FC = () => {
             if (filterTeams !== null) {
                 if (filterTeams.length === 0) return false;
                 const matchFa = filterTeams.includes('fa') && isFa;
-                const matchTeam = !isDraftClass && !!teamSlug && filterTeams.includes(teamSlug);
+                const matchTeam = !isDraftClass_ && !!teamSlug && filterTeams.includes(teamSlug);
                 if (!matchFa && !matchTeam) return false;
             }
 
@@ -608,6 +616,11 @@ const PlayerEditorPage: React.FC = () => {
         return { ...TAG_LABEL };
     }, [tagConfig]);
 
+    // DB labelConfig에 없는 키는 하드코딩 ARCHETYPE_LABEL로 2차 폴백
+    const archLabel = useCallback((key: string) =>
+        labelConfig[key] ?? ARCHETYPE_LABEL[key] ?? key,
+    [labelConfig]);
+
     const ALL_TEAM_IDS = useMemo(() => ['fa', ...TEAM_OPTIONS.filter(t => t.id !== '').map(t => t.id)], []);
     const handleToggleTeam = useCallback((id: string) => {
         setFilterTeams(prev => {
@@ -638,14 +651,14 @@ const PlayerEditorPage: React.FC = () => {
             const coInfo = playerCoDataMap[r.id];
             const pos = r.position;
             if (!info || !POSITIONS.includes(pos as any)) return [];
-            const isDraft   = r.draft_year === DRAFT_CLASS_YEAR;
+            const isDraft   = isDraftClass(r.draft_year);
             const isAlltime = !isDraft && r.include_alltime === true;
             const isActive  = !isDraft && !!r.base_team_id;
             const teamSlug  = (r.base_team_id ?? '').trim().toUpperCase();
-            const teamLabel = isDraft ? `신인 '${r.draft_year}` : (teamSlug || 'FA');
+            const teamLabel = isDraft ? draftLabel(r.draft_year!) : (teamSlug || 'FA');
             const age       = r.base_attributes?.age ?? null;
-            const arch      = labelConfig[info.archetype] ?? info.archetype;
-            const coArch    = coInfo ? (labelConfig[coInfo.archetype] ?? coInfo.archetype) : null;
+            const arch      = archLabel(info.archetype);
+            const coArch    = coInfo ? archLabel(coInfo.archetype) : null;
             return [{ name: r.name, pos, team: teamLabel, age, arch, coArch, ovr: info.displayOvr, coOvr: coInfo?.displayOvr ?? null, isActive, isAlltime, isDraft }];
         });
 
@@ -910,11 +923,11 @@ function render(){
         const HEADERS = ['이름', '포지션', '팀', '나이', 'OVR', '1차 아키타입', '2차 아키타입', '태그'];
 
         const dataRows = sortedResults.map(r => {
-            const isDraft   = r.draft_year === DRAFT_CLASS_YEAR;
+            const isDraft   = isDraftClass(r.draft_year);
             const teamSlug  = (r.base_team_id ?? '').trim().toLowerCase();
             const isFa      = !isDraft && !teamSlug;
             const teamLabel = isDraft
-                ? `신인 '${r.draft_year}`
+                ? draftLabel(r.draft_year!)
                 : isFa ? 'FA'
                 : (TEAM_OPTIONS.find(t => t.id === teamSlug)?.label.split(' · ')[0] ?? teamSlug.toUpperCase());
             const arch = playerArchetypeMap[r.id];
@@ -924,8 +937,8 @@ function render(){
                 teamLabel,
                 String(r.base_attributes?.age ?? ''),
                 arch ? String(arch.displayOvr) : String(r.base_attributes?.ovr ?? ''),
-                arch ? (labelConfig[arch.archetype] ?? arch.archetype) : '',
-                arch?.secondary ? (labelConfig[arch.secondary] ?? arch.secondary) : '',
+                arch ? archLabel(arch.archetype) : '',
+                arch?.secondary ? archLabel(arch.secondary) : '',
                 arch?.tags.length ? arch.tags.map(t => tagLabelMap[t] ?? t).join(', ') : '',
             ];
         });
@@ -1262,6 +1275,15 @@ function sortBy(th) {
 
             // base_attributes 저장 (name 포함)
             await updateBaseAttributes(selected.id, draft);
+
+            // position 컬럼 동기화 (base_attributes.position과 top-level position 컬럼을 일치)
+            const newPosition = typeof draft.position === 'string' ? draft.position : selected.position;
+            if (newPosition && newPosition !== selected.position) {
+                await updatePosition(selected.id, newPosition);
+                diff['position_col'] = { before: selected.position, after: newPosition };
+                setSelected(prev => prev ? { ...prev, position: newPosition } : prev);
+                setResults(prev => prev.map(r => r.id === selected.id ? { ...r, position: newPosition } : r));
+            }
 
             // draft_year 컬럼 동기화 (변경된 경우)
             const newDraftYear = draftYearVal.trim() === '' ? null : Number(draftYearVal);
@@ -1815,12 +1837,12 @@ function sortBy(th) {
                                     </tr>
                                 ) : tableRows.map(r => {
                                     const isSelected = selected?.id === r.id;
-                                    const isDraft = r.draft_year === DRAFT_CLASS_YEAR;
+                                    const isDraft = isDraftClass(r.draft_year);
                                     const draftYear = r.draft_year;
                                     const teamSlugVal = (r.base_team_id ?? '').trim().toLowerCase();
                                     const isFaRow = !isDraft && !teamSlugVal;
                                     const baseTeamLabel = isDraft
-                                        ? `신인 '${draftYear}`
+                                        ? draftLabel(draftYear!)
                                         : isFaRow
                                             ? 'FA'
                                             : (TEAM_OPTIONS.find(t => t.id === teamSlugVal)?.label.split(' · ')[0] ?? teamSlugVal.toUpperCase());
@@ -1832,7 +1854,7 @@ function sortBy(th) {
                                     const displayPosition = coInfo?.position ?? r.position;
                                     const coTeamSlug = coInfo?.team;
                                     const teamLabel = coTeamSlug !== undefined
-                                        ? (isDraft ? `신인 '${draftYear}`
+                                        ? (isDraft ? draftLabel(draftYear!)
                                             : !coTeamSlug ? 'FA'
                                             : (TEAM_OPTIONS.find(t => t.id === coTeamSlug)?.label.split(' · ')[0] ?? coTeamSlug.toUpperCase()))
                                         : baseTeamLabel;
@@ -1871,14 +1893,14 @@ function sortBy(th) {
                                             {/* 1차 아키타입 */}
                                             <td className={`px-2 py-1 ${coInfo ? 'text-indigo-300' : 'text-white'}`}>
                                                 {displayInfo
-                                                    ? labelConfig[displayInfo.archetype] ?? displayInfo.archetype
+                                                    ? archLabel(displayInfo.archetype)
                                                     : '—'
                                                 }
                                             </td>
                                             {/* 2차 아키타입 */}
                                             <td className={`px-2 py-1 ${coInfo ? 'text-indigo-300' : 'text-white'}`}>
                                                 {displayInfo?.secondary
-                                                    ? labelConfig[displayInfo.secondary] ?? displayInfo.secondary
+                                                    ? archLabel(displayInfo.secondary)
                                                     : '—'
                                                 }
                                             </td>
@@ -2014,11 +2036,18 @@ function sortBy(th) {
                 <>
                     {/* 선수 헤더 */}
                     <div className="flex items-center justify-between mb-4">
-                        <div>
+                        <div className="flex items-center gap-2">
                             <span className="text-xl font-bold text-white">{selected.name}</span>
-                            <span className="ml-3 text-slate-400 text-sm">
+                            <span className="text-slate-400 text-sm">
                                 {draft.position ?? selected.position} · {draft.age ?? '—'}세 · {draft.team ?? '—'}
                             </span>
+                            <button
+                                onClick={() => setShowCardModal(true)}
+                                className="ml-1 px-2 py-0.5 text-xs bg-white/5 hover:bg-indigo-600/30 border border-white/10 hover:border-indigo-500/50 text-slate-400 hover:text-indigo-300 rounded-md transition-colors"
+                                title="선수 카드 보기"
+                            >
+                                카드
+                            </button>
                         </div>
                         <div className="flex items-center gap-3">
                             {saveMsg && (
@@ -2062,10 +2091,10 @@ function sortBy(th) {
                             .map(({ key, label }) => ({ key, label, base: bm[key] ?? 0, co: cm ? (cm[key] ?? 0) : null }))
                             .sort((a, b) => b.base - a.base);
 
-                        const baseArch1 = labelConfig[livePreview.base.primaryArchetype.archetype] ?? livePreview.base.primaryArchetype.archetype;
-                        const baseArch2 = labelConfig[livePreview.base.secondaryArchetype.archetype] ?? livePreview.base.secondaryArchetype.archetype;
-                        const coArch1   = livePreview.co ? (labelConfig[livePreview.co.primaryArchetype.archetype] ?? livePreview.co.primaryArchetype.archetype) : null;
-                        const coArch2   = livePreview.co ? (labelConfig[livePreview.co.secondaryArchetype.archetype] ?? livePreview.co.secondaryArchetype.archetype) : null;
+                        const baseArch1 = archLabel(livePreview.base.primaryArchetype.archetype);
+                        const baseArch2 = archLabel(livePreview.base.secondaryArchetype.archetype);
+                        const coArch1   = livePreview.co ? archLabel(livePreview.co.primaryArchetype.archetype) : null;
+                        const coArch2   = livePreview.co ? archLabel(livePreview.co.secondaryArchetype.archetype) : null;
                         const activeTags = (livePreview.co ? livePreview.co.tags : livePreview.base.tags).map((t: string) => tagLabelMap[t] ?? t);
 
                         return (
@@ -2342,7 +2371,7 @@ function sortBy(th) {
                                                             value={draftYearVal} onChange={e => setDraftYearVal(e.target.value)} />
                                                         {draftYearVal && (
                                                             <span className="text-sm text-gray-400">
-                                                                {Number(draftYearVal) === 2026 ? '→ 신인 드래프트 클래스' : `→ ${draftYearVal}년 입단`}
+                                                                {isDraftClass(Number(draftYearVal)) ? `→ '${String(draftYearVal).slice(-2)}년 신인 드래프트 클래스` : `→ ${draftYearVal}년 입단`}
                                                             </span>
                                                         )}
                                                     </div>
@@ -2688,6 +2717,42 @@ function sortBy(th) {
                     </div>
                 </div>
             )}
+
+            {/* 선수 카드 모달 */}
+            {showCardModal && selected && livePreview?.base && (() => {
+                const pos = (draft.position ?? selected.position ?? '') as string;
+                const cardData: PlayerCardData = {
+                    name: (draft.name as string | undefined) ?? selected.name,
+                    position: pos,
+                    age: (draft.age as number | undefined) ?? null,
+                    team: (draft.team as string | undefined) ?? selected.base_team_id ?? '',
+                    base: {
+                        displayOvr: livePreview.base.displayOvr,
+                        rawOvr: livePreview.base.rawOvr,
+                        modules: livePreview.base.modules as Record<string, number>,
+                        primaryArchetype: archLabel(livePreview.base.primaryArchetype.archetype),
+                        secondaryArchetype: livePreview.base.secondaryArchetype.archetype !== livePreview.base.primaryArchetype.archetype
+                            ? archLabel(livePreview.base.secondaryArchetype.archetype) : null,
+                        tags: livePreview.base.tags,
+                    },
+                    co: livePreview.co ? {
+                        displayOvr: livePreview.co.displayOvr,
+                        rawOvr: livePreview.co.rawOvr,
+                        modules: livePreview.co.modules as Record<string, number>,
+                        primaryArchetype: archLabel(livePreview.co.primaryArchetype.archetype),
+                        secondaryArchetype: livePreview.co.secondaryArchetype.archetype !== livePreview.co.primaryArchetype.archetype
+                            ? archLabel(livePreview.co.secondaryArchetype.archetype) : null,
+                        tags: livePreview.co.tags,
+                    } : null,
+                };
+                return (
+                    <PlayerCardModal
+                        data={cardData}
+                        tagLabelMap={tagLabelMap}
+                        onClose={() => setShowCardModal(false)}
+                    />
+                );
+            })()}
 
         </div>
     );
