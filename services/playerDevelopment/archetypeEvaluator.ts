@@ -11,7 +11,7 @@ import type {
 import type { ArchetypeGateConfig } from '../../types/gameConfig';
 import { calculateModules } from '../../utils/ovrEngine';
 import { adaptPlayerToInput } from '../../utils/ovrUtils';
-import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync } from '../admin/gameConfigService';
+import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync, getLabelConfigSync } from '../admin/gameConfigService';
 import type { TagClause, TagConditionExpr } from '../../types/gameConfig';
 
 // ─────────────────────────────────────────────────────────────
@@ -493,7 +493,13 @@ const ARCHETYPE_DISPLAY: Record<ArchetypeType, ArchetypeDisplayInfo> = {
 };
 
 export function getArchetypeDisplayInfo(type: ArchetypeType): ArchetypeDisplayInfo {
-    return ARCHETYPE_DISPLAY[type];
+    const base = ARCHETYPE_DISPLAY[type];
+    const labelConfig = getLabelConfigSync();
+    if (labelConfig) {
+        const customLabel = labelConfig[type.toUpperCase()];
+        if (customLabel) return { ...base, label: customLabel };
+    }
+    return base;
 }
 
 const TRAIT_TAG_DISPLAY: Record<TraitTag, { label: string; color: string }> = {
@@ -514,5 +520,10 @@ const TRAIT_TAG_DISPLAY: Record<TraitTag, { label: string; color: string }> = {
 };
 
 export function getTraitTagDisplayInfo(tag: TraitTag): { label: string; color: string } {
-    return TRAIT_TAG_DISPLAY[tag];
+    const tagConfig = getTagConfigSync();
+    if (tagConfig) {
+        const found = tagConfig.find(t => t.id === tag);
+        if (found) return { label: found.label, color: found.color };
+    }
+    return TRAIT_TAG_DISPLAY[tag] ?? { label: tag, color: 'slate' };
 }

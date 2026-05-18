@@ -75,6 +75,7 @@ export async function fetchArchetypeTags():      Promise<TagConfigList>         
 
 export function getWeightConfigSync():   ArchetypeWeightConfig   | null { return archetypeCache?.weights   ?? null; }
 export function getPositionConfigSync(): ArchetypePositionConfig | null { return archetypeCache?.positions ?? null; }
+export function getLabelConfigSync():    ArchetypeLabelConfig    | null { return archetypeCache?.labels    ?? null; }
 export function getTagConfigSync():      TagConfigList           | null { return tagCache; }
 
 // ── Preload (앱/시뮬 초기화 시 1회 호출) ─────────────────────

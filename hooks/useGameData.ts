@@ -43,6 +43,7 @@ import { calcRookieContract, generateInitialFAPool } from '../services/draft/roo
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { TEAM_DATA } from '../data/teamData';
 import type { DraftResultContent, DraftResultEntry } from '../types/message';
+import { preloadGameConfig } from '../services/admin/gameConfigService';
 
 export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.startDate;
 
@@ -183,6 +184,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             // forceSave() 자체에는 이미 가드가 있으나, 초기 로드 중 saveCheckpoint
             // 직접 호출은 해당 가드를 우회하므로 여기서 별도로 막는다.
             const isMultiRoute = window.location.pathname.startsWith('/multi');
+
+            // 아키타입 레이블/태그 설정을 DB에서 preload (어드민 수정 내용 반영)
+            preloadGameConfig().catch(() => {});
 
             setIsSaveLoading(true);
             setLoadingProgress(0);

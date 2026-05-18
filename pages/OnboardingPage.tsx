@@ -18,7 +18,7 @@ const OnboardingPage: React.FC = () => {
         <div className="fixed inset-0 z-[500]">
             <OnboardingView
                 team={myTeam}
-                onComplete={() => navigate('/', { replace: true })}
+                onComplete={() => navigate('/home', { replace: true })}
                 seasonShort={seasonShort}
                 gmLastName={gmLastName}
             />
