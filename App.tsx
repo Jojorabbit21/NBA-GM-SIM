@@ -290,6 +290,18 @@ const App: React.FC = () => {
     // 시뮬 날짜 변경 시 미읽음 카운트 갱신
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
 
+    // 탭이 다시 활성화될 때 클라이언트 상태 동기화
+    // (background throttling으로 시뮬 중 씹힌 메시지/카운트를 자동 복구)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refreshUnreadCount();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [refreshUnreadCount]);
+
     // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
     if (authLoading) return <Loader message="잠시만 기다려주세요..." />;
     if (gameData.isBaseDataError) {
