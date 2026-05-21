@@ -29,9 +29,10 @@ interface LeaderboardViewProps {
   onTeamClick?: (teamId: string) => void;
   savedState?: LeaderboardFilterState | null;
   onStateChange?: (state: LeaderboardFilterState) => void;
+  hideSeasonType?: boolean;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -172,6 +173,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               setSelectedPositions={setSelectedPositions}
               seasonType={seasonType}
               setSeasonType={setSeasonType}
+              hideSeasonType={hideSeasonType}
               searchQuery={searchQuery}
               setSearchQuery={(q: string) => {
                   if (q && !searchQuery) {

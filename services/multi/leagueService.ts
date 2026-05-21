@@ -2,6 +2,7 @@
 import { supabase } from '../supabaseClient';
 import type { LeagueGroupRow, LeagueRow, LeagueTeamRow } from './roomQueries';
 import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
+import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 
 // ─── 리그 그룹 생성 (메인리그 운영자) ────────────────────────────────────────
 
@@ -40,8 +41,9 @@ export interface CreateLeagueParams {
     seasonNumber?:  number;
     maxTeams?:      number;
     // 토너먼트 필드
-    tournamentFormat?: 'single_elim' | 'double_elim' | 'round_robin';
-    matchFormat?:      'best_of_1' | 'best_of_3' | 'best_of_7';
+    tournamentFormat?:       'single_elim' | 'double_elim' | 'round_robin';
+    matchFormat?:            'best_of_1' | 'best_of_3' | 'best_of_5' | 'best_of_7';
+    finalsMatchFormat?:      'best_of_1' | 'best_of_3' | 'best_of_5' | 'best_of_7';
     // 공통 옵션 (default_options 상속 후 override)
     options?: Partial<{
         capEnabled:           boolean;
@@ -55,10 +57,14 @@ export interface CreateLeagueParams {
         draftPool:            string;
         draftFormat:          string;
         draftPoolStrategy:    string;
+        draftOvrMin:          number;
+        draftOvrMax:          number;
         draftPickDurationSec: number;
         draftTotalRounds:     number;
         rookiePoolInclusion:  boolean;
         seasonStartDate:      string;
+        seasonEndDate:        string;
+        tournamentStartAt:    string | null;
         realTimePace:         string;
     }>;
 }
@@ -83,8 +89,9 @@ export const createLeague = async (
 
     // 토너먼트 전용
     if (params.type === 'tournament') {
-        payload.tournament_format = params.tournamentFormat;
-        payload.match_format      = params.matchFormat ?? 'best_of_1';
+        payload.tournament_format       = params.tournamentFormat;
+        payload.match_format            = params.matchFormat ?? 'best_of_1';
+        payload.finals_match_format     = params.finalsMatchFormat ?? null;
     }
 
     // 옵션 오버라이드
@@ -99,10 +106,14 @@ export const createLeague = async (
     if (opts.draftPool            !== undefined) payload.draft_pool              = opts.draftPool;
     if (opts.draftFormat          !== undefined) payload.draft_format            = opts.draftFormat;
     if (opts.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = opts.draftPoolStrategy;
+    if (opts.draftOvrMin          !== undefined) payload.draft_ovr_min           = opts.draftOvrMin;
+    if (opts.draftOvrMax          !== undefined) payload.draft_ovr_max           = opts.draftOvrMax;
     if (opts.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = opts.draftPickDurationSec;
     if (opts.draftTotalRounds     !== undefined) payload.draft_total_rounds      = opts.draftTotalRounds;
     if (opts.rookiePoolInclusion  !== undefined) payload.rookie_pool_inclusion   = opts.rookiePoolInclusion;
     if (opts.seasonStartDate      !== undefined) payload.season_start_date       = opts.seasonStartDate;
+    if (opts.seasonEndDate        !== undefined) payload.season_end_date         = opts.seasonEndDate;
+    if (opts.tournamentStartAt    !== undefined) payload.tournament_start_at     = opts.tournamentStartAt;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
 
     const { data, error } = await supabase
@@ -255,12 +266,21 @@ export const updateLeagueStatus = async (
 
 export interface UpdateLeagueSettingsParams {
     leagueId:            string;
+    roomId?:             string;
     maxTeams?:           number;
     lotteryScheduledAt?: string | null;
     draftScheduledAt?:   string | null;
     draftPickDurationSec?: number;
     draftTotalRounds?:   number;
     draftPool?:          string;
+    draftPoolStrategy?:  string;
+    draftOvrMin?:        number;
+    draftOvrMax?:        number;
+    seasonStartDate?:    string;
+    seasonEndDate?:      string | null;
+    tournamentStartAt?:  string | null;
+    matchFormat?:        string | null;
+    finalsMatchFormat?:  string | null;
 }
 
 export const updateLeagueSettings = async (
@@ -273,10 +293,88 @@ export const updateLeagueSettings = async (
     if (p.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = p.draftPickDurationSec;
     if (p.draftTotalRounds     !== undefined) payload.draft_total_rounds      = p.draftTotalRounds;
     if (p.draftPool            !== undefined) payload.draft_pool              = p.draftPool;
+    if (p.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = p.draftPoolStrategy;
+    if (p.draftOvrMin          !== undefined) payload.draft_ovr_min           = p.draftOvrMin;
+    if (p.draftOvrMax          !== undefined) payload.draft_ovr_max           = p.draftOvrMax;
+    if (p.seasonStartDate      !== undefined) payload.season_start_date       = p.seasonStartDate;
+    if (p.seasonEndDate        !== undefined) payload.season_end_date         = p.seasonEndDate;
+    if (p.tournamentStartAt    !== undefined) payload.tournament_start_at     = p.tournamentStartAt;
+    if (p.matchFormat          !== undefined) payload.match_format            = p.matchFormat;
+    if (p.finalsMatchFormat    !== undefined) payload.finals_match_format     = p.finalsMatchFormat;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
-    return { error: error?.message ?? null };
+    if (error) return { error: error.message };
+
+    if (p.roomId && p.maxTeams !== undefined) {
+        const { error: roomErr } = await supabase
+            .from('rooms')
+            .update({ max_players: p.maxTeams })
+            .eq('id', p.roomId);
+        if (roomErr) return { error: roomErr.message };
+
+        // league_teams 슬롯 수 동기화
+        const resizeErr = await resizeLeagueTeams(p.roomId, p.maxTeams);
+        if (resizeErr) return { error: resizeErr };
+    }
+
+    return { error: null };
 };
+
+async function resizeLeagueTeams(roomId: string, newCount: number): Promise<string | null> {
+    const { data: current, error: fetchErr } = await supabase
+        .from('league_teams')
+        .select('id, team_slug, user_id')
+        .eq('room_id', roomId);
+    if (fetchErr) return fetchErr.message;
+
+    const currentCount = (current ?? []).length;
+    if (newCount === currentCount) return null;
+
+    if (newCount > currentCount) {
+        // 부족한 만큼 새 팀 추가
+        const existingSlugs = new Set((current ?? []).map((t: any) => t.team_slug));
+        const allTeams = Object.values(TEAM_DATA);
+        const available = shuffleArray(allTeams.filter(t => !existingSlugs.has(t.id)));
+        const needed = newCount - currentCount;
+
+        const rows: any[] = available.slice(0, needed).map(t => ({
+            room_id:         roomId,
+            team_slug:       t.id,
+            team_name:       `${t.city} ${t.name}`,
+            team_abbr:       t.id.toUpperCase().slice(0, 3),
+            color_primary:   t.colors.primary,
+            color_secondary: t.colors.secondary,
+            conference:      t.conference,
+        }));
+
+        // 30팀 초과 시 VIRTUAL_TEAMS으로 나머지 채움
+        if (rows.length < needed) {
+            const usedSlugs = new Set([
+                ...existingSlugs,
+                ...rows.map((r: any) => r.team_slug),
+            ]);
+            const availableVirtual = VIRTUAL_TEAMS.filter(t => !usedSlugs.has(t.team_slug));
+            for (const t of availableVirtual) {
+                if (rows.length >= needed) break;
+                rows.push({ room_id: roomId, team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr, color_primary: t.color_primary, color_secondary: t.color_secondary, conference: t.conference });
+            }
+        }
+
+        if (rows.length === 0) return null;
+        const { error } = await supabase.from('league_teams').insert(rows);
+        return error?.message ?? null;
+    }
+
+    // 줄이는 경우: 미선점 팀부터 제거
+    const unclaimed = (current ?? []).filter((t: any) => !t.user_id);
+    const removeCount = currentCount - newCount;
+    if (removeCount > unclaimed.length) {
+        return `참가 중인 팀(${currentCount - unclaimed.length}개)보다 적은 수로 줄일 수 없습니다.`;
+    }
+    const toRemove = unclaimed.slice(0, removeCount).map((t: any) => t.id);
+    const { error } = await supabase.from('league_teams').delete().in('id', toRemove);
+    return error?.message ?? null;
+}
 
 // ─── league_teams 초기화 ──────────────────────────────────────────────────────
 // 세션 생성 후 TEAM_DATA 기반으로 N개 팀을 league_teams에 삽입
@@ -295,11 +393,10 @@ export const initializeLeagueTeams = async (
     maxTeams: number
 ): Promise<{ error: string | null }> => {
     const allTeams = Object.values(TEAM_DATA);
-    const selected = maxTeams >= allTeams.length
-        ? allTeams
-        : shuffleArray(allTeams).slice(0, maxTeams);
+    const shuffled = shuffleArray(allTeams);
+    const realSlice = shuffled.slice(0, Math.min(maxTeams, allTeams.length));
 
-    const teamsJson = selected.map(t => ({
+    const teamsJson: any[] = realSlice.map(t => ({
         team_slug:       t.id,
         team_name:       `${t.city} ${t.name}`,
         team_abbr:       t.id.toUpperCase().slice(0, 3),
@@ -307,6 +404,16 @@ export const initializeLeagueTeams = async (
         color_secondary: t.colors.secondary,
         conference:      t.conference,
     }));
+
+    // 30팀 초과 시 VIRTUAL_TEAMS으로 나머지 채움
+    if (maxTeams > allTeams.length) {
+        const usedSlugs = new Set(teamsJson.map((t: any) => t.team_slug));
+        const availableVirtual = VIRTUAL_TEAMS.filter(t => !usedSlugs.has(t.team_slug));
+        for (const t of availableVirtual) {
+            if (teamsJson.length >= maxTeams) break;
+            teamsJson.push({ team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr, color_primary: t.color_primary, color_secondary: t.color_secondary, conference: t.conference });
+        }
+    }
 
     const { error } = await supabase.rpc('initialize_league_teams', {
         p_room_id: roomId,
@@ -389,8 +496,12 @@ export const runDraftLottery = async (
 
 export const leaveLeague = async (
     roomId: string,
-    userId: string
+    userId: string,
+    leagueStatus?: string,
 ): Promise<{ error: string | null }> => {
+    if (leagueStatus && leagueStatus !== 'recruiting') {
+        return { error: '세션이 시작된 후에는 탈퇴할 수 없습니다.' };
+    }
     // 팀 반환
     await releaseTeam(roomId, userId);
     // room_members 삭제
@@ -442,6 +553,65 @@ export const startDraft = async (
         }
     }
     return { error: null };
+};
+
+// ─── 토너먼트 브라켓 데이터 저장 ─────────────────────────────────────────────
+
+export const saveBracketData = async (
+    leagueId: string,
+    bracket: { series: unknown[]; schedule?: unknown[] },
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase
+        .from('leagues')
+        .update({ bracket_data: bracket })
+        .eq('id', leagueId);
+    return { error: error?.message ?? null };
+};
+
+// ─── 토너먼트 세션 초기화 ──────────────────────────────────────────────────────
+
+export interface ResetTournamentResult {
+    error:          string | null;
+    archiveEdition: number | null; // 저장된 아카이브 edition (없으면 null)
+}
+
+export const resetTournament = async (
+    leagueId: string,
+    roomId:   string,
+): Promise<ResetTournamentResult> => {
+    // 아카이브 존재 여부 확인
+    const { data: archiveRow } = await supabase
+        .from('tournament_archives')
+        .select('edition')
+        .eq('league_id', leagueId)
+        .order('edition', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const archiveEdition = archiveRow?.edition ?? null;
+
+    // leagues 초기화
+    const { error: leagueErr } = await supabase
+        .from('leagues')
+        .update({ status: 'recruiting', bracket_data: null })
+        .eq('id', leagueId);
+    if (leagueErr) return { error: leagueErr.message, archiveEdition };
+
+    // rooms 초기화
+    const { error: roomErr } = await supabase
+        .from('rooms')
+        .update({ schedule: [], roster_state: {} })
+        .eq('id', roomId);
+    if (roomErr) return { error: roomErr.message, archiveEdition };
+
+    // league_teams 로스터 & 드래프트 오더 초기화
+    const { error: teamsErr } = await supabase
+        .from('league_teams')
+        .update({ roster: [], draft_order: null })
+        .eq('room_id', roomId);
+    if (teamsErr) return { error: teamsErr.message, archiveEdition };
+
+    return { error: null, archiveEdition };
 };
 
 export const updateLeagueGroupStatus = async (

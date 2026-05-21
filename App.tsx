@@ -28,6 +28,16 @@ import LeagueLobbyView from './views/multi/league/LeagueLobbyView';
 import LeagueSettingsView from './views/multi/league/LeagueSettingsView';
 import MultiDraftView from './views/multi/league/MultiDraftView';
 import { LeagueLayout } from './views/multi/league/LeagueLayout';
+import MultiSeasonPage from './pages/MultiSeasonPage';
+import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
+import MultiStandingsView from './views/multi/season/MultiStandingsView';
+import MultiScheduleView from './views/multi/season/MultiScheduleView';
+import MultiRosterView from './views/multi/season/MultiRosterView';
+import MultiComingSoonView from './views/multi/season/MultiComingSoonView';
+import MultiTacticsView from './views/multi/season/MultiTacticsView';
+import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
+import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
+import AdminSimView from './views/multi/league/AdminSimView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -63,6 +73,7 @@ import TacticsPage from './pages/TacticsPage';
 import PlayerEditorPage from './pages/PlayerEditorPage';
 import EditorLayout from './pages/EditorLayout';
 import ArchetypeConfigPage from './pages/ArchetypeConfigPage';
+import DraftSimPage from './pages/DraftSimPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
@@ -93,7 +104,8 @@ const App: React.FC = () => {
         if (mode) localStorage.setItem('nbagm:playMode', mode);
         else      localStorage.removeItem('nbagm:playMode');
     }, []);
-    const gameData = useGameData(session, isGuestMode, rosterMode, pathname.startsWith('/multi'));
+    const isAdminRoute = pathname.startsWith('/admin');
+    const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, pathname.startsWith('/multi'));
 
     // ─── App-level state ──────────────────────────────────────────────────────
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -321,6 +333,7 @@ const App: React.FC = () => {
                             <Route index element={<Navigate to="player" replace />} />
                             <Route path="player" element={<PlayerEditorPage />} />
                             <Route path="archetype" element={<ArchetypeConfigPage />} />
+                            <Route path="draft-sim" element={<DraftSimPage />} />
                         </Route>
                     </Route>
 
@@ -340,6 +353,17 @@ const App: React.FC = () => {
                         <Route element={<LeagueLayout />}>
                             <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
                             <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
+                            <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+                            <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
+                                <Route index element={<MultiSeasonPage />} />
+                                <Route path="roster"       element={<MultiRosterView />} />
+                                <Route path="standings"    element={<MultiStandingsView />} />
+                                <Route path="schedule"     element={<MultiScheduleView />} />
+                                <Route path="leaderboard"  element={<MultiLeaderboardView />} />
+                                <Route path="tactics"      element={<MultiTacticsView />} />
+                                <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
+                                <Route path="game/:gameId" element={<MultiGamePbpView />} />
+                            </Route>
                         </Route>
                     </Route>
 

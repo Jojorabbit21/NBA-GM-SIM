@@ -58,6 +58,8 @@ export interface LeagueRow {
     draft_pool: string;
     draft_format: string;
     draft_pool_strategy: string;
+    draft_ovr_min: number;
+    draft_ovr_max: number;
     draft_pick_duration_sec: number;
     draft_total_rounds: number;
     rookie_pool_inclusion: boolean;
@@ -65,8 +67,11 @@ export interface LeagueRow {
     lottery_scheduled_at: string | null;
     tournament_format: string | null;
     match_format: string | null;
+    finals_match_format: string | null;
     bracket_data: unknown | null;
     season_start_date: string;
+    season_end_date: string | null;
+    tournament_start_at: string | null;
     real_time_pace: string;
     created_at: string;
 }

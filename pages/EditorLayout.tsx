@@ -37,6 +37,18 @@ const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
                     >
                         아키타입 설정
                     </NavLink>
+                    <NavLink
+                        to="draft-sim"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        드래프트 시뮬
+                    </NavLink>
                 </div>
                 <Outlet context={{ userId }} />
             </div>

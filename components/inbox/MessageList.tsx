@@ -33,6 +33,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 }) => {
     const hasMore = messages.length > 0 && messages.length < totalCount;
     const sentinelRef = useRef<HTMLDivElement>(null);
+    const isFetchingMoreRef = useRef(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -42,9 +43,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
     const [isDeleting, setIsDeleting] = useState(false);
 
+    useEffect(() => {
+        isFetchingMoreRef.current = false;
+    }, [messages]);
+
     const handleIntersect = useCallback(
         (entries: IntersectionObserverEntry[]) => {
-            if (entries[0].isIntersecting && hasMore && !loading) {
+            if (entries[0].isIntersecting && hasMore && !loading && !isFetchingMoreRef.current) {
+                isFetchingMoreRef.current = true;
                 onLoadMore();
             }
         },

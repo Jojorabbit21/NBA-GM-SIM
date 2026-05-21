@@ -10,7 +10,8 @@ export interface Game {
     homeTeamId: string;
     awayTeamId: string;
     date: string;
-    time?: string; // 'HH:MM' ET 기준 (예: '19:30', '22:00')
+    time?: string;
+    scheduledAt?: string; // ISO timestamp — multiplayer 30-min slot scheduling (KST 10:00~)
     homeScore?: number;
     awayScore?: number;
     played: boolean;

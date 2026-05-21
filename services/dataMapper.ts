@@ -42,8 +42,7 @@ function inferContractType(salary: number, ovr: number, age: number): ContractTy
 /** JSONB contract 객체 또는 salary/contractYears에서 PlayerContract 생성 */
 function buildPlayerContract(baseAttrs: any, salary: number, contractYears: number, ovr: number, age: number): PlayerContract {
     const rawContract = baseAttrs?.contract;
-    if (rawContract) {
-        // DB에 실제 계약 데이터 존재 — years 값도 정규화
+    if (rawContract && Array.isArray(rawContract.years)) {
         const years = (rawContract.years as number[]).map((y: number) => normalizeSalary(y));
         return {
             years,
@@ -53,9 +52,9 @@ function buildPlayerContract(baseAttrs: any, salary: number, contractYears: numb
             ...(rawContract.option && { option: rawContract.option }),
         };
     }
-    // 레거시 fallback: salary/contractYears → 균등 배열
+    // fallback: salary/contractYears → 균등 배열
     return {
-        years: Array(contractYears).fill(salary),
+        years: Array(Math.max(1, contractYears)).fill(salary),
         currentYear: 0,
         type: inferContractType(salary, ovr, age),
     };
@@ -130,7 +129,7 @@ export const mapFreeAgents = (playersData: any[]): Player[] => {
 /**
  * 개별 선수 데이터 변환 (Raw DB Object -> Player Object)
  */
-export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
+export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = false): Player => {
     // DB의 base_attributes 컬럼 파싱 (JSON or Object)
     const baseAttrs = typeof raw.base_attributes === 'string' 
         ? JSON.parse(raw.base_attributes) 
@@ -147,6 +146,16 @@ export const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     if (raw.name) rowOverrides.name = raw.name;
     if (raw.position) rowOverrides.position = raw.position;
     const p = { ...raw, ...baseAttrs, ...rowOverrides };
+
+    // Apply custom_overrides when alltime pool is active (balances legends against modern players)
+    if (applyCustomOverrides) {
+        const rawCo = baseAttrs.custom_overrides;
+        if (rawCo && typeof rawCo === 'object' && !Array.isArray(rawCo)) {
+            for (const [k, v] of Object.entries(rawCo)) {
+                if (typeof v === 'number') p[k] = v;
+            }
+        }
+    }
 
     // 1. Categories (Defaults to 70 if missing to allow OVR calc to function)
     const ins = Number(getCol(p, ['ins', 'INS', 'Inside']) || 70);

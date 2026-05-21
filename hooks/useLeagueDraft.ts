@@ -83,13 +83,24 @@ export function useLeagueDraft(
                 const picks = buildPickEntries(picksRes.data ?? []);
                 setDraftState(assembleState(config, cursor, picks));
 
-                // 선수 풀 로드
-                if ((config.poolIds ?? []).length > 0) {
-                    const { data } = await supabase
-                        .from('meta_players')
-                        .select('id, name, position, salary, base_attributes')
-                        .eq('in_multi_pool', true);
-                    if (!cancelled) setPoolPlayers((data ?? []) as DraftPoolPlayer[]);
+                // 선수 풀 로드 — poolIds를 100개씩 병렬 청크로 분할하여 URL 길이 제한 회피
+                const poolIds: string[] = config.poolIds ?? [];
+                if (poolIds.length > 0) {
+                    const CHUNK = 100;
+                    const chunks: string[][] = [];
+                    for (let i = 0; i < poolIds.length; i += CHUNK) chunks.push(poolIds.slice(i, i + CHUNK));
+                    const results = await Promise.all(
+                        chunks.map(ids =>
+                            supabase
+                                .from('meta_players')
+                                .select('id, name, position, salary, base_attributes')
+                                .in('id', ids)
+                        )
+                    );
+                    if (!cancelled) {
+                        const all = results.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
+                        setPoolPlayers(all);
+                    }
                 }
             }
 
@@ -172,6 +183,13 @@ export function useLeagueDraft(
 
         // status === 'active'
         const isAiPick = draftState.pickOrder[draftState.currentPickIndex]?.isAi === true;
+
+        // AI 차례: AI_MIN_THINK_SEC(3s) 경과 직후 draft-cron 트리거 (1회)
+        if (isAiPick) {
+            aiFollowUpTimerRef.current = setTimeout(() => {
+                supabase.functions.invoke('draft-cron').catch(() => {});
+            }, 3500);
+        }
 
         const update = () => {
             const elapsed = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;

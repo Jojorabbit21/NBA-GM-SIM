@@ -14,7 +14,7 @@ import type { Player } from '../types';
 
 const ProtectedLayout: React.FC = () => {
     const {
-        session, isGuestMode, gameData, sim,
+        session, isGuestMode, authLoading, gameData, sim,
         playMode,
         rosterMode, draftPoolType,
         toastMessage, setToastMessage,
@@ -61,6 +61,8 @@ const ProtectedLayout: React.FC = () => {
     }, [navigate, setViewPlayerData]);
 
     // ─── 인증 가드 (hooks 이후에 위치) ───────────────────────────────────
+
+    if (authLoading) return <Loader />;
 
     if (!session && !isGuestMode) return <Navigate to="/" replace />;
 

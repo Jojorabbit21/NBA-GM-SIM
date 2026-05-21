@@ -1,6 +1,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { generateSnakePickOrder, seededShuffle } from '../_shared/multiDraftEngine.ts';
+import { generateSnakePickOrder, generateLinearPickOrder, seededShuffle } from '../_shared/multiDraftEngine.ts';
+import { mapRawPlayerToRuntimePlayer } from '../_shared/dataMapper.ts';
 
 const DEFAULT_TOTAL_ROUNDS      = 10;
 const DEFAULT_PICK_DURATION_SEC = 30;
@@ -148,27 +149,57 @@ Deno.serve(async (req) => {
         })),
     ];
 
-    // ── 드래프트 풀 구성 (in_multi_pool = true 선수만) ──────────────────────
-    const { data: poolPlayers } = await supabase
-        .from('meta_players')
-        .select('id')
-        .eq('in_multi_pool', true);
-
-    const poolIds = (poolPlayers ?? []).map((p: any) => p.id);
-
     // ── 드래프트 설정값: DB 저장값 우선, 없으면 기본값 ─────────────────────────
     const totalRounds     = (league as any).draft_total_rounds      ?? DEFAULT_TOTAL_ROUNDS;
     const pickDurationSec = (league as any).draft_pick_duration_sec ?? DEFAULT_PICK_DURATION_SEC;
+    const draftPoolRaw  = (league as any).draft_pool              ?? 'standard';
+    const draftStrategy = (league as any).draft_pool_strategy     ?? 'snake';
+    const ovrMin        = (league as any).draft_ovr_min           ?? 0;
+    const ovrMax        = (league as any).draft_ovr_max           ?? 99;
+    const draftPools    = draftPoolRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
 
-    // ── Snake 픽 순서 생성 ───────────────────────────────────────────────────
+    // ── 드래프트 풀 구성 (다중 풀 유형 + OVR 범위 적용) ─────────────────────
+    const seenIds      = new Set<string>();
+    const nonRookieRaw: any[] = [];
+    const rookieRaw:    any[] = [];
+
+    for (const pt of draftPools) {
+        let q = supabase.from('meta_players').select('id, position, base_attributes');
+
+        if (pt === 'standard') {
+            q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
+        } else if (pt === 'alltime') {
+            q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
+        } else {
+            q = (q as any).eq('draft_year', 2026);
+        }
+
+        const { data } = await q;
+        if (!data) continue;
+
+        for (const p of data) {
+            if (seenIds.has(p.id)) continue;
+            seenIds.add(p.id);
+            const mapped = mapRawPlayerToRuntimePlayer(p);
+            if (pt === 'rookies') rookieRaw.push(mapped);
+            else                  nonRookieRaw.push(mapped);
+        }
+    }
+
+    const filteredNonRookies = nonRookieRaw.filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax);
+    const poolIds = [...filteredNonRookies, ...rookieRaw].map((p: any) => p.id);
+
+    // ── 픽 순서 생성 (스네이크 or 선형) ────────────────────────────────────────
     const shuffledMembers = seededShuffle(allMembers, seed + '_order');
-    const pickOrder       = generateSnakePickOrder(shuffledMembers, totalRounds);
+    const pickOrder = draftStrategy === 'linear'
+        ? generateLinearPickOrder(shuffledMembers, totalRounds)
+        : generateSnakePickOrder(shuffledMembers, totalRounds);
 
     // ── draft_config (정적, 1회 기록) + draft_cursor (휘발, 픽마다 갱신) ─────
     const nowIso = new Date().toISOString();
 
     const draftConfig = {
-        format:          'snake',
+        format:          draftStrategy === 'linear' ? 'linear' : 'snake',
         totalRounds,
         pickDurationSec,
         teamCount:       allMembers.length,

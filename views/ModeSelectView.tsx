@@ -63,14 +63,14 @@ export const ModeSelectView: React.FC<ModeSelectViewProps> = ({ onSelectMode }) 
                     <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
 
                     <div className="relative space-y-4">
-                        <p className="text-xs font-bold text-amber-200 uppercase tracking-wider">커스텀 모드</p>
+                        <p className="text-xs font-bold text-amber-200 uppercase tracking-wider">커스텀 드래프트 모드</p>
 
                         <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
                             <Shuffle size={22} className="text-white" />
                         </div>
 
                         <div>
-                            <h2 className="text-xl font-black text-white ko-tight">커스텀 로스터</h2>
+                            <h2 className="text-xl font-black text-white ko-tight">커스텀 드래프트</h2>
                             <p className="text-sm text-amber-200 mt-1 ko-normal leading-relaxed">
                                 30개 팀이 드래프트에 참가해<br />
                                 나만의 드림팀을 만들어보세요.

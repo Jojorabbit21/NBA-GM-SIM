@@ -4,6 +4,7 @@ import { PlayerStats } from './player';
 export interface PlayerBoxScore {
     playerId: string;
     playerName: string;
+    position?: string;
     pts: number;
     reb: number;
     offReb: number;
@@ -34,6 +35,7 @@ export interface PlayerBoxScore {
     isAceTarget?: boolean;
     matchupEffect?: number;
     fatigue?: number;
+    recentShots?: boolean[];
     zoneData?: any;
 }
 

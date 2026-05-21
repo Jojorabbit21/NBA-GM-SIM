@@ -21,5 +21,6 @@ export const TOURNAMENT_FORMAT_LABEL: Record<string, string> = {
 export const MATCH_FORMAT_LABEL: Record<string, string> = {
     best_of_1: '단판',
     best_of_3: '3전 2선승',
+    best_of_5: '5전 3선승',
     best_of_7: '7전 4선승',
 };

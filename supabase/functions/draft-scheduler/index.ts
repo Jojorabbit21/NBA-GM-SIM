@@ -10,6 +10,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { generateSnakePickOrder } from '../_shared/multiDraftEngine.ts';
 
+const AI_MIN_THINK_SEC = 3;
+
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -119,12 +121,17 @@ Deno.serve(async (req) => {
 
             if (!teams?.length) continue; // 추첨 미완료
 
-            // 드래프트 선수 풀 구성
-            const { data: poolPlayers } = await supabase
-                .from('meta_players')
-                .select('id')
-                .eq('in_multi_pool', true);
+            // 드래프트 선수 풀 구성 — draft_pool 설정에 따라 필터링
+            const draftPoolRaw   = league.draft_pool ?? 'standard';
+            const draftPoolTypes = draftPoolRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
+            const includeRookies    = draftPoolTypes.includes('rookies');
+            const includeNonRookies = draftPoolTypes.some((t: string) => t !== 'rookies');
 
+            let poolQ = supabase.from('meta_players').select('id').eq('in_multi_pool', true);
+            if (!includeRookies)    poolQ = (poolQ as any).lt('draft_year', 2026);
+            if (!includeNonRookies) poolQ = (poolQ as any).eq('draft_year', 2026);
+
+            const { data: poolPlayers } = await poolQ;
             const poolIds = (poolPlayers ?? []).map((p: any) => p.id);
 
             const TOTAL_ROUNDS      = 10;
@@ -189,27 +196,31 @@ Deno.serve(async (req) => {
             if (cursor?.status !== 'active') continue;
             if (!config?.pickOrder) continue;
 
-            // 첫 번째 픽이 액션 대상인지 확인 (인간 턴이고 시간 미초과면 통째로 스킵)
+            // 첫 번째 픽이 액션 대상인지 확인
             const firstEntry = config.pickOrder[cursor.currentPickIndex];
             if (!firstEntry) continue;
             const firstElapsed = (Date.now() - new Date(cursor.currentPickStartedAt).getTime()) / 1000;
             if (!firstEntry.isAi && firstElapsed < config.pickDurationSec) continue;
+            if ( firstEntry.isAi && firstElapsed < AI_MIN_THINK_SEC)       continue;
 
             // 루프 전 1회만 조회 — 루프 안에서 로컬 Set 갱신으로 N+1 방지
             const { data: draftedRows } = await supabase
                 .from('draft_picks')
                 .select('player_id')
                 .eq('room_id', room.id);
-            const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => r.player_id));
+            const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => String(r.player_id)));
 
-            const { data: poolPlayers } = await supabase
-                .from('meta_players')
-                .select('id')
-                .eq('in_multi_pool', true)
-                .order('base_attributes->ovr' as any, { ascending: false })
-                .limit(200);
+            const schedulerPoolIds: string[] = (config.poolIds ?? []).map(String);
+            const schedulerPoolQuery = schedulerPoolIds.length > 0
+                ? supabase.from('meta_players').select('id, base_attributes').in('id', schedulerPoolIds)
+                : supabase.from('meta_players').select('id, base_attributes').eq('in_multi_pool', true).limit(200);
 
-            if (!poolPlayers?.length) continue;
+            const { data: rawPool } = await schedulerPoolQuery;
+            const poolPlayers = (rawPool ?? []).sort((a: any, b: any) =>
+                ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
+            );
+
+            if (!poolPlayers.length) continue;
 
             // AI 연속 픽 루프 — 다음 인간 턴이 나올 때까지 같은 사이클 안에서 연속 처리.
             // 인간 타임아웃(첫 번째 픽)은 한 번만 처리 후 종료.
@@ -224,8 +235,9 @@ Deno.serve(async (req) => {
                 const elapsed    = (Date.now() - new Date(activeCursor.currentPickStartedAt).getTime()) / 1000;
 
                 if (!isAiTurn && elapsed < config.pickDurationSec) break;
+                if ( isAiTurn && elapsed < AI_MIN_THINK_SEC)       break;
 
-                const best = poolPlayers.find((p: any) => !draftedSet.has(p.id));
+                const best = poolPlayers.find((p: any) => !draftedSet.has(String(p.id)));
                 if (!best) break;
 
                 const { data: newCursor, error } = await supabase.rpc('submit_draft_pick_v2', {
@@ -238,14 +250,15 @@ Deno.serve(async (req) => {
                     results.errors.push(`auto-pick [${room.id}]: ${error.message}`);
                     break;
                 }
-                draftedSet.add(best.id); // 로컬 Set 갱신 — DB 재조회 불필요
+                draftedSet.add(String(best.id)); // 로컬 Set 갱신 — DB 재조회 불필요
                 results.autoPicks++;
 
                 if (!isAiTurn) break;
 
                 const next = newCursor as any;
                 if (!next || next.status !== 'active') break;
-                activeCursor = next;
+                // Postgres now() ↔ Deno Date.now() 클락 스큐 방지
+                activeCursor = { ...next, currentPickStartedAt: new Date().toISOString() };
             }
         }
     }

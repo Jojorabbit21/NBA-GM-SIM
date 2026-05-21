@@ -7,6 +7,7 @@ export type RosterTab = 'roster' | 'records' | 'coaching' | 'draftPicks';
 interface RosterTabsProps {
     activeTab: RosterTab;
     onTabChange: (tab: RosterTab) => void;
+    hideTabs?: RosterTab[];
 }
 
 const TABS: { id: RosterTab; label: string }[] = [
@@ -16,6 +17,7 @@ const TABS: { id: RosterTab; label: string }[] = [
     { id: 'draftPicks', label: '드래프트 픽' },
 ];
 
-export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => (
-    <TabBar tabs={TABS} activeTab={activeTab} onTabChange={onTabChange} />
-);
+export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange, hideTabs }) => {
+    const tabs = hideTabs?.length ? TABS.filter(t => !hideTabs.includes(t.id)) : TABS;
+    return <TabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />;
+};

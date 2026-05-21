@@ -56,16 +56,20 @@ Deno.serve(async (req) => {
             .from('draft_picks')
             .select('player_id')
             .eq('room_id', room.id);
-        const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => r.player_id));
+        const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => String(r.player_id)));
 
-        const { data: poolPlayers } = await supabase
-            .from('meta_players')
-            .select('id')
-            .eq('in_multi_pool', true)
-            .order('base_attributes->ovr' as any, { ascending: false })
-            .limit(200);
+        // draft_config.poolIds 우선 사용 — 설정된 풀 유형(alltime/standard/rookies)만 포함
+        const configPoolIds: string[] = (config.poolIds ?? []).map(String);
+        const poolQuery = configPoolIds.length > 0
+            ? supabase.from('meta_players').select('id, base_attributes').in('id', configPoolIds)
+            : supabase.from('meta_players').select('id, base_attributes').eq('in_multi_pool', true).limit(200);
 
-        if (!poolPlayers?.length) continue;
+        const { data: rawPool } = await poolQuery;
+        const poolPlayers = (rawPool ?? []).sort((a: any, b: any) =>
+            ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
+        );
+
+        if (!poolPlayers.length) continue;
 
         // AI 연속 픽 루프 — 다음 인간 턴이 나올 때까지 연속 처리
         let activeCursor = cursor;
@@ -80,7 +84,7 @@ Deno.serve(async (req) => {
             if (!isAiTurn && elapsed < config.pickDurationSec) break;
             if ( isAiTurn && elapsed < AI_MIN_THINK_SEC)       break;
 
-            const best = poolPlayers.find((p: any) => !draftedSet.has(p.id));
+            const best = poolPlayers.find((p: any) => !draftedSet.has(String(p.id)));
             if (!best) break;
 
             const { data: newCursor, error } = await supabase.rpc('submit_draft_pick_v2', {
@@ -90,7 +94,7 @@ Deno.serve(async (req) => {
             });
 
             if (error) break;
-            draftedSet.add(best.id); // 로컬 Set 갱신 — DB 재조회 불필요
+            draftedSet.add(String(best.id)); // 로컬 Set 갱신 — DB 재조회 불필요
             processed++;
 
             if (!isAiTurn) break; // 인간 타임아웃은 1회 처리 후 중단

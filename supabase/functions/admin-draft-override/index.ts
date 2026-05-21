@@ -12,6 +12,7 @@
  * 개선 (2026-04-21): draft_state JSONB 대신 draft_config + draft_cursor + draft_picks 사용
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildTournamentBracket } from '../_shared/tournamentBracket.ts';
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin':  '*',
@@ -49,7 +50,7 @@ Deno.serve(async (req) => {
     // ── 어드민 검증 ───────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('admin_user_id, status')
+        .select('admin_user_id, status, type, tournament_format, match_format, finals_match_format, season_start_date, tournament_start_at, bracket_data')
         .eq('id', leagueId)
         .single();
     if (!league)                          return json({ error: 'League not found' }, 404);
@@ -178,14 +179,9 @@ Deno.serve(async (req) => {
             .eq('room_id', roomId);
         const drafted = new Set<string>((draftedRows ?? []).map((r: any) => r.player_id));
 
-        // OVR 내림차순으로 미선발 선수 중 최고 선수 ID만 조회
-        const { data: poolPlayers } = await supabase
-            .from('meta_players')
-            .select('id, name')
-            .eq('in_multi_pool', true)
-            .order('base_attributes->ovr' as any, { ascending: false })
-            .limit(200);
-        if (!poolPlayers?.length) return json({ error: 'No players in pool' }, 400);
+        // draft_config.poolIds 기반으로 풀 조회 (URL 길이 제한 우회 위해 100개 청크)
+        const poolPlayers = await fetchPoolPlayers(supabase, config);
+        if (!poolPlayers.length) return json({ error: 'No players in pool' }, 400);
 
         const best = poolPlayers.find((p: any) => !drafted.has(p.id));
         if (!best) return json({ error: 'No undrafted players' }, 400);
@@ -205,12 +201,9 @@ Deno.serve(async (req) => {
             return json({ error: 'Draft is not in progress' }, 400);
         }
 
-        const { data: poolPlayers } = await supabase
-            .from('meta_players')
-            .select('id, name, position, base_attributes')
-            .eq('in_multi_pool', true)
-            .order('base_attributes->ovr' as any, { ascending: false });
-        if (!poolPlayers?.length) return json({ error: 'No players in pool' }, 400);
+        // draft_config.poolIds 기반으로 풀 조회 (URL 길이 제한 우회 위해 100개 청크)
+        const poolPlayers = await fetchPoolPlayers(supabase, config);
+        if (!poolPlayers.length) return json({ error: 'No players in pool' }, 400);
 
         // 기존 선발 목록
         const { data: draftedRows } = await supabase
@@ -289,6 +282,43 @@ Deno.serve(async (req) => {
                 currentPickStartedAt: null,
             },
         }).eq('id', roomId);
+
+        // 토너먼트: 브라켓 + 일정 초기화 (bracket_data가 아직 없을 때만)
+        if ((league as any).type === 'tournament' && !(league as any).bracket_data) {
+            const { data: leagueTeams } = await supabase
+                .from('league_teams')
+                .select('id, team_slug')
+                .eq('room_id', roomId);
+
+            if (leagueTeams?.length) {
+                const tournamentStartIso: string | null = (league as any).tournament_start_at ?? null;
+                const startDate = tournamentStartIso
+                    ? tournamentStartIso.slice(0, 10)
+                    : ((league as any).season_start_date ?? new Date().toISOString().slice(0, 10));
+                const startUtcHour = tournamentStartIso ? new Date(tournamentStartIso).getUTCHours() : 1;
+                const tendencySeed = `${leagueId}-${startDate}`;
+                const { series, schedule } = buildTournamentBracket(
+                    leagueTeams as { id: string; team_slug: string }[],
+                    (league as any).tournament_format,
+                    (league as any).match_format,
+                    (league as any).finals_match_format,
+                    tendencySeed,
+                    startDate,
+                    startUtcHour,
+                );
+
+                await supabase
+                    .from('leagues')
+                    .update({ bracket_data: { series, schedule } })
+                    .eq('id', leagueId);
+
+                await supabase
+                    .from('rooms')
+                    .update({ schedule })
+                    .eq('id', roomId);
+            }
+        }
+
         await supabase.from('leagues').update({ status: 'in_progress' }).eq('id', leagueId);
 
         return json({ ok: true, completedPicks: curIdx - (cursor.currentPickIndex as number) });
@@ -298,6 +328,40 @@ Deno.serve(async (req) => {
         return json({ error: `Unknown action: ${action}` }, 400);
     }
 });
+
+/** draft_config.poolIds 기반으로 선수 풀을 OVR 내림차순으로 반환.
+ *  poolIds가 없으면 in_multi_pool=true 폴백. URL 길이 제한 우회 위해 100개 청크 병렬 쿼리. */
+async function fetchPoolPlayers(supabase: any, config: any): Promise<any[]> {
+    const poolIds: string[] = config?.poolIds ?? [];
+    if (poolIds.length === 0) {
+        const { data } = await supabase
+            .from('meta_players')
+            .select('id, name, position, base_attributes')
+            .eq('in_multi_pool', true)
+            .order('base_attributes->ovr' as any, { ascending: false })
+            .limit(300);
+        return data ?? [];
+    }
+
+    const CHUNK = 100;
+    const chunks: string[][] = [];
+    for (let i = 0; i < poolIds.length; i += CHUNK) {
+        chunks.push(poolIds.slice(i, i + CHUNK));
+    }
+    const results = await Promise.all(
+        chunks.map((ids: string[]) =>
+            supabase
+                .from('meta_players')
+                .select('id, name, position, base_attributes')
+                .in('id', ids)
+        )
+    );
+    const all: any[] = results.flatMap((r: any) => r.data ?? []);
+    all.sort((a: any, b: any) =>
+        ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
+    );
+    return all;
+}
 
 function json(body: unknown, status = 200) {
     return new Response(JSON.stringify(body), {

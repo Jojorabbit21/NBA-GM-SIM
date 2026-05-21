@@ -24,6 +24,18 @@ export function generateSnakePickOrder(
     return order;
 }
 
+/** 선형 드래프트 순서 생성 — 매 라운드 동일한 순서 */
+export function generateLinearPickOrder(
+    members: PickOrderEntry[],
+    totalRounds: number
+): PickOrderEntry[] {
+    const order: PickOrderEntry[] = [];
+    for (let r = 0; r < totalRounds; r++) {
+        order.push(...members);
+    }
+    return order;
+}
+
 /** Mulberry32 시드 기반 셔플 — start-draft에서 팀/멤버 순서를 결정론적으로 섞는다 */
 export function seededShuffle<T>(arr: T[], seed: string): T[] {
     const result = [...arr];

@@ -197,3 +197,35 @@ export async function deletePlayer(id: string): Promise<void> {
         .eq('id', id);
     if (error) throw error;
 }
+
+/** career_history가 실제로 행이 있는(비어있지 않은) 선수 ID 집합 반환 */
+export async function fetchCareerPresentIds(): Promise<Set<string>> {
+    const { data, error } = await supabase
+        .from('meta_players')
+        .select('id, career_history')
+        .not('career_history', 'is', null);
+    if (error) throw error;
+    return new Set(
+        (data ?? [])
+            .filter((r: any) => Array.isArray(r.career_history) && r.career_history.length > 0)
+            .map((r: any) => String(r.id))
+    );
+}
+
+export async function fetchCareerHistory(id: string): Promise<any[] | null> {
+    const { data, error } = await supabase
+        .from('meta_players')
+        .select('career_history')
+        .eq('id', id)
+        .single();
+    if (error) throw error;
+    return data?.career_history ?? null;
+}
+
+export async function updateCareerHistory(id: string, history: any[]): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ career_history: history })
+        .eq('id', id);
+    if (error) throw error;
+}

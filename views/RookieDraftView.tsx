@@ -11,7 +11,9 @@ import { MyRoster } from '../components/draft/MyRoster';
 import { POSITION_COLORS } from './FantasyDraftView';
 import { CheckCircle } from 'lucide-react';
 import type { ResolvedDraftOrder } from '../types/draftAssets';
+import type { LeagueGMProfiles } from '../types/gm';
 import { generateSnakeDraftOrder } from '../utils/draftUtils';
+import { pickRookieForCPU } from '../services/draft/cpuDraftEngine';
 
 const TOTAL_ROUNDS = 2;
 
@@ -21,10 +23,12 @@ interface RookieDraftViewProps {
     draftOrder: string[];         // lotteryResult.finalOrder (30팀)
     resolvedDraftOrder?: ResolvedDraftOrder | null;  // 보호/스왑 반영된 60픽 오더
     draftClass: Player[];         // 생성된 60명 루키 (이미 Player[]로 변환됨)
+    leagueGMProfiles?: LeagueGMProfiles;
+    tendencySeed?: string;
     onComplete: (picks: BoardPick[]) => void;
 }
 
-export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, resolvedDraftOrder: resolved, draftClass, onComplete }) => {
+export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamId, draftOrder: teamOrder, resolvedDraftOrder: resolved, draftClass, leagueGMProfiles, tendencySeed = '', onComplete }) => {
     const allPlayers = useMemo(() => {
         return [...draftClass].sort((a, b) => b.potential - a.potential || calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     }, [draftClass]);
@@ -118,22 +122,6 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         return () => clearInterval(interval);
     }, [currentPickIndex, isDraftComplete, announcement]);
 
-    // ── Auto-pick on timeout (user: BPA, CPU: BPA) ──
-    useEffect(() => {
-        if (timeRemaining !== 0 || isDraftComplete) return;
-        if (availablePlayers.length === 0) return;
-        if (isUserTurn) {
-            handleDraft(availablePlayers[0]);
-        } else {
-            // CPU auto-pick at timer expiry
-            const teamId = draftOrder[currentPickIndex];
-            const player = availablePlayers[0];
-            setPicks(prev => [...prev, makePick(currentPickIndex, teamId, player)]);
-            setCurrentPickIndex(prev => prev + 1);
-            setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
-        }
-    }, [timeRemaining, isDraftComplete, availablePlayers, isUserTurn, handleDraft, draftOrder, currentPickIndex, makePick, setAnnouncement]);
-
     // ── BoardPick helper ──
     const makePick = useCallback((idx: number, teamId: string, player: Player): BoardPick => ({
         pickNumber: idx + 1,
@@ -154,17 +142,45 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         setAnnouncement({ pickNumber: currentPickIndex + 1, teamId: myTeamId, playerName: player.name, position: player.position });
     }, [isUserTurn, currentPickIndex, myTeamId, makePick]);
 
+    // ── Auto-pick on timeout (user: BPA, CPU: personality-aware) ──
+    useEffect(() => {
+        if (timeRemaining !== 0 || isDraftComplete) return;
+        if (availablePlayers.length === 0) return;
+        if (isUserTurn) {
+            handleDraft(availablePlayers[0]);
+        } else {
+            const teamId = draftOrder[currentPickIndex];
+            const team = teams.find(t => t.id === teamId);
+            const round = (Math.floor(currentPickIndex / teamOrder.length) + 1) as 1 | 2;
+            const decision = team
+                ? pickRookieForCPU(team, availablePlayers, leagueGMProfiles?.[teamId], { pickNumber: currentPickIndex + 1, round }, tendencySeed)
+                : { player: availablePlayers[0] };
+            const player = decision.player;
+            setPicks(prev => [...prev, makePick(currentPickIndex, teamId, player)]);
+            setCurrentPickIndex(prev => prev + 1);
+            setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
+        }
+    }, [timeRemaining, isDraftComplete, availablePlayers, isUserTurn, handleDraft, draftOrder, currentPickIndex, makePick, setAnnouncement, teams, leagueGMProfiles, tendencySeed, teamOrder.length]);
+
     // ── Batch-simulate picks until stopCondition returns true ──
     const simulatePicks = useCallback((stopCondition?: (teamId: string) => boolean) => {
         const newPicks: BoardPick[] = [];
         let idx = currentPickIndex;
-        const pool = [...availablePlayers];
-        let poolIdx = 0;
+        const pickedInBatch = new Set<string>();
 
-        while (idx < draftOrder.length && poolIdx < pool.length) {
+        while (idx < draftOrder.length) {
             const tid = draftOrder[idx];
             if (stopCondition?.(tid)) break;
-            newPicks.push(makePick(idx, tid, pool[poolIdx++]));
+            const remaining = availablePlayers.filter(p => !pickedInBatch.has(p.id));
+            if (remaining.length === 0) break;
+            const team = teams.find(t => t.id === tid);
+            const round = (Math.floor(idx / teamOrder.length) + 1) as 1 | 2;
+            const decision = team
+                ? pickRookieForCPU(team, remaining, leagueGMProfiles?.[tid], { pickNumber: idx + 1, round }, tendencySeed)
+                : { player: remaining[0] };
+            const player = decision.player;
+            pickedInBatch.add(player.id);
+            newPicks.push(makePick(idx, tid, player));
             idx++;
         }
 
@@ -172,7 +188,7 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
             setPicks(prev => [...prev, ...newPicks]);
             setCurrentPickIndex(idx);
         }
-    }, [currentPickIndex, availablePlayers, draftOrder, makePick]);
+    }, [currentPickIndex, availablePlayers, draftOrder, makePick, teams, leagueGMProfiles, tendencySeed, teamOrder.length]);
 
     const handleSkipToMyTurn = useCallback(() => simulatePicks(tid => tid === myTeamId), [simulatePicks, myTeamId]);
     const handleAutoCompleteAll = useCallback(() => simulatePicks(), [simulatePicks]);
@@ -182,11 +198,16 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
         if (isUserTurn || currentPickIndex >= draftOrder.length) return;
         if (availablePlayers.length === 0) return;
         const teamId = draftOrder[currentPickIndex];
-        const player = availablePlayers[0];
+        const team = teams.find(t => t.id === teamId);
+        const round = (Math.floor(currentPickIndex / teamOrder.length) + 1) as 1 | 2;
+        const decision = team
+            ? pickRookieForCPU(team, availablePlayers, leagueGMProfiles?.[teamId], { pickNumber: currentPickIndex + 1, round }, tendencySeed)
+            : { player: availablePlayers[0] };
+        const player = decision.player;
         setPicks(prev => [...prev, makePick(currentPickIndex, teamId, player)]);
         setCurrentPickIndex(prev => prev + 1);
         setAnnouncement({ pickNumber: currentPickIndex + 1, teamId, playerName: player.name, position: player.position });
-    }, [isUserTurn, currentPickIndex, draftOrder, availablePlayers, makePick]);
+    }, [isUserTurn, currentPickIndex, draftOrder, availablePlayers, makePick, teams, leagueGMProfiles, tendencySeed, teamOrder.length]);
 
     const showAdvance = !isUserTurn && !isDraftComplete;
 

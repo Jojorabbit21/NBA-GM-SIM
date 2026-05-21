@@ -1,6 +1,6 @@
 
 import React, { Suspense, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
 import { PendingOffseasonAction, OffseasonPhase } from '../types/app';
@@ -63,6 +63,7 @@ function addDays(isoDate: string, n: number): string {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { pathname } = useLocation();
+    const navigate = useNavigate();
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics,
             coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach } = gameHeaderProps;
@@ -185,7 +186,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         isGameToday={isGameToday}
                         isSimulating={isSimulating}
                         simProgress={simProgress}
-                        onSimClick={() => userTactics && (isGameToday ? onLiveSim(userTactics) : onSim(userTactics, false))}
+                        onSimClick={() => {
+                            const pending = sidebarProps.pendingOffseasonAction;
+                            if (pending === 'lottery') { navigate('/draft-lottery'); return; }
+                            if (pending === 'draft') { navigate('/draft/'); return; }
+                            userTactics && (isGameToday ? onLiveSim(userTactics) : onSim(userTactics, false));
+                        }}
                         onAutoSimClick={() => userTactics && onSim(userTactics, true)}
                         currentSeries={currentSeries}
                         currentSimDate={currentSimDate}

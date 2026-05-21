@@ -63,7 +63,7 @@ function hexToRgba(hex: string, alpha: number): string {
 /** ISO 날짜 → 간략 한글 포맷 (월 일) */
 function formatDateShort(isoDate: string): string {
   const d = new Date(isoDate + 'T00:00:00');
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
@@ -76,7 +76,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   allTeams, coachingData, leagueGMProfiles,
   onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach,
 }) => {
-  const isOffseasonBlocked = !!pendingOffseasonAction;
   const [isSkipDropdownOpen, setIsSkipDropdownOpen] = useState(false);
 
   const handleSkipToDate = useCallback((targetDate: string, label: string) => {
@@ -102,7 +101,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     if (simProgress) return simProgress.label;
     if (isSimulating) return '처리 중';
     if (isGameToday) return '경기 시작';
-    if (isSeasonOver) return '오프시즌';
+    if (pendingOffseasonAction === 'lottery') return '드래프트 로터리';
+    if (pendingOffseasonAction === 'draft') return '드래프트';
     return '내일로 이동';
   })();
 
@@ -148,7 +148,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 className="flex items-center gap-1.5 text-sm leading-5 text-text-primary hover:opacity-80 transition-opacity duration-150"
               >
                 <span className="font-medium whitespace-nowrap">
-                  오늘 {formatDateShort(currentSimDate)}
+                  {formatDateShort(currentSimDate)}
                 </span>
                 <span className="text-text-muted">·</span>
                 <span className="font-medium text-text-primary whitespace-nowrap">
@@ -199,7 +199,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <ActionButtonPrimary
           label={mainBtnLabel}
           onClick={onSimClick}
-          disabled={isOffseasonBlocked}
+          disabled={false}
           loading={!!isSimulating || !!simProgress}
           loadingLabel={simProgress?.label ?? '처리 중'}
           showChevron={isGameToday}
@@ -210,7 +210,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           <ActionButtonSecondary
             icon={<ChevronDown size={20} />}
             onClick={onAutoSimClick}
-            disabled={!!isSimulating || isOffseasonBlocked}
+            disabled={!!isSimulating}
             size="medium"
           />
         )}

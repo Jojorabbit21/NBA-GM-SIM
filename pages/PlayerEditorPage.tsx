@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import PlayerCardModal from '../components/PlayerCardModal';
 import type { PlayerCardData } from '../components/PlayerCardModal';
 import { useOutletContext } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, fetchCareerHistory, updateCareerHistory, fetchCareerPresentIds, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { preloadGameConfig, fetchArchetypeLabels, fetchTagConfig } from '../services/admin/gameConfigService';
 import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
@@ -305,6 +305,257 @@ const DEFAULT_PLAYER_ATTRS = (name: string, position: string, team: string): Rec
     speed: 70, agility: 70, strength: 70, vertical: 70, stamina: 70, hustle: 70, durability: 70,
 });
 
+// ── BBRef Awards Parser ──────────────────────────────────────────────────────
+// Ordered longest-first so greedy matching works (Finals MVP > MVP, NBA1 > NBA)
+const BREF_AWARD_TOKENS = [
+    'Finals MVP', 'FMVP',
+    'CHM', 'RCHM',
+    'CPOY', 'SMOY', '6MOY', 'DPOY', 'MVP', 'ROY', 'MIP',
+    'NBA1', 'NBA2', 'NBA3',
+    'DEF1', 'DEF2',
+    'AS',
+];
+
+function parseBBRefAwardsStr(raw: string): { code: string }[] {
+    if (!raw || !raw.trim()) return [];
+    const results: { code: string }[] = [];
+    let s = raw.trim();
+    while (s.length > 0) {
+        let matched = false;
+        for (const token of BREF_AWARD_TOKENS) {
+            if (s.startsWith(token)) {
+                const rest = s.slice(token.length);
+                const rankMatch = rest.match(/^-(\d+)/);
+                if (rankMatch) {
+                    results.push({ code: `${token}-${rankMatch[1]}` });
+                    s = rest.slice(rankMatch[0].length);
+                } else {
+                    results.push({ code: token });
+                    s = rest;
+                }
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) s = s.slice(1); // skip unknown char
+    }
+    return results;
+}
+
+function safeStr(val: any): string {
+    if (val == null) return '—';
+    if (typeof val === 'object') return val.code ?? val.label ?? JSON.stringify(val);
+    return String(val);
+}
+
+export function awardsToStr(awards: any): string {
+    if (!awards) return '';
+    if (typeof awards === 'string') return awards;
+    if (Array.isArray(awards)) return awards.map((a: any) => a.code ?? a.type ?? '').filter(Boolean).join(', ');
+    return '';
+}
+
+function strToAwards(str: string): { code: string }[] {
+    return str.split(',').map(s => s.trim()).filter(Boolean).map(code => ({ code }));
+}
+
+// ── BBRef CSV Parser ─────────────────────────────────────────────────────────
+function parseCSVLine(line: string): string[] {
+    const fields: string[] = [];
+    let cur = '';
+    let inQ = false;
+    for (const ch of line) {
+        if (ch === '"') { inQ = !inQ; }
+        else if ((ch === ',' || ch === '\t') && !inQ) { fields.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+    }
+    fields.push(cur.trim());
+    return fields;
+}
+
+// BBRef 컬럼명 → CareerSeasonStat 필드명
+const BBREF_ADV_COL_MAP: Record<string, string> = {
+    season: 'season', age: 'age', tm: 'team', team: 'team', g: 'gp',
+    'ts%': 'ts_pct', '3par': 'fg3a_rate', ftr: 'fta_rate',
+    'orb%': 'orb_pct', 'drb%': 'drb_pct', 'trb%': 'trb_pct',
+    'ast%': 'ast_pct', 'stl%': 'stl_pct', 'blk%': 'blk_pct',
+    'tov%': 'tov_pct', 'usg%': 'usg_pct',
+};
+
+function parseAdvancedCsv(text: string, playoff: boolean): { rows: any[]; errors: string[] } {
+    const errors: string[] = [];
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return { rows: [], errors: ['데이터가 너무 짧습니다. 헤더 포함 최소 2행 필요.'] };
+
+    let headerIdx = -1;
+    let colIdxMap: Record<string, number> = {};
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+        const raw = parseCSVLine(lines[i]);
+        const lower = raw.map(f => f.toLowerCase().replace(/[\s.]/g, ''));
+        if (lower.some(f => f === 'season' || f === 'g') && lower.some(f => f === 'usg%' || f === 'per' || f === 'ws')) {
+            headerIdx = i;
+            lower.forEach((h, idx) => {
+                const mapped = BBREF_ADV_COL_MAP[h];
+                if (mapped && !(mapped in colIdxMap)) colIdxMap[mapped] = idx;
+            });
+            break;
+        }
+    }
+    if (headerIdx === -1) return { rows: [], errors: ['헤더 행을 찾지 못했습니다. Season, G, USG%(또는 PER/WS) 컬럼이 포함된 BBRef Advanced CSV인지 확인하세요.'] };
+
+    const rows: any[] = [];
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const fields = parseCSVLine(line);
+        const get = (field: string): string => {
+            const idx = colIdxMap[field];
+            return idx != null ? (fields[idx] ?? '').trim() : '';
+        };
+        const season = get('season');
+        if (!season || season.toLowerCase() === 'season' || !/^\d{4}-\d{2}/.test(season)) continue;
+        if (BBREF_SKIP_PATTERNS.some(p => line.toLowerCase().includes(p))) continue;
+        const gp = parseInt(get('gp') || '0', 10);
+        if (!gp) continue;
+        const toRate = (f: string): number | null => {
+            const raw = get(f);
+            if (!raw) return null;
+            const v = parseFloat(raw);
+            return isNaN(v) ? null : v;
+        };
+        rows.push({
+            season,
+            team: get('team') || '—',
+            gp,
+            usg_pct:   toRate('usg_pct'),
+            ast_pct:   toRate('ast_pct'),
+            orb_pct:   toRate('orb_pct'),
+            drb_pct:   toRate('drb_pct'),
+            trb_pct:   toRate('trb_pct'),
+            stl_pct:   toRate('stl_pct'),
+            blk_pct:   toRate('blk_pct'),
+            tov_pct:   toRate('tov_pct'),
+            ts_pct:    toRate('ts_pct'),
+            fg3a_rate: toRate('fg3a_rate'),
+            fta_rate:  toRate('fta_rate'),
+        });
+    }
+    if (rows.length === 0) errors.push('파싱된 데이터가 없습니다. BBRef Advanced CSV를 그대로 붙여넣었는지 확인하세요.');
+    return { rows, errors };
+}
+
+const BBREF_COL_MAP: Record<string, string> = {
+    season: 'season', age: 'age', tm: 'team', team: 'team',
+    g: 'gp', gs: 'gs', mp: 'min',
+    fg: 'fgm', fga: 'fga', 'fg%': 'fg_pct',
+    '3p': 'fg3m', '3pa': 'fg3a', '3p%': 'fg3_pct',
+    ft: 'ftm', fta: 'fta', 'ft%': 'ft_pct',
+    orb: 'oreb', drb: 'dreb', trb: 'reb',
+    ast: 'ast', stl: 'stl', blk: 'blk', tov: 'tov', pf: 'pf', pts: 'pts',
+    'efg%': 'efg_pct', awards: 'awards',
+};
+
+const BBREF_SKIP_PATTERNS = ['did not play', 'inactive', 'not with team', 'did not dress', 'in league'];
+
+function parseBBRefCsv(text: string, playoff: boolean): { rows: any[]; errors: string[] } {
+    const errors: string[] = [];
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return { rows: [], errors: ['데이터가 너무 짧습니다. 헤더 포함 최소 2행 필요.'] };
+
+    // 헤더 행 탐색 (season, g, pts 등을 포함한 행)
+    let headerIdx = -1;
+    let colIdxMap: Record<string, number> = {};
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+        const raw = parseCSVLine(lines[i]);
+        const lower = raw.map(f => f.toLowerCase().replace(/[\s.]/g, ''));
+        if (lower.some(f => f === 'season' || f === 'g') && lower.some(f => f === 'pts' || f === 'fg')) {
+            headerIdx = i;
+            lower.forEach((h, idx) => {
+                const mapped = BBREF_COL_MAP[h];
+                if (mapped && !(mapped in colIdxMap)) colIdxMap[mapped] = idx;
+            });
+            break;
+        }
+    }
+    if (headerIdx === -1) {
+        return { rows: [], errors: ['헤더 행을 찾지 못했습니다. Season, G, PTS 컬럼이 포함된 BBRef CSV인지 확인하세요.'] };
+    }
+
+    const rows: any[] = [];
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const fields = parseCSVLine(line);
+        const get = (field: string): string => {
+            const idx = colIdxMap[field];
+            return idx != null ? (fields[idx] ?? '').trim() : '';
+        };
+
+        const season = get('season');
+        // 헤더 반복 행, 비시즌 행 스킵
+        if (!season || season.toLowerCase() === 'season' || !/^\d{4}-\d{2}/.test(season)) continue;
+        // DNP / Inactive 등 스킵
+        if (BBREF_SKIP_PATTERNS.some(p => line.toLowerCase().includes(p))) continue;
+
+        const gp = parseInt(get('gp') || '0', 10);
+        if (!gp) continue;
+
+        const toN = (f: string): number => {
+            const v = parseFloat(get(f).replace(/^\./, '0.'));
+            return isNaN(v) ? 0 : v;
+        };
+        const toNull = (f: string): number | null => {
+            const raw = get(f).replace(/^\./, '0.');
+            if (!raw) return null;
+            const v = parseFloat(raw);
+            return isNaN(v) ? null : v;
+        };
+        const toPct = (f: string): number | null => {
+            const raw = get(f).replace(/^\./, '0.');
+            if (!raw) return null;
+            const v = parseFloat(raw);
+            if (isNaN(v)) return null;
+            return v > 2 ? v / 100 : v;
+        };
+
+        const fgm = toN('fgm'), fga = toN('fga');
+        const ftm = toN('ftm'), fta = toN('fta');
+        const fg3m = toNull('fg3m'), fg3a = toNull('fg3a');
+        const pts = toN('pts'), tov = toNull('tov');
+        const efg_from_csv = toPct('efg_pct');
+
+        const r3 = (v: number) => Math.round(v * 1000) / 1000;
+        const tsD = 2 * (fga + 0.44 * fta);
+        const ts_pct = tsD > 0 ? r3(pts / tsD) : 0;
+        const efg_pct = efg_from_csv ?? (fga > 0 ? r3((fgm + 0.5 * (fg3m ?? 0)) / fga) : 0);
+        const tov_pct = (tov != null && (fga + 0.44 * fta + tov) > 0)
+            ? r3(tov / (fga + 0.44 * fta + tov)) : null;
+        const fg3a_rate = (fg3a != null && fga > 0) ? r3(fg3a / fga) : null;
+        const fta_rate  = fga > 0 ? r3(fta / fga) : 0;
+
+        rows.push({
+            season,
+            team:    get('team') || '—',
+            age:     parseInt(get('age') || '0', 10) || 0,
+            gp, gs: parseInt(get('gs') || '0', 10) || 0,
+            min:     toN('min'), pts,
+            oreb:    toNull('oreb'), dreb: toNull('dreb'), reb: toN('reb'),
+            ast:     toN('ast'),
+            stl:     toNull('stl'), blk: toNull('blk'), tov, pf: toN('pf'),
+            fgm, fga, fg_pct: toPct('fg_pct') ?? (fga > 0 ? fgm / fga : null),
+            fg3m, fg3a, fg3_pct: toPct('fg3_pct'),
+            ftm, fta, ft_pct: toPct('ft_pct') ?? (fta > 0 ? ftm / fta : null),
+            ts_pct, efg_pct, tov_pct, fg3a_rate, fta_rate,
+            playoff,
+            awards: parseBBRefAwardsStr(get('awards')),
+        });
+    }
+
+    if (rows.length === 0) errors.push('파싱된 데이터가 없습니다. BBRef 퍼게임 통계 CSV를 그대로 붙여넣었는지 확인하세요.');
+    return { rows, errors };
+}
+
 type EditorContext = { userId?: string };
 
 // ── PlayerEditorPage ──────────────────────────────────────────────────────────
@@ -333,6 +584,8 @@ const PlayerEditorPage: React.FC = () => {
     const [filterDraftYearVal, setFilterDraftYearVal] = useState<string>('');
     const [filterPos, setFilterPos] = useState<string>('all');       // 'all'|'PG'|'SG'|'SF'|'PF'|'C'
     const [filterAlltime, setFilterAlltime] = useState<string>('all'); // 'all'|'alltime_only'|'current_only'
+    const [filterCareer, setFilterCareer] = useState<string>('all'); // 'all'|'has_career'|'no_career'
+    const [careerHasIds, setCareerHasIds] = useState<Set<string>>(new Set());
     const [filterArchetype, setFilterArchetype] = useState<string>('all'); // 'all'|OvrArchetype(UPPER_CASE)
     const [filterTag, setFilterTag] = useState<string>('all');            // 'all'|TraitTag(snake_case)
     const [filterOvrMin, setFilterOvrMin] = useState<string>('');         // OVR 최솟값
@@ -351,9 +604,23 @@ const PlayerEditorPage: React.FC = () => {
     // 선수 삭제
     const [deleting, setDeleting] = useState(false);
     const [togglingRows, setTogglingRows] = useState<Record<string, 'alltime' | 'multi'>>({});
+    // 커리어 기록
+    const [careerHistory, setCareerHistory] = useState<any[]>([]);
+    const [careerHistoryLoading, setCareerHistoryLoading] = useState(false);
+    const [careerEditingRow, setCareerEditingRow] = useState<number | null>(null);
+    const [careerTableTab, setCareerTableTab] = useState<'pergame' | 'advanced'>('pergame');
+    // CSV 임포트
+    const [csvImportOpen, setCsvImportOpen] = useState(false);
+    const [csvRegular, setCsvRegular] = useState('');
+    const [csvPlayoff, setCsvPlayoff] = useState('');
+    const [csvParsed, setCsvParsed] = useState<{ regular: { rows: any[]; errors: string[] } | null; playoff: { rows: any[]; errors: string[] } | null }>({ regular: null, playoff: null });
+    const [csvAdvRegular, setCsvAdvRegular] = useState('');
+    const [csvAdvPlayoff, setCsvAdvPlayoff] = useState('');
+    const [csvAdvParsed, setCsvAdvParsed] = useState<{ regular: { rows: any[]; errors: string[] } | null; playoff: { rows: any[]; errors: string[] } | null }>({ regular: null, playoff: null });
     const [tablePage, setTablePage] = useState(0);
     const [tablePageSize, setTablePageSize] = useState(10);
     const originalAttrsRef = useRef<Record<string, any>>({});
+    const originalCareerHistoryRef = useRef<any[]>([]);
     const [tendencies, setTendencies] = useState<Record<string, any> | null>(null);
     const originalTendenciesRef = useRef<Record<string, any> | null>(null);
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -370,6 +637,9 @@ const PlayerEditorPage: React.FC = () => {
             .catch(console.error);
         fetchTagConfig()
             .then(tags => { if (tags.length > 0) setTagConfig(tags); })
+            .catch(console.error);
+        fetchCareerPresentIds()
+            .then(ids => setCareerHasIds(ids))
             .catch(console.error);
     }, []);
 
@@ -576,9 +846,12 @@ const PlayerEditorPage: React.FC = () => {
                 if (score < min) return false;
             }
 
+            if (filterCareer === 'has_career' && !careerHasIds.has(r.id)) return false;
+            if (filterCareer === 'no_career'  &&  careerHasIds.has(r.id)) return false;
+
             return true;
         });
-    }, [results, filterTeams, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, filterDraftYearOp, filterDraftYearVal, filterModule, filterModuleMin, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
+    }, [results, filterTeams, filterPos, filterAlltime, filterArchetype, filterTag, filterOvrMin, filterOvrMax, filterDraftYearOp, filterDraftYearVal, filterModule, filterModuleMin, filterCareer, careerHasIds, playerArchetypeMap, playerCoDataMap, ovrDisplayMode]);
 
     const sortedResults = useMemo(() => {
         return [...filteredResults].sort((a, b) => {
@@ -616,9 +889,8 @@ const PlayerEditorPage: React.FC = () => {
         return { ...TAG_LABEL };
     }, [tagConfig]);
 
-    // DB labelConfig에 없는 키는 하드코딩 ARCHETYPE_LABEL로 2차 폴백
     const archLabel = useCallback((key: string) =>
-        labelConfig[key] ?? ARCHETYPE_LABEL[key] ?? key,
+        labelConfig[key] ?? key,
     [labelConfig]);
 
     const ALL_TEAM_IDS = useMemo(() => ['fa', ...TEAM_OPTIONS.filter(t => t.id !== '').map(t => t.id)], []);
@@ -1029,10 +1301,18 @@ function sortBy(th) {
     }, [sortedResults, playerArchetypeMap, tagLabelMap]);
 
     const handleSelect = useCallback(async (row: MetaPlayerRow) => {
-        const [fresh, log] = await Promise.all([
+        setCareerHistory([]);
+        setCareerHistoryLoading(true);
+        setCareerEditingRow(null);
+        setCsvRegular(''); setCsvPlayoff(''); setCsvParsed({ regular: null, playoff: null });
+        setCsvAdvRegular(''); setCsvAdvPlayoff(''); setCsvAdvParsed({ regular: null, playoff: null });
+        setCsvImportOpen(false);
+        const [fresh, log, career] = await Promise.all([
             fetchPlayerById(row.id),
             fetchEditLog(row.id).catch(() => [] as EditLogEntry[]),
+            fetchCareerHistory(row.id).catch(() => null),
         ]);
+        setCareerHistoryLoading(false);
         if (!fresh) return;
         setSelected(fresh);
         setIncludeAlltimeState(fresh.include_alltime ?? true);
@@ -1051,10 +1331,14 @@ function sortBy(th) {
         const td = fresh.tendencies ? JSON.parse(JSON.stringify(fresh.tendencies)) : null;
         originalTendenciesRef.current = td;
         setTendencies(td);
+        const careerSnap = career ?? [];
+        originalCareerHistoryRef.current = JSON.parse(JSON.stringify(careerSnap));
+        setCareerHistory(careerSnap);
         setEditLog(log);
         setShowDropdown(false);
         setQuery(row.name);
         setSaveMsg(null);
+        setCareerHistoryMsg(null);
     }, []);
 
     const setField = useCallback((key: string, raw: string) => {
@@ -1315,6 +1599,9 @@ function sortBy(th) {
                 const entry = await insertEditLog(selected.id, logName, diff);
                 if (entry) setEditLog(prev => [entry, ...prev]);
             }
+            // career_history 저장
+            await updateCareerHistory(selected.id, careerHistory);
+
             originalAttrsRef.current = JSON.parse(JSON.stringify(draft));
             const fresh = await fetchPlayerById(selected.id);
             if (fresh) {
@@ -1327,7 +1614,7 @@ function sortBy(th) {
         } finally {
             setSaving(false);
         }
-    }, [selected, draft, tendencies, draftYearVal]);
+    }, [selected, draft, tendencies, draftYearVal, careerHistory]);
 
     const handleIncludeAlltimeToggle = useCallback(async (newVal: boolean) => {
         if (!selected) return;
@@ -1435,6 +1722,113 @@ function sortBy(th) {
             setBulkSaving(null);
         }
     }, [sortedResults, selected]);
+
+    // ── 커리어 기록 핸들러 ───────────────────────────────────────────────────
+
+    const handleCareerRowChange = useCallback((rowIdx: number, field: string, raw: string) => {
+        setCareerHistory(prev => {
+            const next = [...prev];
+            const row = { ...next[rowIdx] };
+            if (raw === '') {
+                row[field] = null;
+            } else if (field === 'season' || field === 'team' || field === 'awards') {
+                row[field] = raw;
+            } else if (field === 'playoff') {
+                row[field] = raw === 'true';
+            } else {
+                const num = parseFloat(raw);
+                row[field] = isNaN(num) ? raw : num;
+            }
+            next[rowIdx] = row;
+            return next;
+        });
+    }, []);
+
+    const handleCareerAddRow = useCallback(() => {
+        setCareerHistory(prev => {
+            const newRow = {
+                season: '', team: '', age: 0, gp: 0, gs: 0, min: 0,
+                pts: 0, reb: 0, oreb: null, dreb: null, ast: 0,
+                stl: null, blk: null, tov: null, pf: 0,
+                fgm: 0, fga: 0, fg_pct: 0,
+                fg3m: null, fg3a: null, fg3_pct: null,
+                ftm: 0, fta: 0, ft_pct: 0,
+                ts_pct: 0, efg_pct: 0, tov_pct: null, fg3a_rate: null, fta_rate: 0,
+                playoff: false, awards: null,
+            };
+            const next = [newRow, ...prev];
+            setCareerEditingRow(0);
+            return next;
+        });
+    }, []);
+
+    const handleCareerDeleteRow = useCallback((rowIdx: number) => {
+        setCareerHistory(prev => prev.filter((_, i) => i !== rowIdx));
+        setCareerEditingRow(null);
+    }, []);
+
+    const handleAwardsTextChange = useCallback((rowIdx: number, text: string) => {
+        setCareerHistory(prev => {
+            const next = [...prev];
+            next[rowIdx] = { ...next[rowIdx], awards: strToAwards(text) };
+            return next;
+        });
+    }, []);
+
+    const handleCsvParse = useCallback((type: 'regular' | 'playoff') => {
+        const text = type === 'regular' ? csvRegular : csvPlayoff;
+        const result = parseBBRefCsv(text, type === 'playoff');
+        setCsvParsed(prev => ({ ...prev, [type]: result }));
+    }, [csvRegular, csvPlayoff]);
+
+    const handleCsvApply = useCallback((type: 'regular' | 'playoff') => {
+        const parsed = type === 'regular' ? csvParsed.regular : csvParsed.playoff;
+        if (!parsed || parsed.rows.length === 0) return;
+        const isPlayoff = type === 'playoff';
+        setCareerHistory(prev => {
+            const kept = prev.filter(r => Boolean(r.playoff) !== isPlayoff);
+            const combined = [...kept, ...parsed.rows];
+            combined.sort((a, b) => {
+                if (a.season < b.season) return -1;
+                if (a.season > b.season) return 1;
+                return Number(a.playoff) - Number(b.playoff);
+            });
+            return combined;
+        });
+        setCareerHistoryMsg('CSV 적용 완료 — 저장 버튼으로 DB에 반영하세요.');
+    }, [csvParsed]);
+
+    const handleAdvCsvParse = useCallback((type: 'regular' | 'playoff') => {
+        const text = type === 'regular' ? csvAdvRegular : csvAdvPlayoff;
+        const result = parseAdvancedCsv(text, type === 'playoff');
+        setCsvAdvParsed(prev => ({ ...prev, [type]: result }));
+    }, [csvAdvRegular, csvAdvPlayoff]);
+
+    const handleAdvCsvApply = useCallback((type: 'regular' | 'playoff') => {
+        const parsed = type === 'regular' ? csvAdvParsed.regular : csvAdvParsed.playoff;
+        if (!parsed || parsed.rows.length === 0) return;
+        const isPlayoff = type === 'playoff';
+        const ADV_FIELDS = ['usg_pct','ast_pct','orb_pct','drb_pct','trb_pct','stl_pct','blk_pct','tov_pct','ts_pct','fg3a_rate','fta_rate'] as const;
+        const MULTI_TEAM = new Set(['TOT','2TM','3TM']);
+        setCareerHistory(prev => prev.map(row => {
+            if (Boolean(row.playoff) !== isPlayoff) return row;
+            const rowSeason = safeStr(row.season);
+            const rowTeam = safeStr(row.team);
+            const advRow =
+                parsed.rows.find(r => r.season === rowSeason && r.team === rowTeam) ??
+                parsed.rows.find(r => r.season === rowSeason && MULTI_TEAM.has(r.team)) ??
+                (parsed.rows.filter(r => r.season === rowSeason).length === 1
+                    ? parsed.rows.find(r => r.season === rowSeason)
+                    : undefined);
+            if (!advRow) return row;
+            const patch: Record<string, any> = {};
+            for (const f of ADV_FIELDS) {
+                if (advRow[f] != null) patch[f] = advRow[f];
+            }
+            return { ...row, ...patch };
+        }));
+        setCareerHistoryMsg('Advanced CSV 적용 완료 — 저장 버튼으로 DB에 반영하세요.');
+    }, [csvAdvParsed]);
 
     if (!isAdmin) {
         return (
@@ -1627,6 +2021,16 @@ function sortBy(th) {
                                 <option value="all">전체 풀</option>
                                 <option value="alltime_only">올타임 포함만</option>
                                 <option value="current_only">올타임 제외만</option>
+                            </select>
+                            {/* 커리어 기록 필터 */}
+                            <select
+                                className={`bg-slate-800 border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 ${filterCareer !== 'all' ? 'border-indigo-500 text-indigo-300' : 'border-slate-700'}`}
+                                value={filterCareer}
+                                onChange={e => { setFilterCareer(e.target.value); setTablePage(0); }}
+                            >
+                                <option value="all">커리어 기록 전체</option>
+                                <option value="has_career">기록 있음</option>
+                                <option value="no_career">기록 없음</option>
                             </select>
                             {/* 아키타입 필터 */}
                             <select
@@ -2609,6 +3013,540 @@ function sortBy(th) {
                             </table>
                         </div>
                     </Section>
+
+                    {/* ── 커리어 기록 편집 ── */}
+                    <div className="mt-8 border-t border-slate-800 pt-6">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">커리어 기록</h3>
+                                <div className="flex rounded overflow-hidden ring-1 ring-white/10 text-[10px]">
+                                    <button
+                                        onClick={() => setCareerTableTab('pergame')}
+                                        className={`px-2.5 py-1 transition-colors ${careerTableTab === 'pergame' ? 'bg-indigo-600 text-white font-bold' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                                    >
+                                        Per-Game
+                                    </button>
+                                    <button
+                                        onClick={() => setCareerTableTab('advanced')}
+                                        className={`px-2.5 py-1 transition-colors ${careerTableTab === 'advanced' ? 'bg-teal-700 text-white font-bold' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                                    >
+                                        Advanced
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { if (window.confirm('커리어 기록 전체를 삭제하시겠습니까?')) setCareerHistory([]); }}
+                                    className="px-2.5 py-1 text-xs bg-slate-800 hover:bg-red-900/60 border border-slate-700 hover:border-red-700/60 text-slate-400 hover:text-red-300 rounded transition-colors"
+                                >
+                                    초기화
+                                </button>
+                                <button
+                                    onClick={handleCareerAddRow}
+                                    className="px-2.5 py-1 text-xs bg-indigo-900/40 hover:bg-indigo-800/60 border border-indigo-700/50 text-indigo-300 rounded transition-colors"
+                                >
+                                    + 시즌 추가
+                                </button>
+                            </div>
+                        </div>
+                        {careerHistoryLoading ? (
+                            <p className="text-slate-600 text-xs">로딩 중...</p>
+                        ) : careerHistory.length === 0 ? (
+                            <p className="text-slate-600 text-xs">커리어 기록이 없습니다. "+ 시즌 추가"로 새 행을 추가하세요.</p>
+                        ) : careerTableTab === 'pergame' ? (
+                            <div className="overflow-x-auto custom-scrollbar rounded-xl ring-1 ring-white/10">
+                                <table className="min-w-full text-xs">
+                                    <thead className="bg-white/5">
+                                        <tr>
+                                            <th className="px-2 py-2 text-left text-slate-500 font-semibold whitespace-nowrap w-20">시즌</th>
+                                            <th className="px-2 py-2 text-left text-slate-500 font-semibold whitespace-nowrap w-12">팀</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">나이</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">GP</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">GS</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">MIN</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">PTS</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">REB</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">AST</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">STL</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">BLK</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">TOV</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">PF</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">FGM</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">FGA</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">FG%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">3PM</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">3PA</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">3P%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">FTM</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-12">FTA</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">FT%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">TS%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">eFG%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">OREB</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">DREB</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">PO</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">삭제</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {careerHistory.map((row, ri) => {
+                                            const isEditing = careerEditingRow === ri;
+                                            const numFld = (field: string, def: any = '') => (
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    value={row[field] ?? ''}
+                                                    onChange={e => handleCareerRowChange(ri, field, e.target.value)}
+                                                    className="w-full bg-slate-800 text-white text-center rounded px-1 py-0.5 ring-1 ring-white/10 focus:outline-none focus:ring-indigo-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    placeholder={def}
+                                                />
+                                            );
+                                            const strFld = (field: string, width = 'w-full') => (
+                                                <input
+                                                    type="text"
+                                                    value={row[field] ?? ''}
+                                                    onChange={e => handleCareerRowChange(ri, field, e.target.value)}
+                                                    className={`${width} bg-slate-800 text-white rounded px-1 py-0.5 ring-1 ring-white/10 focus:outline-none focus:ring-indigo-500/60`}
+                                                />
+                                            );
+                                            const readCell = (field: string) => (
+                                                <span className="font-mono tabular-nums">{safeStr(row[field])}</span>
+                                            );
+                                            return (
+                                                <tr
+                                                    key={ri}
+                                                    className={`transition-colors cursor-pointer ${isEditing ? 'bg-indigo-900/20' : 'hover:bg-white/5'}`}
+                                                    onClick={() => setCareerEditingRow(isEditing ? null : ri)}
+                                                >
+                                                    <td className="px-2 py-1.5 whitespace-nowrap w-20">
+                                                        {isEditing ? strFld('season', 'w-full') : <span className="font-semibold text-indigo-300">{safeStr(row.season)}</span>}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 w-12">
+                                                        {isEditing ? strFld('team', 'w-full') : <span className="text-slate-300">{safeStr(row.team)}</span>}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('age') : readCell('age')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('gp') : readCell('gp')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('gs') : readCell('gs')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('min') : readCell('min')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('pts') : readCell('pts')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('reb') : readCell('reb')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('ast') : readCell('ast')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('stl') : readCell('stl')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('blk') : readCell('blk')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('tov') : readCell('tov')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('pf') : readCell('pf')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fgm') : readCell('fgm')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fga') : readCell('fga')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fg_pct') : readCell('fg_pct')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fg3m') : readCell('fg3m')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fg3a') : readCell('fg3a')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fg3_pct') : readCell('fg3_pct')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('ftm') : readCell('ftm')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('fta') : readCell('fta')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('ft_pct') : readCell('ft_pct')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('ts_pct') : readCell('ts_pct')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('efg_pct') : readCell('efg_pct')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('oreb') : readCell('oreb')}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? numFld('dreb') : readCell('dreb')}</td>
+                                                    <td className="px-2 py-1.5 text-center">
+                                                        {isEditing ? (
+                                                            <select
+                                                                value={row.playoff ? 'true' : 'false'}
+                                                                onChange={e => { e.stopPropagation(); handleCareerRowChange(ri, 'playoff', e.target.value); }}
+                                                                onClick={e => e.stopPropagation()}
+                                                                className="bg-slate-800 text-white text-xs rounded px-1 py-0.5 ring-1 ring-white/10"
+                                                            >
+                                                                <option value="false">정규</option>
+                                                                <option value="true">PO</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={row.playoff ? 'text-amber-400 font-bold' : 'text-slate-500'}>
+                                                                {row.playoff ? 'PO' : '정규'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-center">
+                                                        <button
+                                                            onClick={e => { e.stopPropagation(); handleCareerDeleteRow(ri); }}
+                                                            className="text-slate-600 hover:text-red-400 transition-colors text-xs px-1"
+                                                            title="이 행 삭제"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto custom-scrollbar rounded-xl ring-1 ring-white/10">
+                                <table className="min-w-full text-xs">
+                                    <thead className="bg-white/5">
+                                        <tr>
+                                            <th className="px-2 py-2 text-left text-slate-500 font-semibold whitespace-nowrap w-20">시즌</th>
+                                            <th className="px-2 py-2 text-left text-slate-500 font-semibold whitespace-nowrap w-12">팀</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-10">GP</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">TS%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">eFG%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">TOV%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">3PAr</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">FTr</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">USG%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">AST%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">ORB%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">DRB%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">TRB%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">STL%</th>
+                                            <th className="px-2 py-2 text-center text-teal-600 font-semibold w-14">BLK%</th>
+                                            <th className="px-2 py-2 text-center text-slate-500 font-semibold w-14">PO</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {careerHistory.map((row, ri) => {
+                                            const isEditing = careerEditingRow === ri;
+                                            // PCT_COLS: stored as decimal (0.458) → ×100 for display
+                                            // RATE_COLS: stored as whole % (24.5) → show raw
+                                            const pctDisplay = (v: any) => v != null ? (Number(v) * 100).toFixed(1) : '—';
+                                            const rateDisplay = (v: any) => v != null ? Number(v).toFixed(1) : '—';
+                                            const advFld = (field: string) => (
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    value={row[field] ?? ''}
+                                                    onChange={e => handleCareerRowChange(ri, field, e.target.value)}
+                                                    className="w-full bg-slate-800 text-teal-300 text-center rounded px-1 py-0.5 ring-1 ring-white/10 focus:outline-none focus:ring-teal-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    placeholder="24.5"
+                                                />
+                                            );
+                                            return (
+                                                <tr
+                                                    key={ri}
+                                                    className={`transition-colors cursor-pointer ${isEditing ? 'bg-teal-900/20' : 'hover:bg-white/5'}`}
+                                                    onClick={() => setCareerEditingRow(isEditing ? null : ri)}
+                                                >
+                                                    <td className="px-2 py-1.5 whitespace-nowrap w-20">
+                                                        <span className="font-semibold text-indigo-300">{safeStr(row.season)}</span>
+                                                    </td>
+                                                    <td className="px-2 py-1.5 w-12">
+                                                        <span className="text-slate-300">{safeStr(row.team)}</span>
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{row.gp ?? '—'}</td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{pctDisplay(row.ts_pct)}</td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{pctDisplay(row.efg_pct)}</td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{rateDisplay(row.tov_pct)}</td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{pctDisplay(row.fg3a_rate)}</td>
+                                                    <td className="px-2 py-1.5 text-center text-slate-400 tabular-nums">{pctDisplay(row.fta_rate)}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('usg_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.usg_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('ast_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.ast_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('orb_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.orb_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('drb_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.drb_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('trb_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.trb_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('stl_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.stl_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">{isEditing ? advFld('blk_pct') : <span className="font-mono tabular-nums text-teal-400">{rateDisplay(row.blk_pct)}</span>}</td>
+                                                    <td className="px-2 py-1.5 text-center">
+                                                        <span className={row.playoff ? 'text-amber-400 font-bold' : 'text-slate-500'}>
+                                                            {row.playoff ? 'PO' : '정규'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        <p className="text-[10px] text-slate-700 mt-2">행을 클릭하면 편집 모드, 다시 클릭하면 해제. 저장 버튼으로 DB에 반영.</p>
+                    </div>
+
+                    {/* ── 수상 내역 편집 ── */}
+                    {careerHistory.length > 0 && (
+                        <div className="mt-8 border-t border-slate-800 pt-6">
+                            <div className="flex items-center justify-between mb-1">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">수상 내역</h3>
+                                <button
+                                    onClick={() => { if (window.confirm('수상 내역 전체를 삭제하시겠습니까?')) setCareerHistory(prev => prev.map(row => ({ ...row, awards: [] }))); }}
+                                    className="px-2.5 py-1 text-xs bg-slate-800 hover:bg-red-900/60 border border-slate-700 hover:border-red-700/60 text-slate-400 hover:text-red-300 rounded transition-colors"
+                                >
+                                    초기화
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-600 mb-3">
+                                BBRef 수상 코드 콤마 구분 (예: MVP-1, AS, NBA1, DEF1) · 하단 적용 버튼으로 함께 저장
+                            </p>
+                            <div className="space-y-1.5">
+                                {/* 정규시즌 */}
+                                {careerHistory
+                                    .map((row, ri) => ({ row, ri }))
+                                    .filter(({ row }) => !row.playoff)
+                                    .sort((a, b) => String(b.row.season).localeCompare(String(a.row.season)))
+                                    .map(({ row, ri }) => (
+                                        <div key={ri} className="flex items-center gap-3">
+                                            <span className="text-xs text-indigo-300 font-semibold w-16 shrink-0 tabular-nums">{safeStr(row.season)}</span>
+                                            <span className="text-[10px] text-slate-500 w-9 shrink-0">{safeStr(row.team)}</span>
+                                            <input
+                                                type="text"
+                                                placeholder="예: MVP-1, AS, NBA1"
+                                                value={awardsToStr(row.awards)}
+                                                onChange={e => handleAwardsTextChange(ri, e.target.value)}
+                                                className="flex-1 bg-slate-800/60 text-amber-300 text-xs rounded px-2 py-1 ring-1 ring-white/8 focus:outline-none focus:ring-amber-500/50 font-mono placeholder-slate-700"
+                                            />
+                                        </div>
+                                    ))}
+                                {/* 플레이오프 (수상 있는 행만) */}
+                                {careerHistory
+                                    .map((row, ri) => ({ row, ri }))
+                                    .filter(({ row }) => row.playoff && awardsToStr(row.awards).length > 0)
+                                    .sort((a, b) => String(b.row.season).localeCompare(String(a.row.season)))
+                                    .map(({ row, ri }) => (
+                                        <div key={`po-${ri}`} className="flex items-center gap-3">
+                                            <span className="text-xs text-amber-400 font-semibold w-16 shrink-0 tabular-nums">{safeStr(row.season)} PO</span>
+                                            <span className="text-[10px] text-slate-500 w-9 shrink-0">{safeStr(row.team)}</span>
+                                            <input
+                                                type="text"
+                                                placeholder="예: Finals MVP-1"
+                                                value={awardsToStr(row.awards)}
+                                                onChange={e => handleAwardsTextChange(ri, e.target.value)}
+                                                className="flex-1 bg-slate-800/60 text-amber-300 text-xs rounded px-2 py-1 ring-1 ring-white/8 focus:outline-none focus:ring-amber-500/50 font-mono placeholder-slate-700"
+                                            />
+                                        </div>
+                                    ))}
+                            </div>
+
+                            {/* 수상 코드 참조표 */}
+                            <div className="mt-5 bg-slate-900/60 rounded-lg ring-1 ring-white/8 p-4 space-y-5">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">수상 코드 참조</p>
+
+                                {/* 개인 수상 */}
+                                <div>
+                                    <p className="text-xs text-slate-500 font-semibold mb-2">개인 수상 (투표 순위 포함 — N위)</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">MVP-N</span><span className="text-slate-400">MVP 투표 N위 · N=1이 수상자</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">DPOY-N</span><span className="text-slate-400">올해의 수비수 투표 N위</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">ROY-N</span><span className="text-slate-400">신인상 투표 N위</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">MIP-N</span><span className="text-slate-400">최고 발전 선수상 투표 N위</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">SMOY-N · 6MOY-N</span><span className="text-slate-400">식스맨상 투표 N위 (둘 다 동일, BBRef 구형=6MOY)</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">CPOY-N</span><span className="text-slate-400">커뮤니티 공헌상 투표 N위</span></div>
+                                    </div>
+                                    <p className="text-xs text-slate-600 mt-1.5">N 없이 코드만 입력하면 1위(수상)로 처리됩니다.</p>
+                                </div>
+
+                                {/* 팀 선정 */}
+                                <div>
+                                    <p className="text-xs text-slate-500 font-semibold mb-2">팀 선정</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">AS</span><span className="text-slate-400">올스타 선정</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">NBA1 / NBA2 / NBA3</span><span className="text-slate-400">올NBA 1·2·3팀</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">DEF1 / DEF2</span><span className="text-slate-400">올디펜시브 1·2팀</span></div>
+                                    </div>
+                                </div>
+
+                                {/* 우승/파이널 */}
+                                <div>
+                                    <p className="text-xs text-slate-500 font-semibold mb-2">우승 / 파이널 관련</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">CHM</span><span className="text-slate-400">챔피언십(파이널스) 우승 팀 소속</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">Finals MVP · FMVP</span><span className="text-slate-400">파이널스 MVP (둘 다 동일)</span></div>
+                                        <div className="flex gap-2"><span className="font-mono text-amber-300 w-28 shrink-0">RCHM · REG_CHM</span><span className="text-slate-400">정규시즌 컨퍼런스/디비전 우승 팀 소속 (둘 다 동일, BBRef 구형=RCHM)</span></div>
+                                    </div>
+                                </div>
+
+                                {/* 입력 주의사항 */}
+                                <div className="bg-amber-950/40 rounded-md ring-1 ring-amber-800/40 p-3 space-y-1.5 text-sm">
+                                    <p className="text-amber-400 font-semibold text-xs uppercase tracking-wider">입력 주의사항</p>
+                                    <p className="text-slate-300"><span className="font-mono text-amber-300">CHM</span>과 <span className="font-mono text-amber-300">RCHM</span>은 반드시 <span className="font-semibold text-white">정규시즌 행</span>에만 입력하세요. PO 행에 넣으면 "정규시즌 우승"으로 잘못 표기됩니다.</p>
+                                    <p className="text-slate-300"><span className="font-mono text-amber-300">Finals MVP</span>는 파이널스 우승 시즌의 <span className="font-semibold text-white">PO 행</span>에 입력하는 것이 의미상 정확합니다.</p>
+                                    <p className="text-slate-300">여러 수상은 콤마로 구분합니다. 예: <span className="font-mono text-slate-400">MVP-1, AS, NBA1, DEF1</span></p>
+                                    <p className="text-slate-300">BBRef CSV 자동 파싱 지원 코드: <span className="font-mono text-slate-400">Finals MVP, FMVP, CHM, RCHM, CPOY, SMOY, 6MOY, DPOY, MVP, ROY, MIP, NBA1~3, DEF1~2, AS</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── CSV 불러오기 (커리어 + 수상) ── */}
+                    <div className="mt-6 border-t border-slate-800 pt-4">
+                        {/* CSV 불러오기 패널 */}
+                        <div className="mt-4">
+                            <button
+                                onClick={() => setCsvImportOpen(p => !p)}
+                                className="text-xs text-slate-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                            >
+                                {csvImportOpen ? '▼' : '▶'} BBRef CSV 불러오기
+                            </button>
+                            {csvImportOpen && (
+                                <div className="mt-3 space-y-4">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Per-Game 기본 스탯</p>
+                                    {(['regular', 'playoff'] as const).map(type => {
+                                        const isPlayoff = type === 'playoff';
+                                        const text = isPlayoff ? csvPlayoff : csvRegular;
+                                        const setText = isPlayoff ? setCsvPlayoff : setCsvRegular;
+                                        const parsed = isPlayoff ? csvParsed.playoff : csvParsed.regular;
+                                        return (
+                                            <div key={type} className="bg-slate-900 rounded-lg p-3 ring-1 ring-white/10">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs font-bold text-slate-400">{isPlayoff ? '플레이오프' : '정규시즌'} CSV</span>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => handleCsvParse(type)}
+                                                            disabled={!text.trim()}
+                                                            className="px-2.5 py-1 text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 rounded transition-colors"
+                                                        >
+                                                            파싱
+                                                        </button>
+                                                        {parsed && parsed.rows.length > 0 && (
+                                                            <button
+                                                                onClick={() => handleCsvApply(type)}
+                                                                className="px-2.5 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded transition-colors"
+                                                            >
+                                                                적용 ({parsed.rows.length}행)
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <textarea
+                                                    value={text}
+                                                    onChange={e => setText(e.target.value)}
+                                                    placeholder={`BBRef ${isPlayoff ? '플레이오프' : '정규시즌'} per-game CSV 붙여넣기 (헤더 포함)...`}
+                                                    rows={4}
+                                                    className="w-full bg-slate-800 text-slate-200 text-xs font-mono rounded px-2 py-1.5 ring-1 ring-white/10 focus:outline-none focus:ring-indigo-500/50 resize-y placeholder-slate-700"
+                                                />
+                                                {parsed && parsed.errors.length > 0 && (
+                                                    <div className="mt-1 space-y-0.5">
+                                                        {parsed.errors.map((err, i) => (
+                                                            <p key={i} className="text-xs text-red-400">{err}</p>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {parsed && parsed.rows.length > 0 && (
+                                                    <div className="mt-2 overflow-x-auto custom-scrollbar rounded ring-1 ring-white/5">
+                                                        <table className="text-[10px] text-slate-300 w-full">
+                                                            <thead>
+                                                                <tr className="text-slate-500 bg-white/5">
+                                                                    <th className="px-2 py-1 text-left font-semibold whitespace-nowrap">시즌</th>
+                                                                    <th className="px-2 py-1 font-semibold">팀</th>
+                                                                    <th className="px-2 py-1 font-semibold">G</th>
+                                                                    <th className="px-2 py-1 font-semibold">MIN</th>
+                                                                    <th className="px-2 py-1 font-semibold">PTS</th>
+                                                                    <th className="px-2 py-1 font-semibold">REB</th>
+                                                                    <th className="px-2 py-1 font-semibold">AST</th>
+                                                                    <th className="px-2 py-1 font-semibold">FG%</th>
+                                                                    <th className="px-2 py-1 text-left font-semibold">수상</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-white/5">
+                                                                {parsed.rows.map((r, i) => (
+                                                                    <tr key={i} className="hover:bg-white/5">
+                                                                        <td className="px-2 py-0.5 text-indigo-300 font-semibold whitespace-nowrap">{r.season}</td>
+                                                                        <td className="px-2 py-0.5 text-center">{r.team}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">{r.gp}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">{r.min}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">{r.pts}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">{r.reb}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">{r.ast}</td>
+                                                                        <td className="px-2 py-0.5 text-center tabular-nums">
+                                                                            {r.fg_pct != null ? (r.fg_pct * 100).toFixed(1) + '%' : '—'}
+                                                                        </td>
+                                                                        <td className="px-2 py-0.5 text-amber-400 font-mono text-[10px]">{awardsToStr(r.awards) || '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pt-2">Advanced 스탯 (USG%, AST%, REB% 등)</p>
+                                    <p className="text-[10px] text-slate-600">기존 커리어 행에 Advanced 수치만 덮어씁니다. Per-Game CSV 적용 후에 사용하세요.</p>
+                                    {(['regular', 'playoff'] as const).map(type => {
+                                        const isPlayoff = type === 'playoff';
+                                        const text = isPlayoff ? csvAdvPlayoff : csvAdvRegular;
+                                        const setText = isPlayoff ? setCsvAdvPlayoff : setCsvAdvRegular;
+                                        const parsed = isPlayoff ? csvAdvParsed.playoff : csvAdvParsed.regular;
+                                        return (
+                                            <div key={`adv-${type}`} className="bg-slate-900 rounded-lg p-3 ring-1 ring-white/10">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs font-bold text-slate-400">{isPlayoff ? '플레이오프' : '정규시즌'} Advanced CSV</span>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => handleAdvCsvParse(type)}
+                                                            disabled={!text.trim()}
+                                                            className="px-2.5 py-1 text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 rounded transition-colors"
+                                                        >
+                                                            파싱
+                                                        </button>
+                                                        {parsed && parsed.rows.length > 0 && (
+                                                            <button
+                                                                onClick={() => handleAdvCsvApply(type)}
+                                                                className="px-2.5 py-1 text-xs bg-teal-700 hover:bg-teal-600 text-white font-bold rounded transition-colors"
+                                                            >
+                                                                적용 ({parsed.rows.length}행)
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <textarea
+                                                    value={text}
+                                                    onChange={e => setText(e.target.value)}
+                                                    placeholder={`BBRef ${isPlayoff ? '플레이오프' : '정규시즌'} Advanced CSV 붙여넣기 (헤더 포함)...`}
+                                                    rows={4}
+                                                    className="w-full bg-slate-800 text-slate-200 text-xs font-mono rounded px-2 py-1.5 ring-1 ring-white/10 focus:outline-none focus:ring-teal-500/50 resize-y placeholder-slate-700"
+                                                />
+                                                {parsed && parsed.errors.length > 0 && (
+                                                    <div className="mt-1 space-y-0.5">
+                                                        {parsed.errors.map((err, i) => (
+                                                            <p key={i} className="text-xs text-red-400">{err}</p>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {parsed && parsed.rows.length > 0 && (
+                                                    <div className="mt-2 overflow-x-auto custom-scrollbar rounded ring-1 ring-white/5">
+                                                        <table className="text-[10px] text-slate-300 w-full">
+                                                            <thead>
+                                                                <tr className="text-slate-500 bg-white/5">
+                                                                    <th className="px-2 py-1 text-left font-semibold whitespace-nowrap">시즌</th>
+                                                                    <th className="px-2 py-1 font-semibold">팀</th>
+                                                                    <th className="px-2 py-1 font-semibold">G</th>
+                                                                    <th className="px-2 py-1 font-semibold">USG%</th>
+                                                                    <th className="px-2 py-1 font-semibold">AST%</th>
+                                                                    <th className="px-2 py-1 font-semibold">ORB%</th>
+                                                                    <th className="px-2 py-1 font-semibold">DRB%</th>
+                                                                    <th className="px-2 py-1 font-semibold">TRB%</th>
+                                                                    <th className="px-2 py-1 font-semibold">STL%</th>
+                                                                    <th className="px-2 py-1 font-semibold">BLK%</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-white/5">
+                                                                {parsed.rows.map((r, i) => {
+                                                                    const pct = (v: number | null) => v != null ? (v * 100).toFixed(1) + '%' : '—';
+                                                                    return (
+                                                                        <tr key={i} className="hover:bg-white/5">
+                                                                            <td className="px-2 py-0.5 text-indigo-300 font-semibold whitespace-nowrap">{r.season}</td>
+                                                                            <td className="px-2 py-0.5 text-center">{r.team}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{r.gp}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.usg_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.ast_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.orb_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.drb_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.trb_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.stl_pct)}</td>
+                                                                            <td className="px-2 py-0.5 text-center tabular-nums">{pct(r.blk_pct)}</td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
                     {/* 저장 버튼 (하단) */}
                     <div className="mt-8 flex justify-end gap-3">

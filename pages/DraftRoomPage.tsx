@@ -4,6 +4,7 @@ import { FantasyDraftView } from '../views/FantasyDraftView';
 import { RookieDraftView } from '../views/RookieDraftView';
 import { useGame } from '../hooks/useGameContext';
 
+
 const DraftRoomPage: React.FC = () => {
     const { gameData, draftPoolType } = useGame();
     const navigate = useNavigate();
@@ -23,9 +24,11 @@ const DraftRoomPage: React.FC = () => {
                     draftOrder={draftTeamOrder}
                     resolvedDraftOrder={gameData.resolvedDraftOrder || null}
                     draftClass={gameData.prospects}
+                    leagueGMProfiles={gameData.leagueGMProfiles}
+                    tendencySeed={gameData.tendencySeed ?? ''}
                     onComplete={(picks) => {
                         gameData.handleRookieDraftComplete(picks);
-                        navigate('/', { replace: true });
+                        navigate('/home', { replace: true });
                     }}
                 />
             </div>
@@ -41,10 +44,10 @@ const DraftRoomPage: React.FC = () => {
                 draftPoolType={draftPoolType || gameData.draftPicks?.poolType || 'alltime'}
                 freeAgents={gameData.freeAgents}
                 draftTeamOrder={draftOrder || gameData.draftPicks?.order}
-                onBack={() => navigate('/', { replace: true })}
+                onBack={() => navigate('/select-team', { replace: true })}
                 onComplete={(picks) => {
                     gameData.handleDraftComplete(picks);
-                    navigate('/', { replace: true });
+                    navigate('/home', { replace: true });
                 }}
             />
         </div>

@@ -29,7 +29,7 @@ export interface DraftPickEntry {
 
 export interface MultiDraftState {
     // ── 불변 설정 ────────────────────────────────────────────────────────────
-    format:          'snake';
+    format:          'snake' | 'linear';
     totalRounds:     number;          // 10
     pickDurationSec: number;          // 30
     teamCount:       number;

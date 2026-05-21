@@ -10,7 +10,7 @@
  * 5) Keep potential separate from current OVR
  */
 
-import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync } from '../services/admin/gameConfigService';
+import { getWeightConfigSync, getPositionConfigSync, getTagConfigSync, getLabelConfigSync } from '../services/admin/gameConfigService';
 
 export type OvrPosition = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 
@@ -658,13 +658,19 @@ function selectPrimarySecondary(
   blend: number;
 } {
   const posConfig = getPositionConfigSync();
+  const labelConf = getLabelConfigSync();
   const customCandidates: OvrArchetype[] = posConfig
       ? (Object.entries(posConfig)
           .filter(([, positions]) => positions.includes(pos))
           .map(([key]) => key as OvrArchetype)
           .filter(key => !ARCHETYPE_CANDIDATES[pos].includes(key)))
       : [];
-  const ranked = [...ARCHETYPE_CANDIDATES[pos], ...customCandidates]
+  // If label config is loaded, exclude hardcoded archetypes that were deleted from DB
+  const baseCandidates = (labelConf && Object.keys(labelConf).length > 0)
+      ? ARCHETYPE_CANDIDATES[pos].filter(arch => arch in labelConf)
+      : ARCHETYPE_CANDIDATES[pos];
+  const allCandidates = [...baseCandidates, ...customCandidates];
+  const ranked = (allCandidates.length > 0 ? allCandidates : ARCHETYPE_CANDIDATES[pos])
     .map(arch => ({ archetype: arch, score: r1(calcArchetypeScore(mod, arch)) }))
     .sort((a, b) => b.score - a.score);
 

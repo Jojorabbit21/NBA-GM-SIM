@@ -29,9 +29,10 @@ interface RosterViewProps {
   leaguePickAssets?: LeaguePickAssets | null;
   leagueGMProfiles?: LeagueGMProfiles | null;
   userNickname?: string;
+  hideTabs?: RosterTab[];
 }
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, hideTabs }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<RosterTab>('roster');
 
@@ -61,7 +62,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       </div>
 
       {/* Tab Navigation — FrontOfficeView 스타일 */}
-      <RosterTabs activeTab={tab} onTabChange={setTab} />
+      <RosterTabs activeTab={tab} onTabChange={setTab} hideTabs={hideTabs} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden">

@@ -763,7 +763,7 @@ export function executeGarbageSubstitution(
             quarter: state.quarter,
             timeRemaining: formatTime(state.gameClock),
             teamId: team.id,
-            text: `가비지 타임 — IN [${inNames.join(', ')}] OUT [${outNames.join(', ')}]`,
+            text: `교체: IN [${inNames.join(', ')}] OUT [${outNames.join(', ')}]`,
             type: 'info'
         });
     }

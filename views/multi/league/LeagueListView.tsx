@@ -231,8 +231,13 @@ const LeagueListView: React.FC = () => {
                                     <tr key={league.id} className="bg-slate-900/40 hover:bg-slate-800/60 transition-colors">
 
                                         {/* 리그 이름 */}
-                                        <td className="pl-4 pr-2 py-3 font-bold text-white whitespace-nowrap max-w-[180px] truncate">
-                                            {league.name}
+                                        <td className="pl-4 pr-2 py-3 whitespace-nowrap max-w-[180px] truncate">
+                                            <button
+                                                onClick={() => navigate(`/multi/leagues/${league.id}/lobby`)}
+                                                className="font-bold text-white hover:text-indigo-300 transition-colors text-left truncate"
+                                            >
+                                                {league.name}
+                                            </button>
                                         </td>
 
                                         {/* 유형 (tier / tournament_format) */}
@@ -259,10 +264,18 @@ const LeagueListView: React.FC = () => {
                                         {/* 경기 포맷 (토너먼트만) */}
                                         {activeTab === 'tournament' && (
                                             <td className="px-3 py-3 text-xs text-slate-300 whitespace-nowrap">
-                                                {league.match_format
-                                                    ? (MATCH_FORMAT_LABEL[league.match_format] ?? league.match_format)
-                                                    : <span className="text-slate-600">—</span>
-                                                }
+                                                {league.match_format ? (
+                                                    <>
+                                                        {MATCH_FORMAT_LABEL[league.match_format] ?? league.match_format}
+                                                        {league.finals_match_format && league.finals_match_format !== league.match_format && (
+                                                            <span className="text-slate-500 ml-1">
+                                                                / 결승 {MATCH_FORMAT_LABEL[league.finals_match_format] ?? league.finals_match_format}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <span className="text-slate-600">—</span>
+                                                )}
                                             </td>
                                         )}
 
@@ -292,7 +305,11 @@ const LeagueListView: React.FC = () => {
                                                 {/* 참가 / 들어가기 */}
                                                 {isJoined ? (
                                                     <button
-                                                        onClick={() => navigate(`/multi/leagues/${league.id}/lobby`)}
+                                                        onClick={() => navigate(
+                                                            league.status === 'in_progress'
+                                                                ? `/multi/leagues/${league.id}/season`
+                                                                : `/multi/leagues/${league.id}/lobby`
+                                                        )}
                                                         className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-bold text-white transition-colors"
                                                     >
                                                         <LogIn size={11} />

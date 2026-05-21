@@ -27,6 +27,7 @@ interface LeaderboardToolbarProps {
     setSearchQuery: (q: string) => void;
     seasonType: SeasonType;
     setSeasonType: (t: SeasonType) => void;
+    hideSeasonType?: boolean;
 }
 
 export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
@@ -36,7 +37,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     teams, selectedTeams, setSelectedTeams,
     selectedPositions, setSelectedPositions,
     searchQuery, setSearchQuery,
-    seasonType, setSeasonType
+    seasonType, setSeasonType, hideSeasonType = false
 }) => {
     // Determine available options based on category
     let options = TRADITIONAL_STAT_OPTIONS;
@@ -360,7 +361,8 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                     </div>
 
-                    {/* Season Type Toggle (Container Style) */}
+                    {/* Season Type Toggle — 토너먼트 리그에서는 숨김 */}
+                    {!hideSeasonType && (
                     <div
                         className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
                         onClick={() => setSeasonType(seasonType === 'regular' ? 'playoff' : 'regular')}
@@ -376,6 +378,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             플레이오프
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 

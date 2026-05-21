@@ -120,7 +120,11 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     ]);
 
     if (page === 0) setTotalCount(count);
-    setMessages(prev => page === 0 ? data : [...prev, ...data]);
+    setMessages(prev => {
+        if (page === 0) return data;
+        const existingIds = new Set(prev.map(m => m.id));
+        return [...prev, ...data.filter(m => !existingIds.has(m.id))];
+    });
 
     // Auto-select: initialMessageId 지정 시 해당 메시지, 없으면 첫 번째
     if (page === 0 && data.length > 0 && !selectedMessageRef.current) {
@@ -236,7 +240,17 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
               }}
               onSelectMessage={handleSelectMessage}
               onMarkAllRead={handleMarkAllRead}
-              onRefresh={() => { setPage(0); selectedMessageRef.current = null; setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
+              onRefresh={() => {
+                  selectedMessageRef.current = null;
+                  setSelectedMessage(null);
+                  setSelectedContent(null);
+                  contentCache.current.clear();
+                  if (page !== 0) {
+                      setPage(0);
+                  } else {
+                      loadMessages();
+                  }
+              }}
               onLoadMore={() => { setPage(p => p + 1); }}
               onDeleteMessages={handleDeleteMessages}
               onClearAll={handleClearAll}

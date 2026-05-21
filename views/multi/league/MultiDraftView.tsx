@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
+import { finalizeDraft } from '../../../services/multi/draftFinalizer';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
@@ -25,16 +26,18 @@ const POSITION_COLORS: Record<string, string> = {
 /** DraftPoolPlayer(meta_players row) → Player 어댑터.
  *  custom_overrides가 있으면 base_attributes에 머지 후 반환 (싱글 custom mode와 동일 메커니즘).
  */
-function toPlayer(p: DraftPoolPlayer): Player {
+function toPlayer(p: DraftPoolPlayer, applyCustomOverrides = false): Player {
     // DB는 런타임 키로 저장 (2026-04-21 마이그레이션 완료)
     const base: Record<string, any> = { ...(p.base_attributes as any) };
 
-    // custom_overrides 적용 (이미 런타임 키로 저장됨)
-    const overrides = base.custom_overrides;
-    if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
-        for (const [k, v] of Object.entries(overrides)) {
-            if (typeof v !== 'number') continue;
-            base[k] = v;
+    // custom_overrides: alltime 풀이 포함된 세션에서만 적용
+    if (applyCustomOverrides) {
+        const overrides = base.custom_overrides;
+        if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+            for (const [k, v] of Object.entries(overrides)) {
+                if (typeof v !== 'number') continue;
+                base[k] = v;
+            }
         }
     }
 
@@ -70,7 +73,8 @@ const MultiDraftView: React.FC = () => {
     const { session }  = useGame();
     const { room, members, league, leagueTeams } = useLeagueContext();
     const userId       = session?.user?.id ?? null;
-    const isAdmin      = !!(userId && league?.admin_user_id === userId);
+    const isAdmin            = !!(userId && league?.admin_user_id === userId);
+    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
 
     const {
         draftState, poolPlayers, isLoading,
@@ -182,13 +186,13 @@ const MultiDraftView: React.FC = () => {
     );
 
     const adaptedPlayers = useMemo(
-        () => poolPlayers.filter(p => !draftedSet.has(p.id)).map(toPlayer),
+        () => poolPlayers.filter(p => !draftedSet.has(p.id)).map(p => toPlayer(p, useCustomOverrides)),
         [poolPlayers, draftedSet],
     );
 
     const myRosterPlayers = useMemo((): Player[] => {
         const myPickSet = new Set(myPicks);
-        return poolPlayers.filter(p => myPickSet.has(p.id)).map(toPlayer);
+        return poolPlayers.filter(p => myPickSet.has(p.id)).map(p => toPlayer(p, useCustomOverrides));
     }, [poolPlayers, myPicks]);
 
     // ── DraftHeader 용 파생 값 ────────────────────────────────────────────────
@@ -237,17 +241,11 @@ const MultiDraftView: React.FC = () => {
 
     if (draftState.status === 'completed') {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-                <div className="text-4xl">🏀</div>
-                <h2 className="text-xl font-black text-white ko-tight">드래프트 완료!</h2>
-                <p className="text-slate-400 text-sm ko-normal">시즌이 곧 시작됩니다.</p>
-                <button
-                    onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition-colors"
-                >
-                    시즌 대시보드로
-                </button>
-            </div>
+            <DraftCompletedScreen
+                leagueId={leagueId ?? ''}
+                roomId={room?.id ?? ''}
+                onNavigate={() => navigate(`/multi/leagues/${leagueId}/season`)}
+            />
         );
     }
 
@@ -357,3 +355,56 @@ const MultiDraftView: React.FC = () => {
 };
 
 export default MultiDraftView;
+
+// ─── 드래프트 완료 화면 ───────────────────────────────────────────────────────
+
+interface DraftCompletedScreenProps {
+    leagueId: string;
+    roomId:   string;
+    onNavigate: () => void;
+}
+
+const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, roomId, onNavigate }) => {
+    const [isFinalizing, setIsFinalizing] = useState(true);
+    const [error,        setError]        = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!leagueId || !roomId) return;
+        let cancelled = false;
+
+        finalizeDraft(roomId, leagueId).then(({ error: err }) => {
+            if (cancelled) return;
+            if (err) {
+                setError(err);
+            }
+            setIsFinalizing(false);
+        });
+
+        return () => { cancelled = true; };
+    }, [leagueId, roomId]);
+
+    if (isFinalizing) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+                <Loader2 className="animate-spin text-indigo-400" size={28} />
+                <p className="text-slate-400 text-sm ko-normal">시즌 일정을 생성하고 있습니다...</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+            <h2 className="text-xl font-black text-white ko-tight">드래프트 완료!</h2>
+            {error && (
+                <p className="text-red-400 text-xs ko-normal">{error}</p>
+            )}
+            <p className="text-slate-400 text-sm ko-normal">시즌 일정이 준비됐습니다.</p>
+            <button
+                onClick={onNavigate}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition-colors"
+            >
+                시즌 대시보드로
+            </button>
+        </div>
+    );
+};

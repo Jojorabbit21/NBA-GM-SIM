@@ -78,6 +78,7 @@ const CAREER_ADV_COLS = [
     { key: 'fg3a_rate', label: '3PAr' }, { key: 'fta_rate', label: 'FTr' },
     { key: 'usg_pct', label: 'USG%' }, { key: 'ast_pct', label: 'AST%' },
     { key: 'orb_pct', label: 'ORB%' }, { key: 'drb_pct', label: 'DRB%' }, { key: 'trb_pct', label: 'TRB%' },
+    { key: 'stl_pct', label: 'STL%' }, { key: 'blk_pct', label: 'BLK%' },
 ];
 
 // ── Career table helpers ──
@@ -134,6 +135,57 @@ function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
         fg3a_rate: wavgNullable('fg3a_rate'), fta_rate: wavg('fta_rate'),
         usg_pct: wavg('usg_pct'), ast_pct: wavg('ast_pct'),
         orb_pct: wavg('orb_pct'), drb_pct: wavg('drb_pct'), trb_pct: wavg('trb_pct'),
+    };
+}
+
+/** PlayerStats(시뮬 누적 합계) → CareerSeasonStat 형식(per-game 평균)으로 변환 */
+function statsToCareerRow(
+    stats: import('../types/player').PlayerStats,
+    season: string,
+    teamAbbr: string,
+    age: number,
+    playoff: boolean,
+): Record<string, any> {
+    const g = stats.g;
+    const safe = (n: number) => (g > 0 ? n / g : 0);
+    const pct   = (m: number, a: number) => (a > 0 ? m / a : null);
+    const fga   = stats.fga;
+    const fta   = stats.fta;
+    const pts   = stats.pts;
+    const p3a   = stats.p3a;
+    const tov   = stats.tov;
+    const tsD   = 2 * (fga + 0.44 * fta);
+    return {
+        season,
+        team:    teamAbbr,
+        age,
+        gp:      g,
+        gs:      stats.gs,
+        min:     safe(stats.mp),
+        pts:     safe(pts),
+        oreb:    safe(stats.offReb),
+        dreb:    safe(stats.defReb),
+        reb:     safe(stats.reb),
+        ast:     safe(stats.ast),
+        stl:     safe(stats.stl),
+        blk:     safe(stats.blk),
+        tov:     safe(tov),
+        pf:      safe(stats.pf),
+        fgm:     safe(stats.fgm),
+        fga:     safe(fga),
+        fg_pct:  pct(stats.fgm, fga),
+        fg3m:    safe(stats.p3m),
+        fg3a:    safe(p3a),
+        fg3_pct: pct(stats.p3m, p3a),
+        ftm:     safe(stats.ftm),
+        fta:     safe(fta),
+        ft_pct:  pct(stats.ftm, fta),
+        ts_pct:  tsD > 0 ? pts / tsD : null,
+        efg_pct: fga > 0 ? (stats.fgm + 0.5 * stats.p3m) / fga : null,
+        tov_pct: (fga + 0.44 * fta + tov) > 0 ? tov / (fga + 0.44 * fta + tov) : null,
+        fg3a_rate: fga > 0 ? p3a / fga : null,
+        fta_rate:  fga > 0 ? fta / fga : null,
+        playoff,
     };
 }
 
@@ -607,8 +659,33 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
     const [careerMode, setCareerMode] = useState<'regular' | 'playoff'>('regular');
-    const careerRegular = useMemo(() => player.career_history?.filter(r => !r.playoff) ?? [], [player.career_history]);
-    const careerPlayoff = useMemo(() => player.career_history?.filter(r => r.playoff) ?? [], [player.career_history]);
+
+    // 현재 시뮬 시즌 팀 약어 (teamId uppercase, 없으면 '—')
+    const simTeamAbbr = (teamId ?? '').toUpperCase() || '—';
+
+    // 시뮬 정규시즌 행: player.stats.g > 0 일 때만 생성
+    const simRegularRow = useMemo(() => {
+        if (!player.stats || (player.stats.g ?? 0) === 0) return null;
+        return statsToCareerRow(player.stats, seasonShort, simTeamAbbr, player.age, false);
+    }, [player.stats, player.age, seasonShort, simTeamAbbr]);
+
+    // 시뮬 플레이오프 행: player.playoffStats?.g > 0 일 때만 생성
+    const simPlayoffRow = useMemo(() => {
+        if (!player.playoffStats || (player.playoffStats.g ?? 0) === 0) return null;
+        return statsToCareerRow(player.playoffStats, seasonShort, simTeamAbbr, player.age, true);
+    }, [player.playoffStats, player.age, seasonShort, simTeamAbbr]);
+
+    // career_history에서 현재 시즌과 동일한 행이 있으면 제거 후 앞에 시뮬 행 삽입
+    const careerRegular = useMemo(() => {
+        const historical = (player.career_history ?? []).filter(r => !r.playoff && r.season !== seasonShort);
+        return simRegularRow ? [simRegularRow, ...historical] : historical;
+    }, [player.career_history, simRegularRow, seasonShort]);
+
+    const careerPlayoff = useMemo(() => {
+        const historical = (player.career_history ?? []).filter(r => r.playoff && r.season !== seasonShort);
+        return simPlayoffRow ? [simPlayoffRow, ...historical] : historical;
+    }, [player.career_history, simPlayoffRow, seasonShort]);
+
     const hasCareerPlayoff = careerPlayoff.length > 0;
     const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
     const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
@@ -1170,7 +1247,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         </div>
 
                         {/* ── 위젯 B: 커리어 기록 ── */}
-                        {player.career_history && player.career_history.length > 0 && (
+                        {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
                             <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                                 <SectionHeader title="기록" style={sectionBg}>
                                     <select value={careerMode} onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')} className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">

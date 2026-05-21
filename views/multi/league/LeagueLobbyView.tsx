@@ -27,6 +27,15 @@ function fmtSeconds(sec: number): string {
     return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function fmtMatchFormat(f: string | null): string {
+    switch (f) {
+        case 'best_of_3': return 'Bo3';
+        case 'best_of_5': return 'Bo5';
+        case 'best_of_7': return 'Bo7';
+        default:          return 'Bo1';
+    }
+}
+
 function fmtConference(conf: string | null): string {
     if (!conf) return '—';
     if (conf === 'East') return '동부';
@@ -52,8 +61,9 @@ const LeagueLobbyView: React.FC = () => {
     const isMember    = members.some(m => m.user_id === userId);
     const isAdmin     = !!(league && userId && league.admin_user_id === userId);
     const myTeam      = leagueTeams.find(t => t.user_id === userId) ?? null;
-    const isDrafting  = league?.status === 'drafting';
+    const isDrafting   = league?.status === 'drafting';
     const isRecruiting = league?.status === 'recruiting';
+    const isInProgress = league?.status === 'in_progress';
     const lotteryDone   = leagueTeams.length > 0 && leagueTeams.some(t => t.draft_order !== null);
     const canClaim      = isRecruiting;              // 모집 중이면 언제든 빈 팀 선점 가능
     const canChangePre  = isRecruiting && !lotteryDone; // 팀 변경은 로터리 전까지만
@@ -68,9 +78,17 @@ const LeagueLobbyView: React.FC = () => {
     const [startingDraft,  setStartingDraft]  = useState(false);
     const [runningLottery, setRunningLottery] = useState(false);
     const [editTarget,     setEditTarget]     = useState<LeagueTeamRow | null>(null);
+    const [kickingId,      setKickingId]      = useState<string | null>(null);
     const [actionErr,      setActionErr]      = useState<string | null>(null);
     const [nicknames,      setNicknames]      = useState<Record<string, string>>({});
     const [countdown,      setCountdown]      = useState<string | null>(null);
+
+    // 멤버인 경우 시즌 진행 중이면 즉시 season 페이지로 이동
+    useEffect(() => {
+        if (isInProgress && isMember && leagueId) {
+            navigate(`/multi/leagues/${leagueId}/season`, { replace: true });
+        }
+    }, [isInProgress, isMember, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Realtime 구독
     useEffect(() => {
@@ -138,7 +156,7 @@ const LeagueLobbyView: React.FC = () => {
     const handleLeave = async () => {
         if (!room || !userId) return;
         setLeaving(true); setActionErr(null);
-        const { error: err } = await leaveLeague(room.id, userId);
+        const { error: err } = await leaveLeague(room.id, userId, league.status);
         setLeaving(false);
         if (err) { setActionErr(err); return; }
         reload();
@@ -162,6 +180,16 @@ const LeagueLobbyView: React.FC = () => {
         setStartingDraft(false);
         if (err) { setActionErr(err); return; }
         // Realtime이 status 변경을 감지해서 자동 이동 (useEffect)
+    };
+
+    const handleKick = async (kickUserId: string) => {
+        if (!room) return;
+        setKickingId(kickUserId);
+        setActionErr(null);
+        const { error: err } = await leaveLeague(room.id, kickUserId);
+        setKickingId(null);
+        if (err) { setActionErr(err); }
+        reload();
     };
 
     const handleClaim = useCallback(async (team: LeagueTeamRow) => {
@@ -227,9 +255,21 @@ const LeagueLobbyView: React.FC = () => {
                                     </span>
                                 )}
                             </div>
-                            <p className="text-sm text-slate-400 ko-normal mt-0.5">
-                                시즌 {league.season_number} · {totalSlots}팀
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <p className="text-sm text-slate-400 ko-normal">
+                                    시즌 {league.season_number} · {totalSlots}팀
+                                </p>
+                                {league.type === 'tournament' && league.tournament_format && league.match_format && (
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-slate-700 text-slate-300 tracking-wide">
+                                        {league.tournament_format === 'single_elim' ? 'SE' : 'RR'}
+                                        {' '}
+                                        {fmtMatchFormat(league.match_format)}
+                                        {league.finals_match_format && league.finals_match_format !== league.match_format && (
+                                            <span className="text-slate-400">/{fmtMatchFormat(league.finals_match_format)}</span>
+                                        )}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         {/* 우측 상단 버튼 */}
@@ -381,6 +421,13 @@ const LeagueLobbyView: React.FC = () => {
                     </div>
                 )}
 
+                {/* 비참가자 — 진행 중 안내 */}
+                {!isMember && isInProgress && (
+                    <div className="rounded-xl border border-slate-600/40 bg-slate-800/40 px-4 py-3">
+                        <p className="text-sm text-slate-400 ko-normal">이 세션은 현재 진행 중입니다. 참가할 수 없습니다.</p>
+                    </div>
+                )}
+
                 {/* 내 팀 상태 알림 — 팀 선점 완료 시만 표시 */}
                 {isMember && isRecruiting && myTeam && (
                     <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-3">
@@ -408,7 +455,7 @@ const LeagueLobbyView: React.FC = () => {
                                 <tr>
                                     <TH className="pl-4 w-10">순위</TH>
                                     <TH>팀</TH>
-                                    <TH>컨퍼런스</TH>
+                                    {league.type !== 'tournament' && <TH>컨퍼런스</TH>}
                                     <TH>GM</TH>
                                     <TH className="pr-4" />
                                 </tr>
@@ -463,9 +510,11 @@ const LeagueLobbyView: React.FC = () => {
                                             </td>
 
                                             {/* 컨퍼런스 */}
-                                            <td className="px-3 py-3 text-sm font-bold text-white whitespace-nowrap">
-                                                {fmtConference(team.conference)}
-                                            </td>
+                                            {league.type !== 'tournament' && (
+                                                <td className="px-3 py-3 text-sm font-bold text-white whitespace-nowrap">
+                                                    {fmtConference(team.conference)}
+                                                </td>
+                                            )}
 
                                             {/* GM */}
                                             <td className="px-3 py-3 text-sm font-bold">
@@ -519,6 +568,20 @@ const LeagueLobbyView: React.FC = () => {
                                                             className="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white"
                                                         >
                                                             {myTeam ? '변경' : '선택'}
+                                                        </button>
+                                                    )}
+                                                    {/* 강퇴 (어드민 + 다른 인간 멤버) */}
+                                                    {isAdmin && !isMyTeam && isHuman && (
+                                                        <button
+                                                            onClick={() => handleKick(team.user_id!)}
+                                                            disabled={kickingId === team.user_id}
+                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/10 hover:bg-red-500/25 text-red-500 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        >
+                                                            {kickingId === team.user_id
+                                                                ? <Loader2 size={11} className="animate-spin" />
+                                                                : null
+                                                            }
+                                                            강퇴
                                                         </button>
                                                     )}
                                                 </div>

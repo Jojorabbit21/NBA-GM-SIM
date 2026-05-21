@@ -492,6 +492,7 @@ export function extractSimResult(state: GameState): SimulationResult {
             return {
                 playerId: p.playerId,
                 playerName: p.playerName,
+                position: p.position,
                 pts: p.pts, reb: p.reb, offReb: p.offReb, defReb: p.defReb,
                 ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov,
                 fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
@@ -507,6 +508,7 @@ export function extractSimResult(state: GameState): SimulationResult {
                 isStopper: teamState.tactics.stopperId === p.playerId,
                 isAceTarget: p.matchupEffectCount > 0,
                 matchupEffect: avgEffect,
+                recentShots: p.recentShots,
                 zoneData: {
                     zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
                     zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,

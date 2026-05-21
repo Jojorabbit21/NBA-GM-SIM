@@ -22,9 +22,10 @@ interface TacticsBoardProps {
   onForceSave?: () => void;
   defensiveStats?: DefensiveStats;
   coachName?: string;
+  hidePresets?: boolean;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName, hidePresets }) => {
     const [activeTab, setActiveTab] = useState<TacticsTab>('team');
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
@@ -146,6 +147,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
             />
 
             {/* Header Controls */}
+            {!hidePresets && (
             <div className="px-8 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 relative z-20">
 
                 {/* Left: Slot Dropdown + Action Buttons */}
@@ -201,6 +203,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -273,5 +276,6 @@ export const TacticsBoard = memo(TacticsBoardInner, (prev, next) =>
     prev.onUpdateTactics === next.onUpdateTactics &&
     prev.onAutoSet === next.onAutoSet &&
     prev.onForceSave === next.onForceSave &&
-    prev.defensiveStats === next.defensiveStats
+    prev.defensiveStats === next.defensiveStats &&
+    prev.hidePresets === next.hidePresets
 );
