@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthView } from '../views/AuthView';
 import { useGame } from '../hooks/useGameContext';
 
-const AuthPage: React.FC = () => {
+const AuthPage: React.FC<{ quickplayOnly?: boolean }> = ({ quickplayOnly = false }) => {
     const { session, isGuestMode, gameData, setPlayMode, logout } = useGame();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -37,6 +37,10 @@ const AuthPage: React.FC = () => {
         navigate('/multi');
     }, [setPlayMode, navigate]);
 
+    const handleQuickPlay = useCallback(() => {
+        navigate('/quick');
+    }, [navigate]);
+
     return (
         <AuthView
             onGuestLogin={() => {}}
@@ -47,6 +51,8 @@ const AuthPage: React.FC = () => {
             onNewGame={handleNewGame}
             onLogout={logout}
             onMultiPlay={handleMultiPlay}
+            onQuickPlay={handleQuickPlay}
+            quickplayOnly={quickplayOnly}
         />
     );
 };

@@ -55,7 +55,9 @@ export const GameResultView: React.FC<{
   teams: Team[];
   coachingData?: LeagueCoachingData | null;
   onFinish: () => void;
-}> = ({ result: initialResult, myTeamId, teams, coachingData, onFinish }) => {
+  finishLabel?: string;
+  onReplay?: () => void;
+}> = ({ result: initialResult, myTeamId, teams, coachingData, onFinish, finishLabel, onReplay }) => {
   
   // [New] State to manage currently viewed game
   // Default to the user's game passed in props
@@ -296,7 +298,7 @@ export const GameResultView: React.FC<{
 
           {/* Conditional Footer */}
           {isUserGame ? (
-              <ResultFooter onFinish={onFinish} />
+              <ResultFooter onFinish={onFinish} finishLabel={finishLabel} onReplay={onReplay} />
           ) : (
               <div className="fixed bottom-0 left-0 right-0 p-6 bg-slate-950/80 backdrop-blur-md border-t border-slate-800 flex justify-center z-50">
                 <button 

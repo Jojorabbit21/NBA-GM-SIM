@@ -20,13 +20,14 @@ export function runFullGameSimulation(
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    awayUserTactics?: GameTactics,
 ): SimulationResult {
 
     const state = createGameState(
         homeTeam, awayTeam, userTeamId, userTactics,
         isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed,
-        simSettings, coachingData
+        simSettings, coachingData, awayUserTactics,
     );
 
     // 전체 경기를 동기적으로 완주 (배치 방식)

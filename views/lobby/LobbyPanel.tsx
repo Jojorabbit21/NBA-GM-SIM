@@ -5,21 +5,24 @@ import type { Team } from '../../types';
 import { useSaveSummary } from '../../hooks/useSaveSummary';
 import { SingleSaveCard } from './SingleSaveCard';
 import { MultiPlayCard } from './MultiPlayCard';
+import { QuickPlayCard } from './QuickPlayCard';
 import { LogOut, User } from 'lucide-react';
 import { APP_NAME, APP_YEAR } from '../../utils/constants';
 
 interface LobbyPanelProps {
-    session:      Session;
-    teams:        Team[];
-    nickname:     string;
-    onContinue:   () => void;
-    onNewGame:    () => void;
-    onLogout:     () => void;
-    onMultiPlay:  () => void;
+    session:       Session;
+    teams:         Team[];
+    nickname:      string;
+    onContinue:    () => void;
+    onNewGame:     () => void;
+    onLogout:      () => void;
+    onMultiPlay:   () => void;
+    onQuickPlay:   () => void;
+    quickplayOnly?: boolean;
 }
 
 export const LobbyPanel: React.FC<LobbyPanelProps> = ({
-    session, teams, nickname, onContinue, onNewGame, onLogout, onMultiPlay,
+    session, teams, nickname, onContinue, onNewGame, onLogout, onMultiPlay, onQuickPlay, quickplayOnly = false,
 }) => {
     const { data: summary, isLoading } = useSaveSummary(session.user.id);
     const email = session.user.email ?? '';
@@ -60,20 +63,28 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
             </div>
 
             {/* 모드 카드 */}
-            <div className="grid grid-cols-2 gap-4">
-                {isLoading ? (
-                    <SkeletonCard />
-                ) : (
-                    <SingleSaveCard
-                        summary={summary ?? null}
-                        teamName={savedTeam?.name}
-                        teamLogo={savedTeam?.logo}
-                        onContinue={onContinue}
-                        onNewGame={onNewGame}
-                    />
-                )}
-                <MultiPlayCard onClick={onMultiPlay} />
-            </div>
+            {quickplayOnly ? (
+                <div className="flex flex-col gap-3">
+                    <p className="text-xs text-slate-500 text-center font-bold">현재 퀵플레이 전용 모드로 운영 중입니다.</p>
+                    <QuickPlayCard onClick={onQuickPlay} />
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {isLoading ? (
+                        <SkeletonCard />
+                    ) : (
+                        <SingleSaveCard
+                            summary={summary ?? null}
+                            teamName={savedTeam?.name}
+                            teamLogo={savedTeam?.logo}
+                            onContinue={onContinue}
+                            onNewGame={onNewGame}
+                        />
+                    )}
+                    <MultiPlayCard onClick={onMultiPlay} />
+                    <QuickPlayCard onClick={onQuickPlay} />
+                </div>
+            )}
         </div>
     );
 };

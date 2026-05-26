@@ -30,7 +30,9 @@ interface LiveGameViewProps {
     tendencySeed?: string;
     simSettings?: import('../types/simSettings').SimSettings;
     coachPrefs?: import('../types/coaching').HeadCoachPreferences | null;
+    awayUserTactics?: GameTactics | null;
     onGameEnd: (result: SimulationResult) => void;
+    hideTimeout?: boolean;
 }
 
 type ActiveTab = 'court' | 'rotation' | 'tactics';
@@ -669,6 +671,14 @@ const LiveShotChart: React.FC<{
     const awayColor = awayData?.colors.primary || '#f59e0b';
     const [showMarkers, setShowMarkers] = useState(true);
 
+    // courtSnapshot이 교체될 때마다 PlayerMarkers를 완전히 remount시켜 이전 마커 누적 방지
+    const markerKeyRef = useRef(0);
+    const prevSnapshotRef = useRef<CourtSnapshot | null>(null);
+    if (courtSnapshot !== prevSnapshotRef.current) {
+        markerKeyRef.current += 1;
+        prevSnapshotRef.current = courtSnapshot;
+    }
+
     const displayShots = useMemo(() => shotEvents.map(s => {
         const isHome = s.teamId === homeTeam.id;
         const norm = normalizeShotForDisplay(s, isHome);
@@ -774,7 +784,19 @@ const LiveShotChart: React.FC<{
                     <circle cx="892" cy="250" r="7.5" stroke="#e65100" />
                 </g>
 
-                {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
+                {/* Player Position Markers (아래 레이어 — 샷 도트가 위에 표시됨) */}
+                {showMarkers && (
+                    <PlayerMarkers
+                        key={markerKeyRef.current}
+                        courtSnapshot={courtSnapshot}
+                        homeTeamId={homeTeam.id}
+                        homeColor={homeColor}
+                        awayColor={awayColor}
+                        scale={S}
+                    />
+                )}
+
+                {/* Shot Dots (coords in 94x50, scaled to 940x500) — 선수 마커 위에 렌더 */}
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
                     const isHighlighted = highlightShotIds.has(shot.id);
@@ -798,17 +820,6 @@ const LiveShotChart: React.FC<{
                         </g>
                     );
                 })}
-
-                {/* Player Position Markers (on top of shot dots) */}
-                {showMarkers && (
-                    <PlayerMarkers
-                        courtSnapshot={courtSnapshot}
-                        homeTeamId={homeTeam.id}
-                        homeColor={homeColor}
-                        awayColor={awayColor}
-                        scale={S}
-                    />
-                )}
             </svg>
             {tooltip && (
                 <ShotTooltip tooltip={tooltip} containerWidth={containerSize.w} containerHeight={containerSize.h} />
@@ -836,7 +847,7 @@ const LiveShotChart: React.FC<{
 export const LiveGameView: React.FC<LiveGameViewProps> = ({
     homeTeam, awayTeam, userTeamId, userTactics,
     isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings,
-    coachPrefs, onGameEnd,
+    coachPrefs, awayUserTactics, onGameEnd, hideTimeout = false,
 }) => {
     const {
         displayState, callTimeout, applyTactics, applyRotationMap,
@@ -846,7 +857,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
         isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings,
-        coachPrefs
+        coachPrefs, awayUserTactics
     );
 
     const {
@@ -1100,15 +1111,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             </div>
                             {!isSpectateMode && (
                                 <>
-                                    <button
-                                        onClick={callTimeout}
-                                        disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
-                                        className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                                   disabled:opacity-40 disabled:cursor-not-allowed
-                                                   text-white text-xs font-bold transition-colors"
-                                    >
-                                        타임아웃 ({userTimeoutsLeft})
-                                    </button>
+                                    {!hideTimeout && (
+                                        <button
+                                            onClick={callTimeout}
+                                            disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
+                                            className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                                       disabled:opacity-40 disabled:cursor-not-allowed
+                                                       text-white text-xs font-bold transition-colors"
+                                        >
+                                            타임아웃 ({userTimeoutsLeft})
+                                        </button>
+                                    )}
                                     {canDelegate && (
                                         <button
                                             onClick={isDelegated ? takeBackControl : delegateToCoach}
@@ -1176,15 +1189,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
                                 </button>
                             )}
-                            <button
-                                onClick={callTimeout}
-                                disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
-                                className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-xs font-bold transition-colors"
-                            >
-                                타임아웃 ({userTimeoutsLeft})
-                            </button>
+                            {!hideTimeout && (
+                                <button
+                                    onClick={callTimeout}
+                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
+                                    className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                               disabled:opacity-40 disabled:cursor-not-allowed
+                                               text-white text-xs font-bold transition-colors"
+                                >
+                                    타임아웃 ({userTimeoutsLeft})
+                                </button>
+                            )}
                             <div className="flex rounded-lg overflow-hidden border border-slate-700">
                                 {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
                                     <button

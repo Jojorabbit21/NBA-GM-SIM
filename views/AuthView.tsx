@@ -22,6 +22,8 @@ interface AuthViewProps {
   onNewGame?:   () => void;
   onLogout?:    () => void;
   onMultiPlay?: () => void;
+  onQuickPlay?: () => void;
+  quickplayOnly?: boolean;
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
@@ -45,6 +47,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
     onNewGame,
     onLogout,
     onMultiPlay,
+    onQuickPlay,
+    quickplayOnly = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -226,6 +230,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   onNewGame={onNewGame}
                   onLogout={onLogout}
                   onMultiPlay={onMultiPlay ?? (() => {})}
+                  onQuickPlay={onQuickPlay ?? (() => {})}
+                  quickplayOnly={quickplayOnly}
               />
           </div>
       );

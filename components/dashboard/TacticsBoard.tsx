@@ -23,9 +23,10 @@ interface TacticsBoardProps {
   defensiveStats?: DefensiveStats;
   coachName?: string;
   hidePresets?: boolean;
+  teamTacticsOnly?: boolean;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName, hidePresets }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName, hidePresets, teamTacticsOnly }) => {
     const [activeTab, setActiveTab] = useState<TacticsTab>('team');
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
@@ -136,7 +137,8 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
 
     return (
         <div className="flex flex-col h-full bg-slate-900 relative">
-            {/* Tab Bar — 바디 최상단 */}
+            {/* Tab Bar — teamTacticsOnly 모드에서는 숨김 */}
+            {!teamTacticsOnly && (
             <TabBar
                 tabs={[
                     { id: 'team' as TacticsTab, label: '팀 전술' },
@@ -145,6 +147,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                 activeTab={activeTab}
                 onTabChange={(tab) => setActiveTab(tab as TacticsTab)}
             />
+            )}
 
             {/* Header Controls */}
             {!hidePresets && (
@@ -207,10 +210,10 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
 
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {activeTab === 'team' && (
+                {(activeTab === 'team' || teamTacticsOnly) && (
                     <>
-                        {/* Paste Input Area — 팀 전술 탭에서만 표시 */}
-                        {showPasteInput && (
+                        {/* Paste Input Area — hidePresets가 아닐 때만 표시 */}
+                        {!teamTacticsOnly && showPasteInput && (
                             <div className="px-8 py-3 bg-slate-900/60 border-b border-slate-800 flex items-start gap-3">
                                 <textarea
                                     value={pasteValue}
@@ -235,11 +238,12 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                                 onUpdateTactics={onUpdateTactics}
                                 roster={roster}
                                 defensiveStats={defensiveStats}
+                                slidersOnly={teamTacticsOnly}
                             />
                         </div>
                     </>
                 )}
-                {activeTab === 'player' && (
+                {!teamTacticsOnly && activeTab === 'player' && (
                     <div className="pb-20">
                         <PlayerTacticsPanel
                             tactics={tactics}
@@ -277,5 +281,6 @@ export const TacticsBoard = memo(TacticsBoardInner, (prev, next) =>
     prev.onAutoSet === next.onAutoSet &&
     prev.onForceSave === next.onForceSave &&
     prev.defensiveStats === next.defensiveStats &&
-    prev.hidePresets === next.hidePresets
+    prev.hidePresets === next.hidePresets &&
+    prev.teamTacticsOnly === next.teamTacticsOnly
 );

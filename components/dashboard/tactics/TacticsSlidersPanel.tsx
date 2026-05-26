@@ -21,9 +21,10 @@ interface TacticsSlidersPanelProps {
     onUpdateTactics: (t: GameTactics) => void;
     roster: Player[];
     defensiveStats?: DefensiveStats;
+    slidersOnly?: boolean;
 }
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly }) => {
 
     const sliders = { ...DEFAULT_SLIDERS, ...tactics.sliders };
 
@@ -32,15 +33,17 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className={slidersOnly ? undefined : "grid grid-cols-1 lg:grid-cols-12 gap-8"}>
 
-            {/* Left: Data Charts (7/12) */}
+            {/* Left: Data Charts (7/12) — slidersOnly 모드에서는 숨김 */}
+            {!slidersOnly && (
             <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
                 <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} />
             </div>
+            )}
 
             {/* Right: All Sliders (5/12) — offense + defense stacked */}
-            <div className="lg:col-span-5 lg:pl-2 flex flex-col gap-1">
+            <div className={slidersOnly ? "flex flex-col gap-1" : "lg:col-span-5 lg:pl-2 flex flex-col gap-1"}>
 
                 {/* ── OFFENSE ── */}
                 <div className="grid grid-cols-2 gap-x-6">

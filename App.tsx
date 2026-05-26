@@ -8,6 +8,7 @@ import { useSimulation } from './hooks/useSimulation';
 import { RosterMode, DraftPoolType, Player } from './types';
 import { PendingOffseasonAction, PlayMode } from './types/app';
 import { fetchUnreadMessageCount } from './services/messageService';
+import { supabase } from './services/supabaseClient';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
 import { checkUserHasSubmitted } from './services/hallOfFameService';
@@ -41,6 +42,7 @@ import AdminSimView from './views/multi/league/AdminSimView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
+import QuickPlayPage from './pages/QuickPlayPage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
 import TeamSelectPage from './pages/TeamSelectPage';
@@ -81,11 +83,14 @@ const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
     DraftRoom:    '/draft/',
 };
 
+const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
+
 const App: React.FC = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const { session, isGuestMode, authLoading, handleLogout } = useAuth();
+    const [quickplayOnly, setQuickplayOnly] = useState(false);
     const [rosterMode, setRosterModeState] = useState<RosterMode | null>(() => {
         const stored = localStorage.getItem('nbagm:rosterMode');
         return stored === 'custom' || stored === 'standard' ? stored : null;
@@ -314,6 +319,20 @@ const App: React.FC = () => {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [refreshUnreadCount]);
 
+    useEffect(() => {
+        supabase
+            .from('meta_config')
+            .select('value')
+            .eq('key', 'quickplay_only')
+            .single()
+            .then(({ data }) => {
+                setQuickplayOnly(data?.value === true);
+            });
+    }, []);
+
+    const isAdmin = session?.user?.id === ADMIN_USER_ID;
+    const shouldRestrictToQuickPlay = quickplayOnly && !isAdmin;
+
     // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
     if (authLoading) return <Loader message="잠시만 기다려주세요..." />;
     if (gameData.isBaseDataError) {
@@ -338,71 +357,75 @@ const App: React.FC = () => {
                     </Route>
 
                     {/* ── 비보호 라우트 ── */}
-                    <Route path="/" element={<AuthPage />} />
-                    <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
+                    <Route path="/auth" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
+                    <Route path="/quick" element={<QuickPlayPage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
                     <Route path="/select-team" element={<TeamSelectPage />} />
                     <Route path="/gm-creation" element={<GMCreationPage />} />
                     <Route path="/onboarding" element={<OnboardingPage />} />
 
-                    {/* ── 멀티플레이어 라우트 (기존 싱글 라우트와 완전 분리) ── */}
-                    <Route element={<MultiProtectedLayout />}>
-                        <Route path="/multi" element={<LeagueListView />} />
-                        {/* LeagueLayout: 리그 데이터를 한 번만 로드하여 서브라우트에 공유 */}
-                        <Route element={<LeagueLayout />}>
-                            <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
-                            <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
-                            <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
-                            <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
-                                <Route index element={<MultiSeasonPage />} />
-                                <Route path="roster"       element={<MultiRosterView />} />
-                                <Route path="standings"    element={<MultiStandingsView />} />
-                                <Route path="schedule"     element={<MultiScheduleView />} />
-                                <Route path="leaderboard"  element={<MultiLeaderboardView />} />
-                                <Route path="tactics"      element={<MultiTacticsView />} />
-                                <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
-                                <Route path="game/:gameId" element={<MultiGamePbpView />} />
+                    {/* ── 멀티플레이어 + 보호 라우트 (quickplay_only 모드에서는 비활성) ── */}
+                    {!shouldRestrictToQuickPlay && (<>
+                        <Route element={<MultiProtectedLayout />}>
+                            <Route path="/multi" element={<LeagueListView />} />
+                            <Route element={<LeagueLayout />}>
+                                <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
+                                <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
+                                <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+                                <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
+                                    <Route index element={<MultiSeasonPage />} />
+                                    <Route path="roster"       element={<MultiRosterView />} />
+                                    <Route path="standings"    element={<MultiStandingsView />} />
+                                    <Route path="schedule"     element={<MultiScheduleView />} />
+                                    <Route path="leaderboard"  element={<MultiLeaderboardView />} />
+                                    <Route path="tactics"      element={<MultiTacticsView />} />
+                                    <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
+                                    <Route path="game/:gameId" element={<MultiGamePbpView />} />
+                                </Route>
                             </Route>
                         </Route>
-                    </Route>
 
-                    {/* 드래프트 — nav 없는 풀스크린 전용 레이아웃 */}
-                    <Route element={<MultiDraftLayout />}>
-                        <Route element={<LeagueLayout />}>
-                            <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+                        <Route element={<MultiDraftLayout />}>
+                            <Route element={<LeagueLayout />}>
+                                <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+                            </Route>
                         </Route>
-                    </Route>
 
-                    {/* ── 보호 라우트 (ProtectedLayout이 인증/팀선택 가드 담당) ── */}
-                    <Route element={<ProtectedLayout />}>
-                        <Route path="/home" element={<HomePage />} />
-                        <Route path="/locker-room" element={<DashboardPage />} />
-                        <Route path="/roster" element={<RosterPage />} />
-                        <Route path="/roster/:teamId" element={<RosterPage />} />
-                        <Route path="/schedule" element={<SchedulePage />} />
-                        <Route path="/standings" element={<StandingsPage />} />
-                        <Route path="/leaderboard" element={<LeaderboardPage />} />
-                        <Route path="/transactions" element={<TransactionsPage />} />
-                        <Route path="/playoffs" element={<PlayoffsPage />} />
-                        <Route path="/inbox" element={<InboxPage />} />
-                        <Route path="/help" element={<HelpPage />} />
-                        <Route path="/front-office" element={<FrontOfficePage />} />
-                        <Route path="/fa-market" element={<FAMarketPage />} />
-                        <Route path="/hall-of-fame" element={<HallOfFamePage />} />
-                        <Route path="/player/:playerId" element={<PlayerDetailPage />} />
-                        <Route path="/coach/:coachId" element={<CoachDetailPage />} />
-                        <Route path="/gm/:teamId" element={<GMDetailPage />} />
-                        <Route path="/result/:gameId" element={<GameResultPage />} />
-                        <Route path="/draft-lottery" element={<DraftLotteryPage />} />
-                        <Route path="/draft/*" element={<DraftRoomPage />} />
-                        <Route path="/rookie-draft" element={<DraftRoomPage />} />
-                        <Route path="/draft-board" element={<DraftBoardPage />} />
-                        <Route path="/draft-history" element={<DraftHistoryPage />} />
-                        <Route path="/tactics" element={<TacticsPage />} />
-                        {/* 404 → 홈으로 */}
-                        <Route path="*" element={<Navigate to="/home" replace />} />
-                    </Route>
+                        <Route element={<ProtectedLayout />}>
+                            <Route path="/home" element={<HomePage />} />
+                            <Route path="/locker-room" element={<DashboardPage />} />
+                            <Route path="/roster" element={<RosterPage />} />
+                            <Route path="/roster/:teamId" element={<RosterPage />} />
+                            <Route path="/schedule" element={<SchedulePage />} />
+                            <Route path="/standings" element={<StandingsPage />} />
+                            <Route path="/leaderboard" element={<LeaderboardPage />} />
+                            <Route path="/transactions" element={<TransactionsPage />} />
+                            <Route path="/playoffs" element={<PlayoffsPage />} />
+                            <Route path="/inbox" element={<InboxPage />} />
+                            <Route path="/help" element={<HelpPage />} />
+                            <Route path="/front-office" element={<FrontOfficePage />} />
+                            <Route path="/fa-market" element={<FAMarketPage />} />
+                            <Route path="/hall-of-fame" element={<HallOfFamePage />} />
+                            <Route path="/player/:playerId" element={<PlayerDetailPage />} />
+                            <Route path="/coach/:coachId" element={<CoachDetailPage />} />
+                            <Route path="/gm/:teamId" element={<GMDetailPage />} />
+                            <Route path="/result/:gameId" element={<GameResultPage />} />
+                            <Route path="/draft-lottery" element={<DraftLotteryPage />} />
+                            <Route path="/draft/*" element={<DraftRoomPage />} />
+                            <Route path="/rookie-draft" element={<DraftRoomPage />} />
+                            <Route path="/draft-board" element={<DraftBoardPage />} />
+                            <Route path="/draft-history" element={<DraftHistoryPage />} />
+                            <Route path="/tactics" element={<TacticsPage />} />
+                            <Route path="*" element={<Navigate to="/home" replace />} />
+                        </Route>
+                    </>)}
+
+                    {/* quickplay_only 모드: 위에서 매칭되지 않은 모든 경로 → /quick */}
+                    {shouldRestrictToQuickPlay && (
+                        <Route path="*" element={<Navigate to="/quick" replace />} />
+                    )}
                 </Routes>
 
                 {/* 시즌 전체 시뮬레이션 프로그레스 모달 — Routes 바깥에서 렌더링 */}

@@ -28,7 +28,8 @@ export function simulateGame(
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    awayUserTactics?: GameTactics,
 ): SimulationResult {
 
     // Call the new PbP engine
@@ -43,7 +44,8 @@ export function simulateGame(
         awayDepthChart,
         tendencySeed,
         simSettings,
-        coachingData
+        coachingData,
+        awayUserTactics,
     );
     
     return result;

@@ -171,10 +171,13 @@ export function createGameState(
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
     simSettings?: SimSettings,
-    coachingData?: LeagueCoachingData | null
+    coachingData?: LeagueCoachingData | null,
+    awayUserTactics?: GameTactics,
 ): GameState {
-    const hTactics = (userTeamId === homeTeam.id && userTactics) ? userTactics : undefined;
-    const aTactics = (userTeamId === awayTeam.id && userTactics) ? userTactics : undefined;
+    const hTactics = awayUserTactics
+        ? userTactics
+        : (userTeamId === homeTeam.id && userTactics) ? userTactics : undefined;
+    const aTactics = awayUserTactics ?? ((userTeamId === awayTeam.id && userTactics) ? userTactics : undefined);
 
     const state: GameState = {
         home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData),
