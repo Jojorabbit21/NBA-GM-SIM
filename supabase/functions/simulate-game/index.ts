@@ -241,7 +241,7 @@ async function handleTournamentAdvance(
 ) {
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, season_start_date, match_format, tournament_format')
+        .select('id, bracket_data, season_start_date, match_format, tournament_format, tournament_start_at')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -254,7 +254,10 @@ async function handleTournamentAdvance(
     const bracketData = leagueRow.bracket_data as { series: BPLSeries[]; schedule: TournamentGame[] };
     const series: BPLSeries[] = bracketData.series ?? [];
     const bracketSchedule: TournamentGame[] = bracketData.schedule ?? [];
-    const startDate: string = leagueRow.season_start_date ?? '2025-10-21';
+    const tournStartAt = leagueRow.tournament_start_at as string | null;
+    const startDate: string = tournStartAt ? tournStartAt.slice(0, 10) : (leagueRow.season_start_date ?? '2025-10-21');
+    const startUtcHour   = tournStartAt ? new Date(tournStartAt).getUTCHours()   : 1;
+    const startUtcMinute = tournStartAt ? new Date(tournStartAt).getUTCMinutes() : 0;
 
     // 해당 시리즈 찾기
     const seriesObj = series.find(s => s.id === seriesId);
@@ -292,7 +295,7 @@ async function handleTournamentAdvance(
 
     if (seriesObj.finished) {
         // 시리즈 완료: 다음 라운드 슬롯 채우기 + 전체 게임 생성
-        advanceTournamentState(series, bracketSchedule, seriesObj.targetWins, startDate);
+        advanceTournamentState(series, bracketSchedule, seriesObj.targetWins, startDate, startUtcHour, startUtcMinute);
 
         // advanceTournamentState가 새로 추가한 게임을 rooms.schedule에 반영
         const existingIds = new Set(updatedSchedule.map((g: any) => g.id));

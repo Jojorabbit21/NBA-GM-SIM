@@ -22,7 +22,7 @@ interface DashboardViewProps {
   isSimulating?: boolean;
   depthChart?: DepthChart | null;
   onUpdateDepthChart?: (dc: DepthChart) => void;
-  onForceSave?: () => void;
+  onForceSave?: (overrides?: any) => void;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   userId?: string;

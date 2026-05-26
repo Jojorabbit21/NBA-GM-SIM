@@ -50,9 +50,9 @@ function matchIdxFromSeriesId(seriesId: string): number {
     return m ? parseInt(m[1], 10) : 0;
 }
 
-function dayToScheduledAt(startDate: string, dayOffset: number, utcHour: number): string {
+function dayToScheduledAt(startDate: string, dayOffset: number, utcHour: number, utcMinute = 0): string {
     const [y, m, d] = startDate.split('-').map(Number);
-    const baseMs = Date.UTC(y, m - 1, d, utcHour, 0, 0, 0);
+    const baseMs = Date.UTC(y, m - 1, d, utcHour, utcMinute, 0, 0);
     return new Date(baseMs + dayOffset * 86_400_000).toISOString();
 }
 
@@ -76,6 +76,7 @@ function generateAllSeriesGames(
     targetWins: number,
     startDate: string,
     startUtcHour = 1,
+    startUtcMinute = 0,
 ): Game[] {
     const maxGames = targetWins * 2 - 1;
     const slotOffset = startUtcHour - KST_SLOT_UTC_HOURS[0];
@@ -89,7 +90,7 @@ function generateAllSeriesGames(
             homeTeamId:  higherHome ? higherSeedId : lowerSeedId,
             awayTeamId:  higherHome ? lowerSeedId  : higherSeedId,
             date:        offsetDate(startDate, dayOffset),
-            scheduledAt: dayToScheduledAt(startDate, dayOffset, utcHour),
+            scheduledAt: dayToScheduledAt(startDate, dayOffset, utcHour, startUtcMinute),
             played:      false,
             isPlayoff:   true,
             seriesId,
@@ -107,6 +108,7 @@ function initSingleElim(
     seed: string,
     startDate: string,
     startUtcHour = 1,
+    startUtcMinute = 0,
 ): { series: PlayoffSeries[]; schedule: Game[] } {
     const shuffled = seededShuffle(teams, seed + ':seeding');
     const size = nextPow2(shuffled.length);
@@ -156,7 +158,7 @@ function initSingleElim(
             });
 
             schedule.push(...generateAllSeriesGames(
-                seriesId, 1, teamA.team_slug, teamB.team_slug, targetWins, startDate, startUtcHour,
+                seriesId, 1, teamA.team_slug, teamB.team_slug, targetWins, startDate, startUtcHour, startUtcMinute,
             ));
         }
     }
@@ -180,7 +182,7 @@ function initSingleElim(
         }
     }
 
-    advanceTournamentState(series, schedule, targetWins, startDate, startUtcHour);
+    advanceTournamentState(series, schedule, targetWins, startDate, startUtcHour, startUtcMinute);
 
     return { series, schedule };
 }
@@ -191,6 +193,7 @@ function initRoundRobin(
     teams: LeagueTeamRow[],
     startDate: string,
     startUtcHour = 1,
+    startUtcMinute = 0,
 ): { series: PlayoffSeries[]; schedule: Game[] } {
     const schedule: Game[] = [];
     const n = teams.length;
@@ -218,7 +221,7 @@ function initRoundRobin(
                 homeTeamId:  homeTeam.team_slug,
                 awayTeamId:  awayTeam.team_slug,
                 date:        offsetDate(startDate, r),
-                scheduledAt: dayToScheduledAt(startDate, r, startUtcHour),
+                scheduledAt: dayToScheduledAt(startDate, r, startUtcHour, startUtcMinute),
                 played:      false,
                 isPlayoff:   false,
             });
@@ -238,6 +241,7 @@ export function advanceTournamentState(
     targetWins: number,
     startDate: string,
     startUtcHour = 1,
+    startUtcMinute = 0,
 ): void {
     const byId = Object.fromEntries(series.map(s => [s.id, s]));
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
@@ -258,7 +262,7 @@ export function advanceTournamentState(
                 const alreadyExists = schedule.some(g => g.seriesId === nextId);
                 if (!alreadyExists) {
                     schedule.push(...generateAllSeriesGames(
-                        nextId, round + 1, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startUtcHour,
+                        nextId, round + 1, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startUtcHour, startUtcMinute,
                     ));
                 }
             }
@@ -281,13 +285,14 @@ export function initializeTournamentBracket(
     tendencySeed: string,
     startDate: string,
     startUtcHour = 1,
+    startUtcMinute = 0,
 ): TournamentBracketResult {
     const targetWins       = targetWinsFromFormat(matchFormat);
     const finalsTargetWins = targetWinsFromFormat(finalsMatchFormat ?? matchFormat);
 
     if (tournamentFormat === 'round_robin') {
-        return initRoundRobin(teams, startDate, startUtcHour);
+        return initRoundRobin(teams, startDate, startUtcHour, startUtcMinute);
     }
 
-    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, startUtcHour);
+    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, startUtcHour, startUtcMinute);
 }

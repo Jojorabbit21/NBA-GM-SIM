@@ -47,7 +47,7 @@ const InboxPage: React.FC = () => {
                     }
                 });
                 gameData.setTeams(newTeams);
-                gameData.forceSave({ teams: newTeams, withSnapshot: true });
+                gameData.forceSave({ teams: newTeams, withSnapshot: false });
             }}
         />
     );

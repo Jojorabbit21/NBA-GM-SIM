@@ -19,7 +19,7 @@ interface TacticsBoardProps {
   roster: Player[];
   onUpdateTactics: (t: GameTactics) => void;
   onAutoSet: () => void;
-  onForceSave?: () => void;
+  onForceSave?: (overrides?: any) => void;
   defensiveStats?: DefensiveStats;
   coachName?: string;
   hidePresets?: boolean;
@@ -82,7 +82,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
         const currentName = presets.find(p => p.slot === selectedSlot)?.name || `Custom Slot ${selectedSlot}`;
         const success = await savePreset(userId, team.id, selectedSlot, currentName, tactics);
         if (success) {
-            onForceSave?.();
+            onForceSave?.({ userTactics: tactics });
             showToast('전술 저장 완료');
             loadPresets(userId);
         }

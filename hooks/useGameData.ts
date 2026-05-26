@@ -98,6 +98,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [draftPicksState, setDraftPicksState] = useState<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     const pendingSaveRef = useRef<any>(null);
     const isSavingRef = useRef(false);
+    const lastSnapshotPlayedCountRef = useRef<number>(-1);
     const pendingFARowsRef = useRef<any[]>([]);
 
     // Refs to avoid stale closures in callbacks
@@ -368,7 +369,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 const counts = await countUserData(userId);
                                 const newSnapshot = buildReplaySnapshot(loadedTeams, loadedSchedule, counts);
                                 saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                                    undefined, undefined, undefined, undefined, undefined, newSnapshot);
+                                    { replay_snapshot: newSnapshot });
                                 console.log("💾 Snapshot saved for next load");
                             } catch (e) {
                                 console.warn("⚠️ Failed to save snapshot (non-critical):", e);
@@ -516,7 +517,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const newSeed = crypto.randomUUID();
                         setTendencySeed(newSeed);
                         if (!isMultiRoute) {
-                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, { tendency_seed: newSeed });
                         }
                     }
 
@@ -539,7 +540,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         // 비동기 저장 (non-blocking)
                         if (!isMultiRoute) {
                             saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                                undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
+                                { coaching_staff: generated });
                         }
                     }
 
@@ -595,7 +596,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLeaguePickAssets(newPickAssets);
                         if (!isMultiRoute) {
                             saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newPickAssets);
+                                { league_pick_assets: newPickAssets });
                         }
                     }
 
@@ -656,10 +657,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         updateLeagueFinancials(getSeasonCap(newCapHistory, savedSeasonNumber ?? 1));
                         if (!isMultiRoute) {
                             saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
-                                undefined, undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, newCapHistory);
+                                { league_cap_history: newCapHistory });
                         }
                     }
 
@@ -813,10 +811,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     const forceSave = useCallback(async (overrides?: any) => {
         if (!session?.user || isGuestMode) return;
-        // 멀티플레이 라우트에서는 싱글플레이 데이터 저장 스킵
         if (window.location.pathname.startsWith('/multi')) return;
 
-        pendingSaveRef.current = overrides ?? {};
+        // 얕은 머지: 연속 호출에서 각기 다른 컬럼이 누적되도록
+        pendingSaveRef.current = { ...pendingSaveRef.current, ...overrides };
         if (isSavingRef.current) return; // 이미 저장 중 → 완료 후 pending 실행됨
 
         isSavingRef.current = true;
@@ -824,37 +822,47 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         try {
             while (pendingSaveRef.current !== null) {
                 const ov = pendingSaveRef.current;
-                pendingSaveRef.current = null; // 소비
+                pendingSaveRef.current = null;
 
-                const teamId = ov?.myTeamId || gameStateRef.current.myTeamId;
-                const date = ov?.currentSimDate || gameStateRef.current.currentSimDate;
-                const tactics = ov?.userTactics || gameStateRef.current.userTactics;
-                const dc = ov?.depthChart || gameStateRef.current.depthChart;
-                const currentTeams = ov?.teams || gameStateRef.current.teams;
-                const currentSchedule = ov?.schedule || gameStateRef.current.schedule;
+                const teamId = ov?.myTeamId ?? gameStateRef.current.myTeamId;
+                const date = ov?.currentSimDate ?? gameStateRef.current.currentSimDate;
+                if (!teamId || !date) continue;
 
-                // Build snapshot if requested
-                let snapshot: ReplaySnapshot | undefined;
-                let snapshotBuildFailed = false;
-                if (ov?.withSnapshot && teamId) {
-                    try {
-                        // 스케줄에서 직접 카운트 계산 (countUserData DB 호출 제거)
-                        const txLen = (gameStateRef.current as any).transactions?.length || 0;
-                        const counts = {
-                            games: currentSchedule.filter((g: Game) => g.played && !g.isPlayoff).length,
-                            playoffs: currentSchedule.filter((g: Game) => g.played && g.isPlayoff).length,
-                            transactions: txLen,
-                        };
-                        snapshot = buildReplaySnapshot(currentTeams, currentSchedule, counts);
-                    } catch (e) {
-                        console.warn("⚠️ Snapshot build failed (non-critical):", e);
-                        snapshotBuildFailed = true;
-                    }
+                // draftPicks 상태 동기화
+                if (ov?.draftPicks) {
+                    draftPicksRef.current = ov.draftPicks;
+                    setDraftPicksState(ov.draftPicks);
                 }
 
-                // Roster State: 정상 시 condition/health/injury만, 스냅샷 실패 시 성장 데이터 폴백 포함
-                const rosterState: Record<string, SavedPlayerState> = {};
+                // override에 명시된 키만 payload에 포함 (gameStateRef 자동 폴백 없음)
+                const columns: Record<string, any> = {};
+
+                if ('userTactics' in ov)              columns.tactics                = ov.userTactics;
+                if ('depthChart' in ov)               columns.depth_chart            = ov.depthChart;
+                if ('tendencySeed' in ov && ov.tendencySeed) columns.tendency_seed = ov.tendencySeed;
+                if ('draftPicks' in ov)               columns.draft_picks            = ov.draftPicks;
+                if ('simSettings' in ov)              columns.sim_settings           = ov.simSettings;
+                if ('coachingData' in ov)             columns.coaching_staff         = ov.coachingData;
+                if ('leaguePickAssets' in ov)         columns.league_pick_assets     = ov.leaguePickAssets;
+                if ('leagueTradeBlocks' in ov)        columns.league_trade_blocks    = ov.leagueTradeBlocks;
+                if ('leagueTradeOffers' in ov)        columns.league_trade_offers    = ov.leagueTradeOffers;
+                if ('leagueGMProfiles' in ov)         columns.league_gm_profiles     = ov.leagueGMProfiles;
+                if ('seasonNumber' in ov)             columns.season_number          = ov.seasonNumber;
+                if ('currentSeason' in ov)            columns.current_season         = ov.currentSeason;
+                if ('lotteryResult' in ov)            columns.lottery_result         = ov.lotteryResult;
+                if ('offseasonPhase' in ov)           columns.offseason_phase        = ov.offseasonPhase;
+                if ('leagueFAPool' in ov)             columns.league_fa_pool         = ov.leagueFAPool;
+                if ('retiredPlayerIds' in ov)         columns.retired_player_ids     = ov.retiredPlayerIds ?? [];
+                if ('leagueFAMarket' in ov)           columns.league_fa_market       = ov.leagueFAMarket;
+                if ('leagueCapHistory' in ov)         columns.league_cap_history     = ov.leagueCapHistory;
+                if ('leagueTrainingConfigs' in ov)    columns.league_training_configs = ov.leagueTrainingConfigs;
+                if ('coachFAPool' in ov)              columns.coach_fa_pool          = ov.coachFAPool;
+
+                // teams를 넘긴 경우: roster_state + team_finances 재계산
+                const currentTeams: Team[] | undefined = ov?.teams;
+                let snapshotBuildFailed = false;
                 if (currentTeams) {
+                    const rosterState: Record<string, SavedPlayerState> = {};
                     currentTeams.forEach((t: Team) => {
                         t.roster.forEach((p: Player) => {
                             const isInjured = p.health !== 'Healthy';
@@ -899,39 +907,38 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             }
                         });
                     });
+                    columns.roster_state  = rosterState;
+                    columns.team_finances = getFinancesSnapshot(currentTeams);
                 }
 
-                if (ov?.draftPicks) {
-                    draftPicksRef.current = ov.draftPicks;
-                    setDraftPicksState(ov.draftPicks);
-                }
-                const seed = ov?.tendencySeed || gameStateRef.current.tendencySeed;
-
-                if (teamId && date) {
-                    const _saveStart = performance.now();
-                    const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
-                    const coaching = ov?.coachingData || gameStateRef.current.coachingData;
-                    const finances = getFinancesSnapshot(currentTeams ?? []);
-                    const pickAssets = ov?.leaguePickAssets || gameStateRef.current.leaguePickAssets;
-                    const tradeBlocks = ov?.leagueTradeBlocks || gameStateRef.current.leagueTradeBlocks;
-                    const tradeOffers = ov?.leagueTradeOffers || gameStateRef.current.leagueTradeOffers;
-                    const gmProfiles = ov?.leagueGMProfiles || gameStateRef.current.leagueGMProfiles;
-                    const savSeasonNum = ov?.seasonNumber || gameStateRef.current.seasonNumber;
-                    const savCurrentSeason = ov?.currentSeason || gameStateRef.current.currentSeason;
-                    const savLotteryResult = ov?.lotteryResult !== undefined ? ov.lotteryResult : gameStateRef.current.lotteryResult;
-                    const savOffseasonPhase = ov?.offseasonPhase !== undefined ? ov.offseasonPhase : (gameStateRef.current as any).offseasonPhase;
-                    const savFAPool = ov?.leagueFAPool !== undefined ? ov.leagueFAPool : gameStateRef.current.leagueFAPool;
-                    const savRetiredIds = ov?.retiredPlayerIds !== undefined ? ov.retiredPlayerIds : gameStateRef.current.retiredPlayerIds;
-                    const savFAMarket = ov?.leagueFAMarket !== undefined ? ov.leagueFAMarket : gameStateRef.current.leagueFAMarket;
-                    const savCapHistory = ov?.leagueCapHistory !== undefined ? ov.leagueCapHistory : gameStateRef.current.leagueCapHistory;
-                    const savTrainingConfigs = ov?.leagueTrainingConfigs !== undefined ? ov.leagueTrainingConfigs : gameStateRef.current.leagueTrainingConfigs;
-                    const savCoachFAPool = ov?.coachFAPool !== undefined ? ov.coachFAPool : gameStateRef.current.coachFAPool;
-                    const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching, finances, pickAssets, tradeBlocks, tradeOffers, gmProfiles, savSeasonNum, savCurrentSeason, savLotteryResult, savOffseasonPhase, savFAPool, savRetiredIds, savFAMarket, savCapHistory, savTrainingConfigs, savCoachFAPool);
-                    const rosterKeys = Object.keys(rosterState).length;
-                    console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
-                    if (result?.[0]?.hof_id) {
-                        setHofId(result[0].hof_id);
+                // withSnapshot: 새로 played된 경기가 있을 때만 snapshot 빌드
+                if (ov?.withSnapshot && currentTeams && ov?.schedule) {
+                    const currentSchedule: Game[] = ov.schedule;
+                    const playedCount = currentSchedule.filter((g: Game) => g.played).length;
+                    if (playedCount > lastSnapshotPlayedCountRef.current) {
+                        try {
+                            const txLen = (gameStateRef.current as any).transactions?.length || 0;
+                            const counts = {
+                                games: currentSchedule.filter((g: Game) => g.played && !g.isPlayoff).length,
+                                playoffs: currentSchedule.filter((g: Game) => g.played && g.isPlayoff).length,
+                                transactions: txLen,
+                            };
+                            columns.replay_snapshot = buildReplaySnapshot(currentTeams, currentSchedule, counts);
+                            lastSnapshotPlayedCountRef.current = playedCount;
+                        } catch (e) {
+                            console.warn("⚠️ Snapshot build failed (non-critical):", e);
+                        }
                     }
+                }
+
+                // 실제 데이터 컬럼이 없으면 DB 호출 스킵
+                if (Object.keys(columns).length === 0) continue;
+
+                const _saveStart = performance.now();
+                const result = await saveCheckpoint(session.user.id, teamId, date, columns);
+                console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (cols: ${Object.keys(columns).join(',')})`);
+                if (result?.[0]?.hof_id) {
+                    setHofId(result[0].hof_id);
                 }
             }
         } catch (err) {
@@ -1348,6 +1355,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         // 6. 저장
         await forceSave({
             teams: newTeams,
+            schedule: gameStateRef.current.schedule,
             withSnapshot: true,
         });
 
@@ -1368,7 +1376,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
         if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
         tacticsAutoSaveTimer.current = setTimeout(() => {
-            forceSave();
+            forceSave({ userTactics: gameStateRef.current.userTactics, depthChart: gameStateRef.current.depthChart });
         }, 1500);
 
         return () => {
@@ -1389,7 +1397,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
         if (simSettingsAutoSaveTimer.current) clearTimeout(simSettingsAutoSaveTimer.current);
         simSettingsAutoSaveTimer.current = setTimeout(() => {
-            forceSave();
+            forceSave({ simSettings: gameStateRef.current.simSettings });
         }, 1500);
 
         return () => {
@@ -1466,7 +1474,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setLeagueTrainingConfigs(updatedConfigs);
         }
 
-        forceSave({ leagueInvestmentState: updated });
+        const investSavePayload: any = {
+            teams: gameStateRef.current.teams,  // triggers team_finances recalc (investmentState embedded inside)
+        };
+        if (currentTrainingConfigs && allocations.training > 0) {
+            investSavePayload.leagueTrainingConfigs = {
+                ...currentTrainingConfigs,
+                [teamId]: { ...currentTrainingConfigs[teamId], budget: allocations.training },
+            };
+        }
+        forceSave(investSavePayload);
         investmentConfirmedSignal();
     }, [leagueInvestmentState, forceSave]);
 

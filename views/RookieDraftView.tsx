@@ -80,10 +80,11 @@ export const RookieDraftView: React.FC<RookieDraftViewProps> = ({ teams, myTeamI
     const currentPickInRound = (currentPickIndex % teamOrder.length) + 1;
     const isUserTurn = !isDraftComplete && currentTeamId === myTeamId;
 
-    // My drafted players (루키만)
+    // My drafted players (루키만) — pick order preserved so first-drafted gets starter slot
     const myPicks = useMemo(() => {
         const myPickedIds = picks.filter(p => p.teamId === myTeamId).map(p => p.playerId);
-        return allPlayers.filter(p => myPickedIds.includes(p.id));
+        const playerMap = new Map(allPlayers.map(p => [p.id, p]));
+        return myPickedIds.map(id => playerMap.get(id)).filter(Boolean) as Player[];
     }, [picks, myTeamId, allPlayers]);
 
     // 기존 로스터 (MyRoster에 전달)

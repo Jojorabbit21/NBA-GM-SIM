@@ -24,10 +24,12 @@ function toInputValue(iso: string | null): string {
     // "2025-04-25T20:00:00+09:00" → "2025-04-25T20:00"
     return iso.slice(0, 16);
 }
-// datetime-local → ISO (UTC)
+// datetime-local → ISO (UTC), rounded up to nearest 5-minute boundary
 function toIso(local: string): string | null {
     if (!local) return null;
-    return new Date(local).toISOString();
+    const ms = new Date(local).getTime();
+    const fiveMin = 5 * 60 * 1000;
+    return new Date(Math.ceil(ms / fiveMin) * fiveMin).toISOString();
 }
 
 
@@ -398,18 +400,20 @@ const LeagueSettingsView: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label className="text-xs text-slate-400 ko-normal block mb-1">드래프트 추첨 일시</label>
+                        <label className="text-xs text-slate-400 ko-normal block mb-1">드래프트 추첨 일시 (5분 단위)</label>
                         <input
                             type="datetime-local"
+                            step="300"
                             value={lotteryAt}
                             onChange={e => setLotteryAt(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                         />
                     </div>
                     <div>
-                        <label className="text-xs text-slate-400 ko-normal block mb-1">드래프트 시작 일시</label>
+                        <label className="text-xs text-slate-400 ko-normal block mb-1">드래프트 시작 일시 (5분 단위)</label>
                         <input
                             type="datetime-local"
+                            step="300"
                             value={draftAt}
                             onChange={e => setDraftAt(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"

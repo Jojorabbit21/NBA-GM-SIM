@@ -1,179 +1,36 @@
 
 import { supabase } from './supabaseClient';
-import { Transaction, GameTactics, DepthChart, SavedPlayerState, ReplaySnapshot } from '../types';
-import { SimSettings } from '../types/simSettings';
-import { SavedTeamFinances } from '../types/finance';
-import { LeaguePickAssets } from '../types/draftAssets';
-import { LeagueTradeBlocks, LeagueTradeOffers } from '../types/trade';
-import { LeagueGMProfiles } from '../types/gm';
-import { OffseasonPhase, type SaveSummary } from '../types/app';
-import { LeagueFAPool } from '../types/generatedPlayer';
-import { LeagueFAMarket } from '../types/fa';
-import type { LeagueTrainingConfigs } from '../types/training';
-import type { CoachFAPool } from '../types/coaching';
+import { Transaction } from '../types';
+import { type SaveSummary } from '../types/app';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
     userId: string,
     teamId: string,
     simDate: string,
-    tactics?: GameTactics | null,
-    rosterState?: Record<string, SavedPlayerState | number>, // Supports legacy number or new Object
-    depthChart?: DepthChart | null, // [New] Depth Chart Data
-    draftPicks?: { teams: Record<string, string[]>; picks: any[] } | null,
-    tendencySeed?: string | null, // [New] Save-seeded hidden tendencies
-    replaySnapshot?: ReplaySnapshot | null, // [New] Cached replay state
-    simSettings?: SimSettings | null, // [New] User simulation settings
-    coachingStaff?: Record<string, any> | null, // [New] League coaching staff data
-    teamFinances?: SavedTeamFinances | null, // [New] Team finance state
-    leaguePickAssets?: LeaguePickAssets | null, // [New] League-wide draft pick assets
-    leagueTradeBlocks?: LeagueTradeBlocks | null, // [New] Persistent trade blocks
-    leagueTradeOffers?: LeagueTradeOffers | null,  // [New] Persistent trade offers
-    leagueGMProfiles?: LeagueGMProfiles | null,  // [New] GM profiles
-    seasonNumber?: number,      // [Multi-Season] 현재 시즌 번호
-    currentSeason?: string,     // [Multi-Season] 현재 시즌 라벨 (e.g. '2025-2026')
-    lotteryResult?: any | null,  // [New] 드래프트 로터리 추첨 결과
-    offseasonPhase?: OffseasonPhase,  // [Multi-Season] 오프시즌 진행 단계
-    leagueFAPool?: LeagueFAPool | null,  // [Multi-Season] 생성 FA 선수 목록
-    retiredPlayerIds?: string[] | null,  // [Multi-Season] 누적 은퇴 선수 ID 목록
-    leagueFAMarket?: LeagueFAMarket | null,  // [FA] FA 시장 상태
-    leagueCapHistory?: Record<number, number> | null,  // [Multi-Season] 시즌별 샐러리 캡 히스토리
-    leagueTrainingConfigs?: LeagueTrainingConfigs | null,  // [Training] 팀별 훈련 설정
-    coachFAPool?: CoachFAPool | null  // [Coaching] 코치 FA 풀
+    columns: Record<string, any> = {},
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
-    const payload: any = {
+    const payload: Record<string, any> = {
         user_id: userId,
         team_id: teamId,
         sim_date: simDate,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        ...columns,
     };
 
-    // season 정보: 값이 있을 때만 저장
-    if (seasonNumber !== undefined) {
-        payload.season_number = seasonNumber;
-    }
-    if (currentSeason !== undefined) {
-        payload.current_season = currentSeason;
-    }
-
-    if (tactics) {
-        payload.tactics = tactics;
-    }
-
-    if (rosterState) {
-        payload.roster_state = rosterState;
-    }
-
-    if (depthChart) {
-        payload.depth_chart = depthChart;
-    }
-
-    // draft_picks: null이면 명시적으로 null 저장하지 않음 (기존 값 유지)
-    // 값이 있으면 저장
-    if (draftPicks !== undefined) {
-        payload.draft_picks = draftPicks;
-    }
-
-    // tendency_seed: 명시적으로 값이 있을 때만 저장 (null로 기존 시드를 덮어쓰지 않도록)
-    if (tendencySeed) {
-        payload.tendency_seed = tendencySeed;
-    }
-
-    // replay_snapshot: 경기 결과 저장 후 호출 시에만 포함
-    if (replaySnapshot !== undefined) {
-        payload.replay_snapshot = replaySnapshot;
-    }
-
-    // sim_settings: 값이 있을 때만 저장
-    if (simSettings !== undefined) {
-        payload.sim_settings = simSettings;
-    }
-
-    // coaching_staff: 값이 있을 때만 저장
-    if (coachingStaff !== undefined) {
-        payload.coaching_staff = coachingStaff;
-    }
-
-    // team_finances: 값이 있을 때만 저장
-    if (teamFinances !== undefined) {
-        payload.team_finances = teamFinances;
-    }
-
-    // league_pick_assets: 값이 있을 때만 저장
-    if (leaguePickAssets !== undefined) {
-        payload.league_pick_assets = leaguePickAssets;
-    }
-
-    // league_trade_blocks: 값이 있을 때만 저장
-    if (leagueTradeBlocks !== undefined) {
-        payload.league_trade_blocks = leagueTradeBlocks;
-    }
-
-    // league_trade_offers: 값이 있을 때만 저장
-    if (leagueTradeOffers !== undefined) {
-        payload.league_trade_offers = leagueTradeOffers;
-    }
-
-    // league_gm_profiles: 값이 있을 때만 저장
-    if (leagueGMProfiles !== undefined) {
-        payload.league_gm_profiles = leagueGMProfiles;
-    }
-
-    // lottery_result: 값이 있을 때만 저장
-    if (lotteryResult !== undefined) {
-        payload.lottery_result = lotteryResult;
-    }
-
-    // offseason_phase: 값이 있을 때만 저장 (null도 명시적 저장)
-    if (offseasonPhase !== undefined) {
-        payload.offseason_phase = offseasonPhase;
-    }
-
-    // league_fa_pool: 생성 FA 선수 ID 목록
-    if (leagueFAPool !== undefined) {
-        payload.league_fa_pool = leagueFAPool;
-    }
-
-    // retired_player_ids: 누적 은퇴 선수 ID 목록
-    if (retiredPlayerIds !== undefined) {
-        payload.retired_player_ids = retiredPlayerIds ?? [];
-    }
-
-    // league_fa_market: FA 시장 상태
-    if (leagueFAMarket !== undefined) {
-        payload.league_fa_market = leagueFAMarket;
-    }
-
-    // league_cap_history: 시즌별 샐러리 캡 히스토리
-    if (leagueCapHistory !== undefined) {
-        payload.league_cap_history = leagueCapHistory;
-    }
-
-    // league_training_configs: 팀별 훈련 설정
-    if (leagueTrainingConfigs !== undefined) {
-        payload.league_training_configs = leagueTrainingConfigs;
-    }
-
-    // coach_fa_pool: 코치 FA 풀
-    if (coachFAPool !== undefined) {
-        payload.coach_fa_pool = coachFAPool;
-    }
-
-    // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     let { data, error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id' })
         .select('hof_id');
 
     if (error) {
-        // 새 컬럼이 DB에 없을 수 있음 → 해당 필드 모두 제거 후 재시도
         const optionalColumns = [
             'league_trade_blocks', 'league_trade_offers', 'league_gm_profiles',
             'league_training_configs', 'coach_fa_pool',
         ] as const;
-        const hasOptionalColumn = optionalColumns.some(k => payload[k] !== undefined);
+        const hasOptionalColumn = optionalColumns.some(k => k in payload);
         if (hasOptionalColumn) {
             console.warn('⚠️ [saveCheckpoint] Save failed, retrying without optional columns:', error.message);
             optionalColumns.forEach(k => delete payload[k]);

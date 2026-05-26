@@ -213,7 +213,7 @@ const FrontOfficePage: React.FC = () => {
                     }
                 });
                 gameData.setTeams(newTeams);
-                gameData.forceSave({ teams: newTeams, withSnapshot: true });
+                gameData.forceSave({ teams: newTeams, withSnapshot: false });
                 if (player) {
                     const optTx = {
                         id: `opt_${playerId}_${Date.now()}`, date: gameData.currentSimDate,

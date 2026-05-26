@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     // ── 어드민 검증 ───────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('admin_user_id, status, type, tournament_format, match_format, finals_match_format, season_start_date, tournament_start_at, bracket_data')
+        .select('admin_user_id, status, type, tournament_format, match_format, finals_match_format, season_start_date, tournament_start_at, bracket_data, draft_pool, draft_ovr_min, draft_ovr_max')
         .eq('id', leagueId)
         .single();
     if (!league)                          return json({ error: 'League not found' }, 404);
@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
         const drafted = new Set<string>((draftedRows ?? []).map((r: any) => r.player_id));
 
         // draft_config.poolIds 기반으로 풀 조회 (URL 길이 제한 우회 위해 100개 청크)
-        const poolPlayers = await fetchPoolPlayers(supabase, config);
+        const poolPlayers = await fetchPoolPlayers(supabase, config, league);
         if (!poolPlayers.length) return json({ error: 'No players in pool' }, 400);
 
         const best = poolPlayers.find((p: any) => !drafted.has(p.id));
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
         }
 
         // draft_config.poolIds 기반으로 풀 조회 (URL 길이 제한 우회 위해 100개 청크)
-        const poolPlayers = await fetchPoolPlayers(supabase, config);
+        const poolPlayers = await fetchPoolPlayers(supabase, config, league);
         if (!poolPlayers.length) return json({ error: 'No players in pool' }, 400);
 
         // 기존 선발 목록
@@ -330,17 +330,41 @@ Deno.serve(async (req) => {
 });
 
 /** draft_config.poolIds 기반으로 선수 풀을 OVR 내림차순으로 반환.
- *  poolIds가 없으면 in_multi_pool=true 폴백. URL 길이 제한 우회 위해 100개 청크 병렬 쿼리. */
-async function fetchPoolPlayers(supabase: any, config: any): Promise<any[]> {
+ *  poolIds가 없으면 league.draft_pool 설정에 따라 start-draft와 동일한 필터를 적용.
+ *  URL 길이 제한 우회 위해 100개 청크 병렬 쿼리. */
+async function fetchPoolPlayers(supabase: any, config: any, league: any): Promise<any[]> {
     const poolIds: string[] = config?.poolIds ?? [];
     if (poolIds.length === 0) {
-        const { data } = await supabase
-            .from('meta_players')
-            .select('id, name, position, base_attributes')
-            .eq('in_multi_pool', true)
-            .order('base_attributes->ovr' as any, { ascending: false })
-            .limit(300);
-        return data ?? [];
+        const draftPoolRaw: string = (league?.draft_pool ?? 'standard');
+        const ovrMin: number = (league?.draft_ovr_min ?? 0);
+        const ovrMax: number = (league?.draft_ovr_max ?? 99);
+        const draftPools = draftPoolRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
+
+        const seenIds = new Set<string>();
+        const all: any[] = [];
+        for (const pt of draftPools) {
+            let q = supabase.from('meta_players').select('id, name, position, base_attributes');
+            if (pt === 'standard') {
+                q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
+            } else if (pt === 'alltime') {
+                q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
+            } else {
+                q = (q as any).eq('draft_year', 2026);
+            }
+            const { data } = await q;
+            if (!data) continue;
+            for (const p of data) {
+                if (seenIds.has(p.id)) continue;
+                seenIds.add(p.id);
+                const ovr = (p.base_attributes as any)?.ovr ?? 0;
+                if (pt !== 'rookies' && (ovr < ovrMin || ovr > ovrMax)) continue;
+                all.push(p);
+            }
+        }
+        all.sort((a: any, b: any) =>
+            ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
+        );
+        return all;
     }
 
     const CHUNK = 100;

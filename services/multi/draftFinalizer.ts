@@ -77,8 +77,9 @@ export async function finalizeDraft(
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const tournamentStartIso = league.type === 'tournament' ? (league.tournament_start_at ?? null) : null;
-    const seasonStartDate = tournamentStartIso ? tournamentStartIso.slice(0, 10) : today;
-    const startUtcHour = tournamentStartIso ? new Date(tournamentStartIso).getUTCHours() : 1;
+    const seasonStartDate  = tournamentStartIso ? tournamentStartIso.slice(0, 10) : today;
+    const startUtcHour     = tournamentStartIso ? new Date(tournamentStartIso).getUTCHours()   : 1;
+    const startUtcMinute   = tournamentStartIso ? new Date(tournamentStartIso).getUTCMinutes() : 0;
 
     const adminDurDays = (() => {
         if (league.season_start_date && league.season_end_date) {
@@ -102,6 +103,7 @@ export async function finalizeDraft(
             tendencySeed,
             seasonStartDate,
             startUtcHour,
+            startUtcMinute,
         );
 
         const { error: bracketErr } = await saveBracketData(leagueId, { series, schedule });

@@ -121,18 +121,29 @@ Deno.serve(async (req) => {
 
             if (!teams?.length) continue; // 추첨 미완료
 
-            // 드래프트 선수 풀 구성 — draft_pool 설정에 따라 필터링
+            // 드래프트 선수 풀 구성 — draft_pool 설정에 따라 필터링 (start-draft와 동일 로직)
             const draftPoolRaw   = league.draft_pool ?? 'standard';
             const draftPoolTypes = draftPoolRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
-            const includeRookies    = draftPoolTypes.includes('rookies');
-            const includeNonRookies = draftPoolTypes.some((t: string) => t !== 'rookies');
 
-            let poolQ = supabase.from('meta_players').select('id').eq('in_multi_pool', true);
-            if (!includeRookies)    poolQ = (poolQ as any).lt('draft_year', 2026);
-            if (!includeNonRookies) poolQ = (poolQ as any).eq('draft_year', 2026);
-
-            const { data: poolPlayers } = await poolQ;
-            const poolIds = (poolPlayers ?? []).map((p: any) => p.id);
+            const seenPoolIds = new Set<string>();
+            const poolIds: string[] = [];
+            for (const pt of draftPoolTypes) {
+                let q = supabase.from('meta_players').select('id').eq('in_multi_pool', true);
+                if (pt === 'standard') {
+                    q = (q as any).lt('draft_year', 2026).not('base_team_id', 'is', null);
+                } else if (pt === 'alltime') {
+                    q = (q as any).eq('include_alltime', true).lt('draft_year', 2026);
+                } else {
+                    q = (q as any).eq('draft_year', 2026);
+                }
+                const { data: pts } = await q;
+                for (const p of pts ?? []) {
+                    if (!seenPoolIds.has(p.id)) {
+                        seenPoolIds.add(p.id);
+                        poolIds.push(p.id);
+                    }
+                }
+            }
 
             const TOTAL_ROUNDS      = 10;
             const pickDurationSec   = league.draft_pick_duration_sec ?? 300;
@@ -211,11 +222,12 @@ Deno.serve(async (req) => {
             const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => String(r.player_id)));
 
             const schedulerPoolIds: string[] = (config.poolIds ?? []).map(String);
-            const schedulerPoolQuery = schedulerPoolIds.length > 0
-                ? supabase.from('meta_players').select('id, base_attributes').in('id', schedulerPoolIds)
-                : supabase.from('meta_players').select('id, base_attributes').eq('in_multi_pool', true).limit(200);
+            if (schedulerPoolIds.length === 0) continue;
 
-            const { data: rawPool } = await schedulerPoolQuery;
+            const { data: rawPool } = await supabase
+                .from('meta_players')
+                .select('id, base_attributes')
+                .in('id', schedulerPoolIds);
             const poolPlayers = (rawPool ?? []).sort((a: any, b: any) =>
                 ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
             );

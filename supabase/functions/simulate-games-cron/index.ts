@@ -128,17 +128,29 @@ async function advanceSimDates(
     rooms:      { id: string; schedule: any; sim_date: string }[],
     targetDate: string,
 ) {
+    const nowIso = new Date().toISOString();
     for (const room of rooms) {
         const schedule: any[] = room.schedule ?? [];
-        // 오늘 날짜 경기가 모두 완료됐으면 sim_date를 다음 경기 날짜로 전진
-        const todayGames = schedule.filter(g => g.date === targetDate);
-        const allPlayed  = todayGames.length > 0 && todayGames.every(g => g.played);
 
-        if (allPlayed) {
-            // 아직 플레이되지 않은 가장 빠른 다음 경기 날짜
+        // scheduledAt 기반 (신규) / date 기반 (레거시) 구분
+        const hasScheduledAt = schedule.some(g => g.scheduledAt);
+        let allCurrentPlayed: boolean;
+
+        if (hasScheduledAt) {
+            // 이미 시각이 지난(≤ now) 게임이 모두 played 상태인지 확인
+            const dueGames = schedule.filter(g => g.scheduledAt && g.scheduledAt <= nowIso);
+            allCurrentPlayed = dueGames.length > 0 && dueGames.every(g => g.played);
+        } else {
+            const todayGames = schedule.filter(g => g.date === targetDate);
+            allCurrentPlayed = todayGames.length > 0 && todayGames.every(g => g.played);
+        }
+
+        if (allCurrentPlayed) {
+            // 아직 플레이되지 않은 가장 빠른 다음 경기의 날짜로 전진
             const upcoming = schedule
-                .filter(g => !g.played && g.date > targetDate)
-                .map(g => g.date)
+                .filter(g => !g.played)
+                .map(g => (g.scheduledAt ?? g.date ?? '').slice(0, 10))
+                .filter(Boolean)
                 .sort();
             const nextDate = upcoming[0] ?? targetDate;
             await supabase.from('rooms')

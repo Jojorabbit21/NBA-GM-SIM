@@ -58,13 +58,14 @@ Deno.serve(async (req) => {
             .eq('room_id', room.id);
         const draftedSet = new Set<string>((draftedRows ?? []).map((r: any) => String(r.player_id)));
 
-        // draft_config.poolIds 우선 사용 — 설정된 풀 유형(alltime/standard/rookies)만 포함
+        // draft_config.poolIds — configured pool only; skip room if pool is unset
         const configPoolIds: string[] = (config.poolIds ?? []).map(String);
-        const poolQuery = configPoolIds.length > 0
-            ? supabase.from('meta_players').select('id, base_attributes').in('id', configPoolIds)
-            : supabase.from('meta_players').select('id, base_attributes').eq('in_multi_pool', true).limit(200);
+        if (configPoolIds.length === 0) continue;
 
-        const { data: rawPool } = await poolQuery;
+        const { data: rawPool } = await supabase
+            .from('meta_players')
+            .select('id, base_attributes')
+            .in('id', configPoolIds);
         const poolPlayers = (rawPool ?? []).sort((a: any, b: any) =>
             ((b.base_attributes as any)?.ovr ?? 0) - ((a.base_attributes as any)?.ovr ?? 0)
         );

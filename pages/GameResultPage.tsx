@@ -66,7 +66,7 @@ const GameResultPage: React.FC = () => {
                     sim.clearLastGameResult();
                     sim.setIsSimulating(false);
                     navigate('/', { replace: true });
-                    gameData.forceSave({ currentSimDate: nextDate, withSnapshot: true });
+                    gameData.forceSave({ currentSimDate: nextDate });
                 }
             }}
         />

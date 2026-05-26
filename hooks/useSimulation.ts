@@ -1190,6 +1190,7 @@ export const useSimulation = (
                             forceSave({
                                 offseasonPhase: u.offseasonPhase,
                                 teams: u.offseasonProcessed ? newTeams : undefined,
+                                schedule: u.offseasonProcessed ? newSchedule : undefined,
                                 withSnapshot: !!u.offseasonProcessed,
                             });
                         }
