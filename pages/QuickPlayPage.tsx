@@ -251,7 +251,7 @@ const QuickPlayPage: React.FC = () => {
             setPool([]);
             const base = supabase
                 .from('meta_players')
-                .select('id, position, base_attributes, tendencies');
+                .select('id, name, position, base_attributes, tendencies');
             const query = poolType === 'current'
                 ? base.eq('in_multi_pool', true).or('base_team_id.not.is.null,draft_year.eq.2026')
                 : base.eq('include_alltime', true);
