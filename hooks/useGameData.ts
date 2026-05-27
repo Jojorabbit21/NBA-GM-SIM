@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode, ReplaySnapshot, DeadMoneyEntry } from '../types';
 import { useBaseData, fetchPredefinedDraftClass } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, loadUserTransactions, saveCheckpoint, countUserData } from '../services/persistence';
+import { loadCheckpoint, loadUserHistory, loadUserTransactions, saveCheckpoint, countUserData, writeTransaction } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { buildReplaySnapshot, hydrateFromSnapshot, CURRENT_SNAPSHOT_VERSION } from '../services/snapshotBuilder';
 import { generateOwnerWelcome } from '../services/geminiService';
@@ -293,6 +293,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             setLoadingProgress(50);
                             setLoadingMessage('트랜잭션 기록 확인 완료');
                             txList = txData;
+                            const _ptxs = ((checkpoint as any).league_trade_offers as LeagueTradeOffers | null)?.pendingTxs ?? [];
+                            if (_ptxs.length) {
+                                const _ids = new Set<string>(txList.map((t: any) => t.id));
+                                const _add = _ptxs.filter(tx => !_ids.has(tx.id)).map(tx => ({ ...tx, team_id: tx.teamId }));
+                                if (_add.length) txList = [...txList, ..._add].sort((a: any, b: any) => a.date.localeCompare(b.date));
+                            }
                             setLoadingProgress(70);
                             setLoadingMessage('스냅샷에서 팀 상태 복원 중 ...');
                             await new Promise(r => setTimeout(r, 0));
@@ -315,6 +321,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setLoadingMessage('전체 경기 기록 조회 중 ...');
                         const history = await loadUserHistory(userId, savedSeason);
                         txList = history.transactions;
+                        const _ptxs2 = ((checkpoint as any).league_trade_offers as LeagueTradeOffers | null)?.pendingTxs ?? [];
+                        if (_ptxs2.length) {
+                            const _ids2 = new Set<string>(txList.map((t: any) => t.id));
+                            const _add2 = _ptxs2.filter(tx => !_ids2.has(tx.id)).map(tx => ({ ...tx, team_id: tx.teamId }));
+                            if (_add2.length) txList = [...txList, ..._add2].sort((a: any, b: any) => a.date.localeCompare(b.date));
+                        }
                         setLoadingProgress(50);
                         setLoadingMessage('플레이오프 기록 조회 중 ...');
                         const rawPlayoffResults = playoffBracketState ? await loadPlayoffGameResults(userId, savedSeason) : [];
@@ -779,6 +791,24 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
                     setLoadingProgress(100);
                     hasInitialLoadRef.current = true;
+
+                    // Flush any pending trade transactions that previously failed to write
+                    const _flushTxs = ((checkpoint as any).league_trade_offers as LeagueTradeOffers | null)?.pendingTxs;
+                    if (_flushTxs?.length && !isMultiRoute) {
+                        ;(async () => {
+                            for (const tx of _flushTxs) {
+                                try { await writeTransaction(userId, tx); }
+                                catch { return; } // still failing — leave pendingTxs for next load
+                            }
+                            const clearedOffers: LeagueTradeOffers = {
+                                ...((checkpoint as any).league_trade_offers as LeagueTradeOffers),
+                                pendingTxs: [],
+                            };
+                            setLeagueTradeOffers(clearedOffers);
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                { league_trade_offers: clearedOffers }).catch(() => {});
+                        })();
+                    }
                 } else {
                     console.log("🆕 New Game Started");
                     setLoadingProgress(100);

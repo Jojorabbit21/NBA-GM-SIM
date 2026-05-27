@@ -110,6 +110,10 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
             rimM: 0, rimA: 0, midM: 0, midA: 0,
             pf: 0, techFouls: 0, flagrantFouls: 0, plusMinus: 0, mp: 0, g: 1, gs: 0,
+            contestedAttempted: 0, contestedMade: 0,
+            defRimAttempted: 0, defRimMade: 0,
+            defMidAttempted: 0, defMidMade: 0,
+            defThreeAttempted: 0, defThreeMade: 0,
             zoneData: { ...INITIAL_STATS() },
             // [Fix] Add condition to satisfy PlayerBoxScore interface
             condition: currentCondition,

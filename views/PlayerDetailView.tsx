@@ -59,6 +59,11 @@ const ADVANCED_COLS = [
     { key: 'stl%', label: 'STL%' }, { key: 'blk%', label: 'BLK%' },
     { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
     { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
+    { key: 'cont', label: 'CONT' },
+    { key: 'dfg%', label: 'DFG%' },
+    { key: 'dfgRim%', label: 'DFG<6ft' },
+    { key: 'dfgMid%', label: 'DFG Mid' },
+    { key: 'dfg3%', label: 'DFG 3P' },
 ];
 
 // ── Career History Columns ──
@@ -320,6 +325,31 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
         }
         case 'tf': val = String(st.techFouls || 0); break;
         case 'ff': val = String(st.flagrantFouls || 0); break;
+        case 'cont': {
+            const c = st.contestedAttempted ?? 0;
+            val = c > 0 ? (c / gp).toFixed(1) : '0';
+            break;
+        }
+        case 'dfg%': {
+            const a = st.contestedAttempted ?? 0;
+            val = a > 0 ? ((st.contestedMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgRim%': {
+            const a = st.defRimAttempted ?? 0;
+            val = a > 0 ? ((st.defRimMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgMid%': {
+            const a = st.defMidAttempted ?? 0;
+            val = a > 0 ? ((st.defMidMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfg3%': {
+            const a = st.defThreeAttempted ?? 0;
+            val = a > 0 ? ((st.defThreeMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
         default:
             if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov'].includes(key)) {
                 val = ((st as any)[key] / gp).toFixed(1);

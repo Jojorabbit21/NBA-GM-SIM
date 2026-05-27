@@ -139,8 +139,8 @@ export const writeGameResult = async (result: any) => {
     }
 };
 
-export const writeTransaction = async (userId: string, tx: Transaction) => {
-    const res = await supabase.from('user_transactions').insert({
+export const writeTransaction = async (userId: string, tx: Transaction, maxAttempts = 3) => {
+    const row = {
         id: tx.id,
         user_id: userId,
         date: tx.date,
@@ -149,11 +149,19 @@ export const writeTransaction = async (userId: string, tx: Transaction) => {
         season: tx.season ?? null,
         description: tx.description,
         details: tx.details
-    });
-    if (res.error) {
-        console.error('❌ [writeTransaction]:', res.error);
-        throw res.error;
+    };
+    let lastError: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const res = await supabase.from('user_transactions').insert(row);
+        if (!res.error) return;
+        lastError = res.error;
+        // Duplicate key — transaction already exists, treat as success
+        if (res.error.code === '23505') return;
+        console.warn(`⚠️ [writeTransaction] attempt ${attempt}/${maxAttempts}:`, res.error.message);
+        if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 1000 * attempt));
     }
+    console.error('❌ [writeTransaction] all attempts failed:', lastError);
+    throw lastError;
 };
 
 export const bulkWriteTransactions = async (userId: string, txList: Transaction[]) => {

@@ -27,6 +27,14 @@ export interface PlayerStats {
     midM: number;
     midA: number;
     plusMinus: number;
+    contestedAttempted: number;
+    contestedMade: number;
+    defRimAttempted: number;
+    defRimMade: number;
+    defMidAttempted: number;
+    defMidMade: number;
+    defThreeAttempted: number;
+    defThreeMade: number;
     [key: string]: number; // for zones
 }
 

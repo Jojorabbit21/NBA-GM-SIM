@@ -10,6 +10,22 @@ import { generateCommentary, getReboundCommentary, getTechnicalFoulCommentary, g
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
+function bumpDefendedShot(defender: LivePlayer, broadZone: string, isMake: boolean): void {
+    defender.contestedAttempted = (defender.contestedAttempted ?? 0) + 1;
+    if (isMake) defender.contestedMade = (defender.contestedMade ?? 0) + 1;
+
+    if (broadZone === 'Rim' || broadZone === 'Paint') {
+        defender.defRimAttempted = (defender.defRimAttempted ?? 0) + 1;
+        if (isMake) defender.defRimMade = (defender.defRimMade ?? 0) + 1;
+    } else if (broadZone === 'Mid') {
+        defender.defMidAttempted = (defender.defMidAttempted ?? 0) + 1;
+        if (isMake) defender.defMidMade = (defender.defMidMade ?? 0) + 1;
+    } else if (broadZone === '3PT') {
+        defender.defThreeAttempted = (defender.defThreeAttempted ?? 0) + 1;
+        if (isMake) defender.defThreeMade = (defender.defThreeMade ?? 0) + 1;
+    }
+}
+
 /**
  * Hot/Cold Streak 업데이트
  * 슛 결과 후 호출하여 선수의 핫/콜드 레이팅 갱신
@@ -135,6 +151,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             actor.p3a += 1;
         }
         if (zone) updateZoneStats(actor, zone, true, result.subZone);
+        if (defender && zone) bumpDefendedShot(defender, zone, true);
         updateHotCold(actor, true);
 
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
@@ -204,6 +221,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.fga += 1;
         if (zone === '3PT') actor.p3a += 1;
         if (zone) updateZoneStats(actor, zone, false, result.subZone);
+        if (defender && zone) bumpDefendedShot(defender, zone, false);
         updateHotCold(actor, false);
 
         // Generate Commentary

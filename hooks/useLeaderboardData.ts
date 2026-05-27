@@ -372,6 +372,17 @@ export const useLeaderboardData = (
                 s['tf'] = s.techFouls || 0;
                 s['ff'] = s.flagrantFouls || 0;
 
+                // Defended Shots (per game & percentage)
+                s['cont'] = (s.contestedAttempted || 0) / g;
+                const dfga = s.contestedAttempted || 0;
+                s['dfg%']    = dfga > 0 ? (s.contestedMade || 0) / dfga : 0;
+                const dra = s.defRimAttempted || 0;
+                s['dfgRim%'] = dra > 0 ? (s.defRimMade || 0) / dra : 0;
+                const dma = s.defMidAttempted || 0;
+                s['dfgMid%'] = dma > 0 ? (s.defMidMade || 0) / dma : 0;
+                const d3a = s.defThreeAttempted || 0;
+                s['dfg3%']   = d3a > 0 ? (s.defThreeMade || 0) / d3a : 0;
+
                 return { 
                     ...p, 
                     stats: s,

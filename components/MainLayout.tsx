@@ -1,5 +1,5 @@
 
-import React, { Suspense, useMemo } from 'react';
+import React, { Suspense, useMemo, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Team, Game, PlayoffSeries, GameTactics, Player } from '../types';
@@ -64,6 +64,13 @@ function addDays(isoDate: string, n: number): string {
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { pathname } = useLocation();
     const navigate = useNavigate();
+    const mainRef = useRef<HTMLElement>(null);
+
+    // 경로 변경 시 main 요소의 scrollTop 리셋
+    // overflow-y-auto → overflow-hidden 전환 시 scrollTop이 보존되어 헤더가 위로 올라가는 버그 방지
+    useEffect(() => {
+        if (mainRef.current) mainRef.current.scrollTop = 0;
+    }, [pathname]);
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, simProgress, playoffSeries, userTactics,
             coachingData, leagueGMProfiles, onSearchViewPlayer, onSearchViewTeam, onSearchViewGM, onSearchViewCoach } = gameHeaderProps;
@@ -176,7 +183,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 onSimSettingsClick={sidebarProps.onSimSettingsClick}
                 onLogout={sidebarProps.onLogout}
             />
-            <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
+            <main ref={mainRef} className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                 {!isFullHeightView && team && (
                     <DashboardHeader
                         team={team}

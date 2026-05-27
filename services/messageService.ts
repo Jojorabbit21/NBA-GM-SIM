@@ -28,6 +28,7 @@ export const fetchUnreadMessageCount = async (userId: string, teamId: string): P
 export const fetchTotalMessageCount = async (userId: string, teamId: string, typeFilter?: MessageType[]): Promise<number> => {
     if (!userId || !teamId) return 0;
 
+
     let query = supabase
         .from('user_messages')
         .select('*', { count: 'exact', head: true })
@@ -75,6 +76,7 @@ export const fetchMessages = async (userId: string, teamId: string, page: number
  * Used for the sidebar list where only title/type/date/is_read are needed.
  */
 export const fetchMessageList = async (userId: string, teamId: string, page: number = 0, limit: number = 20, typeFilter?: MessageType[]): Promise<MessageListItem[]> => {
+    if (!userId || !teamId) return [];
     const from = page * limit;
     const to = from + limit - 1;
 

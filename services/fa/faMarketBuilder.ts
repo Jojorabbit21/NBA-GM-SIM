@@ -571,6 +571,18 @@ export function processUserOffer(
     );
 
     if (!accepted) {
+        const fmt = (n: number) => `$${(n / 1_000_000).toFixed(1)}M`;
+        // 계약 조건 페널티로 체감 연봉이 요구액 미만인 경우 원인 명시
+        if (effectiveSalary < offer.salary && offer.salary >= entry.askingSalary && effectiveSalary < entry.askingSalary) {
+            const cause = offer.option?.type === 'team' ? '팀 옵션'
+                : offer.option?.type === 'player' ? '선수 옵션'
+                : offer.noTrade ? 'NTC'
+                : '계약 조건';
+            return {
+                accepted: false,
+                reason: `${cause}으로 인해 선수가 인식하는 실효 연봉(${fmt(effectiveSalary)})이 요구액(${fmt(entry.askingSalary)}) 미만입니다. AAV를 높이거나 조건을 변경하세요.`,
+            };
+        }
         return { accepted: false, reason: '선수가 오퍼를 거절했습니다.' };
     }
 

@@ -38,6 +38,14 @@ export const applyBoxToRoster = (team: Team, box: PlayerBoxScore[], isPlayoff = 
             target.techFouls   = (target.techFouls || 0) + (statLine.techFouls || 0);
             target.flagrantFouls = (target.flagrantFouls || 0) + (statLine.flagrantFouls || 0);
             target.plusMinus   += (statLine.plusMinus|| 0);
+            target.contestedAttempted = (target.contestedAttempted || 0) + (statLine.contestedAttempted || 0);
+            target.contestedMade      = (target.contestedMade      || 0) + (statLine.contestedMade      || 0);
+            target.defRimAttempted    = (target.defRimAttempted    || 0) + (statLine.defRimAttempted    || 0);
+            target.defRimMade         = (target.defRimMade         || 0) + (statLine.defRimMade         || 0);
+            target.defMidAttempted    = (target.defMidAttempted    || 0) + (statLine.defMidAttempted    || 0);
+            target.defMidMade         = (target.defMidMade         || 0) + (statLine.defMidMade         || 0);
+            target.defThreeAttempted  = (target.defThreeAttempted  || 0) + (statLine.defThreeAttempted  || 0);
+            target.defThreeMade       = (target.defThreeMade       || 0) + (statLine.defThreeMade       || 0);
 
             Object.keys(statLine).forEach(key => {
                 if (key.startsWith('zone_') && typeof (statLine as any)[key] === 'number') {
@@ -98,6 +106,14 @@ export function sumTeamBoxScore(box: PlayerBoxScore[]): Record<string, number> {
         acc.pf     += (s.pf     || 0);
         acc.techFouls += (s.techFouls || 0);
         acc.flagrantFouls += (s.flagrantFouls || 0);
+        acc.contestedAttempted = (acc.contestedAttempted || 0) + (s.contestedAttempted || 0);
+        acc.contestedMade      = (acc.contestedMade      || 0) + (s.contestedMade      || 0);
+        acc.defRimAttempted    = (acc.defRimAttempted    || 0) + (s.defRimAttempted    || 0);
+        acc.defRimMade         = (acc.defRimMade         || 0) + (s.defRimMade         || 0);
+        acc.defMidAttempted    = (acc.defMidAttempted    || 0) + (s.defMidAttempted    || 0);
+        acc.defMidMade         = (acc.defMidMade         || 0) + (s.defMidMade         || 0);
+        acc.defThreeAttempted  = (acc.defThreeAttempted  || 0) + (s.defThreeAttempted  || 0);
+        acc.defThreeMade       = (acc.defThreeMade       || 0) + (s.defThreeMade       || 0);
         Object.keys(s).forEach(key => {
             if (key.startsWith('zone_') && typeof (s as any)[key] === 'number') {
                 acc[key] = (acc[key] || 0) + ((s as any)[key] || 0);

@@ -37,6 +37,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const contentCache = useRef<Map<string, any>>(new Map());
   const silentRefreshRef = useRef(false);
   const selectedMessageRef = useRef<MessageListItem | null>(null);
+  const reqIdRef = useRef(0);
 
   const handleTeamOptionDecide = useCallback(async (playerId: string, exercised: boolean) => {
       if (!selectedMessage || !selectedContent?.pendingTeamOptions) return;
@@ -107,6 +108,8 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   }, [onUpdateUnreadCount]);
 
   const loadMessages = useCallback(async () => {
+    if (!userId || !myTeamId) return;
+    const reqId = ++reqIdRef.current;
     const silent = silentRefreshRef.current;
     silentRefreshRef.current = false;
     if (!silent) setLoading(true);
@@ -119,6 +122,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       page === 0 ? fetchTotalMessageCount(userId, myTeamId, typeFilter) : Promise.resolve(totalCount),
     ]);
 
+    if (reqId !== reqIdRef.current) return;
     if (page === 0) setTotalCount(count);
     setMessages(prev => {
         if (page === 0) return data;

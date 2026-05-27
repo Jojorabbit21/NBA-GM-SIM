@@ -534,6 +534,16 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const faOfferAAV     = faOfferSalaries.length  > 0 ? Math.round(faOfferSalaries.reduce((a, b)  => a + b, 0) / faOfferSalaries.length)  : 0;
     const extOfferAAV    = extOfferSalaries.length > 0 ? Math.round(extOfferSalaries.reduce((a, b) => a + b, 0) / extOfferSalaries.length) : 0;
     const faIsDecliningSalary  = faOfferSalaries.some((s, i)  => i > 0 && s < faOfferSalaries[i - 1]);
+
+    // 계약 조건 반영 후 선수가 인식하는 실효 AAV (processUserOffer와 동일 로직)
+    const faEffectiveSalary = (() => {
+        let eff = faOfferAAV;
+        if (faContractOption === 'player') eff *= 1.08;
+        if (faContractOption === 'team' && faOfferYears >= 2) eff *= (1 - (1 / Math.max(1, faOfferYears)) * 0.55);
+        if (faNoTrade) eff *= 1.05;
+        if (faTradeKicker > 0) eff *= (1 + faTradeKicker * 0.3);
+        return Math.round(eff);
+    })();
     const extIsDecliningSalary = extOfferSalaries.some((s, i) => i > 0 && s < extOfferSalaries[i - 1]);
 
     // 캡% 입력 표시 (year 1 기준 실시간 역산)
@@ -940,8 +950,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
     const isWalkedAway  = isExt && !!negState?.walkedAway;
     const isExtDisabled = isWalkedAway || (isExt && extensionNotYet) || (isExt && !!negState?.signed);
 
-    const faIsAboveAsking   = faEntry ? faOfferAAV >= faEntry.askingSalary  : false;
-    const faIsBelowWalkaway = faEntry ? faOfferAAV < faEntry.walkAwaySalary : false;
+    const faIsAboveAsking   = faEntry ? faEffectiveSalary >= faEntry.askingSalary  : false;
+    const faIsBelowWalkaway = faEntry ? faEffectiveSalary < faEntry.walkAwaySalary : false;
 
     // 중앙 패널 오퍼 요약 문장 (FM 스타일)
     const offerSummaryText = (() => {
@@ -1573,6 +1583,12 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         <span className="text-slate-400">AAV</span>
                                         <span className="font-mono text-white">{fmtM(faOfferAAV)}</span>
                                     </div>
+                                    {faEffectiveSalary !== faOfferAAV && (
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-amber-400">선수 체감 AAV</span>
+                                            <span className={`font-mono ${faEffectiveSalary >= (faEntry?.askingSalary ?? 0) ? 'text-emerald-400' : 'text-amber-400'}`}>{fmtM(faEffectiveSalary)}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

@@ -105,6 +105,8 @@ export interface PersistentTradeOffer {
 /** 리그 전체 활성 오퍼 */
 export interface LeagueTradeOffers {
     offers: PersistentTradeOffer[];
+    /** DB write 실패 시 임시 보관, 다음 로드 시 user_transactions와 병합 */
+    pendingTxs?: Transaction[];
 }
 
 // ──────────────────────────────────────────────

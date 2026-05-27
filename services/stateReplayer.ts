@@ -137,6 +137,14 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.techFouls = (target.techFouls || 0) + (statLine.techFouls || 0);
             target.flagrantFouls = (target.flagrantFouls || 0) + (statLine.flagrantFouls || 0);
             target.plusMinus += (statLine.plusMinus || 0);
+            target.contestedAttempted = (target.contestedAttempted || 0) + (statLine.contestedAttempted || 0);
+            target.contestedMade      = (target.contestedMade      || 0) + (statLine.contestedMade      || 0);
+            target.defRimAttempted    = (target.defRimAttempted    || 0) + (statLine.defRimAttempted    || 0);
+            target.defRimMade         = (target.defRimMade         || 0) + (statLine.defRimMade         || 0);
+            target.defMidAttempted    = (target.defMidAttempted    || 0) + (statLine.defMidAttempted    || 0);
+            target.defMidMade         = (target.defMidMade         || 0) + (statLine.defMidMade         || 0);
+            target.defThreeAttempted  = (target.defThreeAttempted  || 0) + (statLine.defThreeAttempted  || 0);
+            target.defThreeMade       = (target.defThreeMade       || 0) + (statLine.defThreeMade       || 0);
 
             // [Fix] Aggregate Zone Stats (Flat Legacy Keys)
             Object.keys(statLine).forEach(key => {

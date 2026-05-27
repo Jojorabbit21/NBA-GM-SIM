@@ -176,6 +176,11 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tf', label: 'TF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
     { key: 'ff', label: 'FF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
+    { key: 'cont', label: 'CONT', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+    { key: 'dfg%', label: 'DFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
+    { key: 'dfgRim%', label: 'DFG<6ft', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
+    { key: 'dfgMid%', label: 'DFG Mid', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
+    { key: 'dfg3%', label: 'DFG 3P', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
 ];
 
 // Attributes Columns (Players Only) — 공유 설정(ATTR_GROUPS)에서 자동 생성

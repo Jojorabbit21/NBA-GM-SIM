@@ -30,6 +30,14 @@ export interface PlayerBoxScore {
     techFouls: number;
     flagrantFouls: number;
     plusMinus: number;
+    contestedAttempted: number;
+    contestedMade: number;
+    defRimAttempted: number;
+    defRimMade: number;
+    defMidAttempted: number;
+    defMidMade: number;
+    defThreeAttempted: number;
+    defThreeMade: number;
     condition: number;
     isStopper?: boolean;
     isAceTarget?: boolean;

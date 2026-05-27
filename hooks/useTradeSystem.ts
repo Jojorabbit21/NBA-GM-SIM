@@ -391,7 +391,19 @@ export const useTradeSystem = (
                 if (result.transaction) {
                     if (onAddTransaction) onAddTransaction(result.transaction);
                     if (userId) {
-                        await writeTransaction(userId, result.transaction);
+                        let txWriteOk = false;
+                        try {
+                            await writeTransaction(userId, result.transaction);
+                            txWriteOk = true;
+                        } catch (txErr) {
+                            console.error('⚠️ [Trade] writeTransaction failed — storing as pendingTx:', txErr);
+                        }
+                        if (!txWriteOk && setLeagueTradeOffers) {
+                            setLeagueTradeOffers(prev => ({
+                                ...prev,
+                                pendingTxs: [...(prev.pendingTxs ?? []), result.transaction!],
+                            }));
+                        }
                     }
                 }
 
@@ -437,7 +449,19 @@ export const useTradeSystem = (
                 if (onAddTransaction) onAddTransaction(newTransaction);
 
                 if (userId) {
-                    await writeTransaction(userId, newTransaction);
+                    let txWriteOk = false;
+                    try {
+                        await writeTransaction(userId, newTransaction);
+                        txWriteOk = true;
+                    } catch (txErr) {
+                        console.error('⚠️ [Trade] writeTransaction failed — storing as pendingTx:', txErr);
+                    }
+                    if (!txWriteOk && setLeagueTradeOffers) {
+                        setLeagueTradeOffers(prev => ({
+                            ...prev,
+                            pendingTxs: [...(prev.pendingTxs ?? []), newTransaction],
+                        }));
+                    }
                 }
 
                 // Roster Update
