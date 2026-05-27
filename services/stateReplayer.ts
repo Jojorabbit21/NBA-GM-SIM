@@ -145,6 +145,18 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.defMidMade         = (target.defMidMade         || 0) + (statLine.defMidMade         || 0);
             target.defThreeAttempted  = (target.defThreeAttempted  || 0) + (statLine.defThreeAttempted  || 0);
             target.defThreeMade       = (target.defThreeMade       || 0) + (statLine.defThreeMade       || 0);
+            target.defRAAttempted     = (target.defRAAttempted     || 0) + (statLine.defRAAttempted   || 0);
+            target.defRAMade          = (target.defRAMade          || 0) + (statLine.defRAMade        || 0);
+            target.defITPAttempted    = (target.defITPAttempted    || 0) + (statLine.defITPAttempted  || 0);
+            target.defITPMade         = (target.defITPMade         || 0) + (statLine.defITPMade       || 0);
+            target.defMIDAttempted    = (target.defMIDAttempted    || 0) + (statLine.defMIDAttempted  || 0);
+            target.defMIDMade         = (target.defMIDMade         || 0) + (statLine.defMIDMade       || 0);
+            target.defCNRAttempted    = (target.defCNRAttempted    || 0) + (statLine.defCNRAttempted  || 0);
+            target.defCNRMade         = (target.defCNRMade         || 0) + (statLine.defCNRMade       || 0);
+            target.defWINGAttempted   = (target.defWINGAttempted   || 0) + (statLine.defWINGAttempted || 0);
+            target.defWINGMade        = (target.defWINGMade        || 0) + (statLine.defWINGMade      || 0);
+            target.defATBAttempted    = (target.defATBAttempted    || 0) + (statLine.defATBAttempted  || 0);
+            target.defATBMade         = (target.defATBMade         || 0) + (statLine.defATBMade       || 0);
 
             // [Fix] Aggregate Zone Stats (Flat Legacy Keys)
             Object.keys(statLine).forEach(key => {

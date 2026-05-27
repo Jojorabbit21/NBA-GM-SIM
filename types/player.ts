@@ -35,6 +35,18 @@ export interface PlayerStats {
     defMidMade: number;
     defThreeAttempted: number;
     defThreeMade: number;
+    defRAAttempted: number;
+    defRAMade: number;
+    defITPAttempted: number;
+    defITPMade: number;
+    defMIDAttempted: number;
+    defMIDMade: number;
+    defCNRAttempted: number;
+    defCNRMade: number;
+    defWINGAttempted: number;
+    defWINGMade: number;
+    defATBAttempted: number;
+    defATBMade: number;
     [key: string]: number; // for zones
 }
 

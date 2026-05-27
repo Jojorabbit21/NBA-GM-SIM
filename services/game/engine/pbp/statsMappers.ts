@@ -10,19 +10,27 @@ import { generateCommentary, getReboundCommentary, getTechnicalFoulCommentary, g
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
-function bumpDefendedShot(defender: LivePlayer, broadZone: string, isMake: boolean): void {
+function bumpDefendedShot(defender: LivePlayer, broadZone: string, subZone: string | undefined, isMake: boolean): void {
     defender.contestedAttempted = (defender.contestedAttempted ?? 0) + 1;
     if (isMake) defender.contestedMade = (defender.contestedMade ?? 0) + 1;
 
-    if (broadZone === 'Rim' || broadZone === 'Paint') {
-        defender.defRimAttempted = (defender.defRimAttempted ?? 0) + 1;
-        if (isMake) defender.defRimMade = (defender.defRimMade ?? 0) + 1;
-    } else if (broadZone === 'Mid') {
-        defender.defMidAttempted = (defender.defMidAttempted ?? 0) + 1;
-        if (isMake) defender.defMidMade = (defender.defMidMade ?? 0) + 1;
-    } else if (broadZone === '3PT') {
-        defender.defThreeAttempted = (defender.defThreeAttempted ?? 0) + 1;
-        if (isMake) defender.defThreeMade = (defender.defThreeMade ?? 0) + 1;
+    const zone6 =
+        subZone === 'zone_rim'    ? 'RA' :
+        subZone === 'zone_paint'  ? 'ITP' :
+        subZone === 'zone_mid_l' || subZone === 'zone_mid_c' || subZone === 'zone_mid_r' ? 'MID' :
+        subZone === 'zone_c3_l'  || subZone === 'zone_c3_r'  ? 'CNR' :
+        subZone === 'zone_atb3_l'|| subZone === 'zone_atb3_r' ? 'WING' :
+        subZone === 'zone_atb3_c' ? 'ATB' :
+        broadZone === 'Rim' ? 'RA' :
+        broadZone === 'Paint' ? 'ITP' :
+        broadZone === 'Mid' ? 'MID' :
+        broadZone === '3PT' ? 'ATB' : null;
+
+    if (zone6) {
+        const keyA = `def${zone6}Attempted` as keyof LivePlayer;
+        const keyM = `def${zone6}Made` as keyof LivePlayer;
+        (defender[keyA] as number) = ((defender[keyA] as number) ?? 0) + 1;
+        if (isMake) (defender[keyM] as number) = ((defender[keyM] as number) ?? 0) + 1;
     }
 }
 
@@ -151,7 +159,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             actor.p3a += 1;
         }
         if (zone) updateZoneStats(actor, zone, true, result.subZone);
-        if (defender && zone) bumpDefendedShot(defender, zone, true);
+        if (defender && zone) bumpDefendedShot(defender, zone, result.subZone, true);
         updateHotCold(actor, true);
 
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
@@ -221,7 +229,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.fga += 1;
         if (zone === '3PT') actor.p3a += 1;
         if (zone) updateZoneStats(actor, zone, false, result.subZone);
-        if (defender && zone) bumpDefendedShot(defender, zone, false);
+        if (defender && zone) bumpDefendedShot(defender, zone, result.subZone, false);
         updateHotCold(actor, false);
 
         // Generate Commentary

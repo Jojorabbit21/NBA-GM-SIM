@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, Search, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { SeasonType } from '../../hooks/useLeaderboardData';
 import { TeamLogo } from '../common/TeamLogo';
@@ -43,8 +43,9 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     let options = TRADITIONAL_STAT_OPTIONS;
     if (statCategory === 'Shooting') options = SHOOTING_STAT_OPTIONS;
     else if (statCategory === 'Advanced') options = ADVANCED_STAT_OPTIONS;
+    else if (statCategory === 'Defense') options = mode === 'Teams' ? TEAM_DEFENSE_STAT_OPTIONS : DEFENSE_STAT_OPTIONS;
     else if (statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
-    else if (statCategory === 'Attributes') options = ATTRIBUTES_STAT_OPTIONS;
+    else if (statCategory === 'Attributes') options = mode === 'Teams' ? TEAM_ATTRIBUTES_STAT_OPTIONS : ATTRIBUTES_STAT_OPTIONS;
 
     const defaultOption = options[0]?.value || '';
 
@@ -117,7 +118,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
     const MODE_LABELS: Record<ViewMode, string> = { Players: '선수', Teams: '팀' };
-    const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Attributes: '능력치', Opponent: '상대팀' };
+    const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Defense: '수비', Attributes: '능력치', Opponent: '상대팀' };
 
     // Category Items
     const categoryItems = [
@@ -126,9 +127,8 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         { id: 'Advanced', label: '어드밴스드', onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
     ];
 
-    if (mode === 'Players') {
-        categoryItems.push({ id: 'Attributes', label: '능력치', onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
-    }
+    categoryItems.push({ id: 'Defense', label: '수비', onClick: () => setStatCategory('Defense'), active: statCategory === 'Defense' });
+    categoryItems.push({ id: 'Attributes', label: '능력치', onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
     if (mode === 'Teams') {
         categoryItems.push({ id: 'Opponent', label: '상대팀', onClick: () => setStatCategory('Opponent'), active: statCategory === 'Opponent' });
     }
@@ -148,7 +148,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         }
                         items={[
                             { id: 'Players', label: '선수', onClick: () => { setMode('Players'); if(statCategory === 'Opponent') setStatCategory('Traditional'); }, active: mode === 'Players' },
-                            { id: 'Teams', label: '팀', onClick: () => { setMode('Teams'); if(statCategory === 'Attributes') setStatCategory('Traditional'); }, active: mode === 'Teams' }
+                            { id: 'Teams', label: '팀', onClick: () => setMode('Teams'), active: mode === 'Teams' }
                         ]}
                         width="w-32"
                         align="left"

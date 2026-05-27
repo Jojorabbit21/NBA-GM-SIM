@@ -212,10 +212,13 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
 
 export const saveGameResults = async (results: any[]) => {
     if (!results || results.length === 0) return;
-    
+
     // 1. Try saving with FULL data (including pbp_logs, shot_events)
-    const { error } = await supabase.from('user_game_results').insert(results);
-    
+    // upsert with ignoreDuplicates: duplicate (user_id, game_id) rows are silently skipped
+    const { error } = await supabase
+        .from('user_game_results')
+        .upsert(results, { onConflict: 'user_id,game_id', ignoreDuplicates: true });
+
     if (error) {
         console.error("❌ Save Full Game Results Error:", error.message);
 
@@ -228,7 +231,9 @@ export const saveGameResults = async (results: any[]) => {
                 return rest;
             });
 
-            const { error: retryError } = await supabase.from('user_game_results').insert(safeResults);
+            const { error: retryError } = await supabase
+                .from('user_game_results')
+                .upsert(safeResults, { onConflict: 'user_id,game_id', ignoreDuplicates: true });
 
             if (retryError) {
                 console.error("❌ Save Fallback Failed:", retryError);

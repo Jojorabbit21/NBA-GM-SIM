@@ -38,6 +38,18 @@ export interface PlayerBoxScore {
     defMidMade: number;
     defThreeAttempted: number;
     defThreeMade: number;
+    defRAAttempted: number;
+    defRAMade: number;
+    defITPAttempted: number;
+    defITPMade: number;
+    defMIDAttempted: number;
+    defMIDMade: number;
+    defCNRAttempted: number;
+    defCNRMade: number;
+    defWINGAttempted: number;
+    defWINGMade: number;
+    defATBAttempted: number;
+    defATBMade: number;
     condition: number;
     isStopper?: boolean;
     isAceTarget?: boolean;

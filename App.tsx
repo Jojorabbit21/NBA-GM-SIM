@@ -336,7 +336,7 @@ const App: React.FC = () => {
     // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
     if (authLoading) return <Loader message="잠시만 기다려주세요..." />;
     if (gameData.isBaseDataError) {
-        return <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} />;
+        return <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} onLogout={logout} />;
     }
 
     // ─── 메인 렌더 ────────────────────────────────────────────────────────────

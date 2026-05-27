@@ -130,7 +130,17 @@ export const INITIAL_STATS = () => ({
     techFouls: 0,
     flagrantFouls: 0,
     plusMinus: 0,
-    
+    contestedAttempted: 0, contestedMade: 0,
+    defRimAttempted: 0, defRimMade: 0,
+    defMidAttempted: 0, defMidMade: 0,
+    defThreeAttempted: 0, defThreeMade: 0,
+    defRAAttempted: 0, defRAMade: 0,
+    defITPAttempted: 0, defITPMade: 0,
+    defMIDAttempted: 0, defMIDMade: 0,
+    defCNRAttempted: 0, defCNRMade: 0,
+    defWINGAttempted: 0, defWINGMade: 0,
+    defATBAttempted: 0, defATBMade: 0,
+
     // --- New 10-Zone Shooting Data ---
     zone_rim_m: 0, zone_rim_a: 0,
     zone_paint_m: 0, zone_paint_a: 0, // Merged Paint

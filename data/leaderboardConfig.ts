@@ -4,7 +4,7 @@ import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP } from './attributeConfig';
 // Types
 export type SortKey = string;
 export type ViewMode = 'Players' | 'Teams';
-export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Opponent' | 'Attributes';
+export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Defense' | 'Opponent' | 'Attributes';
 export type Operator = '>' | '<' | '>=' | '<=' | '=';
 
 export interface FilterItem {
@@ -23,7 +23,7 @@ export interface ColumnDef {
     sortable?: boolean;
     isHeatmap?: boolean;
     isInverse?: boolean; // Lower is better (TOV, PA, etc)
-    format?: 'number' | 'percent' | 'string' | 'custom';
+    format?: 'number' | 'percent' | 'string' | 'custom' | 'integer';
     stickyLeft?: number; // Pixel value for sticky positioning
     stickyShadow?: boolean; // Show shadow on this sticky column
     category?: StatCategory | 'Common'; // Which tab this column belongs to
@@ -46,6 +46,7 @@ export const WIDTHS = {
 
 // Filter Options - Traditional
 export const TRADITIONAL_STAT_OPTIONS = [
+    { value: 'g', label: 'G' },
     { value: 'pts', label: 'PTS' },
     { value: 'reb', label: 'REB' },
     { value: 'oreb', label: 'OREB' },
@@ -69,6 +70,7 @@ export const TRADITIONAL_STAT_OPTIONS = [
 
 // Filter Options - Advanced
 export const ADVANCED_STAT_OPTIONS = [
+    { value: 'g', label: 'G' },
     { value: 'ts%', label: 'TS%' },
     { value: 'efg%', label: 'eFG%' },
     { value: 'tov%', label: 'TOV%' },
@@ -124,34 +126,38 @@ export const ATTRIBUTE_KEYS = new Set(
 // Zone Definitions
 const ZONES = [
     { key: 'zone_rim', label: 'RIM' },
-    { key: 'zone_paint', label: 'PNT' },
-    { key: 'zone_mid_l', label: 'MID-L' },
-    { key: 'zone_mid_c', label: 'MID-C' },
-    { key: 'zone_mid_r', label: 'MID-R' },
-    { key: 'zone_c3_l', label: 'C3-L' },
-    { key: 'zone_c3_r', label: 'C3-R' },
-    { key: 'zone_atb3_l', label: 'ATB-L' },
-    { key: 'zone_atb3_c', label: 'ATB-C' },
-    { key: 'zone_atb3_r', label: 'ATB-R' },
+    { key: 'zone_paint', label: 'PAINT' },
+    { key: 'zone_mid_l', label: 'MID LEFT' },
+    { key: 'zone_mid_c', label: 'MID CENTER' },
+    { key: 'zone_mid_r', label: 'MID RIGHT' },
+    { key: 'zone_c3_l', label: 'LEFT CORNER' },
+    { key: 'zone_c3_r', label: 'RIGHT CORNER' },
+    { key: 'zone_atb3_l', label: 'LEFT 45' },
+    { key: 'zone_atb3_c', label: 'ATB' },
+    { key: 'zone_atb3_r', label: 'RIGHT 45' },
 ];
 
 // Filter Options - Shooting (Generated from Zones)
-export const SHOOTING_STAT_OPTIONS = ZONES.flatMap(z => [
-    { value: `${z.key}_m`, label: `${z.label} Makes` },
-    { value: `${z.key}_a`, label: `${z.label} Attempts` },
-    { value: `${z.key}_pct`, label: `${z.label} %` },
-]);
+export const SHOOTING_STAT_OPTIONS = [
+    { value: 'g', label: 'G' },
+    ...ZONES.flatMap(z => [
+        { value: `${z.key}_m`, label: `${z.label} Makes` },
+        { value: `${z.key}_a`, label: `${z.label} Attempts` },
+        { value: `${z.key}_pct`, label: `${z.label} %` },
+    ]),
+];
 
 // Helper to generate shooting columns
 const generateShootingColumns = (): ColumnDef[] => {
-    const cols: ColumnDef[] = [];
-    // [Updated] Removed PTS and TS% from Shooting columns as requested
+    const cols: ColumnDef[] = [
+        { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Shooting', format: 'integer' },
+    ];
 
     ZONES.forEach(z => {
         cols.push(
-            { key: `${z.key}_m`, label: `${z.label} M`, width: WIDTHS.ZONE, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
-            { key: `${z.key}_a`, label: `${z.label} A`, width: WIDTHS.ZONE, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
-            { key: `${z.key}_pct`, label: `${z.label} %`, width: WIDTHS.ZONE + 10, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' }
+            { key: `${z.key}_m`, label: 'FGM', width: WIDTHS.ZONE, sortable: true, isHeatmap: true, attrGroup: z.label, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_a`, label: 'FGA', width: WIDTHS.ZONE, sortable: true, isHeatmap: true, attrGroup: z.label, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_pct`, label: 'FG%', width: WIDTHS.ZONE + 10, sortable: true, isHeatmap: true, attrGroup: z.label, category: 'Shooting', format: 'percent' }
         );
     });
 
@@ -162,6 +168,7 @@ const SHOOTING_COLUMNS = generateShootingColumns();
 
 // Advanced Columns
 const ADVANCED_COLUMNS: ColumnDef[] = [
+    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Advanced', format: 'integer' },
     { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'efg%', label: 'eFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tov%', label: 'TOV%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
@@ -176,11 +183,34 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tf', label: 'TF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
     { key: 'ff', label: 'FF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
-    { key: 'cont', label: 'CONT', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
-    { key: 'dfg%', label: 'DFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
-    { key: 'dfgRim%', label: 'DFG<6ft', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
-    { key: 'dfgMid%', label: 'DFG Mid', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
-    { key: 'dfg3%', label: 'DFG 3P', width: WIDTHS.PCT + 8, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
+];
+
+// Defense Columns
+const DEF_ZONE_W = 55;
+const DEF_ZONES = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
+export const DEFENSE_COLUMNS: ColumnDef[] = [
+    { key: 'g',    label: 'G',    width: WIDTHS.STAT, sortable: true, isHeatmap: false, category: 'Defense', format: 'integer' },
+    { key: 'stl',  label: 'STL',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    { key: 'blk',  label: 'BLK',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    ...DEF_ZONES.flatMap(z => ([
+        { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
+        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: false, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
+        { key: `dfg${z}%`,  label: 'DFG%', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  isInverse: true, attrGroup: z, category: 'Defense' as const, format: 'percent' as const },
+    ])),
+];
+
+// Filter Options - Defense
+export const DEFENSE_STAT_OPTIONS = [
+    { value: 'g',     label: 'G' },
+    { value: 'stl',   label: 'STL' },
+    { value: 'blk',   label: 'BLK' },
+    { value: 'dreb',  label: 'DREB' },
+    ...DEF_ZONES.flatMap(z => [
+        { value: `dfg${z}_m`, label: `${z} DFGM` },
+        { value: `dfg${z}_a`, label: `${z} DFGA` },
+        { value: `dfg${z}%`,  label: `${z} DFG%` },
+    ]),
 ];
 
 // Attributes Columns (Players Only) — 공유 설정(ATTR_GROUPS)에서 자동 생성
@@ -254,9 +284,45 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     // Advanced Stats
     ...ADVANCED_COLUMNS,
 
+    // Defense Stats
+    ...DEFENSE_COLUMNS,
+
     // Attributes (Players Only)
     ...ATTRIBUTES_COLUMNS
 ];
+
+// Filter Options - Team Defense
+export const TEAM_DEFENSE_STAT_OPTIONS = [
+    { value: 'g',    label: 'G' },
+    { value: 'stl',  label: 'STL' },
+    { value: 'blk',  label: 'BLK' },
+    { value: 'dreb', label: 'DREB' },
+    ...DEF_ZONES.flatMap(z => [
+        { value: `dfg${z}_m`, label: `${z} DFGM` },
+        { value: `dfg${z}_a`, label: `${z} DFGA` },
+        { value: `dfg${z}%`,  label: `${z} DFG%` },
+    ]),
+];
+
+// Filter Options - Team Attributes (same as player Attributes)
+export const TEAM_ATTRIBUTES_STAT_OPTIONS = ATTRIBUTES_STAT_OPTIONS;
+
+// Defense Columns for Teams — same structure as player Defense tab
+const TEAMS_DEFENSE_COLUMNS: ColumnDef[] = [
+    { key: 'g',    label: 'G',    width: WIDTHS.STAT, sortable: true, isHeatmap: false, category: 'Defense', format: 'integer' },
+    { key: 'stl',  label: 'STL',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    { key: 'blk',  label: 'BLK',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    ...DEF_ZONES.flatMap(z => ([
+        { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'number' as const },
+        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: false, attrGroup: z, category: 'Defense' as const, format: 'number' as const },
+        { key: `dfg${z}%`,  label: 'DFG%', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  isInverse: true, attrGroup: z, category: 'Defense' as const, format: 'percent' as const },
+    ])),
+];
+
+// Attributes Columns for Teams
+// Teams > Attributes — same structure as player Attributes tab (roster averages, rounded to integer)
+const TEAMS_ATTRIBUTES_COLUMNS: ColumnDef[] = ATTRIBUTES_COLUMNS.map(c => ({ ...c, format: 'integer' as const }));
 
 // Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE/ORTG/DRTG/NRTG 추가)
 const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
@@ -306,6 +372,12 @@ export const TEAM_COLUMNS: ColumnDef[] = [
 
     // Advanced (Teams 전용 컬럼셋)
     ...TEAMS_ADVANCED_COLUMNS,
+
+    // Defense (Teams 전용)
+    ...TEAMS_DEFENSE_COLUMNS,
+
+    // Attributes (Teams 전용)
+    ...TEAMS_ATTRIBUTES_COLUMNS,
 
     // Opponent
     ...OPPONENT_COLUMNS

@@ -59,12 +59,56 @@ const ADVANCED_COLS = [
     { key: 'stl%', label: 'STL%' }, { key: 'blk%', label: 'BLK%' },
     { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
     { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
-    { key: 'cont', label: 'CONT' },
-    { key: 'dfg%', label: 'DFG%' },
-    { key: 'dfgRim%', label: 'DFG<6ft' },
-    { key: 'dfgMid%', label: 'DFG Mid' },
-    { key: 'dfg3%', label: 'DFG 3P' },
 ];
+
+// ── Defense Zones ──
+const DEF_ZONES = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
+
+const DefenseZoneTable: React.FC<{ stats: PlayerStats }> = ({ stats: st }) => (
+    <table className="w-full text-[11px]" style={{ tableLayout: 'fixed' }}>
+        <thead>
+            <tr className="h-6 border-b border-slate-800/60">
+                {DEF_ZONES.map((z, zi) => (
+                    <th key={z} colSpan={3}
+                        className={`text-center text-[9px] font-black uppercase tracking-widest text-slate-400 align-middle
+                            ${zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
+                    >
+                        {z}
+                    </th>
+                ))}
+            </tr>
+            <tr className="h-6 border-b border-slate-800">
+                {DEF_ZONES.flatMap((z, zi) =>
+                    (['DFGM', 'DFGA', 'DFG%'] as const).map((sub, si) => (
+                        <th key={`${z}_${sub}`}
+                            className={`text-center text-[9px] font-medium text-slate-500 align-middle
+                                ${si === 2 && zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
+                        >
+                            {sub}
+                        </th>
+                    ))
+                )}
+            </tr>
+        </thead>
+        <tbody>
+            <tr className="h-10">
+                {DEF_ZONES.flatMap((z, zi) => {
+                    const m = (st as any)[`def${z}Made`] ?? 0;
+                    const a = (st as any)[`def${z}Attempted`] ?? 0;
+                    const pct = a > 0 ? (m / a * 100).toFixed(1) + '%' : '-';
+                    return (['DFGM', 'DFGA', 'DFG%'] as const).map((sub, si) => (
+                        <td key={`${z}_${sub}`} align="center"
+                            className={`font-mono font-medium tabular-nums text-white text-[11px]
+                                ${si === 2 && zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
+                        >
+                            {sub === 'DFGM' ? m : sub === 'DFGA' ? a : pct}
+                        </td>
+                    ));
+                })}
+            </tr>
+        </tbody>
+    </table>
+);
 
 // ── Career History Columns ──
 const CAREER_TRAD_COLS = [
@@ -84,10 +128,12 @@ const CAREER_ADV_COLS = [
     { key: 'usg_pct', label: 'USG%' }, { key: 'ast_pct', label: 'AST%' },
     { key: 'orb_pct', label: 'ORB%' }, { key: 'drb_pct', label: 'DRB%' }, { key: 'trb_pct', label: 'TRB%' },
     { key: 'stl_pct', label: 'STL%' }, { key: 'blk_pct', label: 'BLK%' },
+    { key: 'cont_pg', label: 'CONT' },
+    { key: 'dfg_pct', label: 'DFG%' },
 ];
 
 // ── Career table helpers ──
-const PCT_COLS = new Set(['fg_pct','fg3_pct','ft_pct','ts_pct','efg_pct','fg3a_rate','fta_rate']);
+const PCT_COLS = new Set(['fg_pct','fg3_pct','ft_pct','ts_pct','efg_pct','fg3a_rate','fta_rate','dfg_pct']);
 const RATE_COLS = new Set(['usg_pct','ast_pct','orb_pct','drb_pct','trb_pct','stl_pct','blk_pct','tov_pct']);
 const INT_COLS  = new Set(['age','gp','gs']);
 
@@ -140,6 +186,8 @@ function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
         fg3a_rate: wavgNullable('fg3a_rate'), fta_rate: wavg('fta_rate'),
         usg_pct: wavg('usg_pct'), ast_pct: wavg('ast_pct'),
         orb_pct: wavg('orb_pct'), drb_pct: wavg('drb_pct'), trb_pct: wavg('trb_pct'),
+        cont_pg: wavgNullable('cont_pg'),
+        dfg_pct: wavgNullable('dfg_pct'),
     };
 }
 
@@ -190,6 +238,8 @@ function statsToCareerRow(
         tov_pct: (fga + 0.44 * fta + tov) > 0 ? tov / (fga + 0.44 * fta + tov) : null,
         fg3a_rate: fga > 0 ? p3a / fga : null,
         fta_rate:  fga > 0 ? fta / fga : null,
+        cont_pg: g > 0 ? (stats.contestedAttempted ?? 0) / g : null,
+        dfg_pct: (stats.contestedAttempted ?? 0) > 0 ? (stats.contestedMade ?? 0) / (stats.contestedAttempted ?? 0) : null,
         playoff,
     };
 }
@@ -348,6 +398,36 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
         case 'dfg3%': {
             const a = st.defThreeAttempted ?? 0;
             val = a > 0 ? ((st.defThreeMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgRA%': {
+            const a = st.defRAAttempted ?? 0;
+            val = a > 0 ? ((st.defRAMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgITP%': {
+            const a = st.defITPAttempted ?? 0;
+            val = a > 0 ? ((st.defITPMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgMID%': {
+            const a = st.defMIDAttempted ?? 0;
+            val = a > 0 ? ((st.defMIDMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgCNR%': {
+            const a = st.defCNRAttempted ?? 0;
+            val = a > 0 ? ((st.defCNRMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgWING%': {
+            const a = st.defWINGAttempted ?? 0;
+            val = a > 0 ? ((st.defWINGMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'dfgATB%': {
+            const a = st.defATBAttempted ?? 0;
+            val = a > 0 ? ((st.defATBMade ?? 0) / a * 100).toFixed(1) + '%' : '-';
             break;
         }
         default:

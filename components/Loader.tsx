@@ -95,15 +95,25 @@ export const ContentLoader: React.FC = () => (
 );
 
 /** Supabase 서버 연결 실패 시 표시되는 에러 화면 */
-export const DatabaseErrorView: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
+export const DatabaseErrorView: React.FC<{ onRetry: () => void; onLogout?: () => void }> = ({ onRetry, onLogout }) => (
     <div className="fixed inset-0 bg-surface-background flex flex-col items-center justify-center z-[1000] gap-6">
         <p className="text-2xl font-black text-status-danger-text">서버 연결에 실패했습니다</p>
-        <p className="text-text-muted text-sm">Supabase 서비스에 접근할 수 없습니다. 잠시 후 다시 시도해주세요.</p>
-        <button
-            onClick={onRetry}
-            className="px-6 py-3 bg-cta-strong hover:bg-cta-default text-white font-bold rounded-2xl transition-all"
-        >
-            다시 시도
-        </button>
+        <p className="text-text-muted text-sm">세션이 만료됐을 수 있습니다. 로그아웃 후 재로그인 해주세요.</p>
+        <div className="flex gap-3">
+            <button
+                onClick={onRetry}
+                className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-2xl transition-all"
+            >
+                다시 시도
+            </button>
+            {onLogout && (
+                <button
+                    onClick={onLogout}
+                    className="px-6 py-3 bg-cta-strong hover:bg-cta-default text-white font-bold rounded-2xl transition-all"
+                >
+                    로그아웃
+                </button>
+            )}
+        </div>
     </div>
 );

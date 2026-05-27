@@ -166,7 +166,7 @@ export const TableCell = ({
         if (variant === 'stat') return 'right';
         if (variant === 'attribute') return 'center';
         if (variant === 'ovr') return 'center';
-        return 'left';
+        return 'center';
     };
     
     const finalAlign = getAlign();

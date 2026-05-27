@@ -60,24 +60,27 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
     const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
 
-    // Attributes 탭일 때 카테고리 그룹 행 생성
-    const attrGroupRow = statCategory === 'Attributes' ? (() => {
-        const groups: { label: string; colSpan: number; }[] = [];
-        let currentGroup = '';
-        for (const col of visibleColumns) {
-            const group = col.attrGroup || '';
-            if (group && group !== currentGroup) {
-                groups.push({ label: group, colSpan: 1 });
-                currentGroup = group;
-            } else if (group && group === currentGroup) {
-                groups[groups.length - 1].colSpan++;
+    // Attributes / Defense 탭: 2행 그룹 헤더 데이터 생성
+    // row1 — non-grouped cols: rowSpan=2 / grouped cols: 그룹 레이블(colSpan)
+    // row2 — grouped cols 개별 레이블만
+    type Row1Item = { type: 'nogroup'; col: ColumnDef; colIdx: number } | { type: 'group'; label: string; colSpan: number };
+    const headerData = (statCategory === 'Attributes' || statCategory === 'Defense' || statCategory === 'Shooting') ? (() => {
+        const row1: Row1Item[] = [];
+        const row2: Array<{ col: ColumnDef; colIdx: number }> = [];
+        visibleColumns.forEach((col, colIdx) => {
+            if (!col.attrGroup) {
+                row1.push({ type: 'nogroup', col, colIdx });
             } else {
-                // Common 컬럼 (sticky: #, PLAYER, POS, OVR)
-                groups.push({ label: '', colSpan: 1 });
-                currentGroup = '';
+                row2.push({ col, colIdx });
+                const last = row1[row1.length - 1];
+                if (last && last.type === 'group' && last.label === col.attrGroup) {
+                    (last as { type: 'group'; label: string; colSpan: number }).colSpan++;
+                } else {
+                    row1.push({ type: 'group', label: col.attrGroup, colSpan: 1 });
+                }
             }
-        }
-        return groups;
+        });
+        return row2.length > 0 ? { row1, row2 } : null;
     })() : null;
 
     if (data.length === 0) {
@@ -89,38 +92,51 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                             <col key={col.key} style={{ width: col.width }} />
                         ))}
                     </colgroup>
-                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!attrGroupRow}>
-                        {attrGroupRow ? (
+                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
+                        {headerData ? (
                             <>
-                                <tr className="h-6">
-                                    {attrGroupRow.map((g, i) => {
-                                        if (!g.label) {
-                                            const col = visibleColumns[attrGroupRow.slice(0, i).reduce((s, x) => s + x.colSpan, 0)];
-                                            const stickyStyle = col?.stickyLeft !== undefined ? {
-                                                position: 'sticky' as const, left: col.stickyLeft, zIndex: 50,
-                                            } : undefined;
-                                            return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-b border-r border-slate-800" style={stickyStyle} />;
+                                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                                    {headerData.row1.map((item, i) => {
+                                        if (item.type === 'nogroup') {
+                                            const { col, colIdx } = item;
+                                            const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
+                                            const style = getStickyStyle(col, isLastSticky);
+                                            return (
+                                                <TableHeaderCell
+                                                    key={col.key}
+                                                    rowSpan={2}
+                                                    style={style}
+                                                    stickyLeft={col.stickyLeft !== undefined}
+                                                    align={col.key === 'name' ? 'left' : 'center'}
+                                                    className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                                    sortable={col.sortable}
+                                                    onSort={() => col.sortable && onSort(col.key)}
+                                                    sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                                >
+                                                    {col.label}
+                                                </TableHeaderCell>
+                                            );
                                         }
                                         return (
-                                            <th key={i} colSpan={g.colSpan}
-                                                className="bg-slate-950 border-b border-r border-slate-800 text-[9px] font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
+                                            <th key={i} colSpan={item.colSpan}
+                                                className="bg-slate-950 border-b border-r border-slate-800 text-xs font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
                                             >
-                                                {g.label}
+                                                {item.label}
                                             </th>
                                         );
                                     })}
                                 </tr>
-                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-8">
-                                    {visibleColumns.map((col, idx) => {
-                                        const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                                    {headerData.row2.map(({ col, colIdx }) => {
+                                        const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
                                         const style = getStickyStyle(col, isLastSticky);
                                         return (
                                             <TableHeaderCell
                                                 key={col.key}
                                                 style={style}
                                                 stickyLeft={col.stickyLeft !== undefined}
-                                                align={col.key === 'name' ? 'left' : 'center'}
-                                                className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                                align="center"
+                                                className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'}`}
                                                 sortable={col.sortable}
                                                 onSort={() => col.sortable && onSort(col.key)}
                                                 sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
@@ -169,41 +185,51 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                 ))}
             </colgroup>
 
-            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!attrGroupRow}>
-                {attrGroupRow ? (
+            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
+                {headerData ? (
                     <>
-                        {/* 1열: 카테고리 그룹 */}
-                        <tr className="h-6">
-                            {attrGroupRow.map((g, i) => {
-                                if (!g.label) {
-                                    // Common 스티키 셀
-                                    const col = visibleColumns[attrGroupRow.slice(0, i).reduce((s, x) => s + x.colSpan, 0)];
-                                    const stickyStyle = col?.stickyLeft !== undefined ? {
-                                        position: 'sticky' as const, left: col.stickyLeft, zIndex: 50,
-                                    } : undefined;
-                                    return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-b border-r border-slate-800" style={stickyStyle} />;
+                        <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                            {headerData.row1.map((item, i) => {
+                                if (item.type === 'nogroup') {
+                                    const { col, colIdx } = item;
+                                    const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
+                                    const style = getStickyStyle(col, isLastSticky);
+                                    return (
+                                        <TableHeaderCell
+                                            key={col.key}
+                                            rowSpan={2}
+                                            style={style}
+                                            stickyLeft={col.stickyLeft !== undefined}
+                                            align={col.key === 'name' ? 'left' : 'center'}
+                                            className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                            sortable={col.sortable}
+                                            onSort={() => col.sortable && onSort(col.key)}
+                                            sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                        >
+                                            {col.label}
+                                        </TableHeaderCell>
+                                    );
                                 }
                                 return (
-                                    <th key={i} colSpan={g.colSpan}
-                                        className="bg-slate-950 border-b border-r border-slate-800 text-[9px] font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
+                                    <th key={i} colSpan={item.colSpan}
+                                        className="bg-slate-950 border-b border-r border-slate-800 text-xs font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
                                     >
-                                        {g.label}
+                                        {item.label}
                                     </th>
                                 );
                             })}
                         </tr>
-                        {/* 2열: 개별 능력치 컬럼명 */}
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-8">
-                            {visibleColumns.map((col, idx) => {
-                                const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                        <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                            {headerData.row2.map(({ col, colIdx }) => {
+                                const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
                                 const style = getStickyStyle(col, isLastSticky);
                                 return (
                                     <TableHeaderCell
                                         key={col.key}
                                         style={style}
                                         stickyLeft={col.stickyLeft !== undefined}
-                                        align={col.key === 'name' ? 'left' : 'center'}
-                                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                        align="center"
+                                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'}`}
                                         sortable={col.sortable}
                                         onSort={() => col.sortable && onSort(col.key)}
                                         sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
@@ -382,14 +408,13 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     finalTextColor = `text-xs font-black font-mono tabular-nums ${color}`;
                                 }
                                 
-                                const alignClass = col.key === 'name' ? 'pl-4' : 'text-center';
-
                                 return (
-                                    <TableCell 
+                                    <TableCell
                                         key={col.key}
                                         style={{...style, ...bgStyle}}
                                         stickyLeft={col.stickyLeft !== undefined}
-                                        className={`border-r border-slate-800/30 ${stickyClass} ${rankClass} ${finalTextColor} ${alignClass}`}
+                                        align={col.key === 'name' ? 'left' : 'center'}
+                                        className={`border-r border-slate-800/30 ${stickyClass} ${rankClass} ${finalTextColor} ${col.key === 'name' ? 'pl-4' : ''}`}
                                     >
                                         {col.key === 'pm' && parseFloat(cellContent as string) > 0 ? '+' : ''}
                                         {cellContent}

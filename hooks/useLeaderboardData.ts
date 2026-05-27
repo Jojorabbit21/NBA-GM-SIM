@@ -73,11 +73,27 @@ export const useLeaderboardData = (
                     acc[`${z}_m`] = (acc[`${z}_m`] || 0) + (s[`${z}_m`] || 0);
                     acc[`${z}_a`] = (acc[`${z}_a`] || 0) + (s[`${z}_a`] || 0);
                 });
+                acc.contestedAttempted += (s.contestedAttempted || 0);
+                acc.contestedMade      += (s.contestedMade      || 0);
+                acc.defRimAttempted    += (s.defRimAttempted    || 0);
+                acc.defRimMade         += (s.defRimMade         || 0);
+                acc.defMidAttempted    += (s.defMidAttempted    || 0);
+                acc.defMidMade         += (s.defMidMade         || 0);
+                acc.defThreeAttempted  += (s.defThreeAttempted  || 0);
+                acc.defThreeMade       += (s.defThreeMade       || 0);
+                ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'].forEach(z => {
+                    acc[`def${z}Attempted`] = (acc[`def${z}Attempted`] || 0) + ((s as any)[`def${z}Attempted`] || 0);
+                    acc[`def${z}Made`]      = (acc[`def${z}Made`]      || 0) + ((s as any)[`def${z}Made`]      || 0);
+                });
                 return acc;
             }, {
                 reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0,
                 fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
-                rimM: 0, rimA: 0, midM: 0, midA: 0
+                rimM: 0, rimA: 0, midM: 0, midA: 0,
+                contestedAttempted: 0, contestedMade: 0,
+                defRimAttempted: 0, defRimMade: 0,
+                defMidAttempted: 0, defMidMade: 0,
+                defThreeAttempted: 0, defThreeMade: 0,
             });
 
             // TF/FF: schedule의 경기별 homeStats/awayStats에서 직접 합산 (선수 스탯과 불일치 방지)
@@ -261,6 +277,48 @@ export const useLeaderboardData = (
                 stats[`${z}_pct`] = a > 0 ? m / a : 0;
             });
 
+            // --- DFG (Defended FG) Stats ---
+            stats['cont']    = (totals.contestedAttempted || 0) / playedCount;
+            stats['dfg%']    = totals.contestedAttempted > 0 ? totals.contestedMade / totals.contestedAttempted : 0;
+            stats['dfgRim%'] = totals.defRimAttempted   > 0 ? totals.defRimMade   / totals.defRimAttempted   : 0;
+            stats['dfgMid%'] = totals.defMidAttempted   > 0 ? totals.defMidMade   / totals.defMidAttempted   : 0;
+            stats['dfg3%']   = totals.defThreeAttempted > 0 ? totals.defThreeMade / totals.defThreeAttempted : 0;
+            ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'].forEach(z => {
+                const a = (totals as any)[`def${z}Attempted`] || 0;
+                const m = (totals as any)[`def${z}Made`]      || 0;
+                stats[`dfg${z}_m`] = m / playedCount;
+                stats[`dfg${z}_a`] = a / playedCount;
+                stats[`dfg${z}%`]  = a > 0 ? m / a : 0;
+            });
+
+            // --- Roster Attributes ---
+            const roster = t.roster;
+            const sortedByOvr = [...roster].sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
+            const starters = sortedByOvr.slice(0, 5);
+            const bench    = sortedByOvr.slice(5);
+            const posGroups: Record<string, typeof roster> = { PG: [], SG: [], SF: [], PF: [], C: [] };
+            roster.forEach(p => { if (posGroups[p.position]) posGroups[p.position].push(p); });
+            const posAvg = (pos: string) => {
+                const ps = posGroups[pos];
+                return ps.length > 0 ? ps.reduce((s, p) => s + (p.ovr || 0), 0) / ps.length : 0;
+            };
+            stats.avgOvr     = roster.length > 0 ? roster.reduce((s, p) => s + (p.ovr || 0), 0) / roster.length : 0;
+            stats.starterOvr = starters.length > 0 ? starters.reduce((s, p) => s + (p.ovr || 0), 0) / starters.length : 0;
+            stats.benchOvr   = bench.length > 0 ? bench.reduce((s, p) => s + (p.ovr || 0), 0) / bench.length : 0;
+            stats.pgOvr      = posAvg('PG');
+            stats.sgOvr      = posAvg('SG');
+            stats.sfOvr      = posAvg('SF');
+            stats.pfOvr      = posAvg('PF');
+            stats.cOvr       = posAvg('C');
+            stats.avgAge     = roster.length > 0 ? roster.reduce((s, p) => s + (p.age || 0), 0) / roster.length : 0;
+
+            // --- Per-attribute roster averages (Teams > Attributes tab) ---
+            ATTRIBUTE_KEYS.forEach(lbKey => {
+                stats[lbKey] = roster.length > 0
+                    ? roster.reduce((sum, p) => sum + getAttrVal(p, lbKey), 0) / roster.length
+                    : 0;
+            });
+
             return {
                 ...t,
                 wins,
@@ -382,6 +440,14 @@ export const useLeaderboardData = (
                 s['dfgMid%'] = dma > 0 ? (s.defMidMade || 0) / dma : 0;
                 const d3a = s.defThreeAttempted || 0;
                 s['dfg3%']   = d3a > 0 ? (s.defThreeMade || 0) / d3a : 0;
+                const zones6 = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
+                for (const z of zones6) {
+                    const a = (s as any)[`def${z}Attempted`] || 0;
+                    const m = (s as any)[`def${z}Made`] || 0;
+                    s[`dfg${z}_m`] = m;
+                    s[`dfg${z}_a`] = a;
+                    s[`dfg${z}%`]  = a > 0 ? m / a : 0;
+                }
 
                 return { 
                     ...p, 
@@ -449,6 +515,18 @@ export const useLeaderboardData = (
                     update(`${z}_a`, (s[`${z}_a`] || 0) / g);
                     update(`${z}_pct`, s[`${z}_pct`]);
                 });
+
+                // Defense Stats
+                ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'].forEach(z => {
+                    update(`dfg${z}_m`, s[`dfg${z}_m`] || 0);
+                    update(`dfg${z}_a`, s[`dfg${z}_a`] || 0);
+                    update(`dfg${z}%`,  s[`dfg${z}%`]  || 0);
+                });
+                update('cont',    s['cont']    || 0);
+                update('dfg%',    s['dfg%']    || 0);
+                update('dfgRim%', s['dfgRim%'] || 0);
+                update('dfgMid%', s['dfgMid%'] || 0);
+                update('dfg3%',   s['dfg3%']   || 0);
 
                 // Advanced Stats
                 update('efg%', s['efg%']);
@@ -621,7 +699,8 @@ export const useLeaderboardData = (
                     }
 
                     // Zone Keys (M, A per-game, PCT as-is) — check before generic access
-                    if (sortConfig.key.endsWith('_m') || sortConfig.key.endsWith('_a')) {
+                    // dfg* keys store season totals, not per-game, so exclude them
+                    if ((sortConfig.key.endsWith('_m') || sortConfig.key.endsWith('_a')) && !sortConfig.key.startsWith('dfg')) {
                          return (s[sortConfig.key] || 0) / g;
                     }
                     if (sortConfig.key.endsWith('_pct')) {
