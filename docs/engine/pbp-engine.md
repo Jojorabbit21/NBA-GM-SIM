@@ -136,9 +136,19 @@ services/game/tactics/
         intangibles: number,    // 클러치/강심장
     },
 
-    // 런타임 존별 스탯 (15개 세부존 × make/attempt)
+    // 런타임 존별 슈팅 스탯 (15개 세부존 × make/attempt)
     zone_rim_m/a, zone_paint_m/a, zone_mid_l/c/r_m/a,
     zone_c3_l/r_m/a, zone_atb3_l/c/r_m/a,
+
+    // 수비 스탯 (1차 수비수 매치업 기반 — bumpDefendedShot)
+    contestedAttempted: number,  // CONT: 매치업한 슛 시도 합계 (= DFGA)
+    contestedMade: number,       // DFGM: 그 중 허용한 득점
+    defRimAttempted: number,     // Rim+Paint 존 수비 시도
+    defRimMade: number,          // Rim+Paint 존 수비 허용
+    defMidAttempted: number,     // Mid 존 수비 시도
+    defMidMade: number,          // Mid 존 수비 허용
+    defThreeAttempted: number,   // 3PT 존 수비 시도
+    defThreeMade: number,        // 3PT 존 수비 허용
 
     // Ace Stopper 추적
     matchupEffectSum: number,
@@ -1269,6 +1279,7 @@ type === 'score':
   actor.stats.fga += 1
   if points === 3: actor.stats.p3m/p3a += 1
   updateZoneStats(actor, zone, true, result.subZone)  // 서브존 전달
+  if defender && zone: bumpDefendedShot(defender, zone, true)  // DFGM +1 (허용 득점)
   if assister: assister.stats.ast += 1
   offTeam.score += points
   updatePlusMinus(offTeam, defTeam, points)
@@ -1277,8 +1288,11 @@ type === 'miss':
   actor.stats.fga += 1
   if zone === '3PT': actor.stats.p3a += 1
   updateZoneStats(actor, zone, false, result.subZone)  // 서브존 전달
+  if defender && zone: bumpDefendedShot(defender, zone, false)  // DFGA +1 (수비 성공)
   if isBlock: defender.stats.blk += 1
   if rebounder: rebounder.stats.reb += 1 (offReb or defReb)
+
+  // defender는 헬프 블락 성공 시 finalDefender(헬퍼)로 교체되어 있을 수 있음
 
 type === 'turnover':
   actor.stats.tov += 1
@@ -1288,6 +1302,7 @@ type === 'foul':
   defender.stats.pf += 1
   defTeam.fouls += 1
   // 보너스 FT 처리 (위 자유투 섹션 참조)
+  // 수비 스탯 카운트 없음 (자유투 상황은 매치업 개념 다름)
 
 // +/- 업데이트
 updatePlusMinus(offTeam, defTeam, points):
@@ -1331,24 +1346,36 @@ hitRate *= (1 + impact / 100)
 ## 데이터 보존: LivePlayer → BoxScore
 
 ```
-경기 종료 후 main.ts:
+경기 종료 후 liveEngine.ts — mapToBox():
   homeBox = state.home.allPlayers
     .filter(p => p.stats.g > 0)
     .map(p => ({
       playerId: p.id,
       playerName: p.name,
-      pts: p.stats.pts,
-      reb: p.stats.reb,
+      pts: p.pts,
+      reb: p.reb,
       ...
+
+      // 수비 스탯 8개 (bumpDefendedShot 누적값)
+      contestedAttempted: p.contestedAttempted || 0,
+      contestedMade:      p.contestedMade      || 0,
+      defRimAttempted:    p.defRimAttempted    || 0,
+      defRimMade:         p.defRimMade         || 0,
+      defMidAttempted:    p.defMidAttempted    || 0,
+      defMidMade:         p.defMidMade         || 0,
+      defThreeAttempted:  p.defThreeAttempted  || 0,
+      defThreeMade:       p.defThreeMade       || 0,
+
       zoneData: {
-        zone_rim_m: p.stats.zone_rim_m,
-        zone_rim_a: p.stats.zone_rim_a,
-        zone_mid_l_m: ...,
-        zone_c3_l_m: ...,
-        zone_atb3_c_m: ...,
+        zone_rim_m: p.zone_rim_m,
+        zone_rim_a: p.zone_rim_a,
         ...15개 존 데이터
       }
     }))
+
+// user_game_results.box_score JSONB에 { home: [...], away: [...] } 형태로 저장
+// stateReplayer.applyBoxScore → player.stats에 경기별 누적 합산
+// 기존 세이브의 구 box_score에 *Made 필드 없으면 0으로 폴백 (JSONB 자동 처리)
 ```
 
 ---

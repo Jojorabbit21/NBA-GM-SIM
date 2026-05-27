@@ -903,7 +903,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     const points = preferredZone === '3PT' ? 3 : 2;
     return {
-        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, shotType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
+        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, defender: finalDefender, points, zone: preferredZone, playType: selectedPlayType, shotType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
         pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
         subZone, isZone
     };

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ChevronRight, Check } from 'lucide-react';
+import { ChevronRight, Check, ChevronDown } from 'lucide-react';
 import {
     GMPersonalityType,
     GM_PERSONALITY_TYPES,
@@ -21,6 +21,16 @@ interface GMCreationViewProps {
     }) => Promise<void>;
     isLoading?: boolean;
 }
+
+const NATIONALITIES = [
+    '대한민국', '미국', '캐나다', '프랑스', '스페인', '독일', '호주', '세르비아',
+    '슬로베니아', '그리스', '라트비아', '리투아니아', '크로아티아', '체코',
+    '아르헨티나', '브라질', '나이지리아', '카메룬', '콩고', '가나',
+    '중국', '일본', '필리핀', '터키', '이스라엘', '이탈리아', '영국',
+    '포르투갈', '네덜란드', '폴란드', '우크라이나', '러시아',
+    '멕시코', '도미니카 공화국', '푸에르토리코', '바하마',
+    '뉴질랜드', '스위스', '오스트리아', '덴마크', '스웨덴', '핀란드',
+];
 
 const SLIDER_LABELS: Record<keyof GMSliders, string> = {
     aggressiveness:  '공격성',
@@ -173,14 +183,20 @@ export const GMCreationView: React.FC<GMCreationViewProps> = ({ onComplete, isLo
 
                                 <div className="mb-8">
                                     <label className="text-sm font-medium text-slate-500 mb-2.5 block ml-1">국적 <span className="text-slate-700">(선택)</span></label>
-                                    <input
-                                        type="text"
-                                        value={nationality}
-                                        onChange={e => setNationality(e.target.value)}
-                                        maxLength={30}
-                                        placeholder="대한민국"
-                                        className="w-full bg-slate-950 border border-slate-800 text-white text-sm rounded-xl py-4 px-5 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-700"
-                                    />
+                                    <div className="relative">
+                                        <select
+                                            value={nationality}
+                                            onChange={e => setNationality(e.target.value)}
+                                            className="w-full appearance-none bg-slate-950 border border-slate-800 text-sm rounded-xl py-4 px-5 pr-10 outline-none transition-all focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 cursor-pointer"
+                                            style={{ color: nationality ? '#fff' : '#374151' }}
+                                        >
+                                            <option value="" style={{ color: '#374151' }}>국적 선택</option>
+                                            {NATIONALITIES.map(n => (
+                                                <option key={n} value={n} style={{ color: '#fff', backgroundColor: '#0f172a' }}>{n}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                                    </div>
                                 </div>
 
                                 <button
