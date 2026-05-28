@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
-import { Player, PlayerStats, Team } from '../types';
+import { Player, PlayerStats, Team, Game } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { formatMoney, formatMoneyFull } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
@@ -29,6 +29,7 @@ interface PlayerDetailViewProps {
     teamName?: string;
     teamId?: string;
     allTeams?: Team[];
+    schedule?: Game[];
     tendencySeed?: string;
     seasonShort?: string;
     myTeamId?: string;
@@ -184,11 +185,18 @@ function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
         ts_pct: wavg('ts_pct'), efg_pct: wavg('efg_pct'),
         tov_pct: wavgNullable('tov_pct'),
         fg3a_rate: wavgNullable('fg3a_rate'), fta_rate: wavg('fta_rate'),
-        usg_pct: wavg('usg_pct'), ast_pct: wavg('ast_pct'),
-        orb_pct: wavg('orb_pct'), drb_pct: wavg('drb_pct'), trb_pct: wavg('trb_pct'),
+        usg_pct: wavgNullable('usg_pct'), ast_pct: wavgNullable('ast_pct'),
+        orb_pct: wavgNullable('orb_pct'), drb_pct: wavgNullable('drb_pct'), trb_pct: wavgNullable('trb_pct'),
+        stl_pct: wavgNullable('stl_pct'), blk_pct: wavgNullable('blk_pct'),
         cont_pg: wavgNullable('cont_pg'),
         dfg_pct: wavgNullable('dfg_pct'),
     };
+}
+
+interface TeamAdvCtx {
+    tmFga: number; tmFta: number; tmTov: number; tmFgm: number; tmMp: number;
+    tmOreb: number; tmDreb: number; tmReb: number;
+    oppOreb: number; oppDreb: number; oppReb: number; oppPoss: number; opp2pa: number;
 }
 
 /** PlayerStats(시뮬 누적 합계) → CareerSeasonStat 형식(per-game 평균)으로 변환 */
@@ -198,8 +206,10 @@ function statsToCareerRow(
     teamAbbr: string,
     age: number,
     playoff: boolean,
+    ctx?: TeamAdvCtx,
 ): Record<string, any> {
     const g = stats.g;
+    const mp  = stats.mp || 0;
     const safe = (n: number) => (g > 0 ? n / g : 0);
     const pct   = (m: number, a: number) => (a > 0 ? m / a : null);
     const fga   = stats.fga;
@@ -208,6 +218,42 @@ function statsToCareerRow(
     const p3a   = stats.p3a;
     const tov   = stats.tov;
     const tsD   = 2 * (fga + 0.44 * fta);
+
+    let usg_pct: number | null = null;
+    let ast_pct: number | null = null;
+    let orb_pct: number | null = null;
+    let drb_pct: number | null = null;
+    let trb_pct: number | null = null;
+    let stl_pct: number | null = null;
+    let blk_pct: number | null = null;
+
+    if (ctx && mp > 0) {
+        const { tmFga, tmFta, tmTov, tmFgm, tmMp,
+                tmOreb, tmDreb, tmReb,
+                oppOreb, oppDreb, oppReb, oppPoss, opp2pa } = ctx;
+        const tmMp5    = tmMp / 5;
+        const tmUsage  = tmFga + 0.44 * tmFta + tmTov;
+        const plPoss   = fga + 0.44 * fta + tov;
+
+        if (tmUsage > 0)
+            usg_pct = (plPoss * tmMp5) / (mp * tmUsage) * 100;
+
+        const astDen = (mp / tmMp5) * tmFgm - stats.fgm;
+        if (astDen > 0)
+            ast_pct = (stats.ast / astDen) * 100;
+
+        if ((tmOreb + oppDreb) > 0)
+            orb_pct = (stats.offReb * tmMp5) / (mp * (tmOreb + oppDreb)) * 100;
+        if ((tmDreb + oppOreb) > 0)
+            drb_pct = (stats.defReb * tmMp5) / (mp * (tmDreb + oppOreb)) * 100;
+        if ((tmReb + oppReb) > 0)
+            trb_pct = (stats.reb    * tmMp5) / (mp * (tmReb  + oppReb))  * 100;
+        if (oppPoss > 0)
+            stl_pct = (stats.stl   * tmMp5) / (mp * oppPoss) * 100;
+        if (opp2pa > 0)
+            blk_pct = (stats.blk   * tmMp5) / (mp * opp2pa)  * 100;
+    }
+
     return {
         season,
         team:    teamAbbr,
@@ -238,6 +284,7 @@ function statsToCareerRow(
         tov_pct: (fga + 0.44 * fta + tov) > 0 ? tov / (fga + 0.44 * fta + tov) : null,
         fg3a_rate: fga > 0 ? p3a / fga : null,
         fta_rate:  fga > 0 ? fta / fga : null,
+        usg_pct, ast_pct, orb_pct, drb_pct, trb_pct, stl_pct, blk_pct,
         cont_pg: g > 0 ? (stats.contestedAttempted ?? 0) / g : null,
         dfg_pct: (stats.contestedAttempted ?? 0) > 0 ? (stats.contestedMade ?? 0) / (stats.contestedAttempted ?? 0) : null,
         playoff,
@@ -658,7 +705,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
@@ -773,17 +820,81 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     // 현재 시뮬 시즌 팀 약어 (teamId uppercase, 없으면 '—')
     const simTeamAbbr = (teamId ?? '').toUpperCase() || '—';
 
+    // schedule에서 팀 컨텍스트 계산 (advanced rate stats용)
+    const teamAdvCtx = useMemo((): TeamAdvCtx | undefined => {
+        if (!allTeams || !teamId || !schedule) return undefined;
+        const myTeam = allTeams.find(t => t.id === teamId);
+        if (!myTeam) return undefined;
+
+        const rs = (p: Player) => p.stats;
+        const tmFga  = myTeam.roster.reduce((s, p) => s + (rs(p).fga    || 0), 0);
+        const tmFta  = myTeam.roster.reduce((s, p) => s + (rs(p).fta    || 0), 0);
+        const tmTov  = myTeam.roster.reduce((s, p) => s + (rs(p).tov    || 0), 0);
+        const tmFgm  = myTeam.roster.reduce((s, p) => s + (rs(p).fgm    || 0), 0);
+        const tmMp   = myTeam.roster.reduce((s, p) => s + (rs(p).mp     || 0), 0);
+        const tmOreb = myTeam.roster.reduce((s, p) => s + (rs(p).offReb || 0), 0);
+        const tmDreb = myTeam.roster.reduce((s, p) => s + (rs(p).defReb || 0), 0);
+        const tmReb  = myTeam.roster.reduce((s, p) => s + (rs(p).reb    || 0), 0);
+
+        const tmGames = schedule.filter(g => !g.isPlayoff && g.played &&
+            (g.homeTeamId === teamId || g.awayTeamId === teamId));
+
+        let oppOreb = 0, oppDreb = 0, oppReb = 0;
+        let oppFga = 0, oppFta = 0, oppTov = 0, oppP3a = 0;
+        const oppFallback = new Map<string, number>();
+
+        tmGames.forEach(g => {
+            const isHome = g.homeTeamId === teamId;
+            const oppId  = isHome ? g.awayTeamId : g.homeTeamId;
+            const oppBox = isHome ? (g as any).awayStats : (g as any).homeStats;
+            if (oppBox) {
+                oppOreb += oppBox.offReb || 0;
+                oppDreb += oppBox.defReb || 0;
+                oppReb  += oppBox.reb    || 0;
+                oppFga  += oppBox.fga    || 0;
+                oppFta  += oppBox.fta    || 0;
+                oppTov  += oppBox.tov    || 0;
+                oppP3a  += oppBox.p3a    || 0;
+            } else {
+                oppFallback.set(oppId, (oppFallback.get(oppId) || 0) + 1);
+            }
+        });
+
+        // 게임 레벨 데이터 없는 경기 → 상대팀 시즌 평균으로 보정
+        oppFallback.forEach((count, oppId) => {
+            const oTeam = allTeams.find(t => t.id === oppId);
+            if (!oTeam) return;
+            const oG = Math.max(oTeam.roster.reduce((mx, p) => Math.max(mx, p.stats.g || 0), 0), 1);
+            const sc = count / oG;
+            oppOreb += oTeam.roster.reduce((s, p) => s + (p.stats.offReb || 0), 0) * sc;
+            oppDreb += oTeam.roster.reduce((s, p) => s + (p.stats.defReb || 0), 0) * sc;
+            oppReb  += oTeam.roster.reduce((s, p) => s + (p.stats.reb    || 0), 0) * sc;
+            oppFga  += oTeam.roster.reduce((s, p) => s + (p.stats.fga    || 0), 0) * sc;
+            oppFta  += oTeam.roster.reduce((s, p) => s + (p.stats.fta    || 0), 0) * sc;
+            oppTov  += oTeam.roster.reduce((s, p) => s + (p.stats.tov    || 0), 0) * sc;
+            oppP3a  += oTeam.roster.reduce((s, p) => s + (p.stats.p3a    || 0), 0) * sc;
+        });
+
+        return {
+            tmFga, tmFta, tmTov, tmFgm, tmMp,
+            tmOreb, tmDreb, tmReb,
+            oppOreb, oppDreb, oppReb,
+            oppPoss: oppFga + 0.44 * oppFta + oppTov - oppOreb,
+            opp2pa:  oppFga - oppP3a,
+        };
+    }, [allTeams, teamId, schedule]);
+
     // 시뮬 정규시즌 행: player.stats.g > 0 일 때만 생성
     const simRegularRow = useMemo(() => {
         if (!player.stats || (player.stats.g ?? 0) === 0) return null;
-        return statsToCareerRow(player.stats, seasonShort, simTeamAbbr, player.age, false);
-    }, [player.stats, player.age, seasonShort, simTeamAbbr]);
+        return statsToCareerRow(player.stats, seasonShort, simTeamAbbr, player.age, false, teamAdvCtx);
+    }, [player.stats, player.age, seasonShort, simTeamAbbr, teamAdvCtx]);
 
     // 시뮬 플레이오프 행: player.playoffStats?.g > 0 일 때만 생성
     const simPlayoffRow = useMemo(() => {
         if (!player.playoffStats || (player.playoffStats.g ?? 0) === 0) return null;
-        return statsToCareerRow(player.playoffStats, seasonShort, simTeamAbbr, player.age, true);
-    }, [player.playoffStats, player.age, seasonShort, simTeamAbbr]);
+        return statsToCareerRow(player.playoffStats, seasonShort, simTeamAbbr, player.age, true, teamAdvCtx);
+    }, [player.playoffStats, player.age, seasonShort, simTeamAbbr, teamAdvCtx]);
 
     // career_history에서 현재 시즌과 동일한 행이 있으면 제거 후 앞에 시뮬 행 삽입
     const careerRegular = useMemo(() => {

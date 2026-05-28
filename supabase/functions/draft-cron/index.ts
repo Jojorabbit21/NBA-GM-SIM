@@ -102,8 +102,8 @@ Deno.serve(async (req) => {
 
             const next = newCursor as any;
             if (!next || next.status !== 'active') break;
-            // Postgres now() ↔ Deno Date.now() 클락 스큐 방지: 로컬 시간으로 덮어씀
-            activeCursor = { ...next, currentPickStartedAt: new Date().toISOString() };
+            // 연속 AI 픽: elapsed 체크를 통과하도록 시작 시각을 과거로 설정
+            activeCursor = { ...next, currentPickStartedAt: new Date(Date.now() - (AI_MIN_THINK_SEC + 1) * 1000).toISOString() };
         }
     }
 

@@ -29,6 +29,7 @@ const PlayerDetailPage: React.FC = () => {
                 teamName={teamName}
                 teamId={teamId}
                 allTeams={gameData.teams}
+                schedule={gameData.schedule}
                 tendencySeed={gameData.tendencySeed || undefined}
                 seasonShort={seasonShort}
                 myTeamId={myTeamId}
@@ -54,6 +55,7 @@ const PlayerDetailPage: React.FC = () => {
             teamName={resolvedTeamName}
             teamId={resolvedTeamId}
             allTeams={gameData.teams}
+            schedule={gameData.schedule}
             tendencySeed={gameData.tendencySeed || undefined}
             seasonShort={seasonShort}
             myTeamId={myTeamId}

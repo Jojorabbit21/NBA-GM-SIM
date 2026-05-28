@@ -194,6 +194,15 @@ Deno.serve(async (req) => {
     //    (draft_state JSONB는 레거시 — start-draft v10 이후 사용 안 함)
     // ════════════════════════════════════════════════════════════════════════
     {
+        // draft_config(대용량 JSONB) 조회 전 count 사전 체크 — 드래프트 없으면 즉시 스킵
+        const { count: activeDraftCount } = await supabase
+            .from('rooms')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .not('draft_cursor', 'is', null);
+
+        if ((activeDraftCount ?? 0) === 0) return json(results);
+
         const { data: rooms } = await supabase
             .from('rooms')
             .select('id, draft_config, draft_cursor')
@@ -269,8 +278,8 @@ Deno.serve(async (req) => {
 
                 const next = newCursor as any;
                 if (!next || next.status !== 'active') break;
-                // Postgres now() ↔ Deno Date.now() 클락 스큐 방지
-                activeCursor = { ...next, currentPickStartedAt: new Date().toISOString() };
+                // 연속 AI 픽: elapsed 체크를 통과하도록 시작 시각을 과거로 설정
+                activeCursor = { ...next, currentPickStartedAt: new Date(Date.now() - (AI_MIN_THINK_SEC + 1) * 1000).toISOString() };
             }
         }
     }

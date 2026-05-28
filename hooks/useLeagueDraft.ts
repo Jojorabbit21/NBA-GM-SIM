@@ -44,14 +44,6 @@ export function useLeagueDraft(
     const [timeRemaining, setTimeRemaining] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // 타임아웃 자동픽용 — 최신 poolPlayers / draftedIds를 클로저 없이 참조
-    const poolPlayersRef = useRef<DraftPoolPlayer[]>([]);
-    const draftedIdsRef  = useRef<Set<string>>(new Set());
-    useEffect(() => {
-        poolPlayersRef.current = poolPlayers;
-        draftedIdsRef.current  = new Set(draftState?.draftedIds);
-    }, [poolPlayers, draftState?.draftedIds]);
-
     // ── 초기 로드 ─────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!roomId) { setIsLoading(false); return; }
@@ -163,72 +155,25 @@ export function useLeagueDraft(
         };
     }, [roomId]);
 
-    // ── 타이머 ────────────────────────────────────────────────────────────────
-    const timeoutFiredRef  = useRef(false);
-    const aiFollowUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+    // ── 타이머 (표시 전용 — 자동픽은 서버 pg_cron이 전담) ──────────────────────
     useEffect(() => {
         if (timerRef.current) clearInterval(timerRef.current);
-        if (aiFollowUpTimerRef.current) clearTimeout(aiFollowUpTimerRef.current);
-        timeoutFiredRef.current = false; // 픽이 바뀔 때마다 리셋
 
         if (!draftState || draftState.status === 'pending' || draftState.status === 'completed') {
             setTimeRemaining(0);
             return;
         }
 
-        if (draftState.status === 'paused') {
-            return;
-        }
-
-        // status === 'active'
-        const isAiPick = draftState.pickOrder[draftState.currentPickIndex]?.isAi === true;
-
-        // AI 차례: AI_MIN_THINK_SEC(3s) 경과 직후 draft-cron 트리거 (1회)
-        if (isAiPick) {
-            aiFollowUpTimerRef.current = setTimeout(() => {
-                supabase.functions.invoke('draft-cron').catch(() => {});
-            }, 3500);
-        }
+        if (draftState.status === 'paused') return;
 
         const update = () => {
             const elapsed = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
             const remaining = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
             setTimeRemaining(remaining);
-
-            // 인간 차례 타임아웃 → RPC 직접 호출 (EF 콜드스타트 회피, 1회만)
-            if (remaining === 0 && !isAiPick && !timeoutFiredRef.current) {
-                timeoutFiredRef.current = true;
-
-                // AI_MIN_THINK_SEC(3s) + 여유 1s 뒤 AI 차례 처리
-                const triggerAiCron = () => {
-                    supabase.functions.invoke('draft-cron').catch(() => {});
-                    aiFollowUpTimerRef.current = setTimeout(() => {
-                        supabase.functions.invoke('draft-cron').catch(() => {});
-                    }, 4000);
-                };
-
-                const available = poolPlayersRef.current.find(
-                    p => !draftedIdsRef.current.has(p.id)
-                );
-
-                if (available && roomId) {
-                    // supabase.rpc()는 PromiseLike → .catch() 미지원, 2인자 .then() 사용
-                    supabase.rpc('submit_draft_pick_v2', {
-                        p_room_id:   roomId,
-                        p_player_id: available.id,
-                    }).then(triggerAiCron, triggerAiCron);
-                } else {
-                    triggerAiCron();
-                }
-            }
         };
         update();
         timerRef.current = setInterval(update, 500);
-        return () => {
-            if (timerRef.current) clearInterval(timerRef.current);
-            if (aiFollowUpTimerRef.current) clearTimeout(aiFollowUpTimerRef.current);
-        };
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [draftState?.currentPickIndex, draftState?.currentPickStartedAt, draftState?.status]);
 
     // ── 파생 값 ───────────────────────────────────────────────────────────────
@@ -261,13 +206,6 @@ export function useLeagueDraft(
                 if (msg.includes('draft_not_active'))return { error: 'draft not active' };
                 return { error: msg };
             }
-            // 픽 성공 → AI 차례 즉시 트리거 + 4s 후 재트리거
-            // 즉시 호출 시 AI elapsed < AI_MIN_THINK_SEC(3s)라 cron이 skip할 수 있으므로
-            // 4s 후 follow-up으로 보장
-            supabase.functions.invoke('draft-cron').catch(() => {});
-            aiFollowUpTimerRef.current = setTimeout(() => {
-                supabase.functions.invoke('draft-cron').catch(() => {});
-            }, 4000);
             return { error: null };
         } finally {
             setIsSubmitting(false);
