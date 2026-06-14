@@ -1,8 +1,8 @@
 
-import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate } from '../../../../types';
+import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate, BoxDelta, BoxTick } from '../../../../types';
 import { LeagueCoachingData } from '../../../../types/coaching';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../../../../types/simSettings';
-import { GameState, TeamState, LivePlayer, ClutchContext } from './pbpTypes';
+import { GameState, TeamState, LivePlayer, ClutchContext, PossessionResult } from './pbpTypes';
 import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
@@ -67,6 +67,59 @@ export function updateMomentum(
         if (diff >= 8)  m.activeRun = { teamId: state.home.id, startTotalSec: currentTotalSec };
         if (diff <= -8) m.activeRun = { teamId: state.away.id, startTotalSec: currentTotalSec };
     }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 박스스코어 점진 공개 — 포세션 단위 델타 타임라인
+// ─────────────────────────────────────────────────────────────
+
+const BOX_DELTA_KEYS: (keyof BoxDelta)[] = ['pts', 'reb', 'offReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a'];
+
+function snapshotBoxStats(p: LivePlayer): BoxDelta {
+    return {
+        pts: p.pts, reb: p.reb, offReb: p.offReb, ast: p.ast, stl: p.stl,
+        blk: p.blk, tov: p.tov, pf: p.pf,
+        fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a,
+    };
+}
+
+function diffBoxStats(cur: BoxDelta, prev: BoxDelta | undefined): BoxDelta | null {
+    const out: BoxDelta = {};
+    let changed = false;
+    for (const key of BOX_DELTA_KEYS) {
+        const c = cur[key] ?? 0;
+        const p = prev?.[key] ?? 0;
+        if (c !== p) { out[key] = c - p; changed = true; }
+    }
+    return changed ? out : null;
+}
+
+/**
+ * 포세션 1회 종료 시점의 박스스코어 변화분을 타임라인에 기록.
+ * prevBoxSnap과의 diff이므로 and-1/보너스FT/테크니컬 등 모든 코드 경로의 누적을 자동 포착.
+ */
+function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: number, result: PossessionResult): void {
+    const onIds = [...state.home.onCourt, ...state.away.onCourt].map(p => p.playerId);
+    const allPlayers = [
+        ...state.home.onCourt, ...state.home.bench,
+        ...state.away.onCourt, ...state.away.bench,
+    ];
+
+    const d: Record<string, BoxDelta> = {};
+    for (const p of allPlayers) {
+        const cur = snapshotBoxStats(p);
+        const delta = diffBoxStats(cur, state.prevBoxSnap[p.playerId]);
+        if (delta) d[p.playerId] = delta;
+        state.prevBoxSnap[p.playerId] = cur;
+    }
+
+    // FG 시도 결과 (핫/콜드 스트릭 재구성용) — score/miss일 때만 기록
+    let shot: BoxTick['shot'];
+    if (result.type === 'score' || result.type === 'miss') {
+        shot = { p: result.actor.playerId, m: result.type === 'score' };
+    }
+
+    state.boxTimeline.push({ t: currentTotalSec, on: onIds, mp: timeTaken / 60, d, ...(shot ? { shot } : {}) });
 }
 
 /**
@@ -210,6 +263,8 @@ export function createGameState(
         },
         courtSnapshot: null,
         simSettings: simSettings ?? DEFAULT_SIM_SETTINGS,
+        boxTimeline: [],
+        prevBoxSnap: {},
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
@@ -357,6 +412,9 @@ export function stepPossession(state: GameState): StepResult {
 
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+
+    // 박스스코어 점진 공개용 델타 타임라인 기록 (교체 전 코트 라인업 기준)
+    recordBoxTick(state, currentTotalSec, timeTaken, result);
 
     // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 체크에 반영)
     checkTemporaryReturns(state, state.home, currentMinute);
@@ -582,6 +640,7 @@ export function extractSimResult(state: GameState): SimulationResult {
         pbpShotEvents: state.shotEvents,
         injuries: state.injuries,
         suspensions: state.suspensions,
+        boxTimeline: state.boxTimeline,
     };
 }
 

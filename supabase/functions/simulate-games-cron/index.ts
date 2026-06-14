@@ -41,7 +41,12 @@ Deno.serve(async (req) => {
     }
 
     const nowIso = new Date().toISOString();
-    console.log(`[simulate-games-cron] now=${nowIso} (legacy date=${targetDate})`);
+    // 사전계산 리드타임: scheduledAt이 이 시각 이내인 미완료 경기를 미리 시뮬레이션한다.
+    // game_pbp.game_start_time은 scheduledAt으로 고정 저장되고 RLS가 정시 전 row를 숨기므로,
+    // 얼마나 일찍 계산해도 유저 화면 타이밍에는 영향이 없다 — "정시 전에 끝나기만" 하면 된다.
+    const LEAD_MS    = 5 * 60 * 1000;
+    const cutoffIso  = new Date(Date.now() + LEAD_MS).toISOString();
+    console.log(`[simulate-games-cron] now=${nowIso} cutoff=${cutoffIso} (legacy date=${targetDate})`);
 
     // in_progress 상태 리그의 id 조회 → rooms.league_id로 조인
     const { data: leagues } = await supabase
@@ -74,9 +79,9 @@ Deno.serve(async (req) => {
         const schedule: any[] = room.schedule ?? [];
         for (const game of schedule) {
             if (game.played) continue;
-            // scheduledAt 기반 (신규 리그)
+            // scheduledAt 기반 (신규 리그): 정시 LEAD_MS 전부터 사전계산 대상
             if (game.scheduledAt) {
-                if (game.scheduledAt <= nowIso) tasks.push({ roomId: room.id, gameId: game.id });
+                if (game.scheduledAt <= cutoffIso) tasks.push({ roomId: room.id, gameId: game.id });
             } else {
                 // 레거시: date 기반 (scheduledAt 없는 구버전 스케줄)
                 if (game.date === targetDate) tasks.push({ roomId: room.id, gameId: game.id });

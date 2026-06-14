@@ -12,7 +12,6 @@
  * 개선 (2026-04-21): draft_state JSONB 대신 draft_config + draft_cursor + draft_picks 사용
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { buildTournamentBracket } from '../_shared/tournamentBracket.ts';
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin':  '*',
@@ -50,7 +49,7 @@ Deno.serve(async (req) => {
     // ── 어드민 검증 ───────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('admin_user_id, status, type, tournament_format, match_format, finals_match_format, season_start_date, tournament_start_at, bracket_data, draft_pool, draft_ovr_min, draft_ovr_max')
+        .select('admin_user_id, status, draft_pool, draft_ovr_min, draft_ovr_max')
         .eq('id', leagueId)
         .single();
     if (!league)                          return json({ error: 'League not found' }, 404);
@@ -283,43 +282,9 @@ Deno.serve(async (req) => {
             },
         }).eq('id', roomId);
 
-        // 토너먼트: 브라켓 + 일정 초기화 (bracket_data가 아직 없을 때만)
-        if ((league as any).type === 'tournament' && !(league as any).bracket_data) {
-            const { data: leagueTeams } = await supabase
-                .from('league_teams')
-                .select('id, team_slug')
-                .eq('room_id', roomId);
-
-            if (leagueTeams?.length) {
-                const tournamentStartIso: string | null = (league as any).tournament_start_at ?? null;
-                const startDate = tournamentStartIso
-                    ? tournamentStartIso.slice(0, 10)
-                    : ((league as any).season_start_date ?? new Date().toISOString().slice(0, 10));
-                const startUtcHour = tournamentStartIso ? new Date(tournamentStartIso).getUTCHours() : 1;
-                const tendencySeed = `${leagueId}-${startDate}`;
-                const { series, schedule } = buildTournamentBracket(
-                    leagueTeams as { id: string; team_slug: string }[],
-                    (league as any).tournament_format,
-                    (league as any).match_format,
-                    (league as any).finals_match_format,
-                    tendencySeed,
-                    startDate,
-                    startUtcHour,
-                );
-
-                await supabase
-                    .from('leagues')
-                    .update({ bracket_data: { series, schedule } })
-                    .eq('id', leagueId);
-
-                await supabase
-                    .from('rooms')
-                    .update({ schedule })
-                    .eq('id', roomId);
-            }
-        }
-
-        await supabase.from('leagues').update({ status: 'in_progress' }).eq('id', leagueId);
+        // 시즌 일정/브라켓 생성 및 leagues.status='in_progress' 전환은 클라이언트의
+        // finalizeDraft(draftFinalizer.ts)가 draft_cursor.status==='completed' 감지 시 단독 처리한다.
+        // (여기서 status를 먼저 set하면 finalizeDraft가 멱등성 체크에 걸려 일정 생성을 건너뜀 — main_league 스케줄 미생성 버그)
 
         return json({ ok: true, completedPicks: curIdx - (cursor.currentPickIndex as number) });
     }

@@ -5,6 +5,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useGame } from '../../../hooks/useGameContext';
+import { useServerClock } from '../../../utils/serverClock';
+import { getGameDisplayState, isFinal, isStarted } from './multiGameReveal';
 import type { Game } from '../../../types';
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ const MultiScheduleView: React.FC = () => {
     const { room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const { session } = useGame();
     const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useMultiGameData(session, room?.id ?? null);
+    const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;
 
@@ -102,7 +105,7 @@ const MultiScheduleView: React.FC = () => {
         );
     }
 
-    const totalPlayed = allGames.filter(g => g.played).length;
+    const totalPlayed = allGames.filter(g => isFinal(g, serverNow)).length;
 
     return (
         <div className="p-6 text-slate-200 pretendard">
@@ -139,13 +142,17 @@ const MultiScheduleView: React.FC = () => {
                             {/* 경기 행 */}
                             <div className="divide-y divide-slate-800/60">
                                 {games.map(g => {
-                                    const home    = teamMap[g.homeTeamId];
-                                    const away    = teamMap[g.awayTeamId];
-                                    const homeWon = g.played && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
+                                    const home  = teamMap[g.homeTeamId];
+                                    const away  = teamMap[g.awayTeamId];
+                                    const state = getGameDisplayState(g, serverNow);
+                                    const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
 
-                                    const statusLabel = g.played ? '완료' : isToday ? '오늘' : '예정';
-                                    const statusClass = g.played
+                                    const statusLabel = state === 'final' ? '완료'
+                                        : state === 'live' ? 'LIVE'
+                                        : isToday ? '오늘' : '예정';
+                                    const statusClass = state === 'final'
                                         ? 'text-slate-500'
+                                        : state === 'live' ? 'text-red-400 font-bold'
                                         : isToday ? 'text-indigo-400 font-semibold' : 'text-slate-600';
 
                                     return (
@@ -197,12 +204,14 @@ const MultiScheduleView: React.FC = () => {
 
                                             {/* 스코어 (원정-홈 순) */}
                                             <div className="w-16 flex items-center justify-center gap-0.5 font-mono tabular-nums text-xs">
-                                                {g.played && g.homeScore != null && g.awayScore != null ? (
+                                                {state === 'final' && g.homeScore != null && g.awayScore != null ? (
                                                     <>
                                                         <span className={!homeWon ? 'text-white font-bold' : 'text-slate-500'}>{g.awayScore}</span>
                                                         <span className="text-slate-600 mx-0.5">-</span>
                                                         <span className={homeWon ? 'text-white font-bold' : 'text-slate-500'}>{g.homeScore}</span>
                                                     </>
+                                                ) : state === 'live' ? (
+                                                    <span className="text-red-400 font-bold text-[10px]">LIVE</span>
                                                 ) : (
                                                     <span className="text-slate-700">—</span>
                                                 )}
@@ -210,7 +219,7 @@ const MultiScheduleView: React.FC = () => {
 
                                             {/* 보기 버튼 */}
                                             <div className="w-10 flex justify-center">
-                                                {g.played && (
+                                                {isStarted(g, serverNow) && (
                                                     <button
                                                         onClick={() => navigate(`/multi/leagues/${leagueId}/season/game/${g.id}`)}
                                                         className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"

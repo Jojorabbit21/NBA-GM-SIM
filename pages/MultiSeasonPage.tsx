@@ -8,7 +8,9 @@ import { useGame } from '../hooks/useGameContext';
 import { supabase } from '../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { OvrBadge } from '../components/common/OvrBadge';
-import type { Game } from '../types';
+import { useServerClock, getServerNow } from '../utils/serverClock';
+import { computeWL } from '../views/multi/season/multiSeasonUtils';
+import { isFinal } from '../views/multi/season/multiGameReveal';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
 import type { PlayerBoxScore } from '../types/engine';
 import type { SavedPlayerState } from '../types/player';
@@ -40,20 +42,6 @@ interface RosterWidgetPlayer {
     fgPct: number | null;
     p3Pct: number | null;
     tsPct: number | null;
-}
-
-// ─── 일정 기반 W/L 계산 ──────────────────────────────────────────────────────
-
-function computeWL(schedule: Game[], teamSlugs: string[]) {
-    const wl: Record<string, { wins: number; losses: number }> = {};
-    for (const slug of teamSlugs) wl[slug] = { wins: 0, losses: 0 };
-    for (const g of schedule) {
-        if (!g.played || g.homeScore == null || g.awayScore == null) continue;
-        const homeWon = g.homeScore > g.awayScore;
-        if (wl[g.homeTeamId]) homeWon ? wl[g.homeTeamId].wins++ : wl[g.homeTeamId].losses++;
-        if (wl[g.awayTeamId]) homeWon ? wl[g.awayTeamId].losses++ : wl[g.awayTeamId].wins++;
-    }
-    return wl;
 }
 
 // ─── 날짜 포맷 ────────────────────────────────────────────────────────────────
@@ -97,6 +85,7 @@ const MultiSeasonPage: React.FC = () => {
     const { session }  = useGame();
 
     const { isLoading: gameLoading, schedule, currentSimDate, myTeamId } = useMultiGameData(session, room?.id ?? null);
+    const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;
 
@@ -118,7 +107,7 @@ const MultiSeasonPage: React.FC = () => {
                     .in('id', myTeam.roster),
                 supabase
                     .from('game_pbp')
-                    .select('home_box, away_box, home_team_id')
+                    .select('home_box, away_box, home_team_id, game_start_time')
                     .eq('room_id', room.id)
                     .or(`home_team_id.eq.${myTeamId},away_team_id.eq.${myTeamId}`),
                 supabase
@@ -135,8 +124,11 @@ const MultiSeasonPage: React.FC = () => {
                 playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
             }
 
+            // 정시+10분 경과 — final 상태인 경기만 집계 (live 구간 박스는 비공개)
             const statsMap = new Map<string, { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number; mp: number; gp: number }>();
+            const now = getServerNow();
             for (const game of pbpRes.data ?? []) {
+                if (!isFinal({ scheduledAt: game.game_start_time }, now)) continue;
                 const box = (game.home_team_id === myTeamId ? game.home_box : game.away_box) as PlayerBoxScore[] | null;
                 for (const entry of box ?? []) {
                     if (entry.mp <= 0) continue;
@@ -209,7 +201,7 @@ const MultiSeasonPage: React.FC = () => {
     }, [rosterKey, room?.id, myTeamId]);
 
     const teamSlugs = useMemo(() => leagueTeams.map(t => t.team_slug), [leagueTeams]);
-    const wlMap     = useMemo(() => computeWL(schedule, teamSlugs), [schedule, teamSlugs]);
+    const wlMap     = useMemo(() => computeWL(schedule, teamSlugs, serverNow), [schedule, teamSlugs, serverNow]);
 
     // 내 팀 다음 경기
     const nextGame = useMemo(() =>
@@ -224,13 +216,13 @@ const MultiSeasonPage: React.FC = () => {
         return leagueTeams.find(t => t.team_slug === oppSlug) ?? null;
     }, [nextGame, myTeamId, leagueTeams]);
 
-    // 최근 10경기
+    // 최근 10경기 (정시+10분 경과 — final 상태인 경기만)
     const recent10 = useMemo(() =>
         schedule
-            .filter(g => g.played && myTeamId && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId))
+            .filter(g => g.played && isFinal(g, serverNow) && myTeamId && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId))
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, 10),
-    [schedule, myTeamId]);
+    [schedule, myTeamId, serverNow]);
 
     // 순위 (W/L 기준 정렬)
     const standings = useMemo(() =>

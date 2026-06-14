@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta } from '../../../../types';
 import { SimSettings } from '../../../../types/simSettings';
 import type { ArchetypeRatings } from './archetypeSystem';
 
@@ -248,6 +248,10 @@ export interface GameState {
 
     // 유저가 코치에게 경기 운영을 위임한 경우 true (AI 타임아웃 활성화)
     isUserDelegated: boolean;
+
+    // [New] 박스스코어 점진 공개용 포세션 단위 델타 타임라인
+    boxTimeline: BoxTick[];
+    prevBoxSnap: Record<string, BoxDelta>; // 직전 포세션 종료 시점의 누적 스냅샷 (diff 기준점)
 }
 
 // ── Court Position Visualization ──

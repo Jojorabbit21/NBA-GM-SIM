@@ -109,12 +109,28 @@ export interface InjuryEvent {
     timeRemaining: string;
 }
 
+// 한 포세션에서 변한 카운팅 스탯만 (생략된 필드 = 0)
+export interface BoxDelta {
+    pts?: number; reb?: number; offReb?: number; ast?: number; stl?: number;
+    blk?: number; tov?: number; pf?: number;
+    fgm?: number; fga?: number; p3m?: number; p3a?: number;
+}
+
+// 포세션 1회 종료 시점의 박스스코어 변화분 (멀티플레이어 중계 점진 공개용)
+export interface BoxTick {
+    t:  number;                    // 포세션 종료 시점 gameSec ((q-1)*720 + (720-clock))
+    on: string[];                  // 이 포세션에 코트 위 있던 playerId 10명 (mp 누적 대상)
+    mp: number;                    // 이 포세션이 소비한 분 (timeTaken/60)
+    d:  Record<string, BoxDelta>;  // playerId → 변화분 (변한 선수만)
+    shot?: { p: string; m: boolean }; // 이 포세션 FG 시도 결과 (있었던 경우만): p=playerId, m=성공여부 — 핫/콜드 스트릭 재구성용
+}
+
 export interface SimulationResult {
     homeScore: number;
     awayScore: number;
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
-    homeTactics: any; 
+    homeTactics: any;
     awayTactics: any;
     rosterUpdates: Record<string, any>;
     pbpLogs: PbpLog[];
@@ -122,6 +138,7 @@ export interface SimulationResult {
     pbpShotEvents?: ShotEvent[];
     injuries?: InjuryEvent[];
     suspensions?: { playerId: string; playerName: string; teamId: string; opponentPlayerId: string; opponentPlayerName: string; opponentTeamId: string; suspensionGames: number; opponentSuspensionGames: number; quarter: number; timeRemaining: string }[];
+    boxTimeline?: BoxTick[];
 }
 
 export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition' | 'Putback' | 'OffBallScreen' | 'DriveKick';

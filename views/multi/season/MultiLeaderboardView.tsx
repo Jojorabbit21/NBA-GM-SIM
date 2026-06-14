@@ -8,6 +8,8 @@ import { supabase } from '../../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { LeaderboardView } from '../../LeaderboardView';
 import { INITIAL_STATS } from '../../../utils/constants';
+import { getServerNow } from '../../../utils/serverClock';
+import { isFinal } from './multiGameReveal';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 
@@ -38,7 +40,7 @@ const MultiLeaderboardView: React.FC = () => {
                     .in('id', allRosterIds),
                 supabase
                     .from('game_pbp')
-                    .select('home_box, away_box, home_team_id, away_team_id')
+                    .select('home_box, away_box, home_team_id, away_team_id, game_start_time')
                     .eq('room_id', room.id),
             ]);
 
@@ -52,9 +54,12 @@ const MultiLeaderboardView: React.FC = () => {
             );
 
             // Aggregate box scores into cumulative PlayerStats per playerId
+            // (정시+10분 경과 — final 상태인 경기만 집계. live 구간 박스는 비공개이므로 제외)
             const statsMap = new Map<string, ReturnType<typeof INITIAL_STATS>>();
+            const serverNow = getServerNow();
 
             for (const row of (pbpRes.data ?? [])) {
+                if (!isFinal({ scheduledAt: row.game_start_time }, serverNow)) continue;
                 const sides: { box: PlayerBoxScore[] }[] = [
                     { box: row.home_box ?? [] },
                     { box: row.away_box ?? [] },

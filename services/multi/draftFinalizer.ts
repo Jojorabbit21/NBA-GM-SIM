@@ -56,9 +56,7 @@ export async function finalizeDraft(
     const league = await loadLeague(leagueId);
     if (!league) return { error: '리그를 찾을 수 없습니다.' };
 
-    // 토너먼트이고 bracket_data가 없으면 재실행 허용 (autocomplete가 status만 먼저 set한 경우 대비)
-    const needsBracket = league.type === 'tournament' && !league.bracket_data;
-    if (league.status === 'in_progress' && !needsBracket) return { error: null };
+    if (league.status === 'in_progress') return { error: null };
 
     // draft picks are stored in league_teams.roster via submit_draft_pick_v2 RPC
     const leagueTeams = await listLeagueTeams(roomId);

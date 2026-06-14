@@ -5,11 +5,12 @@ import { ArrowLeft, Loader2, Clock, Circle } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { supabase } from '../../../services/supabaseClient';
 import { calculateWinProbability } from '../../../utils/simulationMath';
-import type { PbpLog, PlayerBoxScore } from '../../../types/engine';
-import type { ShotEvent } from '../../../types';
+import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta } from '../../../types/engine';
+import type { Game, ShotEvent } from '../../../types';
+import { useServerClock } from '../../../utils/serverClock';
+import { REPLAY_DURATION_MS, getGameDisplayState } from './multiGameReveal';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 
-const REPLAY_DURATION_MS = 20 * 60 * 1000;
 const TOTAL_GAME_SECONDS  = 2880;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ interface GamePbpRow {
     shot_events:     ShotEvent[];
     home_box:        PlayerBoxScore[];
     away_box:        PlayerBoxScore[];
+    box_timeline?:   BoxTick[];
 }
 
 interface TeamStats {
@@ -41,6 +43,13 @@ function parseTimeRemaining(t: string): number {
 
 function toGameSeconds(e: PbpLog): number {
     return (e.quarter - 1) * 720 + (720 - parseTimeRemaining(e.timeRemaining));
+}
+
+function fmtCountdown(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function computeTeamStats(logs: PbpLog[], shotEvents: ShotEvent[], teamId: string): TeamStats {
@@ -67,6 +76,82 @@ function computeTeamStats(logs: PbpLog[], shotEvents: ShotEvent[], teamId: strin
     const pf  = logs.filter(l => l.type === 'foul'     && l.teamId === teamId).length;
 
     return { pts, fgm, fga, p3m, p3a, ftm, fta, tov, blk, pf };
+}
+
+// ─── Live Box Reconstruction (박스스코어 점진 공개) ────────────────────────────
+
+function emptyBoxRow(playerId: string, playerName: string, position?: string): PlayerBoxScore {
+    return {
+        playerId, playerName, position,
+        pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
+        fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
+        rimM: 0, rimA: 0, midM: 0, midA: 0,
+        mp: 0, g: 0, gs: 0, pf: 0,
+        techFouls: 0, flagrantFouls: 0, plusMinus: 0,
+        contestedAttempted: 0, contestedMade: 0,
+        defRimAttempted: 0, defRimMade: 0, defMidAttempted: 0, defMidMade: 0,
+        defThreeAttempted: 0, defThreeMade: 0, defRAAttempted: 0, defRAMade: 0,
+        defITPAttempted: 0, defITPMade: 0, defMIDAttempted: 0, defMIDMade: 0,
+        defCNRAttempted: 0, defCNRMade: 0, defWINGAttempted: 0, defWINGMade: 0,
+        defATBAttempted: 0, defATBMade: 0,
+        condition: 100,
+        recentShots: [],
+    };
+}
+
+// box_timeline의 포세션별 델타를 elapsed 시점까지 누적해 PlayerBoxScore[]로 재구성.
+// 식별자(playerName/position)는 referenceBox(home_box/away_box)에서 가져오되 스탯 필드는 사용하지 않음(스포일러 아님).
+function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: PlayerBoxScore[]): PlayerBoxScore[] {
+    const rows = new Map<string, PlayerBoxScore>();
+    const recentShots = new Map<string, boolean[]>();
+    for (const ref of referenceBox) {
+        rows.set(ref.playerId, emptyBoxRow(ref.playerId, ref.playerName, ref.position));
+        recentShots.set(ref.playerId, []);
+    }
+
+    // 핫/콜드 스트릭(recentShots) 쿼터 전환 보정 — 엔진의 dampenHotCold(Q2/Q4 진입)·resetHotCold(Q3=하프타임) 경계 재현
+    let dampenedQ2 = false, resetQ3 = false, dampenedQ4 = false;
+
+    for (const tick of timeline) {
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+        if (replayMs > elapsed) break;
+
+        if (!dampenedQ2 && tick.t >= 720) {
+            for (const [pid, arr] of recentShots) recentShots.set(pid, arr.slice(-3));
+            dampenedQ2 = true;
+        }
+        if (!resetQ3 && tick.t >= 1440) {
+            for (const pid of recentShots.keys()) recentShots.set(pid, []);
+            resetQ3 = true;
+        }
+        if (!dampenedQ4 && tick.t >= 2160) {
+            for (const [pid, arr] of recentShots) recentShots.set(pid, arr.slice(-3));
+            dampenedQ4 = true;
+        }
+
+        for (const pid of tick.on) {
+            const row = rows.get(pid);
+            if (row) row.mp += tick.mp;
+        }
+        for (const [pid, delta] of Object.entries(tick.d)) {
+            const row = rows.get(pid);
+            if (!row) continue;
+            for (const [key, v] of Object.entries(delta) as [keyof BoxDelta, number][]) {
+                row[key] = (row[key] ?? 0) + v;
+            }
+        }
+        if (tick.shot && recentShots.has(tick.shot.p)) {
+            const arr = recentShots.get(tick.shot.p)!;
+            arr.push(tick.shot.m);
+            if (arr.length > 5) arr.shift();
+        }
+    }
+
+    for (const [pid, row] of rows) {
+        row.recentShots = recentShots.get(pid);
+    }
+
+    return Array.from(rows.values());
 }
 
 // ─── QuarterScores ────────────────────────────────────────────────────────────
@@ -355,6 +440,19 @@ const PlayerBoxPanel: React.FC<{
     );
 };
 
+// ─── BoxScorePlaceholder (live 구간 — 박스스코어 비공개) ────────────────────────
+
+const BoxScorePlaceholder: React.FC<{ label: string }> = ({ label }) => (
+    <div className="flex flex-col shrink-0">
+        <div className="px-2 py-2 text-xs font-bold uppercase tracking-wider border-b border-slate-700 bg-slate-800 text-slate-400">
+            {label}
+        </div>
+        <div className="py-10 text-center text-slate-600 text-xs ko-normal">
+            박스스코어는 중계 종료 후 공개됩니다
+        </div>
+    </div>
+);
+
 // ─── TeamStatsCompare ─────────────────────────────────────────────────────────
 
 const TEAM_STAT_ROWS = [
@@ -437,63 +535,88 @@ const MultiGamePbpView: React.FC = () => {
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
     const [error,         setError]         = useState<string | null>(null);
-    const [now,           setNow]           = useState(Date.now());
+    // undefined: 미조회, null: 레거시(scheduledAt 없음), string: 정시
+    const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
     const [quarterFilter, setQuarterFilter] = useState<0|1|2|3|4|5>(0);
     const prevVisibleCountRef = useRef(0);
+    const serverNow = useServerClock();
 
+    // scheduled/live/final 표시 상태. scheduledAt + serverNow만으로 결정되므로
+    // 누가 언제 접속해도 동일한 시점에 동일한 상태가 나온다.
+    const displayState = getGameDisplayState({ scheduledAt: scheduledAt ?? undefined }, serverNow);
+
+    // rooms.schedule에서 scheduledAt 조회. game_pbp는 RLS로 정시 전 row가 숨겨지므로
+    // scheduled 상태 판정에는 schedule 쪽 정보가 필요하다.
     useEffect(() => {
         if (!room?.id || !gameId) return;
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase
+                .from('rooms')
+                .select('schedule')
+                .eq('id', room.id)
+                .single();
+            if (cancelled) return;
+            const schedule = (data?.schedule as Game[] | null) ?? [];
+            const game = schedule.find(g => g.id === gameId);
+            setScheduledAt(game?.scheduledAt ?? null);
+        })();
+        return () => { cancelled = true; };
+    }, [room?.id, gameId]);
+
+    // game_pbp 조회. displayState==='scheduled'이면 RLS가 row를 가려 항상 실패하므로 시도하지 않고,
+    // gameData를 이미 확보했으면 재조회하지 않는다. live/final로 전환될 때마다(정시 진입/+10분)
+    // displayState가 바뀌어 effect가 재실행되므로, 사전계산 지연으로 정시 직후 row가 아직 없던
+    // 경우에도 자동으로 재시도되어 "먼저 들어온 유저만 에러 화면에 고정"되는 문제를 방지한다.
+    useEffect(() => {
+        if (!room?.id || !gameId) return;
+        if (gameData) return;
+        if (displayState === 'scheduled') return;
         let cancelled = false;
         (async () => {
             setIsLoading(true);
             const { data, error: err } = await supabase
                 .from('game_pbp')
-                .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box')
+                .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
                 .eq('room_id', room.id)
                 .eq('game_id', gameId)
                 .single();
             if (cancelled) return;
-            if (err || !data) setError('경기 데이터를 찾을 수 없습니다.');
-            else               setGameData(data as GamePbpRow);
+            if (err || !data) setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
+            else             { setGameData(data as GamePbpRow); setError(null); }
             setIsLoading(false);
         })();
         return () => { cancelled = true; };
-    }, [room?.id, gameId]);
-
-    useEffect(() => {
-        if (!gameData) return;
-        const elapsed = Date.now() - new Date(gameData.game_start_time).getTime();
-        if (elapsed >= REPLAY_DURATION_MS) return;
-        const id = setInterval(() => setNow(Date.now()), 1000);
-        return () => clearInterval(id);
-    }, [gameData]);
+    }, [room?.id, gameId, displayState, gameData]);
 
     // ── 시간 기반 필터 ──────────────────────────────────────────────────────────
 
+    // live가 아니면(final/레거시) 항상 전체를 표시 — reveal 상태가 단일 진실 소스이므로
+    // game_start_time 기반 elapsed와 displayState 간 엣지케이스 불일치를 방지한다.
     const visibleEvents = useMemo<PbpLog[]>(() => {
         if (!gameData) return [];
+        const all = gameData.events as PbpLog[];
+        if (displayState !== 'live') return all;
         const startMs = new Date(gameData.game_start_time).getTime();
-        const elapsed = now - startMs;
-        const all     = gameData.events as PbpLog[];
-        if (elapsed >= REPLAY_DURATION_MS) return all;
+        const elapsed = serverNow - startMs;
         return all.filter(e => {
             const replayMs = (toGameSeconds(e) / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
             return replayMs <= elapsed;
         });
-    }, [gameData, now]);
+    }, [gameData, serverNow, displayState]);
 
     const visibleShotEvents = useMemo<ShotEvent[]>(() => {
         if (!gameData) return [];
+        const all = (gameData.shot_events ?? []) as ShotEvent[];
+        if (displayState !== 'live') return all;
         const startMs = new Date(gameData.game_start_time).getTime();
-        const elapsed = now - startMs;
-        const all     = (gameData.shot_events ?? []) as ShotEvent[];
-        if (elapsed >= REPLAY_DURATION_MS) return all;
+        const elapsed = serverNow - startMs;
         return all.filter(s => {
             const secs    = (s.quarter - 1) * 720 + (720 - ((s as any).gameClock ?? 0));
             const replayMs = (secs / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
             return replayMs <= elapsed;
         });
-    }, [gameData, now]);
+    }, [gameData, serverNow, displayState]);
 
     useEffect(() => {
         if (!gameData || visibleEvents.length <= prevVisibleCountRef.current) return;
@@ -542,6 +665,21 @@ const MultiGamePbpView: React.FC = () => {
         [visibleEvents, visibleShotEvents, gameData?.away_team_id],
     );
 
+    // ── 박스스코어 점진 공개 (live 구간) ────────────────────────────────────────
+    const hasBoxTimeline = (gameData?.box_timeline?.length ?? 0) > 0;
+
+    const liveHomeBox = useMemo<PlayerBoxScore[]>(() => {
+        if (!gameData || displayState !== 'live' || !hasBoxTimeline) return [];
+        const startMs = new Date(gameData.game_start_time).getTime();
+        return buildLiveBox(gameData.box_timeline ?? [], serverNow - startMs, gameData.home_box ?? []);
+    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+
+    const liveAwayBox = useMemo<PlayerBoxScore[]>(() => {
+        if (!gameData || displayState !== 'live' || !hasBoxTimeline) return [];
+        const startMs = new Date(gameData.game_start_time).getTime();
+        return buildLiveBox(gameData.box_timeline ?? [], serverNow - startMs, gameData.away_box ?? []);
+    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+
     const currentScore = useMemo(() => {
         const last = [...visibleEvents].reverse().find(e => e.homeScore != null);
         return last ? { home: last.homeScore ?? 0, away: last.awayScore ?? 0 } : { home: 0, away: 0 };
@@ -554,26 +692,52 @@ const MultiGamePbpView: React.FC = () => {
         return Math.floor(toGameSeconds(last) / 60);
     }, [visibleEvents]);
 
-    const allEventCount  = (gameData?.events as PbpLog[] ?? []).length;
-    const isLive         = !!gameData && visibleEvents.length < allEventCount;
+    // isLive/showBox: reveal 상태 자체가 단일 진실 소스 — scheduledAt+10분 전이면 live, 이후 final.
+    const isLive         = displayState === 'live';
+    const showBox        = displayState === 'final';
     const maxSelectableQ = visibleEvents.length > 0 ? Math.max(...visibleEvents.map(e => e.quarter)) : 0;
     const maxQuarter     = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);
     const quarterLabel         = isLive ? `Q${currentQuarter}` : 'Final';
     const currentTimeRemaining = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timeRemaining : '';
 
-    // ── Loading / Error ────────────────────────────────────────────────────────
+    // ── Loading / Scheduled / Error ───────────────────────────────────────────
 
-    if (isLoading) {
+    if (isLoading || scheduledAt === undefined) {
         return (
             <div className="flex items-center justify-center h-full bg-slate-950">
                 <Loader2 size={28} className="animate-spin text-indigo-400" />
             </div>
         );
     }
+
+    // scheduled: 정시 전 — PBP/결과를 전혀 노출하지 않고 카운트다운만 표시
+    if (displayState === 'scheduled') {
+        const startMs     = scheduledAt ? new Date(scheduledAt).getTime() : null;
+        const remainingMs = startMs != null ? Math.max(0, startMs - serverNow) : null;
+        const startLabel  = startMs != null
+            ? new Date(startMs).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+            : '';
+        return (
+            <div className="flex flex-col items-center justify-center h-full gap-3 bg-slate-950">
+                <Clock size={32} className="text-indigo-400" />
+                <p className="text-white text-lg font-black ko-tight">
+                    {startLabel ? `${startLabel} 시작 예정` : '경기 시작 전'}
+                </p>
+                {remainingMs != null && (
+                    <p className="text-slate-400 text-sm font-mono tabular-nums">
+                        시작까지 {fmtCountdown(remainingMs)}
+                    </p>
+                )}
+                <button onClick={() => navigate(-1)} className="text-indigo-400 text-sm ko-normal hover:underline mt-2">뒤로</button>
+            </div>
+        );
+    }
+
+    // live/final인데 game_pbp row가 아직 없는 경우 (사전계산 지연 등 예외 상황)
     if (error || !gameData) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 bg-slate-950">
-                <p className="text-slate-400 text-sm ko-normal">{error ?? '경기 데이터 없음'}</p>
+                <p className="text-slate-400 text-sm ko-normal">{error ?? '경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.'}</p>
                 <button onClick={() => navigate(-1)} className="text-indigo-400 text-sm ko-normal hover:underline">뒤로</button>
             </div>
         );
@@ -658,10 +822,19 @@ const MultiGamePbpView: React.FC = () => {
 
                 {/* LEFT: 원정팀 박스스코어 + 하단 패널 */}
                 <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                    <PlayerBoxPanel
-                        players={gameData.away_box ?? []}
-                        label={awayAbbr}
-                    />
+                    {showBox ? (
+                        <PlayerBoxPanel
+                            players={gameData.away_box ?? []}
+                            label={awayAbbr}
+                        />
+                    ) : hasBoxTimeline ? (
+                        <PlayerBoxPanel
+                            players={liveAwayBox}
+                            label={awayAbbr}
+                        />
+                    ) : (
+                        <BoxScorePlaceholder label={awayAbbr} />
+                    )}
                     <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col overflow-hidden">
                         <CompactWPGraph
                             allLogs={visibleEvents}
@@ -841,10 +1014,19 @@ const MultiGamePbpView: React.FC = () => {
 
                 {/* RIGHT: 홈팀 박스스코어 + 팀스탯 */}
                 <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                    <PlayerBoxPanel
-                        players={gameData.home_box ?? []}
-                        label={homeAbbr}
-                    />
+                    {showBox ? (
+                        <PlayerBoxPanel
+                            players={gameData.home_box ?? []}
+                            label={homeAbbr}
+                        />
+                    ) : hasBoxTimeline ? (
+                        <PlayerBoxPanel
+                            players={liveHomeBox}
+                            label={homeAbbr}
+                        />
+                    ) : (
+                        <BoxScorePlaceholder label={homeAbbr} />
+                    )}
                     <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                         <QuarterScores
                             allLogs={visibleEvents}
@@ -856,8 +1038,8 @@ const MultiGamePbpView: React.FC = () => {
                         <TeamStatsCompare
                             home={homeStats}
                             away={awayStats}
-                            homeBox={gameData.home_box ?? []}
-                            awayBox={gameData.away_box ?? []}
+                            homeBox={showBox ? (gameData.home_box ?? []) : liveHomeBox}
+                            awayBox={showBox ? (gameData.away_box ?? []) : liveAwayBox}
                             homeColor={homeColor}
                             awayColor={awayColor}
                         />

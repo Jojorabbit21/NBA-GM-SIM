@@ -144,14 +144,16 @@ Deno.serve(async (req) => {
         const tendencySeed  = room.tendency_seed   ?? '';
 
         // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────
-        // game_start_time: 최초 시뮬레이션 시각을 보존 (재시뮬 시 덮어쓰지 않음)
+        // game_start_time: 정시 동기화의 기준점. game.scheduledAt이 있으면 항상 그 값을 사용한다
+        // (사전계산 시각과 무관하게 리플레이 시작 시각이 일정과 일치하도록).
+        // scheduledAt이 없는 레거시 경기는 기존 동작(최초 시뮬 시각 보존)을 유지.
         const { data: existingPbp } = await supabase
             .from('game_pbp')
             .select('game_start_time')
             .eq('room_id', roomId)
             .eq('game_id', gameId)
             .maybeSingle();
-        const gameStartTime = existingPbp?.game_start_time ?? new Date().toISOString();
+        const gameStartTime = game.scheduledAt ?? existingPbp?.game_start_time ?? new Date().toISOString();
 
         const result = runFullGameSimulation(
             homeTeam,
@@ -188,6 +190,7 @@ Deno.serve(async (req) => {
             away_team_id:   awayTeamId,
             game_start_time: gameStartTime,
             sim_duration_ms: simDurationMs,
+            box_timeline:   result.boxTimeline ?? [],
         }, { onConflict: 'room_id,game_id' });
 
         // ── 6. rooms.schedule 업데이트 ─────────────────────────────────────

@@ -6,6 +6,8 @@ import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useGame } from '../../../hooks/useGameContext';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import type { MultiStandingsRecord } from './multiSeasonUtils';
+import { isFinal } from './multiGameReveal';
+import { useServerClock } from '../../../utils/serverClock';
 import TournamentBracketView from './TournamentBracketView';
 import {
     Table, TableHead, TableBody, TableRow,
@@ -78,13 +80,17 @@ const LeagueStandingsTable: React.FC<{
     myTeamId: string | null;
     leagueName?: string;
     seasonNumber?: number;
-}> = ({ leagueTeams, schedule, myTeamId, leagueName, seasonNumber }) => {
+    serverNowMs: number;
+}> = ({ leagueTeams, schedule, myTeamId, leagueName, seasonNumber, serverNowMs }) => {
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
         key: 'pct', direction: 'desc',
     });
 
     const slugs   = useMemo(() => leagueTeams.map(t => t.team_slug), [leagueTeams]);
-    const statsMap = useMemo(() => computeMultiStandingsStats(slugs, schedule), [slugs, schedule]);
+    const statsMap = useMemo(
+        () => computeMultiStandingsStats(slugs, schedule, serverNowMs),
+        [slugs, schedule, serverNowMs],
+    );
 
     const sorted = useMemo(() => {
         return [...leagueTeams].sort((a, b) => {
@@ -111,7 +117,7 @@ const LeagueStandingsTable: React.FC<{
 
     const leaderRec = statsMap[sorted[0]?.team_slug];
 
-    const gamesPlayed = schedule.filter(g => g.played).length;
+    const gamesPlayed = schedule.filter(g => g.played && isFinal(g, serverNowMs)).length;
     const totalGames  = schedule.length;
 
     return (
@@ -255,6 +261,7 @@ const MultiStandingsView: React.FC = () => {
     const {
         isLoading: gameLoading, schedule, myTeamId,
     } = useMultiGameData(session, room?.id ?? null);
+    const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;
 
@@ -285,6 +292,7 @@ const MultiStandingsView: React.FC = () => {
             myTeamId={myTeamId}
             leagueName={league?.name}
             seasonNumber={league?.season_number}
+            serverNowMs={serverNow}
         />
     );
 };

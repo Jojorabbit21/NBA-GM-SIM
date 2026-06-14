@@ -4,6 +4,8 @@ import { X } from 'lucide-react';
 import type { PlayoffSeries, Game } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { useServerClock } from '../../../utils/serverClock';
+import { isFinal, isStarted } from './multiGameReveal';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -166,6 +168,7 @@ const ROW_H   = 100; // px — one R1 match row height
 
 const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams, myTeamId }) => {
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const serverNow = useServerClock();
 
     const totalRounds = useMemo(
         () => series.reduce((max, s) => Math.max(max, s.round), 1),
@@ -196,12 +199,14 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
         [series, selectedId],
     );
 
+    // 정시 전 / live 구간 경기는 목록에서 제외 — 시리즈 진행도(시드/카운트)는 서버 권위로
+    // 그대로 노출하되, 개별 경기 결과는 isStarted(보기 가능)인 경기만 표시한다.
     const selectedGames = useMemo(() => {
         if (!selectedId) return [];
         return schedule
-            .filter(g => g.seriesId === selectedId && g.played)
+            .filter(g => g.seriesId === selectedId && isStarted(g, serverNow))
             .sort((a, b) => a.date.localeCompare(b.date));
-    }, [schedule, selectedId]);
+    }, [schedule, selectedId, serverNow]);
 
     const higherTeam = selectedSeries
         ? leagueTeams.find(t => t.team_slug === selectedSeries.higherSeedId)
@@ -397,16 +402,17 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                         ) : (
                             <div className="divide-y divide-slate-800/50">
                                 {selectedGames.map((g, i) => {
+                                    const final = isFinal(g, serverNow);
                                     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
                                     const myIsHome = g.homeTeamId === myTeamId;
                                     const myScore  = myIsHome ? g.homeScore : g.awayScore;
                                     const oppScore = myIsHome ? g.awayScore : g.homeScore;
-                                    const isWin = isMyGame && (myScore ?? 0) > (oppScore ?? 0);
+                                    const isWin = final && isMyGame && (myScore ?? 0) > (oppScore ?? 0);
                                     return (
                                         <div key={g.id} className="flex items-center gap-2 px-4 py-3">
                                             <div className="flex items-center gap-1.5 w-14 shrink-0">
                                                 <span className="text-xs font-bold text-slate-500">{i + 1}차전</span>
-                                                {isMyGame && (
+                                                {final && isMyGame && (
                                                     <span className={`text-[10px] font-black px-1 rounded ${
                                                         isWin ? 'text-emerald-400' : 'text-red-400'
                                                     }`}>
@@ -416,7 +422,11 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                             </div>
                                             <div className="flex-1 flex items-center justify-center gap-1.5">
                                                 <span className="text-[11px] font-bold text-slate-400 uppercase">{g.homeTeamId}</span>
-                                                <span className="text-xs font-mono text-slate-200 tabular-nums">{g.homeScore}–{g.awayScore}</span>
+                                                {final ? (
+                                                    <span className="text-xs font-mono text-slate-200 tabular-nums">{g.homeScore}–{g.awayScore}</span>
+                                                ) : (
+                                                    <span className="text-[10px] font-black text-red-400">LIVE</span>
+                                                )}
                                                 <span className="text-[11px] font-bold text-slate-400 uppercase">{g.awayTeamId}</span>
                                             </div>
                                         </div>

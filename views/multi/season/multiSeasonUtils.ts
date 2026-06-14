@@ -1,13 +1,17 @@
 
 import type { Game } from '../../../types';
+import { isFinal } from './multiGameReveal';
 
 // ── W/L 단순 집계 (홈 화면 전용) ─────────────────────────────────────────────
+// serverNowMs: useServerClock() 값 — final 상태(scheduledAt + 10분 경과)인 경기만 집계.
+// 이렇게 해야 사전계산되었지만 아직 정시가 안 된 경기의 결과가 W/L에 노출되지 않는다.
 
-export function computeWL(schedule: Game[], teamSlugs: string[]) {
+export function computeWL(schedule: Game[], teamSlugs: string[], serverNowMs: number) {
     const wl: Record<string, { wins: number; losses: number }> = {};
     for (const slug of teamSlugs) wl[slug] = { wins: 0, losses: 0 };
     for (const g of schedule) {
         if (!g.played || g.homeScore == null || g.awayScore == null) continue;
+        if (!isFinal(g, serverNowMs)) continue;
         const homeWon = g.homeScore > g.awayScore;
         if (wl[g.homeTeamId]) homeWon ? wl[g.homeTeamId].wins++ : wl[g.homeTeamId].losses++;
         if (wl[g.awayTeamId]) homeWon ? wl[g.awayTeamId].losses++ : wl[g.awayTeamId].wins++;
@@ -34,6 +38,7 @@ export interface MultiStandingsRecord {
 export function computeMultiStandingsStats(
     slugs: string[],
     schedule: Game[],
+    serverNowMs: number,
 ): Record<string, MultiStandingsRecord> {
     const result: Record<string, MultiStandingsRecord> = {};
     for (const slug of slugs) {
@@ -49,6 +54,7 @@ export function computeMultiStandingsStats(
 
     for (const g of schedule) {
         if (!g.played || g.homeScore == null || g.awayScore == null) continue;
+        if (!isFinal(g, serverNowMs)) continue;
         const hs = g.homeScore;
         const as = g.awayScore;
         const homeWon = hs > as;
