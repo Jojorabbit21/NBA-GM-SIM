@@ -72,7 +72,11 @@ Deno.serve(async (req) => {
 
     case 'rollback': {
         const targetIndex = params?.targetPickIndex ?? 0;
-        if (targetIndex < 0 || targetIndex > (cursor.currentPickIndex ?? 0)) {
+        // finalized 커서는 currentPickIndex가 없으므로 pickOrder 길이를 상한으로 사용
+        const maxPickIndex = cursor.status === 'finalized'
+            ? (config?.pickOrder?.length ?? 0)
+            : (cursor.currentPickIndex ?? 0);
+        if (targetIndex < 0 || targetIndex > maxPickIndex) {
             return json({ error: 'Invalid targetPickIndex' }, 400);
         }
 
@@ -120,7 +124,8 @@ Deno.serve(async (req) => {
             },
         }).eq('id', roomId);
 
-        if (cursor.status === 'completed') {
+        // completed(픽 완료 대기) 또는 finalized(Section 4 처리 완료) 케이스 모두 복원
+        if (cursor.status === 'completed' || cursor.status === 'finalized') {
             await supabase.from('leagues').update({ status: 'drafting' }).eq('id', leagueId);
         }
         return json({ ok: true, rolledBackPicks: removedCount, targetIndex });
@@ -226,7 +231,8 @@ Deno.serve(async (req) => {
 
             draftedSet.add(best.id);
             const round = Math.floor(curIdx / teamCount) + 1;
-            const slot  = (curIdx % teamCount) + 1;
+            const isSnakeReverse = config.format === 'snake' && (round % 2 === 0);
+            const slot  = isSnakeReverse ? teamCount - (curIdx % teamCount) : (curIdx % teamCount) + 1;
 
             newPickRows.push({
                 room_id:     roomId,
@@ -255,6 +261,7 @@ Deno.serve(async (req) => {
         }
 
         // league_teams.roster 갱신
+        const rosterErrors: string[] = [];
         for (const [teamId, additions] of Object.entries(rosterAdd)) {
             const { data: team } = await supabase
                 .from('league_teams')
@@ -263,11 +270,12 @@ Deno.serve(async (req) => {
                 .eq('team_slug', teamId)
                 .single();
             if (team) {
-                await supabase
+                const { error: rosterErr } = await supabase
                     .from('league_teams')
                     .update({ roster: [...(team.roster ?? []), ...additions] })
                     .eq('room_id', roomId)
                     .eq('team_slug', teamId);
+                if (rosterErr) rosterErrors.push(`roster [${teamId}]: ${rosterErr.message}`);
             }
         }
 
@@ -282,11 +290,14 @@ Deno.serve(async (req) => {
             },
         }).eq('id', roomId);
 
-        // 시즌 일정/브라켓 생성 및 leagues.status='in_progress' 전환은 클라이언트의
-        // finalizeDraft(draftFinalizer.ts)가 draft_cursor.status==='completed' 감지 시 단독 처리한다.
-        // (여기서 status를 먼저 set하면 finalizeDraft가 멱등성 체크에 걸려 일정 생성을 건너뜀 — main_league 스케줄 미생성 버그)
+        // 시즌 일정/브라켓 생성 및 leagues.status='in_progress' 전환은 draft-scheduler 서버가
+        // Section 4에서 draft_cursor.status==='completed' 감지 시 원자적으로 처리한다.
 
-        return json({ ok: true, completedPicks: curIdx - (cursor.currentPickIndex as number) });
+        return json({
+            ok:             rosterErrors.length === 0,
+            completedPicks: curIdx - (cursor.currentPickIndex as number),
+            ...(rosterErrors.length > 0 && { rosterErrors }),
+        });
     }
 
     default:

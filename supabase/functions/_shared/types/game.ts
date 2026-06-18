@@ -10,6 +10,7 @@ export interface Game {
     awayTeamId: string;
     date: string;
     time?: string;
+    scheduledAt?: string;
     homeScore?: number;
     awayScore?: number;
     played: boolean;

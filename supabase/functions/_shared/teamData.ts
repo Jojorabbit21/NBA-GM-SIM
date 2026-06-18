@@ -1,0 +1,90 @@
+
+export interface TeamStaticData {
+    id: string;
+    city: string;
+    name: string;
+    conference: 'East' | 'West';
+    division: 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest';
+    owner: string;
+    colors: {
+        primary: string;
+        secondary: string;
+        tertiary?: string;
+        text: string;
+    };
+}
+
+export const TEAM_COLORS: Record<string, { primary: string; secondary: string; tertiary?: string; text: string }> = {
+    'atl': { primary: '#C8102E', secondary: '#FFC72C', tertiary: '#000000', text: '#FFFFFF' },
+    'bos': { primary: '#007A33', secondary: '#BA9653', tertiary: '#963821', text: '#FFFFFF' },
+    'bkn': { primary: '#002A60', secondary: '#CD1041', tertiary: '#C6CFD4', text: '#FFFFFF' },
+    'cha': { primary: '#00778B', secondary: '#280071', tertiary: '#A1A1A4', text: '#FFFFFF' },
+    'chi': { primary: '#CE1141', secondary: '#000000', tertiary: '#FFFFFF', text: '#FFFFFF' },
+    'cle': { primary: '#6F263D', secondary: '#FFB81C', tertiary: '#002B5C', text: '#FFFFFF' },
+    'dal': { primary: '#0064B1', secondary: '#002B5E', tertiary: '#BBC4CA', text: '#FFFFFF' },
+    'den': { primary: '#0E2240', secondary: '#8B2131', tertiary: '#FEC524', text: '#FFFFFF' },
+    'det': { primary: '#C8102E', secondary: '#1D42BA', tertiary: '#BEC0C2', text: '#FFFFFF' },
+    'gs':  { primary: '#1D428A', secondary: '#FDB927', tertiary: '#FFFFFF', text: '#FFFFFF' },
+    'hou': { primary: '#CE1141', secondary: '#C4CED4', tertiary: '#000000', text: '#FFFFFF' },
+    'ind': { primary: '#002D62', secondary: '#FDBB30', tertiary: '#BEC0C2', text: '#FFFFFF' },
+    'law': { primary: '#003DA5', secondary: '#D50032', tertiary: '#000000', text: '#FFFFFF' },
+    'lam': { primary: '#31006F', secondary: '#FDB927', tertiary: '#010101', text: '#FFFFFF' },
+    'mem': { primary: '#5D76A9', secondary: '#12173F', tertiary: '#F5B112', text: '#FFFFFF' },
+    'mia': { primary: '#98002E', secondary: '#010101', tertiary: '#F9A01B', text: '#FFFFFF' },
+    'mil': { primary: '#00471B', secondary: '#EEE1C6', tertiary: '#0077C0', text: '#FFFFFF' },
+    'min': { primary: '#0C2340', secondary: '#236192', tertiary: '#79BC43', text: '#FFFFFF' },
+    'no':  { primary: '#002B5C', secondary: '#B4975A', tertiary: '#E31837', text: '#FFFFFF' },
+    'nyk': { primary: '#006BB6', secondary: '#F58426', tertiary: '#BEC0C2', text: '#FFFFFF' },
+    'okc': { primary: '#EF3B24', secondary: '#007AC1', tertiary: '#002D62', text: '#FFFFFF' },
+    'orl': { primary: '#0077C0', secondary: '#C4CED4', tertiary: '#000000', text: '#FFFFFF' },
+    'phi': { primary: '#000000', secondary: '#896C4C', tertiary: '#D50032', text: '#FFFFFF' },
+    'phx': { primary: '#1D1160', secondary: '#E56020', tertiary: '#F9A01B', text: '#FFFFFF' },
+    'por': { primary: '#CF0A2C', secondary: '#000000', tertiary: '#FFFFFF', text: '#FFFFFF' },
+    'sac': { primary: '#5B2C81', secondary: '#707272', tertiary: '#010101', text: '#FFFFFF' },
+    'sa':  { primary: '#010101', secondary: '#C4CED4', tertiary: '#272727', text: '#FFFFFF' },
+    'tor': { primary: '#BA0C2F', secondary: '#010101', tertiary: '#753BBD', text: '#FFFFFF' },
+    'uta': { primary: '#330072', secondary: '#7BA4DB', tertiary: '#DBE2E9', text: '#FFFFFF' },
+    'was': { primary: '#E31837', secondary: '#002B5C', tertiary: '#C4CED4', text: '#FFFFFF' },
+};
+
+const DEFAULT_COLORS = { primary: '#6366f1', secondary: '#818cf8', text: '#FFFFFF' };
+
+export const TEAM_DATA: Record<string, TeamStaticData> = {
+    'atl': { id: 'atl', city: '애틀랜타', name: '파이어버즈', conference: 'East', division: 'Southeast', owner: '앤서니 레슬러', colors: TEAM_COLORS['atl'] },
+    'bos': { id: 'bos', city: '보스턴', name: '세이지', conference: 'East', division: 'Atlantic', owner: '빅터 그루스벡', colors: TEAM_COLORS['bos'] },
+    'bkn': { id: 'bkn', city: '브루클린', name: '나이츠', conference: 'East', division: 'Atlantic', owner: '제이슨 창', colors: TEAM_COLORS['bkn'] },
+    'cha': { id: 'cha', city: '샬럿', name: '스팅어스', conference: 'East', division: 'Southeast', owner: '리처드 슈널', colors: TEAM_COLORS['cha'] },
+    'chi': { id: 'chi', city: '시카고', name: '차저스', conference: 'East', division: 'Central', owner: '마이클 라인하트', colors: TEAM_COLORS['chi'] },
+    'cle': { id: 'cle', city: '클리블랜드', name: '랜서스', conference: 'East', division: 'Central', owner: '대니얼 길버트', colors: TEAM_COLORS['cle'] },
+    'dal': { id: 'dal', city: '댈러스', name: '머스탱스', conference: 'West', division: 'Southwest', owner: '미리엄 아델슨', colors: TEAM_COLORS['dal'] },
+    'den': { id: 'den', city: '덴버', name: '시프터스', conference: 'West', division: 'Northwest', owner: '스탠리 크로에케', colors: TEAM_COLORS['den'] },
+    'det': { id: 'det', city: '디트로이트', name: '스탈리온스', conference: 'East', division: 'Central', owner: '토마스 고어스', colors: TEAM_COLORS['det'] },
+    'gs':  { id: 'gs', city: '골든스테이트', name: '뱅가즈', conference: 'West', division: 'Pacific', owner: '조셉 라콥', colors: TEAM_COLORS['gs'] },
+    'hou': { id: 'hou', city: '휴스턴', name: '이글스', conference: 'West', division: 'Southwest', owner: '틸먼 퍼티타', colors: TEAM_COLORS['hou'] },
+    'ind': { id: 'ind', city: '인디애나', name: '레이서스', conference: 'East', division: 'Central', owner: '허버트 사이먼', colors: TEAM_COLORS['ind'] },
+    'law': { id: 'law', city: 'LA', name: '와일드캣츠', conference: 'West', division: 'Pacific', owner: '스티븐 발머', colors: TEAM_COLORS['law'] },
+    'lam': { id: 'lam', city: 'LA', name: '미라지', conference: 'West', division: 'Pacific', owner: '지나 버스', colors: TEAM_COLORS['lam'] },
+    'mem': { id: 'mem', city: '멤피스', name: '코디악스', conference: 'West', division: 'Southwest', owner: '로버트 페라', colors: TEAM_COLORS['mem'] },
+    'mia': { id: 'mia', city: '마이애미', name: '블레이즈', conference: 'East', division: 'Southeast', owner: '미키 아리슨', colors: TEAM_COLORS['mia'] },
+    'mil': { id: 'mil', city: '밀워키', name: '스태그스', conference: 'East', division: 'Central', owner: '웨슬리 에덴스', colors: TEAM_COLORS['mil'] },
+    'min': { id: 'min', city: '미네소타', name: '프로스트울브스', conference: 'West', division: 'Northwest', owner: '글렌 테일러', colors: TEAM_COLORS['min'] },
+    'no':  { id: 'no', city: '뉴올리언스', name: '헤론스', conference: 'West', division: 'Southwest', owner: '게일 벤슨', colors: TEAM_COLORS['no'] },
+    'nyk': { id: 'nyk', city: '뉴욕', name: '엠파이어', conference: 'East', division: 'Atlantic', owner: '제임스 돌런', colors: TEAM_COLORS['nyk'] },
+    'okc': { id: 'okc', city: '오클라호마시티', name: '볼트', conference: 'West', division: 'Northwest', owner: '클레이턴 베넷', colors: TEAM_COLORS['okc'] },
+    'orl': { id: 'orl', city: '올랜도', name: '미스틱스', conference: 'East', division: 'Southeast', owner: '대니얼 드보스', colors: TEAM_COLORS['orl'] },
+    'phi': { id: 'phi', city: '필라델피아', name: '리버티', conference: 'East', division: 'Atlantic', owner: '조시 해리스', colors: TEAM_COLORS['phi'] },
+    'phx': { id: 'phx', city: '피닉스', name: '카이요티스', conference: 'West', division: 'Pacific', owner: '매튜 이시비아', colors: TEAM_COLORS['phx'] },
+    'por': { id: 'por', city: '포틀랜드', name: '파이오니어스', conference: 'West', division: 'Northwest', owner: '조디 앨런', colors: TEAM_COLORS['por'] },
+    'sac': { id: 'sac', city: '새크라멘토', name: '모나크스', conference: 'West', division: 'Pacific', owner: '비벡 라나디베', colors: TEAM_COLORS['sac'] },
+    'sa':  { id: 'sa', city: '샌안토니오', name: '아웃로스', conference: 'West', division: 'Southwest', owner: '피터 홀트', colors: TEAM_COLORS['sa'] },
+    'tor': { id: 'tor', city: '토론토', name: '노스가드스', conference: 'East', division: 'Atlantic', owner: '래리 태넌바움', colors: TEAM_COLORS['tor'] },
+    'uta': { id: 'uta', city: '유타', name: '하이랜더스', conference: 'West', division: 'Northwest', owner: '라이언 스미스', colors: TEAM_COLORS['uta'] },
+    'was': { id: 'was', city: '워싱턴', name: '아케인스', conference: 'East', division: 'Southeast', owner: '테드 레온시스', colors: TEAM_COLORS['was'] },
+};
+
+export const getTeamColor = (id: string, type: 'primary' | 'secondary' = 'primary') => {
+    const team = TEAM_DATA[id];
+    return team ? team.colors[type] : '#000000';
+};
+
+export const getAllTeamsList = () => Object.values(TEAM_DATA);

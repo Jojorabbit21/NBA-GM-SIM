@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
-import { finalizeDraft } from '../../../services/multi/draftFinalizer';
+import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
@@ -364,26 +364,59 @@ interface DraftCompletedScreenProps {
     onNavigate: () => void;
 }
 
-const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, roomId, onNavigate }) => {
-    const [isFinalizing, setIsFinalizing] = useState(true);
-    const [error,        setError]        = useState<string | null>(null);
+const MAX_POLL_ATTEMPTS = 30; // 3초 × 30 = 90초
+
+const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, onNavigate }) => {
+    const [isReady,   setIsReady]   = useState(false);
+    const [timedOut,  setTimedOut]  = useState(false);
 
     useEffect(() => {
-        if (!leagueId || !roomId) return;
+        if (!leagueId) return;
         let cancelled = false;
+        let attempts  = 0;
+        let timerId:  ReturnType<typeof setTimeout>;
 
-        finalizeDraft(roomId, leagueId).then(({ error: err }) => {
+        const poll = async () => {
             if (cancelled) return;
-            if (err) {
-                setError(err);
+            if (++attempts > MAX_POLL_ATTEMPTS) {
+                setTimedOut(true);
+                return;
             }
-            setIsFinalizing(false);
-        });
+            const { data } = await supabase
+                .from('leagues')
+                .select('status')
+                .eq('id', leagueId)
+                .single();
+            if (cancelled) return;
+            if (data?.status === 'in_progress') {
+                setIsReady(true);
+            } else {
+                timerId = setTimeout(poll, 3000);
+            }
+        };
 
-        return () => { cancelled = true; };
-    }, [leagueId, roomId]);
+        poll();
+        return () => {
+            cancelled = true;
+            clearTimeout(timerId);
+        };
+    }, [leagueId]);
 
-    if (isFinalizing) {
+    if (timedOut) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+                <p className="text-red-400 text-sm ko-normal">시즌 일정 생성 중 문제가 발생했습니다.</p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="text-indigo-400 text-sm hover:underline ko-normal"
+                >
+                    새로고침
+                </button>
+            </div>
+        );
+    }
+
+    if (!isReady) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen gap-3">
                 <Loader2 className="animate-spin text-indigo-400" size={28} />
@@ -395,9 +428,6 @@ const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, r
     return (
         <div className="flex flex-col items-center justify-center min-h-screen gap-4">
             <h2 className="text-xl font-black text-white ko-tight">드래프트 완료!</h2>
-            {error && (
-                <p className="text-red-400 text-xs ko-normal">{error}</p>
-            )}
             <p className="text-slate-400 text-sm ko-normal">시즌 일정이 준비됐습니다.</p>
             <button
                 onClick={onNavigate}

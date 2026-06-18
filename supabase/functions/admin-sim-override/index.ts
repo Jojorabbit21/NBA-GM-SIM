@@ -57,19 +57,16 @@ Deno.serve(async (req) => {
     if (action === 'sim-game') {
         if (!gameId) return json({ error: 'gameId required' }, 400);
 
-        // simulate-game EF 호출
-        // Supabase는 service_role JWT를 verify_jwt 처리 후 함수에 전달하지 않으므로
-        // anon key(일반 JWT)를 사용하거나 요청 본문의 adminToken으로 인증
-        const simUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/simulate-game`;
-        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const simUrl    = `${Deno.env.get('SUPABASE_URL')}/functions/v1/simulate-game`;
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const res = await fetch(simUrl, {
             method:  'POST',
             headers: {
                 'Content-Type':  'application/json',
-                'Authorization': `Bearer ${anonKey}`,
-                'apikey':        anonKey,
+                'Authorization': `Bearer ${serviceKey}`,
+                'apikey':        serviceKey,
             },
-            body: JSON.stringify({ roomId, gameId, adminToken: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') }),
+            body: JSON.stringify({ roomId, gameId }),
         });
 
         const data = await res.json();

@@ -38,26 +38,25 @@ Deno.serve(async (req) => {
         return new Response(null, { headers: CORS_HEADERS });
     }
 
+    const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
     const supabase = createClient(
         Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        SERVICE_ROLE_KEY,
     );
 
     // ── 인증: cron secret / Bearer token / adminToken (body) ─────────────
     const authHeader  = req.headers.get('Authorization') ?? '';
     const cronHeader  = req.headers.get('X-Cron-Secret') ?? '';
     const isCron      = CRON_SECRET && cronHeader === CRON_SECRET;
-    const isBearer    = authHeader.startsWith('Bearer ');
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const isBearer    = bearerToken.length > 0 && bearerToken === SERVICE_ROLE_KEY;
 
-    // body를 먼저 읽어야 adminToken 확인 가능
-    const body = await req.json() as { roomId: string; gameId: string; adminToken?: string };
-    const { roomId, gameId, adminToken } = body;
+    const body = await req.json() as { roomId: string; gameId: string };
+    const { roomId, gameId } = body;
     if (!roomId || !gameId) return json({ error: 'roomId and gameId required' }, 400);
 
-    const SERVICE_ROLE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const isAdminToken      = !!adminToken && adminToken === SERVICE_ROLE_KEY;
-
-    if (!isCron && !isBearer && !isAdminToken) {
+    if (!isCron && !isBearer) {
         return json({ error: 'Unauthorized' }, 401);
     }
 
