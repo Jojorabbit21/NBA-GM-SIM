@@ -1,6 +1,7 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useGame } from '../../../hooks/useGameContext';
@@ -18,6 +19,8 @@ const MultiLeaderboardView: React.FC = () => {
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
     const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
+    const navigate = useNavigate();
+    const { leagueId } = useParams<{ leagueId: string }>();
 
     const [teams, setTeams] = useState<Team[]>([]);
     const [fetchLoading, setFetchLoading] = useState(false);
@@ -131,6 +134,12 @@ const MultiLeaderboardView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allRosterIds.join(','), room?.id]);
 
+    const handleViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
+        navigate(`/multi/leagues/${leagueId}/season/roster`, {
+            state: { viewPlayer: player, viewTeamId: teamId },
+        });
+    }, [navigate, leagueId]);
+
     const isLoading = leagueLoading || gameLoading || fetchLoading;
 
     if (isLoading) {
@@ -147,7 +156,7 @@ const MultiLeaderboardView: React.FC = () => {
         <LeaderboardView
             teams={teams}
             schedule={schedule as Game[]}
-            onViewPlayer={() => {}}
+            onViewPlayer={handleViewPlayer}
             onTeamClick={() => {}}
             hideSeasonType={isTournament}
         />

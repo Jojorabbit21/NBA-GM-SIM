@@ -37,6 +37,11 @@ interface PlayerDetailViewProps {
     onNegotiate?: () => void;   // FA 계약 협상
     onExtension?: () => void;   // 우리팀 계약 연장
     onRelease?: () => void;     // 우리팀 방출
+    // 멀티플레이 경량화 — 지정한 섹션을 숨긴다
+    hideSections?: Array<'contract' | 'awards' | 'injuryHistory'>;
+    // 멀티플레이 경량화 — 외부에서 주입하는 gameLog (없으면 싱글 훅 사용)
+    externalGameLog?: any[];
+    externalGameLogLoading?: boolean;
 }
 
 
@@ -705,7 +710,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, hideSections, externalGameLog, externalGameLogLoading }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
@@ -768,7 +773,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         return Math.round(Math.max(0.5, Math.min(5.0, 0.5 + pct * 4.5)) * 2) / 2;
     }, [player, allTeams, calculatedOvr]);
 
-    const { data: gameLog, isLoading: gameLogLoading } = usePlayerGameLog(player.id, teamId);
+    const { data: internalGameLog, isLoading: internalGameLogLoading } = usePlayerGameLog(player.id, teamId);
+    const gameLog        = externalGameLog         !== undefined ? externalGameLog         : internalGameLog;
+    const gameLogLoading = externalGameLogLoading  !== undefined ? externalGameLogLoading  : internalGameLogLoading;
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
@@ -1190,7 +1197,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         })()}
 
                         {/* ── 위젯 6: 계약 정보 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        {!hideSections?.includes('contract') && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             {player.prevSalary != null ? (
                                 // 생성 FA 선수: 직전 계약 전체 연도 표시
                                 <>
@@ -1297,10 +1304,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     )}
                                 </>
                             )}
-                        </div>
+                        </div>}
 
                         {/* ── 위젯 7: 수상 내역 ── */}
-                        {(() => {
+                        {!hideSections?.includes('awards') && (() => {
                             const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
                                 (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
                             );
@@ -1370,7 +1377,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         })()}
 
                         {/* ── 위젯 8: 부상 이력 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        {!hideSections?.includes('injuryHistory') && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
                             <SectionHeader title="부상 이력" style={sectionBg} />
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
                                 <div className="flex items-center justify-center h-20">
@@ -1395,7 +1402,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         })}
                                 </div>
                             )}
-                        </div>
+                        </div>}
 
                     </div>{/* end 좌열 */}
 

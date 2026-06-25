@@ -12,6 +12,7 @@ export interface Game {
     date: string;
     time?: string;
     scheduledAt?: string; // ISO timestamp — multiplayer 30-min slot scheduling (KST 10:00~)
+    game_seq?: number;    // time-compression: real_at = sim_real_start_at + (game_seq / games_per_real_day) * 86400000
     homeScore?: number;
     awayScore?: number;
     played: boolean;

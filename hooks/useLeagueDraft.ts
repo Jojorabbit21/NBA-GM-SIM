@@ -1,8 +1,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase } from '../services/supabaseClient';
 import type { MultiDraftState, DraftPickEntry, DraftPoolPlayer } from '../types/multiDraft';
+
+// ── 서버 주소 ─────────────────────────────────────────────────────────────────
+// VITE_DRAFT_WS_URL 환경변수로 재정의 가능 (개발: ws://localhost:3001/ws)
+const WS_BASE = (import.meta as any).env?.VITE_DRAFT_WS_URL ?? 'wss://basketballgm-app-server.fly.dev/ws';
 
 export interface UseLeagueDraftReturn {
     draftState:       MultiDraftState | null;
@@ -18,144 +21,178 @@ export interface UseLeagueDraftReturn {
 
     submitPick:       (playerId: string) => Promise<{ error: string | null }>;
     isSubmitting:     boolean;
+
+    /** 어드민 전용: pause/resume/reset-timer/skip-turn/autocomplete/rollback */
+    sendAdmin:        (action: string, params?: { targetPickIndex?: number }) => void;
 }
 
 /**
- * 멀티 드래프트 상태 훅.
+ * 멀티 드래프트 상태 훅 (WebSocket 버전).
  *
- * 개선 (2026-04-21): draft_state JSONB 전체 구독 → 분리된 구조
- *   - 초기 로드: rooms(draft_config + draft_cursor) + draft_picks 테이블
- *   - Realtime #1: rooms UPDATE → draft_cursor (100바이트) — 차례 전환 감지
- *   - Realtime #2: draft_picks INSERT → 새 픽 행 수신
- *   → 브로드캐스트 페이로드 크기: ~73KB → ~200바이트 (300배 축소)
+ * Realtime 구독 제거 → Fly.io Bun WS 서버 연결.
+ *
+ * 프로토콜:
+ *   open  → { type:'auth', roomId, token }
+ *   ← snapshot (1회, 풀 포함)
+ *   ← pick (delta: cursor + 새 픽 1개)
+ *   ← cursor (pause/resume/reset-timer)
+ *   → { type:'submitPick', playerId }   ← { type:'ack' } | { type:'error', code }
+ *   → { type:'admin', action, params }
+ *   → { type:'ping' }   ← { type:'pong' }  (30s heartbeat)
  */
 export function useLeagueDraft(
     roomId:  string | null,
     session: Session | null
 ): UseLeagueDraftReturn {
     const userId = session?.user?.id ?? null;
+    const token  = session?.access_token ?? null;
 
     const [draftState,   setDraftState]   = useState<MultiDraftState | null>(null);
     const [poolPlayers,  setPoolPlayers]  = useState<DraftPoolPlayer[]>([]);
     const [isLoading,    setIsLoading]    = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // 타이머
+    // 타이머 (표시 전용)
     const [timeRemaining, setTimeRemaining] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // ── 초기 로드 ─────────────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!roomId) { setIsLoading(false); return; }
-        let cancelled = false;
+    // WS + 재연결 상태
+    const wsRef        = useRef<WebSocket | null>(null);
+    const backoffRef   = useRef(1000);
+    const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const destroyedRef = useRef(false);   // unmount 후 재연결 방지
 
-        (async () => {
-            setIsLoading(true);
+    // submitPick Promise 콜백 (ack/error 수신 시 resolve)
+    const pendingPickRef = useRef<{
+        resolve: (v: { error: string | null }) => void;
+        timer:   ReturnType<typeof setTimeout>;
+    } | null>(null);
 
-            // draft_config + draft_cursor + draft_picks 병렬 로드
-            const [roomRes, picksRes] = await Promise.all([
-                supabase
-                    .from('rooms')
-                    .select('draft_config, draft_cursor')
-                    .eq('id', roomId)
-                    .single(),
-                supabase
-                    .from('draft_picks')
-                    .select('*')
-                    .eq('room_id', roomId)
-                    .order('pick_index'),
-            ]);
+    // ── WS 연결 / 재연결 ──────────────────────────────────────────────────────
+    const connect = useCallback(() => {
+        if (!roomId || !token || destroyedRef.current) return;
 
-            if (cancelled) return;
+        const ws = new WebSocket(WS_BASE);
+        wsRef.current = ws;
 
-            const config = (roomRes.data as any)?.draft_config;
-            const cursor = (roomRes.data as any)?.draft_cursor;
+        ws.onopen = () => {
+            backoffRef.current = 1000; // 재연결 성공 → backoff 리셋
+            ws.send(JSON.stringify({ type: 'auth', roomId, token }));
+        };
 
-            if (config && cursor) {
-                const picks = buildPickEntries(picksRes.data ?? []);
-                setDraftState(assembleState(config, cursor, picks));
+        ws.onmessage = (ev) => {
+            let msg: any;
+            try { msg = JSON.parse(ev.data as string); } catch { return; }
 
-                // 선수 풀 로드 — poolIds를 100개씩 병렬 청크로 분할하여 URL 길이 제한 회피
-                const poolIds: string[] = config.poolIds ?? [];
-                if (poolIds.length > 0) {
-                    const CHUNK = 100;
-                    const chunks: string[][] = [];
-                    for (let i = 0; i < poolIds.length; i += CHUNK) chunks.push(poolIds.slice(i, i + CHUNK));
-                    const results = await Promise.all(
-                        chunks.map(ids =>
-                            supabase
-                                .from('meta_players')
-                                .select('id, name, position, salary, base_attributes')
-                                .in('id', ids)
-                        )
-                    );
-                    if (!cancelled) {
-                        const all = results.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
-                        setPoolPlayers(all);
-                    }
+            switch (msg.type) {
+                // ── 초기 스냅샷 (풀 포함, 1회) ────────────────────────────
+                case 'snapshot': {
+                    const { config, cursor, picks, pool } = msg as {
+                        config: any; cursor: any;
+                        picks:  any[]; pool: DraftPoolPlayer[];
+                    };
+                    const pickEntries = buildPickEntries(picks);
+                    setDraftState(assembleState(config, cursor, pickEntries));
+                    setPoolPlayers(pool);
+                    setIsLoading(false);
+                    break;
                 }
-            }
 
-            if (!cancelled) setIsLoading(false);
-        })();
-
-        return () => { cancelled = true; };
-    }, [roomId]);
-
-    // ── Realtime 구독 ─────────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!roomId) return;
-
-        // [1] rooms UPDATE → draft_cursor 변경 감지 (pause/resume/timer reset 포함)
-        const cursorChannel = supabase
-            .channel(`draft-cursor-${roomId}`)
-            .on(
-                'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-                (payload) => {
-                    const newCursor = (payload.new as any)?.draft_cursor;
-                    if (!newCursor) return;
-                    setDraftState(prev => prev ? {
-                        ...prev,
-                        status:               newCursor.status,
-                        currentPickIndex:     newCursor.currentPickIndex,
-                        currentPickStartedAt: newCursor.currentPickStartedAt ?? '',
-                        pausedAt:             newCursor.pausedAt,
-                    } : prev);
-                }
-            )
-            .subscribe();
-
-        // [2] draft_picks INSERT → 새 픽 행 수신 (picks / draftedIds 갱신)
-        const picksChannel = supabase
-            .channel(`draft-picks-${roomId}`)
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `room_id=eq.${roomId}` },
-                (payload) => {
-                    const row = payload.new as any;
-                    const newPick = rowToPickEntry(row);
+                // ── 픽 델타 (~200B) ────────────────────────────────────────
+                case 'pick': {
+                    const { pick: newPick, cursor } = msg as {
+                        pick: DraftPickEntry; cursor: any;
+                    };
                     setDraftState(prev => {
                         if (!prev) return prev;
-                        // 중복 방지 (낙관적 업데이트와 Realtime이 겹치는 경우)
-                        if (prev.picks.some(p => p.pickIndex === newPick.pickIndex)) return prev;
+                        if (prev.picks.some(p => p.pickIndex === newPick.pickIndex)) {
+                            // cursor만 갱신 (낙관적 업데이트와 WS delta 중복)
+                            return applycursor(prev, cursor);
+                        }
                         return {
-                            ...prev,
-                            picks:      [...prev.picks, newPick],
-                            draftedIds: [...prev.draftedIds, newPick.playerId],
+                            ...applyPick(prev, newPick),
+                            ...cursorFields(cursor),
                         };
                     });
+                    break;
                 }
-            )
-            .subscribe();
+
+                // ── cursor만 변경 (pause/resume/reset-timer) ──────────────
+                case 'cursor': {
+                    setDraftState(prev => prev ? applycursor(prev, msg.cursor) : prev);
+                    break;
+                }
+
+                // ── submitPick ack ─────────────────────────────────────────
+                case 'ack': {
+                    setIsSubmitting(false);
+                    if (pendingPickRef.current) {
+                        clearTimeout(pendingPickRef.current.timer);
+                        pendingPickRef.current.resolve({ error: null });
+                        pendingPickRef.current = null;
+                    }
+                    break;
+                }
+
+                // ── 에러 (submitPick 또는 admin 실패) ─────────────────────
+                case 'error': {
+                    setIsSubmitting(false);
+                    if (pendingPickRef.current) {
+                        clearTimeout(pendingPickRef.current.timer);
+                        const code = msg.code ?? 'internal';
+                        pendingPickRef.current.resolve({ error: code });
+                        pendingPickRef.current = null;
+                    }
+                    break;
+                }
+
+                case 'pong':
+                    break; // heartbeat — 무시
+
+                default:
+                    break;
+            }
+        };
+
+        ws.onclose = () => {
+            if (destroyedRef.current) return;
+            // 지수 백오프 재연결 (1s → 2s → 4s → max 10s)
+            const delay = Math.min(backoffRef.current, 10_000);
+            backoffRef.current = Math.min(backoffRef.current * 2, 10_000);
+            reconnectRef.current = setTimeout(connect, delay);
+            console.log(`[useLeagueDraft] WS closed, reconnect in ${delay}ms`);
+        };
+
+        ws.onerror = (e) => {
+            console.warn('[useLeagueDraft] WS error', e);
+        };
+    }, [roomId, token]);
+
+    // roomId / token이 바뀌면 재연결
+    useEffect(() => {
+        destroyedRef.current = false;
+        setIsLoading(true);
+        setDraftState(null);
+        setPoolPlayers([]);
+
+        connect();
+
+        // 30초 heartbeat
+        const pingTimer = setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30_000);
 
         return () => {
-            supabase.removeChannel(cursorChannel);
-            supabase.removeChannel(picksChannel);
+            destroyedRef.current = true;
+            clearInterval(pingTimer);
+            if (reconnectRef.current) clearTimeout(reconnectRef.current);
+            wsRef.current?.close();
         };
-    }, [roomId]);
+    }, [connect]);
 
-    // ── 타이머 (표시 전용 — 자동픽은 서버 pg_cron이 전담) ──────────────────────
+    // ── 타이머 (표시 전용) ────────────────────────────────────────────────────
     useEffect(() => {
         if (timerRef.current) clearInterval(timerRef.current);
 
@@ -163,12 +200,11 @@ export function useLeagueDraft(
             setTimeRemaining(0);
             return;
         }
-
         if (draftState.status === 'paused') return;
 
         const update = () => {
-            const elapsed = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
-            const remaining = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
+            const elapsed    = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
+            const remaining  = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
             setTimeRemaining(remaining);
         };
         update();
@@ -185,37 +221,37 @@ export function useLeagueDraft(
         .map(p => p.playerId);
 
     // ── submitPick ────────────────────────────────────────────────────────────
-    // Edge Function 우회 → submit_draft_pick_v2 RPC 직접 호출 (latency ~350ms 절감)
-    // RPC는 SECURITY DEFINER + auth.uid() 사용 → getUser() 네트워크 왕복 불필요
     const submitPick = useCallback(async (playerId: string): Promise<{ error: string | null }> => {
-        if (!roomId || !session) return { error: 'not authenticated' };
-        if (!isMyTurn)           return { error: 'not your turn' };
+        if (!roomId || !token) return { error: 'not authenticated' };
+        if (!isMyTurn)         return { error: 'not your turn' };
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return { error: 'connection lost' };
 
         setIsSubmitting(true);
-        try {
-            const { error } = await supabase.rpc('submit_draft_pick_v2', {
-                p_room_id:   roomId,
-                p_player_id: playerId,
-                // p_player_name / p_position / p_ovr → RPC가 meta_players에서 직접 조회
-                // p_user_id 생략 → RPC 내부에서 auth.uid() 사용
-            });
-            if (error) {
-                const msg = error.message ?? '';
-                if (msg.includes('not_your_turn'))   return { error: 'not your turn' };
-                if (msg.includes('already_drafted')) return { error: 'player already drafted' };
-                if (msg.includes('draft_not_active'))return { error: 'draft not active' };
-                return { error: msg };
-            }
-            return { error: null };
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [roomId, session, isMyTurn]);
+
+        return new Promise<{ error: string | null }>((resolve) => {
+            // 5초 타임아웃
+            const timer = setTimeout(() => {
+                pendingPickRef.current = null;
+                setIsSubmitting(false);
+                resolve({ error: 'timeout' });
+            }, 5_000);
+
+            pendingPickRef.current = { resolve, timer };
+            wsRef.current!.send(JSON.stringify({ type: 'submitPick', playerId }));
+        });
+    }, [roomId, token, isMyTurn]);
+
+    // ── sendAdmin ─────────────────────────────────────────────────────────────
+    const sendAdmin = useCallback((action: string, params?: { targetPickIndex?: number }) => {
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(JSON.stringify({ type: 'admin', action, params }));
+    }, []);
 
     return {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting,
+        sendAdmin,
     };
 }
 
@@ -223,16 +259,16 @@ export function useLeagueDraft(
 
 function rowToPickEntry(row: any): DraftPickEntry {
     return {
-        pickIndex:  row.pick_index,
-        round:      row.round,
-        slot:       row.slot ?? 0,
-        userId:     row.user_id ?? '',
-        teamId:     row.team_id,
-        playerId:   row.player_id,
-        playerName: row.player_name,
-        position:   row.position ?? '',
-        ovr:        row.ovr ?? 0,
-        pickedAt:   row.picked_at ?? '',
+        pickIndex:  row.pickIndex  ?? row.pick_index  ?? 0,
+        round:      row.round      ?? 0,
+        slot:       row.slot       ?? 0,
+        userId:     row.userId     ?? row.user_id     ?? '',
+        teamId:     row.teamId     ?? row.team_id     ?? '',
+        playerId:   row.playerId   ?? row.player_id   ?? '',
+        playerName: row.playerName ?? row.player_name ?? '',
+        position:   row.position   ?? '',
+        ovr:        row.ovr        ?? 0,
+        pickedAt:   row.pickedAt   ?? row.picked_at   ?? '',
     };
 }
 
@@ -242,20 +278,38 @@ function buildPickEntries(rows: any[]): DraftPickEntry[] {
 
 function assembleState(config: any, cursor: any, picks: DraftPickEntry[]): MultiDraftState {
     return {
-        // draft_config (정적)
-        format:          config.format          ?? 'snake',
-        totalRounds:     config.totalRounds      ?? 10,
-        pickDurationSec: config.pickDurationSec  ?? 30,
-        teamCount:       config.teamCount        ?? 0,
-        poolIds:         config.poolIds          ?? [],
-        pickOrder:       config.pickOrder        ?? [],
-        // draft_cursor (휘발)
+        format:               config.format          ?? 'snake',
+        totalRounds:          config.totalRounds      ?? 10,
+        pickDurationSec:      config.pickDurationSec  ?? 30,
+        teamCount:            config.teamCount        ?? 0,
+        poolIds:              config.poolIds          ?? [],
+        pickOrder:            config.pickOrder        ?? [],
         status:               cursor.status               ?? 'active',
         currentPickIndex:     cursor.currentPickIndex     ?? 0,
         currentPickStartedAt: cursor.currentPickStartedAt ?? '',
         pausedAt:             cursor.pausedAt,
-        // draft_picks 테이블에서 재구성
         picks,
         draftedIds: picks.map(p => p.playerId),
     };
+}
+
+function cursorFields(cursor: any) {
+    return {
+        status:               cursor.status               ?? 'active',
+        currentPickIndex:     cursor.currentPickIndex     ?? 0,
+        currentPickStartedAt: cursor.currentPickStartedAt ?? '',
+        pausedAt:             cursor.pausedAt,
+    };
+}
+
+function applyPick(prev: MultiDraftState, pick: DraftPickEntry): MultiDraftState {
+    return {
+        ...prev,
+        picks:      [...prev.picks, pick],
+        draftedIds: [...prev.draftedIds, pick.playerId],
+    };
+}
+
+function applycursor(prev: MultiDraftState, cursor: any): MultiDraftState {
+    return { ...prev, ...cursorFields(cursor) };
 }

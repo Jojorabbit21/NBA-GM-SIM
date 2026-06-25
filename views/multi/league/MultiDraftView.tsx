@@ -79,7 +79,7 @@ const MultiDraftView: React.FC = () => {
     const {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
-        submitPick, isSubmitting,
+        submitPick, isSubmitting, sendAdmin,
     } = useLeagueDraft(room?.id ?? null, session);
 
     const onlineUserIds = useDraftPresence(room?.id ?? null, userId);
@@ -271,6 +271,7 @@ const MultiDraftView: React.FC = () => {
                     roomId={room.id}
                     onOptimisticPause={handleOptimisticPause}
                     onOptimisticRevert={handleOptimisticRevert}
+                    sendAdmin={sendAdmin}
                 />
             )}
 

@@ -170,20 +170,38 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const serverNow = useServerClock();
 
+    // schedule(Realtime 실시간) 기반으로 시리즈 승수를 재계산.
+    // league.bracket_data 구독 지연이 있어도 schedule 완료 경기에서 즉시 반영됨.
+    const liveSeries = useMemo(() => {
+        const winsMap: Record<string, Record<string, number>> = {};
+        for (const g of schedule) {
+            if (!g.seriesId || !g.played || g.homeScore == null || g.awayScore == null) continue;
+            if (!isFinal(g, serverNow)) continue;
+            const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
+            if (!winsMap[g.seriesId]) winsMap[g.seriesId] = {};
+            winsMap[g.seriesId][winnerId] = (winsMap[g.seriesId][winnerId] ?? 0) + 1;
+        }
+        return series.map(s => ({
+            ...s,
+            higherSeedWins: winsMap[s.id]?.[s.higherSeedId] ?? s.higherSeedWins,
+            lowerSeedWins:  winsMap[s.id]?.[s.lowerSeedId]  ?? s.lowerSeedWins,
+        }));
+    }, [series, schedule, serverNow]);
+
     const totalRounds = useMemo(
-        () => series.reduce((max, s) => Math.max(max, s.round), 1),
-        [series],
+        () => liveSeries.reduce((max, s) => Math.max(max, s.round), 1),
+        [liveSeries],
     );
 
     const r1Count = useMemo(
-        () => series.filter(s => s.round === 1).length,
-        [series],
+        () => liveSeries.filter(s => s.round === 1).length,
+        [liveSeries],
     );
 
     // Group and sort series by round, then match index
     const byRound = useMemo(() => {
         const map = new Map<number, PlayoffSeries[]>();
-        for (const s of series) {
+        for (const s of liveSeries) {
             const arr = map.get(s.round) ?? [];
             arr.push(s);
             map.set(s.round, arr);
@@ -195,8 +213,8 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
     }, [series]);
 
     const selectedSeries = useMemo(
-        () => series.find(s => s.id === selectedId),
-        [series, selectedId],
+        () => liveSeries.find(s => s.id === selectedId),
+        [liveSeries, selectedId],
     );
 
     // 정시 전 / live 구간 경기는 목록에서 제외 — 시리즈 진행도(시드/카운트)는 서버 권위로
@@ -230,7 +248,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
 
     const gridSeries: GridSeries[] = useMemo(() => {
         const items: GridSeries[] = [];
-        for (const [round, arr] of byRound) {
+        for (const [round, arr] of byRound) {  // byRound는 liveSeries 기반
             const rowStep = Math.pow(2, round - 1);
             arr.forEach((s, m) => {
                 items.push({

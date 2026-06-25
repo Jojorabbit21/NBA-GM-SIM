@@ -531,28 +531,35 @@ export const deleteLeague = async (
     return { error: null };
 };
 
-// ─── 드래프트 즉시 시작 (어드민, start-draft Edge Function 호출) ───────────────
+// ─── 드래프트 즉시 시작 (어드민, Fly.io POST /start-draft) ───────────────────
+// start-draft EF를 완전 대체. Fly.io Bun 서버로 요청 → 방 로드 + 타이머 시작.
+
+const FLY_SERVER = (import.meta as any).env?.VITE_DRAFT_WS_URL
+    ? (import.meta as any).env.VITE_DRAFT_WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
+    : 'https://basketballgm-app-server.fly.dev';
 
 export const startDraft = async (
     leagueId: string,
     accessToken?: string
 ): Promise<{ error: string | null }> => {
-    // accessToken이 없으면 현재 세션에서 가져옴
     const token = accessToken ?? (await supabase.auth.getSession()).data.session?.access_token;
-    const { error } = await supabase.functions.invoke('start-draft', {
-        body: { leagueId },
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-    if (error) {
-        const msg = (error as any)?.context?.message ?? error.message ?? '드래프트 시작 실패';
-        try {
-            const parsed = JSON.parse(msg);
-            return { error: parsed.message ?? parsed.error ?? msg };
-        } catch {
-            return { error: msg };
+    try {
+        const res = await fetch(`${FLY_SERVER}/start-draft`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ leagueId }),
+        });
+        const data = await res.json().catch(() => ({})) as any;
+        if (!res.ok) {
+            return { error: data?.error ?? `HTTP ${res.status}` };
         }
+        return { error: null };
+    } catch (e: any) {
+        return { error: e?.message ?? '드래프트 시작 실패' };
     }
-    return { error: null };
 };
 
 // ─── 토너먼트 브라켓 데이터 저장 ─────────────────────────────────────────────

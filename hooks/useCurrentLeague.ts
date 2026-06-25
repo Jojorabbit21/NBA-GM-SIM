@@ -76,6 +76,26 @@ export function useCurrentLeague(): CurrentLeagueState {
         return () => { cancelled = true; };
     }, [leagueId, tick]);
 
+    // ── leagues Realtime 구독 ────────────────────────────────────────────────────
+    // 서버가 bracket_data / status 등을 업데이트할 때 league 상태를 자동 재로드.
+    useEffect(() => {
+        if (!leagueId) return;
+
+        const channel = supabase
+            .channel(`league-row-${leagueId}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'leagues', filter: `id=eq.${leagueId}` },
+                async () => {
+                    const updated = await loadLeague(leagueId);
+                    if (updated) setLeague(updated);
+                }
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [leagueId]);
+
     // ── room_members Realtime 구독 ─────────────────────────────────────────────
     // start-draft EF가 AI 멤버를 삽입할 때, 또는 유저가 팀 설정을 변경할 때
     // members를 자동으로 다시 불러온다.

@@ -1,0 +1,12 @@
+{
+  "name": "draft-server",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.2",
+    "jose": "^5.10.0"
+  }
+}

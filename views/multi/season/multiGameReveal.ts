@@ -19,12 +19,32 @@ export const REPLAY_DURATION_MS = 10 * 60 * 1000;
 
 export type GameDisplayState = 'scheduled' | 'live' | 'final';
 
-// scheduledAt만 있으면 충분 — 호출부에서 game_pbp row 등 다른 출처의 값을
-// 매번 `as Game`으로 캐스팅하지 않도록 필요한 필드만 받는다.
-type ScheduledLike = Pick<Game, 'scheduledAt'>;
+type ScheduledLike = Pick<Game, 'scheduledAt' | 'game_seq' | 'played'>;
+
+/**
+ * game_seq + league 시간 압축 파라미터 → 현실 scheduledAt ISO 문자열 역산.
+ * scheduledAt이 이미 있으면 그대로 반환한다.
+ * MultiScheduleView에서 allGames를 normalize할 때 사용.
+ */
+export function resolveRealAt(
+    game: Pick<Game, 'scheduledAt' | 'game_seq'>,
+    simRealStartAt?: string | null,
+    gamesPerRealDay?: number | null,
+): string | undefined {
+    if (game.scheduledAt) return game.scheduledAt;
+    if (game.game_seq != null && simRealStartAt) {
+        const raw = new Date(simRealStartAt).getTime()
+            + (game.game_seq / (gamesPerRealDay ?? 5)) * 86_400_000;
+        return new Date(Math.round(raw / 600_000) * 600_000).toISOString();
+    }
+    return undefined;
+}
 
 export function getGameDisplayState(game: ScheduledLike, serverNowMs: number): GameDisplayState {
-    if (!game.scheduledAt) return 'final'; // 레거시(scheduledAt 없는 구 스케줄) → 항상 노출
+    if (!game.scheduledAt) {
+        // game_seq 방식 경기가 normalize 없이 직접 호출된 경우 played로 판정
+        return game.played ? 'final' : 'scheduled';
+    }
     const start = new Date(game.scheduledAt).getTime();
     if (serverNowMs < start) return 'scheduled';
     if (serverNowMs < start + REPLAY_DURATION_MS) return 'live';

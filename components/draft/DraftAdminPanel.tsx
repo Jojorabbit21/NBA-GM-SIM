@@ -4,15 +4,17 @@ import {
     Settings, Pause, Play, RotateCcw, SkipForward,
     FastForward, ChevronDown, ChevronUp, X, AlertTriangle,
 } from 'lucide-react';
-import { supabase } from '../../services/supabaseClient';
 import type { MultiDraftState, DraftPickEntry } from '../../types/multiDraft';
 
 interface Props {
     draftState:           MultiDraftState;
-    leagueId:             string;
-    roomId:               string;
-    onOptimisticPause?:   () => void;    // 일시정지 버튼 클릭 즉시 호출 (타이머 동결)
-    onOptimisticRevert?:  () => void;    // EF 오류 시 동결 해제
+    leagueId?:            string;   // 더 이상 필요 없음, 하위호환 optional
+    roomId?:              string;   // 더 이상 필요 없음, 하위호환 optional
+    onOptimisticPause?:   () => void;
+    onOptimisticRevert?:  () => void;
+
+    /** WS 어드민 메시지 전송 (useLeagueDraft에서 받아옴) */
+    sendAdmin:            (action: string, params?: { targetPickIndex?: number }) => void;
 }
 
 type Action = 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback';
@@ -24,8 +26,9 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 };
 
 export const DraftAdminPanel: React.FC<Props> = ({
-    draftState, leagueId, roomId,
-    onOptimisticPause, onOptimisticRevert,
+    draftState,
+    onOptimisticPause,
+    sendAdmin,
 }) => {
     const [open,          setOpen]          = useState(false);
     const [loading,       setLoading]       = useState<Action | null>(null);
@@ -33,44 +36,35 @@ export const DraftAdminPanel: React.FC<Props> = ({
     const [confirmAction, setConfirmAction] = useState<Action | null>(null);
     const [feedback,      setFeedback]      = useState<string | null>(null);
 
-    const call = useCallback(async (
+    const call = useCallback((
         action: Action,
         params?: { targetPickIndex?: number }
     ) => {
-        // 일시정지: EF 응답 전에 즉시 타이머 동결 (낙관적 UI)
+        // 일시정지: 즉시 타이머 동결 (낙관적 UI)
         if (action === 'pause') onOptimisticPause?.();
 
         setLoading(action);
         setFeedback(null);
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            const { data, error } = await supabase.functions.invoke('admin-draft-override', {
-                body: { action, roomId, leagueId, params },
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            });
-            if (error || !data?.ok) {
-                // EF 오류 시 동결 해제
-                if (action === 'pause') onOptimisticRevert?.();
-                setFeedback(`오류: ${data?.error ?? error?.message ?? '알 수 없는 오류'}`);
+
+        // WS sendAdmin — fire-and-forget (서버 응답은 cursor/pick 메시지로 반영)
+        sendAdmin(action, params);
+
+        // 짧은 시간 후 loading 해제 + 낙관적 피드백
+        setTimeout(() => {
+            if (action === 'rollback') {
+                setFeedback('롤백 요청 전송됨');
+                setRollbackOpen(false);
+            } else if (action === 'autocomplete') {
+                setFeedback('AI 자동완성 요청 전송됨');
+            } else if (action === 'skip-turn') {
+                setFeedback('차례 건너뛰기 전송됨');
             } else {
-                if (action === 'rollback') {
-                    setFeedback(`${data.rolledBackPicks}개 픽이 롤백되었습니다.`);
-                    setRollbackOpen(false);
-                } else if (action === 'autocomplete') {
-                    setFeedback(`${data.completedPicks}개 픽이 자동완성되었습니다.`);
-                } else if (action === 'skip-turn') {
-                    setFeedback(`${data.pickedPlayer} 자동 선택`);
-                } else {
-                    setFeedback('완료');
-                }
+                setFeedback('완료');
             }
-        } catch (e: any) {
-            setFeedback(`오류: ${e.message}`);
-        } finally {
             setLoading(null);
             setConfirmAction(null);
-        }
-    }, [roomId, leagueId, onOptimisticPause, onOptimisticRevert]);
+        }, 300);
+    }, [sendAdmin, onOptimisticPause]);
 
     const handleConfirm = useCallback((action: Action) => {
         if (action === 'autocomplete') {

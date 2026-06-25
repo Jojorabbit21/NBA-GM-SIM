@@ -1,0 +1,293 @@
+/**
+ * scheduler.ts — 30초 폴링 스케줄러.
+ *
+ * draft-scheduler EF 섹션 1·2를 Bun 서버로 이식.
+ * 섹션 3(오토픽)은 DraftRoom.scheduleNext()가 대체 → 폴링 불필요.
+ * 섹션 4(완료 처리)는 DraftRoom.onCompleted() → finalize.ts가 대체 → 폴링 불필요.
+ *
+ * 역할:
+ *  A. 추첨 자동 실행: lottery_scheduled_at <= now → run_draft_lottery RPC
+ *  B. 드래프트 자동 시작: draft_scheduled_at <= now → startDraftForRoom
+ *  C. 고아 방 복구: 서버 재시작 시 진행 중 방 재로드 + 타이머 재개
+ *  D. completed/finalized 방 메모리 정리
+ */
+import { supabase } from './supabaseAdmin';
+import { RoomManager } from './RoomManager';
+import { startDraftForRoom } from './startDraft';
+import { runSimulation } from './simRunner';
+
+const POLL_INTERVAL_MS = 30_000;
+
+export function startScheduler(): void {
+    // 부팅 즉시 고아 방 복구 실행 (재시작 대비)
+    recoverOrphanedRooms().catch(e =>
+        console.error('[scheduler] orphan recovery error:', e)
+    );
+
+    setInterval(() => {
+        tick().catch(e => console.error('[scheduler] tick error:', e));
+    }, POLL_INTERVAL_MS);
+
+    console.log('[scheduler] started (30s interval)');
+}
+
+// ── 메인 틱 ──────────────────────────────────────────────────────────────────
+
+async function tick(): Promise<void> {
+    const now = new Date().toISOString();
+
+    await Promise.allSettled([
+        runLotteries(now),
+        runScheduledDraftStarts(now),
+        runSimGames(now),
+        cleanupCompletedRooms(),
+    ]);
+}
+
+// ── A. 추첨 자동 실행 ────────────────────────────────────────────────────────
+
+async function runLotteries(now: string): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, admin_user_id')
+        .eq('status', 'recruiting')
+        .not('lottery_scheduled_at', 'is', null)
+        .lte('lottery_scheduled_at', now);
+
+    for (const league of leagues ?? []) {
+        const { data: room } = await supabase
+            .from('rooms')
+            .select('id')
+            .eq('league_id', league.id)
+            .eq('status', 'active')
+            .maybeSingle();
+
+        if (!room) continue;
+
+        const { count } = await supabase
+            .from('league_teams')
+            .select('id', { count: 'exact', head: true })
+            .eq('room_id', room.id)
+            .not('draft_order', 'is', null);
+
+        if ((count ?? 0) > 0) continue; // 추첨 이미 완료
+
+        const { error } = await supabase.rpc('run_draft_lottery', {
+            p_room_id:  room.id,
+            p_admin_id: league.admin_user_id,
+        });
+
+        if (error && !error.message.includes('lottery_already_done')) {
+            console.error(`[scheduler:lottery] league=${league.id}: ${error.message}`);
+        } else if (!error) {
+            console.log(`[scheduler:lottery] done league=${league.id}`);
+        }
+    }
+}
+
+// ── B. 드래프트 자동 시작 ────────────────────────────────────────────────────
+
+async function runScheduledDraftStarts(now: string): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, draft_total_rounds, draft_pick_duration_sec, draft_pool, draft_pool_strategy, draft_ovr_min, draft_ovr_max')
+        .eq('status', 'recruiting')
+        .not('draft_scheduled_at', 'is', null)
+        .lte('draft_scheduled_at', now);
+
+    for (const league of leagues ?? []) {
+        const { data: room } = await supabase
+            .from('rooms')
+            .select('id, draft_cursor')
+            .eq('league_id', league.id)
+            .eq('status', 'active')
+            .maybeSingle();
+
+        if (!room) continue;
+        if ((room.draft_cursor as any)?.status === 'active') continue;
+
+        // 원자적 claim: recruiting → drafting (다른 서버 인스턴스/틱이 동시 처리 방지)
+        const { count: claim } = await supabase
+            .from('leagues')
+            .update({ status: 'drafting' })
+            .eq('id', league.id)
+            .eq('status', 'recruiting')
+            .select('id', { count: 'exact', head: true });
+
+        if (!claim) continue; // 이미 선점됨
+
+        // claim 성공 → 드래프트 시작 (start는 내부에서 status를 다시 'drafting'으로 설정하지만, 이미 설정됨)
+        const ok = await startDraftForRoom(league.id, room.id);
+        if (!ok) {
+            // 실패 시 recruiting으로 복원
+            await supabase.from('leagues').update({ status: 'recruiting' }).eq('id', league.id);
+        } else {
+            console.log(`[scheduler:auto-start] room=${room.id} league=${league.id}`);
+        }
+    }
+}
+
+// ── C. 고아 방 복구 (서버 재시작 대비) ─────────────────────────────────────
+
+async function recoverOrphanedRooms(): Promise<void> {
+    const { data: activeRooms } = await supabase
+        .from('rooms')
+        .select('id, draft_cursor')
+        .eq('status', 'active')
+        .or("draft_cursor->>status.eq.active,draft_cursor->>status.eq.paused");
+
+    if (!activeRooms?.length) {
+        console.log('[scheduler] no orphaned rooms to recover');
+        return;
+    }
+
+    let recovered = 0;
+    for (const row of activeRooms) {
+        // 이미 메모리에 있으면 스킵
+        if (RoomManager.get(row.id)) continue;
+
+        const cursor = (row.draft_cursor ?? {}) as any;
+        if (cursor.status !== 'active' && cursor.status !== 'paused') continue;
+
+        const room = await RoomManager.getOrLoad(row.id);
+        if (!room) continue;
+
+        if (cursor.status === 'active') {
+            // 타이머 재개 (시간이 지나 있으면 즉시 픽 처리)
+            room.scheduleNext();
+        }
+        // paused 상태는 타이머 없이 메모리만 로드
+        recovered++;
+    }
+
+    if (recovered > 0) {
+        console.log(`[scheduler] recovered ${recovered} orphaned room(s)`);
+    }
+}
+
+// ── D. 완료/finalized 방 메모리 정리 ────────────────────────────────────────
+
+async function cleanupCompletedRooms(): Promise<void> {
+    for (const room of RoomManager.getAll()) {
+        if (room.isCompleted()) {
+            // finalize.ts가 이미 처리했거나 처리 중 — 타이머 없으므로 안전하게 제거
+            // DraftRoom.onCompleted에서 finalizeDraft를 호출한 후 일정 시간이 지나면 정리
+            // 여기서는 cursor.status='completed'인 방만 제거 (finalized는 별도)
+            RoomManager.destroy(room.roomId);
+        }
+    }
+}
+
+// ── E. 리그 경기 시뮬레이션 폴링 ─────────────────────────────────────────────
+
+// 경기 예정 1분 전 사전계산 (30초 폴링 대응)
+const SIM_LEAD_MS = 60 * 1000;
+
+// game_seq → 현실 실행 시각 변환 (10분 단위 반올림으로 깔끔한 시각 보장)
+function gameSeqToRealMs(seq: number, simRealStartAt: string, gamesPerRealDay: number): number {
+    const raw = new Date(simRealStartAt).getTime() + (seq / gamesPerRealDay) * 86_400_000;
+    return Math.round(raw / 600_000) * 600_000;
+}
+
+interface LeagueRow {
+    id: string;
+    sim_real_start_at: string | null;
+    games_per_real_day: number;
+}
+
+interface RoomRow {
+    id: string;
+    league_id: string;
+    schedule: any;
+    sim_date: string;
+}
+
+async function runSimGames(now: string): Promise<void> {
+    const cutoffMs = Date.now() + SIM_LEAD_MS;
+
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, sim_real_start_at, games_per_real_day')
+        .eq('status', 'in_progress');
+
+    if (!leagues?.length) return;
+
+    const leagueMap = new Map<string, LeagueRow>(leagues.map((l: any) => [l.id, l]));
+    const leagueIds = leagues.map((l: any) => l.id);
+
+    const { data: rooms } = await supabase
+        .from('rooms')
+        .select('id, league_id, schedule, sim_date')
+        .in('league_id', leagueIds);
+
+    if (!rooms?.length) return;
+
+    const tasks: { roomId: string; gameId: string }[] = [];
+
+    for (const room of rooms as RoomRow[]) {
+        const league = leagueMap.get(room.league_id);
+        const schedule: any[] = room.schedule ?? [];
+
+        for (const game of schedule) {
+            if (game.played) continue;
+            const seq: number | undefined = game.game_seq;
+            if (seq != null && league?.sim_real_start_at) {
+                const realMs = gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5);
+                if (realMs <= cutoffMs) tasks.push({ roomId: room.id, gameId: game.id });
+            } else {
+                // 폴백: game_seq 없으면 당일 날짜 기준
+                if (game.date === now.slice(0, 10)) tasks.push({ roomId: room.id, gameId: game.id });
+            }
+        }
+    }
+
+    if (!tasks.length) return;
+
+    console.log(`[scheduler:sim] ${tasks.length} game(s) to simulate`);
+
+    for (const { roomId, gameId } of tasks) {
+        const result = await runSimulation(roomId, gameId);
+        if (!result.ok && !result.skipped) {
+            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${result.error}`);
+        }
+    }
+
+    await advanceSimDates(rooms as RoomRow[], leagueMap, now.slice(0, 10));
+}
+
+async function advanceSimDates(
+    rooms:     RoomRow[],
+    leagueMap: Map<string, LeagueRow>,
+    today:     string,
+): Promise<void> {
+    const nowMs = Date.now();
+
+    for (const room of rooms) {
+        const league   = leagueMap.get(room.league_id);
+        const schedule: any[] = room.schedule ?? [];
+
+        let allCurrentPlayed: boolean;
+
+        if (league?.sim_real_start_at) {
+            const gprd = league.games_per_real_day ?? 5;
+            const dueGames = schedule.filter((g: any) => {
+                const seq: number | undefined = g.game_seq;
+                return seq != null && gameSeqToRealMs(seq, league.sim_real_start_at!, gprd) <= nowMs;
+            });
+            allCurrentPlayed = dueGames.length > 0 && dueGames.every((g: any) => g.played);
+        } else {
+            const todayGames = schedule.filter((g: any) => g.date === today);
+            allCurrentPlayed = todayGames.length > 0 && todayGames.every((g: any) => g.played);
+        }
+
+        if (allCurrentPlayed) {
+            const upcoming = schedule
+                .filter((g: any) => !g.played)
+                .map((g: any) => g.date ?? '')
+                .filter(Boolean)
+                .sort();
+            const nextDate = upcoming[0] ?? today;
+            await supabase.from('rooms').update({ sim_date: nextDate }).eq('id', room.id);
+        }
+    }
+}

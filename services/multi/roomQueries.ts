@@ -73,6 +73,8 @@ export interface LeagueRow {
     season_end_date: string | null;
     tournament_start_at: string | null;
     real_time_pace: string;
+    sim_real_start_at: string | null;
+    games_per_real_day: number;
     created_at: string;
 }
 

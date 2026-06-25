@@ -236,7 +236,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     {sortedRoster.map(p => (
                         <TableRow key={p.id} className="group">
                             {/* Use inline styles to force border removal and width locking */}
-                            <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
                                     <span className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                     {p.health !== 'Healthy' && (

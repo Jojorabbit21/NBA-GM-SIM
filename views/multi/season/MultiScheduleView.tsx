@@ -6,7 +6,7 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useGame } from '../../../hooks/useGameContext';
 import { useServerClock } from '../../../utils/serverClock';
-import { getGameDisplayState, isFinal, isStarted } from './multiGameReveal';
+import { getGameDisplayState, isFinal, isStarted, resolveRealAt } from './multiGameReveal';
 import type { Game } from '../../../types';
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -22,12 +22,10 @@ function fmtDateShort(d: string): string {
     return `${dt.getMonth() + 1}/${dt.getDate()}`;
 }
 
-// scheduledAt is stored as UTC ISO; convert to KST (+9h) for display
+// scheduledAt (UTC ISO) → KST 시각 문자열. game_seq 방식은 normalize 후 호출하므로 항상 scheduledAt 있음.
 function fmtTime(g: Game): string {
     if (g.scheduledAt) {
-        const utcMs = new Date(g.scheduledAt).getTime();
-        const kstMs = utcMs + 9 * 60 * 60 * 1000;
-        const kst   = new Date(kstMs);
+        const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
         const h = kst.getUTCHours().toString().padStart(2, '0');
         const m = kst.getUTCMinutes().toString().padStart(2, '0');
         return `${h}:${m}`;
@@ -65,7 +63,9 @@ const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorSeco
 const MultiScheduleView: React.FC = () => {
     const { leagueId }                                    = useParams<{ leagueId: string }>();
     const navigate                                         = useNavigate();
-    const { room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
     const { session } = useGame();
     const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useMultiGameData(session, room?.id ?? null);
     const serverNow = useServerClock();
@@ -79,8 +79,13 @@ const MultiScheduleView: React.FC = () => {
     }, [leagueTeams]);
 
     const allGames = useMemo(() =>
-        [...schedule].sort((a, b) => a.date.localeCompare(b.date)),
-    [schedule]);
+        [...schedule]
+            .map(g => ({
+                ...g,
+                scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt,
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date)),
+    [schedule, simStart, gprd]);
 
     // 일별 그룹
     const groupedByDay = useMemo(() => {
@@ -173,7 +178,7 @@ const MultiScheduleView: React.FC = () => {
                                                 ) : (
                                                     <span className="text-xs text-slate-500">{g.awayTeamId}</span>
                                                 )}
-                                                <span className="text-[10px] text-slate-600 shrink-0 font-bold">vs</span>
+                                                <span className="text-[10px] text-slate-600 shrink-0 font-bold">@</span>
                                                 {home ? (
                                                     <TeamCell
                                                         name={home.team_name}
