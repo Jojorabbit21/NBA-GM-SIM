@@ -401,16 +401,43 @@ export const SIM_CONFIG = {
     },
     FOUL_TROUBLE: {
         PROB_MOD: {
-            3: 0.85, 
-            4: 0.60, 
-            5: 0.30  
+            3: 0.85,
+            4: 0.60,
+            5: 0.30
         },
         DEF_PENALTY: {
-            3: 0.0,  
-            4: 0.15, 
-            5: 0.40  
+            3: 0.0,
+            4: 0.15,
+            5: 0.40
         }
-    }
+    },
+    // League-Relative Skill Normalization
+    // 리그 평균이 기준보다 높으면 능력치를 기준 대역으로 끌어내려 득점 인플레 방지
+    NORMALIZATION: {
+        ENABLED: true,                  // master switch (false → 완전 no-op)
+        MU_REF: 75,                     // calibration anchor — 표준 리그 로테이션 평균 OVR
+        DEFAULT_K: 0.7,                 // 기본 압축 계수 (0=끔, 1=완전 평준화)
+        K_MIN: 0,
+        K_MAX: 1,
+        ROTATION_SIZE: 9,               // 팀당 로테이션 선수 수 (μ_league 산정 대상)
+        TARGET_ATTRS: [
+            // 슈팅 효율 (calculateHitRate)
+            'layup', 'dunk', 'closeShot', 'mid', 'postPlay',
+            'intDef', 'perDef', 'def', 'helpDefIq', 'defConsist',
+            'shotIq', 'offConsist',
+            // 림 어택 보너스 + 드리블 갭 비율 유지
+            'spdBall', 'speed',
+            // 체력/회복 (높은 pace 대가)
+            'stamina', 'durability',
+            // 턴오버 저항 (높은 pace 대가)
+            'handling', 'passAcc', 'passIq', 'passVision', 'hands',
+            // ORB/블록 과다 억제
+            'offReb', 'blk',
+            // 파울 드로잉
+            'drFoul',
+        ] as string[],
+        ATTR_K_BOOST: { drFoul: 2.5 } as Record<string, number>,
+    },
 };
 
 export const POSITION_PENALTY_MAP: Record<string, number> = {

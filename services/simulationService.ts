@@ -1,8 +1,10 @@
 
 import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent, PbpLog } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
-import { SimSettings } from '../types/simSettings';
+import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { simulateGame } from './gameEngine';
+import { computeLeagueContext } from './game/engine/pbp/leagueNormalization';
+import { calculatePlayerOvr } from '../utils/constants';
 
 export interface CpuGameResult {
     gameId: string;
@@ -33,11 +35,15 @@ export const simulateCpuGames = (
     coachingData?: LeagueCoachingData | null
 ): CpuGameResult[] => {
     const results: CpuGameResult[] = [];
-    
+
+    // League-relative normalization: compute once per batch
+    const leagueContext = computeLeagueContext(teams, calculatePlayerOvr, simSettings?.normalizationStrength);
+    const effectiveSettings: SimSettings = { ...DEFAULT_SIM_SETTINGS, ...simSettings, leagueContext };
+
     // Filter games to play
-    const gamesToPlay = schedule.filter(g => 
-        !g.played && 
-        g.date === date && 
+    const gamesToPlay = schedule.filter(g =>
+        !g.played &&
+        g.date === date &&
         g.id !== excludeGameId
     );
 
@@ -50,7 +56,7 @@ export const simulateCpuGames = (
             const simResult: SimulationResult = simulateGame(
                 homeTeam, awayTeam, null,
                 undefined, false, false, undefined, undefined, undefined,
-                simSettings, coachingData
+                effectiveSettings, coachingData
             );
 
             results.push({

@@ -1,4 +1,6 @@
 
+import type { LeagueContext } from '../services/game/engine/pbp/leagueNormalization';
+
 export interface SimSettings {
     // 게임 환경
     homeAdvantage: number;       // 0.00~0.05, 기본 0.02
@@ -18,6 +20,10 @@ export interface SimSettings {
 
     // 엔진 피처
     archetypesEnabled: boolean;  // 기본 false
+
+    // League-relative normalization
+    normalizationStrength?: number;   // 0~1, UI slider override for k
+    leagueContext?: LeagueContext;    // computed at sim start, injected here
 }
 
 export const DEFAULT_SIM_SETTINGS: SimSettings = {
@@ -30,6 +36,7 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     growthRate: 1.0,
     declineRate: 1.0,
     archetypesEnabled: false,
+    normalizationStrength: 0.7,
 };
 
 // ── UI 렌더링용 메타데이터 ──
@@ -115,5 +122,13 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         label: '아키타입 시스템',
         description: '12종 선수 아키타입 활성화 (실험적)',
         category: '엔진 피처',
+    },
+    {
+        key: 'normalizationStrength',
+        type: 'number',
+        label: '리그 평준화 강도',
+        description: '리그 평균 대비 능력치 압축 강도 (0=끔, 1=완전 평준화)',
+        category: '엔진 피처',
+        min: 0, max: 1, step: 0.05,
     },
 ];

@@ -8,6 +8,7 @@ import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { getCoachPreferences } from '../../../coachingStaff/coachGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
+import { LeagueContext, normalizeAttrs } from './leagueNormalization';
 
 /**
  * Player.tendencies.zones(선수 DNA) → 4존 선호도(ra/itp/mid/three) 정규화.
@@ -42,7 +43,7 @@ function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three
     };
 }
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     let safeTactics: GameTactics;
     if (!tactics || (!tactics.depthChart && !depthChart)) {
@@ -81,7 +82,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     
     const liveRoster: LivePlayer[] = sortedRoster.map(p => {
         const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
-        const attr = {
+        const rawAttr = {
             ins: p.ins, out: p.out, mid: p.midRange, ft: p.ft, threeVal: threeAvg,
             threeCorner: p.threeCorner, three45: p.three45, threeTop: p.threeTop,
             layup: p.layup ?? p.ins, dunk: p.dunk ?? p.ins, closeShot: p.closeShot ?? p.ins,
@@ -100,6 +101,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             boxOut: p.boxOut ?? 70,
             intangibles: p.intangibles ?? 70
         };
+        // League-relative normalization: shift TARGET attrs toward calibration band
+        const attr = leagueContext ? normalizeAttrs(rawAttr, leagueContext) : rawAttr;
 
         const currentCondition = p.condition !== undefined ? p.condition : 100;
 

@@ -7,6 +7,8 @@ import { supabase } from '../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { generateAutoTactics } from '../services/gameEngine';
 import { LiveGameView } from '../views/LiveGameView';
+import { computeLeagueContext } from '../services/game/engine/pbp/leagueNormalization';
+import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { TEAM_DATA, getAllTeamsList } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { DepthChartEditor } from '../components/dashboard/DepthChartEditor';
@@ -313,6 +315,10 @@ const QuickPlayPage: React.FC = () => {
 
     // 라이브 PBP 뷰
     if (showLive && liveParams) {
+        const qpTeams = [liveParams.homeTeam, liveParams.awayTeam];
+        const qpLeagueCtx = computeLeagueContext(qpTeams, calculatePlayerOvr);
+        const qpSimSettings = { ...DEFAULT_SIM_SETTINGS, leagueContext: qpLeagueCtx };
+
         return (
             <LiveGameView
                 homeTeam={liveParams.homeTeam}
@@ -323,6 +329,7 @@ const QuickPlayPage: React.FC = () => {
                 homeDepthChart={liveParams.hDepth}
                 awayDepthChart={liveParams.aDepth}
                 tendencySeed={liveParams.seed}
+                simSettings={qpSimSettings}
                 hideTimeout
                 onGameEnd={(simResult) => {
                     setResult(simResult);

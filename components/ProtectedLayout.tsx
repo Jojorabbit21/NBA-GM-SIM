@@ -9,6 +9,10 @@ import { SimSettingsModal } from './SimSettingsModal';
 import MainLayout from './MainLayout';
 import Loader from './Loader';
 import type { Player } from '../types';
+import type { SimSettings } from '../types/simSettings';
+import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
+import { computeLeagueContext } from '../services/game/engine/pbp/leagueNormalization';
+import { calculatePlayerOvr } from '../utils/constants';
 
 // ─── ProtectedLayout ─────────────────────────────────────────────────────────
 
@@ -116,6 +120,14 @@ const ProtectedLayout: React.FC = () => {
     const liveHomeDepth    = liveTarget?.homeTeam?.id === gameData.myTeamId ? gameData.depthChart : null;
     const liveAwayDepth    = liveTarget?.awayTeam?.id === gameData.myTeamId ? gameData.depthChart : null;
 
+    // League-relative normalization: inject leagueContext into simSettings for live games
+    const liveSimSettings: SimSettings | undefined = liveTarget
+        ? (() => {
+            const lc = computeLeagueContext(gameData.teams, calculatePlayerOvr, gameData.simSettings?.normalizationStrength);
+            return { ...DEFAULT_SIM_SETTINGS, ...gameData.simSettings, leagueContext: lc };
+        })()
+        : gameData.simSettings;
+
     // ─── 렌더 ────────────────────────────────────────────────────────────
 
     return (
@@ -174,7 +186,7 @@ const ProtectedLayout: React.FC = () => {
                         homeDepthChart={liveHomeDepth}
                         awayDepthChart={liveAwayDepth}
                         tendencySeed={gameData.tendencySeed || undefined}
-                        simSettings={gameData.simSettings}
+                        simSettings={liveSimSettings}
                         coachPrefs={gameData.myTeamId ? (gameData.coachingData?.[gameData.myTeamId]?.headCoach?.preferences ?? null) : null}
                         onGameEnd={async (result) => {
                             // finalizeLiveGame 내부에서 setLastGameResult → 상단 useEffect가 /result/:gameId 로 navigate
@@ -191,7 +203,7 @@ const ProtectedLayout: React.FC = () => {
                         homeTeam={sim.spectateTarget.homeTeam}
                         awayTeam={sim.spectateTarget.awayTeam}
                         userTeamId={null}
-                        simSettings={gameData.simSettings}
+                        simSettings={liveSimSettings}
                         onGameEnd={async (result) => {
                             await sim.finalizeSpectateGame(result);
                             navigate('/schedule');

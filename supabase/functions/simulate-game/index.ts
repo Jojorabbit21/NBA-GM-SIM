@@ -17,6 +17,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runFullGameSimulation } from '../_shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from '../_shared/dataMapper.ts';
+import { resolveNormalizationContext } from '../_shared/engine/pbp/leagueNormalization.ts';
+import { calculatePlayerOvr } from '../_shared/utils/constants.ts';
 import {
     advanceTournamentState,
     type PlayoffSeries as BPLSeries,
@@ -141,6 +143,9 @@ Deno.serve(async (req) => {
         const coachingData  = (room.coaching_staff ?? null) as any;
         const simSettings   = (room.sim_settings   ?? null) as any;
         const tendencySeed  = room.tendency_seed   ?? '';
+
+        // ── 3.5 League-relative normalization context ──────────────────────
+        resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculatePlayerOvr);
 
         // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────
         // game_start_time: 정시 동기화의 기준점. game.scheduledAt이 있으면 항상 그 값을 사용한다
