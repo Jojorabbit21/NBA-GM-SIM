@@ -9,6 +9,8 @@ import { supabase } from './supabaseAdmin';
 import { generateSeasonSchedule } from './shared/scheduleGenerator';
 import { initializeTournamentBracket } from './shared/tournamentInitializer';
 import { TEAM_DATA } from './shared/teamData';
+import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
+import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 
 /**
  * 시뮬레이션 실시각 계산의 기준점(game_seq=0)을 결정한다.
@@ -29,6 +31,47 @@ function injectGameSeq(schedule: any[]): void {
     for (const game of schedule) {
         game.game_seq = dateToSeq.get(game.date) ?? 0;
     }
+}
+
+/**
+ * 드래프트 완료 직후 각 팀(사람/AI 모두)의 뎁스차트/로테이션/팀 전술을 자동 생성해
+ * room_members.tactics + depth_chart에 최초 저장한다.
+ * preserveDraftOrder=true — 드래프트에서 먼저 뽑힌 선수가 주전을 차지하도록(tacticGenerator와 동일 규칙).
+ * 이후 유저가 전술 화면에서 직접 수정하면 그 값으로 덮어써진다 — 여기서는 "빈 값" 상태를 없애는 최초 seed일 뿐이다.
+ */
+async function initializeTeamTactics(
+    roomId: string,
+    leagueTeams: { team_slug: string; team_name: string; roster: string[]; user_id: string | null }[],
+    rosterState: Record<string, any>,
+): Promise<void> {
+    const allPlayerIds = leagueTeams.flatMap(t => t.roster ?? []);
+    if (allPlayerIds.length === 0) return;
+
+    const { data: rawPlayers } = await supabase
+        .from('meta_players')
+        .select('id, name, position, base_attributes, tendencies')
+        .in('id', allPlayerIds);
+
+    const playerMap = new Map<string, any>();
+    for (const raw of rawPlayers ?? []) {
+        playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
+    }
+
+    const updates = leagueTeams
+        .filter(lt => lt.user_id)
+        .map(lt => {
+            const team = buildTeamForSim(lt, playerMap, rosterState);
+            const tactics = generateAutoTactics(team, undefined, true);
+            return { userId: lt.user_id as string, tactics, depthChart: tactics.depthChart ?? null };
+        });
+
+    await Promise.all(updates.map(u =>
+        supabase
+            .from('room_members')
+            .update({ tactics: u.tactics, depth_chart: u.depthChart })
+            .eq('room_id', roomId)
+            .eq('user_id', u.userId),
+    ));
 }
 
 /**
@@ -55,7 +98,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: leagueTeams } = await supabase
         .from('league_teams')
-        .select('team_slug, roster')
+        .select('team_slug, team_name, roster, user_id')
         .eq('room_id', roomId);
 
     if (!leagueTeams?.length) return { ok: false, error: 'no league teams' };
@@ -66,6 +109,8 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
             rosterState[playerId] = { condition: 100 };
         }
     }
+
+    await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
 
     const nowDate         = new Date();
     const tournamentStart = league.type === 'tournament' ? (league.tournament_start_at ?? null) : null;
@@ -181,7 +226,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 팀 / 로스터 조회 ─────────────────────────────────────────────────
     const { data: leagueTeams } = await supabase
         .from('league_teams')
-        .select('team_slug, roster')
+        .select('team_slug, team_name, roster, user_id')
         .eq('room_id', roomId);
 
     if (!leagueTeams?.length) {
@@ -196,6 +241,9 @@ export async function finalizeDraft(roomId: string): Promise<void> {
             rosterState[playerId] = { condition: 100 };
         }
     }
+
+    // ── 팀별 뎁스차트/로테이션/전술 최초 자동 설정 ──────────────────────────────
+    await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
 
     // ── 날짜 계산 ────────────────────────────────────────────────────────────
     const nowDate        = new Date();

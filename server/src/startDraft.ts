@@ -196,8 +196,26 @@ async function _runStartDraft(
     const filteredNonRookies = nonRookieRaw.filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax);
     const poolIds = [...filteredNonRookies, ...rookieRaw].map((p: any) => String(p.id));
 
-    // 픽 순서 생성
-    const shuffledMembers = seededShuffle(allMembers, seed + '_order');
+    // 픽 순서 생성 — 로비에서 진행한 로터리 추첨 결과(league_teams.draft_order)를 그대로 반영한다.
+    // (예전엔 여기서 seededShuffle로 순서를 새로 뽑아써서, 로비에 표시된 추첨 결과와 실제 드래프트
+    // 순서가 서로 다른 버그가 있었다 — 로터리 결과가 유일한 신뢰 원천이 되도록 고정한다.)
+    const { data: teamOrderRows } = await supabase
+        .from('league_teams')
+        .select('team_slug, draft_order')
+        .eq('room_id', roomId);
+    const draftOrderBySlug = new Map<string, number>(
+        (teamOrderRows ?? [])
+            .filter((t: any) => t.draft_order != null)
+            .map((t: any) => [t.team_slug as string, t.draft_order as number]),
+    );
+    const shuffledMembers = [...allMembers].sort((a, b) => {
+        const oa = draftOrderBySlug.get(a.teamId);
+        const ob = draftOrderBySlug.get(b.teamId);
+        if (oa == null && ob == null) return 0;
+        if (oa == null) return 1;   // 로터리 결과가 없는 경우(비정상 상황) 맨 뒤로 안전하게 배치
+        if (ob == null) return -1;
+        return oa - ob;
+    });
     const pickOrder = draftStrategy === 'linear'
         ? generateLinearPickOrder(shuffledMembers, totalRounds)
         : generateSnakePickOrder(shuffledMembers, totalRounds);

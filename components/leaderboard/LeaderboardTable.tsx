@@ -3,7 +3,7 @@ import React from 'react';
 import { Player } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { TeamLogo } from '../common/TeamLogo';
+import { TeamBadge } from '../common/TeamBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PLAYER_COLUMNS, TEAM_COLUMNS, ColumnDef, ViewMode, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
@@ -280,7 +280,10 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 let bgStyle = undefined;
 
                                 if (mode === 'Players') {
-                                    const p = item as Player & { teamName: string; teamId: string };
+                                    const p = item as Player & {
+                                        teamName: string; teamId: string;
+                                        teamColorPrimary?: string | null; teamColorSecondary?: string | null; teamAbbr?: string | null;
+                                    };
                                     const s = p.stats as any; // Cast to any to access dynamic zone keys
                                     const g = s.g || 1;
 
@@ -288,7 +291,13 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'name') {
                                         cellContent = (
                                             <div className="flex items-center gap-3">
-                                                <TeamLogo teamId={p.teamId} size="sm" />
+                                                <TeamBadge
+                                                    teamId={p.teamId}
+                                                    abbr={p.teamAbbr}
+                                                    colorPrimary={p.teamColorPrimary}
+                                                    colorSecondary={p.teamColorSecondary}
+                                                    size="sm"
+                                                />
                                                 <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer block">{p.name}</span>
                                             </div>
                                         );
@@ -372,7 +381,13 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'name') {
                                         cellContent = (
                                             <div className="flex items-center gap-3">
-                                                <TeamLogo teamId={t.id} size="sm" />
+                                                <TeamBadge
+                                                    teamId={t.id}
+                                                    abbr={t.abbr}
+                                                    colorPrimary={t.colorPrimary}
+                                                    colorSecondary={t.colorSecondary}
+                                                    size="sm"
+                                                />
                                                 <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
                                             </div>
                                         );

@@ -10,7 +10,7 @@ import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { useServerClock, getServerNow } from '../utils/serverClock';
 import { computeWL } from '../views/multi/season/multiSeasonUtils';
-import { isFinal } from '../views/multi/season/multiGameReveal';
+import { isFinal, resolveRealAt } from '../views/multi/season/multiGameReveal';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
 import type { PlayerBoxScore } from '../types/engine';
 import type { SavedPlayerState } from '../types/player';
@@ -200,8 +200,18 @@ const MultiSeasonPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rosterKey, room?.id, myTeamId]);
 
+    // schedule은 서버가 game_seq(압축 인덱스)로만 채워 저장 — scheduledAt이 없으면 multiGameReveal의
+    // isFinal이 played 값에만 의존해 방금 시뮬된 경기의 결과가 정시+10분 전에도 그대로 노출된다
+    // (리그 순위/최근 전적 스포일러 버그). MultiScheduleView/MultiStandingsView와 동일하게 정규화한다.
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
+    const normalizedSchedule = useMemo(
+        () => schedule.map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt })),
+        [schedule, simStart, gprd],
+    );
+
     const teamSlugs = useMemo(() => leagueTeams.map(t => t.team_slug), [leagueTeams]);
-    const wlMap     = useMemo(() => computeWL(schedule, teamSlugs, serverNow), [schedule, teamSlugs, serverNow]);
+    const wlMap     = useMemo(() => computeWL(normalizedSchedule, teamSlugs, serverNow), [normalizedSchedule, teamSlugs, serverNow]);
 
     // 내 팀 다음 경기
     const nextGame = useMemo(() =>
@@ -218,11 +228,11 @@ const MultiSeasonPage: React.FC = () => {
 
     // 최근 10경기 (정시+10분 경과 — final 상태인 경기만)
     const recent10 = useMemo(() =>
-        schedule
+        normalizedSchedule
             .filter(g => g.played && isFinal(g, serverNow) && myTeamId && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId))
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, 10),
-    [schedule, myTeamId, serverNow]);
+    [normalizedSchedule, myTeamId, serverNow]);
 
     // 순위 (W/L 기준 정렬)
     const standings = useMemo(() =>

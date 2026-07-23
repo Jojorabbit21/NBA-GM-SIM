@@ -2,11 +2,12 @@
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
-import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
+import { calculatePlayerOvr } from '../utils/constants';
 import { formatMoney, formatMoneyFull } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { OvrBadge } from '../components/common/OvrBadge';
+import { TeamBadge } from '../components/common/TeamBadge';
 import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import {
@@ -736,6 +737,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         [...(allTeams ?? [])].sort((a, b) => (a.id ?? '').localeCompare(b.id ?? '')),
     [allTeams]);
 
+    const currentTeam = useMemo(() => allTeams?.find(t => t.id === teamId), [allTeams, teamId]);
+
     const currentTeamRoster = useMemo(() => {
         const team = allTeams?.find(t => t.id === teamId);
         if (!team) return [];
@@ -953,7 +956,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors"
                         style={{ color: theme.text }}
                     >
-                        {teamId && <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />}
+                        {teamId && (
+                            <TeamBadge
+                                teamId={teamId}
+                                abbr={currentTeam?.abbr}
+                                colorPrimary={currentTeam?.colorPrimary}
+                                colorSecondary={currentTeam?.colorSecondary}
+                                size="xs"
+                            />
+                        )}
                         <span className="text-xs font-bold">{teamName ?? 'FA'}</span>
                         {allTeams && <ChevronDown size={11} className="opacity-60" />}
                     </button>
@@ -969,7 +980,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     }}
                                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
                                 >
-                                    <img src={getTeamLogoUrl(t.id)} className="w-4 h-4 object-contain shrink-0" alt="" />
+                                    <TeamBadge
+                                        teamId={t.id}
+                                        abbr={t.abbr}
+                                        colorPrimary={t.colorPrimary}
+                                        colorSecondary={t.colorSecondary}
+                                        size="xs"
+                                    />
                                     <span className="truncate">{t.name}</span>
                                 </button>
                             ))}
@@ -1080,7 +1097,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 {/* ─ 기본 정보 ─ */}
                                 <div className="px-4 pt-3 pb-3 border-t border-slate-800 space-y-1">
                                     {[
-                                        { label: '팀', value: teamId ? <span className="flex items-center gap-1"><img src={getTeamLogoUrl(teamId)} className="w-3.5 h-3.5 object-contain" alt="" />{teamName || 'FA'}</span> : 'FA' },
+                                        { label: '팀', value: teamId ? <span className="flex items-center gap-1"><TeamBadge teamId={teamId} abbr={currentTeam?.abbr} colorPrimary={currentTeam?.colorPrimary} colorSecondary={currentTeam?.colorSecondary} size="xs" />{teamName || 'FA'}</span> : 'FA' },
                                         { label: '포지션', value: player.position },
                                         { label: '나이', value: `${player.age}세` },
                                         { label: '신장', value: `${player.height}cm` },

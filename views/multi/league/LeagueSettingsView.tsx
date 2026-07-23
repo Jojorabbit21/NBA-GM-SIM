@@ -449,18 +449,18 @@ const LeagueSettingsView: React.FC = () => {
                             </p>
                         </div>
                         <div>
-                            <label className="text-xs text-slate-400 ko-normal block mb-1">경기 간격 (분) <span className="text-slate-600">5–180</span></label>
+                            <label className="text-xs text-slate-400 ko-normal block mb-1">경기 간격 (분) <span className="text-slate-600">15–180</span></label>
                             <input
                                 type="number"
-                                min={5}
+                                min={15}
                                 max={180}
                                 step={5}
                                 value={tournamentIntervalMin}
-                                onChange={e => setTournamentIntervalMin(Math.min(180, Math.max(5, Number(e.target.value))))}
+                                onChange={e => setTournamentIntervalMin(Math.min(180, Math.max(15, Number(e.target.value))))}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                             />
                             <p className="text-xs text-slate-600 ko-normal mt-1">
-                                기본 30분. 경기가 한 번에 하나씩만 진행되도록 이 간격으로 순서대로 배정됩니다.
+                                기본 30분. 경기 리플레이 공개 시간(10분)보다 짧으면 앞 경기 결과가 끝나기 전에 다음 경기가 시작될 수 있어 최소 15분으로 제한합니다.
                             </p>
                         </div>
                     </div>

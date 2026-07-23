@@ -203,6 +203,9 @@ const MultiRosterView: React.FC = () => {
                 budget:        0,
                 salaryCap:     0,
                 luxuryTaxLine: 0,
+                colorPrimary:   lt.color_primary,
+                colorSecondary: lt.color_secondary,
+                abbr:           lt.team_abbr,
                 roster: (lt.roster ?? []).map(id => {
                     const base = playerBaseMap.get(id);
                     if (!base) return null;

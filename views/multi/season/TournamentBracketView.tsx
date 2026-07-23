@@ -4,7 +4,7 @@ import { X, Tv } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { PlayoffSeries, Game } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
-import { TeamLogo } from '../../../components/common/TeamLogo';
+import { TeamBadge } from '../../../components/common/TeamBadge';
 import { useServerClock } from '../../../utils/serverClock';
 import { isFinal, isStarted } from './multiGameReveal';
 
@@ -62,7 +62,13 @@ const TeamSlot: React.FC<{
         <div className={`flex items-center gap-2 px-2.5 py-[7px] ${
             isChampion ? 'bg-amber-500/10' : isAdvanced ? 'bg-emerald-500/10' : isMe ? 'bg-indigo-900/20' : ''
         }`}>
-            <TeamLogo teamId={teamId} size="sm" />
+            <TeamBadge
+                teamId={teamId}
+                abbr={team?.team_abbr}
+                colorPrimary={team?.color_primary}
+                colorSecondary={team?.color_secondary}
+                size="sm"
+            />
             <span className={`text-[11px] font-bold flex-1 truncate ${
                 isChampion ? 'text-amber-400'
                     : isEliminated ? 'text-slate-500 line-through'
@@ -102,7 +108,13 @@ const MatchCard: React.FC<{
         return (
             <div className="w-44 rounded-lg border border-slate-700/40 bg-slate-900 flex items-center justify-between px-3 py-2.5">
                 <div className="flex items-center gap-2 min-w-0">
-                    <TeamLogo teamId={series.higherSeedId} size="sm" />
+                    <TeamBadge
+                        teamId={series.higherSeedId}
+                        abbr={team?.team_abbr}
+                        colorPrimary={team?.color_primary}
+                        colorSecondary={team?.color_secondary}
+                        size="sm"
+                    />
                     <span className="text-[11px] font-bold text-emerald-400 truncate">
                         {team?.team_abbr ?? series.higherSeedId.toUpperCase()}
                     </span>
@@ -192,6 +204,13 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
 
     // schedule(Realtime 실시간) 기반으로 시리즈 승수를 재계산.
     // league.bracket_data 구독 지연이 있어도 schedule 완료 경기에서 즉시 반영됨.
+    //
+    // 라운드를 1부터 순서대로(하위 라운드 먼저) 처리해 "게이팅된" 상태를 다음 라운드가
+    // 그대로 이어받도록 한다 — 그렇지 않으면 서버가 시뮬레이션 직후(리플레이 10분 대기 전) 곧바로
+    // 다음 라운드 시리즈의 higherSeedId/lowerSeedId를 실제 진출팀으로 채워버리는 원본
+    // bracket_data.series가 그대로 새어나가, "1라운드 스코어는 숨겨졌지만 2라운드 대진에 이미
+    // 진출팀 이름이 떠 있는" 스포일러가 발생한다. 피더 시리즈가 아직 공개(gated finished)되지
+    // 않았다면 그 슬롯은 'TBD'로 되돌려 놓는다.
     const liveSeries = useMemo(() => {
         const winsMap: Record<string, Record<string, number>> = {};
         for (const g of schedule) {
@@ -201,23 +220,43 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
             if (!winsMap[g.seriesId]) winsMap[g.seriesId] = {};
             winsMap[g.seriesId][winnerId] = (winsMap[g.seriesId][winnerId] ?? 0) + 1;
         }
-        return series.map(s => {
-            // BYE 시리즈는 애초에 경기가 없어 생성 시점에 즉시 확정되므로 그대로 통과.
-            if (s.lowerSeedId === 'BYE') return s;
 
-            // finished/winnerId도 반드시 gated winsMap에서 재계산해야 함 — 그렇지 않으면
-            // 서버가 시뮬레이션 직후(리플레이 10분 대기 전) 즉시 갱신하는 bracket_data.series의
-            // 원본 finished/winnerId가 그대로 새어나가 "스케쥴은 아직 LIVE인데 브라켓은 이미
-            // 승패 확정" 버그가 발생한다.
-            const higherSeedWins = winsMap[s.id]?.[s.higherSeedId] ?? 0;
-            const lowerSeedWins  = winsMap[s.id]?.[s.lowerSeedId]  ?? 0;
-            const finished = higherSeedWins >= s.targetWins || lowerSeedWins >= s.targetWins;
-            const winnerId = finished
-                ? (higherSeedWins >= s.targetWins ? s.higherSeedId : s.lowerSeedId)
-                : undefined;
+        const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 1);
+        const gatedById = new Map<string, PlayoffSeries>();
 
-            return { ...s, higherSeedWins, lowerSeedWins, finished, winnerId };
-        });
+        for (let round = 1; round <= maxRound; round++) {
+            const roundSeries = series
+                .filter(s => s.round === round)
+                .sort((a, b) => matchIndex(a.id) - matchIndex(b.id));
+
+            for (const s of roundSeries) {
+                // BYE 시리즈는 애초에 경기가 없어 생성 시점에 즉시 확정되므로 그대로 통과.
+                if (s.lowerSeedId === 'BYE') { gatedById.set(s.id, s); continue; }
+
+                let higherSeedId = s.higherSeedId;
+                let lowerSeedId  = s.lowerSeedId;
+
+                if (round > 1) {
+                    const mIdx = matchIndex(s.id);
+                    const feederHigher = gatedById.get(`T_R${round - 1}_M${2 * mIdx}`);
+                    const feederLower  = gatedById.get(`T_R${round - 1}_M${2 * mIdx + 1}`);
+                    higherSeedId = feederHigher?.finished && feederHigher.winnerId ? feederHigher.winnerId : 'TBD';
+                    lowerSeedId  = feederLower?.finished  && feederLower.winnerId  ? feederLower.winnerId  : 'TBD';
+                }
+
+                const higherSeedWins = winsMap[s.id]?.[higherSeedId] ?? 0;
+                const lowerSeedWins  = winsMap[s.id]?.[lowerSeedId]  ?? 0;
+                const finished = higherSeedId !== 'TBD' && lowerSeedId !== 'TBD'
+                    && (higherSeedWins >= s.targetWins || lowerSeedWins >= s.targetWins);
+                const winnerId = finished
+                    ? (higherSeedWins >= s.targetWins ? higherSeedId : lowerSeedId)
+                    : undefined;
+
+                gatedById.set(s.id, { ...s, higherSeedId, lowerSeedId, higherSeedWins, lowerSeedWins, finished, winnerId });
+            }
+        }
+
+        return series.map(s => gatedById.get(s.id) ?? s);
     }, [series, schedule, serverNow]);
 
     const totalRounds = useMemo(
@@ -410,8 +449,14 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                         <div className="flex items-center gap-3">
                             <div className="flex flex-col items-center gap-1 shrink-0">
                                 {higherTeam
-                                    ? <TeamLogo teamId={higherTeam.team_slug} size="sm" />
-                                    : <div className="w-6 h-6 rounded bg-slate-700" />
+                                    ? <TeamBadge
+                                        teamId={higherTeam.team_slug}
+                                        abbr={higherTeam.team_abbr}
+                                        colorPrimary={higherTeam.color_primary}
+                                        colorSecondary={higherTeam.color_secondary}
+                                        size="sm"
+                                      />
+                                    : <div className="w-9 h-6 rounded bg-slate-700" />
                                 }
                                 <span className="text-[10px] font-bold text-slate-400">
                                     {higherTeam?.team_abbr ?? 'TBD'}
@@ -434,8 +479,14 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
 
                             <div className="flex flex-col items-center gap-1 shrink-0">
                                 {lowerTeam
-                                    ? <TeamLogo teamId={lowerTeam.team_slug} size="sm" />
-                                    : <div className="w-6 h-6 rounded bg-slate-700" />
+                                    ? <TeamBadge
+                                        teamId={lowerTeam.team_slug}
+                                        abbr={lowerTeam.team_abbr}
+                                        colorPrimary={lowerTeam.color_primary}
+                                        colorSecondary={lowerTeam.color_secondary}
+                                        size="sm"
+                                      />
+                                    : <div className="w-9 h-6 rounded bg-slate-700" />
                                 }
                                 <span className="text-[10px] font-bold text-slate-400">
                                     {lowerTeam?.team_abbr ?? 'TBD'}

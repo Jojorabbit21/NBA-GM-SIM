@@ -54,6 +54,11 @@ export interface Team {
     salaryCap: number;
     luxuryTaxLine: number;
     roster: Player[];
+    /** 멀티플레이어 유저 커스텀 팀 컬러/약어 — 있으면 TeamBadge가 실제 NBA 로고 대신
+     * 이 컬러의 직사각형 배지를 그린다. 싱글플레이어(실제 NBA 팀)는 항상 undefined. */
+    colorPrimary?: string | null;
+    colorSecondary?: string | null;
+    abbr?: string | null;
     tacticHistory?: {
         offense: Record<string, TacticStatRecord>;
         defense: Record<string, TacticStatRecord>;

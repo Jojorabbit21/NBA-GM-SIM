@@ -7,7 +7,6 @@ import { useGame } from '../hooks/useGameContext';
 import { useMultiGameData } from '../hooks/useMultiGameData';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
-import { TeamLogo } from './common/TeamLogo';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import type { Player } from '../types';
 
@@ -24,6 +23,23 @@ function ordinal(n: number): string {
     if (n === 3) return '3rd';
     return `${n}th`;
 }
+
+// 상대팀 배지 — TeamLogo(고정 실제 NBA 로고 이미지)는 유저가 커스텀한 팀 컬러/약어를
+// 반영하지 못해, 상대가 팀 컬러를 바꿔도 항상 원래 로고만 보이는 버그가 있었다.
+// "내 팀" 배지와 동일하게 league_teams의 color_primary/color_secondary/team_abbr로 그린다.
+const OpponentBadge: React.FC<{
+    teamId: string;
+    colorPrimary?: string | null;
+    colorSecondary?: string | null;
+    abbr?: string | null;
+}> = ({ teamId, colorPrimary, colorSecondary, abbr }) => (
+    <div
+        className="w-9 h-7 shrink-0 rounded flex items-center justify-center text-xs font-black"
+        style={{ backgroundColor: colorPrimary ?? '#334155', color: colorSecondary ?? '#fff' }}
+    >
+        {abbr?.slice(0, 3) ?? teamId.toUpperCase()}
+    </div>
+);
 
 export const MultiHeader: React.FC = () => {
     const { league, room, leagueTeams, members } = useLeagueContext();
@@ -49,11 +65,16 @@ export const MultiHeader: React.FC = () => {
         return () => clearInterval(id);
     }, []);
 
-    // W/L + 순위
+    // W/L + 순위 (정시+10분 경과 — final 상태인 경기만 집계, 스포일러 방지)
     const { wins, losses, rank } = useMemo(() => {
         const wlMap: Record<string, { w: number; l: number }> = {};
         for (const g of schedule) {
-            if (!g.played || g.homeScore == null || g.awayScore == null || g.isPlayoff) continue;
+            if (!g.played || g.homeScore == null || g.awayScore == null) continue;
+            // 메인리그는 플레이오프를 제외한 정규시즌 기록만 집계 — 토너먼트는 모든 경기가
+            // isPlayoff=true라서 이 조건을 그대로 적용하면 전체 경기가 통째로 빠져 항상 0W-0L이 된다.
+            if (league?.type !== 'tournament' && g.isPlayoff) continue;
+            const resolvedAt = resolveRealAt(g, simStart, gprd);
+            if (!isFinal({ ...g, scheduledAt: resolvedAt }, nowMs)) continue;
             if (!wlMap[g.homeTeamId]) wlMap[g.homeTeamId] = { w: 0, l: 0 };
             if (!wlMap[g.awayTeamId]) wlMap[g.awayTeamId] = { w: 0, l: 0 };
             const homeWon = g.homeScore > g.awayScore;
@@ -71,7 +92,7 @@ export const MultiHeader: React.FC = () => {
             .sort((a, b) => pct(b) - pct(a) || b.w - a.w);
 
         return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
-    }, [schedule, myTeamId, leagueTeams]);
+    }, [schedule, myTeamId, leagueTeams, league, simStart, gprd, nowMs]);
 
     // 내 팀 다음 경기
     const nextGame = useMemo(() => {
@@ -265,11 +286,11 @@ export const MultiHeader: React.FC = () => {
                                     {isLiveAway ? '@' : 'vs'}
                                 </span>
                                 {liveOpponentId && (
-                                    <TeamLogo
+                                    <OpponentBadge
                                         teamId={liveOpponentId}
-                                        teamName={liveOpponentTeam?.team_name}
-                                        size="custom"
-                                        className="w-8 h-8"
+                                        colorPrimary={liveOpponentTeam?.color_primary}
+                                        colorSecondary={liveOpponentTeam?.color_secondary}
+                                        abbr={liveOpponentTeam?.team_abbr}
                                     />
                                 )}
                                 <span className="text-xl font-semibold text-white">
@@ -315,11 +336,11 @@ export const MultiHeader: React.FC = () => {
                                     {isAway ? '@' : 'vs'}
                                 </span>
                                 {opponentId && (
-                                    <TeamLogo
+                                    <OpponentBadge
                                         teamId={opponentId}
-                                        teamName={opponentTeam?.team_name}
-                                        size="custom"
-                                        className="w-8 h-8"
+                                        colorPrimary={opponentTeam?.color_primary}
+                                        colorSecondary={opponentTeam?.color_secondary}
+                                        abbr={opponentTeam?.team_abbr}
                                     />
                                 )}
                                 <span className="text-xl font-semibold text-white">

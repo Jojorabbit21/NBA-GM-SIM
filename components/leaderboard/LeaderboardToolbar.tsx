@@ -5,7 +5,7 @@ import { Dropdown } from '../common/Dropdown';
 import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { SeasonType } from '../../hooks/useLeaderboardData';
-import { TeamLogo } from '../common/TeamLogo';
+import { TeamBadge } from '../common/TeamBadge';
 
 interface LeaderboardToolbarProps {
     mode: ViewMode;
@@ -242,7 +242,13 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                                 <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.includes(team.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
                                                     {selectedTeams.includes(team.id) && <Check size={10} className="text-white" />}
                                                 </div>
-                                                <TeamLogo teamId={team.id} size="sm" />
+                                                <TeamBadge
+                                                    teamId={team.id}
+                                                    abbr={team.abbr}
+                                                    colorPrimary={team.colorPrimary}
+                                                    colorSecondary={team.colorSecondary}
+                                                    size="sm"
+                                                />
                                                 <span className={`text-xs font-bold ${selectedTeams.includes(team.id) ? 'text-white' : 'text-slate-400'}`}>{team.name}</span>
                                             </div>
                                         ))}

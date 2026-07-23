@@ -8,7 +8,7 @@ import { LeagueGMProfiles } from '../types/gm';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs, RosterTab } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
-import { TeamLogo } from '../components/common/TeamLogo';
+import { TeamBadge } from '../components/common/TeamBadge';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
@@ -70,7 +70,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   onClick={() => setTeamMenuOpen(o => !o)}
                   className="flex items-center gap-3 group"
               >
-                  <TeamLogo teamId={selectedTeam.id} size="sm" />
+                  <TeamBadge
+                      teamId={selectedTeam.id}
+                      abbr={selectedTeam.abbr}
+                      colorPrimary={selectedTeam.colorPrimary}
+                      colorSecondary={selectedTeam.colorSecondary}
+                      size="sm"
+                  />
                   <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
                   <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
                   {teamMenuOpen
@@ -90,7 +96,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
                               }`}
                           >
-                              <TeamLogo teamId={t.id} size="sm" />
+                              <TeamBadge
+                                  teamId={t.id}
+                                  abbr={t.abbr}
+                                  colorPrimary={t.colorPrimary}
+                                  colorSecondary={t.colorSecondary}
+                                  size="sm"
+                              />
                               <span className="truncate">{t.city} {t.name}</span>
                               {t.id === myTeamId && <span className="ml-auto text-[10px] font-bold text-indigo-400 shrink-0">MY</span>}
                           </button>

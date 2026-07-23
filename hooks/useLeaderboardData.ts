@@ -449,12 +449,15 @@ export const useLeaderboardData = (
                     s[`dfg${z}%`]  = a > 0 ? m / a : 0;
                 }
 
-                return { 
-                    ...p, 
+                return {
+                    ...p,
                     stats: s,
-                    teamId: t.id, 
+                    teamId: t.id,
                     teamName: t.name,
-                    teamCity: t.city
+                    teamCity: t.city,
+                    teamColorPrimary:   t.colorPrimary,
+                    teamColorSecondary: t.colorSecondary,
+                    teamAbbr:           t.abbr,
                 };
             });
         });
