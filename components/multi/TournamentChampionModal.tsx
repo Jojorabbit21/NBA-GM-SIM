@@ -4,6 +4,9 @@ import { useLocation } from 'react-router-dom';
 import { Trophy, X, Loader2 } from 'lucide-react';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
+import { useMultiGameData } from '../../hooks/useMultiGameData';
+import { useServerClock } from '../../utils/serverClock';
+import { resolveRealAt, isFinal } from '../../views/multi/season/multiGameReveal';
 import { TeamLogo } from '../common/TeamLogo';
 import { supabase } from '../../services/supabaseClient';
 import type { PlayerBoxScore } from '../../types/engine';
@@ -12,8 +15,11 @@ interface BracketSeries {
     id: string;
     round: number;
     winnerId?: string;
+    higherSeedId: string;
+    lowerSeedId: string;
     higherSeedWins: number;
     lowerSeedWins: number;
+    targetWins: number;
 }
 
 // TODO(테스트용): 지금은 확인 후에도 계속 다시 뜨도록 "한 번 봤으면 다시 안 뜸" 저장을 꺼둔 상태.
@@ -191,12 +197,17 @@ function fmtTS(pts: number, fga: number, fta: number): string {
 export const TournamentChampionModal: React.FC = () => {
     const { league, leagueTeams, room } = useLeagueContext();
     const { session } = useGame();
+    const { schedule } = useMultiGameData(session, room?.id ?? null);
+    const serverNow = useServerClock();
     const userId = session?.user?.id ?? null;
     const location = useLocation();
     const [dismissed, setDismissed] = useState(false);
 
     const base = league ? `/multi/leagues/${league.id}/season` : null;
     const isEligiblePage = !!base && (location.pathname === base || location.pathname.startsWith(`${base}/standings`));
+
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
 
     const champion = useMemo(() => {
         if (!league || league.type !== 'tournament' || league.status !== 'finished') return null;
@@ -206,10 +217,30 @@ export const TournamentChampionModal: React.FC = () => {
         const finalRound = Math.max(...series.map(s => s.round));
         const final = series.find(s => s.round === finalRound && s.winnerId);
         if (!final?.winnerId) return null;
-        const team = leagueTeams.find(t => t.team_slug === final.winnerId);
+
+        // league.status==='finished'와 series.winnerId는 서버가 결승 마지막 경기를 시뮬레이션한
+        // 직후 즉시 세팅된다 — 그 경기의 10분 리플레이가 아직 진행 중이어도 이미 확정된 값이다.
+        // schedule에서 "공개된"(isFinal) 경기만으로 직접 승수를 다시 세어, 실제로 targetWins에
+        // 도달한 경우에만 우승자를 노출한다(그렇지 않으면 결승 마지막 경기 결과가 스포일러된다).
+        let higherWins = 0, lowerWins = 0;
+        for (const g of schedule) {
+            if (g.seriesId !== final.id || !g.played || g.homeScore == null || g.awayScore == null) continue;
+            const resolvedAt = resolveRealAt(g, simStart, gprd);
+            if (!isFinal({ ...g, scheduledAt: resolvedAt }, serverNow)) continue;
+            const homeWon = g.homeScore > g.awayScore;
+            const winnerId = homeWon ? g.homeTeamId : g.awayTeamId;
+            if (winnerId === final.higherSeedId) higherWins++; else lowerWins++;
+        }
+        const targetWins = final.targetWins ?? 1;
+        const revealedWinnerId =
+            higherWins >= targetWins ? final.higherSeedId :
+            lowerWins  >= targetWins ? final.lowerSeedId  : null;
+        if (!revealedWinnerId) return null;
+
+        const team = leagueTeams.find(t => t.team_slug === revealedWinnerId);
         if (!team) return null;
         return { team, series: final };
-    }, [league, leagueTeams]);
+    }, [league, leagueTeams, schedule, simStart, gprd, serverNow]);
 
     // 실제 우승팀의 GM(user_id)에게만 노출 — 다른 유저/관전자에게는 뜨지 않음
     const isChampionOwner = !!(champion && userId && champion.team.user_id === userId);

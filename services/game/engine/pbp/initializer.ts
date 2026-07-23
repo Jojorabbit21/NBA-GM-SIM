@@ -43,12 +43,14 @@ function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three
     };
 }
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext, preserveDraftOrder = false): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
+    // preserveDraftOrder: 멀티플레이어는 드래프트로 로스터를 구성하므로, 저장된 전술이 없어
+    // 이 폴백이 걸려도 먼저 뽑은 선수가 OVR과 무관하게 선발을 유지해야 한다(싱글 CPU는 기존대로 OVR 정렬).
     let safeTactics: GameTactics;
     if (!tactics || (!tactics.depthChart && !depthChart)) {
         const coachPrefs = getCoachPreferences(coachingData, team.id);
-        safeTactics = generateAutoTactics(team, coachPrefs);
+        safeTactics = generateAutoTactics(team, coachPrefs, preserveDraftOrder);
     } else {
         // [Safety Fix for User Tactics]
         // Ensure all slider keys exist even if user tactics are missing them

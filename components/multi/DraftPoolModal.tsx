@@ -118,7 +118,7 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
 
                 {/* 헤더 */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-800">
@@ -175,7 +175,7 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                 </div>
 
                 {/* 리스트 헤더 */}
-                <div className="shrink-0 px-4 py-1.5 grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem] gap-2 text-[10px] font-bold text-slate-500 border-b border-slate-800/60">
+                <div className="shrink-0 px-4 py-1.5 grid grid-cols-[2rem_1fr_3rem_2.75rem_2.75rem_2rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem] gap-2 text-[10px] font-bold text-slate-500 border-b border-slate-800/60">
                     <span>OVR</span>
                     <span>선수</span>
                     <span className="text-center">포지션</span>
@@ -188,6 +188,12 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                     <button onClick={() => handleSort('age')} className="text-center hover:text-indigo-400 transition-colors">
                         나이<SortIcon field="age" />
                     </button>
+                    <span className="text-center">INS</span>
+                    <span className="text-center">OUT</span>
+                    <span className="text-center">ATH</span>
+                    <span className="text-center">PLM</span>
+                    <span className="text-center">DEF</span>
+                    <span className="text-center">REB</span>
                 </div>
 
                 {/* 리스트 */}
@@ -206,7 +212,7 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                             return (
                                 <div
                                     key={p.id}
-                                    className="px-4 py-2 grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem] gap-2 items-center border-b border-slate-800/30 hover:bg-slate-800/40 transition-colors"
+                                    className="px-4 py-2 grid grid-cols-[2rem_1fr_3rem_2.75rem_2.75rem_2rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem] gap-2 items-center border-b border-slate-800/30 hover:bg-slate-800/40 transition-colors"
                                 >
                                     <OvrBadge value={p.ovr} size="sm" />
                                     <span className="text-xs text-white font-bold truncate">{p.name}</span>
@@ -223,6 +229,12 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                                         {p.ovr}
                                     </span>
                                     <span className="text-xs text-slate-400 text-center">{p.age}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.ins)}`}>{p.ins}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.out)}`}>{p.out}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.ath)}`}>{p.ath}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.plm)}`}>{p.plm}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.def)}`}>{p.def}</span>
+                                    <span className={`text-xs font-bold text-center ${getStatColor(p.reb)}`}>{p.reb}</span>
                                 </div>
                             );
                         })

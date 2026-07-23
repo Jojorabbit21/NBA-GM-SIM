@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     Loader2, AlertCircle, Settings2, ChevronLeft,
-    Clock, CalendarDays, Check, Users,
+    Clock, CalendarDays, Check, Users, Eye,
 } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { joinLeague, leaveLeague, claimTeam, updateTeamProfile, startDraft, runDraftLottery } from '../../../services/multi/leagueService';
@@ -11,7 +11,11 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
 import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
+import { DraftPoolModal } from '../../../components/multi/DraftPoolModal';
+import type { PoolType } from '../../../components/multi/DraftPoolSettings';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
+
+const VALID_POOL_TYPES: PoolType[] = ['standard', 'alltime', 'rookies'];
 
 function fmtDate(iso: string | null): string {
     if (!iso) return '미정';
@@ -82,6 +86,13 @@ const LeagueLobbyView: React.FC = () => {
     const [kickingId,      setKickingId]      = useState<string | null>(null);
     const [actionErr,      setActionErr]      = useState<string | null>(null);
     const [countdown,      setCountdown]      = useState<string | null>(null);
+    const [showDraftPool,  setShowDraftPool]  = useState(false);
+
+    const draftPoolTypes = (() => {
+        const parsed = (league?.draft_pool ?? 'standard').split(',').map(s => s.trim())
+            .filter(s => VALID_POOL_TYPES.includes(s as PoolType)) as PoolType[];
+        return parsed.length > 0 ? parsed : (['standard'] as PoolType[]);
+    })();
 
     // 멤버인 경우 시즌 진행 중이거나 이미 종료된 리그면 즉시 season 페이지로 이동
     // (종료된 리그도 브라켓/스케줄/박스스코어 등 데이터는 계속 조회 가능해야 하므로 로비에 머물지 않는다)
@@ -259,6 +270,16 @@ const LeagueLobbyView: React.FC = () => {
 
                         {/* 우측 상단 버튼 */}
                         <div className="flex items-center gap-2 shrink-0">
+                            {/* 드래프트 풀 보기 (전원, 드래프트 시작 전에만) */}
+                            {isRecruiting && (
+                                <button
+                                    onClick={() => setShowDraftPool(true)}
+                                    className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors"
+                                >
+                                    <Eye size={12} />
+                                    드래프트 풀 보기
+                                </button>
+                            )}
                             {/* 설정 (어드민) */}
                             {isAdmin && (
                                 <button
@@ -604,6 +625,16 @@ const LeagueLobbyView: React.FC = () => {
                         );
                         return { error };
                     }}
+                />
+            )}
+
+            {/* 드래프트 풀 미리보기 */}
+            {showDraftPool && league && (
+                <DraftPoolModal
+                    poolTypes={draftPoolTypes}
+                    ovrMin={league.draft_ovr_min ?? 0}
+                    ovrMax={league.draft_ovr_max ?? 99}
+                    onClose={() => setShowDraftPool(false)}
                 />
             )}
         </>

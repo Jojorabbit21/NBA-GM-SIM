@@ -162,6 +162,10 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             simSettings,
             coachingData,
             awayTactics ?? undefined,
+            // 저장된 tactics/depthChart가 없어 엔진의 generateAutoTactics() 폴백이 걸리는
+            // 경우에도(예: finalize 시점에 아직 이 기능이 없었던 구버전 리그 등) 멀티플레이어는
+            // 드래프트로 로스터를 구성하므로 먼저 뽑은 선수가 OVR과 무관하게 선발을 유지해야 한다.
+            true,
         );
 
         const simDurationMs = Date.now() - t0;
