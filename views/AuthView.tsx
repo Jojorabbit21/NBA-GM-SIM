@@ -60,6 +60,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
+  // profiles.nickname — 멀티플레이 화면에서 실제로 참조하는 닉네임 소스와 일치시키기 위해
+  // user_metadata/이메일 fallback보다 우선한다. isFirstSignup: 방금 profiles row가 처음 생성된 경우(true)
+  // → 로비에서 닉네임 설정 팝업을 자동으로 띄우는 트리거로 쓴다.
+  const [profileNickname, setProfileNickname] = useState<string | null>(null);
+  const [isFirstSignup,   setIsFirstSignup]   = useState(false);
 
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
@@ -95,21 +100,37 @@ export const AuthView: React.FC<AuthViewProps> = ({
   }, [resendCooldown > 0]);
 
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
-    const { data, error: selectError } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+    const { data, error: selectError } = await supabase.from('profiles').select('id, nickname').eq('id', userId).maybeSingle();
     if (selectError) {
         console.warn('⚠️ [ensureProfileExists] Profile check failed:', selectError.message);
         return;
     }
     if (!data) {
+        const defaultNickname = userEmail ? userEmail.split('@')[0] : 'GM';
         const { error: insertError } = await supabase.from('profiles').insert({
             id: userId,
             email: userEmail,
-            nickname: userEmail ? userEmail.split('@')[0] : 'GM',
+            nickname: defaultNickname,
             created_at: new Date().toISOString()
         });
-        if (insertError) console.warn('⚠️ [ensureProfileExists] Profile insert failed:', insertError.message);
+        if (insertError) {
+            console.warn('⚠️ [ensureProfileExists] Profile insert failed:', insertError.message);
+        } else {
+            setProfileNickname(defaultNickname);
+            setIsFirstSignup(true);
+        }
+    } else {
+        setProfileNickname(data.nickname ?? null);
     }
   };
+
+  // 이미 profiles row가 있는 상태로 세션이 잡히는 경우(새로고침, 이미 로그인된 브라우저 등)에도
+  // profiles.nickname을 반영 — ensureProfileExists는 로그인/가입 폼 제출 시에만 호출되므로 별도로 동기화한다.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    supabase.from('profiles').select('nickname').eq('id', session.user.id).maybeSingle()
+        .then(({ data }) => { if (data?.nickname) setProfileNickname(data.nickname); });
+  }, [session?.user?.id]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,13 +246,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <LobbyPanel
                   session={session}
                   teams={teams}
-                  nickname={nickname}
+                  nickname={profileNickname ?? nickname}
                   onContinue={onContinue}
                   onNewGame={onNewGame}
                   onLogout={onLogout}
                   onMultiPlay={onMultiPlay ?? (() => {})}
                   onQuickPlay={onQuickPlay ?? (() => {})}
                   quickplayOnly={quickplayOnly}
+                  forceNicknameSetup={isFirstSignup}
+                  onNicknameChange={setProfileNickname}
               />
           </div>
       );

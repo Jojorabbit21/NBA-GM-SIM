@@ -1,12 +1,13 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Team } from '../../types';
 import { useSaveSummary } from '../../hooks/useSaveSummary';
 import { SingleSaveCard } from './SingleSaveCard';
 import { MultiPlayCard } from './MultiPlayCard';
 import { QuickPlayCard } from './QuickPlayCard';
-import { LogOut, User } from 'lucide-react';
+import { NicknameModal } from './NicknameModal';
+import { LogOut, Settings, User } from 'lucide-react';
 import { APP_NAME, APP_YEAR } from '../../utils/constants';
 
 interface LobbyPanelProps {
@@ -19,15 +20,36 @@ interface LobbyPanelProps {
     onMultiPlay:   () => void;
     onQuickPlay:   () => void;
     quickplayOnly?: boolean;
+    /** 가입 직후 최초 진입 시 true — 닉네임 설정 팝업을 자동으로 띄운다 */
+    forceNicknameSetup?: boolean;
+    /** 닉네임 변경 저장 완료 시 상위(AuthView)로 최신 닉네임 반영 */
+    onNicknameChange?: (nickname: string) => void;
 }
 
 export const LobbyPanel: React.FC<LobbyPanelProps> = ({
     session, teams, nickname, onContinue, onNewGame, onLogout, onMultiPlay, onQuickPlay, quickplayOnly = false,
+    forceNicknameSetup = false, onNicknameChange,
 }) => {
     const { data: summary, isLoading } = useSaveSummary(session.user.id);
     const email = session.user.email ?? '';
     const savedTeam = summary ? teams.find(t => t.id === summary.teamId) : undefined;
     const initial = (nickname || email).charAt(0).toUpperCase();
+
+    const [nicknameModalOpen,   setNicknameModalOpen]   = useState(false);
+    const [modalIsFirstSetup,   setModalIsFirstSetup]   = useState(false);
+
+    // 가입 직후(profiles row가 방금 생성된 경우) 닉네임 설정 팝업을 한 번 자동으로 띄운다
+    useEffect(() => {
+        if (forceNicknameSetup) {
+            setModalIsFirstSetup(true);
+            setNicknameModalOpen(true);
+        }
+    }, [forceNicknameSetup]);
+
+    const openNicknameSettings = () => {
+        setModalIsFirstSetup(false);
+        setNicknameModalOpen(true);
+    };
 
     return (
         <div className="w-full max-w-2xl space-y-5 animate-in fade-in zoom-in-95 duration-300 pretendard">
@@ -51,6 +73,15 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                     <p className="text-sm font-bold text-white truncate">{nickname || 'GM'}</p>
                     <p className="text-xs text-slate-500 truncate">{email}</p>
                 </div>
+
+                {/* 설정 (닉네임 변경) */}
+                <button
+                    onClick={openNicknameSettings}
+                    className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 shrink-0"
+                >
+                    <Settings size={13} />
+                    <span className="ko-normal">설정</span>
+                </button>
 
                 {/* 로그아웃 */}
                 <button
@@ -80,6 +111,17 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                 <MultiPlayCard onClick={onMultiPlay} />
                 <QuickPlayCard onClick={onQuickPlay} />
             </div>
+
+            {nicknameModalOpen && (
+                <NicknameModal
+                    userId={session.user.id}
+                    email={email}
+                    currentNickname={nickname}
+                    isFirstSetup={modalIsFirstSetup}
+                    onClose={() => setNicknameModalOpen(false)}
+                    onSaved={(newNickname) => onNicknameChange?.(newNickname)}
+                />
+            )}
         </div>
     );
 };
