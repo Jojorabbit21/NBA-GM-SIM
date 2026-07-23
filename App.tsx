@@ -368,33 +368,34 @@ const App: React.FC = () => {
                     <Route path="/gm-creation" element={<GMCreationPage />} />
                     <Route path="/onboarding" element={<OnboardingPage />} />
 
-                    {/* ── 멀티플레이어 + 보호 라우트 (quickplay_only 모드에서는 비활성) ── */}
-                    {!shouldRestrictToQuickPlay && (<>
-                        <Route element={<MultiProtectedLayout />}>
-                            <Route path="/multi" element={<LeagueListView />} />
-                            <Route element={<LeagueLayout />}>
-                                <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
-                                <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
-                                <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
-                                <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
-                                    <Route index element={<MultiSeasonPage />} />
-                                    <Route path="roster"       element={<MultiRosterView />} />
-                                    <Route path="standings"    element={<MultiStandingsView />} />
-                                    <Route path="schedule"     element={<MultiScheduleView />} />
-                                    <Route path="leaderboard"  element={<MultiLeaderboardView />} />
-                                    <Route path="tactics"      element={<MultiTacticsView />} />
-                                    <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
-                                    <Route path="game/:gameId" element={<MultiGamePbpView />} />
-                                </Route>
+                    {/* ── 멀티플레이어 라우트 (quickplay_only 모드에서도 항상 노출 — 어드민 제한은 싱글만 해당) ── */}
+                    <Route element={<MultiProtectedLayout />}>
+                        <Route path="/multi" element={<LeagueListView />} />
+                        <Route element={<LeagueLayout />}>
+                            <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
+                            <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
+                            <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+                            <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
+                                <Route index element={<MultiSeasonPage />} />
+                                <Route path="roster"       element={<MultiRosterView />} />
+                                <Route path="standings"    element={<MultiStandingsView />} />
+                                <Route path="schedule"     element={<MultiScheduleView />} />
+                                <Route path="leaderboard"  element={<MultiLeaderboardView />} />
+                                <Route path="tactics"      element={<MultiTacticsView />} />
+                                <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
+                                <Route path="game/:gameId" element={<MultiGamePbpView />} />
                             </Route>
                         </Route>
+                    </Route>
 
-                        <Route element={<MultiDraftLayout />}>
-                            <Route element={<LeagueLayout />}>
-                                <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
-                            </Route>
+                    <Route element={<MultiDraftLayout />}>
+                        <Route element={<LeagueLayout />}>
+                            <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
                         </Route>
+                    </Route>
 
+                    {/* ── 싱글플레이어 보호 라우트 (quickplay_only 모드에서는 어드민 제외 비활성) ── */}
+                    {!shouldRestrictToQuickPlay && (
                         <Route element={<ProtectedLayout />}>
                             <Route path="/home" element={<HomePage />} />
                             <Route path="/locker-room" element={<DashboardPage />} />
@@ -422,9 +423,9 @@ const App: React.FC = () => {
                             <Route path="/tactics" element={<TacticsPage />} />
                             <Route path="*" element={<Navigate to="/home" replace />} />
                         </Route>
-                    </>)}
+                    )}
 
-                    {/* quickplay_only 모드: 위에서 매칭되지 않은 모든 경로 → /quick */}
+                    {/* quickplay_only 모드: 위(멀티 라우트 포함)에서 매칭되지 않은 나머지 경로 → /quick */}
                     {shouldRestrictToQuickPlay && (
                         <Route path="*" element={<Navigate to="/quick" replace />} />
                     )}
