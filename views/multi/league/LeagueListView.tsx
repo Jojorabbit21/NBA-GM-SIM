@@ -286,6 +286,8 @@ const LeagueListView: React.FC = () => {
                                                     ? 'text-emerald-400 bg-emerald-500/15'
                                                     : league.status === 'drafting'
                                                     ? 'text-amber-400 bg-amber-500/15'
+                                                    : league.status === 'finished'
+                                                    ? 'text-slate-500 bg-slate-800/70'
                                                     : 'text-slate-400 bg-slate-700/50'
                                             }`}>
                                                 {STATUS_LABEL[league.status] ?? league.status}
@@ -306,7 +308,7 @@ const LeagueListView: React.FC = () => {
                                                 {isJoined ? (
                                                     <button
                                                         onClick={() => navigate(
-                                                            league.status === 'in_progress'
+                                                            (league.status === 'in_progress' || league.status === 'finished')
                                                                 ? `/multi/leagues/${league.id}/season`
                                                                 : `/multi/leagues/${league.id}/lobby`
                                                         )}

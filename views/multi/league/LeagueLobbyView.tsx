@@ -64,6 +64,7 @@ const LeagueLobbyView: React.FC = () => {
     const isDrafting   = league?.status === 'drafting';
     const isRecruiting = league?.status === 'recruiting';
     const isInProgress = league?.status === 'in_progress';
+    const isFinished    = league?.status === 'finished';
     const lotteryDone   = leagueTeams.length > 0 && leagueTeams.some(t => t.draft_order !== null);
     const canClaim      = isRecruiting;              // 모집 중이면 언제든 빈 팀 선점 가능
     const canChangePre  = isRecruiting && !lotteryDone; // 팀 변경은 로터리 전까지만
@@ -83,12 +84,13 @@ const LeagueLobbyView: React.FC = () => {
     const [nicknames,      setNicknames]      = useState<Record<string, string>>({});
     const [countdown,      setCountdown]      = useState<string | null>(null);
 
-    // 멤버인 경우 시즌 진행 중이면 즉시 season 페이지로 이동
+    // 멤버인 경우 시즌 진행 중이거나 이미 종료된 리그면 즉시 season 페이지로 이동
+    // (종료된 리그도 브라켓/스케줄/박스스코어 등 데이터는 계속 조회 가능해야 하므로 로비에 머물지 않는다)
     useEffect(() => {
-        if (isInProgress && isMember && leagueId) {
+        if ((isInProgress || isFinished) && isMember && leagueId) {
             navigate(`/multi/leagues/${leagueId}/season`, { replace: true });
         }
-    }, [isInProgress, isMember, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isInProgress, isFinished, isMember, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Realtime 구독
     useEffect(() => {

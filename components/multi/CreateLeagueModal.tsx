@@ -20,6 +20,24 @@ type TournamentFormat = 'single_elim' | 'round_robin';
 type MatchFormat      = 'best_of_1' | 'best_of_3' | 'best_of_5' | 'best_of_7';
 type Tier             = 'd1' | 'd2' | 'd3';
 
+// 이 앱은 KST(UTC+9)를 기본 시간대로 고정한다 — 브라우저의 실제 로컬 타임존과 무관하게
+// 항상 KST 벽시계 시각을 기준으로 기본값/저장을 처리해야 한다.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// "내일 10:00 KST"를 datetime-local 입력값("YYYY-MM-DDTHH:mm")으로 반환
+function tomorrow10amKst(): string {
+    const kstNow = new Date(Date.now() + KST_OFFSET_MS);
+    const d = new Date(Date.UTC(
+        kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate() + 1, 10, 0, 0,
+    ));
+    return d.toISOString().slice(0, 16);
+}
+
+// datetime-local(KST 벽시계 시각으로 해석) → ISO(UTC)
+function kstLocalToIso(local: string): string {
+    return new Date(new Date(`${local}:00Z`).getTime() - KST_OFFSET_MS).toISOString();
+}
+
 const TOURNAMENT_TEAM_OPTIONS  = [4, 8, 16, 32];
 const MAIN_LEAGUE_TEAM_OPTIONS = [10, 20, 30];
 
@@ -63,11 +81,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const [tournamentFormat,  setTournamentFormat]  = useState<TournamentFormat>('single_elim');
     const [matchFormat,       setMatchFormat]       = useState<MatchFormat>('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState<MatchFormat>('best_of_1');
-    const [tournamentStartAt, setTournamentStartAt] = useState(() => {
-        // default: tomorrow 10:00 local time
-        const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T10:00`;
-    });
+    const [tournamentStartAt, setTournamentStartAt] = useState(tomorrow10amKst);
 
     // ── 메인리그 전용 ──────────────────────────────────────────────────────────
     const [tier,          setTier]          = useState<Tier>('d1');
@@ -117,7 +131,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
                         draftOvrMax,
-                        tournamentStartAt: tournamentStartAt ? new Date(tournamentStartAt).toISOString() : null,
+                        tournamentStartAt: tournamentStartAt ? kstLocalToIso(tournamentStartAt) : null,
                     },
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');

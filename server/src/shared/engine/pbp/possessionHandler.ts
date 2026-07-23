@@ -706,7 +706,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 3PT 서브존 결정 (hitRate에 개별 능력치 적용 + 스탯 기록 일관성)
-    const subZone = preferredZone === '3PT' ? resolveDynamicZone(actor, '3PT') : undefined;
+    const subZone = resolveDynamicZone(actor, preferredZone as 'Rim' | 'Paint' | 'Mid' | '3PT');
 
     const shotContext = calculateHitRate(
         actor, defender, defTeam,

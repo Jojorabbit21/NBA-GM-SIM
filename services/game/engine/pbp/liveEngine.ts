@@ -180,6 +180,7 @@ export function applyTimeout(state: GameState, teamId: string, isUserCall: boole
         teamId: team.id,
         text,
         type: 'info',
+        timeoutsLeft: team.timeouts, // 멀티플레이어 리플레이에서 잔여 타임아웃 표시용
     });
 }
 
@@ -409,6 +410,21 @@ export function stepPossession(state: GameState): StepResult {
     const awayScored = state.away.score - scoreBefore.away;
     if (homeScored > 0) updateMomentum(state, state.home.id, homeScored, currentTotalSecAfter);
     if (awayScored > 0) updateMomentum(state, state.away.id, awayScored, currentTotalSecAfter);
+
+    // 이번 포세션에서 새로 생성된 득점 로그에 런 상태 스탬프 (멀티플레이어 리플레이용 — PBP 저장 시 영구 보존됨)
+    if (state.momentum.activeRun) {
+        const runTeamId  = state.momentum.activeRun.teamId;
+        const runHomePts = state.momentum.homeEpochPts;
+        const runAwayPts = state.momentum.awayEpochPts;
+        for (let i = logsBefore; i < state.logs.length; i++) {
+            const log = state.logs[i];
+            if (log.type === 'score' || log.type === 'freethrow') {
+                log.runTeamId  = runTeamId;
+                log.runHomePts = runHomePts;
+                log.runAwayPts = runAwayPts;
+            }
+        }
+    }
 
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));

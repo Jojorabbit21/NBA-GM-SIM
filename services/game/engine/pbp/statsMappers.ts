@@ -87,14 +87,15 @@ export function resetHotCold(team: { onCourt: LivePlayer[], bench: LivePlayer[] 
 /**
  * Helper to add a log entry to the GameState
  */
-function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number) {
+function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string) {
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
         teamId,
         text,
         type,
-        points: points as 1 | 2 | 3 | undefined
+        points: points as 1 | 2 | 3 | undefined,
+        foulTeamId,
     });
 }
 
@@ -280,7 +281,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         });
         
         logText += ` (팀 파울 ${defTeam.fouls})`;
-        addLog(state, defTeam.id, logText, 'foul');
+        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
         
         // Bonus Situation (Team Fouls > 4) -> 2 Free Throws
         if (defTeam.fouls > 4) {
@@ -327,7 +328,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
 
         updatePlusMinus(offTeam, defTeam, ftMade);
-        addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
+        addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade, defTeam.id);
 
         // Rebound on last miss
         if (!lastShotMade) {
@@ -407,7 +408,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor) : getFlagrant1Commentary(defender, actor))
             : `🟥 Flagrant ${isFlagrant2 ? '2' : '1'}!`;
         const ftSuffix = ` ${actor.playerName} 자유투 ${ftMade}/2`;
-        addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined);
+        addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined, defTeam.id);
 
         // F2 = 즉시 퇴장
         if (isFlagrant2 && defender) {

@@ -375,16 +375,18 @@ PlayType별 선택 기준:
 
 #### 플레이 리다이렉트 시스템 (Zone Pref Threshold + Rim Redirect)
 
-선수의 존 선호도(`zonePref`)가 임계값(0.15) 미만이면 해당 존을 `selectZone` 후보에서 제거하고,
-Rim이 선택되면 `resolveFinish('drive')`로 마무리 방식을 전환한다.
+[2026-07 정정] 선수의 존 선호도(`zonePref`)가 임계값(0.15) 미만이어도 해당 존이 `selectZone`
+후보에서 **제거되지는 않는다** — 가중치가 ×0.2로 크게 깎일 뿐, 여전히 낮은 확률로 뽑힐 수 있다
+(`playTypes.ts:64-65` 코드 주석: "임계값 미만 존은 가중치 대폭 감소 (완전 제거 X)"). Rim이
+선택되면 `resolveFinish('drive')`로 마무리 방식을 전환하는 것은 기존 서술과 동일.
 
 ```
 ZONE_PREF_THRESHOLD = 0.15 (constants.ts:ZONE_SELECTION)
 
-selectZone 흐름:
-  1. 플레이타입이 제공한 존 후보에서 zonePref < 0.15인 존 제거
-  2. 전부 제거되면 → 원래 후보 중 가장 높은 선호도의 존 1개만 유지
-  3. 남은 존 중 가중 랜덤 선택
+selectZone 흐름 (Soft Threshold — 제거 아님):
+  1. zone별 score = pref(zone) × 0.70 + (slider(zone)/10) × 0.30
+     단, pref(zone) < 0.15면 score 계산 전 pref에 ×0.2 페널티 적용
+  2. 후보 전부(제거된 것 없음)를 대상으로 score 비례 가중 랜덤 선택
 
 적용 플레이타입 (Rim이 존 후보에 포함):
   | 플레이타입      | 존 후보              | Rim 시 동작                    |
@@ -392,25 +394,36 @@ selectZone 흐름:
   | Iso           | [3PT, Mid, Rim]    | resolveFinish('drive')       |
   | PnR_Handler   | [3PT, Mid, Rim]    | 스크린 후 드라이브              |
   | Handoff       | [3PT, Mid, Rim]    | 핸드오프 후 드라이브             |
-  | CatchShoot    | [3PT, Mid, Rim]    | 펌프페이크 → 드라이브 전환       |
   | OffBallScreen | [3PT, Mid, Rim]    | 스크린 컬 드라이브              |
   | DriveKick     | [3PT, Mid, Rim]    | 드라이버가 킥아웃 안 하고 직접 마무리 |
   | Transition    | [3PT, Rim]         | resolveFinish('drive')       |
+
+  [2026-07] CatchShoot는 이 표에서 제외됨 — 존 후보를 3PT 하나로 고정해서 리다이렉트 자체가
+  발생하지 않음(`playTypes.ts`의 `case 'CatchShoot':`, 원래 로직은 주석 처리로 보존).
 
 DriveKick Rim 특이사항:
   기존: driver 침투 → actor(슈터)에게 킥아웃 → actor가 슛
   Rim:  driver 침투 → 킥아웃 안 함 → driver가 직접 마무리
        → actor = driver, secondaryActor = undefined (어시스트 없음)
 
-야니스 예시 (zonePref: rim≈0.73, mid≈0.13, three≈0.13):
-  PnR_Handler: 3PT(0.13<0.15) 제거, Mid(0.13<0.15) 제거 → Rim만 남음 → 드라이브
-  CatchShoot:  3PT/Mid 제거 → Rim → 펌프페이크 후 드라이브
+아래 예시는 슬라이더가 전부 중립값(5, 즉 slider/10=0.5)이라고 가정한 계산이다(실제 슬라이더에
+따라 확률은 달라짐). "제거"가 아니라 페널티 적용 후 가중 랜덤이므로, 임계값 미만 존도 낮은
+확률로나마 여전히 나올 수 있다.
 
-커리 예시 (zonePref: rim≈0.10, mid≈0.10, three≈0.80):
-  PnR_Handler: Rim(0.10) 제거, Mid(0.10) 제거 → 3PT만 남음 → 풀업 3점
+야니스 예시 (zonePref: rim≈0.73, mid≈0.13, three≈0.13), PnR_Handler [3PT, Mid, Rim]:
+  score(3PT) = (0.13×0.2)×0.70 + 0.5×0.30 = 0.168
+  score(Mid) = 0.168 (동일 계산)
+  score(Rim) = 0.73×0.70 + 0.5×0.30 = 0.661
+  → 확률 대략 3PT 17% / Mid 17% / Rim 66% — Rim 쪽으로 크게 쏠리지만 0은 아님
 
-르브론 예시 (zonePref: rim≈0.50, mid≈0.21, three≈0.29):
-  PnR_Handler: 모두 0.15 이상 → 기존과 동일하게 가중 랜덤
+커리 예시 (zonePref: rim≈0.10, mid≈0.10, three≈0.80), PnR_Handler [3PT, Mid, Rim]:
+  score(3PT) = 0.80×0.70 + 0.5×0.30 = 0.71
+  score(Mid) = score(Rim) = (0.10×0.2)×0.70 + 0.5×0.30 = 0.164
+  → 확률 대략 3PT 68% / Mid 16% / Rim 16%
+
+르브론 예시 (zonePref: rim≈0.50, mid≈0.21, three≈0.29), 전부 0.15 이상이라 페널티 없음:
+  score(3PT)=0.353, score(Mid)=0.297, score(Rim)=0.50
+  → 확률 대략 3PT 31% / Mid 26% / Rim 43%
 ```
 
 #### resolveFinish 시스템 (마무리 타입 결정)
@@ -1170,18 +1183,21 @@ checkAndApplyRotation(state, currentMinute):
 ```
 selectZone(zones, actor, sliders):
 
-  // [Step 1] Zone Pref Threshold 필터
+  // [2026-07 정정] Zone Pref Threshold는 필터(제거)가 아니라 소프트 페널티다 — 후보 존은
+  // 하나도 제거되지 않는다.
   ZONE_PREF_THRESHOLD = 0.15
-  validZones = zones에서 zonePref >= 0.15인 존만 남김
-  전부 제거 시 → 가장 높은 zonePref를 가진 존 1개만 유지
 
-  // [Step 2] 가중 랜덤
-  score(zone) = zonePref(zone) × 0.70 + (slider(zone) / 10) × 0.30
+  // [Step 1] 임계값 미만 존에 페널티 적용 (제거 아님)
+  penalizedPref(zone) = zonePref(zone) < 0.15 ? zonePref(zone) × 0.2 : zonePref(zone)
+
+  // [Step 2] 가중 랜덤 — zones 배열의 모든 후보가 그대로 대상
+  score(zone) = penalizedPref(zone) × 0.70 + (slider(zone) / 10) × 0.30
 
   선호도 매핑 (LivePlayer.zonePref):
-    3PT → actor.zonePref.three,   slider: shot_3pt
-    Mid → actor.zonePref.mid,     slider: shot_mid
-    Rim → actor.zonePref.rim,     slider: shot_rim
+    3PT   → actor.zonePref.three, slider: shot_3pt
+    Mid   → actor.zonePref.mid,   slider: shot_mid
+    Paint → actor.zonePref.itp,   slider: shot_rim (인테리어 공유)
+    Rim   → actor.zonePref.ra,    slider: shot_rim (인테리어 공유)
 
   zonePref 생성 (initializer.ts:buildZonePref):
     tendencies.zones 있음 → ra+itp=rim, mid=mid, cnr+p45+atb=three → 정규화

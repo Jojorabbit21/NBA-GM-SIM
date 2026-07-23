@@ -10,6 +10,19 @@ import { generateSeasonSchedule } from './shared/scheduleGenerator';
 import { initializeTournamentBracket } from './shared/tournamentInitializer';
 import { TEAM_DATA } from './shared/teamData';
 
+/**
+ * 시뮬레이션 실시각 계산의 기준점(game_seq=0)을 결정한다.
+ * tournamentStart(유저가 지정한 토너먼트 시작 시:분)가 아직 미래 시각이면 그 값을 그대로 쓰고,
+ * 없거나 이미 지난 시각이면(드래프트가 늦게 끝나는 경우 등) 지금을 10분 단위로 반올림해 사용한다.
+ */
+function resolveSimRealStartAt(tournamentStart: string | null, nowDate: Date): string {
+    if (tournamentStart) {
+        const target = new Date(tournamentStart).getTime();
+        if (target > nowDate.getTime()) return new Date(target).toISOString();
+    }
+    return new Date(Math.round(nowDate.getTime() / 600_000) * 600_000).toISOString();
+}
+
 function injectGameSeq(schedule: any[]): void {
     const uniqueDates = [...new Set(schedule.map((g: any) => g.date as string))].sort();
     const dateToSeq = new Map<string, number>(uniqueDates.map((d, i) => [d, i]));
@@ -34,7 +47,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day')
         .eq('id', room.league_id)
         .single();
 
@@ -57,8 +70,12 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
     const nowDate         = new Date();
     const tournamentStart = league.type === 'tournament' ? (league.tournament_start_at ?? null) : null;
     const seasonStartDate = tournamentStart ? tournamentStart.slice(0, 10) : nowDate.toISOString().slice(0, 10);
-    // 10분 단위 정각으로 맞춰 이후 game_seq 계산 결과도 깔끔한 시각이 되도록 함
-    const simRealStartAt  = new Date(Math.round(nowDate.getTime() / 600_000) * 600_000).toISOString();
+    // 토너먼트는 유저가 지정한 시:분(tournament_start_at)을 시뮬레이션 시각의 기준점(game_seq=0)으로
+    // 그대로 사용한다 — 이미 지난 시각이면(드래프트가 늦게 끝나는 등) 지금 시각을 10분 단위로 반올림해 사용.
+    const simRealStartAt = resolveSimRealStartAt(tournamentStart, nowDate);
+    // 토너먼트 경기 간 간격(기본 30분) — games_per_real_day로 환산해 저장(어드민 설정값 없으면 기본치를 그대로 확정)
+    const gamesPerRealDay = league.games_per_real_day ?? 48;
+    const intervalMinutes = 1440 / gamesPerRealDay;
 
     let schedule: any[];
     let bracketData: { series: any[]; schedule: any[] } | null = null;
@@ -71,6 +88,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
             league.finals_match_format ?? null,
             `${room.league_id}-${seasonStartDate}`,
             seasonStartDate,
+            intervalMinutes,
         );
         schedule    = result.schedule;
         bracketData = result;
@@ -93,7 +111,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
     }
 
     if (bracketData) {
-        const { error } = await supabase.from('leagues').update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
+        const { error } = await supabase.from('leagues').update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay }).eq('id', room.league_id);
         if (error) return { ok: false, error: `bracket save: ${error.message}` };
     } else {
         await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
@@ -134,14 +152,16 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     }
 
     // ── 원자적 claim: drafting → in_progress ────────────────────────────────
-    const { count: claimCount } = await supabase
+    // update() 뒤에 체이닝되는 select()는 PostgrestTransformBuilder.select(columns)로,
+    // {count, head} 옵션을 받지 않는다(무시됨) — 반환된 rows 배열 길이로 판정해야 한다.
+    const { data: claimedRows } = await supabase
         .from('leagues')
         .update({ status: 'in_progress' })
         .eq('id', room.league_id)
         .eq('status', 'drafting')
-        .select('id', { count: 'exact', head: true });
+        .select('id');
 
-    if (!claimCount) {
+    if (!claimedRows?.length) {
         console.log(`[finalize] ${roomId} — claim failed (already processed)`);
         return;
     }
@@ -149,7 +169,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day')
         .eq('id', room.league_id)
         .single();
 
@@ -180,11 +200,15 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 날짜 계산 ────────────────────────────────────────────────────────────
     const nowDate        = new Date();
     const today          = nowDate.toISOString().slice(0, 10);
-    // 10분 단위 정각으로 맞춰 이후 game_seq 계산 결과도 깔끔한 시각이 되도록 함
-    const simRealStartAt = new Date(Math.round(nowDate.getTime() / 600_000) * 600_000).toISOString();
 
     const tournamentStart = league.type === 'tournament' ? (league.tournament_start_at ?? null) : null;
     const seasonStartDate = tournamentStart ? tournamentStart.slice(0, 10) : today;
+    // 토너먼트는 유저가 지정한 시:분(tournament_start_at)을 시뮬레이션 시각의 기준점(game_seq=0)으로
+    // 그대로 사용한다 — 이미 지난 시각이면(드래프트가 늦게 끝나는 등) 지금 시각을 10분 단위로 반올림해 사용.
+    const simRealStartAt = resolveSimRealStartAt(tournamentStart, nowDate);
+    // 토너먼트 경기 간 간격(기본 30분) — games_per_real_day로 환산해 저장(어드민 설정값 없으면 기본치를 그대로 확정)
+    const gamesPerRealDay = league.games_per_real_day ?? 48;
+    const intervalMinutes = 1440 / gamesPerRealDay;
 
     const adminDurDays = (() => {
         if (league.season_start_date && league.season_end_date) {
@@ -210,6 +234,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
             league.finals_match_format ?? null,
             tendencySeed,
             seasonStartDate,
+            intervalMinutes,
         );
         schedule    = result.schedule;
         bracketData = result;
@@ -236,7 +261,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     if (bracketData) {
         const { error: bracketErr } = await supabase
             .from('leagues')
-            .update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt })
+            .update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay })
             .eq('id', room.league_id);
         if (bracketErr) {
             console.error(`[finalize] bracket save error: ${bracketErr.message}`);

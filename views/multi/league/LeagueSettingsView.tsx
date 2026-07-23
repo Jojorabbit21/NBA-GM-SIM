@@ -18,16 +18,22 @@ function fmtConference(conf: string | null): string {
     return conf;
 }
 
-// ISO datetime → datetime-local input 값
+// 이 앱은 KST(UTC+9)를 기본 시간대로 고정한다 — 브라우저의 실제 로컬 타임존(해외 접속,
+// 서버 환경 등)과 무관하게 항상 KST 벽시계 시각을 기준으로 표시/저장해야 하므로
+// Date.getTimezoneOffset()(런타임의 로컬 타임존)에 의존하지 않고 오프셋을 직접 고정한다.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// ISO datetime(UTC) → datetime-local input 값(항상 KST 벽시계 시각 기준)
 function toInputValue(iso: string | null): string {
     if (!iso) return '';
-    // "2025-04-25T20:00:00+09:00" → "2025-04-25T20:00"
-    return iso.slice(0, 16);
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return new Date(d.getTime() + KST_OFFSET_MS).toISOString().slice(0, 16);
 }
-// datetime-local → ISO (UTC), rounded up to nearest 5-minute boundary
+// datetime-local(KST 벽시계 시각으로 해석) → ISO (UTC), rounded up to nearest 5-minute boundary
 function toIso(local: string): string | null {
     if (!local) return null;
-    const ms = new Date(local).getTime();
+    const ms = new Date(`${local}:00Z`).getTime() - KST_OFFSET_MS;
     const fiveMin = 5 * 60 * 1000;
     return new Date(Math.ceil(ms / fiveMin) * fiveMin).toISOString();
 }
@@ -59,6 +65,7 @@ const LeagueSettingsView: React.FC = () => {
     const [durationWeeks,    setDurationWeeks]    = useState(2);
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
+    const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
@@ -104,6 +111,8 @@ const LeagueSettingsView: React.FC = () => {
         }
         setMatchFormat(league.match_format ?? 'best_of_1');
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
+        const gprd = (league as any).games_per_real_day ?? 48;
+        setTournamentIntervalMin(Math.round(1440 / gprd));
     }, [league]);
 
     // 비어드민 접근 차단
@@ -152,6 +161,9 @@ const LeagueSettingsView: React.FC = () => {
             seasonEndDate:       computedSeasonEnd,
             matchFormat,
             finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
+            ...(league?.type === 'tournament'
+                ? { gamesPerRealDay: Math.round(1440 / Math.max(1, tournamentIntervalMin)) }
+                : {}),
         });
         setSaving(false);
         if (err) { setSaveErr(err); return; }
@@ -421,19 +433,36 @@ const LeagueSettingsView: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 토너먼트 시작 일시 */}
+                {/* 토너먼트 시작 일시 + 경기 간격 */}
                 {league.type === 'tournament' && (
-                    <div>
-                        <label className="text-xs text-slate-400 ko-normal block mb-1">토너먼트 시작 일시</label>
-                        <input
-                            type="datetime-local"
-                            value={tournamentStartAt}
-                            onChange={e => setTournamentStartAt(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        />
-                        <p className="text-xs text-slate-600 ko-normal mt-1">
-                            첫 경기 시작 시각. 이후 경기는 2시간 간격으로 자동 배정됩니다.
-                        </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs text-slate-400 ko-normal block mb-1">토너먼트 시작 일시</label>
+                            <input
+                                type="datetime-local"
+                                value={tournamentStartAt}
+                                onChange={e => setTournamentStartAt(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            />
+                            <p className="text-xs text-slate-600 ko-normal mt-1">
+                                첫 경기 시작 시각. 이후 경기는 아래 간격만큼씩 한 경기씩 순서대로 배정됩니다.
+                            </p>
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 ko-normal block mb-1">경기 간격 (분) <span className="text-slate-600">5–180</span></label>
+                            <input
+                                type="number"
+                                min={5}
+                                max={180}
+                                step={5}
+                                value={tournamentIntervalMin}
+                                onChange={e => setTournamentIntervalMin(Math.min(180, Math.max(5, Number(e.target.value))))}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            />
+                            <p className="text-xs text-slate-600 ko-normal mt-1">
+                                기본 30분. 경기가 한 번에 하나씩만 진행되도록 이 간격으로 순서대로 배정됩니다.
+                            </p>
+                        </div>
                     </div>
                 )}
 

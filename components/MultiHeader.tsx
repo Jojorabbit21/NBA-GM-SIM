@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Timer } from 'lucide-react';
+import { Timer, Trophy, Tv } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
 import { useMultiGameData } from '../hooks/useMultiGameData';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
-import { resolveRealAt } from '../views/multi/season/multiGameReveal';
+import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { TeamLogo } from './common/TeamLogo';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import type { Player } from '../types';
@@ -115,6 +115,28 @@ export const MultiHeader: React.FC = () => {
         return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }, [nextGame, nowMs]);
 
+    // 내 팀의 현재 진행중(LIVE)인 경기 — played=true지만 리플레이 10분 공개창 안에 있는 경기.
+    // nextGame은 !played만 찾으므로 이미 시뮬레이션된 LIVE 경기는 잡히지 않아 별도로 찾는다.
+    const myLiveGame = useMemo(() => {
+        if (!myTeamId) return null;
+        return schedule.find(g => {
+            if (!g.played || (g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId)) return false;
+            const resolvedAt = resolveRealAt(g, simStart, gprd);
+            return getGameDisplayState({ ...g, scheduledAt: resolvedAt }, nowMs) === 'live';
+        }) ?? null;
+    }, [schedule, myTeamId, simStart, gprd, nowMs]);
+
+    const liveOpponentId   = myLiveGame
+        ? (myLiveGame.homeTeamId === myTeamId ? myLiveGame.awayTeamId : myLiveGame.homeTeamId)
+        : null;
+    const liveOpponentTeam = leagueTeams.find(t => t.team_slug === liveOpponentId);
+    const isLiveAway       = myLiveGame?.awayTeamId === myTeamId;
+
+    const handleWatchLiveGame = useCallback(() => {
+        if (!myLiveGame) return;
+        navigate(`${base}/game/${myLiveGame.id}`);
+    }, [navigate, base, myLiveGame]);
+
     // 시리즈 정보 (토너먼트 경기일 때)
     const seriesInfo = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId) return null;
@@ -129,17 +151,48 @@ export const MultiHeader: React.FC = () => {
             : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
             : `${r}라운드`;
 
-        // schedule 기반 실시간 승수 계산
+        // schedule 기반 실시간 승수 계산 — 리플레이(10분) 공개 전 경기는 집계에서 제외.
+        // 서버는 시뮬레이션 직후 bracket_data.series를 즉시 갱신하므로, played 여부만으로
+        // 세면 아직 관전 화면에서는 진행중인 경기의 결과가 새어나간다.
         let myWins = 0, oppWins = 0;
         for (const g of schedule) {
             if (g.seriesId !== nextGame.seriesId || !g.played || g.homeScore == null || g.awayScore == null) continue;
+            const resolvedAt = resolveRealAt(g, simStart, gprd);
+            if (!isFinal({ ...g, scheduledAt: resolvedAt }, nowMs)) continue;
             const homeWon = g.homeScore > g.awayScore;
             const myHome  = g.homeTeamId === myTeamId;
             if ((myHome && homeWon) || (!myHome && !homeWon)) myWins++;
             else oppWins++;
         }
         return { roundLabel, myWins, oppWins, targetWins: s.targetWins ?? 1 };
-    }, [nextGame, league, schedule, myTeamId]);
+    }, [nextGame, league, schedule, myTeamId, simStart, gprd, nowMs]);
+
+    // 토너먼트 종료 여부 + 우승팀 (다음 경기가 없을 때 대체 표시용)
+    // league.status==='finished'는 서버가 마지막 경기 시뮬 직후 즉시 세팅하므로, 그 경기의
+    // 10분 리플레이가 끝나 isFinal이 되기 전까지는 우승자를 노출하지 않는다.
+    const tournamentChampionId = useMemo(() => {
+        if (league?.type !== 'tournament' || league?.status !== 'finished') return null;
+        const allSeries: any[] = (league?.bracket_data as any)?.series ?? [];
+        if (!allSeries.length) return null;
+        const finalRound = Math.max(...allSeries.map((s: any) => s.round ?? 1));
+        const final = allSeries.find((s: any) => s.round === finalRound && s.winnerId);
+        if (!final) return null;
+
+        let higherWins = 0, lowerWins = 0;
+        for (const g of schedule) {
+            if (g.seriesId !== final.id || !g.played || g.homeScore == null || g.awayScore == null) continue;
+            const resolvedAt = resolveRealAt(g, simStart, gprd);
+            if (!isFinal({ ...g, scheduledAt: resolvedAt }, nowMs)) continue;
+            const homeWon = g.homeScore > g.awayScore;
+            const winnerId = homeWon ? g.homeTeamId : g.awayTeamId;
+            if (winnerId === final.higherSeedId) higherWins++; else lowerWins++;
+        }
+        const targetWins = final.targetWins ?? 1;
+        if (higherWins >= targetWins) return final.higherSeedId;
+        if (lowerWins >= targetWins) return final.lowerSeedId;
+        return null;
+    }, [league, schedule, simStart, gprd, nowMs]);
+    const isMyTeamChampion = !!(tournamentChampionId && myTeamId && tournamentChampionId === myTeamId);
 
     const handleViewPlayer = useCallback((player: Player, teamSlug: string | null) => {
         navigate(`${base}/roster`, { state: { viewPlayer: player, viewTeamId: teamSlug } });
@@ -163,16 +216,14 @@ export const MultiHeader: React.FC = () => {
 
             {/* 왼쪽: 내 팀 정보 (싱글 DashboardHeader와 동일 구조) */}
             <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
-                <div className="w-[60px] h-[60px] shrink-0 rounded-full bg-surface-card border-4 border-border-dim flex items-center justify-center overflow-hidden">
-                    {myTeamId && (
-                        <TeamLogo
-                            teamId={myTeamId}
-                            teamName={myTeam?.team_name}
-                            size="custom"
-                            className="w-[44px] h-[44px] drop-shadow-lg"
-                        />
-                    )}
-                </div>
+                {myTeamId && (
+                    <div
+                        className="w-16 h-10 shrink-0 rounded flex items-center justify-center text-lg font-black"
+                        style={{ backgroundColor: primaryColor, color: secondary ?? '#fff' }}
+                    >
+                        {myTeam?.team_abbr?.slice(0, 3) ?? myTeamId.toUpperCase()}
+                    </div>
+                )}
                 <div className="flex flex-col gap-0.5 min-w-0">
                     <span className="text-xl font-semibold text-white leading-7 truncate">
                         {myTeam?.team_name ?? '내 팀'}
@@ -199,7 +250,42 @@ export const MultiHeader: React.FC = () => {
 
             {/* 오른쪽: 다음 경기 */}
             <div className="flex items-center pr-8 shrink-0 relative z-10">
-                {nextGame && countdown ? (
+                {myLiveGame ? (
+                    <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end gap-1.5 leading-none">
+                            <div className="flex items-center gap-1.5 text-xs text-red-400 font-bold">
+                                <span className="relative flex h-1.5 w-1.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                                </span>
+                                <span>경기 진행중</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-base text-zinc-400 font-medium">
+                                    {isLiveAway ? '@' : 'vs'}
+                                </span>
+                                {liveOpponentId && (
+                                    <TeamLogo
+                                        teamId={liveOpponentId}
+                                        teamName={liveOpponentTeam?.team_name}
+                                        size="custom"
+                                        className="w-8 h-8"
+                                    />
+                                )}
+                                <span className="text-xl font-semibold text-white">
+                                    {liveOpponentTeam?.team_name ?? liveOpponentId ?? '—'}
+                                </span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleWatchLiveGame}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shrink-0"
+                        >
+                            <Tv size={14} />
+                            보기
+                        </button>
+                    </div>
+                ) : nextGame && countdown ? (
                     <div className="flex flex-col items-end gap-1.5 leading-none">
                         {/* 상단: 다음 경기 · 스테이지 · 스코어 */}
                         <div className="flex items-center gap-1.5 text-xs text-white">
@@ -248,6 +334,13 @@ export const MultiHeader: React.FC = () => {
                                 </span>
                             </div>
                         </div>
+                    </div>
+                ) : tournamentChampionId ? (
+                    <div className="flex items-center gap-2">
+                        <Trophy size={16} className={isMyTeamChampion ? 'text-amber-400' : 'text-zinc-500'} />
+                        <span className={`text-sm font-semibold ${isMyTeamChampion ? 'text-amber-400' : 'text-zinc-400'}`}>
+                            {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
+                        </span>
                     </div>
                 ) : (
                     <span className="text-sm text-zinc-600">예정된 경기 없음</span>

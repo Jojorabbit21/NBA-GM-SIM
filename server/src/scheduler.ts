@@ -107,14 +107,16 @@ async function runScheduledDraftStarts(now: string): Promise<void> {
         if ((room.draft_cursor as any)?.status === 'active') continue;
 
         // 원자적 claim: recruiting → drafting (다른 서버 인스턴스/틱이 동시 처리 방지)
-        const { count: claim } = await supabase
+        // update() 뒤에 체이닝되는 select()는 PostgrestTransformBuilder.select(columns)로,
+        // {count, head} 옵션을 받지 않는다(무시됨) — 반환된 rows 배열 길이로 판정해야 한다.
+        const { data: claimedRows } = await supabase
             .from('leagues')
             .update({ status: 'drafting' })
             .eq('id', league.id)
             .eq('status', 'recruiting')
-            .select('id', { count: 'exact', head: true });
+            .select('id');
 
-        if (!claim) continue; // 이미 선점됨
+        if (!claimedRows?.length) continue; // 이미 선점됨
 
         // claim 성공 → 드래프트 시작 (start는 내부에서 status를 다시 'drafting'으로 설정하지만, 이미 설정됨)
         const ok = await startDraftForRoom(league.id, room.id);
@@ -187,6 +189,17 @@ const SIM_LEAD_MS = 60 * 1000;
 function gameSeqToRealMs(seq: number, simRealStartAt: string, gamesPerRealDay: number): number {
     const raw = new Date(simRealStartAt).getTime() + (seq / gamesPerRealDay) * 86_400_000;
     return Math.round(raw / 600_000) * 600_000;
+}
+
+// 실시각(ms) → KST 달력 날짜(YYYY-MM-DD). game.date(슬롯 기반 계산값)는 자정 근처에서
+// 실제 KST 날짜와 어긋날 수 있어(예: 23:40 다음 슬롯이 00:10), sim_date 갱신 시에는
+// 반드시 이 값을 써야 클라이언트의 kstDateKey()와 같은 날짜로 판정된다.
+function kstDateFromMs(ms: number): string {
+    const kst = new Date(ms + 9 * 3_600_000);
+    const y = kst.getUTCFullYear();
+    const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(kst.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
 }
 
 interface LeagueRow {
@@ -283,7 +296,13 @@ async function advanceSimDates(
         if (allCurrentPlayed) {
             const upcoming = schedule
                 .filter((g: any) => !g.played)
-                .map((g: any) => g.date ?? '')
+                .map((g: any) => {
+                    const seq: number | undefined = g.game_seq;
+                    if (seq != null && league?.sim_real_start_at) {
+                        return kstDateFromMs(gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5));
+                    }
+                    return g.date ?? '';
+                })
                 .filter(Boolean)
                 .sort();
             const nextDate = upcoming[0] ?? today;

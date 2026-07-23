@@ -46,6 +46,11 @@ export interface PbpLog {
     points?: 1 | 2 | 3;
     homeScore?: number;
     awayScore?: number;
+    runTeamId?: string;
+    runHomePts?: number;
+    runAwayPts?: number;
+    timeoutsLeft?: number;
+    foulTeamId?: string;
 }
 
 export interface QuarterScores {

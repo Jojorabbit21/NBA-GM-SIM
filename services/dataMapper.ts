@@ -129,7 +129,14 @@ export const mapFreeAgents = (playersData: any[]): Player[] => {
 /**
  * 개별 선수 데이터 변환 (Raw DB Object -> Player Object)
  */
-export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = false): Player => {
+/**
+ * @param forceHealthy true면 meta_players에 박제된 실존 부상 데이터(health/injuryType/returnDate,
+ * KNOWN_INJURIES 레거시 fallback 포함)를 전부 무시하고 항상 'Healthy'로 반환한다.
+ * 멀티플레이어는 드래프트 풀·로스터·전술 화면 어디서든 실제 NBA 부상 이력이 노출/적용되면 안 되므로
+ * (드래프트된 선수가 시즌 내내 로테이션 불가능해지는 문제) 멀티플레이어 호출부는 반드시 true로 넘길 것.
+ * 진행 중 부상(경기 중 발생)은 room.roster_state 오버레이로 별도 적용되므로 이 값과 무관하다.
+ */
+export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = false, forceHealthy = false): Player => {
     // DB의 base_attributes 컬럼 파싱 (JSON or Object)
     const baseAttrs = typeof raw.base_attributes === 'string' 
         ? JSON.parse(raw.base_attributes) 
@@ -233,24 +240,31 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
 
     // Handle Injuries: DB base_attributes 우선, KNOWN_INJURIES는 레거시 fallback
-    let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
-    let injuryType: string | undefined = getCol(p, ['injuryType']) || undefined;
-    let returnDate: string | undefined = getCol(p, ['returnDate']) || undefined;
+    // forceHealthy(멀티플레이어)면 실존 부상 데이터를 전부 무시하고 항상 Healthy로 시작한다.
+    let health: 'Healthy' | 'Injured' | 'Day-to-Day' = 'Healthy';
+    let injuryType: string | undefined;
+    let returnDate: string | undefined;
 
-    if (injuryType && returnDate) {
-        // DB에 부상 정보가 있으면 그대로 사용
-        health = 'Injured';
-    } else {
-        // KNOWN_INJURIES fallback (레거시 — 향후 DB 마이그레이션 완료 후 제거 예정)
-        const nameLower = name.toLowerCase().trim();
-        const injuryKey = Object.keys(KNOWN_INJURIES).find(key => {
-            const keyLower = key.toLowerCase().trim();
-            return nameLower === keyLower || nameLower.includes(keyLower) || keyLower.includes(nameLower);
-        });
-        if (injuryKey) {
+    if (!forceHealthy) {
+        health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
+        injuryType = getCol(p, ['injuryType']) || undefined;
+        returnDate = getCol(p, ['returnDate']) || undefined;
+
+        if (injuryType && returnDate) {
+            // DB에 부상 정보가 있으면 그대로 사용
             health = 'Injured';
-            injuryType = KNOWN_INJURIES[injuryKey].type;
-            returnDate = KNOWN_INJURIES[injuryKey].returnDate;
+        } else {
+            // KNOWN_INJURIES fallback (레거시 — 향후 DB 마이그레이션 완료 후 제거 예정)
+            const nameLower = name.toLowerCase().trim();
+            const injuryKey = Object.keys(KNOWN_INJURIES).find(key => {
+                const keyLower = key.toLowerCase().trim();
+                return nameLower === keyLower || nameLower.includes(keyLower) || keyLower.includes(nameLower);
+            });
+            if (injuryKey) {
+                health = 'Injured';
+                injuryType = KNOWN_INJURIES[injuryKey].type;
+                returnDate = KNOWN_INJURIES[injuryKey].returnDate;
+            }
         }
     }
 

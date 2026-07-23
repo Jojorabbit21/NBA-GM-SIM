@@ -54,9 +54,7 @@ function stringToHash(str: string): number {
     return Math.abs(hash);
 }
 
-// ── 상수 ──────────────────────────────────────────────────────────────────────
-
-const ROUND_GAP_DAYS = 3;
+const DEFAULT_INTERVAL_MIN = 30;
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
@@ -77,6 +75,28 @@ function targetWinsFromFormat(matchFormat: string | null): number {
 
 function isFinalRound(round: number, totalRounds: number): boolean {
     return round === totalRounds;
+}
+
+/** 라운드별 최대 경기 수 (파이널 라운드는 finalsTargetWins 사용). */
+function maxGamesForRound(round: number, totalRounds: number, targetWins: number, finalsTargetWins: number): number {
+    const tw = isFinalRound(round, totalRounds) ? finalsTargetWins : targetWins;
+    return tw * 2 - 1;
+}
+
+/**
+ * 라운드별 시작 슬롯을 사전 계산한다 (인덱스 1부터 사용, 0은 미사용).
+ * 라운드 r은 항상 라운드 r-1의 "최대 경기 수" 만큼 지난 슬롯에서 시작 —
+ * 실제 경기 결과와 무관하게 고정되므로, 일부 시리즈가 조기에 끝나도 다음 라운드는
+ * 이전 라운드 전체 슬롯이 지난 뒤 모든 매치가 동시에 시작된다.
+ */
+function computeRoundBaseSlots(totalRounds: number, targetWins: number, finalsTargetWins: number): number[] {
+    const base: number[] = [0];
+    let slot = 0;
+    for (let round = 1; round <= totalRounds; round++) {
+        base[round] = slot;
+        slot += maxGamesForRound(round, totalRounds, targetWins, finalsTargetWins);
+    }
+    return base;
 }
 
 function seededShuffle<T>(arr: T[], seed: string): T[] {
@@ -103,32 +123,37 @@ function offsetDate(base: string, days: number): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function roundStartDay(round: number, targetWins: number): number {
-    const maxLastGameOffset = (targetWins * 2 - 2) * 2;
-    return (round - 1) * (maxLastGameOffset + ROUND_GAP_DAYS);
+/** slot(=game_seq) → 대략적인 달력 날짜 (스케줄 리스트 날짜별 그룹핑용 — 실제 시각은 game_seq+games_per_real_day로 별도 계산됨). */
+function slotToDate(startDate: string, slot: number, intervalMinutes: number): string {
+    return offsetDate(startDate, Math.floor((slot * intervalMinutes) / 1440));
 }
 
 // ── 시리즈 전체 게임 사전 생성 ─────────────────────────────────────────────────
 
+/**
+ * 시리즈의 최대 경기를 모두 미리 생성한다. 한 경기씩 순차 슬롯(startSlot, startSlot+1, ...)에
+ * 배치되며, 슬롯 간 실제 시간 간격은 intervalMinutes(games_per_real_day로 환산)로 결정된다.
+ */
 function generateAllSeriesGames(
     seriesId: string,
-    round: number,
     higherSeedId: string,
     lowerSeedId: string,
     targetWins: number,
     startDate: string,
+    startSlot: number,
+    intervalMinutes: number,
 ): Game[] {
     const maxGames = targetWins * 2 - 1;
     const games: Game[] = [];
     for (let gameNum = 1; gameNum <= maxGames; gameNum++) {
-        const dayOffset  = roundStartDay(round, targetWins) + (gameNum - 1) * 2;
+        const slot       = startSlot + (gameNum - 1);
         const higherHome = (gameNum % 2) === 1;
         games.push({
             id:         `${seriesId}_G${gameNum}`,
             homeTeamId: higherHome ? higherSeedId : lowerSeedId,
             awayTeamId: higherHome ? lowerSeedId  : higherSeedId,
-            date:       offsetDate(startDate, dayOffset),
-            game_seq:   dayOffset,
+            date:       slotToDate(startDate, slot, intervalMinutes),
+            game_seq:   slot,
             played:     false,
             isPlayoff:  true,
             seriesId,
@@ -145,6 +170,7 @@ function initSingleElim(
     finalsTargetWins: number,
     seed: string,
     startDate: string,
+    intervalMinutes: number,
 ): { series: PlayoffSeries[]; schedule: Game[] } {
     const shuffled = seededShuffle(teams, seed + ':seeding');
     const size = nextPow2(shuffled.length);
@@ -156,7 +182,9 @@ function initSingleElim(
     const series: PlayoffSeries[] = [];
     const schedule: Game[] = [];
     const totalRounds = Math.log2(size);
+    const roundBaseSlots = computeRoundBaseSlots(totalRounds, targetWins, finalsTargetWins);
 
+    // R1: 모든 매치의 게임을 같은 슬롯(라운드 시작 슬롯 + 게임번호-1)에 동시 배치
     for (let i = 0; i < size; i += 2) {
         const teamA = slots[i];
         const teamB = slots[i + 1];
@@ -191,9 +219,10 @@ function initSingleElim(
                 targetWins,
             });
 
-            schedule.push(...generateAllSeriesGames(
-                seriesId, 1, teamA.team_slug, teamB.team_slug, targetWins, startDate,
-            ));
+            const games = generateAllSeriesGames(
+                seriesId, teamA.team_slug, teamB.team_slug, targetWins, startDate, roundBaseSlots[1], intervalMinutes,
+            );
+            schedule.push(...games);
         }
     }
 
@@ -215,7 +244,8 @@ function initSingleElim(
         }
     }
 
-    advanceTournamentState(series, schedule, targetWins, startDate);
+    // BYE 자동 진출 팀을 R2에 즉시 배치 (R2 시작 슬롯은 라운드 단위로 고정됨)
+    advanceTournamentState(series, schedule, targetWins, finalsTargetWins, startDate, intervalMinutes);
 
     return { series, schedule };
 }
@@ -225,6 +255,7 @@ function initSingleElim(
 function initRoundRobin(
     teams: LeagueTeamRow[],
     startDate: string,
+    intervalMinutes: number,
 ): { series: PlayoffSeries[]; schedule: Game[] } {
     const schedule: Game[] = [];
     const n = teams.length;
@@ -235,6 +266,7 @@ function initRoundRobin(
 
     const fixed = padded[0];
     const rotating = padded.slice(1);
+    let nextSlot = 0;
 
     for (let r = 0; r < m - 1; r++) {
         const roundTeams: (LeagueTeamRow | null)[] = [fixed, ...rotating];
@@ -246,13 +278,14 @@ function initRoundRobin(
 
             const homeTeam = r % 2 === 0 ? a : b;
             const awayTeam = r % 2 === 0 ? b : a;
+            const slot = nextSlot++;
 
             schedule.push({
                 id:         `RR_R${r + 1}_${a.team_slug}_vs_${b.team_slug}`,
                 homeTeamId: homeTeam.team_slug,
                 awayTeamId: awayTeam.team_slug,
-                date:       offsetDate(startDate, r),
-                game_seq:   r,
+                date:       slotToDate(startDate, slot, intervalMinutes),
+                game_seq:   slot,
                 played:     false,
                 isPlayoff:  false,
             });
@@ -270,10 +303,13 @@ export function advanceTournamentState(
     series: PlayoffSeries[],
     schedule: Game[],
     targetWins: number,
+    finalsTargetWins: number,
     startDate: string,
+    intervalMinutes: number = DEFAULT_INTERVAL_MIN,
 ): void {
     const byId = Object.fromEntries(series.map(s => [s.id, s]));
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
+    const roundBaseSlots = computeRoundBaseSlots(maxRound, targetWins, finalsTargetWins);
 
     for (let round = 1; round < maxRound; round++) {
         for (const s of series) {
@@ -287,11 +323,13 @@ export function advanceTournamentState(
             if (mIdx % 2 === 0) next.higherSeedId = s.winnerId;
             else                next.lowerSeedId  = s.winnerId;
 
+            // 양쪽 팀 확정 → 전체 경기 생성 — 시작 슬롯은 다음 라운드 고정 슬롯(모든 매치 동시 시작)
             if (next.higherSeedId !== 'TBD' && next.lowerSeedId !== 'TBD') {
                 const alreadyExists = schedule.some(g => g.seriesId === nextId);
                 if (!alreadyExists) {
+                    const startSlot = roundBaseSlots[round + 1];
                     schedule.push(...generateAllSeriesGames(
-                        nextId, round + 1, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate,
+                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startSlot, intervalMinutes,
                     ));
                 }
             }
@@ -313,13 +351,14 @@ export function initializeTournamentBracket(
     finalsMatchFormat: string | null,
     tendencySeed: string,
     startDate: string,
+    intervalMinutes: number = DEFAULT_INTERVAL_MIN,
 ): TournamentBracketResult {
     const targetWins       = targetWinsFromFormat(matchFormat);
     const finalsTargetWins = targetWinsFromFormat(finalsMatchFormat ?? matchFormat);
 
     if (tournamentFormat === 'round_robin') {
-        return initRoundRobin(teams, startDate);
+        return initRoundRobin(teams, startDate, intervalMinutes);
     }
 
-    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate);
+    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes);
 }

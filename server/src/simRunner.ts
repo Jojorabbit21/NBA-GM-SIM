@@ -10,6 +10,7 @@ import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormaliza
 import { calculatePlayerOvr } from './shared/utils/constants.ts';
 import {
     advanceTournamentState,
+    targetWinsFromFormat,
     type PlayoffSeries as BPLSeries,
     type TournamentGame,
 } from './shared/tournamentBracket.ts';
@@ -27,7 +28,7 @@ export interface SimResult {
 
 // ── 공개 진입점 ───────────────────────────────────────────────────────────────
 
-export async function runSimulation(roomId: string, gameId: string): Promise<SimResult> {
+export async function runSimulation(roomId: string, gameId: string, forceStartNow = false): Promise<SimResult> {
     const t0 = Date.now();
     console.log(`[simRunner] room=${roomId} game=${gameId}`);
 
@@ -117,6 +118,8 @@ export async function runSimulation(roomId: string, gameId: string): Promise<Sim
             .eq('game_id', gameId)
             .maybeSingle();
         const gameStartTime = (() => {
+            // 관리자가 수동으로 시뮬 실행 시 — 원래 예정 시각과 무관하게 지금 바로 "방송 시작"
+            if (forceStartNow) return new Date().toISOString();
             const simStart = leagueData?.sim_real_start_at;
             const gprd     = leagueData?.games_per_real_day ?? 5;
             const seq: number | undefined = game.game_seq;
@@ -127,11 +130,16 @@ export async function runSimulation(roomId: string, gameId: string): Promise<Sim
             return existingPbp?.game_start_time ?? new Date().toISOString();
         })();
 
+        // userTeamId를 homeTeamId로 고정해 hTactics/aTactics 해석 로직의 "앵커" 역할만 하도록
+        // 하고, awayTactics는 awayUserTactics로 별도 전달한다 — 이렇게 하면 홈/원정 어느 쪽이든
+        // 저장된 전술(tactics)이 있으면 그 팀 것을 쓰고, 없으면 (null/undefined) 자동으로
+        // generateAutoTactics() 폴백이 걸리는 두 경우 모두 올바르게 처리된다. 기존에는
+        // userTeamId를 null로 하드코딩해 모든 팀이 무조건 자동 생성 전술로 덮어써졌었다.
         const result = runFullGameSimulation(
             homeTeam,
             awayTeam,
-            null,
-            homeTactics,
+            homeTeamId,
+            homeTactics ?? undefined,
             false,
             false,
             homeDepth,
@@ -139,6 +147,7 @@ export async function runSimulation(roomId: string, gameId: string): Promise<Sim
             tendencySeed + ':' + gameId,
             simSettings,
             coachingData,
+            awayTactics ?? undefined,
         );
 
         const simDurationMs = Date.now() - t0;
@@ -165,8 +174,13 @@ export async function runSimulation(roomId: string, gameId: string): Promise<Sim
         }, { onConflict: 'room_id,game_id' });
 
         // ── 6. rooms.schedule 업데이트 ─────────────────────────────────────
+        // forceStartNow면 scheduledAt도 game_start_time과 맞춰줘야 일정/브라켓 화면이
+        // 같은 시각 기준으로 LIVE 상태를 판정한다 (game_pbp.game_start_time만 바뀌고
+        // schedule의 scheduledAt은 그대로면 화면엔 계속 "예정"으로 보이는 불일치 발생).
         const updatedSchedule = schedule.map((g: any) =>
-            g.id === gameId ? { ...g, played: true, homeScore, awayScore } : g,
+            g.id === gameId
+                ? { ...g, played: true, homeScore, awayScore, ...(forceStartNow ? { scheduledAt: gameStartTime } : {}) }
+                : g,
         );
 
         // ── 7. 토너먼트 처리 ───────────────────────────────────────────────
@@ -203,7 +217,7 @@ async function handleTournamentAdvance(
 ) {
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, season_start_date, match_format, tournament_format, tournament_start_at')
+        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -217,6 +231,10 @@ async function handleTournamentAdvance(
     const bracketSchedule: TournamentGame[] = bracketData.schedule ?? [];
     const tournStartAt = leagueRow.tournament_start_at as string | null;
     const startDate    = tournStartAt ? tournStartAt.slice(0, 10) : (leagueRow.season_start_date ?? '2025-10-21');
+    const intervalMinutes = 1440 / (leagueRow.games_per_real_day ?? 48);
+    const finalsTargetWins = targetWinsFromFormat(
+        (leagueRow as any).finals_match_format ?? leagueRow.match_format,
+    );
 
     const seriesObj = series.find(s => s.id === seriesId);
     if (!seriesObj || seriesObj.finished) {
@@ -250,7 +268,21 @@ async function handleTournamentAdvance(
     }
 
     if (seriesObj.finished) {
-        advanceTournamentState(series, bracketSchedule, seriesObj.targetWins, startDate);
+        // 시리즈가 조기 확정되면(예: Bo3에서 2-0) 아직 실행되지 않은 잔여 예정 경기는
+        // 무의미하므로 제거한다 — 해당 슬롯은 경기 없이 그냥 지나가는 휴식 기간이 된다.
+        const prunedIds = new Set(
+            bracketSchedule.filter(g => g.seriesId === seriesId && !g.played).map(g => g.id),
+        );
+        if (prunedIds.size > 0) {
+            for (let i = bracketSchedule.length - 1; i >= 0; i--) {
+                if (prunedIds.has(bracketSchedule[i].id)) bracketSchedule.splice(i, 1);
+            }
+            for (let i = updatedSchedule.length - 1; i >= 0; i--) {
+                if (prunedIds.has(updatedSchedule[i].id)) updatedSchedule.splice(i, 1);
+            }
+        }
+
+        advanceTournamentState(series, bracketSchedule, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes);
 
         const existingIds = new Set(updatedSchedule.map((g: any) => g.id));
         for (const g of bracketSchedule) {

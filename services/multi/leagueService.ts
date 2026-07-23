@@ -92,6 +92,9 @@ export const createLeague = async (
         payload.tournament_format       = params.tournamentFormat;
         payload.match_format            = params.matchFormat ?? 'best_of_1';
         payload.finals_match_format     = params.finalsMatchFormat ?? null;
+        // games_per_real_day 컬럼 기본값(5)은 메인리그(하루 5경기) 기준이라 토너먼트에는 맞지 않음 —
+        // 명시적으로 기본 30분 간격(1440/48)으로 확정한다. 세션 설정에서 나중에 바꿀 수 있음.
+        payload.games_per_real_day      = 48;
     }
 
     // 옵션 오버라이드
@@ -281,6 +284,7 @@ export interface UpdateLeagueSettingsParams {
     tournamentStartAt?:  string | null;
     matchFormat?:        string | null;
     finalsMatchFormat?:  string | null;
+    gamesPerRealDay?:    number;
 }
 
 export const updateLeagueSettings = async (
@@ -301,6 +305,7 @@ export const updateLeagueSettings = async (
     if (p.tournamentStartAt    !== undefined) payload.tournament_start_at     = p.tournamentStartAt;
     if (p.matchFormat          !== undefined) payload.match_format            = p.matchFormat;
     if (p.finalsMatchFormat    !== undefined) payload.finals_match_format     = p.finalsMatchFormat;
+    if (p.gamesPerRealDay      !== undefined) payload.games_per_real_day      = p.gamesPerRealDay;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
     if (error) return { error: error.message };
@@ -560,6 +565,64 @@ export const startDraft = async (
     } catch (e: any) {
         return { error: e?.message ?? '드래프트 시작 실패' };
     }
+};
+
+// ─── 경기 수동 시뮬레이션 오버라이드 (어드민, Fly.io POST /sim-override) ─────
+// admin-sim-override EF(+ simulate-game EF)를 완전 대체.
+
+export const simGameOverride = async (
+    roomId: string,
+    gameId: string,
+    accessToken?: string
+): Promise<{ ok: boolean; homeScore?: number; awayScore?: number; simDurationMs?: number; skipped?: boolean; error?: string }> => {
+    const token = accessToken ?? (await supabase.auth.getSession()).data.session?.access_token;
+    try {
+        const res = await fetch(`${FLY_SERVER}/sim-override`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ roomId, gameId }),
+        });
+        const data = await res.json().catch(() => ({})) as any;
+        return { ok: res.ok, ...data };
+    } catch (e: any) {
+        return { ok: false, error: e?.message ?? '시뮬레이션 요청 실패' };
+    }
+};
+
+// ─── 개별 경기 일정(scheduledAt) 변경 (어드민) ────────────────────────────────
+// rooms.schedule JSONB 배열에서 해당 경기만 찾아 scheduledAt을 갱신한다.
+// 이미 플레이된 경기는 결과가 확정돼 있으므로 변경하지 않는다.
+
+export const updateGameScheduledAt = async (
+    roomId: string,
+    gameId: string,
+    scheduledAtIso: string,
+): Promise<{ error: string | null }> => {
+    const { data, error: fetchErr } = await supabase
+        .from('rooms')
+        .select('schedule')
+        .eq('id', roomId)
+        .single();
+    if (fetchErr || !data) return { error: fetchErr?.message ?? '방을 찾을 수 없습니다.' };
+
+    const schedule = (data.schedule as any[] | null) ?? [];
+    const target = schedule.find(g => g.id === gameId);
+    if (!target) return { error: '해당 경기를 찾을 수 없습니다.' };
+    if (target.played) return { error: '이미 종료된 경기는 일정을 변경할 수 없습니다.' };
+
+    const updatedSchedule = schedule.map(g =>
+        g.id === gameId ? { ...g, scheduledAt: scheduledAtIso } : g,
+    );
+
+    const { error } = await supabase
+        .from('rooms')
+        .update({ schedule: updatedSchedule })
+        .eq('id', roomId);
+
+    return { error: error?.message ?? null };
 };
 
 // ─── 토너먼트 브라켓 데이터 저장 ─────────────────────────────────────────────

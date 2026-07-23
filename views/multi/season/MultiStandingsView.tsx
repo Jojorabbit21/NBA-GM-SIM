@@ -6,7 +6,7 @@ import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useGame } from '../../../hooks/useGameContext';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import type { MultiStandingsRecord } from './multiSeasonUtils';
-import { isFinal } from './multiGameReveal';
+import { isFinal, resolveRealAt } from './multiGameReveal';
 import { useServerClock } from '../../../utils/serverClock';
 import TournamentBracketView from './TournamentBracketView';
 import {
@@ -276,10 +276,20 @@ const MultiStandingsView: React.FC = () => {
     const isTournament = league?.type === 'tournament';
 
     if (isTournament) {
+        // schedule은 서버가 game_seq(압축 인덱스)로만 채워 저장 — scheduledAt이 없으면
+        // multiGameReveal의 isStarted/isFinal이 played 값에만 의존해 경기가 항상
+        // 'scheduled'로 묶여버린다. MultiScheduleView와 동일하게 여기서도 정규화한다.
+        const simStart = league?.sim_real_start_at ?? null;
+        const gprd     = league?.games_per_real_day ?? 5;
+        const normalizedSchedule = schedule.map(g => ({
+            ...g,
+            scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt,
+        }));
+
         return (
             <TournamentBracket
                 bracketData={league?.bracket_data ?? null}
-                schedule={schedule}
+                schedule={normalizedSchedule}
                 myTeamId={myTeamId}
             />
         );

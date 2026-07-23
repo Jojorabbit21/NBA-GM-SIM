@@ -44,9 +44,9 @@ export function buildDefaultDepthChart(roster: Player[], tactics: GameTactics): 
             if (p.id === starterId) continue;
             if (p.position.includes(pos)) dc[pos].push(p.id);
         }
-        // 위에서 채워지지 않은 슬롯을 나머지로 채움
-        for (const p of roster) {
-            if (!dc[pos].includes(p.id)) dc[pos].push(p.id);
+        // 이 포지션에 맞는 선수가 아무도 없을 때만(진짜 최후 수단) 나머지 전원으로 채움
+        if (dc[pos].length === 0) {
+            for (const p of roster) dc[pos].push(p.id);
         }
     }
 

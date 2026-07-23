@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Team, Player, Game } from '../types';
 import { LeagueCoachingData } from '../types/coaching';
 import { LeaguePickAssets } from '../types/draftAssets';
@@ -35,8 +36,18 @@ interface RosterViewProps {
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, hideTabs }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<RosterTab>('roster');
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  const teamMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (teamMenuRef.current && !teamMenuRef.current.contains(e.target as Node)) setTeamMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const selectedTeam = useMemo(() =>
       allTeams.find(t => t.id === selectedTeamId) || allTeams[0]
@@ -52,12 +63,40 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-      {/* Header Bar — 팀 정보만 */}
+      {/* Header Bar — 팀 정보 + 팀 전환 드롭다운 */}
       <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center" style={{ backgroundColor: theme.bg }}>
-          <div className="flex items-center gap-3">
-              <TeamLogo teamId={selectedTeam.id} size="sm" />
-              <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
-              <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
+          <div className="relative" ref={teamMenuRef}>
+              <button
+                  onClick={() => setTeamMenuOpen(o => !o)}
+                  className="flex items-center gap-3 group"
+              >
+                  <TeamLogo teamId={selectedTeam.id} size="sm" />
+                  <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
+                  <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
+                  {teamMenuOpen
+                      ? <ChevronUp size={16} className="shrink-0 opacity-70 group-hover:opacity-100" style={{ color: theme.text }} />
+                      : <ChevronDown size={16} className="shrink-0 opacity-70 group-hover:opacity-100" style={{ color: theme.text }} />
+                  }
+              </button>
+              {teamMenuOpen && (
+                  <div className="absolute top-full left-0 mt-2 bg-black border border-zinc-700 rounded-lg p-2 flex flex-col gap-0.5 z-[200] min-w-[220px] max-h-80 overflow-y-auto custom-scrollbar">
+                      {allTeams.map(t => (
+                          <button
+                              key={t.id}
+                              onClick={() => { setSelectedTeamId(t.id); setTeamMenuOpen(false); }}
+                              className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors ${
+                                  t.id === selectedTeam.id
+                                      ? 'bg-white/15 text-white font-semibold'
+                                      : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
+                              }`}
+                          >
+                              <TeamLogo teamId={t.id} size="sm" />
+                              <span className="truncate">{t.city} {t.name}</span>
+                              {t.id === myTeamId && <span className="ml-auto text-[10px] font-bold text-indigo-400 shrink-0">MY</span>}
+                          </button>
+                      ))}
+                  </div>
+              )}
           </div>
       </div>
 

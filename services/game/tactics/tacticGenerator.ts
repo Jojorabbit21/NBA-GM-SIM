@@ -84,40 +84,113 @@ function blendWithCoach(
     };
 }
 
-export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreferences): GameTactics => {
+// --- 뎁스차트 자동 구성: 포지션 인접성 기반 4단계 채움 ---
+const DEPTH_POSITIONS: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+const DEPTH_POSITION_INDEX: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
+
+/** 포지션 간 거리 (인접=1). 2 이상은 대체 불가(예: C↔SG, PG↔PF). */
+function positionDistance(a: string, b: string): number {
+    return Math.abs((DEPTH_POSITION_INDEX[a] ?? 0) - (DEPTH_POSITION_INDEX[b] ?? 0));
+}
+
+/** target과 거리 1인 인접 포지션 목록 (예: SG → [PG, SF]). */
+function adjacentPositions(target: keyof DepthChart): (keyof DepthChart)[] {
+    return DEPTH_POSITIONS.filter(p => p !== target && positionDistance(p, target) === 1);
+}
+
+/**
+ * 뎁스차트 자동 구성 — 특정 포지션 선수가 드래프트/로스터에서 바닥나 빈 슬롯이 남는 걸
+ * 최소화하기 위해 4단계로 채운다:
+ * 1) 정포지션 우선 배치 — depth 0(주전) → 1(벤치) → 2(써드) 순으로, 각 depth마다 전
+ *    포지션을 먼저 훑는다(주전 5명이 벤치보다 항상 먼저 채워짐).
+ * 2) 정포지션 후보가 없으면 인접 포지션(거리 1)의 미사용 선수로 보충(예: SG가 PG/SF로).
+ * 3) 인접 포지션에도 미사용 선수가 없으면, 이미 배치된 인접 포지션의 낮은 우선순위
+ *    선수(써드→벤치 순)를 옮겨오고, 빈 자리가 된 그 슬롯은 인접 포지션의 미사용 선수로
+ *    한 번만 더 보충 시도한다(못 채우면 비워둠 — 체인은 여기서 끊는다. 주전은 절대 이동 안 함).
+ * 4) 그래도 못 채운 슬롯(로스터가 극단적으로 작은 경우)만 포지션 무관 최종 안전망으로 채운다.
+ */
+function buildDepthChart(sortedRoster: Player[]): { depthChart: DepthChart; usedIds: Set<string> } {
+    const depthChart: DepthChart = {
+        PG: [null, null, null], SG: [null, null, null], SF: [null, null, null],
+        PF: [null, null, null], C: [null, null, null],
+    };
+    const usedIds = new Set<string>();
+
+    const findUnusedExact = (pos: keyof DepthChart) =>
+        sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id));
+
+    const findUnusedNeighbor = (pos: keyof DepthChart) => {
+        const neighbors = adjacentPositions(pos);
+        return sortedRoster.find(p => !usedIds.has(p.id) && neighbors.some(n => p.position.includes(n)));
+    };
+
+    // 1단계: 정포지션 우선
+    for (let depth = 0; depth <= 2; depth++) {
+        for (const pos of DEPTH_POSITIONS) {
+            const candidate = findUnusedExact(pos);
+            if (candidate) { depthChart[pos][depth] = candidate.id; usedIds.add(candidate.id); }
+        }
+    }
+
+    // 2단계: 인접 포지션 미사용 선수로 보충
+    for (let depth = 0; depth <= 2; depth++) {
+        for (const pos of DEPTH_POSITIONS) {
+            if (depthChart[pos][depth]) continue;
+            const candidate = findUnusedNeighbor(pos);
+            if (candidate) { depthChart[pos][depth] = candidate.id; usedIds.add(candidate.id); }
+        }
+    }
+
+    // 3단계: 인접 포지션의 여유분(써드→벤치)을 연쇄 이동
+    for (let depth = 0; depth <= 2; depth++) {
+        for (const pos of DEPTH_POSITIONS) {
+            if (depthChart[pos][depth]) continue;
+            for (const neighbor of adjacentPositions(pos)) {
+                let moved = false;
+                for (let nd = 2; nd >= 1; nd--) {
+                    const movedId = depthChart[neighbor][nd];
+                    if (!movedId) continue;
+                    depthChart[pos][depth] = movedId;
+                    depthChart[neighbor][nd] = null;
+                    // 빈 자리가 된 neighbor 슬롯을 한 번만 더 보충 시도(체인은 여기서 종료)
+                    const backfill = findUnusedNeighbor(neighbor);
+                    if (backfill) { depthChart[neighbor][nd] = backfill.id; usedIds.add(backfill.id); }
+                    moved = true;
+                    break;
+                }
+                if (moved) break;
+            }
+        }
+    }
+
+    // 4단계: 최종 안전망 — 포지션 무관
+    for (let depth = 0; depth <= 2; depth++) {
+        for (const pos of DEPTH_POSITIONS) {
+            if (depthChart[pos][depth]) continue;
+            const fallback = sortedRoster.find(p => !usedIds.has(p.id));
+            if (fallback) { depthChart[pos][depth] = fallback.id; usedIds.add(fallback.id); }
+        }
+    }
+
+    return { depthChart, usedIds };
+}
+
+/**
+ * @param preserveDraftOrder true면 team.roster의 원래 순서(예: 드래프트 픽 순서)를 그대로 유지해
+ * 뎁스차트를 채운다 — 포지션이 겹칠 때 먼저 뽑힌(로스터 배열상 앞선) 선수가 선발을 차지하고,
+ * 나중에 뽑힌 선수는 OVR이 더 높아도 벤치로 밀린다. false/미지정이면 기존처럼 OVR 내림차순.
+ */
+export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreferences, preserveDraftOrder = false): GameTactics => {
     const healthy = team.roster.filter(p => p.health !== 'Injured');
-    const sortedRoster = [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    const sortedRoster = preserveDraftOrder
+        ? healthy
+        : [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     // ─────────────────────────────────────────────
     // 1. 뎁스차트 자동 구성
     // ─────────────────────────────────────────────
-    const depthChart: DepthChart = {
-        PG: [null, null, null],
-        SG: [null, null, null],
-        SF: [null, null, null],
-        PF: [null, null, null],
-        C:  [null, null, null]
-    };
-    const usedIds = new Set<string>();
+    const { depthChart, usedIds } = buildDepthChart(sortedRoster);
     const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-
-    for (let depth = 0; depth <= 1; depth++) {
-        for (const pos of positions) {
-            const candidate = sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id));
-            if (candidate) {
-                depthChart[pos][depth] = candidate.id;
-                usedIds.add(candidate.id);
-            } else {
-                const fallback = sortedRoster.find(p => !usedIds.has(p.id));
-                if (fallback) { depthChart[pos][depth] = fallback.id; usedIds.add(fallback.id); }
-            }
-        }
-    }
-    for (const pos of positions) {
-        const c = sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id))
-               ?? sortedRoster.find(p => !usedIds.has(p.id));
-        if (c) { depthChart[pos][2] = c.id; usedIds.add(c.id); }
-    }
 
     // ─────────────────────────────────────────────
     // 2. 로테이션 맵 초기화

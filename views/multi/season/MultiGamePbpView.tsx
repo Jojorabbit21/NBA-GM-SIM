@@ -1,17 +1,21 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Clock, Circle } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { Loader2, Clock, Circle } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
+import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
 import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta } from '../../../types/engine';
 import type { Game, ShotEvent } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
-import { REPLAY_DURATION_MS, getGameDisplayState } from './multiGameReveal';
+import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt } from './multiGameReveal';
+import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 
 const TOTAL_GAME_SECONDS  = 2880;
+const LIVE_POLL_MS        = 5000;
+const TEAM_TIMEOUTS_TOTAL = 4;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -258,32 +262,41 @@ const CompactWPGraph: React.FC<{
     awayAbbr:      string;
 }> = ({ allLogs, homeTeamId, currentMinute, homeColor, awayColor, homeAbbr, awayAbbr }) => {
     const W = 100, H = 50, MID = 25, TOTAL = 48;
-    const snapsRef = useRef<{ wp: number }[]>([{ wp: 50 }]);
+    // ref+외부 뮤테이션 방식은 완료된(review) 경기에서 깨진다 — final 상태는 폴링이 없어
+    // currentMinute이 마운트 시 곧바로 최종값(48)으로 고정되고 재렌더가 다시 일어나지
+    //않으므로, useEffect가 ref를 다 채워도 그 결과를 반영할 리렌더가 없어 그래프가
+    // 초기 1개 포인트(50%)에서 멈춰 보인다. state로 바꿔 채워질 때마다 리렌더되게 한다.
+    const [snaps, setSnaps] = useState<{ wp: number }[]>([{ wp: 50 }]);
 
     useEffect(() => {
-        const targetMinute = currentMinute + 1;
-        if (targetMinute <= 0 || targetMinute > 48) return;
-        while (snapsRef.current.length <= targetMinute) {
-            const m = snapsRef.current.length;
-            let hScore = 0, aScore = 0;
-            const mSec = m * 60;
-            for (const log of allLogs) {
-                const [mm, ss] = log.timeRemaining.split(':').map(Number);
-                const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
-                if (elapsed > mSec) break;
-                if (log.type === 'score' || log.type === 'freethrow') {
-                    const pts = log.points ?? 0;
-                    if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+        const targetMinute = Math.min(currentMinute + 1, TOTAL);
+        if (targetMinute <= 0) return;
+        setSnaps(prev => {
+            if (prev.length > targetMinute) return prev;
+            const next = [...prev];
+            while (next.length <= targetMinute) {
+                const m = next.length;
+                let hScore = 0, aScore = 0;
+                const mSec = m * 60;
+                for (const log of allLogs) {
+                    const [mm, ss] = log.timeRemaining.split(':').map(Number);
+                    const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
+                    if (elapsed > mSec) break;
+                    if (log.type === 'score' || log.type === 'freethrow') {
+                        const pts = log.points ?? 0;
+                        if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+                    }
                 }
+                next.push({ wp: calculateWinProbability(hScore, aScore, m) });
             }
-            snapsRef.current.push({ wp: calculateWinProbability(hScore, aScore, m) });
-        }
-    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
+            return next;
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentMinute]);
 
     const { fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
-        const snaps = snapsRef.current;
-        const pts   = snaps.map((d, i) => ({ x: (i / TOTAL) * W, y: (d.wp / 100) * H }));
-        const pd    = getSmoothPath(pts);
+        const pts = snaps.map((d, i) => ({ x: (i / TOTAL) * W, y: (d.wp / 100) * H }));
+        const pd  = getSmoothPath(pts);
         const sX = pts[0].x, sY = pts[0].y;
         const eX = pts[pts.length - 1].x, eY = pts[pts.length - 1].y;
         let cc = '';
@@ -291,7 +304,7 @@ const CompactWPGraph: React.FC<{
         if (ci !== -1) cc = pd.substring(ci);
         const fp = `M 0,${MID} L ${sX},${sY} ${cc} L ${eX},${MID} Z`;
         return { fillPath: fp, pathData: pd, currentWP: snaps[snaps.length - 1].wp, endX: eX, endY: eY };
-    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [snaps]);
 
     const homeProb = Math.round(currentWP);
     const awayProb = 100 - homeProb;
@@ -327,7 +340,7 @@ const CompactWPGraph: React.FC<{
                     <path d={fillPath} fill="url(#mwpGrad)" stroke="none" />
                     <path d={pathData} fill="none" stroke="#e2e8f0" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                 </svg>
-                {snapsRef.current.length > 1 && (
+                {snaps.length > 1 && (
                     <div
                         className="absolute w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_6px_white] -translate-x-1/2 -translate-y-1/2 transition-all duration-100"
                         style={{ left: `${endX}%`, top: `${(endY / H) * 100}%` }}
@@ -373,7 +386,7 @@ const PlayerBoxPanel: React.FC<{
         <div className="flex flex-col min-h-0 shrink-0">
             {/* 헤더 */}
             <div
-                className="grid gap-x-0.5 px-2 py-2 text-xs font-bold uppercase tracking-wider border-b border-slate-700 bg-slate-800 text-slate-400 shrink-0"
+                className="grid gap-x-0.5 px-2 h-9 items-center text-xs font-bold uppercase tracking-wider border-b border-slate-700 bg-slate-800 text-slate-400 shrink-0"
                 style={{ gridTemplateColumns: BOX_GRID }}
             >
                 <span>{label}</span>
@@ -444,7 +457,7 @@ const PlayerBoxPanel: React.FC<{
 
 const BoxScorePlaceholder: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex flex-col shrink-0">
-        <div className="px-2 py-2 text-xs font-bold uppercase tracking-wider border-b border-slate-700 bg-slate-800 text-slate-400">
+        <div className="flex items-center px-2 h-9 text-xs font-bold uppercase tracking-wider border-b border-slate-700 bg-slate-800 text-slate-400">
             {label}
         </div>
         <div className="py-10 text-center text-slate-600 text-xs ko-normal">
@@ -457,8 +470,14 @@ const BoxScorePlaceholder: React.FC<{ label: string }> = ({ label }) => (
 
 const TEAM_STAT_ROWS = [
     { key: 'pts',   label: 'PTS', fmt: (v: number) => String(v)      },
+    { key: 'fgm',   label: 'FGM', fmt: (v: number) => String(v)      },
+    { key: 'fga',   label: 'FGA', fmt: (v: number) => String(v)      },
     { key: 'fgPct', label: 'FG%', fmt: (v: number) => v.toFixed(1)   },
+    { key: 'p3m',   label: '3PM', fmt: (v: number) => String(v)      },
+    { key: 'p3a',   label: '3PA', fmt: (v: number) => String(v)      },
     { key: 'p3Pct', label: '3P%', fmt: (v: number) => v.toFixed(1)   },
+    { key: 'ftm',   label: 'FTM', fmt: (v: number) => String(v)      },
+    { key: 'fta',   label: 'FTA', fmt: (v: number) => String(v)      },
     { key: 'ftPct', label: 'FT%', fmt: (v: number) => v.toFixed(1)   },
     { key: 'oreb',  label: 'OREB', fmt: (v: number) => String(v)     },
     { key: 'reb',   label: 'REB', fmt: (v: number) => String(v)      },
@@ -481,8 +500,14 @@ const TeamStatsCompare: React.FC<{
         const sum = (box: PlayerBoxScore[], fn: (p: PlayerBoxScore) => number) => box.reduce((s, p) => s + fn(p), 0);
         const mk = (s: TeamStats, box: PlayerBoxScore[]) => ({
             pts:   s.pts,
+            fgm:   s.fgm,
+            fga:   s.fga,
             fgPct: s.fga > 0 ? (s.fgm / s.fga) * 100 : 0,
+            p3m:   s.p3m,
+            p3a:   s.p3a,
             p3Pct: s.p3a > 0 ? (s.p3m / s.p3a) * 100 : 0,
+            ftm:   s.ftm,
+            fta:   s.fta,
             ftPct: s.fta > 0 ? (s.ftm / s.fta) * 100 : 0,
             oreb:  sum(box, p => p.offReb),
             reb:   sum(box, p => p.reb),
@@ -529,24 +554,31 @@ const TeamStatsCompare: React.FC<{
 
 const MultiGamePbpView: React.FC = () => {
     const { gameId }           = useParams<{ leagueId: string; gameId: string }>();
-    const navigate              = useNavigate();
-    const { room, leagueTeams } = useLeagueContext();
+    const { room, leagueTeams, league } = useLeagueContext();
+    const { session }           = useGame();
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
 
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
     const [error,         setError]         = useState<string | null>(null);
     // undefined: 미조회, null: 레거시(scheduledAt 없음), string: 정시
     const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
+    const [gamePlayed,    setGamePlayed]    = useState(false);
     const [quarterFilter, setQuarterFilter] = useState<0|1|2|3|4|5>(0);
     const prevVisibleCountRef = useRef(0);
     const serverNow = useServerClock();
 
     // scheduled/live/final 표시 상태. scheduledAt + serverNow만으로 결정되므로
     // 누가 언제 접속해도 동일한 시점에 동일한 상태가 나온다.
-    const displayState = getGameDisplayState({ scheduledAt: scheduledAt ?? undefined }, serverNow);
+    const displayState = getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed }, serverNow);
 
     // rooms.schedule에서 scheduledAt 조회. game_pbp는 RLS로 정시 전 row가 숨겨지므로
     // scheduled 상태 판정에는 schedule 쪽 정보가 필요하다.
+    // 토너먼트 경기는 scheduledAt이 저장되지 않고 game_seq만 있으므로 resolveRealAt으로
+    // 반드시 역산해야 한다 — 그냥 game.scheduledAt만 읽으면 항상 undefined가 되어
+    // displayState가 영원히 'scheduled'로 고정되고, 이어지는 PBP 조회 effect가
+    // 매번 스킵되어 isLoading이 false로 내려가지 않는(무한 로딩) 버그가 생긴다.
     useEffect(() => {
         if (!room?.id || !gameId) return;
         let cancelled = false;
@@ -559,35 +591,53 @@ const MultiGamePbpView: React.FC = () => {
             if (cancelled) return;
             const schedule = (data?.schedule as Game[] | null) ?? [];
             const game = schedule.find(g => g.id === gameId);
-            setScheduledAt(game?.scheduledAt ?? null);
+            setGamePlayed(!!game?.played);
+            setScheduledAt(game ? (resolveRealAt(game, simStart, gprd) ?? game.scheduledAt ?? null) : null);
         })();
         return () => { cancelled = true; };
-    }, [room?.id, gameId]);
+    }, [room?.id, gameId, simStart, gprd]);
 
-    // game_pbp 조회. displayState==='scheduled'이면 RLS가 row를 가려 항상 실패하므로 시도하지 않고,
-    // gameData를 이미 확보했으면 재조회하지 않는다. live/final로 전환될 때마다(정시 진입/+10분)
-    // displayState가 바뀌어 effect가 재실행되므로, 사전계산 지연으로 정시 직후 row가 아직 없던
-    // 경우에도 자동으로 재시도되어 "먼저 들어온 유저만 에러 화면에 고정"되는 문제를 방지한다.
+    // 경기 상세 조회 — Bun 서버 /live-game 경유. displayState==='scheduled'이면 서버도
+    // '시작 전'으로 응답하므로 시도하지 않는다. game_pbp 테이블은 이제 RLS가 종료(+10분) 후에만
+    // 직접 조회를 허용하므로, live 구간에는 반드시 이 엔드포인트가 elapsed까지 잘라 내려주는
+    // 값을 써야 한다 — 그래서 final로 넘어가기 전까지는 주기적으로 재조회해 새로 공개된
+    // 이벤트를 받아온다(예전처럼 최초 1회만 받아 클라이언트가 갖고 있던 미래 이벤트를
+    // 스스로 감추는 방식은 더 이상 불가능/불필요).
     useEffect(() => {
         if (!room?.id || !gameId) return;
-        if (gameData) return;
         if (displayState === 'scheduled') return;
         let cancelled = false;
-        (async () => {
-            setIsLoading(true);
-            const { data, error: err } = await supabase
-                .from('game_pbp')
-                .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
-                .eq('room_id', room.id)
-                .eq('game_id', gameId)
-                .single();
+
+        const load = async () => {
+            const result = await fetchLiveGameView(room.id, gameId, session?.access_token);
             if (cancelled) return;
-            if (err || !data) setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
-            else             { setGameData(data as GamePbpRow); setError(null); }
+            if (!('state' in result)) {
+                setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
+                setIsLoading(false);
+                return;
+            }
+            setGameData({
+                game_id:         result.gameId,
+                home_team_id:    result.homeTeamId,
+                away_team_id:    result.awayTeamId,
+                home_score:      result.homeScore ?? 0,
+                away_score:      result.awayScore ?? 0,
+                game_start_time: result.gameStartTime,
+                events:          result.events,
+                shot_events:     result.shotEvents,
+                home_box:        result.homeBox as PlayerBoxScore[],
+                away_box:        result.awayBox as PlayerBoxScore[],
+                box_timeline:    result.boxTimeline,
+            });
+            setError(null);
             setIsLoading(false);
-        })();
-        return () => { cancelled = true; };
-    }, [room?.id, gameId, displayState, gameData]);
+        };
+
+        setIsLoading(true);
+        load();
+        const timer = displayState === 'live' ? setInterval(load, LIVE_POLL_MS) : null;
+        return () => { cancelled = true; if (timer) clearInterval(timer); };
+    }, [room?.id, gameId, displayState, session?.access_token]);
 
     // ── 시간 기반 필터 ──────────────────────────────────────────────────────────
 
@@ -685,7 +735,42 @@ const MultiGamePbpView: React.FC = () => {
         return last ? { home: last.homeScore ?? 0, away: last.awayScore ?? 0 } : { home: 0, away: 0 };
     }, [visibleEvents]);
 
+    // 스코어링 런 — 마지막으로 공개된 득점 이벤트에 찍힌 런 상태를 그대로 표시.
+    // 저장 당시 시뮬레이션이 실시간으로 판정한 값이라 싱글플레이어 라이브 화면과 동일한 정의를 따른다.
+    const activeRun = useMemo(() => {
+        const lastScore = [...visibleEvents].reverse().find(e => e.type === 'score' || e.type === 'freethrow');
+        if (!lastScore?.runTeamId) return null;
+        const isHomeRunning = lastScore.runTeamId === gameData?.home_team_id;
+        const teamPts = (isHomeRunning ? lastScore.runHomePts : lastScore.runAwayPts) ?? 0;
+        const oppPts  = (isHomeRunning ? lastScore.runAwayPts : lastScore.runHomePts) ?? 0;
+        return { teamId: lastScore.runTeamId, teamPts, oppPts };
+    }, [visibleEvents, gameData?.home_team_id]);
+
     const currentQuarter = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].quarter : 1;
+
+    // 파울(현재 쿼터) / 타임아웃 잔여 — 싱글플레이어와 동일하게 표시.
+    // 파울은 지금까지 공개된 이벤트 중 '이번 쿼터'의 foul 타입 개수를 세어 파생하고,
+    // 타임아웃은 마지막으로 공개된 타임아웃 로그의 잔여치를 그대로 읽는다(엔진이 저장해둔 값).
+    // foulTeamId 기반으로 집계 — 'foul' 타입뿐 아니라 슈팅파울('freethrow' 타입, teamId는 공격팀으로
+    // 찍혀 있어 이걸로는 못 셈)까지 정확히 잡는다. 오펜시브/테크니컬 파울은 팀파울(보너스)에 안 들어가므로 제외.
+    const homeFouls = useMemo(
+        () => visibleEvents.filter(e => e.foulTeamId === gameData?.home_team_id && e.quarter === currentQuarter).length,
+        [visibleEvents, currentQuarter, gameData?.home_team_id],
+    );
+    const awayFouls = useMemo(
+        () => visibleEvents.filter(e => e.foulTeamId === gameData?.away_team_id && e.quarter === currentQuarter).length,
+        [visibleEvents, currentQuarter, gameData?.away_team_id],
+    );
+    const timeoutsLeft = useMemo(() => {
+        const reversed = [...visibleEvents].reverse();
+        const lastHome = reversed.find(e => e.timeoutsLeft != null && e.teamId === gameData?.home_team_id);
+        const lastAway = reversed.find(e => e.timeoutsLeft != null && e.teamId === gameData?.away_team_id);
+        return {
+            home: lastHome?.timeoutsLeft ?? TEAM_TIMEOUTS_TOTAL,
+            away: lastAway?.timeoutsLeft ?? TEAM_TIMEOUTS_TOTAL,
+        };
+    }, [visibleEvents, gameData?.home_team_id, gameData?.away_team_id]);
+
     const currentMinute  = useMemo(() => {
         if (visibleEvents.length === 0) return 0;
         const last = visibleEvents[visibleEvents.length - 1];
@@ -728,7 +813,6 @@ const MultiGamePbpView: React.FC = () => {
                         시작까지 {fmtCountdown(remainingMs)}
                     </p>
                 )}
-                <button onClick={() => navigate(-1)} className="text-indigo-400 text-sm ko-normal hover:underline mt-2">뒤로</button>
             </div>
         );
     }
@@ -738,7 +822,6 @@ const MultiGamePbpView: React.FC = () => {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 bg-slate-950">
                 <p className="text-slate-400 text-sm ko-normal">{error ?? '경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.'}</p>
-                <button onClick={() => navigate(-1)} className="text-indigo-400 text-sm ko-normal hover:underline">뒤로</button>
             </div>
         );
     }
@@ -755,10 +838,26 @@ const MultiGamePbpView: React.FC = () => {
                 <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center">
                     {/* Away */}
                     <div className="flex items-center justify-end gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-black shrink-0"
-                                style={{ backgroundColor: awayColor, color: awayText }}>{awayAbbr.slice(0, 3)}</div>
-                            <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">{awayName}</span>
+                        <div className="flex flex-col items-end gap-1 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-black shrink-0"
+                                    style={{ backgroundColor: awayColor, color: awayText }}>{awayAbbr.slice(0, 3)}</div>
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">{awayName}</span>
+                            </div>
+                            {isLive && (
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                    {awayFouls >= 5 ? (
+                                        <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
+                                    ) : (
+                                        <span>파울 <span className="text-white font-bold tabular-nums">{awayFouls}</span></span>
+                                    )}
+                                    <span className="flex gap-0.5">
+                                        {Array.from({ length: TEAM_TIMEOUTS_TOTAL }).map((_, i) => (
+                                            <span key={i} className={i < timeoutsLeft.away ? 'text-amber-400' : 'text-slate-700'}>●</span>
+                                        ))}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                         <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-right shrink-0">{currentScore.away}</span>
                     </div>
@@ -782,40 +881,44 @@ const MultiGamePbpView: React.FC = () => {
                         ) : (
                             <span className="text-xs text-slate-500 ko-normal">최종 결과</span>
                         )}
+                        {/* 스코어링 런 인디케이터 — 런이 실제로 있을 때만 렌더링(자리 예약 없음).
+                            없으면 위 두 줄(쿼터/시계, LIVE·최종결과)만 남아 컬럼 중앙에 위치한다. */}
+                        {isLive && activeRun && (
+                            <span className="text-xs font-bold text-white whitespace-nowrap">
+                                🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+                                {activeRun.teamPts}-{activeRun.oppPts}
+                            </span>
+                        )}
                     </div>
 
                     {/* Home */}
                     <div className="flex items-center justify-start gap-3">
                         <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-left shrink-0">{currentScore.home}</span>
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">{homeName}</span>
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-black shrink-0"
-                                style={{ backgroundColor: homeColor, color: homeText }}>{homeAbbr.slice(0, 3)}</div>
+                        <div className="flex flex-col items-start gap-1 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">{homeName}</span>
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-black shrink-0"
+                                    style={{ backgroundColor: homeColor, color: homeText }}>{homeAbbr.slice(0, 3)}</div>
+                            </div>
+                            {isLive && (
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                    {homeFouls >= 5 ? (
+                                        <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
+                                    ) : (
+                                        <span>파울 <span className="text-white font-bold tabular-nums">{homeFouls}</span></span>
+                                    )}
+                                    <span className="flex gap-0.5">
+                                        {Array.from({ length: TEAM_TIMEOUTS_TOTAL }).map((_, i) => (
+                                            <span key={i} className={i < timeoutsLeft.home ? 'text-amber-400' : 'text-slate-700'}>●</span>
+                                        ))}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ── 탭 바 ── */}
-            <div className="relative flex items-center px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
-                <div className="absolute inset-0 pointer-events-none" style={{
-                    background: `linear-gradient(to right, ${awayColor}40, transparent 30%, transparent 70%, ${homeColor}40)`
-                }} />
-                <div className="relative z-10 flex-1 flex items-center">
-                    <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-xs font-bold">
-                        <ArrowLeft size={14} />
-                        뒤로
-                    </button>
-                </div>
-                <div className="relative z-10 flex items-center">
-                    {isLive && (
-                        <span className="flex items-center gap-1 text-xs font-bold text-red-400">
-                            <Circle size={6} className="fill-red-400 animate-pulse" />
-                            LIVE
-                        </span>
-                    )}
-                </div>
-            </div>
 
             {/* ── Body: LiveGameView와 동일한 3-column ── */}
             <div className="flex flex-1 overflow-hidden">
@@ -852,7 +955,7 @@ const MultiGamePbpView: React.FC = () => {
                 <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
 
                     {/* 샷차트 */}
-                    <div className="shrink-0 border-b border-slate-800">
+                    <div className="shrink-0 border-b border-slate-700">
                         <MultiFullCourtChart
                             homeTeamId={gameData.home_team_id}
                             homeColor={homeColor}
@@ -867,7 +970,7 @@ const MultiGamePbpView: React.FC = () => {
                     {/* PBP 피드 */}
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                         {/* 헤더 + 쿼터 필터 */}
-                        <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-800 border-b border-slate-700">
+                        <div className="shrink-0 px-3 h-9 flex items-center bg-slate-800 border-b border-slate-700">
                             <div className="flex items-center gap-3">
                                 <p className="text-xs text-slate-300 font-semibold uppercase tracking-wider">
                                     플레이-바이-플레이

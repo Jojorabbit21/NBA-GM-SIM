@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { X, Tv } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { PlayoffSeries, Game } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamLogo } from '../../../components/common/TeamLogo';
@@ -38,8 +39,9 @@ const TeamSlot: React.FC<{
     isWinner: boolean;
     finished: boolean;
     isMe: boolean;
+    isChampion: boolean;
     leagueTeams: LeagueTeamRow[];
-}> = ({ teamId, wins, showWins, isWinner, finished, isMe, leagueTeams }) => {
+}> = ({ teamId, wins, showWins, isWinner, finished, isMe, isChampion, leagueTeams }) => {
     if (teamId === 'BYE') return null;
 
     if (teamId === 'TBD') {
@@ -53,17 +55,28 @@ const TeamSlot: React.FC<{
 
     const team = leagueTeams.find(t => t.team_slug === teamId);
     const label = team?.team_abbr ?? teamId.toUpperCase();
+    const isEliminated = finished && !isWinner;
+    const isAdvanced   = finished && isWinner && !isChampion;
 
     return (
-        <div className={`flex items-center gap-2 px-2.5 py-[7px] ${isMe ? 'bg-indigo-900/20' : ''}`}>
+        <div className={`flex items-center gap-2 px-2.5 py-[7px] ${
+            isChampion ? 'bg-amber-500/10' : isAdvanced ? 'bg-emerald-500/10' : isMe ? 'bg-indigo-900/20' : ''
+        }`}>
             <TeamLogo teamId={teamId} size="sm" />
             <span className={`text-[11px] font-bold flex-1 truncate ${
-                isWinner ? 'text-white' : finished ? 'text-slate-500' : isMe ? 'text-indigo-300' : 'text-slate-200'
+                isChampion ? 'text-amber-400'
+                    : isEliminated ? 'text-slate-500 line-through'
+                    : isAdvanced ? 'text-emerald-300'
+                    : isWinner ? 'text-white'
+                    : isMe ? 'text-indigo-300'
+                    : 'text-slate-200'
             }`}>
                 {label}
             </span>
             {showWins && (
-                <span className={`text-[11px] font-black tabular-nums ${isWinner ? 'text-white' : 'text-slate-600'}`}>
+                <span className={`text-[11px] font-black tabular-nums ${
+                    isChampion ? 'text-amber-400' : isAdvanced ? 'text-emerald-300' : isWinner ? 'text-white' : 'text-slate-600'
+                }`}>
                     {wins}
                 </span>
             )}
@@ -78,8 +91,9 @@ const MatchCard: React.FC<{
     leagueTeams: LeagueTeamRow[];
     myTeamId: string | null;
     selected: boolean;
+    isFinalRound: boolean;
     onClick: () => void;
-}> = ({ series, leagueTeams, myTeamId, selected, onClick }) => {
+}> = ({ series, leagueTeams, myTeamId, selected, isFinalRound, onClick }) => {
     const isBye = series.lowerSeedId === 'BYE';
     const showWins = series.targetWins > 1;
 
@@ -103,6 +117,8 @@ const MatchCard: React.FC<{
             className={`w-44 rounded-lg overflow-hidden border cursor-pointer transition-all select-none ${
                 selected
                     ? 'border-indigo-500 ring-1 ring-indigo-500/30 bg-slate-800'
+                    : isFinalRound && series.finished
+                    ? 'border-amber-500/60 bg-slate-900 hover:border-amber-400'
                     : 'border-slate-700/50 bg-slate-900 hover:border-slate-600'
             }`}
             onClick={onClick}
@@ -114,6 +130,7 @@ const MatchCard: React.FC<{
                 isWinner={series.winnerId === series.higherSeedId}
                 finished={series.finished}
                 isMe={series.higherSeedId === myTeamId}
+                isChampion={isFinalRound && series.finished && series.winnerId === series.higherSeedId}
                 leagueTeams={leagueTeams}
             />
             <div className="border-t border-slate-700/40" />
@@ -124,6 +141,7 @@ const MatchCard: React.FC<{
                 isWinner={series.winnerId === series.lowerSeedId}
                 finished={series.finished}
                 isMe={series.lowerSeedId === myTeamId}
+                isChampion={isFinalRound && series.finished && series.winnerId === series.lowerSeedId}
                 leagueTeams={leagueTeams}
             />
         </div>
@@ -169,6 +187,8 @@ const ROW_H   = 100; // px — one R1 match row height
 const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams, myTeamId }) => {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const serverNow = useServerClock();
+    const navigate = useNavigate();
+    const { leagueId } = useParams<{ leagueId: string }>();
 
     // schedule(Realtime 실시간) 기반으로 시리즈 승수를 재계산.
     // league.bracket_data 구독 지연이 있어도 schedule 완료 경기에서 즉시 반영됨.
@@ -181,11 +201,23 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
             if (!winsMap[g.seriesId]) winsMap[g.seriesId] = {};
             winsMap[g.seriesId][winnerId] = (winsMap[g.seriesId][winnerId] ?? 0) + 1;
         }
-        return series.map(s => ({
-            ...s,
-            higherSeedWins: winsMap[s.id]?.[s.higherSeedId] ?? s.higherSeedWins,
-            lowerSeedWins:  winsMap[s.id]?.[s.lowerSeedId]  ?? s.lowerSeedWins,
-        }));
+        return series.map(s => {
+            // BYE 시리즈는 애초에 경기가 없어 생성 시점에 즉시 확정되므로 그대로 통과.
+            if (s.lowerSeedId === 'BYE') return s;
+
+            // finished/winnerId도 반드시 gated winsMap에서 재계산해야 함 — 그렇지 않으면
+            // 서버가 시뮬레이션 직후(리플레이 10분 대기 전) 즉시 갱신하는 bracket_data.series의
+            // 원본 finished/winnerId가 그대로 새어나가 "스케쥴은 아직 LIVE인데 브라켓은 이미
+            // 승패 확정" 버그가 발생한다.
+            const higherSeedWins = winsMap[s.id]?.[s.higherSeedId] ?? 0;
+            const lowerSeedWins  = winsMap[s.id]?.[s.lowerSeedId]  ?? 0;
+            const finished = higherSeedWins >= s.targetWins || lowerSeedWins >= s.targetWins;
+            const winnerId = finished
+                ? (higherSeedWins >= s.targetWins ? s.higherSeedId : s.lowerSeedId)
+                : undefined;
+
+            return { ...s, higherSeedWins, lowerSeedWins, finished, winnerId };
+        });
     }, [series, schedule, serverNow]);
 
     const totalRounds = useMemo(
@@ -210,7 +242,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
             map.set(round, [...arr].sort((a, b) => matchIndex(a.id) - matchIndex(b.id)));
         }
         return map;
-    }, [series]);
+    }, [liveSeries]);
 
     const selectedSeries = useMemo(
         () => liveSeries.find(s => s.id === selectedId),
@@ -337,6 +369,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                     leagueTeams={leagueTeams}
                                     myTeamId={myTeamId}
                                     selected={selectedId === s.id}
+                                    isFinalRound={s.round === totalRounds}
                                     onClick={() => s.lowerSeedId !== 'BYE' && toggle(s.id)}
                                 />
                             </div>
@@ -426,9 +459,14 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                     const myScore  = myIsHome ? g.homeScore : g.awayScore;
                                     const oppScore = myIsHome ? g.awayScore : g.homeScore;
                                     const isWin = final && isMyGame && (myScore ?? 0) > (oppScore ?? 0);
+                                    const homeWon = final && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
+                                    const awayWon = final && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
                                     return (
-                                        <div key={g.id} className="flex items-center gap-2 px-4 py-3">
-                                            <div className="flex items-center gap-1.5 w-14 shrink-0">
+                                        <div
+                                            key={g.id}
+                                            className="grid grid-cols-[56px_minmax(0,1fr)_84px_minmax(0,1fr)_56px] items-center gap-2 px-4 py-3"
+                                        >
+                                            <div className="flex items-center gap-1.5">
                                                 <span className="text-xs font-bold text-slate-500">{i + 1}차전</span>
                                                 {final && isMyGame && (
                                                     <span className={`text-[10px] font-black px-1 rounded ${
@@ -438,15 +476,40 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                                     </span>
                                                 )}
                                             </div>
-                                            <div className="flex-1 flex items-center justify-center gap-1.5">
-                                                <span className="text-[11px] font-bold text-slate-400 uppercase">{g.homeTeamId}</span>
+
+                                            <span className={`text-[11px] font-bold uppercase text-right ${awayWon ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                {g.awayTeamId}
+                                            </span>
+
+                                            <div className="flex items-center justify-center gap-1">
                                                 {final ? (
-                                                    <span className="text-xs font-mono text-slate-200 tabular-nums">{g.homeScore}–{g.awayScore}</span>
+                                                    <>
+                                                        <span className={`text-xs font-mono tabular-nums ${awayWon ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>{g.awayScore}</span>
+                                                        <span className="text-slate-600">–</span>
+                                                        <span className={`text-xs font-mono tabular-nums ${homeWon ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>{g.homeScore}</span>
+                                                    </>
                                                 ) : (
                                                     <span className="text-[10px] font-black text-red-400">LIVE</span>
                                                 )}
-                                                <span className="text-[11px] font-bold text-slate-400 uppercase">{g.awayTeamId}</span>
                                             </div>
+
+                                            <span className={`text-[11px] font-bold uppercase ${homeWon ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                {g.homeTeamId}
+                                            </span>
+
+                                            <button
+                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/game/${g.id}`)}
+                                                className="flex items-center gap-1 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors justify-self-end"
+                                            >
+                                                {final ? (
+                                                    '리뷰'
+                                                ) : (
+                                                    <>
+                                                        <Tv size={11} />
+                                                        보기
+                                                    </>
+                                                )}
+                                            </button>
                                         </div>
                                     );
                                 })}

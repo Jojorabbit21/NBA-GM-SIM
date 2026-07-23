@@ -236,12 +236,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.spacer);
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
-            const catchZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
-            if (catchZone === 'Rim' || catchZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, catchZone);
-                return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
-            }
-            return { playType, actor, secondaryActor: passer, preferredZone: catchZone, shotType: 'CatchShoot', bonusHitRate: 0.02 };
+            // [2026-07] 캐치앤슛 3점 전용 고정 — 원래 로직(펌프페이크→드라이브 전환)은 주석 처리로 보존
+            // const catchZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            // if (catchZone === 'Rim' || catchZone === 'Paint') {
+            //     const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, catchZone);
+            //     return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
+            // }
+            return { playType, actor, secondaryActor: passer, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.02 };
         }
         case 'Cut': {
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);

@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Play, FastForward, Clock, CheckCircle2, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Play, FastForward, Clock, CheckCircle2, Loader2, AlertCircle, RefreshCw, Pencil, Check, X } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
+import { simGameOverride, updateGameScheduledAt } from '../../../services/multi/leagueService';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -28,18 +29,38 @@ interface LogEntry {
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
+// 이 앱은 KST(UTC+9)를 기본 시간대로 고정한다 — 브라우저의 실제 로컬 타임존(해외 접속,
+// 서버 환경 등)과 무관하게 항상 KST 벽시계 시각을 기준으로 표시/저장해야 하므로
+// Date의 로컬 getter(getHours 등, 런타임의 로컬 타임존에 의존)를 쓰지 않고 오프셋을 직접 고정한다.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function fmtKst(iso: string | undefined): string {
     if (!iso) return '—';
     const d = new Date(iso);
-    const yy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
+    if (isNaN(d.getTime())) return '—';
+    const kst = new Date(d.getTime() + KST_OFFSET_MS);
+    const yy = kst.getUTCFullYear();
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(kst.getUTCDate()).padStart(2, '0');
+    const hh = String(kst.getUTCHours()).padStart(2, '0');
+    const mi = String(kst.getUTCMinutes()).padStart(2, '0');
     return `${yy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+// ISO datetime(UTC) → datetime-local input 값(항상 KST 벽시계 시각 기준)
+function toInputValue(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return new Date(d.getTime() + KST_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+// datetime-local(KST 벽시계 시각으로 해석) → ISO(UTC)
+function kstLocalToIso(local: string): string {
+    return new Date(new Date(`${local}:00Z`).getTime() - KST_OFFSET_MS).toISOString();
+}
 
 // ── AdminSimView ──────────────────────────────────────────────────────────────
 
@@ -95,12 +116,10 @@ const AdminSimView: React.FC = () => {
     const simOneGame = useCallback(async (game: ScheduleGame): Promise<boolean> => {
         if (!room?.id || !leagueId || !session) return false;
 
-        const { data, error } = await supabase.functions.invoke('admin-sim-override', {
-            body: { action: 'sim-game', roomId: room.id, leagueId, gameId: game.id },
-        });
+        const data = await simGameOverride(room.id, game.id, session.access_token);
 
-        if (error || !data?.ok) {
-            addLog({ type: 'error', text: `  ✗ ${game.id} — ${data?.error ?? error?.message ?? '알 수 없는 오류'}` });
+        if (!data.ok) {
+            addLog({ type: 'error', text: `  ✗ ${game.id} — ${data.error ?? '알 수 없는 오류'}` });
             return false;
         }
 
@@ -163,6 +182,19 @@ const AdminSimView: React.FC = () => {
     const handleSimSingle = (game: ScheduleGame) => {
         runBatch([game], `sim-game ${game.id}`);
     };
+
+    // ── 일정 변경 ─────────────────────────────────────────────────────────────
+    const [scheduleErr, setScheduleErr] = useState<string | null>(null);
+
+    const handleEditSchedule = useCallback(async (gameId: string, newLocalValue: string): Promise<boolean> => {
+        if (!room?.id || !newLocalValue) return false;
+        const iso = kstLocalToIso(newLocalValue);
+        const { error } = await updateGameScheduledAt(room.id, gameId, iso);
+        if (error) { setScheduleErr(error); return false; }
+        setScheduleErr(null);
+        await loadSchedule();
+        return true;
+    }, [room?.id, loadSchedule]);
 
     // ── 통계 ──────────────────────────────────────────────────────────────────
     const totalGames   = schedule.length;
@@ -295,6 +327,9 @@ const AdminSimView: React.FC = () => {
 
             {/* 일정 목록 */}
             <section className="space-y-4">
+                {scheduleErr && (
+                    <p className="text-xs text-red-400 ko-normal">{scheduleErr}</p>
+                )}
                 {schedLoading ? (
                     <div className="flex items-center justify-center py-16">
                         <Loader2 size={20} className="animate-spin text-indigo-400" />
@@ -319,6 +354,7 @@ const AdminSimView: React.FC = () => {
                                         key={game.id}
                                         game={game}
                                         onSim={() => handleSimSingle(game)}
+                                        onEditSchedule={handleEditSchedule}
                                         disabled={running}
                                     />
                                 ))}
@@ -336,11 +372,28 @@ const AdminSimView: React.FC = () => {
 interface GameRowProps {
     game: ScheduleGame;
     onSim: () => void;
+    onEditSchedule: (gameId: string, newLocalValue: string) => Promise<boolean>;
     disabled: boolean;
 }
 
-const GameRow: React.FC<GameRowProps> = ({ game, onSim, disabled }) => {
+const GameRow: React.FC<GameRowProps> = ({ game, onSim, onEditSchedule, disabled }) => {
     const isPast = game.scheduledAt ? game.scheduledAt <= nowIso() : false;
+
+    const [editing, setEditing] = useState(false);
+    const [draftValue, setDraftValue] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const startEdit = () => {
+        setDraftValue(toInputValue(game.scheduledAt));
+        setEditing(true);
+    };
+
+    const save = async () => {
+        setSaving(true);
+        const ok = await onEditSchedule(game.id, draftValue);
+        setSaving(false);
+        if (ok) setEditing(false);
+    };
 
     return (
         <div className={`flex items-center gap-4 px-4 py-3 ${game.played ? 'opacity-60' : ''}`}>
@@ -369,10 +422,47 @@ const GameRow: React.FC<GameRowProps> = ({ game, onSim, disabled }) => {
                         </span>
                     )}
                 </div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-mono">
-                    {fmtKst(game.scheduledAt)}
-                    {!game.scheduledAt && <span className="text-slate-700"> (시간 미정)</span>}
-                </div>
+
+                {editing ? (
+                    <div className="flex items-center gap-1.5 mt-1">
+                        <input
+                            type="datetime-local"
+                            step="60"
+                            value={draftValue}
+                            onChange={e => setDraftValue(e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                        />
+                        <button
+                            onClick={save}
+                            disabled={saving || !draftValue}
+                            className="flex items-center justify-center w-6 h-6 bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/40 disabled:opacity-30 rounded-md text-emerald-400 transition-colors shrink-0"
+                        >
+                            {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                        </button>
+                        <button
+                            onClick={() => setEditing(false)}
+                            disabled={saving}
+                            className="flex items-center justify-center w-6 h-6 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-400 transition-colors shrink-0"
+                        >
+                            <X size={11} />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] text-slate-600 font-mono">
+                            {fmtKst(game.scheduledAt)}
+                            {!game.scheduledAt && <span className="text-slate-700"> (시간 미정)</span>}
+                        </span>
+                        {!game.played && (
+                            <button
+                                onClick={startEdit}
+                                className="flex items-center justify-center w-5 h-5 text-slate-600 hover:text-indigo-400 transition-colors"
+                            >
+                                <Pencil size={10} />
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* 시뮬 버튼 */}

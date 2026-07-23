@@ -47,7 +47,7 @@ export class DraftRoom {
     private draftedIds = new Set<string>();
 
     // ── 풀 캐시 (방 생성 시 1회 로드) ────────────────────────────────────────
-    private pool: { id: string; ovr: number }[] = [];     // AI 픽용 정렬본
+    private pool: { id: string; ovr: number; position: string }[] = [];     // AI 픽용 정렬본
     private poolPlayers: DraftPoolPlayer[] = [];           // 스냅샷용
 
     // ── 인프라 ────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ export class DraftRoom {
         );
         room.poolPlayers = chunkResults.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
         room.pool = room.poolPlayers
-            .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0 }))
+            .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0, position: p.position }))
             .sort((a, b) => b.ovr - a.ovr);
 
         return room;
@@ -269,12 +269,17 @@ export class DraftRoom {
         }
     }
 
+    /** 해당 팀이 이미 드래프트한 선수들의 포지션 목록 (오토픽 포지션 정합성 판단용) */
+    private teamPositions(teamId: string): string[] {
+        return this.picks.filter(p => p.teamId === teamId).map(p => p.position);
+    }
+
     private async onAiPick(): Promise<void> {
         if (this.status !== 'active') return;
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry?.isAi) return;
 
-        const bestId = getBestAvailableId(this.pool, [...this.draftedIds]);
+        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
         if (!bestId) {
             console.warn(`[DraftRoom:${this.roomId}] no available players for AI pick`);
             return;
@@ -295,7 +300,7 @@ export class DraftRoom {
         if (!entry || entry.isAi) return;
 
         console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
-        const bestId = getBestAvailableId(this.pool, [...this.draftedIds]);
+        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
         if (!bestId) return;
 
         const result = await this.persistPick(entry.userId, bestId);
@@ -385,7 +390,7 @@ export class DraftRoom {
                 if (this.status !== 'active') break;
                 const entry = this.config.pickOrder[this.currentPickIndex];
                 if (!entry) break;
-                const bestId = getBestAvailableId(this.pool, [...this.draftedIds]);
+                const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
                 if (!bestId) break;
                 this.clearTimers();
                 const result = await this.persistPick(entry.userId, bestId);
@@ -402,7 +407,7 @@ export class DraftRoom {
                 while (this.status === 'active' && this.currentPickIndex < this.config.pickOrder.length) {
                     const entry = this.config.pickOrder[this.currentPickIndex];
                     if (!entry) break;
-                    const bestId = getBestAvailableId(this.pool, [...this.draftedIds]);
+                    const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
                     if (!bestId) break;
                     const result = await this.persistPick(entry.userId, bestId);
                     if (!result) break;

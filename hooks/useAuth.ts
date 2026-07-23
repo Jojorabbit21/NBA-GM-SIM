@@ -53,12 +53,15 @@ export const useAuth = () => {
             if (!mounted) return;
 
             if (event === 'SIGNED_IN' && session) {
-                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
+                // access_token까지 동일할 때만 기존 참조 유지 — user.id만 비교하면
+                // TOKEN_REFRESHED로 새 토큰이 와도 옛 세션(만료된 access_token)을 계속
+                // 붙들고 있게 되어, 이 값을 직접 넘겨쓰는 API 호출(예: Bun 서버 /live-game)이
+                // 만료된 토큰으로 401을 반복해서 받는 문제가 있었다.
+                setSession((prev: any) => prev?.access_token === session.access_token ? prev : session);
             } else if (event === 'SIGNED_OUT') {
                 setSession(null);
             } else if (event === 'TOKEN_REFRESHED' && session) {
-                // 토큰 갱신은 같은 유저 → 객체 참조만 바뀜 → 기존 참조 유지
-                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
+                setSession((prev: any) => prev?.access_token === session.access_token ? prev : session);
             }
         });
 

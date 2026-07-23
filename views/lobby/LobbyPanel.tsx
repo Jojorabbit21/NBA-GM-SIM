@@ -62,15 +62,10 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                 </button>
             </div>
 
-            {/* 모드 카드 */}
-            {quickplayOnly ? (
-                <div className="flex flex-col gap-3">
-                    <p className="text-xs text-slate-500 text-center font-bold">현재 퀵플레이 전용 모드로 운영 중입니다.</p>
-                    <QuickPlayCard onClick={onQuickPlay} />
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {isLoading ? (
+            {/* 모드 카드 — quickplayOnly는 어드민이 아닌 유저에게 싱글플레이만 숨긴다(멀티/퀵플레이는 항상 노출) */}
+            <div className={`grid grid-cols-1 ${quickplayOnly ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-4`}>
+                {!quickplayOnly && (
+                    isLoading ? (
                         <SkeletonCard />
                     ) : (
                         <SingleSaveCard
@@ -80,11 +75,11 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                             onContinue={onContinue}
                             onNewGame={onNewGame}
                         />
-                    )}
-                    <MultiPlayCard onClick={onMultiPlay} />
-                    <QuickPlayCard onClick={onQuickPlay} />
-                </div>
-            )}
+                    )
+                )}
+                <MultiPlayCard onClick={onMultiPlay} />
+                <QuickPlayCard onClick={onQuickPlay} />
+            </div>
         </div>
     );
 };

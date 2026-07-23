@@ -61,14 +61,26 @@ function mulberry32(a: number): number {
     return (t ^ (t >>> 14)) >>> 0;
 }
 
-/** 현재 차례 유저의 자동 픽 — OVR 최고 미선발 선수 반환 */
+/**
+ * 현재 차례 유저의 자동 픽 — 우선순위: 1) 높은 OVR, 2) 포지션 정합성.
+ * OVR 내림차순으로 훑되, 이미 로스터에 같은 포지션이 2명 이상이면 건너뛰고
+ * 그 다음으로 OVR이 높은 "다른 포지션" 선수를 선택한다.
+ * (모든 남은 선수가 포지션 제한에 걸리는 극단적 경우엔 순수 최고 OVR로 폴백)
+ */
 export function getBestAvailableId(
-    poolPlayers: { id: string; ovr: number }[],
-    draftedIds: string[]
+    poolPlayers: { id: string; ovr: number; position: string }[],
+    draftedIds: string[],
+    teamPositions: string[] = []
 ): string | null {
     const drafted = new Set(draftedIds);
-    const best = poolPlayers
+    const available = poolPlayers
         .filter(p => !drafted.has(p.id))
-        .sort((a, b) => b.ovr - a.ovr)[0];
-    return best?.id ?? null;
+        .sort((a, b) => b.ovr - a.ovr);
+    if (available.length === 0) return null;
+
+    const positionCounts: Record<string, number> = {};
+    for (const pos of teamPositions) positionCounts[pos] = (positionCounts[pos] ?? 0) + 1;
+
+    const fitByPosition = available.find(p => (positionCounts[p.position] ?? 0) < 2);
+    return (fitByPosition ?? available[0]).id;
 }

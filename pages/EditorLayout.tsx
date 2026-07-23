@@ -49,6 +49,18 @@ const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
                     >
                         드래프트 시뮬
                     </NavLink>
+                    <NavLink
+                        to="physics-lab"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        물리 랩
+                    </NavLink>
                 </div>
                 <Outlet context={{ userId }} />
             </div>

@@ -99,9 +99,13 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
         position:     String(getCol(p, ['position', 'Pos', 'Position']) || 'G'),
         age:          Number(getCol(p, ['age', 'Age']) || 25),
         potential:    Number(getCol(p, ['pot', 'potential', 'POT']) || 75),
-        health:       (getCol(p, ['health']) || 'Healthy') as string,
-        injuryType:   getCol(p, ['injuryType']) || undefined,
-        returnDate:   getCol(p, ['returnDate']) || undefined,
+        // meta_players에 박제된 부상 상태(예: 실존 인물의 실제 부상 이력)는 멀티플레이어에 적용하지
+        // 않는다 — 이 파일은 드래프트 풀(startDraft.ts)과 경기별 로스터 조립(simRunner.ts)에서만
+        // 쓰이므로 항상 Healthy로 시작하고, 토너먼트 진행 중 새로 발생하는 부상은
+        // applyRosterState()가 room.roster_state의 값으로 별도로 덮어쓴다.
+        health:       'Healthy' as string,
+        injuryType:   undefined,
+        returnDate:   undefined,
         condition:    100,
         tendencies,
 

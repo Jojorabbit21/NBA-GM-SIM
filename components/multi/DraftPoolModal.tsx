@@ -68,7 +68,7 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                 for (const raw of data as any[]) {
                     if (seenIds.has(raw.id)) continue;
                     seenIds.add(raw.id);
-                    const p = mapRawPlayerToRuntimePlayer(raw);
+                    const p = mapRawPlayerToRuntimePlayer(raw, false, true);
                     if (pt === 'rookies') rookies.push(p);
                     else                  nonRookies.push(p);
                 }

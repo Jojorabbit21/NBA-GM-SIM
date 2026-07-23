@@ -68,6 +68,12 @@ export interface PbpLog {
     points?: 1 | 2 | 3;
     homeScore?: number;   // 이 이벤트 시점의 홈팀 누적 점수
     awayScore?: number;   // 이 이벤트 시점의 원정팀 누적 점수
+    runTeamId?: string;   // 이 이벤트 시점에 런이 진행 중이면 런 팀 ID (멀티플레이어 리플레이용)
+    runHomePts?: number;  // 현재 에포크 내 홈팀 누적 득점
+    runAwayPts?: number;  // 현재 에포크 내 원정팀 누적 득점
+    timeoutsLeft?: number; // 타임아웃 로그(teamId=부른 팀)일 때: 그 팀의 잔여 타임아웃 수 (멀티플레이어 리플레이용)
+    foulTeamId?: string;   // 이 로그가 팀파울(보너스 대상: 비슈팅/슈팅/플래그런트) 발생 시점이면 파울한 팀 ID.
+                            // freethrow 타입(슈팅파울)은 teamId가 공격팀이라 별도 필드로 파울팀을 남긴다.
 }
 
 export interface QuarterScores {

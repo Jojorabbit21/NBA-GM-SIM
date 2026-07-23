@@ -25,6 +25,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | [hidden-archetypes.md](hidden-archetypes.md) | 12종 히든 아키타입 (공격/수비/유틸리티) | constants.ts, flowEngine.ts, possessionHandler.ts |
 | [shot-distribution.md](shot-distribution.md) | 10존 슈팅 분배, 텐던시/아키타입 기반 | shotDistribution.ts (pbp/, engine/) |
 | [shot-hit-rate.md](shot-hit-rate.md) | 슈팅 적중률 계산 | flowEngine.ts |
+| [league-normalization.md](league-normalization.md) | 리그 평균 정규화 (고OVR 리그 득점 인플레 교정) | leagueNormalization.ts, initializer.ts |
 | [hot-cold-streak.md](hot-cold-streak.md) | 핫/콜드 스트릭 시스템 | statsMappers.ts |
 | [clutch-mechanic.md](clutch-mechanic.md) | 클러치 상황 보정 | flowEngine.ts |
 
@@ -111,7 +112,8 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | stateUpdater.ts | [fatigue-system.md](fatigue-system.md) |
 | statsMappers.ts | [stat-handlers.md](stat-handlers.md) |
 | shotDistribution.ts | [shot-distribution.md](shot-distribution.md) |
-| initializer.ts | [sim-structure.md](../simulation/sim-structure.md) |
+| initializer.ts | [sim-structure.md](../simulation/sim-structure.md), [league-normalization.md](league-normalization.md) |
+| leagueNormalization.ts | [league-normalization.md](league-normalization.md) |
 | pbpTypes.ts | [pbp-engine.md](pbp-engine.md) |
 | rotationLogic.ts | [rotation-algorithm.md](rotation-algorithm.md) |
 | substitutionSystem.ts | [rotation-algorithm.md](rotation-algorithm.md), [player-tactics.md](player-tactics.md) |

@@ -84,7 +84,7 @@ const MultiSeasonPage: React.FC = () => {
     const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const { session }  = useGame();
 
-    const { isLoading: gameLoading, schedule, currentSimDate, myTeamId } = useMultiGameData(session, room?.id ?? null);
+    const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
     const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;
@@ -121,7 +121,7 @@ const MultiSeasonPage: React.FC = () => {
 
             const playerMap = new Map<string, ReturnType<typeof mapRawPlayerToRuntimePlayer>>();
             for (const raw of playersRes.data ?? []) {
-                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
+                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, false, true));
             }
 
             // 정시+10분 경과 — final 상태인 경기만 집계 (live 구간 박스는 비공개)
@@ -239,33 +239,6 @@ const MultiSeasonPage: React.FC = () => {
         }),
     [leagueTeams, wlMap]);
 
-    const myRank = standings.findIndex(t => t.team_slug === myTeamId) + 1;
-    const myWL   = wlMap[myTeamId ?? ''] ?? { wins: 0, losses: 0 };
-
-    // 내 팀 다음 경기 scheduledAt 기반 카운트다운
-    const nextSimAt = useMemo(() =>
-        (nextGame as any)?.scheduledAt as string | undefined,
-    [nextGame]);
-
-    const [countdown, setCountdown] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!nextSimAt) { setCountdown(null); return; }
-        const tick = () => {
-            const diff = Math.floor((new Date(nextSimAt).getTime() - Date.now()) / 1000);
-            if (diff <= 0) { setCountdown('경기 중...'); return; }
-            const d = Math.floor(diff / 86400);
-            const h = Math.floor((diff % 86400) / 3600);
-            const m = Math.floor((diff % 3600) / 60);
-            const s = diff % 60;
-            const pad = (n: number) => String(n).padStart(2, '0');
-            setCountdown(d > 0 ? `${d}일 ${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(h)}:${pad(m)}:${pad(s)}`);
-        };
-        tick();
-        const id = setInterval(tick, 1000);
-        return () => clearInterval(id);
-    }, [nextSimAt]);
-
     const goTo = (sub: string) => navigate(`/multi/leagues/${leagueId}/season/${sub}`);
 
     if (isLoading) {
@@ -286,42 +259,6 @@ const MultiSeasonPage: React.FC = () => {
 
     return (
         <div className="min-h-full bg-slate-950 text-slate-200 pretendard">
-
-            {/* ── 팀 헤더 ── */}
-            <div
-                className="flex items-center gap-4 px-6 py-4 border-b border-black/20"
-                style={{ background: `linear-gradient(135deg, ${primaryColor}cc, ${primaryColor}55)` }}
-            >
-                <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center text-lg font-black shrink-0"
-                    style={{ backgroundColor: primaryColor, color: myTeam.color_secondary ?? '#fff' }}
-                >
-                    {myTeam.team_abbr}
-                </div>
-                <div>
-                    <h1 className="text-xl font-black text-white ko-tight">{myTeam.team_name}</h1>
-                    <p className="text-sm text-white/60 ko-normal">
-                        {league.season_number}시즌 &nbsp;·&nbsp; {myWL.wins}승 {myWL.losses}패
-                        {myRank > 0 && <> &nbsp;·&nbsp; {myRank}위</>}
-                    </p>
-                </div>
-                <div className="ml-auto flex items-center gap-6">
-                    {countdown !== null && (
-                        <div className="text-right">
-                            <p className="text-xs text-white/50 ko-normal">
-                                {countdown === '경기 중...' ? '시뮬레이션 중' : '다음 시뮬레이션'}
-                            </p>
-                            <p className={`text-sm font-black font-mono tabular-nums ${countdown === '경기 중...' ? 'text-emerald-400' : 'text-white'}`}>
-                                {countdown}
-                            </p>
-                        </div>
-                    )}
-                    <div className="text-right">
-                        <p className="text-xs text-white/50 ko-normal">현재 날짜</p>
-                        <p className="text-sm font-bold text-white/80 ko-normal">{currentSimDate}</p>
-                    </div>
-                </div>
-            </div>
 
             {/* ── 3컬럼 본문 ── */}
             <div className="flex gap-4 p-4 items-start">
@@ -425,12 +362,6 @@ const MultiSeasonPage: React.FC = () => {
                                             <td className={`px-3 py-1.5 font-mono font-bold ${isMe ? 'text-white' : 'text-slate-500'}`}>{i + 1}</td>
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center gap-1.5">
-                                                    <div
-                                                        className="w-4 h-4 rounded text-[8px] font-black flex items-center justify-center shrink-0"
-                                                        style={{ backgroundColor: t.color_primary ?? '#334155', color: t.color_secondary ?? '#fff' }}
-                                                    >
-                                                        {t.team_abbr.slice(0, 2)}
-                                                    </div>
                                                     <span className={`font-bold truncate ko-tight ${isMe ? 'text-white' : 'text-slate-300'}`}>{t.team_abbr}</span>
                                                     {t.is_ai && <span className="text-slate-600 text-[10px]">AI</span>}
                                                 </div>

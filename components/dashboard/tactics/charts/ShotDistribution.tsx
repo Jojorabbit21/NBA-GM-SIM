@@ -20,8 +20,8 @@ const ZONE_CATS = [
 const PLAY_ZONE_MAP: Record<string, Record<string, number>> = {
     'PnR_Handler':   { '3pt': 0.35, mid: 0.30, rim: 0.35 },
     'PnR_Roll':      { rim: 0.85, paint: 0.15 },
-    'PnR_Pop':       { '3pt': 0.85, mid: 0.15 },
-    'CatchShoot':    { '3pt': 0.85, mid: 0.15 },
+    'PnR_Pop':       { '3pt': 1.00 }, // playTypes.ts: preferredZone '3PT' 고정(zone 분기 없음)
+    'CatchShoot':    { '3pt': 1.00 }, // [2026-07] 캐치앤슛 3점 전용 고정(playTypes.ts) 반영
     'DriveKick':     { '3pt': 0.70, mid: 0.30 },
     'Iso':           { '3pt': 0.25, mid: 0.35, rim: 0.40 },
     'PostUp':        { paint: 0.70, mid: 0.30 },

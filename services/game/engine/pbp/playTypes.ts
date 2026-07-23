@@ -349,17 +349,22 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.spacer);
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
-            // [Play Redirect] 존 선호도에 따라 캐치 후 펌프페이크 → 드라이브 전환 가능
-            const catchZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
-            if (catchZone === 'Rim' || catchZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, catchZone);
-                return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
-            }
+            // [2026-07] 캐치앤슛은 3점 전용으로 고정 — 미드/페인트/림까지 포함하면 실제 현대
+            // 농구의 "catch-and-shoot"(캐치 후 즉시 점퍼) 개념과 어긋나고, 드라이브&풀업 계열
+            // 플레이타입(Cut/DriveKick/PnR_Roll 등)과 판정 로직이 겹쳐서 3점으로 좁혔다.
+            // 아래 원래 로직(존 선호도에 따라 캐치 후 펌프페이크 → 드라이브 전환)은 삭제하지
+            // 않고 주석 처리만 해서 남겨둔다.
+            //
+            // const catchZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            // if (catchZone === 'Rim' || catchZone === 'Paint') {
+            //     const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, catchZone);
+            //     return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
+            // }
             return {
                 playType,
                 actor,
                 secondaryActor: passer,
-                preferredZone: catchZone,
+                preferredZone: '3PT', // 고정: 캐치앤슛은 항상 3점
                 shotType: 'CatchShoot',
                 bonusHitRate: 0.02
             };

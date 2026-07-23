@@ -21,6 +21,7 @@ import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
+import { buildWindowedView, buildLiveSummary, REPLAY_DURATION_MS, type GamePbpSource } from './liveGameView';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
 
@@ -164,6 +165,16 @@ const server = Bun.serve<WsData>({
             return handleSimSpeed(req);
         }
 
+        // 경기 상세 PBP — live 구간이면 서버가 elapsed까지만 잘라서 반환 (스포일러 방지)
+        if (url.pathname === '/live-game' && req.method === 'GET') {
+            return handleLiveGame(req, url);
+        }
+
+        // 방 전체의 "지금 진행 중"인 경기 요약 (일정 리스트 라이브 스코어용)
+        if (url.pathname === '/live-games' && req.method === 'GET') {
+            return handleLiveGames(req, url);
+        }
+
         // CORS preflight
         if (req.method === 'OPTIONS') {
             return new Response(null, {
@@ -209,7 +220,15 @@ async function handleSimOverride(req: Request): Promise<Response> {
     const { roomId, gameId } = body;
     if (!roomId || !gameId) return json({ error: 'roomId and gameId required' }, 400);
 
-    const result = await runSimulation(roomId, gameId);
+    // 어드민 검증 (admin-sim-override EF에 있던 체크를 이식)
+    const { data: room } = await supabase.from('rooms').select('league_id').eq('id', roomId).single();
+    if (!room) return json({ error: 'Room not found' }, 404);
+    const { data: league } = await supabase.from('leagues').select('admin_user_id').eq('id', room.league_id).single();
+    if (!league) return json({ error: 'League not found' }, 404);
+    if (league.admin_user_id !== userId) return json({ error: 'Forbidden' }, 403);
+
+    // 관리자 수동 시뮬 오버라이드는 항상 "지금 바로 시작"으로 처리 (원래 예정 시각 무시)
+    const result = await runSimulation(roomId, gameId, true);
     return json(result, result.ok ? 200 : 500);
 }
 
@@ -281,6 +300,80 @@ async function handleSimSpeed(req: Request): Promise<Response> {
 
     console.log(`[sim-speed] league=${leagueId} gamesPerDay=${gamesPerDay}`);
     return json({ ok: true, leagueId, gamesPerDay });
+}
+
+// ── 경기 상세 라이브뷰 ───────────────────────────────────────────────────────
+
+async function verifyRoomMember(userId: string, roomId: string): Promise<boolean> {
+    const { count } = await supabase
+        .from('room_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('room_id', roomId)
+        .eq('user_id', userId);
+    return (count ?? 0) > 0;
+}
+
+async function handleLiveGame(req: Request, url: URL): Promise<Response> {
+    const cors = {
+        'Access-Control-Allow-Origin':  '*',
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+    };
+    const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const userId = token ? await verifyToken(token) : null;
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+    const roomId = url.searchParams.get('roomId');
+    const gameId = url.searchParams.get('gameId');
+    if (!roomId || !gameId) return json({ error: 'roomId and gameId required' }, 400);
+
+    if (!(await verifyRoomMember(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+
+    const { data: row } = await supabase
+        .from('game_pbp')
+        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
+        .eq('room_id', roomId)
+        .eq('game_id', gameId)
+        .maybeSingle();
+
+    if (!row) return json({ ok: false, error: 'not found' }, 404);
+
+    return json(buildWindowedView(row as GamePbpSource, Date.now()));
+}
+
+async function handleLiveGames(req: Request, url: URL): Promise<Response> {
+    const cors = {
+        'Access-Control-Allow-Origin':  '*',
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+    };
+    const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const userId = token ? await verifyToken(token) : null;
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+    const roomId = url.searchParams.get('roomId');
+    if (!roomId) return json({ error: 'roomId required' }, 400);
+
+    if (!(await verifyRoomMember(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+
+    const nowIso   = new Date().toISOString();
+    const cutoffIso = new Date(Date.now() - REPLAY_DURATION_MS).toISOString();
+
+    const { data: rows } = await supabase
+        .from('game_pbp')
+        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
+        .eq('room_id', roomId)
+        .lte('game_start_time', nowIso)
+        .gt('game_start_time', cutoffIso);
+
+    const summaries = (rows ?? []).map(r => buildLiveSummary(r as GamePbpSource, Date.now()));
+    return json({ ok: true, games: summaries });
 }
 
 // ── 시작 ──────────────────────────────────────────────────────────────────────

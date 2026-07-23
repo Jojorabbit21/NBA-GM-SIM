@@ -50,7 +50,7 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
                 for (const raw of data) {
                     if (seenIds.has(raw.id)) continue;
                     seenIds.add(raw.id);
-                    const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides);
+                    const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
                     const ovr = calculatePlayerOvr(player);
                     if (ovr >= ovrMin && ovr <= ovrMax) all.push(player);
                 }

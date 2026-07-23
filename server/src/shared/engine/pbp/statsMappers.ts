@@ -35,7 +35,7 @@ export function resetHotCold(team: { onCourt: LivePlayer[]; bench: LivePlayer[] 
     [...team.onCourt, ...team.bench].forEach(p => { p.hotColdRating = 0; p.recentShots = []; });
 }
 
-function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number) {
+function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string) {
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
@@ -43,6 +43,7 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
         text,
         type,
         points: points as 1 | 2 | 3 | undefined,
+        foulTeamId,
     });
 }
 
@@ -158,7 +159,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             isBlock: false, isSteal: false, points: 0,
         });
         logText += ` (팀 파울 ${defTeam.fouls})`;
-        addLog(state, defTeam.id, logText, 'foul');
+        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
 
         if (defTeam.fouls > 4) {
             let ftMade = 0;
@@ -185,7 +186,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (i === numShots - 1) lastMade = made;
         }
         updatePlusMinus(offTeam, defTeam, ftMade);
-        addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
+        addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade, defTeam.id);
         if (!lastMade) handleFreeThrowRebound(actor);
 
     } else if (type === 'offensiveFoul') {
@@ -226,7 +227,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor) : getFlagrant1Commentary(defender, actor))
             : `🟥 Flagrant ${isFlagrant2 ? '2' : '1'}!`;
         const ftSuffix = ` ${actor.playerName} 자유투 ${ftMade}/2`;
-        addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined);
+        addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined, defTeam.id);
         if (isFlagrant2 && defender) {
             defender.pf = 6;
             addLog(state, defTeam.id, `🚨 ${defender.playerName} Flagrant 2 퇴장!`, 'info');

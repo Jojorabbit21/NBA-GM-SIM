@@ -52,7 +52,7 @@ const MultiLeaderboardView: React.FC = () => {
             const playerBaseMap = new Map<string, Player>(
                 (playersRes.data ?? []).map((raw: any) => [
                     String(raw.id),
-                    mapRawPlayerToRuntimePlayer(raw, useCustomOverrides),
+                    mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true),
                 ]),
             );
 

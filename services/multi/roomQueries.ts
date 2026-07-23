@@ -106,7 +106,7 @@ export const listLeaguesWithStats = async (
     const { data: leagues, error } = await supabase
         .from('leagues')
         .select('*')
-        .in('status', ['recruiting', 'drafting', 'in_progress'])
+        .in('status', ['recruiting', 'drafting', 'in_progress', 'finished'])
         .order('created_at', { ascending: false });
 
     if (error || !leagues?.length) return [];

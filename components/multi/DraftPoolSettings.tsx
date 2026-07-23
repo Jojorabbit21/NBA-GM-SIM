@@ -101,7 +101,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
             for (const raw of data as any[]) {
                 if (seenIds.has(raw.id)) continue;
                 seenIds.add(raw.id);
-                const p = mapRawPlayerToRuntimePlayer(raw);
+                const p = mapRawPlayerToRuntimePlayer(raw, false, true);
                 if (pt === 'rookies') rookiePlayers.push(p);
                 else                  nonRookiePlayers.push(p);
             }

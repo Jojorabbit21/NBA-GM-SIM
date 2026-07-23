@@ -259,7 +259,7 @@ export interface PlayerCourtPosition {
     playerId: string;
     x: number;  // court feet (0-94)
     y: number;  // court feet (0-50)
-    role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef' | 'zoneDef';
+    role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef' | 'zoneDef' | 'inbounder';
     hasBall: boolean;
     position: string;  // PG/SG/SF/PF/C
     isHome: boolean;
@@ -322,4 +322,8 @@ export interface PossessionResult {
 
     // [New] Zone Defense flag (for court visualization)
     isZone?: boolean;
+
+    // [New] Entry sequence (§6 — inbound/rebound 진입 케이스). 없으면 "정상 포제션"부터 시작.
+    entry?: 'case1' | 'case2' | 'case3a' | 'case3b' | 'defReb' | 'offReb';
+    inbounderId?: string; // §6-5 인바운더 수동 지정(override). 없으면 spacer 풀에서 자동 배정.
 }

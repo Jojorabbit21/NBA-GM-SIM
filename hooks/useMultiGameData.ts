@@ -245,6 +245,27 @@ export function useMultiGameData(
         return () => { cancelled = true; };
     }, [roomId, userId]);
 
+    // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초) — 초기 로드로 인한 세팅은 저장 트리거하지 않음
+    const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isInitialTacticsLoad = useRef(true);
+
+    useEffect(() => {
+        if (isInitialTacticsLoad.current) {
+            if (userTactics) isInitialTacticsLoad.current = false;
+            return;
+        }
+        if (!roomId || !userId) return;
+
+        if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
+        tacticsAutoSaveTimer.current = setTimeout(() => {
+            saveMemberTactics(roomId, userId, stateRef.current.userTactics, stateRef.current.depthChart);
+        }, 1500);
+
+        return () => {
+            if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
+        };
+    }, [userTactics, depthChart, roomId, userId]);
+
     // ── forceSave ────────────────────────────────────────────────────────────
     const forceSave = useCallback(async () => {
         const s = stateRef.current;
