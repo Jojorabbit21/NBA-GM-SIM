@@ -56,6 +56,20 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         if (!game) return { ok: false, error: 'Game not found in schedule' };
         if (game.played) return { ok: true, skipped: true, reason: 'already played' };
 
+        // ── 원자적 클레임 ──────────────────────────────────────────────────
+        // 스케줄러 tick이 겹치거나(설정 폴링 간격보다 처리 시간이 길어지는 경우) 서버 인스턴스가
+        // 둘 이상이면, 같은 경기가 동시에 두 번 시뮬레이션될 수 있다 — 이 경우 시리즈 승수
+        // read-modify-write가 레이스를 일으켜 여분 경기 생성/결승 조기 노출 버그로 이어진다.
+        // (room_id, game_id) PK unique 제약을 락으로 이용해 먼저 처리를 "찜"한 프로세스만
+        // 계속 진행하도록 한다.
+        const { error: claimErr } = await supabase
+            .from('game_sim_claims')
+            .insert({ room_id: roomId, game_id: gameId });
+        if (claimErr) {
+            console.log(`[simRunner] ${gameId} already claimed by another process — skip`);
+            return { ok: true, skipped: true, reason: 'already claimed' };
+        }
+
         const { homeTeamId, awayTeamId } = game;
 
         // ── 2. 리그 팀 + 선수 데이터 로드 ─────────────────────────────────
@@ -198,6 +212,9 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
 
     } catch (err) {
         console.error('[simRunner] error:', err);
+        // 클레임 이후 실패하면 반드시 풀어줘야 다음 tick에서 재시도 가능 — 안 풀면 이 경기는
+        // 영원히 "처리 중"으로 남아 스케줄러가 계속 스킵하게 된다.
+        await supabase.from('game_sim_claims').delete().eq('room_id', roomId).eq('game_id', gameId);
         return { ok: false, error: String(err) };
     }
 }

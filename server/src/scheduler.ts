@@ -18,6 +18,13 @@ import { runSimulation } from './simRunner';
 
 const POLL_INTERVAL_MS = 30_000;
 
+// setInterval은 콜백이 끝나길 기다리지 않는다 — 처리할 경기가 많아 한 번의 tick()이
+// POLL_INTERVAL_MS보다 오래 걸리면, 이전 tick이 안 끝났는데 다음 tick이 그대로 겹쳐서
+// 실행되어 같은 "아직 안 끝난" 경기를 두 tick이 동시에 처리하는 레이스가 생긴다
+// (시리즈 승수 lost-update, 여분 경기 생성/결승 조기 노출로 이어짐). 이전 tick이 진행 중이면
+// 다음 tick을 건너뛰어 겹침 자체를 막는다.
+let tickRunning = false;
+
 export function startScheduler(): void {
     // 부팅 즉시 고아 방 복구 실행 (재시작 대비)
     recoverOrphanedRooms().catch(e =>
@@ -25,7 +32,14 @@ export function startScheduler(): void {
     );
 
     setInterval(() => {
-        tick().catch(e => console.error('[scheduler] tick error:', e));
+        if (tickRunning) {
+            console.log('[scheduler] previous tick still running — skip');
+            return;
+        }
+        tickRunning = true;
+        tick()
+            .catch(e => console.error('[scheduler] tick error:', e))
+            .finally(() => { tickRunning = false; });
     }, POLL_INTERVAL_MS);
 
     console.log('[scheduler] started (30s interval)');

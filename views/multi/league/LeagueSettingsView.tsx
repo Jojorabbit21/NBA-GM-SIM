@@ -671,7 +671,7 @@ const LeagueSettingsView: React.FC = () => {
                                             {isMe
                                                 ? <span className="text-[11px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded">나</span>
                                                 : isHuman
-                                                ? <span className="text-xs text-slate-300 ko-normal">선점됨</span>
+                                                ? <span className="text-xs text-slate-300 ko-normal">{t.nickname ?? '선점됨'}</span>
                                                 : <span className="text-xs text-slate-600">AI</span>
                                             }
                                         </td>
