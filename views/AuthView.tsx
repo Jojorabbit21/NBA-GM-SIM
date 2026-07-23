@@ -99,6 +99,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   }, [resendCooldown > 0]);
 
+  // 주의: DB에 auth.users INSERT 시 profiles row를 자동 생성하는 트리거(on_auth_user_created →
+  // handle_new_user())가 있어, signUp() 시점에 이미 profiles row가 만들어진다. 즉 OTP 인증(가입 완료)
+  // 시점엔 항상 row가 "이미 존재"하므로, 여기서의 select/insert 결과로는 최초가입 여부를 판별할 수 없다
+  // (그래서 이 함수는 nickname 동기화용 안전망으로만 쓰고, 최초가입 트리거는 handleOtpChange 성공 시점에서 별도로 세팅한다).
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
     const { data, error: selectError } = await supabase.from('profiles').select('id, nickname').eq('id', userId).maybeSingle();
     if (selectError) {
@@ -117,7 +121,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
             console.warn('⚠️ [ensureProfileExists] Profile insert failed:', insertError.message);
         } else {
             setProfileNickname(defaultNickname);
-            setIsFirstSignup(true);
         }
     } else {
         setProfileNickname(data.nickname ?? null);
@@ -214,6 +217,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
         }).then(async ({ data, error }: any) => {
           if (!error && data?.user) {
             await ensureProfileExists(data.user.id, data.user.email);
+            // OTP 인증 성공 = 회원가입 완료 시점 — profiles row는 DB 트리거가 signUp() 때 이미
+            // 만들어놓기 때문에 ensureProfileExists의 insert 여부로는 최초가입을 판별할 수 없어 여기서 직접 트리거
+            setIsFirstSignup(true);
           }
           if (error) {
             const nextAttempts = otpAttempts + 1;

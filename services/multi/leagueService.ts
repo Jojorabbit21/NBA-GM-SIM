@@ -445,7 +445,22 @@ export const claimTeam = async (
         if (msg.includes('draft_already_ordered'))  return { data: null, error: '드래프트 추첨 후에는 팀을 변경할 수 없습니다.' };
         return { data: null, error: msg };
     }
-    return { data: data as LeagueTeamRow, error: null };
+
+    // 클레임 성공 직후 내 닉네임을 league_teams에 복사 — profiles는 본인 row만 SELECT 가능한 RLS라
+    // 다른 유저가 팀 목록에서 GM 이름을 보려면 league_teams에 미리 복사해둬야 한다.
+    let result = data as LeagueTeamRow;
+    const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', userId).maybeSingle();
+    if (profile?.nickname) {
+        const { data: updated } = await supabase
+            .from('league_teams')
+            .update({ nickname: profile.nickname })
+            .eq('id', teamId)
+            .select()
+            .maybeSingle();
+        if (updated) result = updated as LeagueTeamRow;
+    }
+
+    return { data: result, error: null };
 };
 
 export const releaseTeam = async (

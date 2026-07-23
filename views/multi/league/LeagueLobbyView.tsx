@@ -81,7 +81,6 @@ const LeagueLobbyView: React.FC = () => {
     const [editTarget,     setEditTarget]     = useState<LeagueTeamRow | null>(null);
     const [kickingId,      setKickingId]      = useState<string | null>(null);
     const [actionErr,      setActionErr]      = useState<string | null>(null);
-    const [nicknames,      setNicknames]      = useState<Record<string, string>>({});
     const [countdown,      setCountdown]      = useState<string | null>(null);
 
     // 멤버인 경우 시즌 진행 중이거나 이미 종료된 리그면 즉시 season 페이지로 이동
@@ -103,22 +102,6 @@ const LeagueLobbyView: React.FC = () => {
             .subscribe();
         return () => { supabase.removeChannel(ch); };
     }, [room?.id, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // GM 닉네임 조회 — leagueTeams의 user_id 목록이 바뀔 때마다 profiles fetch
-    useEffect(() => {
-        const ids = leagueTeams.map(t => t.user_id).filter(Boolean) as string[];
-        if (ids.length === 0) { setNicknames({}); return; }
-        supabase
-            .from('profiles')
-            .select('id, nickname')
-            .in('id', ids)
-            .then(({ data }) => {
-                if (!data) return;
-                const map: Record<string, string> = {};
-                data.forEach(p => { map[p.id] = p.nickname ?? p.id.slice(0, 8); });
-                setNicknames(map);
-            });
-    }, [leagueTeams]);
 
     // 드래프트 카운트다운 타이머
     useEffect(() => {
@@ -521,9 +504,9 @@ const LeagueLobbyView: React.FC = () => {
                                             {/* GM */}
                                             <td className="px-3 py-3 text-sm font-bold">
                                                 {isMyTeam
-                                                    ? <span className="text-indigo-400">{nicknames[team.user_id!] ?? '—'}</span>
+                                                    ? <span className="text-indigo-400">{team.nickname ?? '—'}</span>
                                                     : isHuman
-                                                    ? <span className="text-white">{nicknames[team.user_id!] ?? '—'}</span>
+                                                    ? <span className="text-white">{team.nickname ?? '—'}</span>
                                                     : <span className="text-slate-500">없음</span>
                                                 }
                                             </td>

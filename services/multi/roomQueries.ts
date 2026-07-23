@@ -286,6 +286,7 @@ export interface LeagueTeamRow {
     color_secondary: string;
     conference: string | null;
     user_id: string | null;
+    nickname: string | null;    // profiles.nickname의 비정규화된 복사본 (팀 클레임/닉네임 변경 시 동기화)
     is_ai: boolean;
     draft_order: number | null;
     roster: string[];           // player_id[]

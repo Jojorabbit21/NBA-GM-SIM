@@ -29,8 +29,15 @@ export const NicknameModal: React.FC<NicknameModalProps> = ({
         setSaving(true);
         setErr(null);
         const { error } = await supabase.from('profiles').upsert({ id: userId, email, nickname: trimmed });
+        if (error) {
+            setSaving(false);
+            setErr('저장에 실패했습니다. 다시 시도해주세요.');
+            return;
+        }
+        // league_teams.nickname은 profiles의 비정규화된 복사본이라, 참가 중인 모든 리그의
+        // 내 팀 row에도 같이 반영해야 멀티플레이 화면들에서 새 닉네임이 즉시 보인다.
+        await supabase.from('league_teams').update({ nickname: trimmed }).eq('user_id', userId);
         setSaving(false);
-        if (error) { setErr('저장에 실패했습니다. 다시 시도해주세요.'); return; }
         onSaved(trimmed);
         onClose();
     };
