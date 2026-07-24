@@ -82,6 +82,7 @@ const MultiSeasonPage: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const navigate     = useNavigate();
     const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session }  = useGame();
 
     const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
@@ -121,7 +122,7 @@ const MultiSeasonPage: React.FC = () => {
 
             const playerMap = new Map<string, ReturnType<typeof mapRawPlayerToRuntimePlayer>>();
             for (const raw of playersRes.data ?? []) {
-                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, false, true));
+                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true));
             }
 
             // 정시+10분 경과 — final 상태인 경기만 집계 (live 구간 박스는 비공개)
@@ -198,7 +199,7 @@ const MultiSeasonPage: React.FC = () => {
         fetchRosterData();
         return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rosterKey, room?.id, myTeamId]);
+    }, [rosterKey, room?.id, myTeamId, useCustomOverrides]);
 
     // schedule은 서버가 game_seq(압축 인덱스)로만 채워 저장 — scheduledAt이 없으면 multiGameReveal의
     // isFinal이 played 값에만 의존해 방금 시뮬된 경기의 결과가 정시+10분 전에도 그대로 노출된다
@@ -524,7 +525,9 @@ const MultiSeasonPage: React.FC = () => {
                             <div className="flex justify-between">
                                 <span className="text-slate-400 ko-normal">남은 경기</span>
                                 <span className="text-white font-bold">
-                                    {schedule.filter(g => !g.played && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)).length}
+                                    {/* !g.played만 보면 리플레이 공개(10분) 전에 시뮬 완료된 경기가 먼저 빠져
+                                        "이미 결과가 나왔다"는 사실이 새어나간다 — isFinal로 게이팅한다. */}
+                                    {normalizedSchedule.filter(g => !isFinal(g, serverNow) && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)).length}
                                 </span>
                             </div>
                         </div>

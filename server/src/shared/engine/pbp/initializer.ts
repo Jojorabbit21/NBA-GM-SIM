@@ -3,7 +3,8 @@ import { Team, GameTactics, DepthChart, Player } from '../../types.ts';
 import { LeagueCoachingData } from '../../types/coaching.ts';
 import { TeamState, LivePlayer } from './pbpTypes.ts';
 import { calculatePlayerArchetypes } from './archetypeSystem.ts';
-import { INITIAL_STATS, calculatePlayerOvr } from '../../utils/constants.ts';
+import { INITIAL_STATS } from '../../utils/constants.ts';
+import { calculateOvr } from '../../utils/ovrUtils.ts';
 import { generateAutoTactics } from '../../game/tactics/tacticGenerator.ts';
 import { getCoachPreferences } from '../../coachingStaff/coachGenerator.ts';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../utils/hiddenTendencies.ts';
@@ -80,7 +81,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     };
 
     // 2. 로스터 정렬 및 라이브 플레이어 객체 생성
-    const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    const sortedRoster = [...team.roster].sort((a, b) => calculateOvr(b) - calculateOvr(a));
     
     const liveRoster: LivePlayer[] = sortedRoster.map(p => {
         const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
@@ -115,13 +116,23 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
             rimM: 0, rimA: 0, midM: 0, midA: 0,
             pf: 0, techFouls: 0, flagrantFouls: 0, plusMinus: 0, mp: 0, g: 1, gs: 0,
+            contestedAttempted: 0, contestedMade: 0,
+            defRimAttempted: 0, defRimMade: 0,
+            defMidAttempted: 0, defMidMade: 0,
+            defThreeAttempted: 0, defThreeMade: 0,
+            defRAAttempted: 0, defRAMade: 0,
+            defITPAttempted: 0, defITPMade: 0,
+            defMIDAttempted: 0, defMIDMade: 0,
+            defCNRAttempted: 0, defCNRMade: 0,
+            defWINGAttempted: 0, defWINGMade: 0,
+            defATBAttempted: 0, defATBMade: 0,
             zoneData: { ...INITIAL_STATS() },
             // [Fix] Add condition to satisfy PlayerBoxScore interface
             condition: currentCondition,
             currentCondition,
             startCondition: currentCondition,
             position: getSlotPosition(p.id) || p.position,
-            ovr: calculatePlayerOvr(p),
+            ovr: calculateOvr(p),
             isStarter: false,
             health: p.health || 'Healthy',
             injuryType: p.injuryType,

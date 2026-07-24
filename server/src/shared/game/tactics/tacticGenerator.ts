@@ -1,7 +1,7 @@
 
 import { Team, GameTactics, DepthChart, Player } from '../../types.ts';
 import { HeadCoachPreferences } from '../../types/coaching.ts';
-import { calculatePlayerOvr } from '../../utils/constants.ts';
+import { calculateOvr } from '../../utils/ovrUtils.ts';
 import { DEFAULT_SLIDERS } from '../config/tacticPresets.ts';
 import { SLIDER_STEPS, valueToStep, stepToValue } from '../config/sliderSteps.ts';
 
@@ -158,7 +158,7 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     const healthy = team.roster.filter(p => p.health !== 'Injured');
     const sortedRoster = preserveDraftOrder
         ? healthy
-        : [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+        : [...healthy].sort((a, b) => calculateOvr(b) - calculateOvr(a));
 
     const { depthChart, usedIds } = buildDepthChart(sortedRoster);
     const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];

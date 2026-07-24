@@ -52,11 +52,13 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                     duration = '시즌아웃';
                 } else if (tierRoll < majorThreshold) {
                     severity = 'Major';
-                    type = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련'][Math.floor(Math.random() * 4)];
+                    const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
+                    type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
                     duration = pickWeighted(['2주', '3주', '1개월'], dur);
                 } else {
                     severity = 'Minor';
-                    type = ['발목 염좌', '무릎 통증', '허리 경직', '타박상'][Math.floor(Math.random() * 4)];
+                    const minorInjuries = ['발목 염좌', '무릎 통증', '허리 경직', '타박상', '손가락 염좌'];
+                    type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
                     duration = pickWeighted(['당일 복귀', '3일', '1주'], dur);
                 }
 

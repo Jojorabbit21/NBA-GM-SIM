@@ -7,7 +7,7 @@ import { supabase } from './supabaseAdmin.ts';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
-import { calculatePlayerOvr } from './shared/utils/constants.ts';
+import { calculateOvr } from './shared/utils/ovrUtils.ts';
 import {
     advanceTournamentState,
     targetWinsFromFormat,
@@ -122,7 +122,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         const tendencySeed = room.tendency_seed   ?? '';
 
         // ── 3.5 League-relative normalization context ──────────────────────
-        resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculatePlayerOvr);
+        resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculateOvr);
 
         // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────
         const { data: existingPbp } = await supabase
@@ -134,12 +134,18 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         const gameStartTime = (() => {
             // 관리자가 수동으로 시뮬 실행 시 — 원래 예정 시각과 무관하게 지금 바로 "방송 시작"
             if (forceStartNow) return new Date().toISOString();
+            // schedule 생성 시점에 이미 game.scheduledAt이 저장되어 있으면(SSOT) 그대로 사용 —
+            // game_seq로부터 재계산하지 않는다. 없으면(레거시 스케줄) 예전처럼 계산해 폴백한다.
+            if (game.scheduledAt) return game.scheduledAt;
             const simStart = leagueData?.sim_real_start_at;
             const gprd     = leagueData?.games_per_real_day ?? 5;
             const seq: number | undefined = game.game_seq;
             if (simStart != null && seq != null) {
                 const raw = new Date(simStart).getTime() + (seq / gprd) * 86_400_000;
-                return new Date(Math.round(raw / 600_000) * 600_000).toISOString();
+                // 10분 단위로 반올림하면 경기 간격(intervalMinutes)이 10의 배수가 아닐 때
+                // (예: 15분) 슬롯마다 독립적으로 스냅되며 20분/10분이 번갈아 나오는 간격
+                // 불균일 버그가 생긴다 — 분 단위로만 반올림해 부동소수점 오차만 제거한다.
+                return new Date(Math.round(raw / 60_000) * 60_000).toISOString();
             }
             return existingPbp?.game_start_time ?? new Date().toISOString();
         })();
@@ -238,7 +244,7 @@ async function handleTournamentAdvance(
 ) {
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day')
+        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -303,7 +309,10 @@ async function handleTournamentAdvance(
             }
         }
 
-        advanceTournamentState(series, bracketSchedule, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes);
+        advanceTournamentState(
+            series, bracketSchedule, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes,
+            leagueRow.sim_real_start_at as string | null,
+        );
 
         const existingIds = new Set(updatedSchedule.map((g: any) => g.id));
         for (const g of bracketSchedule) {

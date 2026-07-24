@@ -1,8 +1,8 @@
 
 import { Player, TacticalSliders } from '../../types.ts';
-import { calculatePlayerOvr } from '../../utils/constants.ts';
+import { calculateOvr } from '../../utils/ovrUtils.ts';
 
-export const stableSort = (a: Player, b: Player) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id);
+export const stableSort = (a: Player, b: Player) => calculateOvr(b) - calculateOvr(a) || a.id.localeCompare(b.id);
 
 export function distributeMinutes(roster: Player[], isStarter: boolean[], limits: Record<string, number>, sliders: TacticalSliders): number[] {
     const totalMinutes = 240;

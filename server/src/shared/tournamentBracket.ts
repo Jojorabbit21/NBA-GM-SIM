@@ -31,6 +31,9 @@ export interface TournamentGame {
     awayTeamId: string;
     date: string;
     game_seq: number; // 순차 슬롯: real_at = sim_real_start_at + (game_seq / games_per_real_day) * 86400000
+    /** 실제 방송 시각(ISO) — 생성 시점에 한 번만 계산해 저장(SSOT). 없으면(레거시 데이터)
+     * 클라이언트/서버가 game_seq로부터 매번 재계산하는 폴백 경로를 탄다. */
+    scheduledAt?: string;
     played: boolean;
     isPlayoff: boolean;
     seriesId?: string;
@@ -103,9 +106,15 @@ function offsetDate(base: string, days: number): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-/** slot(=game_seq) → 대략적인 달력 날짜 (스케줄 리스트 날짜별 그룹핑용 — 실제 시각은 game_seq+games_per_real_day로 별도 계산됨). */
+/** slot(=game_seq) → 대략적인 달력 날짜 (스케줄 리스트 날짜별 그룹핑용). */
 function slotToDate(startDate: string, slot: number, intervalMinutes: number): string {
     return offsetDate(startDate, Math.floor((slot * intervalMinutes) / 1440));
+}
+
+/** slot(=game_seq) → 실제 방송 시각(ISO). 생성 시점에 딱 한 번 계산해 각 경기에 직접 저장한다 —
+ * 이후로는 클라이언트/서버 어디서도 재계산하지 않고 이 값만 읽는다(단일 진실 공급원). */
+function slotToScheduledAt(simRealStartAt: string, slot: number, intervalMinutes: number): string {
+    return new Date(new Date(simRealStartAt).getTime() + slot * intervalMinutes * 60_000).toISOString();
 }
 
 // ── 시리즈 전체 게임 사전 생성 ─────────────────────────────────────────────────
@@ -123,6 +132,7 @@ function generateAllSeriesGames(
     startDate: string,
     startSlot: number,
     intervalMinutes: number,
+    simRealStartAt?: string | null,
 ): TournamentGame[] {
     const maxGames = targetWins * 2 - 1;
     const games: TournamentGame[] = [];
@@ -135,6 +145,7 @@ function generateAllSeriesGames(
             awayTeamId:  higherHome ? lowerSeedId  : higherSeedId,
             date:        slotToDate(startDate, slot, intervalMinutes),
             game_seq:    slot,
+            ...(simRealStartAt ? { scheduledAt: slotToScheduledAt(simRealStartAt, slot, intervalMinutes) } : {}),
             played:      false,
             isPlayoff:   true,
             seriesId,
@@ -152,6 +163,7 @@ function initSingleElim(
     seed: string,
     startDate: string,
     intervalMinutes: number,
+    simRealStartAt?: string | null,
 ): { series: PlayoffSeries[]; schedule: TournamentGame[] } {
     const shuffled = seededShuffle(teams, seed + ':seeding');
     const size = nextPow2(shuffled.length);
@@ -203,7 +215,7 @@ function initSingleElim(
 
             // 최대 경기 수 전부 생성 (일찍 끝나면 나머지는 played: false로 방치)
             const games = generateAllSeriesGames(
-                seriesId, teamA.team_slug, teamB.team_slug, targetWins, startDate, roundBaseSlots[1], intervalMinutes,
+                seriesId, teamA.team_slug, teamB.team_slug, targetWins, startDate, roundBaseSlots[1], intervalMinutes, simRealStartAt,
             );
             schedule.push(...games);
         }
@@ -229,7 +241,7 @@ function initSingleElim(
     }
 
     // BYE 자동 진출 팀을 R2에 즉시 배치 (R2 시작 슬롯은 라운드 단위로 고정됨)
-    advanceTournamentState(series, schedule, targetWins, finalsTargetWins, startDate, intervalMinutes);
+    advanceTournamentState(series, schedule, targetWins, finalsTargetWins, startDate, intervalMinutes, simRealStartAt);
 
     return { series, schedule };
 }
@@ -240,6 +252,7 @@ function initRoundRobin(
     teams: TournamentTeam[],
     startDate: string,
     intervalMinutes: number,
+    simRealStartAt?: string | null,
 ): { series: PlayoffSeries[]; schedule: TournamentGame[] } {
     const schedule: TournamentGame[] = [];
     const n = teams.length;
@@ -270,6 +283,7 @@ function initRoundRobin(
                 awayTeamId:  awayTeam.team_slug,
                 date:        slotToDate(startDate, slot, intervalMinutes),
                 game_seq:    slot,
+                ...(simRealStartAt ? { scheduledAt: slotToScheduledAt(simRealStartAt, slot, intervalMinutes) } : {}),
                 played:      false,
                 isPlayoff:   false,
             });
@@ -295,6 +309,7 @@ export function advanceTournamentState(
     finalsTargetWins: number,
     startDate: string,
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
+    simRealStartAt?: string | null,
 ): void {
     const byId: Record<string, PlayoffSeries> = Object.fromEntries(series.map(s => [s.id, s]));
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
@@ -318,7 +333,7 @@ export function advanceTournamentState(
                 if (!alreadyExists) {
                     const startSlot = roundBaseSlots[round + 1];
                     schedule.push(...generateAllSeriesGames(
-                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startSlot, intervalMinutes,
+                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startSlot, intervalMinutes, simRealStartAt,
                     ));
                 }
             }
@@ -336,11 +351,12 @@ export function buildTournamentBracket(
     tendencySeed: string,
     startDate: string,
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
+    simRealStartAt?: string | null,
 ): { series: PlayoffSeries[]; schedule: TournamentGame[] } {
     const targetWins       = targetWinsFromFormat(matchFormat);
     const finalsTargetWins = targetWinsFromFormat(finalsMatchFormat ?? matchFormat);
     if (tournamentFormat === 'round_robin') {
-        return initRoundRobin(teams, startDate, intervalMinutes);
+        return initRoundRobin(teams, startDate, intervalMinutes, simRealStartAt);
     }
-    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes);
+    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes, simRealStartAt);
 }

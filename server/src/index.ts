@@ -22,6 +22,7 @@ import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
 import { buildWindowedView, buildLiveSummary, REPLAY_DURATION_MS, type GamePbpSource } from './liveGameView';
+import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
 
@@ -377,6 +378,13 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
 }
 
 // ── 시작 ──────────────────────────────────────────────────────────────────────
+
+// OVR 엔진의 아키타입 가중치/태그 DB 설정 프리로드 — 실패해도 서버는 정상 기동하고
+// (getWeightConfigSync() 등이 null을 반환해 하드코딩 폴백을 탐), 이후 리그 생성
+// 시점의 강제 refetch(refetchGameConfig)에서 다시 시도된다.
+await preloadGameConfig().catch(err => {
+    console.error('[index] preloadGameConfig failed, falling back to hardcoded weights:', err);
+});
 
 startScheduler();
 

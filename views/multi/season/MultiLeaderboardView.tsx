@@ -10,7 +10,7 @@ import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { LeaderboardView } from '../../LeaderboardView';
 import { INITIAL_STATS } from '../../../utils/constants';
 import { getServerNow } from '../../../utils/serverClock';
-import { isFinal } from './multiGameReveal';
+import { isFinal, resolveRealAt } from './multiGameReveal';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 
@@ -71,6 +71,9 @@ const MultiLeaderboardView: React.FC = () => {
                     for (const bs of box) {
                         if (!bs.playerId || bs.mp <= 0) continue;
                         const prev = statsMap.get(bs.playerId) ?? INITIAL_STATS();
+                        // 10존 슈팅 세부 데이터는 bs.zoneData 중첩 객체 안에 저장됨 (MultiRosterView와 동일 패턴)
+                        const zd = (bs as any).zoneData ?? {};
+                        const addZ = (k: string) => ((prev as any)[k] ?? 0) + (zd[k] ?? 0);
                         statsMap.set(bs.playerId, {
                             ...prev,
                             g:             prev.g + 1,
@@ -98,6 +101,38 @@ const MultiLeaderboardView: React.FC = () => {
                             midM:          prev.midM + (bs.midM ?? 0),
                             midA:          prev.midA + (bs.midA ?? 0),
                             plusMinus:     prev.plusMinus + (bs.plusMinus ?? 0),
+                            // Shooting 탭(10존 breakdown)
+                            zone_rim_m:     addZ('zone_rim_m'),     zone_rim_a:     addZ('zone_rim_a'),
+                            zone_paint_m:   addZ('zone_paint_m'),   zone_paint_a:   addZ('zone_paint_a'),
+                            zone_mid_l_m:   addZ('zone_mid_l_m'),   zone_mid_l_a:   addZ('zone_mid_l_a'),
+                            zone_mid_c_m:   addZ('zone_mid_c_m'),   zone_mid_c_a:   addZ('zone_mid_c_a'),
+                            zone_mid_r_m:   addZ('zone_mid_r_m'),   zone_mid_r_a:   addZ('zone_mid_r_a'),
+                            zone_c3_l_m:    addZ('zone_c3_l_m'),    zone_c3_l_a:    addZ('zone_c3_l_a'),
+                            zone_c3_r_m:    addZ('zone_c3_r_m'),    zone_c3_r_a:    addZ('zone_c3_r_a'),
+                            zone_atb3_l_m:  addZ('zone_atb3_l_m'),  zone_atb3_l_a:  addZ('zone_atb3_l_a'),
+                            zone_atb3_c_m:  addZ('zone_atb3_c_m'),  zone_atb3_c_a:  addZ('zone_atb3_c_a'),
+                            zone_atb3_r_m:  addZ('zone_atb3_r_m'),  zone_atb3_r_a:  addZ('zone_atb3_r_a'),
+                            // Defense 탭(피포제이 방어 스탯) — 같은 원인으로 함께 누락돼 있던 필드
+                            contestedAttempted: prev.contestedAttempted + (bs.contestedAttempted ?? 0),
+                            contestedMade:      prev.contestedMade      + (bs.contestedMade      ?? 0),
+                            defRimAttempted:    prev.defRimAttempted    + (bs.defRimAttempted    ?? 0),
+                            defRimMade:         prev.defRimMade         + (bs.defRimMade         ?? 0),
+                            defMidAttempted:    prev.defMidAttempted    + (bs.defMidAttempted    ?? 0),
+                            defMidMade:         prev.defMidMade         + (bs.defMidMade         ?? 0),
+                            defThreeAttempted:  prev.defThreeAttempted  + (bs.defThreeAttempted  ?? 0),
+                            defThreeMade:       prev.defThreeMade       + (bs.defThreeMade       ?? 0),
+                            defRAAttempted:     prev.defRAAttempted     + (bs.defRAAttempted     ?? 0),
+                            defRAMade:          prev.defRAMade          + (bs.defRAMade          ?? 0),
+                            defITPAttempted:    prev.defITPAttempted    + (bs.defITPAttempted    ?? 0),
+                            defITPMade:         prev.defITPMade         + (bs.defITPMade         ?? 0),
+                            defMIDAttempted:    prev.defMIDAttempted    + (bs.defMIDAttempted    ?? 0),
+                            defMIDMade:         prev.defMIDMade         + (bs.defMIDMade         ?? 0),
+                            defCNRAttempted:    prev.defCNRAttempted    + (bs.defCNRAttempted    ?? 0),
+                            defCNRMade:         prev.defCNRMade         + (bs.defCNRMade         ?? 0),
+                            defWINGAttempted:   prev.defWINGAttempted   + (bs.defWINGAttempted   ?? 0),
+                            defWINGMade:        prev.defWINGMade        + (bs.defWINGMade        ?? 0),
+                            defATBAttempted:    prev.defATBAttempted    + (bs.defATBAttempted    ?? 0),
+                            defATBMade:         prev.defATBMade         + (bs.defATBMade         ?? 0),
                         });
                     }
                 }
@@ -143,6 +178,16 @@ const MultiLeaderboardView: React.FC = () => {
         });
     }, [navigate, leagueId]);
 
+    // schedule의 game_seq 기반 경기는 scheduledAt이 없을 수 있어(레거시) resolveRealAt으로
+    // 역산해 채워야 useLeaderboardData의 isFinal() 게이팅이 정확히 동작한다.
+    // (isLoading 조기 return보다 반드시 위에 있어야 함 — Hooks는 매 렌더 동일한 순서로 호출돼야 한다.)
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
+    const normalizedSchedule = useMemo(
+        () => (schedule as Game[]).map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt })),
+        [schedule, simStart, gprd],
+    );
+
     const isLoading = leagueLoading || gameLoading || fetchLoading;
 
     if (isLoading) {
@@ -158,7 +203,7 @@ const MultiLeaderboardView: React.FC = () => {
     return (
         <LeaderboardView
             teams={teams}
-            schedule={schedule as Game[]}
+            schedule={normalizedSchedule}
             onViewPlayer={handleViewPlayer}
             onTeamClick={() => {}}
             hideSeasonType={isTournament}

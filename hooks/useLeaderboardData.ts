@@ -3,6 +3,8 @@ import { useMemo } from 'react';
 import { Team, Game, Player } from '../types';
 import { calculatePlayerOvr, INITIAL_STATS } from '../utils/constants';
 import { FilterItem, ViewMode, ATTRIBUTE_KEYS, ATTR_PLAYER_PROPS } from '../data/leaderboardConfig';
+import { isFinal } from '../views/multi/season/multiGameReveal';
+import { useServerClock } from '../utils/serverClock';
 
 export type SeasonType = 'regular' | 'playoff';
 
@@ -31,6 +33,8 @@ export const useLeaderboardData = (
     statCategory: string = 'Traditional',
     seasonType: SeasonType = 'regular'
 ) => {
+    const serverNow = useServerClock();
+
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
         // --- Pass 1: 모든 팀의 rawTotals 및 경기 수를 미리 집계 ---
@@ -40,7 +44,11 @@ export const useLeaderboardData = (
         const allGameCounts = new Map<string, number>();
 
         const isPlayoffMode = seasonType === 'playoff';
-        const filteredSchedule = schedule.filter(g => g.played && (isPlayoffMode ? g.isPlayoff : !g.isPlayoff));
+        // g.played만 보면 멀티플레이어에서 서버가 시뮬을 마친 즉시(공개 지연 10분 이전에도)
+        // 팀 GP/승패에 반영되어 스포일러가 된다. scheduledAt이 없는(싱글플레이) 경기는
+        // isFinal()이 played와 동일하게 동작하므로 싱글플레이 동작에는 영향 없다.
+        const filteredSchedule = schedule.filter(g =>
+            g.played && isFinal(g, serverNow) && (isPlayoffMode ? g.isPlayoff : !g.isPlayoff));
 
         teams.forEach(t => {
             const teamGames = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id);
@@ -328,7 +336,7 @@ export const useLeaderboardData = (
                 rawOppTotals: { oppFgm, oppFga, opp3pm, opp3pa, oppFtm, oppFta, oppReb, oppOreb, oppDreb, oppAst, oppStl, oppBlk, oppTov, oppPoss }
             };
         });
-    }, [teams, schedule, seasonType]);
+    }, [teams, schedule, seasonType, serverNow]);
 
     // 1. Flatten Players & Pre-calculate Zone % AND Advanced Stats
     const allPlayers = useMemo(() => {

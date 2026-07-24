@@ -35,7 +35,10 @@ export function resolveRealAt(
     if (game.game_seq != null && simRealStartAt) {
         const raw = new Date(simRealStartAt).getTime()
             + (game.game_seq / (gamesPerRealDay ?? 5)) * 86_400_000;
-        return new Date(Math.round(raw / 600_000) * 600_000).toISOString();
+        // 10분 단위로 반올림하면 경기 간격(intervalMinutes)이 10의 배수가 아닐 때(예: 15분)
+        // 슬롯마다 독립적으로 스냅되며 20분/10분이 번갈아 나오는 간격 불균일 버그가 생긴다 —
+        // 분 단위로만 반올림해 부동소수점 오차만 제거한다.
+        return new Date(Math.round(raw / 60_000) * 60_000).toISOString();
     }
     return undefined;
 }

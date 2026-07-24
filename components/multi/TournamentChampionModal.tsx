@@ -22,9 +22,8 @@ interface BracketSeries {
     targetWins: number;
 }
 
-// TODO(테스트용): 지금은 확인 후에도 계속 다시 뜨도록 "한 번 봤으면 다시 안 뜸" 저장을 꺼둔 상태.
-// 테스트 끝나면 이 상수를 true로 되돌리면 됨.
-const PERSIST_DISMISSAL = false;
+// "확인"을 누르면 localStorage에 저장해 같은 리그에서는 다시 뜨지 않게 한다.
+const PERSIST_DISMISSAL = true;
 
 const CONFETTI_COLORS = ['#f59e0b', '#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#facc15'];
 

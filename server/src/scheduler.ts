@@ -199,10 +199,24 @@ async function cleanupCompletedRooms(): Promise<void> {
 // 경기 예정 1분 전 사전계산 (30초 폴링 대응)
 const SIM_LEAD_MS = 60 * 1000;
 
-// game_seq → 현실 실행 시각 변환 (10분 단위 반올림으로 깔끔한 시각 보장)
+// game_seq → 현실 실행 시각 변환.
+// 10분 단위로 반올림하면 경기 간격(intervalMinutes)이 10의 배수가 아닐 때(예: 15분) 슬롯마다
+// 독립적으로 스냅되며 20분/10분이 번갈아 나오는 간격 불균일 버그가 생긴다 — 분 단위로만
+// 반올림해 부동소수점 오차만 제거한다.
 function gameSeqToRealMs(seq: number, simRealStartAt: string, gamesPerRealDay: number): number {
     const raw = new Date(simRealStartAt).getTime() + (seq / gamesPerRealDay) * 86_400_000;
-    return Math.round(raw / 600_000) * 600_000;
+    return Math.round(raw / 60_000) * 60_000;
+}
+
+// game.scheduledAt(SSOT, 생성 시점에 저장된 값)이 있으면 그대로 쓰고, 없는(레거시) 스케줄만
+// game_seq로부터 재계산한다.
+function resolveGameRealMs(game: any, league: LeagueRow | undefined): number | undefined {
+    if (game.scheduledAt) return new Date(game.scheduledAt).getTime();
+    const seq: number | undefined = game.game_seq;
+    if (seq != null && league?.sim_real_start_at) {
+        return gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5);
+    }
+    return undefined;
 }
 
 // 실시각(ms) → KST 달력 날짜(YYYY-MM-DD). game.date(슬롯 기반 계산값)는 자정 근처에서
@@ -257,12 +271,11 @@ async function runSimGames(now: string): Promise<void> {
 
         for (const game of schedule) {
             if (game.played) continue;
-            const seq: number | undefined = game.game_seq;
-            if (seq != null && league?.sim_real_start_at) {
-                const realMs = gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5);
+            const realMs = resolveGameRealMs(game, league);
+            if (realMs != null) {
                 if (realMs <= cutoffMs) tasks.push({ roomId: room.id, gameId: game.id });
             } else {
-                // 폴백: game_seq 없으면 당일 날짜 기준
+                // 폴백: scheduledAt/game_seq 둘 다 없으면 당일 날짜 기준
                 if (game.date === now.slice(0, 10)) tasks.push({ roomId: room.id, gameId: game.id });
             }
         }
@@ -296,10 +309,9 @@ async function advanceSimDates(
         let allCurrentPlayed: boolean;
 
         if (league?.sim_real_start_at) {
-            const gprd = league.games_per_real_day ?? 5;
             const dueGames = schedule.filter((g: any) => {
-                const seq: number | undefined = g.game_seq;
-                return seq != null && gameSeqToRealMs(seq, league.sim_real_start_at!, gprd) <= nowMs;
+                const realMs = resolveGameRealMs(g, league);
+                return realMs != null && realMs <= nowMs;
             });
             allCurrentPlayed = dueGames.length > 0 && dueGames.every((g: any) => g.played);
         } else {
@@ -311,10 +323,8 @@ async function advanceSimDates(
             const upcoming = schedule
                 .filter((g: any) => !g.played)
                 .map((g: any) => {
-                    const seq: number | undefined = g.game_seq;
-                    if (seq != null && league?.sim_real_start_at) {
-                        return kstDateFromMs(gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5));
-                    }
+                    const realMs = resolveGameRealMs(g, league);
+                    if (realMs != null) return kstDateFromMs(realMs);
                     return g.date ?? '';
                 })
                 .filter(Boolean)

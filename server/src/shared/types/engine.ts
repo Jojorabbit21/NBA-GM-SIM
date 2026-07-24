@@ -4,6 +4,7 @@ import { PlayerStats } from './player.ts';
 export interface PlayerBoxScore {
     playerId: string;
     playerName: string;
+    position?: string;
     pts: number;
     reb: number;
     offReb: number;
@@ -29,11 +30,32 @@ export interface PlayerBoxScore {
     techFouls: number;
     flagrantFouls: number;
     plusMinus: number;
+    contestedAttempted: number;
+    contestedMade: number;
+    defRimAttempted: number;
+    defRimMade: number;
+    defMidAttempted: number;
+    defMidMade: number;
+    defThreeAttempted: number;
+    defThreeMade: number;
+    defRAAttempted: number;
+    defRAMade: number;
+    defITPAttempted: number;
+    defITPMade: number;
+    defMIDAttempted: number;
+    defMIDMade: number;
+    defCNRAttempted: number;
+    defCNRMade: number;
+    defWINGAttempted: number;
+    defWINGMade: number;
+    defATBAttempted: number;
+    defATBMade: number;
     condition: number;
     isStopper?: boolean;
     isAceTarget?: boolean;
     matchupEffect?: number;
     fatigue?: number;
+    recentShots?: boolean[];
     zoneData?: any;
 }
 

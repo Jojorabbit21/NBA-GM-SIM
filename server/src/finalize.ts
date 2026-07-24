@@ -11,6 +11,7 @@ import { initializeTournamentBracket } from './shared/tournamentInitializer';
 import { TEAM_DATA } from './shared/teamData';
 import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
+import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 
 /**
  * 시뮬레이션 실시각 계산의 기준점(game_seq=0)을 결정한다.
@@ -110,6 +111,8 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
         }
     }
 
+    // 리그 생성(강제 스케줄 초기화) 시점의 최신 아키타입 가중치/태그를 강제로 다시 받아온다.
+    await refetchGameConfig().catch(err => console.error('[finalize:force] refetchGameConfig failed:', err));
     await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
 
     const nowDate         = new Date();
@@ -134,6 +137,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
             `${room.league_id}-${seasonStartDate}`,
             seasonStartDate,
             intervalMinutes,
+            simRealStartAt,
         );
         schedule    = result.schedule;
         bracketData = result;
@@ -243,6 +247,9 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     }
 
     // ── 팀별 뎁스차트/로테이션/전술 최초 자동 설정 ──────────────────────────────
+    // 리그 생성(드래프트 완료) 시점의 최신 아키타입 가중치/태그를 강제로 다시 받아온다
+    // (서버 부팅 이후 관리자가 튜닝했을 수 있으므로) — 실패해도 하드코딩 폴백으로 진행.
+    await refetchGameConfig().catch(err => console.error('[finalize] refetchGameConfig failed:', err));
     await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
 
     // ── 날짜 계산 ────────────────────────────────────────────────────────────
@@ -283,6 +290,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
             tendencySeed,
             seasonStartDate,
             intervalMinutes,
+            simRealStartAt,
         );
         schedule    = result.schedule;
         bracketData = result;

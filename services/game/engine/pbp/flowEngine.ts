@@ -207,7 +207,7 @@ export function calculateHitRate(
             // 클러치(Q4 ≤5분, 접전) + Mid → +3%
             if (clutchContext?.isClutch) hitRate += zCfg.FUNDAMENTAL_CLUTCH_BONUS;
             // ISO + Mid → +3% (중첩 가능)
-            if (playType === 'ISO') hitRate += zCfg.FUNDAMENTAL_ISO_BONUS;
+            if (playType === 'Iso') hitRate += zCfg.FUNDAMENTAL_ISO_BONUS;
         }
 
         // B-2. Rangemaster: 엘리트 3PT 슈터, 클러치에서 추가 보너스
