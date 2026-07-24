@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
 import type { SimSettings } from '../types/simSettings';
@@ -89,6 +89,8 @@ export interface MultiGameDataReturn {
 
     // 저장
     forceSave:           () => Promise<void>;
+    isTacticsDirty:      boolean;
+    saveTactics:         () => Promise<{ error: string | null }>;
 }
 
 // ─── 훅 본체 ─────────────────────────────────────────────────────────────────
@@ -129,6 +131,11 @@ export function useMultiGameData(
     const [userTactics,      setUserTactics]      = useState<GameTactics | null>(null);
     const [depthChart,       setDepthChart]       = useState<DepthChart | null>(null);
     const [tendencySeed,     setTendencySeed]     = useState<string | null>(null);
+
+    // 마지막으로 DB에 저장된 전술/뎁스차트 스냅샷 — 저장 버튼을 눌러야만 갱신되며,
+    // 현재 편집 중인 값과 비교해 "저장되지 않은 변경사항 있음" 상태를 계산하는 기준선.
+    const [lastSavedTactics,   setLastSavedTactics]   = useState<GameTactics | null>(null);
+    const [lastSavedDepthChart, setLastSavedDepthChart] = useState<DepthChart | null>(null);
 
     // ── 식별 ────────────────────────────────────────────────────────────────
     const [myTeamId,         setMyTeamId]         = useState<string | null>(null);
@@ -224,8 +231,14 @@ export function useMultiGameData(
                 // 멤버 전술 (개인)
                 if (member) {
                     setMyTeamId(member.team_id ?? null);
-                    if (member.tactics)     setUserTactics(member.tactics as GameTactics);
-                    if (member.depth_chart) setDepthChart(member.depth_chart as DepthChart);
+                    if (member.tactics) {
+                        setUserTactics(member.tactics as GameTactics);
+                        setLastSavedTactics(member.tactics as GameTactics);
+                    }
+                    if (member.depth_chart) {
+                        setDepthChart(member.depth_chart as DepthChart);
+                        setLastSavedDepthChart(member.depth_chart as DepthChart);
+                    }
                 }
 
                 setLoadingProgress(100);
@@ -245,26 +258,26 @@ export function useMultiGameData(
         return () => { cancelled = true; };
     }, [roomId, userId]);
 
-    // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초) — 초기 로드로 인한 세팅은 저장 트리거하지 않음
-    const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const isInitialTacticsLoad = useRef(true);
+    // 전술/뎁스차트는 더 이상 자동 저장하지 않는다 — 사용자가 저장 버튼을 눌러야만
+    // room_members에 반영되고, 그래야 실제 경기 시뮬레이션(simRunner.ts)에도 반영된다.
+    // (과거엔 여기서 1.5초 디바운스 자동 저장을 했었음 — 편집 중인 미확정 값이 그대로
+    // 서버에 올라가는 문제가 있어 명시적 저장 버튼 방식으로 변경)
 
-    useEffect(() => {
-        if (isInitialTacticsLoad.current) {
-            if (userTactics) isInitialTacticsLoad.current = false;
-            return;
+    const isTacticsDirty = useMemo(() => {
+        return JSON.stringify(userTactics) !== JSON.stringify(lastSavedTactics)
+            || JSON.stringify(depthChart)  !== JSON.stringify(lastSavedDepthChart);
+    }, [userTactics, depthChart, lastSavedTactics, lastSavedDepthChart]);
+
+    const saveTactics = useCallback(async (): Promise<{ error: string | null }> => {
+        const s = stateRef.current;
+        if (!s.roomId || !s.userId) return { error: 'roomId/userId missing' };
+        const { error } = await saveMemberTactics(s.roomId, s.userId, s.userTactics, s.depthChart);
+        if (!error) {
+            setLastSavedTactics(s.userTactics);
+            setLastSavedDepthChart(s.depthChart);
         }
-        if (!roomId || !userId) return;
-
-        if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
-        tacticsAutoSaveTimer.current = setTimeout(() => {
-            saveMemberTactics(roomId, userId, stateRef.current.userTactics, stateRef.current.depthChart);
-        }, 1500);
-
-        return () => {
-            if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
-        };
-    }, [userTactics, depthChart, roomId, userId]);
+        return { error };
+    }, []);
 
     // ── forceSave ────────────────────────────────────────────────────────────
     const forceSave = useCallback(async () => {
@@ -297,6 +310,8 @@ export function useMultiGameData(
             // 멤버 개인 전술
             saveMemberTactics(s.roomId, s.userId, s.userTactics, s.depthChart),
         ]);
+        setLastSavedTactics(s.userTactics);
+        setLastSavedDepthChart(s.depthChart);
     }, []);
 
     const seasonConfig = buildSeasonConfig(seasonNumber);
@@ -328,5 +343,7 @@ export function useMultiGameData(
         lotteryResult, setLotteryResult,
         retiredPlayerIds, setRetiredPlayerIds,
         forceSave,
+        isTacticsDirty,
+        saveTactics,
     };
 }

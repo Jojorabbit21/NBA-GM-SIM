@@ -1,6 +1,6 @@
 
 import { supabase } from '../supabaseClient';
-import type { PbpLog, PlayerBoxScore, BoxTick, ShotEvent } from '../../types/engine';
+import type { PbpLog, PlayerBoxScore, BoxTick, ShotEvent, RotationData } from '../../types/engine';
 
 const FLY_SERVER = (import.meta as any).env?.VITE_DRAFT_WS_URL
     ? (import.meta as any).env.VITE_DRAFT_WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
@@ -22,6 +22,7 @@ export interface WindowedGameView {
     awayBox:       PlayerBoxScore[];
     homeScore?:    number;
     awayScore?:    number;
+    rotationData?: RotationData; // final일 때만 포함
 }
 
 export interface LiveGameSummary {

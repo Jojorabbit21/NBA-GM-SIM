@@ -70,6 +70,8 @@ function identityOnly(box: PlayerBoxScore[]): PlayerBoxScore[] {
     return box.map(p => ({ playerId: p.playerId, playerName: p.playerName, position: p.position }));
 }
 
+interface RotationEntry { in: number; out: number }
+
 export interface GamePbpSource {
     game_id:         string;
     home_team_id:    string;
@@ -82,6 +84,7 @@ export interface GamePbpSource {
     home_box:        PlayerBoxScore[];
     away_box:        PlayerBoxScore[];
     box_timeline?:   BoxTick[];
+    rotation_data?:  Record<string, RotationEntry[]>;
 }
 
 export type LiveGameState = 'not_started' | 'live' | 'final';
@@ -100,6 +103,7 @@ export interface WindowedGameView {
     awayBox:         PlayerBoxScore[];
     homeScore?:      number; // final일 때만 포함 (스포일러 방지)
     awayScore?:      number;
+    rotationData?:   Record<string, RotationEntry[]>; // final일 때만 포함
 }
 
 export function computeGameState(gameStartTime: string, nowMs: number): { state: LiveGameState; elapsedMs: number } {
@@ -123,6 +127,7 @@ export function buildWindowedView(row: GamePbpSource, nowMs: number): WindowedGa
             boxTimeline: row.box_timeline ?? [],
             homeBox: row.home_box ?? [], awayBox: row.away_box ?? [],
             homeScore: row.home_score, awayScore: row.away_score,
+            rotationData: row.rotation_data ?? {},
         };
     }
 

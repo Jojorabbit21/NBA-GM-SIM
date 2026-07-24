@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Save, Check } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
@@ -52,7 +52,35 @@ const MultiTacticsView: React.FC = () => {
         depthChart, setDepthChart,
         coachingData,
         isLoading: gameLoading,
+        isTacticsDirty, saveTactics,
     } = useMultiGameData(session, room?.id ?? null);
+
+    // ── 전술 저장 ──────────────────────────────────────────────────────────────
+    const [saving, setSaving] = useState(false);
+    const [savedFlash, setSavedFlash] = useState(false);
+
+    const handleSaveTactics = useCallback(async () => {
+        setSaving(true);
+        const { error } = await saveTactics();
+        setSaving(false);
+        if (!error) {
+            setSavedFlash(true);
+            setTimeout(() => setSavedFlash(false), 1500);
+        }
+    }, [saveTactics]);
+
+    // 저장 안 된 변경사항이 있는 채로 브라우저를 나가려 하면(새로고침/탭 닫기/URL 이동)
+    // 확인 프롬프트를 띄운다. 앱 내부 라우트 전환(사이드바 클릭 등)은 이 프로젝트가
+    // BrowserRouter(선언형)를 써서 useBlocker를 못 쓰는 관계로 범위 밖.
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (!isTacticsDirty) return;
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isTacticsDirty]);
 
     const [rosterPlayers, setRosterPlayers] = useState<Player[]>([]);
     const rosterKey = myTeamRow?.roster?.join(',') ?? '';
@@ -170,6 +198,34 @@ const MultiTacticsView: React.FC = () => {
                 ]}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
+                rightSlot={
+                    <>
+                        {isTacticsDirty && (
+                            <span className="text-xs text-amber-400 ko-normal">저장되지 않은 변경사항이 있습니다</span>
+                        )}
+                        <button
+                            onClick={handleSaveTactics}
+                            disabled={saving || !isTacticsDirty}
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
+                                saving || !isTacticsDirty
+                                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                    : 'hover:brightness-110 active:scale-95'
+                            }`}
+                            style={!saving && isTacticsDirty ? {
+                                backgroundColor: '#10b981',
+                                color: '#fff',
+                                boxShadow: '0 0 12px rgba(16,185,129,0.5)',
+                            } : {}}
+                        >
+                            {saving
+                                ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
+                                : savedFlash
+                                ? <><Check size={13} />저장됨</>
+                                : <><Save size={13} />저장</>
+                            }
+                        </button>
+                    </>
+                }
             />
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                 {activeTab === 'depth' && (

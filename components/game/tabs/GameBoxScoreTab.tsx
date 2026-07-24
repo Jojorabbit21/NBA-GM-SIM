@@ -14,10 +14,13 @@ interface GameBoxScoreTabProps {
     otherGames?: Game[];
     teams: Team[]; // For looking up other games' team logos
     onSelectGame?: (gameId: string) => void; // [New]
+    /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
+    homeBadge?: { color: string; abbr: string };
+    awayBadge?: { color: string; abbr: string };
 }
 
 export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame
+    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge
 }) => {
     
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
@@ -31,20 +34,22 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
             {/* Box Scores Container - Removed vertical gap */}
             <div className="flex flex-col gap-0">
                 {/* Away Team Box Score */}
-                <BoxScoreTable 
-                    team={awayTeam} 
-                    box={activeAwayBox} 
-                    isFirst 
-                    mvpId={mvpId} 
-                    leaders={leaders} 
+                <BoxScoreTable
+                    team={awayTeam}
+                    box={activeAwayBox}
+                    isFirst
+                    mvpId={mvpId}
+                    leaders={leaders}
+                    badge={awayBadge}
                 />
-                
+
                 {/* Home Team Box Score */}
-                <BoxScoreTable 
-                    team={homeTeam} 
-                    box={activeHomeBox} 
-                    mvpId={mvpId} 
-                    leaders={leaders} 
+                <BoxScoreTable
+                    team={homeTeam}
+                    box={activeHomeBox}
+                    mvpId={mvpId}
+                    leaders={leaders}
+                    badge={homeBadge}
                 />
             </div>
             

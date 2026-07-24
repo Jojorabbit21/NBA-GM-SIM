@@ -7,17 +7,23 @@ import { Check } from 'lucide-react';
 import { COURT_WIDTH, COURT_HEIGHT } from '../../../utils/courtCoordinates';
 import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../ShotTooltip';
+import { TeamMark } from '../../common/TeamMark';
 
 interface GameShotChartTabProps {
     homeTeam: Team;
     awayTeam: Team;
     shotEvents?: ShotEvent[];
+    /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
+    homeBadge?: { color: string; abbr: string };
+    awayBadge?: { color: string; abbr: string };
 }
 
 export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     homeTeam,
     awayTeam,
-    shotEvents = []
+    shotEvents = [],
+    homeBadge,
+    awayBadge,
 }) => {
     const [selectedTeamId, setSelectedTeamId] = useState<string>(homeTeam.id);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
@@ -147,14 +153,14 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                 onClick={() => setSelectedTeamId(homeTeam.id)}
                                 className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-xs font-black uppercase transition-all ${selectedTeamId === homeTeam.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                             >
-                                <img src={homeTeam.logo} className="w-5 h-5 object-contain" alt="" />
+                                <TeamMark teamId={homeTeam.id} teamName={homeTeam.name} className="w-5 h-5 object-contain" badge={homeBadge} />
                                 <span>{homeTeam.name}</span>
                             </button>
                             <button
                                 onClick={() => setSelectedTeamId(awayTeam.id)}
                                 className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-xs font-black uppercase transition-all ${selectedTeamId === awayTeam.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                             >
-                                <img src={awayTeam.logo} className="w-5 h-5 object-contain" alt="" />
+                                <TeamMark teamId={awayTeam.id} teamName={awayTeam.name} className="w-5 h-5 object-contain" badge={awayBadge} />
                                 <span>{awayTeam.name}</span>
                             </button>
                         </div>

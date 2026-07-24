@@ -335,7 +335,7 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
 
     const { data: row } = await supabase
         .from('game_pbp')
-        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
+        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data')
         .eq('room_id', roomId)
         .eq('game_id', gameId)
         .maybeSingle();

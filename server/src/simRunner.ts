@@ -195,6 +195,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             game_start_time: gameStartTime,
             sim_duration_ms: simDurationMs,
             box_timeline:    result.boxTimeline ?? [],
+            rotation_data:   result.rotationData ?? {},
         }, { onConflict: 'room_id,game_id' });
 
         // ── 6. rooms.schedule 업데이트 ─────────────────────────────────────

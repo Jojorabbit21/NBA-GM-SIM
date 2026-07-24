@@ -3,11 +3,15 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { PbpLog, Team } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { ArrowRight, UserPlus, UserMinus, Clock } from 'lucide-react';
+import { TeamMark } from '../../common/TeamMark';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
     homeTeam: Team;
     awayTeam: Team;
+    /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
+    homeBadge?: { color: string; abbr: string };
+    awayBadge?: { color: string; abbr: string };
 }
 
 interface ProcessedLog extends PbpLog {
@@ -15,7 +19,7 @@ interface ProcessedLog extends PbpLog {
     awayScore: number;
 }
 
-export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam }) => {
+export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam, homeBadge, awayBadge }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [selectedQuarter, setSelectedQuarter] = useState<number>(0); // 0 = All
 
@@ -201,7 +205,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 3. Away Logo */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <img src={awayTeam.logo} className={`w-5 h-5 object-contain ${!isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} alt="" />
+                                    <TeamMark teamId={awayTeam.id} teamName={awayTeam.name} className={`w-5 h-5 object-contain ${!isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} badge={awayBadge} />
                                 </div>
 
                                 {/* 4. Score (Text Only) */}
@@ -215,7 +219,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 5. Home Logo */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <img src={homeTeam.logo} className={`w-5 h-5 object-contain ${isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} alt="" />
+                                    <TeamMark teamId={homeTeam.id} teamName={homeTeam.name} className={`w-5 h-5 object-contain ${isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} badge={homeBadge} />
                                 </div>
 
                                 {/* 6. Message */}

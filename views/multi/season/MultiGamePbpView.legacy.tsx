@@ -1,4 +1,12 @@
 
+/**
+ * MultiGamePbpView.legacy.tsx — 백업 스냅샷 (라우팅에 연결되지 않음)
+ *
+ * 종료된(final) 경기에서 자체 3-column 박스스코어 UI 대신 싱글플레이어와 동일한
+ * 4개 탭(경기기록/샷차트/PBP/로테이션)을 쓰도록 MultiGamePbpView.tsx를 교체하면서,
+ * 문제 발생 시 되돌릴 수 있도록 교체 직전 버전을 그대로 복사해 남겨둔 파일이다.
+ * 실제 라우트에서는 import되지 않는다 — 필요 시 참고하거나 되돌리는 용도로만 사용.
+ */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2, Clock, Circle } from 'lucide-react';
@@ -6,19 +14,12 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
 import { calculateWinProbability } from '../../../utils/simulationMath';
-import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
-import type { Game, ShotEvent, Team, Player } from '../../../types';
+import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta } from '../../../types/engine';
+import type { Game, ShotEvent } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
 import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
-import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
-import { GameShotChartTab } from '../../../components/game/tabs/GameShotChartTab';
-import { GamePbpTab } from '../../../components/game/tabs/GamePbpTab';
-import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
-import type { GameStatLeaders } from '../../../components/game/BoxScoreTable';
-import { getTeamLogoUrl } from '../../../utils/constants';
-import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
@@ -38,7 +39,6 @@ interface GamePbpRow {
     home_box:        PlayerBoxScore[];
     away_box:        PlayerBoxScore[];
     box_timeline?:   BoxTick[];
-    rotation_data?:  RotationData;
 }
 
 interface TeamStats {
@@ -62,29 +62,6 @@ function fmtCountdown(ms: number): string {
     const m = Math.floor(totalSec / 60);
     const s = totalSec % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-// 싱글플레이어 GameResultView의 탭 컴포넌트(GameBoxScoreTab/GameShotChartTab/GamePbpTab/
-// GameRotationTab)를 재사용하기 위한 Team 어댑터.
-// - logo: getTeamLogoUrl()로 실제 로고 SVG 조회 (TeamLogo 컴포넌트와 동일한 경로 — 멀티 team_slug가
-//   실제 TEAM_DATA id와 같아서 그대로 resolve됨). 빈 문자열로 두면 <img src={team.logo}>를 직접
-//   쓰는 탭(샷차트/PBP)에서 깨진 이미지로 보임.
-// - roster: rosterCache(meta_players에서 조회해 mapRawPlayerToRuntimePlayer로 매핑한 실제 Player)가
-//   있으면 그걸 쓰고, 아직 로딩 전이면 box에서 파생한 최소 스텁으로 폴백한다. BoxScoreTable이
-//   team.roster.find(id)로 능력치를 찾아 OVR을 계산하므로(calculatePlayerOvr), 스텁({id,name}만)만
-//   있으면 능력치가 없어 70으로 깨진다 — 실제 Player가 채워져야 정확한 OVR/포지션이 나온다.
-function buildTeamAdapter(
-    teamId: string,
-    teamName: string,
-    box: PlayerBoxScore[],
-    rosterCache: Record<string, Player>,
-): Team {
-    return {
-        id: teamId,
-        name: teamName,
-        logo: getTeamLogoUrl(teamId),
-        roster: box.map(b => rosterCache[b.playerId] ?? ({ id: b.playerId, name: b.playerName, position: b.position } as unknown as Player)),
-    } as unknown as Team;
 }
 
 function computeTeamStats(logs: PbpLog[], shotEvents: ShotEvent[], teamId: string): TeamStats {
@@ -589,7 +566,6 @@ const MultiGamePbpView: React.FC = () => {
     const { session }           = useGame();
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
 
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
@@ -598,8 +574,6 @@ const MultiGamePbpView: React.FC = () => {
     const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
     const [gamePlayed,    setGamePlayed]    = useState(false);
     const [quarterFilter, setQuarterFilter] = useState<0|1|2|3|4|5>(0);
-    const [finalTab, setFinalTab] = useState<'box' | 'shotchart' | 'pbp' | 'rotation'>('box');
-    const [rosterCache, setRosterCache] = useState<Record<string, Player>>({});
     const serverNow = useServerClock();
 
     // scheduled/live/final 표시 상태. scheduledAt + serverNow만으로 결정되므로
@@ -661,7 +635,6 @@ const MultiGamePbpView: React.FC = () => {
                 home_box:        result.homeBox as PlayerBoxScore[],
                 away_box:        result.awayBox as PlayerBoxScore[],
                 box_timeline:    result.boxTimeline,
-                rotation_data:   result.rotationData,
             });
             setError(null);
             setIsLoading(false);
@@ -672,26 +645,6 @@ const MultiGamePbpView: React.FC = () => {
         const timer = displayState === 'live' ? setInterval(load, LIVE_POLL_MS) : null;
         return () => { cancelled = true; if (timer) clearInterval(timer); };
     }, [room?.id, gameId, displayState, session?.access_token]);
-
-    // ── final 전용: 박스스코어 탭(OVR/포지션 표시)에 쓸 실제 선수 능력치 조회 ──────
-    // PlayerBoxScore엔 이름/포지션/스탯만 있고 OVR이 없어서, BoxScoreTable이 team.roster에서
-    // 능력치를 찾아 OVR을 계산한다(calculatePlayerOvr) — 그래서 실제 Player를 채워야 한다.
-    useEffect(() => {
-        if (displayState !== 'final' || !gameData) return;
-        const ids = [...(gameData.home_box ?? []), ...(gameData.away_box ?? [])].map(b => b.playerId);
-        if (ids.length === 0) return;
-        let cancelled = false;
-        (async () => {
-            const { data } = await supabase.from('meta_players').select('id, name, position, base_attributes, tendencies').in('id', ids);
-            if (cancelled || !data) return;
-            const map: Record<string, Player> = {};
-            for (const raw of data) {
-                map[String(raw.id)] = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides);
-            }
-            setRosterCache(map);
-        })();
-        return () => { cancelled = true; };
-    }, [displayState, gameData?.home_box, gameData?.away_box, useCustomOverrides]);
 
     // ── 시간 기반 필터 ──────────────────────────────────────────────────────────
 
@@ -823,34 +776,6 @@ const MultiGamePbpView: React.FC = () => {
     const maxQuarter     = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);
     const quarterLabel         = isLive ? `Q${currentQuarter}` : 'Final';
     const currentTimeRemaining = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timeRemaining : '';
-
-    // ── final 전용: 싱글플레이어 탭 재사용을 위한 어댑터 + 집계 ─────────────────
-    const homeTeamAdapter = useMemo(
-        () => buildTeamAdapter(gameData?.home_team_id ?? '', homeName, gameData?.home_box ?? [], rosterCache),
-        [gameData?.home_team_id, homeName, gameData?.home_box, rosterCache],
-    );
-    const awayTeamAdapter = useMemo(
-        () => buildTeamAdapter(gameData?.away_team_id ?? '', awayName, gameData?.away_box ?? [], rosterCache),
-        [gameData?.away_team_id, awayName, gameData?.away_box, rosterCache],
-    );
-    const allBoxPlayers = useMemo(
-        () => [...(gameData?.home_box ?? []), ...(gameData?.away_box ?? [])],
-        [gameData?.home_box, gameData?.away_box],
-    );
-    const finalMvpId = useMemo(
-        () => allBoxPlayers.length > 0
-            ? allBoxPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allBoxPlayers[0]).playerId
-            : '',
-        [allBoxPlayers],
-    );
-    const finalLeaders = useMemo<GameStatLeaders>(() => ({
-        pts: Math.max(0, ...allBoxPlayers.map(p => p.pts)),
-        reb: Math.max(0, ...allBoxPlayers.map(p => p.reb)),
-        ast: Math.max(0, ...allBoxPlayers.map(p => p.ast)),
-        stl: Math.max(0, ...allBoxPlayers.map(p => p.stl)),
-        blk: Math.max(0, ...allBoxPlayers.map(p => p.blk)),
-        tov: Math.max(0, ...allBoxPlayers.map(p => p.tov)),
-    }), [allBoxPlayers]);
 
     // ── Loading / Scheduled / Error ───────────────────────────────────────────
 
@@ -987,8 +912,7 @@ const MultiGamePbpView: React.FC = () => {
             </div>
 
 
-            {/* ── Body: live 구간은 기존 3-column 실시간 화면 그대로 유지 ── */}
-            {!showBox && (
+            {/* ── Body: LiveGameView와 동일한 3-column ── */}
             <div className="flex flex-1 overflow-hidden">
 
                 {/* LEFT: 원정팀 박스스코어 + 하단 패널 */}
@@ -1217,75 +1141,6 @@ const MultiGamePbpView: React.FC = () => {
                     </div>
                 </div>
             </div>
-            )}
-
-            {/* ── Body: 종료된 경기 — 싱글플레이어 GameResultView와 동일한 4개 탭 재사용 ── */}
-            {showBox && (
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
-                <div className="shrink-0 border-b border-slate-800 flex items-center gap-6 px-6 h-11 bg-slate-900">
-                    {([
-                        { id: 'box' as const,       label: '경기기록' },
-                        { id: 'shotchart' as const, label: '샷차트' },
-                        { id: 'pbp' as const,       label: 'PBP' },
-                        { id: 'rotation' as const,  label: '로테이션' },
-                    ]).map(t => (
-                        <button
-                            key={t.id}
-                            onClick={() => setFinalTab(t.id)}
-                            className={`h-full flex items-center text-xs font-black uppercase tracking-wider border-b-2 transition-colors ${
-                                finalTab === t.id ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent hover:text-slate-300'
-                            }`}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto p-6">
-                    {finalTab === 'box' && (
-                        <GameBoxScoreTab
-                            homeTeam={homeTeamAdapter}
-                            awayTeam={awayTeamAdapter}
-                            homeBox={gameData.home_box ?? []}
-                            awayBox={gameData.away_box ?? []}
-                            mvpId={finalMvpId}
-                            leaders={finalLeaders}
-                            teams={[]}
-                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
-                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
-                        />
-                    )}
-                    {finalTab === 'shotchart' && (
-                        <GameShotChartTab
-                            homeTeam={homeTeamAdapter}
-                            awayTeam={awayTeamAdapter}
-                            shotEvents={gameData.shot_events ?? []}
-                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
-                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
-                        />
-                    )}
-                    {finalTab === 'pbp' && (
-                        <GamePbpTab
-                            logs={gameData.events ?? []}
-                            homeTeam={homeTeamAdapter}
-                            awayTeam={awayTeamAdapter}
-                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
-                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
-                        />
-                    )}
-                    {finalTab === 'rotation' && (
-                        <GameRotationTab
-                            homeTeam={homeTeamAdapter}
-                            awayTeam={awayTeamAdapter}
-                            homeBox={gameData.home_box ?? []}
-                            awayBox={gameData.away_box ?? []}
-                            rotationData={gameData.rotation_data}
-                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
-                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
-                        />
-                    )}
-                </div>
-            </div>
-            )}
         </div>
     );
 };

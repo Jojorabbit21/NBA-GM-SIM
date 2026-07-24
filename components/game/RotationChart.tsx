@@ -3,6 +3,7 @@ import React from 'react';
 import { Team, PlayerBoxScore, RotationData } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableHeaderCell } from '../common/Table';
+import { TeamMark } from '../common/TeamMark';
 
 interface RotationChartProps {
     homeTeam: Team;
@@ -10,6 +11,9 @@ interface RotationChartProps {
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
     rotationData?: RotationData;
+    /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
+    homeBadge?: { color: string; abbr: string };
+    awayBadge?: { color: string; abbr: string };
 }
 
 const GAME_DURATION_SECONDS = 48 * 60; // 2880
@@ -95,8 +99,8 @@ const StandardizedHeader = () => (
     </div>
 );
 
-export const RotationChart: React.FC<RotationChartProps> = ({ 
-    homeTeam, awayTeam, homeBox, awayBox, rotationData 
+export const RotationChart: React.FC<RotationChartProps> = ({
+    homeTeam, awayTeam, homeBox, awayBox, rotationData, homeBadge, awayBadge
 }) => {
     if (!rotationData) return null;
 
@@ -120,7 +124,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                 {/* Away Team Section */}
                 <div className="mb-10 relative">
                     <div className="flex items-center gap-2 mb-3 px-2 border-b border-slate-800/50 pb-2">
-                        <img src={awayTeam.logo} className="w-6 h-6 object-contain" alt="" />
+                        <TeamMark teamId={awayTeam.id} teamName={awayTeam.name} className="w-6 h-6 object-contain" badge={awayBadge} />
                         <span className="text-sm font-black text-slate-300 uppercase tracking-wider">{awayTeam.name}</span>
                     </div>
 
@@ -143,7 +147,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                 {/* Home Team Section */}
                 <div className="relative">
                     <div className="flex items-center gap-2 mb-3 px-2 border-b border-slate-800/50 pb-2">
-                        <img src={homeTeam.logo} className="w-6 h-6 object-contain" alt="" />
+                        <TeamMark teamId={homeTeam.id} teamName={homeTeam.name} className="w-6 h-6 object-contain" badge={homeBadge} />
                         <span className="text-sm font-black text-slate-300 uppercase tracking-wider">{homeTeam.name}</span>
                     </div>
 

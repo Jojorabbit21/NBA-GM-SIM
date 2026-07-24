@@ -23,11 +23,13 @@ interface BoxScoreTableProps {
     isFirst?: boolean;
     mvpId?: string;
     leaders: GameStatLeaders;
+    /** 제공되면 원형 TeamLogo 대신 이 색상/약어로 사각형 배지를 렌더링(멀티플레이어 전용 스타일) */
+    badge?: { color: string; abbr: string };
 }
 
 type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
-export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders }) => {
+export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
 
@@ -139,7 +141,16 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
             <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between mt-0.5">
                 <div className="flex items-center gap-3">
-                    <TeamLogo teamId={team.id} size="md" />
+                    {badge ? (
+                        <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
+                            style={{ backgroundColor: badge.color, color: '#fff' }}
+                        >
+                            {badge.abbr.slice(0, 3)}
+                        </div>
+                    ) : (
+                        <TeamLogo teamId={team.id} size="md" />
+                    )}
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
                 </div>
             </div>
