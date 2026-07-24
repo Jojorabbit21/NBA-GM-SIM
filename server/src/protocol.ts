@@ -27,9 +27,11 @@ export interface DraftPickEntry {
 }
 
 export interface DraftCursor {
-    status: 'active' | 'paused' | 'completed';
+    /** waiting: 로터리 완료, 예정 시각 전(입장은 가능하나 픽/타이머 없음) */
+    status: 'waiting' | 'active' | 'paused' | 'completed';
     currentPickIndex: number;
-    currentPickStartedAt: string;
+    /** waiting 상태에서는 아직 픽이 시작되지 않았으므로 null */
+    currentPickStartedAt: string | null;
     pausedAt?: string;
 }
 

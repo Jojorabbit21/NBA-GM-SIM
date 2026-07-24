@@ -38,6 +38,19 @@ function kstLocalToIso(local: string): string {
     return new Date(new Date(`${local}:00Z`).getTime() - KST_OFFSET_MS).toISOString();
 }
 
+// 리그 시작 시각의 최소 허용값(현재로부터 1시간 뒤) — 로터리 추첨이 리그 시작 40분 전에
+// 잡히는데, 시작 시간이 지금으로부터 35분 이내면 세션 생성 즉시 로터리 예정 시각이 과거가
+// 되어 스케줄러가 곧바로(그리고 방/멤버 준비도 안 된 채로) 추첨을 실행해버리는 버그가 생긴다.
+const MIN_START_LEAD_MS = 60 * 60_000;
+
+function minStartKst(): string {
+    return new Date(Date.now() + MIN_START_LEAD_MS + KST_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+// 리그 시작 시각 기준 드래프트/로터리 기본 오프셋
+const DRAFT_BEFORE_START_MS   = 30 * 60_000; // 드래프트: 시작 30분 전
+const LOTTERY_BEFORE_DRAFT_MS = 10 * 60_000; // 로터리 추첨: 드래프트 10분 전
+
 const TOURNAMENT_TEAM_OPTIONS  = [4, 8, 16, 32];
 const MAIN_LEAGUE_TEAM_OPTIONS = [10, 20, 30];
 
@@ -109,6 +122,17 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             setErr('리그 이름은 1~30자여야 합니다'); return;
         }
 
+        // 토너먼트: 시작 시각이 최소 리드타임(1시간)보다 가까우면 로터리 예정 시각이
+        // 생성 즉시 과거가 되어버려 스케줄러가 준비 안 된 방에 즉시 추첨을 실행하는
+        // 버그로 이어진다 — 여기서 미리 막는다.
+        let startIso: string | null = null;
+        if (type === 'tournament') {
+            startIso = tournamentStartAt ? kstLocalToIso(tournamentStartAt) : null;
+            if (!startIso || new Date(startIso).getTime() < Date.now() + MIN_START_LEAD_MS) {
+                setErr('토너먼트 시작 일시는 현재로부터 최소 1시간 이후여야 합니다'); return;
+            }
+        }
+
         setSaving(true);
         setErr(null);
 
@@ -116,6 +140,13 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             let leagueId: string;
 
             if (type === 'tournament') {
+                const draftScheduledAtIso   = startIso
+                    ? new Date(new Date(startIso).getTime() - DRAFT_BEFORE_START_MS).toISOString()
+                    : null;
+                const lotteryScheduledAtIso = draftScheduledAtIso
+                    ? new Date(new Date(draftScheduledAtIso).getTime() - LOTTERY_BEFORE_DRAFT_MS).toISOString()
+                    : null;
+
                 const { data: league, error: le } = await createLeague({
                     type: 'tournament',
                     name: trimName,
@@ -131,7 +162,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
                         draftOvrMax,
-                        tournamentStartAt: tournamentStartAt ? kstLocalToIso(tournamentStartAt) : null,
+                        tournamentStartAt:  startIso,
+                        draftScheduledAt:   draftScheduledAtIso,
+                        lotteryScheduledAt: lotteryScheduledAtIso,
                     },
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
@@ -332,10 +365,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                     <input
                                         type="datetime-local"
                                         value={tournamentStartAt}
+                                        min={minStartKst()}
                                         onChange={e => setTournamentStartAt(e.target.value)}
                                         className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                     />
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">첫 경기 시작 시각 기준. 이후 경기는 2시간 간격으로 자동 배정됩니다.</p>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        첫 경기 시작 시각 기준. 이후 경기는 2시간 간격으로 자동 배정됩니다.<br />
+                                        드래프트는 시작 30분 전, 로터리 추첨은 드래프트 10분 전(시작 40분 전)에 자동 진행됩니다. 최소 1시간 이후로만 설정할 수 있습니다.
+                                    </p>
                                 </div>
 
                                 <div className="border-t border-slate-800 pt-5" />

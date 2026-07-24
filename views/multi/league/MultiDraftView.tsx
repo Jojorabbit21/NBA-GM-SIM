@@ -87,6 +87,30 @@ const MultiDraftView: React.FC = () => {
     const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
     const [pickError,        setPickError]        = useState<string | null>(null);
 
+    // ── 대기실(waiting) 카운트다운 — 로터리 완료 후 예정 시각까지 ──────────────
+    const [countdown, setCountdown] = useState<string | null>(null);
+    useEffect(() => {
+        const target = league?.draft_scheduled_at;
+        if (!target) { setCountdown(null); return; }
+
+        const tick = () => {
+            const diff = new Date(target).getTime() - Date.now();
+            if (diff <= 0) { setCountdown('곧 시작'); return; }
+            const d  = Math.floor(diff / 86_400_000);
+            const h  = Math.floor((diff % 86_400_000) / 3_600_000);
+            const m  = Math.floor((diff % 3_600_000)  /    60_000);
+            const s  = Math.floor((diff % 60_000)     /     1_000);
+            const hh = String(h).padStart(2, '0');
+            const mm = String(m).padStart(2, '0');
+            const ss = String(s).padStart(2, '0');
+            setCountdown(d > 0 ? `${d}일 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`);
+        };
+
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [league?.draft_scheduled_at]);
+
     // ── 낙관적 타이머 동결 (pause 클릭 즉시 표시, Realtime 확정 전까지 유지) ──
     const [frozenTime, setFrozenTime] = useState<number | null>(null);
     const handleOptimisticPause  = useCallback(() => setFrozenTime(timeRemaining), [timeRemaining]);
@@ -190,9 +214,15 @@ const MultiDraftView: React.FC = () => {
         [poolPlayers, draftedSet],
     );
 
+    // myPicks(픽 순서 보존 배열) 순서 그대로 매핑 — poolPlayers.filter()를 쓰면 poolPlayers의
+    // 고정 DB 조회 순서를 따르게 되어, 먼저 뽑은 선수가 아니라 poolPlayers 상 먼저 나오는
+    // 선수가 MyRoster의 "주전"으로 표시되는 버그가 생긴다(RookieDraftView.tsx와 동일 패턴 적용).
     const myRosterPlayers = useMemo((): Player[] => {
-        const myPickSet = new Set(myPicks);
-        return poolPlayers.filter(p => myPickSet.has(p.id)).map(p => toPlayer(p, useCustomOverrides));
+        const poolById = new Map(poolPlayers.map(p => [p.id, p]));
+        return myPicks
+            .map(id => poolById.get(id))
+            .filter((p): p is DraftPoolPlayer => !!p)
+            .map(p => toPlayer(p, useCustomOverrides));
     }, [poolPlayers, myPicks]);
 
     // ── DraftHeader 용 파생 값 ────────────────────────────────────────────────
@@ -241,6 +271,76 @@ const MultiDraftView: React.FC = () => {
                 >
                     로비로 돌아가기
                 </button>
+            </div>
+        );
+    }
+
+    if (draftState.status === 'waiting') {
+        return (
+            <div className="pretendard flex flex-col h-screen bg-slate-950">
+
+                {/* ── 드래프트 룸 헤더 (시작까지 남은 시간 표시) ── */}
+                <div className="shrink-0 bg-slate-900">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5">
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
+                                className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <span className="text-sm font-bold text-white/80">드래프트 룸</span>
+                        </div>
+                        <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
+                            <div className="pretendard font-black text-xl tracking-wider leading-none text-amber-400">
+                                {countdown ?? '--:--:--'}
+                            </div>
+                            <div className="text-xs text-white/60 font-bold mt-0.5">
+                                드래프트 시작까지
+                            </div>
+                        </div>
+                        <div />
+                    </div>
+                </div>
+
+                {/* ── 드래프트 보드 (픽 순서 미리보기) ── */}
+                <div style={{ flex: `0 0 ${boardRatio}%` }} className="min-h-0 overflow-hidden px-1.5 pt-1.5">
+                    <div className="h-full bg-slate-900/60 overflow-hidden">
+                        <DraftBoard
+                            teamIds={teamIds}
+                            totalRounds={draftState.totalRounds}
+                            picks={boardPicks}
+                            currentPickIndex={draftState.currentPickIndex}
+                            draftOrder={draftOrder}
+                            userTeamId={myTeamId ?? ''}
+                            positionColors={POSITION_COLORS}
+                            teamMeta={teamMeta}
+                            onlineTeamIds={onlineTeamIds}
+                        />
+                    </div>
+                </div>
+
+                {/* ── 드래그 구분선 ── */}
+                <div
+                    onMouseDown={handleMouseDown}
+                    className="h-1.5 bg-slate-800/80 hover:bg-indigo-600/50 cursor-row-resize flex items-center justify-center shrink-0 transition-colors"
+                >
+                    <GripHorizontal size={14} className="text-slate-600" />
+                </div>
+
+                {/* ── 선수 풀 미리보기 (선택 비활성) ── */}
+                <div className="flex-1 min-h-0 overflow-hidden bg-slate-950 p-1.5">
+                    <div className="h-full bg-slate-900/60 rounded-xl overflow-hidden">
+                        <PlayerPool
+                            players={adaptedPlayers}
+                            selectedPlayerId={selectedPlayerId}
+                            onSelectPlayer={handleSelectPlayer}
+                            isUserTurn={false}
+                            onDraft={() => {}}
+                            positionColors={POSITION_COLORS}
+                        />
+                    </div>
+                </div>
             </div>
         );
     }

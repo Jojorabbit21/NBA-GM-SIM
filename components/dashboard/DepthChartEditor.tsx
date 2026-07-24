@@ -170,27 +170,31 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
     };
 
     const handleChange = (pos: keyof DepthChart, depthIndex: number, playerId: string) => {
-        const newChart = { ...depthChart! };
-        const newRow = [...newChart[pos]];
         const newVal = playerId === "" ? null : playerId;
-        newRow[depthIndex] = newVal;
+        const newChart: DepthChart = {
+            PG: [...depthChart!.PG] as DepthChart['PG'],
+            SG: [...depthChart!.SG] as DepthChart['SG'],
+            SF: [...depthChart!.SF] as DepthChart['SF'],
+            PF: [...depthChart!.PF] as DepthChart['PF'],
+            C:  [...depthChart!.C]  as DepthChart['C'],
+        };
 
+        // 같은 선수가 다른 슬롯(포지션·뎁스 무관)에 이미 있으면 그 슬롯을 비운다 —
+        // 안 그러면 한 선수가 두 슬롯에 동시에 남는 중복 배정 버그가 생긴다
+        // (예: 벤치 SG로 있던 선수를 써드 C로 옮겨도 SG 벤치 자리가 안 비워짐).
         if (newVal) {
-            for (let i = 0; i < 3; i++) {
-                if (i !== depthIndex && newRow[i] === newVal) newRow[i] = null;
-            }
-        }
-        newChart[pos] = newRow;
-
-        if (depthIndex === 0 && newVal) {
             positions.forEach(p => {
-                if (p !== pos && newChart[p][0] === newVal) {
-                    const otherRow = [...newChart[p]];
-                    otherRow[0] = null;
-                    newChart[p] = otherRow;
+                for (let i = 0; i < 3; i++) {
+                    if (!(p === pos && i === depthIndex) && newChart[p][i] === newVal) {
+                        newChart[p][i] = null;
+                    }
                 }
             });
-            const newStarters = { ...tactics.starters, [pos]: newVal };
+        }
+        newChart[pos][depthIndex] = newVal;
+
+        if (depthIndex === 0) {
+            const newStarters = { ...tactics.starters, [pos]: newVal ?? '' };
             onUpdateTactics({ ...tactics, starters: newStarters });
         }
         onUpdateDepthChart(newChart);

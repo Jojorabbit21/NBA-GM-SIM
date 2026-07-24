@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament } from '../../../services/multi/leagueService';
+import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
@@ -205,10 +206,12 @@ const LeagueSettingsView: React.FC = () => {
     };
 
     const handleRunLottery = async () => {
-        if (!room || !userId) return;
+        if (!room || !userId || !leagueId) return;
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) { setLotteryErr('인증 정보를 가져올 수 없습니다.'); return; }
         setLotteryRunning(true);
         setLotteryErr(null);
-        const { error: err } = await runDraftLottery(room.id, userId);
+        const { error: err } = await runDraftLottery(room.id, leagueId, token);
         setLotteryRunning(false);
         if (err) { setLotteryErr(err); return; }
         reload();

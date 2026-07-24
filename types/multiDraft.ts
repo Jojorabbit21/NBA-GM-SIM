@@ -39,7 +39,8 @@ export interface MultiDraftState {
     pickOrder: PickOrderEntry[];
 
     // ── 진행 상태 ────────────────────────────────────────────────────────────
-    status:               'pending' | 'active' | 'paused' | 'completed';
+    /** waiting: 로터리 완료, 예정 시각 전(입장은 가능하나 픽/타이머 없음) */
+    status:               'pending' | 'waiting' | 'active' | 'paused' | 'completed';
     currentPickIndex:     number;     // 0-based
     currentPickStartedAt: string;     // ISO — 타이머 기준 (재개 시 pauseDuration만큼 보정됨)
     pausedAt?:            string;     // ISO — pause 시각, resume 후 제거

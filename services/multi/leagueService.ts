@@ -66,6 +66,8 @@ export interface CreateLeagueParams {
         seasonStartDate:      string;
         seasonEndDate:        string;
         tournamentStartAt:    string | null;
+        draftScheduledAt:     string | null;
+        lotteryScheduledAt:   string | null;
         realTimePace:         string;
     }>;
 }
@@ -118,6 +120,8 @@ export const createLeague = async (
     if (opts.seasonStartDate      !== undefined) payload.season_start_date       = opts.seasonStartDate;
     if (opts.seasonEndDate        !== undefined) payload.season_end_date         = opts.seasonEndDate;
     if (opts.tournamentStartAt    !== undefined) payload.tournament_start_at     = opts.tournamentStartAt;
+    if (opts.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = opts.draftScheduledAt;
+    if (opts.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = opts.lotteryScheduledAt;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
 
     const { data, error } = await supabase
@@ -505,24 +509,6 @@ export const updateTeamProfile = async (
     return { data: data as LeagueTeamRow, error: null };
 };
 
-// ─── 드래프트 추첨 (어드민 수동) ──────────────────────────────────────────────
-
-export const runDraftLottery = async (
-    roomId:  string,
-    userId:  string
-): Promise<{ data: LeagueTeamRow[] | null; error: string | null }> => {
-    const { data, error } = await supabase.rpc('run_draft_lottery', {
-        p_room_id:  roomId,
-        p_admin_id: userId,
-    });
-    if (error) {
-        const msg = error.message ?? '';
-        if (msg.includes('lottery_already_done')) return { data: null, error: '이미 추첨이 완료되었습니다.' };
-        return { data: null, error: msg };
-    }
-    return { data: data as LeagueTeamRow[], error: null };
-};
-
 // ─── 탈퇴 (room_members + 팀 반환) ────────────────────────────────────────────
 
 export const leaveLeague = async (
@@ -590,6 +576,36 @@ export const startDraft = async (
         return { error: null };
     } catch (e: any) {
         return { error: e?.message ?? '드래프트 시작 실패' };
+    }
+};
+
+// ─── 드래프트 로터리 추첨 (어드민, Fly.io POST /run-lottery) ─────────────────
+// 예전엔 Supabase RPC를 클라이언트가 직접 호출해서 Bun 서버가 로터리 완료 시점을 몰랐고,
+// 그래서 서버의 30초 폴링 스케줄러가 뒤늦게 발견할 때까지 방 준비(prepareDraftRoom)가
+// 지연됐다 — 추첨 직후 방 준비까지 한 요청 안에서 처리하도록 Bun 서버 경유로 변경.
+
+export const runDraftLottery = async (
+    roomId:   string,
+    leagueId: string,
+    accessToken?: string
+): Promise<{ data: LeagueTeamRow[] | null; error: string | null }> => {
+    const token = accessToken ?? (await supabase.auth.getSession()).data.session?.access_token;
+    try {
+        const res = await fetch(`${FLY_SERVER}/run-lottery`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ roomId, leagueId }),
+        });
+        const data = await res.json().catch(() => ({})) as any;
+        if (!res.ok) {
+            return { data: null, error: data?.error ?? `HTTP ${res.status}` };
+        }
+        return { data: data.leagueTeams as LeagueTeamRow[], error: null };
+    } catch (e: any) {
+        return { data: null, error: e?.message ?? '드래프트 추첨 실패' };
     }
 };
 

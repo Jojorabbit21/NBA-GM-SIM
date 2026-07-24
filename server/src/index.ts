@@ -3,7 +3,8 @@
  *
  * HTTP 라우트:
  *   GET  /          → 헬스체크
- *   POST /start-draft → 어드민이 드래프트 수동 시작
+ *   POST /start-draft  → 어드민이 드래프트 수동 시작
+ *   POST /run-lottery  → 어드민이 로터리 추첨 실행 (직후 방 준비까지 이어서 처리)
  *   GET  /ws        → WebSocket 업그레이드 (드래프트 방 입장)
  *
  * WS 흐름:
@@ -15,7 +16,7 @@ import type { ServerWebSocket } from 'bun';
 import { verifyToken } from './auth';
 import { RoomManager } from './RoomManager';
 import { startScheduler } from './scheduler';
-import { handleStartDraft } from './startDraft';
+import { handleStartDraft, handleRunLottery } from './startDraft';
 import { runSimulation } from './simRunner';
 import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
@@ -36,6 +37,30 @@ const wsHandlers = {
     },
 
     async message(ws: ServerWebSocket<WsData>, raw: string | Buffer): Promise<void> {
+        try {
+            await handleMessage(ws, raw);
+        } catch (err) {
+            // 방 1개의 처리 중 예외가 프로세스 전체를 죽여서는 안 된다 — 다른 모든 방의
+            // 연결까지 같이 끊기고 서버가 재부팅되는 사고가 실제로 있었다(2026-07-24,
+            // 준비되지 않은 draft_config로 scheduleNext()가 크래시한 사례).
+            console.error('[ws] message handler error:', err);
+            try {
+                ws.send(encode({ type: 'error', code: 'internal', message: 'internal error' }));
+            } catch { /* 소켓이 이미 닫혔으면 무시 */ }
+        }
+    },
+
+    close(ws: ServerWebSocket<WsData>): void {
+        const { userId, roomId } = ws.data ?? {};
+        if (roomId) {
+            const room = RoomManager.get(roomId);
+            room?.removeSocket(ws);
+        }
+        console.log(`[ws] disconnected uid=${userId ?? '?'} room=${roomId ?? '?'}`);
+    },
+};
+
+async function handleMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer): Promise<void> {
         const msg = decode(raw);
         if (!msg) {
             ws.send(encode({ type: 'error', code: 'internal', message: 'invalid json' }));
@@ -111,17 +136,7 @@ const wsHandlers = {
         }
 
         ws.send(encode({ type: 'error', code: 'internal', message: 'unknown message type' }));
-    },
-
-    close(ws: ServerWebSocket<WsData>): void {
-        const { userId, roomId } = ws.data ?? {};
-        if (roomId) {
-            const room = RoomManager.get(roomId);
-            room?.removeSocket(ws);
-        }
-        console.log(`[ws] disconnected uid=${userId ?? '?'} room=${roomId ?? '?'}`);
-    },
-};
+}
 
 // ── HTTP 라우터 ───────────────────────────────────────────────────────────────
 
@@ -149,6 +164,11 @@ const server = Bun.serve<WsData>({
         // 드래프트 시작 (어드민 JWT 필수)
         if (url.pathname === '/start-draft' && req.method === 'POST') {
             return handleStartDraft(req);
+        }
+
+        // 드래프트 로터리 추첨 (어드민 JWT 필수) — 추첨 직후 방 준비까지 이어서 처리
+        if (url.pathname === '/run-lottery' && req.method === 'POST') {
+            return handleRunLottery(req);
         }
 
         // 경기 수동 시뮬 오버라이드 (어드민용, admin-sim-override EF 대체)

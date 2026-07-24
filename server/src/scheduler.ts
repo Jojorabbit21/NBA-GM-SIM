@@ -6,14 +6,15 @@
  * 섹션 4(완료 처리)는 DraftRoom.onCompleted() → finalize.ts가 대체 → 폴링 불필요.
  *
  * 역할:
- *  A. 추첨 자동 실행: lottery_scheduled_at <= now → run_draft_lottery RPC
- *  B. 드래프트 자동 시작: draft_scheduled_at <= now → startDraftForRoom
- *  C. 고아 방 복구: 서버 재시작 시 진행 중 방 재로드 + 타이머 재개
- *  D. completed/finalized 방 메모리 정리
+ *  A.   추첨 자동 실행: lottery_scheduled_at <= now → run_draft_lottery RPC
+ *  A-1. 드래프트 룸 사전 준비: 로터리 완료 && draft_config 없음 → prepareDraftRoom (사전입장 지원)
+ *  B.   드래프트 자동 시작: draft_scheduled_at <= now → startDraftForRoom (activateDraftRoom 경유)
+ *  C.   고아 방 복구: 서버 재시작 시 진행 중 방 재로드 + 타이머 재개
+ *  D.   completed/finalized 방 메모리 정리
  */
 import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
-import { startDraftForRoom } from './startDraft';
+import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { runSimulation } from './simRunner';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -52,6 +53,7 @@ async function tick(): Promise<void> {
 
     await Promise.allSettled([
         runLotteries(now),
+        runDraftRoomPrep(),
         runScheduledDraftStarts(now),
         runSimGames(now),
         cleanupCompletedRooms(),
@@ -95,6 +97,50 @@ async function runLotteries(now: string): Promise<void> {
             console.error(`[scheduler:lottery] league=${league.id}: ${error.message}`);
         } else if (!error) {
             console.log(`[scheduler:lottery] done league=${league.id}`);
+        }
+    }
+}
+
+// ── A-1. [신규] 로터리 완료 후 드래프트 룸 사전 준비 (사전입장 지원) ──────────
+// 로터리가 끝났는데(league_teams.draft_order 존재) 아직 draft_config가 없는 방을 찾아
+// prepareDraftRoom()으로 미리 준비해둔다(cursor='waiting') — 그래야 예정 시각 전에도
+// 유저가 룸에 입장해 풀/픽순서를 미리 볼 수 있고, activateDraftRoom()은 예정 시각에
+// 커서만 가볍게 'active'로 뒤집으면 된다. 로터리가 수동(어드민 클릭)/자동(runLotteries)
+// 어느 경로로 끝나든 폴링이라 다음 tick에서 여기서 잡힌다.
+async function runDraftRoomPrep(): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id')
+        .eq('status', 'recruiting');
+
+    for (const league of leagues ?? []) {
+        const { data: room } = await supabase
+            .from('rooms')
+            .select('id, draft_config, draft_cursor')
+            .eq('league_id', league.id)
+            .eq('status', 'active')
+            .maybeSingle();
+
+        if (!room || room.draft_config) continue; // 방 없음, 또는 이미 준비됨
+        if ((room.draft_cursor as any)?.status === 'preparing') continue; // 다른 tick이 준비 중
+
+        const { count } = await supabase
+            .from('league_teams')
+            .select('id', { count: 'exact', head: true })
+            .eq('room_id', room.id)
+            .not('draft_order', 'is', null);
+
+        if (!count) continue; // 로터리 아직 안 끝남
+
+        // 원자적 클레임 + 준비는 claimAndPrepareRoom() 공용 헬퍼가 담당한다 — /run-lottery
+        // 엔드포인트도 같은 헬퍼를 쓰므로 두 경로가 동시에 이 방을 준비하려 해도 draft_config가
+        // 여전히 null일 때만 클레임에 성공해 중복 실행되지 않는다(둘 중 하나는 skipped로 조용히 빠짐).
+        // draft_config를 클레임 마커로 쓰지 않는 이유(2026-07-24 장애 이력)는 startDraft.ts 참조.
+        const result = await claimAndPrepareRoom(league.id, room.id);
+        if (!result.ok) {
+            console.error(`[scheduler:draft-prep] league=${league.id}: ${result.error}`);
+        } else if (!result.skipped) {
+            console.log(`[scheduler:draft-prep] room=${room.id} league=${league.id} prepared (waiting)`);
         }
     }
 }

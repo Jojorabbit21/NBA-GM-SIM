@@ -1,10 +1,17 @@
 /**
- * startDraft.ts — 드래프트 시작 핸들러.
+ * startDraft.ts — 드래프트 준비/시작 핸들러.
  *
  * start-draft EF와 draft-scheduler 섹션2를 통합 이식.
  * - HTTP POST /start-draft : 어드민이 수동 시작 (JWT 인증 필수)
+ * - HTTP POST /run-lottery : 어드민이 로터리 추첨 실행 (JWT 인증 필수) — 추첨 직후
+ *   곧바로 prepareDraftRoom()을 이어붙여 스케줄러 폴링(최대 30초) 없이 즉시 방을 준비한다.
  * - startDraftForRoom(roomId) : 스케줄러가 자동 시작 시 사용
- * 두 경로 모두 동일한 내부 로직(_runStartDraft)으로 처리.
+ *
+ * [로터리 후 사전입장] AI 슬롯 채우기 + 풀 구성 + 픽 순서 계산(무거운 부분)은 로터리
+ * 완료 직후 prepareDraftRoom()이 미리 실행해 draft_config를 만들어두고, 예정 시각에
+ * activateDraftRoom()이 커서만 'active'로 뒤집는다 — 그래야 예정 시각 전에도 유저가
+ * 룸에 접속해 풀/픽순서를 미리 볼 수 있다(DraftRoom.load()는 draft_config만 있으면
+ * 성공하므로). draft_config가 아직 없는 레거시/예외 경로는 _runStartDraft()로 폴백한다.
  */
 import { supabase } from './supabaseAdmin';
 import { verifyToken } from './auth';
@@ -57,28 +64,89 @@ export async function handleStartDraft(req: Request): Promise<Response> {
         return json({ error: 'draft already started' }, 400);
     }
 
-    const result = await _runStartDraft(body.leagueId, room.id);
+    const result = await activateDraftRoom(body.leagueId, room.id);
     if (!result.ok) return json({ error: result.error }, 500);
 
     return json({ ok: true, roomId: room.id });
 }
 
+// ── HTTP POST /run-lottery 핸들러 ─────────────────────────────────────────────
+// 로터리 자체(run_draft_lottery RPC)는 순수 DB 로직이라 원래 Bun 서버가 필요 없었지만,
+// 로터리 완료를 스케줄러가 30초 폴링으로 뒤늦게 발견하는 대신 그 즉시 prepareDraftRoom()을
+// 이어붙이기 위해 이 경로를 신설한다 — 로터리 → 방 준비가 한 요청 안에서 순차 처리된다.
+export async function handleRunLottery(req: Request): Promise<Response> {
+    // 인증
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return json({ error: 'Unauthorized' }, 401);
+
+    const userId = await verifyToken(token);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+    const body = await req.json().catch(() => null) as { roomId?: string; leagueId?: string } | null;
+    if (!body?.roomId || !body?.leagueId) return json({ error: 'roomId, leagueId required' }, 400);
+
+    // 어드민 검증 — run_draft_lottery RPC는 p_admin_id를 받지만 실제로 검증하지 않으므로 여기서 대신 확인한다.
+    const { data: league } = await supabase
+        .from('leagues')
+        .select('id, admin_user_id, status')
+        .eq('id', body.leagueId)
+        .single();
+
+    if (!league)                          return json({ error: 'league not found' }, 404);
+    if (league.admin_user_id !== userId)  return json({ error: 'Forbidden' }, 403);
+    if (league.status !== 'recruiting')   return json({ error: 'league not in recruiting status' }, 400);
+
+    const { data: lotteryResult, error: lotteryErr } = await supabase.rpc('run_draft_lottery', {
+        p_room_id:  body.roomId,
+        p_admin_id: userId,
+    });
+    if (lotteryErr) {
+        const msg = lotteryErr.message ?? '';
+        if (msg.includes('lottery_already_done')) return json({ error: '이미 추첨이 완료되었습니다.' }, 400);
+        return json({ error: msg }, 500);
+    }
+
+    // 로터리 직후 곧바로 방 준비 — 원자적 클레임을 거치므로 스케줄러 폴링과 동시 실행돼도
+    // 중복 없이 안전하다. 실패해도 스케줄러 폴링(runDraftRoomPrep)이 안전망으로 재시도한다.
+    const prep = await claimAndPrepareRoom(body.leagueId, body.roomId);
+    if (!prep.ok) {
+        console.error(`[run-lottery] prepareDraftRoom failed for room ${body.roomId}: ${prep.error}`);
+    }
+
+    return json({ ok: true, leagueTeams: lotteryResult });
+}
+
 // ── 스케줄러 진입점 (자동 시작) ───────────────────────────────────────────────
 
 export async function startDraftForRoom(leagueId: string, roomId: string): Promise<boolean> {
-    const result = await _runStartDraft(leagueId, roomId);
+    const result = await activateDraftRoom(leagueId, roomId);
     if (!result.ok) {
         console.error(`[startDraft] ${roomId}: ${result.error}`);
     }
     return result.ok;
 }
 
-// ── 공통 로직 ─────────────────────────────────────────────────────────────────
+// ── 공통 준비 로직 (AI 슬롯 채우기 + 풀 구성 + 픽 순서 계산) ──────────────────
+// prepareDraftRoom(로터리 직후, 미리)과 _runStartDraft(레거시 폴백, 즉시 시작) 둘 다
+// 이 결과로 draft_config를 만든다 — cursor.status만 다르게 쓴다.
 
-async function _runStartDraft(
+interface DraftSetup {
+    draftConfig: {
+        format: 'snake' | 'linear';
+        totalRounds: number;
+        pickDurationSec: number;
+        teamCount: number;
+        poolIds: string[];
+        pickOrder: ReturnType<typeof generateSnakePickOrder>;
+        applyCustomOverrides: boolean;
+    };
+}
+
+async function buildDraftSetup(
     leagueId: string,
     roomId: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; setup: DraftSetup } | { ok: false; error: string }> {
     // 리그 전체 정보 조회
     const { data: league } = await supabase
         .from('leagues')
@@ -103,7 +171,8 @@ async function _runStartDraft(
 
     const seed = room.tendency_seed ?? roomId;
 
-    // AI 슬롯 채우기
+    // AI 슬롯 채우기 — 로터리가 이미 팀 배정을 확정한 뒤라 예정 시각 전에 미리 채워도 안전하다
+    // (로터리 완료 후엔 팀 선점 변경이 막히므로, 여기서 채운 AI 슬롯이 나중에 사람으로 바뀔 일이 없다).
     const maxPlayers = room.max_players ?? 30;
     const aiNeeded   = Math.max(0, maxPlayers - members.length);
     const newAiMembers: any[] = [];
@@ -223,14 +292,125 @@ async function _runStartDraft(
         ? generateLinearPickOrder(shuffledMembers, totalRounds)
         : generateSnakePickOrder(shuffledMembers, totalRounds);
 
+    const draftConfig = {
+        format: draftStrategy === 'linear' ? 'linear' as const : 'snake' as const,
+        totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder, applyCustomOverrides,
+    };
+
+    return { ok: true, setup: { draftConfig } };
+}
+
+// ── [신규] 로터리 완료 직후 사전 준비 — cursor를 'waiting'으로 만들어 입장만 허용 ──
+
+export async function prepareDraftRoom(
+    leagueId: string,
+    roomId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const built = await buildDraftSetup(leagueId, roomId);
+    if (!built.ok) return built;
+
+    const draftCursor = { status: 'waiting' as const, currentPickIndex: 0, currentPickStartedAt: null };
+
+    const { error: roomErr } = await supabase
+        .from('rooms')
+        .update({ draft_config: built.setup.draftConfig, draft_cursor: draftCursor, draft_state: null })
+        .eq('id', roomId);
+    if (roomErr) return { ok: false, error: roomErr.message };
+
+    // leagues.status는 그대로 'recruiting' 유지 — 로터리 후에도 팀 변경만 막힐 뿐 리그 상태는 안 바뀐다.
+    console.log(`[prepareDraftRoom] room ${roomId} prepared (waiting)`);
+    return { ok: true };
+}
+
+// ── [신규] 원자적 클레임 + 방 준비 — 스케줄러 폴링(runDraftRoomPrep)과 /run-lottery
+// 엔드포인트가 동시에 같은 방을 준비하려 해도 draft_cursor가 여전히 null일 때만 클레임에
+// 성공하므로 중복 실행되지 않는다. 이미 다른 경로가 선점/완료했으면 조용히 skipped로 반환한다.
+export async function claimAndPrepareRoom(
+    leagueId: string,
+    roomId: string,
+): Promise<{ ok: true; skipped: boolean } | { ok: false; error: string }> {
+    const { data: claimedRows } = await supabase
+        .from('rooms')
+        .update({ draft_cursor: { status: 'preparing', currentPickIndex: 0, currentPickStartedAt: null } })
+        .eq('id', roomId)
+        .is('draft_config', null)
+        .select('id');
+
+    if (!claimedRows?.length) return { ok: true, skipped: true }; // 다른 경로가 이미 선점/완료
+
+    const result = await prepareDraftRoom(leagueId, roomId);
+    if (!result.ok) {
+        await supabase.from('rooms').update({ draft_cursor: null }).eq('id', roomId); // 재시도 가능하게 복원
+        return { ok: false, error: result.error };
+    }
+    return { ok: true, skipped: false };
+}
+
+// ── [신규] 예정 시각 도달 시 활성화 — 이미 준비된 draft_config가 있으면 커서만 전환 ──
+
+export async function activateDraftRoom(
+    leagueId: string,
+    roomId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const { data: room } = await supabase
+        .from('rooms')
+        .select('draft_config')
+        .eq('id', roomId)
+        .single();
+
+    // draft_config가 아직 없으면(prepare가 안 된 레거시/예외 경로) 기존 전체 로직으로 폴백.
+    if (!room?.draft_config) {
+        return _runStartDraft(leagueId, roomId);
+    }
+
+    // 이미 메모리에 로드돼 있으면(대기 중 누가 접속해 있었음) — DraftRoom.activate()가
+    // 상태 전환 + DB 반영 + broadcastCursor()(접속자 전원에게 실시간 통지) + scheduleNext()까지
+    // 전부 처리한다. RoomManager.get()은 캐시 조회만 하고 새로 로드하지 않는다.
+    const existing = RoomManager.get(roomId);
+    if (existing) {
+        const activated = await existing.activate();
+        if (!activated) {
+            console.warn(`[activateDraftRoom] room ${roomId}: activate() returned false (status was not 'waiting')`);
+        }
+        await supabase.from('leagues').update({ status: 'drafting' }).eq('id', leagueId);
+        return { ok: true };
+    }
+
+    // 메모리에 없으면 — DB의 cursor를 먼저 'active'로 바꾸고, 새로 로드해서 타이머를 시작한다.
     const nowIso = new Date().toISOString();
-    const draftConfig = { format: draftStrategy === 'linear' ? 'linear' : 'snake', totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder, applyCustomOverrides };
-    const draftCursor = { status: 'active', currentPickIndex: 0, currentPickStartedAt: nowIso };
+    const { error: roomErr } = await supabase
+        .from('rooms')
+        .update({ draft_cursor: { status: 'active', currentPickIndex: 0, currentPickStartedAt: nowIso } })
+        .eq('id', roomId);
+    if (roomErr) return { ok: false, error: roomErr.message };
+
+    await supabase.from('leagues').update({ status: 'drafting' }).eq('id', leagueId);
+
+    const draftRoom = await RoomManager.getOrLoad(roomId);
+    if (draftRoom) {
+        draftRoom.scheduleNext();
+        console.log(`[activateDraftRoom] room ${roomId} loaded into memory, scheduleNext called`);
+    }
+
+    return { ok: true };
+}
+
+// ── 레거시 폴백: prepare 없이 곧바로 전체 시작 (AI채움+풀+픽순서+active 커서 한 번에) ──
+
+async function _runStartDraft(
+    leagueId: string,
+    roomId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const built = await buildDraftSetup(leagueId, roomId);
+    if (!built.ok) return built;
+
+    const nowIso = new Date().toISOString();
+    const draftCursor = { status: 'active' as const, currentPickIndex: 0, currentPickStartedAt: nowIso };
 
     // rooms 업데이트
     const { error: roomErr } = await supabase
         .from('rooms')
-        .update({ draft_config: draftConfig, draft_cursor: draftCursor, draft_state: null })
+        .update({ draft_config: built.setup.draftConfig, draft_cursor: draftCursor, draft_state: null })
         .eq('id', roomId);
     if (roomErr) return { ok: false, error: roomErr.message };
 

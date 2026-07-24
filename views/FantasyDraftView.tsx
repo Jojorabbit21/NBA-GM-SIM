@@ -67,10 +67,13 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     const currentPickInRound = (currentPickIndex % teamIds.length) + 1;
     const isUserTurn = !isDraftComplete && currentTeamId === myTeamId;
 
-    // My drafted players
+    // My drafted players — pick order preserved so first-drafted gets starter slot
+    // (allPlayers.filter()를 쓰면 allPlayers의 고정 풀 순서를 따르게 되어, 먼저 뽑은 선수가
+    // 아니라 풀 상 먼저 나오는 선수가 MyRoster의 "주전"으로 표시되는 버그가 생긴다).
     const myPicks = useMemo(() => {
         const myPickedIds = picks.filter(p => p.teamId === myTeamId).map(p => p.playerId);
-        return allPlayers.filter(p => myPickedIds.includes(p.id));
+        const playerMap = new Map(allPlayers.map(p => [p.id, p]));
+        return myPickedIds.map(id => playerMap.get(id)).filter(Boolean) as Player[];
     }, [picks, myTeamId, allPlayers]);
 
     // How many picks until user's next turn

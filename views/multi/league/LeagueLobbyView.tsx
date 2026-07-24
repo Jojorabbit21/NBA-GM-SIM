@@ -159,9 +159,11 @@ const LeagueLobbyView: React.FC = () => {
     };
 
     const handleRunLottery = async () => {
-        if (!room || !userId) return;
+        if (!room || !userId || !leagueId) return;
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) { setActionErr('인증 정보를 가져올 수 없습니다.'); return; }
         setRunningLottery(true); setActionErr(null);
-        const { error: err } = await runDraftLottery(room.id, userId);
+        const { error: err } = await runDraftLottery(room.id, leagueId, token);
         setRunningLottery(false);
         if (err) { setActionErr(err); return; }
         reload();
@@ -418,6 +420,25 @@ const LeagueLobbyView: React.FC = () => {
                         })()}
 
                         {/* 입장 버튼 */}
+                        <button
+                            onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
+                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-colors"
+                        >
+                            드래프트 룸 입장
+                        </button>
+                    </div>
+                )}
+
+                {/* ── 로터리 완료, 드래프트 시작 전 — 미리 입장 가능 ─────────────── */}
+                {!isDrafting && lotteryDone && (
+                    <div className="bg-slate-800/60 border border-slate-700/40 rounded-2xl px-6 py-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block shrink-0" />
+                            <span className="text-sm font-black text-white ko-normal">드래프트 대기 중</span>
+                        </div>
+                        <p className="text-xs text-slate-400 ko-normal leading-relaxed">
+                            드래프트 오더 추첨이 끝났습니다. 예정 시각 전에 미리 입장해서 선수 풀과 픽 순서를 확인할 수 있습니다.
+                        </p>
                         <button
                             onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
                             className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-colors"

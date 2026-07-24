@@ -377,6 +377,29 @@ export class DraftRoom {
         return true;
     }
 
+    // ── 사전입장 활성화 (waiting → active) ─────────────────────────────────────
+    // 로터리 완료 직후 draft_config가 미리 만들어져(waiting) 접속해 있던 클라이언트가
+    // 있을 때, 예정 시각에 스케줄러가 이 메서드를 호출해 픽을 실제로 시작시킨다.
+    // pause/resume과 동일한 패턴: 상태 전환 → DB 반영 → broadcastCursor()로 접속자
+    // 전원에게 실시간 통지(재접속 없이 화면 전환) → scheduleNext()로 첫 픽 타이머 시작.
+
+    async activate(): Promise<boolean> {
+        if (this.status !== 'waiting') return false;
+
+        this.status               = 'active';
+        this.currentPickIndex     = 0;
+        this.currentPickStartedAt = new Date().toISOString();
+
+        await supabase.from('rooms').update({
+            draft_cursor: this.getCursor(),
+        }).eq('id', this.roomId);
+
+        this.broadcastCursor();
+        this.scheduleNext();
+        console.log(`[DraftRoom:${this.roomId}] activated (waiting → active)`);
+        return true;
+    }
+
     // ── 어드민 액션 ──────────────────────────────────────────────────────────
 
     async handleAdmin(
