@@ -3,13 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft, Save, Loader2, AlertCircle, CalendarDays,
-    Clock, Users, Shield, Trash2, RotateCcw, Trophy, PlayCircle,
+    Clock, Users, Shield, Trash2, RotateCcw, Trophy, PlayCircle, Activity,
 } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament } from '../../../services/multi/leagueService';
 import { useGame } from '../../../hooks/useGameContext';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
+import { DEFAULT_SIM_SETTINGS } from '../../../types/simSettings';
 
 function fmtConference(conf: string | null): string {
     if (!conf) return '—';
@@ -66,9 +67,16 @@ const LeagueSettingsView: React.FC = () => {
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
+    const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
+    const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
+
+    // ── 엔진 설정(관리자 전용) 저장 상태 — 스케줄 저장과 독립적으로 진행 중 세션에서도 변경 가능 ──
+    const [savingSim,  setSavingSim]  = useState(false);
+    const [saveSimOk,  setSaveSimOk]  = useState(false);
+    const [saveSimErr, setSaveSimErr] = useState<string | null>(null);
 
     // ── lottery state ─────────────────────────────────────────────────────────
     const [lotteryRunning, setLotteryRunning] = useState(false);
@@ -113,6 +121,8 @@ const LeagueSettingsView: React.FC = () => {
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
         const gprd = (league as any).games_per_real_day ?? 48;
         setTournamentIntervalMin(Math.round(1440 / gprd));
+        setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
+        setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
     }, [league]);
 
     // 비어드민 접근 차단
@@ -169,6 +179,28 @@ const LeagueSettingsView: React.FC = () => {
         if (err) { setSaveErr(err); return; }
         setSaveOk(true);
         setTimeout(() => setSaveOk(false), 2000);
+        reload();
+    };
+
+    const handleSaveSimSettings = async () => {
+        if (!leagueId) return;
+        setSavingSim(true);
+        setSaveSimOk(false);
+        setSaveSimErr(null);
+        const { error: err } = await updateLeagueSettings({
+            leagueId,
+            roomId: room?.id,
+            simSettings: {
+                ...DEFAULT_SIM_SETTINGS,
+                ...(room?.sim_settings ?? {}),
+                injuriesEnabled,
+                garbageTimeEnabled,
+            },
+        });
+        setSavingSim(false);
+        if (err) { setSaveSimErr(err); return; }
+        setSaveSimOk(true);
+        setTimeout(() => setSaveSimOk(false), 2000);
         reload();
     };
 
@@ -271,6 +303,68 @@ const LeagueSettingsView: React.FC = () => {
                     </button>
                 </section>
             )}
+
+            {/* ── 엔진 설정 (관리자 전용, 진행 중 세션에서도 변경 가능) ─────────── */}
+            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Activity size={14} className="text-indigo-400" />
+                    엔진 설정
+                </h2>
+                <p className="text-xs text-slate-500 ko-normal">
+                    관리자만 변경할 수 있으며, 저장 즉시 이후 경기부터 적용됩니다.
+                </p>
+
+                <div className="space-y-2">
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            injuriesEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={injuriesEnabled}
+                            onChange={e => setInjuriesEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${injuriesEnabled ? 'text-white' : 'text-slate-400'}`}>부상 시스템</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">경기 중 부상 발생 활성화</span>
+                        </div>
+                    </label>
+
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            garbageTimeEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={garbageTimeEnabled}
+                            onChange={e => setGarbageTimeEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${garbageTimeEnabled ? 'text-white' : 'text-slate-400'}`}>가비지타임 자동 벤치</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">Q4 대량 점수차 시 주전 자동 벤치 및 후보 투입</span>
+                        </div>
+                    </label>
+                </div>
+
+                {saveSimErr && <p className="text-xs text-red-400 ko-normal">{saveSimErr}</p>}
+
+                <button
+                    onClick={handleSaveSimSettings}
+                    disabled={savingSim}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                >
+                    {savingSim
+                        ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
+                        : saveSimOk
+                        ? '저장됨 ✓'
+                        : <><Save size={13} />저장</>
+                    }
+                </button>
+            </section>
 
             {/* ── 토너먼트 종료 & 초기화 ──────────────────────────────────────── */}
             {league.status === 'finished' && (

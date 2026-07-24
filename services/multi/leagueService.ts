@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import type { LeagueGroupRow, LeagueRow, LeagueTeamRow } from './roomQueries';
 import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
+import type { SimSettings } from '../../types/simSettings';
 
 // ─── 리그 그룹 생성 (메인리그 운영자) ────────────────────────────────────────
 
@@ -285,6 +286,8 @@ export interface UpdateLeagueSettingsParams {
     matchFormat?:        string | null;
     finalsMatchFormat?:  string | null;
     gamesPerRealDay?:    number;
+    /** 관리자 전용 엔진 설정(부상/가비지타임 등) — rooms.sim_settings에 저장 */
+    simSettings?:        SimSettings;
 }
 
 export const updateLeagueSettings = async (
@@ -320,6 +323,14 @@ export const updateLeagueSettings = async (
         // league_teams 슬롯 수 동기화
         const resizeErr = await resizeLeagueTeams(p.roomId, p.maxTeams);
         if (resizeErr) return { error: resizeErr };
+    }
+
+    if (p.roomId && p.simSettings !== undefined) {
+        const { error: simErr } = await supabase
+            .from('rooms')
+            .update({ sim_settings: p.simSettings })
+            .eq('id', p.roomId);
+        if (simErr) return { error: simErr.message };
     }
 
     return { error: null };

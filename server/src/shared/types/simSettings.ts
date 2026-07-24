@@ -14,6 +14,8 @@ export interface SimSettings {
     growthRate: number;
     declineRate: number;
 
+    garbageTimeEnabled: boolean;
+
     archetypesEnabled: boolean;
 
     // League-relative normalization
@@ -30,6 +32,7 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     tcr: 1.0,
     growthRate: 1.0,
     declineRate: 1.0,
+    garbageTimeEnabled: true,
     archetypesEnabled: false,
 };
 

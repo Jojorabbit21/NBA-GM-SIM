@@ -196,7 +196,8 @@ export function checkSubstitutionsV2(
     }
 
     // ── 가비지 타임: Q4 잔여 2:30 이내 + 15점차 이상 → 코트 위 5명 전원 일괄 교체 ──
-    const isGarbage = state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
+    const isGarbage = state.simSettings.garbageTimeEnabled !== false
+        && state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
         && !team.garbageApplied;   // 이미 적용된 팀은 재실행 방지
 
     if (isGarbage) {
@@ -219,7 +220,7 @@ export function checkSubstitutionsV2(
     const requests: SubRequestV2[] = [];
 
     // ── 가비지타임 'bench'(미출전): Q4 + 15점차 이상이면 즉시 벤치 (트리거보다 일찍) ──
-    if (state.quarter >= 4 && scoreDiff >= 15) {
+    if (state.simSettings.garbageTimeEnabled !== false && state.quarter >= 4 && scoreDiff >= 15) {
         team.onCourt.forEach(p => {
             if (p.benchReason) return;
             const cfg = tactics.playerTactics?.[p.playerId];

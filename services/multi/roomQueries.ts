@@ -1,6 +1,7 @@
 
 import { supabase } from '../supabaseClient';
 import type { OffseasonPhase } from '../../types/app';
+import type { SimSettings } from '../../types/simSettings';
 
 // ─── 리그 그룹 ────────────────────────────────────────────────────────────────
 
@@ -194,6 +195,7 @@ export interface RoomRow {
     season_number: number;
     sim_date: string;
     offseason_phase: OffseasonPhase;
+    sim_settings: SimSettings | null;
     schema_version: number;
     created_at: string;
     updated_at: string;
@@ -218,7 +220,7 @@ export interface RoomMemberRow {
 export const loadRoomByLeague = async (leagueId: string): Promise<RoomRow | null> => {
     const { data, error } = await supabase
         .from('rooms')
-        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, schema_version, created_at, updated_at')
+        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, schema_version, created_at, updated_at')
         .eq('league_id', leagueId)
         .eq('status', 'active')
         .maybeSingle();

@@ -179,7 +179,8 @@ export function checkSubstitutionsV2(
         if (clutchRequests.length > 0) return clutchRequests;
     }
 
-    const isGarbage = state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
+    const isGarbage = state.simSettings.garbageTimeEnabled !== false
+        && state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
         && !team.garbageApplied;
 
     if (isGarbage) {
@@ -200,7 +201,7 @@ export function checkSubstitutionsV2(
 
     const requests: SubRequestV2[] = [];
 
-    if (state.quarter >= 4 && scoreDiff >= 15) {
+    if (state.simSettings.garbageTimeEnabled !== false && state.quarter >= 4 && scoreDiff >= 15) {
         team.onCourt.forEach(p => {
             if (p.benchReason) return;
             const cfg = tactics.playerTactics?.[p.playerId];

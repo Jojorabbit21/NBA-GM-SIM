@@ -18,6 +18,9 @@ export interface SimSettings {
     growthRate: number;          // 0.0~2.0, 기본 1.0 — 성장 속도 배율
     declineRate: number;         // 0.0~2.0, 기본 1.0 — 노화 속도 배율
 
+    // 가비지타임
+    garbageTimeEnabled: boolean; // 기본 true (기존 동작 유지)
+
     // 엔진 피처
     archetypesEnabled: boolean;  // 기본 false
 
@@ -35,6 +38,7 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     tcr: 1.0,
     growthRate: 1.0,
     declineRate: 1.0,
+    garbageTimeEnabled: true,
     archetypesEnabled: false,
     normalizationStrength: 0.7,
 };
@@ -114,6 +118,14 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         description: '선수 능력치 노화/퇴화 속도 배율 (1.0 = 기본)',
         category: '선수 성장',
         min: 0, max: 2.0, step: 0.1,
+    },
+    // 가비지타임
+    {
+        key: 'garbageTimeEnabled',
+        type: 'toggle',
+        label: '가비지타임 자동 벤치',
+        description: 'Q4 대량 점수차 시 주전 자동 벤치 및 후보 투입 활성화',
+        category: '가비지타임',
     },
     // 엔진 피처
     {
