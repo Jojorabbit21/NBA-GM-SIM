@@ -131,9 +131,10 @@ export class DraftRoom {
         for (const p of room.poolPlayers) {
             const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
             (p.base_attributes as any).ovr = mapped.ovr;
-            // 같은 OVR 엔진 호출에서 같이 나오는 주 아키타입도 붙여 보낸다(드래프트 풀 화면 표시용) —
+            // 같은 OVR 엔진 호출에서 같이 나오는 주/부 아키타입도 붙여 보낸다(드래프트 풀 화면 표시용) —
             // 별도 계산 없이 이미 계산된 결과에서 필드 하나 더 꺼내는 것뿐이라 추가 비용 없음.
             (p.base_attributes as any).archetype = mapped.archetype;
+            (p.base_attributes as any).secondaryArchetype = mapped.secondaryArchetype;
         }
 
         room.pool = room.poolPlayers

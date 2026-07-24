@@ -200,6 +200,8 @@ export interface Player {
     ovr: number;
     /** 주 아키타입 표시 라벨(예: "Rim Protector") — OVR 계산 시 같이 산출됨 */
     archetype?: string;
+    /** 부 아키타입 표시 라벨 — primary와 동일하면 null */
+    secondaryArchetype?: string | null;
     manualOvr?: number;
     potential: number;
     revealedPotential: number;

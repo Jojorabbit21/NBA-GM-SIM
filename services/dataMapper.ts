@@ -285,7 +285,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     const manualOvr = Number(getCol(p, ['ovr', 'OVR']));
     const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
     const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
-    const { ovr, archetype } = calculateOvrWithArchetype(ovrInput, position);
+    const { ovr, archetype, secondaryArchetype } = calculateOvrWithArchetype(ovrInput, position);
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI
@@ -333,6 +333,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
 
         ovr,
         archetype,
+        secondaryArchetype,
         manualOvr: (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : undefined,
         potential,
         revealedPotential: potential,
@@ -427,9 +428,10 @@ export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): v
     if (allPlayers.length === 0) return;
 
     for (const p of allPlayers) {
-        const { ovr, archetype } = calculateOvrWithArchetype(p);
+        const { ovr, archetype, secondaryArchetype } = calculateOvrWithArchetype(p);
         p.ovr = ovr;
         p.archetype = archetype;
+        p.secondaryArchetype = secondaryArchetype;
         p.rawOvr = calculateRawOvr(p);
         p.futureOvr = calculateFutureOvr(p);
     }

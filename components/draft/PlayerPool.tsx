@@ -183,13 +183,13 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                 className="flex-1 min-h-0 overflow-y-auto"
                 style={{ scrollbarWidth: 'none' } as React.CSSProperties}
             >
-                <table className="w-full border-collapse text-xs">
+                <table className="w-full border-collapse text-xs table-fixed">
                     <thead className="sticky top-0 z-10 bg-slate-900">
                         <tr className="text-xs font-black uppercase text-slate-500 border-b border-slate-700/50">
                             <th className="w-6 px-1 py-1.5"></th>
-                            <th className="px-2 py-1.5 text-left">NAME</th>
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
-                            <th className="px-1 py-1.5 text-left w-24 text-slate-500">ARCH</th>
+                            <th className="px-2 py-1.5 text-left w-36">NAME</th>
+                            <th className="px-1 py-1.5 text-left text-slate-500">TYPE</th>
                             <SortHeader label="OVR" field="ovr" className="w-12" />
                             {showPotential && <SortHeader label="POT" field="pot" className="w-8" />}
                             <SortHeader label="AGE" field="age" className="w-8" />
@@ -232,12 +232,15 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                             className="w-3.5 h-3.5 cursor-pointer align-middle appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
                                         />
                                     </td>
-                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
                                     <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>
-                                    <td className="px-1 py-0.5 text-left text-slate-400 truncate max-w-[96px]" title={player.archetype}>
-                                        {player.archetype ?? '—'}
+                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate">{player.name}</td>
+                                    <td
+                                        className="px-1 py-0.5 text-left text-slate-400 truncate"
+                                        title={player.secondaryArchetype ? `${player.archetype} / ${player.secondaryArchetype}` : player.archetype}
+                                    >
+                                        {player.archetype ?? '—'}{player.secondaryArchetype ? ` / ${player.secondaryArchetype}` : ''}
                                     </td>
                                     <td className="px-2 py-0.5">
                                         <OvrBadge value={player.ovr} size="sm" />
