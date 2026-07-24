@@ -398,6 +398,7 @@ export const SIM_CONFIG = {
     // Zone Selection: selectZone 임계값 필터 (존 선호도 기반 플레이 리다이렉트)
     ZONE_SELECTION: {
         ZONE_PREF_THRESHOLD: 0.15,  // 이 값 미만의 zonePref는 selectZone에서 후보 제거가 아니라 ×0.2 가중치 페널티
+        SLIDER_SENSITIVITY: 0.5,    // 전술 슬라이더가 존 선택 비중을 흔드는 폭 (0=슬라이더 무효, 1=슬라이더 최대 2배/0배)
     },
     FOUL_TROUBLE: {
         PROB_MOD: {

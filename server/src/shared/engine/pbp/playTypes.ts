@@ -41,12 +41,20 @@ function selectZone(
     };
 
     const threshold = SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD;
+    const sensitivity = SIM_CONFIG.ZONE_SELECTION.SLIDER_SENSITIVITY;
     const scored = zones.map(z => {
         const pref = prefMap[z] < threshold ? prefMap[z] * 0.2 : prefMap[z];
-        return { zone: z, score: pref * 0.70 + (sliderMap[z] / 10) * 0.30 };
+        const modifier = 1 + (sliderMap[z] - 5) / 5 * sensitivity;
+        return { zone: z, score: pref * modifier };
     });
 
     const total = scored.reduce((s, c) => s + c.score, 0);
+
+    // [Safety] 텐던시 데이터가 전부 0인 예외적 케이스 (곱셈 구조라 total<=0 가능) → 균등 폴백
+    if (total <= 0) {
+        return zones[Math.floor(Math.random() * zones.length)];
+    }
+
     let r = Math.random() * total;
     for (const { zone, score } of scored) {
         r -= score;

@@ -142,6 +142,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             archetypes: calculatePlayerArchetypes(attr, currentCondition, archetypesEnabled),
             tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
             zonePref: buildZonePref(p),
+            lateralBias: p.tendencies?.lateral_bias ?? 2,
             zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
             zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,

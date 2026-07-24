@@ -12,7 +12,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 1: PlayerTendencies (meta_players DB)                 │
-│   zones (ShotZones), lateral_bias, touch, foul              │
+│   zones (ShotZones), lateral_bias                            │
 │   → 모든 세이브에서 동일, DB에 저장                            │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 2: HiddenTendencies (player.id + player.name 해시)    │
@@ -52,15 +52,14 @@ interface ShotZones {
 interface PlayerTendencies {
     lateral_bias: number;  // 0: Strong Left, 1: Left, 2: Right, 3: Strong Right
     zones: ShotZones;      // 구역별 슈팅 빈도 분포
-    touch?: number;
-    foul?: number;
 }
 ```
 
 **용도**:
 - **PBP 존 선택 (70% 가중치)**: `initializer.ts:buildZonePref()` → `LivePlayer.zonePref`으로 변환 후 `playTypes.ts:selectZone()`에서 광역 존(Rim/Mid/3PT) 결정에 70% 반영 (전술 슬라이더 30%)
-- **세부 존 분배**: `shotDistribution.ts:calculateZoneWeights()`에서 10개 세부 존 비율 결정
 - **선수 프로필**: "선호 지역" 뱃지 표시
+
+> **주의**: `lateral_bias`는 타입에 존재하지만 엔진 어디에서도 읽지 않는 죽은 필드다(`shotDistribution.ts`의 `calculateWeightsFromRealData()`가 유일한 참조처인데 이 함수 자체가 호출되지 않는 dead code). `calculateZoneWeights()` 관련 세부 존 분배 로직도 미사용 — 실제 세부 존은 `resolveDynamicZone()`이 텐던시와 무관하게 고정 비율로 결정한다.
 
 > **설계 원칙**: 존 선호도는 능력치와 별개의 선수 DNA. 어디서 슛을 쏘느냐(존 선택)와 얼마나 잘 쏘느냐(hitRate)를 분리. 능력치는 hitRate에서만 사용.
 

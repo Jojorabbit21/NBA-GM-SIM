@@ -25,18 +25,17 @@ export interface PlayContext {
 // ==========================================================================================
 
 /**
- * 선수 능력치(60%)와 팀 슬라이더(40%)를 결합해 야투구역을 확률적으로 선택한다.
+ * 선수의 존 텐던시(zonePref)를 기준으로 야투구역을 확률적으로 선택한다.
+ * 전술 슬라이더는 텐던시가 0인 존을 새로 만들어내지 않고, 텐던시가 이미 있는 존들
+ * 사이의 비중만 증폭/감쇄한다 (곱셈 구조).
  *
- * score(zone) = (attr(zone) / 100) × 0.60 + (slider(zone) / 10) × 0.40
+ * score(zone) = pref(zone) × modifier(zone)
+ * modifier(zone) = 1 + (slider(zone) - 5) / 5 × SLIDER_SENSITIVITY
+ *   → 슬라이더 5(중립) = 1.0배, 10(최대) = 1+SENS배, 0(최소) = 1-SENS배
  *
- * 속성 매핑:
- *   3PT → attr.out      (외곽 슈팅 종합)
- *   Mid → attr.mid      (중거리)
- *   Rim → attr.ins      (골밑/드라이브 마무리)
- *
- * 가중치 구조 (v2 — 선수 DNA 우선):
- *   텐던시(존 선호도) 70% + 전술 슬라이더 30%
- *   능력치(out/mid/ins)는 hitRate에서 반영되므로 존 선택에서는 제외.
+ * pref(zone)=0이면 슬라이더가 무엇이든 score=0 그대로 유지된다 — 텐던시 없는 존은
+ * 절대 선택되지 않는다. (구 버전은 pref*0.7 + slider*0.3 덧셈 구조라 슬라이더 항이
+ * 텐던시 0인 존에도 항상 남아있었음 — 이 문제를 해결하기 위한 변경)
  *
  * @param zones  해당 플레이 타입에서 가능한 구역 후보 (플레이 전술 원리에 따라 제한)
  * @param actor  공격 주체 선수
@@ -64,12 +63,20 @@ function selectZone(
     // [Soft Threshold] 임계값 미만 존은 가중치 대폭 감소 (완전 제거 X)
     // 임계값 이상: 정상 가중치 / 미만: ×0.2 페널티 (극소량 시도는 허용)
     const threshold = SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD;
+    const sensitivity = SIM_CONFIG.ZONE_SELECTION.SLIDER_SENSITIVITY;
     const scored = zones.map(z => {
         const pref = prefMap[z] < threshold ? prefMap[z] * 0.2 : prefMap[z];
-        return { zone: z, score: pref * 0.70 + (sliderMap[z] / 10) * 0.30 };
+        const modifier = 1 + (sliderMap[z] - 5) / 5 * sensitivity;
+        return { zone: z, score: pref * modifier };
     });
 
     const total = scored.reduce((s, c) => s + c.score, 0);
+
+    // [Safety] 텐던시 데이터가 전부 0인 예외적 케이스 (곱셈 구조라 total<=0 가능) → 균등 폴백
+    if (total <= 0) {
+        return zones[Math.floor(Math.random() * zones.length)];
+    }
+
     let r = Math.random() * total;
     for (const { zone, score } of scored) {
         r -= score;

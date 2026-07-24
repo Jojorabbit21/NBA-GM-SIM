@@ -218,18 +218,34 @@ export function distributeAttemptsToZones(
     return result;
 }
 
+// 좌우 슈팅 편향(lateralBias) → L/R 배율. C(중앙/탑)는 고정, L/R만 늘리거나 줄인 뒤 재정규화.
+const LATERAL_BIAS_MULT: Record<number, { left: number; right: number }> = {
+    0: { left: 1.6, right: 0.4 },
+    1: { left: 1.2, right: 0.8 },
+    2: { left: 0.8, right: 1.2 },  // 기본값 (평균적 오른손잡이)
+    3: { left: 0.4, right: 1.6 },
+};
+
 export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
+    const { left: leftMult, right: rightMult } = LATERAL_BIAS_MULT[player.lateralBias] ?? LATERAL_BIAS_MULT[2];
     const rand = Math.random();
+
     if (broadZone === 'Mid') {
-        if (rand < 0.33) return 'zone_mid_l';
-        if (rand < 0.66) return 'zone_mid_c';
+        const l = 0.33 * leftMult, c = 0.34, r = 0.33 * rightMult;
+        const total = l + c + r;
+        const pL = l / total, pC = c / total;
+        if (rand < pL) return 'zone_mid_l';
+        if (rand < pL + pC) return 'zone_mid_c';
         return 'zone_mid_r';
     }
     if (broadZone === '3PT') {
-        if (rand < 0.15) return 'zone_c3_l';
-        if (rand < 0.35) return 'zone_atb3_l';
-        if (rand < 0.65) return 'zone_atb3_c';
-        if (rand < 0.85) return 'zone_atb3_r';
+        const cl = 0.15 * leftMult, wl = 0.20 * leftMult, top = 0.30, wr = 0.20 * rightMult, cr = 0.15 * rightMult;
+        const total = cl + wl + top + wr + cr;
+        const pCl = cl / total, pWl = wl / total, pTop = top / total, pWr = wr / total;
+        if (rand < pCl) return 'zone_c3_l';
+        if (rand < pCl + pWl) return 'zone_atb3_l';
+        if (rand < pCl + pWl + pTop) return 'zone_atb3_c';
+        if (rand < pCl + pWl + pTop + pWr) return 'zone_atb3_r';
         return 'zone_c3_r';
     }
     return broadZone === 'Rim' ? 'zone_rim' : 'zone_paint';
