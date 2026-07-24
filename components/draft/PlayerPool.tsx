@@ -1,9 +1,14 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
-import { calculatePlayerOvr } from '../../utils/constants';
+
+// 가상 스크롤 — 올타임 풀 기준 800명 이상이 한 번에 DOM에 마운트되던 걸,
+// 실제로 화면에 보이는 행 근처만 렌더링하도록 줄인다(행 높이 고정 h-8=32px 전제).
+const ROW_HEIGHT = 32;
+const OVERSCAN = 8; // 스크롤 시 빈 화면 방지용 위아래 여분 행 수
+
 interface PlayerPoolProps {
     players: Player[];
     selectedPlayerId: string | null;
@@ -25,7 +30,7 @@ const getStatColor = (val: number): string => {
     return 'text-slate-500';
 };
 
-export const PlayerPool: React.FC<PlayerPoolProps> = ({
+const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
     players,
     selectedPlayerId,
     onSelectPlayer,
@@ -49,14 +54,47 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             result = result.filter(p => p.name.toLowerCase().includes(q));
         }
         result = [...result].sort((a, b) => {
-            const av = sortKey === 'ovr' ? calculatePlayerOvr(a) : sortKey === 'pot' ? a.potential : (a as any)[sortKey] ?? 0;
-            const bv = sortKey === 'ovr' ? calculatePlayerOvr(b) : sortKey === 'pot' ? b.potential : (b as any)[sortKey] ?? 0;
+            const av = sortKey === 'ovr' ? a.ovr : sortKey === 'pot' ? a.potential : (a as any)[sortKey] ?? 0;
+            const bv = sortKey === 'ovr' ? b.ovr : sortKey === 'pot' ? b.potential : (b as any)[sortKey] ?? 0;
             return sortAsc ? av - bv : bv - av;
         });
         return result;
     }, [players, posFilter, search, sortKey, sortAsc]);
 
     const selectedPlayer = selectedPlayerId ? players.find(p => p.id === selectedPlayerId) : null;
+
+    // ── 가상 스크롤 ──────────────────────────────────────────────────────────
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(0);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        setViewportHeight(el.clientHeight);
+        const ro = new ResizeObserver(() => setViewportHeight(el.clientHeight));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        setScrollTop(e.currentTarget.scrollTop);
+    }, []);
+
+    // 필터/정렬이 바뀌면 목록 길이가 달라지므로 스크롤을 맨 위로 되돌린다
+    // (안 그러면 짧아진 목록에서 스크롤 위치만 남아 빈 화면이 보일 수 있음)
+    useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = 0;
+        setScrollTop(0);
+    }, [posFilter, search, sortKey, sortAsc]);
+
+    const startIndex   = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
+    const endIndex      = Math.min(filtered.length, startIndex + visibleCount);
+    const visibleRows   = filtered.slice(startIndex, endIndex);
+    const topSpacerPx    = startIndex * ROW_HEIGHT;
+    const bottomSpacerPx = (filtered.length - endIndex) * ROW_HEIGHT;
+    const colSpan = showPotential ? 15 : 14;
 
     const handleHeaderClick = (key: SortKey) => {
         if (sortKey === key) setSortAsc(!sortAsc);
@@ -139,13 +177,19 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             </div>
 
             {/* Table */}
-            <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+            <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className="flex-1 min-h-0 overflow-y-auto"
+                style={{ scrollbarWidth: 'none' } as React.CSSProperties}
+            >
                 <table className="w-full border-collapse text-xs">
                     <thead className="sticky top-0 z-10 bg-slate-900">
                         <tr className="text-xs font-black uppercase text-slate-500 border-b border-slate-700/50">
                             <th className="w-6 px-1 py-1.5"></th>
                             <th className="px-2 py-1.5 text-left">NAME</th>
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
+                            <th className="px-1 py-1.5 text-left w-24 text-slate-500">ARCH</th>
                             <SortHeader label="OVR" field="ovr" className="w-12" />
                             {showPotential && <SortHeader label="POT" field="pot" className="w-8" />}
                             <SortHeader label="AGE" field="age" className="w-8" />
@@ -160,7 +204,12 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.map(player => {
+                        {topSpacerPx > 0 && (
+                            <tr aria-hidden="true" style={{ height: topSpacerPx }}>
+                                <td colSpan={colSpan} style={{ padding: 0, border: 'none' }} />
+                            </tr>
+                        )}
+                        {visibleRows.map(player => {
                             const isSelected = player.id === selectedPlayerId;
                             return (
                                 <tr
@@ -187,8 +236,11 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                     <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>
+                                    <td className="px-1 py-0.5 text-left text-slate-400 truncate max-w-[96px]" title={player.archetype}>
+                                        {player.archetype ?? '—'}
+                                    </td>
                                     <td className="px-2 py-0.5">
-                                        <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                        <OvrBadge value={player.ovr} size="sm" />
                                     </td>
                                     {showPotential && (
                                         <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.potential)}`}>
@@ -207,9 +259,18 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                 </tr>
                             );
                         })}
+                        {bottomSpacerPx > 0 && (
+                            <tr aria-hidden="true" style={{ height: bottomSpacerPx }}>
+                                <td colSpan={colSpan} style={{ padding: 0, border: 'none' }} />
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
         </div>
     );
 };
+
+// 부모(드래프트 타이머 등)가 리렌더돼도 props가 실제로 바뀌지 않으면 이 리스트는 다시 안 그림 —
+// 선수 풀이 수백 명 규모라 매 렌더마다 테이블 전체를 재조정하는 비용이 컸다.
+export const PlayerPool = React.memo(PlayerPoolComponent);

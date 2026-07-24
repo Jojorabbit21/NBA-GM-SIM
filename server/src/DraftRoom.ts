@@ -9,6 +9,7 @@
 import type { ServerWebSocket } from 'bun';
 import { supabase } from './supabaseAdmin';
 import { getBestAvailableId } from './shared/multiDraftEngine';
+import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 import {
     encode,
     type DraftConfig,
@@ -121,6 +122,20 @@ export class DraftRoom {
             )
         );
         room.poolPlayers = chunkResults.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
+
+        // custom_overrides 반영한 실제 OVR을 방 로드 시점에 딱 한 번만 계산해 base_attributes.ovr에
+        // 덮어쓴다. 원래 base_attributes.ovr은 오버라이드 미반영 원본값이라, 올타임 풀에서 이 값을
+        // 그대로 스냅샷/CPU 랭킹에 쓰면 부정확했다(버그) — 클라이언트가 렌더링마다 재계산하던 것도
+        // 이 시점 1회 계산으로 옮겨서 클라이언트 쪽 계산 자체를 없앤다(성능 개선 겸).
+        const applyCustomOverrides = room.config.applyCustomOverrides ?? false;
+        for (const p of room.poolPlayers) {
+            const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
+            (p.base_attributes as any).ovr = mapped.ovr;
+            // 같은 OVR 엔진 호출에서 같이 나오는 주 아키타입도 붙여 보낸다(드래프트 풀 화면 표시용) —
+            // 별도 계산 없이 이미 계산된 결과에서 필드 하나 더 꺼내는 것뿐이라 추가 비용 없음.
+            (p.base_attributes as any).archetype = mapped.archetype;
+        }
+
         room.pool = room.poolPlayers
             .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0, position: p.position }))
             .sort((a, b) => b.ovr - a.ovr);

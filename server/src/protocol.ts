@@ -40,6 +40,8 @@ export interface DraftConfig {
     teamCount: number;
     poolIds: string[];
     pickOrder: PickOrderEntry[];
+    /** 올타임 풀 포함 여부 — true면 풀 선수의 OVR을 custom_overrides 반영해 계산한다. */
+    applyCustomOverrides?: boolean;
 }
 
 export interface DraftPoolPlayer {

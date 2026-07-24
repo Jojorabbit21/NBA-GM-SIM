@@ -208,6 +208,12 @@ const MultiDraftView: React.FC = () => {
         return -1;
     }, [draftState, isMyTurn, userId]);
 
+    // PlayerPool은 React.memo로 감싸져 있어, 이 핸들러가 매 렌더마다 새로 생성되면
+    // (인라인 화살표 함수) memo 비교가 무력화돼 리스트가 계속 다시 그려진다 — useCallback으로 고정.
+    const handleSelectPlayer = useCallback((p: Player) => {
+        setSelectedPlayerId(prev => prev === p.id ? null : p.id);
+    }, []);
+
     // ── 픽 처리 ──────────────────────────────────────────────────────────────
     const handleDraft = useCallback(async (player: Player) => {
         if (!isMyTurn || isSubmitting) return;
@@ -283,7 +289,6 @@ const MultiDraftView: React.FC = () => {
                 isUserTurn={isMyTurn}
                 picksUntilUser={picksUntilUser}
                 timeRemaining={displayTimeRemaining}
-                pickDurationSec={draftState.pickDurationSec}
                 isPaused={draftState.status === 'paused'}
                 showAdvance={false}
                 nextPickNumber={draftState.currentPickIndex + 1}
@@ -338,7 +343,7 @@ const MultiDraftView: React.FC = () => {
                         <PlayerPool
                             players={adaptedPlayers}
                             selectedPlayerId={selectedPlayerId}
-                            onSelectPlayer={p => setSelectedPlayerId(prev => prev === p.id ? null : p.id)}
+                            onSelectPlayer={handleSelectPlayer}
                             isUserTurn={isMyTurn && !isSubmitting}
                             onDraft={handleDraft}
                             positionColors={POSITION_COLORS}

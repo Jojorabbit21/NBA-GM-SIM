@@ -198,6 +198,8 @@ export interface Player {
     salary: number;
     contractYears: number;
     ovr: number;
+    /** 주 아키타입 표시 라벨(예: "Rim Protector") — OVR 계산 시 같이 산출됨 */
+    archetype?: string;
     manualOvr?: number;
     potential: number;
     revealedPotential: number;

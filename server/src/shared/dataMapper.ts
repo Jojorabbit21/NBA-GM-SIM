@@ -5,7 +5,7 @@
  * React/Node 의존 없음.
  */
 
-import { calculateOvr } from './utils/ovrUtils.ts';
+import { calculateOvrWithArchetype } from './utils/ovrUtils.ts';
 
 // ── 카테고리 속성 정의 ────────────────────────────────────────────────────────
 
@@ -146,7 +146,9 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
         attrDeltas: undefined,
     };
 
-    player.ovr = calculateOvr(player);
+    const ovrResult = calculateOvrWithArchetype(player);
+    player.ovr = ovrResult.ovr;
+    player.archetype = ovrResult.archetype;
     // potential은 항상 현재 ovr 이상이어야 함(성장 로직이 potential < ovr을 가정하지 않음)
     player.potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, player.ovr) : Math.max(75, player.ovr + 5);
 
@@ -181,7 +183,9 @@ export function applyRosterState(player: any, rosterState: Record<string, any>):
         for (const cat of Object.keys(CATEGORY_ATTRS)) {
             player[cat] = calcCategoryAvg(player, cat);
         }
-        player.ovr = calculateOvr(player);
+        const ovrResult = calculateOvrWithArchetype(player);
+        player.ovr = ovrResult.ovr;
+        player.archetype = ovrResult.archetype;
     }
 }
 

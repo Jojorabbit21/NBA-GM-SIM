@@ -25,7 +25,7 @@ interface DraftBoardProps {
     onlineTeamIds?: Set<string>;
 }
 
-export const DraftBoard: React.FC<DraftBoardProps> = ({
+const DraftBoardComponent: React.FC<DraftBoardProps> = ({
     teamIds,
     totalRounds,
     picks,
@@ -267,3 +267,5 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
         </div>
     );
 };
+
+export const DraftBoard = React.memo(DraftBoardComponent);

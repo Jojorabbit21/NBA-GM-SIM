@@ -166,6 +166,9 @@ async function _runStartDraft(
     const ovrMin          = (league as any).draft_ovr_min           ?? 0;
     const ovrMax          = (league as any).draft_ovr_max           ?? 99;
     const draftPools      = (draftPoolRaw as string).split(',').map((s: string) => s.trim()).filter(Boolean);
+    // 올타임 풀이 포함되면 custom_overrides를 반영한 OVR로 필터링/전송해야 한다 —
+    // 안 그러면 오버라이드 적용 전 원본 능력치 기준으로 ovrMin/ovrMax를 걸러버리는 버그가 생긴다.
+    const applyCustomOverrides = draftPools.includes('alltime');
 
     // 풀 구성
     const seenIds: Set<string>  = new Set();
@@ -187,7 +190,7 @@ async function _runStartDraft(
         for (const p of poolData ?? []) {
             if (seenIds.has(String(p.id))) continue;
             seenIds.add(String(p.id));
-            const mapped = mapRawPlayerToRuntimePlayer(p);
+            const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
             if (pt === 'rookies') rookieRaw.push(mapped);
             else nonRookieRaw.push(mapped);
         }
@@ -221,7 +224,7 @@ async function _runStartDraft(
         : generateSnakePickOrder(shuffledMembers, totalRounds);
 
     const nowIso = new Date().toISOString();
-    const draftConfig = { format: draftStrategy === 'linear' ? 'linear' : 'snake', totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder };
+    const draftConfig = { format: draftStrategy === 'linear' ? 'linear' : 'snake', totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder, applyCustomOverrides };
     const draftCursor = { status: 'active', currentPickIndex: 0, currentPickStartedAt: nowIso };
 
     // rooms 업데이트

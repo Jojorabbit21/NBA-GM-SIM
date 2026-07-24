@@ -4,7 +4,7 @@ import { PlayerContract, ContractType } from '../types/player';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
 import { KNOWN_INJURIES } from '../utils/injuries'; // Import from dedicated file
 import {
-    calculateOvr,
+    calculateOvrWithArchetype,
     calculateRawOvr,
     calculateFutureOvr,
     getOVRThreshold,
@@ -285,7 +285,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     const manualOvr = Number(getCol(p, ['ovr', 'OVR']));
     const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
     const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
-    const ovr = calculateOvr(ovrInput, position);
+    const { ovr, archetype } = calculateOvrWithArchetype(ovrInput, position);
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI
@@ -332,6 +332,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
         contractYears: 0,
 
         ovr,
+        archetype,
         manualOvr: (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : undefined,
         potential,
         revealedPotential: potential,
@@ -416,7 +417,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
  * 전체 선수 로드 후 1회 호출: OVR / futureOvr 최종 확정
  *
  * z-score 파이프라인 제거 후 리그 분포 재계산은 불필요.
- * calculateOvr()는 rawCurrentOVR을 직접 반환하므로 호출 시점과 무관하게 일관된 값.
+ * calculateOvrWithArchetype()는 rawCurrentOVR을 직접 반환하므로 호출 시점과 무관하게 일관된 값.
  */
 export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): void => {
     const allPlayers: Player[] = [
@@ -426,7 +427,9 @@ export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): v
     if (allPlayers.length === 0) return;
 
     for (const p of allPlayers) {
-        p.ovr = calculateOvr(p);
+        const { ovr, archetype } = calculateOvrWithArchetype(p);
+        p.ovr = ovr;
+        p.archetype = archetype;
         p.rawOvr = calculateRawOvr(p);
         p.futureOvr = calculateFutureOvr(p);
     }

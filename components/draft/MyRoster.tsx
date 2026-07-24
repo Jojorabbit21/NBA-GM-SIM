@@ -2,7 +2,6 @@
 import React from 'react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
-import { calculatePlayerOvr } from '../../utils/constants';
 
 interface MyRosterProps {
     players: Player[];
@@ -12,7 +11,7 @@ interface MyRosterProps {
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const RESERVES = 10;
 
-export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) => {
+const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster }) => {
     // 루키 드래프트 모드: 기존 로스터 + 새 드래프트 픽 합산
     const allPlayers = existingRoster ? [...existingRoster, ...players] : players;
     const newPickIds = existingRoster ? new Set(players.map(p => p.id)) : null;
@@ -79,7 +78,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
                             </span>
                             {player ? (
                                 <>
-                                    <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                    <OvrBadge value={player.ovr} size="sm" />
                                     <span className={`text-xs font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
                                 </>
                             ) : (
@@ -105,7 +104,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
                                     <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
                                         {player.position}
                                     </span>
-                                    <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                    <OvrBadge value={player.ovr} size="sm" />
                                     <span className={`text-xs font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
                                 </>
                             ) : (
@@ -121,3 +120,5 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, existingRoster }) =
         </div>
     );
 };
+
+export const MyRoster = React.memo(MyRosterComponent);

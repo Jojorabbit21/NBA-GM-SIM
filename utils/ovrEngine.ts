@@ -1219,3 +1219,23 @@ export function calculateFutureOVR(
   const growth = Math.max(0, (potential - currentDisplayOVR) * ageFactor * 0.55);
   return clamp(Math.round(currentDisplayOVR + growth), currentDisplayOVR, 99);
 }
+
+// ─── 15) Archetype Display Labels (hardcoded fallback) ───────────────────────
+// 관리자가 DB(archetypes.labels)에 커스텀 라벨을 저장하면 그게 우선이고, 없으면 이 값을 쓴다.
+// 원래 pages/PlayerEditorPage.tsx에만 있던 걸 공용으로 빼서 단일 소스로 유지한다.
+export const ARCHETYPE_LABEL: Record<OvrArchetype, string> = {
+  PRIMARY_CREATOR_GUARD: 'Primary Creator',  SCORING_COMBO_GUARD: 'Dual Guard',
+  MOVEMENT_SHOOTER: 'Outside Shooter',       PERIMETER_3D: 'Perimeter 3&D',
+  TWO_WAY_WING: 'Two-Way Wing',              SLASHING_WING: 'Slashing Wing',
+  SHOT_CREATOR_WING: 'Shot Creator Wing',    CONNECTOR_FORWARD: 'Connector Fwd',
+  AERIAL_WING: 'Aerial Wing',                POST_SCORING_WING: 'Post Scoring Wing',
+  WING_PROTECTOR: 'Wing Protector',          POST_SCORING_BIG: 'Post Scoring Big',
+  RIM_RUNNER_BIG: 'Rim Runner',              STRETCH_BIG: 'Stretch Big',
+  RIM_PROTECTOR_ANCHOR: 'Rim Protector',     PLAYMAKING_BIG: 'Playmaking Big',
+  FLOOR_GENERAL_GUARD: 'Floor General',      SCORING_POINT_GUARD: 'Pure Scorer',
+  DEFENSIVE_GUARD: 'Defensive Guard',        THREE_LEVEL_SCORER: '3-Level Scorer',
+  LOCKDOWN_WING: 'Lockdown Wing',            SWITCHABLE_ANCHOR: 'Switchable Anchor',
+  TWO_WAY_BIG: 'Two-Way Big',                REBOUNDING_BIG: 'Rebounding Big',
+  ISOLATION_SCORER: 'Midrange Menace',       ELBOW_OPERATOR: 'Elbow Operator',
+  ELITE_GUARD: 'Elite Guard',                LOCKDOWN_SHOOTER: 'Lockdown Shooter',
+};

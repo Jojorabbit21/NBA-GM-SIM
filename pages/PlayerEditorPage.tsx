@@ -8,7 +8,7 @@ import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { adaptPlayerToInput } from '../utils/ovrUtils';
-import { evaluatePlayerRawOVR, evalTagConditionOvr } from '../utils/ovrEngine';
+import { evaluatePlayerRawOVR, evalTagConditionOvr, ARCHETYPE_LABEL } from '../utils/ovrEngine';
 import type { ArchetypeModuleScores } from '../types/archetype';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
@@ -193,23 +193,6 @@ const STAT_SECTIONS = [
         ],
     },
 ];
-
-const ARCHETYPE_LABEL: Record<string, string> = {
-    PRIMARY_CREATOR_GUARD: 'Primary Creator',  SCORING_COMBO_GUARD: 'Dual Guard',
-    MOVEMENT_SHOOTER: 'Outside Shooter',       PERIMETER_3D: 'Perimeter 3&D',
-    TWO_WAY_WING: 'Two-Way Wing',              SLASHING_WING: 'Slashing Wing',
-    SHOT_CREATOR_WING: 'Shot Creator Wing',    CONNECTOR_FORWARD: 'Connector Fwd',
-    AERIAL_WING: 'Aerial Wing',                POST_SCORING_WING: 'Post Scoring Wing',
-    WING_PROTECTOR: 'Wing Protector',          POST_SCORING_BIG: 'Post Scoring Big',
-    RIM_RUNNER_BIG: 'Rim Runner',              STRETCH_BIG: 'Stretch Big',
-    RIM_PROTECTOR_ANCHOR: 'Rim Protector',     PLAYMAKING_BIG: 'Playmaking Big',
-    FLOOR_GENERAL_GUARD: 'Floor General',      SCORING_POINT_GUARD: 'Pure Scorer',
-    DEFENSIVE_GUARD: 'Defensive Guard',        THREE_LEVEL_SCORER: '3-Level Scorer',
-    LOCKDOWN_WING: 'Lockdown Wing',            SWITCHABLE_ANCHOR: 'Switchable Anchor',
-    TWO_WAY_BIG: 'Two-Way Big',                REBOUNDING_BIG: 'Rebounding Big',
-    ISOLATION_SCORER: 'Midrange Menace',       ELBOW_OPERATOR: 'Elbow Operator',
-    ELITE_GUARD: 'Elite Guard',                LOCKDOWN_SHOOTER: 'Lockdown Shooter',
-};
 
 const TAG_LABEL: Record<string, string> = {
     elite_finisher: 'Elite Finisher', foul_merchant: 'Foul Merchant', shotmaker: 'Shotmaker',

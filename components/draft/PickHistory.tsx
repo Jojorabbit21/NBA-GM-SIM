@@ -12,7 +12,7 @@ interface PickHistoryProps {
     teamMeta?: RoomTeamMetaMap;
 }
 
-export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId, teamMeta }) => {
+const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId, teamMeta }) => {
     const [roundFilter, setRoundFilter] = useState<number | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const topRef = useRef<HTMLDivElement>(null);
@@ -108,3 +108,5 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
         </div>
     );
 };
+
+export const PickHistory = React.memo(PickHistoryComponent);

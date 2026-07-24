@@ -3,10 +3,12 @@ import type { Player } from '../types';
 import {
   evaluatePlayerRawOVR,
   calculateFutureOVR,
+  ARCHETYPE_LABEL,
   type PlayerInput,
   type PlayerRatings,
   type OvrPosition,
 } from './ovrEngine';
+import { getLabelConfigSync } from '../services/admin/gameConfigService';
 
 // ─── OVR Tier Thresholds (hardcoded, absolute) ───────────────────────────────
 // z-score 기반 상대 분포 제거 — rawCurrentOVR이 곧 displayOVR이므로 절댓값 사용.
@@ -133,6 +135,19 @@ export const calculateOvr = (attributes: Player | any, position?: string): numbe
   const input = adaptPlayerToInput(attributes, position);
   const raw   = evaluatePlayerRawOVR(input);
   return Math.round(raw.rawCurrentOVR);
+};
+
+/**
+ * calculateOvr()과 동일한 evaluatePlayerRawOVR() 결과 하나로 OVR과 주 아키타입 라벨을
+ * 같이 뽑아낸다 — 아키타입 표시가 필요한 곳(드래프트 풀 등)에서 OVR을 두 번 계산하지
+ * 않도록 하기 위함. 라벨은 DB 커스텀 설정(archetypes.labels) 우선, 없으면 하드코딩 폴백.
+ */
+export const calculateOvrWithArchetype = (attributes: Player | any, position?: string): { ovr: number; archetype: string } => {
+  const input = adaptPlayerToInput(attributes, position);
+  const raw   = evaluatePlayerRawOVR(input);
+  const key   = raw.primaryArchetype.archetype;
+  const label = getLabelConfigSync()?.[key] ?? ARCHETYPE_LABEL[key] ?? key;
+  return { ovr: Math.round(raw.rawCurrentOVR), archetype: label };
 };
 
 /**
