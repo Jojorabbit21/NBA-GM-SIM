@@ -81,6 +81,33 @@ export function computeLeagueContext(
     return { muRef, muLeague, k };
 }
 
+// ── 드래프트 풀 기준 muLeague 캐싱 ──────────────────────────────────────────────
+// 실제로 뽑힌 팀 로스터가 아니라 "드래프트 풀 자체"(뽑힐 수 있었던 후보군) 기준으로
+// muLeague를 계산한다 — 같은 풀 설정(draftPool/ovrMin/ovrMax/팀수)을 쓰는 리그는
+// 항상 같은 값을 쓰게 되어, 방마다 실제 드래프트 결과에 따라 압축 강도가 들쭉날쭉해지는
+// 것을 막는다. 프로세스 메모리에 캐싱해 같은 풀 설정으로 여러 리그가 생성돼도 최초
+// 1회만 계산한다(서버 재시작 시에는 캐시가 비워져 다음 최초 호출에서 다시 계산됨).
+const poolMuLeagueCache = new Map<string, number>();
+
+export async function getOrComputeDraftPoolMuLeague(
+    key: string,
+    teamCount: number,
+    fetchPoolOvrs: () => Promise<number[]>,
+): Promise<number> {
+    const cached = poolMuLeagueCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const cfg = SIM_CONFIG.NORMALIZATION;
+    const ovrs = (await fetchPoolOvrs()).sort((a, b) => b - a);
+    const count = Math.min(teamCount * cfg.ROTATION_SIZE, ovrs.length);
+    const muLeague = count > 0
+        ? ovrs.slice(0, count).reduce((s, v) => s + v, 0) / count
+        : cfg.MU_REF;
+
+    poolMuLeagueCache.set(key, muLeague);
+    return muLeague;
+}
+
 // ── MP: resolve normalization context from room cache / overrides ─────────────
 
 export function resolveNormalizationContext(

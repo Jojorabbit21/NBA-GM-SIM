@@ -43,6 +43,26 @@ function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three
     };
 }
 
+// 텐던시 데이터 없는 선수용 폴백 — resolveDynamicZone()이 기존에 쓰던 고정 비율(15/20/30/20/15%)과
+// 동일한 값이라, 텐던시 없는 선수의 서브존 분포는 이 변경 전후로 그대로 유지된다(회귀 없음).
+const DEFAULT_THREE_SUB_PREF = { cnr: 0.30, p45: 0.40, atb: 0.30 };
+
+/**
+ * Player.tendencies.zones.cnr/p45/atb(코너/45도/탑 3점 DNA) → 서브존 선호도 정규화.
+ * buildZonePref()가 이 셋을 합쳐 "3점 전체 비중"만 계산하는 것과 별개로, 일단 3점을 쏘기로
+ * 정해진 뒤 "어느 서브존에서"를 결정하는 resolveDynamicZone()에 이 개인차를 전달하기 위함
+ * — 안 그러면 코너 스페셜리스트든 탑 스페셜리스트든 서브존 선택이 전부 동일한 고정 비율을 탄다.
+ */
+function buildThreeSubPref(p: Player): { cnr: number; p45: number; atb: number } {
+    if (p.tendencies?.zones) {
+        const z = p.tendencies.zones;
+        const cnr = z.cnr || 0, p45 = z.p45 || 0, atb = z.atb || 0;
+        const total = cnr + p45 + atb || 1;
+        return { cnr: cnr / total, p45: p45 / total, atb: atb / total };
+    }
+    return DEFAULT_THREE_SUB_PREF;
+}
+
 export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext, preserveDraftOrder = false): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     // preserveDraftOrder: 멀티플레이어는 드래프트로 로스터를 구성하므로, 저장된 전술이 없어
@@ -142,6 +162,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             archetypes: calculatePlayerArchetypes(attr, currentCondition, archetypesEnabled),
             tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
             zonePref: buildZonePref(p),
+            threeSubPref: buildThreeSubPref(p),
             lateralBias: p.tendencies?.lateral_bias ?? 2,
             zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,

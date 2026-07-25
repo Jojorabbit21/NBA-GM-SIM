@@ -215,8 +215,19 @@ async function buildDraftSetup(
                 .upsert(newAiMembers, { onConflict: 'room_id,user_id' });
             if (aiErr) return { ok: false, error: `AI fill: ${aiErr.message}` };
 
-            for (const { id, userId } of leagueTeamUpdates) {
-                await supabase.from('league_teams').update({ user_id: userId, is_ai: true }).eq('id', id);
+            // [Fix 2026-07-26] league_teams.user_id는 auth.users FK라서 AI의 가짜 UUID
+            // (00000000-0000-0000-0000-...)를 절대 넣을 수 없다 — 실제로 "insert or update on
+            // table league_teams violates foreign key constraint league_teams_user_id_fkey"로
+            // 매번 실패하고 있었다(로그로 확인). user_id는 건드리지 않고 is_ai만 표시한다 —
+            // 실제 담당 유저 매핑(사람/AI 공통)은 FK 제약 없는 room_members가 유일한 신뢰 원천.
+            for (const { id } of leagueTeamUpdates) {
+                const { error: ltErr } = await supabase
+                    .from('league_teams')
+                    .update({ is_ai: true })
+                    .eq('id', id);
+                if (ltErr) {
+                    console.error(`[buildDraftSetup] league_teams is_ai sync FAILED team=${id}: ${ltErr.message}`);
+                }
             }
         }
     }

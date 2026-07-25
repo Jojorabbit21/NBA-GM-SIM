@@ -142,23 +142,31 @@ function buildDepthChart(sortedRoster: Player[]): { depthChart: DepthChart; used
     }
 
     // 3단계: 인접 포지션의 여유분(써드→벤치)을 연쇄 이동
-    for (let depth = 0; depth <= 2; depth++) {
-        for (const pos of DEPTH_POSITIONS) {
-            if (depthChart[pos][depth]) continue;
-            for (const neighbor of adjacentPositions(pos)) {
-                let moved = false;
-                for (let nd = 2; nd >= 1; nd--) {
-                    const movedId = depthChart[neighbor][nd];
-                    if (!movedId) continue;
-                    depthChart[pos][depth] = movedId;
-                    depthChart[neighbor][nd] = null;
-                    // 빈 자리가 된 neighbor 슬롯을 한 번만 더 보충 시도(체인은 여기서 종료)
-                    const backfill = findUnusedNeighbor(neighbor);
-                    if (backfill) { depthChart[neighbor][nd] = backfill.id; usedIds.add(backfill.id); }
-                    moved = true;
-                    break;
+    // [Fix 2026-07-26] 로스터 전원이 이미 1·2단계에서 배치 완료됐으면(재분배할 진짜 잉여
+    // 인원이 아예 없으면) 이 단계를 건너뛴다 — 안 그러면 "포지션당 정확히 2명씩"처럼 매우
+    // 흔한 로스터에서, 모든 포지션의 써드가 원래 정상적으로 비어있는 것뿐인데도 이웃 포지션의
+    // 벤치 선수를 훔쳐와 PG→SG→SF→PF→C 순으로 한 선수가 계속 옮겨 다니는(핫포테이토) 버그가
+    // 생긴다 — 원래 있어야 할 벤치 자리는 비고, 그 선수는 엉뚱하게 C 써드 등에 안착해버림
+    // (실제로 발생 확인: 트레이시 맥그레이디가 SG 벤치 대신 C 써드에 들어가는 사례).
+    if (usedIds.size < sortedRoster.length) {
+        for (let depth = 0; depth <= 2; depth++) {
+            for (const pos of DEPTH_POSITIONS) {
+                if (depthChart[pos][depth]) continue;
+                for (const neighbor of adjacentPositions(pos)) {
+                    let moved = false;
+                    for (let nd = 2; nd >= 1; nd--) {
+                        const movedId = depthChart[neighbor][nd];
+                        if (!movedId) continue;
+                        depthChart[pos][depth] = movedId;
+                        depthChart[neighbor][nd] = null;
+                        // 빈 자리가 된 neighbor 슬롯을 한 번만 더 보충 시도(체인은 여기서 종료)
+                        const backfill = findUnusedNeighbor(neighbor);
+                        if (backfill) { depthChart[neighbor][nd] = backfill.id; usedIds.add(backfill.id); }
+                        moved = true;
+                        break;
+                    }
+                    if (moved) break;
                 }
-                if (moved) break;
             }
         }
     }

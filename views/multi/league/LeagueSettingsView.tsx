@@ -13,6 +13,31 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { DEFAULT_SIM_SETTINGS } from '../../../types/simSettings';
 
+// 리그 상대 정규화 강도 — 0~5 입력을 서버가 읽는 { enabled, k } 값으로 매핑.
+// 0은 enabled:false로 정규화 자체를 끄고(resolveNormalizationContext가 leagueContext를
+// undefined로 만들어 shift 계산 자체를 건너뜀), 1~5는 k(0~1) 압축 강도.
+// 기본값(레벨3=0.7)은 SIM_CONFIG.NORMALIZATION.DEFAULT_K와 동일.
+const NORMALIZATION_LEVELS: { enabled: boolean; k: number; label: string }[] = [
+    { enabled: false, k: 0,    label: '끔' },       // 0
+    { enabled: true,  k: 0.3,  label: '약하게' },    // 1
+    { enabled: true,  k: 0.5,  label: '약간 약하게' }, // 2
+    { enabled: true,  k: 0.7,  label: '기본' },      // 3
+    { enabled: true,  k: 0.85, label: '강하게' },    // 4
+    { enabled: true,  k: 1.0,  label: '최대' },      // 5
+];
+
+function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
+    if (normOverride?.enabled === false) return 0;
+    const k = normOverride?.k;
+    if (k === undefined) return 3;
+    let closest = 3, minDiff = Infinity;
+    for (let i = 1; i < NORMALIZATION_LEVELS.length; i++) {
+        const diff = Math.abs(NORMALIZATION_LEVELS[i].k - k);
+        if (diff < minDiff) { minDiff = diff; closest = i; }
+    }
+    return closest;
+}
+
 function fmtConference(conf: string | null): string {
     if (!conf) return '—';
     if (conf === 'East') return '동부';
@@ -70,6 +95,7 @@ const LeagueSettingsView: React.FC = () => {
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
     const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
+    const [normalizationLevel, setNormalizationLevel] = useState(3);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
@@ -124,6 +150,7 @@ const LeagueSettingsView: React.FC = () => {
         setTournamentIntervalMin(Math.round(1440 / gprd));
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
+        setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
     }, [league]);
 
     // 비어드민 접근 차단
@@ -196,6 +223,11 @@ const LeagueSettingsView: React.FC = () => {
                 ...(room?.sim_settings ?? {}),
                 injuriesEnabled,
                 garbageTimeEnabled,
+                normalization: {
+                    ...(room?.sim_settings?.normalization ?? {}),
+                    enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
+                    k: NORMALIZATION_LEVELS[normalizationLevel].k,
+                },
             },
         });
         setSavingSim(false);
@@ -351,6 +383,24 @@ const LeagueSettingsView: React.FC = () => {
                             <span className="ml-2 text-xs text-slate-500 ko-normal">Q4 대량 점수차 시 주전 자동 벤치 및 후보 투입</span>
                         </div>
                     </label>
+
+                    <div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">리그 상대 정규화 강도</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={5}
+                                step={1}
+                                value={normalizationLevel}
+                                onChange={e => setNormalizationLevel(Math.min(5, Math.max(0, Math.round(Number(e.target.value) || 0))))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                            0이면 정규화가 완전히 꺼집니다. 올타임 등 고OVR 드래프트 풀에서 득점이 비현실적으로 치솟는 걸 억제하는 기능이며, 1~5로 갈수록 표준 NBA 수준으로 강하게 압축됩니다.
+                        </p>
+                    </div>
                 </div>
 
                 {saveSimErr && <p className="text-xs text-red-400 ko-normal">{saveSimErr}</p>}

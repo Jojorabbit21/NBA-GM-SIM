@@ -239,8 +239,14 @@ export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mi
         return 'zone_mid_r';
     }
     if (broadZone === '3PT') {
-        const cl = 0.15 * leftMult, wl = 0.20 * leftMult, top = 0.30, wr = 0.20 * rightMult, cr = 0.15 * rightMult;
-        const total = cl + wl + top + wr + cr;
+        // 서브존(코너/45도/탑) 선택은 선수 개인 DNA(threeSubPref: cnr/p45/atb)를 1차 기준으로 쓰고,
+        // 좌우 편향(lateralBias)은 좌우 대칭인 코너/45도 항목에만 곱연산으로 적용한다 — 탑(atb)은
+        // 좌우 구분이 없으므로 그대로 둔다. threeSubPref 없는 호출(방어적 폴백)은 기존 고정 비율 사용.
+        const sp = player.threeSubPref ?? { cnr: 0.30, p45: 0.40, atb: 0.30 };
+        const cl = (sp.cnr / 2) * leftMult, cr = (sp.cnr / 2) * rightMult;
+        const wl = (sp.p45 / 2) * leftMult, wr = (sp.p45 / 2) * rightMult;
+        const top = sp.atb;
+        const total = cl + wl + top + wr + cr || 1;
         const pCl = cl / total, pWl = wl / total, pTop = top / total, pWr = wr / total;
         if (rand < pCl) return 'zone_c3_l';
         if (rand < pCl + pWl) return 'zone_atb3_l';

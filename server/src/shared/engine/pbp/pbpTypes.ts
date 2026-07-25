@@ -43,6 +43,8 @@ export interface LivePlayer extends PlayerBoxScore {
 
     // 선수 DNA — 4존 선호도 (합계 = 1.0)
     zonePref: { ra: number; itp: number; mid: number; three: number };
+    // 3점 서브존 선호(코너/45도/탑, 합계 = 1.0) — DB tendencies.zones.cnr/p45/atb 기반
+    threeSubPref: { cnr: number; p45: number; atb: number };
     // 좌우 슈팅 편향 (0: 강한 왼쪽 ~ 3: 강한 오른쪽, 기본 2)
     lateralBias: number;
 

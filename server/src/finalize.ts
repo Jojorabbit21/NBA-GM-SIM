@@ -12,6 +12,19 @@ import { TEAM_DATA } from './shared/teamData';
 import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
+import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
+import { SIM_CONFIG } from './shared/game/config/constants';
+import type { TacticalSliders } from './shared/types/tactics';
+
+// 멀티플레이어 AI 팀 전용 — 로스터 기반 계산값 대신 모든 슬라이더를 중간값(5)으로 고정한다.
+// 사람 팀/싱글플레이어 CPU는 영향받지 않음(generateAutoTactics()의 기본 계산 결과를 그대로 씀).
+const MIDDLE_SLIDERS: TacticalSliders = {
+    pace: 5, ballMovement: 5, offReb: 5,
+    playStyle: 5, insideOut: 5, pnrFreq: 5,
+    shot_3pt: 5, shot_mid: 5, shot_rim: 5,
+    defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 5,
+    fullCourtPress: 5, zoneUsage: 5,
+};
 
 /**
  * 시뮬레이션 실시각 계산의 기준점(game_seq=0)을 결정한다.
@@ -48,6 +61,21 @@ async function initializeTeamTactics(
     const allPlayerIds = leagueTeams.flatMap(t => t.roster ?? []);
     if (allPlayerIds.length === 0) return;
 
+    // [Fix 2026-07-26] league_teams.user_id는 auth.users FK 제약 때문에 AI 팀에서는 항상
+    // null로 남는다(가짜 UUID를 못 씀 — buildDraftSetup 참조). 그래서 team_slug → 실제 담당
+    // userId(사람/AI 공통) 매핑은 FK 제약 없는 room_members에서 가져온다 — 이걸 안 하면 AI
+    // 팀은 전부 뎁스차트/전술 시드 자체가 안 생긴다.
+    const { data: members } = await supabase
+        .from('room_members')
+        .select('team_id, user_id, is_ai')
+        .eq('room_id', roomId);
+    const userIdByTeamSlug = new Map<string, string>();
+    const isAiByTeamSlug = new Map<string, boolean>();
+    for (const m of members ?? []) {
+        if (m.team_id && m.user_id) userIdByTeamSlug.set(m.team_id, m.user_id);
+        if (m.team_id) isAiByTeamSlug.set(m.team_id, !!m.is_ai);
+    }
+
     const { data: rawPlayers } = await supabase
         .from('meta_players')
         .select('id, name, position, base_attributes, tendencies')
@@ -59,11 +87,16 @@ async function initializeTeamTactics(
     }
 
     const updates = leagueTeams
-        .filter(lt => lt.user_id)
-        .map(lt => {
+        .map(lt => ({ lt, userId: userIdByTeamSlug.get(lt.team_slug) }))
+        .filter((x): x is { lt: typeof leagueTeams[number]; userId: string } => !!x.userId)
+        .map(({ lt, userId }) => {
             const team = buildTeamForSim(lt, playerMap, rosterState);
             const tactics = generateAutoTactics(team, undefined, true);
-            return { userId: lt.user_id as string, tactics, depthChart: tactics.depthChart ?? null };
+            // AI 팀은 로스터 기반 계산 슬라이더 대신 중간값으로 고정 — 뎁스차트/로테이션은 그대로 유지.
+            if (isAiByTeamSlug.get(lt.team_slug)) {
+                tactics.sliders = { ...MIDDLE_SLIDERS };
+            }
+            return { userId, tactics, depthChart: tactics.depthChart ?? null };
         });
 
     await Promise.all(updates.map(u =>
@@ -73,6 +106,71 @@ async function initializeTeamTactics(
             .eq('room_id', roomId)
             .eq('user_id', u.userId),
     ));
+}
+
+/**
+ * 리그 상대 정규화(league-normalization.md) 컨텍스트를 드래프트 완료 시점에 계산해
+ * rooms.sim_settings.leagueContext에 캐싱한다. muLeague는 "이번에 실제로 뽑힌 로스터"가
+ * 아니라 "드래프트 풀 자체"(뽑힐 수 있었던 후보군) 기준으로 계산한다 — 같은 풀 설정
+ * (draftPool/ovrMin/ovrMax/팀수)을 쓰는 리그는 항상 같은 값을 쓰게 되어, 방마다 실제
+ * 드래프트 결과(어느 팀이 더 세게 뽑혔는지)에 따라 압축 강도가 들쭉날쭉해지는 것을 막는다.
+ * getOrComputeDraftPoolMuLeague()가 프로세스 메모리에 캐싱하므로 같은 풀 설정을 쓰는
+ * 리그가 여러 개 생겨도 최초 1회만 실제 계산(meta_players 조회)이 일어난다.
+ * simRunner.ts는 매 경기 이 캐시된 값만 읽으므로 게임 시뮬레이션 시점엔 계산이 없다.
+ */
+async function applyLeagueNormalization(
+    roomId: string,
+    league: { draft_pool?: string | null; draft_ovr_min?: number | null; draft_ovr_max?: number | null },
+    teamCount: number,
+): Promise<void> {
+    const draftPoolRaw = league.draft_pool ?? 'standard';
+    const ovrMin = league.draft_ovr_min ?? 0;
+    const ovrMax = league.draft_ovr_max ?? 99;
+    const cacheKey = `${draftPoolRaw}|${ovrMin}|${ovrMax}|${teamCount}`;
+
+    const muLeague = await getOrComputeDraftPoolMuLeague(cacheKey, teamCount, async () => {
+        // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
+        // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
+        const draftPools = draftPoolRaw.split(',').map((s: string) => s.trim());
+        const applyCustomOverrides = draftPools.includes('alltime');
+        const seenIds = new Set<string>();
+        const ovrs: number[] = [];
+
+        for (const pt of draftPools) {
+            let q = supabase.from('meta_players').select('id, base_attributes');
+            if (pt === 'standard') {
+                q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
+            } else if (pt === 'alltime') {
+                q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
+            } else {
+                q = (q as any).eq('draft_year', 2026);
+            }
+            const { data: poolData } = await q;
+            for (const p of poolData ?? []) {
+                if (seenIds.has(String(p.id))) continue;
+                seenIds.add(String(p.id));
+                const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
+                // 루키는 buildDraftSetup()에서도 ovr 필터 없이 무조건 풀에 포함되므로 동일하게 처리.
+                if (pt === 'rookies' || (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax)) {
+                    ovrs.push(mapped.ovr);
+                }
+            }
+        }
+        return ovrs;
+    });
+
+    const leagueContext = {
+        muRef: SIM_CONFIG.NORMALIZATION.MU_REF,
+        muLeague,
+        k: SIM_CONFIG.NORMALIZATION.DEFAULT_K,
+    };
+
+    const { data: roomRow } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).single();
+    await supabase.from('rooms').update({
+        sim_settings: { ...(roomRow?.sim_settings as any ?? {}), leagueContext },
+    }).eq('id', roomId);
+
+    console.log(`[finalize] room ${roomId} — league normalization cached (muLeague=${muLeague.toFixed(1)})`);
 }
 
 /**
@@ -91,7 +189,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max')
         .eq('id', room.league_id)
         .single();
 
@@ -114,6 +212,8 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
     // 리그 생성(강제 스케줄 초기화) 시점의 최신 아키타입 가중치/태그를 강제로 다시 받아온다.
     await refetchGameConfig().catch(err => console.error('[finalize:force] refetchGameConfig failed:', err));
     await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+    await applyLeagueNormalization(roomId, league, leagueTeams.length)
+        .catch(err => console.error('[finalize:force] applyLeagueNormalization failed:', err));
 
     const nowDate         = new Date();
     const tournamentStart = league.type === 'tournament' ? (league.tournament_start_at ?? null) : null;
@@ -218,7 +318,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max')
         .eq('id', room.league_id)
         .single();
 
@@ -251,6 +351,8 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // (서버 부팅 이후 관리자가 튜닝했을 수 있으므로) — 실패해도 하드코딩 폴백으로 진행.
     await refetchGameConfig().catch(err => console.error('[finalize] refetchGameConfig failed:', err));
     await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+    await applyLeagueNormalization(roomId, league, leagueTeams.length)
+        .catch(err => console.error('[finalize] applyLeagueNormalization failed:', err));
 
     // ── 날짜 계산 ────────────────────────────────────────────────────────────
     const nowDate        = new Date();

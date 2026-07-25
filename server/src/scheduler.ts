@@ -97,6 +97,13 @@ async function runLotteries(now: string): Promise<void> {
             console.error(`[scheduler:lottery] league=${league.id}: ${error.message}`);
         } else if (!error) {
             console.log(`[scheduler:lottery] done league=${league.id}`);
+            // 추첨 직후 곧바로 방 준비 — /run-lottery 엔드포인트(수동 로터리)와 동일하게,
+            // 자동(예약) 로터리도 다음 스케줄러 틱(최대 30초)을 기다리지 않고 즉시 처리한다.
+            // 원자적 클레임을 거치므로 다음 틱의 runDraftRoomPrep()과 겹쳐도 안전하다.
+            const prep = await claimAndPrepareRoom(league.id, room.id);
+            if (!prep.ok) {
+                console.error(`[scheduler:lottery] prep failed league=${league.id}: ${prep.error}`);
+            }
         }
     }
 }
