@@ -50,7 +50,9 @@ function injectGameSeq(schedule: any[]): void {
 /**
  * 드래프트 완료 직후 각 팀(사람/AI 모두)의 뎁스차트/로테이션/팀 전술을 자동 생성해
  * room_members.tactics + depth_chart에 최초 저장한다.
- * preserveDraftOrder=true — 드래프트에서 먼저 뽑힌 선수가 주전을 차지하도록(tacticGenerator와 동일 규칙).
+ * [Fix 2026-07-26] preserveDraftOrder=false — 드래프트 픽 순서가 아니라 항상 OVR 내림차순으로
+ * 뎁스차트를 채운다. 이전엔 true였는데, 그러면 낮은 OVR 선수를 먼저 뽑았다는 이유만으로 나중에
+ * 뽑은 더 높은 OVR의 동포지션 선수를 밀어내고 주전을 차지하는 버그가 있었다.
  * 이후 유저가 전술 화면에서 직접 수정하면 그 값으로 덮어써진다 — 여기서는 "빈 값" 상태를 없애는 최초 seed일 뿐이다.
  */
 async function initializeTeamTactics(
@@ -91,7 +93,7 @@ async function initializeTeamTactics(
         .filter((x): x is { lt: typeof leagueTeams[number]; userId: string } => !!x.userId)
         .map(({ lt, userId }) => {
             const team = buildTeamForSim(lt, playerMap, rosterState);
-            const tactics = generateAutoTactics(team, undefined, true);
+            const tactics = generateAutoTactics(team, undefined, false);
             // AI 팀은 로스터 기반 계산 슬라이더 대신 중간값으로 고정 — 뎁스차트/로테이션은 그대로 유지.
             if (isAiByTeamSlug.get(lt.team_slug)) {
                 tactics.sliders = { ...MIDDLE_SLIDERS };
