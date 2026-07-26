@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
-import { useMultiGameData } from '../../../hooks/useMultiGameData';
+import { useSeasonContext } from './seasonContext';
 import { supabase } from '../../../services/supabaseClient';
 import { RosterView } from '../../RosterView';
 import { PlayerDetailView } from '../../PlayerDetailView';
@@ -130,7 +130,7 @@ const MultiRosterView: React.FC = () => {
     const { league, room, leagueTeams, members, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
-    const { schedule, tendencySeed } = useMultiGameData(session, room?.id ?? null);
+    const { schedule, tendencySeed } = useSeasonContext();
     const location = useLocation();
     const navState = (location.state ?? {}) as { viewPlayer?: Player; viewTeamId?: string };
 

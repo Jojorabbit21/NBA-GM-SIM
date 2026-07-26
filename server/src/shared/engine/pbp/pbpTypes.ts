@@ -241,6 +241,9 @@ export interface GameState {
     // [New] 박스스코어 점진 공개용 포세션 단위 델타 타임라인
     boxTimeline: BoxTick[];
     prevBoxSnap: Record<string, BoxDelta>; // 직전 포세션 종료 시점의 누적 스냅샷 (diff 기준점)
+
+    // [New 2026-07] 직전 포제션이 "우리 팀의 수비 리바운드"로 끝났는지 (defReb 속공 트레이드오프용)
+    lastEntryWasDefReb: boolean;
 }
 
 // Court Position Visualization
@@ -301,4 +304,7 @@ export interface PossessionResult {
     subZone?: string;
 
     isZone?: boolean;
+
+    // [New 2026-07] Help Defense: 이번 포제션에 헬프를 "시도"한 선수 (성공 여부 무관, 체력 추가 소모 대상)
+    helpDefenderId?: string;
 }

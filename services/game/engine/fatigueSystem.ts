@@ -2,6 +2,7 @@
 import { LivePlayer } from './pbp/pbpTypes';
 import { TacticalSliders, Player, Team } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
+import { interpolateCurve } from './pbp/flowEngine';
 
 /**
  * Calculates incremental fatigue during a possession based on various factors.
@@ -12,7 +13,8 @@ export function calculateIncrementalFatigue(
     sliders: TacticalSliders,
     isB2B: boolean,
     isStopper: boolean,
-    injuryFrequency: number = 1.0
+    injuryFrequency: number = 1.0,
+    isHelpDefender: boolean = false
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -25,12 +27,30 @@ export function calculateIncrementalFatigue(
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.3;
 
-    // [New] Full Court Press Fatigue Impact
-    // Pressing consumes significantly more energy.
-    // Scale: Level 1 (0% penalty) -> Level 10 (45% penalty)
+    // [Fix 2026-07-26] Full Court Press Fatigue Impact
+    // Pressing consumes more energy, in exchange for steal/TOV유발/샷클락 위반 보너스(possessionHandler.ts).
+    // Scale: Level 1 (0% penalty) -> Level 10 (15% penalty, 기존 45%에서 하향)
     if (sliders.fullCourtPress > 1) {
-        const pressPenalty = (sliders.fullCourtPress - 1) * 0.05;
+        const pressPenalty = (sliders.fullCourtPress - 1) * (0.15 / 9);
         drain *= (1.0 + pressPenalty);
+    }
+
+    // [defIntensity 체력 트레이드오프] 1단계 +5%p(절약) ~ 10단계 -8%p(추가 소모) 선형
+    const intensityFatigueMod = interpolateCurve(sliders.defIntensity, C.DEF_INTENSITY_CURVE);
+    drain *= (1 - intensityFatigueMod / 100);
+
+    // [헬프디펜스 재설계] 헬프를 "시도"한 선수는 추가 체력 소모 (성공 여부 무관, 1단계 ×1.10 ~ 10단계 ×1.25)
+    if (isHelpDefender) {
+        const helpCfg = SIM_CONFIG.HELP_DEFENSE;
+        const helperDrainMult = helpCfg.DRAIN_MULT_BASE + (sliders.helpDef - 1) * helpCfg.DRAIN_MULT_PER_LEVEL;
+        drain *= helperDrainMult;
+    }
+
+    // [defReb 속공 트레이드오프 C] defReb<5일 때만 추가 체력 소모 (매 포제션 상시, 팀 전체 균일 — 1단계 +1.5%p ~ 5단계 0%p)
+    const drtCfg = SIM_CONFIG.DEF_REB_TRANSITION;
+    if (sliders.defReb < drtCfg.FREQ_THRESHOLD) {
+        const defRebFatiguePenalty = (drtCfg.FREQ_THRESHOLD - sliders.defReb) * drtCfg.FATIGUE_PENALTY_PER_LEVEL;
+        drain *= (1 + defRebFatiguePenalty / 100);
     }
 
     // [Fix] player.currentCondition이 0 미만으로 계산에 참여하지 않도록 Math.max 처리

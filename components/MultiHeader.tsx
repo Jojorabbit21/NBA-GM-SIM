@@ -4,7 +4,7 @@ import { Timer, Trophy, Tv } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
-import { useMultiGameData } from '../hooks/useMultiGameData';
+import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
@@ -42,9 +42,9 @@ const OpponentBadge: React.FC<{
 );
 
 export const MultiHeader: React.FC = () => {
-    const { league, room, leagueTeams, members } = useLeagueContext();
+    const { league, leagueTeams, members } = useLeagueContext();
     const { session } = useGame();
-    const { schedule } = useMultiGameData(session, room?.id ?? null);
+    const { schedule } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();

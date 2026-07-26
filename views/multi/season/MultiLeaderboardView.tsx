@@ -1,26 +1,70 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
-import { useMultiGameData } from '../../../hooks/useMultiGameData';
-import { useGame } from '../../../hooks/useGameContext';
+import { useSeasonContext } from './seasonContext';
 import { supabase } from '../../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
-import { LeaderboardView } from '../../LeaderboardView';
+import { LeaderboardView, type LeaderboardFilterState } from '../../LeaderboardView';
 import { INITIAL_STATS } from '../../../utils/constants';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal, resolveRealAt } from './multiGameReveal';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
+import type { ViewMode, StatCategory } from '../../../data/leaderboardConfig';
+import type { SeasonType } from '../../../hooks/useLeaderboardData';
+
+function parseFilters(raw: string | null) {
+    if (!raw) return [];
+    try { return JSON.parse(atob(raw)); }
+    catch { return []; }
+}
 
 const MultiLeaderboardView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
-    const { session } = useGame();
-    const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
+    const { isLoading: gameLoading, schedule, myTeamId } = useSeasonContext();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // 화면 이동 후 뒤로가기로 돌아와도 필터가 유지되도록, 싱글플레이어 LeaderboardPage와
+    // 동일하게 필터 상태를 URL 쿼리스트링에 저장한다(로컬 useState뿐이면 뒤로가기 시
+    // 컴포넌트가 재마운트되며 초기화됨).
+    const savedFilterState: LeaderboardFilterState = {
+        mode:         (searchParams.get('mode') ?? 'Players') as ViewMode,
+        statCategory: (searchParams.get('cat')  ?? 'Traditional') as StatCategory,
+        sortConfig: {
+            key:       searchParams.get('sort') ?? 'pts',
+            direction: (searchParams.get('dir') ?? 'desc') as 'asc' | 'desc',
+        },
+        itemsPerPage:      Number(searchParams.get('perPage') ?? 50),
+        currentPage:       Number(searchParams.get('page')    ?? 1),
+        showHeatmap:       searchParams.get('heatmap') !== 'false',
+        activeFilters:     parseFilters(searchParams.get('filters')),
+        selectedTeams:     searchParams.getAll('team'),
+        selectedPositions: searchParams.getAll('pos'),
+        searchQuery:       searchParams.get('q') ?? '',
+        seasonType:        (searchParams.get('season') ?? 'regular') as SeasonType,
+    };
+
+    const handleFilterStateChange = (s: LeaderboardFilterState) => {
+        const params = new URLSearchParams();
+        params.set('mode',    s.mode);
+        params.set('cat',     s.statCategory);
+        params.set('sort',    s.sortConfig.key);
+        params.set('dir',     s.sortConfig.direction);
+        params.set('perPage', String(s.itemsPerPage));
+        params.set('page',    String(s.currentPage));
+        params.set('heatmap', String(s.showHeatmap));
+        params.set('season',  s.seasonType);
+        if (s.searchQuery)              params.set('q', s.searchQuery);
+        if (s.activeFilters.length > 0) params.set('filters', btoa(JSON.stringify(s.activeFilters)));
+        s.selectedTeams.forEach(t     => params.append('team', t));
+        s.selectedPositions.forEach(p => params.append('pos', p));
+        setSearchParams(params, { replace: true });
+    };
 
     const [teams, setTeams] = useState<Team[]>([]);
     const [fetchLoading, setFetchLoading] = useState(false);
@@ -207,6 +251,8 @@ const MultiLeaderboardView: React.FC = () => {
             onViewPlayer={handleViewPlayer}
             onTeamClick={() => {}}
             hideSeasonType={isTournament}
+            savedState={savedFilterState}
+            onStateChange={handleFilterStateChange}
         />
     );
 };

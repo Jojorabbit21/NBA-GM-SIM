@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Tv } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
-import { useMultiGameData } from '../../../hooks/useMultiGameData';
+import { useSeasonContext } from './seasonContext';
 import { useGame } from '../../../hooks/useGameContext';
 import { useServerClock } from '../../../utils/serverClock';
 import { getGameDisplayState, isStarted, resolveRealAt, type GameDisplayState } from './multiGameReveal';
@@ -310,7 +310,7 @@ const MultiScheduleView: React.FC = () => {
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
     const { session } = useGame();
-    const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useMultiGameData(session, room?.id ?? null);
+    const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useSeasonContext();
     const serverNow = useServerClock();
 
     // 진행 중(LIVE)인 경기의 실시간 스코어/쿼터/클락 — 서버가 elapsed까지만 잘라서 계산한 값

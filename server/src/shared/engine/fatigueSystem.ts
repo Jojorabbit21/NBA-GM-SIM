@@ -2,6 +2,7 @@
 import { LivePlayer } from './pbp/pbpTypes.ts';
 import { TacticalSliders, Player, Team } from '../types.ts';
 import { SIM_CONFIG } from '../game/config/constants.ts';
+import { interpolateCurve } from './pbp/flowEngine.ts';
 
 export function calculateIncrementalFatigue(
     player: LivePlayer,
@@ -9,7 +10,8 @@ export function calculateIncrementalFatigue(
     sliders: TacticalSliders,
     isB2B: boolean,
     isStopper: boolean,
-    injuryFrequency: number = 1.0
+    injuryFrequency: number = 1.0,
+    isHelpDefender: boolean = false
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -20,9 +22,29 @@ export function calculateIncrementalFatigue(
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.3;
 
+    // [Fix 2026-07-26] Level 1 (0%) -> Level 10 (15%, 기존 45%에서 하향) — 스틸/TOV유발/샷클락
+    // 위반 보너스(possessionHandler.ts)와 짝을 이루는 트레이드오프
     if (sliders.fullCourtPress > 1) {
-        const pressPenalty = (sliders.fullCourtPress - 1) * 0.05;
+        const pressPenalty = (sliders.fullCourtPress - 1) * (0.15 / 9);
         drain *= (1.0 + pressPenalty);
+    }
+
+    // [defIntensity 체력 트레이드오프] 1단계 +5%p(절약) ~ 10단계 -8%p(추가 소모) 선형
+    const intensityFatigueMod = interpolateCurve(sliders.defIntensity, C.DEF_INTENSITY_CURVE);
+    drain *= (1 - intensityFatigueMod / 100);
+
+    // [헬프디펜스 재설계] 헬프를 "시도"한 선수는 추가 체력 소모 (성공 여부 무관, 1단계 ×1.10 ~ 10단계 ×1.25)
+    if (isHelpDefender) {
+        const helpCfg = SIM_CONFIG.HELP_DEFENSE;
+        const helperDrainMult = helpCfg.DRAIN_MULT_BASE + (sliders.helpDef - 1) * helpCfg.DRAIN_MULT_PER_LEVEL;
+        drain *= helperDrainMult;
+    }
+
+    // [defReb 속공 트레이드오프 C] defReb<5일 때만 추가 체력 소모 (매 포제션 상시, 팀 전체 균일 — 1단계 +1.5%p ~ 5단계 0%p)
+    const drtCfg = SIM_CONFIG.DEF_REB_TRANSITION;
+    if (sliders.defReb < drtCfg.FREQ_THRESHOLD) {
+        const defRebFatiguePenalty = (drtCfg.FREQ_THRESHOLD - sliders.defReb) * drtCfg.FATIGUE_PENALTY_PER_LEVEL;
+        drain *= (1 + defRebFatiguePenalty / 100);
     }
 
     const effectiveCondition = Math.max(0, player.currentCondition);

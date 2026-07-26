@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Save, Check } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
-import { useMultiGameData } from '../../../hooks/useMultiGameData';
+import { useSeasonContext } from './seasonContext';
 import { TabBar } from '../../../components/common/TabBar';
 import { DepthChartEditor } from '../../../components/dashboard/DepthChartEditor';
 import { RotationGanttChart } from '../../../components/dashboard/RotationGanttChart';
@@ -53,7 +53,7 @@ const MultiTacticsView: React.FC = () => {
         coachingData,
         isLoading: gameLoading,
         isTacticsDirty, saveTactics,
-    } = useMultiGameData(session, room?.id ?? null);
+    } = useSeasonContext();
 
     // ── 전술 저장 ──────────────────────────────────────────────────────────────
     const [saving, setSaving] = useState(false);

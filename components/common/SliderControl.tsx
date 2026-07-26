@@ -139,23 +139,6 @@ export const SliderControl: React.FC<{
           style={{ background: `linear-gradient(to right, #4f46e5 ${percentage}%, #27272A ${percentage}%)` }}
         />
       </div>
-
-      {/* 티커 행 (Step 전용) */}
-      {steps && steps.length > 0 && (
-        <div className="flex justify-between">
-          {steps.map((step, i) => (
-            <span
-              key={i}
-              className="text-[10px] font-medium text-[#A5B4FC]"
-              style={{
-                textAlign: i === 0 ? 'left' : i === steps.length - 1 ? 'right' : 'center',
-              }}
-            >
-              {step.label}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

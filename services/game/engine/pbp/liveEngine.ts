@@ -267,6 +267,7 @@ export function createGameState(
         simSettings: simSettings ?? DEFAULT_SIM_SETTINGS,
         boxTimeline: [],
         prevBoxSnap: {},
+        lastEntryWasDefReb: false,
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
@@ -398,7 +399,7 @@ export function stepPossession(state: GameState): StepResult {
 
     // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
     state.gameClock = Math.max(0, state.gameClock - timeTaken);
-    updateOnCourtStates(state, timeTaken);
+    updateOnCourtStates(state, timeTaken, result.helpDefenderId);
 
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
@@ -471,7 +472,10 @@ export function stepPossession(state: GameState): StepResult {
 
     if (retainPossession) {
         state.shotClock = isOffReb ? 14 : 24;
+        state.lastEntryWasDefReb = false;
     } else {
+        // [New 2026-07] 수비 리바운드로 공격권이 넘어간 경우만 true — defReb 속공 트레이드오프용
+        state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
         state.possession = state.possession === 'home' ? 'away' : 'home';
         state.shotClock = 24;
     }

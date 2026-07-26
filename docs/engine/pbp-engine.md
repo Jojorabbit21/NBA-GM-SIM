@@ -230,7 +230,8 @@ modifiers:
     ↳ teamAvgVision = team 평균 passVision
     ↳ visionDampen = clamp(0.85, 1.15, 1-(teamAvgVision-70)*0.005)
     ↳ vision 85팀 → 0.925x (7.5% 감소), vision 55팀 → 1.075x (증가)
-  + max(0, (defIntensity - 5) * 0.008)   // 수비 강도
+  // [2026-07-26] defIntensity 항 제거(더 이상 턴오버 유발과 무관) → fullCourtPress로 이전
+  + max(0, (fullCourtPress - 1)) * (0.025/9)   // 1단계 0%p ~ 10단계 +2.5%p (아래 "전술 슬라이더 영향 정리" 참고)
   + max(0, (70 - handling) * 0.001)      // 핸들링 부족
   + max(0, (70 - passIq) * 0.001)        // 패스 IQ 부족
   + (70 - hands) * (isContactPlay ? 0.0015 : 0.0005) // 핸즈 (접촉 플레이 강화)
@@ -296,6 +297,47 @@ if isScreenPlay:
     if Random < confusionChance:
       isBotchedSwitch = true             // 개방 슈팅 (선수 능력 반영)
 ```
+
+**존 디펜스 중 PnR: 항상 Drop 커버리지 [2026-07-26 추가]**
+`identifyDefender()`의 `isZone` 분기에서 PnR 플레이(PnR_Handler/PnR_Roll/PnR_Pop)면 `pnrDefense` 슬라이더 값과 무관하게 무조건 `pnrCoverage='drop'`으로 고정된다 — 존에서는 센터/PF 앵커가 골밑에 붙박이로 있어 스크린을 따라 나오는 hedge/blitz 자체가 불가능하기 때문. Rim/Paint 슛이면 그 앵커가 곧 스크리너 수비수(`screenerDefender`)가 되고, Mid/3PT 슛이면 핸들러/팝퍼는 정상 포지션 매칭 수비수를 받되 커버리지만 drop으로 고정된다. `pnrDefense` 슬라이더는 맨투맨(`!isZone`)에서만 실질적으로 작동.
+
+### 2.5단계: 헬프 디펜스 판정 (전 구역 공통) **[2026-07-26 전면 재설계]**
+
+기존엔 helpDef가 Rim/Paint hitRate만 고정 억제하는 트레이드오프 없는 슬라이더였음.
+전 구역(3PT 포함) 적용 + 명시적 헬퍼 지정 + 성공/실패 게이트를 갖춘 하이코스트 로우리턴 시스템으로 전환.
+`identifyDefender()` 직후, 파울/턴오버/hitRate/블락 계산보다 먼저 판정되어 그 결과(helpDefender, helpSuccess)를 포제션 전체가 공유한다.
+
+```
+// 1) 헬프 시도 여부
+helpAttemptChance = 0.10 + (helpDef - 1) * (0.70 / 9)   // 1단계 10% ~ 10단계 80%
+helpAttempted = Random < helpAttemptChance
+
+// 2) 헬퍼 선정 (시도 시에만) — 존별 포지션 풀 + 균등 랜덤 (실력순 아님)
+if helpAttempted:
+  zonePool = { Rim: [C,PF,SF], Paint: [C,PF,SF], Mid: [PG,SG,SF,PF], '3PT': [PG,SG,SF] }[zone]
+  helperPool = onCourt(defTeam) - primaryDefender, position ∈ zonePool
+  if helperPool.length === 0: helperPool = onCourt(defTeam) - primaryDefender  // 폴백
+  helpDefender = helperPool[균등 랜덤 1명]
+
+  // 3) 성공 게이트 — 인지(IQ) × 실행(신체), 둘 다 충족해야 성공
+  iqFactor   = clamp((helpDefender.helpDefIq - 60) / 40, 0, 1)
+  physFactor = clamp((avg(agility,speed) - 55) / 40, 0, 1)
+  helpSuccess = Random < (iqFactor * physFactor)
+```
+
+**성공(`helpAttempted && helpSuccess`) 시 4가지 효과 (전부 helpDef 레벨 1~10 선형 스케일):**
+| 효과 | 적용 대상 | 1단계 | 10단계 |
+|---|---|---|---|
+| 슈터 hitRate 감소 | 전 구역 | -2.0%p | -5.0%p |
+| 스틸 확률 증가 | 전 구역, 헬퍼 크레딧 (calculateTurnoverChance A-3) | +0.3%p | +1.2%p |
+| 골밑 파울 증가 | Rim/Paint 한정 | +0.5%p | +2.0%p |
+| 블락 확률 | Rim/Paint/Mid 한정 (3PT 제외, 기존 F섹션 공식 재사용) | - | - |
+
+**체력 코스트 (`helpAttempted`이면 성공 여부 무관, fatigueSystem.ts):**
+```
+helperDrainMult = 1.10 + (helpDef - 1) * (0.15 / 9)   // 1단계 ×1.10 ~ 10단계 ×1.25
+```
+헬퍼로 지정된 그 한 명에게만 해당 포제션 드레인 곱연산 — PossessionResult.helpDefenderId로 stateUpdater.ts까지 전달.
 
 ### 3단계: 플레이타입 선택
 
@@ -483,7 +525,7 @@ Mid:         0.38
 hitRate += bonusHitRate   // playType 보너스 + 모멘텀 + 패서 퀄리티 등 합산
   bonusHitRate 포함 요소:
     + playType 고유 보너스 (resolvePlayAction)
-    + zoneQualityMod (존 수비 숙련도)
+    + zoneQualityMod (존/맨투맨 재설계 — 아래 "존 디펜스 재설계" 섹션 참고)
     + getMomentumBonus (연속 득점/턴오버)
     + foulDefPenalty (파울 기피 수비 감소)
     + shotDiscMod (shotDiscipline tendency)
@@ -524,9 +566,19 @@ contestFactor (SHOT_DEFENSE.CONTEST):
   CatchShoot: 1.0
 
 // === 수비 슬라이더 ===
-hitRate -= (defIntensity - 5) * 0.005      // 강도: ±2.5%
-if Rim/Paint:
-  hitRate -= (helpDef - 5) * 0.008         // 헬프: ±4.0%
+// [2026-07-26 재설계] defIntensity: 매치업 게이팅 적용 — 수비자 능력(perDef/intDef, 존별)이
+// 공격자 능력보다 우위여야 억제 효과가 살아남고, 압도적 열세면 효과가 0에 수렴한다.
+isPerimeterZone = (3PT || Mid)
+matchupDefRating = isPerimeterZone ? defender.perDef : defender.intDef
+matchupDiff = matchupDefRating - offRating
+intensityMatchup = interpolateCurve(matchupDiff, 매치업 커브)  // 0~1, 존별 커브 분리(perDef/intDef 분포 차이 반영)
+intensityMod = (defIntensity - 5.5) * 0.006 * intensityMatchup   // 매치업 100% 우위 시 1단계 +2.7% ~ 10단계 -2.7%
+hitRate -= intensityMod
+
+// [2026-07-26 전면 재설계] helpDef — Rim/Paint 고정 억제 → 전 구역 조건부 효과로 전환
+// "3단계: 헬프 디펜스 판정" 섹션 참고. 이 시점엔 이미 helpAttempted/helpSuccess가 확정돼 있음.
+if helpAttempted && helpSuccess:
+  hitRate -= (0.02 + (helpDef-1)*(0.03/9))   // 1단계 -2.0%p ~ 10단계 -5.0%p, 전 구역 공통
 
 // === ZONE SHOOTING ARCHETYPES ===
 B-1. Mr. Fundamental: mid≥97 → 클러치+Mid+3%, ISO+Mid+3%
@@ -576,7 +628,7 @@ if Random < hitRate:
   → 득점 (score)
   → 2점 or 3점
   → And-1 체크 (Rim/Paint만):
-    andOneBase = 0.03 + max(0, (defIntensity-5)*0.004) + drawFoul 보정
+    andOneBase = 0.03 + drawFoul 보정   // [2026-07-26] defIntensity 항 제거
     × shotType별 And-1 배율 (SHOT_DEFENSE.AND1_MULT):
       Dunk: 1.5x      // 접촉 많음
       Layup: 1.0x     // 기준
@@ -631,11 +683,14 @@ else:
     Drop + Rim/Paint: +3% 블록 (빅맨 림 보호)
     Blitz + Rim/Paint: -2% 블록 (빅맨 부재)
 
-  Help Defense Block (Rim/Paint/Mid):
-    bestHelper = argmax(blk, onCourt helpers)
-    helpBlockProb = 0.02
-    + (helper.blk >= 85 ? 0.03 : 0)
+  Help Defense Block (Rim/Paint/Mid, 3PT 제외) **[2026-07-26 재설계]**
+    // 더 이상 blk순 독자 선정 안 함 — "2.5단계: 헬프 디펜스 판정"에서 확정된
+    // helpDefender/helpSuccess를 그대로 재사용. 발동 조건: helpAttempted && helpSuccess
+    helper = helpDefender  (helpAttempted && helpSuccess일 때만 진입)
+    helpBlockProb = HELP_BASE(0.025)
+    + (helper.blk >= 82 ? 0.025 : 0)
     + (helper.rimProtector > 75 ? 0.03 : 0)
+    × (helper.helpDefIq>=92 && helper.blk>=80 ? 2.0 : 1.0)   // Defensive Anchor
     Mid: helpBlockProb *= 0.5
 
   → 블록이면: blk++, deflection 처리
@@ -671,23 +726,71 @@ resolveRebound(homeTeam, awayTeam, shooterId)
       → 경기당 9~12 리바운드 (기존 winner-take-all: 18~19)
 ```
 
+### 수비 리바운드(`defReb`) 속공 트레이드오프 **[2026-07 신규]**
+
+`defReb`는 원래 `calculateOrbChance()`의 `sliderAdj` 한 곳에만 관여해 낮출 이점이 없는 순수 페널티 슬라이더였음. "리바운드에 인원을 덜 투입하고 먼저 뛰쳐나간다"는 현실 논리로 속공 전환 보너스 + 체력 대가를 추가.
+
+**전제**: `GameState.lastEntryWasDefReb` — 직전 포제션이 **우리 팀의 수비 리바운드**로 끝났을 때만 true(`liveEngine.ts`에서 포제션 전환 시 `result.type === 'miss' && !isOffReb`로 세팅). 상대 인바운드/우리 스틸 등은 해당 없음.
+
+```
+// A. 빈도 보너스 — Transition 플레이타입 선택확률 (possessionHandler.ts, 우리 defReb<5만)
+freqBonus = lastEntryWasDefReb && defReb<5 ? (5-defReb) × (15%p/4) : 0
+transitionChance = pace × 0.03 + freqBonus
+
+// B. 성공률 보너스 — Transition 슛 hitRate (상대 offReb≥7만, bonusHitRate 합산)
+successBonus = lastEntryWasDefReb && playType==='Transition' && 상대offReb≥7
+             ? (상대offReb-7) × (5%p/3) : 0
+
+// C. 체력 페널티 — 매 포제션 상시(fatigueSystem.ts, 우리 defReb<5만, 팀 전체 균일)
+fatiguePenalty = defReb<5 ? (5-defReb) × (1.5%p/4) : 0
+drain × (1 + fatiguePenalty/100)
+```
+
+| defReb | 빈도 보너스(A) | 체력 페널티(C) |
+|---|---|---|
+| 1 | +15.00%p | +1.500%p |
+| 2 | +11.25%p | +1.125%p |
+| 3 | +7.50%p | +0.750%p |
+| 4 | +3.75%p | +0.375%p |
+| 5~10 | 0.00%p | 0.000%p |
+
+| 상대 offReb | 성공률 보너스(B) |
+|---|---|
+| 7 | 0.00%p |
+| 8 | +1.67%p |
+| 9 | +3.33%p |
+| 10 | +5.00%p |
+
 ### 8단계: 자유투 (statsMappers.ts)
 
 ```
 파울 발생 시:
   defTeam.fouls++
 
-  // 슈팅 파울: 존별 차등 비율
-  Rim/Paint: 45% + (defIntensity-5)*1.5% + drawFoul보정 (cap 65%)
-  Mid:       25% + (defIntensity-5)*1.2% + drawFoul보정 (cap 40%)
-  3PT:       10% + (defIntensity-5)*0.8% + drawFoul보정 (cap 25%)
+  // [2026-07-26 갱신] 슈팅파울/팀파울 이원화(SHOOTING_FOUL / NON_SHOOTING_FOUL) — possessionHandler.ts
+
+  // A. 슈팅 파울 (존별 기본 확률 + drawFoul 커브 + defIntensity, type:'freethrow' → 즉시 FT)
+  shootingFoulRate = 존별 BASE_RATE(Rim 16% / Paint 10% / Mid 4.5% / 3PT 2.5%)
+    + drawFoul 커브 보정 × 존별 스케일(Rim 100% / Paint 80% / Mid 50% / 3PT 25%)
+    + (defIntensity - 5.5) × 0.00667   // 1단계 -3.0%p ~ 10단계 +3.0%p
+    + (helpAttempted && helpSuccess && Rim/Paint ? 0.005 + (helpDef-1)*(0.015/9) : 0)  // [2026-07-26] 1단계 +0.5%p ~ 10단계 +2.0%p
+    + Manipulator(drFoul≥95 && shotIq≥88): +3%
+    + foulProneness tendency × 2%
+    × 파울 트러블 감소(3파울 미만 1.0x / 3파울 이상 단계별 감소)
+    clamp(1% ~ 40%)
+
+  // B. 팀파울(비슈팅, type:'foul' → 보너스 상황에서만 FT)
+  nonShootingFoulRate = BASE_RATE(2.5%, 존 구분 없음)
+    + (defIntensity - 5.5) × 0.00444   // 1단계 -2.0%p ~ 10단계 +2.0%p
+    × 파울 트러블 감소
+    clamp(~ 6%)
 
   if 슈팅파울 || defTeam.fouls > 4 (보너스):
     FTA += (3PT면 3, 아니면 2)
     ftPct = actor.attr.ft / 100
     // 각 FT: if Random < ftPct → ftm++, score++
 
-  And-1:
+  And-1: (defIntensity 무관, 2026-07-26 제거)
     FTA += 1
     if Random < ftPct: ftm++, score++
 ```
@@ -697,21 +800,17 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 ## 파울 확률
 
 ```
-baseFoulChance = min(0.18, 0.08 + (defIntensity * 0.015))
-  ↳ defIntensity=5: 15.5%, defIntensity≥7: 18% 캡
-
-+ Manipulator (drFoul≥95 && shotIq≥88): +3% (캡 무시)
-+ foulProneness tendency: ±2%
-× 파울 트러블 감소: 3파울 0.85x, 4파울 0.60x, 5파울 0.30x
-
-→ 높은 defIntensity = 더 많은 파울 = 더 많은 FT 허용
+위 "8단계: 자유투"의 슈팅파울/팀파울 이원화 공식 참고 — 여기 있던 구버전 단일
+baseFoulChance 모델(min(0.18, 0.08+defIntensity*0.015))은 현재 코드와 맞지 않아 삭제함.
 
 추가 파울 이벤트:
   오펜시브 파울: 1.5% (PostUp/Iso: 2.5%, PnR: +0.8%)
   테크니컬 파울: 0.3% base, 수비팀 전원 중 temperament 가중 선택 (→ tf-ff-system.md)
   플래그런트 파울: 0.04% base, foulProneness(70%)+temperament(30%) 가중, 커브 적용 (→ tf-ff-system.md)
   싸움/출장정지: 0.003% base, temperament≥0.5만 대상, 양측 퇴장+1~5경기 출장정지 (→ tf-ff-system.md)
-  샷클락 바이올레이션: 0.3% + 수비 전술 보정
+  샷클락 바이올레이션: 0.3% + helpDef/pace/ballMovement 보정 + max(0,fullCourtPress-1)×(0.01/9)×pressEffectiveness
+    (1단계 0%p~10단계 +1.0%p, defIntensity에서 2026-07-26 이전. pressEffectiveness는 zoneFreq 감쇠 — 아래 "존 디펜스 재설계" 참고)
+    [2026-07-26] zoneUsage 항목 제거 — 인과관계 없음(존은 개인압박 약함 → 오히려 셋업시간 늘려주는 쪽)
 ```
 
 ---
@@ -1100,7 +1199,8 @@ drain = (timeTakenSeconds / 60) * DRAIN_BASE (=2.5)
 상황 보정:
   Back-to-Back: drain *= 1.5
   Ace Stopper:  drain *= 1.3
-  Full Court Press: drain *= (1 + (fullCourtPress - 1) * 0.05)
+  Full Court Press: drain *= (1 + (fullCourtPress - 1) * (0.15/9))   // [2026-07-26] 45%→15% 하향, 대신 스틸/TOV유발/샷클락 보너스 추가(아래 "전술 슬라이더 영향 정리" 참고)
+  defIntensity: drain *= (1 - interpolateCurve(defIntensity, [[1,5],[10,-8]])/100)   // [2026-07-26 신규] 1단계 +5%p 절약 ~ 10단계 -8%p 추가소모 → fatigue-system.md 참고
 
 누적 피로 패널티 (지친 선수가 더 빨리 지침):
   cumulativePenalty = 1 + max(0, (100 - condition) * 0.012)
@@ -1263,6 +1363,84 @@ ZONE_SHOOTING: {
 
 ---
 
+## 존 디펜스 재설계 (`zoneFreq`/`zoneUsage`) **[2026-07-26 전면 재설계]**
+
+### 핵심 트레이드오프
+`zoneUsage`를 "존 숙련도"가 아니라 **"골밑에 얼마나 몰빵하는가"**로 재정의 — 골밑을 강하게 조일수록 외곽은 그만큼 더 열려야 진짜 트레이드오프가 성립한다는 원칙. `identifyDefender()`에서 `isZone` 롤(1단계 8%~10단계 80%)이 그 포제션의 존 여부를 결정하고, 이후 `zoneQualityMod`(possessionHandler.ts)가 아래 네 요소를 합산한다.
+
+```
+zoneQualityMod = interiorZoneMod + threeOpenZoneMod + playTypeZoneMod
+(selectedPlayType === 'Transition'이면 전부 0 — 하프코트 셋업 전이라 존 개념 자체가 성립 안 함)
+```
+
+**① 인테리어 억제 (Rim/Paint/Mid 한정, 기존 공식 유지)**
+```
+interiorZoneMod = isZone && (Rim/Paint/Mid) ? (5 - zoneUsage) × 0.003 : 0
+```
+
+**② 3점 오픈 보너스 (신규, zoneUsage와 같은 방향)**
+```
+threeOpenZoneMod = isZone && (3PT) ? (zoneUsage - 1) × (0.01/9) : 0
+```
+
+**③ 플레이타입별 존/맨투맨 카운터 (신규)** — Handoff/Putback/PnR_*(기존 Drop 커버리지로 별도 처리)은 대상 아님
+```
+존일 때 (zoneUsage 스케일):
+  Iso        → -(zoneUsage-1) × (0.015/9)   // 최대 -1.5%p, 헬프 대기 상시
+  PostUp     → -(zoneUsage-1) × (0.02/9)    // 최대 -2.0%p, 존은 포스트업 무력화용 설계
+  Cut        → +(zoneUsage-1) × (0.02/9)    // 최대 +2.0%p, 지역 갭을 파고드는 존 카운터
+  CatchShoot → +(zoneUsage-1) × (0.015/9)   // 최대 +1.5%p, 느린 로테이션 → 오픈 캐치앤슛
+  DriveKick  → +(zoneUsage-1) × (0.015/9)   // 최대 +1.5%p, 드라이브 앤 킥은 존 정석 카운터
+  OffBallScreen → -(zoneUsage-1) × (0.015/9) // 최대 -1.5%p, 스크린이 지역엔 무의미(인계)
+
+맨투맨일 때 (switchFreq 스케일, OffBallScreen 전용):
+  OffBallScreen → +(10 - switchFreq) × (0.015/9)  // switchFreq=1 최대 +1.5%p, 스크린이 개인 수비수를 떼어냄
+```
+
+### fullCourtPress × zoneFreq 감쇠 (신규)
+존과 풀코트 프레스는 실전에서 상충(2-3/3-2 존은 안 어울리나 1-3-1 존은 프레스 성격 — `docs/domain/nba-strategy.md` 참고) → 완전 차단 대신 최대 50% 감쇠로 절충.
+```
+pressEffectiveness = 1 - (zoneFreq - 1) × (0.5/9)
+(fullCourtPress의 온볼스틸/패싱레인스틸/비강제턴오버유발/샷클락위반 보너스 전부에 곱연산 — calculateTurnoverChance()의 pressLevel, possessionHandler.ts의 pressShotClockBonus)
+```
+
+### switchFreq × zone — 별도 구현 불필요
+스위치 로직 자체가 이미 `!isZone` 게이팅이라, zoneFreq가 높을수록 switchFreq 실효 발동 비율이 자동으로 줄어듦.
+
+### 존 중 PnR — 항상 Drop 커버리지
+`identifyDefender()`의 `isZone` 분기에서 PnR 플레이면 `pnrDefense` 무시하고 무조건 `pnrCoverage='drop'` 고정 (센터/PF 앵커가 골밑 붙박이).
+
+### 1~10단계별 수치표
+
+**zoneUsage 기준** (①②③ 존 전용)
+
+| zoneUsage | 인테리어FG% | 3점보너스 | Iso | PostUp | Cut | CatchShoot | DriveKick | OffBallScreen(존) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | +1.20%p | 0.00%p | 0.00%p | 0.00%p | 0.00%p | 0.00%p | 0.00%p | 0.00%p |
+| 2 | +0.90%p | 0.11%p | -0.17%p | -0.22%p | +0.22%p | +0.17%p | +0.17%p | -0.17%p |
+| 3 | +0.60%p | 0.22%p | -0.33%p | -0.44%p | +0.44%p | +0.33%p | +0.33%p | -0.33%p |
+| 4 | +0.30%p | 0.33%p | -0.50%p | -0.67%p | +0.67%p | +0.50%p | +0.50%p | -0.50%p |
+| 5 | 0.00%p | 0.44%p | -0.67%p | -0.89%p | +0.89%p | +0.67%p | +0.67%p | -0.67%p |
+| 6 | -0.30%p | 0.56%p | -0.83%p | -1.11%p | +1.11%p | +0.83%p | +0.83%p | -0.83%p |
+| 7 | -0.60%p | 0.67%p | -1.00%p | -1.33%p | +1.33%p | +1.00%p | +1.00%p | -1.00%p |
+| 8 | -0.90%p | 0.78%p | -1.17%p | -1.56%p | +1.56%p | +1.17%p | +1.17%p | -1.17%p |
+| 9 | -1.20%p | 0.89%p | -1.33%p | -1.78%p | +1.78%p | +1.33%p | +1.33%p | -1.33%p |
+| 10 | -1.50%p | 1.00%p | -1.50%p | -2.00%p | +2.00%p | +1.50%p | +1.50%p | -1.50%p |
+
+**zoneFreq 기준** (fullCourtPress 감쇠)
+
+| zoneFreq | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| press 효과 배율 | 100% | 94.4% | 88.9% | 83.3% | 77.8% | 72.2% | 66.7% | 61.1% | 55.6% | 50.0% |
+
+**switchFreq 기준** (OffBallScreen 맨투맨 보너스)
+
+| switchFreq | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 보너스 | +1.50%p | +1.33%p | +1.17%p | +1.00%p | +0.83%p | +0.67%p | +0.50%p | +0.33%p | +0.17%p | 0.00%p |
+
+---
+
 ## 전술 슬라이더 영향 정리
 
 | 슬라이더 | 범위 | 영향 |
@@ -1275,12 +1453,71 @@ ZONE_SHOOTING: {
 | `shot_3pt` | 1-10 | 3PT 존 가중치 (selectZone 30% 반영) |
 | `shot_rim` | 1-10 | Rim 존 가중치 |
 | `shot_mid` | 1-10 | Mid 존 가중치 |
-| `defIntensity` | 1-10 | hitRate (-0.5% per step), TOV (±0.8%), 파울 확률 (+1.5%, cap 18%) |
-| `helpDef` | 1-10 | Rim/Paint hitRate (-0.8% per step), 스위치 혼란 감소 |
+| `defIntensity` | 1-10 | **[2026-07-26 재설계]** hitRate: 매치업 게이팅 적용(수비자 perDef/intDef vs 공격자 능력치 diff → 0~1 배율, 1단계 +2.7%p ~ 10단계 -2.7%p 기준값에 매치업 배율을 곱함). 슈팅파울(1단계 -3.0%p ~ 10단계 +3.0%p), 팀파울(1단계 -2.0%p ~ 10단계 +2.0%p), 체력 소모(1단계 +5%p 절약 ~ 10단계 -8%p 추가 소모)에 연동. **스틸/턴오버유발/샷클락 위반과는 더 이상 무관** (2026-07-26 제거) |
+| `helpDef` | 1-10 | **[2026-07-26 전면 재설계]** 전 구역(3PT 포함) 조건부 적용 — 헬프 시도 확률(1단계 10% ~ 10단계 80%) → 존별 포지션 풀에서 랜덤 헬퍼 지정 → helpDefIq×신체(민첩·속력) 이중 게이트로 성공 판정. 성공 시: hitRate 감소(1단계 -2.0%p ~ 10단계 -5.0%p, 전 구역), 스틸 확률 증가(+0.3%p~+1.2%p, 헬퍼 크레딧), 골밑 파울 증가(Rim/Paint 한정 +0.5%p~+2.0%p), 블락 확률(Rim/Paint/Mid 한정). 시도만 해도(성공 무관) 헬퍼 개인 체력 소모 ×1.10~×1.25. 스위치 혼란 감소는 기존 그대로 유지 |
 | `switchFreq` | 1-10 | 스크린 플레이 시 스위치 확률 (×5%) |
-| `fullCourtPress` | 1-6 | 피로도 소모 (+5% per step above 1) |
-| `zoneFreq` | 1-10 | 존 수비 발동 확률 (×8%), C/PF 앵커 수비 |
+| `fullCourtPress` | 1-10 | **[2026-07-26 재설계]** 체력 소모(1단계 0% ~ 10단계 +15%, 기존 45%에서 하향), 온볼 스틸(1단계 0%p ~ 10단계 +1.5%p), 패싱레인 스틸(1단계 0%p ~ 10단계 +0.75%p, 헬퍼별 개별 적용), 비강제턴오버 유발(1단계 0%p ~ 10단계 +2.5%p), 샷클락 위반 유도(1단계 0%p ~ 10단계 +1.0%p) — 전부 `(fullCourtPress-1)` 기준 1단계=0(효과 없음), 체력을 대가로 지불하는 하이리스크 하이리턴 구조(defIntensity에서 이전) |
+| `zoneFreq` | 1-10 | 존 수비 발동 확률 (×8%), C/PF 앵커 수비. **[2026-07-26]** 존 중 PnR은 항상 Drop 커버리지 고정(pnrDefense 무효화), fullCourtPress 효과를 최대 50%까지 감쇠(1단계 100%~10단계 50%) |
+| `zoneUsage` | 1-10 | **[2026-07-26 전면 재설계]** "골밑 몰빵 정도" — 인테리어(Rim/Paint/Mid) FG% 억제(1단계 +1.2%p~10단계 -1.5%p)와 3점 오픈 보너스(1단계 0%p~10단계 +1.0%p)가 같은 방향으로 스케일링되는 진짜 트레이드오프. Iso/PostUp 존 페널티, Cut/CatchShoot/DriveKick 존 보너스, OffBallScreen 존 페널티도 이 슬라이더에 연동(자세한 내용은 "존 디펜스 재설계" 섹션) |
 | `offReb` | 1-10 | 공격 리바운더 가중치 보정, Putback 확률 |
+| `defReb` | 1-10 | 상대 ORB% 억제(계수 0.012). **[2026-07 신규]** 5단계 미만이면 우리 수비 리바운드 직후 속공(Transition) 선택확률 보너스(최대 +15%p, 상대offReb≥7이면 성공률까지 최대 +5%p 추가) + 매 포제션 상시 체력 페널티(최대 +1.5%p) — "리바운드 대신 속공" 트레이드오프 |
+
+### `defIntensity` 1~10단계별 수치표 **[2026-07-26]**
+
+FG%는 매치업 배율(수비자 perDef/intDef vs 공격자 능력치, 0~1) 적용 전 기준값 — 매치업이 나쁘면 이 값이 비례해서 축소됨(위 "10. 슬라이더 보정" 참고, shot-hit-rate.md에도 동일 표 있음).
+
+| 단계 | FG%(기준값) | 슈팅파울 | 팀파울 | 체력 |
+|---|---|---|---|---|
+| 1 | +2.70%p | -3.00%p | -2.00%p | +5.00%p(절약) |
+| 2 | +2.10%p | -2.33%p | -1.56%p | +3.56%p |
+| 3 | +1.50%p | -1.67%p | -1.11%p | +2.11%p |
+| 4 | +0.90%p | -1.00%p | -0.67%p | +0.67%p |
+| 5 | +0.30%p | -0.33%p | -0.22%p | -0.78%p |
+| 6 | -0.30%p | +0.33%p | +0.22%p | -2.22%p |
+| 7 | -0.90%p | +1.00%p | +0.67%p | -3.67%p |
+| 8 | -1.50%p | +1.67%p | +1.11%p | -5.11%p |
+| 9 | -2.10%p | +2.33%p | +1.56%p | -6.56%p |
+| 10 | -2.70%p | +3.00%p | +2.00%p | -8.00%p(추가소모) |
+
+**스틸/턴오버유발/샷클락 위반은 2026-07-26부로 defIntensity와 완전히 무관 — 대신 `fullCourtPress`로 이전.**
+
+### `fullCourtPress` 1~10단계별 수치표 **[2026-07-26 신규]**
+
+`(fullCourtPress - 1)` 기준 — 1단계는 모든 효과가 0(안 누르는 상태), 체력 소모를 대가로 스틸/턴오버유발/샷클락 압박이 늘어나는 하이리스크 하이리턴 구조.
+
+| 단계 | 체력 소모 | 온볼 스틸 | 패싱레인 스틸(헬퍼별) | 비강제턴오버 유발 | 샷클락 위반 유도 |
+|---|---|---|---|---|---|
+| 1 | 0% | 0.00%p | 0.00%p | 0.00%p | 0.00%p |
+| 2 | +1.67% | 0.17%p | 0.08%p | 0.28%p | 0.11%p |
+| 3 | +3.33% | 0.33%p | 0.17%p | 0.56%p | 0.22%p |
+| 4 | +5.00% | 0.50%p | 0.25%p | 0.83%p | 0.33%p |
+| 5 | +6.67% | 0.67%p | 0.33%p | 1.11%p | 0.44%p |
+| 6 | +8.33% | 0.83%p | 0.42%p | 1.39%p | 0.56%p |
+| 7 | +10.00% | 1.00%p | 0.50%p | 1.67%p | 0.67%p |
+| 8 | +11.67% | 1.17%p | 0.58%p | 1.94%p | 0.78%p |
+| 9 | +13.33% | 1.33%p | 0.67%p | 2.22%p | 0.89%p |
+| 10 | +15.00% | 1.50%p | 0.75%p | 2.50%p | 1.00%p |
+
+### `helpDef` 1~10단계별 수치표 **[2026-07-26 전면 재설계]**
+
+hitRate/스틸/체력 소모는 전 구역 공통, 골밑 파울/블락 확률은 Rim/Paint(블락은 Mid도 포함) 한정.
+hitRate 감소·스틸 증가·골밑 파울 증가는 **헬프가 시도되고(attempted) 성공(success)까지 해야** 발동 — 체력 소모만 시도 여부만으로 발동.
+
+| 단계 | 헬프 시도 확률 | hitRate 감소(성공시) | 스틸 증가(성공시) | 골밑 파울 증가(성공시) | 체력 소모(시도시) |
+|---|---|---|---|---|---|
+| 1 | 10.00% | -2.00%p | +0.30%p | +0.50%p | ×1.100 |
+| 2 | 17.78% | -2.33%p | +0.40%p | +0.67%p | ×1.117 |
+| 3 | 25.56% | -2.67%p | +0.50%p | +0.83%p | ×1.133 |
+| 4 | 33.33% | -3.00%p | +0.60%p | +1.00%p | ×1.150 |
+| 5 | 41.11% | -3.33%p | +0.70%p | +1.17%p | ×1.167 |
+| 6 | 48.89% | -3.67%p | +0.80%p | +1.33%p | ×1.183 |
+| 7 | 56.67% | -4.00%p | +0.90%p | +1.50%p | ×1.200 |
+| 8 | 64.44% | -4.33%p | +1.00%p | +1.67%p | ×1.217 |
+| 9 | 72.22% | -4.67%p | +1.10%p | +1.83%p | ×1.233 |
+| 10 | 80.00% | -5.00%p | +1.20%p | +2.00%p | ×1.250 |
+
+성공 게이트(iqFactor × physFactor, 60~100 / 55~95 매핑) 기준 실제 발동률 예시: 리그 중앙값 선수(helpDefIq 72, 민첩·속력 평균 78) 성공률 ≈17%, 상위 10% 선수 ≈55%, 엘리트(95/95) ≈88%.
+헬퍼 후보 포지션 풀: Rim/Paint→{C,PF,SF}, Mid→{PG,SG,SF,PF}, 3PT→{PG,SG,SF} (풀이 비면 전체 폴백).
 
 ---
 
@@ -1404,7 +1641,8 @@ hitRate *= (1 + impact / 100)
 | 중거리 성공 | 38% | 5~95% |
 | 림 성공 | 57% | 5~95% |
 | 턴오버 | 8.5% (base) | 2~25% |
-| 파울 (defIntensity=5) | 15.5% | 3~21% |
+| 슈팅파울 (존별 base, defIntensity=5.5 중립) | Rim 16%/Paint 10%/Mid 4.5%/3PT 2.5% | 1~40% |
+| 팀파울(비슈팅, defIntensity=5.5 중립) | 2.5% | ~6% |
 | 블록 (Rim) | 10% × shotType 배율 | |
 | 블록 (3PT) | 1% × shotType 배율 | |
 | Transition 포세션 | pace × 3% | |

@@ -313,6 +313,8 @@ calculateHitRate에 들어가는 bonusHitRate에 합산되는 모디파이어들
 | lobBonus | PnR_Roll 로브 성공 시 | +0.08 |
 | playmakingBonus (Clairvoyant) | passIq≥92, passVision≥90, passAcc≥90 | +0.02 |
 | playmakingBonus (Overseer) | PnR_Roll/Pop, passIq≥88, passAcc≥95 | +0.03 |
+| helpHitRatePenalty | **[2026-07-26 전면 재설계]** helpAttempted && helpSuccess일 때만: -(0.02 + (helpDef-1)×(0.03/9)) | 1단계 -2.0%p ~ 10단계 -5.0%p, 전 구역 공통 |
+| zoneQualityMod | **[2026-07-26 전면 재설계]** interiorZoneMod + threeOpenZoneMod + playTypeZoneMod (zoneUsage/switchFreq 스케일, Transition 제외) | 상세 공식·1~10단계 수치표는 `pbp-engine.md` "존 디펜스 재설계" 섹션 참고 |
 
 ---
 
@@ -339,10 +341,56 @@ lapseChance = max(0, (70 - defConsist) × 0.003)
 
 | 슬라이더 | 공식 | 비고 |
 |---------|------|------|
-| defIntensity | -(defIntensity - 5) × 0.005 | 전 존 적용 |
-| helpDef | -(helpDef - 5) × 0.008 | Rim/Paint만 |
+| defIntensity | -(defIntensity - 5.5) × 0.006 × intensityMatchup | **[2026-07-26 재설계]** 전 존 적용, 매치업 게이팅 추가 — 아래 참고 |
 | pace | -(pace - 5) × 0.01 | pace > 5일 때만 |
+※ `helpDef`는 **[2026-07-26 전면 재설계]** 이후 calculateHitRate 내부가 아니라 possessionHandler.ts의 bonusHitRate 합산항(helpHitRatePenalty, 위 "8. possessionHandler.ts 추가 보정" 참고)으로 이전됨 — 조건부(헬프 시도+성공) 발동, 전 구역 공통.
 | 홈코트 | +0.02 | 홈팀 보너스 |
+
+**defIntensity 매치업 게이팅** (`intensityMatchup`, 0~1 배율):
+```
+isPerimeterZone = (preferredZone === '3PT' || preferredZone === 'Mid')
+matchupDefRating = isPerimeterZone ? defender.perDef : defender.intDef   // 3PT/Mid는 perDef, Rim/Paint는 intDef
+matchupDiff = matchupDefRating - offRating   // 양수=수비 우위, 음수=공격 우위
+intensityMatchup = interpolateCurve(matchupDiff, 매치업 커브)   // 존별로 커브 분리(perDef/intDef 리그 분포가 달라서)
+```
+| 커브 | breakpoint (diff → 배율) |
+|---|---|
+| 퍼리미터(3PT/Mid, perDef 기준) | [-40, 0.0] [-20, 0.25] [-8, 0.45] [5, 0.75] [15, 1.0] |
+| 인테리어(Rim/Paint, intDef 기준) | [-50, 0.0] [-25, 0.20] [-15, 0.45] [5, 0.75] [15, 1.0] |
+
+수비자 능력이 공격자보다 압도적으로 낮으면(diff가 커브 하한 이하) 배율이 0에 수렴해 defIntensity 슬라이더 설정과 무관하게 억제 효과가 사라진다. 반대로 수비자가 확실히 우위(diff≥15)면 배율 1.0으로 원래 계산값이 그대로 적용된다.
+
+**defIntensity 1~10단계별 기준값** (매치업 배율 1.0 가정 — 배율이 낮으면 이 값에 비례해 축소):
+
+| 단계 | 상대 FG% 변화 |
+|---|---|
+| 1 | +2.70%p |
+| 2 | +2.10%p |
+| 3 | +1.50%p |
+| 4 | +0.90%p |
+| 5 | +0.30%p |
+| 6 | -0.30%p |
+| 7 | -0.90%p |
+| 8 | -1.50%p |
+| 9 | -2.10%p |
+| 10 | -2.70%p |
+
+**helpDef 1~10단계별 수치표 [2026-07-26 전면 재설계]** — `helpAttempted && helpSuccess`(전 구역 공통)일 때만 적용:
+
+| 단계 | 헬프 시도 확률 | hitRate 감소(성공시) |
+|---|---|---|
+| 1 | 10.00% | -2.00%p |
+| 2 | 17.78% | -2.33%p |
+| 3 | 25.56% | -2.67%p |
+| 4 | 33.33% | -3.00%p |
+| 5 | 41.11% | -3.33%p |
+| 6 | 48.89% | -3.67%p |
+| 7 | 56.67% | -4.00%p |
+| 8 | 64.44% | -4.33%p |
+| 9 | 72.22% | -4.67%p |
+| 10 | 80.00% | -5.00%p |
+
+성공 게이트(helpDefIq×신체 이중 게이트), 스틸/파울/블락 부가효과, 체력 코스트 등 전체 설계는 `pbp-engine.md`의 "2.5단계: 헬프 디펜스 판정" 섹션 참고.
 
 ---
 

@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { Trophy, X, Loader2 } from 'lucide-react';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
-import { useMultiGameData } from '../../hooks/useMultiGameData';
+import { useSeasonContext } from '../../views/multi/season/seasonContext';
 import { useServerClock } from '../../utils/serverClock';
 import { resolveRealAt, isFinal } from '../../views/multi/season/multiGameReveal';
 import { TeamLogo } from '../common/TeamLogo';
@@ -196,7 +196,7 @@ function fmtTS(pts: number, fga: number, fta: number): string {
 export const TournamentChampionModal: React.FC = () => {
     const { league, leagueTeams, room } = useLeagueContext();
     const { session } = useGame();
-    const { schedule } = useMultiGameData(session, room?.id ?? null);
+    const { schedule } = useSeasonContext();
     const serverNow = useServerClock();
     const userId = session?.user?.id ?? null;
     const location = useLocation();

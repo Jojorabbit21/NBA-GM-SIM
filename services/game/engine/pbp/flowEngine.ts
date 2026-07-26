@@ -141,13 +141,15 @@ export function calculateHitRate(
     }
     
     // Apply Sliders
-    // Def Intensity: Reduces Shot PCT
-    // [Update] Reduced impact (0.01 -> 0.005) to prevent FG% crash
-    const intensityMod = (defTeam.tactics.sliders.defIntensity - 5) * 0.005;
-    
-    // Help Defense: Reduces Rim/Paint PCT
-    // [Update] Reduced impact (0.015 -> 0.008)
-    const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.008;
+    // Def Intensity: 매치업(수비자 능력 vs 공격자 능력) 게이팅 적용 — 매치업이 나쁘면 슬라이더
+    // 설정과 무관하게 억제 효과가 거의 사라진다. 3PT/Mid는 perDef, Rim/Paint는 intDef 기준
+    // (두 능력치의 리그 분포가 서로 달라 매치업 커브도 구간을 분리했다).
+    const isPerimeterZone = preferredZone === '3PT' || preferredZone === 'Mid';
+    const matchupDefRating = isPerimeterZone ? defender.attr.perDef : defender.attr.intDef;
+    const matchupDiff = matchupDefRating - offRating;
+    const matchupCurve = isPerimeterZone ? S.DEF_INTENSITY_MATCHUP_CURVE_PERIMETER : S.DEF_INTENSITY_MATCHUP_CURVE_INTERIOR;
+    const intensityMatchup = interpolateCurve(matchupDiff, matchupCurve);
+    const intensityMod = (defTeam.tactics.sliders.defIntensity - 5.5) * 0.006 * intensityMatchup;
 
     // shotType별 컨테스트 효과: 수비자의 defRating 영향력 스케일링
     let contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
@@ -194,10 +196,6 @@ export function calculateHitRate(
     hitRate += shotIqNoise + consistNoise;
 
     hitRate -= intensityMod;
-
-    if (preferredZone === 'Rim' || preferredZone === 'Paint') {
-        hitRate -= helpMod;
-    }
 
     // --- ZONE SHOOTING ARCHETYPES ---
     const zCfg = SIM_CONFIG.ZONE_SHOOTING;

@@ -4,92 +4,39 @@ export interface SliderStep {
     label: string;
 }
 
+// 10단계(1~10) 전 구간을 그대로 노출 — 엔진 공식이 실제로 1~10 연속값을 사용하므로
+// (예: (defIntensity-5)*0.003) UI도 3단계로 뭉개지 않고 전체 해상도를 그대로 보여준다.
 // pnrDefense는 엔진이 0-2를 직접 사용하므로 여기에 포함하지 않음
+const TEN_STEPS: SliderStep[] = Array.from({ length: 10 }, (_, i) => ({
+    value: i + 1,
+    label: String(i + 1),
+}));
+
 export const SLIDER_STEPS: Record<string, SliderStep[]> = {
     // ── 공격 슬라이더 ──
-    pace: [
-        { value: 2, label: '느림' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '빠름' },
-    ],
-    ballMovement: [
-        { value: 2, label: '드리블 위주' },
-        { value: 5, label: '보통' },
-        { value: 8, label: '패스 위주' },
-    ],
-    offReb: [
-        { value: 2, label: '백코트 우선' },
-        { value: 5, label: '보통' },
-        { value: 8, label: '적극 가담' },
-    ],
+    pace: TEN_STEPS,
+    ballMovement: TEN_STEPS,
+    offReb: TEN_STEPS,
 
     // ── 코칭 철학 ──
-    playStyle: [
-        { value: 2, label: '히어로 볼' },
-        { value: 5, label: '밸런스' },
-        { value: 9, label: '시스템 농구' },
-    ],
-    insideOut: [
-        { value: 2, label: '인사이드' },
-        { value: 5, label: '밸런스' },
-        { value: 9, label: '아웃사이드' },
-    ],
-    pnrFreq: [
-        { value: 2, label: '낮음' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '높음' },
-    ],
+    playStyle: TEN_STEPS,
+    insideOut: TEN_STEPS,
+    pnrFreq: TEN_STEPS,
 
     // ── 슈팅 전략 ──
-    shot_3pt: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
-    ],
-    shot_rim: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
-    ],
-    shot_mid: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
-    ],
+    shot_3pt: TEN_STEPS,
+    shot_rim: TEN_STEPS,
+    shot_mid: TEN_STEPS,
 
     // ── 온볼 수비 ──
-    defIntensity: [
-        { value: 2, label: '느슨' },
-        { value: 5, label: '보통' },
-        { value: 8, label: '타이트' },
-    ],
-    switchFreq: [
-        { value: 2, label: '파이트 쓰루' },
-        { value: 5, label: '혼합' },
-        { value: 8, label: '스위치 우선' },
-    ],
-    fullCourtPress: [
-        { value: 1, label: '안함' },
-        { value: 4, label: '가끔' },
-        { value: 8, label: '자주' },
-    ],
+    defIntensity: TEN_STEPS,
+    switchFreq: TEN_STEPS,
+    fullCourtPress: TEN_STEPS,
 
     // ── 오프볼 수비 ──
-    helpDef: [
-        { value: 2, label: '거의 안함' },
-        { value: 5, label: '보통' },
-        { value: 8, label: '적극 지원' },
-    ],
-    zoneFreq: [
-        { value: 1, label: '거의 안함' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '지역 고수' },
-    ],
-    defReb: [
-        { value: 2, label: '속공 전환' },
-        { value: 5, label: '보통' },
-        { value: 8, label: '박스아웃' },
-    ],
+    helpDef: TEN_STEPS,
+    zoneFreq: TEN_STEPS,
+    defReb: TEN_STEPS,
 };
 
 /** 엔진 값 → 가장 가까운 step 인덱스 */

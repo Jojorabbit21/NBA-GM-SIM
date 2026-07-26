@@ -4,7 +4,7 @@ import { calculateIncrementalFatigue, calculateRecovery } from '../fatigueSystem
 import { formatTime } from './timeEngine.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 
-export function updateOnCourtStates(state: GameState, timeTaken: number) {
+export function updateOnCourtStates(state: GameState, timeTaken: number, helperPlayerId?: string) {
     const teams = [state.home, state.away];
     const C = SIM_CONFIG.FATIGUE;
 
@@ -17,7 +17,8 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
             const isStopper = team.tactics.stopperId === p.playerId;
             const fatigueRes = calculateIncrementalFatigue(
                 p, timeTaken, team.tactics.sliders, isB2B, isStopper,
-                state.simSettings.injuryFrequency
+                state.simSettings.injuryFrequency,
+                p.playerId === helperPlayerId
             );
 
             p.currentCondition = Math.max(0, p.currentCondition - fatigueRes.drain);

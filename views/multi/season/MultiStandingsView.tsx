@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Loader2, Network } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
-import { useGame } from '../../../hooks/useGameContext';
+import { useSeasonContext } from './seasonContext';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import type { MultiStandingsRecord } from './multiSeasonUtils';
 import { isFinal, resolveRealAt } from './multiGameReveal';
@@ -256,11 +256,10 @@ const TournamentBracket: React.FC<{
 // ── 메인 뷰 ──────────────────────────────────────────────────────────────────
 
 const MultiStandingsView: React.FC = () => {
-    const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
-    const { session } = useGame();
+    const { league, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const {
         isLoading: gameLoading, schedule, myTeamId,
-    } = useMultiGameData(session, room?.id ?? null);
+    } = useSeasonContext();
     const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;

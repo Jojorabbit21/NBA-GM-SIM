@@ -20,6 +20,9 @@ export const SIM_CONFIG = {
         FATIGUE_PENALTY_MED: 0.10,
         FATIGUE_PENALTY_HIGH: 0.25,
         REST_DAY_RECOVERY: 40,          // 비경기일 1일 휴식 시 기본 회복량 (stamina/durability 보정 적용)
+
+        // [defIntensity 체력 트레이드오프] 1단계 +5%p(드레인 절약) ~ 10단계 -8%p(드레인 추가) 선형
+        DEF_INTENSITY_CURVE: [[1, 5], [10, -8]] as [number, number][],
     },
     STATS: {
         STL_BASE_FACTOR: 0.08,
@@ -85,6 +88,18 @@ export const SIM_CONFIG = {
         SHOTIQ_NOISE_COEFF: 0.0008,
         CONSIST_NOISE_COEFF: 0.0010,
         CONSIST_BASELINE: 70,
+
+        // [defIntensity 매치업 게이팅] 수비자 능력 vs 공격자 능력 차이(diff)에 따라
+        // defIntensity 슬라이더의 FG% 억제 효과를 0~1 배율로 조정. diff = 수비능력 - 공격능력.
+        // 실제 레이팅 분포 기준(perDef 중앙값 69 vs 3점/미드 공격 중앙값 77~78,
+        // intDef 중앙값 59 vs 레이업/덩크 중앙값 72~79)으로 breakpoint 보정 — 인테리어(intDef)가
+        // 퍼리미터(perDef)보다 전반적으로 9~10점 낮게 분포돼 있어 커브를 분리했다.
+        DEF_INTENSITY_MATCHUP_CURVE_PERIMETER: [   // 3PT/Mid — 수비자 perDef 기준
+            [-40, 0.0], [-20, 0.25], [-8, 0.45], [5, 0.75], [15, 1.0],
+        ] as [number, number][],
+        DEF_INTENSITY_MATCHUP_CURVE_INTERIOR: [    // Rim/Paint — 수비자 intDef 기준
+            [-50, 0.0], [-25, 0.20], [-15, 0.45], [5, 0.75], [15, 1.0],
+        ] as [number, number][],
     },
     // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
     FOUL_EVENTS: {
@@ -115,13 +130,15 @@ export const SIM_CONFIG = {
         FIGHT_SUSPENSION_MIN: 1,             // 출장정지 최소
         FIGHT_SUSPENSION_MAX: 5,             // 출장정지 최대
 
-        // 샷클락 바이올레이션 (수비 전술 + 공격 볼무브 트레이드-오프)
+        // 샷클락 바이올레이션 (공격 볼무브 트레이드-오프) — defIntensity 연동 제거됨(2026-07)
+        // [2026-07-26] zoneUsage 항목 제거 — 인과관계 없음(존은 개인압박이 약해 오히려 셋업시간을 늘려주는 쪽)
         SHOT_CLOCK_BASE: 0.003,
-        SHOT_CLOCK_DEF_INTENSITY_FACTOR: 0.001,
-        SHOT_CLOCK_ZONE_USAGE_FACTOR: 0.0008,
         SHOT_CLOCK_HELP_DEF_FACTOR: 0.0006,
         SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
         SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
+        // [2026-07-26] fullCourtPress 트레이드오프 — defIntensity에서 이전
+        // (fullCourtPress-1) × 계수, 10단계 기준 +1.0%p
+        PRESS_SHOT_CLOCK_FACTOR: 0.01 / 9,
 
     },
     // Shooting Foul (존별 단일 게이트 + drawFoul 커브)
@@ -150,8 +167,10 @@ export const SIM_CONFIG = {
         // → 인사이드에서 drawFoul 영향이 크고, 3점에서는 작음
         ZONE_CURVE_SCALE: { 'Rim': 1.0, 'Paint': 0.8, 'Mid': 0.5, '3PT': 0.25 } as Record<string, number>,
 
-        // defIntensity 보정: intensity 6-10에서 슈팅파울 증가
-        DEF_INTENSITY_FACTOR: 0.006,
+        // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
+        // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
+        // 대칭화 — 새 center(5.5)까지 거리(4.5)로 나눠 동일한 3.0%p 최댓값을 재현한다.
+        DEF_INTENSITY_FACTOR: (5 * 0.006) / 4.5,
 
         // Manipulator 아키타입 (Harden, Embiid, Trae Young)
         MANIPULATOR_DRFOUL_THRESHOLD: 95,
@@ -168,7 +187,9 @@ export const SIM_CONFIG = {
     // Non-Shooting Foul (팀 파울 / 루스볼 파울 — 보너스 상황에서만 FT)
     NON_SHOOTING_FOUL: {
         BASE_RATE: 0.025,
-        DEF_INTENSITY_FACTOR: 0.004,
+        // defIntensity 보정: 5.5 기준 대칭(1단계 -2.0%p ~ 10단계 +2.0%p)
+        // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
+        DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
         MAX_RATE: 0.06,
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
@@ -191,6 +212,19 @@ export const SIM_CONFIG = {
         RAIDER_OFFREB_THRESHOLD: 90,         // offReb ≥ 90
         RAIDER_VERTICAL_THRESHOLD: 90,       // vertical ≥ 90
         RAIDER_SCORE_MULTIPLIER: 1.4,        // 공격 리바운드 선택 점수 ×1.4
+    },
+    // Defensive Rebound 속공 트레이드오프 (2026-07 신규) — defReb 낮게 설정 시 속공 전환 이점 + 체력 대가
+    DEF_REB_TRANSITION: {
+        // A. 빈도 보너스 (Transition 선택확률에 가산, 우리 defReb<5일 때만): (5-defReb) × 계수
+        FREQ_BONUS_PER_LEVEL: 0.15 / 4,   // 최대 +15%p (defReb=1)
+        FREQ_THRESHOLD: 5,
+
+        // B. 성공률 보너스 (Transition hitRate에 가산, 상대offReb≥7일 때만): (상대offReb-7) × 계수
+        SUCCESS_BONUS_PER_LEVEL: 0.05 / 3, // 최대 +5%p (상대offReb=10)
+        SUCCESS_THRESHOLD: 7,
+
+        // C. 체력 페널티 (매 포제션 상시, 우리 defReb<5일 때만, %p 단위): (5-defReb) × 계수
+        FATIGUE_PENALTY_PER_LEVEL: 1.5 / 4, // 최대 +1.5%p (defReb=1)
     },
     // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {
@@ -252,6 +286,70 @@ export const SIM_CONFIG = {
         // 패스 정확도 저항 계수 (패싱레인 스틸 확률에서 감산)
         // passAcc 90 → 레인 스틸 확률 -1%, passAcc 50 → +1%
         PASSACC_RESIST_COEFF: 0.0005,
+
+        // [2026-07-26] fullCourtPress 트레이드오프 — defIntensity에서 이전
+        // (fullCourtPress-1) × 계수, 1단계 0%p ~ 10단계 최댓값(체력 소모와 짝을 이룸)
+        PRESS_STEAL_COEFF: 0.015 / 9,   // 10단계 기준 +1.5%p (온볼 스틸)
+        PRESS_TOV_COEFF: 0.025 / 9,     // 10단계 기준 +2.5%p (비강제 턴오버 유발)
+        PRESS_LANE_STEAL_COEFF: 0.0075 / 9,  // 10단계 기준 +0.75%p (패싱레인 스틸, 헬퍼별 개별 적용)
+    },
+    // Help Defense System (2026-07 재설계 — 전 구역 적용, 명시적 헬퍼 지정)
+    HELP_DEFENSE: {
+        // 헬프 시도 확률: 1단계 10% ~ 10단계 80%
+        ATTEMPT_BASE: 0.10,
+        ATTEMPT_PER_LEVEL: 0.70 / 9,
+
+        // 존별 헬퍼 후보 포지션 풀 (해당 포지션이 온코트에 없으면 전체 폴백)
+        ZONE_POSITIONS: {
+            Rim: ['C', 'PF', 'SF'],
+            Paint: ['C', 'PF', 'SF'],
+            Mid: ['PG', 'SG', 'SF', 'PF'],
+            '3PT': ['PG', 'SG', 'SF'],
+        } as Record<'Rim' | 'Paint' | 'Mid' | '3PT', string[]>,
+
+        // 성공 게이트: helpDefIq(인지) × 평균(민첩,속력)(실행) — 둘 다 만족해야 성공
+        IQ_GATE_MIN: 60,
+        IQ_GATE_MAX: 100,
+        PHYS_GATE_MIN: 55,
+        PHYS_GATE_MAX: 95,
+
+        // 성공 시 슈터 hitRate 감소: 1단계 -2%p ~ 10단계 -5%p
+        HITRATE_PENALTY_BASE: 0.02,
+        HITRATE_PENALTY_PER_LEVEL: 0.03 / 9,
+
+        // 성공 시 골밑(Rim/Paint) 파울 확률 증가: 1단계 +0.5%p ~ 10단계 +2.0%p
+        FOUL_BONUS_BASE: 0.005,
+        FOUL_BONUS_PER_LEVEL: 0.015 / 9,
+
+        // 성공 시 스틸 확률 증가(헬퍼 크레딧): 1단계 +0.3%p ~ 10단계 +1.2%p
+        STEAL_BONUS_BASE: 0.003,
+        STEAL_BONUS_PER_LEVEL: 0.009 / 9,
+
+        // 시도 시(성공 여부 무관) 헬퍼 개인 체력 소모 배율: 1단계 ×1.10 ~ 10단계 ×1.25
+        DRAIN_MULT_BASE: 1.10,
+        DRAIN_MULT_PER_LEVEL: 0.15 / 9,
+    },
+    // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
+    ZONE_DEFENSE: {
+        // 인테리어 억제 (기존 유지, Rim/Paint/Mid 한정 — 기존엔 전 구역 적용 버그)
+        INTERIOR_COEFF: 0.003,
+
+        // 3점 오픈 보너스 — zoneUsage와 같은 방향(골밑 몰빵↔외곽 노출 트레이드오프), 1단계 0%p ~ 10단계 +1.0%p
+        THREE_OPEN_PER_LEVEL: 0.01 / 9,
+
+        // 플레이타입별 존 전용 보정 (zoneUsage 스케일, Transition 제외)
+        ISO_ZONE_PENALTY_PER_LEVEL: 0.015 / 9,           // 최대 -1.5%p
+        POSTUP_ZONE_PENALTY_PER_LEVEL: 0.02 / 9,         // 최대 -2.0%p
+        CUT_ZONE_BONUS_PER_LEVEL: 0.02 / 9,              // 최대 +2.0%p
+        CATCHSHOOT_ZONE_BONUS_PER_LEVEL: 0.015 / 9,      // 최대 +1.5%p
+        DRIVEKICK_ZONE_BONUS_PER_LEVEL: 0.015 / 9,       // 최대 +1.5%p
+        OFFBALLSCREEN_ZONE_PENALTY_PER_LEVEL: 0.015 / 9, // 최대 -1.5%p
+
+        // OffBallScreen 맨투맨 전용 보너스 (switchFreq 낮을수록 큼, 스크린이 개인 수비수를 떼어내는 효과)
+        OFFBALLSCREEN_MAN_BONUS_PER_LEVEL: 0.015 / 9,    // 최대 +1.5%p (switchFreq=1)
+
+        // fullCourtPress × zoneFreq 감쇠 — 존 비중 높을수록 프레스 효과 최대 50%까지 감소
+        PRESS_ZONE_DAMPEN_PER_LEVEL: 0.5 / 9,
     },
     // Playmaking Archetypes (플레이메이킹 히든 아키타입)
     PLAYMAKING: {
