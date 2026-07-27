@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     Loader2, AlertCircle, Settings2, ChevronLeft,
@@ -88,11 +88,14 @@ const LeagueLobbyView: React.FC = () => {
     const [countdown,      setCountdown]      = useState<string | null>(null);
     const [showDraftPool,  setShowDraftPool]  = useState(false);
 
-    const draftPoolTypes = (() => {
+    // useMemo로 참조를 고정 — 매초 tick하는 countdown state 때문에 이 컴포넌트가 1초마다
+    // 리렌더되는데, 배열을 매번 새로 만들면 DraftPoolModal의 poolTypes 의존 useEffect가
+    // 매초 재실행되어 선수 목록을 계속 다시 fetch하는 깜빡임 버그가 발생한다.
+    const draftPoolTypes = useMemo(() => {
         const parsed = (league?.draft_pool ?? 'standard').split(',').map(s => s.trim())
             .filter(s => VALID_POOL_TYPES.includes(s as PoolType)) as PoolType[];
         return parsed.length > 0 ? parsed : (['standard'] as PoolType[]);
-    })();
+    }, [league?.draft_pool]);
 
     // 멤버인 경우 시즌 진행 중이거나 이미 종료된 리그면 즉시 season 페이지로 이동
     // (종료된 리그도 브라켓/스케줄/박스스코어 등 데이터는 계속 조회 가능해야 하므로 로비에 머물지 않는다)

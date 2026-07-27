@@ -14,7 +14,7 @@ interface Props {
     onClose:   () => void;
 }
 
-type SortKey = 'ovr' | 'potential' | 'age';
+type SortKey = 'ovr' | 'age';
 type SortDir = 'asc' | 'desc';
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -175,19 +175,16 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                 </div>
 
                 {/* 리스트 헤더 */}
-                <div className="shrink-0 px-4 py-1.5 grid grid-cols-[2rem_1fr_3rem_2.75rem_2.75rem_2rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem] gap-2 text-[10px] font-bold text-slate-500 border-b border-slate-800/60">
+                <div className="shrink-0 px-4 py-1.5 grid grid-cols-[2.75rem_2rem_0.6fr_1fr_2rem_2.75rem_2.75rem_2rem_2rem_2rem_2rem_2rem_2rem] gap-2 text-[10px] font-bold text-slate-500 border-b border-slate-800/60">
+                    <span>포지션</span>
                     <span>OVR</span>
                     <span>선수</span>
-                    <span className="text-center">포지션</span>
-                    <button onClick={() => handleSort('potential')} className="text-center hover:text-indigo-400 transition-colors">
-                        POT<SortIcon field="potential" />
-                    </button>
-                    <button onClick={() => handleSort('ovr')} className="text-center hover:text-indigo-400 transition-colors">
-                        OVR<SortIcon field="ovr" />
-                    </button>
+                    <span>아키타입</span>
                     <button onClick={() => handleSort('age')} className="text-center hover:text-indigo-400 transition-colors">
                         나이<SortIcon field="age" />
                     </button>
+                    <span className="text-center">키</span>
+                    <span className="text-center">몸무게</span>
                     <span className="text-center">INS</span>
                     <span className="text-center">OUT</span>
                     <span className="text-center">ATH</span>
@@ -208,27 +205,21 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
                         </div>
                     ) : (
                         sorted.map(p => {
-                            const basePos = p.position.split('/')[0].trim();
+                            const archetypeLabel = p.secondaryArchetype ? `${p.archetype} / ${p.secondaryArchetype}` : p.archetype;
                             return (
                                 <div
                                     key={p.id}
-                                    className="px-4 py-2 grid grid-cols-[2rem_1fr_3rem_2.75rem_2.75rem_2rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem] gap-2 items-center border-b border-slate-800/30 hover:bg-slate-800/40 transition-colors"
+                                    className="px-4 py-2 grid grid-cols-[2.75rem_2rem_0.6fr_1fr_2rem_2.75rem_2.75rem_2rem_2rem_2rem_2rem_2rem_2rem] gap-2 items-center border-b border-slate-800/30 hover:bg-slate-800/40 transition-colors"
                                 >
+                                    <span className="text-xs font-bold text-slate-300">{p.position}</span>
                                     <OvrBadge value={p.ovr} size="sm" />
                                     <span className="text-xs text-white font-bold truncate">{p.name}</span>
-                                    <span
-                                        className="text-[10px] font-black text-center rounded px-1 py-0.5"
-                                        style={{ backgroundColor: `${POS_COLORS[basePos] ?? '#475569'}33`, color: POS_COLORS[basePos] ?? '#94a3b8' }}
-                                    >
-                                        {p.position}
+                                    <span className="text-xs text-white leading-snug break-words">
+                                        {archetypeLabel || '—'}
                                     </span>
-                                    <span className={`text-xs font-bold text-center ${getStatColor(p.potential)}`}>
-                                        {p.potential}
-                                    </span>
-                                    <span className={`text-xs font-bold text-center ${getStatColor(p.ovr)}`}>
-                                        {p.ovr}
-                                    </span>
-                                    <span className="text-xs text-slate-400 text-center">{p.age}</span>
+                                    <span className="text-xs text-white text-center">{p.age}</span>
+                                    <span className="text-xs text-white text-center">{p.height}cm</span>
+                                    <span className="text-xs text-white text-center">{p.weight}kg</span>
                                     <span className={`text-xs font-bold text-center ${getStatColor(p.ins)}`}>{p.ins}</span>
                                     <span className={`text-xs font-bold text-center ${getStatColor(p.out)}`}>{p.out}</span>
                                     <span className={`text-xs font-bold text-center ${getStatColor(p.ath)}`}>{p.ath}</span>
