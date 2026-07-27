@@ -9,15 +9,13 @@ import { useServerClock } from '../../../utils/serverClock';
 import { getGameDisplayState, isStarted, resolveRealAt, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
+import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '../../../services/multi/gameLeadersCache';
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 
 const LIVE_POLL_MS = 5000;
 
 // ── 경기 리더(득점/리바운드/어시스트) ─────────────────────────────────────────
-
-interface StatLeader { name: string; value: number }
-interface GameLeaders { pts?: StatLeader; reb?: StatLeader; ast?: StatLeader }
 
 function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBoxScore[] | null): GameLeaders {
     const all = [...(homeBox ?? []), ...(awayBox ?? [])];
@@ -328,28 +326,41 @@ const MultiScheduleView: React.FC = () => {
         return () => { cancelled = true; clearInterval(timer); };
     }, [room?.id, session?.access_token]);
 
-    // 종료된 경기의 득점/리바운드/어시스트 리더 — game_pbp RLS가 리플레이 종료(+10분) 후에만
-    // row를 노출하므로, 여기서 받아오는 행들은 자동으로 "이미 공개 가능한" 경기만 포함된다.
-    const [gameLeadersMap, setGameLeadersMap] = useState<Record<string, GameLeaders>>({});
+    // 종료된 경기의 득점/리바운드/어시스트 리더 — game_pbp row는 시뮬레이션 완료 시 1회
+    // upsert된 뒤 갱신되지 않으므로, localStorage에 캐시된 game_id는 다시 조회하지 않는다
+    // (docs/plan/schedule-leaders-cache-plan.md). game_pbp RLS가 리플레이 종료(+10분) 후에만
+    // row를 노출하므로, 캐시에 없어 조회하는 행들도 자동으로 "이미 공개 가능한" 경기만 포함된다.
+    const [gameLeadersMap, setGameLeadersMap] = useState<Record<string, GameLeaders>>(
+        () => room?.id ? loadGameLeadersCache(room.id) : {},
+    );
     useEffect(() => {
         if (!room?.id) return;
         let cancelled = false;
         const loadLeaders = async () => {
+            const cached = loadGameLeadersCache(room.id);
+            const missingIds = schedule.filter(g => g.played && !(g.id in cached)).map(g => g.id);
+
+            if (missingIds.length === 0) {
+                setGameLeadersMap(cached);
+                return;
+            }
+
             const { data } = await supabase
                 .from('game_pbp')
                 .select('game_id, home_box, away_box')
-                .eq('room_id', room.id);
+                .eq('room_id', room.id)
+                .in('game_id', missingIds);
             if (cancelled || !data) return;
-            const map: Record<string, GameLeaders> = {};
+            const updates: Record<string, GameLeaders> = {};
             for (const row of data as { game_id: string; home_box: PlayerBoxScore[] | null; away_box: PlayerBoxScore[] | null }[]) {
-                map[row.game_id] = computeGameLeaders(row.home_box, row.away_box);
+                updates[row.game_id] = computeGameLeaders(row.home_box, row.away_box);
             }
-            setGameLeadersMap(map);
+            setGameLeadersMap(mergeGameLeadersCache(room.id, updates));
         };
         loadLeaders();
         const timer = setInterval(loadLeaders, LIVE_POLL_MS);
         return () => { cancelled = true; clearInterval(timer); };
-    }, [room?.id]);
+    }, [room?.id, schedule]);
 
     const isLoading = leagueLoading || gameLoading;
 

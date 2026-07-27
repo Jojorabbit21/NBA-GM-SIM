@@ -49,6 +49,16 @@ export class DraftRoom {
     // 쪽으로 동작을 통일해 예측 가능하게 만든다(자리 비운 유저는 다음 타임아웃에서 다시 감지됨).
     private autoPickUserIds = new Set<string>();
 
+    // autoPickUserIds 중 "본인 셀프토글 또는 어드민이 명시적으로 켠" 유저만 표시.
+    // 타임아웃 연속 미스/드래프트 시작 시 미입장처럼 시스템이 자동으로 감지해 넣은 경우는
+    // 여기 포함되지 않는다 — 재접속 시 자동 해제 대상(revertAutoPickOnReconnect)을 가르는 기준.
+    private autoPickManualUserIds = new Set<string>();
+
+    // 유저별 연속 픽 타임아웃 횟수 — autoPickUserIds와 마찬가지로 메모리 전용.
+    // config.autoPickAfterMisses(어드민 세션 설정)에 도달하면 오토픽 모드로 전환하고,
+    // 유저가 직접 픽을 제출하면(=돌아왔다는 증거) 0으로 리셋한다.
+    private pickMissCounts = new Map<string, number>();
+
     // ── 픽 결과 ───────────────────────────────────────────────────────────────
     private picks: DraftPickEntry[] = [];
     private draftedIds = new Set<string>();
@@ -182,6 +192,14 @@ export class DraftRoom {
             ws.send(encode({ type: 'error', code: 'already_drafted' }));
             return;
         }
+
+        // 본인이 직접 픽을 제출했다는 건 "돌아왔다"는 확실한 증거 — 연속 미스 카운트 리셋
+        // + 오토픽 모드였다면 해제(그대로 두면 다음 차례부터 본인 의사와 무관하게 자동픽됨).
+        // 이건 "명시적으로 켠" 오토픽까지 포함해 전부 해제한다 — 방금 수동으로 픽을 낸
+        // 이상 어떤 이유로 오토픽에 있었든 더 이상 유효하지 않은 상태이기 때문.
+        this.pickMissCounts.delete(userId);
+        this.autoPickUserIds.delete(userId);
+        this.autoPickManualUserIds.delete(userId);
 
         const result = await this.persistPick(userId, playerId);
         if (!result) {
@@ -325,6 +343,15 @@ export class DraftRoom {
         if (!entry || entry.isAi) return;
 
         console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
+
+        // 연속 타임아웃 횟수 추적 — 세션 설정(autoPickAfterMisses)에 도달하면 오토픽 모드로 전환
+        const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
+        this.pickMissCounts.set(entry.userId, misses);
+        if (misses >= this.config.autoPickAfterMisses) {
+            this.autoPickUserIds.add(entry.userId);
+            console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} hit ${misses} consecutive timeout(s) → auto-pick mode`);
+        }
+
         const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
         if (!bestId) return;
 
@@ -586,8 +613,13 @@ export class DraftRoom {
         const inOrder = this.config.pickOrder.some(e => e.userId === targetUserId && !e.isAi);
         if (!inOrder) return false;
 
-        if (enabled) this.autoPickUserIds.add(targetUserId);
-        else         this.autoPickUserIds.delete(targetUserId);
+        if (enabled) {
+            this.autoPickUserIds.add(targetUserId);
+            this.autoPickManualUserIds.add(targetUserId);
+        } else {
+            this.autoPickUserIds.delete(targetUserId);
+            this.autoPickManualUserIds.delete(targetUserId);
+        }
 
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (this.status === 'active' && entry?.userId === targetUserId) {
@@ -603,6 +635,18 @@ export class DraftRoom {
             this.scheduleNext();
         }
         return true;
+    }
+
+    // ── 재접속 시 자동 해제 (WS auth 성공 직후 호출) ────────────────────────────
+    // 타임아웃 연속 미스/드래프트 시작 시 미입장처럼 "시스템이 자동으로" 오토픽 전환한
+    // 경우만 해제한다. 본인 또는 어드민이 명시적으로 켠 경우(autoPickManualUserIds)는
+    // 재접속과 무관하게 유지 — 그렇지 않으면 "이번 드래프트는 자리 비울 거라 계속 오토픽
+    // 해줘"라고 직접 설정해둔 것이 잠깐 다른 탭에서 재접속하는 순간 의도치 않게 풀려버린다.
+    async revertAutoPickOnReconnect(userId: string): Promise<void> {
+        if (this.autoPickUserIds.has(userId) && !this.autoPickManualUserIds.has(userId)) {
+            console.log(`[DraftRoom:${this.roomId}] user ${userId} reconnected → auto-pick mode (system-triggered) reverted`);
+            await this.setAutoPick(userId, false);
+        }
     }
 
     isCompleted(): boolean {

@@ -94,6 +94,10 @@ async function handleMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
             ws.data = { userId, roomId: msg.roomId };
             room.addSocket(ws);
 
+            // 재접속 시 자동 트리거(타임아웃/미입장)로 들어간 오토픽만 자동 해제
+            // (본인/어드민이 명시적으로 켠 경우는 유지 — DraftRoom.revertAutoPickOnReconnect 참조)
+            await room.revertAutoPickOnReconnect(userId);
+
             // active 상태인데 타이머가 없으면 재시작 (서버 재시작/race 복구)
             if (room.getCursor().status === 'active' && !room.hasTimer) {
                 room.scheduleNext();

@@ -179,6 +179,16 @@ const MultiDraftView: React.FC = () => {
         return set;
     }, [leagueTeams, onlineUserIds]);
 
+    // autoPickUserIds(userId 기준) → autoPickTeamIds(teamId 기준) 변환 — pickOrder가 이미 둘의 매핑을 갖고 있음
+    const autoPickTeamIds = useMemo((): Set<string> => {
+        const autoPickUserIds = new Set(draftState?.autoPickUserIds ?? []);
+        const set = new Set<string>();
+        (draftState?.pickOrder ?? []).forEach(e => {
+            if (autoPickUserIds.has(e.userId)) set.add(e.teamId);
+        });
+        return set;
+    }, [draftState?.pickOrder, draftState?.autoPickUserIds]);
+
     // league_teams가 팀명/약어/색상의 단일 소스 — 로비와 동일한 데이터 사용
     const teamMeta = useMemo((): RoomTeamMetaMap => {
         const map: RoomTeamMetaMap = {};
@@ -230,6 +240,7 @@ const MultiDraftView: React.FC = () => {
     // ── DraftHeader 용 파생 값 ────────────────────────────────────────────────
     const currentRound      = draftState ? Math.floor(draftState.currentPickIndex / teamCount) + 1 : 1;
     const currentPickInRound = draftState ? (draftState.currentPickIndex % teamCount) + 1 : 1;
+    const isCurrentTeamAutoPick = !!(currentPickEntry && (draftState?.autoPickUserIds ?? []).includes(currentPickEntry.userId));
 
     const picksUntilUser = useMemo(() => {
         if (isMyTurn || !draftState) return 0;
@@ -318,6 +329,7 @@ const MultiDraftView: React.FC = () => {
                             positionColors={POSITION_COLORS}
                             teamMeta={teamMeta}
                             onlineTeamIds={onlineTeamIds}
+                        autoPickTeamIds={autoPickTeamIds}
                         />
                     </div>
                 </div>
@@ -409,6 +421,7 @@ const MultiDraftView: React.FC = () => {
                 nextPickNumber={draftState.currentPickIndex + 1}
                 nextPickTeamId={currentPickEntry?.teamId}
                 teamMeta={teamMeta}
+                isCurrentTeamAutoPick={isCurrentTeamAutoPick}
             />
 
             {/* ── 드래프트 보드 (리사이즈 가능) ── */}
@@ -424,6 +437,7 @@ const MultiDraftView: React.FC = () => {
                         positionColors={POSITION_COLORS}
                         teamMeta={teamMeta}
                         onlineTeamIds={onlineTeamIds}
+                        autoPickTeamIds={autoPickTeamIds}
                     />
                 </div>
             </div>

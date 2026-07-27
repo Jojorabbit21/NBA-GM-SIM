@@ -62,6 +62,7 @@ export interface CreateLeagueParams {
         draftOvrMax:          number;
         draftPickDurationSec: number;
         draftTotalRounds:     number;
+        draftAutoPickAfterMisses: number;
         rookiePoolInclusion:  boolean;
         seasonStartDate:      string;
         seasonEndDate:        string;
@@ -116,6 +117,7 @@ export const createLeague = async (
     if (opts.draftOvrMax          !== undefined) payload.draft_ovr_max           = opts.draftOvrMax;
     if (opts.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = opts.draftPickDurationSec;
     if (opts.draftTotalRounds     !== undefined) payload.draft_total_rounds      = opts.draftTotalRounds;
+    if (opts.draftAutoPickAfterMisses !== undefined) payload.draft_auto_pick_after_misses = opts.draftAutoPickAfterMisses;
     if (opts.rookiePoolInclusion  !== undefined) payload.rookie_pool_inclusion   = opts.rookiePoolInclusion;
     if (opts.seasonStartDate      !== undefined) payload.season_start_date       = opts.seasonStartDate;
     if (opts.seasonEndDate        !== undefined) payload.season_end_date         = opts.seasonEndDate;
@@ -281,6 +283,7 @@ export interface UpdateLeagueSettingsParams {
     draftScheduledAt?:   string | null;
     draftPickDurationSec?: number;
     draftTotalRounds?:   number;
+    draftAutoPickAfterMisses?: number;
     draftPool?:          string;
     draftPoolStrategy?:  string;
     draftOvrMin?:        number;
@@ -305,6 +308,7 @@ export const updateLeagueSettings = async (
     if (p.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = p.draftScheduledAt;
     if (p.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = p.draftPickDurationSec;
     if (p.draftTotalRounds     !== undefined) payload.draft_total_rounds      = p.draftTotalRounds;
+    if (p.draftAutoPickAfterMisses !== undefined) payload.draft_auto_pick_after_misses = p.draftAutoPickAfterMisses;
     if (p.draftPool            !== undefined) payload.draft_pool              = p.draftPool;
     if (p.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = p.draftPoolStrategy;
     if (p.draftOvrMin          !== undefined) payload.draft_ovr_min           = p.draftOvrMin;

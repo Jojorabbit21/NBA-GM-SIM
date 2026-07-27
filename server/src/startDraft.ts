@@ -23,9 +23,10 @@ import {
 } from './shared/multiDraftEngine';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 
-const DEFAULT_TOTAL_ROUNDS      = 10;
-const DEFAULT_PICK_DURATION_SEC = 30;
-const POOL_QUERY_CHUNK          = 100;
+const DEFAULT_TOTAL_ROUNDS         = 10;
+const DEFAULT_PICK_DURATION_SEC    = 30;
+const DEFAULT_AUTO_PICK_AFTER_MISSES = 1;
+const POOL_QUERY_CHUNK             = 100;
 
 // ── HTTP POST /start-draft 핸들러 ─────────────────────────────────────────────
 
@@ -140,6 +141,7 @@ interface DraftSetup {
         poolIds: string[];
         pickOrder: ReturnType<typeof generateSnakePickOrder>;
         applyCustomOverrides: boolean;
+        autoPickAfterMisses: number;
     };
 }
 
@@ -239,8 +241,9 @@ async function buildDraftSetup(
     ];
 
     // 드래프트 설정
-    const totalRounds     = (league as any).draft_total_rounds      ?? DEFAULT_TOTAL_ROUNDS;
-    const pickDurationSec = (league as any).draft_pick_duration_sec ?? DEFAULT_PICK_DURATION_SEC;
+    const totalRounds        = (league as any).draft_total_rounds             ?? DEFAULT_TOTAL_ROUNDS;
+    const pickDurationSec    = (league as any).draft_pick_duration_sec        ?? DEFAULT_PICK_DURATION_SEC;
+    const autoPickAfterMisses = (league as any).draft_auto_pick_after_misses  ?? DEFAULT_AUTO_PICK_AFTER_MISSES;
     const draftPoolRaw    = (league as any).draft_pool              ?? 'standard';
     const draftStrategy   = (league as any).draft_pool_strategy     ?? 'snake';
     const ovrMin          = (league as any).draft_ovr_min           ?? 0;
@@ -306,6 +309,7 @@ async function buildDraftSetup(
     const draftConfig = {
         format: draftStrategy === 'linear' ? 'linear' as const : 'snake' as const,
         totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder, applyCustomOverrides,
+        autoPickAfterMisses,
     };
 
     return { ok: true, setup: { draftConfig } };

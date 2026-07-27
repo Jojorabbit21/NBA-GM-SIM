@@ -5,26 +5,22 @@ import { Loader2 } from 'lucide-react';
 import { MultiSidebar } from '../../../components/MultiSidebar';
 import { MultiHeader } from '../../../components/MultiHeader';
 import { TournamentChampionModal } from '../../../components/multi/TournamentChampionModal';
-import { useLeagueContext } from '../league/LeagueLayout';
-import { useGame } from '../../../hooks/useGameContext';
-import { useMultiGameData } from '../../../hooks/useMultiGameData';
-import { SeasonCtx } from './seasonContext';
+import { useSeasonContext } from './seasonContext';
 
 /**
  * 시즌 서브라우트(로스터/순위/일정/리더보드/전술/경기) 공유 레이아웃.
- * LeagueLayout과 동일한 패턴 — useMultiGameData()를 여기서 한 번만 호출해 Context로
- * 공유한다. 이전엔 각 하위 화면이 독립적으로 useMultiGameData()를 호출해서, 뒤로가기로
- * 돌아오면 컴포넌트가 다시 마운트되며 매번 새로 데이터를 불러오고 로컬 상태(저장 안 한
- * 전술 수정 등)가 초기화되는 문제가 있었다.
+ * 시즌 데이터(useMultiGameData) 자체는 이제 LeagueLayout에서 리그 진입 시 1회만 로드하고
+ * SeasonCtx로 내려준다 — 여기서는 그 컨텍스트를 그대로 소비만 한다. 로비/설정 화면을 오가며
+ * 이 레이아웃이 언마운트→재마운트돼도(시즌 섹션을 벗어났다 돌아와도) 데이터를 다시 불러오지
+ * 않는다. 아래 로딩 게이트는 리그 진입 직후처럼 아직 시즌 데이터 로드가 안 끝난 채로 URL을
+ * 통해 곧바로 시즌 라우트에 진입한 경우를 위한 안전장치다.
  */
 export function MultiSeasonLayout() {
     const location = useLocation();
     // 경기 관람 화면(game/:gameId)에서는 헤더를 숨겨 화면을 넓게 쓴다.
     const isWatchingGame = /\/season\/game\/[^/]+$/.test(location.pathname);
 
-    const { room } = useLeagueContext();
-    const { session } = useGame();
-    const gameData = useMultiGameData(session, room?.id ?? null);
+    const gameData = useSeasonContext();
 
     if (gameData.isLoading) {
         return (
@@ -35,17 +31,15 @@ export function MultiSeasonLayout() {
     }
 
     return (
-        <SeasonCtx.Provider value={gameData}>
-            <div className="flex h-screen overflow-hidden bg-slate-950">
-                <MultiSidebar />
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    {!isWatchingGame && <MultiHeader />}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        <Outlet />
-                    </div>
+        <div className="flex h-screen overflow-hidden bg-slate-950">
+            <MultiSidebar />
+            <div className="flex-1 flex flex-col overflow-hidden">
+                {!isWatchingGame && <MultiHeader />}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <Outlet />
                 </div>
-                <TournamentChampionModal />
             </div>
-        </SeasonCtx.Provider>
+            <TournamentChampionModal />
+        </div>
     );
 }

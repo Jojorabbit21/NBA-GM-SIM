@@ -12,6 +12,7 @@ import { useGame } from '../../../hooks/useGameContext';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { DEFAULT_SIM_SETTINGS } from '../../../types/simSettings';
+import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 
 // 리그 상대 정규화 강도 — 0~5 입력을 서버가 읽는 { enabled, k } 값으로 매핑.
 // 0은 enabled:false로 정규화 자체를 끄고(resolveNormalizationContext가 leagueContext를
@@ -87,6 +88,7 @@ const LeagueSettingsView: React.FC = () => {
     const [tournamentStartAt, setTournamentStartAt] = useState('');
     const [pickSec,      setPickSec]      = useState(30);
     const [totalRounds,  setTotalRounds]  = useState(10);
+    const [autoPickAfterMisses, setAutoPickAfterMisses] = useState(1);
     const [maxTeams,     setMaxTeams]     = useState(8);
     const [draftPools,        setDraftPools]        = useState<PoolType[]>(['standard']);
     const [draftOvrMin,       setDraftOvrMin]       = useState(0);
@@ -134,6 +136,7 @@ const LeagueSettingsView: React.FC = () => {
         setTournamentStartAt(toInputValue((league as any).tournament_start_at));
         setPickSec(league.draft_pick_duration_sec ?? 30);
         setTotalRounds(league.draft_total_rounds ?? 10);
+        setAutoPickAfterMisses(league.draft_auto_pick_after_misses ?? 1);
         setMaxTeams(league.max_teams ?? 8);
         const rawPool = league.draft_pool ?? 'standard';
         const validTypes: PoolType[] = ['standard', 'alltime', 'rookies'];
@@ -207,6 +210,7 @@ const LeagueSettingsView: React.FC = () => {
             tournamentStartAt:   toIso(tournamentStartAt),
             draftPickDurationSec: pickSec,
             draftTotalRounds:    totalRounds,
+            draftAutoPickAfterMisses: autoPickAfterMisses,
             draftPool:         draftPools.join(','),
             draftPoolStrategy:    draftFormat,
             draftOvrMin,
@@ -272,6 +276,10 @@ const LeagueSettingsView: React.FC = () => {
         const { error: err, archiveEdition } = await resetTournament(leagueId, room.id);
         setResetting(false);
         if (err) { setResetErr(err); return; }
+        // 토너먼트 게임 ID(T_R{round}_M{matchIndex})는 위치 기반이라 리셋 후 같은 room.id로
+        // 새 토너먼트를 시작하면 예전과 동일한 game_id가 재사용된다 — PTS/REB/AST 캐시가
+        // 옛 경기 결과를 새 경기에 잘못 붙이지 않도록 리셋 시 반드시 같이 비운다.
+        clearGameLeadersCache(room.id);
         setResetConfirm(false);
         // 아카이브 edition 정보 로그 (디버깅)
         console.log('[resetTournament] archive edition:', archiveEdition);
@@ -674,6 +682,22 @@ const LeagueSettingsView: React.FC = () => {
                             onChange={e => setPickSec(Math.min(60, Math.max(15, Number(e.target.value))))}
                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                         />
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-400 ko-normal block mb-1">
+                            오토픽 전환 기준(연속 미스) <span className="text-slate-600">1–5</span>
+                        </label>
+                        <input
+                            type="number"
+                            min={1}
+                            max={5}
+                            value={autoPickAfterMisses}
+                            onChange={e => setAutoPickAfterMisses(Math.min(5, Math.max(1, Number(e.target.value))))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        />
+                        <p className="text-xs text-slate-600 ko-normal mt-1">
+                            픽 제한 시간을 이 횟수만큼 연속으로 넘기면 자동으로 오토픽 모드로 전환됩니다.
+                        </p>
                     </div>
                 </div>
 

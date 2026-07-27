@@ -23,6 +23,7 @@ interface DraftBoardProps {
     positionColors: Record<string, string>;
     teamMeta?: RoomTeamMetaMap;
     onlineTeamIds?: Set<string>;
+    autoPickTeamIds?: Set<string>;
 }
 
 const DraftBoardComponent: React.FC<DraftBoardProps> = ({
@@ -35,6 +36,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
     positionColors,
     teamMeta,
     onlineTeamIds,
+    autoPickTeamIds,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -117,8 +119,9 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                         </th>
                         {/* Team column headers — 너비 미지정 → table-layout:fixed가 균등 분배 */}
                         {teamIds.map(teamId => {
-                            const isUser   = teamId === userTeamId;
-                            const isOnline = onlineTeamIds ? onlineTeamIds.has(teamId) : undefined;
+                            const isUser     = teamId === userTeamId;
+                            const isOnline   = onlineTeamIds ? onlineTeamIds.has(teamId) : undefined;
+                            const isAutoPick = autoPickTeamIds ? autoPickTeamIds.has(teamId) : false;
                             const td = resolveTeamDisplay(teamId, teamMeta);
                             return (
                                 <th
@@ -136,19 +139,29 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                 >
                                     <div className="flex flex-col items-center gap-0.5">
                                         <span>{td.abbr}</span>
-                                        {isOnline !== undefined && (
-                                            <span
-                                                title={isOnline ? '접속 중' : '오프라인'}
-                                                style={{
-                                                    display: 'inline-block',
-                                                    width: 6,
-                                                    height: 6,
-                                                    borderRadius: '50%',
-                                                    backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
-                                                    flexShrink: 0,
-                                                }}
-                                            />
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                            {isOnline !== undefined && (
+                                                <span
+                                                    title={isOnline ? '접속 중' : '오프라인'}
+                                                    style={{
+                                                        display: 'inline-block',
+                                                        width: 6,
+                                                        height: 6,
+                                                        borderRadius: '50%',
+                                                        backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
+                                                        flexShrink: 0,
+                                                    }}
+                                                />
+                                            )}
+                                            {isAutoPick && (
+                                                <span
+                                                    title="오토픽 진행 중"
+                                                    className="text-[7px] font-black leading-none px-1 py-[1px] rounded-sm bg-indigo-400 text-indigo-950 shrink-0"
+                                                >
+                                                    AUTO
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </th>
                             );

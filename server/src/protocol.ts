@@ -46,6 +46,8 @@ export interface DraftConfig {
     pickOrder: PickOrderEntry[];
     /** 올타임 풀 포함 여부 — true면 풀 선수의 OVR을 custom_overrides 반영해 계산한다. */
     applyCustomOverrides?: boolean;
+    /** 몇 번 연속으로 픽 타임아웃 나면 오토픽 모드로 전환할지 (어드민 세션 설정, 기본 1) */
+    autoPickAfterMisses: number;
 }
 
 export interface DraftPoolPlayer {

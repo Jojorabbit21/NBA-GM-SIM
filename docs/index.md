@@ -83,7 +83,8 @@ docs/
 │   ├── room-architecture.md  방 아키텍처 (멀티)
 │   ├── player-instructions.md 선수 데이터 작성 가이드
 │   ├── monetization-legal-strategy.md 수익화/법률 전략
-│   └── worker-thread-sim-plan.md 경기 시뮬레이션 Worker Thread 분리 계획
+│   ├── worker-thread-sim-plan.md 경기 시뮬레이션 Worker Thread 분리 계획
+│   └── schedule-leaders-cache-plan.md 스케줄 화면 PTS/REB/AST 리더 localStorage 캐싱 계획
 │
 └── history/              ← 개발 히스토리 노트
     ├── dev-log.md            코드 수정 전후 상세 기록 (복구용, 최신순)

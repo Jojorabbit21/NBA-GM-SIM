@@ -51,6 +51,8 @@ interface DraftHeaderProps {
     announcement?: { pickNumber: number; teamId: string; playerName: string; position: string } | null;
     onBack?: () => void;
     teamMeta?: RoomTeamMetaMap;
+    /** 현재 차례 팀이 오토픽 모드인지 (멀티 드래프트 전용, 싱글/루키 드래프트는 미전달) */
+    isCurrentTeamAutoPick?: boolean;
 }
 
 export const DraftHeader: React.FC<DraftHeaderProps> = ({
@@ -70,6 +72,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     announcement,
     onBack,
     teamMeta,
+    isCurrentTeamAutoPick = false,
 }) => {
     // Announcement 중에는 픽한 팀의 배경/로고 유지
     const displayTeamId = announcement ? announcement.teamId : currentTeamId;
@@ -190,6 +193,14 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                         <span className="text-xs font-bold text-white">
                             {currentDisplay.name}
                         </span>
+                        {isCurrentTeamAutoPick && (
+                            <span
+                                title="오토픽 진행 중"
+                                className="text-[9px] font-black leading-none px-1.5 py-0.5 rounded-sm bg-indigo-400 text-indigo-950"
+                            >
+                                AUTO
+                            </span>
+                        )}
                     </div>
 
                     {/* Separator */}

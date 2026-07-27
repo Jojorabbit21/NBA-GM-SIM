@@ -293,6 +293,7 @@ function assembleState(config: any, cursor: any, picks: DraftPickEntry[]): Multi
         teamCount:            config.teamCount        ?? 0,
         poolIds:              config.poolIds          ?? [],
         pickOrder:            config.pickOrder        ?? [],
+        autoPickAfterMisses:  config.autoPickAfterMisses ?? 1,
         status:               cursor.status               ?? 'active',
         currentPickIndex:     cursor.currentPickIndex     ?? 0,
         currentPickStartedAt: cursor.currentPickStartedAt ?? '',

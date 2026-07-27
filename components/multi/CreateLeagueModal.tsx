@@ -103,6 +103,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     // ── 드래프트 (공통) ────────────────────────────────────────────────────────
     const [totalRounds,    setTotalRounds]    = useState(10);
     const [pickDurationSec, setPickDurationSec] = useState(30);
+    const [autoPickAfterMisses, setAutoPickAfterMisses] = useState(1);
     const [draftPools,     setDraftPools]     = useState<PoolType[]>(['standard']);
     const [draftOvrMin,    setDraftOvrMin]    = useState(0);
     const [draftOvrMax,    setDraftOvrMax]    = useState(99);
@@ -158,6 +159,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                     options: {
                         draftTotalRounds:     totalRounds,
                         draftPickDurationSec: pickDurationSec,
+                        draftAutoPickAfterMisses: autoPickAfterMisses,
                         draftPool:            draftPools.join(','),
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
@@ -195,6 +197,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                     options: {
                         draftTotalRounds:     totalRounds,
                         draftPickDurationSec: pickDurationSec,
+                        draftAutoPickAfterMisses: autoPickAfterMisses,
                         draftPool:            draftPools.join(','),
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
@@ -463,6 +466,20 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                     max={60}
                                     value={pickDurationSec}
                                     onChange={e => setPickDurationSec(Math.min(60, Math.max(15, Number(e.target.value))))}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 ko-normal block mb-1.5">
+                                    오토픽 전환 기준(연속 미스)
+                                    <span className="text-slate-600 ml-1">1–5</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={5}
+                                    value={autoPickAfterMisses}
+                                    onChange={e => setAutoPickAfterMisses(Math.min(5, Math.max(1, Number(e.target.value))))}
                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                 />
                             </div>

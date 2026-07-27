@@ -63,6 +63,7 @@ export interface LeagueRow {
     draft_ovr_max: number;
     draft_pick_duration_sec: number;
     draft_total_rounds: number;
+    draft_auto_pick_after_misses: number;
     rookie_pool_inclusion: boolean;
     draft_scheduled_at: string | null;
     lottery_scheduled_at: string | null;

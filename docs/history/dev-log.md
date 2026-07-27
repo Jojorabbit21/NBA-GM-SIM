@@ -35,6 +35,408 @@
 
 ---
 
+## 2026-07-28 — 오토픽 유저 "AUTO" 배지 표시
+
+**배경**: 오토픽 관련 기능(개념/토글/트리거 0~3)이 전부 구현됐지만, 어떤 팀이 지금 오토픽
+상태인지 드래프트 화면에서 시각적으로 확인할 방법이 없었음. 사용자 요청으로 두 곳에 배지 추가.
+UI 전용 변경이라 처음엔 dev-log 기록 생략을 판단했으나, 사용자가 "dev-log에는 항상 기록을
+남겨라"고 명시적으로 정정 — 이후 UI 변경도 전부 기록한다.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` (client) — `autoPickTeamIds?: Set<string>` prop 추가, 팀 헤더의
+  온라인/오프라인 점 옆에 "AUTO" 배지 렌더링(상시 노출, 대기실/본 드래프트 화면 공용)
+- `components/draft/DraftHeader.tsx` (client) — `isCurrentTeamAutoPick?: boolean` prop 추가(기본값
+  `false` — 싱글/루키 드래프트와 공용 컴포넌트라 안 넘기면 기존 동작 그대로), "현재 차례" 팀 이름
+  옆에 "AUTO" 배지 표시
+- `views/multi/league/MultiDraftView.tsx` (client) — `autoPickTeamIds`(`pickOrder` + `autoPickUserIds`로
+  userId→teamId 변환), `isCurrentTeamAutoPick` 파생값 계산 후 두 컴포넌트에 전달(대기실/본 화면의
+  `DraftBoard` 2곳 + `DraftHeader` 1곳)
+
+**Before**:
+```tsx
+// DraftBoard.tsx 팀 헤더
+<div className="flex flex-col items-center gap-0.5">
+    <span>{td.abbr}</span>
+    {isOnline !== undefined && <span style={{ ...dot... }} />}
+</div>
+
+// DraftHeader.tsx 현재 차례
+<span className="text-xs font-bold text-white">{currentDisplay.name}</span>
+```
+
+**After**:
+```tsx
+// DraftBoard.tsx 팀 헤더
+<div className="flex flex-col items-center gap-0.5">
+    <span>{td.abbr}</span>
+    <div className="flex items-center gap-1">
+        {isOnline !== undefined && <span style={{ ...dot... }} />}
+        {isAutoPick && <span className="... bg-indigo-400 text-indigo-950">AUTO</span>}
+    </div>
+</div>
+
+// DraftHeader.tsx 현재 차례
+<span className="text-xs font-bold text-white">{currentDisplay.name}</span>
+{isCurrentTeamAutoPick && <span className="... bg-indigo-400 text-indigo-950">AUTO</span>}
+```
+
+**검증**: 수정한 3개 파일(`DraftBoard.tsx`/`DraftHeader.tsx`/`MultiDraftView.tsx`)에 대해
+synthesize한 tsc 옵션으로 신규 타입 에러 없음 확인. 두 컴포넌트 모두 싱글/루키 드래프트와 공용이라
+새 prop을 옵셔널+기본값 `false`/`undefined`로 둬서 기존 호출부(넘기지 않는 곳)엔 영향 없음.
+실제 브라우저 렌더링 확인은 미실시.
+
+**롤백 방법**: 위 3개 파일에서 이번 diff(각 prop 추가분 + JSX 배지 블록)를 되돌리면 됨. 서버/DB
+변경 없음(클라이언트 전용).
+
+---
+
+## 2026-07-28 — 시즌 데이터(useMultiGameData)를 LeagueLayout으로 끌어올림 — 리그 진입 시 1회만 로드
+
+**배경**: `useMultiGameData()`가 `MultiSeasonLayout`에서 호출되고 있었는데, 이 레이아웃은
+`/season/*` 하위 라우트에만 적용됨(로비/설정/어드민 화면은 그 밖의 `LeagueLayout` 형제 라우트).
+로비·설정 화면으로 나갔다가 다시 일정/로스터 등 시즌 화면으로 돌아오면 `MultiSeasonLayout`이
+언마운트→재마운트되면서 `useMultiGameData()`가 매번 방 데이터부터 처음부터 다시 로드해 로더가
+반복적으로 떴음. 사용자와 논의 후 "리그 진입 시점에 한 번만 로딩하고 이후엔 재로딩 없이" 방향으로
+결정 — 새로고침 시 다시 로드되는 건 SPA 특성상 불가피하고 오히려 정상 동작이라는 점도 함께 확인함.
+
+**변경 파일**:
+- `views/multi/league/LeagueLayout.tsx` (client) — `useMultiGameData(session, state.room?.id ?? null)`
+  호출 + `SeasonCtx.Provider`를 여기로 이전. 단, 이 레이아웃 자체의 로딩 게이트는 `state.isLoading`
+  (리그 데이터)만 기준으로 유지 — 시즌 데이터 로딩 완료를 기다리지 않고 로비/설정 화면은 즉시 렌더링됨
+  (시즌 데이터는 백그라운드에서 병행 로드)
+- `views/multi/season/MultiSeasonLayout.tsx` (client) — `useMultiGameData()` 직접 호출과
+  `SeasonCtx.Provider` 제거, `useSeasonContext()`로 이미 로드된 데이터를 소비만 함. `gameData.isLoading`
+  체크는 유지(URL로 시즌 라우트에 곧바로 진입해 아직 로딩 중인 극히 짧은 순간을 위한 안전장치)
+
+**Before** (`LeagueLayout.tsx`):
+```tsx
+export function LeagueLayout() {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const state = useCurrentLeague();
+
+    if (state.isLoading) { return <Loader2 .../>; }
+
+    return (
+        <LeagueCtx.Provider value={state}>
+            <Outlet />
+        </LeagueCtx.Provider>
+    );
+}
+```
+(`MultiSeasonLayout.tsx`):
+```tsx
+export function MultiSeasonLayout() {
+    const { room } = useLeagueContext();
+    const { session } = useGame();
+    const gameData = useMultiGameData(session, room?.id ?? null);
+
+    if (gameData.isLoading) { return <Loader2 .../>; }
+
+    return (
+        <SeasonCtx.Provider value={gameData}>
+            ... <Outlet /> ...
+        </SeasonCtx.Provider>
+    );
+}
+```
+
+**After** (`LeagueLayout.tsx`):
+```tsx
+export function LeagueLayout() {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const state = useCurrentLeague();
+    const { session } = useGame();
+    const gameData = useMultiGameData(session, state.room?.id ?? null);
+
+    if (state.isLoading) { return <Loader2 .../>; }
+
+    return (
+        <LeagueCtx.Provider value={state}>
+            <SeasonCtx.Provider value={gameData}>
+                <Outlet />
+            </SeasonCtx.Provider>
+        </LeagueCtx.Provider>
+    );
+}
+```
+(`MultiSeasonLayout.tsx`):
+```tsx
+export function MultiSeasonLayout() {
+    const gameData = useSeasonContext();
+
+    if (gameData.isLoading) { return <Loader2 .../>; }
+
+    return ( ... <Outlet /> ... );  // SeasonCtx.Provider 없음 — 상위(LeagueLayout)에서 이미 제공
+}
+```
+
+**검증**: `tsc --noEmit`(client) 신규 에러 없음, 브레이스/괄호 균형 확인(2개 파일 OK), `npm run build`
+성공. 순환 임포트 확인 — `seasonContext.ts`가 `hooks/useMultiGameData.ts`와 react만 참조하는 독립
+파일이라 `LeagueLayout.tsx`에서 import해도 순환 없음(`hooks/useMultiGameData.ts`/`hooks/useCurrentLeague.ts`
+쪽도 `views/multi/league/`를 참조하지 않음을 확인). 클라이언트 UI 전용 변경, 서버 배포 불필요.
+
+**주의사항 / 한계**: 이제 리그의 어떤 하위 화면(로비 포함)에 들어가도 시즌 데이터 로드가 백그라운드로
+같이 시작됨 — 드래프트/모집 중이라 시즌이 아직 시작 안 된 리그에서도 매번 이 조회가 발생하는
+트레이드오프가 있음(사용자가 명시적으로 선택한 방향, "로비/설정 화면 진입 속도가 느려질 수 있다"는
+점 사전 고지 후 승인받음). 실제 브라우저 확인(로비↔일정 반복 이동 시 로더 재출현 여부)은 미실시.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨 — 서로 짝을 이루는 변경이라 반드시 함께
+되돌릴 것(하나만 되돌리면 `SeasonCtx`가 이중으로 제공되거나 아예 제공되지 않아 `useSeasonContext()`가
+깨짐).
+
+---
+
+## 2026-07-27 — 재접속 시 오토픽 자동 해제(트리거 3) — 명시적으로 켠 경우는 보존
+
+**배경**: `docs/plan/draft-autopick-plan.md`의 트리거 3, 마지막 남은 항목. 타임아웃 연속 미스나
+드래프트 시작 시 미입장으로 오토픽 전환된 유저가 WS 재접속(auth 성공)하면 자동으로 오토픽을
+해제하고 수동 모드로 복귀시킨다.
+
+구현 중 발견한 중요한 함정: `autoPickUserIds`는 단일 Set이라 "왜 오토픽 상태가 됐는지"(시스템이
+자동 감지했는지, 본인/어드민이 일부러 켰는지)를 구분하지 못한다. 재접속 시 무조건 해제해버리면,
+"이번 판은 바빠서 계속 오토픽으로 둘게"라고 셀프토글이나 어드민 토글로 **명시적으로 설정한** 유저가
+잠깐 다른 탭에서 재접속하는 순간 그 설정이 의도치 않게 풀려버리는 회귀가 생긴다. 이번 세션 초반에
+합의한 "재접속 시 자동 해제"는 어디까지나 시스템이 자동으로 감지해 넣은 경우에 한정된 논의였으므로,
+이 구분을 새로 추가해 반영했다.
+
+**변경 파일**:
+- `server/src/DraftRoom.ts` (server, client 미러 없음 — 순수 서버 내부 로직)
+  - `autoPickManualUserIds: Set<string>` 상태 신설 — `autoPickUserIds`의 부분집합으로, 셀프/어드민
+    토글로 명시적으로 켠 유저만 표시(자동 트리거는 여기 포함 안 됨)
+  - `setAutoPick()` — on/off 시 `autoPickManualUserIds`도 함께 갱신
+  - `revertAutoPickOnReconnect(userId)` 신규 — `autoPickUserIds`엔 있지만 `autoPickManualUserIds`엔
+    없는 경우(=자동 트리거)에 한해서만 `setAutoPick(userId, false)` 호출
+  - `handleSubmitPick()` — 본인이 직접 픽 제출 시 `autoPickManualUserIds`도 함께 삭제(수동 픽은
+    오토픽 사유·출처를 불문하고 전부 무효화하는 게 맞다고 판단)
+- `server/src/index.ts` (server) — `auth` 처리에서 `room.addSocket(ws)` 직후
+  `await room.revertAutoPickOnReconnect(userId)` 호출 추가
+
+**Before**:
+```ts
+// setAutoPick()
+if (enabled) this.autoPickUserIds.add(targetUserId);
+else         this.autoPickUserIds.delete(targetUserId);
+
+// handleSubmitPick()
+this.pickMissCounts.delete(userId);
+this.autoPickUserIds.delete(userId);
+
+// index.ts auth 핸들러
+ws.data = { userId, roomId: msg.roomId };
+room.addSocket(ws);
+// (재접속 시 오토픽 해제 로직 없음)
+```
+
+**After**:
+```ts
+// setAutoPick()
+if (enabled) {
+    this.autoPickUserIds.add(targetUserId);
+    this.autoPickManualUserIds.add(targetUserId);
+} else {
+    this.autoPickUserIds.delete(targetUserId);
+    this.autoPickManualUserIds.delete(targetUserId);
+}
+
+// 신규 메서드
+async revertAutoPickOnReconnect(userId: string): Promise<void> {
+    if (this.autoPickUserIds.has(userId) && !this.autoPickManualUserIds.has(userId)) {
+        await this.setAutoPick(userId, false);
+    }
+}
+
+// handleSubmitPick()
+this.pickMissCounts.delete(userId);
+this.autoPickUserIds.delete(userId);
+this.autoPickManualUserIds.delete(userId);
+
+// index.ts auth 핸들러
+ws.data = { userId, roomId: msg.roomId };
+room.addSocket(ws);
+await room.revertAutoPickOnReconnect(userId);
+```
+
+**검증**: `cd server && tsc --noEmit -p .` — `DraftRoom.ts`/`index.ts` 관련 신규 에러 없음(기존부터
+있던 "Cannot find module/name 'Bun'"(@types/bun 미설치)만 남음). 실제 배포/브라우저 테스트는 미실시.
+
+**롤백 방법**: `server/src/DraftRoom.ts`에서 `autoPickManualUserIds` 필드, `setAutoPick()`의 분기
+확장, `revertAutoPickOnReconnect()` 메서드, `handleSubmitPick()`의 `autoPickManualUserIds.delete()`
+를 위 Before 블록으로 되돌리고, `server/src/index.ts`의 `revertAutoPickOnReconnect()` 호출 1줄
+제거. client 미러 없음(서버 전용 로직). 이것으로 `docs/plan/draft-autopick-plan.md`의 트리거 0~4
+전체가 구현 완료됨.
+
+---
+
+## 2026-07-27 — 픽 타임아웃 연속 미스 시 오토픽 전환(트리거 1) + 어드민 세션 설정 노출
+
+**배경**: `docs/plan/draft-autopick-plan.md`의 트리거 1. 유저가 `autoPickAfterMisses`회(어드민이
+세션 설정에서 지정, 기본 1회) 연속으로 픽 타이머를 전부 소진하면 그 유저를 오토픽 모드로 전환.
+"연속"이 기준이므로 본인이 직접 픽을 제출하면(=돌아왔다는 증거) 미스 카운트를 리셋하고, 이미
+오토픽 모드였다면 그것도 함께 해제한다 — 안 그러면 본인 의사와 무관하게 다음 차례부터 계속
+자동픽되는 어색한 상태가 남는다.
+
+이 임계치는 다른 드래프트 설정(라운드 수/픽 제한시간 등)과 동일하게 `leagues` 테이블 컬럼으로
+추가하고 `CreateLeagueModal`/`LeagueSettingsView`에 입력 필드를 노출했다 — `LeagueSettingsView`의
+"스케줄" 섹션은 `!isInProgress`로 잠기므로(드래프트 시작 후 라운드 수를 못 바꾸는 것과 동일하게)
+이 값도 드래프트가 실제로 시작되기 전까지만 조정 가능하다. `DraftConfig`는 방 준비 시점
+(`buildDraftSetup()`)에 한 번 굳어지므로 드래프트 도중 실시간 반영은 불가능 — 애초에 기존 라운드
+수/픽 제한시간과 동일한 제약이라 새로 생긴 한계는 아니다.
+
+**변경 파일**:
+- `server/src/protocol.ts` (server) — `DraftConfig.autoPickAfterMisses: number` 추가
+- `types/multiDraft.ts` (client 미러) — `MultiDraftState.autoPickAfterMisses: number` 추가
+- `server/src/DraftRoom.ts` (server) — `pickMissCounts: Map<string, number>` 상태 신설(메모리 전용),
+  `onPickTimeout()`에서 미스 카운트 증가 후 임계치 도달 시 `autoPickUserIds.add()`, `handleSubmitPick()`
+  에서 본인 제출 시 `pickMissCounts.delete()` + `autoPickUserIds.delete()`
+- `server/src/startDraft.ts` (server) — `DEFAULT_AUTO_PICK_AFTER_MISSES = 1`, `buildDraftSetup()`에서
+  `league.draft_auto_pick_after_misses ?? DEFAULT_AUTO_PICK_AFTER_MISSES` 읽어 `draftConfig`에 포함
+- `hooks/useLeagueDraft.ts` (client) — `assembleState()`에 `autoPickAfterMisses` 반영
+- `services/multi/roomQueries.ts` (client) — `LeagueRow.draft_auto_pick_after_misses: number` 추가
+- `services/multi/leagueService.ts` (client) — `CreateLeagueParams.options`/`UpdateLeagueSettingsParams`에
+  `draftAutoPickAfterMisses` 추가, `createLeague()`/`updateLeagueSettings()` payload 매핑 라인 추가
+- `components/multi/CreateLeagueModal.tsx` (client) — "오토픽 전환 기준(연속 미스)" 입력 필드(1–5) 추가
+- `views/multi/league/LeagueSettingsView.tsx` (client) — 동일 입력 필드 추가(스케줄 섹션,
+  `!isInProgress`일 때만 노출)
+- **DB 마이그레이션** (Supabase 프로젝트 `buummihpewiaeltywdff`, `add_draft_auto_pick_after_misses`) —
+  `ALTER TABLE public.leagues ADD COLUMN draft_auto_pick_after_misses integer NOT NULL DEFAULT 1;`
+  (이 컬럼 없이는 `createLeague`/`updateLeagueSettings`가 Postgres 에러로 실패함)
+
+**Before**:
+```ts
+// onPickTimeout()
+console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
+const bestId = getBestAvailableId(...);
+...
+
+// handleSubmitPick()
+const result = await this.persistPick(userId, playerId);
+```
+
+**After**:
+```ts
+// onPickTimeout()
+console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
+const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
+this.pickMissCounts.set(entry.userId, misses);
+if (misses >= this.config.autoPickAfterMisses) {
+    this.autoPickUserIds.add(entry.userId);
+}
+const bestId = getBestAvailableId(...);
+...
+
+// handleSubmitPick()
+this.pickMissCounts.delete(userId);
+this.autoPickUserIds.delete(userId);
+const result = await this.persistPick(userId, playerId);
+```
+
+**검증**: `cd server && tsc --noEmit -p .` — `DraftRoom.ts`/`startDraft.ts` 관련 신규 에러 없음(기존부터
+있던 "Cannot find module 'bun'"/`startDraft.ts`의 discriminated union `.error` 이슈만 남음, 둘 다
+이번 변경 이전부터 존재). 클라이언트 6개 파일(`multiDraft.ts`/`useLeagueDraft.ts`/`roomQueries.ts`/
+`leagueService.ts`/`CreateLeagueModal.tsx`/`LeagueSettingsView.tsx`)도 synthesize한 tsc 옵션으로
+신규 에러 없음 확인(남은 에러는 `sim_settings`/`normalization` 관련 완전히 무관한 기존 이슈).
+`information_schema.columns`로 마이그레이션 전 `leagues` 테이블에 해당 컬럼이 없었음을 먼저 확인 후
+`ADD COLUMN`으로 추가, 적용 결과 `success:true`. 실제 배포/브라우저 테스트는 미실시.
+
+**롤백 방법**: 위 9개 코드 파일에서 이번 diff를 되돌리고, DB는
+`ALTER TABLE public.leagues DROP COLUMN draft_auto_pick_after_misses;`로 컬럼 제거(선택사항 — 컬럼이
+남아있어도 코드가 안 읽으면 무해함). `protocol.ts` ↔ `types/multiDraft.ts`는 미러 쌍이므로 함께 되돌릴 것.
+
+---
+
+## 2026-07-27 — 스케줄 화면 PTS/REB/AST 리더 localStorage 캐싱
+
+**배경**: `MultiScheduleView.tsx`가 시즌 하위 탭을 오가며 재마운트될 때마다, 그리고 마운트된 동안
+5초마다 방 안의 `game_pbp` 전체 row(`home_box`/`away_box` JSON 포함)를 다시 조회해서 PTS/REB/AST
+리더를 계산하고 있었음. `game_pbp` row는 시뮬레이션 완료 시 1회 upsert된 뒤 갱신되지 않으므로
+(관리자 수동 재시뮬레이션은 극히 예외적이라 이번 범위에서 제외, 사용자 확인 완료), 이미 끝난 경기는
+매번 다시 조회할 필요가 없음. 상세 설계는
+[schedule-leaders-cache-plan.md](../plan/schedule-leaders-cache-plan.md) 참조.
+
+조사 중 발견: 토너먼트 게임 ID(`T_R{round}_M{matchIndex}`, `server/src/shared/tournamentBracket.ts`)가
+완전히 위치 기반이라 랜덤 요소가 없음. `resetTournament()`가 같은 `room.id`를 재사용해 드래프트부터
+다시 시작하므로, 리셋 후 새 토너먼트의 동일 라운드/매치가 예전과 **같은 game_id**를 다시 갖게 됨 —
+캐시를 영구 보존하면 리셋 전 경기의 리더가 리셋 후 동명 경기에 잘못 붙는 실제 버그가 생겨, 사용자가
+직접 요청하지 않았지만 리셋 시점 캐시 무효화를 계획에 포함시킴(승인받음).
+
+**변경 파일**:
+- `services/multi/gameLeadersCache.ts` (신규, client 전용) — `loadGameLeadersCache`/
+  `mergeGameLeadersCache`/`clearGameLeadersCache`, `nbagm:gameLeaders:{roomId}` 키로 localStorage 영속화.
+  `GameLeaders`/`StatLeader` 타입도 여기로 이전(기존 `MultiScheduleView.tsx` 로컬 정의 제거)
+- `views/multi/season/MultiScheduleView.tsx` — `gameLeadersMap` 초기값을 캐시로 채움, 폴링 로직을
+  "캐시에 없는 `played` 게임만" 델타 조회하도록 변경, 캐시에 빠진 게 없으면 네트워크 요청 자체를 스킵
+- `views/multi/league/LeagueSettingsView.tsx` — `handleReset()`에서 `resetTournament()` 성공 직후
+  `clearGameLeadersCache(room.id)` 호출 추가
+
+**Before** (`MultiScheduleView.tsx`, `gameLeadersMap` 로딩):
+```ts
+const [gameLeadersMap, setGameLeadersMap] = useState<Record<string, GameLeaders>>({});
+useEffect(() => {
+    if (!room?.id) return;
+    let cancelled = false;
+    const loadLeaders = async () => {
+        const { data } = await supabase
+            .from('game_pbp')
+            .select('game_id, home_box, away_box')
+            .eq('room_id', room.id);
+        if (cancelled || !data) return;
+        const map: Record<string, GameLeaders> = {};
+        for (const row of data as { ... }[]) {
+            map[row.game_id] = computeGameLeaders(row.home_box, row.away_box);
+        }
+        setGameLeadersMap(map);
+    };
+    loadLeaders();
+    const timer = setInterval(loadLeaders, LIVE_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+}, [room?.id]);
+```
+
+**After**:
+```ts
+const [gameLeadersMap, setGameLeadersMap] = useState<Record<string, GameLeaders>>(
+    () => room?.id ? loadGameLeadersCache(room.id) : {},
+);
+useEffect(() => {
+    if (!room?.id) return;
+    let cancelled = false;
+    const loadLeaders = async () => {
+        const cached = loadGameLeadersCache(room.id);
+        const missingIds = schedule.filter(g => g.played && !(g.id in cached)).map(g => g.id);
+
+        if (missingIds.length === 0) {
+            setGameLeadersMap(cached);
+            return;
+        }
+
+        const { data } = await supabase
+            .from('game_pbp')
+            .select('game_id, home_box, away_box')
+            .eq('room_id', room.id)
+            .in('game_id', missingIds);
+        if (cancelled || !data) return;
+        const updates: Record<string, GameLeaders> = {};
+        for (const row of data as { ... }[]) {
+            updates[row.game_id] = computeGameLeaders(row.home_box, row.away_box);
+        }
+        setGameLeadersMap(mergeGameLeadersCache(room.id, updates));
+    };
+    loadLeaders();
+    const timer = setInterval(loadLeaders, LIVE_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+}, [room?.id, schedule]);
+```
+
+**검증**: `tsc --noEmit`(client) 신규 에러 없음, 브레이스/괄호 균형 확인(3개 파일 전부 OK),
+`npm run build` 성공. 클라이언트 UI/로직 전용 변경이라 서버 배포 불필요. 실제 브라우저에서 Network
+탭으로 캐시 히트/델타 조회 동작 확인은 미실시.
+
+**롤백 방법**: `services/multi/gameLeadersCache.ts` 삭제, `MultiScheduleView.tsx`를 위 Before
+블록 및 로컬 `interface StatLeader`/`GameLeaders` 정의로 되돌리기, `LeagueSettingsView.tsx`의
+`handleReset()`에서 `clearGameLeadersCache(room.id)` 호출 및 관련 import 제거.
+
+---
+
 ## 2026-07-27 — 드래프트 시작 시 미입장 유저 자동 오토픽 전환
 
 **배경**: `docs/plan/draft-autopick-plan.md`의 트리거 2. 오토픽 개념/셀프·어드민 토글(직전 항목)에

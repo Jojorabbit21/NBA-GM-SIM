@@ -37,6 +37,8 @@ export interface MultiDraftState {
 
     // snake 픽 순서 (미리 계산, teamCount × totalRounds 개)
     pickOrder: PickOrderEntry[];
+    /** 몇 번 연속으로 픽 타임아웃 나면 오토픽 모드로 전환할지 (어드민 세션 설정, 기본 1) */
+    autoPickAfterMisses: number;
 
     // ── 진행 상태 ────────────────────────────────────────────────────────────
     /** waiting: 로터리 완료, 예정 시각 전(입장은 가능하나 픽/타이머 없음) */
