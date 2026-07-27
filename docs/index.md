@@ -82,10 +82,12 @@ docs/
 │   ├── draft-pick-assets.md  드래프트 픽 자산 설계
 │   ├── room-architecture.md  방 아키텍처 (멀티)
 │   ├── player-instructions.md 선수 데이터 작성 가이드
-│   └── monetization-legal-strategy.md 수익화/법률 전략
+│   ├── monetization-legal-strategy.md 수익화/법률 전략
+│   └── worker-thread-sim-plan.md 경기 시뮬레이션 Worker Thread 분리 계획
 │
 └── history/              ← 개발 히스토리 노트
-    └── dev-log.md            코드 수정 전후 상세 기록 (복구용, 최신순)
+    ├── dev-log.md            코드 수정 전후 상세 기록 (복구용, 최신순)
+    └── patch-notes.md        배포/기능 단위 요약 변경 이력 (최신순)
 ```
 
 ---
@@ -140,9 +142,10 @@ Vercel 배포, 캐시 전략, 버전 관리, Supabase 모니터링.
 **상태**: 모두 계획 단계 — 구현 시 해당 카테고리 문서로 졸업.
 
 ### [history/](history/dev-log.md) — 개발 히스토리 노트
-코드 수정(특히 엔진 로직) 전후를 상세히 기록 — 문제 발생 시 이 문서만 보고 수동 복구 가능하게 하는 것이 목적.
+- [dev-log.md](history/dev-log.md): 코드 수정(특히 엔진 로직) 전후를 상세히 기록 — 문제 발생 시 이 문서만 보고 수동 복구 가능하게 하는 것이 목적.
+- [patch-notes.md](history/patch-notes.md): 배포/기능 단위 요약 변경 이력 — 구현 전 설계 논의가 필요했던 작업은 `docs/plan/`의 계획 문서 링크를 함께 기록.
 
-**필수 참조 상황**: 엔진/로직 변경 시 항상 이 문서에 Before/After 기록 추가 (최신 항목이 위로).
+**필수 참조 상황**: 엔진/로직 변경 시 항상 dev-log.md에 Before/After 기록 추가, 기능 단위 배포 시 patch-notes.md에 요약 추가 (둘 다 최신 항목이 위로).
 
 ---
 

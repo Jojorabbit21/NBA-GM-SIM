@@ -22,8 +22,11 @@ export interface UseLeagueDraftReturn {
     submitPick:       (playerId: string) => Promise<{ error: string | null }>;
     isSubmitting:     boolean;
 
-    /** 어드민 전용: pause/resume/reset-timer/skip-turn/autocomplete/rollback */
-    sendAdmin:        (action: string, params?: { targetPickIndex?: number }) => void;
+    /** 어드민 전용: pause/resume/reset-timer/skip-turn/autocomplete/rollback/toggle-autopick */
+    sendAdmin:        (action: string, params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean }) => void;
+
+    /** 본인 팀 오토픽 모드 on/off (어드민 권한 불필요) */
+    toggleAutoPick:   (enabled: boolean) => void;
 }
 
 /**
@@ -242,16 +245,22 @@ export function useLeagueDraft(
     }, [roomId, token, isMyTurn]);
 
     // ── sendAdmin ─────────────────────────────────────────────────────────────
-    const sendAdmin = useCallback((action: string, params?: { targetPickIndex?: number }) => {
+    const sendAdmin = useCallback((action: string, params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean }) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         wsRef.current.send(JSON.stringify({ type: 'admin', action, params }));
+    }, []);
+
+    // ── toggleAutoPick (본인 팀) ──────────────────────────────────────────────
+    const toggleAutoPick = useCallback((enabled: boolean) => {
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(JSON.stringify({ type: 'toggleAutoPick', enabled }));
     }, []);
 
     return {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting,
-        sendAdmin,
+        sendAdmin, toggleAutoPick,
     };
 }
 
@@ -288,6 +297,7 @@ function assembleState(config: any, cursor: any, picks: DraftPickEntry[]): Multi
         currentPickIndex:     cursor.currentPickIndex     ?? 0,
         currentPickStartedAt: cursor.currentPickStartedAt ?? '',
         pausedAt:             cursor.pausedAt,
+        autoPickUserIds:      cursor.autoPickUserIds      ?? [],
         picks,
         draftedIds: picks.map(p => p.playerId),
     };
@@ -299,6 +309,7 @@ function cursorFields(cursor: any) {
         currentPickIndex:     cursor.currentPickIndex     ?? 0,
         currentPickStartedAt: cursor.currentPickStartedAt ?? '',
         pausedAt:             cursor.pausedAt,
+        autoPickUserIds:      cursor.autoPickUserIds      ?? [],
     };
 }
 

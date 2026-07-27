@@ -15,9 +15,10 @@
 import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
-import { runSimulation } from './simRunner';
+import { simWorkerPool } from './workers/simWorkerPool';
 
 const POLL_INTERVAL_MS = 30_000;
+const STALE_CLAIM_SWEEP_INTERVAL_MS = 5 * 60_000;
 
 // setInterval은 콜백이 끝나길 기다리지 않는다 — 처리할 경기가 많아 한 번의 tick()이
 // POLL_INTERVAL_MS보다 오래 걸리면, 이전 tick이 안 끝났는데 다음 tick이 그대로 겹쳐서
@@ -42,6 +43,17 @@ export function startScheduler(): void {
             .catch(e => console.error('[scheduler] tick error:', e))
             .finally(() => { tickRunning = false; });
     }, POLL_INTERVAL_MS);
+
+    // game_sim_claims 고아 레코드 청소 — 워커 크래시 안전망(simWorkerPool.handleCrash)이
+    // 못 잡는 극단적 상황 대비 이중 안전망. 부팅 즉시 1회 실행 + 5분 간격 반복.
+    simWorkerPool.sweepStaleClaims().catch(e =>
+        console.error('[scheduler] stale claim sweep error:', e)
+    );
+    setInterval(() => {
+        simWorkerPool.sweepStaleClaims().catch(e =>
+            console.error('[scheduler] stale claim sweep error:', e)
+        );
+    }, STALE_CLAIM_SWEEP_INTERVAL_MS);
 
     console.log('[scheduler] started (30s interval)');
 }
@@ -338,12 +350,21 @@ async function runSimGames(now: string): Promise<void> {
 
     console.log(`[scheduler:sim] ${tasks.length} game(s) to simulate`);
 
-    for (const { roomId, gameId } of tasks) {
-        const result = await runSimulation(roomId, gameId);
-        if (!result.ok && !result.skipped) {
-            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${result.error}`);
+    // 워커 풀이 동시성을 관리하므로 여기서는 전부 동시에 넘기기만 하면 된다 — 풀 크기만큼
+    // 실제 병렬 처리되고, 나머지는 풀 내부 큐에서 대기한다. 메인 스레드는 이 await 동안
+    // 블로킹되지 않으므로(워커에서 계산하는 동안 HTTP/WS 요청을 계속 처리 가능) 예전처럼
+    // 경기 사이에 수동으로 양보(setImmediate)해줄 필요가 없다(2026-07-27 — worker thread 분리).
+    const results = await Promise.allSettled(
+        tasks.map(({ roomId, gameId }) => simWorkerPool.runSimulationInWorker(roomId, gameId)),
+    );
+    results.forEach((r, i) => {
+        const { roomId, gameId } = tasks[i];
+        if (r.status === 'rejected') {
+            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.reason}`);
+        } else if (!r.value.ok && !r.value.skipped) {
+            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.value.error}`);
         }
-    }
+    });
 
     await advanceSimDates(rooms as RoomRow[], leagueMap, now.slice(0, 10));
 }

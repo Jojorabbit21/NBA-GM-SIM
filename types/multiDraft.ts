@@ -44,6 +44,8 @@ export interface MultiDraftState {
     currentPickIndex:     number;     // 0-based
     currentPickStartedAt: string;     // ISO — 타이머 기준 (재개 시 pauseDuration만큼 보정됨)
     pausedAt?:            string;     // ISO — pause 시각, resume 후 제거
+    /** 오토픽 모드인 userId 목록 — 서버 메모리 전용 상태(서버 재시작 시 리셋될 수 있음) */
+    autoPickUserIds:      string[];
 
     // ── 결과 ─────────────────────────────────────────────────────────────────
     picks:      DraftPickEntry[];

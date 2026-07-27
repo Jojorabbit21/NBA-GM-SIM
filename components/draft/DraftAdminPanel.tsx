@@ -1,8 +1,8 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     Settings, Pause, Play, RotateCcw, SkipForward,
-    FastForward, ChevronDown, ChevronUp, X, AlertTriangle,
+    FastForward, ChevronDown, ChevronUp, X, AlertTriangle, Bot,
 } from 'lucide-react';
 import type { MultiDraftState, DraftPickEntry } from '../../types/multiDraft';
 
@@ -14,10 +14,10 @@ interface Props {
     onOptimisticRevert?:  () => void;
 
     /** WS 어드민 메시지 전송 (useLeagueDraft에서 받아옴) */
-    sendAdmin:            (action: string, params?: { targetPickIndex?: number }) => void;
+    sendAdmin:            (action: string, params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean }) => void;
 }
 
-type Action = 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback';
+type Action = 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback' | 'toggle-autopick';
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
     active:    { label: '진행 중', color: 'text-emerald-400' },
@@ -38,7 +38,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
 
     const call = useCallback((
         action: Action,
-        params?: { targetPickIndex?: number }
+        params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean }
     ) => {
         // 일시정지: 즉시 타이머 동결 (낙관적 UI)
         if (action === 'pause') onOptimisticPause?.();
@@ -80,6 +80,17 @@ export const DraftAdminPanel: React.FC<Props> = ({
     const totalPicks  = draftState.pickOrder.length;
     const recentPicks = [...(draftState.picks ?? [])].reverse().slice(0, 15);
     const st          = STATUS_LABEL[status] ?? STATUS_LABEL.active;
+
+    // pickOrder는 라운드마다 반복되므로 유저 1명당 1행만 남긴다 (AI 슬롯은 토글 대상 아님)
+    const uniqueHumanEntries = useMemo(() => {
+        const seen = new Set<string>();
+        return (draftState.pickOrder ?? []).filter(e => {
+            if (e.isAi || seen.has(e.userId)) return false;
+            seen.add(e.userId);
+            return true;
+        });
+    }, [draftState.pickOrder]);
+    const autoPickUserIds = draftState.autoPickUserIds ?? [];
 
     const btnBase  = 'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
     const btnGray  = `${btnBase} bg-slate-700 hover:bg-slate-600 text-slate-200`;
@@ -195,6 +206,40 @@ export const DraftAdminPanel: React.FC<Props> = ({
                                 </button>
                             )}
                         </div>
+
+                        {/* 유저별 오토픽 토글 */}
+                        {uniqueHumanEntries.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-[10px] text-slate-500 uppercase tracking-widest">유저별 오토픽</p>
+                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                    {uniqueHumanEntries.map(entry => {
+                                        const isAutoPick = autoPickUserIds.includes(entry.userId);
+                                        return (
+                                            <div
+                                                key={entry.userId}
+                                                className="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-1.5 gap-2"
+                                            >
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <Bot size={12} className={isAutoPick ? 'text-indigo-400' : 'text-slate-600'} />
+                                                    <span className="text-xs text-slate-200 uppercase truncate">{entry.teamId}</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => call('toggle-autopick', { targetUserId: entry.userId, enabled: !isAutoPick })}
+                                                    disabled={loading !== null}
+                                                    className={`shrink-0 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors disabled:opacity-40 ${
+                                                        isAutoPick
+                                                            ? 'bg-indigo-600/60 text-indigo-200 hover:bg-indigo-600/80'
+                                                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                                    }`}
+                                                >
+                                                    {isAutoPick ? '오토픽 끄기' : '오토픽 켜기'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* 자동완성 */}
                         {(status === 'active' || status === 'paused') && (

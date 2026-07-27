@@ -43,6 +43,12 @@ export class DraftRoom {
     private currentPickStartedAt = new Date().toISOString();
     private pausedAt: string | undefined;
 
+    // 오토픽 모드인 userId 집합 — 메모리 전용(서버 재시작 시 리셋). load()에서 DB 값을
+    // 일부러 복원하지 않는다 — RPC(submit_draft_pick_v2)가 매 픽마다 draft_cursor를
+    // 통째로 덮어써서 이 필드가 DB에 안정적으로 남아있지 않으므로, "항상 깨끗하게 리셋"
+    // 쪽으로 동작을 통일해 예측 가능하게 만든다(자리 비운 유저는 다음 타임아웃에서 다시 감지됨).
+    private autoPickUserIds = new Set<string>();
+
     // ── 픽 결과 ───────────────────────────────────────────────────────────────
     private picks: DraftPickEntry[] = [];
     private draftedIds = new Set<string>();
@@ -272,9 +278,10 @@ export class DraftRoom {
             return;
         }
 
-        if (entry.isAi) {
+        if (entry.isAi || this.autoPickUserIds.has(entry.userId)) {
+            // AI 슬롯과 오토픽 모드 유저 모두 동일한 짧은 지연 후 BPA 자동 진행 경로를 탄다.
             const delay = AI_MIN_DELAY_MS + Math.random() * (AI_MAX_DELAY_MS - AI_MIN_DELAY_MS);
-            console.log(`[DraftRoom:${this.roomId}] AI pick #${this.currentPickIndex} scheduled in ${Math.round(delay)}ms`);
+            console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} scheduled in ${Math.round(delay)}ms`);
             this.aiTimer = setTimeout(() => this.onAiPick(), delay);
         } else {
             console.log(`[DraftRoom:${this.roomId}] human pick #${this.currentPickIndex} userId=${entry.userId} timeout=${this.config.pickDurationSec}s`);
@@ -293,16 +300,18 @@ export class DraftRoom {
     private async onAiPick(): Promise<void> {
         if (this.status !== 'active') return;
         const entry = this.config.pickOrder[this.currentPickIndex];
-        if (!entry?.isAi) return;
+        if (!entry || (!entry.isAi && !this.autoPickUserIds.has(entry.userId))) return;
 
         const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
         if (!bestId) {
-            console.warn(`[DraftRoom:${this.roomId}] no available players for AI pick`);
+            console.warn(`[DraftRoom:${this.roomId}] no available players for auto pick`);
             return;
         }
 
-        console.log(`[DraftRoom:${this.roomId}] AI pick #${this.currentPickIndex} → player=${bestId}`);
-        const result = await this.persistPick(entry.userId, bestId, true);
+        console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} → player=${bestId}`);
+        // entry.isAi 그대로 전달 — 오토픽 모드로 대납되는 실제 사람 유저는 is_ai=false로
+        // 정확히 기록되어야 draft_picks 감사 기록/향후 기능에서 AI 슬롯과 혼동되지 않는다.
+        const result = await this.persistPick(entry.userId, bestId, entry.isAi ?? false);
         if (!result) return;
 
         this.applyPickToMemory(result);
@@ -386,6 +395,19 @@ export class DraftRoom {
     async activate(): Promise<boolean> {
         if (this.status !== 'waiting') return false;
 
+        // 드래프트 시작 순간 룸에 연결돼 있지 않은(=WS 소켓 없는) 유저는 즉시 오토픽 모드로 전환.
+        // pickOrder는 라운드마다 유저가 반복되므로 유저당 한 번만 판정한다.
+        const connected = this.getConnectedUserIds();
+        const seen = new Set<string>();
+        for (const entry of this.config.pickOrder) {
+            if (entry.isAi || seen.has(entry.userId)) continue;
+            seen.add(entry.userId);
+            if (!connected.has(entry.userId)) {
+                this.autoPickUserIds.add(entry.userId);
+                console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} not connected at draft start → auto-pick mode`);
+            }
+        }
+
         this.status               = 'active';
         this.currentPickIndex     = 0;
         this.currentPickStartedAt = new Date().toISOString();
@@ -404,7 +426,7 @@ export class DraftRoom {
 
     async handleAdmin(
         action: string,
-        params: { targetPickIndex?: number } | undefined,
+        params: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean } | undefined,
         ws: ServerWebSocket<WsData>
     ): Promise<void> {
         switch (action) {
@@ -458,6 +480,20 @@ export class DraftRoom {
                 break;
             }
 
+            case 'toggle-autopick': {
+                const targetUserId = params?.targetUserId;
+                const enabled = params?.enabled;
+                if (!targetUserId || typeof enabled !== 'boolean') {
+                    ws.send(encode({ type: 'error', code: 'internal', message: 'targetUserId, enabled required' }));
+                    break;
+                }
+                const ok = await this.setAutoPick(targetUserId, enabled);
+                if (!ok) {
+                    ws.send(encode({ type: 'error', code: 'internal', message: 'user not in pickOrder' }));
+                }
+                break;
+            }
+
             case 'rollback': {
                 // 지정 픽 인덱스까지 롤백 (picks 삭제 + cursor 복원)
                 const target = params?.targetPickIndex ?? this.currentPickIndex - 1;
@@ -503,6 +539,11 @@ export class DraftRoom {
         // 방은 소켓이 없어도 유지 (타이머/AI 체인 계속 동작)
     }
 
+    /** 현재 이 방에 WS로 연결돼 있는 userId 집합 (activate()의 미입장 판정용) */
+    private getConnectedUserIds(): Set<string> {
+        return new Set([...this.sockets].map(ws => ws.data.userId));
+    }
+
     // ── 브로드캐스트 헬퍼 ────────────────────────────────────────────────────
 
     private broadcastDelta(pick: DraftPickEntry): void {
@@ -517,7 +558,13 @@ export class DraftRoom {
 
     private broadcast(payload: string): void {
         for (const ws of this.sockets) {
-            try { ws.send(payload); } catch { /* 소켓 이미 닫힘 */ }
+            try {
+                ws.send(payload);
+            } catch {
+                // send 실패 = 이미 죽은 소켓. close 이벤트가 안 왔을 수도 있으므로 여기서도
+                // 정리해줘야 getConnectedUserIds()가 죽은 연결을 "접속 중"으로 오판하지 않는다.
+                this.sockets.delete(ws);
+            }
         }
     }
 
@@ -529,7 +576,33 @@ export class DraftRoom {
             currentPickIndex:     this.currentPickIndex,
             currentPickStartedAt: this.currentPickStartedAt,
             ...(this.pausedAt ? { pausedAt: this.pausedAt } : {}),
+            autoPickUserIds:      [...this.autoPickUserIds],
         };
+    }
+
+    // ── 오토픽 모드 on/off (본인 셀프토글 또는 어드민 강제토글 공용) ────────────
+    // targetUserId가 pickOrder에 없거나 AI 슬롯이면 false 반환(대상 아님).
+    async setAutoPick(targetUserId: string, enabled: boolean): Promise<boolean> {
+        const inOrder = this.config.pickOrder.some(e => e.userId === targetUserId && !e.isAi);
+        if (!inOrder) return false;
+
+        if (enabled) this.autoPickUserIds.add(targetUserId);
+        else         this.autoPickUserIds.delete(targetUserId);
+
+        const entry = this.config.pickOrder[this.currentPickIndex];
+        if (this.status === 'active' && entry?.userId === targetUserId) {
+            // 바로 지금 이 유저 차례라면 새 모드에 맞는 타이머로 즉시 전환
+            this.clearTimers();
+            this.currentPickStartedAt = new Date().toISOString();
+        }
+
+        await supabase.from('rooms').update({ draft_cursor: this.getCursor() }).eq('id', this.roomId);
+        this.broadcastCursor();
+
+        if (this.status === 'active' && entry?.userId === targetUserId) {
+            this.scheduleNext();
+        }
+        return true;
     }
 
     isCompleted(): boolean {

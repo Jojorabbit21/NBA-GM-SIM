@@ -33,6 +33,8 @@ export interface DraftCursor {
     /** waiting 상태에서는 아직 픽이 시작되지 않았으므로 null */
     currentPickStartedAt: string | null;
     pausedAt?: string;
+    /** 오토픽 모드인 userId 목록 — 메모리 전용 상태(서버 재시작 시 리셋, DB 영속화 안 함) */
+    autoPickUserIds: string[];
 }
 
 export interface DraftConfig {
@@ -69,11 +71,17 @@ export interface SubmitPickMsg {
     playerId: string;
 }
 
-/** 어드민 액션 (pause/resume/reset-timer/skip-turn/autocomplete/rollback) */
+/** 어드민 액션 (pause/resume/reset-timer/skip-turn/autocomplete/rollback/toggle-autopick) */
 export interface AdminMsg {
     type: 'admin';
-    action: 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback';
-    params?: { targetPickIndex?: number };
+    action: 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback' | 'toggle-autopick';
+    params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean };
+}
+
+/** 본인 팀 오토픽 모드 on/off (어드민 권한 불필요, 본인 userId에만 적용) */
+export interface ToggleAutoPickMsg {
+    type: 'toggleAutoPick';
+    enabled: boolean;
 }
 
 /** Heartbeat */
@@ -81,7 +89,7 @@ export interface PingMsg {
     type: 'ping';
 }
 
-export type ClientMsg = AuthMsg | SubmitPickMsg | AdminMsg | PingMsg;
+export type ClientMsg = AuthMsg | SubmitPickMsg | AdminMsg | ToggleAutoPickMsg | PingMsg;
 
 // ── 서버 → 클라이언트 ─────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
+import { Loader2, GripHorizontal, ChevronLeft, Bot } from 'lucide-react';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
@@ -79,8 +79,10 @@ const MultiDraftView: React.FC = () => {
     const {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
-        submitPick, isSubmitting, sendAdmin,
+        submitPick, isSubmitting, sendAdmin, toggleAutoPick,
     } = useLeagueDraft(room?.id ?? null, session);
+
+    const myAutoPick = !!(userId && draftState?.autoPickUserIds?.includes(userId));
 
     const onlineUserIds = useDraftPresence(room?.id ?? null, userId);
 
@@ -358,8 +360,8 @@ const MultiDraftView: React.FC = () => {
     return (
         <div ref={containerRef} className="pretendard flex flex-col h-screen bg-slate-950">
 
-            {/* ── 로비 복귀 버튼 ── */}
-            <div className="shrink-0 flex items-center px-3 h-8 bg-slate-900/80 border-b border-slate-800/60">
+            {/* ── 로비 복귀 버튼 + 내 오토픽 토글 ── */}
+            <div className="shrink-0 flex items-center justify-between px-3 h-8 bg-slate-900/80 border-b border-slate-800/60">
                 <button
                     onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
                     className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-200 transition-colors"
@@ -367,6 +369,19 @@ const MultiDraftView: React.FC = () => {
                     <ChevronLeft size={13} />
                     <span className="ko-normal">로비</span>
                 </button>
+                {myTeamId && (
+                    <button
+                        onClick={() => toggleAutoPick(!myAutoPick)}
+                        className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                            myAutoPick
+                                ? 'bg-indigo-600/60 text-indigo-200 hover:bg-indigo-600/80'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                        }`}
+                    >
+                        <Bot size={12} />
+                        <span className="ko-normal">{myAutoPick ? '내 오토픽 켜짐 · 끄기' : '내 오토픽 켜기'}</span>
+                    </button>
+                )}
             </div>
 
             {/* ── 어드민 패널 (admin_user_id 일치 시만 표시) ── */}

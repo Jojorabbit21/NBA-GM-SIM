@@ -17,7 +17,7 @@ import { verifyToken } from './auth';
 import { RoomManager } from './RoomManager';
 import { startScheduler } from './scheduler';
 import { handleStartDraft, handleRunLottery } from './startDraft';
-import { runSimulation } from './simRunner';
+import { simWorkerPool } from './workers/simWorkerPool';
 import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
@@ -121,6 +121,15 @@ async function handleMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
         // ── submitPick ──────────────────────────────────────────────────────
         if (msg.type === 'submitPick') {
             await room.handleSubmitPick(ws.data.userId, msg.playerId, ws);
+            return;
+        }
+
+        // ── toggleAutoPick (본인 팀만, 어드민 권한 불필요) ────────────────────
+        if (msg.type === 'toggleAutoPick') {
+            const ok = await room.setAutoPick(ws.data.userId, msg.enabled);
+            if (!ok) {
+                ws.send(encode({ type: 'error', code: 'internal', message: 'not a draft participant' }));
+            }
             return;
         }
 
@@ -249,7 +258,7 @@ async function handleSimOverride(req: Request): Promise<Response> {
     if (league.admin_user_id !== userId) return json({ error: 'Forbidden' }, 403);
 
     // 관리자 수동 시뮬 오버라이드는 항상 "지금 바로 시작"으로 처리 (원래 예정 시각 무시)
-    const result = await runSimulation(roomId, gameId, true);
+    const result = await simWorkerPool.runSimulationInWorker(roomId, gameId, true);
     return json(result, result.ok ? 200 : 500);
 }
 
@@ -405,6 +414,10 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
 await preloadGameConfig().catch(err => {
     console.error('[index] preloadGameConfig failed, falling back to hardcoded weights:', err);
 });
+
+// 경기 시뮬레이션 워커 풀 — runFullGameSimulation()의 동기 연산이 메인 스레드 이벤트 루프를
+// 막지 않도록 별도 OS 스레드에서 실행한다 (docs/plan/worker-thread-sim-plan.md)
+await simWorkerPool.init();
 
 startScheduler();
 
