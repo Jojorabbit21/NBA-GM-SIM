@@ -180,9 +180,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'Putback':       0.10, // Tip-in rarely credited
             };
             const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
-            // [SaveTendency] playStyle: pass-first(-1.0) → +10% assist prob, shoot-first(+1.0) → -10%
-            const assistMod = (assister.tendencies?.playStyle ?? 0) * -0.10;
-            if (Math.random() < prob + assistMod) assister.ast += 1;
+            if (Math.random() < prob) assister.ast += 1;
         }
 
         // Update Team Score

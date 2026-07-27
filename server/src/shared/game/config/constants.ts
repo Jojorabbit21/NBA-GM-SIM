@@ -508,6 +508,11 @@ export const SIM_CONFIG = {
         ZONE_PREF_THRESHOLD: 0.15,  // 이 값 미만의 zonePref는 selectZone에서 후보 제거가 아니라 ×0.2 가중치 페널티
         SLIDER_SENSITIVITY: 0.5,    // 전술 슬라이더가 존 선택 비중을 흔드는 폭 (0=슬라이더 무효, 1=슬라이더 최대 2배/0배)
     },
+    // Play Selection: pickWeightedActor의 역할(슈터/패서) 기반 playStyle 배율
+    PLAY_SELECTION: {
+        PLAYSTYLE_SHOOTER_K: 0.25,  // 슈터 픽: weight *= (1 + ps*K) — 슛선호(+)일수록 액터로 더 자주
+        PLAYSTYLE_PASSER_K: 0.25,   // 패서 픽: weight *= (1 - ps*K) — 패스선호(-)일수록 패서로 더 자주
+    },
     FOUL_TROUBLE: {
         PROB_MOD: {
             3: 0.85,

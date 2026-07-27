@@ -140,7 +140,11 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
     const optionRanks = getTeamOptionRanks(team);
 
-    const pickWeightedActor = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
+    const pickWeightedActor = (
+        criteria: (p: LivePlayer) => number,
+        excludeId?: string,
+        role: 'shooter' | 'passer' = 'shooter'
+    ) => {
         let pool = players;
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
 
@@ -154,12 +158,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
             weight *= (p.tendencies?.ballDominance ?? 1.0);
 
+            // [SaveTendency] playStyle: role 기반 통합 배율 (슈터 vs 패서)
             const ps = p.tendencies?.playStyle ?? 0;
-            if (playType === 'Iso' || playType === 'PostUp') {
-                weight *= (1 + ps * 0.3);
-            } else if (playType === 'PnR_Handler' || playType === 'Handoff') {
-                weight *= (1 - ps * 0.2);
-            }
+            const psCfg = SIM_CONFIG.PLAY_SELECTION;
+            weight *= role === 'shooter' ? (1 + ps * psCfg.PLAYSTYLE_SHOOTER_K) : (1 - ps * psCfg.PLAYSTYLE_PASSER_K);
 
             return { p, weight: Math.max(0.01, weight) };
         });
@@ -186,7 +188,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
     const pickPasser = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
         return pickWeightedActor(
             p => criteria(p) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
-            excludeId
+            excludeId,
+            'passer'
         );
     };
 
@@ -206,7 +209,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'PnR_Handler': {
             const actor = pickWeightedActor(p => p.archetypes.handler);
-            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
+            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer');
 
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (zone === 'Rim' || zone === 'Paint') {
@@ -264,7 +267,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'Handoff': {
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
-            const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
+            const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
 
             const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (hoZone === 'Rim' || hoZone === 'Paint') {

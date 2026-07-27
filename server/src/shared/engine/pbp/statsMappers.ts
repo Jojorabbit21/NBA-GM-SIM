@@ -117,8 +117,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'PostUp': 0.55, 'PnR_Handler': 0.50, 'Iso': 0.38, 'Putback': 0.10,
             };
             const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
-            const assistMod = (assister.tendencies?.playStyle ?? 0) * -0.10;
-            if (Math.random() < prob + assistMod) assister.ast += 1;
+            if (Math.random() < prob) assister.ast += 1;
         }
 
         offTeam.score += points;

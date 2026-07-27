@@ -511,7 +511,7 @@ export const updateTeamProfile = async (
     return { data: data as LeagueTeamRow, error: null };
 };
 
-// ─── 탈퇴 (room_members + 팀 반환) ────────────────────────────────────────────
+// ─── 탈퇴 (release_team RPC가 팀 반환 + room_members 삭제를 원자적으로 처리) ────
 
 export const leaveLeague = async (
     roomId: string,
@@ -521,15 +521,7 @@ export const leaveLeague = async (
     if (leagueStatus && leagueStatus !== 'recruiting') {
         return { error: '세션이 시작된 후에는 탈퇴할 수 없습니다.' };
     }
-    // 팀 반환
-    await releaseTeam(roomId, userId);
-    // room_members 삭제
-    const { error } = await supabase
-        .from('room_members')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', userId);
-    return { error: error?.message ?? null };
+    return releaseTeam(roomId, userId);
 };
 
 // ─── 리그 삭제 (어드민 전용) ──────────────────────────────────────────────────
