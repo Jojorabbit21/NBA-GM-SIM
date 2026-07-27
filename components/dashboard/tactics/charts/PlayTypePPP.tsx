@@ -115,8 +115,8 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                         {data.map(item => (
                             <div key={item.key} className="flex items-center gap-1.5 h-7">
                                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
-                                <span className="text-[10px] font-black text-white tabular-nums ml-auto">{item.distribution.toFixed(0)}%</span>
+                                <span className="text-[11px] font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
+                                <span className="text-[11px] font-black text-white tabular-nums ml-auto">{item.distribution.toFixed(0)}%</span>
                             </div>
                         ))}
                     </div>

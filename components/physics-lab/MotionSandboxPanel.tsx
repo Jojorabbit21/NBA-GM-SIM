@@ -4,6 +4,7 @@ import { Loader2, Play, Pause, Shuffle } from 'lucide-react';
 import { PhysicsCourtView } from '../game/PhysicsCourtView';
 import { PlayerSearchSelect } from './PlayerSearchSelect';
 import { SliderControl } from '../common/SliderControl';
+import { SliderGroupNotes } from '../common/SliderGroupNotes';
 import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
 import { useReelPlayback } from './useReelPlayback';
@@ -384,13 +385,17 @@ export const MotionSandboxPanel: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                    <h4 className="text-sm font-black text-white uppercase tracking-widest">게임 운영</h4>
-                    <SliderControl label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
-                        steps={SLIDER_STEPS.pace} tooltip="빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다." />
+                    <h4 className="text-sm font-black text-white uppercase tracking-widest">공격 철학</h4>
+                    <SliderControl label="페이스" value={sliders.pace} onChange={v => updateSlider('pace', v)}
+                        steps={SLIDER_STEPS.pace} />
                     <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
-                        steps={SLIDER_STEPS.ballMovement} tooltip="패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." />
+                        steps={SLIDER_STEPS.ballMovement} />
                     <SliderControl label="공격 리바운드" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
-                        steps={SLIDER_STEPS.offReb} tooltip="적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다." />
+                        steps={SLIDER_STEPS.offReb} />
+                    <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
+                        steps={SLIDER_STEPS.insideOut} />
+                    <SliderControl label="P&R 의존도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
+                        steps={SLIDER_STEPS.pnrFreq} />
                 </div>
 
                 <div className="h-px bg-slate-800" />
@@ -398,24 +403,23 @@ export const MotionSandboxPanel: React.FC = () => {
                 <div className="space-y-1">
                     <h4 className="text-sm font-black text-white uppercase tracking-widest">슈팅 전략</h4>
                     <SliderControl label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
-                        steps={SLIDER_STEPS.shot_3pt} tooltip="팀의 3점 시도 빈도를 결정합니다." />
+                        steps={SLIDER_STEPS.shot_3pt} />
                     <SliderControl label="골밑 공격 빈도" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
-                        steps={SLIDER_STEPS.shot_rim} tooltip="가장 효율적인 슛 구역으로, 드라이브/컷 능력과 연계됩니다." />
+                        steps={SLIDER_STEPS.shot_rim} />
                     <SliderControl label="중거리 슛 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
-                        steps={SLIDER_STEPS.shot_mid} tooltip="중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요." />
+                        steps={SLIDER_STEPS.shot_mid} />
                 </div>
 
-                <div className="h-px bg-slate-800" />
-
-                <div className="space-y-1">
-                    <h4 className="text-sm font-black text-white uppercase tracking-widest">코칭 철학</h4>
-                    <SliderControl label="공격 스타일" value={sliders.playStyle} onChange={v => updateSlider('playStyle', v)}
-                        steps={SLIDER_STEPS.playStyle} tooltip="히어로 볼은 스타 선수의 1:1 창조력에 의존합니다. 시스템 농구는 팀 전체의 패싱/무빙으로 오픈 슛을 만듭니다." />
-                    <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
-                        steps={SLIDER_STEPS.insideOut} tooltip="인사이드는 페인트존 공격(포스트업, 컷, 롤)을 강조합니다. 아웃사이드는 외곽 슈팅(캐치앤슛, 팝, 드라이브킥)을 강조합니다." />
-                    <SliderControl label="P&R 의존도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
-                        steps={SLIDER_STEPS.pnrFreq} tooltip="높을수록 픽앤롤 관련 플레이(핸들러, 롤, 팝) 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적." />
-                </div>
+                <SliderGroupNotes notes={[
+                    { label: '페이스', text: '빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다.' },
+                    { label: '볼 회전', text: '패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다.' },
+                    { label: '공격 리바운드', text: '적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다.' },
+                    { label: '공격 포인트', text: '인사이드는 페인트존 공격(포스트업, 컷, 롤)을 강조합니다. 아웃사이드는 외곽 슈팅(캐치앤슛, 팝, 드라이브킥)을 강조합니다.' },
+                    { label: 'P&R 의존도', text: '높을수록 픽앤롤 관련 플레이(핸들러, 롤, 팝) 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적.' },
+                    { label: '3점 슛 빈도', text: '팀의 3점 시도 빈도를 결정합니다.' },
+                    { label: '골밑 공격 빈도', text: '가장 효율적인 슛 구역으로, 드라이브/컷 능력과 연계됩니다.' },
+                    { label: '중거리 슛 빈도', text: '중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요.' },
+                ]} />
             </div>
         </div>
     );

@@ -20,7 +20,7 @@ import type { TacticalSliders } from './shared/types/tactics';
 // 사람 팀/싱글플레이어 CPU는 영향받지 않음(generateAutoTactics()의 기본 계산 결과를 그대로 씀).
 const MIDDLE_SLIDERS: TacticalSliders = {
     pace: 5, ballMovement: 5, offReb: 5,
-    playStyle: 5, insideOut: 5, pnrFreq: 5,
+    insideOut: 5, pnrFreq: 5,
     shot_3pt: 5, shot_mid: 5, shot_rim: 5,
     defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 5,
     fullCourtPress: 5, zoneUsage: 5,

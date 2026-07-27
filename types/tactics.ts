@@ -18,7 +18,6 @@ export interface TacticalSliders {
     offReb: number;        // 1-10: Crash glass vs Get back
 
     // B. Coaching Philosophy (abstract sliders → 10 play type weights)
-    playStyle: number;     // 2=히어로 볼, 5=밸런스, 9=시스템 농구
     insideOut: number;     // 2=인사이드, 5=밸런스, 9=아웃사이드
     pnrFreq: number;       // 2=P&R 낮음, 5=보통, 9=P&R 높음
 

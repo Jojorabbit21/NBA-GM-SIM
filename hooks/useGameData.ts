@@ -505,13 +505,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         if (!tactics.playerTactics) {
                             tactics.playerTactics = {};
                         }
-                        if (tactics.sliders && 'play_pnr' in tactics.sliders && !('playStyle' in tactics.sliders)) {
+                        if (tactics.sliders && 'play_pnr' in tactics.sliders) {
                             const { play_pnr = 5, play_iso = 5, play_post = 5, play_cns = 5, play_drive = 5, ...rest } = tactics.sliders as any;
-                            const heroInd = (play_iso + play_post) / 2;
-                            const sysInd = (play_cns + play_drive) / 2;
                             tactics.sliders = {
                                 ...rest,
-                                playStyle: Math.max(1, Math.min(10, Math.round(5 + (sysInd - heroInd) * 0.5))),
                                 insideOut: Math.max(1, Math.min(10, Math.round(5 + (play_cns - play_post) * 0.5))),
                                 pnrFreq: play_pnr,
                             };

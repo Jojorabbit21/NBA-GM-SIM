@@ -346,26 +346,40 @@ helperDrainMult = 1.10 + (helpDef - 1) * (0.15 / 9)   // 1단계 ×1.10 ~ 10단�
 if Random < pace * 0.03:  // pace=5 → 15%
   playType = 'Transition'
 
-// 아니면 3개 추상 슬라이더 → 10개 하프코트 플레이타입 가중 랜덤 선택
+// 3개 추상 슬라이더 → 10개 하프코트 플레이타입 가중 랜덤 선택
 // playTypeProfiles.ts:computePlayTypeWeights(sliders)
-weight(pt) = max(0.5, base + hero×heroFactor + inside×insideFactor + pnr×pnrFactor)
-  heroFactor   = (5 - playStyle) / 5
+weight(pt) = max(0.5, base + inside×insideFactor + pnr×pnrFactor + bm×bmFactor)
   insideFactor = (5 - insideOut) / 5
   pnrFactor    = (pnrFreq - 5) / 5
+  bmFactor     = (ballMovement - 5) / 5
 
 PLAY_TYPE_PROFILES:
-  | 플레이타입      | base | hero  | inside | pnr  |
-  |---------------|------|-------|--------|------|
-  | Iso           | 2.0  | +3.0  |  0.0   | 0.0  |
-  | PostUp        | 1.5  | +1.5  | +2.5   | 0.0  |
-  | PnR_Handler   | 3.0  | +1.0  |  0.0   | +3.0 |
-  | PnR_Roll      | 1.5  |  0.0  | +1.5   | +2.0 |
-  | PnR_Pop       | 1.0  |  0.0  | -1.5   | +2.0 |
-  | CatchShoot    | 3.5  | -2.5  | -2.0   | 0.0  |
-  | OffBallScreen | 1.5  | -1.5  | -1.0   | 0.0  |
-  | DriveKick     | 2.5  | -1.5  | -1.0   | 0.0  |
-  | Cut           | 2.0  | -0.5  | +1.5   | 0.0  |
-  | Handoff       | 1.5  | -1.0  |  0.0   | 0.0  |
+  | 플레이타입      | base | inside | pnr  | bm   |
+  |---------------|------|--------|------|------|
+  | Iso           | 2.0  |  0.0   | 0.0  | -2.0 |
+  | PostUp        | 1.5  | +2.5   | 0.0  | -1.0 |
+  | PnR_Handler   | 3.0  |  0.0   | +3.0 |  0.0 |
+  | PnR_Roll      | 1.5  | +1.5   | +2.0 |  0.0 |
+  | PnR_Pop       | 1.0  | -1.5   | +2.0 |  0.0 |
+  | CatchShoot    | 3.5  | -2.0   | 0.0  | +2.0 |
+  | OffBallScreen | 1.5  | -1.0   | 0.0  | +1.5 |
+  | DriveKick     | 2.5  | -1.0   | 0.0  | +2.0 |
+  | Cut           | 2.0  | +1.5   | 0.0  | +1.5 |
+  | Handoff       | 1.5  |  0.0   | 0.0  | +1.0 |
+
+// [2026-07 신규] ballMovement가 이름과 달리 플레이타입 선택에 전혀 관여하지 않던 문제 수정.
+// PnR 계열은 pnrFreq 전용 다이얼 유지를 위해 bm=0(중복 조정 방지).
+// 다른 슬라이더 중립(5) 고정 기준 실측 — CatchShoot 선택확률:
+//   ballMovement=1  → 11.73%
+//   ballMovement=5  → 17.50%
+//   ballMovement=10 → 21.57% (중립 대비 +4.07%p, 최저 대비 +9.84%p)
+// Iso/PostUp은 ballMovement=10에서 하한(0.5)까지 하락.
+
+// [2026-07 playStyle 제거] `playStyle`(Hero↔System) 슬라이더는 heroFactor로 Iso/PostUp/PnR_Handler를
+// 증가시키고 CatchShoot 등을 감소시키는 축이었는데, ballMovement의 bmFactor가 정반대 방향으로
+// 정확히 같은 플레이타입군(10개 중 7개)을 움직여 사실상 같은 축의 중복 표현이었음("히어로볼=패스
+// 안 돌림"이라는 개념 자체가 겹침). 유일한 차이(PnR_Handler)는 pnrFreq가 이미 전담하고 있어 중복
+// 슬라이더로 판단, playStyle을 코칭 철학 카테고리에서 완전히 제거하고 heroFactor/hero 계수 삭제.
 
 // Star Gravity: 1옵션 에이스가 코트에 있으면 Hero 플레이 비중 증가
 gravityBoost = min(0.30, max(0, (topGravity - 65) * 0.015))
@@ -726,9 +740,9 @@ resolveRebound(homeTeam, awayTeam, shooterId)
       → 경기당 9~12 리바운드 (기존 winner-take-all: 18~19)
 ```
 
-### 수비 리바운드(`defReb`) 속공 트레이드오프 **[2026-07 신규]**
+### 수비/공격 리바운드(`defReb`/`offReb`) 속공 트레이드오프 **[2026-07 신규]**
 
-`defReb`는 원래 `calculateOrbChance()`의 `sliderAdj` 한 곳에만 관여해 낮출 이점이 없는 순수 페널티 슬라이더였음. "리바운드에 인원을 덜 투입하고 먼저 뛰쳐나간다"는 현실 논리로 속공 전환 보너스 + 체력 대가를 추가.
+`defReb`는 원래 `calculateOrbChance()`의 `sliderAdj` 한 곳에만 관여해 낮출 이점이 없는 순수 페널티 슬라이더였음. "리바운드에 인원을 덜 투입하고 먼저 뛰쳐나간다"는 현실 논리로 속공 전환 보너스 + 체력 대가를 추가. `offReb`도 같은 맥락에서 "크래시 대신 백코트" 트레이드오프를 대칭적으로 추가.
 
 **전제**: `GameState.lastEntryWasDefReb` — 직전 포제션이 **우리 팀의 수비 리바운드**로 끝났을 때만 true(`liveEngine.ts`에서 포제션 전환 시 `result.type === 'miss' && !isOffReb`로 세팅). 상대 인바운드/우리 스틸 등은 해당 없음.
 
@@ -737,9 +751,12 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 freqBonus = lastEntryWasDefReb && defReb<5 ? (5-defReb) × (15%p/4) : 0
 transitionChance = pace × 0.03 + freqBonus
 
-// B. 성공률 보너스 — Transition 슛 hitRate (상대 offReb≥7만, bonusHitRate 합산)
-successBonus = lastEntryWasDefReb && playType==='Transition' && 상대offReb≥7
-             ? (상대offReb-7) × (5%p/3) : 0
+// B. 성공률 보너스/페널티 — Transition 슛 hitRate (bonusHitRate 합산)
+// 상대(방금 슛 쏜 팀)의 offReb 기준 — 크래시 하드(≥7)면 보너스, 백코트 전념(<5)이면 페널티
+if lastEntryWasDefReb && playType==='Transition':
+  상대offReb≥7: bonus = (상대offReb-7) × (5%p/3)   // 최대 +5%p
+  상대offReb<5: penalty = -(5-상대offReb) × (5%p/4) // 최대 -5%p [2026-07 신규 확장]
+  5~6: 0 (중립 구간)
 
 // C. 체력 페널티 — 매 포제션 상시(fatigueSystem.ts, 우리 defReb<5만, 팀 전체 균일)
 fatiguePenalty = defReb<5 ? (5-defReb) × (1.5%p/4) : 0
@@ -754,12 +771,17 @@ drain × (1 + fatiguePenalty/100)
 | 4 | +3.75%p | +0.375%p |
 | 5~10 | 0.00%p | 0.000%p |
 
-| 상대 offReb | 성공률 보너스(B) |
+| 상대 offReb (B, 대칭) | Transition hitRate 효과 |
 |---|---|
+| 1 | **-5.00%p** (백코트 전념) |
+| 2 | -3.75%p |
+| 3 | -2.50%p |
+| 4 | -1.25%p |
+| 5~6 | 0.00%p (중립 구간) |
 | 7 | 0.00%p |
 | 8 | +1.67%p |
 | 9 | +3.33%p |
-| 10 | +5.00%p |
+| 10 | **+5.00%p** (크래시 하드) |
 
 ### 8단계: 자유투 (statsMappers.ts)
 
@@ -1445,9 +1467,8 @@ pressEffectiveness = 1 - (zoneFreq - 1) × (0.5/9)
 
 | 슬라이더 | 범위 | 영향 |
 |---------|------|------|
-| `pace` | 1-10 | 포세션 시간 (pace=1: 20초, pace=10: 11초), Transition 확률 (×3%), hitRate 페널티 (>5: -(pace-5)×1% 단계별) |
-| `ballMovement` | 1-10 | TOV 확률 (+0.4% per step above 5) |
-| `playStyle` | 0-10 | 코칭 스타일: Hero(0) ↔ System(10). computePlayTypeWeights에서 Iso/PnR_Handler 비중 조정 |
+| `pace` | 1-10 | 포세션 시간 (pace=1: 20초, pace=10: 11초), Transition 확률 (×3%), hitRate 페널티 (>5: -(pace-5)×1% 단계별), 샷클락 위반 위험(<5: +(5-pace)×0.1%p). **[2026-07 신규]** 체력 소모: 5단계 미만 없음, 5단계 +5% ~ 10단계 +15% 선형(`fatigue-system.md` "4.8" 참고) |
+| `ballMovement` | 1-10 | TOV 확률(+0.4%p per step above 5, passVision 완화), 샷클락 위반(전 구간 +0.08%p/step). **[2026-07 신규]** 플레이타입 선택 가중치의 팩터로 추가 — 높을수록 Iso/PostUp 감소, CatchShoot/DriveKick/Cut/OffBallScreen/Handoff 증가(PnR 계열은 미적용). "3단계: 플레이타입 선택" 참고. **[2026-07]** 기존 `playStyle`(Hero↔System)이 담당하던 축과 완전히 겹쳐 `playStyle` 슬라이더 자체를 제거 — 이제 이 축은 ballMovement가 전담 |
 | `insideOut` | 0-10 | Inside(0) ↔ Outside(10). PostUp/PnR_Roll vs CatchShoot/OffBallScreen/DriveKick 비중 |
 | `pnrFreq` | 0-10 | PnR 빈도: Low(0) ↔ High(10). PnR_Handler/PnR_Roll/PnR_Pop 비중 조정 |
 | `shot_3pt` | 1-10 | 3PT 존 가중치 (selectZone 30% 반영) |
@@ -1459,7 +1480,7 @@ pressEffectiveness = 1 - (zoneFreq - 1) × (0.5/9)
 | `fullCourtPress` | 1-10 | **[2026-07-26 재설계]** 체력 소모(1단계 0% ~ 10단계 +15%, 기존 45%에서 하향), 온볼 스틸(1단계 0%p ~ 10단계 +1.5%p), 패싱레인 스틸(1단계 0%p ~ 10단계 +0.75%p, 헬퍼별 개별 적용), 비강제턴오버 유발(1단계 0%p ~ 10단계 +2.5%p), 샷클락 위반 유도(1단계 0%p ~ 10단계 +1.0%p) — 전부 `(fullCourtPress-1)` 기준 1단계=0(효과 없음), 체력을 대가로 지불하는 하이리스크 하이리턴 구조(defIntensity에서 이전) |
 | `zoneFreq` | 1-10 | 존 수비 발동 확률 (×8%), C/PF 앵커 수비. **[2026-07-26]** 존 중 PnR은 항상 Drop 커버리지 고정(pnrDefense 무효화), fullCourtPress 효과를 최대 50%까지 감쇠(1단계 100%~10단계 50%) |
 | `zoneUsage` | 1-10 | **[2026-07-26 전면 재설계]** "골밑 몰빵 정도" — 인테리어(Rim/Paint/Mid) FG% 억제(1단계 +1.2%p~10단계 -1.5%p)와 3점 오픈 보너스(1단계 0%p~10단계 +1.0%p)가 같은 방향으로 스케일링되는 진짜 트레이드오프. Iso/PostUp 존 페널티, Cut/CatchShoot/DriveKick 존 보너스, OffBallScreen 존 페널티도 이 슬라이더에 연동(자세한 내용은 "존 디펜스 재설계" 섹션) |
-| `offReb` | 1-10 | 공격 리바운더 가중치 보정, Putback 확률 |
+| `offReb` | 1-10 | 우리 ORB%(계수 0.012), 즉시 Putback 확률(0.15+offReb×0.02). **[2026-07 신규]** 우리가 슛 놓치고 상대가 수비 리바운드로 속공 시, 상대 Transition hitRate에 대칭 보너스/페널티(≥7: +5%p까지 보너스=크래시 하드, <5: -5%p까지 페널티=백코트 전념) — "수비/공격 리바운드 속공 트레이드오프" 참고 |
 | `defReb` | 1-10 | 상대 ORB% 억제(계수 0.012). **[2026-07 신규]** 5단계 미만이면 우리 수비 리바운드 직후 속공(Transition) 선택확률 보너스(최대 +15%p, 상대offReb≥7이면 성공률까지 최대 +5%p 추가) + 매 포제션 상시 체력 페널티(최대 +1.5%p) — "리바운드 대신 속공" 트레이드오프 |
 
 ### `defIntensity` 1~10단계별 수치표 **[2026-07-26]**

@@ -39,6 +39,12 @@ export function calculateIncrementalFatigue(
     const intensityFatigueMod = interpolateCurve(sliders.defIntensity, C.DEF_INTENSITY_CURVE);
     drain *= (1 - intensityFatigueMod / 100);
 
+    // [pace 체력 트레이드오프 2026-07 신규] 5단계 미만 페널티 없음, 5단계 +5% ~ 10단계 +15% 선형
+    if (sliders.pace >= C.PACE_FATIGUE_THRESHOLD) {
+        const paceFatiguePenalty = C.PACE_FATIGUE_BASE + (sliders.pace - C.PACE_FATIGUE_THRESHOLD) * C.PACE_FATIGUE_PER_LEVEL;
+        drain *= (1 + paceFatiguePenalty / 100);
+    }
+
     // [헬프디펜스 재설계] 헬프를 "시도"한 선수는 추가 체력 소모 (성공 여부 무관, 1단계 ×1.10 ~ 10단계 ×1.25)
     if (isHelpDefender) {
         const helpCfg = SIM_CONFIG.HELP_DEFENSE;

@@ -8,7 +8,7 @@ import { PREF_AXES, getAxisResult, PREF_ORDER, PrefKey } from '../../views/Coach
 
 // 코치 성향 → 슬라이더 매핑 (tacticGenerator.ts blendWithCoach 기반)
 const COACH_SLIDER_MAP: Record<PrefKey, (keyof TacticalSliders)[]> = {
-    offenseIdentity: ['playStyle', 'ballMovement'],
+    offenseIdentity: ['ballMovement'],
     tempo: ['pace', 'offReb'],
     scoringFocus: ['insideOut', 'shot_3pt', 'shot_rim'],
     pnrEmphasis: ['pnrFreq'],
@@ -30,7 +30,6 @@ const SLIDER_LABELS: Record<string, string> = {
     pace: '공격 페이스',
     ballMovement: '볼 무브먼트',
     offReb: '공격 리바운드',
-    playStyle: '공격 스타일',
     insideOut: '공격 포인트',
     pnrFreq: 'P&R 의존도',
     shot_3pt: '3점슛 비중',
@@ -47,9 +46,8 @@ const SLIDER_LABELS: Record<string, string> = {
 };
 
 const SLIDER_GROUPS: { label: string; keys: (keyof TacticalSliders)[] }[] = [
-    { label: '게임 운영', keys: ['pace', 'ballMovement', 'offReb'] },
+    { label: '공격 철학', keys: ['pace', 'ballMovement', 'offReb', 'insideOut', 'pnrFreq'] },
     { label: '슈팅 전략', keys: ['shot_3pt', 'shot_mid', 'shot_rim'] },
-    { label: '코칭 철학', keys: ['playStyle', 'insideOut', 'pnrFreq'] },
     { label: '온볼 수비', keys: ['defIntensity', 'switchFreq', 'pnrDefense', 'fullCourtPress'] },
     { label: '오프볼 수비', keys: ['helpDef', 'zoneFreq', 'defReb'] },
 ];

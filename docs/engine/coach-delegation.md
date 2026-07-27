@@ -54,7 +54,6 @@ const lerp = (a: number, b: number) => clamp(Math.round(a * (1 - W) + b * W));
 
 userTeam.tactics.sliders = {
     ...base,
-    playStyle:      lerp(base.playStyle,      coachPrefs.offenseIdentity),
     ballMovement:   lerp(base.ballMovement,   coachPrefs.offenseIdentity),
     pace:           lerp(base.pace,           coachPrefs.tempo),
     offReb:         lerp(base.offReb,         11 - coachPrefs.tempo),
@@ -76,7 +75,7 @@ userTeam.tactics.sliders = {
 
 | HeadCoachPreferences (1-10) | TacticalSliders 대상 |
 |---|---|
-| `offenseIdentity` | `playStyle`, `ballMovement` |
+| `offenseIdentity` | `ballMovement` (**[2026-07]** 구 `playStyle`은 제거됨 — ballMovement가 이 축을 전담) |
 | `tempo` | `pace`, `offReb` (역방향) |
 | `scoringFocus` | `insideOut`, `shot_3pt`, `shot_rim` (역방향) |
 | `pnrEmphasis` | `pnrFreq` |

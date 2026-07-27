@@ -5,7 +5,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
     Home, Users, ListOrdered, Calendar,
     GitPullRequestClosed, BarChart2,
-    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2,
+    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
@@ -114,6 +114,18 @@ export const MultiSidebar: React.FC = () => {
                     label="일정"
                     onClick={() => navigate(`${base}/schedule`)}
                 />
+
+                {isAdmin && (
+                    <>
+                        <Divider />
+                        <NavItem
+                            active={pathname.startsWith(`/multi/leagues/${leagueId}/admin/teams`)}
+                            icon={<Wrench />}
+                            label="어드민: 팀 관리"
+                            onClick={() => navigate(`/multi/leagues/${leagueId}/admin/teams`)}
+                        />
+                    </>
+                )}
             </nav>
 
             <div className="flex flex-col items-center gap-6 py-6 shrink-0 relative z-10">

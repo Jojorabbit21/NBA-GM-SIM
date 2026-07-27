@@ -353,7 +353,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     if (!isSecondChance) {
-        // 3개 추상 슬라이더 → 10개 하프코트 플레이타입 가중치 산출
+        // 3개 추상 슬라이더(insideOut/pnrFreq/ballMovement) → 10개 하프코트 플레이타입 가중치 산출
         const weights = computePlayTypeWeights(sliders);
 
         // Star Gravity: 1옵션의 공격력이 높을수록 Hero 플레이 비중 증가
@@ -836,13 +836,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 3PT 서브존 결정 (hitRate에 개별 능력치 적용 + 스탯 기록 일관성)
     const subZone = resolveDynamicZone(actor, preferredZone as 'Rim' | 'Paint' | 'Mid' | '3PT');
 
-    // [New 2026-07] defReb 속공 트레이드오프 B — 방금 우리 수비 리바운드로 시작된 Transition에서,
-    // 상대(방금 슛 쏜 팀)의 offReb가 높았다면(크래시 하드) 그만큼 상대 수비 전환이 늦어 더 쉬운 마무리
+    // [New 2026-07] defReb/offReb 속공 트레이드오프 B — 방금 우리 수비 리바운드로 시작된 Transition에서,
+    // 상대(방금 슛 쏜 팀)의 offReb에 따라 대칭적 보너스/페널티 부여.
+    // 상대offReb≥7(크래시 하드) → 수비 전환이 늦어 우리 속공에 보너스
+    // 상대offReb<5(백코트 전념) → 이미 수비가 준비돼 있어 우리 속공에 페널티
     const drtCfg2 = SIM_CONFIG.DEF_REB_TRANSITION;
-    const defRebSuccessBonus = (state.lastEntryWasDefReb && selectedPlayType === 'Transition' &&
-        defTeam.tactics.sliders.offReb >= drtCfg2.SUCCESS_THRESHOLD)
-        ? (defTeam.tactics.sliders.offReb - drtCfg2.SUCCESS_THRESHOLD) * drtCfg2.SUCCESS_BONUS_PER_LEVEL
-        : 0;
+    let defRebSuccessBonus = 0;
+    if (state.lastEntryWasDefReb && selectedPlayType === 'Transition') {
+        const oppOffReb = defTeam.tactics.sliders.offReb;
+        if (oppOffReb >= drtCfg2.SUCCESS_THRESHOLD) {
+            defRebSuccessBonus = (oppOffReb - drtCfg2.SUCCESS_THRESHOLD) * drtCfg2.SUCCESS_BONUS_PER_LEVEL;
+        } else if (oppOffReb < drtCfg2.RETREAT_THRESHOLD) {
+            defRebSuccessBonus = -(drtCfg2.RETREAT_THRESHOLD - oppOffReb) * drtCfg2.RETREAT_PENALTY_PER_LEVEL;
+        }
+    }
 
     const shotContext = calculateHitRate(
         actor, defender, defTeam,

@@ -25,7 +25,6 @@ const driverScore   = (p: Player) => p.speed * 0.20 + p.agility * 0.15 + p.verti
 const screenerScore = (p: Player) => p.strength * 0.40 + Math.max(0, p.height - 185) * 3 * 0.30 + Math.max(0, p.weight - 80) * 1.6 * 0.30;
 const rollerScore   = (p: Player) => p.ins * 0.40 + p.vertical * 0.30 + p.speed * 0.30;
 const postScore     = (p: Player) => p.ins * 0.50 + p.strength * 0.30 + p.hands * 0.20;
-const isoScore      = (p: Player) => p.handling * 0.25 + p.midRange * 0.25 + p.speed * 0.25 + p.agility * 0.25;
 const rimProtScore  = (p: Player) => p.blk * 0.35 + p.intDef * 0.35 + p.vertical * 0.15 + Math.max(0, p.height - 185) * 3 * 0.15;
 const perimLockScore = (p: Player) => p.perDef * 0.50 + p.agility * 0.25 + p.steal * 0.25;
 
@@ -41,7 +40,6 @@ function blendWithCoach(
     const W = COACH_INFLUENCE;
     return {
         ...sliders,
-        playStyle:    snap('playStyle',    lerp(sliders.playStyle,    prefs.offenseIdentity, W)),
         ballMovement: snap('ballMovement', lerp(sliders.ballMovement, prefs.offenseIdentity, W)),
         pace:   snap('pace',   lerp(sliders.pace,   prefs.tempo, W)),
         offReb: snap('offReb', lerp(sliders.offReb, 11 - prefs.tempo, W)),
@@ -232,14 +230,6 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     let offReb = ato(bigRebAvg, 65, 90);
     if (pace >= 8) offReb = clamp(offReb - 2);
 
-    const heroInd = (maxOf(isoScore) + maxOf(postScore)) / 2;
-    const sysInd = (avgOf(spacerScore) + avgOf(driverScore)) / 2;
-    let playStyle = clamp(Math.round(5 + (sysInd - heroInd) * 0.15));
-
-    const topPassVision = maxOf(p => p.passVision);
-    if (topPassVision >= 88) playStyle = clamp(playStyle + 2);
-    else if (topPassVision >= 82) playStyle = clamp(playStyle + 1);
-
     const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
     const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
     const insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15));
@@ -271,7 +261,6 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
         pace: snap('pace', pace),
         ballMovement: snap('ballMovement', ballMovement),
         offReb: snap('offReb', offReb),
-        playStyle: snap('playStyle', playStyle),
         insideOut: snap('insideOut', insideOut),
         pnrFreq: snap('pnrFreq', pnrFreq),
         shot_3pt: snap('shot_3pt', shot_3pt),

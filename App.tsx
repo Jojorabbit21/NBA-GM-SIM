@@ -39,6 +39,7 @@ import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
 import AdminSimView from './views/multi/league/AdminSimView';
+import AdminTeamEditorView from './views/multi/league/AdminTeamEditorView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -375,6 +376,7 @@ const App: React.FC = () => {
                             <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
                             <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
                             <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+                            <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
                             <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
                                 <Route index element={<MultiSeasonPage />} />
                                 <Route path="roster"       element={<MultiRosterView />} />

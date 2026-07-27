@@ -47,9 +47,8 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 | 슬라이더 | 산출 방식 |
 |---------|----------|
 | `pace` | 가드 평균 speed → stamina 낮으면 -2 |
-| `ballMovement` | plm + passVision 평균 |
+| `ballMovement` | plm + passVision 평균. **[2026-07]** 플레이타입 가중치도 겸함(구 `playStyle` 역할 흡수 — 아래 참고) |
 | `offReb` | 빅맨 reb 평균 → 하이페이스면 -2 |
-| `playStyle` | 히어로 볼(2) ↔ 시스템 농구(9) — heroScore vs systemScore 비교 |
 | `insideOut` | 인사이드(2) ↔ 아웃사이드(9) — insideScore vs outsideScore 비교 |
 | `pnrFreq` | P&R 의존도 낮음(2) ↔ 높음(9) — handler+screener+roller 복합 |
 | `shot_3pt` | avgOf(3pt), `shot_rim`, `shot_mid` |
@@ -63,12 +62,14 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 | `fullCourtPress` | 가드 stamina×speed 평균 (88+→8, 82+→4, else→1) |
 | `zoneFreq` | 내선 vs 외곽 수비력 차이 |
 
-**코칭 철학 슬라이더**: 3개 추상 슬라이더가 내부적으로 10개 하프코트 플레이타입 가중치를 자동 산출:
-- `playStyle` (2~9): 히어로 볼 ↔ 시스템 농구
+**코칭 철학 슬라이더**: 3개 추상 슬라이더(`insideOut`/`pnrFreq`/`ballMovement`)가 내부적으로 10개 하프코트 플레이타입 가중치를 자동 산출:
 - `insideOut` (2~9): 인사이드 ↔ 아웃사이드
 - `pnrFreq` (2~9): P&R 의존도 낮음 ↔ 높음
+- `ballMovement` (1~10): 볼 정체(Iso 위주) ↔ 볼 운영(패스 위주) — **[2026-07]** 구 `playStyle`(Hero↔System) 제거 후 이 축을 전담
 - 가중치 산출: `computePlayTypeWeights(sliders)` (`playTypeProfiles.ts`)
 - 10개 플레이타입: Iso, PostUp, PnR_Handler, PnR_Roll, PnR_Pop, CatchShoot, OffBallScreen, DriveKick, Cut, Handoff
+
+**[2026-07] `playStyle` 슬라이더 제거**: 원래 Hero(0)↔System(10) 축으로 Iso/PostUp/PnR_Handler를 늘리고 CatchShoot 등을 줄이는 역할이었는데, `ballMovement`의 플레이타입 가중치 효과(같은 세션에서 추가)가 정확히 같은 10개 플레이타입 중 7개를 반대 방향으로 움직여 사실상 같은 축의 중복이었음("히어로볼 = 패스 안 돌림"이라는 개념 자체가 겹침). 유일하게 안 겹치던 PnR_Handler는 `pnrFreq`가 이미 전담하고 있어 중복 슬라이더로 판단 후 완전히 제거. CPU 자동 생성 로직(heroInd/sysInd/엘리트 플레이메이커 보정)과 코치 위임 블렌딩(`offenseIdentity` → `ballMovement`만 남음)도 함께 정리됨.
 
 **NBA 전술 철학 반영**:
 - 풀코트 프레스 = 극도 체력 소모 → 보수적
@@ -78,7 +79,7 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 ## tacticPresets.ts — `DEFAULT_SLIDERS`
 
 모든 슬라이더 5 (중립) + fullCourtPress=1, zoneUsage=5, pnrDefense=1
-코칭 철학: playStyle=5, insideOut=5, pnrFreq=5 (밸런스)
+코칭 철학: insideOut=5, pnrFreq=5 (밸런스)
 
 ---
 

@@ -18,7 +18,6 @@ export interface TacticalSliders {
     offReb: number;
 
     // B. Coaching Philosophy
-    playStyle: number;
     insideOut: number;
     pnrFreq: number;
 

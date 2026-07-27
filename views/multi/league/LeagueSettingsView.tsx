@@ -79,6 +79,9 @@ const LeagueSettingsView: React.FC = () => {
     const isInProgress = league?.status === 'in_progress';
 
     // ── form state ────────────────────────────────────────────────────────────
+    const [nameInput,    setNameInput]    = useState('');
+    const [savingName,   setSavingName]   = useState(false);
+    const [saveNameErr,  setSaveNameErr]  = useState<string | null>(null);
     const [lotteryAt,         setLotteryAt]         = useState('');
     const [draftAt,           setDraftAt]           = useState('');
     const [tournamentStartAt, setTournamentStartAt] = useState('');
@@ -125,6 +128,7 @@ const LeagueSettingsView: React.FC = () => {
         if (!league) return;
         if (initializedLeagueIdRef.current === league.id) return;
         initializedLeagueIdRef.current = league.id;
+        setNameInput(league.name);
         setLotteryAt(toInputValue(league.lottery_scheduled_at));
         setDraftAt(toInputValue(league.draft_scheduled_at));
         setTournamentStartAt(toInputValue((league as any).tournament_start_at));
@@ -176,6 +180,18 @@ const LeagueSettingsView: React.FC = () => {
     const regularDays = REGULAR_DAYS[durationWeeks - 1];
     const gameDaysPerDay = GAME_DAYS_PER_DAY[durationWeeks - 1];
     const lastSlotKst = `${10 + Math.floor((gameDaysPerDay - 1) * 30 / 60)}:${String(((gameDaysPerDay - 1) * 30) % 60).padStart(2, '0')}`;
+
+    const handleSaveName = async () => {
+        if (!leagueId) return;
+        const trimmed = nameInput.trim();
+        if (!trimmed || trimmed === league?.name) return;
+        setSavingName(true);
+        setSaveNameErr(null);
+        const { error: err } = await updateLeagueSettings({ leagueId, name: trimmed });
+        setSavingName(false);
+        if (err) { setSaveNameErr(err); return; }
+        reload();
+    };
 
     const handleSave = async () => {
         if (!leagueId) return;
@@ -306,8 +322,29 @@ const LeagueSettingsView: React.FC = () => {
             </button>
 
             <div>
-                <h1 className="text-xl font-black text-white ko-tight">{league.name}</h1>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="text"
+                        value={nameInput}
+                        onChange={e => setNameInput(e.target.value)}
+                        maxLength={40}
+                        className="text-xl font-black text-white ko-tight bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none transition-colors flex-1 min-w-0"
+                    />
+                    {nameInput.trim() && nameInput.trim() !== league.name && (
+                        <button
+                            onClick={handleSaveName}
+                            disabled={savingName}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-bold text-white transition-colors shrink-0"
+                        >
+                            {savingName
+                                ? <Loader2 size={12} className="animate-spin" />
+                                : <><Save size={12} />저장</>
+                            }
+                        </button>
+                    )}
+                </div>
                 <p className="text-xs text-slate-500 ko-normal mt-0.5">세션 설정 — 어드민 전용</p>
+                {saveNameErr && <p className="text-xs text-red-400 ko-normal mt-1">{saveNameErr}</p>}
             </div>
 
             {/* ── 세션 진행 중 안내 ────────────────────────────────────────────── */}

@@ -23,6 +23,11 @@ export const SIM_CONFIG = {
 
         // [defIntensity 체력 트레이드오프] 1단계 +5%p(드레인 절약) ~ 10단계 -8%p(드레인 추가) 선형
         DEF_INTENSITY_CURVE: [[1, 5], [10, -8]] as [number, number][],
+
+        // [pace 체력 트레이드오프 2026-07 신규] 5단계 미만은 페널티 없음, 5단계 +5% ~ 10단계 +15% 선형
+        PACE_FATIGUE_THRESHOLD: 5,
+        PACE_FATIGUE_BASE: 5,        // %, pace===threshold일 때
+        PACE_FATIGUE_PER_LEVEL: 2,   // %, threshold 초과 1단계당 추가
     },
     STATS: {
         STL_BASE_FACTOR: 0.08,
@@ -225,6 +230,11 @@ export const SIM_CONFIG = {
 
         // C. 체력 페널티 (매 포제션 상시, 우리 defReb<5일 때만, %p 단위): (5-defReb) × 계수
         FATIGUE_PENALTY_PER_LEVEL: 1.5 / 4, // 최대 +1.5%p (defReb=1)
+
+        // B-2. [2026-07 신규] 백코트 페널티 — offReb 낮게 설정 시(상대offReb<5) 크래시 대신 백코트,
+        // 상대(우리) Transition hitRate 페널티. B와 대칭(같은 변수, 반대 방향, 동일 최대폭)
+        RETREAT_PENALTY_PER_LEVEL: 0.05 / 4, // 최대 -5%p (상대offReb=1)
+        RETREAT_THRESHOLD: 5,
     },
     // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {

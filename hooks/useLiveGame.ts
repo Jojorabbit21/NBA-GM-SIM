@@ -203,7 +203,6 @@ export function useLiveGame(
 
         userTeam.tactics.sliders = {
             ...base,
-            playStyle:      lerp(base.playStyle,      coachPrefs.offenseIdentity),
             ballMovement:   lerp(base.ballMovement,   coachPrefs.offenseIdentity),
             pace:           lerp(base.pace,           coachPrefs.tempo),
             offReb:         lerp(base.offReb,         11 - coachPrefs.tempo),

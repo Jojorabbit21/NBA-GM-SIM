@@ -19,7 +19,6 @@ export const SLIDER_STEPS: Record<string, SliderStep[]> = {
     offReb: TEN_STEPS,
 
     // ── 코칭 철학 ──
-    playStyle: TEN_STEPS,
     insideOut: TEN_STEPS,
     pnrFreq: TEN_STEPS,
 

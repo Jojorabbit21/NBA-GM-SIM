@@ -275,6 +275,7 @@ export const updateLeagueStatus = async (
 export interface UpdateLeagueSettingsParams {
     leagueId:            string;
     roomId?:             string;
+    name?:               string;
     maxTeams?:           number;
     lotteryScheduledAt?: string | null;
     draftScheduledAt?:   string | null;
@@ -298,6 +299,7 @@ export const updateLeagueSettings = async (
     p: UpdateLeagueSettingsParams
 ): Promise<{ error: string | null }> => {
     const payload: Record<string, unknown> = {};
+    if (p.name                 !== undefined) payload.name                    = p.name;
     if (p.maxTeams             !== undefined) payload.max_teams               = p.maxTeams;
     if (p.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = p.lotteryScheduledAt;
     if (p.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = p.draftScheduledAt;

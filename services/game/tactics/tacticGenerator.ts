@@ -30,7 +30,6 @@ const driverScore   = (p: Player) => p.speed * 0.20 + p.agility * 0.15 + p.verti
 const screenerScore = (p: Player) => p.strength * 0.40 + Math.max(0, p.height - 185) * 3 * 0.30 + Math.max(0, p.weight - 80) * 1.6 * 0.30;
 const rollerScore   = (p: Player) => p.ins * 0.40 + p.vertical * 0.30 + p.speed * 0.30;
 const postScore     = (p: Player) => p.ins * 0.50 + p.strength * 0.30 + p.hands * 0.20;
-const isoScore      = (p: Player) => p.handling * 0.25 + p.midRange * 0.25 + p.speed * 0.25 + p.agility * 0.25;
 const rimProtScore  = (p: Player) => p.blk * 0.35 + p.intDef * 0.35 + p.vertical * 0.15 + Math.max(0, p.height - 185) * 3 * 0.15;
 const perimLockScore = (p: Player) => p.perDef * 0.50 + p.agility * 0.25 + p.steal * 0.25;
 
@@ -58,7 +57,6 @@ function blendWithCoach(
     return {
         ...sliders,
         // 공격: offenseIdentity
-        playStyle:    snap('playStyle',    lerp(sliders.playStyle,    prefs.offenseIdentity, W)),
         ballMovement: snap('ballMovement', lerp(sliders.ballMovement, prefs.offenseIdentity, W)),
         // 공격: tempo
         pace:   snap('pace',   lerp(sliders.pace,   prefs.tempo, W)),
@@ -277,19 +275,7 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     let offReb = ato(bigRebAvg, 65, 90);
     if (pace >= 8) offReb = clamp(offReb - 2);
 
-    // ── Offense: 코칭 철학 (3개 추상 슬라이더) ──
-    // playStyle: 히어로(2) ↔ 시스템(9)
-    // 개인 창조력(iso/post) vs 팀 시스템(spacing/driving) 비교
-    const heroInd = (maxOf(isoScore) + maxOf(postScore)) / 2;
-    const sysInd = (avgOf(spacerScore) + avgOf(driverScore)) / 2;
-    let playStyle = clamp(Math.round(5 + (sysInd - heroInd) * 0.15));
-
-    // Elite Playmaker Boost: 엘리트 패서 보유 팀은 시스템 플레이 방향으로 보정
-    // 현실 NBA에서 엘리트 PG(트레이 영, 할리버튼) 보유 팀은 PG 중심 패싱 오펜스 운영
-    const topPassVision = maxOf(p => p.passVision);
-    if (topPassVision >= 88) playStyle = clamp(playStyle + 2);
-    else if (topPassVision >= 82) playStyle = clamp(playStyle + 1);
-
+    // ── Offense: 코칭 철학 (2개 추상 슬라이더) ──
     // insideOut: 인사이드(2) ↔ 아웃사이드(9)
     // 포스트/롤/드라이브 vs 스페이싱/슈팅 비교
     const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
@@ -332,7 +318,6 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
         pace: snap('pace', pace),
         ballMovement: snap('ballMovement', ballMovement),
         offReb: snap('offReb', offReb),
-        playStyle: snap('playStyle', playStyle),
         insideOut: snap('insideOut', insideOut),
         pnrFreq: snap('pnrFreq', pnrFreq),
         shot_3pt: snap('shot_3pt', shot_3pt),
