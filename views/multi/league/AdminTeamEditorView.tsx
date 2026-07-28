@@ -9,6 +9,7 @@ import { DepthChartEditor } from '../../../components/dashboard/DepthChartEditor
 import { RotationGanttChart } from '../../../components/dashboard/RotationGanttChart';
 import { TacticsSlidersPanel } from '../../../components/dashboard/tactics/TacticsSlidersPanel';
 import { PlayerTacticsPanel } from '../../../components/dashboard/tactics/PlayerTacticsPanel';
+import { AdminTradePanel } from '../../../components/dashboard/AdminTradePanel';
 import { supabase } from '../../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { generateAutoTactics } from '../../../services/gameEngine';
@@ -16,12 +17,12 @@ import { calculatePlayerOvr } from '../../../utils/constants';
 import { saveMemberTactics } from '../../../services/multi/roomPersistence';
 import type { Team, Player, GameTactics, DepthChart } from '../../../types';
 
-type AdminTab = 'depth' | 'rotation' | 'team' | 'player';
+type AdminTab = 'depth' | 'rotation' | 'team' | 'player' | 'trade';
 
 const AdminTeamEditorView: React.FC = () => {
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
-    const { league, room, members, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const { league, room, members, leagueTeams, isLoading: leagueLoading, reload } = useLeagueContext();
     const { session } = useGame();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
 
@@ -147,6 +148,16 @@ const AdminTeamEditorView: React.FC = () => {
         }
     }, [room?.id, selectedMember?.user_id, draftTactics, draftDepthChart]);
 
+    // 트레이드 실행 직후 팀A(현재 보고 있는 팀)의 draft 상태를 새 자동전술로 즉시 반영 —
+    // reload()만 믿으면 rosterPlayers.length가 안 바뀌는 트레이드(예: 1:1)에서 리셋 useEffect가
+    // 안 돌아 화면이 트레이드 이전 뎁스차트를 계속 보여주는 문제가 생긴다.
+    const handleTradeComplete = useCallback((newTacticsA: GameTactics) => {
+        setDraftTactics(newTacticsA);
+        setDraftDepthChart(newTacticsA.depthChart ?? null);
+        setIsDirty(false);
+        reload();
+    }, [reload]);
+
     const healthySorted = useMemo(
         () => rosterPlayers.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
         [rosterPlayers],
@@ -198,6 +209,7 @@ const AdminTeamEditorView: React.FC = () => {
                             { id: 'rotation' as AdminTab, label: '로테이션' },
                             { id: 'team' as AdminTab,     label: '팀 전술' },
                             { id: 'player' as AdminTab,   label: '개인 전술' },
+                            { id: 'trade' as AdminTab,    label: '트레이드' },
                         ]}
                         activeTab={activeTab}
                         onTabChange={setActiveTab}
@@ -262,6 +274,18 @@ const AdminTeamEditorView: React.FC = () => {
                                     onUpdateTactics={handleUpdateTactics}
                                 />
                             </div>
+                        )}
+                        {activeTab === 'trade' && room?.id && session?.user?.id && (
+                            <AdminTradePanel
+                                roomId={room.id}
+                                adminUserId={session.user.id}
+                                leagueTeams={leagueTeams}
+                                members={members}
+                                teamASlug={selectedSlug}
+                                teamARoster={rosterPlayers}
+                                useCustomOverrides={useCustomOverrides}
+                                onTradeComplete={handleTradeComplete}
+                            />
                         )}
                     </div>
                 </>

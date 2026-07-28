@@ -20,7 +20,7 @@ export function calculateOrbChance(
     // 공격팀은 offReb(공격 리바운드 능력), 수비팀은 defReb(수비 리바운드 능력) 사용
     const calcPower = (team: TeamState, rebAttr: 'offReb' | 'defReb') =>
         team.onCourt.reduce((sum, p) => {
-            return sum + (p.attr[rebAttr] * 0.5 + p.attr.vertical * 0.2 + p.attr.strength * 0.15 + p.attr.boxOut * 0.15);
+            return sum + (p.attr[rebAttr] * 0.45 + p.attr.vertical * 0.2 + p.attr.strength * 0.10 + p.attr.boxOut * 0.15 + p.attr.hustle * 0.10);
         }, 0);
 
     const offPower = calcPower(offTeam, 'offReb');
@@ -53,10 +53,11 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
         let score = (
-            p.attr[rebAttr] * 0.5 +
+            p.attr[rebAttr] * 0.45 +
             p.attr.vertical * 0.2 +
-            p.attr.strength * 0.15 +
-            p.attr.boxOut * 0.15
+            p.attr.strength * 0.10 +
+            p.attr.boxOut * 0.15 +
+            p.attr.hustle * 0.10
         ) * shooterPenalty;
 
         // F-1. Harvester: 압도적 리바운드 능력치 보유자

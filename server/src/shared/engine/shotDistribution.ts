@@ -222,8 +222,14 @@ export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mi
     if (broadZone === '3PT') {
         // 서브존(코너/45도/탑) 선택은 선수 개인 DNA(threeSubPref: cnr/p45/atb)를 1차 기준으로 쓰고,
         // 좌우 편향(lateralBias)은 좌우 대칭인 코너/45도 항목에만 곱연산으로 적용한다 — 탑(atb)은
-        // 좌우 구분이 없으므로 그대로 둔다. threeSubPref 없는 호출(방어적 폴백)은 기존 고정 비율 사용.
-        const sp = player.threeSubPref ?? { cnr: 0.30, p45: 0.40, atb: 0.30 };
+        // 좌우 구분이 없으므로 그대로 둔다. threeSubPref 없는 호출(방어적 폴백)이거나, 있어도 합이
+        // 0인 경우(3점 텐던시가 전부 0인 선수 — 원래는 3점을 거의 안 쓰지만 CatchShoot처럼 존이
+        // 강제되는 플레이에서 어쩌다 3점을 던지게 된 경우)엔 기존 고정 비율로 폴백한다. 합이 0일
+        // 때 이 폴백 없이 그대로 계산하면 아래 total이 `0 || 1`로 1이 되면서 pCl~pWr이 전부 0이
+        // 되고, rand(항상 0 이상)가 모든 if를 통과해 매번 마지막 zone_c3_r로만 쏠리는 버그가 있었다.
+        const spRaw = player.threeSubPref;
+        const spTotal = spRaw ? spRaw.cnr + spRaw.p45 + spRaw.atb : 0;
+        const sp = spTotal > 0 ? spRaw : { cnr: 0.30, p45: 0.40, atb: 0.30 };
         const cl = (sp.cnr / 2) * leftMult, cr = (sp.cnr / 2) * rightMult;
         const wl = (sp.p45 / 2) * leftMult, wr = (sp.p45 / 2) * rightMult;
         const top = sp.atb;

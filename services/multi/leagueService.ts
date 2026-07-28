@@ -145,6 +145,8 @@ export interface CreateRoomParams {
     season?:     string;
     seasonNumber?: number;
     simDate?:    string;
+    /** 생성 시점 엔진 설정(정규화 등) — rooms.sim_settings에 초기값으로 저장 */
+    simSettings?: SimSettings;
 }
 
 export interface RoomCreateResult {
@@ -167,6 +169,7 @@ export const createRoom = async (
             season:        params.season        ?? '2025-2026',
             season_number: params.seasonNumber  ?? 1,
             sim_date:      params.simDate        ?? '2025-10-20',
+            ...(params.simSettings ? { sim_settings: params.simSettings } : {}),
         })
         .select('id, league_id, max_players, status, created_at')
         .single();
@@ -493,6 +496,39 @@ export const releaseTeam = async (
         p_user_id: userId,
     });
     return { error: error?.message ?? null };
+};
+
+// ─── 어드민 트레이드 (팀↔팀 선수 스왑) ────────────────────────────────────────
+
+export interface ExecuteAdminTradeParams {
+    roomId:       string;
+    adminUserId:  string;
+    teamAId:      string;   // league_teams.id
+    teamBId:      string;
+    playersAtoB:  string[]; // A에서 나가 B로 가는 playerId
+    playersBtoA:  string[]; // B에서 나가 A로 가는 playerId
+}
+
+export const executeAdminTrade = async (
+    p: ExecuteAdminTradeParams
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('execute_admin_trade', {
+        p_room_id:        p.roomId,
+        p_admin_user_id:  p.adminUserId,
+        p_team_a_id:      p.teamAId,
+        p_team_b_id:      p.teamBId,
+        p_players_a_to_b: p.playersAtoB,
+        p_players_b_to_a: p.playersBtoA,
+    });
+    if (error) {
+        const msg = error.message ?? '';
+        if (msg.includes('not_admin'))            return { error: '어드민만 트레이드를 실행할 수 있습니다.' };
+        if (msg.includes('player_not_on_team_a'))  return { error: '선택한 선수가 더 이상 A팀 로스터에 없습니다. 새로고침 후 다시 시도하세요.' };
+        if (msg.includes('player_not_on_team_b'))  return { error: '선택한 선수가 더 이상 B팀 로스터에 없습니다. 새로고침 후 다시 시도하세요.' };
+        if (msg.includes('same_team'))             return { error: '같은 팀끼리는 트레이드할 수 없습니다.' };
+        return { error: msg };
+    }
+    return { error: null };
 };
 
 export const updateTeamProfile = async (

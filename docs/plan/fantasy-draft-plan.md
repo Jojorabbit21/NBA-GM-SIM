@@ -79,7 +79,13 @@ interface DraftState {
 - **현실적 다양성**: 29개 AI 팀이 동일한 전략을 쓰면 비현실적 → **GM 성향(Personality)** 시스템으로 팀마다 다른 드래프트 스타일
 - **밸런스 보장**: 아무리 공격형 GM이라도 센터 0명 같은 비현실적 로스터 방지 → **하드 플로어(Hard Floor)** 규칙
 - **BPA vs Need**: 초반엔 Best Player Available 우세, 후반엔 Need 우세 → **라운드별 가중치 시프트**
-- **기존 시스템 재활용**: `archetypeSystem.ts`의 12 아키타입 + `overallWeights.ts`의 OVR 공식을 적극 활용
+- **기존 시스템 재활용**: `archetypeSystem.ts`의 12개 역할 적합도 점수 + `overallWeights.ts`의 OVR 공식을 적극 활용
+
+> **용어 안내**: 이 문서에서 "역할"이라고 쓴 것은 `archetypeSystem.ts`의 `ArchetypeRatings`(spacer/handler/
+> screener 등 12종)를 가리킨다. 필드명이 "아키타입"이라 이 문서도 예전엔 그렇게 불렀지만, 실제로는 선수
+> 정체성을 분류하는 시스템이 아니라 "이 선수가 특정 역할에 얼마나 적합한가"를 raw 능력치로 계산한 연속
+> 점수다. 상세: [player-usage.md](../engine/player-usage.md#역할-적합도-점수-role-fit-score--pickweightedactor의-rawscore-입력).
+> (선수 정체성 라벨인 "Rim Protector" 같은 것은 별개 시스템 — [player-archetypes.md](../engine/player-archetypes.md) 참조.)
 
 ---
 
@@ -92,8 +98,8 @@ interface DraftState {
 | **Balanced** | 30% | 무난한 BPA + 적당한 Need | 기본값 (모든 가중치 1.0×) |
 | **Win-Now** | 20% | 높은 OVR 극단 선호, 나이 무관 | OVR 가중치 1.3×, 나이 보정 0.7× |
 | **Youth-Builder** | 15% | 25세 이하 젊은 선수 선호 | 나이 가중치 1.5×, OVR 가중치 0.85× |
-| **Defense-First** | 15% | 수비 아키타입(perimLock, rimProtector) 선호 | 수비 아키타입 보너스 +8 |
-| **Offense-First** | 10% | 공격 아키타입(spacer, handler, isoScorer) 선호 | 공격 아키타입 보너스 +8 |
+| **Defense-First** | 15% | 수비 역할(perimLock, rimProtector) 선호 | 수비 역할 보너스 +8 |
+| **Offense-First** | 10% | 공격 역할(spacer, handler, isoScorer) 선호 | 공격 역할 보너스 +8 |
 | **Star-Hunter** | 10% | OVR 85+ 스타에 올인, 나머지 라운드는 BPA | 스타 보너스 +15 (OVR 85+일 때) |
 
 ```typescript
@@ -103,7 +109,7 @@ interface GmProfile {
     personality: GmPersonality;
     ovrWeight: number;       // 기본 1.0
     ageWeight: number;       // 기본 1.0
-    archetypeBias: Partial<Record<keyof ArchetypeRatings, number>>; // 아키타입별 추가 보너스
+    archetypeBias: Partial<Record<keyof ArchetypeRatings, number>>; // 역할별 추가 보너스
     starBonus: number;       // OVR 85+ 추가 점수 (기본 0)
 }
 
@@ -135,7 +141,7 @@ function assignGmProfiles(teamIds: string[], userTeamId: string): Map<string, Gm
 모든 가용 선수에 대해 **복합 점수**를 계산합니다.
 
 ```
-DraftScore = (OVR점수 × ovrW) + (나이점수 × ageW) + (포지션니즈 점수) + (아키타입니즈 점수) + (성향 보너스) + (랜덤 노이즈)
+DraftScore = (OVR점수 × ovrW) + (나이점수 × ageW) + (포지션니즈 점수) + (역할니즈 점수) + (성향 보너스) + (랜덤 노이즈)
 ```
 
 ##### 2-1. OVR 점수 (0~100 스케일)
@@ -205,12 +211,12 @@ function calcPositionNeedScore(
 }
 ```
 
-##### 2-4. 아키타입 니즈 점수 (Archetype Need Score)
+##### 2-4. 역할 니즈 점수 (Role Need Score)
 
-기존 `archetypeSystem.ts`의 12종 아키타입을 활용합니다. 팀에 부족한 **역할**을 파악하여 해당 역할을 잘 수행할 선수에게 보너스를 줍니다.
+기존 `archetypeSystem.ts`의 12종 역할을 활용합니다. 팀에 부족한 **역할**을 파악하여 해당 역할을 잘 수행할 선수에게 보너스를 줍니다.
 
 ```typescript
-// 팀에 필요한 아키타입 구성 (이상적 로스터)
+// 팀에 필요한 역할 구성 (이상적 로스터)
 const ARCHETYPE_TARGETS: Record<string, { min: number; ideal: number }> = {
     handler:      { min: 1, ideal: 2 },  // 핸들러 (PG 역할)
     spacer:       { min: 2, ideal: 4 },  // 슈터 (가장 많이 필요)
@@ -227,14 +233,14 @@ const ARCHETYPE_TARGETS: Record<string, { min: number; ideal: number }> = {
 };
 
 function calcArchetypeNeedScore(player: Player, roster: Player[]): number {
-    // 1. 선수의 아키타입 산출 (상위 3개)
+    // 1. 선수의 역할 산출 (상위 3개)
     const playerArchetypes = calculatePlayerArchetypes(playerToLiveAttr(player));
     const topArchetypes = getTopArchetypes(playerArchetypes, 3); // [{name: 'spacer', score: 85}, ...]
 
-    // 2. 현재 로스터의 아키타입 보유 현황 (아키타입 70+ 기준으로 카운트)
+    // 2. 현재 로스터의 역할 보유 현황 (역할 70+ 기준으로 카운트)
     const rosterArchetypeCounts = countRosterArchetypes(roster);
 
-    // 3. 부족한 아키타입에 대한 보너스
+    // 3. 부족한 역할에 대한 보너스
     let bonus = 0;
     for (const { name, score } of topArchetypes) {
         const target = ARCHETYPE_TARGETS[name];
@@ -244,10 +250,10 @@ function calcArchetypeNeedScore(player: Player, roster: Player[]): number {
 
         if (current < target.min) {
             // 최소 요건 미충족 → 강한 보너스
-            bonus += (score / 100) * 10;  // 아키타입 점수 85 → +8.5
+            bonus += (score / 100) * 10;  // 역할 점수 85 → +8.5
         } else if (current < target.ideal) {
             // 이상적 수준 미달 → 약한 보너스
-            bonus += (score / 100) * 4;   // 아키타입 점수 85 → +3.4
+            bonus += (score / 100) * 4;   // 역할 점수 85 → +3.4
         }
     }
 
@@ -255,7 +261,7 @@ function calcArchetypeNeedScore(player: Player, roster: Player[]): number {
 }
 ```
 
-**아키타입 판정 기준**: 선수의 아키타입 점수가 **70 이상**이면 해당 역할을 수행할 수 있다고 판단합니다.
+**역할 판정 기준**: 선수의 역할 점수가 **70 이상**이면 해당 역할을 수행할 수 있다고 판단합니다.
 
 ```typescript
 function getTopArchetypes(ratings: ArchetypeRatings, n: number): { name: string; score: number }[] {
@@ -290,7 +296,7 @@ function calcPersonalityBonus(player: Player, profile: GmProfile): number {
     // Star Hunter: OVR 85+ 대폭 추가점
     if (player.ovr >= 85) bonus += profile.starBonus;
 
-    // 아키타입 편향 (defenseFirst, offenseFirst 등)
+    // 역할 편향 (defenseFirst, offenseFirst 등)
     const archetypes = calculatePlayerArchetypes(playerToLiveAttr(player));
     for (const [archName, biasBonus] of Object.entries(profile.archetypeBias)) {
         const score = archetypes[archName as keyof ArchetypeRatings];
@@ -358,7 +364,7 @@ function cpuSelectPlayer(
 
 **점수 구성 예시 (라운드 1, Win-Now GM):**
 
-| 선수 | OVR점수(×1.3) | 나이(×0.7) | 포지션니즈 | 아키타입니즈 | 성향보너스 | 노이즈 | **합계** |
+| 선수 | OVR점수(×1.3) | 나이(×0.7) | 포지션니즈 | 역할니즈 | 성향보너스 | 노이즈 | **합계** |
 |------|-------------|----------|-----------|------------|----------|-------|---------|
 | A (OVR 95, 28세, PG) | 119.6 | 3.5 | +4 | +5.2 | 0 | +2.1 | **134.4** |
 | B (OVR 92, 23세, C) | 107.9 | 5.6 | +12 | +8.5 | 0 | -1.3 | **132.7** |
@@ -409,8 +415,8 @@ function applyHardFloor(
 #### 5. 라운드별 전략 시프트 (Round Strategy)
 
 ```
-초반 (R1~R5):  BPA 중심. OVR 최우선. 포지션/아키타입 니즈는 약한 참고용.
-중반 (R6~R10): BPA와 Need 균형. 포지션 배분 시작. 아키타입 갭 보충.
+초반 (R1~R5):  BPA 중심. OVR 최우선. 포지션/역할 니즈는 약한 참고용.
+중반 (R6~R10): BPA와 Need 균형. 포지션 배분 시작. 역할 갭 보충.
 후반 (R11~R15): Need 중심. 빈 포지션 강제 채움. 하드 플로어 발동.
 ```
 
@@ -438,8 +444,8 @@ cpuSelectPlayer(availablePlayers, teamRoster, round, gmProfile)
 │     ├─ OVR 점수 (비선형 곡선) × gmProfile.ovrWeight
 │     ├─ 나이 점수 (-8 ~ +12) × gmProfile.ageWeight
 │     ├─ 포지션 니즈 점수 (라운드 가중)
-│     ├─ 아키타입 니즈 점수 (12종 아키타입 기반)
-│     ├─ GM 성향 보너스 (스타보너스, 아키타입 편향)
+│     ├─ 역할 니즈 점수 (12종 역할 기반)
+│     ├─ GM 성향 보너스 (스타보너스, 역할 편향)
 │     └─ 랜덤 노이즈 (라운드 확대)
 │
 ├─ [3] 점수 상위 3명 추출

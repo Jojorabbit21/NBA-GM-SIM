@@ -8,6 +8,7 @@ import {
     initializeLeagueTeams,
 } from '../../services/multi/leagueService';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from './DraftPoolSettings';
+import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 
 interface CreateLeagueModalProps {
     userId: string;
@@ -108,6 +109,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const [draftOvrMin,    setDraftOvrMin]    = useState(0);
     const [draftOvrMax,    setDraftOvrMax]    = useState(99);
     const [draftFormat,    setDraftFormat]    = useState<DraftFormat>('snake');
+
+    // ── 엔진 설정 ──────────────────────────────────────────────────────────────
+    const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
 
     const [saving, setSaving] = useState(false);
     const [err,    setErr]    = useState<string | null>(null);
@@ -210,7 +214,16 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 leagueId = league.id;
             }
 
-            const { data: room, error: re } = await createRoom({ leagueId, maxPlayers: maxTeams });
+            const { data: room, error: re } = await createRoom({
+                leagueId,
+                maxPlayers: maxTeams,
+                simSettings: {
+                    normalization: {
+                        enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
+                        k:       NORMALIZATION_LEVELS[normalizationLevel].k,
+                    },
+                } as any,
+            });
             if (re || !room) throw new Error(re ?? '방 생성 실패');
 
             const { error: te } = await initializeLeagueTeams(room.id, maxTeams);
@@ -495,6 +508,28 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             draftFormat={draftFormat}
                             onDraftFormatChange={setDraftFormat}
                         />
+
+                        <div className="border-t border-slate-800 pt-5" />
+
+                        {/* 엔진 설정 */}
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">엔진 설정</p>
+                        <div>
+                            <div className="flex items-center justify-between px-1">
+                                <span className="text-xs font-bold text-slate-300">리그 상대 정규화 강도</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={5}
+                                    step={1}
+                                    value={normalizationLevel}
+                                    onChange={e => setNormalizationLevel(Math.min(5, Math.max(0, Math.round(Number(e.target.value) || 0))))}
+                                    className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+                            <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                                0이면 정규화가 완전히 꺼집니다. 올타임 등 고OVR 드래프트 풀에서 득점이 비현실적으로 치솟는 걸 억제하는 기능이며, 1~5로 갈수록 표준 수준으로 강하게 압축됩니다. 생성 후에도 세션 설정에서 변경할 수 있습니다.
+                            </p>
+                        </div>
                     </div>
                 </div>
 

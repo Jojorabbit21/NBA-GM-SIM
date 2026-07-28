@@ -2,7 +2,7 @@
 
 ## 개요
 슈팅 시도를 10개 세부 존으로 분배하는 시스템.
-DB 텐던시 데이터(우선) 또는 아키타입 기반 폴백으로 선수별 슈팅 존 성향을 결정.
+DB 텐던시 데이터(우선) 또는 역할 적합도 점수 기반 폴백으로 선수별 슈팅 존 성향을 결정.
 
 > **광역 존 선택(Rim/Mid/3PT)** 은 `playTypes.ts:selectZone()`에서 `LivePlayer.zonePref` 70% + 전술 슬라이더 30%로 결정.
 > 본 파일(shotDistribution)은 광역 존이 결정된 후 **10개 세부 존**으로 분배하는 역할.
@@ -58,15 +58,16 @@ zones: { ra, itp, mid, cnr, p45, atb }  // 각 존 비중
 4. 3PT 존: Corner/Wing/Top 비율 → bias 적용 후 재정규화
 5. Rim 비율: `rimRatio = pRim / (pRim + pPaint)`
 
-### 우선순위 2: 아키타입 폴백 (`calculateWeightsFromArchetype`)
+### 우선순위 2: 역할 적합도 점수 폴백 (`calculateWeightsFromArchetype`)
 
-DB 텐던시가 없을 때 `hiddenTendencies.lateralBias`와 아키타입으로 추론:
+DB 텐던시가 없을 때 `hiddenTendencies.lateralBias`와 역할 적합도 점수(`archetypeSystem.ts`, 상세:
+[player-usage.md](player-usage.md))로 추론:
 
 **기본 가중치**:
 - Mid: L=0.33, C=0.34, R=0.33
 - 3PT: L_corn=0.15, L_wing=0.20, C_top=0.30, R_wing=0.20, R_corn=0.15
 
-**아키타입 보정**:
+**역할 점수 보정**:
 | 조건 | 효과 |
 |------|------|
 | spacer > 80 & handler < 70 | 코너 3PT +0.25, 탑 -0.30 |
@@ -108,4 +109,4 @@ Rim → zone_rim, Paint → zone_paint
 - 두 shotDistribution 파일의 동기화 주의 (calculateZoneWeights 로직 공유)
 - 10존 키 이름은 `LivePlayer` 타입의 `zone_*_a`/`zone_*_m` 필드와 일치해야 함
 - `lateral_bias`는 텐던시 시스템에서 결정 (tendency-system.md 참조)
-- 아키타입 폴백은 `archetypeSystem.ts`의 `calculatePlayerArchetypes` 사용
+- 역할 적합도 점수 폴백은 `archetypeSystem.ts`의 `calculatePlayerArchetypes` 사용 (상세: [player-usage.md](player-usage.md))

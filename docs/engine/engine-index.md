@@ -21,7 +21,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
-| [player-usage.md](player-usage.md) | USG% 현실화, 액터 선택 확률 | playTypes.ts, usageWeights.ts, usageSystem.ts |
+| [player-usage.md](player-usage.md) | USG% 현실화, 액터 선택 확률, 역할 적합도 점수(구 "PBP 아키타입") | playTypes.ts, usageWeights.ts, usageSystem.ts, archetypeSystem.ts |
 | [hidden-archetypes.md](hidden-archetypes.md) | 12종 히든 아키타입 (공격/수비/유틸리티) | constants.ts, flowEngine.ts, possessionHandler.ts |
 | [shot-distribution.md](shot-distribution.md) | 10존 슈팅 분배, 텐던시/아키타입 기반 | shotDistribution.ts (pbp/, engine/) |
 | [shot-hit-rate.md](shot-hit-rate.md) | 슈팅 적중률 계산 | flowEngine.ts |
@@ -106,7 +106,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | flowEngine.ts | [pbp-engine.md](pbp-engine.md), [hidden-archetypes.md](hidden-archetypes.md) |
 | playTypes.ts | [pbp-engine.md](pbp-engine.md), [player-usage.md](player-usage.md) |
 | usageSystem.ts | [player-usage.md](player-usage.md) |
-| archetypeSystem.ts | [hidden-archetypes.md](hidden-archetypes.md) |
+| archetypeSystem.ts | [player-usage.md](player-usage.md) — "역할 적합도 점수" 절 (hidden-archetypes.md와는 별개 시스템) |
 | reboundLogic.ts | [rebound-logic.md](rebound-logic.md) |
 | timeEngine.ts | [time-engine.md](time-engine.md) |
 | stateUpdater.ts | [fatigue-system.md](fatigue-system.md) |

@@ -5,11 +5,11 @@
 선수의 플레이스타일과 역할 **정체성**을 표현하는 시스템.
 기존 두 아키타입 시스템과 완전히 별개 레이어로 동작한다.
 
-| 시스템 | 목적 | 위치 |
-|--------|------|------|
-| **PBP ArchetypeRatings** (12종) | 경기 중 액터 선택 가중치 | `services/game/engine/pbp/archetypeSystem.ts` |
-| **히든 아키타입** (18종) | 엘리트 임계값 도달 시 보너스 | `flowEngine.ts`, `possessionHandler.ts` |
-| **플레이어 아키타입** (본 문서) | 선수 정체성 표현 + FA 연봉 산정 | `services/playerDevelopment/archetypeEvaluator.ts` |
+| 시스템 | 목적 | 위치 | 문서 |
+|--------|------|------|------|
+| **역할 적합도 점수** (12종, 필드명은 `ArchetypeRatings`이지만 분류 시스템 아님 — 선수 정체성 라벨이 아니라 raw 능력치 가중평균으로 매긴 역할별 캐스팅 적합도) | 경기 중 액터 선택 가중치(`pickWeightedActor`) | `services/game/engine/pbp/archetypeSystem.ts` | [player-usage.md](player-usage.md) |
+| **히든 아키타입** (18종) | 엘리트 임계값 도달 시 보너스 | `flowEngine.ts`, `possessionHandler.ts` | [hidden-archetypes.md](hidden-archetypes.md) |
+| **플레이어 아키타입** (본 문서) | 선수 정체성 표현 + FA 연봉 산정 | `services/playerDevelopment/archetypeEvaluator.ts` | 본 문서 |
 
 ---
 

@@ -59,6 +59,22 @@ export interface SimSettingMeta {
     step?: number;
 }
 
+// ── 리그 상대 정규화 강도(0~5) — { enabled, k } 매핑 ──
+// 0은 정규화 자체를 끄고(resolveNormalizationContext가 leagueContext를 undefined로
+// 만들어 shift 계산을 건너뜀), 1~5는 k(0~1) 압축 강도. 기본값(레벨3=0.7)은
+// SIM_CONFIG.NORMALIZATION.DEFAULT_K와 동일. 멀티플레이어 리그 생성 모달과
+// 세션 설정 화면 양쪽에서 공유한다.
+export const NORMALIZATION_LEVELS: { enabled: boolean; k: number; label: string }[] = [
+    { enabled: false, k: 0,    label: '끔' },       // 0
+    { enabled: true,  k: 0.3,  label: '약하게' },    // 1
+    { enabled: true,  k: 0.5,  label: '약간 약하게' }, // 2
+    { enabled: true,  k: 0.7,  label: '기본' },      // 3
+    { enabled: true,  k: 0.85, label: '강하게' },    // 4
+    { enabled: true,  k: 1.0,  label: '최대' },      // 5
+];
+
+export const DEFAULT_NORMALIZATION_LEVEL = 3;
+
 export const SIM_SETTINGS_META: SimSettingMeta[] = [
     // 게임 환경
     {

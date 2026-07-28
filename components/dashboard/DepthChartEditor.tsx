@@ -4,6 +4,7 @@ import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { OvrBadge } from '../common/OvrBadge';
 
 interface DepthChartEditorProps {
     team: Team;
@@ -267,25 +268,39 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                             <TableCell align="center" className="py-1.5 px-4 border-r border-slate-800/50 bg-slate-950/20">
                                 <span className="text-xs font-semibold text-slate-500">{String(pos)}</span>
                             </TableCell>
-                            {[0, 1, 2].map(depthIndex => (
+                            {[0, 1, 2].map(depthIndex => {
+                                const selectedId = depthChart[pos][depthIndex];
+                                const selectedPlayer = selectedId ? team.roster.find(p => p.id === selectedId) ?? null : null;
+                                return (
                                 <TableCell key={`${String(pos)}-${depthIndex}`} className={`!p-0 border-r border-slate-800/50 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
                                     <div className="relative group w-full h-full">
-                                        <select 
-                                            className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-3 text-xs font-semibold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!depthChart[pos][depthIndex] ? 'text-slate-500' : ''}`}
+                                        {/* 실제 select — 닫힌 상태 텍스트는 투명 처리하고 아래 커스텀 라벨로 대체 표시
+                                            (드롭다운을 펼쳤을 때 보이는 옵션 목록은 각 option의 색상 클래스가 그대로 적용됨) */}
+                                        <select
+                                            className="w-full h-full appearance-none bg-transparent border-none rounded-none pl-9 pr-10 py-3 text-xs font-semibold text-transparent focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all"
                                             value={depthChart[pos][depthIndex] || ""}
                                             onChange={(e) => handleChange(pos, depthIndex, e.target.value)}
                                         >
                                             <option value="" className="bg-slate-900 text-slate-500">선수 선택</option>
                                             {sortedRoster.map(p => (
-                                                <option key={p.id} value={p.id} className="bg-slate-900 text-white text-xs font-semibold">{p.name} - {p.position}</option>
+                                                <option key={p.id} value={p.id} className="bg-slate-900 text-white text-xs font-semibold">({calculatePlayerOvr(p)}) {p.name} - {p.position}</option>
                                             ))}
                                         </select>
+                                        {selectedPlayer && (
+                                            <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="sm" className="!text-xs" />
+                                            </div>
+                                        )}
+                                        <div className={`absolute inset-0 flex items-center pl-9 pr-10 pointer-events-none text-xs font-semibold truncate ${selectedPlayer ? 'text-white' : 'text-slate-500'}`}>
+                                            {selectedPlayer ? `${selectedPlayer.name} - ${selectedPlayer.position}` : '선수 선택'}
+                                        </div>
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-white transition-colors">
                                             <ChevronDown size={14} strokeWidth={2} />
                                         </div>
                                     </div>
                                 </TableCell>
-                            ))}
+                                );
+                            })}
                         </TableRow>
                     ))}
                 </TableBody>

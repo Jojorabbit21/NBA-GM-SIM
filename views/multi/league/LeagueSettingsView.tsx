@@ -11,27 +11,14 @@ import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
-import { DEFAULT_SIM_SETTINGS } from '../../../types/simSettings';
+import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
-
-// 리그 상대 정규화 강도 — 0~5 입력을 서버가 읽는 { enabled, k } 값으로 매핑.
-// 0은 enabled:false로 정규화 자체를 끄고(resolveNormalizationContext가 leagueContext를
-// undefined로 만들어 shift 계산 자체를 건너뜀), 1~5는 k(0~1) 압축 강도.
-// 기본값(레벨3=0.7)은 SIM_CONFIG.NORMALIZATION.DEFAULT_K와 동일.
-const NORMALIZATION_LEVELS: { enabled: boolean; k: number; label: string }[] = [
-    { enabled: false, k: 0,    label: '끔' },       // 0
-    { enabled: true,  k: 0.3,  label: '약하게' },    // 1
-    { enabled: true,  k: 0.5,  label: '약간 약하게' }, // 2
-    { enabled: true,  k: 0.7,  label: '기본' },      // 3
-    { enabled: true,  k: 0.85, label: '강하게' },    // 4
-    { enabled: true,  k: 1.0,  label: '최대' },      // 5
-];
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
     const k = normOverride?.k;
-    if (k === undefined) return 3;
-    let closest = 3, minDiff = Infinity;
+    if (k === undefined) return DEFAULT_NORMALIZATION_LEVEL;
+    let closest = DEFAULT_NORMALIZATION_LEVEL, minDiff = Infinity;
     for (let i = 1; i < NORMALIZATION_LEVELS.length; i++) {
         const diff = Math.abs(NORMALIZATION_LEVELS[i].k - k);
         if (diff < minDiff) { minDiff = diff; closest = i; }
@@ -100,7 +87,7 @@ const LeagueSettingsView: React.FC = () => {
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
     const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
-    const [normalizationLevel, setNormalizationLevel] = useState(3);
+    const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);

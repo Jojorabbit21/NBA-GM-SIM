@@ -15,3 +15,4 @@
 | [multi-season-plan.md](multi-season-plan.md) | 멀티시즌 지원 구현 계획 | 계획 |
 | [physics-choreography-engine.md](physics-choreography-engine.md) | 물리 기반 안무 엔진 (공 물리, 절차적 움직임 합성) | 논의 중 |
 | [draft-autopick-plan.md](draft-autopick-plan.md) | 멀티 드래프트 오토픽 시스템 (타임아웃/미입장/재접속/어드민 토글) | 계획 |
+| [multi-admin-trade-plan.md](multi-admin-trade-plan.md) | 멀티 어드민 트레이드(팀↔팀 선수 스왑) — RPC 설계 + 뎁스차트 정리 | 계획 |

@@ -28,8 +28,8 @@ orbChance = clamp(MIN, MAX, BASE + qualityAdj + sliderAdj)
 
 ### qualityAdj (팀 능력치 차이)
 ```
-offPower = Σ(공격팀 onCourt) [offReb × 0.5 + vertical × 0.2 + strength × 0.15 + boxOut × 0.15]
-defPower = Σ(수비팀 onCourt) [defReb × 0.5 + vertical × 0.2 + strength × 0.15 + boxOut × 0.15]
+offPower = Σ(공격팀 onCourt) [offReb × 0.45 + vertical × 0.2 + strength × 0.10 + boxOut × 0.15 + hustle × 0.10]
+defPower = Σ(수비팀 onCourt) [defReb × 0.45 + vertical × 0.2 + strength × 0.10 + boxOut × 0.15 + hustle × 0.10]
 qualityAdj = (offPower / defPower - 1) × QUALITY_FACTOR
 ```
 
@@ -48,7 +48,7 @@ sliderAdj = (offTeam.offReb - 5) × 0.012 - (defTeam.defReb - 5) × 0.012
 
 ### 점수 공식
 ```
-score = (rebAttr × 0.5 + vertical × 0.2 + strength × 0.15 + boxOut × 0.15)
+score = (rebAttr × 0.45 + vertical × 0.2 + strength × 0.10 + boxOut × 0.15 + hustle × 0.10)
         × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity × 0.6)
 ```
 

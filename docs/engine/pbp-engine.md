@@ -719,14 +719,14 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 2단계 시스템:
   Step 1: ORB% 판정 (공격 리바운드 확률)
     BASE_ORB_RATE = 0.23 (NBA 평균)
-    offPower = Σ(offTeam) [offReb×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15]
-    defPower = Σ(defTeam) [defReb×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15]
+    offPower = Σ(offTeam) [offReb×0.45 + vertical×0.2 + strength×0.10 + boxOut×0.15 + hustle×0.10]
+    defPower = Σ(defTeam) [defReb×0.45 + vertical×0.2 + strength×0.10 + boxOut×0.15 + hustle×0.10]
     ± 슬라이더 보정
     범위: 0.12 ~ 0.38
     ※ 포지션 가중치(posBonus) 제거됨 — 순수 능력치 기반
 
   Step 2: 리바운더 선택 (Weighted Random — 점수 비례 확률)
-    score = (rebAttr×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15)
+    score = (rebAttr×0.45 + vertical×0.2 + strength×0.10 + boxOut×0.15 + hustle×0.10)
             × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity×0.6)
 
     슈터 패널티: score *= 0.3
@@ -1138,32 +1138,14 @@ Dunk 전용 추가 블록 저항:
 
 ---
 
-## 아키타입 시스템 (archetypeSystem.ts)
+## 역할 적합도 점수 (archetypeSystem.ts)
 
-```typescript
-calculatePlayerArchetypes(attr, condition):
-
-fatigueFactor = max(0.5, 0.5 + condition * 0.005)
-  // condition=100 → 1.0, condition=50 → 0.75, condition=0 → 0.5
-
-scores = {
-  // 공격 역할
-  handler:     (handling*0.30 + passIq*0.25 + passVision*0.25 + passAcc*0.20) * fatigue
-  spacer:      (threeVal*0.60 + shotIq*0.25 + offConsist*0.15) * fatigue
-  driver:      (speed*0.20 + agility*0.15 + vertical*0.10 + ins*0.35 + mid*0.20) * fatigue
-  screener:    (strength*0.40 + normHeight*0.30 + normWeight*0.30) * fatigue
-  roller:      (ins*0.40 + vertical*0.30 + speed*0.30) * fatigue
-  popper:      (threeVal*0.70 + shotIq*0.30) * fatigue
-  connector:   (passIq*0.30 + helpDefIq*0.20 + hustle*0.30 + hands*0.20) * fatigue
-  postScorer:  (ins*0.50 + strength*0.30 + hands*0.20) * fatigue
-  isoScorer:   (handling*0.25 + mid*0.25 + speed*0.25 + agility*0.25) * fatigue
-
-  // 수비 역할
-  perimLock:   (perDef*0.50 + agility*0.25 + stl*0.25) * fatigue
-  rimProtector:(blk*0.35 + intDef*0.35 + vertical*0.15 + normHeight*0.15) * fatigue
-  rebounder:   (reb*0.70 + hustle*0.15 + vertical*0.15) * fatigue
-}
-```
+> **필드명 주의**: `archetypeSystem.ts`의 타입/변수명은 `ArchetypeRatings`/`archetypes`라 "아키타입"으로
+> 불리기 쉽지만, 선수 정체성을 분류하는 시스템이 아니라 **"이 선수를 지금 이 역할로 캐스팅했을 때 얼마나
+> 적합한가"를 raw 능력치 가중평균으로 매기는 연속값**이다. 12개 공식 전체와 `archetypesEnabled` 토글
+> 활성/비활성 시 동작(기본 비활성 — 대부분 50으로 고정, `spacer`만 예외)은 중복 관리 방지를 위해 여기
+> 반복하지 않고 [player-usage.md](player-usage.md)의 "역할 적합도 점수 (Role Fit Score)" 절에서 단일
+> 소스로 관리한다.
 
 **피로도 영향**: condition이 낮아질수록 모든 역할 점수 감소 → Option Rank 하락 → 포세션 배분 감소
 
