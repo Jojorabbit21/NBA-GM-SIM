@@ -35,6 +35,147 @@
 
 ---
 
+## 2026-07-29 — switchFreq 기반 헬프 디펜스 풀 확장 (빅맨 골밑 파울 쏠림 완화 2/2)
+
+**배경**: 빅맨 파울 쏠림 문제 두 번째 원인 논의. 존 디펜스가 골밑 슛을 C에게 100% 몰아주는 것
+자체는(스위치 개념이 없으므로) 논리적으로 맞다고 합의(별도 항목, 이번엔 미수정). 다만 맨투맨에서도
+헬프 디펜스 헬퍼 후보 풀이 `HELP_DEFENSE.ZONE_POSITIONS`(Rim/Paint → `['C','PF','SF']`)로 항상
+고정돼 있어, 실제로 그 순간 골밑 근처에 없을 법한 상황(예: 우리 C가 상대 스트레치 5를 3점 라인까지
+쫓아나간 상태)에서도 매 골밑 돌파마다 균등 확률로 헬프 후보에 낀다는 문제가 남음. 처음엔
+`zonePref`(선수 존 선호도) 기반 가중치를 검토했으나 사용자가 "유의미한 효과가 없을 것 같다"고 판단,
+대신 **스위치 위주 수비(`switchFreq`가 높음)일수록 헬프 풀이 포지션 제한 없이 온코트 전원으로
+확장**되는 더 단순한 설계로 방향 전환. 배율은 처음 0.08(근거 없는 임의값)을 제안했으나, 이미 존재하는
+`switchChance = switchFreq * 0.05`(스크린 스위치 확률)와 스케일을 통일하는 게 일관적이라고 판단해
+최종적으로 0.05 채택.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 2.5 Help Defense Resolution의 헬퍼
+  풀 선정부
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+if (helpAttempted) {
+    const zonePositions = helpCfg.ZONE_POSITIONS[preferredZone] ?? [];
+    let helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId && zonePositions.includes(p.position));
+    if (helperPool.length === 0) {
+        helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
+    }
+    ...
+}
+```
+
+**After**:
+```ts
+if (helpAttempted) {
+    // switchFreq가 높을수록(스위치 위주 수비 = 수비수 전원이 유동적 로테이션에 익숙) 헬프 풀이
+    // 존별 포지션 제한 없이 온코트 전원으로 확장될 확률이 생김 — 기존 switchChance와 동일 스케일.
+    const universalHelpChance = defTeam.tactics.sliders.switchFreq * 0.05;
+    const useFullPool = Math.random() < universalHelpChance;
+
+    const zonePositions = helpCfg.ZONE_POSITIONS[preferredZone] ?? [];
+    let helperPool = useFullPool
+        ? defTeam.onCourt.filter(p => p.playerId !== defender.playerId)
+        : defTeam.onCourt.filter(p => p.playerId !== defender.playerId && zonePositions.includes(p.position));
+    if (helperPool.length === 0) {
+        helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
+    }
+    ...
+}
+```
+
+**동작 방식**: `switchFreq × 0.05`(1단계 5% ~ 10단계 50%) 확률로 그 포제션의 헬프 디펜스 후보 풀이
+`ZONE_POSITIONS` 제한(Rim/Paint→C·PF·SF) 없이 온코트 5명 전체로 열린다. 예: SEA(switchFreq=4)는
+20% 확률로 전체 5명 풀 — C가 뽑힐 확률이 최대 1/3(C·PF·SF만 있을 때)에서 1/5로 희석됨. 나머지
+80%는 기존과 동일(포지션 제한 풀). 헬프 "시도 빈도"(`ATTEMPT_BASE`/`PER_LEVEL`)는 손대지 않았고,
+풀에 가드가 포함돼도 헬프 성공 여부는 여전히 `helpDefIq`×`(agility+speed)` 게이트를 통과해야 해서
+가드가 뽑혀도 대부분 실패로 끝남(골밑 헬프 남발 방지).
+
+**검증**:
+- `npx tsc -p server/tsconfig.json` — `possessionHandler.ts` 관련 신규 오류 0건.
+- `npx vite build` — 정상 완료(신규 에러 없음).
+- 별도 시뮬레이션 스크립트 검증은 생략(국소적 산술 로직, 기존 스코프 변수만 재사용).
+
+**주의사항 / 한계**: 존 디펜스의 "Funnel inside shots to Bigs"(C 100% 전담) 로직 자체는 이번에도
+그대로 유지 — 사용자와 논의 후 이건 존 디펜스 특성상 맞는 동작이라고 판단해 수정 대상에서 제외.
+
+**롤백 방법**: 위 Before 블록으로 두 파일의 헬퍼 풀 선정부를 되돌리면 됨.
+
+---
+
+## 2026-07-29 — 헬프 디펜스 슈팅파울 보너스를 실제 헬퍼에게 귀속
+
+**배경**: "빅맨들이 파울이 너무 빨리 쌓인다" 점검 중 두 가지 원인을 발견(사용자가 직접 지목):
+① 헬프 디펜스 성공 시 붙는 파울 확률 보너스(`FOUL_BONUS_BASE`~)가 실제로 헬프한 선수
+(`helpDefender`)가 아니라 원래 포지션 매칭된 수비수(`defender`)한테 그대로 더해지고, 파울이 터지면
+무조건 `defender`한테 기록됨. ② 존 디펜스에서 C가 골밑 슛을 100% 전담하는 문제(별도 항목, 이번엔
+범위 제외 — 사용자가 1번부터 먼저 처리하기로 결정). 이번 항목은 ①만 수정. 골밑 슛을 헬프 디펜스로
+막아준 건 대개 다른 빅맨(PF 등)인데, 그 리스크가 전부 원 수비수(포지션 매칭된 C 등)에게 전가되고
+있었음 — 팀원이 도와준 파울까지 한 선수가 떠안는 구조.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 슈팅파울 판정부(`resolvePlayAction`
+  경로의 3단계 Shooting Foul Check)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+if (helpAttempted && helpSuccess && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+    shootingFoulRate += helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+}
+...
+if (Math.random() < shootingFoulRate) {
+    return {
+        type: 'freethrow',
+        offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+        zone: preferredZone,
+        helpDefenderId,
+    };
+}
+```
+
+**After**:
+```ts
+let helpBonusRate = 0;
+if (helpAttempted && helpSuccess && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+    helpBonusRate = helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+    shootingFoulRate += helpBonusRate;
+}
+...
+if (Math.random() < shootingFoulRate) {
+    // 헬프 보너스가 기여한 비율만큼 확률적으로 실제 헬퍼에게 파울 귀속(전체 파울 확률 자체는 불변)
+    const helpFoulShare = helpBonusRate > 0
+        ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate)
+        : 0;
+    const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
+    return {
+        type: 'freethrow',
+        offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+        zone: preferredZone,
+        helpDefenderId,
+    };
+}
+```
+
+**동작 방식**: 헬프 보너스(`helpBonusRate`)를 별도 변수로 추적해두고, 파울이 실제로 터졌을 때
+`foulProbMod`(파울트러블 배율)까지 반영한 헬프 보너스의 비중만큼 확률적으로 `helpDefender`에게
+파울을 배정한다. 헬프가 없었거나 실패했으면 `helpBonusRate=0`이라 기존과 완전히 동일하게 항상
+`defender`. 전체 슈팅파울 확률(게임 밸런스) 자체는 손대지 않고, **누구에게 기록되느냐만** 기여도에
+비례해 재분배.
+
+**검증**:
+- `npx tsc -p server/tsconfig.json` — `possessionHandler.ts` 관련 신규 오류 0건.
+- `npx vite build` — 정상 완료(신규 에러 없음).
+- 별도 시뮬레이션 스크립트 검증은 생략(변경이 국소적 산술 로직이고, `helpDefender`/`foulProbMod` 등
+  기존 스코프 변수만 재사용해 타입체크로 충분히 안전하다고 판단).
+
+**주의사항 / 한계**: 존 디펜스에서 C가 골밑 슛을 100% 전담하는 문제(이번 조사에서 함께 발견,
+"Funnel inside shots to Bigs" 로직)는 이번 수정 범위에 포함되지 않음 — 별도 후속 작업 필요.
+
+**롤백 방법**: 위 Before 블록으로 두 파일의 `helpBonusRate` 추적 및 파울 귀속 분기를 제거하면 됨.
+
+---
+
 ## 2026-07-29 — 플레이타입 선택 가중치(PLAY_TYPE_PROFILES) base 전면 재조정
 
 **배경**: 앵커 기반 insideOut 로직(바로 아래 항목)을 적용해도 BIG LEAGUE TEST 7의 SEA(윌트

@@ -452,8 +452,18 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let helpSuccess = false;
 
     if (helpAttempted) {
+        // [2026-07-29] switchFreq가 높을수록(스위치 위주 수비 = 수비수 전원이 유동적 로테이션에
+        // 익숙) 헬프 풀이 존별 포지션 제한 없이 온코트 전원으로 확장될 확률이 생김 — 기존
+        // switchChance(스크린 스위치 확률, switchFreq*0.05)와 동일 스케일로 통일해 임의의
+        // 새 계수를 도입하지 않음. 목적: 존별 포지션 풀(Rim/Paint→C·PF·SF)에 갇혀 특정
+        // 빅맨(특히 C)이 골밑 헬프를 도맡아 파울이 쏠리는 문제 완화.
+        const universalHelpChance = defTeam.tactics.sliders.switchFreq * 0.05;
+        const useFullPool = Math.random() < universalHelpChance;
+
         const zonePositions = helpCfg.ZONE_POSITIONS[preferredZone] ?? [];
-        let helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId && zonePositions.includes(p.position));
+        let helperPool = useFullPool
+            ? defTeam.onCourt.filter(p => p.playerId !== defender.playerId)
+            : defTeam.onCourt.filter(p => p.playerId !== defender.playerId && zonePositions.includes(p.position));
         if (helperPool.length === 0) {
             helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
         }
@@ -495,8 +505,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
 
     // [헬프디펜스 재설계] 골밑 파울 증가 (헬프 시도+성공+Rim/Paint 한정, 1단계 +0.5%p ~ 10단계 +2.0%p)
+    // [2026-07-29] 이 보너스로 발생한 파울은 원 수비수(defender)가 아니라 실제로 헬프한 선수
+    // (helpDefender)한테 귀속되어야 함 — helpBonusRate를 따로 추적해 파울 발생 시 기여 비율만큼
+    // 확률적으로 helpDefender에게 배정(아래 "if (Math.random() < shootingFoulRate)" 참고).
+    let helpBonusRate = 0;
     if (helpAttempted && helpSuccess && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-        shootingFoulRate += helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+        helpBonusRate = helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+        shootingFoulRate += helpBonusRate;
     }
 
     // Manipulator 아키타입: 엘리트 파울 드로어 보너스
@@ -522,9 +537,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     shootingFoulRate = Math.max(sFoulCfg.MIN_RATE, Math.min(sFoulCfg.MAX_RATE, shootingFoulRate));
 
     if (Math.random() < shootingFoulRate) {
+        // 헬프 보너스가 기여한 비율만큼 확률적으로 실제 헬퍼에게 파울 귀속(전체 파울 확률 자체는 불변)
+        const helpFoulShare = helpBonusRate > 0
+            ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate)
+            : 0;
+        const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
         return {
             type: 'freethrow',
-            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+            offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             zone: preferredZone,
             helpDefenderId,
         };
