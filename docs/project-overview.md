@@ -113,7 +113,7 @@ NBA-GM-SIM/
 │   │   │   │   ├── stateUpdater.ts updateOnCourtStates() — 체력/핫콜드 갱신
 │   │   │   │   ├── timeEngine.ts  calculatePossessionTime(), formatTime()
 │   │   │   │   ├── usageSystem.ts getTeamOptionRanks() — 1~5옵션 순위
-│   │   │   │   ├── archetypeSystem.ts 12종 역할 적합도 점수 계산
+│   │   │   │   ├── archetypeSystem.ts 11종 역할 적합도 점수 계산
 │   │   │   │   └── handlers/
 │   │   │   │       ├── statUtils.ts    존별 슈팅 통계 누적
 │   │   │   │       ├── visUtils.ts     슛 이벤트 기록 (샷차트용)

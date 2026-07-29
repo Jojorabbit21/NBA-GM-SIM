@@ -73,13 +73,14 @@ export function updateMomentum(
 // 박스스코어 점진 공개 — 포세션 단위 델타 타임라인
 // ─────────────────────────────────────────────────────────────
 
-const BOX_DELTA_KEYS: (keyof BoxDelta)[] = ['pts', 'reb', 'offReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a'];
+const BOX_DELTA_KEYS: (keyof BoxDelta)[] = ['pts', 'reb', 'offReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'];
 
 function snapshotBoxStats(p: LivePlayer): BoxDelta {
     return {
         pts: p.pts, reb: p.reb, offReb: p.offReb, ast: p.ast, stl: p.stl,
         blk: p.blk, tov: p.tov, pf: p.pf,
         fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a,
+        ftm: p.ftm, fta: p.fta,
     };
 }
 

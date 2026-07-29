@@ -7,7 +7,7 @@
 
 | 시스템 | 목적 | 위치 | 문서 |
 |--------|------|------|------|
-| **역할 적합도 점수** (12종, 필드명은 `ArchetypeRatings`이지만 분류 시스템 아님 — 선수 정체성 라벨이 아니라 raw 능력치 가중평균으로 매긴 역할별 캐스팅 적합도) | 경기 중 액터 선택 가중치(`pickWeightedActor`) | `services/game/engine/pbp/archetypeSystem.ts` | [player-usage.md](player-usage.md) |
+| **역할 적합도 점수** (11종, 필드명은 `ArchetypeRatings`이지만 분류 시스템 아님 — 선수 정체성 라벨이 아니라 raw 능력치 가중평균으로 매긴 역할별 캐스팅 적합도) | 경기 중 액터 선택 가중치(`pickWeightedActor`) | `services/game/engine/pbp/archetypeSystem.ts` | [player-usage.md](player-usage.md) |
 | **히든 아키타입** (18종) | 엘리트 임계값 도달 시 보너스 | `flowEngine.ts`, `possessionHandler.ts` | [hidden-archetypes.md](hidden-archetypes.md) |
 | **플레이어 아키타입** (본 문서) | 선수 정체성 표현 + FA 연봉 산정 | `services/playerDevelopment/archetypeEvaluator.ts` | 본 문서 |
 

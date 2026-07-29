@@ -6,7 +6,7 @@ import type { PlayoffSeries, Game } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { useServerClock } from '../../../utils/serverClock';
-import { isFinal, isStarted } from './multiGameReveal';
+import { isFinal, isStarted, computeRevealedSeries } from './multiGameReveal';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -212,50 +212,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
     // 진출팀 이름이 떠 있는" 스포일러가 발생한다. 피더 시리즈가 아직 공개(gated finished)되지
     // 않았다면 그 슬롯은 'TBD'로 되돌려 놓는다.
     const liveSeries = useMemo(() => {
-        const winsMap: Record<string, Record<string, number>> = {};
-        for (const g of schedule) {
-            if (!g.seriesId || !g.played || g.homeScore == null || g.awayScore == null) continue;
-            if (!isFinal(g, serverNow)) continue;
-            const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
-            if (!winsMap[g.seriesId]) winsMap[g.seriesId] = {};
-            winsMap[g.seriesId][winnerId] = (winsMap[g.seriesId][winnerId] ?? 0) + 1;
-        }
-
-        const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 1);
-        const gatedById = new Map<string, PlayoffSeries>();
-
-        for (let round = 1; round <= maxRound; round++) {
-            const roundSeries = series
-                .filter(s => s.round === round)
-                .sort((a, b) => matchIndex(a.id) - matchIndex(b.id));
-
-            for (const s of roundSeries) {
-                // BYE 시리즈는 애초에 경기가 없어 생성 시점에 즉시 확정되므로 그대로 통과.
-                if (s.lowerSeedId === 'BYE') { gatedById.set(s.id, s); continue; }
-
-                let higherSeedId = s.higherSeedId;
-                let lowerSeedId  = s.lowerSeedId;
-
-                if (round > 1) {
-                    const mIdx = matchIndex(s.id);
-                    const feederHigher = gatedById.get(`T_R${round - 1}_M${2 * mIdx}`);
-                    const feederLower  = gatedById.get(`T_R${round - 1}_M${2 * mIdx + 1}`);
-                    higherSeedId = feederHigher?.finished && feederHigher.winnerId ? feederHigher.winnerId : 'TBD';
-                    lowerSeedId  = feederLower?.finished  && feederLower.winnerId  ? feederLower.winnerId  : 'TBD';
-                }
-
-                const higherSeedWins = winsMap[s.id]?.[higherSeedId] ?? 0;
-                const lowerSeedWins  = winsMap[s.id]?.[lowerSeedId]  ?? 0;
-                const finished = higherSeedId !== 'TBD' && lowerSeedId !== 'TBD'
-                    && (higherSeedWins >= s.targetWins || lowerSeedWins >= s.targetWins);
-                const winnerId = finished
-                    ? (higherSeedWins >= s.targetWins ? higherSeedId : lowerSeedId)
-                    : undefined;
-
-                gatedById.set(s.id, { ...s, higherSeedId, lowerSeedId, higherSeedWins, lowerSeedWins, finished, winnerId });
-            }
-        }
-
+        const gatedById = computeRevealedSeries(series, schedule, serverNow);
         return series.map(s => gatedById.get(s.id) ?? s);
     }, [series, schedule, serverNow]);
 

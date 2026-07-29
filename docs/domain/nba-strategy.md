@@ -221,9 +221,9 @@ NBA 경기 한 경기당 평균 포세션 수:
 
 ---
 
-### 4-2. 현대 NBA 선수 역할 적합도 점수 (12종)
+### 4-2. 현대 NBA 선수 역할 적합도 점수 (11종)
 
-현재 `archetypeSystem.ts`에서 계산되는 12종 역할 적합도 점수와 NBA 맥락. 필드명은 `ArchetypeRatings`이지만
+현재 `archetypeSystem.ts`에서 계산되는 11종 역할 적합도 점수와 NBA 맥락. 필드명은 `ArchetypeRatings`이지만
 선수 정체성을 분류하는 시스템이 아니라 "이 선수가 이 역할에 얼마나 적합한가"를 raw 능력치로 계산한 연속
 점수다(상세: [player-usage.md](../engine/player-usage.md#역할-적합도-점수-role-fit-score--pickweightedactor의-rawscore-입력)).
 "Rim Protector" 같은 선수 정체성 라벨은 별개 시스템 — [player-archetypes.md](../engine/player-archetypes.md) 참조.

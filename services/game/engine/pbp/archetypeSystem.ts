@@ -15,9 +15,8 @@ export interface ArchetypeRatings {
     spacer: number;     
     driver: number;     
     screener: number;   
-    roller: number;     
-    popper: number;     
-    rebounder: number;  
+    roller: number;
+    popper: number;
 
     // Advanced (Requested)
     postScorer: number; // Low post scoring (Strength + Post Moves)
@@ -57,12 +56,12 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     const normHeight = Math.max(0, (attr.height - 185) * 3);
     const normWeight = Math.max(0, (attr.weight - 80) * 1.6);
 
-    // rebounder를 제외한 11개는 archetypesEnabled 토글과 무관하게 항상 실계산한다 — playTypes.ts의
+    // 아래 11개는 archetypesEnabled 토글과 무관하게 항상 실계산한다 — playTypes.ts의
     // 액터/패서 선택뿐 아니라 미스매치 판정(flowEngine.ts의 offSkill/defSkill)과 헬프 디펜스 블락
     // 보너스(possessionHandler.ts의 rimProtector 임계값 체크)가 이 값들에 의존하는데, disabled 시
     // 전부 50으로 뭉개지면 이 기능들이 사실상 죽어있는 상태가 된다(2026-07-28 확인). rebounder는
-    // 엔진 어디서도 소비되지 않는 dead code라 리바운드 로직 재검토와 함께 별도로 다루기로 하고
-    // 이번엔 예외로 남긴다.
+    // 엔진 어디서도 소비되지 않는 dead code라 삭제함(2026-07-28) — 실제 리바운드 선정은
+    // reboundLogic.ts가 raw 능력치를 직접 사용.
 
     // 1. Handler (Handling + Pass IQ + Pass Vision + Pass Accuracy)
     const handler = getVal(
@@ -108,13 +107,6 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
         (attr.shotIq * 0.30)
     );
 
-    // 7. Rebounder (Off Reb + Hustle + Vertical) — dead code, 토글 그대로 유지 (별도 검토 예정)
-    const rebounder = disabled ? 50 : getVal(
-        (attr.reb * 0.70) + // Using general reb attr for simplicity
-        (attr.hustle * 0.15) +
-        (attr.vertical * 0.15)
-    );
-
     // 8. Post Scorer (Post Play + Strength + Inside)
     const postScorer = getVal(
         (attr.ins * 0.50) + // 'ins' includes post play in aggregation
@@ -154,7 +146,7 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     );
 
     return {
-        handler, spacer, driver, screener, roller, popper, rebounder,
+        handler, spacer, driver, screener, roller, popper,
         postScorer, isoScorer, connector, perimLock, rimProtector,
     };
 }

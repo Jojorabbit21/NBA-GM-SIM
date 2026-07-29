@@ -50,6 +50,16 @@ export const INITIAL_DATE = DEFAULT_SEASON_CONFIG.startDate;
 export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null, skipSingleLoad = false) => {
     const queryClient = useQueryClient();
 
+    // 아키타입/태그 DB 설정 preload — skipSingleLoad(멀티플레이어 경로)에서도 반드시 실행되어야
+    // 함. 아래쪽 INIT LOGIC effect는 skipSingleLoad=true면 최상단에서 즉시 return하기 때문에
+    // 예전엔 그 안에 있던 동일 호출이 멀티플레이어에서 전혀 실행되지 않아, OVR 계산과
+    // 선수 프로필 특성 태그가 어드민(항상 preload됨)과 멀티플레이어(항상 하드코딩 폴백)
+    // 사이에서 서로 다른 값을 보여주는 원인이 되었다. fetchArchetypeConfig/fetchTagConfig는
+    // 내부적으로 캐시되어 있어 중복 호출해도 안전하다.
+    useEffect(() => {
+        preloadGameConfig().catch(() => {});
+    }, []);
+
     // --- State ---
     const [myTeamId, _setMyTeamId] = useState<string | null>(null);
     const setMyTeamId = useCallback((id: string | null) => {
@@ -185,9 +195,6 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             // forceSave() 자체에는 이미 가드가 있으나, 초기 로드 중 saveCheckpoint
             // 직접 호출은 해당 가드를 우회하므로 여기서 별도로 막는다.
             const isMultiRoute = window.location.pathname.startsWith('/multi');
-
-            // 아키타입 레이블/태그 설정을 DB에서 preload (어드민 수정 내용 반영)
-            preloadGameConfig().catch(() => {});
 
             setIsSaveLoading(true);
             setLoadingProgress(0);

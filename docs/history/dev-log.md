@@ -35,6 +35,428 @@
 
 ---
 
+## 2026-07-29 — Scoring Gravity(옵션 순위) 엔진 전면 교체: peak/secondary 가중 + OVR 게이팅 + 대칭형 systemBonus + 99 캡 제거
+
+**배경**: "왜 카림 압둘자바가 4옵션으로 선정되는지" 질문에서 시작된 옵션 시스템(그라비티) 조사가 여러
+단계를 거쳐 4가지 구조적 문제로 정리됨. 대화 중 별도 아티팩트(BIG LEAGUE TEST 6 320명 전체 실측
+데이터 기반 시뮬레이터)로 A~F안을 반복 검증한 뒤 최종안을 확정, 이번에 실제 엔진에 포팅함.
+1. 기존 `zoneAvg(ins*0.4+out*0.3+mid*0.2+ft*0.1)` 고정 평균은 한쪽 zone만 압도적인 선수를
+   구조적으로 저평가함 (밀워키에서 out=52뿐인 하킴 올라주원이 밸런스형 빈스 카터보다 옵션 순위가
+   낮게 나옴 — insZone/outZone을 peak 0.7/secondary 0.3 동적 가중으로 교체해 해결).
+2. zone 스탯 하나만 튀어도 종합 기량과 무관하게 최상위권에 몰림 (320명 중 74명이 이론상 99 도달,
+   마누 지노빌리·조 존슨 등 롤플레이어급 포함) — 종합 OVR로 최종값을 곱연산 억제하는 ovrGate 추가로
+   28~30명 수준으로 억제(잔존자는 전부 OVR 87+).
+3. 전술 슬라이더(`insideOut`) 보정항(`systemBonus`)이 비대칭 구조(기울어진 쪽 zone 70 초과 시
+   보너스만, 반대쪽 페널티 없음)라, ins/out 둘 다 70+인 투웨이 스코어러(앤서니 데이비스 등)가
+   슬라이더=5(밸런스)에서 오히려 최저점을 찍는 골짜기가 생김 — `tilt*(insZone-outZone)*0.15`
+   대칭형(강점 방향과 전술이 맞으면 보너스, 어긋나면 페널티)으로 교체해 slider=5에서 항상 정확히 0.
+4. `Math.min(99, ...)` 하드캡이 실질적 역할이 없으면서(아래 검증 참고) 두 선수가 동시에 99에 닿으면
+   동점이 되어 정렬이 뭉개지는 부작용만 있었음(밀워키 하킴/카터가 캡 때문에 배열 순서로 우연히
+   항상 카터가 위로 감) — 캡 제거.
+
+**주의(향후 수정 시 필독)**: 그라비티 전용 `insZone`/`outZone`은 `p.attr.ins`/`p.attr.out`
+(`dataMapper.ts` 계산값 — hands 포함, shotIq/offConsist 등 mentality 스탯 혼합, OVR 계산 등 다른
+용도로 계속 쓰임)과 **이름만 비슷할 뿐 전혀 다른 값**이다. `closeShot/layup/dunk/postPlay`(순수
+인사이드)와 `midRange`+3점 서브존 평균(순수 아웃사이드)만으로 그라비티 함수 내부에서 로컬로 재조합했다.
+`p.attr.ins`/`p.attr.out` 필드 자체는 건드리지 않았음.
+
+**변경 파일**:
+- `services/game/engine/pbp/usageSystem.ts` (client)
+- `server/src/shared/engine/pbp/usageSystem.ts` (server 미러)
+
+**Before**:
+```ts
+function calculateScoringGravity(p: LivePlayer): number {
+    const zoneAvg = (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+    const peak = Math.max(p.attr.ins, p.attr.out, p.attr.mid);
+    const dominanceBonus = Math.max(0, peak - 80) * 1.0;
+    return Math.min(99, zoneAvg + dominanceBonus);
+}
+
+export function getTeamOptionRanks(team: TeamState): Map<string, number> {
+    const rankMap = new Map<string, number>();
+    const sortedPlayers = [...team.onCourt].sort((a, b) => {
+        return calculateScoringGravity(b) - calculateScoringGravity(a);
+    });
+    sortedPlayers.forEach((p, index) => { rankMap.set(p.playerId, index + 1); });
+    return rankMap;
+}
+
+export function getTopPlayerGravity(team: TeamState): number {
+    if (team.onCourt.length === 0) return 0;
+    return Math.max(...team.onCourt.map(p => calculateScoringGravity(p)));
+}
+```
+
+**After**:
+```ts
+function calculateScoringGravity(p: LivePlayer, insideOut: number): number {
+    const a = p.attr;
+    const insZone = (a.closeShot + a.layup + a.dunk + a.postPlay) / 4;
+    const threeAvg = (a.threeCorner + a.three45 + a.threeTop) / 3;
+    const outZone = (a.mid + threeAvg) / 2;
+
+    const peak = Math.max(insZone, outZone);
+    const secondary = Math.min(insZone, outZone);
+    const peakBase = (peak * 0.7) + (secondary * 0.3) + (a.ft * 0.1);
+    const dominanceBonus = Math.max(0, peak - 80) * 1.0;
+
+    const tilt = (5 - insideOut) / 5;
+    const systemBonus = tilt * (insZone - outZone) * 0.15;
+
+    const ovrGate = Math.max(0.5, Math.min(1.15, (p.ovr - 65) / 30));
+    return (peakBase + dominanceBonus + systemBonus) * ovrGate; // 99 캡 없음
+}
+
+export function getTeamOptionRanks(team: TeamState): Map<string, number> {
+    const rankMap = new Map<string, number>();
+    const insideOut = team.tactics.sliders.insideOut;
+    const sortedPlayers = [...team.onCourt].sort((a, b) => {
+        return calculateScoringGravity(b, insideOut) - calculateScoringGravity(a, insideOut);
+    });
+    sortedPlayers.forEach((p, index) => { rankMap.set(p.playerId, index + 1); });
+    return rankMap;
+}
+
+export function getTopPlayerGravity(team: TeamState): number {
+    if (team.onCourt.length === 0) return 0;
+    const insideOut = team.tactics.sliders.insideOut;
+    return Math.max(...team.onCourt.map(p => calculateScoringGravity(p, insideOut)));
+}
+```
+
+**99 캡 제거가 안전한 이유(포팅 전 확인 완료)**: `getTeamOptionRanks`는 정렬 순서만 쓰므로 캡 유무와
+무관. `getTopPlayerGravity`가 먹이는 `possessionHandler.ts:366`의 Star Gravity 부스트
+(`Math.min(0.30, Math.max(0, (topGravity-63)*0.015))`)는 자체적으로 topGravity=83부터 이미
+saturate되어 99 캡이 실질적으로 아무 역할을 하지 않았음. `components/dashboard/tactics/charts/
+UsagePrediction.tsx`의 `calcGravity()`는 완전히 별도의(이미 캡 없는) 자체 공식이라 이번 변경과 무관.
+Star Gravity 부스트 임계값(63/83)은 신규 공식 기준 BIG LEAGUE TEST 6 320명 실측 분포(중앙값 60.1,
+63 미만 57%, 83 이상 19%, raw≥99 29명 — 전부 OVR 87+)와 여전히 합리적으로 맞아떨어져 재조정하지
+않고 유지.
+
+**검증**:
+- 서버: `npx tsc -p server/tsconfig.json` — `usageSystem.ts`/`pbpTypes.ts`/`possessionHandler.ts`
+  관련 신규 오류 0건(기존에도 있던 무관한 30건은 그대로, 파일 목록 확인해 겹치지 않음을 확인).
+  이 과정에서 `attr.midRange`라는 존재하지 않는 필드를 잘못 참조한 오타를 발견해 `attr.mid`로 수정함
+  (client는 vite/esbuild가 타입체크를 안 해서 빌드는 통과했지만 동일 오타가 있었음 — server tsc가
+  아니었으면 놓칠 뻔함).
+- 클라이언트: `npx vite build` 정상 완료(사전 존재하던 청크 크기/순환 경고만 있음, 신규 에러 없음).
+- 실제 함수 실행 검증: `npx tsx`로 수정된 `services/game/engine/pbp/usageSystem.ts`를 실제 import해서
+  밀워키 로스터(하킴 올라주원 vs 빈스 카터, DB 실측 스탯 + 엔진으로 계산한 실제 OVR 96/92)를 넣고
+  `getTeamOptionRanks`/`getTopPlayerGravity`를 직접 호출: `insideOut=1~3`(인사이드 전술)에서 하킴이
+  1옵션, `insideOut=6~10`(아웃사이드 전술)에서 카터가 1옵션으로 전환 — 설계 의도(전술 방향과 선수의
+  실제 강점이 맞아야 우대)대로 동작 확인. `insideOut=5`(밸런스)는 98.15 vs 98.36으로 반올림 오차
+  수준의 초박빙(설계상 자연스러움 — 아티팩트의 정수 반올림 데이터에서는 하킴이 근소 우위였으나 실제
+  소수점 값으로는 카터가 근소 우위, 어느 쪽이든 큰 의미 없는 차이).
+
+**롤백 방법**: 위 Before 블록 내용으로 두 파일(`services/game/engine/pbp/usageSystem.ts`,
+`server/src/shared/engine/pbp/usageSystem.ts`)의 `calculateScoringGravity`/`getTeamOptionRanks`/
+`getTopPlayerGravity` 세 함수를 그대로 되돌리면 됨(다른 함수는 미변경).
+
+---
+
+## 2026-07-28 — 멀티 라이브게임뷰 실시간 FT(자유투) 미반영 버그 수정
+
+**배경**: "멀티플레이어 라이브게임뷰의 FT가 데이터 반영이 안 되는 것 같다"는 제보. 조사 결과,
+경기가 `final`로 완료된 뒤에는 사전계산된 완전한 박스(`home_box`/`away_box`)를 그대로 써서 FT가
+정상 표시되지만, **경기가 진행 중(live)일 때만** 스포일러 방지를 위해 별도로 만드는 델타
+타임라인(`box_timeline`, 포세션마다 스탯 변화분만 기록해 elapsed 시점까지 클라이언트가 점진적으로
+재구성)에서 `ftm`/`fta`가 애초에 추적 대상 필드 목록 자체에 빠져 있었던 게 원인. 즉 자유투 성공/시도
+자체는 `LivePlayer` 객체에 정확히 누적되고 있었지만(`statsMappers.ts`), 그걸 매 포세션 diff로 떠서
+`box_timeline`에 기록하는 `BOX_DELTA_KEYS`/`snapshotBoxStats()`가 `ftm`/`fta`를 아예 몰랐음 —
+"실시간에는 항상 0, 경기 끝나면 정상"이라는 사용자 체감과 정확히 일치. 클라이언트 렌더링
+(`MultiGamePbpView.tsx`)은 이미 `p.ftm`/`p.fta`를 정상적으로 읽고 있어 수정 불필요, 원인은
+엔진 단계(client/server 미러 각 2파일, 총 4파일)에 한정됨.
+
+**변경 파일**:
+- `types/engine.ts` (client) — `BoxDelta`에 `ftm?: number; fta?: number;` 추가
+- `server/src/shared/types/engine.ts` (server 미러) — 동일
+- `services/game/engine/pbp/liveEngine.ts` (client) — `BOX_DELTA_KEYS` 배열에 `'ftm', 'fta'` 추가,
+  `snapshotBoxStats()`에 `ftm: p.ftm, fta: p.fta` 추가
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+const BOX_DELTA_KEYS: (keyof BoxDelta)[] = ['pts', 'reb', 'offReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a'];
+
+function snapshotBoxStats(p: LivePlayer): BoxDelta {
+    return {
+        pts: p.pts, reb: p.reb, offReb: p.offReb, ast: p.ast, stl: p.stl,
+        blk: p.blk, tov: p.tov, pf: p.pf,
+        fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a,
+    };
+}
+```
+
+**After**:
+```ts
+const BOX_DELTA_KEYS: (keyof BoxDelta)[] = ['pts', 'reb', 'offReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'];
+
+function snapshotBoxStats(p: LivePlayer): BoxDelta {
+    return {
+        pts: p.pts, reb: p.reb, offReb: p.offReb, ast: p.ast, stl: p.stl,
+        blk: p.blk, tov: p.tov, pf: p.pf,
+        fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a,
+        ftm: p.ftm, fta: p.fta,
+    };
+}
+```
+
+**검증**: 클라이언트(`types/engine.ts`/`liveEngine.ts`/`MultiGamePbpView.tsx`)와 서버
+(`cd server && tsc --noEmit -p .`) 양쪽 다 신규 타입 에러 없음 확인. `MultiGamePbpView.tsx`(및
+레거시 파일)의 델타 소비 코드가 `Object.entries(delta)`로 키를 제너릭하게 순회하는 방식이라 별도
+클라이언트 수정 없이 새 필드를 자동으로 반영함을 코드로 확인. 실제 진행 중인 멀티 경기로 라이브
+FT 반영 여부를 직접 확인하는 스모크 테스트는 미실시(서버 재배포 필요 + 실시간 경기 진행 대기 필요).
+
+**롤백 방법**: 위 4개 파일에서 `ftm`/`fta` 관련 추가분만 제거하면 됨. client/server 미러 쌍이므로
+반드시 4개 파일 전부 함께 되돌릴 것 — 하나만 되돌리면 서버가 보내는 델타와 클라이언트 타입이
+불일치하게 됨(런타임 에러는 안 나지만 그 쪽 필드만 다시 조용히 0으로 고정됨).
+
+---
+
+## 2026-07-28 — Scoring Gravity에 dominanceBonus 추가 (S급 빅맨 저득점 2단계 수정)
+
+**배경**: [Scoring Gravity(옵션 순위) 산정에서 mentality/체력 페널티 제거](#2026-07-28--scoring-gravity옵션-순위-산정에서-mentality체력-페널티-제거)(1단계, 아래 항목)에서 예고한 2단계 —
+`calculateScoringGravity()`의 `baseOffense = ins*0.4 + out*0.3 + mid*0.2 + ft*0.1`가 인사이드(0.4)
+보다 아웃+미드 합(0.5)을 더 높게 쳐서, 3점을 못 던지는 고전 센터가 실제 득점력과 무관하게 옵션 순위
+최하위로 밀리는 근본 원인을 수정. 처음엔 절대 임계값(63, Star Gravity 발동 기준)을 넘기는지로
+검증했으나, 실제 문제의 핵심인 `getTeamOptionRanks()`는 절대값이 아니라 **코트 위 5명 간 상대 순위**로만
+동작한다는 걸 사용자가 지적 — 5인 라인업 시뮬레이션으로 재검증함. 예) 스타로 가득한 라인업(듀란트/
+코비/매직/말론/샤킬형)에서 임계값80·배율0.8로는 샤킬이 절대값 기준 63을 넘겨도 여전히 5옵션(꼴찌)
+이었음 — 매직(67.5)·말론(64.9)에도 못 미쳤기 때문. 배율을 1.0으로 올려야 실제로 순위가 3옵션까지
+올라옴을 확인. 동시에 3레벨 스코어러(듀란트)와 순수 슈터(클레이) 비교에서, 배율을 너무 올리면
+"정점 능력치만 높은 스페셜리스트가 세 구역 다 뛰어난 만능 스코어러를 역전"하는 부작용도 발견해
+배율 상한(1.0, 1.2부터 역전 발생)까지 함께 확인.
+
+**변경 파일**:
+- `services/game/engine/pbp/usageSystem.ts` (client) — `calculateScoringGravity()`에 `peak`
+  (ins/out/mid 중 최댓값)이 80 초과 시 초과분×1.0을 가산하는 `dominanceBonus` 추가, 결과 99 상한
+- `server/src/shared/engine/pbp/usageSystem.ts` (server 미러) — 동일 변경
+
+**Before**:
+```ts
+function calculateScoringGravity(p: LivePlayer): number {
+    return (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+}
+```
+
+**After**:
+```ts
+function calculateScoringGravity(p: LivePlayer): number {
+    const zoneAvg = (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+    const peak = Math.max(p.attr.ins, p.attr.out, p.attr.mid);
+    const dominanceBonus = Math.max(0, peak - 80) * 1.0;
+    return Math.min(99, zoneAvg + dominanceBonus);
+}
+```
+
+**검증**:
+- Node 스크립트로 두 가지 5인 라인업 시나리오 실측:
+  - 스타 가득 라인업(듀란트/코비/매직/말론/샤킬형): 샤킬 5옵션(50.8)→3옵션(67.8), 듀란트(98.2)>클레이(97.5)
+    순서 유지 확인
+  - 샤킬+평범한 롤플레이어 4명: 샤킬 5옵션(50.8, 평범한 선수들보다도 밀림)→1옵션(67.8)으로 정상화
+  - 배율 0.8~2.0 / 임계값 75~85 조합 스윕 — 배율 1.0·임계값 80이 "듀란트>클레이 순서 보존"과
+    "스타 라인업 내 샤킬 순위 개선"을 동시에 만족하는 조합임을 확인(배율 1.2부터 순서 역전 시작)
+  - 평범/벤치/수비형 등 peak 80 미만 프로필은 보너스 0으로 기존과 동일함을 확인(회귀 없음)
+- client/server diff 확인(주석 차이만 존재, 로직 완전 동일), 양 파일 중괄호 균형 확인
+- `tsc --noEmit` 신규 에러 없음, `npm run build` 성공
+- `fly deploy -a basketballgm-app-server` 배포 후 헬스체크 200, `worker#0 ready`/`scheduler started`
+  정상 재기동 확인 (배포 중 "not listening on 0.0.0.0:3001" 경고는 기존에 확인된 일시적 부팅 노이즈)
+
+**주의사항 / 한계**:
+- 이번 수정으로 실제 멀티플레이어 시뮬레이션에서 S급 빅맨의 옵션 순위/사용량이 개선될 것으로
+  예상되나, `BIG LEAGUE TEST 5`(또는 신규 테스트 세션)에서 배포 후 실제 경기를 몇 게임 시뮬레이션해
+  포지션별 득점 분포가 실제로 개선됐는지 재확인이 필요함(아직 미실시)
+- Star Gravity 발동 임계값(63, 1단계에서 조정)은 이번 변경으로 재조정하지 않음 — dominanceBonus로
+  값이 올라간 선수는 자연스럽게 63을 더 쉽게 넘기게 되므로 문제 없음
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
+## 2026-07-28 — Scoring Gravity(옵션 순위) 산정에서 mentality/체력 페널티 제거
+
+**배경**: `BIG LEAGUE TEST 5`(멀티 토너먼트, room `b3ad7461-4ce1-4293-b49a-c75641d5a0cd`) 박스스코어를
+DB에서 직접 집계한 결과, 출전시간이 거의 동일(포지션별 평균 24분 안팎)한데도 포지션별 평균 득점이
+PG 12.51 → SG 11.36 → SF 9.74 → PF 8.26 → C 5.92로 단조 감소, FGA도 PG 9.96 vs C 4.44로 절반 이하.
+S급 센터(샤킬 오닐)조차 35.3분 선발 출전하면서 FGA 5.77개에 그침 — 포지션 자체가 구조적으로 배제되는
+현상 확인. 원인 추적 결과 `usageSystem.ts:calculateScoringGravity()`(코트 위 5명의 "1~5옵션" 순위를
+매기는 함수, `playTypes.ts:pickWeightedActor()`에서 옵션 순위별 최대 7.3배 사용량 배율로 이어짐)의
+`baseOffense = ins*0.4 + out*0.3 + mid*0.2 + ft*0.1` 가중치가 인사이드(0.4)보다 아웃+미드 합(0.5)을
+더 높게 쳐서, 3점을 못 던지는 고전 센터가 실제 득점력과 무관하게 낮은 옵션으로 밀려나는 게 근본 원인으로
+드러남(이 부분은 별도로 2단계 수정 예정, 아직 미착수).
+
+이번 커밋은 그 2단계 수정에 앞선 1단계 — `calculateScoringGravity()`가 `baseOffense`(40%) 외에
+`mentality`(offConsist/shotIq/pas, 40%)와 `fatigueFactor`(체력, 최저 0.5배)까지 섞고 있었는데, 이
+둘은 `flowEngine.ts`의 히트레이트 계산(shotIqNoise/consistNoise/fatigueOff 등)에 이미 독립적으로
+반영되고 있어 gravity에도 넣으면 "볼을 못 받는 것"(옵션 순위 하락)과 "넣지를 못하는 것"(히트레이트
+하락)이 이중으로 겹쳐 짓눌리는 문제가 있었음. gravity를 순수 raw 능력치로만 산정하도록 정리해 고볼륨
+저효율/저볼륨 고효율/체력 저하 시 효율만 하락하는 선수 유형을 자연스럽게 구현할 수 있게 됨(사용자 제안).
+
+**변경 파일**:
+- `services/game/engine/pbp/usageSystem.ts` (client) — `calculateScoringGravity()`에서 mentality/
+  fatigueFactor 제거
+- `server/src/shared/engine/pbp/usageSystem.ts` (server 미러) — 동일 변경
+- `services/game/engine/pbp/possessionHandler.ts` (client) — Star Gravity 발동 임계값 `65` → `63`
+  재조정 (gravity 스케일 변경 반영)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일 변경
+
+**Before**:
+```ts
+function calculateScoringGravity(p: LivePlayer): number {
+    const baseOffense = (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+    const consistMod = 1.0 + ((p.tendencies?.consistency ?? 0.6) - 0.5) * 0.2;
+    const mentality = (p.attr.offConsist * 0.4 * consistMod) + (p.attr.shotIq * 0.4) + (p.attr.pas * 0.2);
+    const fatigueFactor = Math.max(0.5, p.currentCondition / 100);
+    return (baseOffense * 0.6 + mentality * 0.4) * fatigueFactor;
+}
+
+// possessionHandler.ts
+const gravityBoost = Math.min(0.30, Math.max(0, (topGravity - 65) * 0.015));
+```
+
+**After**:
+```ts
+function calculateScoringGravity(p: LivePlayer): number {
+    return (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+}
+
+// possessionHandler.ts
+const gravityBoost = Math.min(0.30, Math.max(0, (topGravity - 63) * 0.015));
+```
+
+**검증**:
+- Node 스크립트로 3레벨 스코어러/순수 슈터/비슈팅 빅맨/만능 빅맨/평균 주전/벤치/수비 스페셜리스트
+  7개 아키타입 프로필에 대해 condition=100 기준 old/new 공식 출력 비교 — ratio 평균 0.965(0.876~1.023
+  분포), 이를 근거로 Star Gravity 임계값 65×0.965≈62.7 → 63으로 재조정
+  (임계값을 새 스케일에 맞게 고칠지, gravity 공식에 보정상수를 곱해 기존 스케일에 맞출지 사용자와
+  논의 후 — 소비처가 `getTopPlayerGravity()`의 절대 임계값 비교 한 곳뿐이라 공식 자체는 순수하게 두고
+  임계값만 재조정하는 쪽으로 결정)
+- client/server diff 확인(주석 차이만 존재, 로직 완전 동일)
+- 양 파일 중괄호 균형 확인, `tsc --noEmit` 신규 에러 없음, `npm run build` 성공
+- `fly deploy -a basketballgm-app-server` 배포 후 헬스체크 200, `worker#0 ready`/`scheduler started`
+  정상 재기동 확인
+
+**주의사항 / 한계**:
+- `tendencies.consistency`(SaveTendency)가 이 함수에서만 소비되고 있었는데, mentality 제거로 이제
+  아무 데서도 안 쓰이는 dead code가 됨 — 이번 범위에서는 삭제하지 않고 남겨둠(별도 처리 필요 시 논의)
+- 지친 에이스도 이제 경기 후반까지 옵션 순위/Star Gravity 보정이 유지됨(볼 소유는 그대로, 적중률만
+  `flowEngine.ts`의 fatigueOff로 하락) — 의도된 동작 변경
+- **이번 변경만으로는 "S급 빅맨 저득점" 문제가 해결되지 않음.** `baseOffense`의 `ins/out/mid` 가중치
+  편향(2단계 수정 대상)은 그대로 남아있어, 실제 체감 개선은 2단계 완료 후 확인 필요
+
+**롤백 방법**: 위 Before 블록으로 4개 파일 모두 되돌리면 됨.
+
+---
+
+## 2026-07-28 — 드래프트 보드 팀 헤더 AUTO 배지 레이아웃 시프트 수정
+
+**배경**: `DraftBoard.tsx`의 팀 헤더에 온라인 점/AUTO 배지를 넣는 `<div className="flex items-center
+gap-1">`가 고정 높이 없이 내용물 크기에 맞춰졌음 — 온라인 점(6px 원)만 있을 때보다 AUTO 배지
+(`text-[7px]` + `py-[1px]`, 실제 렌더 높이 ~9~10px)가 더 커서, 오토픽 전환으로 배지가 나타나는
+순간 그 행의 높이가 늘어나고 `<thead>`가 `sticky top-0`라 테이블 헤더 전체 높이가 갑자기 커지는
+레이아웃 시프트가 발생했음. 사용자가 실제로 목격하고 수정 요청.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` (client) — 온라인 점/AUTO 배지를 감싸는 행에 `h-[10px]` 고정
+  높이 부여(배지 유무와 무관하게 항상 같은 공간 차지). 단, 이 행 자체를 `onlineTeamIds ||
+  autoPickTeamIds`가 하나라도 전달된 경우에만 렌더링해 — 이 prop들을 안 쓰는 싱글/루키 드래프트
+  보드(`FantasyDraftView.tsx`, `DraftHistoryView.tsx`가 같은 `DraftBoard` 컴포넌트를 공유)에는
+  영향이 전혀 없도록 함(그쪽은 기존처럼 이 행 자체가 아예 렌더링 안 됨)
+
+**Before**:
+```tsx
+<div className="flex flex-col items-center gap-0.5">
+    <span>{td.abbr}</span>
+    <div className="flex items-center gap-1">
+        {isOnline !== undefined && <span style={{ width:6, height:6, ... }} />}
+        {isAutoPick && <span className="text-[7px] ... py-[1px] ...">AUTO</span>}
+    </div>
+</div>
+```
+
+**After**:
+```tsx
+<div className="flex flex-col items-center gap-0.5">
+    <span>{td.abbr}</span>
+    {(onlineTeamIds || autoPickTeamIds) && (
+        <div className="flex items-center justify-center gap-1 h-[10px]">
+            {isOnline !== undefined && <span style={{ width:6, height:6, ... }} />}
+            {isAutoPick && <span className="text-[7px] ... py-[1px] ...">AUTO</span>}
+        </div>
+    )}
+</div>
+```
+
+**검증**: `DraftBoard.tsx`에 대해 synthesize한 tsc 옵션으로 신규 타입 에러 없음 확인. 실제 브라우저
+렌더링(온라인 점만 있을 때/AUTO 배지 추가될 때 높이가 실제로 고정되는지)은 미실시.
+
+**롤백 방법**: 위 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-07-28 — `archetypes.rebounder` dead code 삭제
+
+**배경**: 리바운드 판정에 hustle 능력치를 추가하는 작업([리바운드 판정에 허슬(hustle) 능력치
+반영](#2026-07-28--리바운드-판정에-허슬hustle-능력치-반영), 아래 항목) 도중, 역할 적합도 점수
+(`archetypeSystem.ts`)의 `rebounder` 필드가 엔진 어디에서도 소비되지 않는 dead code임을 재확인함
+(이전 세션에서 이미 확인해 삭제를 제안했었고, 사용자가 이번에 "archetypes.rebounder는 삭제하자"로
+확정). 실제 리바운더 선정은 `reboundLogic.ts`가 `offReb`/`defReb`/`vertical`/`strength`/`boxOut`/
+`hustle` raw 능력치를 직접 사용하는 훨씬 정교한 자체 공식(Harvester/Raider 보너스, motorIntensity
+랜덤화 포함)을 쓰고 있어 `archetypes.rebounder`는 애초에 중복이었음.
+
+**변경 파일**:
+- `services/game/engine/pbp/archetypeSystem.ts` (client) — `ArchetypeRatings` 인터페이스에서
+  `rebounder: number;` 제거, `calculatePlayerArchetypes()` 내부 `rebounder` 계산 블록 및 반환
+  객체에서 제거
+- `server/src/shared/engine/pbp/archetypeSystem.ts` (server 미러) — 동일 변경
+- `docs/engine/player-usage.md`, `docs/engine/player-archetypes.md`, `docs/engine/pbp-engine.md`,
+  `docs/domain/nba-strategy.md`, `docs/project-overview.md` — "역할 적합도 점수 12종" 표기를
+  11종으로 전부 수정, rebounder 관련 서술 갱신
+
+**Before**:
+```ts
+export interface ArchetypeRatings {
+    handler: number; spacer: number; driver: number; screener: number;
+    roller: number; popper: number; rebounder: number;
+    postScorer: number; isoScorer: number; connector: number;
+    perimLock: number; rimProtector: number;
+}
+// ...
+const rebounder = disabled ? 50 : getVal(
+    (attr.reb * 0.70) + (attr.hustle * 0.15) + (attr.vertical * 0.15)
+);
+// ...
+return {
+    handler, spacer, driver, screener, roller, popper, rebounder,
+    postScorer, isoScorer, connector, perimLock, rimProtector,
+};
+```
+
+**After**:
+```ts
+export interface ArchetypeRatings {
+    handler: number; spacer: number; driver: number; screener: number;
+    roller: number; popper: number;
+    postScorer: number; isoScorer: number; connector: number;
+    perimLock: number; rimProtector: number;
+}
+// ...
+return {
+    handler, spacer, driver, screener, roller, popper,
+    postScorer, isoScorer, connector, perimLock, rimProtector,
+};
+```
+
+**검증**: client/server diff 확인(주석 차이만 존재, 로직 완전 동일), 양 파일 중괄호 균형 확인,
+`ArchetypeRatings`를 참조하는 다른 소비처(`shotDistribution.ts`, `pbpTypes.ts`) grep 결과 `.rebounder`
+프로퍼티 직접 참조 없음 확인, `tsc --noEmit`에서 신규 에러 없음, `npm run build` 성공, `fly deploy`
+후 헬스체크 200·정상 재기동 확인.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
 ## 2026-07-28 — 리바운드 판정에 허슬(hustle) 능력치 반영
 
 **배경**: 역할 적합도 점수(`archetypeSystem.ts`) 정리 작업 도중, 실제 리바운드 판정 로직
@@ -478,6 +900,194 @@ Node 재현: 엘리트 림프로텍터 능력치(blk=92, intDef=90, height=213) 
 
 **롤백 방법**: 두 파일에서 함수 본문을 이전(11개 즉시 50 하드코딩 disabled 분기 + 전체 재계산
 enabled 분기 이중 구조)으로 되돌리면 됨 — 미러 쌍이므로 반드시 함께.
+
+---
+
+## 2026-07-28 — 라이브게임 박스스코어에 FT(자유투) 컬럼 추가
+
+**배경**: 멀티플레이어 라이브 게임(PBP) 화면의 박스스코어 테이블에 FG/3P만 있고 FT(자유투 성공-시도)가 없어서 추가 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` — `PlayerBoxPanel`의 `BOX_GRID`에 컬럼 폭(48px) 추가, 헤더에 `FT` 라벨 추가, 선수 행에 `{p.ftm}-{p.fta}` 추가, `total` useMemo에 `ftm`/`fta` 합계 추가, 팀 합계 행에 FT% 셀 추가(`total.ftm / total.fta * 100`, FG%/3P%와 동일한 표시 방식).
+
+**Before**:
+```ts
+const BOX_GRID = 'minmax(0,1fr) 26px 28px 32px 28px 28px 28px 28px 28px 32px 56px 48px';
+// total: pts/reb/ast/stl/blk/tov/pf/fgm/fga/p3m/p3a
+// 헤더: ... FG, 3P
+// 행:   ... {p.fgm}-{p.fga}, {p.p3m}-{p.p3a}
+// 팀합계: ... FG%, 3P%
+```
+
+**After**:
+```ts
+const BOX_GRID = 'minmax(0,1fr) 26px 28px 32px 28px 28px 28px 28px 28px 32px 56px 48px 48px';
+// total에 ftm/fta 추가
+// 헤더: ... FG, 3P, FT
+// 행:   ... {p.fgm}-{p.fga}, {p.p3m}-{p.p3a}, {p.ftm}-{p.fta}
+// 팀합계: ... FG%, 3P%, FT%
+```
+
+**검증**: `esbuild` 구문 파싱만 확인, `PlayerBoxScore` 타입에 `ftm`/`fta` 필드 존재 확인. 브라우저 실행 검증은 하지 않음.
+
+**롤백 방법**: `BOX_GRID`에서 마지막 `48px` 제거, 헤더/행/팀합계에서 FT 관련 셀 3곳 제거, `total`에서 `ftm`/`fta` 제거.
+
+---
+
+## 2026-07-28 — 라이브게임 헤더 스코어링 런 표시 시 높이 변동 수정
+
+**배경**: 스코어버그 헤더 중앙 컬럼의 "스코어링 런"(🔥 팀 X-Y) 줄이 런이 있을 때만 조건부로 렌더링되고 없으면 아예 DOM에서 빠져, 런 유무에 따라 컬럼이 2줄/3줄을 오가며 헤더 전체 높이가 미세하게 바뀌는 레이아웃 시프트가 있었음.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` — 스코어링 런 `<span>`을 조건부 렌더링(`{isLive && activeRun && (...)}`)에서 항상 렌더링하되 값이 없을 때 `invisible` 클래스로 시각적으로만 숨기는 방식으로 변경. `activeRun` 참조를 전부 옵셔널 체이닝(`activeRun?.`)으로 변경하고 폴백값(`?? 0`) 추가.
+
+**Before**:
+```tsx
+{isLive && activeRun && (
+    <span className="text-xs font-bold text-white whitespace-nowrap">
+        🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+        {activeRun.teamPts}-{activeRun.oppPts}
+    </span>
+)}
+```
+
+**After**:
+```tsx
+<span className={`text-xs font-bold text-white whitespace-nowrap ${isLive && activeRun ? '' : 'invisible'}`}>
+    🔥 {(activeRun?.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+    {activeRun?.teamPts ?? 0}-{activeRun?.oppPts ?? 0}
+</span>
+```
+
+**검증**: `esbuild` 구문 파싱만 확인. 브라우저 실행 검증은 하지 않음.
+
+**롤백 방법**: 위 span을 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-07-28 — 라이브게임 박스스코어에 코트 위 선수 하이라이트 추가
+
+**배경**: 멀티플레이어 라이브 게임(PBP) 화면의 박스스코어 테이블에서 현재 코트 위 5명을 시각적으로 구분할 방법이 없었음. `box_timeline`(`BoxTick[]`)의 각 tick에 `on: string[]`(그 포세션에 코트 위 있던 10명 playerId)이 이미 저장돼 있었지만 `buildLiveBox()`가 mp 누적에만 쓰고 버리고 있었음 — 이를 재사용해 UI 요청 기능만 추가.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` — `getOnCourtIds(timeline, elapsed)` 헬퍼 신규 추가(elapsed 이하 마지막 tick의 `on` 배열 반환), `onCourtIds` useMemo 추가(`liveHomeBox`/`liveAwayBox`와 동일한 의존성), `PlayerBoxPanel`에 `onCourtIds?: Set<string>` prop 추가해 행 className에 `bg-emerald-400/15` 조건부 적용(최초 `bg-emerald-500/10`이었으나 사용자 요청으로 더 밝게 조정), live 박스 호출부 2곳(원정/홈)에 prop 전달.
+
+**Before**:
+```tsx
+const PlayerBoxPanel: React.FC<{ players: PlayerBoxScore[]; label: string }> = ({ players, label }) => {
+    ...
+    {sorted.map((p, i) => (
+        <div className={`... ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`} ...>
+```
+
+**After**:
+```tsx
+const PlayerBoxPanel: React.FC<{ players: PlayerBoxScore[]; label: string; onCourtIds?: Set<string> }> = ({ players, label, onCourtIds }) => {
+    ...
+    {sorted.map((p, i) => (
+        <div className={`... ${onCourtIds?.has(p.playerId) ? 'bg-emerald-400/15' : i % 2 === 0 ? 'bg-slate-800/20' : ''}`} ...>
+```
+
+**검증**: `esbuild`로 구문 파싱만 확인. 브라우저 실행 검증은 하지 않음.
+
+**주의사항**: `final`(경기 종료 후 전체 공개) 상태의 박스스코어 호출부에는 `onCourtIds`를 전달하지 않음 — 코트 위 개념은 라이브 진행 중에만 의미가 있음.
+
+**롤백 방법**: `PlayerBoxPanel`의 `onCourtIds` prop과 className 조건, `getOnCourtIds`/`onCourtIds` useMemo, 두 호출부의 `onCourtIds={onCourtIds}` prop 전달부 제거.
+
+---
+
+## 2026-07-28 — 일정 화면에서 미확정 다음 라운드 대진 스포일러 노출 수정
+
+**배경**: 토너먼트 Bo7 시리즈가 아직 3:3(미확정)인데도 "시즌 일정"(`MultiScheduleView.tsx`) 화면에는 다음 라운드 매치업이 상대팀 이름까지 확정되어 노출되는 버그 제보. 원인 추적 결과, 서버(`server/src/simRunner.ts::handleTournamentAdvance`)는 시리즈 결정 경기를 시뮬레이션한 즉시(사용자가 실제로 10분 리플레이를 보기 전) `league.bracket_data.series`에 다음 라운드 진출팀을 채우고 `room.schedule`에 해당 라운드 경기를 추가한다. 브라켓 화면(`TournamentBracketView.tsx`)은 이미 `liveSeries`라는 재계산 로직으로 "피더 시리즈가 `isFinal` 게이팅을 통과했는지"에 따라 다음 라운드를 TBD로 되돌리는 방어 로직이 있었지만, 일정 화면은 raw `schedule`을 그대로 나열만 해서 이 게이팅이 전혀 없었다 — `GameRow`가 `state`(scheduled/live/final)와 무관하게 팀 이름을 항상 렌더링했기 때문에, 서버가 백엔드에서 다음 라운드를 미리 만든 순간 바로 스포일러로 노출됨.
+
+**변경 파일**:
+- `views/multi/season/multiGameReveal.ts` — `TournamentBracketView.tsx`에 있던 시리즈 게이팅 로직(라운드 1부터 순서대로 재계산해 피더 시리즈가 `isFinal`을 통과 못했으면 `higherSeedId`/`lowerSeedId`를 강제로 `'TBD'`로 되돌림)을 `computeRevealedSeries(series, schedule, serverNowMs)`라는 공용 함수로 추출해 신규 export.
+- `views/multi/season/TournamentBracketView.tsx` — 기존에 인라인으로 있던 `liveSeries` useMemo 내부 로직(약 45줄)을 제거하고 `computeRevealedSeries()` 호출로 교체(동작 동일, 중복 제거).
+- `views/multi/season/MultiScheduleView.tsx` — `allGames` useMemo에 `revealedSeriesById`(← `computeRevealedSeries()`) 기반 필터를 추가. `g.isPlayoff && g.seriesId`인 경기는 해당 시리즈가 게이팅상 아직 양쪽 다 확정(`higherSeedId`/`lowerSeedId` 둘 다 `'TBD'` 아님)되지 않았으면 목록에서 아예 제외.
+
+**Before**:
+```ts
+// MultiScheduleView.tsx
+const allGames = useMemo(() =>
+    [...schedule]
+        .map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt }))
+        .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
+[schedule, simStart, gprd]);
+```
+
+**After**:
+```ts
+// MultiScheduleView.tsx
+const revealedSeriesById = useMemo(() => {
+    const series: any[] = (league?.bracket_data as any)?.series ?? [];
+    if (!series.length) return null;
+    return computeRevealedSeries(series, schedule as any, serverNow);
+}, [league?.bracket_data, schedule, serverNow]);
+
+const allGames = useMemo(() =>
+    [...schedule]
+        .filter(g => {
+            if (!g.isPlayoff || !g.seriesId || !revealedSeriesById) return true;
+            const gated = revealedSeriesById.get(g.seriesId);
+            return !!gated && gated.higherSeedId !== 'TBD' && gated.lowerSeedId !== 'TBD';
+        })
+        .map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt }))
+        .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
+[schedule, simStart, gprd, revealedSeriesById]);
+```
+
+**검증**: `esbuild`로 수정한 3개 파일(`multiGameReveal.ts`, `TournamentBracketView.tsx`, `MultiScheduleView.tsx`) 구문 파싱만 확인(에러 없음). 로컬 dev 서버로 실제 브라우저 재현(3:3 상태에서 일정 화면에 다음 라운드가 안 뜨는지)은 하지 않음.
+
+**롤백 방법**: `MultiScheduleView.tsx`의 `revealedSeriesById`/필터 블록 제거하고 `allGames`를 Before 상태로 되돌림. `TournamentBracketView.tsx`의 `liveSeries` useMemo를 원래 인라인 45줄 로직으로 복원(git에서 이 커밋 diff 참고). `multiGameReveal.ts`의 `computeRevealedSeries`/`seriesMatchIndex`/`SeriesGameLike` 제거.
+
+---
+
+## 2026-07-28 — 멀티플레이어에서 아키타입/태그 DB 설정 preload 누락 수정
+
+**배경**: 어드민(PlayerEditorPage)과 멀티플레이어 세션에서 같은 선수의 OVR/특성 태그가 다르게 표시되는 버그 조사 결과 발견. `services/admin/gameConfigService.ts`의 `archetypeCache`/`tagCache`는 `preloadGameConfig()`를 명시적으로 호출해야만 채워지는 모듈 싱글턴인데, 이 앱에서 유일한 호출부(`hooks/useGameData.ts`)가 `/multi` 라우트에서는 `skipSingleLoad=true`로 인해 INIT LOGIC effect 최상단(`if (skipSingleLoad) return`)에서 즉시 return되어 버려 멀티플레이어에서는 이 호출이 한 번도 실행되지 않았다. 그 결과 `utils/ovrEngine.ts`(OVR 계산의 tagBonus), `pages/PlayerEditorPage.tsx`(어드민 표시), `services/playerDevelopment/archetypeEvaluator.ts`(선수 프로필 특성 태그 표시) 세 곳 모두 "DB 커스텀 태그가 있으면 그걸 쓰고 없으면 하드코딩 폴백" 패턴인데, 멀티플레이어만 항상 폴백을 타면서 어드민과 다른 tagBonus/태그 목록이 계산됨. 실측: 스카티 반스(커스텀 오버라이드 없음, PF)의 raw OVR이 하드코딩 폴백 기준 91.7(→92), DB 커스텀 태그(15개, 전부 미충족→tagBonus 0) 기준 89.9(→90)로 정확히 일치 확인. 화면상으로도 DB 태그 목록에 없는 `off_ball_mover`(하드코딩 폴백 전용 ID, DB는 `space_ace`로 대체됨)가 멀티플레이어 선수 프로필에 뜨는 것으로 재확인.
+
+**변경 파일**:
+- `hooks/useGameData.ts` — `preloadGameConfig()` 호출을 `skipSingleLoad` 가드가 있는 INIT LOGIC effect(197행 근처, 기존 190행)에서 제거하고, 훅 최상단(51행 이후)에 의존성 배열 `[]`인 별도 `useEffect`로 이동해 `skipSingleLoad` 값과 무관하게 항상 1회 실행되도록 함.
+
+**Before**:
+```ts
+export const useGameData = (session, isGuestMode, rosterMode, skipSingleLoad = false) => {
+    const queryClient = useQueryClient();
+    // ...state...
+    useEffect(() => {
+        if (skipSingleLoad) return;   // ← /multi 라우트면 여기서 즉시 return
+        if (hasInitialLoadRef.current || isResettingRef.current) return;
+        if (isBaseDataLoading || !baseData) return;
+        const initializeGame = async () => {
+            const isMultiRoute = window.location.pathname.startsWith('/multi');
+            preloadGameConfig().catch(() => {});   // ← 멀티플레이어에서는 도달 불가
+            setIsSaveLoading(true);
+            ...
+```
+
+**After**:
+```ts
+export const useGameData = (session, isGuestMode, rosterMode, skipSingleLoad = false) => {
+    const queryClient = useQueryClient();
+
+    useEffect(() => {
+        preloadGameConfig().catch(() => {});   // skipSingleLoad와 무관하게 항상 1회 실행
+    }, []);
+
+    // --- State ---
+    ...
+    useEffect(() => {
+        if (skipSingleLoad) return;
+        ...
+        const initializeGame = async () => {
+            const isMultiRoute = window.location.pathname.startsWith('/multi');
+            setIsSaveLoading(true);   // preloadGameConfig() 호출 제거(중복이라 위로 이동)
+            ...
+```
+
+**검증**: `fetchArchetypeConfig`/`fetchTagConfig`는 내부적으로 모듈 캐시(`archetypeCache`/`tagCache`)를 체크해 이미 로드됐으면 즉시 반환하므로, 싱글플레이어 경로에서 두 곳(신규 effect + 기존 initializeGame 흐름)이 잠깐이라도 겹쳐 호출되어도 중복 네트워크 요청·부작용 없음. 별도 브라우저 실행 검증은 하지 않음(로컬 dev 서버 미기동) — `preloadGameConfig`가 정상적으로 `useGameData` 훅 스코프 안에서 import되어 있는지, `useEffect` import 존재 여부만 정적으로 확인함.
+
+**롤백 방법**: `hooks/useGameData.ts` 51~61행에 추가한 `useEffect` 블록을 삭제하고, 197행(`setIsSaveLoading(true);`) 바로 위에 `preloadGameConfig().catch(() => {});` 호출을 다시 삽입하면 Before 상태로 복귀.
 
 ---
 

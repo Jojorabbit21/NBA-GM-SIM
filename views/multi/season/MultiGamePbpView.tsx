@@ -189,6 +189,18 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
     return Array.from(rows.values());
 }
 
+// elapsed 시점 이하 마지막 tick의 tick.on(양 팀 합산 코트 위 playerId)을 반환한다.
+// "지금 코트에 누가 있는지"는 이미 공개된 시점까지의 정보라 스포일러가 아니다.
+function getOnCourtIds(timeline: BoxTick[], elapsed: number): Set<string> {
+    let ids: string[] = [];
+    for (const tick of timeline) {
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+        if (replayMs > elapsed) break;
+        ids = tick.on;
+    }
+    return new Set(ids);
+}
+
 // ─── QuarterScores ────────────────────────────────────────────────────────────
 
 const QuarterScores: React.FC<{
@@ -392,12 +404,13 @@ const CompactWPGraph: React.FC<{
 
 // ─── PlayerBoxPanel ───────────────────────────────────────────────────────────
 
-const BOX_GRID = 'minmax(0,1fr) 26px 28px 32px 28px 28px 28px 28px 28px 32px 56px 48px';
+const BOX_GRID = 'minmax(0,1fr) 26px 28px 32px 28px 28px 28px 28px 28px 32px 56px 48px 48px';
 
 const PlayerBoxPanel: React.FC<{
     players: PlayerBoxScore[];
     label:   string;
-}> = ({ players, label }) => {
+    onCourtIds?: Set<string>;
+}> = ({ players, label, onCourtIds }) => {
     const sorted = useMemo(
         () => [...players].sort((a, b) => (b.mp ?? 0) - (a.mp ?? 0)),
         [players],
@@ -410,6 +423,7 @@ const PlayerBoxPanel: React.FC<{
             stl: s(p => p.stl), blk: s(p => p.blk), tov: s(p => p.tov),
             pf:  s(p => p.pf),  fgm: s(p => p.fgm), fga: s(p => p.fga),
             p3m: s(p => p.p3m), p3a: s(p => p.p3a),
+            ftm: s(p => p.ftm), fta: s(p => p.fta),
         };
     }, [sorted]);
 
@@ -432,12 +446,15 @@ const PlayerBoxPanel: React.FC<{
                 <span className="text-right">PF</span>
                 <span className="text-right">FG</span>
                 <span className="text-right">3P</span>
+                <span className="text-right">FT</span>
             </div>
             {/* 선수 행 */}
             {sorted.map((p, i) => (
                 <div
                     key={p.playerId}
-                    className={`grid gap-x-0.5 px-2 py-1.5 items-center text-xs font-mono ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}
+                    className={`grid gap-x-0.5 px-2 py-1.5 items-center text-xs font-mono ${
+                        onCourtIds?.has(p.playerId) ? 'bg-emerald-400/15' : i % 2 === 0 ? 'bg-slate-800/20' : ''
+                    }`}
                     style={{ gridTemplateColumns: BOX_GRID }}
                 >
                     <span className="font-sans text-xs text-slate-300 truncate flex items-center gap-1">
@@ -460,6 +477,7 @@ const PlayerBoxPanel: React.FC<{
                     <span className="text-right text-slate-300">{p.pf}</span>
                     <span className="text-right text-slate-300">{p.fgm}-{p.fga}</span>
                     <span className="text-right text-slate-300">{p.p3m}-{p.p3a}</span>
+                    <span className="text-right text-slate-300">{p.ftm}-{p.fta}</span>
                 </div>
             ))}
             {/* 팀 합계 */}
@@ -479,6 +497,7 @@ const PlayerBoxPanel: React.FC<{
                 <span className="text-right">{total.pf}</span>
                 <span className="text-right">{total.fga > 0 ? (total.fgm / total.fga * 100).toFixed(1) + '%' : '-'}</span>
                 <span className="text-right">{total.p3a > 0 ? (total.p3m / total.p3a * 100).toFixed(1) + '%' : '-'}</span>
+                <span className="text-right">{total.fta > 0 ? (total.ftm / total.fta * 100).toFixed(1) + '%' : '-'}</span>
             </div>
         </div>
     );
@@ -769,6 +788,13 @@ const MultiGamePbpView: React.FC = () => {
         return buildLiveBox(gameData.box_timeline ?? [], serverNow - startMs, gameData.away_box ?? []);
     }, [gameData, serverNow, displayState, hasBoxTimeline]);
 
+    // 현재 코트 위 선수(양 팀 합산) — 박스스코어 행 하이라이트용
+    const onCourtIds = useMemo<Set<string>>(() => {
+        if (!gameData || displayState !== 'live' || !hasBoxTimeline) return new Set();
+        const startMs = new Date(gameData.game_start_time).getTime();
+        return getOnCourtIds(gameData.box_timeline ?? [], serverNow - startMs);
+    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+
     const currentScore = useMemo(() => {
         const last = [...visibleEvents].reverse().find(e => e.homeScore != null);
         return last ? { home: last.homeScore ?? 0, away: last.awayScore ?? 0 } : { home: 0, away: 0 };
@@ -948,14 +974,13 @@ const MultiGamePbpView: React.FC = () => {
                         ) : (
                             <span className="text-xs text-slate-500 ko-normal">최종 결과</span>
                         )}
-                        {/* 스코어링 런 인디케이터 — 런이 실제로 있을 때만 렌더링(자리 예약 없음).
-                            없으면 위 두 줄(쿼터/시계, LIVE·최종결과)만 남아 컬럼 중앙에 위치한다. */}
-                        {isLive && activeRun && (
-                            <span className="text-xs font-bold text-white whitespace-nowrap">
-                                🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
-                                {activeRun.teamPts}-{activeRun.oppPts}
-                            </span>
-                        )}
+                        {/* 스코어링 런 인디케이터 — 런 유무와 무관하게 항상 이 줄을 렌더링해 자리를
+                            고정으로 예약한다(없을 때는 invisible로 시각적으로만 숨김). 조건부로
+                            아예 렌더링하지 않으면 컬럼이 2줄/3줄을 오가며 헤더 높이가 들쭉날쭉해진다. */}
+                        <span className={`text-xs font-bold text-white whitespace-nowrap ${isLive && activeRun ? '' : 'invisible'}`}>
+                            🔥 {(activeRun?.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+                            {activeRun?.teamPts ?? 0}-{activeRun?.oppPts ?? 0}
+                        </span>
                     </div>
 
                     {/* Home */}
@@ -1002,6 +1027,7 @@ const MultiGamePbpView: React.FC = () => {
                         <PlayerBoxPanel
                             players={liveAwayBox}
                             label={awayAbbr}
+                            onCourtIds={onCourtIds}
                         />
                     ) : (
                         <BoxScorePlaceholder label={awayAbbr} />
@@ -1194,6 +1220,7 @@ const MultiGamePbpView: React.FC = () => {
                         <PlayerBoxPanel
                             players={liveHomeBox}
                             label={homeAbbr}
+                            onCourtIds={onCourtIds}
                         />
                     ) : (
                         <BoxScorePlaceholder label={homeAbbr} />

@@ -120,6 +120,7 @@ export interface BoxDelta {
     pts?: number; reb?: number; offReb?: number; ast?: number; stl?: number;
     blk?: number; tov?: number; pf?: number;
     fgm?: number; fga?: number; p3m?: number; p3a?: number;
+    ftm?: number; fta?: number;
 }
 
 // 포세션 1회 종료 시점의 박스스코어 변화분 (멀티플레이어 중계 점진 공개용)

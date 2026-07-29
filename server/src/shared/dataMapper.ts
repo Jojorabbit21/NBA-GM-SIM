@@ -56,17 +56,27 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
     if (raw.name)     p.name     = raw.name;
     if (raw.position) p.position = raw.position;
 
-    // Apply custom_overrides when alltime pool is active (balances legends against modern players)
+    // Apply custom_overrides when alltime pool is active (balances legends against modern players).
+    // 올타임 풀 규칙: 현역이면서 올타임 전용 능력치 세트(custom_overrides)를 가진 선수는 그 값을
+    // 기준으로, 그런 오버라이드가 없는 선수(올타임에만 존재하는 레전드 등)는 base_attributes
+    // 그대로를 기준으로 삼는다.
     if (applyCustomOverrides) {
         const customOverrides = baseAttrs.custom_overrides;
         if (customOverrides && typeof customOverrides === 'object' && !Array.isArray(customOverrides)) {
             for (const [k, v] of Object.entries(customOverrides)) {
                 if (typeof v === 'number') p[k] = v;
             }
-            for (const cat of Object.keys(CATEGORY_ATTRS)) {
-                p[cat] = calcCategoryAvg(p, cat);
-            }
         }
+    }
+
+    // 카테고리 평균(ins/out/ath/plm/def/reb)은 custom_overrides 존재 여부와 무관하게 항상 실제
+    // 능력치(base_attributes, 오버라이드가 있으면 그 값)로 계산한다. 예전엔 이 재계산이
+    // "customOverrides가 존재하는 선수"에게만 실행돼, custom_overrides가 null인 선수(대다수)는
+    // ins/out/ath/plm/def/reb가 전부 아래 하드코딩 폴백(70)으로 고정되는 버그가 있었다 — 그라비티
+    // (옵션 순위) 계산이 사실상 midRange/ft 두 스탯에만 좌우되는 결과를 낳았다
+    // (BIG LEAGUE TEST 6: 압둘자바가 4옵션으로 밀리는 문제로 발견).
+    for (const cat of Object.keys(CATEGORY_ATTRS)) {
+        p[cat] = calcCategoryAvg(p, cat);
     }
 
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));

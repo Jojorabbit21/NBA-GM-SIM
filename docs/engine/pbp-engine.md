@@ -61,7 +61,7 @@ services/game/tactics/
     isShutdown: boolean,               // 피로도 < 20 교체 대기
     health: 'Healthy' | 'Injured' | 'Day-to-Day',
 
-    // 아키타입 (12개 역할 적합도 점수)
+    // 아키타입 (11개 역할 적합도 점수)
     archetypes: ArchetypeRatings,
 
     // 세이브별 고유 성향 (hiddenTendencies.ts)
@@ -1142,10 +1142,10 @@ Dunk 전용 추가 블록 저항:
 
 > **필드명 주의**: `archetypeSystem.ts`의 타입/변수명은 `ArchetypeRatings`/`archetypes`라 "아키타입"으로
 > 불리기 쉽지만, 선수 정체성을 분류하는 시스템이 아니라 **"이 선수를 지금 이 역할로 캐스팅했을 때 얼마나
-> 적합한가"를 raw 능력치 가중평균으로 매기는 연속값**이다. 12개 공식 전체와 `archetypesEnabled` 토글
-> 활성/비활성 시 동작(기본 비활성 — 대부분 50으로 고정, `spacer`만 예외)은 중복 관리 방지를 위해 여기
-> 반복하지 않고 [player-usage.md](player-usage.md)의 "역할 적합도 점수 (Role Fit Score)" 절에서 단일
-> 소스로 관리한다.
+> 적합한가"를 raw 능력치 가중평균으로 매기는 연속값**이다. 11개 공식 전체와 `archetypesEnabled` 토글
+> 활성/비활성 시 동작(2026-07-28부로 토글과 무관하게 항상 실계산 — 상세는 하단 링크)은 중복 관리
+> 방지를 위해 여기 반복하지 않고 [player-usage.md](player-usage.md)의 "역할 적합도 점수 (Role Fit
+> Score)" 절에서 단일 소스로 관리한다.
 
 **피로도 영향**: condition이 낮아질수록 모든 역할 점수 감소 → Option Rank 하락 → 포세션 배분 감소
 

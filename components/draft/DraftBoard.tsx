@@ -139,29 +139,36 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                 >
                                     <div className="flex flex-col items-center gap-0.5">
                                         <span>{td.abbr}</span>
-                                        <div className="flex items-center gap-1">
-                                            {isOnline !== undefined && (
-                                                <span
-                                                    title={isOnline ? '접속 중' : '오프라인'}
-                                                    style={{
-                                                        display: 'inline-block',
-                                                        width: 6,
-                                                        height: 6,
-                                                        borderRadius: '50%',
-                                                        backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
-                                                        flexShrink: 0,
-                                                    }}
-                                                />
-                                            )}
-                                            {isAutoPick && (
-                                                <span
-                                                    title="오토픽 진행 중"
-                                                    className="text-[7px] font-black leading-none px-1 py-[1px] rounded-sm bg-indigo-400 text-indigo-950 shrink-0"
-                                                >
-                                                    AUTO
-                                                </span>
-                                            )}
-                                        </div>
+                                        {/* 온라인 점/오토픽 배지 여부와 무관하게 항상 같은 높이를 차지하도록 고정 —
+                                            안 그러면 AUTO 배지(온라인 점보다 큼)가 나타나는 순간 이 행의 높이가
+                                            늘어나면서 sticky 헤더 전체 높이가 갑자기 커지는 레이아웃 시프트가 생김.
+                                            멀티 드래프트 전용(onlineTeamIds/autoPickTeamIds 둘 다 안 쓰는 싱글/루키
+                                            드래프트 보드에서는 기존과 동일하게 아예 렌더링 안 함). */}
+                                        {(onlineTeamIds || autoPickTeamIds) && (
+                                            <div className="flex items-center justify-center gap-1 h-[10px]">
+                                                {isOnline !== undefined && (
+                                                    <span
+                                                        title={isOnline ? '접속 중' : '오프라인'}
+                                                        style={{
+                                                            display: 'inline-block',
+                                                            width: 6,
+                                                            height: 6,
+                                                            borderRadius: '50%',
+                                                            backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
+                                                            flexShrink: 0,
+                                                        }}
+                                                    />
+                                                )}
+                                                {isAutoPick && (
+                                                    <span
+                                                        title="오토픽 진행 중"
+                                                        className="text-[7px] font-black leading-none px-1 py-[1px] rounded-sm bg-indigo-400 text-indigo-950 shrink-0"
+                                                    >
+                                                        AUTO
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </th>
                             );

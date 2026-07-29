@@ -6,7 +6,7 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useGame } from '../../../hooks/useGameContext';
 import { useServerClock } from '../../../utils/serverClock';
-import { getGameDisplayState, isStarted, resolveRealAt, type GameDisplayState } from './multiGameReveal';
+import { getGameDisplayState, isStarted, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
 import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '../../../services/multi/gameLeadersCache';
@@ -372,8 +372,24 @@ const MultiScheduleView: React.FC = () => {
 
     const roundLabelMap = useMemo(() => computeRoundLabelMap(league?.bracket_data), [league?.bracket_data]);
 
+    // 서버는 시리즈 결정 경기를 시뮬레이션한 즉시(리플레이 10분 대기 전) bracket_data.series에
+    // 다음 라운드 진출팀을 채워 넣는다. 이 뷰는 raw schedule을 그대로 나열하다 보니 그 다음 라운드
+    // 매치업(상대팀 이름 포함)이 실제 시리즈가 아직 안 끝난 것처럼 보이는 시점에도 노출되는
+    // 스포일러가 있었다 — TournamentBracketView와 동일한 게이팅으로 아직 "공개"되지 않은
+    // (피더 시리즈가 isFinal 게이팅을 통과하지 못한) 라운드의 경기는 목록에서 제외한다.
+    const revealedSeriesById = useMemo(() => {
+        const series: any[] = (league?.bracket_data as any)?.series ?? [];
+        if (!series.length) return null;
+        return computeRevealedSeries(series, schedule as any, serverNow);
+    }, [league?.bracket_data, schedule, serverNow]);
+
     const allGames = useMemo(() =>
         [...schedule]
+            .filter(g => {
+                if (!g.isPlayoff || !g.seriesId || !revealedSeriesById) return true;
+                const gated = revealedSeriesById.get(g.seriesId);
+                return !!gated && gated.higherSeedId !== 'TBD' && gated.lowerSeedId !== 'TBD';
+            })
             .map(g => ({
                 ...g,
                 scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt,
@@ -381,7 +397,7 @@ const MultiScheduleView: React.FC = () => {
             // g.date는 달력 날짜(YYYY-MM-DD)만 갖고 있어 같은 날 여러 경기가 팀/시리즈 생성 순서로
             // 묶여버렸다 — 실제 예정 시각(scheduledAt) 기준으로 정렬해야 시간순이 된다.
             .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
-    [schedule, simStart, gprd]);
+    [schedule, simStart, gprd, revealedSeriesById]);
 
     // 시간순 정렬(allGames가 이미 scheduledAt 기준 오름차순) — 종료된 경기가 과거 시각이라
     // 자연히 최상단에, 진행중/예정 경기는 시간이 흐른 순서 그대로 아래에 이어진다.
