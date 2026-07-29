@@ -1,7 +1,7 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
-import { calculateHitRate, interpolateCurve } from './flowEngine';
+import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
@@ -529,7 +529,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const ft = SIM_CONFIG.FOUL_TROUBLE;
     const defFouls = defender.pf;
     const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
-    shootingFoulRate *= foulProbMod;
+
+    // [2026-07-29] 매치업 격차 → 파울 배수(0.5~1.5x). 신체/기술 미스매치의 결과는 주로 적중률
+    // (calculateHitRate의 isMismatch, ±12%)로 흡수되고, 파울 쪽은 보조적으로만 반영 — "가드가
+    // 빅맨을 못 막으면 대부분 그냥 뚫리는 것"이지 파울로 이어지는 게 대부분이 아니기 때문에
+    // 배수 상한을 좁게(1.5배) 잡음. MATCHUP_GAP_SCALE=60은 실제 선수 매치업 시뮬레이션으로 확정.
+    const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+    const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+    const matchupFoulMult = 1 + gapNormalized * 0.5; // 0.5배(수비 압도) ~ 1.5배(수비 압도당함)
+
+    shootingFoulRate *= foulProbMod * matchupFoulMult;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 

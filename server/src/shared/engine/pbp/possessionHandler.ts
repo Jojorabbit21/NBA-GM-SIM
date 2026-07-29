@@ -1,7 +1,7 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes.ts';
 import { resolvePlayAction } from './playTypes.ts';
-import { calculateHitRate, interpolateCurve } from './flowEngine.ts';
+import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine.ts';
 import { resolveRebound } from './reboundLogic.ts';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem.ts';
 import { PlayType } from '../../types.ts';
@@ -525,7 +525,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const ft = SIM_CONFIG.FOUL_TROUBLE;
     const defFouls = defender.pf;
     const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
-    shootingFoulRate *= foulProbMod;
+
+    // [2026-07-29] 매치업 격차 → 파울 배수(0.5~1.5x, client 미러 상세 참조)
+    const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+    const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+    const matchupFoulMult = 1 + gapNormalized * 0.5;
+
+    shootingFoulRate *= foulProbMod * matchupFoulMult;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 

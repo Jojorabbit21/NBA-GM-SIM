@@ -43,6 +43,30 @@ export function interpolateCurve(x: number, curve: readonly (readonly [number, n
     return curve[curve.length - 1][1];
 }
 
+/**
+ * 매치업 격차 — 공격자가 이 zone에서 수비자를 신체/기술로 압도하는 정도(+) or 압도당하는 정도(-).
+ * [2026-07-29] 슈팅파울 배수(possessionHandler.ts)와 적중률 미스매치 보정이 공유하는 단일
+ * 소스(client 미러 상세 참조). 스위치 여부와 무관하게 항상 계산.
+ */
+export function calculateMatchupGap(
+    actor: LivePlayer,
+    defender: LivePlayer,
+    zone: 'Rim' | 'Paint' | 'Mid' | '3PT'
+): number {
+    if (zone === 'Rim' || zone === 'Paint') {
+        const offPower = actor.attr.strength;
+        const defSkill = defender.attr.intDef * 0.35 + defender.attr.blk * 0.30
+                       + defender.attr.strength * 0.20 + defender.attr.vertical * 0.15;
+        return offPower - defSkill;
+    }
+    const offPower = (actor.attr.speed + actor.attr.agility) / 2;
+    const defSkill = defender.attr.perDef * 0.35 + defender.attr.agility * 0.25
+                    + defender.attr.speed * 0.20 + defender.attr.stl * 0.20;
+    return offPower - defSkill;
+}
+
+export const MATCHUP_GAP_SCALE = 60;
+
 export function calculateHitRate(
     actor: LivePlayer,
     defender: LivePlayer,
@@ -241,37 +265,17 @@ export function calculateHitRate(
         }
     }
 
-    let isMismatch = false;
-    if (isSwitch) {
-        const heightDiff  = defender.attr.height - actor.attr.height;
-        const speedAdv    = actor.attr.spdBall   - defender.attr.speed;
-        const agilityAdv  = actor.attr.agility   - defender.attr.agility;
-        const strengthAdv = actor.attr.strength  - defender.attr.strength;
+    // [2026-07-29] calculateMatchupGap() 기반으로 전면 교체(client 미러 상세 참조) — 스위치 여부와
+    // 무관하게 항상 계산, 대칭 적용(수비자 유리 시 적중률 하락도 반영).
+    const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+    const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+    const MISMATCH_THRESHOLD_NORM = 0.3;
+    const isMismatch = Math.abs(gapNormalized) >= MISMATCH_THRESHOLD_NORM;
 
-        const mobilityAdv  = (speedAdv + agilityAdv) / 2;
-        const isGuardOnBig = heightDiff >= 10 && mobilityAdv >= 10;
-        const isBigOnGuard = -heightDiff >= 10 && strengthAdv >= 15;
+    hitRate += gapNormalized * 0.12;
 
-        let offSkill: number;
-        let defSkill: number;
-        if (preferredZone === '3PT' || preferredZone === 'Mid') {
-            offSkill = actor.archetypes.spacer;
-            defSkill  = defender.archetypes.perimLock;
-        } else {
-            offSkill = Math.max(actor.archetypes.driver, actor.archetypes.postScorer);
-            defSkill  = defender.archetypes.rimProtector;
-        }
-        const skillGap = offSkill - defSkill;
-
-        if (isGuardOnBig || isBigOnGuard || skillGap >= 15) {
-            isMismatch = true;
-            const effectiveGap  = Math.max(skillGap, 0);
-            const intensity     = Math.max(effectiveGap, 15);
-            const mismatchBonus = effectiveGap > 0 ? Math.min(0.12, (intensity / 100) * 0.3) : 0;
-            hitRate += mismatchBonus;
-        } else {
-            hitRate -= 0.03;
-        }
+    if (!isMismatch && isSwitch) {
+        hitRate -= 0.03;
     }
 
     const isStopperActive = defTeam.tactics.stopperId === defender.playerId &&

@@ -35,6 +35,99 @@
 
 ---
 
+## 2026-07-29 — 매치업 격차를 슈팅파울 배수(0.5~1.5x) + 적중률 미스매치(±12%)에 반영
+
+**배경**: 파울 로직 점검 중 발견 — 슈팅파울 확률식(`SIM_CONFIG.SHOOTING_FOUL`)이 공격자의 절대
+`drawFoul` 스탯과 팀 슬라이더만 볼 뿐, "이 공격자가 이 수비자를 신체/기술로 압도하는가"라는
+매치업 개념이 전혀 없었음(사용자 지적). 반면 적중률 쪽(`flowEngine.ts`)에는 이미 비슷한 미스매치
+로직이 있었지만 스위치가 실제로 일어났을 때만 계산됨. 실제 농구 논의(사용자와 여러 라운드)로
+다음을 확정: ① 골밑은 힘(strength, 몸싸움) vs 수비자의 파울없이막는기술(intDef·blk 65% + 신체
+전제조건 strength·vertical 35%), 퍼리미터는 속도/민첩(공격) vs 컨테인기술(perDef 35% + 신체
+agility·speed 45% + 손기술 stl 20%). ② 격차의 결과는 "가드가 빅맨을 못 막으면 대부분 그냥
+뚫릴 뿐 파울로 이어지는 게 대부분이 아니다"는 사용자 지적에 따라, **파울은 최대 0.5~1.5배로만
+보조적으로 반영**하고 **적중률(±12%)이 주 채널**이 되도록 설계. GAP_SCALE(정규화 스케일)은
+실제 선수 매치업(윌트/하더웨이/카터/하킴 등, BIG LEAGUE TEST 7·MIL 실측 스탯) 시뮬레이션
+아티팩트로 60 확정.
+
+**변경 파일**:
+- `services/game/engine/pbp/flowEngine.ts` (client) — `calculateMatchupGap()`/`MATCHUP_GAP_SCALE`
+  신규 export, 기존 스위치 전용 미스매치 블록을 대체
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러) — 동일
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 슈팅파울 확률에 매치업 배수 곱연산 추가
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일
+
+**Before** (`flowEngine.ts`, 적중률 미스매치 — 스위치 전용):
+```ts
+let isMismatch = false;
+if (isSwitch) {
+    const heightDiff = defender.attr.height - actor.attr.height;
+    ... isGuardOnBig / isBigOnGuard / skillGap(아키타입 비교) 개별 체크 ...
+    if (isGuardOnBig || isBigOnGuard || skillGap >= 15) {
+        isMismatch = true;
+        const effectiveGap = Math.max(skillGap, 0); // 음수면 보너스 0 (한쪽만 처리)
+        hitRate += Math.min(0.12, (Math.max(effectiveGap, 15) / 100) * 0.3);
+    } else {
+        hitRate -= 0.03; // 성공적 스위치
+    }
+}
+```
+
+**After**:
+```ts
+// 신규 export
+export function calculateMatchupGap(actor, defender, zone): number {
+    if (zone === 'Rim' || zone === 'Paint') {
+        const offPower = actor.attr.strength;
+        const defSkill = defender.attr.intDef*0.35 + defender.attr.blk*0.30
+                       + defender.attr.strength*0.20 + defender.attr.vertical*0.15;
+        return offPower - defSkill;
+    }
+    const offPower = (actor.attr.speed + actor.attr.agility) / 2;
+    const defSkill = defender.attr.perDef*0.35 + defender.attr.agility*0.25
+                    + defender.attr.speed*0.20 + defender.attr.stl*0.20;
+    return offPower - defSkill;
+}
+export const MATCHUP_GAP_SCALE = 60;
+
+// calculateHitRate() 내부 — 스위치 무관하게 항상 계산, 대칭 적용
+const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+const isMismatch = Math.abs(gapNormalized) >= 0.3;
+hitRate += gapNormalized * 0.12; // -12%~+12%, 양방향
+if (!isMismatch && isSwitch) hitRate -= 0.03; // 성공적 스위치는 유지
+```
+
+**After** (`possessionHandler.ts`, 슈팅파울 배수 — 기존 `foulProbMod` 곱연산 지점에 추가):
+```ts
+const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+const matchupFoulMult = 1 + gapNormalized * 0.5; // 0.5배(수비 압도) ~ 1.5배(수비 압도당함)
+shootingFoulRate *= foulProbMod * matchupFoulMult;
+```
+
+**검증**:
+- `npx tsc -p server/tsconfig.json` — `flowEngine.ts`/`possessionHandler.ts` 관련 신규 오류 0건
+  (기존 무관한 30건은 그대로, 파일 목록 겹치지 않음 확인).
+  이 과정에서 `defender.attr.steal`이라는 존재하지 않는 필드 오타를 발견해 `attr.stl`로 수정
+  (client는 vite/esbuild가 타입체크를 안 해서 빌드는 통과했지만 동일 오타가 있었음 — 이전
+  `attr.mid`/`attr.midRange` 사례와 똑같이 server tsc가 아니었으면 놓칠 뻔함).
+- `npx vite build` — 정상 완료.
+- 실제 함수 실행 검증(`npx tsx`로 수정된 `flowEngine.ts`를 직접 import): 하더웨이(공)→윌트(수)
+  매치업을 실제 DB 스탯으로 넣어 계산 — 골밑 gap=-24.6(아티팩트 시뮬레이션과 정확히 일치),
+  퍼리미터 gap=+31.4(동일). GAP_SCALE=60 적용 시 골밑 foulMult=0.79/hitMod=-4.9%, 퍼리미터
+  foulMult=1.26/hitMod=+6.3% — "느린 빅맨이 뚫리면 주로 적중률로, 파울은 최대 1.5배까지만"
+  의도대로 동작 확인.
+
+**주의사항 / 한계**: 기존 "성공적 스위치"(-3%) 고정 보너스는 스위치가 실제로 발생했고 동시에
+유의미한 미스매치(|gapNormalized|≥0.3)가 아닐 때만 유지 — 스위치 없이 격차가 작은 일반
+상황에서는 조정 없음(중립).
+
+**롤백 방법**: 위 Before 블록으로 `flowEngine.ts` 미스매치 계산부를 되돌리고,
+`possessionHandler.ts`의 `matchupFoulMult` 관련 라인(3줄)을 제거하면 됨. 미러 쌍이므로 4개
+파일 전부 함께.
+
+---
+
 ## 2026-07-29 — switchFreq 기반 헬프 디펜스 풀 확장 (빅맨 골밑 파울 쏠림 완화 2/2)
 
 **배경**: 빅맨 파울 쏠림 문제 두 번째 원인 논의. 존 디펜스가 골밑 슛을 C에게 100% 몰아주는 것

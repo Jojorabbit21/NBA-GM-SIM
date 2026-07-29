@@ -43,6 +43,40 @@ export function interpolateCurve(x: number, curve: readonly (readonly [number, n
     return curve[curve.length - 1][1];
 }
 
+/**
+ * 매치업 격차 — 공격자가 이 zone에서 수비자를 신체/기술로 압도하는 정도(+) or 압도당하는 정도(-).
+ * [2026-07-29] 슈팅파울 배수(possessionHandler.ts)와 적중률 미스매치 보정(아래 calculateHitRate)이
+ * 공유하는 단일 소스 — 스위치 여부와 무관하게 항상 계산한다(로스터 자체의 사이즈 미스매치, 존
+ * funnel로 어쩔 수 없이 불리한 매치업이 걸린 경우 등도 포함하기 위함).
+ *
+ * 골밑(Rim/Paint): 공격자의 순수 힘(strength, 몸싸움) vs 수비자의 "파울 없이 막는 종합력"
+ *   (intDef·blk = 기술 65%, strength·vertical = 그 기술의 신체적 전제조건 35%).
+ * 퍼리미터(Mid/3PT): 공격자의 순발력(speed+agility 평균) vs 수비자의 컨테인 종합력
+ *   (perDef = 기술 35%, agility·speed = 신체 전제조건 45%, steal = 손기술 20%).
+ *
+ * drawFoul(파울 유도 "기술")과 postScorer/driver 같은 득점 아키타입은 각각 별도 항목이 이미
+ * 처리하고 있어 여기서는 중복 반영하지 않는다 — 순수 신체/포지션 우열만 본다.
+ */
+export function calculateMatchupGap(
+    actor: LivePlayer,
+    defender: LivePlayer,
+    zone: 'Rim' | 'Paint' | 'Mid' | '3PT'
+): number {
+    if (zone === 'Rim' || zone === 'Paint') {
+        const offPower = actor.attr.strength;
+        const defSkill = defender.attr.intDef * 0.35 + defender.attr.blk * 0.30
+                       + defender.attr.strength * 0.20 + defender.attr.vertical * 0.15;
+        return offPower - defSkill;
+    }
+    const offPower = (actor.attr.speed + actor.attr.agility) / 2;
+    const defSkill = defender.attr.perDef * 0.35 + defender.attr.agility * 0.25
+                    + defender.attr.speed * 0.20 + defender.attr.stl * 0.20;
+    return offPower - defSkill;
+}
+
+// 매치업 격차를 -1~+1로 정규화하는 스케일 — 실측(실제 선수 매치업 시뮬레이션)으로 확정한 값.
+export const MATCHUP_GAP_SCALE = 60;
+
 export function calculateHitRate(
     actor: LivePlayer,
     defender: LivePlayer,
@@ -278,46 +312,23 @@ export function calculateHitRate(
         }
     }
 
-    // 3. Mismatch Logic (스위치 발생 시에만 적용)
-    let isMismatch = false;
-    if (isSwitch) {
-        const heightDiff  = defender.attr.height - actor.attr.height; // 양수 = 수비자가 더 큼
-        const speedAdv    = actor.attr.spdBall   - defender.attr.speed; // 공격자 볼 드리블 vs 수비자 추격
-        const agilityAdv  = actor.attr.agility   - defender.attr.agility;
-        const strengthAdv = actor.attr.strength  - defender.attr.strength;
+    // 3. Mismatch Logic
+    // [2026-07-29] 스위치 발생 시에만 계산하던 것을 calculateMatchupGap() 기반으로 전면 교체 —
+    // 스위치 여부와 무관하게 항상 계산(로스터 자체의 사이즈 미스매치, 존 funnel로 어쩔 수 없이
+    // 불리한 매치업이 걸린 경우도 포함). 기존엔 skillGap이 음수면 보너스 0으로 바닥 처리했는데,
+    // 이번엔 대칭 적용 — 수비자가 확실히 유리하면 적중률이 baseline보다 실제로 낮아진다
+    // (파울 배수 쪽과 동일한 gapNormalized를 공유, possessionHandler.ts 참고).
+    const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+    const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+    const MISMATCH_THRESHOLD_NORM = 0.3; // |정규화 격차|가 이 이상이면 "유의미한 미스매치"로 표시
+    const isMismatch = Math.abs(gapNormalized) >= MISMATCH_THRESHOLD_NORM;
 
-        // Guard on Big: Speed+Agility 이동 능력 우위 (힘은 무관)
-        const mobilityAdv  = (speedAdv + agilityAdv) / 2;
-        const isGuardOnBig = heightDiff >= 10 && mobilityAdv >= 10;
+    hitRate += gapNormalized * 0.12; // -12% ~ +12%, 기존 상한 유지 + 양방향 + 스위치 무관
 
-        // Big on Guard: Strength + Height 우위
-        const isBigOnGuard = -heightDiff >= 10 && strengthAdv >= 15;
-
-        // Skill Mismatch: 존에 따라 적절한 아키타입 점수 비교
-        let offSkill: number;
-        let defSkill: number;
-        if (preferredZone === '3PT' || preferredZone === 'Mid') {
-            offSkill = actor.archetypes.spacer;
-            defSkill  = defender.archetypes.perimLock;
-        } else {
-            // Rim / Paint: 드라이버 or 포스트 스코어러 중 높은 값
-            offSkill = Math.max(actor.archetypes.driver, actor.archetypes.postScorer);
-            defSkill  = defender.archetypes.rimProtector;
-        }
-        const skillGap = offSkill - defSkill;
-
-        if (isGuardOnBig || isBigOnGuard || skillGap >= 15) {
-            isMismatch = true;
-            // 격차에 비례한 공격 이점, 최대 +12%
-            // skillGap이 음수이면 보너스 없음 (수비수 스킬이 더 높음)
-            const effectiveGap  = Math.max(skillGap, 0);
-            const intensity     = Math.max(effectiveGap, 15);
-            const mismatchBonus = effectiveGap > 0 ? Math.min(0.12, (intensity / 100) * 0.3) : 0;
-            hitRate += mismatchBonus;
-        } else {
-            // 성공적 스위치: 미스매치 없이 포지션을 잘 잡은 수비자 → 공격자 공간 축소
-            hitRate -= 0.03;
-        }
+    if (!isMismatch && isSwitch) {
+        // 스위치는 났지만 미스매치가 안 날 만큼 수비자가 포지션을 잘 잡은 경우만
+        // 기존 "성공적 스위치" 페널티 유지 — 공격자 공간 축소
+        hitRate -= 0.03;
     }
 
     // 4. Ace Stopper Impact
