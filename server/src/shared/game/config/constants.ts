@@ -108,15 +108,18 @@ export const SIM_CONFIG = {
     },
     // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
     FOUL_EVENTS: {
-        // 오펜시브 파울
+        // 오펜시브 파울 — [2026-07-29] 차징/일리걸 스크린 분리(client 미러 상세 참조)
         OFFENSIVE_FOUL_BASE: 0.015,
-        CHARGE_BONUS_PER_DEF_IQ: 0.0003,
+        CHARGE_BONUS_PER_DEF_CONSIST: 0.0003,
         POST_OFFENSIVE_FOUL_RATE: 0.025,
         SCREEN_FOUL_RATE: 0.008,
+        OFFBALL_SCREEN_FOUL_RATE: 0.025,
 
-        // 테크니컬 파울 (수비팀 전원 중 temperament 가중 선택)
+        // 테크니컬 파울 (공수 양팀 전원 중 temperament 가중 선택)
         TECHNICAL_FOUL_BASE: 0.003,
         TECH_TEMPERAMENT_POWER: 2.0,     // 커브 지수: temperament 높을수록 급격히 증가
+        TECH_DEFICIT_PER_POINT: 0.015,
+        TECH_DEFICIT_MAX_BOOST: 0.5,
 
         // 플래그런트 파울 (독립 이벤트, foulProneness 주 영향 + temperament 보조)
         // 목표: 팀당 시즌 ~4-5개 (8200포제션 기준)
@@ -196,6 +199,15 @@ export const SIM_CONFIG = {
         // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
         DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
         MAX_RATE: 0.06,
+        PLAYTYPE_MOD: {
+            'PostUp': 0.015,
+            'Iso': 0.012,
+            'PnR_Roll': 0.010,
+            'PnR_Handler': 0.008,
+            'DriveKick': 0.008,
+            'Cut': 0.006,
+            'CatchShoot': -0.010,
+        } as Partial<Record<string, number>>,
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
     REBOUND: {

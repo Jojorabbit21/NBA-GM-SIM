@@ -521,6 +521,26 @@ export function stepPossession(state: GameState): StepResult {
 // 게임 종료 처리 (버저비터 포함)
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * [2026-07-29] 버저비터 포제션이 깨끗한 'score'로 안 끝났을 때(미스/턴오버/파울 등) 표시할
+ * PBP 문구를 결과 타입에 맞게 고른다. 실제로 무슨 상황이었는지와 무관하게 승부는 반드시
+ * 갈라야 하므로(NBA는 동점 종료가 없음) 1점을 부여하되, 최소한 그럴듯한 상황 묘사를 남긴다.
+ */
+function buildBuzzerFallbackMessage(result: PossessionResult): string {
+    const name = result.actor.playerName;
+    switch (result.type) {
+        case 'miss':
+            return `${name}의 슛이 빗나갔지만, 흘러나온 볼을 다시 잡아 극적으로 집어넣습니다!`;
+        case 'foul':
+        case 'offensiveFoul':
+            return `혼전 속 파울 상황에서도 ${name}의 팀이 침착하게 추가 득점을 챙깁니다.`;
+        case 'turnover':
+            return `공을 놓칠 뻔한 위기에서도, ${name}의 팀이 혼전 끝에 극적으로 득점을 만들어냅니다.`;
+        default:
+            return `극도의 혼전 속에서 ${name}의 팀이 마지막 순간 득점을 만들어냅니다.`;
+    }
+}
+
 function _handleGameEnd(state: GameState): StepResult {
     const logsBefore = state.logs.length;
 
@@ -538,9 +558,20 @@ function _handleGameEnd(state: GameState): StepResult {
             // 자연스러운 버저비터 — PBP 로그 포함
             applyPossessionResult(state, buzzResult);
         } else {
-            // 미스(~25%) → silent +1pt (로그 없음, 우연처럼 보임)
+            // [Fix 2026-07-29] 기존엔 팀 스코어에만 조용히 +1 해서 박스스코어 합계·PBP 로그가
+            // 최종 스코어와 어긋나는 버그가 있었음(스케쥴 화면은 정상 스코어, 리뷰 화면은 박스스코어
+            // 합계라 1점 적게 표시). 득점자 pts에도 반영하고, 결과 타입에 맞는 로그를 남긴다.
             const buzzTeam = buzzIsHome ? state.home : state.away;
+            buzzResult.actor.pts += 1;
             buzzTeam.score += 1;
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: '0:00',
+                teamId: buzzTeam.id,
+                text: buildBuzzerFallbackMessage(buzzResult),
+                type: 'score',
+                points: 1,
+            });
         }
 
         state.possession = savedPossession;

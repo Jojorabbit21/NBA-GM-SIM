@@ -560,9 +560,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 3.2 Non-Shooting Foul (팀 파울 / 루스볼 — 보너스 상황에서만 FT)
+    // [2026-07-29] 플레이타입별 차등(몸싸움/드라이브 多 → 상승, 캐치앤슛 → 하락) + 매치업 배수
+    // 재사용(슈팅파울에서 이미 계산한 matchupFoulMult 그대로) 추가. drawFoul은 슛 동작 전용
+    // 개념이라 여기엔 안 넣음(슈팅파울 전용 유지, 사용자 확정).
     const nsFoulCfg = SIM_CONFIG.NON_SHOOTING_FOUL;
     let nonShootingFoulRate = nsFoulCfg.BASE_RATE + (defIntensity - 5.5) * nsFoulCfg.DEF_INTENSITY_FACTOR;
-    nonShootingFoulRate *= foulProbMod;
+    nonShootingFoulRate += nsFoulCfg.PLAYTYPE_MOD[selectedPlayType] ?? 0;
+    nonShootingFoulRate *= foulProbMod * matchupFoulMult;
     nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
 
     if (Math.random() < nonShootingFoulRate) {
@@ -573,19 +577,23 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         };
     }
 
-    // 3.5 Offensive Foul Check (차지 / 일리걸 스크린)
-    let offensiveFoulChance = offFoulConfig.OFFENSIVE_FOUL_BASE;
-    if (selectedPlayType === 'PostUp' || selectedPlayType === 'Iso') {
-        offensiveFoulChance = offFoulConfig.POST_OFFENSIVE_FOUL_RATE;
-    } else if (selectedPlayType === 'PnR_Handler' || selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
-        offensiveFoulChance += offFoulConfig.SCREEN_FOUL_RATE;
-    }
-    if (defender) {
-        offensiveFoulChance += (defender.attr.helpDefIq - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_IQ;
-    }
-    offensiveFoulChance = Math.max(0.005, Math.min(0.04, offensiveFoulChance));
+    // 3.5 Offensive Foul Check — [2026-07-29] 차징과 일리걸 스크린을 완전히 분리된 두 체크로 재설계.
+    // 예전엔 PnR이면 차징 확률에 스크린 위험을 그냥 더해서 actor 한 명한테 뭉뚱그려 귀속시켰는데,
+    // PnR_Handler는 actor가 볼핸들러라 스크린을 서지도 않은 사람이 일리걸 스크린 파울을 뒤집어쓰는
+    // 버그가 있었음. 이제 ①차징은 항상 actor(공격수), ②일리걸 스크린은 실제 스크린을 선 선수에게.
 
-    if (Math.random() < offensiveFoulChance) {
+    // ① 차징 — PostUp만 고율, 나머지(Iso 포함)는 기본값. defConsist(정지 자세 유지력)로 유도 보너스
+    // — helpDefIq(위치 예측 IQ)는 헬프디펜스 개념이라 차징의 "제자리에서 안 움직이기"와는
+    // 어색하다고 판단해 defConsist로 교체.
+    let chargeChance = selectedPlayType === 'PostUp'
+        ? offFoulConfig.POST_OFFENSIVE_FOUL_RATE
+        : offFoulConfig.OFFENSIVE_FOUL_BASE;
+    if (defender) {
+        chargeChance += (defender.attr.defConsist - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_CONSIST;
+    }
+    chargeChance = Math.max(0.005, Math.min(0.04, chargeChance));
+
+    if (Math.random() < chargeChance) {
         return {
             type: 'offensiveFoul' as const,
             offTeam, defTeam, actor, defender,
@@ -594,23 +602,58 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         };
     }
 
+    // ② 일리걸 스크린 — 스크린 관련 플레이타입만, 실제 스크리너에게 귀속
+    // PnR_Handler: secondaryActor가 스크리너 / PnR_Roll·Pop: actor 본인이 스크리너 /
+    // OffBallScreen: 전용 screener 필드 (몸싸움이 PnR보다 격렬해 OFFBALL_SCREEN_FOUL_RATE로 고율)
+    let actualScreener: LivePlayer | undefined;
+    let screenChance = 0;
+    if (selectedPlayType === 'PnR_Handler') {
+        actualScreener = secondaryActor;
+        screenChance = offFoulConfig.SCREEN_FOUL_RATE;
+    } else if (selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
+        actualScreener = actor;
+        screenChance = offFoulConfig.SCREEN_FOUL_RATE;
+    } else if (selectedPlayType === 'OffBallScreen') {
+        actualScreener = screener;
+        screenChance = offFoulConfig.OFFBALL_SCREEN_FOUL_RATE;
+    }
+    if (actualScreener && Math.random() < screenChance) {
+        return {
+            type: 'offensiveFoul' as const,
+            offTeam, defTeam, actor: actualScreener, defender,
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+            helpDefenderId,
+        };
+    }
+
     // 3.6 Technical Foul Check (독립 이벤트)
-    // 수비팀 코트 전원 중 temperament 가중 랜덤 선택 (센터 편중 방지)
-    // 커브 적용: weight = max(0.05, normalize(temperament))^POWER → 다혈질일수록 급격히 증가
+    // [2026-07-29] 후보군을 수비팀 전용 → 공수 양팀 전원으로 확장(테크니컬은 몸싸움이 아니라
+    // 언행 문제라 공격수도 받을 수 있음). temperament 가중은 그대로(단독으로 충분 — 경기 외적
+    // 파울이라 다른 스탯 블렌드 불필요, 사용자 확정). 큰 점수차로 지고 있는 팀은 감정적으로
+    // 격해져 가중치가 상승(최대 1.5배, ~33점차에서 상한).
     if (Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
         const techPower = offFoulConfig.TECH_TEMPERAMENT_POWER;
-        const techWeights = defTeam.onCourt.map(p => {
+        const allOnCourt = [...offTeam.onCourt, ...defTeam.onCourt];
+
+        const offDeficit = Math.max(0, defTeam.score - offTeam.score);
+        const defDeficit = Math.max(0, offTeam.score - defTeam.score);
+        const offMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, offDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+        const defMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, defDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+
+        const techWeights = allOnCourt.map(p => {
             const t = p.tendencies?.temperament ?? 0;
             // temperament -1~+1 → 0~1 정규화 후 커브 적용
             const normalized = Math.max(0.05, (t + 1) / 2);
-            return Math.pow(normalized, techPower);
+            const base = Math.pow(normalized, techPower);
+            const isOffPlayer = offTeam.onCourt.some(op => op.playerId === p.playerId);
+            return base * (isOffPlayer ? offMult : defMult);
         });
         const techTotalW = techWeights.reduce((a, b) => a + b, 0);
         let techRoll = Math.random() * techTotalW;
-        let techFouler = defTeam.onCourt[0];
-        for (let i = 0; i < defTeam.onCourt.length; i++) {
+        let techFouler = allOnCourt[0];
+        for (let i = 0; i < allOnCourt.length; i++) {
             techRoll -= techWeights[i];
-            if (techRoll <= 0) { techFouler = defTeam.onCourt[i]; break; }
+            if (techRoll <= 0) { techFouler = allOnCourt[i]; break; }
         }
         return {
             type: 'technicalFoul' as const,

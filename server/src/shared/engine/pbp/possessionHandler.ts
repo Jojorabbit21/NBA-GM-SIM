@@ -553,9 +553,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 3.2 Non-Shooting Foul (팀 파울 / 루스볼 — 보너스 상황에서만 FT)
+    // [2026-07-29] 플레이타입별 차등 + 매치업 배수 재사용(client 미러 상세 참조)
     const nsFoulCfg = SIM_CONFIG.NON_SHOOTING_FOUL;
     let nonShootingFoulRate = nsFoulCfg.BASE_RATE + (defIntensity - 5.5) * nsFoulCfg.DEF_INTENSITY_FACTOR;
-    nonShootingFoulRate *= foulProbMod;
+    nonShootingFoulRate += nsFoulCfg.PLAYTYPE_MOD[selectedPlayType] ?? 0;
+    nonShootingFoulRate *= foulProbMod * matchupFoulMult;
     nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
 
     if (Math.random() < nonShootingFoulRate) {
@@ -566,19 +568,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         };
     }
 
-    // 3.5 Offensive Foul Check (차지 / 일리걸 스크린)
-    let offensiveFoulChance = offFoulConfig.OFFENSIVE_FOUL_BASE;
-    if (selectedPlayType === 'PostUp' || selectedPlayType === 'Iso') {
-        offensiveFoulChance = offFoulConfig.POST_OFFENSIVE_FOUL_RATE;
-    } else if (selectedPlayType === 'PnR_Handler' || selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
-        offensiveFoulChance += offFoulConfig.SCREEN_FOUL_RATE;
-    }
+    // 3.5 Offensive Foul Check — 차징/일리걸 스크린 분리(client 미러 상세 참조)
+    let chargeChance = selectedPlayType === 'PostUp'
+        ? offFoulConfig.POST_OFFENSIVE_FOUL_RATE
+        : offFoulConfig.OFFENSIVE_FOUL_BASE;
     if (defender) {
-        offensiveFoulChance += (defender.attr.helpDefIq - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_IQ;
+        chargeChance += (defender.attr.defConsist - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_CONSIST;
     }
-    offensiveFoulChance = Math.max(0.005, Math.min(0.04, offensiveFoulChance));
+    chargeChance = Math.max(0.005, Math.min(0.04, chargeChance));
 
-    if (Math.random() < offensiveFoulChance) {
+    if (Math.random() < chargeChance) {
         return {
             type: 'offensiveFoul' as const,
             offTeam, defTeam, actor, defender,
@@ -587,23 +586,51 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         };
     }
 
-    // 3.6 Technical Foul Check (독립 이벤트)
-    // 수비팀 코트 전원 중 temperament 가중 랜덤 선택 (센터 편중 방지)
-    // 커브 적용: weight = max(0.05, normalize(temperament))^POWER → 다혈질일수록 급격히 증가
+    // 일리걸 스크린 — 실제 스크리너에게 귀속
+    let actualScreener: LivePlayer | undefined;
+    let screenChance = 0;
+    if (selectedPlayType === 'PnR_Handler') {
+        actualScreener = secondaryActor;
+        screenChance = offFoulConfig.SCREEN_FOUL_RATE;
+    } else if (selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
+        actualScreener = actor;
+        screenChance = offFoulConfig.SCREEN_FOUL_RATE;
+    } else if (selectedPlayType === 'OffBallScreen') {
+        actualScreener = screener;
+        screenChance = offFoulConfig.OFFBALL_SCREEN_FOUL_RATE;
+    }
+    if (actualScreener && Math.random() < screenChance) {
+        return {
+            type: 'offensiveFoul' as const,
+            offTeam, defTeam, actor: actualScreener, defender,
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+            helpDefenderId,
+        };
+    }
+
+    // 3.6 Technical Foul Check (독립 이벤트) — 공수 양팀 후보 + 점수차 가중(client 미러 상세 참조)
     if (Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
         const techPower = offFoulConfig.TECH_TEMPERAMENT_POWER;
-        const techWeights = defTeam.onCourt.map(p => {
+        const allOnCourt = [...offTeam.onCourt, ...defTeam.onCourt];
+
+        const offDeficit = Math.max(0, defTeam.score - offTeam.score);
+        const defDeficit = Math.max(0, offTeam.score - defTeam.score);
+        const offMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, offDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+        const defMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, defDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+
+        const techWeights = allOnCourt.map(p => {
             const t = p.tendencies?.temperament ?? 0;
-            // temperament -1~+1 → 0~1 정규화 후 커브 적용
             const normalized = Math.max(0.05, (t + 1) / 2);
-            return Math.pow(normalized, techPower);
+            const base = Math.pow(normalized, techPower);
+            const isOffPlayer = offTeam.onCourt.some(op => op.playerId === p.playerId);
+            return base * (isOffPlayer ? offMult : defMult);
         });
         const techTotalW = techWeights.reduce((a, b) => a + b, 0);
         let techRoll = Math.random() * techTotalW;
-        let techFouler = defTeam.onCourt[0];
-        for (let i = 0; i < defTeam.onCourt.length; i++) {
+        let techFouler = allOnCourt[0];
+        for (let i = 0; i < allOnCourt.length; i++) {
             techRoll -= techWeights[i];
-            if (techRoll <= 0) { techFouler = defTeam.onCourt[i]; break; }
+            if (techRoll <= 0) { techFouler = allOnCourt[i]; break; }
         }
         return {
             type: 'technicalFoul' as const,

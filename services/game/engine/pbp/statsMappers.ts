@@ -354,14 +354,21 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             defender.techFouls = (defender.techFouls || 0) + 1;
         }
 
+        // [2026-07-29] 테크니컬 파울범이 공격팀 선수일 수도 있음(공수 양팀 후보로 확장됨) —
+        // 자유투는 항상 "파울을 범하지 않은 쪽" 팀에게 귀속되어야 함(예전엔 defender가 항상
+        // 수비수라는 전제로 offTeam에 고정돼 있었음).
+        const foulerIsOffense = !!defender && offTeam.onCourt.some(p => p.playerId === defender.playerId);
+        const ftTeam = foulerIsOffense ? defTeam : offTeam;
+        const foulerTeam = foulerIsOffense ? offTeam : defTeam;
+
         // 베스트 FT 슈터가 자유투 1개
-        const ftShooter = [...offTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+        const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
         const ftPct = ftShooter.attr.ft / 100;
         ftShooter.fta += 1;
         let ftMade = 0;
         if (Math.random() < ftPct) {
-            ftShooter.ftm += 1; ftShooter.pts += 1; offTeam.score += 1; ftMade = 1;
-            updatePlusMinus(offTeam, defTeam, 1);
+            ftShooter.ftm += 1; ftShooter.pts += 1; ftTeam.score += 1; ftMade = 1;
+            updatePlusMinus(ftTeam, foulerTeam, 1);
         }
 
         // 2 테크니컬 = 자동 퇴장
@@ -376,10 +383,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             : `🟨 테크니컬 파울이 선언됩니다!`;
         const ejectionSuffix = isEjected ? ' — 2 테크니컬 퇴장!' : '';
         const ftSuffix = ` ${ftShooter.playerName} 자유투 ${ftMade}/1`;
-        addLog(state, defTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
+        addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
 
         if (isEjected && defender) {
-            addLog(state, defTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
+            addLog(state, foulerTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
         }
 
     } else if (type === 'flagrantFoul') {

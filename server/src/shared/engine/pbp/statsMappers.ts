@@ -225,18 +225,22 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
     } else if (type === 'technicalFoul') {
         if (defender) { defender.techFouls = (defender.techFouls || 0) + 1; }
-        const ftShooter = [...offTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+        // [2026-07-29] 테크니컬 파울범이 공격팀일 수도 있음 — FT는 "파울을 범하지 않은 쪽"에게(client 미러 참조)
+        const foulerIsOffense = !!defender && offTeam.onCourt.some(p => p.playerId === defender.playerId);
+        const ftTeam = foulerIsOffense ? defTeam : offTeam;
+        const foulerTeam = foulerIsOffense ? offTeam : defTeam;
+        const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
         const ftPct = ftShooter.attr.ft / 100;
         ftShooter.fta += 1;
         let ftMade = 0;
-        if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; offTeam.score++; ftMade = 1; updatePlusMinus(offTeam, defTeam, 1); }
+        if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
         const isEjected = defender && (defender.techFouls || 0) >= 2;
         if (isEjected && defender) defender.pf = 6;
         const commentaryBase = defender ? getTechnicalFoulCommentary(defender) : `🟨 테크니컬 파울이 선언됩니다!`;
         const ejectionSuffix = isEjected ? ' — 2 테크니컬 퇴장!' : '';
         const ftSuffix = ` ${ftShooter.playerName} 자유투 ${ftMade}/1`;
-        addLog(state, defTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
-        if (isEjected && defender) addLog(state, defTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
+        addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
+        if (isEjected && defender) addLog(state, foulerTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
 
     } else if (type === 'flagrantFoul') {
         if (defender) commitFoul(defender);

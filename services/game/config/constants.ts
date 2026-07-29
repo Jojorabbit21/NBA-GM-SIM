@@ -108,15 +108,24 @@ export const SIM_CONFIG = {
     },
     // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
     FOUL_EVENTS: {
-        // 오펜시브 파울
-        OFFENSIVE_FOUL_BASE: 0.015,
-        CHARGE_BONUS_PER_DEF_IQ: 0.0003,
-        POST_OFFENSIVE_FOUL_RATE: 0.025,
-        SCREEN_FOUL_RATE: 0.008,
+        // 오펜시브 파울 — [2026-07-29] 차징(actor 귀속)과 일리걸 스크린(실제 스크리너 귀속)을
+        // 완전히 분리된 두 체크로 재설계. PostUp만 차징 전용 고율(2.5%), Iso는 기본값으로 복귀.
+        // 일리걸 스크린은 PnR 3종(핸들러/롤/팝)과 OffBallScreen에서만, 실제 스크린을 선 선수에게.
+        OFFENSIVE_FOUL_BASE: 0.015,       // 차징 기본값 (PostUp 외 전 플레이타입)
+        CHARGE_BONUS_PER_DEF_CONSIST: 0.0003, // 차징 유도 보너스 — helpDefIq(위치 예측)보다
+                                               // defConsist(정지 자세 유지력)가 더 적합하다고 판단해 교체
+        POST_OFFENSIVE_FOUL_RATE: 0.025,  // PostUp 전용 차징 고율
+        SCREEN_FOUL_RATE: 0.008,          // PnR 계열 일리걸 스크린 (핸들러=secondaryActor, 롤/팝=actor 본인)
+        OFFBALL_SCREEN_FOUL_RATE: 0.025,  // OffBallScreen 전용 일리걸 스크린(screener 필드) — PnR보다 몸싸움이
+                                           // 더 격렬한 스크린이라 PostUp과 동일한 고율 적용
 
-        // 테크니컬 파울 (수비팀 전원 중 temperament 가중 선택)
+        // 테크니컬 파울 (공수 양팀 전원 중 temperament 가중 선택)
+        // [2026-07-29] 수비팀 전용 → 공수 양팀으로 확장(테크니컬은 몸싸움이 아니라 언행 문제라
+        // 공격수도 얼마든지 받을 수 있음). 큰 점수차로 지고 있는 팀은 감정적으로 격해져 확률 상승.
         TECHNICAL_FOUL_BASE: 0.003,
         TECH_TEMPERAMENT_POWER: 2.0,     // 커브 지수: temperament 높을수록 급격히 증가
+        TECH_DEFICIT_PER_POINT: 0.015,   // 점수차 1점당 가중치 배율 상승분 (20점차 → ×1.3)
+        TECH_DEFICIT_MAX_BOOST: 0.5,     // 상한 — ×1.5배까지(약 33점차 이상에서 도달)
 
         // 플래그런트 파울 (독립 이벤트, foulProneness 주 영향 + temperament 보조)
         // 목표: 팀당 시즌 ~4-5개 (8200포제션 기준)
@@ -196,6 +205,17 @@ export const SIM_CONFIG = {
         // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
         DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
         MAX_RATE: 0.06,
+        // [2026-07-29] 플레이타입별 차등 — 몸싸움/드라이브 계열은 상승, 캐치앤슛류는 하락.
+        // drawFoul(파울 유도 "기술")은 슛 동작 전용 개념이라 여기엔 안 넣음(슈팅파울 전용 유지).
+        PLAYTYPE_MOD: {
+            'PostUp': 0.015,
+            'Iso': 0.012,
+            'PnR_Roll': 0.010,
+            'PnR_Handler': 0.008,
+            'DriveKick': 0.008,
+            'Cut': 0.006,
+            'CatchShoot': -0.010,
+        } as Partial<Record<string, number>>,
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
     REBOUND: {

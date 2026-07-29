@@ -35,6 +35,256 @@
 
 ---
 
+## 2026-07-29 — 파울 로직 점검: 논슈팅/오펜시브/테크니컬 파울 개선
+
+**배경**: "빅맨 파울이 너무 빨리 쌓인다" 제보에서 시작된 파울 시스템 전체 점검의 연속. 앞선 세션에서
+슈팅 파울에 매치업 갭(`calculateMatchupGap`, GAP_SCALE=60) 기반 배율(0.5~1.5x)을 이미 적용했고,
+이번엔 그 흐름을 이어 3.2 논슈팅 파울 → 3.5 오펜시브 파울 → 3.6 테크니컬 파울까지 순서대로 점검·개선.
+3.6.1 플래그런트/3.6.2 파이트 체크는 몬테카를로 시뮬레이션으로 기존 확률을 검증한 뒤 "이정도면
+충분하다"/"이건 그냥 두자"로 사용자가 명시적으로 변경 불필요를 확정 — 코드 변경 없음.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG.FOUL_EVENTS`, `SIM_CONFIG.NON_SHOOTING_FOUL`
+- `server/src/shared/game/config/constants.ts` (server 미러)
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 3.2/3.5/3.6 블록
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러)
+- `services/game/engine/pbp/statsMappers.ts` (client) — `technicalFoul` 핸들러 (3.6이 공/수 양쪽에서
+  발생 가능해지면서 자유투를 "항상 수비팀"이 아니라 파울을 범한 쪽의 상대팀에게 주도록 필요해진 후속 수정)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+### 3.2 논슈팅 파울 — 플레이타입별 가산 + 매치업 배율 재사용
+
+기존엔 수비강도(defIntensity)만 반영했는데, 실제로는 플레이타입마다 신체접촉 빈도가 다르고(포스트업/
+아이소 > 캐치&슛), 슈팅파울에 쓰던 매치업 배율(matchupFoulMult)도 몸싸움 상황이니 그대로 재사용하는
+게 타당하다고 판단.
+
+**Before** (`services/game/engine/pbp/possessionHandler.ts`):
+```ts
+let nonShootingFoulRate = SIM_CONFIG.NON_SHOOTING_FOUL.BASE_RATE
+    + (defIntensity - 5.5) * SIM_CONFIG.NON_SHOOTING_FOUL.DEF_INTENSITY_FACTOR;
+nonShootingFoulRate *= foulProbMod;
+nonShootingFoulRate = Math.min(SIM_CONFIG.NON_SHOOTING_FOUL.MAX_RATE, nonShootingFoulRate);
+```
+
+**After**:
+```ts
+const nsFoulCfg = SIM_CONFIG.NON_SHOOTING_FOUL;
+let nonShootingFoulRate = nsFoulCfg.BASE_RATE + (defIntensity - 5.5) * nsFoulCfg.DEF_INTENSITY_FACTOR;
+nonShootingFoulRate += nsFoulCfg.PLAYTYPE_MOD[selectedPlayType] ?? 0;
+nonShootingFoulRate *= foulProbMod * matchupFoulMult;
+nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
+```
+`PLAYTYPE_MOD`: PostUp +1.5%p, Iso +1.2%p, PnR_Roll +1.0%p, PnR_Handler/DriveKick +0.8%p, Cut +0.6%p,
+CatchShoot -1.0%p (신규 상수, `constants.ts`의 `SIM_CONFIG.NON_SHOOTING_FOUL.PLAYTYPE_MOD`).
+
+### 3.5 오펜시브 파울 — 차징/일리걸 스크린 분리 + 귀속 버그 수정
+
+기존엔 오펜시브 파울이 PnR 계열에서만, 그것도 `helpDefIq` 기반 확률로 발생했음 (수비수의 헬프 판단
+능력이 상대의 오펜스 파울 여부를 결정한다는 게 어색하다는 지적 → `defConsist`로 교체). 또한 PnR_Handler
+플레이에서 스크리너에게 걸려야 할 일리걸 스크린 파울이 볼핸들러(`actor`)에게 잘못 귀속되던 버그 발견
+(`PnR_Handler`의 `actor`는 볼핸들러, 스크리너는 `secondaryActor`)도 이번에 같이 수정. 이제 (1) 모든
+플레이타입에서 발생 가능한 차징(포스트업은 별도 고율) + (2) 스크린이 있는 플레이타입에서만 발생하는
+일리걸 스크린, 두 독립 체크로 분리.
+
+**Before** (핵심 로직, `helpDefIq` 기반 PnR 전용 확률):
+```ts
+if (selectedPlayType === 'PnR_Handler' || selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
+    let offFoulChance = SIM_CONFIG.FOUL_EVENTS.OFFENSIVE_FOUL_BASE;
+    if (defender) {
+        offFoulChance += (defender.attr.helpDefIq - 70) * SIM_CONFIG.FOUL_EVENTS.CHARGE_BONUS_PER_DEF_IQ;
+    }
+    if (Math.random() < offFoulChance) {
+        return { type: 'offensiveFoul', ..., actor, ... }; // PnR_Handler에서도 항상 actor(볼핸들러) 귀속
+    }
+}
+```
+
+**After**:
+```ts
+let chargeChance = selectedPlayType === 'PostUp'
+    ? offFoulConfig.POST_OFFENSIVE_FOUL_RATE   // 2.5%
+    : offFoulConfig.OFFENSIVE_FOUL_BASE;        // 1.5% (전 플레이타입)
+if (defender) {
+    chargeChance += (defender.attr.defConsist - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_CONSIST;
+}
+chargeChance = Math.max(0.005, Math.min(0.04, chargeChance));
+if (Math.random() < chargeChance) {
+    return { type: 'offensiveFoul', ..., actor, ... };
+}
+
+let actualScreener: LivePlayer | undefined;
+let screenChance = 0;
+if (selectedPlayType === 'PnR_Handler') { actualScreener = secondaryActor; screenChance = offFoulConfig.SCREEN_FOUL_RATE; }       // 0.8%
+else if (selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') { actualScreener = actor; screenChance = offFoulConfig.SCREEN_FOUL_RATE; }
+else if (selectedPlayType === 'OffBallScreen') { actualScreener = screener; screenChance = offFoulConfig.OFFBALL_SCREEN_FOUL_RATE; }  // 2.5%
+if (actualScreener && Math.random() < screenChance) {
+    return { type: 'offensiveFoul', ..., actor: actualScreener, ... };  // 스크리너 본인에게 정확히 귀속
+}
+```
+확률표: 차징(기본) 1.5% / 차징(포스트업) 2.5% / 일리걸스크린(PnR계열) 0.8% / 일리걸스크린(OffBallScreen)
+2.5% / Iso는 차징만 적용(스크린 없음, 기본 1.5%). `CHARGE_BONUS_PER_DEF_CONSIST` = 0.0003/point.
+
+### 3.6 테크니컬 파울 — 공/수 양쪽 후보 + 점수차 가중
+
+기존엔 수비팀(defender)에서만 발생 가능했는데, 테크니컬은 경기 외적 파울(항의, 다툼 등) 비중이 커서
+공격팀도 받을 수 있어야 하고, 특히 큰 점수차로 지고 있는 팀이 감정적으로 더 격해진다는 게 실제 농구와
+맞다는 결론. `temperament` 기반 가중치에 팀별 점수차 배율(20점차 1.3x, 30점차 이상 1.5x, 그 사이 선형)을
+곱해 코트 위 10명 전체를 대상으로 룰렛 방식으로 파울러 선정.
+
+**Before**:
+```ts
+if (Math.random() < SIM_CONFIG.FOUL_EVENTS.TECHNICAL_FOUL_BASE) {
+    // defTeam.onCourt 중 temperament 기반 가중치로만 선정
+    return { type: 'technicalFoul', ..., defender: techFouler, ... };
+}
+```
+
+**After**:
+```ts
+if (Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
+    const allOnCourt = [...offTeam.onCourt, ...defTeam.onCourt];
+    const offDeficit = Math.max(0, defTeam.score - offTeam.score);
+    const defDeficit = Math.max(0, offTeam.score - defTeam.score);
+    const offMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, offDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+    const defMult = 1 + Math.min(offFoulConfig.TECH_DEFICIT_MAX_BOOST, defDeficit * offFoulConfig.TECH_DEFICIT_PER_POINT);
+    const techWeights = allOnCourt.map(p => {
+        const base = Math.pow(Math.max(0.05, ((p.tendencies?.temperament ?? 0) + 1) / 2), techPower);
+        const isOffPlayer = offTeam.onCourt.some(op => op.playerId === p.playerId);
+        return base * (isOffPlayer ? offMult : defMult);
+    });
+    // 가중치 룰렛으로 allOnCourt 중 techFouler 선정 (공/수 무관)
+    return { type: 'technicalFoul', ..., defender: techFouler, ... };
+}
+```
+`TECH_DEFICIT_PER_POINT=0.015`, `TECH_DEFICIT_MAX_BOOST=0.5` (20점차→1.3x, 33점차 이상→cap 1.5x).
+
+### 후속 수정: `statsMappers.ts`의 `technicalFoul` 핸들러 (자유투 귀속)
+
+3.6이 공격팀도 대상이 되면서 "자유투는 항상 수비팀에게"라는 기존 가정이 깨짐 → 파울러가 어느 팀
+소속인지 판별해 상대팀에게 자유투를 주도록 수정.
+
+**Before** (`services/game/engine/pbp/statsMappers.ts`):
+```ts
+} else if (type === 'technicalFoul') {
+    if (defender) { defender.techFouls = (defender.techFouls || 0) + 1; }
+    const ftShooter = [...defTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0]; // 항상 defTeam이 슈터라고 가정 → 버그
+    ...
+}
+```
+
+**After**:
+```ts
+} else if (type === 'technicalFoul') {
+    if (defender) { defender.techFouls = (defender.techFouls || 0) + 1; }
+    const foulerIsOffense = !!defender && offTeam.onCourt.some(p => p.playerId === defender.playerId);
+    const ftTeam = foulerIsOffense ? defTeam : offTeam;       // 파울러의 상대팀이 자유투
+    const foulerTeam = foulerIsOffense ? offTeam : defTeam;
+    const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+    ...
+    const isEjected = defender && (defender.techFouls || 0) >= 2;
+    if (isEjected && defender) { defender.pf = 6; }  // 2테크 퇴장 처리 추가
+}
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존부터 있던 무관 에러 30건과 정확히 동일(신규
+에러 0건). `npx vite build` → 클라이언트 정상 빌드 완료(경고는 청크 사이즈 관련 기존 이슈, 무관).
+검증 과정에서 `defender.attr.steal`(오타, 정확히는 `.stl`)을 client/server `flowEngine.ts`의
+`calculateMatchupGap` 함수에서 발견해 함께 수정 — client `vite build`는 안 잡고 server `tsc`만 잡아냄.
+
+**롤백 방법**: 위 각 섹션의 Before 블록으로 되돌리면 됨. 5개 파일(constants.ts 2개, possessionHandler.ts
+2개, statsMappers.ts 2개 — 총 6개) 모두 client/server 쌍으로 같이 되돌릴 것.
+
+---
+
+## 2026-07-29 — 버저비터 승부결정 포제션의 "조용한 +1점" 버그 수정
+
+**배경**: `BIG LEAGUE TEST 7`(room `b45d2d1c-d0a1-4d5a-8b0d-cd8848ae1177`)의 보스턴vs멤피스 경기
+(`game_id: T_R4_M1_G4`)에서 스케쥴 화면 스코어(109-108)와 리뷰 화면 스코어(108-108)가 다르고, PBP
+탭에도 버저비터 관련 내용이 전혀 없다는 제보. DB 직접 조회로 확인: `game_pbp.away_score`(스케쥴이
+읽는 원본 컬럼)=109, `away_box` 선수별 `pts` 합계(리뷰 화면이 계산해 보여주는 값)=108, `events` 로그는
+4쿼터 0:00에 108-108 동점 3점으로 끝나고 그 이후 이벤트가 0건(OT 이벤트도 0건).
+
+원인은 `liveEngine.ts:_handleGameEnd()`의 "동점 → 버저비터 포제션" 로직. 4쿼터가 동점으로 끝나면
+`minHitRate:0.75`로 마지막 포제션을 한 번 더 시뮬레이션해 반드시 승자를 가르는데, 그 결과가
+`type==='score'`(깨끗한 성공)이면 정상적으로 로그/박스스코어에 반영되지만, 나머지 ~25%(미스/턴오버/
+파울 등)로 나오면 "그래도 이겨야 하니까" `buzzTeam.score += 1`로 **팀 스코어에만 조용히 point를
+얹고 끝났음** — 어떤 선수 박스스코어에도 안 잡히고 PBP 로그도 안 남는 구조. 이번 경기가 정확히 그
+케이스였음(래리 버드의 버저비터 3점이 동점을 만든 뒤, 후속 승부결정 포제션이 미스/턴오버성 결과로
+나와 조용히 보스턴에 1점이 얹어짐).
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` (client) — `_handleGameEnd()`의 non-score 분기에서
+  `buzzResult.actor.pts += 1`로 박스스코어 반영 + 결과 타입(miss/foul/offensiveFoul/turnover/기타)에
+  맞는 문구를 고르는 `buildBuzzerFallbackMessage()` 신규 + `state.logs.push()`로 PBP 로그 추가
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — 동일 변경
+
+**Before**:
+```ts
+if (buzzResult.type === 'score') {
+    applyPossessionResult(state, buzzResult);
+} else {
+    // 미스(~25%) → silent +1pt (로그 없음, 우연처럼 보임)
+    const buzzTeam = buzzIsHome ? state.home : state.away;
+    buzzTeam.score += 1;
+}
+```
+
+**After**:
+```ts
+function buildBuzzerFallbackMessage(result: PossessionResult): string {
+    const name = result.actor.playerName;
+    switch (result.type) {
+        case 'miss':
+            return `${name}의 슛이 빗나갔지만, 흘러나온 볼을 다시 잡아 극적으로 집어넣습니다!`;
+        case 'foul':
+        case 'offensiveFoul':
+            return `혼전 속 파울 상황에서도 ${name}의 팀이 침착하게 추가 득점을 챙깁니다.`;
+        case 'turnover':
+            return `공을 놓칠 뻔한 위기에서도, ${name}의 팀이 혼전 끝에 극적으로 득점을 만들어냅니다.`;
+        default:
+            return `극도의 혼전 속에서 ${name}의 팀이 마지막 순간 득점을 만들어냅니다.`;
+    }
+}
+// ...
+if (buzzResult.type === 'score') {
+    applyPossessionResult(state, buzzResult);
+} else {
+    const buzzTeam = buzzIsHome ? state.home : state.away;
+    buzzResult.actor.pts += 1;
+    buzzTeam.score += 1;
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: '0:00',
+        teamId: buzzTeam.id,
+        text: buildBuzzerFallbackMessage(buzzResult),
+        type: 'score',
+        points: 1,
+    });
+}
+```
+
+**검증**:
+- Node 스크립트로 `buildBuzzerFallbackMessage()`가 miss/foul/offensiveFoul/turnover/technicalFoul/
+  flagrantFoul 등 모든 realistic 타입에 대해 자연스러운 문구를 반환하는지 확인
+- client/server diff 확인(완전 동일), 양 파일 중괄호 균형 확인
+- `tsc --noEmit` 신규 에러 없음, `npm run build` 성공
+- `fly deploy -a basketballgm-app-server` 배포 후 헬스체크 200, `worker#0 ready`/`scheduler started`
+  정상 재기동 확인 (배포 중 "instance refused connection"/lease 관련 로그는 기존에 확인된 일시적
+  부팅 노이즈)
+
+**주의사항 / 한계**:
+- 이 로그가 실제로 새 스코어와 일치해서 뜨는지는 **배포 이후 새로 발생하는 동점 종료 경기**에서만
+  확인 가능 — 기존에 이미 이 버그로 스코어가 어긋난 과거 경기(`T_R4_M1_G4` 포함)는 DB에 저장된
+  `events`/`home_box`/`away_box`가 이미 확정된 상태라 재시뮬레이션 없이는 소급 수정되지 않음
+- `buzzResult.type`이 `turnover`/`offensiveFoul` 등일 때 "공격팀이 득점한다"는 서사가 다소 부자연스러울
+  수 있음(턴오버 직후 득점은 논리적으로 어색) — 그래도 NBA는 동점 종료가 없어 승자를 반드시 가려야
+  하므로, 문구를 최대한 그럴듯하게 다듬는 선에서 타협함. 완전히 자연스럽게 만들려면 버저비터 포제션
+  자체를 재설계해야 하는데 이번 범위 밖.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
 ## 2026-07-29 — 매치업 격차를 슈팅파울 배수(0.5~1.5x) + 적중률 미스매치(±12%)에 반영
 
 **배경**: 파울 로직 점검 중 발견 — 슈팅파울 확률식(`SIM_CONFIG.SHOOTING_FOUL`)이 공격자의 절대
