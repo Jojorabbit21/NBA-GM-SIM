@@ -70,11 +70,8 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
         (attr.mid * 0.20)
     );
 
-    const screener = getVal(
-        (attr.strength * 0.40) +
-        (normHeight * 0.30) +
-        (normWeight * 0.30)
-    );
+    const screenerRaw = (attr.strength * 0.40) + (normHeight * 0.30) + (normWeight * 0.30);
+    const screener = getVal(screenerRaw);
 
     const roller = getVal(
         (attr.ins * 0.40) +
@@ -82,22 +79,27 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
         (attr.speed * 0.30)
     );
 
+    // [2026-07-29] threeAvg*0.7+shotIq*0.3 → screenerRaw*0.6+(45도+탑)/2*0.4로 교체 (client 미러 참고)
     const popper = getVal(
-        (threeAvg * 0.70) +
-        (attr.shotIq * 0.30)
+        screenerRaw * 0.6 +
+        ((attr.three45 + attr.threeTop) / 2) * 0.4
     );
 
+    // [2026-07-29] ins*0.5+strength*0.3+hands*0.2 → postPlay 직접 반영으로 교체 (client 미러 참고)
     const postScorer = getVal(
-        (attr.ins * 0.50) +
-        (attr.strength * 0.30) +
+        (attr.postPlay * 0.50) +
+        (((attr.closeShot + attr.layup + attr.dunk) / 3) * 0.30) +
         (attr.hands * 0.20)
     );
 
+    // [2026-07-29] handling+종합스코어링(peak/secondary 구조, 3점형/골밑파워형 둘 다 정당 평가) — client 미러 참고
+    const isoInsideScore = (attr.closeShot + attr.layup + attr.dunk) / 3;
+    const isoOutsideScore = (attr.mid * 0.4) + (threeAvg * 0.6);
+    const isoPeak = Math.max(isoInsideScore, isoOutsideScore);
+    const isoSecondary = Math.min(isoInsideScore, isoOutsideScore);
     const isoScorer = getVal(
-        (attr.handling * 0.25) +
-        (attr.mid * 0.25) +
-        (attr.speed * 0.25) +
-        (attr.agility * 0.25)
+        (attr.handling * 0.40) +
+        ((isoPeak * 0.7 + isoSecondary * 0.3) * 0.60)
     );
 
     const connector = getVal(

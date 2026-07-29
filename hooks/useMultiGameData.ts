@@ -226,7 +226,25 @@ export function useMultiGameData(
                 if (room.lottery_result)        setLotteryResult(room.lottery_result as LotteryResult);
                 if (room.retired_player_ids)    setRetiredPlayerIds(room.retired_player_ids as string[]);
                 if (room.roster_state)          { /* teams 파싱은 별도 처리 필요 */ }
-                if (room.schedule)              setSchedule(room.schedule as Game[]);
+                if (room.schedule) {
+                    setSchedule(room.schedule as Game[]);
+                } else {
+                    // [Fix 2026-07-29] 드래프트 완료 직후 진입하면 finalizeDraft()가 아직 schedule을
+                    // 못 썼을 수 있음 — 무한 폴링이 아니라 이 최초 로드 시점에만 국한된 짧은 재시도
+                    // (최대 4회 × 1.5초 = 6초). DraftCompletedScreen 쪽 폴링이 1차 방어선이고, 이건
+                    // 그 화면을 거치지 않고 다른 경로로 시즌 화면에 바로 들어온 경우의 백업.
+                    (async () => {
+                        for (let i = 0; i < 4 && !cancelled; i++) {
+                            await new Promise(r => setTimeout(r, 1500));
+                            if (cancelled) return;
+                            const retryRoom = await loadRoom(roomId);
+                            if (retryRoom?.schedule) {
+                                setSchedule(retryRoom.schedule as Game[]);
+                                return;
+                            }
+                        }
+                    })();
+                }
 
                 // 멤버 전술 (개인)
                 if (member) {

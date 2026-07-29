@@ -604,6 +604,9 @@ export class DraftRoom {
             currentPickStartedAt: this.currentPickStartedAt,
             ...(this.pausedAt ? { pausedAt: this.pausedAt } : {}),
             autoPickUserIds:      [...this.autoPickUserIds],
+            // [2026-07-29] 클라이언트 clock skew 보정용 — 카운트다운이 서버-클라이언트 시계 오차만큼
+            // 부풀어 보이던 문제(AI 픽처럼 짧은 타이머에서 특히 두드러짐) 수정
+            serverNow:            new Date().toISOString(),
         };
     }
 

@@ -35,6 +35,695 @@
 
 ---
 
+## 2026-07-29 — DriveKick 킵/킥아웃 분기를 드라이버 본인 스탯 기반으로 수정 (10개 플레이타입 점검 완료)
+
+**배경**: OffBallScreen에 이어 마지막 플레이타입 DriveKick 점검. 기존 코드는 "드라이버가 직접
+마무리할지(킵) vs 킥아웃할지"를 스팟업 슈터(`actor`)의 존 선호도(`selectZone`)로 판정했는데, 이건
+드라이버 본인의 침투력/패스 성향과 전혀 무관한 엉뚱한 기준이었다. 스팟업 슈터가 3점 선호가 강하면
+드라이버가 아무리 골밑을 잘 뚫어도 "직접 마무리" 분기를 거의 못 타고, 반대로 슈터가 우연히 골밑
+선호가 있으면 드라이버의 실제 마무리력과 무관하게 득점자가 뒤바뀌는 구조였음. 이미 계산해두었던
+`penetration`(침투력)/`kickPass`(킥아웃 패스력) 값의 비율로 분기를 결정하도록 분리.
+
+이후 순수 불도저형(잭 라빈/앤서니 에드워즈 등, 킵 비율 54~59%) vs 순수 패서형(마크 가솔/요키치/
+빌 워튼 등, 킵 비율 34~48%) 10명씩 실측 검증, 패서형 상위권에 빅맨이 많다는 지적에 대해서도
+"드라이버 역할 자체의 선정 확률"(`archetypes.driver+handler*0.3`)이 운동능력 낮은 빅맨에게 이미
+낮게 걸려있어(가솔 84.0 vs 팍스 113.3) 실제로 이 빅맨들이 드라이버로 뽑힐 빈도 자체가 낮다는 것도
+함께 확인.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server)
+  — `DriveKick` 케이스의 킵/킥아웃 분기 로직
+
+**Before**:
+```ts
+const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+if (dkZone === 'Rim' || dkZone === 'Paint') {
+    const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, dkZone);
+    return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+}
+return { playType, actor, secondaryActor: driver, preferredZone: dkZone, shotType: dkZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.02 + driveBonus };
+```
+
+**After**:
+```ts
+const keepChance = penetration / (penetration + kickPass);
+if (Math.random() < keepChance) {
+    const driveZone = selectZone(['Rim', 'Paint'], driver, sliders) as 'Rim' | 'Paint';  // 드라이버 본인 존 선호도
+    const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, driveZone);
+    return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+}
+
+const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+if (dkZone === 'Rim' || dkZone === 'Paint') {
+    const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, dkZone);
+    return { playType, actor, secondaryActor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+}
+return { playType, actor, secondaryActor: driver, preferredZone: dkZone, shotType: dkZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.02 + driveBonus };
+```
+
+**검증**: 불도저형 10명(잭 라빈/앤서니 에드워즈/제일런 그린 등) 킵 비율 54.3~59.2%, 패서형 10명
+(마크 가솔/요키치/빌 워튼 등) 킵 비율 34.2~48.0%로 명확히 분리됨을 확인. `cd server && npx tsc
+-p tsconfig.json` 최초 실행 시 `selectZone(['Rim','Paint'],...)`의 반환 타입이 여전히 4존 유니온
+전체(`'Rim'|'Paint'|'Mid'|'3PT'`)로 추론되어 `resolveFinish`의 zone 파라미터(`'Rim'|'Paint'`)와
+안 맞는 신규 타입 에러 1건 발견 — `as 'Rim' | 'Paint'` 캐스팅으로 수정, 이후 기존 무관 에러 30건과
+동일 확인(client `vite build`는 esbuild transpile-only라 애초에 이 에러를 못 잡았음 — server tsc가
+다시 한번 실효성 입증). `npx vite build` → 클라이언트 정상 빌드.
+
+**참고**: 이걸로 12개 플레이타입(PostUp/PnR_Roll/PnR_Pop/PnR_Handler/Iso/CatchShoot-passer/Cut/
+Transition/Putback/Handoff/OffBallScreen/DriveKick) 전체 점검이 완료됨.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — OffBallScreen 스크리너 선정 `role` 파라미터 누락 버그 수정
+
+**배경**: OffBallScreen 점검 중 `screener` 선정 코드에서 `pickWeightedActor`의 `role` 인자가 빠져있는
+걸 발견. 기본값 `'shooter'`가 그대로 적용되면서, 스크리너 역할인데도 (1) 옵션랭크 기반
+`usageMultiplier`가 적용돼 팀의 득점 옵션 순위가 높을수록 스크리너로도 더 자주 뽑히고, (2)
+`ballDominance`가 반전 없이 그대로 적용돼 볼을 잡고 싶어하는 성향이 강할수록 유리하고, (3)
+`playStyle`도 슛선호(+1)일수록 유리하게 작용하는 등, 셋 다 스크리너 역할과는 맞지 않는 방향으로
+왜곡되고 있었다. 같은 파일의 Handoff `big`, PnR_Handler `screener`는 이미 `'passer'`를 명시하고
+있어서, 이 케이스만 빠뜨린 실수로 판단됨.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server)
+  — `OffBallScreen` 케이스의 `screener` 선정에 `'passer'` role 추가
+
+**Before**:
+```ts
+const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
+```
+
+**After**:
+```ts
+const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` →
+클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — Putback `offReb` 기반 재정의 + Handoff 허브빅 선정을 passIq/hands 기반으로 교체
+
+**배경**: Cut/Transition은 점검 결과 문제없음으로 결론. 이어서 Putback과(이전에 논의만 하고 코드
+반영을 누락했던) Handoff를 함께 처리.
+
+**Putback**: 기존 `p.attr.reb`(공격+수비+박스아웃 평균)는 세컨드찬스 전용 상황에 수비리바운드 능력까지
+섞여서 부정확했다(실측: 알 호포드 offReb 35인데 reb 종합 61.3으로 과대평가). 공격리바운드(offReb)만
+쓰고 점프력(vertical)·허슬을 반영, 골밑마무리(CLD)는 보조로 축소.
+
+**Handoff**: 기존 `screener`(체격만)로 "볼을 건네는 빅"을 뽑다 보니, 손기술이 최악인 순수
+림프로텍터(무톰보 hands52, 드러먼드 hands38, 고베어 hands48)가 요키치(hands98,passIq98)·
+사보니스보다 위로 랭크되는 왜곡이 있었음. Handoff는 순수 스크린이 아니라 빅맨이 직접 볼을 다루다
+넘겨주는 역할이라는 논의 끝에, passIq/hands 기반 "허브 스코어"로 교체 + PnR_Roll과 동일한 C/PF
+자격 제한 재사용.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server)
+  — `Putback`/`Handoff` 케이스 액터 선정 공식
+
+**Before**:
+```ts
+// Putback
+const actor = pickWeightedActor(p => p.attr.reb * 0.6 + p.attr.ins * 0.4);
+
+// Handoff
+const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
+```
+
+**After**:
+```ts
+// Putback
+const actor = pickWeightedActor(p =>
+    p.attr.offReb * 0.40 +
+    p.attr.vertical * 0.30 +
+    p.attr.hustle * 0.20 +
+    (((p.attr.closeShot + p.attr.layup + p.attr.dunk) / 3) * 0.10)
+);
+
+// Handoff
+const handoffHubWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;  // { C:0.7, PF:0.3, 그 외 0 }
+const big = pickWeightedActor(
+    p => p.attr.passIq * 0.5 + p.attr.hands * 0.5,
+    actor.playerId, 'passer',
+    p => (handoffHubWeights[p.position] ?? 0) > 0
+);
+```
+
+**검증**: Putback 리그 탑15 — 코니 호킨스/야니스/줄리어스 어빙/바클리/로드먼/러셀/하워드/마이칸/
+카림/모세스 말론/벤 월리스/조쉬 하트/블레이크 그리핀/칼 말론 등 실제 역대 리바운드·허슬형과 정확히
+일치(로드먼·월리스·하트처럼 골밑마무리는 약해도 리바운드+허슬로 상위권 진입 확인). Handoff 허브
+탑15는 요키치(1위)·아비다스 사보니스(2위)로 정상화, 무톰보/드러먼드/고베어류는 배제됨.
+`cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트
+정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — `pickWeightedActor`의 passer 선정에서 옵션랭크/볼도미넌스 오적용 수정
+
+**배경**: CatchShoot 점검 중, 슈퍼스타/스트레치빅이 `spacer`(슈터)로 자주 뽑히는 것 자체는 타당한데,
+그 슛을 누가 어시스트했는지(passer 선정)를 검증하다가 `pickWeightedActor` 공통 로직의 구조적 문제를
+발견함. `usageMultiplier`(옵션랭크 기반 배율, "1옵션일수록 슛을 더 쏘게")와 `ballDominance`(볼을
+잡고 싶어하는 성향)가 둘 다 `role`(shooter/passer) 구분 없이 무조건 곱해지고 있었음 — 그 결과
+"득점 옵션 순위가 높다"거나 "볼을 안 놓으려는 성향"이라는, 패스 능력과 무관한 요인이 패서(어시스트
+제공자) 선정에도 그대로 가산점을 주는 모순이 있었음. 반면 `playStyle`(-1 패스퍼스트~+1 슛퍼스트)은
+이미 role별로 정확히 반영되고 있었음(패스퍼스트면 패서 픽 가중치↑) — 이건 그대로 유지.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server) —
+  `pickWeightedActor` 내부 `usageMultiplier`/`ballDominance` 계산 로직 (모든 play type의 passer 선정에
+  공통 적용되는 변경)
+
+**Before**:
+```ts
+const rank = optionRanks.get(p.playerId) || 3;
+const usageMultiplier = getContextualMultiplier(rank, playType);
+let weight = Math.max(1, rawScore) * usageMultiplier;
+
+weight *= (p.tendencies?.ballDominance ?? 1.0);
+```
+
+**After**:
+```ts
+// usageMultiplier: passer 선정엔 옵션랭크 적용 안 함 (득점 순위와 어시스트 능력은 무관)
+const rank = optionRanks.get(p.playerId) || 3;
+const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
+let weight = Math.max(1, rawScore) * usageMultiplier;
+
+// ballDominance: passer 선정엔 0.5~1.5를 1.0 기준 대칭 반전(2.0-x) — 볼도미넌스가
+// 낮을수록(볼에 덜 집착할수록) 패서 가중치가 올라가도록
+const ballDom = p.tendencies?.ballDominance ?? 1.0;
+weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` →
+클라이언트 정상 빌드. 이 변경은 `pickWeightedActor`의 공통 로직이라 CatchShoot뿐 아니라 모든
+play type의 passer/secondaryActor 선정에 동일하게 적용됨.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — Iso `isoScorer`의 scoringComposite를 peak/secondary 구조로 재수정
+
+**배경**: 바로 아래 항목("Iso isoScorer 아키타입 재정의")에서 mid/three/CLD를 고정 비율(0.20/0.60/0.20)로
+선형 블렌드했는데, Cut 점검 중 야니스 안테토쿤보의 사례(driver 단독 4위인데 Cut 액터 점수는 154위)를
+살펴보다가 "Iso가 3점 스텝백형뿐 아니라 골밑 돌진형 파워 드라이버도 포괄해야 한다"는 논의로 이어짐.
+실측 확인: 야니스의 골밑(CLD) 97.7은 커리(74.0)보다도 훨씬 높은데, 선형 블렌드에서 3점 비중이 0.60로
+가장 커서 야니스의 isoScorer(81.4)가 르브론(87.3)보다도 낮게 나오는 왜곡이 있었음. 골밑 지배형과
+3점 지배형 둘 다 "각자의 강점 경로"로 정당하게 평가받도록, `usageSystem.ts`의 `calculateScoringGravity`
+(peak 0.7 + secondary 0.3)와 동일한 구조로 교체.
+
+**변경 파일**:
+- `services/game/engine/pbp/archetypeSystem.ts` (client) / `server/src/shared/engine/pbp/archetypeSystem.ts`
+  (server) — `isoScorer`의 `scoringComposite` 계산 방식 교체 (handling 비중 0.40, scoringComposite
+  0.60은 유지)
+
+**Before**:
+```ts
+const scoringComposite =
+    (attr.mid * 0.20) +
+    (threeAvg * 0.60) +
+    (((attr.closeShot + attr.layup + attr.dunk) / 3) * 0.20);
+```
+
+**After**:
+```ts
+const isoInsideScore = (attr.closeShot + attr.layup + attr.dunk) / 3;
+const isoOutsideScore = (attr.mid * 0.4) + (threeAvg * 0.6);   // outside 내부는 3점>미드 유지
+const isoPeak = Math.max(isoInsideScore, isoOutsideScore);
+const isoSecondary = Math.min(isoInsideScore, isoOutsideScore);
+const scoringComposite = (isoPeak * 0.7) + (isoSecondary * 0.3);
+```
+
+**검증**: 445명 전체 기준 재계산 — 야니스 81.4→88.4(르브론 87.6보다 위로 역전), 자이언 75.5→83.3으로
+개선. 리그 탑15는 루카(94.4)/카이리(93.3)/SGA(92.8)/래리버드(92.5)/조던(92.4)/데릭로즈(92.0)/
+브런슨(91.2)/웨이드(91.1)/할리버튼(90.6)/하든(90.6)/테이텀(90.5)/미첼(90.5)/맥그레이디(90.4)/
+드렉슬러(90.3)/모란트(90.3) — 3점형·미드형·골밑파워형이 고르게 섞인 명단. `cd server && npx tsc`
+→ 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 되돌리면 바로 아래 항목("선형 블렌드" 버전)의 After 상태로 복귀함.
+완전히 이전(운동능력 기반)으로 되돌리려면 아래 항목의 Before까지 함께 되돌릴 것.
+
+---
+
+## 2026-07-29 — Iso `isoScorer` 아키타입 재정의 (운동능력 제거, 3존 종합 스코어링으로 교체)
+
+**배경**: PnR_Handler에 이어 Iso를 점검. 기존 `isoScorer = handling*0.25+mid*0.25+speed*0.25+agility*0.25`는
+3점 슈팅력이 전혀 반영 안 되고 운동능력(speed+agility)이 절반을 차지해서, 폭발적인 운동능력형은
+아니지만 핸들링+슈팅(특히 스텝백 3점)으로 아이솔레이션을 지배하는 유형(하든/릴라드 등)이 부당하게
+낮게 나오는 문제가 확인됨(실측: 하든 83.0으로 카이리 93.5·트레이영 92.0 등 동급 스코어러 중 최하위).
+
+논의 과정에서 단계적으로 확정:
+1. 운동능력 비중 축소 + 3점 반영 시도 → 격차는 줄었지만 완전히 해소 안 됨
+2. 골밑 돌파(CLD)까지 포함한 종합 스코어링으로 확장, 피지컬 완전 제거 → 하든이 그룹 상위권까지 상승,
+   래리버드/듀란트/카멜로 앤서니 등 스킬형 아이소 스코어러가 리그 전체 탑15에 신규 진입
+3. 3점>골밑>미드 순으로 scoringComposite 내부 비중 조정(0.60/0.20/0.20) — 3점 비중을 낮게 잡았을 때
+   스테판 커리가 리그 전체 18위로 컷 밖 근접까지 밀린 것을 확인하고 재조정해 5~6위로 복귀시킴
+4. handling:scoringComposite = 0.40:0.60으로 최종 확정
+
+**변경 파일**:
+- `services/game/engine/pbp/archetypeSystem.ts` (client) / `server/src/shared/engine/pbp/archetypeSystem.ts`
+  (server) — `isoScorer` 공식 전면 교체
+
+**Before**:
+```ts
+const isoScorer = getVal(
+    (attr.handling * 0.25) +
+    (attr.mid * 0.25) +
+    (attr.speed * 0.25) +
+    (attr.agility * 0.25)
+);
+```
+
+**After**:
+```ts
+const scoringComposite =
+    (attr.mid * 0.20) +
+    (threeAvg * 0.60) +
+    (((attr.closeShot + attr.layup + attr.dunk) / 3) * 0.20);
+const isoScorer = getVal(
+    (attr.handling * 0.40) +
+    (scoringComposite * 0.60)
+);
+```
+
+**검증**: 445명 전체 기준 새 공식 리그 탑15 — 루카(95.2)/카이리(93.4)/래리버드(92.9)/SGA(92.4)/
+브런슨(91.8)/커리(91.5)/할리버튼(91.2)/하든(91.0)/맥그레이디(90.5)/테이텀(90.4)/제리웨스트(90.0)/
+맥시(89.9)/트레이영(89.8)/머레이(89.7)/자말크로포드(89.4) — 실제 역사상 아이솔레이션 강자들과
+대체로 일치. 하든이 구공식 대비 83.0→91.0으로 정상화. `isoScorer`는 Iso/PnR_Handler 액터 선정에만
+쓰여 다른 부작용 없음 확인(grep 검증). `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과
+동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(archetypeSystem.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — PnR_Handler 액터 선정에 득점력(isoScorer) 반영
+
+**배경**: PnR_Pop에 이어 PnR_Handler를 점검. 기존 `handler` 아키타입(handling+passIq+passVision+passAcc)은
+득점 요소가 전혀 없는데, PnR_Handler는 결국 볼핸들러가 스크린을 활용해 직접 득점(풀업/드라이브)까지
+책임지는 플레이라 득점력이 반영돼야 한다는 문제 제기. 실측 확인: 앤서니 에드워즈(SG, 미드 92/3점
+91.3의 엘리트 스코어러)의 handler_score가 71.6으로, 비슷한 등급의 다른 스코어러(부커 83.3, 릴라드
+84.4, 하든 91.9)보다 확연히 낮게 나옴 — 순수 패스형 선수에게 밀려 실제로는 팀의 핵심 볼핸들러인
+선수가 PnR_Handler 반복 기회를 상대적으로 덜 받는 구조였음.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server) —
+  `PnR_Handler` 액터 선정 기준만 변경 (다른 곳의 `handler` 아키타입 자체는 그대로 — 패서 역할로 계속 사용됨)
+
+**Before**:
+```ts
+case 'PnR_Handler': {
+    const actor = pickWeightedActor(p => p.archetypes.handler);
+    ...
+}
+```
+
+**After**:
+```ts
+case 'PnR_Handler': {
+    // Iso 액터 선정과 동일하게 isoScorer(드리블+득점+운동능력)를 주축으로, handler를 보조 가중치로 사용
+    const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+    ...
+}
+```
+
+**검증**: 상위 스코어러 그룹(CP3/스탁턴/트레이영/루카/마크잭슨/부커/커리/하든/앤에드워즈/릴라드)의
+새 조합 점수 계산 — 앤서니 에드워즈가 그룹 최하위(handler_old 71.6)에서 하든(128.9)·릴라드(125.0)와
+비슷한 중위권(127.6)으로 이동, 순수 패스형(CP3 140.4, 스탁턴 139.1)은 여전히 최상위 유지(이들도
+득점력이 나쁘지 않아 조합 점수가 자연스럽게 높음). `cd server && npx tsc -p tsconfig.json` → 기존
+무관 에러 30건과 동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — PnR_Pop `popper` 아키타입을 screener 기반으로 재정의 (가드가 팝아웃하던 문제 수정)
+
+**배경**: PostUp/PnR_Roll에 이어 나머지 10개 플레이타입을 점검하던 중 PnR_Pop이 눈에 띄었다. 다른
+스크린 계열 플레이(PnR_Roll의 screener, OffBallScreen의 screener, Handoff의 big)는 전부 "실제로
+스크린을 세울 수 있는 사람인가"(신체 스탯 기반 `screener` 아키타입)를 어떤 형태로든 반영하는데,
+PnR_Pop의 `popper`만 순수 3점+슛IQ뿐이라 스크리닝 능력과 무관했다. 445명 전체 평균 실측 결과
+`popper`(구공식) 순위가 PG 78.3 > SG 78.9 > SF 76.1 > PF 71.0 > C 59.0 — 픽앤팝(스크린을 세운 빅맨이
+팝아웃하는 액션)인데 포인트가드가 1위로 나오는 완전히 뒤집힌 결과였음.
+
+**변경 파일**:
+- `services/game/engine/pbp/archetypeSystem.ts` (client) / `server/src/shared/engine/pbp/archetypeSystem.ts`
+  (server) — `popper` 공식 교체, `screener` 계산을 `screenerRaw`로 분리해 재사용
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server) —
+  `PnR_Pop` 액터 선정에 `PNR_ROLL` 자격 필터(C/PF만 허용) 재사용
+
+**Before** (`archetypeSystem.ts`):
+```ts
+const screener = getVal(
+    (attr.strength * 0.40) + (normHeight * 0.30) + (normWeight * 0.30)
+);
+...
+const popper = getVal(
+    (threeAvg * 0.70) +      // threeAvg = 코너/45도/탑 3점 통합 평균
+    (attr.shotIq * 0.30)
+);
+```
+
+**After**:
+```ts
+const screenerRaw = (attr.strength * 0.40) + (normHeight * 0.30) + (normWeight * 0.30);
+const screener = getVal(screenerRaw);
+...
+// 코너 3점 제외(픽앤팝은 45도/탑에서만 나옴), shotIq 제거, screenerRaw 0.6 비중으로 스크리닝 능력 요구
+const popper = getVal(
+    screenerRaw * 0.6 +
+    ((attr.three45 + attr.threeTop) / 2) * 0.4
+);
+```
+
+**Before** (`playTypes.ts`):
+```ts
+case 'PnR_Pop': {
+    const popper = pickWeightedActor(p => p.archetypes.popper);
+    ...
+}
+```
+
+**After**:
+```ts
+case 'PnR_Pop': {
+    // PnR_Roll과 동일한 스크리너 풀(C/PF)만 허용 — popper 공식 자체가 이미 C/PF를 거의 동률로
+    // 갈라주므로(실측 확인) 추가 배율 없이 자격 필터만 적용
+    const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;  // { C:0.7, PF:0.3, SF:0, SG:0, PG:0 }
+    const popper = pickWeightedActor(
+        p => p.archetypes.popper,
+        undefined, 'shooter',
+        p => (popEligible[p.position] ?? 0) > 0
+    );
+    ...
+}
+```
+
+**검증**: 445명 전체 평균으로 새 `popper` 공식 계산 — C 63.3 / PF 62.8(거의 동률) / SF 59.6 / SG 54.8
+/ PG 49.3로 포지션 순서가 정상화됨(SF 이하는 필터로 완전 배제되므로 순위 자체는 참고용).
+`cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트
+정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 4개 파일(archetypeSystem.ts/playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-29 — PostUp/PnR_Roll 액터 선정에 포지션 가중치 추가 (센터 볼터치 부족 개선)
+
+**배경**: "32 TEST"(32팀 멀티 리그, 95경기 실측) 데이터 분석에서 엘리트 센터들의 usage가 동급
+가드/윙보다 확연히 낮다는 문제 확인(전체 슛 시도 중 C 점유율 14.2%, 5포지션 균등 기대치 20% 대비
+낮음). 원인 추적 결과 (1) 플레이타입 풀 자체가 가드/윙 편향 (2) "센터 전용"이어야 할 PostUp/PnR_Roll
+안에서조차 액터 선정 아키타입 공식이 포지션을 구분하지 못함 — 두 가지가 확인됐고, 이번엔 (2)를 수정.
+
+실측(`meta_players` 445명 전체 평균):
+```
+postScorer(구공식) : C 74.4 | PF 74.1 | SF 70.8   → C/PF 사실상 동률
+roller             : C 67.7 | PF 73.9 | SF 74.9   → 센터가 오히려 최하위
+```
+포지션 간 실력 차이가 거의 없거나 역전돼 있어, 순수 스킬 경쟁만으로는 "센터 전용 플레이"가 센터에게
+가지 않는 구조였음. 논의 끝에 (a) `postScorer` 공식을 postPlay 중심으로 재정의하고 (b) PostUp/PnR_Roll
+액터 선정에 포지션 가중치를 곱하는 방식으로 확정(하드 쿼터 대신 소프트 가중치 — 스킬 격차가 극단적인
+예외 로스터에서는 여전히 뒤집힐 여지를 남김).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `SIM_CONFIG.POSITION_WEIGHT` 신규
+- `services/game/engine/pbp/archetypeSystem.ts` (client) / `server/src/shared/engine/pbp/archetypeSystem.ts`
+  (server) — `postScorer` 공식 교체
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server) —
+  `pickWeightedActor`에 `eligibleFilter` 파라미터 추가, `PostUp`/`PnR_Roll` 액터 선정에 포지션 가중치 적용
+
+**Before** (`archetypeSystem.ts`):
+```ts
+const postScorer = getVal(
+    (attr.ins * 0.50) +       // ins = (layup+dunk+postPlay+drawFoul+hands)/5 — postPlay 지분 1/5뿐
+    (attr.strength * 0.30) +
+    (attr.hands * 0.20)
+);
+```
+
+**After**:
+```ts
+const postScorer = getVal(
+    (attr.postPlay * 0.50) +
+    (((attr.closeShot + attr.layup + attr.dunk) / 3) * 0.30) +
+    (attr.hands * 0.20)
+);
+```
+
+**Before** (`playTypes.ts`, `pickWeightedActor` + PostUp/PnR_Roll):
+```ts
+const pickWeightedActor = (
+    criteria: (p: LivePlayer) => number,
+    excludeId?: string,
+    role: 'shooter' | 'passer' = 'shooter'
+) => {
+    let pool = players;
+    if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
+    ...
+};
+...
+case 'PnR_Roll': {
+    const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
+    ...
+}
+...
+case 'PostUp': {
+    const actor = pickWeightedActor(p => p.archetypes.postScorer);
+    ...
+}
+```
+
+**After**:
+```ts
+const pickWeightedActor = (
+    criteria: (p: LivePlayer) => number,
+    excludeId?: string,
+    role: 'shooter' | 'passer' = 'shooter',
+    eligibleFilter?: (p: LivePlayer) => boolean   // NEW — Math.max(1, rawScore) 하한선 때문에
+) => {                                             // criteria*0을 줘도 완전 배제가 안 돼 별도 필터 필요
+    let pool = players;
+    if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
+    if (eligibleFilter) pool = pool.filter(eligibleFilter);
+    ...
+};
+...
+case 'PnR_Roll': {
+    const rollWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;  // { C:0.7, PF:0.3, SF:0, SG:0, PG:0 }
+    const screener = pickWeightedActor(
+        p => (p.archetypes.roller + p.archetypes.screener * 0.5) * (rollWeights[p.position] ?? 0),
+        undefined, 'shooter',
+        p => (rollWeights[p.position] ?? 0) > 0   // SF/SG/PG 완전 배제
+    );
+    ...
+}
+...
+case 'PostUp': {
+    const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;  // { C:0.6, PF:0.2, SF:0.1, SG:0.05, PG:0.05 }
+    const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
+    ...
+}
+```
+
+**검증**: 445명 전체 평균 postScorer/roller 값에 새 포지션 가중치를 곱해 계산한 예상 분포 —
+PostUp: C 61.6% / PF 20.2% / SF 9.5% / SG 4.4% / PG 4.3% (목표 60/20/10/5/5에 근접),
+PnR_Roll: C 68.1% / PF 31.9% (목표 70/30에 근접). `cd server && npx tsc -p tsconfig.json` → 기존
+무관 에러 30건과 동일(신규 에러 0건). `npx vite build` → 클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 6개 파일(constants.ts/archetypeSystem.ts/playTypes.ts × client/server)
+전부 되돌릴 것 — 하나만 되돌리면 client/server 미러가 깨짐.
+
+---
+
+## 2026-07-29 — 드래프트 완료 직후 시즌 일정이 안 보이는 경쟁 상태(race condition) 수정
+
+**배경**: "32 TEST" 세션에서 드래프트 완료 후 시즌 화면 진입 시 일정이 안 보이다가 새로고침하니
+다시 보이는 현상 제보. DB 직접 조회로 `rooms.schedule`/`roster_state`/`game_pbp`가 전부 정상 생성돼
+있는 걸 확인해 서버 데이터 자체는 문제 없음을 확인 — 클라이언트가 finalize 완료 이전에 화면을
+읽어버리는 타이밍 문제로 원인 특정.
+
+기존에 `DraftCompletedScreen`(`MultiDraftView.tsx`)이 이미 폴링으로 "일정 생성 중" 대기 로직을
+갖고 있었으나, **폴링 대상이 잘못돼 있었음** — `leagues.status === 'in_progress'`를 완료 신호로
+썼는데, 이 status는 `finalize.ts`의 `finalizeDraft()` 맨 앞부분에서 "동시 실행 방지용 원자적
+claim"으로 실제 일정/전술 생성이 끝나기도 전에 바로 `'in_progress'`로 바뀐다. 즉 폴링이 "이제 막
+시작했다"는 신호를 "다 끝났다"로 오인해 너무 일찍 `onNavigate()`를 호출했던 것 — 드래프트가 끝나자마자
+"시즌으로 이동" 화면이 뜨는 게 자연스러운 사용자 흐름이라 매 세션 재현 가능성이 있는 구조적 버그.
+
+**변경 파일**:
+- `views/multi/league/MultiDraftView.tsx` (client) — `DraftCompletedScreen`의 폴링 대상을
+  `leagues.status`(잘못된 조기 claim 신호) → `rooms.schedule` 실제 생성 여부로 교체. 로더 스피너
+  대신 경과시간 기반 근사 진행률(점근선, 완료 전 95% 캡) 프로그레스 바로 교체
+- `hooks/useMultiGameData.ts` (client) — 백업 방어선: 최초 로드 시 `room.schedule`이 비어있으면
+  드래프트 완료 화면을 거치지 않고 다른 경로로 시즌 화면에 바로 들어온 경우를 위해 최대 4회
+  (1.5초 간격, 총 6초)까지만 짧게 재조회. 무한 폴링 아님 — 이 최초 로드 시점에만 국한
+
+**Before**:
+```tsx
+// MultiDraftView.tsx — DraftCompletedScreen
+const { data } = await supabase
+    .from('leagues')
+    .select('status')
+    .eq('id', leagueId)
+    .single();
+if (data?.status === 'in_progress') setIsReady(true);
+else timerId = setTimeout(poll, 3000);
+// ...
+if (!isReady) return <Loader2 className="animate-spin" .../>;
+
+// useMultiGameData.ts
+if (room.schedule) setSchedule(room.schedule as Game[]);
+```
+
+**After**:
+```tsx
+// MultiDraftView.tsx — DraftCompletedScreen
+const { data } = await supabase
+    .from('rooms')
+    .select('schedule')
+    .eq('id', roomId)
+    .maybeSingle();
+if (Array.isArray(data?.schedule) && data.schedule.length > 0) {
+    setProgress(100);
+    setIsReady(true);
+} else {
+    timerId = setTimeout(poll, POLL_INTERVAL_MS);
+}
+// ...
+if (!isReady) return (
+    <div className="w-64 h-2 bg-slate-800 rounded-full overflow-hidden">
+        <div className="h-full bg-indigo-500 rounded-full transition-all duration-500 ease-out"
+             style={{ width: `${progress}%` }} />
+    </div>
+);
+
+// useMultiGameData.ts
+if (room.schedule) {
+    setSchedule(room.schedule as Game[]);
+} else {
+    (async () => {
+        for (let i = 0; i < 4 && !cancelled; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            if (cancelled) return;
+            const retryRoom = await loadRoom(roomId);
+            if (retryRoom?.schedule) { setSchedule(retryRoom.schedule as Game[]); return; }
+        }
+    })();
+}
+```
+
+**검증**:
+- 브레이스 균형 확인, `npm run build` 성공 (client 전용 변경 — server 코드 변경 없어 Fly 재배포 불필요)
+- `finalize.ts` 코드 추적으로 `roster_state`/`schedule`이 항상 같은 단일 `update()` 호출에서
+  원자적으로 함께 쓰이는 것 확인 — `rooms.schedule` 존재 여부가 완료 판정 신호로 타당함을 확인
+
+**주의사항 / 한계**:
+- 실제 진행률 신호(finalize 내부 단계별 완료 이벤트)가 없어 프로그레스 바는 경과시간 기반 근사치임
+  (점근선으로 95%까지 채우고 실제 완료 시 100%로 스냅) — 정확한 퍼센트가 아니라 "진행 중" 체감용
+- `useMultiGameData.ts`의 재시도는 이번 최초 로드 시점에만 국한되며, 그 이후엔 예전에 확정한 "리그
+  진입 시 1회만 로딩" 원칙을 그대로 유지함(일반적인 재로딩 정책 변경 아님)
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
+## 2026-07-29 — 드래프트 픽 타이머 clock skew 보정 (AI 픽 32초로 표시되던 문제)
+
+**배경**: 드래프트 룸 픽당 제한시간을 30초로 설정했는데 AI팀 픽 타이머가 32초로 시작된다는 제보.
+조사 결과 AI 전용 버그가 아니라 **서버-클라이언트 시계 오차(clock skew)** 문제로 확인. `hooks/
+useLeagueDraft.ts`의 카운트다운이 `Date.now() - new Date(currentPickStartedAt).getTime()`로
+클라이언트 로컬 시계와 서버가 찍은 절대시각을 직접 비교하는데, Fly.io 서버 시계와 클라이언트 시계가
+몇 초만 어긋나도 그 오차가 그대로 카운트다운에 반영됨. 실측: `curl -I`로 확인한 Fly 서버 HTTP Date
+헤더가 로컬 시스템 시각보다 약 3초 빠름 — 정확히 보고된 증상(30초 설정 → 32~33초 표시)과 일치.
+사람 픽(30초)도 똑같이 영향받지만, 타이머가 시작되는 정확한 순간을 보고 있는 경우가 드물어 눈치채기
+어렵고, AI 픽은 서버에서 2.5~3.5초 만에 끝나버리는 짧은 타이머라(`AI_MIN_DELAY_MS`/`AI_MAX_DELAY_MS`,
+`DraftRoom.ts`) 시작값이 그대로 눈에 띔.
+
+NTP 방식과 동일한 원리로 보정 — 서버가 커서를 보낼 때마다 자신의 현재 시각(`serverNow`)을 함께
+실어 보내고, 클라이언트는 수신 시점에 `serverNow - Date.now()`로 skew를 계산해 이후 카운트다운
+계산에 반영.
+
+**변경 파일**:
+- `server/src/protocol.ts` — `DraftCursor` 인터페이스에 `serverNow: string` 필드 추가
+- `server/src/DraftRoom.ts` — `getCursor()`가 `serverNow: new Date().toISOString()` 포함하도록 수정
+- `hooks/useLeagueDraft.ts` (client) — `clockSkewRef`(ms) 추가, `snapshot`/`pick`/`cursor` 메시지
+  수신 시마다 `updateClockSkew(cursor)`로 skew 갱신, 타이머 계산에 `Date.now() + clockSkewRef.current`
+  적용
+
+**Before**:
+```ts
+// DraftRoom.ts
+getCursor(): DraftCursor {
+    return {
+        status: this.status,
+        currentPickIndex: this.currentPickIndex,
+        currentPickStartedAt: this.currentPickStartedAt,
+        ...(this.pausedAt ? { pausedAt: this.pausedAt } : {}),
+        autoPickUserIds: [...this.autoPickUserIds],
+    };
+}
+
+// useLeagueDraft.ts
+const elapsed   = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
+const remaining = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
+```
+
+**After**:
+```ts
+// DraftRoom.ts
+getCursor(): DraftCursor {
+    return {
+        status: this.status,
+        currentPickIndex: this.currentPickIndex,
+        currentPickStartedAt: this.currentPickStartedAt,
+        ...(this.pausedAt ? { pausedAt: this.pausedAt } : {}),
+        autoPickUserIds: [...this.autoPickUserIds],
+        serverNow: new Date().toISOString(),
+    };
+}
+
+// useLeagueDraft.ts
+function updateClockSkew(cursor: any) {
+    if (cursor?.serverNow) {
+        clockSkewRef.current = new Date(cursor.serverNow).getTime() - Date.now();
+    }
+}
+// ... snapshot/pick/cursor 핸들러에서 updateClockSkew(cursor) 호출
+const correctedNow = Date.now() + clockSkewRef.current;
+const elapsed       = (correctedNow - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
+const remaining     = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
+```
+
+**검증**:
+- `curl -I https://basketballgm-app-server.fly.dev/`의 HTTP Date 헤더 vs 로컬 `date -u` 비교로
+  실제 clock skew(~3초) 존재 확인 후 수정 방향 결정
+- `buildSnapshot()`이 항상 `getCursor()`를 거쳐 클라이언트에 전달되는 것 확인(스냅샷/픽델타/커서
+  변경 메시지 전부 동일 경로) — `startDraft.ts`의 초기 DB `draft_cursor` 직접 쓰기(waiting/preparing
+  단계)는 라이브 `DraftRoom` 인스턴스가 없을 때의 영속화 전용이라 이번 수정 대상에서 제외해도 무방
+- 양 서버 파일 브레이스 균형 확인, `tsc --noEmit`에서 `serverNow`/`DraftCursor` 관련 신규 에러 없음
+  (기존 무관 에러: `Cannot find module 'bun'` 그대로 존재, 이번 변경과 무관)
+- `npm run build` 성공
+- `fly deploy -a basketballgm-app-server` 배포 후 헬스체크 200, 배포 직후 실제 운영 중이던 드래프트
+  룸(`DraftRoom:935b07ca-...`)이 정상적으로 auto pick을 이어가는 것을 로그로 확인(연속 픽 #288~293,
+  스케줄된 지연 2.6~3.4초로 정상 범위)
+
+**주의사항 / 한계**:
+- `startDraft.ts`의 waiting/preparing 단계 DB 직접 쓰기 cursor에는 `serverNow`가 없음 — 다만 이
+  단계는 `currentPickStartedAt: null`이라 타이머 자체가 동작하지 않으므로 영향 없음
+- clock skew는 서버 재배포/시각 동기화(NTP) 상태에 따라 계속 변동 가능 — 이번 수정은 그 변동을
+  실시간으로 계속 보정하는 방식이라 향후 서버 시계가 몇 초 더 틀어져도 자동으로 따라감
+
+**롤백 방법**: 위 Before 블록으로 세 파일 모두 되돌리면 됨.
+
+---
+
 ## 2026-07-29 — 파울 로직 점검: 논슈팅/오펜시브/테크니컬 파울 개선
 
 **배경**: "빅맨 파울이 너무 빨리 쌓인다" 제보에서 시작된 파울 시스템 전체 점검의 연속. 앞선 세션에서

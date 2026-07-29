@@ -143,20 +143,24 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
         excludeId?: string,
-        role: 'shooter' | 'passer' = 'shooter'
+        role: 'shooter' | 'passer' = 'shooter',
+        eligibleFilter?: (p: LivePlayer) => boolean
     ) => {
         let pool = players;
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
+        if (eligibleFilter) pool = pool.filter(eligibleFilter);
 
         const candidates = pool.map(p => {
             const rawScore = criteria(p);
 
+            // [2026-07-29] usageMultiplier/ballDominance는 passer 선정 시 다르게 적용 (client 미러 참고)
             const rank = optionRanks.get(p.playerId) || 3;
-            const usageMultiplier = getContextualMultiplier(rank, playType);
+            const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
 
             let weight = Math.max(1, rawScore) * usageMultiplier;
 
-            weight *= (p.tendencies?.ballDominance ?? 1.0);
+            const ballDom = p.tendencies?.ballDominance ?? 1.0;
+            weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
 
             // [SaveTendency] playStyle: role 기반 통합 배율 (슈터 vs 패서)
             const ps = p.tendencies?.playStyle ?? 0;
@@ -208,7 +212,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             };
         }
         case 'PnR_Handler': {
-            const actor = pickWeightedActor(p => p.archetypes.handler);
+            // [2026-07-29] isoScorer+handler*0.5로 교체 — 순수 패서형 편중 방지 (client 미러 참고)
+            const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer');
 
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
@@ -219,7 +224,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor, secondaryActor: screener, preferredZone: zone, shotType: 'Pullup', bonusHitRate: 0.01 };
         }
         case 'PnR_Roll': {
-            const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
+            // [2026-07-29] 포지션 가중치(C 0.7/PF 0.3/그 외 0)로 롤맨을 프론트코트로 제한 (client 미러 참고)
+            const rollWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+            const screener = pickWeightedActor(
+                p => (p.archetypes.roller + p.archetypes.screener * 0.5) * (rollWeights[p.position] ?? 0),
+                undefined, 'shooter',
+                p => (rollWeights[p.position] ?? 0) > 0
+            );
             const handler = pickPasser(p => p.archetypes.handler, screener.playerId);
             const rollZone = selectZone(['Rim', 'Paint', 'Mid'], screener, sliders);
             if (rollZone === 'Rim' || rollZone === 'Paint') {
@@ -229,12 +240,20 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor: screener, secondaryActor: handler, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0.03 };
         }
         case 'PnR_Pop': {
-            const popper = pickWeightedActor(p => p.archetypes.popper);
+            // [2026-07-29] PnR_Roll과 동일한 스크리너 풀(C/PF)만 허용 (client 미러 참고)
+            const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+            const popper = pickWeightedActor(
+                p => p.archetypes.popper,
+                undefined, 'shooter',
+                p => (popEligible[p.position] ?? 0) > 0
+            );
             const handler = pickPasser(p => p.archetypes.handler, popper.playerId);
             return { playType, actor: popper, secondaryActor: handler, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.01 };
         }
         case 'PostUp': {
-            const actor = pickWeightedActor(p => p.archetypes.postScorer);
+            // [2026-07-29] 포지션 가중치(C 0.6/PF 0.2/SF 0.1/SG,PG 0.05)로 보정 (client 미러 참고)
+            const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;
+            const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
             const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
             if (postZone === 'Rim' || postZone === 'Paint') {
@@ -267,7 +286,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'Handoff': {
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
-            const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
+            // [2026-07-29] screener(체격) → passIq/hands 기반 허브 스코어 + C/PF 자격 제한 (client 미러 참고)
+            const handoffHubWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+            const big = pickWeightedActor(
+                p => p.attr.passIq * 0.5 + p.attr.hands * 0.5,
+                actor.playerId, 'passer',
+                p => (handoffHubWeights[p.position] ?? 0) > 0
+            );
 
             const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (hoZone === 'Rim' || hoZone === 'Paint') {
@@ -291,7 +316,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor, secondaryActor: outletPasser, preferredZone: trZone, shotType: 'Pullup', bonusHitRate: 0.04 };
         }
         case 'Putback': {
-            const actor = pickWeightedActor(p => p.attr.reb * 0.6 + p.attr.ins * 0.4);
+            // [2026-07-29] reb(공수 종합) → offReb+vertical+hustle+CLD로 교체 (client 미러 참고)
+            const actor = pickWeightedActor(p =>
+                p.attr.offReb * 0.40 +
+                p.attr.vertical * 0.30 +
+                p.attr.hustle * 0.20 +
+                (((p.attr.closeShot + p.attr.layup + p.attr.dunk) / 3) * 0.10)
+            );
             const { zone: pbZone, shotType: pbShotType } = resolveFinish(actor, 'putback', sliders);
             return { playType, actor, preferredZone: pbZone, shotType: pbShotType, bonusHitRate: 0.05 };
         }
@@ -299,7 +330,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(
                 p => p.archetypes.spacer + p.attr.offBallMovement * 0.3 + p.attr.speed * 0.1
             );
-            const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
+            // [2026-07-29] role 파라미터 누락 버그 수정 — 'passer'로 통일 (client 미러 참고)
+            const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
             const passer = pickPasser(
                 p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId
             );
@@ -330,10 +362,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const driveQuality = penetration * 0.6 + kickPass * 0.4;
             const driveBonus = Math.max(0, (driveQuality - 70) / 30 * 0.02);
 
+            // [Fix][2026-07-29] 킵/킥아웃 분기를 드라이버 본인의 침투력 대 패스성향 비율로 결정 (client 미러 참고)
+            const keepChance = penetration / (penetration + kickPass);
+            if (Math.random() < keepChance) {
+                const driveZone = selectZone(['Rim', 'Paint'], driver, sliders) as 'Rim' | 'Paint';
+                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, driveZone);
+                return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+            }
+
             const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (dkZone === 'Rim' || dkZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, dkZone);
-                return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, dkZone);
+                return { playType, actor, secondaryActor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
             }
             return {
                 playType, actor, secondaryActor: driver,

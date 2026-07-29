@@ -58,6 +58,15 @@ export function useLeagueDraft(
     // 타이머 (표시 전용)
     const [timeRemaining, setTimeRemaining] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // [2026-07-29] 서버-클라이언트 clock skew 보정값(ms, 양수 = 서버 시계가 빠름).
+    // cursor.serverNow 수신 시마다 갱신 — Fly.io 서버와 클라이언트 로컬 시계가 몇 초 어긋나 있으면
+    // 카운트다운이 그만큼 부풀어 보이는 문제(AI 픽처럼 짧은 타이머에서 특히 두드러짐)를 방지한다.
+    const clockSkewRef = useRef(0);
+    function updateClockSkew(cursor: any) {
+        if (cursor?.serverNow) {
+            clockSkewRef.current = new Date(cursor.serverNow).getTime() - Date.now();
+        }
+    }
 
     // WS + 재연결 상태
     const wsRef        = useRef<WebSocket | null>(null);
@@ -94,6 +103,7 @@ export function useLeagueDraft(
                         config: any; cursor: any;
                         picks:  any[]; pool: DraftPoolPlayer[];
                     };
+                    updateClockSkew(cursor);
                     const pickEntries = buildPickEntries(picks);
                     setDraftState(assembleState(config, cursor, pickEntries));
                     setPoolPlayers(pool);
@@ -106,6 +116,7 @@ export function useLeagueDraft(
                     const { pick: newPick, cursor } = msg as {
                         pick: DraftPickEntry; cursor: any;
                     };
+                    updateClockSkew(cursor);
                     setDraftState(prev => {
                         if (!prev) return prev;
                         if (prev.picks.some(p => p.pickIndex === newPick.pickIndex)) {
@@ -122,6 +133,7 @@ export function useLeagueDraft(
 
                 // ── cursor만 변경 (pause/resume/reset-timer) ──────────────
                 case 'cursor': {
+                    updateClockSkew(msg.cursor);
                     setDraftState(prev => prev ? applycursor(prev, msg.cursor) : prev);
                     break;
                 }
@@ -206,7 +218,9 @@ export function useLeagueDraft(
         if (draftState.status === 'paused') return;
 
         const update = () => {
-            const elapsed    = (Date.now() - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
+            // clockSkewRef로 서버-클라이언트 시계 오차를 보정한 "서버 기준 현재 시각"을 사용
+            const correctedNow = Date.now() + clockSkewRef.current;
+            const elapsed    = (correctedNow - new Date(draftState.currentPickStartedAt).getTime()) / 1000;
             const remaining  = Math.max(0, Math.round(draftState.pickDurationSec - elapsed));
             setTimeRemaining(remaining);
         };

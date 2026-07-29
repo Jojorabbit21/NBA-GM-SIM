@@ -533,6 +533,12 @@ export const SIM_CONFIG = {
         PLAYSTYLE_SHOOTER_K: 0.25,  // 슈터 픽: weight *= (1 + ps*K) — 슛선호(+)일수록 액터로 더 자주
         PLAYSTYLE_PASSER_K: 0.25,   // 패서 픽: weight *= (1 - ps*K) — 패스선호(-)일수록 패서로 더 자주
     },
+    // Position Weight: PostUp/PnR_Roll 액터 선정에 포지션별 배율을 곱해 빅맨 편중을 보정
+    // (아키타입 점수만으로는 C/PF/SF 간 실력 차이가 거의 없어 순수 스킬 경쟁으론 센터가 밀림 — 32 TEST 실측 확인)
+    POSITION_WEIGHT: {
+        POST_UP: { C: 0.6, PF: 0.2, SF: 0.1, SG: 0.05, PG: 0.05 } as Record<string, number>,
+        PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
+    },
     FOUL_TROUBLE: {
         PROB_MOD: {
             3: 0.85,

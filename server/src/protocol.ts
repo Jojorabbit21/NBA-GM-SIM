@@ -35,6 +35,9 @@ export interface DraftCursor {
     pausedAt?: string;
     /** 오토픽 모드인 userId 목록 — 메모리 전용 상태(서버 재시작 시 리셋, DB 영속화 안 함) */
     autoPickUserIds: string[];
+    /** 이 커서를 만든 시점의 서버 시각(ISO) — 클라이언트가 자신의 로컬 시계와 비교해
+     *  clock skew를 보정하는 데 사용(카운트다운이 서버-클라이언트 시계 오차만큼 어긋나는 문제 방지). */
+    serverNow: string;
 }
 
 export interface DraftConfig {

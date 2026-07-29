@@ -500,33 +500,48 @@ interface DraftCompletedScreenProps {
 }
 
 const MAX_POLL_ATTEMPTS = 30; // 3초 × 30 = 90초
+const POLL_INTERVAL_MS  = 3000;
 
-const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, onNavigate }) => {
+const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ roomId, onNavigate }) => {
     const [isReady,   setIsReady]   = useState(false);
     const [timedOut,  setTimedOut]  = useState(false);
+    const [progress,  setProgress]  = useState(0); // 0~100, 실제 완료 신호 전까진 근사치
 
     useEffect(() => {
-        if (!leagueId) return;
+        if (!roomId) return;
         let cancelled = false;
         let attempts  = 0;
         let timerId:  ReturnType<typeof setTimeout>;
 
         const poll = async () => {
             if (cancelled) return;
-            if (++attempts > MAX_POLL_ATTEMPTS) {
+            attempts += 1;
+
+            // 실측 진행률 신호가 없어 경과 시간 기반 근사치로 채운다 — 실제 완료 전엔 95%를
+            // 넘지 않는 점근선으로 올라가다가, 완료되면 100%로 스냅.
+            const elapsedSec = attempts * (POLL_INTERVAL_MS / 1000);
+            setProgress(Math.min(95, Math.round(100 * (1 - Math.exp(-elapsedSec / 8)))));
+
+            if (attempts > MAX_POLL_ATTEMPTS) {
                 setTimedOut(true);
                 return;
             }
+
+            // [Fix 2026-07-29] leagues.status는 finalizeDraft() 시작 "직후"(실제 일정/전술 생성이
+            // 끝나기 전) 원자적 claim으로 바로 'in_progress'가 되는 플래그라 완료 신호로 쓸 수 없었음
+            // — "드래프트 완료" 화면에서 시즌으로 이동한 직후 rooms.schedule이 아직 비어있어 일정이
+            // 안 보이는 버그의 원인. rooms.schedule 실제 생성 여부를 직접 확인하도록 수정.
             const { data } = await supabase
-                .from('leagues')
-                .select('status')
-                .eq('id', leagueId)
-                .single();
+                .from('rooms')
+                .select('schedule')
+                .eq('id', roomId)
+                .maybeSingle();
             if (cancelled) return;
-            if (data?.status === 'in_progress') {
+            if (Array.isArray(data?.schedule) && data.schedule.length > 0) {
+                setProgress(100);
                 setIsReady(true);
             } else {
-                timerId = setTimeout(poll, 3000);
+                timerId = setTimeout(poll, POLL_INTERVAL_MS);
             }
         };
 
@@ -535,7 +550,7 @@ const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, o
             cancelled = true;
             clearTimeout(timerId);
         };
-    }, [leagueId]);
+    }, [roomId]);
 
     if (timedOut) {
         return (
@@ -553,9 +568,15 @@ const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ leagueId, o
 
     if (!isReady) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-3">
-                <Loader2 className="animate-spin text-indigo-400" size={28} />
+            <div className="flex flex-col items-center justify-center min-h-screen gap-4 px-8">
                 <p className="text-slate-400 text-sm ko-normal">시즌 일정을 생성하고 있습니다...</p>
+                <div className="w-64 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                        className="h-full bg-indigo-500 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+                <p className="text-slate-600 text-xs ko-normal">{progress}%</p>
             </div>
         );
     }
