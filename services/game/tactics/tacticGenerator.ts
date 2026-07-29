@@ -276,11 +276,27 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     if (pace >= 8) offReb = clamp(offReb - 2);
 
     // ── Offense: 코칭 철학 (2개 추상 슬라이더) ──
-    // insideOut: 인사이드(2) ↔ 아웃사이드(9)
-    // 포스트/롤/드라이브 vs 스페이싱/슈팅 비교
-    const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
-    const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
-    const insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15));
+    // insideOut: 인사이드(3) ↔ 아웃사이드(8) — 자동생성 범위는 3~8로 제한(그 이상 극단은 사용자가
+    // 수동으로만 설정 가능하게 남겨둠)
+    // [2026-07-29] 주전 5인 전체 블렌드 대신, 주전 중 OVR 최고 선수(앵커)가 카림 압둘자바·윌트
+    // 체임벌린형(3점 사실상 없음+포스트 지배력 매우 높음) 또는 스테판 커리·제임스 하든형(3점
+    // 최상급)이면 그 한 명의 아키타입으로 슬라이더를 직행시킨다. BIG LEAGUE TEST 7 32팀 실측
+    // 검증: 12/32팀에서 값이 바뀌었고 전부 실제 아키타입과 일치, 오탐 없음 확인.
+    const anchor = starters.reduce((best, p) => (calculatePlayerOvr(p) > calculatePlayerOvr(best) ? p : best));
+    const isEliteBig = get3pt(anchor) < 35 && postScore(anchor) >= 85;
+    const isEliteShooter = get3pt(anchor) >= 90;
+
+    let insideOut: number;
+    if (isEliteBig) {
+        insideOut = 3;
+    } else if (isEliteShooter) {
+        insideOut = 8;
+    } else {
+        // 포스트/롤/드라이브 vs 스페이싱/슈팅 비교(기존 블렌드 로직, fallback)
+        const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
+        const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
+        insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15), 3, 8);
+    }
 
     // pnrFreq: P&R 의존도 — 현대 NBA baseline 6 유지
     const pnrRaw = maxOf(handlerScore) * 0.5 + maxOf(screenerScore) * 0.3 + maxOf(rollerScore) * 0.2;

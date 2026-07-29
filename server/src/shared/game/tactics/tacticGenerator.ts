@@ -230,9 +230,23 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     let offReb = ato(bigRebAvg, 65, 90);
     if (pace >= 8) offReb = clamp(offReb - 2);
 
-    const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
-    const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
-    const insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15));
+    // insideOut: 인사이드(3) ↔ 아웃사이드(8) — 자동생성 범위는 3~8로 제한
+    // [2026-07-29] 주전 중 OVR 최고 선수(앵커)가 카림 압둘자바·윌트 체임벌린형 또는 스테판 커리·
+    // 제임스 하든형이면 그 한 명의 아키타입으로 슬라이더를 직행시킨다(client 미러 상세 참조).
+    const anchor = starters.reduce((best, p) => (calculateOvr(p) > calculateOvr(best) ? p : best));
+    const isEliteBig = get3pt(anchor) < 35 && postScore(anchor) >= 85;
+    const isEliteShooter = get3pt(anchor) >= 90;
+
+    let insideOut: number;
+    if (isEliteBig) {
+        insideOut = 3;
+    } else if (isEliteShooter) {
+        insideOut = 8;
+    } else {
+        const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
+        const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
+        insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15), 3, 8);
+    }
 
     const pnrRaw = maxOf(handlerScore) * 0.5 + maxOf(screenerScore) * 0.3 + maxOf(rollerScore) * 0.2;
     const pnrFreq = clamp(Math.max(6, ato(pnrRaw, 62, 88)));

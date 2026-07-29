@@ -35,6 +35,131 @@
 
 ---
 
+## 2026-07-29 — 플레이타입 선택 가중치(PLAY_TYPE_PROFILES) base 전면 재조정
+
+**배경**: 앵커 기반 insideOut 로직(바로 아래 항목)을 적용해도 BIG LEAGUE TEST 7의 SEA(윌트
+체임벌린)가 여전히 포제션을 충분히 못 가져가는 문제가 계속됨. 실제 경기(`T_R2_M1_G4`, 107-132 패)
+박스스코어를 분석한 결과, PG 팀 하더웨이가 팀내 압도적 1위(17FGA)를 가져간 반면 윌트는 6FGA에
+그침(+파울아웃으로 4쿼터 결장). `computePlayTypeWeights()`의 `PLAY_TYPE_PROFILES`를 뜯어보니
+원인은 슬라이더 계수가 아니라 **base 값 자체**였음 — `PnR_Handler`(3.0)와 `CatchShoot`(3.5)가
+`PostUp`/`PnR_Roll`(각 1.5)보다 2배 가까이 높게 잡혀 있어서, insideOut을 아무리 낮춰도(insideFactor
+최대 0.8) 그 격차를 계수 보정만으로는 못 뒤집었음. git log·주석 어디에도 이 base 값들의 산정 근거가
+없었음(확인함). 아티팩트로 base 값을 직접 편집하며 4개 시나리오(중립/SEA 실제/완전인사이드/
+완전아웃사이드)의 정규화된 포제션 비율을 실시간 비교 검증한 뒤, 사용자가 확정한 값을 반영.
+
+**변경 파일**:
+- `services/game/config/playTypeProfiles.ts` (client) — `PLAY_TYPE_PROFILES`의 `base` 값 10개 전체
+- `server/src/shared/game/config/playTypeProfiles.ts` (server 미러) — 동일
+- `docs/engine/pbp-engine.md` — `PLAY_TYPE_PROFILES` 표 및 ballMovement별 CatchShoot 비중 예시
+  갱신(기존 실측치는 base 변경으로 무효화됨을 명시)
+
+**Before**:
+```ts
+'Iso':           { base: 2.0, inside:  0.0, pnr:  0.0, bm: -2.0 },
+'PostUp':        { base: 1.5, inside: +2.5, pnr:  0.0, bm: -1.0 },
+'PnR_Handler':   { base: 3.0, inside:  0.0, pnr: +3.0, bm:  0.0 },
+'PnR_Roll':      { base: 1.5, inside: +1.5, pnr: +2.0, bm:  0.0 },
+'PnR_Pop':       { base: 1.0, inside: -1.5, pnr: +2.0, bm:  0.0 },
+'CatchShoot':    { base: 3.5, inside: -2.0, pnr:  0.0, bm: +2.0 },
+'OffBallScreen': { base: 1.5, inside: -1.0, pnr:  0.0, bm: +1.5 },
+'DriveKick':     { base: 2.5, inside: -1.0, pnr:  0.0, bm: +2.0 },
+'Cut':           { base: 2.0, inside: +1.5, pnr:  0.0, bm: +1.5 },
+'Handoff':       { base: 1.5, inside:  0.0, pnr:  0.0, bm: +1.0 },
+```
+
+**After**:
+```ts
+'Iso':           { base: 1.5, inside:  0.0, pnr:  0.0, bm: -2.0 },
+'PostUp':        { base: 1.5, inside: +2.5, pnr:  0.0, bm: -1.0 },
+'PnR_Handler':   { base: 1.5, inside:  0.0, pnr: +3.0, bm:  0.0 },
+'PnR_Roll':      { base: 1.5, inside: +1.5, pnr: +2.0, bm:  0.0 },
+'PnR_Pop':       { base: 1.0, inside: -1.5, pnr: +2.0, bm:  0.0 },
+'CatchShoot':    { base: 1.0, inside: -2.0, pnr:  0.0, bm: +2.0 },
+'OffBallScreen': { base: 1.0, inside: -1.0, pnr:  0.0, bm: +1.5 },
+'DriveKick':     { base: 0.7, inside: -1.0, pnr:  0.0, bm: +2.0 },
+'Cut':           { base: 0.7, inside: +1.5, pnr:  0.0, bm: +1.5 },
+'Handoff':       { base: 0.5, inside:  0.0, pnr:  0.0, bm: +1.0 },
+```
+(inside/pnr/bm 계수는 미변경, base만 조정)
+
+**검증**:
+- `npx tsc -p server/tsconfig.json` — `playTypeProfiles.ts` 관련 신규 오류 0건.
+- `npx vite build` — 정상 완료(신규 에러 없음).
+- 공식 계산값 비교(아티팩트 시뮬레이션):
+  - 중립(5/5/5): 이전 CatchShoot 17.5%+PnR_Handler 15.0%=32.5% 독식 → 이후 PnR_Handler·Iso·
+    PnR_Roll·PostUp 4개 13.8% 동률로 고르게 분산.
+  - SEA 실제(insideOut=3/pnrFreq=5/ballMovement=6): 이전 CatchShoot 14.7%·PnR_Handler 14.2%가
+    1·2위 → 이후 PostUp 19.2%·PnR_Roll 17.5%가 1·2위, PnR_Handler는 12.5%로 4위 하락.
+
+**주의사항 / 한계**: 완전인사이드 시나리오(insideOut=1/pnrFreq=1/ballMovement=1)에서 Iso가
+25.4%까지 오르는데, 이건 insideOut이 아니라 같이 낮춘 ballMovement(Iso의 bm 계수 -2.0)의
+영향이 커서 순수 insideOut 단독 효과로 오독하지 않도록 주의.
+
+**롤백 방법**: 위 Before 블록으로 두 파일의 `PLAY_TYPE_PROFILES` base 값만 되돌리면 됨(계수는
+안 건드렸으므로 base 10개만 원복).
+
+---
+
+## 2026-07-29 — AI 자동전술 생성: 공격 포인트(insideOut)를 앵커 선수 아키타입 기반으로 결정
+
+**배경**: "멀티플레이어 AI 자동전술 로직을 변경하자. 주전 5인의 최고 선수에 따라 공격 포인트를
+조절할 수 있는 로직을 추가하고 싶음. 다른건 다 놔두고, 공격 포인트만." 요청. 기존
+`generateAutoTactics()`의 `insideOut` 계산은 주전 5명 전체를 평균/최댓값(`maxOf(postScore)`,
+`avgOf(spacerScore)` 등)으로 블렌드하는 방식이라, "이 팀에 카림 압둘자바·윌트 체임벌린 같은
+로우포스트 전용 레전드가 있다" 같은 단일 선수의 극단적 아키타입이 잘 반영되지 않았다. 주전 중
+OVR 최고 선수(앵커)를 따로 판별해, 그 선수가 엘리트 빅맨(3점 사실상 없음+포스트 지배력 매우
+높음)이면 인사이드로, 엘리트 슈터(3점 최상급)면 아웃사이드로 슬라이더를 직행시키도록 변경.
+BIG LEAGUE TEST 7의 실제 32팀 로스터로 시뮬레이션 검증(아티팩트) 후 반영 — 12/32팀에서 값이
+바뀌었고 전부 실제 아키타입과 일치, 오탐 없음 확인. 이후 사용자가 "자동전술 생성 시 공격
+포인트의 범위는 3~8 사이로 설정해줘"라고 요청해, 애초 제안했던 극단값(2/9) 대신 3/8로, 기존
+블렌드(fallback) 로직의 결과값도 함께 3~8로 재클램프.
+
+**변경 파일**:
+- `services/game/tactics/tacticGenerator.ts` (client) — `generateAutoTactics()` 내 `insideOut`
+  계산부
+- `server/src/shared/game/tactics/tacticGenerator.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
+const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
+const insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15));
+```
+
+**After**:
+```ts
+const anchor = starters.reduce((best, p) => (calculatePlayerOvr(p) > calculatePlayerOvr(best) ? p : best));
+// server 미러는 calculatePlayerOvr 대신 calculateOvr(ovrUtils.ts) 사용, 로직 동일
+const isEliteBig = get3pt(anchor) < 35 && postScore(anchor) >= 85;
+const isEliteShooter = get3pt(anchor) >= 90;
+
+let insideOut: number;
+if (isEliteBig) {
+    insideOut = 3;
+} else if (isEliteShooter) {
+    insideOut = 8;
+} else {
+    const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
+    const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
+    insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15), 3, 8);
+}
+```
+
+**검증**:
+- 서버: `npx tsc -p server/tsconfig.json` — `tacticGenerator.ts` 관련 신규 오류 0건.
+- 클라이언트: `npx vite build` 정상 완료(신규 에러 없음).
+- BIG LEAGUE TEST 7 32팀 실제 로스터(현재 선발 라인업)에 `npx tsx`로 직접 시뮬레이션 —
+  카림 압둘자바(CHA)·하킴 올라주원(CHI)·조지 마이칸(CLE)·샤킬 오닐(PHI)·윌트 체임벌린(SEA) 5팀이
+  엘리트빅맨으로, 스테판 커리(BKN)·래리 버드(BOS)·레이 앨런(DAL)·니콜라 요키치(HOU)·제임스
+  하든(LVP)·더크 노비츠키(MIA)·루카 돈치치(NYK) 7팀이 엘리트슈터로 정확히 분류됨(오탐 없음).
+  요키치는 postScore도 85+로 빅맨 조건에 근접하지만 get3pt=90.3이라 빅맨 조건(get3pt<35)을
+  통과 못 하고 슈터로 분류되는 경계 사례 확인(설계상 허용).
+
+**롤백 방법**: 위 Before 블록으로 두 파일의 `insideOut` 계산부만 되돌리면 됨(다른 슬라이더
+계산은 미변경).
+
+---
+
 ## 2026-07-29 — Scoring Gravity(옵션 순위) 엔진 전면 교체: peak/secondary 가중 + OVR 게이팅 + 대칭형 systemBonus + 99 캡 제거
 
 **배경**: "왜 카림 압둘자바가 4옵션으로 선정되는지" 질문에서 시작된 옵션 시스템(그라비티) 조사가 여러

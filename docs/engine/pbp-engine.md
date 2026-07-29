@@ -356,24 +356,35 @@ weight(pt) = max(0.5, base + inside×insideFactor + pnr×pnrFactor + bm×bmFacto
 PLAY_TYPE_PROFILES:
   | 플레이타입      | base | inside | pnr  | bm   |
   |---------------|------|--------|------|------|
-  | Iso           | 2.0  |  0.0   | 0.0  | -2.0 |
+  | Iso           | 1.5  |  0.0   | 0.0  | -2.0 |
   | PostUp        | 1.5  | +2.5   | 0.0  | -1.0 |
-  | PnR_Handler   | 3.0  |  0.0   | +3.0 |  0.0 |
+  | PnR_Handler   | 1.5  |  0.0   | +3.0 |  0.0 |
   | PnR_Roll      | 1.5  | +1.5   | +2.0 |  0.0 |
   | PnR_Pop       | 1.0  | -1.5   | +2.0 |  0.0 |
-  | CatchShoot    | 3.5  | -2.0   | 0.0  | +2.0 |
-  | OffBallScreen | 1.5  | -1.0   | 0.0  | +1.5 |
-  | DriveKick     | 2.5  | -1.0   | 0.0  | +2.0 |
-  | Cut           | 2.0  | +1.5   | 0.0  | +1.5 |
-  | Handoff       | 1.5  |  0.0   | 0.0  | +1.0 |
+  | CatchShoot    | 1.0  | -2.0   | 0.0  | +2.0 |
+  | OffBallScreen | 1.0  | -1.0   | 0.0  | +1.5 |
+  | DriveKick     | 0.7  | -1.0   | 0.0  | +2.0 |
+  | Cut           | 0.7  | +1.5   | 0.0  | +1.5 |
+  | Handoff       | 0.5  |  0.0   | 0.0  | +1.0 |
 
+// [2026-07-29] base 전면 재조정 — 기존 값(CatchShoot 3.5, PnR_Handler 3.0)이 문서/커밋 어디에도
+// 근거 없이 다른 플레이보다 2배 가까이 높아, 슬라이더 전부 중립(5/5/5)이어도 CatchShoot+PnR_Handler
+// 둘이서 전체 포제션의 32.5%를 독식하는 구조적 쏠림이 있었다(BIG LEAGUE TEST 7 실측 — insideOut을
+// 3까지 내려도 PnR_Handler가 여전히 1~2위라 로우포스트 빅맨이 포제션을 못 가져가는 문제로 발견).
+// 재조정 후 중립(5/5/5)에서는 PnR_Handler·Iso·PnR_Roll·PostUp 4개가 13.8%로 동률이 되고,
+// insideOut=3/pnrFreq=5/ballMovement=6(BIG LEAGUE TEST 7 SEA 실제 설정) 기준으로는
+// PostUp(19.2%)+PnR_Roll(17.5%)이 PnR_Handler(12.5%, 4위)를 확실히 앞선다(공식 계산값, 아티팩트로
+// 시뮬레이션 검증 — usageWeights.md 아님, dev-log.md 2026-07-29 항목 참고).
+//
 // [2026-07 신규] ballMovement가 이름과 달리 플레이타입 선택에 전혀 관여하지 않던 문제 수정.
 // PnR 계열은 pnrFreq 전용 다이얼 유지를 위해 bm=0(중복 조정 방지).
-// 다른 슬라이더 중립(5) 고정 기준 실측 — CatchShoot 선택확률:
-//   ballMovement=1  → 11.73%
-//   ballMovement=5  → 17.50%
-//   ballMovement=10 → 21.57% (중립 대비 +4.07%p, 최저 대비 +9.84%p)
-// Iso/PostUp은 ballMovement=10에서 하한(0.5)까지 하락.
+// 다른 슬라이더 중립(5) 고정 기준 공식 계산값(재조정된 base 기준, 실측 아님) — CatchShoot 비중:
+//   ballMovement=1  → 4.20%
+//   ballMovement=5  → 9.17%
+//   ballMovement=10 → 17.75%
+// (재조정 이전 base 기준 실측치였던 11.73%/17.50%/21.57%는 더 이상 유효하지 않음 — base 자체가
+// 3.5→1.0으로 바뀌어 절대 비중이 전반적으로 낮아짐)
+// Iso/PostUp은 ballMovement=10에서 하한(0.5)까지 하락(이 경향 자체는 재조정 후에도 동일).
 
 // [2026-07 playStyle 제거] `playStyle`(Hero↔System) 슬라이더는 heroFactor로 Iso/PostUp/PnR_Handler를
 // 증가시키고 CatchShoot 등을 감소시키는 축이었는데, ballMovement의 bmFactor가 정반대 방향으로
