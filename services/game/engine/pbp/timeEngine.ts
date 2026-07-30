@@ -23,11 +23,14 @@ export function calculatePossessionTime(
     }
 
     // 1. Base Time based on Pace Slider (1~10)
-    // Pace 1 (Slow) -> 20s base
-    // Pace 5 (Avg)  -> 16s base
-    // Pace 10 (Fast)-> 11s base
+    // [2026-07-30] 21→19로 재조정 — pace=5(중립) 기준 실측 포제션 길이가 16.72초로 나왔는데,
+    // 실제 NBA 평균(2880초/(99.3페이스×2)≈14.5초)보다 길어서 포제션 개수(FGA 등 전체 카운팅
+    // 스탯) 부족의 핵심 원인으로 확인됨. 19로 낮추면 pace=5 기준 14초로 실제 NBA 평균에 근접.
+    // Pace 1 (Slow) -> 18s base
+    // Pace 5 (Avg)  -> 14s base
+    // Pace 10 (Fast)-> 9s base
     const pace = sliders.pace;
-    let timeTaken = 21 - pace; 
+    let timeTaken = 19 - pace;
 
     // 2. Play Type Modifiers
     if (playType === 'Transition') {

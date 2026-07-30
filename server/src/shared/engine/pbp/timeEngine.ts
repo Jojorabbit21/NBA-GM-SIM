@@ -22,8 +22,9 @@ export function calculatePossessionTime(
         return putbackTime;
     }
 
+    // [2026-07-30] 21→19로 재조정 (client 미러 참고) — 포제션 길이 캘리브레이션 수정
     const pace = sliders.pace;
-    let timeTaken = 21 - pace;
+    let timeTaken = 19 - pace;
 
     if (playType === 'Transition') {
         timeTaken -= 5;
