@@ -234,7 +234,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Generate Commentary
         let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
              isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
-             isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined
+             isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
+             isHelpPlay: !!result.isHelpPlay
         });
 
         // Handle Block Stat
@@ -262,7 +263,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         
         let logText = generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
              isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
-             isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined
+             isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
+             isHelpPlay: !!result.isHelpPlay
         });
         
         if (isSteal && defender) {
@@ -275,7 +277,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         
         let logText = generateCommentary('foul', actor, defender, undefined, playType, undefined, {
              isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
-             isBlock: false, isSteal: false, points: 0
+             isBlock: false, isSteal: false, points: 0,
+             isHelpPlay: !!result.isHelpPlay
         });
         
         logText += ` (팀 파울 ${defTeam.fouls})`;

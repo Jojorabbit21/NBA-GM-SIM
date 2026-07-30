@@ -343,36 +343,6 @@ const getAttrBg = (val: number) => {
     return '';
 };
 
-// ── Hidden Archetypes ──
-function getHiddenArchetypes(p: Player): string[] {
-    const list: string[] = [];
-    const threeVal = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
-
-    if (p.intangibles >= 90 && p.shotIq >= 85) list.push('Curtain Call');
-    if (p.intangibles >= 85 && p.offConsist >= 88) list.push('Ice in Veins');
-    if (p.intangibles >= 85 && p.strength >= 85 && p.ins >= 85) list.push('High Roller');
-    if (p.midRange >= 97) list.push('Mr. Fundamental');
-    if (threeVal >= 90 && p.shotIq >= 85) list.push('Rangemaster');
-    if (p.ins >= 90 && (p.strength >= 88 || p.vertical >= 88)) list.push('Tyrant');
-    if (p.closeShot >= 96 && p.agility >= 85 && p.height <= 195) list.push('Levitator');
-    if (p.speed >= 95 && p.agility >= 93) list.push('Afterburner');
-    if ((p.position === 'PG' || p.position === 'SG') && p.vertical >= 95 && p.closeShot >= 93) list.push('Ascendant');
-    if (p.shotIq >= 88 && p.offConsist >= 88) list.push('Deadeye');
-    if (p.steal >= 85 && p.agility >= 92) list.push('The Pickpocket');
-    if (p.helpDefIq >= 85 && p.passPerc >= 80 && p.steal >= 75) list.push('The Hawk');
-    if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
-    else if (p.vertical >= 95 && p.blk >= 75) list.push('Skywalker');
-    else if (p.helpDefIq >= 92 && p.blk >= 80) list.push('Defensive Anchor');
-    if (p.drawFoul >= 95 && p.shotIq >= 88) list.push('Manipulator');
-    if (p.offReb >= 95 || p.defReb >= 95) list.push('Harvester');
-    if (p.height <= 200 && p.offReb >= 90 && p.vertical >= 90) list.push('Raider');
-    if (p.passIq >= 92 && p.passVision >= 90 && p.passAcc >= 90) list.push('Clairvoyant');
-    if (p.passIq >= 88 && p.passAcc >= 95) list.push('Overseer');
-    if (p.passAcc >= 93 && p.passIq >= 88) list.push('Needle');
-
-    return list;
-}
-
 // ── Stat value resolver ──
 function resolveStatVal(st: PlayerStats, key: string): { display: string; color: string } {
     const dash = { display: '-', color: 'text-slate-600' };
@@ -920,8 +890,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const hasCareerPlayoff = careerPlayoff.length > 0;
     const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
     const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
-
-    const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
     // New player identity archetype system (UI display)
     const playerArchetypeState = useMemo<PlayerArchetypeState>(() => {

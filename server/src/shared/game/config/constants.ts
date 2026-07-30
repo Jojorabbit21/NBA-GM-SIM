@@ -160,20 +160,20 @@ export const SIM_CONFIG = {
 
         // drawFoul 커브: 선수 능력치 → 슈팅파울 확률 보정
         // drFoul 99 (+19%p) vs drFoul 50 (-4.3%p) → 격차 ~23%p (NBA ~24%p)
+        // [2026-07-30] 80~90 구간 하향 — 95/99와의 격차 확대 (client 미러 참고)
         DRAW_FOUL_CURVE: [
             [40, -0.06],
             [55, -0.035],
             [70, 0.00],     // 중립 기준점
-            [80, 0.035],
-            [85, 0.065],
-            [90, 0.10],
+            [80, 0.015],
+            [85, 0.035],
+            [90, 0.06],
             [95, 0.15],
             [99, 0.19],
         ] as [number, number][],
 
-        // 존별 커브 스케일링 (Rim 100%, Paint 80%, Mid 50%, 3PT 25%)
-        // → 인사이드에서 drawFoul 영향이 크고, 3점에서는 작음
-        ZONE_CURVE_SCALE: { 'Rim': 1.0, 'Paint': 0.8, 'Mid': 0.5, '3PT': 0.25 } as Record<string, number>,
+        // [2026-07-30] Rim/Paint/Mid/3PT 100/80/50/25% → 60/50/30/20%로 재조정 (client 미러 참고)
+        ZONE_CURVE_SCALE: { 'Rim': 0.6, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
 
         // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
         // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
@@ -199,8 +199,9 @@ export const SIM_CONFIG = {
         // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
         DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
         MAX_RATE: 0.06,
+        // [2026-07-30] PostUp 1.5%p→0.6%p 재조정 (client 미러 참고) — PnR_Roll(1.0%p)은 유지
         PLAYTYPE_MOD: {
-            'PostUp': 0.015,
+            'PostUp': 0.006,
             'Iso': 0.012,
             'PnR_Roll': 0.010,
             'PnR_Handler': 0.008,
@@ -219,6 +220,19 @@ export const SIM_CONFIG = {
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
         TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
         TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
+
+        // [2026-07-30] 수비/공격 리바운드 능력치 요구치가 다름 (client 미러 참고)
+        // 수비: defReb+boxOut(이미 자리 잡음) / 공격: offReb+hustle(뛰어들어 경합)
+        DRB_REB_WEIGHT: 0.65,
+        DRB_BOXOUT_WEIGHT: 0.20,
+        DRB_VERTICAL_WEIGHT: 0.05,
+        DRB_STRENGTH_WEIGHT: 0.10,
+        ORB_REB_WEIGHT: 0.80,
+        ORB_HUSTLE_WEIGHT: 0.10,
+        ORB_VERTICAL_WEIGHT: 0.10,
+
+        // [2026-07-30] 다른 히든 아키타입 계열과 통일해 비활성화 (client 미러 참고)
+        ARCHETYPES_ENABLED: false,
 
         // F-1. Harvester (하베스터) — Andre Drummond, DeAndre Jordan
         HARVESTER_REB_THRESHOLD: 95,         // offReb ≥ 95 OR defReb ≥ 95
@@ -322,9 +336,10 @@ export const SIM_CONFIG = {
         ATTEMPT_PER_LEVEL: 0.70 / 9,
 
         // 존별 헬퍼 후보 포지션 풀 (해당 포지션이 온코트에 없으면 전체 폴백)
+        // [2026-07-30] Rim/Paint 전 포지션으로 확장, 선정은 helpDefIq 가중치로 (client 미러 참고)
         ZONE_POSITIONS: {
-            Rim: ['C', 'PF', 'SF'],
-            Paint: ['C', 'PF', 'SF'],
+            Rim: ['PG', 'SG', 'SF', 'PF', 'C'],
+            Paint: ['PG', 'SG', 'SF', 'PF', 'C'],
             Mid: ['PG', 'SG', 'SF', 'PF'],
             '3PT': ['PG', 'SG', 'SF'],
         } as Record<'Rim' | 'Paint' | 'Mid' | '3PT', string[]>,
@@ -335,21 +350,9 @@ export const SIM_CONFIG = {
         PHYS_GATE_MIN: 55,
         PHYS_GATE_MAX: 95,
 
-        // 성공 시 슈터 hitRate 감소: 1단계 -2%p ~ 10단계 -5%p
-        HITRATE_PENALTY_BASE: 0.02,
-        HITRATE_PENALTY_PER_LEVEL: 0.03 / 9,
-
-        // 성공 시 골밑(Rim/Paint) 파울 확률 증가: 1단계 +0.5%p ~ 10단계 +2.0%p
-        FOUL_BONUS_BASE: 0.005,
-        FOUL_BONUS_PER_LEVEL: 0.015 / 9,
-
-        // 성공 시 스틸 확률 증가(헬퍼 크레딧): 1단계 +0.3%p ~ 10단계 +1.2%p
-        STEAL_BONUS_BASE: 0.003,
-        STEAL_BONUS_PER_LEVEL: 0.009 / 9,
-
-        // 시도 시(성공 여부 무관) 헬퍼 개인 체력 소모 배율: 1단계 ×1.10 ~ 10단계 ×1.25
-        DRAIN_MULT_BASE: 1.10,
-        DRAIN_MULT_PER_LEVEL: 0.15 / 9,
+        // [2026-07-30] 빈도(ATTEMPT)만 슬라이더 연동, 강도는 고정값으로 전환 (client 미러 참고)
+        HITRATE_PENALTY: 0.033,
+        FOUL_BONUS: 0.006,
     },
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {

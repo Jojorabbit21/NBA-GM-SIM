@@ -8,7 +8,7 @@ import { SIM_CONFIG } from '../../config/constants';
  * Updates fatigue, injury checks, and minutes played for all players on court.
  * Also recovers stamina for players on the bench.
  */
-export function updateOnCourtStates(state: GameState, timeTaken: number, helperPlayerId?: string) {
+export function updateOnCourtStates(state: GameState, timeTaken: number) {
     const teams = [state.home, state.away];
     const C = SIM_CONFIG.FATIGUE;
     
@@ -30,8 +30,7 @@ export function updateOnCourtStates(state: GameState, timeTaken: number, helperP
                 team.tactics.sliders,
                 isB2B,
                 isStopper,
-                state.simSettings.injuryFrequency,
-                p.playerId === helperPlayerId
+                state.simSettings.injuryFrequency
             );
 
             // Apply Drain

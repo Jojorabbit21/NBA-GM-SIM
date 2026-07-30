@@ -306,7 +306,11 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'Transition': {
             const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
-            const outletPasser = pickPasser(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
+            // [2026-07-30] touchdownQuality(passVision+passAcc 평균) 반영, 비중 0.3→0.5 (client 미러 참고)
+            const outletPasser = pickPasser(p => {
+                const touchdownQuality = (p.attr.passVision + p.attr.passAcc) / 2;
+                return p.archetypes.connector + touchdownQuality * 0.5;
+            }, actor.playerId);
 
             const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders);
             if (trZone === 'Rim' || trZone === 'Paint') {

@@ -151,7 +151,7 @@ function calculateTurnoverChance(
     pnrCoverage: PnrCoverage = 'none',
     helpDefender?: LivePlayer,
     helpSuccess: boolean = false
-): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer } {
+): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
     const sliders = offTeam.tactics.sliders;
@@ -211,11 +211,12 @@ function calculateTurnoverChance(
     // ================================================================
     // A-3. 헬프 디펜스 스틸 (헬프 성공 시, 전 존/전 플레이타입 공통, 헬퍼 크레딧)
     // ================================================================
+    // [2026-07-30] 헬퍼 개인 스탯(stl/passPerc) 기반 커브로 교체 (client 미러 참고, A-2와 동일 커브 재사용)
     if (helpDefender && helpSuccess) {
-        const helpCfg = SIM_CONFIG.HELP_DEFENSE;
-        const helpStealBonus = helpCfg.STEAL_BONUS_BASE + (defTeam.tactics.sliders.helpDef - 1) * helpCfg.STEAL_BONUS_PER_LEVEL;
+        const effectiveStl = helpDefender.attr.stl * 0.7 + helpDefender.attr.passPerc * 0.3;
+        const helpStealBonus = interpolateCurve(effectiveStl, SIM_CONFIG.STEAL.LANE_STEAL_CURVE);
         if (Math.random() < helpStealBonus) {
-            return { isTurnover: true, isSteal: true, stealer: helpDefender };
+            return { isTurnover: true, isSteal: true, stealer: helpDefender, isHelpPlay: true };
         }
     }
 
@@ -371,6 +372,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         weights['PnR_Handler'] *= (1 + gravityBoost);
         weights['PostUp'] *= (1 + gravityBoost * 0.5);
 
+        // [2026-07-30] Playmaking Gravity — 포지션 무관 팀 최고 플레이메이커 기준 어시스트형
+        // 플레이 비중 증가 (client 미러 참고). PnR_Pop은 popper 자격과 무관한 부스트라 제외.
+        const topPlaymakingGravity = Math.max(...offTeam.onCourt.map(p => p.archetypes.handler));
+        const playmakingBoost = Math.min(0.30, Math.max(0, (topPlaymakingGravity - 70) * 0.02));
+        weights['PnR_Roll'] *= (1 + playmakingBoost);
+        weights['CatchShoot'] *= (1 + playmakingBoost);
+        weights['Handoff'] *= (1 + playmakingBoost);
+        weights['Cut'] *= (1 + playmakingBoost * 0.7);
+        weights['OffBallScreen'] *= (1 + playmakingBoost * 0.7);
+
         // Clutch Play Selection: 경기 상황에 따른 전술 보정
         const cc = options?.clutchContext;
         if (cc?.isClutch) {
@@ -465,7 +476,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
         }
         if (helperPool.length > 0) {
-            helpDefender = helperPool[Math.floor(Math.random() * helperPool.length)];
+            // [2026-07-30] 헬퍼 선정을 helpDefIq 가중 룰렛으로 변경 (client 미러 참고)
+            const totalHelpIq = helperPool.reduce((sum, p) => sum + Math.max(1, p.attr.helpDefIq), 0);
+            let iqRoll = Math.random() * totalHelpIq;
+            helpDefender = helperPool[helperPool.length - 1];
+            for (const p of helperPool) {
+                iqRoll -= Math.max(1, p.attr.helpDefIq);
+                if (iqRoll <= 0) { helpDefender = p; break; }
+            }
+
             const iqFactor = Math.max(0, Math.min(1,
                 (helpDefender.attr.helpDefIq - helpCfg.IQ_GATE_MIN) / (helpCfg.IQ_GATE_MAX - helpCfg.IQ_GATE_MIN)));
             const avgPhys = (helpDefender.attr.agility + helpDefender.attr.speed) / 2;
@@ -476,10 +495,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
     // 체력 소모(fatigueSystem.ts로 전달)용 ID — 시도만 해도 적용, 성공 여부 무관
     const helpDefenderId = (helpAttempted && helpDefender) ? helpDefender.playerId : undefined;
-    // hitRate 감소분(성공 시에만, 전 구역 공통) — bonusHitRate 합산에 사용
-    const helpHitRatePenalty = (helpAttempted && helpSuccess)
-        ? -(helpCfg.HITRATE_PENALTY_BASE + (helpDefLevel - 1) * helpCfg.HITRATE_PENALTY_PER_LEVEL)
-        : 0;
+    // [2026-07-30] 슬라이더 무관 고정값 (client 미러 참고)
+    const helpHitRatePenalty = (helpAttempted && helpSuccess) ? -helpCfg.HITRATE_PENALTY : 0;
 
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
@@ -501,12 +518,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
 
-    // [헬프디펜스 재설계] 골밑 파울 증가 (헬프 시도+성공+Rim/Paint 한정, 1단계 +0.5%p ~ 10단계 +2.0%p)
-    // [2026-07-29] 이 보너스로 발생한 파울은 원 수비수(defender)가 아니라 실제로 헬프한 선수
-    // (helpDefender)한테 귀속되어야 함(client 미러 상세 참조).
+    // [2026-07-30] 트리거를 helpSuccess→helpAttempted로, 강도는 슬라이더 무관 고정값으로 (client 미러 참고)
     let helpBonusRate = 0;
-    if (helpAttempted && helpSuccess && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-        helpBonusRate = helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+    if (helpAttempted && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+        helpBonusRate = helpCfg.FOUL_BONUS;
         shootingFoulRate += helpBonusRate;
     }
 
@@ -544,11 +559,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate)
             : 0;
         const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
+        const isHelpFoul = !!helpDefender && fouler === helpDefender;
         return {
             type: 'freethrow',
             offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             zone: preferredZone,
             helpDefenderId,
+            isHelpPlay: isHelpFoul,
         };
     }
 
@@ -760,6 +777,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             offTeam, defTeam, actor,
             defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
             isSteal: tovResult.isSteal,
+            isHelpPlay: tovResult.isHelpPlay,
             points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
             helpDefenderId,
@@ -924,6 +942,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---
     let isBlock = false;
     let finalDefender = defender;
+    let isHelpBlock = false;
 
     if (defender && preferredZone) {
         const blkCfg = SIM_CONFIG.BLOCK;
@@ -1040,6 +1059,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
              if (Math.random() < helpChance) {
                  isBlock = true;
                  finalDefender = helper;
+                 isHelpBlock = true;
              }
         }
     }
@@ -1092,6 +1112,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
             subZone, isZone,
             helpDefenderId,
+            isHelpPlay: isHelpBlock,
         };
     }
 

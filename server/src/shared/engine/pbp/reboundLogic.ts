@@ -11,13 +11,18 @@ export function calculateOrbChance(
 ): number {
     const cfg = SIM_CONFIG.REBOUND;
 
-    const calcPower = (team: TeamState, rebAttr: 'offReb' | 'defReb') =>
+    // [2026-07-30] 공격/수비 리바운드 전용 공식 분리 (client 미러 참고)
+    const calcOffPower = (team: TeamState) =>
         team.onCourt.reduce((sum, p) => {
-            return sum + (p.attr[rebAttr] * 0.45 + p.attr.vertical * 0.2 + p.attr.strength * 0.10 + p.attr.boxOut * 0.15 + p.attr.hustle * 0.10);
+            return sum + (p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT);
+        }, 0);
+    const calcDefPower = (team: TeamState) =>
+        team.onCourt.reduce((sum, p) => {
+            return sum + (p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT);
         }, 0);
 
-    const offPower = calcPower(offTeam, 'offReb');
-    const defPower = calcPower(defTeam, 'defReb');
+    const offPower = calcOffPower(offTeam);
+    const defPower = calcDefPower(defTeam);
 
     const qualityAdj = defPower > 0
         ? (offPower / defPower - 1) * cfg.QUALITY_FACTOR
@@ -36,31 +41,32 @@ export function calculateOrbChance(
  */
 function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolean): LivePlayer {
     const cfg = SIM_CONFIG.REBOUND;
-    const rebAttr: 'offReb' | 'defReb' = isOffensive ? 'offReb' : 'defReb';
 
     const candidates = team.onCourt.map(p => {
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
+        // [2026-07-30] 공격/수비 리바운드 전용 공식 분리 (client 미러 참고)
         let score = (
-            p.attr[rebAttr] * 0.45 +
-            p.attr.vertical * 0.2 +
-            p.attr.strength * 0.10 +
-            p.attr.boxOut * 0.15 +
-            p.attr.hustle * 0.10
+            isOffensive
+                ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
+                : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT
         ) * shooterPenalty;
 
-        if (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || p.attr.defReb >= cfg.HARVESTER_REB_THRESHOLD) {
+        // [2026-07-30] ARCHETYPES_ENABLED=false로 비활성화 (client 미러 참고)
+        if (cfg.ARCHETYPES_ENABLED &&
+            (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || p.attr.defReb >= cfg.HARVESTER_REB_THRESHOLD)) {
             score *= cfg.HARVESTER_SCORE_MULTIPLIER;
         }
 
-        if (isOffensive &&
+        if (cfg.ARCHETYPES_ENABLED && isOffensive &&
             p.attr.height <= cfg.RAIDER_MAX_HEIGHT &&
             p.attr.offReb >= cfg.RAIDER_OFFREB_THRESHOLD &&
             p.attr.vertical >= cfg.RAIDER_VERTICAL_THRESHOLD) {
             score *= cfg.RAIDER_SCORE_MULTIPLIER;
         }
 
-        score *= Math.random() * (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.6);
+        // [2026-07-30] 결정론적 배율로 전환 + 계수 0.6→0.3 (client 미러 참고)
+        score *= (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.3);
 
         return { p, score };
     });

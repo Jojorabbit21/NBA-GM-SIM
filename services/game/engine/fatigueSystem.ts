@@ -13,8 +13,7 @@ export function calculateIncrementalFatigue(
     sliders: TacticalSliders,
     isB2B: boolean,
     isStopper: boolean,
-    injuryFrequency: number = 1.0,
-    isHelpDefender: boolean = false
+    injuryFrequency: number = 1.0
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -43,13 +42,6 @@ export function calculateIncrementalFatigue(
     if (sliders.pace >= C.PACE_FATIGUE_THRESHOLD) {
         const paceFatiguePenalty = C.PACE_FATIGUE_BASE + (sliders.pace - C.PACE_FATIGUE_THRESHOLD) * C.PACE_FATIGUE_PER_LEVEL;
         drain *= (1 + paceFatiguePenalty / 100);
-    }
-
-    // [헬프디펜스 재설계] 헬프를 "시도"한 선수는 추가 체력 소모 (성공 여부 무관, 1단계 ×1.10 ~ 10단계 ×1.25)
-    if (isHelpDefender) {
-        const helpCfg = SIM_CONFIG.HELP_DEFENSE;
-        const helperDrainMult = helpCfg.DRAIN_MULT_BASE + (sliders.helpDef - 1) * helpCfg.DRAIN_MULT_PER_LEVEL;
-        drain *= helperDrainMult;
     }
 
     // [defReb 속공 트레이드오프 C] defReb<5일 때만 추가 체력 소모 (매 포제션 상시, 팀 전체 균일 — 1단계 +1.5%p ~ 5단계 0%p)

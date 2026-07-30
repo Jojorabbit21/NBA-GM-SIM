@@ -400,7 +400,7 @@ export function stepPossession(state: GameState): StepResult {
 
     // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
     state.gameClock = Math.max(0, state.gameClock - timeTaken);
-    updateOnCourtStates(state, timeTaken, result.helpDefenderId);
+    updateOnCourtStates(state, timeTaken);
 
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };

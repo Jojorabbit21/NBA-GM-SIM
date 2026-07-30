@@ -166,20 +166,28 @@ export const SIM_CONFIG = {
 
         // drawFoul 커브: 선수 능력치 → 슈팅파울 확률 보정
         // drFoul 99 (+19%p) vs drFoul 50 (-4.3%p) → 격차 ~23%p (NBA ~24%p)
+        // [2026-07-30] 80~90(중상위권) 구간을 낮춰서 95~99(최상위권)와의 격차를 벌림 — 95/99는
+        // ZONE_CURVE_SCALE 재조정으로 이미 Rim/Paint 과다 노출이 해소된 상태라 그대로 유지하고,
+        // 중상위권(칼 말론/샤킬 등 drawFoul 88~92대)만 낮춰서 "최상위권만 진짜 특별하다"는 격차를
+        // 아래쪽에서 만듦(위에서 올리면 방금 해소한 빅맨 과다노출이 되살아남).
         DRAW_FOUL_CURVE: [
             [40, -0.06],
             [55, -0.035],
             [70, 0.00],     // 중립 기준점
-            [80, 0.035],
-            [85, 0.065],
-            [90, 0.10],
+            [80, 0.015],
+            [85, 0.035],
+            [90, 0.06],
             [95, 0.15],
             [99, 0.19],
         ] as [number, number][],
 
-        // 존별 커브 스케일링 (Rim 100%, Paint 80%, Mid 50%, 3PT 25%)
-        // → 인사이드에서 drawFoul 영향이 크고, 3점에서는 작음
-        ZONE_CURVE_SCALE: { 'Rim': 1.0, 'Paint': 0.8, 'Mid': 0.5, '3PT': 0.25 } as Record<string, number>,
+        // 존별 커브 스케일링 (Rim 60%, Paint 50%, Mid 30%, 3PT 20%)
+        // [2026-07-30] 기존(100/80/50/25%)은 PostUp이 센터에게 몰리면서 실측으로 확인된 문제를
+        // 만들었음 — 32 TEST 2 데이터: 하든(drawFoul99)/SGA(98)/엠비드(96)는 커브 원값이 비슷한데
+        // (0.19/0.18/0.16) 엠비드만 FTA 6.2개로 하든(4개)의 1.5배 이상. 가드는 3PT/Mid 위주라
+        // 존 스케일로 희석되는데, PostUp 위주 빅맨은 Rim/Paint에서 거의 풀파워로 적용됐기 때문 —
+        // Rim/Paint/Mid는 큰 폭으로, 3PT는 상대적으로 적게 낮춰 가드 쪽 영향은 최소화.
+        ZONE_CURVE_SCALE: { 'Rim': 0.6, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
 
         // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
         // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
@@ -207,8 +215,12 @@ export const SIM_CONFIG = {
         MAX_RATE: 0.06,
         // [2026-07-29] 플레이타입별 차등 — 몸싸움/드라이브 계열은 상승, 캐치앤슛류는 하락.
         // drawFoul(파울 유도 "기술")은 슛 동작 전용 개념이라 여기엔 안 넣음(슈팅파울 전용 유지).
+        // [2026-07-30] PostUp 1.5%p→0.6%p 재조정 — PostUp/PnR_Roll의 포지션 가중치 도입(센터
+        // 볼륨 60%/70%) 이후 "엘리트 디펜더 vs 엘리트 포스트 스코어러" 매치업 빈도가 급증해
+        // matchupFoulMult가 거의 할인 없이(≈1.0) 적용되는 상황이 늘었음 — 예전 볼륨 기준으로
+        // 캘리브레이션된 값이 지금은 과도해서 재조정. PnR_Roll(1.0%p)은 유지.
         PLAYTYPE_MOD: {
-            'PostUp': 0.015,
+            'PostUp': 0.006,
             'Iso': 0.012,
             'PnR_Roll': 0.010,
             'PnR_Handler': 0.008,
@@ -227,6 +239,24 @@ export const SIM_CONFIG = {
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
         TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
         TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
+
+        // [2026-07-30] 수비 리바운드와 공격 리바운드는 요구되는 능력치가 다르다.
+        // 수비: 이미 박스아웃으로 포지션을 잡은 상태 → defReb+boxOut이 핵심.
+        // 공격: 밖에서 뛰어들어와 경합 → offReb+허슬이 핵심.
+        // 기존 단일 공식(offReb/defReb 45% + vertical 20% + strength 10% + boxOut 15% + hustle 10%,
+        // 공수 공용)을 폐지하고 상황별 전용 공식으로 분리.
+        DRB_REB_WEIGHT: 0.65,         // 수비 리바운드: defReb 비중
+        DRB_BOXOUT_WEIGHT: 0.20,      // 수비 리바운드: boxOut 비중
+        DRB_VERTICAL_WEIGHT: 0.05,    // 수비 리바운드: vertical 비중
+        DRB_STRENGTH_WEIGHT: 0.10,    // 수비 리바운드: strength 비중 (hustle 제외, 합계 1.00)
+        ORB_REB_WEIGHT: 0.80,         // 공격 리바운드: offReb 비중
+        ORB_HUSTLE_WEIGHT: 0.10,      // 공격 리바운드: hustle 비중
+        ORB_VERTICAL_WEIGHT: 0.10,    // 공격 리바운드: vertical 비중 (strength/boxOut 제외, 합계 1.00)
+
+        // [2026-07-30] BLOCK/ZONE_SHOOTING/PLAYMAKING/CLUTCH_ARCHETYPE와 동일하게 ENABLED
+        // 플래그로 통일 — 나머지 히든 아키타입 계열이 전부 꺼져있는데 Harvester/Raider만
+        // 활성화 상태였던 걸 맞춤.
+        ARCHETYPES_ENABLED: false,    // ★ TEMPORARY: 아키타입 비활성화 (Harvester/Raider)
 
         // F-1. Harvester (하베스터) — Andre Drummond, DeAndre Jordan
         HARVESTER_REB_THRESHOLD: 95,         // offReb ≥ 95 OR defReb ≥ 95
@@ -330,9 +360,12 @@ export const SIM_CONFIG = {
         ATTEMPT_PER_LEVEL: 0.70 / 9,
 
         // 존별 헬퍼 후보 포지션 풀 (해당 포지션이 온코트에 없으면 전체 폴백)
+        // [2026-07-30] Rim/Paint를 C/PF/SF로 제한하면 특정 빅맨(팀 앵커)에게 헬프 관여가
+        // 구조적으로 쏠린다 — 전 포지션으로 확장하고, 실제 헬퍼 선정은 helpDefIq 가중치로
+        // 결정하도록 변경(가드도 눈치 빠르면 로테이션할 수 있다는 게 더 현실적).
         ZONE_POSITIONS: {
-            Rim: ['C', 'PF', 'SF'],
-            Paint: ['C', 'PF', 'SF'],
+            Rim: ['PG', 'SG', 'SF', 'PF', 'C'],
+            Paint: ['PG', 'SG', 'SF', 'PF', 'C'],
             Mid: ['PG', 'SG', 'SF', 'PF'],
             '3PT': ['PG', 'SG', 'SF'],
         } as Record<'Rim' | 'Paint' | 'Mid' | '3PT', string[]>,
@@ -343,21 +376,12 @@ export const SIM_CONFIG = {
         PHYS_GATE_MIN: 55,
         PHYS_GATE_MAX: 95,
 
-        // 성공 시 슈터 hitRate 감소: 1단계 -2%p ~ 10단계 -5%p
-        HITRATE_PENALTY_BASE: 0.02,
-        HITRATE_PENALTY_PER_LEVEL: 0.03 / 9,
-
-        // 성공 시 골밑(Rim/Paint) 파울 확률 증가: 1단계 +0.5%p ~ 10단계 +2.0%p
-        FOUL_BONUS_BASE: 0.005,
-        FOUL_BONUS_PER_LEVEL: 0.015 / 9,
-
-        // 성공 시 스틸 확률 증가(헬퍼 크레딧): 1단계 +0.3%p ~ 10단계 +1.2%p
-        STEAL_BONUS_BASE: 0.003,
-        STEAL_BONUS_PER_LEVEL: 0.009 / 9,
-
-        // 시도 시(성공 여부 무관) 헬퍼 개인 체력 소모 배율: 1단계 ×1.10 ~ 10단계 ×1.25
-        DRAIN_MULT_BASE: 1.10,
-        DRAIN_MULT_PER_LEVEL: 0.15 / 9,
+        // [2026-07-30] helpDef 슬라이더는 "빈도"(ATTEMPT_BASE/PER_LEVEL)만 결정해야 하는데, 기존엔
+        // 성공 시 효과(hitRate 감소/파울 위험)까지 슬라이더에 연동돼 있었음 — "헬프를 자주 부르는
+        // 팀일수록 헬프 한 번의 강도도 세진다"는 논리적 모순이 있어 슬라이더 5단계(중간값) 기준
+        // 고정값으로 전환. 개인 기량 차이는 이미 IQ×운동능력 성공 게이트가 담당.
+        HITRATE_PENALTY: 0.033,
+        FOUL_BONUS: 0.006,
     },
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {

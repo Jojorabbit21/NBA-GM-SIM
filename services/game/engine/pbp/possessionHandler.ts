@@ -151,7 +151,7 @@ function calculateTurnoverChance(
     pnrCoverage: PnrCoverage = 'none',
     helpDefender?: LivePlayer,
     helpSuccess: boolean = false
-): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer } {
+): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
     const sliders = offTeam.tactics.sliders;
@@ -210,12 +210,16 @@ function calculateTurnoverChance(
 
     // ================================================================
     // A-3. 헬프 디펜스 스틸 (헬프 성공 시, 전 존/전 플레이타입 공통, 헬퍼 크레딧)
+    // [2026-07-30] 슬라이더 기반 flat 보너스 → 헬퍼 개인 스탯 기반 커브로 교체 (블락의 헬프
+    // 메커니즘과 동일한 철학: 빈도는 슬라이더가, 강도는 개인 기량이 결정). A-2 패싱레인 스틸과
+    // 동일한 effectiveStl/LANE_STEAL_CURVE 재사용 — 헬프 관여도 "패스/드라이브를 읽어내는 능력"과
+    // 개념적으로 같아서 별도 상수 없이 그대로 씀.
     // ================================================================
     if (helpDefender && helpSuccess) {
-        const helpCfg = SIM_CONFIG.HELP_DEFENSE;
-        const helpStealBonus = helpCfg.STEAL_BONUS_BASE + (defTeam.tactics.sliders.helpDef - 1) * helpCfg.STEAL_BONUS_PER_LEVEL;
+        const effectiveStl = helpDefender.attr.stl * 0.7 + helpDefender.attr.passPerc * 0.3;
+        const helpStealBonus = interpolateCurve(effectiveStl, SIM_CONFIG.STEAL.LANE_STEAL_CURVE);
         if (Math.random() < helpStealBonus) {
-            return { isTurnover: true, isSteal: true, stealer: helpDefender };
+            return { isTurnover: true, isSteal: true, stealer: helpDefender, isHelpPlay: true };
         }
     }
 
@@ -371,6 +375,21 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         weights['PnR_Handler'] *= (1 + gravityBoost);
         weights['PostUp'] *= (1 + gravityBoost * 0.5);
 
+        // [2026-07-30] Playmaking Gravity: 스코어링 그래비티와 별개로, 팀 최고 플레이메이커
+        // (포지션 무관)의 handler 아키타입이 높을수록 어시스트형 플레이 비중 증가. 요키치처럼
+        // 스코어러+패서를 겸비한 선수는 Star Gravity(Iso/PnR_Handler)와 이 부스트(PnR_Roll/
+        // CatchShoot/Handoff/Cut/OffBallScreen)를 동시에 받아 "본인 득점"과 "동료를 살리는 플레이"
+        // 둘 다 늘어남 — 기존엔 스코어링 그래비티만 있어서 최고의 패서이자 스코어러인 선수 본인의
+        // 어시스트 기회를 스스로 깎아먹는 역설이 있었음. PnR_Pop은 제외 — 3점 슈팅 자격(popper)과
+        // 무관한 부스트라 팀에 스트레치 빅이 없어도 억지로 낮은 확률 3점을 늘리는 부작용이 있음.
+        const topPlaymakingGravity = Math.max(...offTeam.onCourt.map(p => p.archetypes.handler));
+        const playmakingBoost = Math.min(0.30, Math.max(0, (topPlaymakingGravity - 70) * 0.02));
+        weights['PnR_Roll'] *= (1 + playmakingBoost);
+        weights['CatchShoot'] *= (1 + playmakingBoost);
+        weights['Handoff'] *= (1 + playmakingBoost);
+        weights['Cut'] *= (1 + playmakingBoost * 0.7);
+        weights['OffBallScreen'] *= (1 + playmakingBoost * 0.7);
+
         // Clutch Play Selection: 경기 상황에 따른 전술 보정
         const cc = options?.clutchContext;
         if (cc?.isClutch) {
@@ -455,8 +474,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // [2026-07-29] switchFreq가 높을수록(스위치 위주 수비 = 수비수 전원이 유동적 로테이션에
         // 익숙) 헬프 풀이 존별 포지션 제한 없이 온코트 전원으로 확장될 확률이 생김 — 기존
         // switchChance(스크린 스위치 확률, switchFreq*0.05)와 동일 스케일로 통일해 임의의
-        // 새 계수를 도입하지 않음. 목적: 존별 포지션 풀(Rim/Paint→C·PF·SF)에 갇혀 특정
-        // 빅맨(특히 C)이 골밑 헬프를 도맡아 파울이 쏠리는 문제 완화.
+        // 새 계수를 도입하지 않음.
         const universalHelpChance = defTeam.tactics.sliders.switchFreq * 0.05;
         const useFullPool = Math.random() < universalHelpChance;
 
@@ -468,7 +486,18 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             helperPool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
         }
         if (helperPool.length > 0) {
-            helpDefender = helperPool[Math.floor(Math.random() * helperPool.length)];
+            // [2026-07-30] Rim/Paint 풀을 전 포지션으로 열어둔 대신(ZONE_POSITIONS), 헬퍼 "선정"
+            // 자체를 helpDefIq 가중 룰렛으로 바꿈 — 눈치 빠른 선수가 실제로 로테이션에 나설
+            // 확률부터 높아야 한다는 논의 반영. 기존엔 풀 안에서 완전 균등 랜덤이라, 팀 앵커든
+            // 눈치 없는 백업이든 뽑힐 확률이 같았음.
+            const totalHelpIq = helperPool.reduce((sum, p) => sum + Math.max(1, p.attr.helpDefIq), 0);
+            let iqRoll = Math.random() * totalHelpIq;
+            helpDefender = helperPool[helperPool.length - 1];
+            for (const p of helperPool) {
+                iqRoll -= Math.max(1, p.attr.helpDefIq);
+                if (iqRoll <= 0) { helpDefender = p; break; }
+            }
+
             const iqFactor = Math.max(0, Math.min(1,
                 (helpDefender.attr.helpDefIq - helpCfg.IQ_GATE_MIN) / (helpCfg.IQ_GATE_MAX - helpCfg.IQ_GATE_MIN)));
             const avgPhys = (helpDefender.attr.agility + helpDefender.attr.speed) / 2;
@@ -480,9 +509,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 체력 소모(fatigueSystem.ts로 전달)용 ID — 시도만 해도 적용, 성공 여부 무관
     const helpDefenderId = (helpAttempted && helpDefender) ? helpDefender.playerId : undefined;
     // hitRate 감소분(성공 시에만, 전 구역 공통) — bonusHitRate 합산에 사용
-    const helpHitRatePenalty = (helpAttempted && helpSuccess)
-        ? -(helpCfg.HITRATE_PENALTY_BASE + (helpDefLevel - 1) * helpCfg.HITRATE_PENALTY_PER_LEVEL)
-        : 0;
+    // [2026-07-30] 슬라이더 무관 고정값 — 빈도는 helpDefLevel(ATTEMPT_BASE/PER_LEVEL)이 이미 결정
+    const helpHitRatePenalty = (helpAttempted && helpSuccess) ? -helpCfg.HITRATE_PENALTY : 0;
 
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
@@ -504,13 +532,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
 
-    // [헬프디펜스 재설계] 골밑 파울 증가 (헬프 시도+성공+Rim/Paint 한정, 1단계 +0.5%p ~ 10단계 +2.0%p)
+    // [헬프디펜스 재설계] 골밑 파울 증가 (헬프 시도+Rim/Paint 한정, 1단계 +0.25%p ~ 10단계 +1.0%p)
     // [2026-07-29] 이 보너스로 발생한 파울은 원 수비수(defender)가 아니라 실제로 헬프한 선수
     // (helpDefender)한테 귀속되어야 함 — helpBonusRate를 따로 추적해 파울 발생 시 기여 비율만큼
     // 확률적으로 helpDefender에게 배정(아래 "if (Math.random() < shootingFoulRate)" 참고).
+    // [2026-07-30] 트리거를 helpSuccess(IQ×운동능력 게이트 통과)에서 helpAttempted(시도 자체)로
+    // 변경 — "성공적으로 잘 컨테스트한 헬프"일수록 파울도 늘어나는 역설이 있었음(체력 페널티는
+    // 이미 시도 기준이라 이걸로 통일). 슬라이더 무관 고정값(빈도는 helpDefLevel이 이미 결정).
     let helpBonusRate = 0;
-    if (helpAttempted && helpSuccess && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-        helpBonusRate = helpCfg.FOUL_BONUS_BASE + (helpDefLevel - 1) * helpCfg.FOUL_BONUS_PER_LEVEL;
+    if (helpAttempted && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+        helpBonusRate = helpCfg.FOUL_BONUS;
         shootingFoulRate += helpBonusRate;
     }
 
@@ -551,11 +582,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate)
             : 0;
         const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
+        const isHelpFoul = !!helpDefender && fouler === helpDefender;
         return {
             type: 'freethrow',
             offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             zone: preferredZone,
             helpDefenderId,
+            isHelpPlay: isHelpFoul,
         };
     }
 
@@ -783,6 +816,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             offTeam, defTeam, actor,
             defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
             isSteal: tovResult.isSteal,
+            isHelpPlay: tovResult.isHelpPlay,
             points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
             helpDefenderId,
@@ -947,6 +981,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---
     let isBlock = false;
     let finalDefender = defender;
+    let isHelpBlock = false;
 
     if (defender && preferredZone) {
         const blkCfg = SIM_CONFIG.BLOCK;
@@ -1063,6 +1098,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
              if (Math.random() < helpChance) {
                  isBlock = true;
                  finalDefender = helper;
+                 isHelpBlock = true;
              }
         }
     }
@@ -1115,6 +1151,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
             subZone, isZone,
             helpDefenderId,
+            isHelpPlay: isHelpBlock,
         };
     }
 

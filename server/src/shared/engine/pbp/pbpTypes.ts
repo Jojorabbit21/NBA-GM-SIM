@@ -307,4 +307,6 @@ export interface PossessionResult {
 
     // [New 2026-07] Help Defense: 이번 포제션에 헬프를 "시도"한 선수 (성공 여부 무관, 체력 추가 소모 대상)
     helpDefenderId?: string;
+    // [2026-07-30] 이번 스틸/블락/파울이 헬프 디펜더에게 귀속된 것인지 (커멘터리 전용 문구용)
+    isHelpPlay?: boolean;
 }

@@ -30,9 +30,9 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz' },
+    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean },
 ): string {
-    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage } = flags;
+    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage, isHelpPlay } = flags;
     const canDunk = actor.attr.vertical > 70 && actor.attr.ins > 60;
 
     if (type === 'score') {
@@ -80,6 +80,23 @@ export function generateCommentary(
                     `${actor.playerName}, 더블팀이 풀리며 열린 3점 라인에서 슛! 꽂힙니다!${scoreTag}`,
                 ]);
             }
+        }
+
+        // --- Transition (속공) ---
+        if (playType === 'Transition') {
+            if (assister) {
+                return pick([
+                    `${assister.playerName}, 코트를 가로지르는 터치다운 패스! ${actor.playerName}가 그대로 마무리합니다!${scoreTag}`,
+                    `${assister.playerName}의 정확한 아웃렛 패스, ${actor.playerName}가 속공으로 연결합니다!${scoreTag}`,
+                    `빠른 전개! ${assister.playerName}의 패스를 받은 ${actor.playerName}, 속공 득점!${scoreTag}`,
+                    `${assister.playerName}, 리바운드를 잡자마자 길게 뿌립니다 — ${actor.playerName} 혼자 뜁니다!${scoreTag}`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 폭발적인 속도로 코트를 가로질러 마무리!${scoreTag}`,
+                `빠른 속공 전개, ${actor.playerName}가 손쉽게 마무리합니다!${scoreTag}`,
+                `${actor.playerName}, 혼자 힘으로 질주해 속공 득점!${scoreTag}`,
+            ]);
         }
 
         if (zone === '3PT') {
@@ -174,10 +191,29 @@ export function generateCommentary(
             ]);
         }
         if (isBlock && defender) {
+            if (isHelpPlay) {
+                return pick([
+                    `위크사이드에서 넘어온 ${defender.playerName}, 완벽한 타이밍의 헬프 블락!`,
+                    `${actor.playerName}의 골밑 시도, 헬프로 나온 ${defender.playerName}에게 걸립니다!`,
+                    `${defender.playerName}, 자기 매치업을 버리고 넘어와 블락을 만들어냅니다!`,
+                ]);
+            }
             return pick([
                 `${actor.playerName}의 슛, ${defender.playerName}에게 가로막힙니다! (블록)`,
                 `${defender.playerName}, ${actor.playerName}의 시도를 완벽하게 블록해냅니다!`,
                 `${actor.playerName} 골밑 돌파... ${defender.playerName}의 높이를 넘지 못합니다!`,
+            ]);
+        }
+        if (playType === 'Transition') {
+            if (assister) {
+                return pick([
+                    `${assister.playerName}의 아웃렛 패스는 좋았지만, ${actor.playerName}의 마무리가 빗나갑니다.`,
+                    `빠른 속공, ${actor.playerName}가 마무리를 서두르다 놓칩니다.`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 속공 찬스였지만 마무리가 아쉽습니다.`,
+                `빠른 속공이었지만, ${actor.playerName}의 슛이 빗나갑니다.`,
             ]);
         }
         if (zone === '3PT') {
@@ -215,6 +251,13 @@ export function generateCommentary(
             ]);
         }
         if (isSteal && defender) {
+            if (isHelpPlay) {
+                return pick([
+                    `헬프로 나온 ${defender.playerName}, 드리블하는 ${actor.playerName}의 공을 그대로 걷어냅니다!`,
+                    `${defender.playerName}, 도와주러 왔다가 아예 공을 뺏어버립니다!`,
+                    `자기 매치업이 아닌데도, ${defender.playerName}의 손이 먼저 나갔습니다! 스틸!`,
+                ]);
+            }
             return pick([
                 `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다! (스틸)`,
                 `${defender.playerName}의 손질, 스틸에 성공합니다!`,
@@ -230,6 +273,13 @@ export function generateCommentary(
     }
 
     if (type === 'foul') {
+        if (isHelpPlay && defender) {
+            return pick([
+                `${defender.playerName}, 헬프하러 나왔다가 ${actor.playerName}에게 파울을 범합니다.`,
+                `위크사이드에서 도와준 ${defender.playerName}, 몸이 먼저 부딪히며 파울!`,
+                `${defender.playerName}, 로테이션 수비 중 ${actor.playerName}과 접촉 — 파울이 선언됩니다.`,
+            ]);
+        }
         return pick([
             `${defender?.playerName}, ${actor.playerName}에게 수비 반칙을 범합니다.`,
             `${defender?.playerName}, 돌파하는 ${actor.playerName}를 막다가 파울.`,

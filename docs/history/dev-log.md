@@ -35,6 +35,526 @@
 
 ---
 
+## 2026-07-30 — 리바운드 로직: 공격/수비 리바운드 공식 분리 (DRB/ORB 전용 가중치)
+
+**배경**: 리바운드 아키타입/모터인텐시티 점검(바로 아래 항목) 과정에서, 압도적 `defReb`를 가진
+빅맨(웸반야마 98)도 실제 룰렛 선택 확률은 팀원 대비 크게 우위를 갖지 못한다는 걸 실측(500k
+몬테카를로)으로 확인 — 기존 공식이 `rebAttr(offReb/defReb)*0.45 + vertical*0.2 + strength*0.10 +
+boxOut*0.15 + hustle*0.10`으로 공격/수비 공용이었는데, 부차적 능력치(vertical/strength) 비중이
+높아 defReb 우위가 희석됐기 때문. 이에 대해 사용자가 "수비 리바운드는 이미 자리를 잡은 상태라
+defReb+boxOut이 핵심이고, 공격 리바운드는 밖에서 뛰어들어와 경합하는 것이라 offReb+허슬이 핵심"이라는
+농구 논리를 제시, 상황별(공격/수비) 전용 공식으로 분리하기로 확정.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `REBOUND`에 `DRB_REB_WEIGHT`/`DRB_BOXOUT_WEIGHT`/`DRB_VERTICAL_WEIGHT`/
+  `DRB_STRENGTH_WEIGHT`/`ORB_REB_WEIGHT`/`ORB_HUSTLE_WEIGHT`/`ORB_VERTICAL_WEIGHT` 신규 추가
+- `services/game/engine/pbp/reboundLogic.ts` (client) / `server/src/shared/engine/pbp/reboundLogic.ts`
+  (server) — `calculateOrbChance`의 `calcPower`(공수 공용 1개)를 `calcOffPower`/`calcDefPower`
+  2개로 분리, `selectRebounder`의 점수 계산도 `isOffensive` 분기로 공식 자체를 분리
+
+**Before**:
+```ts
+// calculateOrbChance
+const calcPower = (team: TeamState, rebAttr: 'offReb' | 'defReb') =>
+    team.onCourt.reduce((sum, p) => {
+        return sum + (p.attr[rebAttr] * 0.45 + p.attr.vertical * 0.2 + p.attr.strength * 0.10 + p.attr.boxOut * 0.15 + p.attr.hustle * 0.10);
+    }, 0);
+const offPower = calcPower(offTeam, 'offReb');
+const defPower = calcPower(defTeam, 'defReb');
+
+// selectRebounder
+const rebAttr: 'offReb' | 'defReb' = isOffensive ? 'offReb' : 'defReb';
+let score = (
+    p.attr[rebAttr] * 0.45 + p.attr.vertical * 0.2 + p.attr.strength * 0.10 +
+    p.attr.boxOut * 0.15 + p.attr.hustle * 0.10
+) * shooterPenalty;
+```
+
+**After**:
+```ts
+// calculateOrbChance
+const calcOffPower = (team: TeamState) =>
+    team.onCourt.reduce((sum, p) =>
+        sum + (p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT), 0);
+const calcDefPower = (team: TeamState) =>
+    team.onCourt.reduce((sum, p) =>
+        sum + (p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT), 0);
+const offPower = calcOffPower(offTeam);
+const defPower = calcDefPower(defTeam);
+
+// selectRebounder
+let score = (
+    isOffensive
+        ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
+        : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT
+) * shooterPenalty;
+```
+
+**가중치 값**: DRB = defReb 0.65 + boxOut 0.20 + vertical 0.05 + strength 0.10 (hustle 제외, 합 1.00) /
+ORB = offReb 0.80 + hustle 0.10 + vertical 0.10 (strength/boxOut 제외, 합 1.00)
+
+**검증**: `server tsc` 30개 베이스라인 유지(신규 에러 없음), `vite build` 클린 빌드. 실측 검증(hou팀,
+웸반야마 defReb 98 vs 팀원 60~75) — DRB 선택 확률이 기존 공용공식 22.49% → 신규 분리공식 24.82%로
+상승(몬테카를로 아님, 이론 확률 계산). ORB도 offReb 88 기준 25.06%로 팀 내 최고.
+
+**롤백 방법**: Before 블록 내용으로 되돌리고, constants.ts의 `DRB_*`/`ORB_*` 7개 상수 제거.
+
+---
+
+## 2026-07-30 — 리바운드 로직 점검: Harvester/Raider 비활성화, motorIntensity 결정론적 전환
+
+**배경**: "32 TEST 2" 탑 리바운더(제일런 듀렌 8.3개)가 실제 NBA 엘리트 리바운더 대비 너무 낮다는
+제보로 `reboundLogic.ts` 재점검. (1) `SIM_CONFIG.BLOCK`/`ZONE_SHOOTING`/`PLAYMAKING`/
+`CLUTCH_ARCHETYPE`는 전부 `ENABLED: false`(히든 아키타입 임시 비활성화)인데, `REBOUND`의
+Harvester(offReb/defReb≥95 → ×1.3)/Raider(키≤200&offReb≥90&vertical≥90 → ×1.4)만 게이트 없이
+항상 활성화돼 있었던 걸 확인 — 다른 계열과 통일하기 위해 비활성화. (2) 리바운더 선정 시
+`Math.random() * (0.7+motorIntensity*0.6)`로 개별 랜덤을 곱한 뒤 다시 룰렛 추첨을 하는 "이중
+랜덤" 구조를 몬테카를로로 검증 — 실력/모터 차이와 무관하게 결과가 이론값보다 항상 살짝 낮게(4~6%)
+나오는 걸 확인, 결정론적 배율로 전환. 계수도 0.6→0.3으로 조정 — 기존 계수는 motor=1.0(평균)에서도
+이미 1.3배 고정 보너스가 붙어 `types/player.ts`의 텐던시 스펙("0.5~1.5, 리바운드 확률 ±15%")과
+안 맞았음.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `REBOUND.ARCHETYPES_ENABLED: false` 신규 추가
+- `services/game/engine/pbp/reboundLogic.ts` (client) / `server/src/shared/engine/pbp/reboundLogic.ts`
+  (server) — Harvester/Raider 블록에 `cfg.ARCHETYPES_ENABLED` 게이트 추가, motorIntensity 랜덤
+  곱셈 제거 + 계수 조정
+
+**Before**:
+```ts
+if (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || p.attr.defReb >= cfg.HARVESTER_REB_THRESHOLD) {
+    score *= cfg.HARVESTER_SCORE_MULTIPLIER;
+}
+if (isOffensive && p.attr.height <= cfg.RAIDER_MAX_HEIGHT && ...) {
+    score *= cfg.RAIDER_SCORE_MULTIPLIER;
+}
+...
+score *= Math.random() * (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.6);
+```
+
+**After**:
+```ts
+if (cfg.ARCHETYPES_ENABLED && (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || ...)) {
+    score *= cfg.HARVESTER_SCORE_MULTIPLIER;
+}
+if (cfg.ARCHETYPES_ENABLED && isOffensive && ...) {
+    score *= cfg.RAIDER_SCORE_MULTIPLIER;
+}
+...
+score *= (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.3);  // Math.random() 제거, 계수 0.3
+```
+
+**검증**: 몬테카를로 시뮬레이션(1000000회) 3케이스 — (a) 모터 동일/순수 실력차: 결정론적 방식이
+이론값(33.3%)과 정확히 일치, 기존 랜덤 방식은 31.8%로 희석 (b) 실력+모터 모두 최상: 결정론적
+38.1%=이론값, 기존 방식 36.0%로 모터 보너스가 온전히 반영 안 됨 (c) 실력 좋으나 모터 낮음 vs
+실력 평범하나 모터 최상: 결정론적 26.6%≈이론값 26.7%, 기존 26.0%. `cd server && npx tsc -p
+tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**참고**: `resolveRebound()`의 Step1(공격/수비 리바운드 판정)→Step2(팀 내 리바운더 선정, offReb/
+defReb 상황별 정확히 분기됨) 흐름 자체는 이미 올바르게 구현돼 있음을 확인(추가 수정 없음). 리바운드
+총량이 낮은 근본 원인(팀당 FGA 69.5개, 실제 NBA 88~90개)은 페이스/슛 볼륨 이슈로 판단, 이번 범위에서
+제외.
+
+**롤백 방법**: 위 Before 블록으로 4개 파일(constants.ts/reboundLogic.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — Transition 전용 PBP 커멘터리 추가 (속공/터치다운 패스)
+
+**배경**: `Transition` 플레이타입이 지금까지 전용 커멘터리 분기가 하나도 없어서, 실제로는 존(zone)
+기반 일반 문구(하프코트 슛과 동일한 "아크 정면에서 3점슛..." 등)로 처리되고 있었음을 확인. 앞서
+Transition 아웃렛 패서에 `passAcc`(터치다운 패스) 반영까지 마친 김에, 속공 득점/실패와 아웃렛
+패스 유무에 따른 전용 문구를 추가.
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) / `server/src/shared/engine/commentary/textGenerator.ts`
+  (server) — `generateCommentary()`의 'score'/'miss' 섹션에 `playType === 'Transition'` 분기 추가
+
+**After** (신규 추가, 'score' 섹션 — pnrCoverage 체크 이후, 3PT 체크 이전에 배치):
+```ts
+if (playType === 'Transition') {
+    if (assister) {
+        return pick([
+            `${assister.playerName}, 코트를 가로지르는 터치다운 패스! ${actor.playerName}가 그대로 마무리합니다!${scoreTag}`,
+            `${assister.playerName}의 정확한 아웃렛 패스, ${actor.playerName}가 속공으로 연결합니다!${scoreTag}`,
+            ...
+        ]);
+    }
+    return pick([
+        `${actor.playerName}, 폭발적인 속도로 코트를 가로질러 마무리!${scoreTag}`,
+        ...
+    ]);
+}
+```
+'miss' 섹션에도 동일 패턴(아웃렛 패스는 좋았으나 마무리 실패 / 단독 속공 실패)으로 추가. 'miss'
+섹션에서는 기존 `isBlock` 체크 이후, 3PT 체크 이전에 배치해 블록된 속공은 기존 블록 문구가
+우선되도록 함.
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` →
+클라이언트 정상 빌드.
+
+**롤백 방법**: 위 추가된 `if (playType === 'Transition') { ... }` 블록 2곳(score/miss)을 4개 파일
+(textGenerator.ts × client/server)에서 삭제.
+
+---
+
+## 2026-07-30 — Playmaking Gravity 신설 (Star Gravity의 어시스트 잠식 역설 해결)
+
+**배경**: Transition 아웃렛 패서 수정에 이어, 어시스트 부족의 두 번째 원인(Star Gravity 부스트가
+Iso/PnR_Handler만 늘려 팀 최고 스코어러 겸 패서인 선수 본인의 어시스트 기회를 스스로 깎아먹는 역설)
+해결. 팀의 최고 그래비티(스코어링) 선수만 보던 기존 로직과 별개로, 팀의 최고 플레이메이커(포지션
+무관, `handler` 아키타입 기준)를 찾아 어시스트형 플레이(PnR_Roll/CatchShoot/Handoff/Cut/
+OffBallScreen) 비중을 독립적으로 늘리는 "Playmaking Gravity"를 신설. 요키치처럼 스코어러+패서를
+겸비한 선수는 두 부스트를 동시에 받아 "본인 득점"과 "동료를 살리는 플레이" 둘 다 늘어남. 논의 중
+PnR_Pop은 제외하기로 확정 — popper 액터 자격(screener+3점, C/PF 한정)과 무관한 부스트라, 팀에
+스트레치 빅이 없어도 억지로 낮은 확률 3점을 늘리는 부작용이 있었음.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — 기존 Star Gravity 블록 바로 뒤에 Playmaking Gravity 블록 추가
+
+**After** (신규 추가분):
+```ts
+// 기존 Star Gravity(Iso/PnR_Handler/PostUp)는 그대로 유지
+const topPlaymakingGravity = Math.max(...offTeam.onCourt.map(p => p.archetypes.handler));
+const playmakingBoost = Math.min(0.30, Math.max(0, (topPlaymakingGravity - 70) * 0.02));
+weights['PnR_Roll'] *= (1 + playmakingBoost);
+weights['CatchShoot'] *= (1 + playmakingBoost);
+weights['Handoff'] *= (1 + playmakingBoost);
+weights['Cut'] *= (1 + playmakingBoost * 0.7);
+weights['OffBallScreen'] *= (1 + playmakingBoost * 0.7);
+```
+
+**검증**: 리그 전체 `handler` 아키타입 분포(평균 67.7/중앙값 68.8/p75 77.2/p90 84.8) 확인 후
+threshold=70/계수=0.02로 캘리브레이션 — p90대(84.8)에서 상한(30%) 근접. 요키치(handler 94.1) 기준
+playmakingBoost 상한 도달 확인. `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과
+동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**주의사항**: `topPlaymakingGravity`는 포지션 무관(코트 위 5명 전원 중 최댓값) — 팀의 최고
+플레이메이커가 가드여도 동일하게 작동하며, 이 경우도 볼 무브먼트 중심 팀이 되는 게 자연스러운
+결과라 의도된 동작. 실제 32 TEST 2류 시뮬레이션에서 요키치/사보니스 등의 어시스트가 목표 범위로
+개선됐는지는 다음 실측으로 재확인 필요.
+
+**롤백 방법**: 위 After 블록 추가분을 삭제하면 이전 상태(Star Gravity만 존재)로 복귀.
+
+---
+
+## 2026-07-30 — Transition 아웃렛 패서에 "터치다운 패스" 반영 (passAcc 추가)
+
+**배경**: 요키치/사보니스/센군 같은 플레이메이킹 빅의 어시스트가 실측(32 TEST 2)으로 확인해보니
+너무 낮음(요키치 3.29 vs 실제 NBA 9~10대, 약 1/3 수준) — 원인 조사 중 (1) Star Gravity 부스트가
+팀의 최고 그래비티 선수(요키치 계산 시 gravity≈124.5, 부스트 상한 30% 도달)의 자기 득점 플레이만
+늘려 어시스트형 플레이 비중을 상대적으로 9%가량 깎는 것 (2) Transition의 패서 선정에 `passAcc`가
+빠져있어 "발은 느려도 정확도+시야로 풀코트 패스를 꽂는" 요키치/르브론형 아웃렛 패서가 저평가되는 것,
+두 가지를 확인함. 이번엔 (2)부터 수정 — Transition 패서 기준에 `passAcc`를 추가하고 비중을 상향.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server)
+  — `Transition` 케이스의 `outletPasser` 선정 기준 교체
+
+**Before**:
+```ts
+const outletPasser = pickPasser(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
+```
+
+**After**:
+```ts
+const outletPasser = pickPasser(p => {
+    const touchdownQuality = (p.attr.passVision + p.attr.passAcc) / 2;
+    return p.archetypes.connector + touchdownQuality * 0.5;
+}, actor.playerId);
+```
+
+**검증**: 요키치(connector 94.4, passVision 99, passAcc 98) 기준 재계산 — 124.1 → 143.65(+16%).
+`cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트
+정상 빌드.
+
+**참고**: Star Gravity 부스트(원인 1)는 아직 미해결 — "팀의 최고 그래비티 선수가 진짜 슛 크리에이터
+타입인지"를 구분하지 않고 무조건 Iso/PnR_Handler를 늘리는 구조라, 요키치처럼 스코어러이자 최고
+패서인 선수의 어시스트 기회를 스스로 깎아먹는 역설이 남아있음.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(playTypes.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — DRAW_FOUL_CURVE 중상위권 구간 하향 (최상위권과의 격차 확대)
+
+**배경**: 바로 위 항목(`ZONE_CURVE_SCALE` 재조정)에 이어, drawFoul 최상위권(95~99)과 중상위권
+(80~90)의 격차를 벌리고 싶다는 요청. 처음엔 95/99 자체를 올리는(0.15→0.2, 0.19→0.35) 안이
+나왔으나 계산해보니 95~99 구간에 정확히 이번에 문제였던 선수들(엠비드96/야니스98/요키치95/
+하든99/SGA98)이 몰려있어서, 이걸 올리면 방금 `ZONE_CURVE_SCALE`로 해소한 빅맨 파울 과다노출이
+되살아나거나(엠비드 Rim 25.6%→30.4%) 오히려 더 악화되는(야니스 Rim →34.6%, 원래 문제 32%보다도
+높음) 문제가 확인됨. 대신 "격차를 위에서 벌리지 말고 아래에서 벌리는" 방향으로 확정 — 95/99는
+그대로 두고 80~90(칼 말론/샤킬 등 중상위권) 구간만 하향.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `SHOOTING_FOUL.DRAW_FOUL_CURVE`의 80/85/90 breakpoint 값 변경 (95/99는 유지)
+
+**Before**: `[80, 0.035], [85, 0.065], [90, 0.10], [95, 0.15], [99, 0.19]`
+**After**: `[80, 0.015], [85, 0.035], [90, 0.06], [95, 0.15], [99, 0.19]`
+
+**검증**: 재계산 — 칼 말론(drawFoul 90) Rim 기준 22%→19.6%로 하향, 엠비드(96)는 25.6%로 그대로
+유지 → 최상위권-중상위권 격차가 2.4%p에서 6.0%p로 확대. `cd server && npx tsc -p tsconfig.json`
+→ 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트 정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(constants.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — 슈팅파울 ZONE_CURVE_SCALE 재조정 (빅맨 자유투 과중 문제)
+
+**배경**: 헬프디펜스 정리 후, "그냥 파울 로직"(헬프디펜스 무관) 자체를 재점검하다가
+`SHOOTING_FOUL.DRAW_FOUL_CURVE × ZONE_CURVE_SCALE` 조합에서 원인을 발견. "32 TEST 2" 실측 데이터로
+확정: 리그 전체 drawFoul 1~3위인 하든(99)/SGA(98)/엠비드(96)는 커브 원값이 비슷한데(0.19/0.18/0.16,
+3%p 이내 차이) 실제 FTA는 엠비드(6.2개)가 하든(4개)의 1.5배 이상 — 가드는 3PT/Mid 위주라 존
+스케일(25%/50%)로 크게 희석되는 반면, PostUp 위주 빅맨은 Rim/Paint(100%/80%)에서 거의 풀파워로
+적용됐기 때문. 카림 압둘자바(drawFoul 84로 하든보다 15점 낮은데 평균 FTA 7개로 오히려 더 많음)도
+동일 원인. `ZONE_CURVE_SCALE`을 Rim/Paint/Mid는 큰 폭으로, 3PT는 상대적으로 적게 낮춰서 재조정.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `SHOOTING_FOUL.ZONE_CURVE_SCALE` 값 변경
+
+**Before**: `{ Rim: 1.0, Paint: 0.8, Mid: 0.5, '3PT': 0.25 }`
+**After**: `{ Rim: 0.6, Paint: 0.5, Mid: 0.3, '3PT': 0.2 }`
+
+**검증**: 재계산 결과 — 엠비드(drawFoul96) Rim 기준 슈팅파울 확률 32%→25.6%(-20%), Paint 22.8%→18%
+(-21%); 하든(drawFoul99) 3PT 기준 7.25%→6.3%(-13%) — 빅맨 쪽이 더 크게 감소해 격차 완화 방향 확인.
+`cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` → 클라이언트
+정상 빌드.
+
+**롤백 방법**: 위 Before 블록으로 2개 파일(constants.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — 헬프 디펜스 "빈도 vs 강도" 원칙 정리: HITRATE_PENALTY/FOUL_BONUS 고정값 전환
+
+**배경**: `helpDef` 슬라이더는 "우리 팀이 헬프를 얼마나 자주 부르는가"(빈도)를 나타내야 하는데,
+기존엔 `HITRATE_PENALTY_BASE/PER_LEVEL`, `FOUL_BONUS_BASE/PER_LEVEL`가 전부 이 슬라이더에 연동돼
+있어서 "헬프를 자주 부르는 팀일수록 헬프 한 번의 효과(적중률 감소폭)와 위험(파울 확률)도 세진다"는
+논리적 모순이 있었음. 개인 기량 차이는 이미 `iqFactor × physFactor` 성공 게이트가 담당하므로,
+슬라이더는 `ATTEMPT_BASE/PER_LEVEL`(빈도)에만 연동하고 나머지는 슬라이더 5단계(중간값) 기준
+고정값으로 전환. 함께 죽은 코드가 된 `STEAL_BONUS_BASE/PER_LEVEL`(직전 커밋에서 커브 기반으로
+대체됨)도 이번에 삭제.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `HITRATE_PENALTY_BASE/PER_LEVEL` → `HITRATE_PENALTY: 0.033`(고정), `FOUL_BONUS_BASE/PER_LEVEL` →
+  `FOUL_BONUS: 0.006`(고정), `STEAL_BONUS_BASE/PER_LEVEL` 삭제
+- `services/game/engine/pbp/possessionHandler.ts` (client) / 서버 동일 — `helpHitRatePenalty`/
+  `helpBonusRate` 계산식을 고정값 참조로 단순화. **서버 파일에서 A-3 헬프 스틸 공식이 직전 커밋에서
+  실수로 안 바뀌고 옛 `STEAL_BONUS_BASE` 그대로 남아있던 것도 이번에 같이 발견해 수정**(server tsc가
+  타입 에러로 즉시 잡아냄 — client는 여전히 옛 코드가 참조하는 상수 자체가 지워지기 전까진 무증상).
+
+**Before**:
+```ts
+HITRATE_PENALTY_BASE: 0.02, HITRATE_PENALTY_PER_LEVEL: 0.03/9,   // 1단계 -2%p ~ 10단계 -5%p
+FOUL_BONUS_BASE: 0.0025, FOUL_BONUS_PER_LEVEL: 0.0075/9,          // 1단계 +0.25%p ~ 10단계 +1.0%p
+STEAL_BONUS_BASE: 0.003, STEAL_BONUS_PER_LEVEL: 0.009/9,          // (이미 미사용, 죽은 코드)
+...
+const helpHitRatePenalty = -(HITRATE_PENALTY_BASE + (helpDefLevel-1)*HITRATE_PENALTY_PER_LEVEL);
+helpBonusRate = FOUL_BONUS_BASE + (helpDefLevel-1)*FOUL_BONUS_PER_LEVEL;
+```
+
+**After**:
+```ts
+HITRATE_PENALTY: 0.033,  // 슬라이더 5단계 기준 고정
+FOUL_BONUS: 0.006,       // 슬라이더 5단계 기준 고정
+...
+const helpHitRatePenalty = -helpCfg.HITRATE_PENALTY;
+helpBonusRate = helpCfg.FOUL_BONUS;
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` — 최초 실행 시 서버 A-3 스틸 공식이 옛
+`STEAL_BONUS_BASE` 참조로 남아있어 32건(신규 2건)으로 잡힘 → 커브 기반으로 수정 후 재실행,
+기존 무관 에러 30건과 동일 확인. `npx vite build` → 클라이언트 정상 빌드. `grep`으로
+`HITRATE_PENALTY_BASE`/`FOUL_BONUS_BASE`/`STEAL_BONUS_BASE` 등 잔여 참조 전체 삭제 확인.
+
+**롤백 방법**: 위 Before 블록으로 4개 파일(constants.ts/possessionHandler.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — 헬프 디펜스 스틸 커브 교체 + 헬프 전용 PBP 커멘터리 추가
+
+**배경**: 헬프 디펜스 재점검 후속. (1) 헬프 스틸 보너스가 슬라이더 기반 flat 값이라 헬퍼 개인의
+`stl` 능력치를 전혀 반영 못 했음 — 블락의 헬프 메커니즘(`blk`/`rimProtector` 임계값 기반)과의
+일관성을 위해 A-2 패싱레인 스틸이 이미 쓰던 `effectiveStl`/`LANE_STEAL_CURVE`를 그대로 재사용하도록
+교체(새 상수 추가 없음). 실측 검증: 요키치(steal72/passPerc78→0.48%)가 고베어(steal40/passPerc72→
+0.16%)보다 스틸 확률이 높고, 반대로 블락은 고베어/아데바요(8.0%)가 요키치(2.5%, 기본치뿐)를 압도 —
+스킬 프로파일이 실제 스카우팅 평가와 일치함을 확인. (2) 스틸/블락/파울이 헬프 디펜더에게 귀속될 때
+PBP 중계에 전용 문구가 없다는 것을 확인, `PossessionResult.isHelpPlay` 플래그를 신설해 커멘터리
+생성기까지 관통시킴.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) / 서버 동일 — A-3 헬프 스틸 공식 교체,
+  `calculateTurnoverChance` 반환 타입에 `isHelpPlay` 추가, 파울/블락 분기에서 헬프 귀속 시
+  `isHelpPlay: true`를 결과에 포함(파울은 `fouler === helpDefender`로 판별, 블락은 `isHelpBlock`
+  변수로 추적)
+- `services/game/engine/pbp/pbpTypes.ts` (client) / 서버 동일 — `PossessionResult.isHelpPlay?: boolean` 추가
+- `services/game/engine/pbp/statsMappers.ts` (client) / 서버 동일 — miss/turnover/foul 세 곳의
+  `generateCommentary()` 호출에 `isHelpPlay: !!result.isHelpPlay` 전달
+- `services/game/engine/commentary/textGenerator.ts` (client) / 서버 동일 — `flags`에 `isHelpPlay`
+  추가, 블락/스틸/파울 세 분기에 헬프 전용 문구 각 3종 추가
+
+**Before** (스틸 공식):
+```ts
+const helpStealBonus = helpCfg.STEAL_BONUS_BASE + (defTeam.tactics.sliders.helpDef - 1) * helpCfg.STEAL_BONUS_PER_LEVEL;
+```
+**After**:
+```ts
+const effectiveStl = helpDefender.attr.stl * 0.7 + helpDefender.attr.passPerc * 0.3;
+const helpStealBonus = interpolateCurve(effectiveStl, SIM_CONFIG.STEAL.LANE_STEAL_CURVE);
+```
+(`STEAL_BONUS_BASE`/`STEAL_BONUS_PER_LEVEL` 상수는 더 이상 안 쓰이나 이번엔 삭제하지 않고 남겨둠 —
+필요 시 별도 정리)
+
+**Before** (커멘터리, 블락 예시):
+```ts
+if (isBlock && defender) {
+    return pick([`${actor.playerName}의 슛, ${defender.playerName}에게 가로막힙니다! (블록)`, ...]);
+}
+```
+**After**:
+```ts
+if (isBlock && defender) {
+    if (isHelpPlay) {
+        return pick([`위크사이드에서 넘어온 ${defender.playerName}, 완벽한 타이밍의 헬프 블락!`, ...]);
+    }
+    return pick([...기존...]);
+}
+```
+(스틸/파울도 동일 패턴)
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` →
+클라이언트 정상 빌드.
+
+**주의사항**: 이전 항목("헬프 디펜스 시스템 재설계")에서 논의만 하고 미구현으로 남은 항목이 있음 —
+`HITRATE_PENALTY`/`FOUL_BONUS`를 슬라이더 연동 없는 고정값(각각 0.033/0.006)으로 바꾸는 건
+(빈도는 슬라이더가, 강도는 개인 기량이 결정해야 한다는 원칙 논의까지는 끝났으나) 아직 코드 반영
+전. `STEAL_BONUS`는 이번에 커브 기반으로 완전히 교체되어 이 이슈가 해소됨.
+
+**롤백 방법**: 위 Before 블록으로 8개 파일(possessionHandler.ts/pbpTypes.ts/statsMappers.ts/
+textGenerator.ts × client/server) 되돌릴 것.
+
+---
+
+## 2026-07-30 — 헬프 디펜스 시스템 재설계 (헬퍼 선정 가중치, 파울 보너스 트리거, 체력 페널티 제거)
+
+**배경**: PostUp PLAYTYPE_MOD 재조정에 이어 헬프디펜스 확률 자체를 재점검. 세 가지를 순서대로 확정:
+
+1. **헬퍼 선정**: Rim/Paint 헬퍼 풀이 기존엔 C/PF/SF로 제한돼 있어 특정 빅맨에게 헬프 관여가
+   구조적으로 쏠렸음 — 전 포지션으로 열고, 선정 자체를 helpDefIq 가중 룰렛으로 변경(눈치 빠른
+   선수가 실제로 로테이션에 나설 확률부터 높아야 한다는 논의).
+2. **파울 보너스 트리거**: 기존엔 `helpAttempted && helpSuccess`(IQ×운동능력 게이트 통과)일 때만
+   파울 확률이 붙어서, "헬프에 성공할수록(=잘하는 선수일수록) 파울도 늘어나는" 역설이 있었음.
+   체력 페널티는 이미 "시도 자체"로 트리거되고 있었다는 점에 착안해 파울 보너스도
+   `helpAttempted`(시도 자체)만으로 트리거하도록 통일 — 성공 여부는 hitRate 감소/스틸 보너스에만
+   영향을 주고, 파울 위험은 "몸이 그 자리에 갔다"는 사실만으로 결정되도록 재정의. 발동 빈도가
+   늘어난 만큼 크기는 절반으로 재조정(1단계 +0.5%p~10단계 +2.0%p → +0.25%p~+1.0%p).
+3. **체력 페널티 제거**: 헬프 시도 시 체력 소모 배율(`DRAIN_MULT`, ×1.10~×1.25)을 완전히 삭제.
+   이 배율 하나만을 위해 존재하던 `isHelpDefender`/`helperPlayerId` 파라미터 체인도 함께 정리.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `HELP_DEFENSE.ZONE_POSITIONS`(Rim/Paint 전 포지션 확장), `FOUL_BONUS_BASE/PER_LEVEL`(절반 재조정),
+  `DRAIN_MULT_BASE/PER_LEVEL` 삭제
+- `services/game/engine/pbp/possessionHandler.ts` (client) / 서버 동일 — 헬퍼 선정을 helpDefIq 가중
+  룰렛으로, 파울 보너스 트리거를 `helpAttempted`만으로 변경
+- `services/game/engine/fatigueSystem.ts` (client) / 서버 동일 — `isHelpDefender` 파라미터 및
+  체력 배율 블록 삭제
+- `services/game/engine/pbp/stateUpdater.ts` (client) / 서버 동일 — `helperPlayerId` 파라미터 삭제
+- `services/game/engine/pbp/liveEngine.ts` (client) / 서버 동일 — `updateOnCourtStates` 호출부에서
+  `result.helpDefenderId` 인자 제거
+
+**Before** (헬퍼 선정, `possessionHandler.ts`):
+```ts
+ZONE_POSITIONS: { Rim: ['C','PF','SF'], Paint: ['C','PF','SF'], ... }
+...
+helpDefender = helperPool[Math.floor(Math.random() * helperPool.length)];
+```
+
+**After**:
+```ts
+ZONE_POSITIONS: { Rim: ['PG','SG','SF','PF','C'], Paint: ['PG','SG','SF','PF','C'], ... }
+...
+const totalHelpIq = helperPool.reduce((sum, p) => sum + Math.max(1, p.attr.helpDefIq), 0);
+let iqRoll = Math.random() * totalHelpIq;
+helpDefender = helperPool[helperPool.length - 1];
+for (const p of helperPool) {
+    iqRoll -= Math.max(1, p.attr.helpDefIq);
+    if (iqRoll <= 0) { helpDefender = p; break; }
+}
+```
+
+**Before** (파울 보너스 트리거):
+```ts
+if (helpAttempted && helpSuccess && (Rim/Paint)) { helpBonusRate = FOUL_BONUS_BASE(0.005) + ...; }
+```
+**After**:
+```ts
+if (helpAttempted && (Rim/Paint)) { helpBonusRate = FOUL_BONUS_BASE(0.0025) + ...; }
+```
+
+**Before** (체력 페널티, `fatigueSystem.ts`):
+```ts
+if (isHelpDefender) {
+    const helperDrainMult = DRAIN_MULT_BASE + (sliders.helpDef - 1) * DRAIN_MULT_PER_LEVEL;
+    drain *= helperDrainMult;
+}
+```
+**After**: 블록 전체 삭제, `isHelpDefender` 파라미터도 함께 삭제.
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일(신규 0건). `npx vite
+build` → 클라이언트 정상 빌드. `grep`으로 `DRAIN_MULT`/`isHelpDefender`/`helperPlayerId` 전체
+삭제 확인.
+
+**주의사항**: `PossessionResult.helpDefenderId` 필드 자체와 `possessionHandler.ts`의 각 return문에
+남아있는 `helpDefenderId` 할당은 그대로 남겨둠(더 이상 소비되진 않지만, 수십 개 return문을 건드리는
+큰 범위의 기계적 변경이라 이번 범위에서 제외 — 필요 시 별도로 정리 요청).
+
+**롤백 방법**: 위 Before 블록들로 6개 파일(constants.ts/possessionHandler.ts/fatigueSystem.ts/
+stateUpdater.ts/liveEngine.ts × client/server) 전부 되돌릴 것.
+
+---
+
+## 2026-07-30 — 논슈팅 파울 PostUp PLAYTYPE_MOD 재조정 (1.5%p → 0.6%p)
+
+**배경**: "32 TEST 2" 토너먼트에서 PF(개인파울) 상위 21위가 전부 센터, 그중 상당수가 고베어/AD/
+웸반야마/아데바요/클랙스턴 같은 엘리트 디펜더라는 제보에서 시작한 파울 시스템 재점검. 원인 추적
+중 `NON_SHOOTING_FOUL.PLAYTYPE_MOD`의 PostUp(+1.5%p, 전체 최고)이 지난 세션에 PostUp/PnR_Roll을
+센터 편중(60%/70%)으로 재설계하기 *전* 볼륨 기준으로 캘리브레이션된 값이라는 게 확인됨. 지금은
+PostUp의 공격 액터가 거의 항상 상대팀 최고 포스트 스코어러라, 수비도 자연히 우리 팀 최고
+림프로텍터가 맡게 되고 — "엘리트 vs 엘리트" 매치업이라 `matchupFoulMult`가 할인 없이(≈1.0)
+적용되는 경우가 급증. 즉 볼륨 증가 + 캘리브레이션 안 된 옛 보너스가 겹쳐서 이중으로 파울이
+쌓이는 구조였음. PnR_Roll(+1.0%p)은 재조정 없이 유지하기로 확정.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) —
+  `SIM_CONFIG.NON_SHOOTING_FOUL.PLAYTYPE_MOD.PostUp` 값만 변경
+
+**Before**: `PostUp: 0.015`
+**After**: `PostUp: 0.006`
+
+**검증**: `cd server && npx tsc -p tsconfig.json` → 기존 무관 에러 30건과 동일. `npx vite build` →
+클라이언트 정상 빌드.
+
+**참고**: 이번 파울 재점검에서 추가로 확인된, 아직 미해결인 이슈들 —
+(1) 헬프디펜스 파울 보너스가 헬프 성공률(엘리트 디펜더일수록 높음)과 상관관계가 있어 "수비를
+잘할수록 파울도 늘어나는" 역설 (2) 존 디펜스의 "Funnel inside shots to Bigs"(`possessionHandler.ts`
+36-47행)가 매치업 무관 무조건 앵커 고정이라 노출 볼륨을 늘림 (3) `tacticGenerator.ts`의 `helpDef`
+슬라이더가 팀의 최고 림프로텍션 스코어에 비례해 자동 상승, 엘리트 림프로텍터 보유 팀이 스스로
+그 선수의 헬프 노출을 극대화하는 자기강화 루프. 엘리트 디펜더 전용 파울회피 보너스(연속값 공식
+`intDef*0.35+blk*0.35+defConsist*0.30`, 또는 게임 기존 "High Tower" 태그 — DB `archetypes`
+테이블의 `rimProtection≥89` 기준, `interiorDefense*0.42+block*0.14+helpDefenseIQ*0.18+
+strength*0.12+vertical*0.08+defConsist*0.06`)도 논의됐으나 "미봉책"으로 판단해 보류.
+
+**롤백 방법**: 위 Before 값으로 2개 파일(constants.ts × client/server) 되돌릴 것.
+
+---
+
 ## 2026-07-29 — DriveKick 킵/킥아웃 분기를 드라이버 본인 스탯 기반으로 수정 (10개 플레이타입 점검 완료)
 
 **배경**: OffBallScreen에 이어 마지막 플레이타입 DriveKick 점검. 기존 코드는 "드라이버가 직접

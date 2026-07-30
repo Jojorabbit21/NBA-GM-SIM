@@ -469,7 +469,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Fast break
             const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
             // 속공 패스를 제공한 선수 (아웃렛/푸시어헤드 패스)
-            const outletPasser = pickPasser(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
+            // [2026-07-30] 정확도(passAcc) 없이 시야(passVision)만 반영돼 있어서, 요키치/르브론처럼
+            // 발은 느려도 정확도+시야로 풀코트 "터치다운 패스"를 꽂는 유형이 저평가됐음 — 둘을 평균낸
+            // touchdownQuality로 교체하고 비중도 0.3→0.5로 상향.
+            const outletPasser = pickPasser(p => {
+                const touchdownQuality = (p.attr.passVision + p.attr.passAcc) / 2;
+                return p.archetypes.connector + touchdownQuality * 0.5;
+            }, actor.playerId);
 
             // 속공 = Rim/Paint(resolveFinish) or 트랜지션 3점.
             const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders);
