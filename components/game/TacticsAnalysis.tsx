@@ -31,7 +31,7 @@ const SLIDER_LABELS: Record<string, string> = {
     ballMovement: '볼 무브먼트',
     offReb: '공격 리바운드',
     insideOut: '공격 포인트',
-    pnrFreq: 'P&R 의존도',
+    pnrFreq: '픽앤롤 빈도',
     shot_3pt: '3점슛 비중',
     shot_mid: '중거리슛 비중',
     shot_rim: '골밑슛 비중',

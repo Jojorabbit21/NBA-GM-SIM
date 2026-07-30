@@ -394,7 +394,7 @@ export const MotionSandboxPanel: React.FC = () => {
                         steps={SLIDER_STEPS.offReb} />
                     <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
                         steps={SLIDER_STEPS.insideOut} />
-                    <SliderControl label="P&R 의존도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
+                    <SliderControl label="픽앤롤 빈도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
                         steps={SLIDER_STEPS.pnrFreq} />
                 </div>
 
@@ -406,19 +406,19 @@ export const MotionSandboxPanel: React.FC = () => {
                         steps={SLIDER_STEPS.shot_3pt} />
                     <SliderControl label="골밑 공격 빈도" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
                         steps={SLIDER_STEPS.shot_rim} />
-                    <SliderControl label="중거리 슛 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
+                    <SliderControl label="미드레인지 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
                         steps={SLIDER_STEPS.shot_mid} />
                 </div>
 
                 <SliderGroupNotes notes={[
-                    { label: '페이스', text: '빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다.' },
-                    { label: '볼 회전', text: '패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다.' },
-                    { label: '공격 리바운드', text: '적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다.' },
-                    { label: '공격 포인트', text: '인사이드는 페인트존 공격(포스트업, 컷, 롤)을 강조합니다. 아웃사이드는 외곽 슈팅(캐치앤슛, 팝, 드라이브킥)을 강조합니다.' },
-                    { label: 'P&R 의존도', text: '높을수록 픽앤롤 관련 플레이(핸들러, 롤, 팝) 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적.' },
+                    { label: '페이스', text: '낮을수록 더 많은 샷클락을 소모합니다. 높을수록 트랜지션 공격의 빈도가 늘어나지만 더 많은 체력을 소모하며 턴오버 확률이 증가합니다. 발이 빠른 드라이버나 좋은 패서가 있다면 트랜지션이 유효할 수 있습니다.' },
+                    { label: '볼 회전', text: '낮을수록 코트 위에서 가장 뛰어난 선수에게 공격 기회를 몰아주어 더 많은 아이솔레이션과 포스트업을 시도하게 되며 팀의 전체적인 어시스트가 줄어들 수 있습니다. 반대로 높을수록 핸드오프 액션, 캐치앤슛, 컷인 등 패스 플레이를 더 많이 시도합니다.' },
+                    { label: '공격 리바운드', text: '낮을수록 공격 리바운드 경합에 적은 선수가 참여하고 빠르게 백코트를 시도합니다. 높을수록 더 많은 선수들이 공격 리바운드를 잡기 위해 달려들게 되지만 만약 공격 리바운드를 잡는데 실패한다면 상대방의 속공에 당할 확률이 높아집니다.' },
+                    { label: '공격 포인트', text: '코트의 어느 부분을 공략할지를 결정합니다. 낮을수록 골밑과 가까운 쪽의 공격을 더 많이 시도하며 반대로 높을수록 외곽 공격의 비중이 높아집니다. 강력한 빅맨이 있다면 슬라이더를 낮게, 뛰어난 가드가 있다면 슬라이더를 높게 유지하는 것이 도움이 될 수 있습니다.' },
+                    { label: '픽앤롤 빈도', text: '픽앤롤을 얼마나 자주 실행할지를 결정합니다. 픽앤롤은 롤/팝/핸들러로 나뉘며 이것의 비중은 다른 공격 슬라이더들에 의해 결정됩니다. 예를 들어 픽앤롤 빈도를 높게 설정하고 공격 포인트를 높게 설정하면 스크리너는 림으로 쇄도하지 않고 픽앤팝을 더 많이 시도합니다.' },
                     { label: '3점 슛 빈도', text: '팀의 3점 시도 빈도를 결정합니다.' },
                     { label: '골밑 공격 빈도', text: '가장 효율적인 슛 구역으로, 드라이브/컷 능력과 연계됩니다.' },
-                    { label: '중거리 슛 빈도', text: '중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요.' },
+                    { label: '미드레인지 빈도', text: '중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요.' },
                 ]} />
             </div>
         </div>

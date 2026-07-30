@@ -189,6 +189,24 @@ export const SIM_CONFIG = {
         // Rim/Paint/Mid는 큰 폭으로, 3PT는 상대적으로 적게 낮춰 가드 쪽 영향은 최소화.
         ZONE_CURVE_SCALE: { 'Rim': 0.6, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
 
+        // [2026-07-30] 수비자 파울회피 스킬 커브 — 지금까지 슈터의 drFoul(파울유도)만 반영되고
+        // 수비자의 컨테스트 기술은 전혀 반영되지 않았음(랜덤 성향 foulProneness 제외). 존 기준으로
+        // 분리(포지션 기준 아님) — DEF_INTENSITY_MATCHUP_CURVE_INTERIOR/PERIMETER와 동일한 축 재사용.
+        // 포지션 대신 존으로 나누면 스위치/미스매치(가드가 림에서 빅을 대신 막는 경우 등)도 자연스럽게
+        // 처리됨 — 실측: defConsist(정지 자세 유지력)는 포지션 무관 69~72로 균일(순수 기술/절제력
+        // 특성), intDef/perDef만 포지션별로 갈림 → 존별 주력 스탯(intDef/perDef) + 공용 defConsist로 블렌드.
+        // 중립점은 각 존을 실제로 지키는 포지션군의 블렌드 평균으로 앵커(인테리어=C/PF, 퍼리미터=PG/SG/SF).
+        INTERIOR_SKILL_CURVE: [   // Rim/Paint 전용 — intDef*0.65 + defConsist*0.35
+            // [2026-07-30] 88/93/97 상위권 강화(-0.035/-0.050/-0.065 → -0.05/-0.065/-0.09) — 최상위
+            // 림프로텍터(올라주원/고베어/카림 등)에게 더 뚜렷한 파울 감소 혜택을 주기 위해 사용자 확정.
+            [45, 0.025], [60, 0.010], [72, 0.000],
+            [82, -0.020], [88, -0.05], [93, -0.065], [97, -0.09],
+        ] as [number, number][],
+        PERIMETER_SKILL_CURVE: [  // Mid/3PT 전용 — perDef*0.65 + defConsist*0.35
+            [45, 0.025], [55, 0.012], [71, 0.000],
+            [80, -0.012], [86, -0.022], [92, -0.035], [97, -0.045],
+        ] as [number, number][],
+
         // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
         // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
         // 대칭화 — 새 center(5.5)까지 거리(4.5)로 나눠 동일한 3.0%p 최댓값을 재현한다.
@@ -383,6 +401,20 @@ export const SIM_CONFIG = {
         HITRATE_PENALTY: 0.033,
         FOUL_BONUS: 0.006,
     },
+    // [2026-07-30] PostUp 크로스매치 — PostUp은 스크린이 없어 기존 switchFreq 로직(isScreenPlay)
+    // 적용 대상이 아니라서, actor가 C일 때 상대 C가 100% 고정으로 막아왔음(전가 메커니즘 0%).
+    // 실제 NBA에선 약측 프론트/더블로 PF가 일부 분담 — 이걸 반영. HELP_DEFENSE와 동일하게 BASE +
+    // helpDef 슬라이더 연동이되, 슬라이더=1(최소)이어도 하한(BASE)은 항상 적용되도록 설계 —
+    // "헬프디펜스 안 쓰는 팀 빅맨은 파울트러블에서 전혀 못 벗어난다"는 문제 재발 방지.
+    POST_CROSS_MATCH: {
+        BASE: 0.15,          // helpDef=1이어도 최소 15%는 PF에게 전가
+        PER_LEVEL: 0.20 / 9, // 10단계 최대 35%
+    },
+    // [2026-07-30] PnR_Roll 전용 스위치 하한 — tacticGenerator.ts에서 엘리트 림프로텍터 보유팀은
+    // switchFreq가 5로 캡핑됨(전략적으로 합리적, 캡은 유지). 그 결과 PnR_Roll의 전가 확률도 최대
+    // 25%로 묶이는데, switchFreq를 그보다 낮게 잡은 보수적인 팀은 더 적어짐 — PnR_Roll에 한해서만
+    // 최소 전가를 보장(다른 스크린 플레이는 영향 없음).
+    PNR_ROLL_SWITCH_MIN: 0.15,
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {
         // 인테리어 억제 (기존 유지, Rim/Paint/Mid 한정 — 기존엔 전 구역 적용 버그)

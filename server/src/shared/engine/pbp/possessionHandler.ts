@@ -81,6 +81,18 @@ function identifyDefender(
         defender = defTeam.onCourt.length > 0 ? defTeam.onCourt[0] : undefined;
     }
 
+    // 2.5 PostUp Cross-Match (client 미러 참고) — BASE 하한 + helpDef 슬라이더 가산
+    if (playType === 'PostUp' && !isZone && defender && defender.position === 'C') {
+        const crossCfg = SIM_CONFIG.POST_CROSS_MATCH;
+        const crossMatchChance = crossCfg.BASE + (sliders.helpDef - 1) * crossCfg.PER_LEVEL;
+        if (Math.random() < crossMatchChance) {
+            const crossDef = defTeam.onCourt.find(p => p.position === 'PF' && p.playerId !== defender!.playerId);
+            if (crossDef) {
+                return { defender: crossDef, isSwitch: true, isBotchedSwitch: false, pnrCoverage: 'none' };
+            }
+        }
+    }
+
     // 3. Switch Logic
     // Driven by 'switchFreq' slider (1-10)
     // 1 = 5%, 5 = 25%, 10 = 50% base switch chance on screens
@@ -90,7 +102,10 @@ function identifyDefender(
     const screenPlayer = screener || secondaryActor;
 
     if (isScreenPlay && !isZone && screenPlayer) {
-        const switchChance = sliders.switchFreq * 0.05;
+        // [2026-07-30] PnR_Roll 전용 스위치 하한 (client 미러 참고)
+        const switchChance = playType === 'PnR_Roll'
+            ? Math.max(sliders.switchFreq * 0.05, SIM_CONFIG.PNR_ROLL_SWITCH_MIN)
+            : sliders.switchFreq * 0.05;
 
         if (Math.random() < switchChance) {
             // Find screener's defender
@@ -514,6 +529,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
     const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
     shootingFoulRate += drawFoulBonus * zoneScale;
+
+    // [2026-07-30] 수비자 파울회피 스킬 커브 (client 미러 참고) — 존 기준(포지션 무관) 분리
+    const isInteriorZone = preferredZone === 'Rim' || preferredZone === 'Paint';
+    const defenderSkill = isInteriorZone
+        ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35
+        : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+    const defenderSkillCurve = isInteriorZone ? sFoulCfg.INTERIOR_SKILL_CURVE : sFoulCfg.PERIMETER_SKILL_CURVE;
+    shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale;
 
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;

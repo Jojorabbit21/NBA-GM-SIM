@@ -35,6 +35,407 @@
 
 ---
 
+## 2026-07-30 — PnR_Roll 전용 스위치 하한 도입
+
+**배경**: PostUp 크로스매치(바로 아래 항목) 이후 PnR_Roll도 논의. PnR_Roll은 PostUp과 달리
+`isScreenPlay` 목록에 포함돼 스위치 메커니즘 자체는 이미 존재(스위치 발동 시 핸들러를 막던 가드가
+롤러를 대신 막음 — foul 노출이 C에서 가드로 자연스럽게 이동). 문제는 `tacticGenerator.ts:320`의
+`if (maxOf(rimProtScore) >= 88) switchFreq = clamp(Math.min(switchFreq, 5))` — 엘리트 림프로텍터
+보유팀은 switchFreq가 5로 캡핑돼 스위치 확률이 최대 25%(`5×0.05`)로 묶임. 이 캡 자체는 "엘리트
+수비수를 함부로 스위치 안 시킨다"는 합리적 전략이라 유지하기로 하고, 대신 **PnR_Roll에 한해서만**
+스위치 확률에 별도 하한을 둬서 캡보다 더 낮게 잡힌 보수적 전술에서도 최소 전가를 보장하기로 함.
+POST_CROSS_MATCH와 동일한 설계 철학(슬라이더 종속으로 완전히 0에 수렴하지 않도록 하한 확보).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `PNR_ROLL_SWITCH_MIN: 0.15` 신규 추가 (POST_CROSS_MATCH 블록 바로 아래)
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — `identifyDefender()`의 "3. Switch Logic" 섹션, `switchChance` 계산식을 PnR_Roll
+  전용 분기로 변경 (다른 스크린 플레이는 기존 `switchFreq*0.05` 그대로 유지)
+
+**Before**:
+```ts
+if (isScreenPlay && !isZone && screenPlayer) {
+    const switchChance = sliders.switchFreq * 0.05;
+    ...
+```
+
+**After**:
+```ts
+if (isScreenPlay && !isZone && screenPlayer) {
+    const switchChance = playType === 'PnR_Roll'
+        ? Math.max(sliders.switchFreq * 0.05, SIM_CONFIG.PNR_ROLL_SWITCH_MIN)
+        : sliders.switchFreq * 0.05;
+    ...
+```
+
+**동작**: `switchFreq=5`(캡 걸린 상태, 25%)에선 하한(15%) 미만이 아니므로 발동 안 함 — 이 하한은
+switchFreq를 5보다도 낮게 잡은 팀에서만 실제로 작동. Handoff/OffBallScreen/PnR_Handler/PnR_Pop 등
+다른 스크린 플레이는 영향 없음.
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드.
+
+**롤백 방법**: `switchChance` 계산식을 Before로 되돌리고, `constants.ts`의 `PNR_ROLL_SWITCH_MIN` 제거.
+
+---
+
+## 2026-07-30 — PostUp 크로스매치 도입 (C→PF 수비 배정 일부 전가)
+
+**배경**: 슈팅파울 확률 커브(수비자 스킬)를 도입했음에도, "32 TEST 3" 실측에서 확인된 C의 림/페인트
+수비 노출량 자체(PF 대비 4배 이상, 림 컨테스트 8.37 vs 1.99)는 그대로 남아있음을 사용자가 재확인.
+원인은 `identifyDefender()`에서 PostUp이 `isScreenPlay` 목록(스위치 로직 대상)에서 빠져있어 —
+actor가 C면 상대 C가 스위치/전가 없이 100% 고정으로 막음. 처음엔 "PF에게 전가하는 비율을 helpDef
+슬라이더로만 결정"하는 안을 검토했으나, 슬라이더를 낮게 잡은 팀은 전가가 0에 수렴해 "헬프디펜스 안
+쓰는 팀 빅맨은 파울트러블에서 전혀 못 벗어난다"는 근본 문제가 재발함을 사용자가 지적 — `HELP_DEFENSE`
+(ATTEMPT_BASE+PER_LEVEL)와 동일하게 **BASE 하한 + helpDef 슬라이더 가산** 구조로 설계, 사용자가
+BASE=15%/최대=35%로 확정.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `POST_CROSS_MATCH: { BASE: 0.15, PER_LEVEL: 0.20/9 }` 신규 추가 (HELP_DEFENSE 블록 바로 아래)
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — `identifyDefender()`에 "2.5 PostUp Cross-Match" 단계 신규 추가 (2. 기본 매칭 이후,
+  3. 스위치 로직 이전 — Ace Stopper가 명시 지정된 경우는 1번에서 이미 반환되어 크로스매치 대상 제외)
+
+**Before**: (해당 로직 없음 — PostUp은 2번 기본 포지션 매칭 결과를 그대로 반환)
+
+**After**:
+```ts
+// 2.5 PostUp Cross-Match
+if (playType === 'PostUp' && !isZone && defender && defender.position === 'C') {
+    const crossCfg = SIM_CONFIG.POST_CROSS_MATCH;
+    const crossMatchChance = crossCfg.BASE + (sliders.helpDef - 1) * crossCfg.PER_LEVEL;
+    if (Math.random() < crossMatchChance) {
+        const crossDef = defTeam.onCourt.find(p => p.position === 'PF' && p.playerId !== defender!.playerId);
+        if (crossDef) {
+            return { defender: crossDef, isSwitch: true, isBotchedSwitch: false, pnrCoverage: 'none' };
+        }
+    }
+}
+```
+
+**동작**: `helpDef=1`(최소)일 때도 15%는 PF 전가, `helpDef=5.5`(중립) ~24.4%, `helpDef=10`(최대) 35%.
+PostUp에서 actor가 C이고 상대 팀 매칭 수비수도 C일 때만 발동 — PF가 온코트에 없으면(예: 빅맨 2명이
+C+C인 라인업) 발동 안 하고 원래 매칭 유지.
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드.
+
+**롤백 방법**: `possessionHandler.ts`의 "2.5 PostUp Cross-Match" 블록 삭제, `constants.ts`의
+`POST_CROSS_MATCH` 제거.
+
+---
+
+## 2026-07-30 — INTERIOR_SKILL_CURVE 상위권 강화 (바로 아래 항목 후속 조정)
+
+**배경**: 바로 아래 항목에서 도입한 수비자 파울회피 스킬 커브의 88/93/97 구간을 사용자가 직접
+더 강하게 조정 — 최상위 림프로텍터(올라주원/고베어/카림)에게 더 뚜렷한 파울 감소 혜택을 주기 위함.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server)
+  — `SHOOTING_FOUL.INTERIOR_SKILL_CURVE`의 88/93/97 지점 값만 변경 (45/60/72/82는 그대로)
+
+**Before**: `[88, -0.035], [93, -0.050], [97, -0.065]`
+**After**: `[88, -0.05], [93, -0.065], [97, -0.09]`
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 이론값 — 올라주원(블렌드96.3)
+Rim 파울확률 16%→10.86%(기존 12.26%에서 추가 하락), 고베어(95.0) 16%→11.35%, 카림(95.7) 16%→11.09%.
+KAT/부셰비치(중립점 이하)는 무변화 유지.
+
+**롤백 방법**: `INTERIOR_SKILL_CURVE`의 88/93/97 값을 Before로 되돌리면 됨.
+
+---
+
+## 2026-07-30 — 슈팅파울: 수비자 파울회피 스킬 커브 신규 도입 (엘리트 빅맨 파울트러블 개선)
+
+**배경**: "32 TEST 3" 실측 데이터에서 C 포지션 PF/36이 4.56으로 PF(2.23)의 2배, 스몰포지션(1.15~1.63)의
+3~4배에 달함을 확인. 특히 올라주원/고베어/카림 압둘자바/유잉이 나란히 경기당 평균 5.33파울(사실상
+매 경기 파울아웃 직전). 코드 추적 결과 `identifyDefender()`의 포지션 1:1 매칭 + `POSITION_WEIGHT`
+(PostUp C60%, PnR_Roll C70%)가 겹쳐 C의 림/페인트 수비 노출량이 PF의 4배 이상(실측: 림 컨테스트
+8.37 vs 1.99)임을 확인 — 노출량(볼륨) 차이만으로 관측된 PF/36 격차 대부분이 설명됨. 사용자가
+"슛 개수(공격 배분)는 건드리지 않는다"는 전제를 명확히 함에 따라, 노출량 재분배 대신 슈팅파울
+확률식 자체의 비대칭을 조사 — 슈터의 파울유도 스킬(`drFoul`)은 `DRAW_FOUL_CURVE`로 반영되는데
+**수비자의 컨테스트 기술은 어디에도 반영되지 않고 있었음**(랜덤 성향 `foulProneness` 제외). DB
+확인 결과 올라주원(intDef97/defConsist95)과 KAT(intDef72/defConsist68)처럼 수비 기술 격차가 큰
+선수들이 동일한 파울 확률을 적용받고 있었음 — 실제 NBA에서 고베어류 엘리트 림프로텍터가 "컨테스트
+볼륨 대비 파울은 적게 범한다"(버티컬리티 기술)는 특성이 전혀 모델링되지 않은 것.
+
+포지션이 아니라 **수비 존(Rim/Paint vs Mid/3PT) 기준**으로 공식을 분리하기로 결정 — 이미 코드에
+`DEF_INTENSITY_MATCHUP_CURVE_INTERIOR`(intDef)/`_PERIMETER`(perDef) 패턴이 있어 일관성 유지,
+스위치/미스매치(가드가 림에서 빅 대신 막는 경우 등)도 별도 분기 없이 자연스럽게 처리됨. DB 실측
+결과 `defConsist`(정지 자세 유지력)는 포지션 무관 69~72로 균일(순수 기술/절제력 특성)한 반면
+`intDef`/`perDef`는 포지션별로 크게 갈림(intDef: C 76.5 → PG 46.0) → 존별 주력 스탯 + 공용
+`defConsist` 블렌드로 설계. 이 기능은 팀 전술 슬라이더(helpDef 등)와 무관하게 항상 적용되어,
+이전에 검토했던 "슬라이더 종속적 완화책"이나 예전에 기각된 "High Tower 태그" 방식과 달리 연속
+능력치 기반으로 항상 작동함.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SHOOTING_FOUL`에 `INTERIOR_SKILL_CURVE`/`PERIMETER_SKILL_CURVE` 신규 추가
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — 3. Shooting Foul Check 섹션에 수비자 스킬 블렌드(`intDef*0.65+defConsist*0.35` 인테리어 /
+  `perDef*0.65+defConsist*0.35` 퍼리미터) → 커브 보정 → `zoneScale` 곱 → `shootingFoulRate`에 가산
+
+**Before**:
+```ts
+const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
+const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
+shootingFoulRate += drawFoulBonus * zoneScale;
+
+// defIntensity 보정...
+```
+
+**After**:
+```ts
+const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
+const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
+shootingFoulRate += drawFoulBonus * zoneScale;
+
+// 수비자 파울회피 스킬 커브 — 존 기준(포지션 무관) 분리
+const isInteriorZone = preferredZone === 'Rim' || preferredZone === 'Paint';
+const defenderSkill = isInteriorZone
+    ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35
+    : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+const defenderSkillCurve = isInteriorZone ? sFoulCfg.INTERIOR_SKILL_CURVE : sFoulCfg.PERIMETER_SKILL_CURVE;
+shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale;
+
+// defIntensity 보정...
+```
+
+**커브 값 (신규)**:
+```ts
+INTERIOR_SKILL_CURVE: [   // Rim/Paint — 중립점 72 (C/PF 인테리어 블렌드 평균)
+    [45, 0.025], [60, 0.010], [72, 0.000],
+    [82, -0.020], [88, -0.035], [93, -0.050], [97, -0.065],
+],
+PERIMETER_SKILL_CURVE: [  // Mid/3PT — 중립점 71 (PG/SG/SF 퍼리미터 블렌드 평균)
+    [45, 0.025], [55, 0.012], [71, 0.000],
+    [80, -0.012], [86, -0.022], [92, -0.035], [97, -0.045],
+],
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 이론값 계산 — 올라주원(블렌드96.3)
+Rim 파울확률 16%→12.26%(-23% 상대), Paint 10%→6.88%(-31% 상대). KAT(블렌드70.6)는 16.07%/10.06%로
+사실상 무변화(중립점 근처). 의도한 대로 "진짜 수비 기술이 뛰어난 선수만 혜택, 덩치만 큰 빅맨은
+그대로"라는 목표와 일치.
+
+**롤백 방법**: Before 블록으로 되돌리고, constants.ts의 `INTERIOR_SKILL_CURVE`/`PERIMETER_SKILL_CURVE`
+2개 제거.
+
+---
+
+## 2026-07-30 — 전술 슬라이더 우측 상단 라벨 텍스트화 + 슬라이더 2종 이름 변경
+
+**배경**: 전술 슬라이더(페이스/볼회전/공격리바운드/공격포인트/픽앤롤빈도/3점·골밑·미드레인지 빈도/
+수비압박/스위치수비/풀코트프레스/헬프수비/지역방어/수비리바운드) 우측 상단에 값(1~10) 숫자만
+표시되던 것을, 사용자가 지정한 구간별(1 / 2~4 / 5~6 / 7~9 / 10) 한국어 라벨로 교체해달라는 요청.
+동시에 "P&R 의존도" → "픽앤롤 빈도", "중거리 슛 빈도" → "미드레인지 빈도"로 슬라이더 이름 자체도
+변경. 엔진 계산에 쓰이는 `value`(1~10)는 그대로 두고 `label`(표시 텍스트)만 교체 — 엔진 로직/공식에는
+영향 없음.
+
+**변경 파일**:
+- `services/game/config/sliderSteps.ts` (client) / `server/src/shared/game/config/sliderSteps.ts`
+  (server 미러) — 기존 `TEN_STEPS`(모든 슬라이더가 `label: String(i+1)` 공유)를 슬라이더별
+  `buildTieredSteps(v1, v2to4, v5to6, v7to9, v10)` 호출로 교체. `shot_3pt`/`shot_rim`/`shot_mid`는
+  동일 5단계(매우 낮음/낮음/보통/높음/매우 높음) 공유하는 `FREQUENCY_STEPS`로 통합.
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — `pnrFreq` 슬라이더 라벨
+  "P&R 의존도"→"픽앤롤 빈도", `shot_mid` 라벨 "중거리 슛 빈도"→"미드레인지 빈도"
+  (SliderControl label prop + SliderGroupNotes label 둘 다)
+- `components/game/tabs/LiveTacticsTab.tsx` — 동일 리네임 (`shot_mid`는 기존 "중거리 슛"→"미드레인지 빈도")
+- `components/physics-lab/MotionSandboxPanel.tsx` — 동일 리네임 (물리 실험용 슬라이더 패널)
+- `components/game/TacticsAnalysis.tsx` — `SLIDER_LABELS.pnrFreq` "P&R 의존도"→"픽앤롤 빈도"
+  (경기 후 전술 비교 분석 화면, 동일 키 표시용 텍스트라 함께 통일)
+
+**Before** (`sliderSteps.ts`):
+```ts
+const TEN_STEPS: SliderStep[] = Array.from({ length: 10 }, (_, i) => ({
+    value: i + 1,
+    label: String(i + 1),
+}));
+
+export const SLIDER_STEPS: Record<string, SliderStep[]> = {
+    pace: TEN_STEPS,
+    ballMovement: TEN_STEPS,
+    // ... 전체 14개 키 모두 TEN_STEPS 공유
+};
+```
+
+**After** (`sliderSteps.ts`):
+```ts
+function buildTieredSteps(v1: string, v2to4: string, v5to6: string, v7to9: string, v10: string): SliderStep[] {
+    const labels = [v1, v2to4, v2to4, v2to4, v5to6, v5to6, v7to9, v7to9, v7to9, v10];
+    return labels.map((label, i) => ({ value: i + 1, label }));
+}
+
+export const SLIDER_STEPS: Record<string, SliderStep[]> = {
+    pace: buildTieredSteps('정돈된 공격', '지공 위주', '보통', '속공 위주', '런앤건'),
+    ballMovement: buildTieredSteps('히어로볼', '아이솔레이션', '보통', '패스 위주', '시스템 농구'),
+    offReb: buildTieredSteps('전원 크래시', '적극 가담', '보통', '빠른 백코트', '시도하지 않음'),
+    insideOut: buildTieredSteps('페인트존 공략', '인사이드', '균형', '아웃사이드', '3점 선호'),
+    pnrFreq: buildTieredSteps('픽앤롤 사용하지 않음', '보다 적은 픽앤롤', '보통', '보다 많은 픽앤롤', '적극적 픽앤롤 사용'),
+    shot_3pt: FREQUENCY_STEPS, shot_rim: FREQUENCY_STEPS, shot_mid: FREQUENCY_STEPS, // 매우 낮음~매우 높음
+    defIntensity: buildTieredSteps('거의 압박하지 않음', '적은 압박', '적당히 압박', '다소 강한 압박', '매우 강한 압박'),
+    switchFreq: buildTieredSteps('스위치 하지 않음', '보다 적은 스위치', '적당한 스위치', '잦은 스위치', '무한 스위치'),
+    fullCourtPress: buildTieredSteps('매우 낮은 압박', '낮은 압박 강도', '적당한 압박 강도', '강한 전방 압박', '하프코트 더블팀'),
+    helpDef: buildTieredSteps('도움 수비 없음', '자기 위치 고수', '균형', '적극적 도움 수비', '강한 도움 수비'),
+    zoneFreq: buildTieredSteps('강한 맨투맨 커버리지', '적당한 맨투맨 커버리지', '상황에 따름', '존 디펜스 고수', '강한 존 디펜스'),
+    defReb: buildTieredSteps('전원 트랜지션 전환', '보다 적은 리바운더', '보통', '더 많은 리바운더', '적극적 박스아웃'),
+};
+```
+
+**검증**: 로컬 tsconfig 미존재(프로젝트가 vite/esbuild만 사용) — `tsc --noEmit` 대신 `git diff --stat`으로
+변경 범위(6개 파일, client/server 미러 동일 diff) 확인. `valueToStep`/`stepToValue`는 `.value` 필드만
+참조하므로 라벨 텍스트 변경이 엔진 계산(회전율/확률 등)에 영향 없음.
+
+**롤백 방법**: Before 블록 내용으로 `sliderSteps.ts`(client+server 둘 다) 되돌리고, 4개 컴포넌트 파일에서
+"픽앤롤 빈도"→"P&R 의존도", "미드레인지 빈도"→"중거리 슛 빈도"(LiveTacticsTab은 "중거리 슛")로 되돌리면 됨.
+
+---
+
+## 2026-07-30 — 전술 슬라이더 하단 설명 문구(SliderGroupNotes) 전면 교체
+
+**배경**: 위 항목(라벨 텍스트화)에 이어, 슬라이더 하단 설명 문구도 한 줄짜리 축약 설명에서
+사용자가 직접 작성한 상세 설명(낮을 때/높을 때 각각의 효과, 어떤 선수 유형에게 유리한지 등)으로
+교체해달라는 요청. 사용자가 명시한 12개 슬라이더(페이스/볼회전/공격리바운드/공격포인트/
+픽앤롤빈도/수비압박강도/스위치수비/픽앤롤수비/풀코트프레스/헬프수비/지역방어/수비리바운드)만
+교체하고, 언급되지 않은 3점·골밑·미드레인지 슛 빈도 설명은 기존 문구 유지.
+
+**변경 파일**:
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — `SliderGroupNotes notes` 15개 항목 중
+  12개 text 교체 (label 문자열은 변경 없음)
+- `components/game/tabs/LiveTacticsTab.tsx` — 동일 12개 text 교체 (이 파일은 label이
+  "골밑 공격"/"수비 압박"으로 축약되어 있어 label 자체는 그대로 두고 text만 교체)
+- `components/physics-lab/MotionSandboxPanel.tsx` — 공격 슬라이더 5개(페이스/볼회전/
+  공격리바운드/공격포인트/픽앤롤빈도)만 text 교체 (이 패널은 수비 슬라이더 미포함)
+
+**Before/After**: 라인 수가 많아 git diff로 확인 권장 (`git show <commit> -- components/dashboard/tactics/TacticsSlidersPanel.tsx`).
+텍스트만 교체, `label` 키/구조는 변경 없음 — 엔진 로직/공식과 무관한 순수 설명 문구.
+
+**검증**: 순수 문자열 리터럴 교체(구조 변경 없음)이므로 `git diff --stat`으로 변경 파일 범위만 확인.
+
+**롤백 방법**: 해당 커밋을 `git revert`하거나, 각 파일의 `SliderGroupNotes notes` 배열을 이전 커밋
+버전으로 되돌리면 됨.
+
+---
+
+## 2026-07-30 — 플레이타입 분석 차트: 정렬 버그 수정 + 슈팅 존 선호도 섹션 삭제 + 그리드라인 추가
+
+**배경**: 직전 항목(막대 하단 라벨 표시)에서 실제 화면을 보니, 라벨이 1줄/2줄로 컬럼마다 줄바꿈
+개수가 달라 `%` 수치 행이 지그재그로 어긋나 보이는 버그 발견("들쑥날쑥 못생겼다" 피드백). 원인은
+`% 수치 → 막대 → 라벨`을 하나의 `flex flex-col` 컬럼 안에 넣고, 부모 행을 `items-end`로 정렬한 것
+— 라벨 줄바꿈 수가 다르면 컬럼 전체 높이가 달라지고, `items-end`가 그 차이를 컬럼 "위쪽"에
+여백으로 흡수하면서 `%` 수치가 컬럼마다 다른 높이에 위치하게 됨. 동시에 사용자가 우측 "슈팅 존
+선호도"(슬라이더 vs 로스터 성향 비교) 섹션은 의미 없는 데이터라 삭제 요청, 플레이타입 분석 영역을
+그만큼 확장, 심플한 그리드라인 추가도 함께 요청.
+
+**변경 파일**:
+- `components/dashboard/tactics/charts/PlayTypePPP.tsx` — 전면 재작성.
+  - `ZONES`/`zoneComparison`/`calculatePlayerOvr` import 및 우측 "슈팅 존 선호도" JSX 전부 삭제,
+    `roster` prop도 더 이상 쓰이지 않아 인터페이스에서 제거
+  - 정렬 버그 수정: 컬럼 단위 `flex-col`(%+막대+라벨을 한 덩어리로 묶음) 구조를 버리고,
+    `% 수치 행` / `막대 행` / `라벨 행` 3개의 독립된 `flex` 행으로 분리. 각 행은 자기 자신의 flex
+    아이템들 사이에서만 정렬되므로, 라벨 행의 줄바꿈 수가 달라져도 위의 수치 행·막대 행 정렬에
+    전혀 영향을 주지 않음
+  - 막대 행(`h-[150px]`)에 `absolute inset-0 flex flex-col justify-between` 컨테이너로 5개의
+    수평 그리드라인(`bg-slate-800` 1px, 0/25/50/75/100% 등간격) 추가, 막대는 `z-10`으로 그 위에 렌더
+  - 좌우 분할이 없어져 컴포넌트 전체가 부모 너비를 그대로 사용 (기존 `flex-1` 50/50 분배 → 단일
+    `flex flex-col` 풀와이드)
+- `components/dashboard/tactics/TacticsDataPanel.tsx` — `<PlayTypePPP sliders={sliders} roster={roster} />`
+  → `<PlayTypePPP sliders={sliders} />` (roster prop 제거), 섹션 주석 "Play Type Analysis + Shot Zone
+  Comparison" → "Play Type Analysis"
+
+**Before** (정렬 버그 유발 구조):
+```tsx
+<div className="flex items-end gap-1.5 w-full">
+  {data.map(item => (
+    <div className="flex-1 min-w-0 flex flex-col items-center">
+      <span>{item.distribution}%</span>
+      <div className="w-full h-[150px] flex items-end"><div style={{height:pct%}} /></div>
+      <span>{item.label}</span>  {/* 줄바꿈 수 컬럼마다 다름 → items-end가 위쪽 여백으로 흡수 */}
+    </div>
+  ))}
+</div>
+```
+
+**After** (3행 분리 구조):
+```tsx
+<div className="flex gap-1.5">{/* 수치 행 */}</div>
+<div className="relative flex items-end gap-1.5 h-[150px]">{/* 그리드라인 + 막대 행 */}</div>
+<div className="flex gap-1.5">{/* 라벨 행 — 줄바꿈 무관하게 독립적 */}</div>
+```
+
+**검증**: dev 서버 curl 200 확인. 브라우저 시각 확인은 도구 제약으로 미수행 — 정렬이 실제로
+고쳐졌는지 사용자 확인 필요.
+
+**롤백 방법**: Before 블록 구조로 복원하고, `TacticsDataPanel.tsx`의 `PlayTypePPP` 호출에
+`roster={roster}` 다시 추가 + 삭제된 `ZONES`/`zoneComparison`/우측 패널 JSX 복원(바로 위 항목의
+Before/After 참고).
+
+---
+
+## 2026-07-30 — 플레이타입 분석 차트: 우측 범례 제거, 막대 하단에 라벨/수치 표시
+
+**배경**: 바로 아래 항목(도넛→수직 바 교체) 직후, 바 그래프 옆에 남아있던 "PlayType + Share" 2열
+범례 리스트가 중복 정보라 제거하고 대신 각 막대 하단에 라벨(플레이타입 이름)을 직접 표시해달라는
+요청. 막대 위 % 수치 표시는 유지.
+
+**변경 파일**:
+- `components/dashboard/tactics/charts/PlayTypePPP.tsx` — 우측 `grid grid-cols-2` 범례 블록(색상
+  점+라벨+% 10개 항목) 삭제. 좌측 "플레이타입 분석" 컬럼을 `flex-1`로 변경해 우측 "슈팅 존 선호도"
+  컬럼과 50/50 폭 분배(기존엔 범례가 붙어 있어 좌측 폭이 고정 `w-[200px]`+legend였음). 막대 컬럼
+  구조를 `% 수치(위) → 고정높이 h-[150px] 바 래퍼(중간) → 라벨 텍스트(아래)` 3단으로 재구성,
+  각 컬럼에 `min-w-0` 추가(10개 flex-1 항목이 좁은 폭에서도 정상적으로 줄어들도록 — 없으면 긴
+  라벨 때문에 flex blowout 발생 가능).
+
+**Before**: 막대 옆에 "색상점 + 라벨 + %" 2열 grid 범례가 별도로 존재, 막대 자체엔 % 수치만 표시.
+
+**After**: 범례 제거, 막대마다 위에는 %, 아래에는 라벨을 직접 표시하는 자기완결형 바 차트.
+
+**검증**: dev 서버 curl 200 확인. 브라우저 시각 확인은 도구 제약으로 미수행 — 사용자 직접 확인 요망.
+
+**롤백 방법**: 우측 grid 범례 블록을 되살리고 좌측 컬럼을 `flex-1` → 원래 클래스(`flex flex-col
+gap-3`, 폭 고정 없음)로, 막대 컨테이너를 `w-[200px] h-[200px]`+`shrink-0`로 되돌리면 됨.
+
+---
+
+## 2026-07-30 — 플레이타입 분석 차트: 도넛 → 수직 바 그래프 교체
+
+**배경**: 전술화면(TacticsDataPanel) "플레이타입 분석" 섹션이 SVG 도넛 차트로 10개 플레이타입
+분포를 보여주고 있었는데, 사용자가 도넛 대신 수직 바 그래프로 바꿔달라고 요청. 엔진 로직/데이터
+소스(`getPlayTypeDistribution`)는 변경 없이 시각화 형태만 교체.
+
+**변경 파일**:
+- `components/dashboard/tactics/charts/PlayTypePPP.tsx` — SVG `<circle>` 기반 도넛(stroke-dasharray
+  세그먼트)을 제거하고, `data.map`으로 10개 막대를 `flex items-end` 컨테이너에 렌더링하는 수직 바
+  차트로 교체. `DONUT_CX/CY/R/STROKE`, `CIRCUMFERENCE` 상수와 `donutSegments` useMemo 삭제,
+  대신 최댓값 정규화용 `maxDistribution` useMemo 추가(가장 높은 막대가 컨테이너를 꽉 채우도록
+  `height: (distribution/maxDistribution)*100%`로 스케일링). 막대 위에 `%` 수치 라벨 표시, 우측의
+  2열 색상+라벨+% 리스트(범례)는 그대로 유지.
+
+**Before** (도넛):
+```tsx
+const DONUT_CX = 80; const DONUT_CY = 80; const DONUT_R = 55; const DONUT_STROKE = 20;
+const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
+// ...
+const donutSegments = useMemo(() => { /* stroke-dasharray 누적 오프셋 계산 */ }, [data]);
+// <svg><circle .../> {donutSegments.map(seg => <circle strokeDasharray=... />)}</svg>
+```
+
+**After** (수직 바):
+```tsx
+const maxDistribution = useMemo(() => Math.max(1, ...data.map(d => d.distribution)), [data]);
+// <div className="flex items-end gap-1.5 w-[200px] h-[200px]">
+//   {data.map(item => <div style={{ height: `${(item.distribution/maxDistribution)*100}%` }} />)}
+// </div>
+```
+
+**검증**: dev 서버(포트 5173, 기존 실행 중) `curl` 200 응답 확인. 브라우저 시각 확인은 도구 제약으로
+수행하지 못함 — 필요 시 사용자가 전술화면에서 직접 확인 요망.
+
+**롤백 방법**: Before 블록의 도넛 SVG 코드로 되돌리면 됨 (`donutSegments`/`DONUT_*`/`CIRCUMFERENCE`
+상수 복원 필요).
+
+---
+
 ## 2026-07-30 — 리바운드 로직: 공격/수비 리바운드 공식 분리 (DRB/ORB 전용 가중치)
 
 **배경**: 리바운드 아키타입/모터인텐시티 점검(바로 아래 항목) 과정에서, 압도적 `defReb`를 가진

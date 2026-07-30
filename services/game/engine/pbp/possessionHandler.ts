@@ -81,6 +81,21 @@ function identifyDefender(
         defender = defTeam.onCourt.length > 0 ? defTeam.onCourt[0] : undefined;
     }
 
+    // 2.5 PostUp Cross-Match — PostUp은 스크린이 없어 3번 스위치 로직 대상이 아니라서, actor가 C일
+    // 때 상대 C가 100% 고정으로 막아왔음(전가 메커니즘 0%). 실제 NBA는 약측 프론트/더블로 PF가
+    // 일부 분담 — BASE 하한 + helpDef 슬라이더 가산(HELP_DEFENSE와 동일 패턴, 슬라이더=1이어도
+    // 하한은 항상 적용되어 "헬프디펜스 안 쓰는 팀은 전가가 0"인 문제가 재발하지 않도록 설계.
+    if (playType === 'PostUp' && !isZone && defender && defender.position === 'C') {
+        const crossCfg = SIM_CONFIG.POST_CROSS_MATCH;
+        const crossMatchChance = crossCfg.BASE + (sliders.helpDef - 1) * crossCfg.PER_LEVEL;
+        if (Math.random() < crossMatchChance) {
+            const crossDef = defTeam.onCourt.find(p => p.position === 'PF' && p.playerId !== defender!.playerId);
+            if (crossDef) {
+                return { defender: crossDef, isSwitch: true, isBotchedSwitch: false, pnrCoverage: 'none' };
+            }
+        }
+    }
+
     // 3. Switch Logic
     // Driven by 'switchFreq' slider (1-10)
     // 1 = 5%, 5 = 25%, 10 = 50% base switch chance on screens
@@ -90,7 +105,15 @@ function identifyDefender(
     const screenPlayer = screener || secondaryActor;
 
     if (isScreenPlay && !isZone && screenPlayer) {
-        const switchChance = sliders.switchFreq * 0.05;
+        // [2026-07-30] PnR_Roll 전용 스위치 하한 — tacticGenerator.ts에서 엘리트 림프로텍터
+        // 보유팀은 switchFreq가 5로 캡핑됨(전략적으로 합리적, 캡 자체는 유지). 다만 그 결과
+        // PnR_Roll에서 롤러(대개 C)를 대신 막아줄 전가 확률도 덩달아 최대 25%로 묶여버려,
+        // switchFreq를 그보다도 낮게 잡은 보수적인 팀은 전가가 더 적어짐 — PnR_Roll에 한해서만
+        // 하한을 둬서 다른 스크린 플레이(Handoff/OffBallScreen/PnR_Handler/PnR_Pop)에는
+        // 영향 없이 파울트러블과 직결된 이 플레이타입만 최소 전가를 보장.
+        const switchChance = playType === 'PnR_Roll'
+            ? Math.max(sliders.switchFreq * 0.05, SIM_CONFIG.PNR_ROLL_SWITCH_MIN)
+            : sliders.switchFreq * 0.05;
 
         if (Math.random() < switchChance) {
             // Find screener's defender
@@ -528,6 +551,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
     const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
     shootingFoulRate += drawFoulBonus * zoneScale;
+
+    // [2026-07-30] 수비자 파울회피 스킬 커브 — 슈터의 drFoul만 반영되고 수비자의 컨테스트 기술은
+    // 전혀 반영 안 되던 비대칭을 해소. 포지션이 아니라 존 기준으로 분리(스위치/미스매치도 자연스럽게
+    // 처리됨) — Rim/Paint는 intDef, Mid/3PT는 perDef 주력 + defConsist(포지션 무관 절제력) 보조.
+    const isInteriorZone = preferredZone === 'Rim' || preferredZone === 'Paint';
+    const defenderSkill = isInteriorZone
+        ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35
+        : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+    const defenderSkillCurve = isInteriorZone ? sFoulCfg.INTERIOR_SKILL_CURVE : sFoulCfg.PERIMETER_SKILL_CURVE;
+    shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale;
 
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;

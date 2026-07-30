@@ -175,6 +175,17 @@ export const SIM_CONFIG = {
         // [2026-07-30] Rim/Paint/Mid/3PT 100/80/50/25% → 60/50/30/20%로 재조정 (client 미러 참고)
         ZONE_CURVE_SCALE: { 'Rim': 0.6, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
 
+        // [2026-07-30] 수비자 파울회피 스킬 커브 (client 미러 참고) — 존 기준 분리, 포지션 무관
+        INTERIOR_SKILL_CURVE: [   // Rim/Paint — intDef*0.65 + defConsist*0.35
+            // [2026-07-30] 88/93/97 상위권 강화 (client 미러 참고)
+            [45, 0.025], [60, 0.010], [72, 0.000],
+            [82, -0.020], [88, -0.05], [93, -0.065], [97, -0.09],
+        ] as [number, number][],
+        PERIMETER_SKILL_CURVE: [  // Mid/3PT — perDef*0.65 + defConsist*0.35
+            [45, 0.025], [55, 0.012], [71, 0.000],
+            [80, -0.012], [86, -0.022], [92, -0.035], [97, -0.045],
+        ] as [number, number][],
+
         // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
         // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
         // 대칭화 — 새 center(5.5)까지 거리(4.5)로 나눠 동일한 3.0%p 최댓값을 재현한다.
@@ -354,6 +365,13 @@ export const SIM_CONFIG = {
         HITRATE_PENALTY: 0.033,
         FOUL_BONUS: 0.006,
     },
+    // [2026-07-30] PostUp 크로스매치 (client 미러 참고) — BASE 하한 + helpDef 슬라이더 가산
+    POST_CROSS_MATCH: {
+        BASE: 0.15,
+        PER_LEVEL: 0.20 / 9,
+    },
+    // [2026-07-30] PnR_Roll 전용 스위치 하한 (client 미러 참고)
+    PNR_ROLL_SWITCH_MIN: 0.15,
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {
         // 인테리어 억제 (기존 유지, Rim/Paint/Mid 한정 — 기존엔 전 구역 적용 버그)

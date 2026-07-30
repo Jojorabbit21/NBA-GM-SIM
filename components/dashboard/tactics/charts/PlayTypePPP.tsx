@@ -1,28 +1,13 @@
 
 import React, { useMemo } from 'react';
-import { TacticalSliders, Player } from '../../../../types';
-import { calculatePlayerOvr } from '../../../../utils/constants';
+import { TacticalSliders } from '../../../../types';
 import { PLAY_TYPES, getPlayTypeDistribution } from './playTypeConstants';
 
 interface PlayTypePPPProps {
     sliders: TacticalSliders;
-    roster: Player[];
 }
 
-const ZONES = [
-    { label: '3PT', color: '#10b981' },
-    { label: 'MID', color: '#f59e0b' },
-    { label: 'RIM', color: '#ef4444' },
-];
-
-// Donut chart constants
-const DONUT_CX = 80;
-const DONUT_CY = 80;
-const DONUT_R = 55;
-const DONUT_STROKE = 20;
-const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
-
-export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => {
+export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
     const data = useMemo(() => {
         const distribution = getPlayTypeDistribution(sliders);
         return PLAY_TYPES.map((pt, i) => ({
@@ -31,132 +16,49 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         }));
     }, [sliders]);
 
-    const donutSegments = useMemo(() => {
-        let accumulated = 0;
-        return data.map(item => {
-            const segmentLength = (item.distribution / 100) * CIRCUMFERENCE;
-            const offset = -accumulated;
-            accumulated += segmentLength;
-            return { segmentLength, offset, color: item.color };
-        });
-    }, [data]);
-
-    const zoneComparison = useMemo(() => {
-        const s3 = sliders.shot_3pt || 5;
-        const sm = sliders.shot_mid || 5;
-        const sr = sliders.shot_rim || 5;
-        const sTotal = s3 + sm + sr;
-        const sliderPcts = [(s3 / sTotal) * 100, (sm / sTotal) * 100, (sr / sTotal) * 100];
-
-        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-        const rot = sorted.slice(0, Math.min(8, sorted.length));
-        let rosterPcts = [33.3, 33.3, 33.3];
-
-        if (rot.length > 0) {
-            let total3 = 0, totalMid = 0, totalRim = 0, count = 0;
-            for (const p of rot) {
-                if (p.tendencies?.zones) {
-                    const z = p.tendencies.zones;
-                    total3 += (z.cnr || 0) + (z.p45 || 0) + (z.atb || 0);
-                    totalMid += z.mid || 0;
-                    totalRim += (z.ra || 0) + (z.itp || 0);
-                    count++;
-                }
-            }
-            if (count > 0) {
-                const avg3 = total3 / count, avgMid = totalMid / count, avgRim = totalRim / count;
-                const total = avg3 + avgMid + avgRim;
-                if (total > 0) {
-                    rosterPcts = [(avg3 / total) * 100, (avgMid / total) * 100, (avgRim / total) * 100];
-                }
-            }
-        }
-
-        return ZONES.map((zone, i) => ({
-            ...zone,
-            slider: Math.round(sliderPcts[i]),
-            roster: Math.round(rosterPcts[i]),
-            diff: Math.round(sliderPcts[i] - rosterPcts[i]),
-        }));
-    }, [sliders, roster]);
+    // 최댓값 기준 정규화 — 가장 큰 막대가 차트 높이를 꽉 채우도록
+    const maxDistribution = useMemo(() => Math.max(1, ...data.map(d => d.distribution)), [data]);
 
     return (
-        <div className="flex items-stretch gap-4">
-            {/* Left: 플레이타입 분석 (헤더 + 바디 묶음) */}
-            <div className="flex flex-col gap-3">
-                <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 분석</h5>
-                <div className="flex items-stretch gap-4 flex-1">
-                    {/* Donut Chart */}
-                    <div className="shrink-0 flex items-center">
-                        <svg viewBox="0 0 160 160" className="w-[200px] h-[200px]">
-                            <circle
-                                cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R}
-                                fill="none" stroke="#1e293b" strokeWidth={DONUT_STROKE}
-                            />
-                            {donutSegments.map((seg, i) => (
-                                <circle
-                                    key={i}
-                                    cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R}
-                                    fill="none"
-                                    stroke={seg.color}
-                                    strokeWidth={DONUT_STROKE}
-                                    strokeDasharray={`${seg.segmentLength} ${CIRCUMFERENCE}`}
-                                    strokeDashoffset={seg.offset}
-                                    strokeLinecap="butt"
-                                    transform={`rotate(-90 ${DONUT_CX} ${DONUT_CY})`}
-                                    className="transition-all duration-300"
-                                />
-                            ))}
-                        </svg>
-                    </div>
+        <div className="flex flex-col gap-3">
+            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 분석</h5>
 
-                    {/* PlayType + Share — 2열 레이아웃 */}
-                    <div className="grid grid-cols-2 gap-x-4">
-                        {data.map(item => (
-                            <div key={item.key} className="flex items-center gap-1.5 h-7">
-                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                <span className="text-[11px] font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
-                                <span className="text-[11px] font-black text-white tabular-nums ml-auto">{item.distribution.toFixed(0)}%</span>
-                            </div>
-                        ))}
+            {/* 수치(%) 행 — 별도 행이라 라벨 줄바꿈 수와 무관하게 항상 한 줄로 정렬 */}
+            <div className="flex gap-1.5">
+                {data.map(item => (
+                    <div key={item.key} className="flex-1 min-w-0 text-center text-[13px] font-black text-white tabular-nums">
+                        {item.distribution.toFixed(0)}%
                     </div>
-                </div>
+                ))}
             </div>
 
-            {/* Divider */}
-            <div className="w-px bg-slate-800 shrink-0" />
-
-            {/* Right: 슈팅 존 선호도 (헤더 + 바디 묶음) */}
-            <div className="flex-1 flex flex-col gap-3">
-                <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 선호도</h5>
-                <div className="flex-1 flex flex-col justify-center gap-4">
-                    {zoneComparison.map(zone => (
-                        <div key={zone.label} className="flex flex-col gap-1.5">
-                            <div className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
-                                <span className="text-xs font-bold text-slate-300">{zone.label}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold text-slate-500 w-10 shrink-0">전술</span>
-                                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${zone.slider}%`, backgroundColor: zone.color }} />
-                                </div>
-                                <span className="text-xs font-black text-white tabular-nums w-8 text-right">{zone.slider}%</span>
-                                <span className="w-8" />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold text-slate-500 w-10 shrink-0">로스터</span>
-                                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full opacity-60 transition-all duration-300" style={{ width: `${zone.roster}%`, backgroundColor: zone.color }} />
-                                </div>
-                                <span className="text-xs font-black text-slate-400 tabular-nums w-8 text-right">{zone.roster}%</span>
-                                <span className={`text-xs font-bold tabular-nums w-8 text-left ${zone.diff > 0 ? 'text-emerald-400' : zone.diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                                    {zone.diff > 0 ? '+' : ''}{zone.diff}
-                                </span>
-                            </div>
-                        </div>
+            {/* 막대 행 — 심플 그리드라인 + 고정 높이 */}
+            <div className="relative flex items-end gap-1.5 h-[150px]">
+                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                    {Array.from({ length: 5 }, (_, i) => (
+                        <div key={i} className="w-full h-px bg-slate-800" />
                     ))}
                 </div>
+                {data.map(item => (
+                    <div key={item.key} className="relative z-10 flex-1 min-w-0 h-full flex items-end">
+                        <div
+                            className="w-full rounded-t-sm transition-all duration-300"
+                            style={{
+                                height: `${Math.max((item.distribution / maxDistribution) * 100, 2)}%`,
+                                backgroundColor: item.color,
+                            }}
+                        />
+                    </div>
+                ))}
+            </div>
+
+            {/* 라벨 행 — 줄바꿈 수가 컬럼마다 달라도 위 두 행 정렬에 영향 없음 */}
+            <div className="flex gap-1.5">
+                {data.map(item => (
+                    <div key={item.key} className="flex-1 min-w-0 text-center text-[12px] font-bold text-slate-400 leading-tight break-words">
+                        {item.label}
+                    </div>
+                ))}
             </div>
         </div>
     );
