@@ -353,9 +353,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 자격 기준(SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL)을 재사용해 SF 이하는 완전히 배제한다.
             // popper 공식 자체가 이미 C/PF를 거의 동률로 갈라주므로(32 TEST 실측 확인) 여기선 추가
             // 배율 없이 자격 필터만 적용.
+            // [2026-07-31] popper는 순수 능력치(strength/height/weight/3점 스킬) 기반이라 zonePref.three
+            // (3점을 쏠 "의향")를 전혀 안 보는 문제가 있었음 — 3점 텐던시가 0인 선수도 스크리닝/피지컬
+            // 점수만 높으면 뽑혀서 무조건 3점을 쏘게 됨(찰스 바클리 실측 사례). selectZone()과 동일한
+            // 소프트 임계값(ZONE_PREF_THRESHOLD)을 재사용해 페널티 적용.
             const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
             const popper = pickWeightedActor(
-                p => p.archetypes.popper,
+                p => p.archetypes.popper * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
                 undefined, 'shooter',
                 p => (popEligible[p.position] ?? 0) > 0
             );
@@ -394,7 +398,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'CatchShoot': {
             // Best Spacer
-            const actor = pickWeightedActor(p => p.archetypes.spacer);
+            // [2026-07-31] spacer도 PnR_Pop의 popper와 동일한 문제 — zonePref.three 페널티 적용
+            const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [2026-07] 캐치앤슛은 3점 전용으로 고정 — 미드/페인트/림까지 포함하면 실제 현대

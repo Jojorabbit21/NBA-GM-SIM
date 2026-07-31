@@ -35,6 +35,65 @@
 
 ---
 
+## 2026-07-31 — CatchShoot/PnR_Pop 액터 선정에 zonePref.three 페널티 적용
+
+**배경**: "32 TEST 6" 실측에서 찰스 바클리(존 선호도 탭 cnr/p45/atb 전부 0, 즉 3점을 전혀 안 쏘려는
+텐던시)가 경기당 3점을 3.08개나 시도하는 걸 확인. 조사 결과 `CatchShoot`(`preferredZone:'3PT'`
+고정, 2026-07 설계 변경)과 `PnR_Pop`(동일하게 3점 고정)이 액터를 각각 `archetypes.spacer`/`popper`
+(순수 능력치 기반 — spacer는 3점스킬 60%+shotIq 25%+offConsist 15%, popper는 스크리닝 능력
+60%+3점스킬 40%)로만 뽑고, `zonePref`/`selectZone()` 시스템을 완전히 우회한다는 걸 확인 — 바클리는
+shotIq88/offConsist98이 높아 spacer=75.7, popper=66.09로 경쟁력 있는 점수가 나와 종종 액터로
+뽑히고, 뽑히면 텐던시 무시하고 무조건 3점을 쏨. 실측(`shot_events.playType`)으로 그의 3PA 40개
+전부(PnR_Pop 27 + CatchShoot 13)가 이 두 플레이타입에서만 나옴을 확인 — 다른 3점 가능 플레이타입
+(Iso/PnR_Handler/Handoff/Transition/OffBallScreen/DriveKick, 전부 `selectZone()` 정상 경로)에서는
+0개, 즉 `selectZone()`의 기존 소프트 임계값(`ZONE_PREF_THRESHOLD=0.15`, 미만이면 ×0.2 페널티)은
+이미 잘 작동 중이었고 CatchShoot/PnR_Pop만 이 페널티를 우회하고 있었음이 확정됨.
+
+수정: 새 임계값을 만들지 않고 `selectZone()`이 이미 쓰는 `SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD`
+를 그대로 재사용해, CatchShoot/PnR_Pop의 액터 선정 가중치에도 동일한 ×0.2 페널티를 적용. 올타임
+레전드 풀 실측(케빈 러브 zonePref.three=0.799, 마일스 터너=0.521, 라우리 마카넨=0.552)으로 3팀
+시뮬레이션해 검증 — 텐던시 진짜 있는 빅맨(러브/마카넨)은 텐던시 0인 팀원(너키치/유잉) 대비 확실히
+유리해지고(PnR_Pop 선정확률 예: 러브 45.9%→81.0%, 마카넨 57.7%→87.2%), 로스터 전원이 정상
+텐던시를 가진 팀(cha, 마일스 터너/밥 페팃 둘 다 임계값 이상)은 **변화 없음**을 확인 — 부작용 없음.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts`
+  (server) — `CatchShoot`/`PnR_Pop` 케이스의 `pickWeightedActor` 기준식에 `zonePref.three` 페널티
+  추가 (새 상수 없이 기존 `ZONE_SELECTION.ZONE_PREF_THRESHOLD` 재사용)
+
+**Before**:
+```ts
+// PnR_Pop
+const popper = pickWeightedActor(
+    p => p.archetypes.popper,
+    undefined, 'shooter',
+    p => (popEligible[p.position] ?? 0) > 0
+);
+// CatchShoot
+const actor = pickWeightedActor(p => p.archetypes.spacer);
+```
+
+**After**:
+```ts
+// PnR_Pop
+const popper = pickWeightedActor(
+    p => p.archetypes.popper * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+    undefined, 'shooter',
+    p => (popEligible[p.position] ?? 0) > 0
+);
+// CatchShoot
+const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 실측 기반 사전 시뮬레이션(det팀
+찰스 바클리 3.08→약1.4 3PA/game 추정, mem/cha/law 3팀 선정확률 변화 검증) 완료 — 실제 재시뮬레이션
+결과는 다음 세션 신규 경기 데이터로 확인 필요.
+
+**롤백 방법**: 두 `pickWeightedActor` 호출의 criteria 함수를 Before 블록으로 되돌리면 됨(상수 추가
+없었으므로 constants.ts 변경 없음).
+
+---
+
 ## 2026-07-31 — 리바운드 룰렛 재설계: 지수 증폭 + motor/신장/포지션 3분할 보정
 
 **배경**: "지금 리바운드 룰렛이 너무 평평하다"는 사용자 피드백 — 압도적 능력치(웸반야마 defReb98)를

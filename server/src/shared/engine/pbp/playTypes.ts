@@ -241,9 +241,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'PnR_Pop': {
             // [2026-07-29] PnR_Roll과 동일한 스크리너 풀(C/PF)만 허용 (client 미러 참고)
+            // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)
             const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
             const popper = pickWeightedActor(
-                p => p.archetypes.popper,
+                p => p.archetypes.popper * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
                 undefined, 'shooter',
                 p => (popEligible[p.position] ?? 0) > 0
             );
@@ -263,7 +264,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor, secondaryActor: entryPasser, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0.01 };
         }
         case 'CatchShoot': {
-            const actor = pickWeightedActor(p => p.archetypes.spacer);
+            // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)
+            const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [2026-07] 캐치앤슛 3점 전용 고정 — 원래 로직(펌프페이크→드라이브 전환)은 주석 처리로 보존
