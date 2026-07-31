@@ -219,11 +219,11 @@ export function calculateHitRate(
     }
 
     // shotIq + offConsist 일관성 시스템 (모든 존)
-    // shotIq: 편향 노이즈 (높으면 상방 0~+max, 낮으면 하방 -max~0)
-    const shotIqRange = (actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
-    const shotIqNoise = shotIqRange !== 0
-        ? (shotIqRange > 0 ? Math.random() * shotIqRange : -Math.random() * -shotIqRange)
-        : 0;
+    // [2026-07-31 Fix] shotIq: 대칭 노이즈 (평균 0, 진폭만 |shotIq-70|에 비례)
+    // 기존엔 shotIq>70일 때 0~+range로만, <70일 때 -range~0으로만 뽑혀서
+    // "노이즈"가 아니라 매 슛 확정 편향 보너스/페널티로 작동 → 상위권 TS% 과대 인플레 원인.
+    const shotIqRange = Math.abs(actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
+    const shotIqNoise = shotIqRange !== 0 ? (Math.random() * 2 - 1) * shotIqRange : 0;
     // offConsist: 대칭 노이즈 (70 미만일 때만 양방향 기복)
     const consistRange = Math.max(0, (S.CONSIST_BASELINE - actor.attr.offConsist)) * S.CONSIST_NOISE_COEFF;
     const consistNoise = consistRange > 0 ? (Math.random() * 2 - 1) * consistRange : 0;
@@ -397,11 +397,11 @@ export function calculateHitRate(
     if (actor.hotColdRating !== 0) {
         // [SaveTendency] confidenceSensitivity: scales hot/cold amplitude (0.3x~1.7x)
         let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
-        // 콜드 스트릭 완화: offConsist가 높으면 멘탈 회복
-        if (temperatureBonus < 0) {
-            const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
-            temperatureBonus *= (1 - consistencyRecover);
-        }
+        // [2026-07-31 Fix] offConsist: 핫/콜드 진폭을 양방향 대칭으로 축소 (꾸준함 = 기복이 작음).
+        // 기존엔 콜드 페널티만 완화해서 offConsist가 높을수록 기댓값이 플러스로 치우쳤음 —
+        // shotIq 노이즈 편향 수정과 동일한 취지로, "잘할 때도 덜 튀고 못할 때도 덜 튀는" 구조로 통일.
+        const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
+        temperatureBonus *= (1 - consistencyRecover);
         hitRate += temperatureBonus;
     }
 

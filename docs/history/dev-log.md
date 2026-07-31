@@ -35,6 +35,89 @@
 
 ---
 
+## 2026-07-31 — offConsist 핫/콜드 비대칭 수정 (TS% 상위권 인플레 부가 원인)
+
+**배경**: 바로 아래 shotIq 노이즈 편향 수정에 이어서, TS% 인플레의 또 다른 원인으로 지목했던
+hot/cold 스트릭의 offConsist 처리를 논의. 기존 코드는 콜드 스트릭(temperatureBonus<0)일 때만
+offConsist 기반 `consistencyRecover`로 페널티를 완화하고, 핫 스트릭(양수)일 땐 전혀 건드리지
+않았음 — shotIq처럼 "의도와 코드가 어긋난 버그"는 아니고 주석("콜드 스트릭 완화")과 코드가
+일치하는 의도된 설계였지만, 결과적으로 offConsist가 높은 선수(대체로 엘리트)일수록 핫/콜드
+기댓값이 플러스로 치우치는 동일 계열의 문제였음. 사용자에게 (1)양방향 대칭 전환 (2)비대칭
+유지하되 계수 축소 (3)그대로 보류 중 택1로 질문 → "양방향 대칭으로 전환"(꾸준함=기복 자체가
+작다는 의미로 재정의) 선택.
+
+**변경 파일**:
+- `services/game/engine/pbp/flowEngine.ts` (client, `calculateHitRate` 내 8번 Hot/Cold Streak 블록)
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러)
+
+**Before**:
+```ts
+let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
+// 콜드 스트릭 완화: offConsist가 높으면 멘탈 회복
+if (temperatureBonus < 0) {
+    const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
+    temperatureBonus *= (1 - consistencyRecover);
+}
+hitRate += temperatureBonus;
+```
+
+**After**:
+```ts
+let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
+// offConsist: 핫/콜드 진폭을 양방향 대칭으로 축소 (꾸준함 = 기복이 작음)
+const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
+temperatureBonus *= (1 - consistencyRecover);
+hitRate += temperatureBonus;
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨 (`if (temperatureBonus < 0) { ... }` 가드 복원).
+
+---
+
+## 2026-07-31 — shotIq 노이즈 편향 수정 (TS% 상위권 과대 인플레 원인)
+
+**배경**: "32 TEST 6" 실측 데이터에서 리그 TS% 중앙값(60.1%)은 실제 NBA 대비 소폭만 높은데,
+상위권(p90=70.7%, 조던 75.3%, 하든 72.3% 등)은 역대 최고 시즌 기록급으로 과대 인플레된 현상을
+조사. `calculateHitRate`의 shotIq 노이즈 로직이 원인 — 주석상 의도는 "대칭 노이즈(shotIq 높으면
+상방/낮으면 하방 위주로 흔들림)"였지만 실제 코드는 shotIq>70이면 `Math.random()*range`(항상 0
+이상)만, <70이면 `-Math.random()*-range`(항상 0 이하)만 뽑혀 **매 슛 확정 편향 보너스/페널티**로
+작동하고 있었음. shotIq=99 선수는 매 슛 평균 +1.16%p가 공짜로 붙는 구조. DB 조회 결과 TS% 상위권
+선수들의 shotIq 평균(≈85)이 리그 중앙값(75)을 크게 상회 — 상위권 인플레와 정확히 일치하는 것으로
+확인. 사용자에게 대칭 노이즈 원복/계수 축소/결정론적 보너스 전환 중 택1로 질문 → "대칭 노이즈로
+원복"(원래 의도대로) 선택.
+
+**변경 파일**:
+- `services/game/engine/pbp/flowEngine.ts` (client, `calculateHitRate` 내부)
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러)
+
+**Before**:
+```ts
+const shotIqRange = (actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
+const shotIqNoise = shotIqRange !== 0
+    ? (shotIqRange > 0 ? Math.random() * shotIqRange : -Math.random() * -shotIqRange)
+    : 0;
+```
+
+**After**:
+```ts
+// shotIq: 대칭 노이즈 (평균 0, 진폭만 |shotIq-70|에 비례)
+const shotIqRange = Math.abs(actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
+const shotIqNoise = shotIqRange !== 0 ? (Math.random() * 2 - 1) * shotIqRange : 0;
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+**참고**: `offConsist`의 hot/cold 스트릭 비대칭(콜드 페널티만 완화, 핫 보너스는 그대로)도 동일 계열
+문제로 지목했으나 이번엔 shotIq만 수정 — offConsist 쪽은 아직 미착수.
+
+---
+
 ## 2026-07-31 — PostUp/PnR_Roll에 playStyle 보정 소급 적용
 
 **배경**: 바로 아래 항목(Iso/PnR_Handler)에서 다듬은 `playStyle`(-1 패스~+1 슛) 보정을 예고했던
