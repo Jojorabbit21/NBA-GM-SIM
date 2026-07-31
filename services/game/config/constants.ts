@@ -255,8 +255,10 @@ export const SIM_CONFIG = {
         SLIDER_IMPACT: 0.012,         // 슬라이더 1포인트당 ORB% ±1.2%
         QUALITY_FACTOR: 0.08,         // 팀 리바 능력 차이 반영 계수
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
-        TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
-        TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
+        // [2026-07-31] TEAM_REB_RATE_FG/FT 제거 — 아웃오브바운즈/루스볼파울/쿼터종료 등 실제
+        // "팀 리바운드"를 발생시키는 상황이 하나도 시뮬레이션 안 된 상태에서 모든 미스에 무조건
+        // 걸리는 확률이었고, 개인은 물론 팀 합계에도 반영이 안 돼 리바운드가 증발하는 버그였음.
+        // possessionHandler.ts/statsMappers.ts에서 미스 시 항상 개인 배정으로 단순화.
 
         // [2026-07-30] 수비 리바운드와 공격 리바운드는 요구되는 능력치가 다르다.
         // 수비: 이미 박스아웃으로 포지션을 잡은 상태 → defReb+boxOut이 핵심.
@@ -285,6 +287,27 @@ export const SIM_CONFIG = {
         RAIDER_OFFREB_THRESHOLD: 90,         // offReb ≥ 90
         RAIDER_VERTICAL_THRESHOLD: 90,       // vertical ≥ 90
         RAIDER_SCORE_MULTIPLIER: 1.4,        // 공격 리바운드 선택 점수 ×1.4
+
+        // [2026-07-31] 룰렛이 너무 평평하다는 피드백 — 개인 배정(selectRebounder) 단계에만 적용
+        // (팀 단위 ORB% 판정인 calculateOrbChance는 미적용). 능력치 기반 점수를 지수로 증폭해
+        // 실력 격차가 배분 격차로 더 뚜렷하게 드러나도록 함.
+        SKILL_EXPONENT: 2.0,
+
+        // [2026-07-31] motorIntensity 단독 ±15% → motor/신장/포지션 3분할 곱셈 보정으로 재설계.
+        // ⚠ types/player.ts의 텐던시 문서 스펙("0.5~1.5, 리바운드 확률 ±15%")은 motor 단독 기준으로
+        // 작성되어 있어 이제 최대 스윙(motor만으로는 ±5%)과 불일치 — 문서는 미갱신 상태, 추후 확인 필요.
+        // 세 요소 다 극단으로 몰리면 기존과 동일하게 최대 ±15%.
+        MOTOR_COEFF: 0.1,
+        HEIGHT_COEFF: 0.1,
+        POSITION_COEFF: 0.1,
+        // 신장 커브: 전체 선수 height(cm) 분포 기준(중앙값 198cm=중립 1.0), motor와 동일한
+        // [0.5, 1.5] 범위로 매핑. 실측 분포: p5=185/p25=193/중앙값=198/p75=206/p95=213/최소170~최대229.
+        HEIGHT_CURVE: [
+            [170, 0.5], [185, 0.65], [193, 0.85], [198, 1.00],
+            [206, 1.20], [213, 1.40], [229, 1.50],
+        ] as [number, number][],
+        // 포지션 계수: C > PF > SF=SG=PG(중립, 페널티 없음)
+        POSITION_FACTOR: { C: 1.5, PF: 1.2, SF: 1.0, SG: 1.0, PG: 1.0 } as Record<string, number>,
     },
     // Defensive Rebound 속공 트레이드오프 (2026-07 신규) — defReb 낮게 설정 시 속공 전환 이점 + 체력 대가
     DEF_REB_TRANSITION: {
@@ -415,6 +438,19 @@ export const SIM_CONFIG = {
     // 25%로 묶이는데, switchFreq를 그보다 낮게 잡은 보수적인 팀은 더 적어짐 — PnR_Roll에 한해서만
     // 최소 전가를 보장(다른 스크린 플레이는 영향 없음).
     PNR_ROLL_SWITCH_MIN: 0.15,
+    // [2026-07-31] 포제션 시간(calculatePossessionTime, timeEngine.ts) — pace=5(중립) 기준
+    // BASE - PACE_NEUTRAL = 14초로 실제 NBA 평균 포제션 길이(~14.5초)에 근접하도록 캘리브레이션.
+    // 압축 없이 pace를 그대로 빼면(19-pace) pace=8~10 팀에서 포제션이 9~11초까지 떨어져 게임당
+    // 130점 이상 폭주하는 문제가 실측으로 확인됨(den pace8 × por pace9 매치업 4연속 144~187점).
+    // PACE_COMPRESSION으로 pace 1~10의 영향력을 완화 — compressedPace = PACE_NEUTRAL +
+    // (pace-PACE_NEUTRAL)*PACE_COMPRESSION, timeTaken = BASE - compressedPace.
+    // 0.2 기준 pace=1→14.8초, pace=10→13.0초(실제 NBA 역대 최고속 팀 ~13.7초보다 약간 빠른 선에서
+    // 상한, 폭주 방지하면서도 슬라이더 체감은 유지).
+    POSSESSION_TIME: {
+        BASE: 19,
+        PACE_NEUTRAL: 5,
+        PACE_COMPRESSION: 0.2,
+    },
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {
         // 인테리어 억제 (기존 유지, Rim/Paint/Mid 한정 — 기존엔 전 구역 적용 버그)

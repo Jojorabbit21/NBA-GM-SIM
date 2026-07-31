@@ -1105,23 +1105,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // Miss path (블락 or 일반 미스)
     if (!isScore) {
-        // Team Rebound Check (dead ball, out-of-bounds → 개인 리바운드 미기록)
-        let rebounder: LivePlayer | undefined;
-        let reboundType: 'off' | 'def' | undefined;
-
-        if (Math.random() >= SIM_CONFIG.REBOUND.TEAM_REB_RATE_FG) {
-            const reb = resolveRebound(state.home, state.away, actor.playerId);
-            rebounder = reb.player;
-            reboundType = reb.type;
-        }
+        // [2026-07-31] TEAM_REB_RATE_FG 제거 (client 미러 참고) — 미스 시 항상 개인에게 배정
+        const reb = resolveRebound(state.home, state.away, actor.playerId);
 
         return {
             type: 'miss',
             offTeam, defTeam,
             actor,
             defender: finalDefender,
-            rebounder,
-            reboundType,
+            rebounder: reb.player,
+            reboundType: reb.type,
             points: 0,
             zone: preferredZone,
             playType: selectedPlayType,

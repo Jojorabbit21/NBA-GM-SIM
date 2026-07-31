@@ -1154,23 +1154,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // Miss path (블락 or 일반 미스)
     if (!isScore) {
-        // Team Rebound Check (dead ball, out-of-bounds → 개인 리바운드 미기록)
-        let rebounder: LivePlayer | undefined;
-        let reboundType: 'off' | 'def' | undefined;
-
-        if (Math.random() >= SIM_CONFIG.REBOUND.TEAM_REB_RATE_FG) {
-            const reb = resolveRebound(state.home, state.away, actor.playerId);
-            rebounder = reb.player;
-            reboundType = reb.type;
-        }
+        // [2026-07-31] TEAM_REB_RATE_FG(팀 리바운드 확률) 제거 — 실제 NBA의 팀 리바운드는
+        // 아웃오브바운즈/루스볼파울/쿼터종료/FT바이올레이션 등 구체적 상황에 결부되는데, 이 엔진엔
+        // 그 상황들이 하나도 시뮬레이션 안 돼 있어 그냥 모든 미스에 무조건 걸리는 확률 주사위였고,
+        // 개인은 물론 팀 합계에도 전혀 반영되지 않아 리바운드가 통째로 증발하는 버그였음(실측
+        // 팀 REB 부족분의 대부분을 이걸로 설명). 미스가 나면 항상 개인에게 배정하도록 단순화.
+        const reb = resolveRebound(state.home, state.away, actor.playerId);
 
         return {
             type: 'miss',
             offTeam, defTeam,
             actor,
             defender: finalDefender,
-            rebounder,
-            reboundType,
+            rebounder: reb.player,
+            reboundType: reb.type,
             points: 0,
             zone: preferredZone,
             playType: selectedPlayType,

@@ -87,7 +87,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     };
 
     const handleFreeThrowRebound = (shooter: LivePlayer) => {
-        if (Math.random() < SIM_CONFIG.REBOUND.TEAM_REB_RATE_FT) return;
+        // [2026-07-31] TEAM_REB_RATE_FT 제거 (client 미러 참고)
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
         rebPlayer.reb += 1;
         if (rebType === 'off') rebPlayer.offReb += 1;

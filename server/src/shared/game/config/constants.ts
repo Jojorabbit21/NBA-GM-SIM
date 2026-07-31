@@ -229,8 +229,7 @@ export const SIM_CONFIG = {
         SLIDER_IMPACT: 0.012,         // 슬라이더 1포인트당 ORB% ±1.2%
         QUALITY_FACTOR: 0.08,         // 팀 리바 능력 차이 반영 계수
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
-        TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
-        TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
+        // [2026-07-31] TEAM_REB_RATE_FG/FT 제거 (client 미러 참고)
 
         // [2026-07-30] 수비/공격 리바운드 능력치 요구치가 다름 (client 미러 참고)
         // 수비: defReb+boxOut(이미 자리 잡음) / 공격: offReb+hustle(뛰어들어 경합)
@@ -254,6 +253,17 @@ export const SIM_CONFIG = {
         RAIDER_OFFREB_THRESHOLD: 90,         // offReb ≥ 90
         RAIDER_VERTICAL_THRESHOLD: 90,       // vertical ≥ 90
         RAIDER_SCORE_MULTIPLIER: 1.4,        // 공격 리바운드 선택 점수 ×1.4
+
+        // [2026-07-31] 룰렛 지수 증폭 + motor/신장/포지션 보정 (client 미러 참고)
+        SKILL_EXPONENT: 2.0,
+        MOTOR_COEFF: 0.1,
+        HEIGHT_COEFF: 0.1,
+        POSITION_COEFF: 0.1,
+        HEIGHT_CURVE: [
+            [170, 0.5], [185, 0.65], [193, 0.85], [198, 1.00],
+            [206, 1.20], [213, 1.40], [229, 1.50],
+        ] as [number, number][],
+        POSITION_FACTOR: { C: 1.5, PF: 1.2, SF: 1.0, SG: 1.0, PG: 1.0 } as Record<string, number>,
     },
     // Defensive Rebound 속공 트레이드오프 (2026-07 신규) — defReb 낮게 설정 시 속공 전환 이점 + 체력 대가
     DEF_REB_TRANSITION: {
@@ -372,6 +382,12 @@ export const SIM_CONFIG = {
     },
     // [2026-07-30] PnR_Roll 전용 스위치 하한 (client 미러 참고)
     PNR_ROLL_SWITCH_MIN: 0.15,
+    // [2026-07-31] 포제션 시간 (client 미러 참고) — pace 압축으로 고페이스 팀 득점 폭주 방지
+    POSSESSION_TIME: {
+        BASE: 19,
+        PACE_NEUTRAL: 5,
+        PACE_COMPRESSION: 0.2,
+    },
     // Zone Defense System (2026-07 전면 재설계) — 존/맨투맨 진짜 트레이드오프 + 플레이타입별 카운터
     ZONE_DEFENSE: {
         // 인테리어 억제 (기존 유지, Rim/Paint/Mid 한정 — 기존엔 전 구역 적용 버그)

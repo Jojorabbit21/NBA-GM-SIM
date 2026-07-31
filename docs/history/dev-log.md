@@ -35,6 +35,179 @@
 
 ---
 
+## 2026-07-31 — 리바운드 룰렛 재설계: 지수 증폭 + motor/신장/포지션 3분할 보정
+
+**배경**: "지금 리바운드 룰렛이 너무 평평하다"는 사용자 피드백 — 압도적 능력치(웸반야마 defReb98)를
+가진 선수도 팀원 대비 확률 우위가 크지 않다는 게 이전 세션들에서 실측으로 확인된 상태였음(선형
+가중합 방식의 한계). 두 가지를 도입하기로 확정:
+1. **능력치 기반 점수를 지수(SKILL_EXPONENT=2.0)로 증폭** — 팀 내 개인 배정(`selectRebounder`)
+   단계에만 적용, 팀 단위 ORB% 판정(`calculateOrbChance`)은 미적용.
+2. **motorIntensity 단독 ±15% 곱셈 보정 → motor/신장/포지션 3분할 보정으로 재설계**
+   `score *= (0.7 + motor*0.1 + height*0.1 + pos*0.1)` — 신장은 실제 height(cm) 분포(중앙값
+   198cm=중립점) 기준 커브로, 포지션은 C(1.5)>PF(1.2)>SF=SG=PG(1.0, 페널티 없음)로 설정. 셋 다
+   극단으로 몰리면 기존과 동일하게 최대 ±15%지만 보통은 서로 상쇄되어 순수 모터 하나가 좌우하던
+   것보다 완만해짐 — 이렇게 하면 "실력"(지수 증폭된 능력치)이 배분을 주도하고, 신장/포지션은
+   구조적 이점을, motor는 경기별 컨디션 변동을 보조적으로 반영하는 역할 분담이 됨.
+
+실측 예시(웸반야마 C / 로드먼 PF / 웨스트브룩 PG + 평균 SF·SG 라인업, motor=1.0 중립)로 검증 —
+지수만 적용 시 로드먼(능력치가 웸반야마보다 근소 우위)이 32.7% vs 웸반야마 27.8%로 앞섰는데,
+신장/포지션 보정을 추가하니 32.6% vs 29.5%로 격차가 좁혀짐 — 능력치 격차를 뒤집진 않지만 체격/
+위치의 구조적 이점을 완화 요인으로 반영한다는 설계 의도대로 작동.
+
+**⚠ 알려진 이슈**: `types/player.ts`의 텐던시 문서 스펙("0.5~1.5, 리바운드 확률 ±15%")은 motor
+단독 기준으로 작성돼 있어 이제 실제 구현(motor 단독으로는 최대 ±5%)과 불일치. 문서 갱신 여부는
+사용자에게 질문했으나 명시적 답변 없이 구현 진행 확정 — 추후 확인 필요.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SIM_CONFIG.REBOUND`에 `SKILL_EXPONENT`(2.0), `MOTOR_COEFF`/`HEIGHT_COEFF`/`POSITION_COEFF`
+  (각 0.1), `HEIGHT_CURVE`, `POSITION_FACTOR` 신규 추가
+- `services/game/engine/pbp/reboundLogic.ts` (client) / `server/src/shared/engine/pbp/reboundLogic.ts`
+  (server) — `selectRebounder()`의 점수 계산에 지수 증폭 + 3분할 보정 적용, `flowEngine.ts`에서
+  `interpolateCurve` 임포트 추가
+
+**Before**:
+```ts
+let score = (baseFormula) * shooterPenalty;
+// Harvester/Raider (disabled)...
+score *= (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.3);
+```
+
+**After**:
+```ts
+const baseScore = (baseFormula);
+let score = Math.pow(baseScore, cfg.SKILL_EXPONENT) * shooterPenalty;
+// Harvester/Raider (disabled)...
+const motorFactor = p.tendencies?.motorIntensity ?? 1.0;
+const heightFactor = interpolateCurve(p.attr.height, cfg.HEIGHT_CURVE);
+const posFactor = cfg.POSITION_FACTOR[p.position] ?? 1.0;
+score *= (0.7 + motorFactor * cfg.MOTOR_COEFF + heightFactor * cfg.HEIGHT_COEFF + posFactor * cfg.POSITION_COEFF);
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 순환 임포트 확인(`flowEngine.ts`는
+`reboundLogic.ts`를 임포트하지 않음, 위험 없음). 실측 재검증(리바운드 상위권 쏠림이 체감되는지)은
+다음 세션 신규 경기 데이터로 필요.
+
+**롤백 방법**: `reboundLogic.ts`의 점수 계산을 Before 블록으로 되돌리고, `constants.ts`의
+`SKILL_EXPONENT`/`MOTOR_COEFF`/`HEIGHT_COEFF`/`POSITION_COEFF`/`HEIGHT_CURVE`/`POSITION_FACTOR` 제거.
+
+---
+
+## 2026-07-31 — 팀 리바운드 증발 버그 수정 (TEAM_REB_RATE_FG/FT 제거)
+
+**배경**: "32 TEST 4"/"32 TEST - ACTIVE" 실측에서 pace=5(중립) 기준 팀 평균 REB가 38.8개로 실제
+NBA(~43.5개, 약 11% 부족)보다 낮음을 확인. 원인 추적 결과 `SIM_CONFIG.REBOUND.TEAM_REB_RATE_FG`
+(10%, FG 미스)와 `TEAM_REB_RATE_FT`(15%, FT 마지막 시도 미스) — 미스가 나면 이 확률로 개인
+리바운드 배정을 스킵하는 로직이 있었는데, 이게 개인은 물론 **팀 합계에도 전혀 반영이 안 되고
+그냥 증발**하는 버그였음. 실제 NBA의 "팀 리바운드"는 아웃오브바운즈/루스볼파울/쿼터종료/FT
+바이올레이션 등 구체적 상황에 결부되고 팀 합계엔 포함되는데(웹 검색으로 확인), 이 엔진엔 그
+4가지 상황이 하나도 시뮬레이션 안 돼 있어 이 카테고리를 유지할 인과적 근거가 없다고 판단 —
+"팀 리바운드" 개념 자체를 제거하고 미스 시 항상 개인에게 배정하도록 단순화(옵션 A, 사용자 확정).
+수치 검증: pace=5 기준 자책 미스 40.8개×10%≈4.08개가 매 경기 증발 — 실측 부족분(4.7개)의 87%를
+이 메커니즘 하나로 설명.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — Miss path에서 `TEAM_REB_RATE_FG` 확률 체크 제거, 항상 `resolveRebound()` 호출
+- `services/game/engine/pbp/statsMappers.ts` (client) / `server/src/shared/engine/pbp/statsMappers.ts`
+  (server) — `handleFreeThrowRebound()`에서 `TEAM_REB_RATE_FT` 확률 체크 제거
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SIM_CONFIG.REBOUND`에서 `TEAM_REB_RATE_FG`/`TEAM_REB_RATE_FT` 상수 제거(더 이상
+  참조되지 않는 dead code)
+
+**Before**:
+```ts
+// possessionHandler.ts (Miss path)
+let rebounder: LivePlayer | undefined;
+let reboundType: 'off' | 'def' | undefined;
+if (Math.random() >= SIM_CONFIG.REBOUND.TEAM_REB_RATE_FG) {
+    const reb = resolveRebound(state.home, state.away, actor.playerId);
+    rebounder = reb.player;
+    reboundType = reb.type;
+}
+return { type: 'miss', ..., rebounder, reboundType, ... };
+
+// statsMappers.ts (handleFreeThrowRebound)
+const handleFreeThrowRebound = (shooter: LivePlayer) => {
+    if (Math.random() < SIM_CONFIG.REBOUND.TEAM_REB_RATE_FT) return;
+    const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+    ...
+};
+```
+
+**After**:
+```ts
+// possessionHandler.ts (Miss path)
+const reb = resolveRebound(state.home, state.away, actor.playerId);
+return { type: 'miss', ..., rebounder: reb.player, reboundType: reb.type, ... };
+
+// statsMappers.ts (handleFreeThrowRebound)
+const handleFreeThrowRebound = (shooter: LivePlayer) => {
+    const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+    ...
+};
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. `grep`으로 `TEAM_REB_RATE`
+잔여 참조가 주석 외엔 없음을 확인. 실측 재검증(팀 REB가 43~44 근처로 회복되는지)은 다음 세션
+신규 경기 데이터로 필요.
+
+**롤백 방법**: 세 파일의 변경을 Before 블록으로 되돌리고, `constants.ts`에 두 상수(`TEAM_REB_RATE_FG: 0.10`,
+`TEAM_REB_RATE_FT: 0.15`) 재추가.
+
+---
+
+## 2026-07-31 — 포제션 시간: pace 압축 도입 (고페이스 팀 득점 폭주 수정) + 상수화
+
+**배경**: 바로 아래 항목(21→19 재조정)을 배포해 "32 TEST 4"/"32 TEST - ACTIVE" 룸에서 실측한 결과,
+pace=5(중립, 대부분 팀) 기준으로는 평균 110.1점으로 목표대로 잘 맞았으나 **pace=8~10을 쓰는 팀만
+심각하게 폭주**함을 확인 — pace=8 팀 평균 131.8점, pace=9 팀 평균 146.5점, den(pace8)×por(pace9)
+매치업은 4연속 144~187점. 원인은 `19 - pace`가 pace=8/9/10에서 각각 11/10/9초라는, 실제 NBA
+역대 최고속 팀(포제션 ~13.7초)보다도 훨씬 빠른 값을 만들어냈기 때문 — 게다가 이 엔진은 공격팀
+자신의 pace가 그 포제션 길이를 결정하는 구조라 양쪽 다 고페이스인 매치업에서 효과가 배가됨.
+`19 - pace`(pace=5 기준 14초, 실제 NBA 평균과 일치)의 중심값 자체는 정확했으므로, 기준점은
+유지하고 **pace 1~10이 이 기준값에서 얼마나 벗어날 수 있는지(기울기)만 압축**하기로 함 — 사용자가
+0.1/0.2/0.3~0.4 옵션을 비교 검토 후 0.2(pace=1→14.8초, pace=10→13.0초, 전체 스윙 1.8초)로 확정.
+동시에 하드코딩돼 있던 `19`를 포함한 관련 상수를 `SIM_CONFIG.POSSESSION_TIME`으로 이동해 관리.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `POSSESSION_TIME: { BASE: 19, PACE_NEUTRAL: 5, PACE_COMPRESSION: 0.2 }` 신규 추가
+- `services/game/engine/pbp/timeEngine.ts` (client) / `server/src/shared/engine/pbp/timeEngine.ts`
+  (server) — `calculatePossessionTime()`의 기준값 계산을 압축 공식으로 변경, `SIM_CONFIG` 임포트 추가
+
+**Before**:
+```ts
+const pace = sliders.pace;
+let timeTaken = 19 - pace;
+```
+
+**After**:
+```ts
+const ptCfg = SIM_CONFIG.POSSESSION_TIME;
+const pace = sliders.pace;
+const compressedPace = ptCfg.PACE_NEUTRAL + (pace - ptCfg.PACE_NEUTRAL) * ptCfg.PACE_COMPRESSION;
+let timeTaken = ptCfg.BASE - compressedPace;
+```
+
+**결과 비교**:
+| pace | 기존(19-pace) | 신규(압축 0.2) |
+|---|---|---|
+| 1 | 18.0초 | 14.8초 |
+| 5 (중립) | 14.0초 | 14.0초 (불변) |
+| 8 | 11.0초 | 13.4초 |
+| 9 | 10.0초 | 13.2초 |
+| 10 | 9.0초 | 13.0초 |
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 순환 임포트 확인(`constants.ts`는
+자체 import 없음, 위험 없음). 실측 재검증(고페이스 팀 득점이 정상 범위로 돌아오는지)은 다음 세션
+신규 경기 데이터로 필요.
+
+**롤백 방법**: `timeEngine.ts`의 계산식을 Before로 되돌리고, `constants.ts`의 `POSSESSION_TIME`
+제거.
+
+---
+
 ## 2026-07-30 — 포제션 시간 공식 재조정 (21-pace → 19-pace)
 
 **배경**: "32 TEST 3" 실측에서 팀당 평균 FGA가 70.1개로 실제 NBA(~88.5개)보다 크게 낮은 문제를

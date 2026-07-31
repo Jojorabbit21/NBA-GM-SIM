@@ -1,6 +1,7 @@
 
 import { TeamState, LivePlayer } from './pbpTypes';
 import { SIM_CONFIG } from '../../config/constants';
+import { interpolateCurve } from './flowEngine';
 
 /**
  * Step 1: ORB% 확률 계산 (공격 리바운드 vs 수비 리바운드)
@@ -58,11 +59,13 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
         // [2026-07-30] 공격/수비 리바운드 전용 공식 분리 (calculateOrbChance와 동일 가중치)
-        let score = (
-            isOffensive
-                ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
-                : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT
-        ) * shooterPenalty;
+        const baseScore = isOffensive
+            ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
+            : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT;
+
+        // [2026-07-31] 룰렛이 너무 평평하다는 피드백 — 능력치 점수를 지수(SKILL_EXPONENT=2.0)로
+        // 증폭해 실력 격차가 배분 격차로 더 뚜렷하게 드러나도록 함(팀 내 개인 배정 단계에만 적용).
+        let score = Math.pow(baseScore, cfg.SKILL_EXPONENT) * shooterPenalty;
 
         // F-1. Harvester: 압도적 리바운드 능력치 보유자
         // [2026-07-30] ARCHETYPES_ENABLED=false로 비활성화 (다른 히든 아키타입 계열과 통일)
@@ -79,13 +82,14 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
             score *= cfg.RAIDER_SCORE_MULTIPLIER;
         }
 
-        // [SaveTendency] motorIntensity: hustle factor for rebounding
-        // [2026-07-30] Math.random() 곱셈 제거(결정론적 배율로 전환) — 마지막 룰렛 추첨과
-        // 역할이 중복되어 실력/모터 차이를 이론값보다 낮게 희석시키는 문제가 있었음(검증 완료).
-        // 계수도 0.6→0.3으로 조정 — 기존 계수는 motor=1.0(평균)에서도 이미 1.3배 고정 보너스가
-        // 붙어 텐던시 문서 스펙("0.5~1.5, 리바운드 확률 ±15%")과 안 맞았음. 0.3이면 motor=1.0(중립
-        // 기준값)일 때 정확히 1.0배, motor=0.5/1.5에서 정확히 ∓15%가 되어 스펙과 일치.
-        score *= (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.3);
+        // [2026-07-31] motorIntensity 단독 ±15% → motor/신장/포지션 3분할 곱셈 보정으로 재설계.
+        // 각 요소 0.5~1.5 범위로 정규화 후 계수(0.1)를 곱해 합산 — 셋 다 극단으로 몰리면 기존과
+        // 동일하게 최대 ±15%, 보통은 서로 상쇄되어 순수 모터 하나가 좌우하던 것보다 완만해짐.
+        // ⚠ types/player.ts 텐던시 문서의 "motor 단독 ±15%" 스펙은 이제 이 설계와 불일치(추후 검토).
+        const motorFactor = p.tendencies?.motorIntensity ?? 1.0;
+        const heightFactor = interpolateCurve(p.attr.height, cfg.HEIGHT_CURVE);
+        const posFactor = cfg.POSITION_FACTOR[p.position] ?? 1.0;
+        score *= (0.7 + motorFactor * cfg.MOTOR_COEFF + heightFactor * cfg.HEIGHT_COEFF + posFactor * cfg.POSITION_COEFF);
 
         return { p, score };
     });

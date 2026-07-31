@@ -128,9 +128,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // Helper: Resolve and record rebound on missed free throw
     // Kept here because it requires state context
     const handleFreeThrowRebound = (shooter: LivePlayer) => {
-        // Team rebound check (dead ball, out-of-bounds on FT miss)
-        if (Math.random() < SIM_CONFIG.REBOUND.TEAM_REB_RATE_FT) return;
-
+        // [2026-07-31] TEAM_REB_RATE_FT 제거 — FG 미스와 동일한 증발 버그(possessionHandler.ts
+        // 참고), 마지막 자유투 미스 시 항상 개인에게 배정하도록 단순화.
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
 
         rebPlayer.reb += 1;

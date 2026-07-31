@@ -1,6 +1,7 @@
 
 import { GameState } from './pbpTypes.ts';
 import { TacticalSliders, PlayType } from '../../types.ts';
+import { SIM_CONFIG } from '../../game/config/constants.ts';
 
 /**
  * Calculates how much time a possession takes based on:
@@ -23,8 +24,11 @@ export function calculatePossessionTime(
     }
 
     // [2026-07-30] 21→19로 재조정 (client 미러 참고) — 포제션 길이 캘리브레이션 수정
+    // [2026-07-31] pace 압축 도입 (client 미러 참고) — 고페이스 팀 득점 폭주 방지
+    const ptCfg = SIM_CONFIG.POSSESSION_TIME;
     const pace = sliders.pace;
-    let timeTaken = 19 - pace;
+    const compressedPace = ptCfg.PACE_NEUTRAL + (pace - ptCfg.PACE_NEUTRAL) * ptCfg.PACE_COMPRESSION;
+    let timeTaken = ptCfg.BASE - compressedPace;
 
     if (playType === 'Transition') {
         timeTaken -= 5;

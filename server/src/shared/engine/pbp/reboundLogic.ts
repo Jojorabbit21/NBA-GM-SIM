@@ -1,6 +1,7 @@
 
 import { TeamState, LivePlayer } from './pbpTypes.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
+import { interpolateCurve } from './flowEngine.ts';
 
 /**
  * Step 1: ORB% 확률 계산
@@ -46,11 +47,12 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
         // [2026-07-30] 공격/수비 리바운드 전용 공식 분리 (client 미러 참고)
-        let score = (
-            isOffensive
-                ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
-                : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT
-        ) * shooterPenalty;
+        const baseScore = isOffensive
+            ? p.attr.offReb * cfg.ORB_REB_WEIGHT + p.attr.hustle * cfg.ORB_HUSTLE_WEIGHT + p.attr.vertical * cfg.ORB_VERTICAL_WEIGHT
+            : p.attr.defReb * cfg.DRB_REB_WEIGHT + p.attr.boxOut * cfg.DRB_BOXOUT_WEIGHT + p.attr.vertical * cfg.DRB_VERTICAL_WEIGHT + p.attr.strength * cfg.DRB_STRENGTH_WEIGHT;
+
+        // [2026-07-31] 룰렛 지수 증폭 (client 미러 참고)
+        let score = Math.pow(baseScore, cfg.SKILL_EXPONENT) * shooterPenalty;
 
         // [2026-07-30] ARCHETYPES_ENABLED=false로 비활성화 (client 미러 참고)
         if (cfg.ARCHETYPES_ENABLED &&
@@ -65,8 +67,11 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
             score *= cfg.RAIDER_SCORE_MULTIPLIER;
         }
 
-        // [2026-07-30] 결정론적 배율로 전환 + 계수 0.6→0.3 (client 미러 참고)
-        score *= (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.3);
+        // [2026-07-31] motor/신장/포지션 3분할 곱셈 보정 (client 미러 참고)
+        const motorFactor = p.tendencies?.motorIntensity ?? 1.0;
+        const heightFactor = interpolateCurve(p.attr.height, cfg.HEIGHT_CURVE);
+        const posFactor = cfg.POSITION_FACTOR[p.position] ?? 1.0;
+        score *= (0.7 + motorFactor * cfg.MOTOR_COEFF + heightFactor * cfg.HEIGHT_COEFF + posFactor * cfg.POSITION_COEFF);
 
         return { p, score };
     });

@@ -1,6 +1,7 @@
 
 import { GameState } from './pbpTypes';
 import { TacticalSliders, PlayType } from '../../../../types';
+import { SIM_CONFIG } from '../../config/constants';
 
 /**
  * Calculates how much time a possession takes based on:
@@ -25,12 +26,15 @@ export function calculatePossessionTime(
     // 1. Base Time based on Pace Slider (1~10)
     // [2026-07-30] 21→19로 재조정 — pace=5(중립) 기준 실측 포제션 길이가 16.72초로 나왔는데,
     // 실제 NBA 평균(2880초/(99.3페이스×2)≈14.5초)보다 길어서 포제션 개수(FGA 등 전체 카운팅
-    // 스탯) 부족의 핵심 원인으로 확인됨. 19로 낮추면 pace=5 기준 14초로 실제 NBA 평균에 근접.
-    // Pace 1 (Slow) -> 18s base
-    // Pace 5 (Avg)  -> 14s base
-    // Pace 10 (Fast)-> 9s base
+    // 스탯) 부족의 핵심 원인으로 확인됨.
+    // [2026-07-31] pace를 압축 없이 그대로 빼면(19-pace) pace=8~10 팀의 포제션이 9~11초까지
+    // 떨어져 게임당 130점 이상 폭주하는 문제가 실측으로 확인됨(den pace8×por pace9 매치업 4연속
+    // 144~187점) — SIM_CONFIG.POSSESSION_TIME.PACE_COMPRESSION(0.2)으로 pace 1~10의 영향력을
+    // 완화. pace=5(중립)는 그대로 14초 유지, pace=1→14.8초, pace=10→13.0초로 스윙을 1.8초로 축소.
+    const ptCfg = SIM_CONFIG.POSSESSION_TIME;
     const pace = sliders.pace;
-    let timeTaken = 19 - pace;
+    const compressedPace = ptCfg.PACE_NEUTRAL + (pace - ptCfg.PACE_NEUTRAL) * ptCfg.PACE_COMPRESSION;
+    let timeTaken = ptCfg.BASE - compressedPace;
 
     // 2. Play Type Modifiers
     if (playType === 'Transition') {
