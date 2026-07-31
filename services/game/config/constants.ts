@@ -631,6 +631,58 @@ export const SIM_CONFIG = {
         POST_UP: { C: 0.6, PF: 0.2, SF: 0.1, SG: 0.05, PG: 0.05 } as Record<string, number>,
         PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
     },
+    // [2026-07-31] PostUp 킥아웃 — 더블팀 유도 후 오픈 슈터에게 패스할지 결정. postScorer와
+    // postPassing(passVision+passAcc 평균)을 1:1 비율로 경쟁시키는 방식은 둘 다 같은 0~99 스케일이라
+    // 샤킬 오닐 같은 순수 스코어러도 킥아웃 확률이 38%까지 나오는 문제가 있었음(32 TEST 6 실측
+    // 기반 설계 논의) — postPassing 단독 기준의 지수 커브로 교체. 정규화(PASSING_MIN~MAX) 후
+    // 지수(CURVE_EXPONENT)를 적용해 중~상위권(75~90대)은 완만하게, 극상위권(요키치급 98+)만 급격히
+    // 오르는 형태. 최종값(요키치39.6%/사보니스24.1%/센군23.4%/샤킬9.8%/말론6.7%/하워드2.3%)으로 확정.
+    POST_KICKOUT: {
+        PASSING_MIN: 40,       // 이하는 킥아웃 확률 0%
+        PASSING_MAX: 99,       // 이상은 PROB_MAX로 고정
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        // 킥아웃 성공 시 passIq 기반 성공률 보너스 (DriveKick의 driveBonus와 동일 패턴)
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    // [2026-07-31] PnR_Roll 킥아웃 — POST_KICKOUT과 동일 구조, PROB_MAX만 절반(0.20)으로 낮춤.
+    // 롤맨은 림 근처에서 캐치하자마자 결정해야 해서 포스트업보다 킥아웃 판단 여유가 적다는 게
+    // 이유(포스트업은 백다운하며 더블팀을 읽을 시간이 있지만, 롤은 훨씬 빠른 판단이 필요).
+    PNR_ROLL_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.20,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    // [2026-07-31] Iso/PnR_Handler 킥아웃 — 더블팀 유도 후 약측/코너로 패스. POST_KICKOUT과 동일
+    // 구조(PROB_MAX=0.40)에 더해 [SaveTendency] playStyle(-1 패스~+1 슛)을 처음으로 반영 —
+    // 기존 pickWeightedActor의 슈터/패서 픽 가중치에 이미 쓰던 PLAY_SELECTION.PLAYSTYLE_PASSER_K를
+    // 그대로 재사용해 새 상수 없이 일관성 유지. 같은 postPassing 스킬이어도 "실제로 패스하고
+    // 싶어하는 성향"(매직 존슨 vs 카이리 어빙 같은 성격 차이)이 추가로 갈린다. PostUp/PnR_Roll에는
+    // 아직 미적용 — Iso/PnR_Handler에서 다듬은 뒤 소급 적용 예정.
+    ISO_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    PNR_HANDLER_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
     FOUL_TROUBLE: {
         PROB_MOD: {
             3: 0.85,

@@ -116,7 +116,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'PnR_Pop': 0.95, 'PnR_Roll': 0.90, 'Handoff': 0.78, 'Transition': 0.78,
                 'PostUp': 0.55, 'PnR_Handler': 0.50, 'Iso': 0.38, 'Putback': 0.10,
             };
-            const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
+            // [2026-07-31] PostUp/PnR_Roll 킥아웃 오버라이드 (client 미러 참고)
+            const prob = result.isKickout ? 0.9 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
             if (Math.random() < prob) assister.ast += 1;
         }
 
@@ -126,6 +127,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         let logText = generateCommentary('score', actor, defender, assister, playType, zone, {
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
             isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined,
+            isKickout: !!result.isKickout,
         });
 
         let totalPointsAdded = points;
@@ -155,7 +157,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
             isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
-            isHelpPlay: !!result.isHelpPlay,
+            isHelpPlay: !!result.isHelpPlay, isKickout: !!result.isKickout,
         });
 
         if (isBlock && defender) { defender.blk += 1; addLog(state, defTeam.id, logText, 'block'); }

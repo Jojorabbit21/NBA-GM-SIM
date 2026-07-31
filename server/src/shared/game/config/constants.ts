@@ -568,6 +568,45 @@ export const SIM_CONFIG = {
         POST_UP: { C: 0.6, PF: 0.2, SF: 0.1, SG: 0.05, PG: 0.05 } as Record<string, number>,
         PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
     },
+    // [2026-07-31] PostUp 킥아웃 (client 미러 참고)
+    POST_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    // [2026-07-31] PnR_Roll 킥아웃 (client 미러 참고) — PROB_MAX만 절반(0.20)
+    PNR_ROLL_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.20,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    // [2026-07-31] Iso/PnR_Handler 킥아웃 (client 미러 참고) — playStyle 보정 최초 적용
+    ISO_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
+    PNR_HANDLER_KICKOUT: {
+        PASSING_MIN: 40,
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.40,
+        CURVE_EXPONENT: 1.3,
+        PASSIQ_BONUS_NEUTRAL: 70,
+        PASSIQ_BONUS_SCALE: 0.02,
+    },
     FOUL_TROUBLE: {
         PROB_MOD: {
             3: 0.85,

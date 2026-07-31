@@ -309,4 +309,6 @@ export interface PossessionResult {
     helpDefenderId?: string;
     // [2026-07-30] 이번 스틸/블락/파울이 헬프 디펜더에게 귀속된 것인지 (커멘터리 전용 문구용)
     isHelpPlay?: boolean;
+    // [2026-07-31] PostUp/PnR_Roll 킥아웃 플래그 (client 미러 참고)
+    isKickout?: boolean;
 }

@@ -460,7 +460,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
-    const { actor, secondaryActor, screener, preferredZone, bonusHitRate, shotType } = playCtx;
+    const { actor, secondaryActor, screener, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
@@ -1182,6 +1182,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             subZone, isZone,
             helpDefenderId,
             isHelpPlay: isHelpBlock,
+            isKickout,
         };
     }
 
@@ -1191,5 +1192,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
         subZone, isZone,
         helpDefenderId,
+        isKickout,
     };
 }

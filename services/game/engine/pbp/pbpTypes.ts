@@ -338,4 +338,7 @@ export interface PossessionResult {
     helpDefenderId?: string;
     // [2026-07-30] 이번 스틸/블락/파울이 헬프 디펜더에게 귀속된 것인지 (커멘터리 전용 문구용)
     isHelpPlay?: boolean;
+    // [2026-07-31] PostUp/PnR_Roll 더블팀 유도 후 킥아웃으로 액터가 교체된 포제션인지
+    // (어시스트 확률 고정치·전용 커멘터리 트리거용)
+    isKickout?: boolean;
 }

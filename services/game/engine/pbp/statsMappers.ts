@@ -178,7 +178,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'Iso':           0.38, // 엔트리 패스 + 짧은 드리블 후 슛
                 'Putback':       0.10, // Tip-in rarely credited
             };
-            const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
+            // [2026-07-31] PostUp/PnR_Roll 킥아웃은 더블팀을 뚫고 던지는 명백한 의도적 패스라
+            // DriveKick(0.97)급으로 취급 — 원래 playType의 assistOdds(PostUp 0.55/PnR_Roll 0.90)는
+            // 엔트리패스/앨리웁 기준으로 잡힌 값이라 킥아웃엔 안 맞음. 고정 0.9로 오버라이드.
+            const prob = result.isKickout ? 0.9 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
             if (Math.random() < prob) assister.ast += 1;
         }
 
@@ -189,7 +192,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Generate Commentary
         let logText = generateCommentary('score', actor, defender, assister, playType, zone, {
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
-            isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined
+            isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined,
+            isKickout: !!result.isKickout
         });
         
         let totalPointsAdded = points; 
@@ -234,7 +238,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
              isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
              isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
-             isHelpPlay: !!result.isHelpPlay
+             isHelpPlay: !!result.isHelpPlay, isKickout: !!result.isKickout
         });
 
         // Handle Block Stat

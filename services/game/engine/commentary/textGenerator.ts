@@ -39,14 +39,78 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean }
+    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean }
 ): string {
-    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points, pnrCoverage, isHelpPlay } = flags;
+    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points, pnrCoverage, isHelpPlay, isKickout } = flags;
     const canDunk = actor.attr.vertical > 70 && actor.attr.ins > 60;
 
     // --- 1. SCORING ---
     if (type === 'score') {
         const scoreTag = ` (+${points})`;
+
+        // --- PostUp/PnR_Roll/Iso/PnR_Handler Kickout Commentary (더블팀 유도 후 킥아웃) ---
+        if (isKickout && assister && (playType === 'PostUp' || playType === 'PnR_Roll' || playType === 'Iso' || playType === 'PnR_Handler')) {
+            const kickoutScoreText: Record<string, { threept: string[]; rimPaint: string[]; mid: string[] }> = {
+                PostUp: {
+                    threept: [
+                        `${assister.playerName}, 더블팀을 유인한 뒤 침착한 킥아웃! ${actor.playerName}의 3점 적중!${scoreTag}`,
+                        `${assister.playerName}, 포스트에서 수비를 끌어들이고 코너로 정확히 빼줍니다 — ${actor.playerName} 3점포!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}가 포스트에서 만들어준 오픈 찬스! 3점 꽂힙니다!${scoreTag}`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}, 포스트에서 더블팀을 읽고 빈 공간으로 패스! ${actor.playerName}가 골밑에서 마무리!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}의 포스트 킥아웃을 받아 그대로 돌파 마무리!${scoreTag}`,
+                    ],
+                    mid: [
+                        `${assister.playerName}, 포스트업 중 더블팀을 유도한 뒤 킥아웃 — ${actor.playerName}의 미드레인지 적중!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}가 포스트에서 만들어준 공간에서 점퍼 성공!${scoreTag}`,
+                    ],
+                },
+                PnR_Roll: {
+                    threept: [
+                        `${assister.playerName}, 롤 하다가 수비가 몰리자 그대로 킥아웃! ${actor.playerName}의 3점 적중!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}가 골밑에서 만들어준 오픈 찬스 — 3점 꽂힙니다!${scoreTag}`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}, 롤 하다 더블팀을 만나자 반대편으로 패스! ${actor.playerName}가 직접 마무리!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}의 킥아웃을 받아 곧바로 돌파 득점!${scoreTag}`,
+                    ],
+                    mid: [
+                        `${assister.playerName}, 롤맨이 수비를 끌어들인 뒤 킥아웃 — ${actor.playerName}의 미드레인지 적중!${scoreTag}`,
+                    ],
+                },
+                Iso: {
+                    threept: [
+                        `${assister.playerName}, 1대1 승부하다 더블팀이 오자 침착하게 빼줍니다! ${actor.playerName}의 3점 적중!${scoreTag}`,
+                        `${assister.playerName}, 아이솔레이션 중 수비가 몰리자 킥아웃 — ${actor.playerName} 3점포!${scoreTag}`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}, 아이솔레이션에서 더블팀을 읽고 반대편으로 패스! ${actor.playerName}가 골밑에서 마무리!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}의 아이소 킥아웃을 받아 그대로 돌파 마무리!${scoreTag}`,
+                    ],
+                    mid: [
+                        `${assister.playerName}, 1대1 승부 중 수비를 끌어들인 뒤 킥아웃 — ${actor.playerName}의 미드레인지 적중!${scoreTag}`,
+                    ],
+                },
+                PnR_Handler: {
+                    threept: [
+                        `${assister.playerName}, 픽앤롤에서 더블팀을 유도한 뒤 약측으로 정확히 빼줍니다! ${actor.playerName}의 3점 적중!${scoreTag}`,
+                        `${assister.playerName}, 스크린 활용 후 수비가 몰리자 킥아웃 — ${actor.playerName} 3점포!${scoreTag}`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}, 픽앤롤 중 더블팀을 읽고 빈 공간으로 패스! ${actor.playerName}가 골밑에서 마무리!${scoreTag}`,
+                        `${actor.playerName}, ${assister.playerName}의 픽앤롤 킥아웃을 받아 곧바로 돌파 득점!${scoreTag}`,
+                    ],
+                    mid: [
+                        `${assister.playerName}, 픽앤롤에서 수비를 끌어들인 뒤 킥아웃 — ${actor.playerName}의 미드레인지 적중!${scoreTag}`,
+                    ],
+                },
+            };
+            const set = kickoutScoreText[playType];
+            if (zone === '3PT') return pick(set.threept);
+            if (zone === 'Rim' || zone === 'Paint') return pick(set.rimPaint);
+            return pick(set.mid);
+        }
 
         // --- PnR Coverage Context Commentary ---
         if (pnrCoverage === 'drop') {
@@ -191,6 +255,68 @@ export function generateCommentary(
 
     // --- 2. MISS ---
     if (type === 'miss') {
+        // --- PostUp/PnR_Roll/Iso/PnR_Handler Kickout Commentary (더블팀 유도 후 킥아웃, 실패) ---
+        if (isKickout && assister && (playType === 'PostUp' || playType === 'PnR_Roll' || playType === 'Iso' || playType === 'PnR_Handler') && !isBlock) {
+            const kickoutMissText: Record<string, { threept: string[]; rimPaint: string[]; mid: string[] }> = {
+                PostUp: {
+                    threept: [
+                        `${assister.playerName}, 포스트에서 침착하게 빼줬지만 ${actor.playerName}의 3점이 빗나갑니다.`,
+                        `${actor.playerName}, ${assister.playerName}의 킥아웃을 받았지만 3점 시도가 림을 외면합니다.`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}의 포스트 킥아웃, ${actor.playerName}의 돌파 마무리가 빗나갑니다.`,
+                        `${actor.playerName}, 킥아웃을 받아 파고들지만 마무리가 아쉽습니다.`,
+                    ],
+                    mid: [
+                        `${assister.playerName}가 포스트에서 만들어준 공간, ${actor.playerName}의 점퍼가 빗나갑니다.`,
+                    ],
+                },
+                PnR_Roll: {
+                    threept: [
+                        `${assister.playerName}, 롤 하다 킥아웃했지만 ${actor.playerName}의 3점이 빗나갑니다.`,
+                        `${actor.playerName}, ${assister.playerName}의 킥아웃을 받았지만 3점 시도가 아쉽게 빗나갑니다.`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}의 킥아웃, ${actor.playerName}의 돌파 마무리가 림을 돌아 나옵니다.`,
+                        `${actor.playerName}, 킥아웃 받아 파고들지만 마무리 실패.`,
+                    ],
+                    mid: [
+                        `${assister.playerName}가 골밑에서 만들어준 공간, ${actor.playerName}의 점퍼가 빗나갑니다.`,
+                    ],
+                },
+                Iso: {
+                    threept: [
+                        `${assister.playerName}, 아이솔레이션 중 침착하게 빼줬지만 ${actor.playerName}의 3점이 빗나갑니다.`,
+                        `${actor.playerName}, ${assister.playerName}의 아이소 킥아웃을 받았지만 3점 시도가 아쉽게 빗나갑니다.`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}의 아이소 킥아웃, ${actor.playerName}의 돌파 마무리가 빗나갑니다.`,
+                        `${actor.playerName}, 킥아웃을 받아 파고들지만 마무리가 아쉽습니다.`,
+                    ],
+                    mid: [
+                        `${assister.playerName}가 아이솔레이션에서 만들어준 공간, ${actor.playerName}의 점퍼가 빗나갑니다.`,
+                    ],
+                },
+                PnR_Handler: {
+                    threept: [
+                        `${assister.playerName}, 픽앤롤에서 킥아웃했지만 ${actor.playerName}의 3점이 빗나갑니다.`,
+                        `${actor.playerName}, ${assister.playerName}의 픽앤롤 킥아웃을 받았지만 3점 시도가 림을 외면합니다.`,
+                    ],
+                    rimPaint: [
+                        `${assister.playerName}의 픽앤롤 킥아웃, ${actor.playerName}의 돌파 마무리가 림을 돌아 나옵니다.`,
+                        `${actor.playerName}, 킥아웃 받아 파고들지만 마무리 실패.`,
+                    ],
+                    mid: [
+                        `${assister.playerName}가 픽앤롤에서 만들어준 공간, ${actor.playerName}의 점퍼가 빗나갑니다.`,
+                    ],
+                },
+            };
+            const set = kickoutMissText[playType];
+            if (zone === '3PT') return pick(set.threept);
+            if (zone === 'Rim' || zone === 'Paint') return pick(set.rimPaint);
+            return pick(set.mid);
+        }
+
         // PnR Coverage Defense Success
         if (pnrCoverage === 'drop' && playType === 'PnR_Roll') {
             return pick([

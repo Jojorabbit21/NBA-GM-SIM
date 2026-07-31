@@ -35,6 +35,193 @@
 
 ---
 
+## 2026-07-31 — PostUp/PnR_Roll에 playStyle 보정 소급 적용
+
+**배경**: 바로 아래 항목(Iso/PnR_Handler)에서 다듬은 `playStyle`(-1 패스~+1 슛) 보정을 예고했던
+대로 PostUp/PnR_Roll에도 소급 적용 — 4개 킥아웃 플레이타입 전부 동일한 패턴(postPassing 지수
+커브 × playStyle 보정)으로 통일.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts`
+  (server) — `PostUp`/`PnR_Roll` 케이스의 `kickChance`/`rollKickChance`를 `const`→`let`로 변경하고
+  `playStyle` 보정 곱연산 추가 (Iso/PnR_Handler와 동일하게 `PLAY_SELECTION.PLAYSTYLE_PASSER_K` 재사용,
+  PnR_Roll은 `screener.tendencies.playStyle` 기준 — actor 변수명이 이 케이스에선 `screener`)
+
+**Before/After**:
+```ts
+// Before
+const kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
+
+// After
+let kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
+const postPs = actor.tendencies?.playStyle ?? 0;
+kickChance *= (1 - postPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+```
+(PnR_Roll도 동일 패턴, 변수명만 `rollKickChance`/`rollPs`/`screener` 기준)
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 이제 PostUp/PnR_Roll/Iso/
+PnR_Handler 4개 플레이타입 전부 동일한 킥아웃 설계(지수 커브 + playStyle 보정)로 통일됨.
+
+**롤백 방법**: `kickChance`/`rollKickChance`를 `let`→`const`로 되돌리고 playStyle 보정 두 줄 제거.
+
+---
+
+## 2026-07-31 — Iso/PnR_Handler 킥아웃 도입 (playStyle 텐던시 최초 반영)
+
+**배경**: PostUp/PnR_Roll에 이어 나머지 두 후보(Iso/PnR_Handler)에도 동일한 킥아웃 메커니즘 적용.
+두 플레이타입 다 액터 선정 기준이 `isoScorer + handler*0.5`로 동일해 하든/루카/르브론식 "1대1·
+픽앤롤에서 더블팀 유도 후 킥아웃"을 표현하기에 적합. 여기서 처음으로 `[SaveTendency] playStyle`
+(-1 패스~+1 슛)을 킥아웃 확률에 반영 — 새 상수를 만들지 않고 `pickWeightedActor`가 이미 슈터/
+패서 픽 가중치에 쓰던 `SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K`(0.25)를 재사용. 설계
+검증을 위해 DB에서 Iso/PnR_Handler 액터 점유율 상위 10명(`isoScorer+handler*0.5` 직접 계산)을
+뽑아 실제 성향에 맞춰 임의 배정한 playStyle로 시뮬레이션 — 매직 존슨(playStyle -0.8) 48.0% vs
+카이리 어빙(+0.4) 23.9%처럼, 순수 스킬만으론 크지 않았을 격차가 성격 차이로 벌어지는 걸 확인
+후 확정. PostUp/PnR_Roll에는 아직 `playStyle` 미적용 — 이번에 다듬은 뒤 소급 적용 예정(사용자
+확정, 아직 미착수).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SIM_CONFIG.ISO_KICKOUT`, `PNR_HANDLER_KICKOUT` 신규 추가 (둘 다 `PROB_MAX=0.40`,
+  나머지는 `POST_KICKOUT`과 동일 구조)
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts`
+  (server) — `Iso`/`PnR_Handler` 케이스에 킥아웃 분기 추가 (PostUp/PnR_Roll과 동일 구조 +
+  `playStyle` 보정 곱연산 추가)
+- `services/game/engine/commentary/textGenerator.ts` (client) / `server/src/shared/engine/commentary/textGenerator.ts`
+  (server) — 킥아웃 커멘터리 블록을 `isPostUp` 불리언 분기에서 `playType` 키 기반 룩업 테이블
+  (`Record<string, {threept,rimPaint,mid}>`)로 리팩터링, Iso/PnR_Handler 12블록(득점6+미스6) 추가
+
+**Before/After (킥아웃 확률 계산)**:
+```ts
+// Before (PostUp/PnR_Roll 패턴 그대로)
+let kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
+
+// After (Iso/PnR_Handler — playStyle 보정 추가)
+let kickChance = ikCfg.PROB_MIN + (ikCfg.PROB_MAX - ikCfg.PROB_MIN) * Math.pow(passingNorm, ikCfg.CURVE_EXPONENT);
+const ps = actor.tendencies?.playStyle ?? 0;
+kickChance *= (1 - ps * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 실측 기반 사전 시뮬레이션
+(액터 점유율 상위 10명 + 임의 배정 playStyle) 완료 — 실제 재시뮬레이션 결과는 다음 세션 신규
+데이터로 확인 필요.
+
+**주의사항**: PostUp/PnR_Roll에는 아직 `playStyle` 보정이 없음 — 사용자가 "Iso/Handler로 다듬은
+뒤 소급 적용" 하기로 확정했으나 아직 미착수. 4개 플레이타입 전부 일관되게 만들려면 추후 작업 필요.
+
+**롤백 방법**: `playTypes.ts`의 `Iso`/`PnR_Handler` 케이스에서 킥아웃 분기 제거, `textGenerator.ts`의
+킥아웃 룩업 테이블에서 `Iso`/`PnR_Handler` 항목 제거(또는 리팩터링 전 `isPostUp` 불리언 분기로
+되돌림), `constants.ts`의 `ISO_KICKOUT`/`PNR_HANDLER_KICKOUT` 제거.
+
+---
+
+## 2026-07-31 — PnR_Roll 킥아웃 + isKickout 플래그(어시스트 확률·전용 커멘터리) 추가
+
+**배경**: 바로 아래 항목(PostUp 킥아웃)에 이어 PnR_Roll에도 동일 메커니즘 적용 — 롤맨은 캐치 즉시
+결정해야 해서 포스트업보다 판단 여유가 적다는 이유로 `PROB_MAX`만 절반(0.20)으로 설정. 추가로
+두 가지 부수 문제를 발견해 함께 해결: ①`playType`을 그대로 유지하다 보니 킥아웃 슛도 원래
+용도(PostUp의 엔트리패스 0.55, PnR_Roll의 앨리웁 0.90)로 캘리브레이션된 `assistOdds`를 그대로
+적용받는 문제 — 더블팀을 뚫는 명백한 의도적 패스인데 부적절한 확률이 적용됨. ②PnR_Roll의 기존
+Rim/Paint+덩크+어시스트 커멘터리("~가 띄워주고 ~가 앨리웁으로!")가 원래 "핸들러→롤러 앨리웁"
+전용으로 만들어진 문구인데, 킥아웃(롤러가 반대로 킥아웃해서 받은 선수가 돌파 마무리)에도 잘못
+적용될 수 있는 문제. `PossessionResult`/`PlayContext`에 `isKickout` 플래그를 신설해 두 문제를
+한 번에 해결 — 사용자와 사전에 득점 6세트+미스 6세트(PostUp/PnR_Roll × 3PT/Rim·Paint/Mid) 총
+12개 커멘터리 블록을 확정한 뒤 구현.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SIM_CONFIG.PNR_ROLL_KICKOUT` 신규 추가 (`POST_KICKOUT`과 동일 구조, `PROB_MAX`만 0.20)
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts`
+  (server) — `PlayContext`에 `isKickout?: boolean` 추가, `PnR_Roll` 케이스에 킥아웃 분기 추가
+  (구조는 PostUp과 동일: 롤러의 `passVision+passAcc` 기반 킥아웃 확률 → 발동 시 `spacer` 기준
+  킥아웃 타깃으로 `actor` 교체, 롤러는 `secondaryActor`), PostUp 킥아웃 분기 반환값에도 `isKickout: true` 추가
+- `services/game/engine/pbp/pbpTypes.ts` (client) / `server/src/shared/engine/pbp/pbpTypes.ts`
+  (server) — `PossessionResult`에 `isKickout?: boolean` 추가
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server) — `playCtx`에서 `isKickout` 추가 destructure, `miss`/`score` `PossessionResult` 생성 시 전달
+- `services/game/engine/pbp/statsMappers.ts` (client) / `server/src/shared/engine/pbp/statsMappers.ts`
+  (server) — 어시스트 확률 계산에 `isKickout` 우선 분기(고정 0.9) 추가, `generateCommentary()` 호출
+  (score/miss) `flags`에 `isKickout` 전달
+- `services/game/engine/commentary/textGenerator.ts` (client) / `server/src/shared/engine/commentary/textGenerator.ts`
+  (server) — `generateCommentary()` 시그니처에 `isKickout` 추가, score/miss 섹션 최상단에 PostUp/PnR_Roll
+  킥아웃 전용 커멘터리 12블록 삽입(존별 3PT/Rim·Paint/Mid × PostUp/PnR_Roll × 득점/미스). 이 블록이
+  최상단에서 먼저 `return`하므로 기존 PnR_Roll 앨리웁 문구(Rim/Paint+덩크+어시스트)는 킥아웃 케이스에
+  자연히 도달하지 않게 됨(별도 가드 불필요)
+
+**Before/After (assistOdds)**:
+```ts
+// Before
+const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
+// After
+const prob = result.isKickout ? 0.9 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
+```
+
+**PNR_ROLL_KICKOUT 값**: `PASSING_MIN=40, PASSING_MAX=99, PROB_MIN=0, PROB_MAX=0.20, CURVE_EXPONENT=1.3`
+(POST_KICKOUT과 동일 곡선, 확률만 정확히 절반).
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드.
+
+**롤백 방법**: `playTypes.ts`의 `PnR_Roll` 케이스에서 킥아웃 분기 제거, `isKickout` 관련 변경을
+전 파일에서 되돌리고, `constants.ts`의 `PNR_ROLL_KICKOUT` 제거.
+
+---
+
+## 2026-07-31 — PostUp 킥아웃 메커니즘 신규 도입 (플레이메이킹 빅 어시스트 부족 해결)
+
+**배경**: "32 TEST 6" 실측에서 요키치/사보니스 어시스트가 각각 4.17/4.15개(AST/36 5.08/5.13)로
+포지션 평균(C 2.68) 대비 1.9배에 그쳐, 실제 NBA 격차(5~6배)에 크게 못 미침을 확인. 코드 추적 결과
+`PostUp`(C 포지션 가중치 60%)과 `PnR_Roll`(C 70%) — 센터 점유율 대부분을 차지하는 두 플레이타입
+모두 "빅맨은 항상 슈터, 절대 패서가 될 수 없다"는 구조였음(더블팀 유도 후 킥아웃하는 분기 자체가
+없음). `DriveKick`이 이미 "드라이버가 킵할지 킥아웃할지" 확률적으로 결정하고 액터를 교체하는
+동일한 패턴을 갖고 있어 이를 참고해 PostUp에 먼저 적용하기로 함(PnR_Roll은 추후 논의).
+
+설계 과정에서 시행착오: 처음엔 DriveKick과 동일하게 `postScorer/(postScorer+postPassing)` 비율로
+설계했으나, 실측 결과(샤킬 오닐도 킥아웃 38%) 두 값이 같은 0~99 스케일이라 격차가 안 벌어지는
+문제 확인 — DB 조회로 하워드(48/45)·말론(54/56)의 passVision/passAcc이 실제로 포지션 중앙값과
+거의 일치함을 확인해 "데이터가 이상한 게 아니라 공식 구조가 문제"임을 검증. 이후 `postPassing`
+단독 기준의 정규화+지수 커브 방식으로 전환, 목표 지점(요키치 39.6%/사보니스 24.1%/센군 23.4%/
+샤킬 9.8%/말론 6.7%/하워드 2.3%)에 맞춰 `PASSING_MIN=40/MAX=99, PROB_MIN=0/MAX=0.40,
+CURVE_EXPONENT=1.3`으로 확정(사용자가 지수 2.0→1.5→1.3 순으로 직접 비교 후 결정).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts`
+  (server) — `SIM_CONFIG.POST_KICKOUT` 신규 추가 (`PASSING_MIN/MAX`, `PROB_MIN/MAX`,
+  `CURVE_EXPONENT`, `PASSIQ_BONUS_NEUTRAL/SCALE`)
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts`
+  (server) — `PostUp` 케이스에 킥아웃 분기 추가 (DriveKick 패턴 참고: 확률 발동 시 `actor`를
+  킥아웃 타깃으로 교체, 원래 포스트 선수는 `secondaryActor`로 어시스트 후보가 됨)
+
+**Before**: PostUp은 항상 포스트 선수 본인이 슛(Rim/Paint는 `resolveFinish`, 아니면 Mid 점퍼),
+엔트리 패서(포스트에 넣어준 선수)만 어시스트 후보.
+
+**After**:
+```ts
+const pkCfg = SIM_CONFIG.POST_KICKOUT;
+const postPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+const passingNorm = Math.max(0, Math.min(1, (postPassing - pkCfg.PASSING_MIN) / (pkCfg.PASSING_MAX - pkCfg.PASSING_MIN)));
+const kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
+
+if (Math.random() < kickChance) {
+    const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+    const passIqBonus = Math.max(0, (actor.attr.passIq - pkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * pkCfg.PASSIQ_BONUS_SCALE);
+    // kickTarget이 새 actor, 원래 포스트 선수(actor)는 secondaryActor(어시스트 후보)
+    // koZone은 selectZone()으로 kickTarget 본인의 zonePref를 그대로 반영 (3점 고정 아님)
+    ...
+}
+// 기존 로직: 킥아웃 미발동 시 포스트 선수 본인이 마무리 (entryPasser만 이 경로에서 계산)
+```
+
+**검증**: `server tsc` 30개 베이스라인 유지, `vite build` 클린 빌드. 실측 기반 사전 계산으로
+목표 확률 확정 완료 — 실제 재시뮬레이션 결과(요키치/사보니스 어시스트 상승 여부)는 다음 세션
+신규 경기 데이터로 필요.
+
+**주의사항**: PnR_Roll에는 아직 동일 메커니즘이 없음 — C 포지션 점유율의 70%를 차지하는 또 다른
+축이라 다음에 논의 후 적용 필요.
+
+**롤백 방법**: `playTypes.ts`의 `PostUp` 케이스를 Before 로직으로 되돌리고, `constants.ts`의
+`POST_KICKOUT` 제거.
+
+---
+
 ## 2026-07-31 — CatchShoot/PnR_Pop 액터 선정에 zonePref.three 페널티 적용
 
 **배경**: "32 TEST 6" 실측에서 찰스 바클리(존 선호도 탭 cnr/p45/atb 전부 0, 즉 3점을 전혀 안 쏘려는

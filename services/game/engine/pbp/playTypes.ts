@@ -18,6 +18,8 @@ export interface PlayContext {
     preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT';
     shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number; // Tactic success bonus
+    // [2026-07-31] PostUp/PnR_Roll 더블팀 유도 후 킥아웃으로 actor가 교체됐는지
+    isKickout?: boolean;
 }
 
 // ==========================================================================================
@@ -276,6 +278,37 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+
+            // [2026-07-31] 더블팀 유도 후 킥아웃 — PostUp/PnR_Roll과 동일 구조에 더해 [SaveTendency]
+            // playStyle(-1 패스~+1 슛)을 최초로 반영. pickWeightedActor의 슈터/패서 픽 가중치에
+            // 이미 쓰던 PLAY_SELECTION.PLAYSTYLE_PASSER_K를 재사용해 새 상수 없이 일관성 유지.
+            const ikCfg = SIM_CONFIG.ISO_KICKOUT;
+            const isoPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+            const isoPassingNorm = Math.max(0, Math.min(1,
+                (isoPassing - ikCfg.PASSING_MIN) / (ikCfg.PASSING_MAX - ikCfg.PASSING_MIN)));
+            let isoKickChance = ikCfg.PROB_MIN + (ikCfg.PROB_MAX - ikCfg.PROB_MIN) * Math.pow(isoPassingNorm, ikCfg.CURVE_EXPONENT);
+            const isoPs = actor.tendencies?.playStyle ?? 0;
+            isoKickChance *= (1 - isoPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+
+            if (Math.random() < isoKickChance) {
+                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                const passIqBonus = Math.max(0,
+                    (actor.attr.passIq - ikCfg.PASSIQ_BONUS_NEUTRAL) / 30 * ikCfg.PASSIQ_BONUS_SCALE);
+
+                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
+                if (koZone === 'Rim' || koZone === 'Paint') {
+                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.00 + passIqBonus, isKickout: true };
+                }
+                return {
+                    playType, actor: kickTarget, secondaryActor: actor,
+                    preferredZone: koZone,
+                    shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                    bonusHitRate: 0.00 + passIqBonus,
+                    isKickout: true
+                };
+            }
+
             // 아이소 진입 패스를 제공한 선수 (어시스트 후보)
             const passer = pickPasser(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
@@ -303,6 +336,35 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 하고 handler를 보조 가중치로 섞음 — handler 아키타입 자체는 다른 곳(패서 역할)에서 계속
             // 그대로 쓰이므로 여기서만 조합을 바꿈.
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+
+            // [2026-07-31] 더블팀 유도 후 킥아웃 (Iso와 동일 구조, playStyle 보정 포함)
+            const phkCfg = SIM_CONFIG.PNR_HANDLER_KICKOUT;
+            const phPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+            const phPassingNorm = Math.max(0, Math.min(1,
+                (phPassing - phkCfg.PASSING_MIN) / (phkCfg.PASSING_MAX - phkCfg.PASSING_MIN)));
+            let phKickChance = phkCfg.PROB_MIN + (phkCfg.PROB_MAX - phkCfg.PROB_MIN) * Math.pow(phPassingNorm, phkCfg.CURVE_EXPONENT);
+            const phPs = actor.tendencies?.playStyle ?? 0;
+            phKickChance *= (1 - phPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+
+            if (Math.random() < phKickChance) {
+                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                const passIqBonus = Math.max(0,
+                    (actor.attr.passIq - phkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * phkCfg.PASSIQ_BONUS_SCALE);
+
+                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
+                if (koZone === 'Rim' || koZone === 'Paint') {
+                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
+                }
+                return {
+                    playType, actor: kickTarget, secondaryActor: actor,
+                    preferredZone: koZone,
+                    shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                    bonusHitRate: 0.01 + passIqBonus,
+                    isKickout: true
+                };
+            }
+
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer');
 
             // 4존 선택: 핸들러 풀업 or 스크린 후 드라이브.
@@ -331,6 +393,39 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 undefined, 'shooter',
                 p => (rollWeights[p.position] ?? 0) > 0
             );
+
+            // [2026-07-31] 더블팀 유도 후 킥아웃 — POST_KICKOUT과 동일 구조, PROB_MAX만 절반(0.20).
+            // 롤맨은 캐치 즉시 결정해야 해서 포스트업보다 킥아웃 판단 여유가 적음.
+            const prkCfg = SIM_CONFIG.PNR_ROLL_KICKOUT;
+            const rollPassing = (screener.attr.passVision + screener.attr.passAcc) / 2;
+            const rollPassingNorm = Math.max(0, Math.min(1,
+                (rollPassing - prkCfg.PASSING_MIN) / (prkCfg.PASSING_MAX - prkCfg.PASSING_MIN)));
+            let rollKickChance = prkCfg.PROB_MIN + (prkCfg.PROB_MAX - prkCfg.PROB_MIN) * Math.pow(rollPassingNorm, prkCfg.CURVE_EXPONENT);
+            // [2026-07-31] playStyle 보정 소급 적용 (Iso/PnR_Handler와 동일 패턴)
+            const rollPs = screener.tendencies?.playStyle ?? 0;
+            rollKickChance *= (1 - rollPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+
+            if (Math.random() < rollKickChance) {
+                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, screener.playerId);
+                const passIqBonus = Math.max(0,
+                    (screener.attr.passIq - prkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * prkCfg.PASSIQ_BONUS_SCALE);
+
+                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
+                if (koZone === 'Rim' || koZone === 'Paint') {
+                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
+                }
+                return {
+                    playType,
+                    actor: kickTarget,
+                    secondaryActor: screener,
+                    preferredZone: koZone,
+                    shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                    bonusHitRate: 0.01 + passIqBonus,
+                    isKickout: true
+                };
+            }
+
             const handler = pickPasser(p => p.archetypes.handler, screener.playerId);
             const rollZone = selectZone(['Rim', 'Paint', 'Mid'], screener, sliders);
             if (rollZone === 'Rim' || rollZone === 'Paint') {
@@ -380,7 +475,44 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // (C 0.6 / PF 0.2 / SF 0.1 / SG,PG 0.05, constants.ts SIM_CONFIG.POSITION_WEIGHT.POST_UP).
             const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;
             const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
-            // 엔트리 패스를 제공한 선수 (어시스트 후보)
+
+            // [2026-07-31] 더블팀 유도 후 킥아웃 — postScorer vs postPassing 비율 방식은 같은
+            // 0~99 스케일이라 순수 스코어러(샤킬 등)도 킥아웃률이 40%에 육박하는 문제가 있었음
+            // (32 TEST 6 설계 논의). postPassing(시야+정확도) 단독 기준 지수 커브로 교체 —
+            // 저~중위권은 거의 0에 눌려있다가 최상위권(요키치급)만 급격히 오르는 형태.
+            const pkCfg = SIM_CONFIG.POST_KICKOUT;
+            const postPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+            const passingNorm = Math.max(0, Math.min(1,
+                (postPassing - pkCfg.PASSING_MIN) / (pkCfg.PASSING_MAX - pkCfg.PASSING_MIN)));
+            let kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
+            // [2026-07-31] playStyle 보정 소급 적용 (Iso/PnR_Handler와 동일 패턴)
+            const postPs = actor.tendencies?.playStyle ?? 0;
+            kickChance *= (1 - postPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+
+            if (Math.random() < kickChance) {
+                // 킥아웃 확정 — 오픈 슈터에게 패스, actor를 교체하고 포스트 선수는 어시스트 후보로
+                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                // passIq 기반 성공률 보너스 (DriveKick의 driveBonus와 동일 패턴)
+                const passIqBonus = Math.max(0,
+                    (actor.attr.passIq - pkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * pkCfg.PASSIQ_BONUS_SCALE);
+
+                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
+                if (koZone === 'Rim' || koZone === 'Paint') {
+                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
+                }
+                return {
+                    playType,
+                    actor: kickTarget,
+                    secondaryActor: actor,
+                    preferredZone: koZone,
+                    shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                    bonusHitRate: 0.01 + passIqBonus,
+                    isKickout: true
+                };
+            }
+
+            // 기존 로직: 포스트 선수 본인이 마무리 (엔트리 패서는 이 경로에서만 어시스트 후보)
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
             const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
             if (postZone === 'Rim' || postZone === 'Paint') {
