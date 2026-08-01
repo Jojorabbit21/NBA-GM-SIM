@@ -35,6 +35,225 @@
 
 ---
 
+## 2026-08-01 — 패싱레인 스틸/비강제 턴오버의 passAcc 미스매치 수정 (턴오버 전체 점검 A-2/B)
+
+**배경**: A-1(온볼 스틸) 수정 이후에도 시뮬레이션 추정상 빅맨 TOV가 여전히 높게 남아 계속 점검.
+A-2(패싱레인 스틸)의 `passResist`와 B(비강제 턴오버)의 `passAccFactor` 둘 다 **액터(캐치해서
+마무리하는 선수) 본인의 `passAcc`**를 사용하고 있었는데, `isPassPlay` 목록(CatchShoot/
+PnR_Roll/PnR_Pop/Cut 등)은 대부분 "액터가 패스를 받는" 상황이지 액터가 패스를 던지는 상황이
+아님 — 롤맨이 알리웁을 받다가 가로채이는 건 롤맨의 패스 정확도와 무관하고 실제로 던진
+핸들러(secondaryActor)의 문제.
+
+**A-2 수정**: `calculateTurnoverChance`에 `passer?: LivePlayer` 파라미터 추가, 호출부에서
+`secondaryActor` 전달(playCtx에서 이미 구조분해된 값 재사용). `passResist` 계산을
+`(passer ?? actor).attr.passAcc` 기준으로 교체 — 패서가 없는 경우(PnR_Handler처럼 액터 본인이
+직접 만드는 플레이)는 기존처럼 actor로 폴백.
+
+**B 수정**: `passAccFactor`를 완전히 삭제. 이 리스크(캐치 후 마무리 중 실수)는 이미
+`ballSkillFactor`의 hands 항목(비드리블 플레이 전체에 적용)이 담당하고 있어 중복이었음 —
+"패서 기준으로 교체"가 아니라 "그대로 삭제"를 택함(사용자 확인: hands가 맞는 방향, B는 스틸이
+아니라 자체 실수라 이미 hands가 커버 중이므로 중복 항목 제거).
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client, `calculateTurnoverChance` 시그니처/
+  A-2/B 섹션 + 호출부)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러)
+
+**Before**:
+```ts
+function calculateTurnoverChance(
+    offTeam, defTeam, actor, defender, playType,
+    pnrCoverage = 'none', helpDefender?, helpSuccess = false
+): {...} {
+    ...
+    // A-2
+    const passResist = (actor.attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
+    ...
+    // B
+    const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
+    ...
+    let unforcedProb = baseProb + passRisk + ballSkillFactor + iqFactor
+        + passAccFactor + contextRisk + composureFactor
+        + dribbleGapRisk - needleReduction + pressTovBonus;
+}
+// 호출부
+calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess);
+```
+
+**After**:
+```ts
+function calculateTurnoverChance(
+    offTeam, defTeam, actor, defender, playType,
+    pnrCoverage = 'none', helpDefender?, helpSuccess = false, passer?: LivePlayer
+): {...} {
+    ...
+    // A-2
+    const passResist = ((passer ?? actor).attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
+    ...
+    // B — passAccFactor 완전 삭제
+    ...
+    let unforcedProb = baseProb + passRisk + ballSkillFactor + iqFactor
+        + contextRisk + composureFactor
+        + dribbleGapRisk - needleReduction + pressTovBonus;
+}
+// 호출부
+calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess, secondaryActor);
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨(함수 시그니처의 `passer` 파라미터,
+호출부의 `secondaryActor` 인자도 함께 제거).
+
+**추가 수정(같은 날)**: `iqFactor`(passIq)도 동일 논의 — `passIq`가 코드베이스 전체(archetypeSystem/
+playTypes의 커넥터·핸들러 아키타입, 킥아웃 패스 보너스, Needle/Clairvoyant/Overseer 아키타입
+임계값 등)에서 예외 없이 "패스하는 사람"의 스탯으로만 쓰이는 것을 전수조사로 확인 — `passAcc`와
+동일한 미스매치로 판단, `passAccFactor`(삭제)가 아니라 `passResist`(패서로 교체) 방식을 적용.
+"판단력으로 인한 실수"라는 리스크 자체는 다른 항목이 대신 커버하지 않으므로 삭제 대신 대상만
+교체.
+
+**Before**: `const iqFactor = (70 - actor.attr.passIq) * 0.001;`
+**After**: `const iqFactor = (70 - (passer ?? actor).attr.passIq) * 0.001;`
+
+기존 `passer` 파라미터(A-2 수정 시 추가) 재사용 — 함수 시그니처/호출부 변경 없음.
+
+**검증(iqFactor 포함)**: `tsc` 30개 베이스라인 유지, `vite build` 클린 빌드 성공.
+
+---
+
+## 2026-08-01 — 온볼 스틸 저항도 플레이타입별 handling/hands 선택 반영 (턴오버 전체 점검 A-1)
+
+**배경**: 바로 아래 항목(B. 비강제 턴오버의 `ballSkillFactor`)을 고친 뒤에도 시뮬레이션 추정
+결과 빅맨 TOV가 여전히 높게 남아(터너 8.99 등) 사용자가 "턴오버 로직을 처음부터 쭉 점검"
+요청. `calculateTurnoverChance()` 전체(A-1 온볼 스틸/A-2 패싱레인 스틸/B 비강제 턴오버)를
+재점검한 결과, **A-1 온볼 스틸의 `handlingResist`가 플레이타입 게이팅이 전혀 없이 항상
+적용**되고 있었음을 확인 — B섹션과 완전히 동일한 버그가 함수 맨 앞(가장 먼저 실행되는 구간)에
+그대로 남아있었음. 포스트업/캐치앤슛/풋백 등 액터가 실제로 드리블 핸들러로 기능하지 않는
+상황에서도 무조건 `handling` 기준으로 스틸 저항이 계산되어, 빅맨(handling 평균 51.5)이
+상시 페널티(터너 기준 +2.8%p)를 먹고 있었음.
+
+(참고: 같은 점검에서 A-2 패싱레인 스틸/B의 `passAccFactor`도 `isPassPlay` 목록이 "액터가
+패스를 받아서 마무리하는" 상황(CatchShoot/PnR_Roll/PnR_Pop/Cut 등)인데 액터 본인의 `passAcc`가
+반영되는 유사한 미스매치로 확인됨 — 별도 항목으로 후속 수정 예정. `iqFactor`(passIq)는
+게이팅 여부 미정, 논의 보류.)
+
+**수정**: A-1의 `handlingResist`를 B의 `ballSkillFactor`와 동일한 논리로 게이팅.
+`isDribblePlay` 선언을 함수 상단(A-1 이전)으로 옮겨 A-1/B 공통 사용, B/드리블갭리스크
+섹션의 중복 선언 제거.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client, `calculateTurnoverChance` A-1 섹션)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러)
+
+**Before**:
+```ts
+const isPassPlay = playType === 'CatchShoot' || ...;
+
+const onballBase = interpolateCurve(defender.attr.stl, stlCfg.ONBALL_STEAL_CURVE);
+const handlingResist = (actor.attr.handling - 70) * stlCfg.HANDLING_RESIST_COEFF;
+const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
+const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
+const pressStealBonus = pressLevel * stlCfg.PRESS_STEAL_COEFF;
+
+const onballProb = Math.max(0.005, onballBase - handlingResist + blitzBonus + pressStealBonus);
+```
+
+**After**:
+```ts
+const isPassPlay = playType === 'CatchShoot' || ...;
+const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
+
+const onballBase = interpolateCurve(defender.attr.stl, stlCfg.ONBALL_STEAL_CURVE);
+const ballSkillResist = isDribblePlay
+    ? (actor.attr.handling - 70) * stlCfg.HANDLING_RESIST_COEFF
+    : (actor.attr.hands - 70) * stlCfg.HANDLING_RESIST_COEFF;
+const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
+const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
+const pressStealBonus = pressLevel * stlCfg.PRESS_STEAL_COEFF;
+
+const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus + pressStealBonus);
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨(`isDribblePlay` 상단 선언도 함께 제거).
+
+**추가 정리(같은 날)**: `stlCfg.HANDLING_RESIST_COEFF`가 이제 handling뿐 아니라 hands에도 쓰이는데
+이름이 handling 전용처럼 남아있어 혼동 소지 — `BALL_SKILL_RESIST_COEFF`로 리네이밍 (값 0.001은
+동일, `constants.ts` 정의 + `possessionHandler.ts` 사용처 2곳, client/server 총 4개 파일).
+
+**검증(리네이밍 포함)**: `tsc` 30개 베이스라인 유지, `vite build` 클린 빌드 성공.
+
+---
+
+## 2026-08-01 — 턴오버 계산: 플레이타입별 handling/hands 선택 반영 (빅맨 TOV 과다 수정)
+
+**배경**: pnrDefense 수정 배포 후 사용자가 "빅맨 턴오버가 너무 과중하다"고 지적. TEST 10 실측
+결과 TOV/36이 C=4.48/PF=3.88인데 PG=1.45로 3배 이상 차이(실제 NBA는 반대로 볼을 제일 많이
+만지는 PG가 TOV 1위인 경우가 많음). TEST 9(오늘 첫 수정 전 데이터, C=4.31/PF=3.16/PG=1.23)와
+비교해 오늘 수정과 무관한 기존 버그였음을 확인 — `calculateTurnoverChance()`는 이번 세션에서
+처음 조사.
+
+원인: `handlingFactor = (70 - actor.attr.handling) * 0.001`가 **플레이타입과 무관하게 항상
+반영**됨. 그런데 `handling`(오픈코트 드리블 스킬)은 포지션 편차가 극심함(로스터 실측: C 평균
+51.5 vs PG 평균 90.6, 39점 격차) — 라이브 드리블로 직접 만들어내는 플레이가 아닌 포스트업/롤/팝
+같은 컨택·캐치 플레이에도 이 페널티가 그대로 적용되어, 빅맨은 스킬과 무관하게 포지션 자체만으로
+매 포제션 페널티를 먹는 구조였음. 반면 같은 함수에 이미 있던 `handsFactor`(캐치·컨택 볼 간수,
+컨택 플레이에 3배 가중)는 포지션 편차가 작아서(C 78.6 vs PG 86.5, 8점 격차) 이 용도에 적합한
+스탯이었음 — `handling`만 걷어내고 `hands`는 그대로 살리는 방향으로 사용자와 합의.
+
+**수정**: 플레이타입에 따라 관련 스탯만 선택 반영하도록 재구성.
+- 드리블 창조 플레이(Iso/Cut/Transition/PnR_Handler) → `handling`
+- 컨택/캐치 플레이(PostUp/PnR_Roll/PnR_Pop) → `hands`(기존과 동일, 컨택 시 3배 가중 유지)
+- 그 외(CatchShoot 등) → `hands` 약하게 반영 (기존 논컨택 계수 0.0005 유지)
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client, `calculateTurnoverChance` 내
+  B. 비강제 턴오버 섹션)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러)
+
+**Before**:
+```ts
+const handlingFactor = (70 - actor.attr.handling) * 0.001;
+const iqFactor = (70 - actor.attr.passIq) * 0.001;
+const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
+const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
+const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
+...
+// (아래쪽) 드리블 갭 리스크 섹션에서 별도로:
+const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
+...
+let unforcedProb = baseProb + passRisk + handlingFactor + iqFactor
+    + handsFactor + passAccFactor + contextRisk + composureFactor
+    + dribbleGapRisk - needleReduction + pressTovBonus;
+```
+
+**After**:
+```ts
+const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
+const isContactPlay = playType === 'PostUp' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
+const ballSkillFactor = isDribblePlay
+    ? (70 - actor.attr.handling) * 0.001
+    : (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
+const iqFactor = (70 - actor.attr.passIq) * 0.001;
+const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
+...
+let unforcedProb = baseProb + passRisk + ballSkillFactor + iqFactor
+    + passAccFactor + contextRisk + composureFactor
+    + dribbleGapRisk - needleReduction + pressTovBonus;
+```
+`isDribblePlay` 선언을 위로 옮기고 아래쪽 중복 선언 제거(드리블 갭 리스크 섹션은 재사용).
+`isContactPlay`에서 `PnR_Handler` 제외(이제 `isDribblePlay`로 분류되어 handling 사용).
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
 ## 2026-08-01 — 멀티플레이어 AI 팀 pnrDefense 슬라이더 스케일 버그 수정
 
 **배경**: 핫/콜드 제거 후 남은 유력 원인(And-1/PnR 커버리지/존 선택 쏠림/킥아웃 보너스) 중

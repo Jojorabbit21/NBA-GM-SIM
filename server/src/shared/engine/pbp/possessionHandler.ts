@@ -165,7 +165,8 @@ function calculateTurnoverChance(
     playType: PlayType,
     pnrCoverage: PnrCoverage = 'none',
     helpDefender?: LivePlayer,
-    helpSuccess: boolean = false
+    helpSuccess: boolean = false,
+    passer?: LivePlayer
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
@@ -181,20 +182,25 @@ function calculateTurnoverChance(
         || playType === 'PnR_Handler' || playType === 'PnR_Roll'
         || playType === 'PnR_Pop' || playType === 'Cut'
         || playType === 'OffBallScreen' || playType === 'DriveKick';
+    // [2026-08-01] 핸들러로 기능하는 플레이(라이브 드리블 창조) — A-1/B 공통 사용.
+    const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
 
     // ================================================================
     // A-1. 온볼 스틸 (주 수비자 → 볼 핸들러 직접 탈취)
     // ================================================================
     const onballBase = interpolateCurve(defender.attr.stl, stlCfg.ONBALL_STEAL_CURVE);
-    // 공격자 핸들링 저항: handling 높을수록 스틸당할 확률 감소
-    const handlingResist = (actor.attr.handling - 70) * stlCfg.HANDLING_RESIST_COEFF;
+    // 공격자 볼스킬 저항: handler로 기능하는 플레이는 handling, 캐치 후 마무리하는 플레이는 hands
+    // [2026-08-01 Fix] handling 게이팅 없이 항상 적용하던 걸 수정 (client 미러 상세 참조).
+    const ballSkillResist = isDribblePlay
+        ? (actor.attr.handling - 70) * stlCfg.BALL_SKILL_RESIST_COEFF
+        : (actor.attr.hands - 70) * stlCfg.BALL_SKILL_RESIST_COEFF;
     // PnR 블리츠: 더블팀 압박으로 온볼 스틸 확률 증가
     const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
     const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
     // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +1.5%p (예전 defIntensity 최대치 이전)
     const pressStealBonus = pressLevel * stlCfg.PRESS_STEAL_COEFF;
 
-    const onballProb = Math.max(0.005, onballBase - handlingResist + blitzBonus + pressStealBonus);
+    const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus + pressStealBonus);
 
     if (Math.random() < onballProb) {
         return { isTurnover: true, isSteal: true, stealer: defender };
@@ -204,8 +210,9 @@ function calculateTurnoverChance(
     // A-2. 패싱레인 스틸 (오프볼 수비자 → 패스 가로채기, 패스 플레이 전용)
     // ================================================================
     if (isPassPlay) {
-        // 공격자 패스 정확도 저항
-        const passResist = (actor.attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
+        // 패서 패스 정확도 저항 — [2026-08-01 Fix] 실제 패서(secondaryActor) 기준으로 교체
+        // (client 미러 상세 참조), 패서 없으면 actor로 폴백.
+        const passResist = ((passer ?? actor).attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
         // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +0.75%p (헬퍼별 개별 적용)
         const pressLaneStealBonus = pressLevel * stlCfg.PRESS_LANE_STEAL_COEFF;
 
@@ -246,12 +253,19 @@ function calculateTurnoverChance(
     const visionDampen = Math.max(0.85, Math.min(1.15, 1 - (teamAvgVision - 70) * 0.005));
     const passRisk = rawPassRisk * visionDampen;
 
-    // 공격자 능력치: 핸들링/IQ/손 부족 → 실수
-    const handlingFactor = (70 - actor.attr.handling) * 0.001;
-    const iqFactor = (70 - actor.attr.passIq) * 0.001;
-    const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
-    const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
-    const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
+    // 공격자 능력치: 볼스킬/IQ 부족 → 실수
+    // [2026-08-01 Fix] handling을 플레이타입 무관하게 항상 반영하던 걸 제거 — 포지션 편차가
+    // 극심해서(C 평균 51.5 vs PG 평균 90.6) 컨택/캐치 플레이에도 그대로 적용되면 빅맨이 늘
+    // 페널티를 먹는 구조였음. 드리블 창조 플레이는 handling, 컨택/캐치 플레이는 hands(포지션
+    // 편차 적음: C 78.6 vs PG 86.5) 사용 (client 미러 상세 참조, isDribblePlay는 A-1에서 선언).
+    const isContactPlay = playType === 'PostUp' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
+    const ballSkillFactor = isDribblePlay
+        ? (70 - actor.attr.handling) * 0.001
+        : (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
+    // [2026-08-01 Fix] passIq도 passAcc와 동일한 미스매치 — actor 대신 passer 기준으로 교체
+    // (client 미러 상세 참조).
+    const iqFactor = (70 - (passer ?? actor).attr.passIq) * 0.001;
+    // [2026-08-01 Fix] passAccFactor 제거 — ballSkillFactor의 hands 항목과 중복(client 미러 참조).
 
     // 플레이타입 컨텍스트
     let contextRisk = 0;
@@ -272,9 +286,8 @@ function calculateTurnoverChance(
     // 침착성 (SaveTendency)
     const composureFactor = -(actor.tendencies?.composure ?? 0) * 0.01;
 
-    // 드리블 갭 리스크: speed↑ spdBall↓ 차이
+    // 드리블 갭 리스크: speed↑ spdBall↓ 차이 (isDribblePlay는 위에서 이미 선언)
     let dribbleGapRisk = 0;
-    const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
     if (isDribblePlay) {
         dribbleGapRisk = Math.max(0, actor.attr.speed - actor.attr.spdBall) * 0.001;
     }
@@ -291,8 +304,8 @@ function calculateTurnoverChance(
     // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +2.5%p (예전 defIntensity 최대치 이전)
     const pressTovBonus = pressLevel * stlCfg.PRESS_TOV_COEFF;
 
-    let unforcedProb = baseProb + passRisk + handlingFactor + iqFactor
-        + handsFactor + passAccFactor + contextRisk + composureFactor
+    let unforcedProb = baseProb + passRisk + ballSkillFactor + iqFactor
+        + contextRisk + composureFactor
         + dribbleGapRisk - needleReduction + pressTovBonus;
 
     unforcedProb = Math.max(0.015, Math.min(0.18, unforcedProb));
@@ -792,7 +805,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 4. Turnover / Steal Check (Enhanced Logic with Baseline + Context)
-    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess);
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess, secondaryActor);
 
     if (tovResult.isTurnover) {
         return {

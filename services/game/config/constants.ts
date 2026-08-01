@@ -384,9 +384,10 @@ export const SIM_CONFIG = {
             [95, 0.022], [99, 0.028],
         ] as [number, number][],
 
-        // 공격자 핸들링 저항 계수 (온볼 스틸 확률에서 감산)
-        // handling 90 → 스틸 확률 -2%, handling 50 → +2%
-        HANDLING_RESIST_COEFF: 0.001,
+        // 공격자 볼스킬 저항 계수 (온볼 스틸 확률에서 감산)
+        // [2026-08-01] handling 전용이었으나 플레이타입별로 handling/hands를 선택 반영하도록
+        // 바뀌어 이름 변경(BALL_SKILL_RESIST_COEFF) — 값/의미(스탯 90→스틸확률 -2%, 50→+2%)는 동일.
+        BALL_SKILL_RESIST_COEFF: 0.001,
 
         // 패스 정확도 저항 계수 (패싱레인 스틸 확률에서 감산)
         // passAcc 90 → 레인 스틸 확률 -1%, passAcc 50 → +1%
