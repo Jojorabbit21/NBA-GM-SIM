@@ -35,6 +35,101 @@
 
 ---
 
+## 2026-08-01 — 멀티플레이어 AI 팀 pnrDefense 슬라이더 스케일 버그 수정
+
+**배경**: 핫/콜드 제거 후 남은 유력 원인(And-1/PnR 커버리지/존 선택 쏠림/킥아웃 보너스) 중
+PnR 커버리지 보너스를 조사. `SIM_CONFIG.PNR_COVERAGE.DIST`(Drop/Hedge/Blitz 발생 확률 분포)를
+읽어오는 `sliders.pnrDefense`가 다른 전술 슬라이더(0~10 스케일, 중간값 5)와 달리 **0~2 스케일**
+(0=Drop, 1=Hedge, 2=Blitz, `types/tactics.ts:35`)인데, `server/src/finalize.ts`의
+`MIDDLE_SLIDERS`(멀티플레이어 AI 팀 전용 전술 초기값)가 이 사실을 놓치고 다른 슬라이더들과
+똑같이 `pnrDefense: 5`로 넣어놨음. `possessionHandler.ts:136-137`의
+`Math.max(0, Math.min(2, Math.round(sliders.pnrDefense)))`에 걸려 5가 무조건 index 2로
+클램프됨 — **멀티플레이어 AI 팀(테스트 방의 사실상 전 팀) 전체가 항상 Blitz 70%/Hedge 20%/Drop
+10%로 고정**되어 있었음. 의도한 기본값(`DEFAULT_SLIDERS.pnrDefense=1`, Hedge 60% 중심)과 전혀
+다른 분포였음.
+
+영향 계산: Blitz는 PnR_Roll(+7%p)/PnR_Pop(+6%p) 보너스가 제일 크고 핸들러 페널티(-8%p)도 제일
+큰 커버리지라, 확률가중평균이 의도(index 1) 대비 롤맨 +5.1%p(의도 +2.95%p, 약 1.7배)/
+팝맨 +4.35%p(의도 +1.73%p, 약 2.5배)/핸들러 -5.6%p(의도 -2.6%p, 약 2.1배)로 뻥튀기되고 있었음
+— TEST 9/10에서 관찰된 롤/팝 위주 빅맨들의 TS% 과다 인플레와 방향이 일치.
+
+**변경 파일**:
+- `server/src/finalize.ts` (server 전용 — client 미러 없음, `MIDDLE_SLIDERS`는 이 파일에만 존재)
+
+**Before**:
+```ts
+const MIDDLE_SLIDERS: TacticalSliders = {
+    pace: 5, ballMovement: 5, offReb: 5,
+    insideOut: 5, pnrFreq: 5,
+    shot_3pt: 5, shot_mid: 5, shot_rim: 5,
+    defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 5,
+    fullCourtPress: 5, zoneUsage: 5,
+};
+```
+
+**After**:
+```ts
+const MIDDLE_SLIDERS: TacticalSliders = {
+    pace: 5, ballMovement: 5, offReb: 5,
+    insideOut: 5, pnrFreq: 5,
+    shot_3pt: 5, shot_mid: 5, shot_rim: 5,
+    defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 1,
+    fullCourtPress: 5, zoneUsage: 5,
+};
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: `pnrDefense: 1` → `pnrDefense: 5`로 되돌리면 됨.
+
+**참고**: 이 수정은 신규 멀티플레이어 방(드래프트 완료 시점)에만 적용됨 — 이미 생성된 기존 방의
+`room_members.tactics`에는 소급 반영 안 됨(재검증하려면 새 테스트 방을 만들어야 함).
+
+---
+
+## 2026-08-01 — Hot/Cold Streak을 hitRate에서 완전히 분리 (연출 전용으로 전환)
+
+**배경**: 매치업 갭(골밑+퍼리미터) 수정 배포 후, 남은 유력 원인으로 hot/cold 스트릭을 재조사.
+`recentShots`(실제 저장된 경기별 최근 슛 기록)로 실측 검증한 결과 — `updateHotCold()`의
+`recentPct - 0.5` 계산이 선수 본인의 실제 기대 성공률이 아니라 **고정된 50%를 기준선**으로 삼고
+있어서, TEST 10 실측(mp>50, n=139) 기준 **시즌 FG%와 hotColdRating의 상관계수가 0.704**로
+측정됨 — "무작위 스트릭"이 아니라 "잘하는 선수는 상시 핫 보정(+), 못하는 선수는 상시 콜드
+보정(-)"으로 작동하며 기존 실력 격차를 매 슛마다 자기강화(compounding)하고 있었음.
+
+수정 방향으로 "잔차(residual) 기반 재계산"(그 슛의 `calculateHitRate` 기대확률 대비 실제 결과의
+차이를 사용, 시즌 스탯 조회 없이 그 경기 내 데이터만으로 완결)을 설계했으나, 사용자가 더 단순한
+방향으로 결정 — **hot/cold를 아예 hitRate 계산에서 제거하고 연출 전용 장치로 전환.**
+`hotColdRating`이 커멘터리/UI 어디에도 현재 사용되지 않는 것을 확인(순수 hitRate 가산 용도뿐)
+했으므로, `calculateHitRate`의 8번 항목만 제거하고 `hotColdRating`/`recentShots` 계산 자체는
+`statsMappers.ts`에 그대로 유지(추후 커멘터리/UI 연출용으로 재사용 가능하도록 보존).
+
+**변경 파일**:
+- `services/game/engine/pbp/flowEngine.ts` (client, `calculateHitRate` 8번 Hot/Cold Streak 블록)
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러)
+
+**Before**:
+```ts
+// 8. Hot/Cold Streak (±4% 캡)
+if (actor.hotColdRating !== 0) {
+    let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
+    const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
+    temperatureBonus *= (1 - consistencyRecover);
+    hitRate += temperatureBonus;
+}
+```
+
+**After**: 블록 전체 삭제 (hitRate 미반영). `statsMappers.ts`의 `updateHotCold`/`hotColdRating`/
+`recentShots` 계산 로직은 변경 없음 — 여전히 매 슛마다 갱신되지만 더 이상 아무 곳에서도
+소비되지 않는 상태(연출용으로 향후 재사용 대기).
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 삭제된 Before 블록을 `let finalRate = ...` 직전에 그대로 복원하면 됨.
+
+---
+
 ## 2026-08-01 — calculateMatchupGap 골밑 defSkill을 strength 단일 비교로 교체
 
 **배경**: 덩크 커브 수정 배포 후 재검증(TEST 10, 128경기)에서 TS% 평균/중앙값은 -2.7%p 내려갔지만

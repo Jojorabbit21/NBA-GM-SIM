@@ -402,17 +402,12 @@ export function calculateHitRate(
         }
     }
 
-    // 8. Hot/Cold Streak (±4% 캡)
-    if (actor.hotColdRating !== 0) {
-        // [SaveTendency] confidenceSensitivity: scales hot/cold amplitude (0.3x~1.7x)
-        let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
-        // [2026-07-31 Fix] offConsist: 핫/콜드 진폭을 양방향 대칭으로 축소 (꾸준함 = 기복이 작음).
-        // 기존엔 콜드 페널티만 완화해서 offConsist가 높을수록 기댓값이 플러스로 치우쳤음 —
-        // shotIq 노이즈 편향 수정과 동일한 취지로, "잘할 때도 덜 튀고 못할 때도 덜 튀는" 구조로 통일.
-        const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
-        temperatureBonus *= (1 - consistencyRecover);
-        hitRate += temperatureBonus;
-    }
+    // 8. Hot/Cold Streak — [2026-08-01 Fix] hitRate 반영 제거, 연출 전용으로 전환.
+    // recentShots 기준 make%가 항상 50%를 기준선으로 비교되다 보니(선수 본인의 실제 기대 성공률과
+    // 무관), 시즌 FG%와 hotColdRating의 상관계수가 0.704로 측정됨 — "무작위 스트릭"이 아니라
+    // "잘하는 선수는 상시 핫 보정, 못하는 선수는 상시 콜드 보정"으로 작동하며 실력 격차를 자기강화
+    // 루프로 증폭시키고 있었음. hotColdRating/recentShots 계산 자체는 statsMappers.ts에 그대로
+    // 유지(추후 커멘터리/UI 연출용으로 재사용 가능) — 여기 hitRate 가산만 제거.
 
     let finalRate = Math.max(0.05, Math.min(0.95, hitRate));
     // Buzzer beater: enforce lower bound (minHitRate) if provided

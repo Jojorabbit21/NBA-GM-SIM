@@ -334,13 +334,8 @@ export function calculateHitRate(
         }
     }
 
-    if (actor.hotColdRating !== 0) {
-        let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
-        // [2026-07-31 Fix] offConsist: 핫/콜드 진폭을 양방향 대칭으로 축소 (꾸준함 = 기복이 작음)
-        const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
-        temperatureBonus *= (1 - consistencyRecover);
-        hitRate += temperatureBonus;
-    }
+    // [2026-08-01 Fix] Hot/Cold Streak hitRate 반영 제거, 연출 전용으로 전환 (client 미러 상세 참조).
+    // hotColdRating/recentShots 계산은 statsMappers.ts에 그대로 유지.
 
     let finalRate = Math.max(0.05, Math.min(0.95, hitRate));
     if (minHitRate !== undefined) finalRate = Math.max(finalRate, minHitRate);

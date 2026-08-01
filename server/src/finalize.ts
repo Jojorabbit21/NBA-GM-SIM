@@ -18,11 +18,17 @@ import type { TacticalSliders } from './shared/types/tactics';
 
 // 멀티플레이어 AI 팀 전용 — 로스터 기반 계산값 대신 모든 슬라이더를 중간값(5)으로 고정한다.
 // 사람 팀/싱글플레이어 CPU는 영향받지 않음(generateAutoTactics()의 기본 계산 결과를 그대로 씀).
+// [2026-08-01 Fix] pnrDefense는 다른 슬라이더와 달리 0~10이 아니라 0~2 스케일(0=Drop,1=Hedge,
+// 2=Blitz, types/tactics.ts 참조) — 여기서 다른 슬라이더처럼 5로 넣으면 possessionHandler.ts의
+// Math.min(2, Math.round(sliders.pnrDefense))에 걸려 무조건 index 2(Blitz 70%)로 클램프됨.
+// 멀티플레이어 AI 팀 전체가 항상 최고 강도 더블팀 커버리지로 고정되면서 PnR_Roll/PnR_Pop
+// hitRate 보너스가 의도(index 1, Hedge 60% 중심)의 약 2배로 뻥튀기되고 있었음 — DEFAULT_SLIDERS와
+// 동일하게 1(Hedge 밸런스)로 수정.
 const MIDDLE_SLIDERS: TacticalSliders = {
     pace: 5, ballMovement: 5, offReb: 5,
     insideOut: 5, pnrFreq: 5,
     shot_3pt: 5, shot_mid: 5, shot_rim: 5,
-    defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 5,
+    defIntensity: 5, helpDef: 5, switchFreq: 5, defReb: 5, zoneFreq: 5, pnrDefense: 1,
     fullCourtPress: 5, zoneUsage: 5,
 };
 
