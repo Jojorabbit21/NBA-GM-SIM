@@ -55,7 +55,8 @@ const LeagueListView: React.FC = () => {
     const filtered = entries.filter(e => e.league.type === activeTab);
 
     // ── 참가 ───────────────────────────────────────────────────────────────────
-    const handleJoin = async (leagueId: string) => {
+    // [2026-08-01] shortCode가 있으면(신규 리그) URL에 그걸 쓰고, 없으면(소급 미적용 기존 리그) UUID 그대로.
+    const handleJoin = async (leagueId: string, shortCode: string | null) => {
         if (!userId) return;
         setJoiningId(leagueId);
         setActionErr(null);
@@ -63,7 +64,7 @@ const LeagueListView: React.FC = () => {
         setJoiningId(null);
         if (error) { setActionErr(error); return; }
         // 참가 후 로비로 이동
-        navigate(`/multi/leagues/${leagueId}/lobby`);
+        navigate(`/multi/leagues/${shortCode ?? leagueId}/lobby`);
     };
 
     // ── 탈퇴 ───────────────────────────────────────────────────────────────────
@@ -319,7 +320,7 @@ const LeagueListView: React.FC = () => {
                                                     </button>
                                                 ) : (
                                                     <button
-                                                        onClick={() => handleJoin(league.id)}
+                                                        onClick={() => handleJoin(league.id, league.short_code)}
                                                         disabled={!!isJoining || league.status !== 'recruiting'}
                                                         className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors"
                                                     >

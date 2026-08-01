@@ -5,6 +5,17 @@ import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import type { SimSettings } from '../../types/simSettings';
 
+// URL에 노출되는 리그 UUID를 대체하는 짧은 코드 — 헷갈리는 문자(0/O, 1/I/l) 제외 32종, 8자리.
+// [2026-08-01] leagues.id(UUID)는 여전히 진짜 PK로 유지, short_code는 라우팅 전용 별칭.
+const SHORT_CODE_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz';
+export function generateShortCode(length = 8): string {
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += SHORT_CODE_ALPHABET[Math.floor(Math.random() * SHORT_CODE_ALPHABET.length)];
+    }
+    return code;
+}
+
 // ─── 리그 그룹 생성 (메인리그 운영자) ────────────────────────────────────────
 
 export interface CreateLeagueGroupParams {
@@ -126,14 +137,19 @@ export const createLeague = async (
     if (opts.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = opts.lotteryScheduledAt;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
 
-    const { data, error } = await supabase
-        .from('leagues')
-        .insert(payload)
-        .select()
-        .single();
+    // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await supabase
+            .from('leagues')
+            .insert({ ...payload, short_code: generateShortCode() })
+            .select()
+            .single();
 
-    if (error) return { data: null, error: error.message };
-    return { data, error: null };
+        if (!error) return { data, error: null };
+        // unique_violation(23505)이면서 short_code 충돌인 경우만 재시도, 그 외 에러는 즉시 반환
+        if ((error as { code?: string }).code !== '23505') return { data: null, error: error.message };
+    }
+    return { data: null, error: '리그 코드 생성에 실패했습니다. 다시 시도해주세요.' };
 };
 
 // ─── 방(Room) 생성 ────────────────────────────────────────────────────────────

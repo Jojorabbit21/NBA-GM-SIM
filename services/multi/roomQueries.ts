@@ -40,6 +40,8 @@ export const loadLeagueGroup = async (groupId: string): Promise<LeagueGroupRow |
 
 export interface LeagueRow {
     id: string;
+    /** URL 라우팅 전용 짧은 코드 — 2026-08-01 이후 생성된 리그만 값이 있음(기존 리그는 null, 소급 미적용). */
+    short_code: string | null;
     type: 'main_league' | 'tournament';
     group_id: string | null;
     tier: 'd1' | 'd2' | 'd3' | null;
@@ -173,11 +175,16 @@ export const listLeaguesByGroup = async (groupId: string): Promise<LeagueRow[]> 
     return data ?? [];
 };
 
-export const loadLeague = async (leagueId: string): Promise<LeagueRow | null> => {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// [2026-08-01] URL에는 신규 리그부터 short_code(8자리), 기존(소급 미적용) 리그는 여전히
+// UUID가 노출된다 — 둘 다 받아서 형태로 조회 컬럼을 자동 판별.
+export const loadLeague = async (leagueIdOrCode: string): Promise<LeagueRow | null> => {
+    const column = UUID_RE.test(leagueIdOrCode) ? 'id' : 'short_code';
     const { data, error } = await supabase
         .from('leagues')
         .select('*')
-        .eq('id', leagueId)
+        .eq(column, leagueIdOrCode)
         .maybeSingle();
 
     if (error) { console.error('[loadLeague]', error.message); return null; }

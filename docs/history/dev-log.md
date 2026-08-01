@@ -35,6 +35,66 @@
 
 ---
 
+## 2026-08-01 — 멀티플레이어 URL에 리그/게임 UUID·내부 ID 노출 문제 해결 (short_code)
+
+**배경**: `/multi/leagues/{UUID}/season/schedule`, `.../game/T_R1_M0_G1` 처럼 URL에 리그 UUID와
+토너먼트 내부 게임 ID가 그대로 노출되는 게 보기 안 좋다는 지적 — 짧은 코드로 대체하기로 결정.
+**소급 적용은 하지 않음(신규 리그부터만 적용)**, 게임 ID는 `game_pbp`/`game_sim_claims`/
+`tournament_game_log`/`tournament_player_stats` 4개 테이블 + `rooms.schedule[].id`에 실제
+저장 키로 쓰이고 있어 저장 키 자체는 절대 안 건드리고, **라우팅 전용 매핑 테이블**로만 대응.
+
+**DB 마이그레이션** (`add_league_and_game_short_codes`):
+```sql
+alter table leagues add column if not exists short_code text unique;
+create index if not exists idx_leagues_short_code on leagues(short_code);
+
+create table if not exists game_short_codes (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null,
+  game_id text not null,
+  short_code text unique not null,
+  created_at timestamptz not null default now(),
+  unique(room_id, game_id)
+);
+create index if not exists idx_game_short_codes_short_code on game_short_codes(short_code);
+```
+
+**코드 생성**: 8자리, 헷갈리는 문자(0/O,1/I/l) 제외 32종 알파벳 — client(`leagueService.ts`)와
+server(`finalize.ts`)에 동일 알고리즘을 각자 정의(빌드 컨텍스트가 달라 공유 모듈로 안 뽑음).
+
+**핵심 설계 — 라우트 파라미터명은 그대로 유지(`:leagueId`, `:gameId`), 값의 의미만 변경**:
+기존 15곳 이상이 `useParams().leagueId`를 그대로 읽어 내비게이션 URL을 재조립하고 있었는데,
+이 값이 UUID든 short_code든 URL 조립 자체는 그대로 동작하므로 그 호출부들은 손대지 않음(리네이밍
+없이 값 의미만 전환). 대신 **"실제 UUID가 필요한 지점"만 정확히 찾아서 `league.id`(컨텍스트에서
+이미 조회 완료된 진짜 UUID)로 교체**하는 방식으로 최소 침습 진행.
+
+**변경 파일**:
+- DB: `leagues.short_code`, `game_short_codes` 테이블 (신규)
+- `services/multi/leagueService.ts` — `generateShortCode()`, `createLeague()`에 short_code 발급 + 충돌 시 재시도
+- `services/multi/roomQueries.ts` — `LeagueRow.short_code` 필드 추가, `loadLeague()`를 UUID/short_code 겸용 조회로 변경(정규식으로 형태 자동 판별)
+- `server/src/finalize.ts` — `generateShortCode()`, `insertGameShortCodes()` 추가, 일정/브라켓 생성 성공 후(force 경로 + 메인 경로 둘 다) 게임마다 코드 발급·삽입 (insert 실패해도 finalize는 막지 않음 — 경기 URL이 원래 game_id로 폴백 가능하도록 설계)
+- `hooks/useCurrentLeague.ts` — `loadLeague`/`loadRoomByLeague` 병렬 실행을 순차로 변경(short_code→실제 UUID 확정 후 room 조회), leagues Realtime 구독 filter를 `league.id`(확정된 UUID) 기준으로 변경
+- `views/multi/league/LeagueLobbyView.tsx` — Realtime filter, `runDraftLottery`, `startDraft` 호출을 `league.id`로 교체
+- `views/multi/league/LeagueSettingsView.tsx` — `updateLeagueSettings`(3곳), `runDraftLottery`, `resetTournament` 호출을 `league.id`로 교체
+- `views/multi/league/LeagueListView.tsx` — `handleJoin`에 `shortCode` 파라미터 추가, 참가 후 이동 URL에 short_code 우선 사용
+- `components/multi/CreateLeagueModal.tsx` — 리그 생성 후 `onCreated` 콜백에 short_code 우선 전달
+- `components/multi/TournamentChampionModal.tsx` — `location.pathname` 비교 기준 URL을 `league.short_code ?? league.id`로 교체(실제 URL과 일치시켜야 배지 표시 조건이 맞음)
+- `hooks/useGameShortCodes.ts` (신규) — 방(room)의 game_id→short_code 매핑을 한 번에 로드하는 공용 훅
+- `views/multi/season/MultiScheduleView.tsx`, `views/multi/season/TournamentBracketView.tsx` — 경기 클릭 시 이동 URL에 `useGameShortCodes`로 조립한 short_code 사용
+- `views/multi/season/MultiGamePbpView.tsx` — URL의 gameId(short_code 또는 구형 game_id)를 `game_short_codes`로 역조회해 `resolvedGameId`(진짜 game_id) 확보, 스케줄 매칭/`fetchLiveGameView` 호출 전부 이걸로 교체
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공(CIRCULAR_DEPENDENCY 없음).
+
+**롤백 방법**: DB 마이그레이션은 `drop table game_short_codes; alter table leagues drop column short_code;`로 되돌릴 수 있음(둘 다 신규 추가라 기존 데이터 영향 없음). 코드는 위 각 파일을 이 커밋 이전 상태로 되돌리면 됨 — `loadLeague()`가 UUID/short_code 겸용이라 마이그레이션만 롤백해도(코드는 그대로 둬도) 정상 동작(모든 리그가 UUID 경로로만 조회됨).
+
+**주의사항 / 한계**:
+- 기존 리그·기존 경기는 소급 미적용 — 계속 UUID/`T_R1_M0_G1` 형식 URL 유지(정상 동작, 그냥 안 짧아짐)
+- `views/multi/season/MultiGamePbpView.legacy.tsx`는 아무 데서도 import 안 되는 죽은 코드로 확인되어 수정 안 함
+- 토너먼트 리셋 시 게임 ID가 위치 기반이라 재사용되는데, `game_short_codes`의 `unique(room_id, game_id)` 제약 덕분에 기존 매핑이 그대로 재사용됨(의도치 않은 부작용 아님 — 리셋 후에도 같은 short_code가 같은 (room, game_id)를 계속 가리켜서 오히려 안전)
+
+---
+
 ## 2026-08-01 — 패싱레인 스틸/비강제 턴오버의 passAcc 미스매치 수정 (턴오버 전체 점검 A-2/B)
 
 **배경**: A-1(온볼 스틸) 수정 이후에도 시뮬레이션 추정상 빅맨 TOV가 여전히 높게 남아 계속 점검.

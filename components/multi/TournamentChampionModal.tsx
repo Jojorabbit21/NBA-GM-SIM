@@ -202,7 +202,9 @@ export const TournamentChampionModal: React.FC = () => {
     const location = useLocation();
     const [dismissed, setDismissed] = useState(false);
 
-    const base = league ? `/multi/leagues/${league.id}/season` : null;
+    // [2026-08-01] URL엔 short_code(신규 리그) 또는 UUID(소급 미적용 구 리그)가 노출됨 — 실제
+    // location.pathname과 비교하려면 그 둘 중 실제 쓰인 값을 그대로 재현해야 함.
+    const base = league ? `/multi/leagues/${league.short_code ?? league.id}/season` : null;
     const isEligiblePage = !!base && (location.pathname === base || location.pathname.startsWith(`${base}/standings`));
 
     const simStart = league?.sim_real_start_at ?? null;

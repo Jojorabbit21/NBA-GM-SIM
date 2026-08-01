@@ -16,6 +16,35 @@ import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormali
 import { SIM_CONFIG } from './shared/game/config/constants';
 import type { TacticalSliders } from './shared/types/tactics';
 
+// URL에 노출되는 게임 ID(T_R1_M0_G1 등)를 대체하는 짧은 코드 — services/multi/leagueService.ts의
+// 리그 코드와 동일한 알파벳/길이(client 미러, server는 별도 빌드 컨텍스트라 중복 정의).
+// [2026-08-01] game_pbp/game_sim_claims/tournament_game_log 등의 실제 저장 키(game_id)는
+// 그대로 유지 — game_short_codes는 라우팅 전용 매핑 테이블일 뿐, 이 함수가 실패해도(로그만 남기고)
+// finalize 전체를 막지 않는다(경기 URL이 짧은 코드 대신 원래 game_id로 폴백 가능하도록 설계됨).
+const SHORT_CODE_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz';
+function generateShortCode(length = 8): string {
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += SHORT_CODE_ALPHABET[Math.floor(Math.random() * SHORT_CODE_ALPHABET.length)];
+    }
+    return code;
+}
+
+async function insertGameShortCodes(roomId: string, schedule: { id: string }[]): Promise<void> {
+    if (schedule.length === 0) return;
+    const seen = new Set<string>();
+    const rows = schedule.map(g => {
+        let code = generateShortCode();
+        while (seen.has(code)) code = generateShortCode(); // 같은 배치 내 중복만 방지(DB unique 제약이 최종 방어선)
+        seen.add(code);
+        return { room_id: roomId, game_id: g.id, short_code: code };
+    });
+    const { error } = await supabase.from('game_short_codes').insert(rows);
+    if (error) {
+        console.error(`[finalize] game_short_codes insert 실패(${roomId}) — 경기 URL은 원래 game_id로 폴백됨: ${error.message}`);
+    }
+}
+
 // 멀티플레이어 AI 팀 전용 — 로스터 기반 계산값 대신 모든 슬라이더를 중간값(5)으로 고정한다.
 // 사람 팀/싱글플레이어 CPU는 영향받지 않음(generateAutoTactics()의 기본 계산 결과를 그대로 씀).
 // [2026-08-01 Fix] pnrDefense는 다른 슬라이더와 달리 0~10이 아니라 0~2 스케일(0=Drop,1=Hedge,
@@ -283,6 +312,8 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     if (saveErr) return { ok: false, error: `rooms save: ${saveErr.message}` };
 
+    await insertGameShortCodes(roomId, schedule);
+
     console.log(`[finalize:force] ${roomId} — done, ${schedule.length} games, bracket=${!!bracketData}`);
     return { ok: true };
 }
@@ -450,7 +481,9 @@ export async function finalizeDraft(roomId: string): Promise<void> {
 
     if (saveErr) {
         console.error(`[finalize] rooms save error: ${saveErr.message}`);
-    } else {
-        console.log(`[finalize] ${roomId} — done (league=${room.league_id})`);
+        return;
     }
+
+    await insertGameShortCodes(roomId, schedule);
+    console.log(`[finalize] ${roomId} — done (league=${room.league_id})`);
 }

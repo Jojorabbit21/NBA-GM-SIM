@@ -106,16 +106,18 @@ const LeagueLobbyView: React.FC = () => {
     }, [isInProgress, isFinished, isMember, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Realtime 구독
+    // [2026-08-01 Fix] leagues 테이블 filter는 실제 id(UUID) 컬럼 기준 — URL의 leagueId는
+    // short_code일 수 있어 league.id(조회로 이미 확정된 실제 UUID)를 사용해야 함.
     useEffect(() => {
-        if (!room?.id || !leagueId) return;
+        if (!room?.id || !league?.id) return;
         const ch = supabase
             .channel(`lobby-${room.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members', filter: `room_id=eq.${room.id}` },  () => reload())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'league_teams', filter: `room_id=eq.${room.id}` },  () => reload())
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leagues',  filter: `id=eq.${leagueId}` },     () => reload())
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leagues',  filter: `id=eq.${league.id}` },    () => reload())
             .subscribe();
         return () => { supabase.removeChannel(ch); };
-    }, [room?.id, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [room?.id, league?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 드래프트 카운트다운 타이머
     useEffect(() => {
@@ -162,22 +164,24 @@ const LeagueLobbyView: React.FC = () => {
     };
 
     const handleRunLottery = async () => {
-        if (!room || !userId || !leagueId) return;
+        if (!room || !userId || !league?.id) return;
         const token = (await supabase.auth.getSession()).data.session?.access_token;
         if (!token) { setActionErr('인증 정보를 가져올 수 없습니다.'); return; }
         setRunningLottery(true); setActionErr(null);
-        const { error: err } = await runDraftLottery(room.id, leagueId, token);
+        // [2026-08-01 Fix] 서버(Fly.io)는 실제 UUID를 기대 — URL의 leagueId(short_code 가능성)
+        // 대신 league.id(조회로 확정된 UUID) 사용.
+        const { error: err } = await runDraftLottery(room.id, league.id, token);
         setRunningLottery(false);
         if (err) { setActionErr(err); return; }
         reload();
     };
 
     const handleStartDraft = async () => {
-        if (!league || !leagueId) return;
+        if (!league?.id) return;
         const token = (await supabase.auth.getSession()).data.session?.access_token;
         if (!token) { setActionErr('인증 정보를 가져올 수 없습니다.'); return; }
         setStartingDraft(true); setActionErr(null);
-        const { error: err } = await startDraft(leagueId, token);
+        const { error: err } = await startDraft(league.id, token);
         setStartingDraft(false);
         if (err) { setActionErr(err); return; }
         // Realtime이 status 변경을 감지해서 자동 이동 (useEffect)

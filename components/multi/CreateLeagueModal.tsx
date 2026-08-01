@@ -143,6 +143,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
 
         try {
             let leagueId: string;
+            let shortCode: string | null = null;
 
             if (type === 'tournament') {
                 const draftScheduledAtIso   = startIso
@@ -175,6 +176,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
                 leagueId = league.id;
+                shortCode = league.short_code;
 
             } else {
                 const { data: group, error: ge } = await createLeagueGroup({
@@ -212,6 +214,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
                 leagueId = league.id;
+                shortCode = league.short_code;
             }
 
             const { data: room, error: re } = await createRoom({
@@ -229,7 +232,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             const { error: te } = await initializeLeagueTeams(room.id, maxTeams);
             if (te) throw new Error(te);
 
-            onCreated(leagueId);
+            onCreated(shortCode ?? leagueId);
 
         } catch (e: any) {
             setErr(e.message ?? '알 수 없는 오류');

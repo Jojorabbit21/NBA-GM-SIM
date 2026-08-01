@@ -610,6 +610,26 @@ const MultiGamePbpView: React.FC = () => {
     const gprd     = league?.games_per_real_day ?? 5;
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
 
+    // [2026-08-01] URL의 gameId는 짧은 코드(신규 리그) 또는 원래 game_id(T_R1_M0_G1 등, 구
+    // 리그/매핑 없음)일 수 있음 — game_short_codes에서 역조회, 매핑이 없으면 그대로 폴백.
+    // 저장 키(game_pbp.game_id 등)는 항상 이 resolvedGameId(=진짜 game_id)로만 사용한다.
+    const [resolvedGameId, setResolvedGameId] = useState<string | undefined>(gameId);
+    useEffect(() => {
+        setResolvedGameId(gameId);
+        if (!room?.id || !gameId) return;
+        let cancelled = false;
+        supabase
+            .from('game_short_codes')
+            .select('game_id')
+            .eq('room_id', room.id)
+            .eq('short_code', gameId)
+            .maybeSingle()
+            .then(({ data }) => {
+                if (!cancelled && data?.game_id) setResolvedGameId(data.game_id);
+            });
+        return () => { cancelled = true; };
+    }, [room?.id, gameId]);
+
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
     const [error,         setError]         = useState<string | null>(null);
@@ -632,7 +652,7 @@ const MultiGamePbpView: React.FC = () => {
     // displayState가 영원히 'scheduled'로 고정되고, 이어지는 PBP 조회 effect가
     // 매번 스킵되어 isLoading이 false로 내려가지 않는(무한 로딩) 버그가 생긴다.
     useEffect(() => {
-        if (!room?.id || !gameId) return;
+        if (!room?.id || !resolvedGameId) return;
         let cancelled = false;
         (async () => {
             const { data } = await supabase
@@ -642,12 +662,12 @@ const MultiGamePbpView: React.FC = () => {
                 .single();
             if (cancelled) return;
             const schedule = (data?.schedule as Game[] | null) ?? [];
-            const game = schedule.find(g => g.id === gameId);
+            const game = schedule.find(g => g.id === resolvedGameId);
             setGamePlayed(!!game?.played);
             setScheduledAt(game ? (resolveRealAt(game, simStart, gprd) ?? game.scheduledAt ?? null) : null);
         })();
         return () => { cancelled = true; };
-    }, [room?.id, gameId, simStart, gprd]);
+    }, [room?.id, resolvedGameId, simStart, gprd]);
 
     // 경기 상세 조회 — Bun 서버 /live-game 경유. displayState==='scheduled'이면 서버도
     // '시작 전'으로 응답하므로 시도하지 않는다. game_pbp 테이블은 이제 RLS가 종료(+10분) 후에만
@@ -656,12 +676,12 @@ const MultiGamePbpView: React.FC = () => {
     // 이벤트를 받아온다(예전처럼 최초 1회만 받아 클라이언트가 갖고 있던 미래 이벤트를
     // 스스로 감추는 방식은 더 이상 불가능/불필요).
     useEffect(() => {
-        if (!room?.id || !gameId) return;
+        if (!room?.id || !resolvedGameId) return;
         if (displayState === 'scheduled') return;
         let cancelled = false;
 
         const load = async () => {
-            const result = await fetchLiveGameView(room.id, gameId, session?.access_token);
+            const result = await fetchLiveGameView(room.id, resolvedGameId, session?.access_token);
             if (cancelled) return;
             if (!('state' in result)) {
                 setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
@@ -690,7 +710,7 @@ const MultiGamePbpView: React.FC = () => {
         load();
         const timer = displayState === 'live' ? setInterval(load, LIVE_POLL_MS) : null;
         return () => { cancelled = true; if (timer) clearInterval(timer); };
-    }, [room?.id, gameId, displayState, session?.access_token]);
+    }, [room?.id, resolvedGameId, displayState, session?.access_token]);
 
     // ── final 전용: 박스스코어 탭(OVR/포지션 표시)에 쓸 실제 선수 능력치 조회 ──────
     // PlayerBoxScore엔 이름/포지션/스탯만 있고 OVR이 없어서, BoxScoreTable이 team.roster에서

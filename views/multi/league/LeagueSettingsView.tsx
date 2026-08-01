@@ -172,24 +172,25 @@ const LeagueSettingsView: React.FC = () => {
     const lastSlotKst = `${10 + Math.floor((gameDaysPerDay - 1) * 30 / 60)}:${String(((gameDaysPerDay - 1) * 30) % 60).padStart(2, '0')}`;
 
     const handleSaveName = async () => {
-        if (!leagueId) return;
+        if (!league?.id) return;
         const trimmed = nameInput.trim();
         if (!trimmed || trimmed === league?.name) return;
         setSavingName(true);
         setSaveNameErr(null);
-        const { error: err } = await updateLeagueSettings({ leagueId, name: trimmed });
+        // [2026-08-01 Fix] leagueId(URL)는 short_code일 수 있어 실제 UUID(league.id) 사용.
+        const { error: err } = await updateLeagueSettings({ leagueId: league.id, name: trimmed });
         setSavingName(false);
         if (err) { setSaveNameErr(err); return; }
         reload();
     };
 
     const handleSave = async () => {
-        if (!leagueId) return;
+        if (!league?.id) return;
         setSaving(true);
         setSaveOk(false);
         setSaveErr(null);
         const { error: err } = await updateLeagueSettings({
-            leagueId,
+            leagueId: league.id,
             roomId:              room?.id,
             maxTeams,
             lotteryScheduledAt:  toIso(lotteryAt),
@@ -218,12 +219,12 @@ const LeagueSettingsView: React.FC = () => {
     };
 
     const handleSaveSimSettings = async () => {
-        if (!leagueId) return;
+        if (!league?.id) return;
         setSavingSim(true);
         setSaveSimOk(false);
         setSaveSimErr(null);
         const { error: err } = await updateLeagueSettings({
-            leagueId,
+            leagueId: league.id,
             roomId: room?.id,
             simSettings: {
                 ...DEFAULT_SIM_SETTINGS,
@@ -245,22 +246,22 @@ const LeagueSettingsView: React.FC = () => {
     };
 
     const handleRunLottery = async () => {
-        if (!room || !userId || !leagueId) return;
+        if (!room || !userId || !league?.id) return;
         const token = (await supabase.auth.getSession()).data.session?.access_token;
         if (!token) { setLotteryErr('인증 정보를 가져올 수 없습니다.'); return; }
         setLotteryRunning(true);
         setLotteryErr(null);
-        const { error: err } = await runDraftLottery(room.id, leagueId, token);
+        const { error: err } = await runDraftLottery(room.id, league.id, token);
         setLotteryRunning(false);
         if (err) { setLotteryErr(err); return; }
         reload();
     };
 
     const handleReset = async () => {
-        if (!leagueId || !room) return;
+        if (!league?.id || !room) return;
         setResetting(true);
         setResetErr(null);
-        const { error: err, archiveEdition } = await resetTournament(leagueId, room.id);
+        const { error: err, archiveEdition } = await resetTournament(league.id, room.id);
         setResetting(false);
         if (err) { setResetErr(err); return; }
         // 토너먼트 게임 ID(T_R{round}_M{matchIndex})는 위치 기반이라 리셋 후 같은 room.id로

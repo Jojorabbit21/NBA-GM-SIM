@@ -7,6 +7,8 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { useServerClock } from '../../../utils/serverClock';
 import { isFinal, isStarted, computeRevealedSeries } from './multiGameReveal';
+import { useLeagueContext } from '../league/LeagueLayout';
+import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -201,6 +203,8 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
     const serverNow = useServerClock();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
+    const { room } = useLeagueContext();
+    const { getGameUrlId } = useGameShortCodes(room?.id);
 
     // schedule(Realtime 실시간) 기반으로 시리즈 승수를 재계산.
     // league.bracket_data 구독 지연이 있어도 schedule 완료 경기에서 즉시 반영됨.
@@ -506,7 +510,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                             </span>
 
                                             <button
-                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/game/${g.id}`)}
+                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
                                                 className="flex items-center gap-1 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors justify-self-end"
                                             >
                                                 {final ? (

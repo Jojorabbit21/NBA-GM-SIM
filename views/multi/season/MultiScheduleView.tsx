@@ -4,6 +4,7 @@ import { Loader2, Tv } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
+import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { useGame } from '../../../hooks/useGameContext';
 import { useServerClock } from '../../../utils/serverClock';
 import { getGameDisplayState, isStarted, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
@@ -305,6 +306,7 @@ const MultiScheduleView: React.FC = () => {
     const { leagueId }                                    = useParams<{ leagueId: string }>();
     const navigate                                         = useNavigate();
     const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const { getGameUrlId } = useGameShortCodes(room?.id);
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
     const { session } = useGame();
@@ -404,7 +406,8 @@ const MultiScheduleView: React.FC = () => {
     const groupedByDay = useMemo(() => groupByDay(allGames), [allGames]);
     const totalPlayed  = useMemo(() => allGames.filter(g => getGameDisplayState(g, serverNow) === 'final').length, [allGames, serverNow]);
 
-    const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${gameId}`);
+    // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
+    const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
 
     if (isLoading) {
         return (
