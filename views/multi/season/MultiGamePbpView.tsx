@@ -1287,7 +1287,7 @@ const MultiGamePbpView: React.FC = () => {
                         </button>
                     ))}
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto p-6">
+                <div className={`flex-1 min-h-0 overflow-y-auto ${finalTab === 'box' ? '' : 'p-6'}`}>
                     {finalTab === 'box' && (
                         <GameBoxScoreTab
                             homeTeam={homeTeamAdapter}
@@ -1299,6 +1299,7 @@ const MultiGamePbpView: React.FC = () => {
                             teams={[]}
                             homeBadge={{ color: homeColor, abbr: homeAbbr }}
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                            splitLayout
                         />
                     )}
                     {finalTab === 'shotchart' && (

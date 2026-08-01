@@ -35,6 +35,89 @@
 
 ---
 
+## 2026-08-02 — 멀티플레이어 박스스코어 MVP 왕관/배경색 제거
+
+**배경**: 멀티플레이어 박스스코어 좌우 분할 UI 작업 연장선 — 경기 최우수 선수(MVP) 표시용 왕관
+아이콘과 행 배경색(amber 하이라이트)을 제거해달라는 요청. `standalone`(멀티플레이어 전용) prop으로
+게이팅해 싱글플레이어(`GameResultView.tsx`)의 기존 MVP 표시는 그대로 유지.
+
+**변경 파일**:
+- `components/game/BoxScoreTable.tsx` — `sortedBox.map` 내부 `TableRow` 배경색 조건과 `Crown`
+  아이콘 렌더 조건에 `!standalone` 추가. 선수 이름 텍스트 색(`text-amber-200`)은 요청 범위(왕관·
+  배경색)에 포함되지 않아 그대로 유지.
+
+**Before**:
+```tsx
+<TableRow key={p.playerId} className={isMvp ? 'bg-amber-900/10' : ''}>
+  ...
+  {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
+```
+
+**After**:
+```tsx
+<TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
+  ...
+  {isMvp && !standalone && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
+```
+
+**검증**: `npx vite build` 클린 빌드 성공. 브라우저 실사용 테스트는 못 했음(세션에 화면 캡처/
+브라우저 도구 없음).
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨.
+
+---
+
+## 2026-08-02 — 멀티플레이어 경기 박스스코어 좌우 분할 레이아웃
+
+**배경**: 멀티플레이어 종료 경기 "경기기록" 탭의 홈/원정 박스스코어 테이블이 상하로 쌓여있던 걸
+좌우 분할(수평 배치)로 바꿔달라는 요청. 싱글플레이어(`GameResultView.tsx`)는 그대로 유지해야 함
+— 둘 다 공유하는 `GameBoxScoreTab`/`BoxScoreTable` 컴포넌트를 건드리되 옵트인 prop으로 분기.
+
+**변경 파일**:
+- `components/game/tabs/GameBoxScoreTab.tsx` — `splitLayout?: boolean` prop 추가(기본 false).
+  true면 컨테이너를 `grid grid-cols-1 lg:grid-cols-2 gap-4`로, 각 테이블은 `overflow-x-auto`로
+  감싸 독립적으로 가로 스크롤(테이블 자체 컬럼 수·구조는 안 건드림 — 좁아진 폭에서 스크롤로 대응)
+- `views/multi/season/MultiGamePbpView.tsx` — `GameBoxScoreTab`에 `splitLayout` 전달
+- `views/GameResultView.tsx` — 변경 없음(prop 미전달 → 기존 상하 배치 그대로)
+
+**검증**: `npx vite build` 클린 빌드 성공. **브라우저 실사용 테스트는 못 했음** — 이 세션엔 화면
+캡처/브라우저 도구가 없어 레이아웃이 실제로 의도대로 보이는지 직접 확인 못함. 로컬에서 dev
+서버로 확인 부탁드립니다.
+
+**롤백 방법**: `MultiGamePbpView.tsx`의 `splitLayout` prop 제거, `GameBoxScoreTab.tsx`의 조건부
+컨테이너를 원래 `flex flex-col gap-0` 단일 구조로 되돌리면 됨.
+
+**추가 수정(같은 날)**: "박스스코어 컨테이너도 해체해봐" 요청 — `BoxScoreTable.tsx`에
+`standalone?: boolean` prop 추가. 기존엔 두 팀 테이블이 상하로 이어붙는 걸 전제로 `border-y`만
+쓰고 라운딩이 없었는데(`overflow-x-auto`+옆 테이블과 안 붙어있는 좌우 분할에서는 어색함),
+`standalone=true`면 `border`(전체)+`rounded-xl`+`overflow-hidden`으로 독립 카드처럼 렌더링.
+`GameBoxScoreTab.tsx`에서 `standalone={splitLayout}`로 연결 — 싱글플레이어(기본 false)는 기존
+seamless 스타일 그대로.
+
+**검증**: `npx vite build` 클린 빌드 성공. 이 역시 브라우저 실사용 테스트는 못 함.
+
+**정정(같은 날)**: 위 "카드로 만들기"는 사용자 의도와 반대였음 — 실제로는 "컨테이너를 해체해서
+바디에 꽉 차게"가 요청이었음. 재수정: `standalone=true`일 때 바깥 wrapper의 `bg-slate-900
+border rounded` 전부 제거(그냥 `w-full relative`만 남김), 헤더 바도 테두리 제거, 대신 안쪽
+`Table` 컴포넌트가 기존에 `!rounded-none !border-0 !shadow-none`로 지워졌던 자기 테두리를
+`standalone`일 때는 그대로 살려서(className 안 넘김) **Table 자신의 기본 border/rounded/shadow가
+유일한 테두리**가 되도록 함. `GameBoxScoreTab.tsx`의 그리드 갭도 `gap-4`→`gap-0`,
+`MultiGamePbpView.tsx`의 탭 바디 패딩(`p-6`)도 `finalTab==='box'`일 때만 제거해 진짜로 바디
+전체를 꽉 채우도록 함.
+
+**검증(정정 포함)**: `npx vite build` 클린 빌드 성공.
+
+**추가 수정(같은 날, 스크린샷 피드백 반영)**: ① 테이블 외부 라운딩 제거 — `standalone`일 때
+`Table` className을 `"!rounded-none"`으로(테두리/그림자는 유지, 라운딩만 제거). ② FAT/TF/FF/
+FG%/3P%/FT% 컬럼을 **삭제하지 않고 숨김** — `standalone`일 때만 적용되는 `hideCls =
+standalone ? 'hidden' : ''`를 헤더(`SortableHeader`에 `hidden?: boolean` prop 추가)/바디/
+푸터 3곳 전부의 해당 컬럼 className에 부착. 푸터의 `POS+OVR+FAT` 통합 셀은 FAT 숨김에 맞춰
+`colSpan`을 3→2로 축소(standalone일 때만). 기본(상하 배치)는 전부 그대로 노출.
+
+**검증**: `npx vite build` 클린 빌드 성공.
+
+---
+
 ## 2026-08-01 — 멀티플레이어 URL에 리그/게임 UUID·내부 ID 노출 문제 해결 (short_code)
 
 **배경**: `/multi/leagues/{UUID}/season/schedule`, `.../game/T_R1_M0_G1` 처럼 URL에 리그 UUID와

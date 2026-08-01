@@ -17,10 +17,12 @@ interface GameBoxScoreTabProps {
     /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
     homeBadge?: { color: string; abbr: string };
     awayBadge?: { color: string; abbr: string };
+    /** true면 두 팀 테이블을 상하 대신 좌우로 분할 배치(멀티플레이어 전용, 기본값 false=기존 상하 배치 유지) */
+    splitLayout?: boolean;
 }
 
 export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge
+    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge, splitLayout
 }) => {
     
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
@@ -31,26 +33,36 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Box Scores Container - Removed vertical gap */}
-            <div className="flex flex-col gap-0">
+            {/* Box Scores Container - 기본은 상하 배치, splitLayout이면 좌우 분할(각자 독립 가로 스크롤,
+                컨테이너 해체 — 갭 없이 바디를 꽉 채움) */}
+            <div className={splitLayout
+                ? "grid grid-cols-1 lg:grid-cols-2 gap-0"
+                : "flex flex-col gap-0"
+            }>
                 {/* Away Team Box Score */}
-                <BoxScoreTable
-                    team={awayTeam}
-                    box={activeAwayBox}
-                    isFirst
-                    mvpId={mvpId}
-                    leaders={leaders}
-                    badge={awayBadge}
-                />
+                <div className={splitLayout ? "overflow-x-auto" : undefined}>
+                    <BoxScoreTable
+                        team={awayTeam}
+                        box={activeAwayBox}
+                        isFirst
+                        mvpId={mvpId}
+                        leaders={leaders}
+                        badge={awayBadge}
+                        standalone={splitLayout}
+                    />
+                </div>
 
                 {/* Home Team Box Score */}
-                <BoxScoreTable
-                    team={homeTeam}
-                    box={activeHomeBox}
-                    mvpId={mvpId}
-                    leaders={leaders}
-                    badge={homeBadge}
-                />
+                <div className={splitLayout ? "overflow-x-auto" : undefined}>
+                    <BoxScoreTable
+                        team={homeTeam}
+                        box={activeHomeBox}
+                        mvpId={mvpId}
+                        leaders={leaders}
+                        badge={homeBadge}
+                        standalone={splitLayout}
+                    />
+                </div>
             </div>
             
             {/* Around the League */}

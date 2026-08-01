@@ -25,11 +25,14 @@ interface BoxScoreTableProps {
     leaders: GameStatLeaders;
     /** 제공되면 원형 TeamLogo 대신 이 색상/약어로 사각형 배지를 렌더링(멀티플레이어 전용 스타일) */
     badge?: { color: string; abbr: string };
+    /** true면 상하로 이어붙는 seamless 스타일(border-y만) 대신 독립된 카드(전체 border+라운딩)로 렌더링
+     *  — 좌우 분할 배치(splitLayout)에서 테이블이 옆 테이블과 안 붙어있으니 독립 카드처럼 보여야 함 */
+    standalone?: boolean;
 }
 
 type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
-export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge }) => {
+export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
 
@@ -120,12 +123,16 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
     const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
 
+    // [2026-08-02] standalone(좌우 분할) 전용 — FAT/TF/FF/FG%/3P%/FT% 컬럼을 삭제하지 않고 숨김
+    // (컬럼 정의/로직은 그대로 유지, CSS로만 미표시). 기본(상하 배치)에선 전부 그대로 노출.
+    const hideCls = standalone ? 'hidden' : '';
+
     // Helper for Header Cells to reduce verbosity
-    const SortableHeader = ({ label, sKey, width }: { label: string, sKey: SortKey, width?: string }) => (
-        <TableHeaderCell 
-            align="center" 
-            className={`w-${width || '12'} ${label === 'PTS' ? 'text-slate-300' : ''}`}
-            sortable 
+    const SortableHeader = ({ label, sKey, width, hidden }: { label: string, sKey: SortKey, width?: string, hidden?: boolean }) => (
+        <TableHeaderCell
+            align="center"
+            className={`w-${width || '12'} ${label === 'PTS' ? 'text-slate-300' : ''} ${hidden ? hideCls : ''}`}
+            sortable
             onSort={() => handleSort(sKey)}
             sortDirection={sortConfig.key === sKey ? sortConfig.direction : null}
         >
@@ -134,12 +141,20 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     );
 
     return (
-        // UI Fix: Removed rounded-xl and overflow-hidden, used border-y instead of full border for seamless integration
-        <div className="w-full bg-slate-900 border-y border-slate-800 relative">
+        // [2026-08-02] standalone=true(좌우 분할): 바깥 카드 컨테이너(bg/border/rounded)를 해체 —
+        // 헤더 바만 남기고, 아래 Table 컴포넌트 자체의 기본 border/rounded/shadow를 그대로 살려서
+        // (기존엔 !important로 지워서 바깥 div가 대신 담당했음) 그게 유일한 테두리가 되도록 함.
+        // 이러면 두 테이블이 갭 없이 붙어도 각자 테두리로 구분되고, 바디를 꽉 채운다.
+        // 기본(상하 배치): 기존처럼 border-y만 써서 두 테이블이 이어붙은 seamless 룩 유지.
+        <div className={standalone
+            ? "w-full relative"
+            : "w-full bg-slate-900 border-y border-slate-800 relative"
+        }>
             {/* Team Color Top Border */}
-            <div className="absolute top-0 left-0 right-0 h-0.5" style={{ backgroundColor: teamColor }}></div>
+            <div className="absolute top-0 left-0 right-0 h-0.5 z-10" style={{ backgroundColor: teamColor }}></div>
 
-            <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between mt-0.5">
+            {/* standalone: 헤더는 테두리 없이 라벨만 — 유일한 테두리는 아래 Table 자체가 담당 */}
+            <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? '' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
                     {badge ? (
                         <div
@@ -155,14 +170,16 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 </div>
             </div>
             
-            {/* Table Component with styling overrides */}
-            <Table className="!rounded-none !border-0 !shadow-none">
+            {/* standalone: Table 자체의 기본 border/shadow는 살리되 라운딩만 제거(테이블 외부가
+                바디 가장자리에 바로 붙으므로). 기본(상하 배치): 바깥 wrapper가 테두리를 담당하므로
+                Table 쪽은 지움(중복 방지). */}
+            <Table className={standalone ? "!rounded-none" : "!rounded-none !border-0 !shadow-none"}>
                 <TableHead>
                     <TableHeaderCell align="left" className="px-4 sticky left-0 bg-slate-950 z-20 w-40 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-12">POS</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-10">FAT</TableHeaderCell>
-                    
+                    <TableHeaderCell align="center" className={`w-10 ${hideCls}`}>FAT</TableHeaderCell>
+
                     <SortableHeader label="MIN" sKey="mp" />
                     <SortableHeader label="PTS" sKey="pts" />
                     <SortableHeader label="REB" sKey="reb" />
@@ -171,15 +188,15 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                     <SortableHeader label="BLK" sKey="blk" />
                     <SortableHeader label="TOV" sKey="tov" />
                     <SortableHeader label="PF" sKey="pf" />
-                    <SortableHeader label="TF" sKey="tf" />
-                    <SortableHeader label="FF" sKey="ff" />
+                    <SortableHeader label="TF" sKey="tf" hidden />
+                    <SortableHeader label="FF" sKey="ff" hidden />
 
                     <SortableHeader label="FG" sKey="fgm" width="16" />
-                    <SortableHeader label="FG%" sKey="fg%" width="14" />
+                    <SortableHeader label="FG%" sKey="fg%" width="14" hidden />
                     <SortableHeader label="3P" sKey="p3m" width="16" />
-                    <SortableHeader label="3P%" sKey="3p%" width="14" />
+                    <SortableHeader label="3P%" sKey="3p%" width="14" hidden />
                     <SortableHeader label="FT" sKey="ftm" width="16" />
-                    <SortableHeader label="FT%" sKey="ft%" width="14" />
+                    <SortableHeader label="FT%" sKey="ft%" width="14" hidden />
                     
                     <TableHeaderCell 
                         align="center" 
@@ -211,12 +228,12 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         else if (fatigueUsed > 15) fatColor = 'text-amber-500';
 
                         return (
-                            <TableRow key={p.playerId} className={isMvp ? 'bg-amber-900/10' : ''}>
+                            <TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
                                 <TableCell className="px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                     <div className="flex items-center gap-2">
                                         <span className={`text-xs font-semibold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-white'}`}>{p.playerName}</span>
                                         <div className="flex items-center gap-1 flex-shrink-0">
-                                            {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
+                                            {isMvp && !standalone && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
                                             {p.isStopper && (
                                                 <div className="flex items-center justify-center" title="Ace Stopper">
                                                     <Shield size={12} className="text-cyan-400 fill-cyan-900" />
@@ -243,7 +260,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                         <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
                                     </div>
                                 </TableCell>
-                                <TableCell align="center">
+                                <TableCell align="center" className={hideCls}>
                                     <span className={`text-xs font-semibold font-mono ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
                                 <TableCell align="center" className={sc}>{Math.round(p.mp)}</TableCell>
@@ -254,14 +271,14 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                 <TableCell align="center" className={sc}>{p.blk}</TableCell>
                                 <TableCell align="center" className={sc}>{p.tov}</TableCell>
                                 <TableCell align="center" className={sc}>{p.pf}</TableCell>
-                                <TableCell align="center" className={sc}>{p.techFouls || 0}</TableCell>
-                                <TableCell align="center" className={sc}>{p.flagrantFouls || 0}</TableCell>
+                                <TableCell align="center" className={`${sc} ${hideCls}`}>{p.techFouls || 0}</TableCell>
+                                <TableCell align="center" className={`${sc} ${hideCls}`}>{p.flagrantFouls || 0}</TableCell>
                                 <TableCell align="center" className={sc}>{p.fgm}/{p.fga}</TableCell>
-                                <TableCell align="center" className={sc}>{formatPct(p.fgm, p.fga)}</TableCell>
+                                <TableCell align="center" className={`${sc} ${hideCls}`}>{formatPct(p.fgm, p.fga)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.p3m}/{p.p3a}</TableCell>
-                                <TableCell align="center" className={sc}>{formatPct(p.p3m, p.p3a)}</TableCell>
+                                <TableCell align="center" className={`${sc} ${hideCls}`}>{formatPct(p.p3m, p.p3a)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.ftm}/{p.fta}</TableCell>
-                                <TableCell align="center" className={sc}>{formatPct(p.ftm, p.fta)}</TableCell>
+                                <TableCell align="center" className={`${sc} ${hideCls}`}>{formatPct(p.ftm, p.fta)}</TableCell>
                                 <TableCell align="center" className="pr-4">
                                     <span className={`font-mono font-semibold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
@@ -276,7 +293,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className="py-3 px-4 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
                             <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
                         </td>
-                        <td className={totalCellClass} colSpan={3}></td>
+                        {/* standalone: FAT 컬럼이 숨겨져서 POS+OVR 2칸만 span(원래 POS+OVR+FAT 3칸) */}
+                        <td className={totalCellClass} colSpan={standalone ? 2 : 3}></td>
                         <td className={totalCellClass}>{Math.round(totals.mp)}</td>
                         <td className={totalCellClass}>{totals.pts}</td>
                         <td className={totalCellClass}>{totals.reb}</td>
@@ -285,17 +303,17 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={totalCellClass}>{totals.blk}</td>
                         <td className={totalCellClass}>{totals.tov}</td>
                         <td className={totalCellClass}>{totals.pf}</td>
-                        <td className={totalCellClass}>{totals.tf}</td>
-                        <td className={totalCellClass}>{totals.ff}</td>
+                        <td className={`${totalCellClass} ${hideCls}`}>{totals.tf}</td>
+                        <td className={`${totalCellClass} ${hideCls}`}>{totals.ff}</td>
 
                         <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
-                        <td className={totalCellClass}>{formatPct(totals.fgm, totals.fga)}</td>
-                        
+                        <td className={`${totalCellClass} ${hideCls}`}>{formatPct(totals.fgm, totals.fga)}</td>
+
                         <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
-                        <td className={totalCellClass}>{formatPct(totals.p3m, totals.p3a)}</td>
+                        <td className={`${totalCellClass} ${hideCls}`}>{formatPct(totals.p3m, totals.p3a)}</td>
                         
                         <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
-                        <td className={totalCellClass}>{formatPct(totals.ftm, totals.fta)}</td>
+                        <td className={`${totalCellClass} ${hideCls}`}>{formatPct(totals.ftm, totals.fta)}</td>
                         
                         <td className={totalCellClass}>-</td>
                     </tr>
