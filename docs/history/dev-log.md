@@ -35,6 +35,85 @@
 
 ---
 
+## 2026-08-01 — calculateMatchupGap 골밑 defSkill을 strength 단일 비교로 교체
+
+**배경**: 덩크 커브 수정 배포 후 재검증(TEST 10, 128경기)에서 TS% 평균/중앙값은 -2.7%p 내려갔지만
+여전히 p90=69.7%/p95=72.1%로 상위권이 과도하게 높음. 사용자가 하위~중위권(p25=50.5%, 최저 27%)은
+정상 범위인데 상위권만 튀는 걸 지적 → 매치업 갭 정밀 조사 진행.
+
+`calculateMatchupGap`의 골밑 defSkill(`intDef*0.35+blk*0.30+strength*0.20+vertical*0.15`)을
+실측(TEST 10 로스터 320명)으로 검증한 결과:
+1. **평균 오프셋 문제**: offPower(strength 평균 71.9) vs defSkill(블렌드 평균 68.3) — "평균적인"
+   매치업조차 +3.6 만큼 공격 쪽으로 쏠려 있음(리그 상위 10%끼리 비교해도 +5.3~4.3로 동일 패턴,
+   극단치만의 문제가 아니라 스케일 전체의 문제).
+2. **이중 반영 문제**: intDef는 이미 `defRating`/`defMod`(flowEngine.ts)에서, blk는 이미
+   possessionHandler.ts의 블락 확률 시스템(`blkCfg.BASE_RIM`+`blkBonus` 등, `blkCfg.ENABLED`와
+   무관하게 항상 작동)에서 각각 별도로 반영되고 있어 defSkill 블렌드에 또 넣으면 방어력이
+   중복 계산됨 (intDef 10pt 상승 시 defMod 경로 -1.5%p + 매치업갭 경로 -0.7%p, 총 -2.2%p로
+   의도(-1.5%p)보다 과대).
+3. offPower에 vertical/hands 등을 추가로 섞어 평균을 맞추는 방안도 검토했으나, 두 스탯 모두
+   리그 평균이 strength(71.9)보다 높아(vertical 78.1, hands 82.4) 오히려 격차가 악화됨을 실측으로
+   확인, 폐기.
+4. defSkill 가중치만 재조정(blk↓, strength/vertical↑)하는 방안도 검토했으나, blk 비중을 깎으면
+   "블락 잘하는 빅맨"이 매치업 갭에서 얻는 정당한 이득이 줄어드는 부작용이 있어 보류.
+
+최종적으로 intDef/blk를 defSkill에서 완전히 제거하고 **strength 단일 비교**로 교체 —
+offPower/defSkill이 동일 스탯·동일 모집단이라 리그 평균 갭이 로스터 구성과 무관하게 항상
+정확히 0에 수렴함(실측 mp가중평균 73.38 vs 73.38, 오프셋 상수/재보정 불필요). 개별 매치업의
+스킬 격차(예: 바클리 strength 97 vs 평범한 수비수)는 의도대로 유지 — "상대 팀에 피지컬 몬스터가
+있으면 그만큼 강한 수비수로 대응해야 한다"는 정상 게임플레이로 남겨둠.
+
+**변경 파일**:
+- `services/game/engine/pbp/flowEngine.ts` (client, `calculateMatchupGap` Rim/Paint 분기)
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러)
+
+**Before**:
+```ts
+if (zone === 'Rim' || zone === 'Paint') {
+    const offPower = actor.attr.strength;
+    const defSkill = defender.attr.intDef * 0.35 + defender.attr.blk * 0.30
+                   + defender.attr.strength * 0.20 + defender.attr.vertical * 0.15;
+    return offPower - defSkill;
+}
+```
+
+**After**:
+```ts
+if (zone === 'Rim' || zone === 'Paint') {
+    const offPower = actor.attr.strength;
+    const defSkill = defender.attr.strength;
+    return offPower - defSkill;
+}
+```
+
+**검증**: `cd server && npx tsc -p tsconfig.json` 30개 베이스라인 에러 그대로(신규 없음),
+`npx vite build` 클린 빌드 성공. 아직 fly.io 배포 및 실측 재검증 전.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+**추가 수정(같은 날)**: 사용자가 곧바로 퍼리미터(Mid/3PT)도 동일하게 수정 요청 — perDef 역시
+`defRating`/`defMod`에서 이미 반영되는 중복이었음을 확인, 골밑과 같은 논리로 퍼리미터 defSkill도
+`(defender.attr.speed + defender.attr.agility) / 2`로 교체(offPower와 완전 동일 스탯 구성).
+
+**Before (퍼리미터)**:
+```ts
+const offPower = (actor.attr.speed + actor.attr.agility) / 2;
+const defSkill = defender.attr.perDef * 0.35 + defender.attr.agility * 0.25
+                + defender.attr.speed * 0.20 + defender.attr.stl * 0.20;
+return offPower - defSkill;
+```
+
+**After (퍼리미터)**:
+```ts
+const offPower = (actor.attr.speed + actor.attr.agility) / 2;
+const defSkill = (defender.attr.speed + defender.attr.agility) / 2;
+return offPower - defSkill;
+```
+
+**검증(추가 수정 포함)**: `tsc` 30개 베이스라인 유지, `vite build` 클린 빌드 성공. 아직 배포 전.
+
+---
+
 ## 2026-08-01 — DUNK_OFF_CURVE 압축 (덩크 능력치 80+ 캡 포화 수정)
 
 **배경**: "TEST 9 - ADJUST TS" 방(v98 배포 후 170경기, shotIq/offConsist 수정 반영된 데이터)에서

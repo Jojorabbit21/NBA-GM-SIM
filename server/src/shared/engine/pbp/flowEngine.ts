@@ -47,6 +47,12 @@ export function interpolateCurve(x: number, curve: readonly (readonly [number, n
  * 매치업 격차 — 공격자가 이 zone에서 수비자를 신체/기술로 압도하는 정도(+) or 압도당하는 정도(-).
  * [2026-07-29] 슈팅파울 배수(possessionHandler.ts)와 적중률 미스매치 보정이 공유하는 단일
  * 소스(client 미러 상세 참조). 스위치 여부와 무관하게 항상 계산.
+ * [2026-08-01 Fix] 골밑 defSkill: intDef/blk는 defRating·블락 확률 시스템에서 이미 반영되는
+ * 이중 계산이었고, 4스탯 블렌드 평균이 strength 단독 평균보다 구조적으로 낮아 "평균 매치업"도
+ * 공격 쪽으로 +3.6 치우쳐 있었음 — strength 단일 비교로 교체(동일 스탯 비교라 평균 갭이 항상
+ * 0에 수렴, client 미러 상세 참조).
+ * [2026-08-01 Fix] 퍼리미터 defSkill도 동일 논리(perDef가 defRating과 중복)로 offPower와
+ * 동일한 스탯 구성(speed+agility 평균)으로 교체.
  */
 export function calculateMatchupGap(
     actor: LivePlayer,
@@ -55,13 +61,11 @@ export function calculateMatchupGap(
 ): number {
     if (zone === 'Rim' || zone === 'Paint') {
         const offPower = actor.attr.strength;
-        const defSkill = defender.attr.intDef * 0.35 + defender.attr.blk * 0.30
-                       + defender.attr.strength * 0.20 + defender.attr.vertical * 0.15;
+        const defSkill = defender.attr.strength;
         return offPower - defSkill;
     }
     const offPower = (actor.attr.speed + actor.attr.agility) / 2;
-    const defSkill = defender.attr.perDef * 0.35 + defender.attr.agility * 0.25
-                    + defender.attr.speed * 0.20 + defender.attr.stl * 0.20;
+    const defSkill = (defender.attr.speed + defender.attr.agility) / 2;
     return offPower - defSkill;
 }
 

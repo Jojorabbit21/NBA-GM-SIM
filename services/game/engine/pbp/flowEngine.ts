@@ -49,10 +49,21 @@ export function interpolateCurve(x: number, curve: readonly (readonly [number, n
  * 공유하는 단일 소스 — 스위치 여부와 무관하게 항상 계산한다(로스터 자체의 사이즈 미스매치, 존
  * funnel로 어쩔 수 없이 불리한 매치업이 걸린 경우 등도 포함하기 위함).
  *
- * 골밑(Rim/Paint): 공격자의 순수 힘(strength, 몸싸움) vs 수비자의 "파울 없이 막는 종합력"
- *   (intDef·blk = 기술 65%, strength·vertical = 그 기술의 신체적 전제조건 35%).
- * 퍼리미터(Mid/3PT): 공격자의 순발력(speed+agility 평균) vs 수비자의 컨테인 종합력
- *   (perDef = 기술 35%, agility·speed = 신체 전제조건 45%, steal = 손기술 20%).
+ * 골밑(Rim/Paint): 공격자의 순수 힘(strength, 몸싸움) vs 수비자의 순수 힘(strength) — 동일
+ *   스탯 대 동일 스탯 비교이므로 리그 평균 매치업 갭이 항상 정확히 0에 수렴한다(로스터 구성이
+ *   바뀌어도 재보정 불필요).
+ *   [2026-08-01 Fix] 기존엔 defSkill을 intDef·blk(기술 65%)+strength·vertical(신체 35%)
+ *   블렌드로 계산했는데, intDef는 이미 defRating/defMod에서, blk는 이미 possessionHandler의
+ *   블락 확률 시스템에서 각각 별도로 반영되고 있어 여기서 또 넣으면 이중 반영이었음. 게다가
+ *   4스탯 블렌드는 평균이 강자쪽(strength 71.9)보다 구조적으로 낮게 나와(68.3) "평균적인
+ *   매치업"조차 공격 쪽으로 +3.6 치우쳐 있었음 — strength 단일 비교로 바꿔 이중반영과 오프셋
+ *   문제를 동시에 제거. (개별 매치업의 스킬 격차 자체는 의도대로 유지 — 상대 로스터에 바클리급
+ *   피지컬 선수가 있으면 그만큼 강한 수비수로 대응해야 하는 것은 정상적인 게임플레이.)
+ * 퍼리미터(Mid/3PT): 공격자의 순발력(speed+agility 평균) vs 수비자의 순발력(speed+agility 평균)
+ *   — 골밑과 동일한 이유로 동일 스탯 대 동일 스탯 비교로 통일.
+ *   [2026-08-01 Fix] perDef는 이미 defRating/defMod에서 별도로 반영되고 있어 골밑의 intDef와
+ *   같은 이중 반영 문제였고, 4스탯 블렌드 평균도 offPower보다 구조적으로 낮아 오프셋이 있었음
+ *   — 골밑과 동일하게 offPower와 동일한 스탯 구성(speed+agility 평균)으로 교체.
  *
  * drawFoul(파울 유도 "기술")과 postScorer/driver 같은 득점 아키타입은 각각 별도 항목이 이미
  * 처리하고 있어 여기서는 중복 반영하지 않는다 — 순수 신체/포지션 우열만 본다.
@@ -64,13 +75,11 @@ export function calculateMatchupGap(
 ): number {
     if (zone === 'Rim' || zone === 'Paint') {
         const offPower = actor.attr.strength;
-        const defSkill = defender.attr.intDef * 0.35 + defender.attr.blk * 0.30
-                       + defender.attr.strength * 0.20 + defender.attr.vertical * 0.15;
+        const defSkill = defender.attr.strength;
         return offPower - defSkill;
     }
     const offPower = (actor.attr.speed + actor.attr.agility) / 2;
-    const defSkill = defender.attr.perDef * 0.35 + defender.attr.agility * 0.25
-                    + defender.attr.speed * 0.20 + defender.attr.stl * 0.20;
+    const defSkill = (defender.attr.speed + defender.attr.agility) / 2;
     return offPower - defSkill;
 }
 
