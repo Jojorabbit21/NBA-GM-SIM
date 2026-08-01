@@ -93,6 +93,15 @@ server(`finalize.ts`)에 동일 알고리즘을 각자 정의(빌드 컨텍스�
 - `views/multi/season/MultiGamePbpView.legacy.tsx`는 아무 데서도 import 안 되는 죽은 코드로 확인되어 수정 안 함
 - 토너먼트 리셋 시 게임 ID가 위치 기반이라 재사용되는데, `game_short_codes`의 `unique(room_id, game_id)` 제약 덕분에 기존 매핑이 그대로 재사용됨(의도치 않은 부작용 아님 — 리셋 후에도 같은 short_code가 같은 (room, game_id)를 계속 가리켜서 오히려 안전)
 
+**추가 수정(같은 날, 배포 후 실사용 중 발견)**: TEST 13 실측 결과 게임 URL은 짧은 코드로 잘 나오는데
+리그 URL만 UUID가 그대로 노출됨 — DB 확인 결과 `leagues.short_code`는 정상 발급돼 있었음(데이터
+문제 아님). 원인은 `views/multi/league/LeagueListView.tsx`에 **리그 생성 직후 이동 경로는
+고쳤지만, 목록에서 리그를 다시 클릭해 들어가는 경로(리그 이름 클릭, "들어가기" 버튼) 2곳을
+빠뜨렸던 것** — 둘 다 `league.id`를 그대로 썼음. `league.short_code ?? league.id`로 수정.
+전체 코드베이스에서 `/multi/leagues/${...league.id...}` 패턴을 재검색해 이 2곳 외엔 없음을 확인.
+
+**검증**: `npx vite build` 클린 빌드 성공.
+
 ---
 
 ## 2026-08-01 — 패싱레인 스틸/비강제 턴오버의 passAcc 미스매치 수정 (턴오버 전체 점검 A-2/B)
