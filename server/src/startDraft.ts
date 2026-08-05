@@ -167,7 +167,7 @@ async function buildDraftSetup(
     // 멤버 조회
     const { data: members } = await supabase
         .from('room_members')
-        .select('user_id, team_id, team_name, team_abbr, team_color_primary, team_color_secondary, is_ai')
+        .select('user_id, team_id, team_name, team_abbr, team_color_primary, team_color_secondary, team_color_text, is_ai')
         .eq('room_id', roomId);
     if (!members?.length) return { ok: false, error: 'no members' };
 
@@ -183,7 +183,7 @@ async function buildDraftSetup(
         const claimedSlugs = new Set(members.map((m: any) => m.team_id).filter(Boolean));
         const { data: unclaimedTeams } = await supabase
             .from('league_teams')
-            .select('id, team_slug, team_name, team_abbr, color_primary, color_secondary')
+            .select('id, team_slug, team_name, team_abbr, color_primary, color_secondary, color_text')
             .eq('room_id', roomId)
             .is('user_id', null);
 
@@ -205,6 +205,7 @@ async function buildDraftSetup(
                 team_abbr:            lt.team_abbr,
                 team_color_primary:   lt.color_primary,
                 team_color_secondary: lt.color_secondary,
+                team_color_text:      lt.color_text,
                 is_ai:                true,
                 ai_gm_personality:    'balanced',
             });

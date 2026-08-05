@@ -69,6 +69,7 @@ const TeamSlot: React.FC<{
                 abbr={team?.team_abbr}
                 colorPrimary={team?.color_primary}
                 colorSecondary={team?.color_secondary}
+                colorText={team?.color_text}
                 size="sm"
             />
             <span className={`text-[11px] font-bold flex-1 truncate ${
@@ -115,6 +116,7 @@ const MatchCard: React.FC<{
                         abbr={team?.team_abbr}
                         colorPrimary={team?.color_primary}
                         colorSecondary={team?.color_secondary}
+                        colorText={team?.color_text}
                         size="sm"
                     />
                     <span className="text-[11px] font-bold text-emerald-400 truncate">
@@ -415,6 +417,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                         abbr={higherTeam.team_abbr}
                                         colorPrimary={higherTeam.color_primary}
                                         colorSecondary={higherTeam.color_secondary}
+                                        colorText={higherTeam.color_text}
                                         size="sm"
                                       />
                                     : <div className="w-9 h-6 rounded bg-slate-700" />
@@ -445,6 +448,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                         abbr={lowerTeam.team_abbr}
                                         colorPrimary={lowerTeam.color_primary}
                                         colorSecondary={lowerTeam.color_secondary}
+                                        colorText={lowerTeam.color_text}
                                         size="sm"
                                       />
                                     : <div className="w-9 h-6 rounded bg-slate-700" />

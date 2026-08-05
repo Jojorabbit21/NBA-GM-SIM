@@ -7,12 +7,14 @@ import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { useGame } from '../../../hooks/useGameContext';
 import { useServerClock } from '../../../utils/serverClock';
-import { getGameDisplayState, isStarted, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
+import { getGameDisplayState, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
 import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '../../../services/multi/gameLeadersCache';
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
+import { getReadableTextColor } from '../../../utils/colorContrast';
+import { fmtDayLabel, kstDateKey, fmtDateShort, fmtTime, groupByDay, type DayGroup } from './multiScheduleUtils';
 
 const LIVE_POLL_MS = 5000;
 
@@ -33,44 +35,8 @@ function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBox
 }
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
-
-function fmtDayLabel(dateKey: string): string {
-    const dt = new Date(dateKey + 'T00:00:00');
-    const days = ['일', '월', '화', '수', '목', '금', '토'];
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 (${days[dt.getDay()]})`;
-}
-
-// g.date는 슬롯(game_seq) 기반 달력 계산값이라 sim_real_start_at의 시각 오프셋에 따라
-// 실제 KST 자정 경계와 어긋날 수 있다(예: 23:40 다음 슬롯이 00:10인데도 g.date가 그대로).
-// "시간" 컬럼과 항상 같은 진실(scheduledAt의 KST 환산)을 기준으로 삼아야 자정을 넘는 경기가
-// 정확한 다음날 날짜로 표시된다.
-function kstDateKey(g: Game): string {
-    if (g.scheduledAt) {
-        const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
-        const y = kst.getUTCFullYear();
-        const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-        const d = String(kst.getUTCDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-    return g.date.slice(0, 10);
-}
-
-function fmtDateShort(g: Game): string {
-    const dt = new Date(kstDateKey(g) + 'T00:00:00');
-    return `${dt.getMonth() + 1}/${dt.getDate()}`;
-}
-
-// scheduledAt (UTC ISO) → KST 시각 문자열. game_seq 방식은 normalize 후 호출하므로 항상 scheduledAt 있음.
-function fmtTime(g: Game): string {
-    if (g.scheduledAt) {
-        const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
-        const h = kst.getUTCHours().toString().padStart(2, '0');
-        const m = kst.getUTCMinutes().toString().padStart(2, '0');
-        return `${h}:${m}`;
-    }
-    if (g.time) return g.time;
-    return '—';
-}
+// [2026-08-04] 날짜 관련 헬퍼(fmtDayLabel/kstDateKey/fmtDateShort/fmtTime/groupByDay)는
+// MultiGamePbpView.tsx의 날짜 셀렉터 스트립에서도 재사용하기 위해 ./multiScheduleUtils.ts로 이동.
 
 // 토너먼트 시리즈 id → 라운드 라벨("1라운드"/"준결승"/"결승"). TournamentBracketView/MultiHeader와 동일한 규칙.
 function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
@@ -87,38 +53,22 @@ function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
     return map;
 }
 
-interface DayGroup { dateKey: string; label: string; games: Game[] }
-
-function groupByDay(games: Game[]): DayGroup[] {
-    const groups: DayGroup[] = [];
-    for (const g of games) {
-        const dateKey = kstDateKey(g);
-        const last = groups[groups.length - 1];
-        if (last && last.dateKey === dateKey) {
-            last.games.push(g);
-        } else {
-            groups.push({ dateKey, label: fmtDayLabel(dateKey), games: [g] });
-        }
-    }
-    return groups;
-}
-
 // ── 서브 컴포넌트 ──────────────────────────────────────────────────────────────
 
 interface TeamCellProps {
     name: string;
     abbr: string;
     colorPrimary: string;
-    colorSecondary: string;
+    colorText?: string | null;
     isMyTeam: boolean;
     showLive?: boolean;
 }
 
-const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorSecondary, isMyTeam, showLive }) => (
+const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive }) => (
     <div className="flex items-center gap-1.5 min-w-0">
         <div
             className="w-9 h-5 rounded text-[10px] font-black flex items-center justify-center shrink-0"
-            style={{ backgroundColor: colorPrimary, color: colorSecondary }}
+            style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
         >
             {abbr.slice(0, 3)}
         </div>
@@ -179,7 +129,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                         name={away.team_name}
                         abbr={away.team_abbr}
                         colorPrimary={away.color_primary ?? '#334155'}
-                        colorSecondary={away.color_secondary ?? '#fff'}
+                        colorText={away.color_text}
                         isMyTeam={g.awayTeamId === myTeamId}
                     />
                 ) : (
@@ -194,7 +144,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                         name={home.team_name}
                         abbr={home.team_abbr}
                         colorPrimary={home.color_primary ?? '#334155'}
-                        colorSecondary={home.color_secondary ?? '#fff'}
+                        colorText={home.color_text}
                         isMyTeam={g.homeTeamId === myTeamId}
                         showLive={state === 'live'}
                     />
@@ -259,25 +209,33 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                     : ''}
             </span>
 
-            {/* 보기/리뷰 버튼 — 행 높이가 라이브/비라이브에 따라 달라지지 않도록 h-5로 고정 */}
+            {/* 보기/리뷰 버튼 — 행 높이가 라이브/비라이브에 따라 달라지지 않도록 h-5로 고정.
+                [Fix 2026-08-04] 시작 전 경기도 미리 중계방에 입장 가능(정시가 되면 화면이 자동으로
+                라이브로 전환됨) — 라이브 버튼과 동일한 모양, 색상만 슬레이트로 구분. */}
             <div className="w-16 h-5 flex items-center justify-center">
-                {isStarted(g, serverNow) && (
-                    state === 'live' ? (
-                        <button
-                            onClick={() => onView(g.id)}
-                            className="flex items-center justify-center gap-1 h-5 px-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-[10px] font-bold leading-none transition-all active:scale-95 ko-normal"
-                        >
-                            <Tv size={10} />
-                            보기
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => onView(g.id)}
-                            className="flex items-center gap-1 text-xs font-medium leading-none text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
-                        >
-                            리뷰
-                        </button>
-                    )
+                {state === 'live' ? (
+                    <button
+                        onClick={() => onView(g.id)}
+                        className="flex items-center justify-center gap-1 h-5 px-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-[10px] font-bold leading-none transition-all active:scale-95 ko-normal"
+                    >
+                        <Tv size={10} />
+                        보기
+                    </button>
+                ) : state === 'scheduled' ? (
+                    <button
+                        onClick={() => onView(g.id)}
+                        className="flex items-center justify-center gap-1 h-5 px-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-[10px] font-bold leading-none transition-all active:scale-95 ko-normal"
+                    >
+                        <Tv size={10} />
+                        보기
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => onView(g.id)}
+                        className="flex items-center gap-1 text-xs font-medium leading-none text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
+                    >
+                        리뷰
+                    </button>
                 )}
             </div>
         </div>

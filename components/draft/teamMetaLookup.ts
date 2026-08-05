@@ -27,7 +27,7 @@ export function resolveTeamDisplay(
             abbr:           custom.abbr,
             colorPrimary:   custom.colorPrimary,
             colorSecondary: custom.colorSecondary,
-            textColor:      '#FFFFFF',
+            textColor:      custom.colorText,
             isCustom:       true,
         };
     }

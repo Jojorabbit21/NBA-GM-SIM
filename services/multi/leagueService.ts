@@ -4,9 +4,23 @@ import type { LeagueGroupRow, LeagueRow, LeagueTeamRow } from './roomQueries';
 import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import type { SimSettings } from '../../types/simSettings';
+import { HEX_COLOR_RE } from '../../utils/colorContrast';
 
 // URL에 노출되는 리그 UUID를 대체하는 짧은 코드 — 헷갈리는 문자(0/O, 1/I/l) 제외 32종, 8자리.
 // [2026-08-01] leagues.id(UUID)는 여전히 진짜 PK로 유지, short_code는 라우팅 전용 별칭.
+// [2026-08-05] 팀 코트 색상 기본값 — 기존 MultiFullCourtChart.tsx가 하드코딩하던 나무색 코트와
+// 동일 값(components/multi/CourtPreview.tsx의 fallback과도 일치). 새 팀 생성 시 이 값으로 시작해
+// "팀 설정"에서 사용자가 원하는 대로 바꿀 수 있다.
+export const DEFAULT_COURT_COLORS = { background: '#DDC8AD', paint: '#C3AC91', line: '#4A3728' };
+
+// league_teams row 삽입 4곳(신규 생성/팀 수 증가 × 실제팀/가상팀)이 전부 동일하게 반복하던
+// court_* 3필드 — 여기 한 번만 만들어 스프레드로 재사용.
+const COURT_DEFAULT_FIELDS = {
+    court_background: DEFAULT_COURT_COLORS.background,
+    court_paint:      DEFAULT_COURT_COLORS.paint,
+    court_line:       DEFAULT_COURT_COLORS.line,
+};
+
 const SHORT_CODE_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz';
 export function generateShortCode(length = 8): string {
     let code = '';
@@ -238,6 +252,7 @@ export interface SetMemberTeamParams {
     abbr:           string;   // 팀 약어 (2~4자, 영문/숫자)
     colorPrimary:   string;   // #RRGGBB — 로고 배경
     colorSecondary: string;   // #RRGGBB — 로고 보더라인
+    colorText:      string;   // #RRGGBB — 배지 글자색
 }
 
 export const setMemberTeam = async (
@@ -246,14 +261,15 @@ export const setMemberTeam = async (
     const abbr = p.abbr.trim().toUpperCase();
     const slug  = abbr.toLowerCase();
     const name  = p.name.trim();
-    const hexRe = /^#[0-9a-fA-F]{6}$/;
 
     if (!/^[A-Z0-9]{2,4}$/.test(abbr))
         return { error: '약어는 2~4자 영문/숫자여야 합니다' };
-    if (!hexRe.test(p.colorPrimary))
+    if (!HEX_COLOR_RE.test(p.colorPrimary))
         return { error: 'Primary 색상은 #RRGGBB 형식이어야 합니다' };
-    if (!hexRe.test(p.colorSecondary))
+    if (!HEX_COLOR_RE.test(p.colorSecondary))
         return { error: 'Secondary 색상은 #RRGGBB 형식이어야 합니다' };
+    if (!HEX_COLOR_RE.test(p.colorText))
+        return { error: '텍스트 색상은 #RRGGBB 형식이어야 합니다' };
     if (name.length < 1 || name.length > 16)
         return { error: '팀명은 1~16자여야 합니다' };
 
@@ -265,6 +281,7 @@ export const setMemberTeam = async (
             team_abbr:            abbr,
             team_color_primary:   p.colorPrimary,
             team_color_secondary: p.colorSecondary,
+            team_color_text:      p.colorText,
         })
         .eq('room_id', p.roomId)
         .eq('user_id', p.userId);
@@ -389,6 +406,9 @@ async function resizeLeagueTeams(roomId: string, newCount: number): Promise<stri
             team_abbr:       t.id.toUpperCase().slice(0, 3),
             color_primary:   t.colors.primary,
             color_secondary: t.colors.secondary,
+            color_tertiary:  t.colors.tertiary ?? t.colors.secondary,
+            color_text:      t.colors.text,
+            ...COURT_DEFAULT_FIELDS,
             conference:      t.conference,
         }));
 
@@ -401,7 +421,13 @@ async function resizeLeagueTeams(roomId: string, newCount: number): Promise<stri
             const availableVirtual = VIRTUAL_TEAMS.filter(t => !usedSlugs.has(t.team_slug));
             for (const t of availableVirtual) {
                 if (rows.length >= needed) break;
-                rows.push({ room_id: roomId, team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr, color_primary: t.color_primary, color_secondary: t.color_secondary, conference: t.conference });
+                rows.push({
+                    room_id: roomId, team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr,
+                    color_primary: t.color_primary, color_secondary: t.color_secondary,
+                    color_tertiary: t.color_tertiary, color_text: t.color_text,
+                    ...COURT_DEFAULT_FIELDS,
+                    conference: t.conference,
+                });
             }
         }
 
@@ -447,6 +473,9 @@ export const initializeLeagueTeams = async (
         team_abbr:       t.id.toUpperCase().slice(0, 3),
         color_primary:   t.colors.primary,
         color_secondary: t.colors.secondary,
+        color_tertiary:  t.colors.tertiary ?? t.colors.secondary,
+        color_text:      t.colors.text,
+        ...COURT_DEFAULT_FIELDS,
         conference:      t.conference,
     }));
 
@@ -456,7 +485,13 @@ export const initializeLeagueTeams = async (
         const availableVirtual = VIRTUAL_TEAMS.filter(t => !usedSlugs.has(t.team_slug));
         for (const t of availableVirtual) {
             if (teamsJson.length >= maxTeams) break;
-            teamsJson.push({ team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr, color_primary: t.color_primary, color_secondary: t.color_secondary, conference: t.conference });
+            teamsJson.push({
+                team_slug: t.team_slug, team_name: t.team_name, team_abbr: t.team_abbr,
+                color_primary: t.color_primary, color_secondary: t.color_secondary,
+                color_tertiary: t.color_tertiary, color_text: t.color_text,
+                ...COURT_DEFAULT_FIELDS,
+                conference: t.conference,
+            });
         }
     }
 
@@ -553,15 +588,25 @@ export const updateTeamProfile = async (
     teamName:       string,
     teamAbbr:       string,
     colorPrimary:   string,
-    colorSecondary: string
+    colorSecondary: string,
+    colorTertiary:  string,
+    colorText:      string,
+    courtBackground: string,
+    courtPaint:      string,
+    courtLine:       string,
 ): Promise<{ data: LeagueTeamRow | null; error: string | null }> => {
     const { data, error } = await supabase.rpc('update_team_profile', {
-        p_team_id:         teamId,
-        p_user_id:         userId,
-        p_team_name:       teamName,
-        p_team_abbr:       teamAbbr,
-        p_color_primary:   colorPrimary,
-        p_color_secondary: colorSecondary,
+        p_team_id:          teamId,
+        p_user_id:          userId,
+        p_team_name:        teamName,
+        p_team_abbr:        teamAbbr,
+        p_color_primary:    colorPrimary,
+        p_color_secondary:  colorSecondary,
+        p_color_tertiary:   colorTertiary,
+        p_color_text:       colorText,
+        p_court_background: courtBackground,
+        p_court_paint:      courtPaint,
+        p_court_line:       courtLine,
     });
     if (error) return { data: null, error: error.message };
     return { data: data as LeagueTeamRow, error: null };

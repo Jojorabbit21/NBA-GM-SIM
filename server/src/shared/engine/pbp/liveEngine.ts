@@ -120,7 +120,7 @@ function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: num
         shot = { p: result.actor.playerId, m: result.type === 'score' };
     }
 
-    state.boxTimeline.push({ t: currentTotalSec, on: onIds, mp: timeTaken / 60, d, ...(shot ? { shot } : {}) });
+    state.boxTimeline.push({ t: currentTotalSec, on: onIds, off: state.possession, mp: timeTaken / 60, d, ...(shot ? { shot } : {}) });
 }
 
 /**
@@ -180,7 +180,7 @@ export function applyTimeout(state: GameState, teamId: string, isUserCall: boole
         timeRemaining: formatTime(state.gameClock),
         teamId: team.id,
         text,
-        type: 'info',
+        type: 'timeout', // [2026-08-02] 전용 타입 부여 (client 미러 참조)
         timeoutsLeft: team.timeouts, // 멀티플레이어 리플레이에서 잔여 타임아웃 표시용
     });
 }
@@ -314,7 +314,7 @@ function executeSubstitution(
     } else {
         // 영구 퇴장 전 filler 체인 체크
         handleFillerExit(state, team, req.outPlayer, currentMinute);
-        forceSubstitution(state, team, req.outPlayer, req.reason);
+        forceSubstitution(state, team, req.outPlayer, req.reason, req.benchReason ?? undefined);
     }
 }
 
@@ -586,6 +586,15 @@ function _handleGameEnd(state: GameState): StepResult {
         });
     });
 
+    // [2026-08-04] client 미러 참고 — '경기 시작 (Tip-off)'과 대칭되는 종료 배너
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: '0:00',
+        teamId: 'SYSTEM',
+        text: '경기 종료 (Final)',
+        type: 'info',
+    });
+
     const newLogs = state.logs.slice(logsBefore);
     { const sh = state.home.score, sa = state.away.score;
       newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
@@ -753,7 +762,10 @@ export function applyManualSubstitution(
 
         // rotation history 기록
         const histOut = state.rotationHistory[outPlayer.playerId];
-        if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+        if (histOut && histOut.length > 0) {
+            histOut[histOut.length - 1].out = currentTotalSec;
+            histOut[histOut.length - 1].outReason = 'manual';
+        }
 
         if (!state.rotationHistory[inPlayer.playerId]) state.rotationHistory[inPlayer.playerId] = [];
         state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: -1 });

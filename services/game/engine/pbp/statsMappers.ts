@@ -6,7 +6,7 @@ import { resolveRebound } from './reboundLogic';
 import { SIM_CONFIG } from '../../config/constants';
 
 // Modularized Imports
-import { generateCommentary, getReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary } from '../commentary/textGenerator';
+import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary } from '../commentary/textGenerator';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
@@ -86,8 +86,12 @@ export function resetHotCold(team: { onCourt: LivePlayer[], bench: LivePlayer[] 
 
 /**
  * Helper to add a log entry to the GameState
+ * possessionOutcome이 주어지면 이 로그를 "포제션이 끝나는 시점"으로 스탬프한다(인사이트 차트
+ * 포제션 마커용) — 오펜시브 리바운드/테크니컬·플래그런트 파울(공격권 유지)처럼 포제션이 계속되는
+ * 경우는 호출부에서 이 인자를 생략한다. possessionTeamId는 이 포제션의 실제 공격팀 — 블록/수비파울
+ * 로그처럼 teamId가 수비팀으로 찍히는 경우를 위해 별도로 받는다(생략 시 teamId를 그대로 씀).
  */
-function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string) {
+function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string, possessionOutcome?: PbpLog['possessionOutcome'], possessionTeamId?: string) {
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
@@ -96,6 +100,9 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
         type,
         points: points as 1 | 2 | 3 | undefined,
         foulTeamId,
+        isPossessionEnd: possessionOutcome ? true : undefined,
+        possessionOutcome,
+        possessionTeamId: possessionOutcome ? (possessionTeamId ?? teamId) : undefined,
     });
 }
 
@@ -125,9 +132,14 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
     };
 
-    // Helper: Resolve and record rebound on missed free throw
-    // Kept here because it requires state context
-    const handleFreeThrowRebound = (shooter: LivePlayer) => {
+    // Helper: Resolve rebound on missed free throw (로그는 직접 안 찍고 결과만 반환)
+    // [Fix 2026-08-05] "자유투 실패 → 리바운드" 순서로 보여야 하는데, 이 헬퍼가 자유투 결과
+    // 로그보다 먼저 자기 리바운드 로그를 addLog로 즉시 찍어버려서 "리바운드 → 자유투 실패"로
+    // 순서가 뒤집혀 있었음. 호출부가 리바운드 텍스트를 돌려받아 자유투 로그 문장 뒤에 이어붙여
+    // 한 줄로 합치는 방식으로 변경 — 순서 문제 자체가 구조적으로 발생할 수 없게 됨.
+    // 반환값(rebType)으로 호출부가 "오펜시브 리바운드라 포제션이 계속되는지"를 판단해
+    // isPossessionEnd 스탬프 여부를 결정한다 — FG 미스 경로(missEndsPossession)와 동일 기준.
+    const handleFreeThrowRebound = (shooter: LivePlayer): { type: 'off' | 'def'; text: string } => {
         // [2026-07-31] TEAM_REB_RATE_FT 제거 — FG 미스와 동일한 증발 버그(possessionHandler.ts
         // 참고), 마지막 자유투 미스 시 항상 개인에게 배정하도록 단순화.
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
@@ -136,15 +148,18 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (rebType === 'off') rebPlayer.offReb += 1;
         else rebPlayer.defReb += 1;
 
-        const rebText = getReboundCommentary(rebPlayer, rebType);
-        addLog(state, rebPlayer.playerId, rebText, 'info');
+        const rebText = getFreeThrowReboundCommentary(rebPlayer, rebType, shooter);
+        return { type: rebType, text: rebText };
     };
 
     // 2. Record Shot Event (Visualization)
     recordShotEvent(state, result);
 
-    // [New] Mismatch Announcement
-    if (isMismatch) {
+    // [2026-08-03] Mismatch Announcement — score/miss 커멘터리(textGenerator.ts)는 이미
+    // isMismatch를 반영한 전용 문구(예: "느린 수비를 제치고 골밑 득점 성공")를 갖고 있어서
+    // 이 안내를 같이 띄우면 같은 사실을 두 줄로 중복 안내하게 됨. turnover/foul 커멘터리는
+    // 아직 isMismatch 분기 문구가 없어(항상 isMismatch: false로 호출) 그 경우에만 이 안내로 대체.
+    if (isMismatch && type !== 'score' && type !== 'miss') {
         addLog(state, offTeam.id, `⚡ 미스매치! ${actor.playerName}가 이점을 활용합니다.`, 'info');
     }
 
@@ -194,9 +209,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
             isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined,
             isKickout: !!result.isKickout
-        });
+        }, result.shotType);
         
-        let totalPointsAdded = points; 
+        let totalPointsAdded = points;
+        // 앤드원 자유투를 놓치고 오펜시브 리바운드로 이어지면(드문 케이스) 포제션이 계속되므로
+        // 이 득점 로그를 포제션 종료로 스탬프하지 않는다 — FG 미스 경로와 동일 기준.
+        let scoreEndsPossession = true;
 
         // Handle And-1 (Additional Game Logic)
         if (isAndOne && defender) {
@@ -210,21 +228,23 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 actor.ftm += 1;
                 actor.fta += 1;
                 offTeam.score += 1;
-                totalPointsAdded += 1; 
+                totalPointsAdded += 1;
                 updatePlusMinus(offTeam, defTeam, 1);
-                
+
                 logText += ` + 앤드원 성공!${foulText}`;
             } else {
                 // FT Missed
                 actor.fta += 1;
                 logText += ` + 앤드원 실패${foulText}`;
-                
-                // Trigger Rebound on And-1 Miss
-                handleFreeThrowRebound(actor);
+
+                // Trigger Rebound on And-1 Miss — 리바운드 텍스트를 같은 로그 줄에 이어붙임(순서 보장)
+                const reb = handleFreeThrowRebound(actor);
+                scoreEndsPossession = reb.type !== 'off';
+                logText += ` ${reb.text}`;
             }
         }
-        
-        addLog(state, offTeam.id, logText, 'score', totalPointsAdded);
+
+        addLog(state, offTeam.id, logText, 'score', totalPointsAdded, undefined, scoreEndsPossession ? 'scoring' : undefined);
 
     } else if (type === 'miss') {
         // Update Stats
@@ -239,14 +259,20 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
              isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
              isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
              isHelpPlay: !!result.isHelpPlay, isKickout: !!result.isKickout
-        });
+        }, result.shotType);
+
+        // 오펜시브 리바운드면 포제션이 계속되므로(같은 팀이 다시 공격) 이 미스 로그를
+        // "포제션 종료"로 스탬프하지 않는다 — stepPossession()의 retainPossession(isOffReb) 판정과
+        // 동일 기준(rebounder + reboundType==='off').
+        const missEndsPossession = !(rebounder && result.reboundType === 'off');
+        const missOutcome = missEndsPossession ? 'nonScoring' : undefined;
 
         // Handle Block Stat
         if (isBlock && defender) {
             defender.blk += 1;
-            addLog(state, defTeam.id, logText, 'block');
+            addLog(state, defTeam.id, logText, 'block', undefined, undefined, missOutcome, offTeam.id);
         } else {
-            addLog(state, offTeam.id, logText, 'miss');
+            addLog(state, offTeam.id, logText, 'miss', undefined, undefined, missOutcome);
         }
 
         // Handle Rebound (Field Goal)
@@ -257,7 +283,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             else rebounder.defReb += 1;
 
             // Rebound Log
-            const rebText = getReboundCommentary(rebounder, rebType);
+            const rebText = getReboundCommentary(rebounder, rebType, actor, zone);
             addLog(state, rebounder.playerId, rebText, 'info');
         }
 
@@ -273,45 +299,54 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (isSteal && defender) {
             defender.stl += 1;
         }
-        addLog(state, offTeam.id, logText, 'turnover');
-    
+        addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');
+
     } else if (type === 'foul') {
         if (defender) commitFoul(defender);
-        
+
         let logText = generateCommentary('foul', actor, defender, undefined, playType, undefined, {
              isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
              isBlock: false, isSteal: false, points: 0,
              isHelpPlay: !!result.isHelpPlay
         });
-        
+
         logText += ` (팀 파울 ${defTeam.fouls})`;
-        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
-        
+        // 보너스 자유투로 이어지면(아래) 그 자유투 로그가 진짜 포제션 종료 지점이므로 이 파울
+        // 로그 자체는 스탬프하지 않는다 — 보너스가 아니면(자유투 없이 그대로 공격권 전환) 이
+        // 파울 로그가 곧 포제션 종료(점수 변화 없는 nonScoring)다.
+        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id, defTeam.fouls > 4 ? undefined : 'nonScoring', offTeam.id);
+
         // Bonus Situation (Team Fouls > 4) -> 2 Free Throws
         if (defTeam.fouls > 4) {
             let ftMade = 0;
             const ftPct = actor.attr.ft / 100;
             const numShots = 2;
-            
+
             actor.fta += numShots;
 
             // Shot 1
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
-            
+
             // Shot 2
             let lastShotMade = false;
-            if (Math.random() < ftPct) { 
-                actor.ftm++; actor.pts++; offTeam.score++; ftMade++; 
+            if (Math.random() < ftPct) {
+                actor.ftm++; actor.pts++; offTeam.score++; ftMade++;
                 lastShotMade = true;
             }
-            
-            updatePlusMinus(offTeam, defTeam, ftMade);
-            addLog(state, offTeam.id, `${actor.playerName}, 팀 파울로 얻은 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
 
-            // Rebound on last miss
+            updatePlusMinus(offTeam, defTeam, ftMade);
+
+            // 마지막 자유투가 빗나가면 리바운드 결과부터 확인 — 오펜시브 리바운드면 포제션이
+            // 계속되므로 이 자유투 로그를 포제션 종료로 스탬프하지 않는다(FG 미스 경로와 동일 기준).
+            let ftEndsPossession = true;
+            let ftLogText = `${actor.playerName}, 팀 파울로 얻은 자유투 ${ftMade}/${numShots} 성공`;
             if (!lastShotMade) {
-                handleFreeThrowRebound(actor);
+                // 리바운드 텍스트를 같은 로그 줄에 이어붙여 "자유투 실패 → 리바운드" 순서를 보장
+                const reb = handleFreeThrowRebound(actor);
+                ftEndsPossession = reb.type !== 'off';
+                ftLogText += ` ${reb.text}`;
             }
+            addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
         }
 
     } else if (type === 'freethrow') {
@@ -332,12 +367,18 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
 
         updatePlusMinus(offTeam, defTeam, ftMade);
-        addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade, defTeam.id);
 
-        // Rebound on last miss
+        // 마지막 자유투가 빗나가면 리바운드 결과부터 확인 — 오펜시브 리바운드면 포제션이
+        // 계속되므로 이 자유투 로그를 포제션 종료로 스탬프하지 않는다(FG 미스 경로와 동일 기준).
+        let ftEndsPossession = true;
+        let ftLogText = `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`;
         if (!lastShotMade) {
-            handleFreeThrowRebound(actor);
+            // 리바운드 텍스트를 같은 로그 줄에 이어붙여 "자유투 실패 → 리바운드" 순서를 보장
+            const reb = handleFreeThrowRebound(actor);
+            ftEndsPossession = reb.type !== 'off';
+            ftLogText += ` ${reb.text}`;
         }
+        addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, defTeam.id, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
 
     } else if (type === 'offensiveFoul') {
         // 오펜시브 파울: 공격자에게 PF + TOV, 수비팀 공 넘김
@@ -348,7 +389,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const foulDesc = isCharge ? '차지' : '일리걸 스크린';
         const ejectionText = actor.pf >= 6 ? ' — 6반칙 퇴장!' : '';
 
-        addLog(state, offTeam.id, `${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`, 'foul');
+        addLog(state, offTeam.id, `${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`, 'foul', undefined, undefined, 'turnover');
 
         if (actor.pf === 6) {
             addLog(state, offTeam.id, `🚨 ${actor.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
@@ -386,7 +427,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // 해설 텍스트
         const commentaryBase = defender
             ? getTechnicalFoulCommentary(defender)
-            : `🟨 테크니컬 파울이 선언됩니다!`;
+            : `테크니컬 파울이 선언됩니다!`;
         const ejectionSuffix = isEjected ? ' — 2 테크니컬 퇴장!' : '';
         const ftSuffix = ` ${ftShooter.playerName} 자유투 ${ftMade}/1`;
         addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
@@ -416,8 +457,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
         // 해설 텍스트
         const commentary = defender
-            ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor) : getFlagrant1Commentary(defender, actor))
-            : `🟥 Flagrant ${isFlagrant2 ? '2' : '1'}!`;
+            ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor, playType) : getFlagrant1Commentary(defender, actor, playType))
+            : `Flagrant ${isFlagrant2 ? '2' : '1'}!`;
         const ftSuffix = ` ${actor.playerName} 자유투 ${ftMade}/2`;
         addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined, defTeam.id);
 
@@ -434,7 +475,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const teamName = offTeam.id === state.home.id
             ? state.home.name
             : state.away.name;
-        addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover');
+        addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
 
     } else if (type === 'fight') {
         // 싸움: 양측 퇴장 + 출장정지

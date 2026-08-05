@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { setMemberTeam } from '../../services/multi/leagueService';
+import { HEX_COLOR_RE, contrastRatio } from '../../utils/colorContrast';
+import { ColorField } from './ColorField';
 
 interface TeamSetupModalProps {
     open:            boolean;
@@ -14,17 +16,18 @@ interface TeamSetupModalProps {
         abbr:           string;
         colorPrimary:   string;
         colorSecondary: string;
+        colorText:      string;
     } | null;
     onClose: () => void;
     onSaved: () => void;
     /** league_teams 기반으로 저장할 때 setMemberTeam 대신 호출되는 override */
     saveOverride?: (values: {
         name: string; abbr: string;
-        colorPrimary: string; colorSecondary: string;
+        colorPrimary: string; colorSecondary: string; colorText: string;
     }) => Promise<{ error: string | null }>;
 }
 
-const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const HEX_RE = HEX_COLOR_RE;
 
 export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     open, roomId, userId, existingTeamIds, initial, onClose, onSaved, saveOverride,
@@ -33,6 +36,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     const [abbr,           setAbbr]           = useState('');
     const [colorPrimary,   setColorPrimary]   = useState('#e11d48');
     const [colorSecondary, setColorSecondary] = useState('#fbbf24');
+    const [colorText,      setColorText]      = useState('#ffffff');
     const [err,            setErr]            = useState<string | null>(null);
     const [saving,         setSaving]         = useState(false);
 
@@ -43,6 +47,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
         setAbbr(initial?.abbr           ?? '');
         setColorPrimary(initial?.colorPrimary   ?? '#e11d48');
         setColorSecondary(initial?.colorSecondary ?? '#fbbf24');
+        setColorText(initial?.colorText ?? '#ffffff');
         setErr(null);
     }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -51,6 +56,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     const displayAbbr = abbr.trim().toUpperCase();
     const safeP = HEX_RE.test(colorPrimary)   ? colorPrimary   : '#e11d48';
     const safeS = HEX_RE.test(colorSecondary) ? colorSecondary : '#fbbf24';
+    const safeT = HEX_RE.test(colorText)      ? colorText      : '#ffffff';
 
     const handleAbbrChange = (v: string) => setAbbr(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4));
 
@@ -69,6 +75,9 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
         if (!HEX_RE.test(colorSecondary)) {
             setErr('Secondary 색상은 #RRGGBB 형식이어야 합니다'); return;
         }
+        if (!HEX_RE.test(colorText)) {
+            setErr('텍스트 색상은 #RRGGBB 형식이어야 합니다'); return;
+        }
         if (existingTeamIds.includes(displayAbbr.toLowerCase())) {
             setErr(`약어 "${displayAbbr}"는 이미 같은 방에서 사용 중입니다`); return;
         }
@@ -77,10 +86,10 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
         setErr(null);
         let saveError: string | null = null;
         if (saveOverride) {
-            const res = await saveOverride({ name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary });
+            const res = await saveOverride({ name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
             saveError = res.error;
         } else {
-            const res = await setMemberTeam({ roomId, userId, name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary });
+            const res = await setMemberTeam({ roomId, userId, name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
             saveError = res.error;
         }
         setSaving(false);
@@ -108,7 +117,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                         style={{
                             backgroundColor: safeP,
                             border: `4px solid ${safeS}`,
-                            color: '#ffffff',
+                            color: safeT,
                         }}
                     >
                         {displayAbbr || '—'}
@@ -143,34 +152,15 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                         />
                     </div>
 
-                    {/* 색상 피커 2개 */}
-                    {(['primary', 'secondary'] as const).map(key => {
-                        const val    = key === 'primary' ? colorPrimary   : colorSecondary;
-                        const setter = key === 'primary' ? setColorPrimary : setColorSecondary;
-                        const label  = key === 'primary' ? 'Primary (로고 배경)' : 'Secondary (로고 보더)';
-                        const safe   = HEX_RE.test(val) ? val : '#000000';
-                        return (
-                            <div key={key}>
-                                <label className="text-xs text-slate-400 ko-normal block mb-1">{label}</label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="color"
-                                        value={safe}
-                                        onChange={e => setter(e.target.value)}
-                                        className="w-9 h-9 rounded-lg border border-slate-700 cursor-pointer bg-transparent p-0.5 shrink-0"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={val}
-                                        onChange={e => setter(e.target.value)}
-                                        maxLength={7}
-                                        placeholder={key === 'primary' ? '#e11d48' : '#fbbf24'}
-                                        className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
-                                    />
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {/* 색상 피커 3개 */}
+                    <ColorField label="Primary (로고 배경)"  value={colorPrimary}   onChange={setColorPrimary}   placeholder="#e11d48" />
+                    <ColorField label="Secondary (로고 보더)" value={colorSecondary} onChange={setColorSecondary} placeholder="#fbbf24" />
+                    <ColorField label="Text (배지 글자색)"    value={colorText}      onChange={setColorText}      placeholder="#ffffff" />
+                    {HEX_RE.test(colorPrimary) && HEX_RE.test(colorText) && contrastRatio(colorPrimary, colorText) < 3 && (
+                        <p className="text-xs text-amber-400 ko-normal">
+                            ⚠ 배경(Primary)과 텍스트 색상의 대비가 낮아 글자가 잘 안 보일 수 있습니다.
+                        </p>
+                    )}
                 </div>
 
                 {err && <p className="text-xs text-red-400 ko-normal">{err}</p>}

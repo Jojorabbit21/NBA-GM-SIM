@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { TeamLogo } from './TeamLogo';
+import { getReadableTextColor } from '../../utils/colorContrast';
 
 interface TeamBadgeProps {
     teamId: string;
@@ -8,6 +9,7 @@ interface TeamBadgeProps {
     abbr?: string | null;
     colorPrimary?: string | null;
     colorSecondary?: string | null;
+    colorText?: string | null;
     size?: 'xs' | 'sm' | 'md' | 'lg';
     className?: string;
 }
@@ -28,7 +30,7 @@ const LOGO_SIZE: Record<NonNullable<TeamBadgeProps['size']>, 'sm' | 'md' | 'lg'>
  * 그리고, 없으면(싱글플레이어 실제 NBA 팀) 기존 TeamLogo(실제 로고 이미지)를 그대로 사용한다.
  */
 export const TeamBadge: React.FC<TeamBadgeProps> = ({
-    teamId, teamName, abbr, colorPrimary, colorSecondary, size = 'sm', className = '',
+    teamId, teamName, abbr, colorPrimary, colorSecondary, colorText, size = 'sm', className = '',
 }) => {
     if (!colorPrimary) {
         return <TeamLogo teamId={teamId} teamName={teamName} size={LOGO_SIZE[size]} className={className} />;
@@ -36,7 +38,7 @@ export const TeamBadge: React.FC<TeamBadgeProps> = ({
     return (
         <div
             className={`shrink-0 rounded flex items-center justify-center font-black ${SIZE_CLASS[size]} ${className}`}
-            style={{ backgroundColor: colorPrimary, color: colorSecondary ?? '#fff' }}
+            style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
         >
             {(abbr ?? teamId).slice(0, 3).toUpperCase()}
         </div>

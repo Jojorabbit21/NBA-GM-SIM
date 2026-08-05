@@ -37,6 +37,11 @@ export interface LeagueTeamRow {
     team_abbr: string;
     color_primary: string;
     color_secondary: string;
+    color_tertiary: string;
+    color_text: string;
+    court_background: string;
+    court_paint: string;
+    court_line: string;
     conference: string | null;
     user_id: string | null;
     is_ai: boolean;

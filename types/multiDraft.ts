@@ -61,6 +61,7 @@ export interface RoomTeamMeta {
     abbr:           string;   // team_abbr (대문자)
     colorPrimary:   string;   // team_color_primary  (#RRGGBB, 로고 배경)
     colorSecondary: string;   // team_color_secondary (#RRGGBB, 로고 보더라인)
+    colorText:      string;   // team_color_text (#RRGGBB, 배지 글자색)
 }
 
 export type RoomTeamMetaMap = Record<string /* teamId */, RoomTeamMeta>;

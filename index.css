@@ -158,6 +158,17 @@ body {
     50% { opacity: 0.3; }
 }
 
+/* PBP 최신 로그 행 — 등장 시 배경을 살짝 밝게 켰다가 시간이 지나며 다른 행과 동일해지도록 페이드.
+   fill-mode는 기본값(none) 유지 — forwards를 쓰면 애니메이션 종료 후에도 background-color:
+   transparent가 계속 적용된 상태로 남아, 그 행에 마우스를 올려도 hover:bg-white/5가 적용되지
+   않는 부작용이 생긴다(애니메이션의 마지막 키프레임이 hover보다 우선순위가 높음). none이면
+   애니메이션이 끝나는 즉시 일반 캐스케이드(:hover 포함)로 제어권이 자연스럽게 돌아간다. */
+@keyframes pbp-row-flash {
+    0%   { background-color: rgba(255, 255, 255, 0.14); }
+    100% { background-color: rgba(255, 255, 255, 0); }
+}
+.animate-pbp-row-flash { animation: pbp-row-flash 1.8s ease-out; }
+
 .text-shadow-ovr { text-shadow: 0px 1.5px 3px rgba(0, 0, 0, 0.5); }
 .ko-tight { letter-spacing: -0.025em; }
 .ko-normal { letter-spacing: -0.01em; }

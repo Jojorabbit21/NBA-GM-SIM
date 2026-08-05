@@ -8,6 +8,7 @@ import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
+import { getReadableTextColor } from '../utils/colorContrast';
 import type { Player } from '../types';
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -30,12 +31,12 @@ function ordinal(n: number): string {
 const OpponentBadge: React.FC<{
     teamId: string;
     colorPrimary?: string | null;
-    colorSecondary?: string | null;
+    colorText?: string | null;
     abbr?: string | null;
-}> = ({ teamId, colorPrimary, colorSecondary, abbr }) => (
+}> = ({ teamId, colorPrimary, colorText, abbr }) => (
     <div
         className="w-9 h-7 shrink-0 rounded flex items-center justify-center text-xs font-black"
-        style={{ backgroundColor: colorPrimary ?? '#334155', color: colorSecondary ?? '#fff' }}
+        style={{ backgroundColor: colorPrimary ?? '#334155', color: colorText ?? getReadableTextColor(colorPrimary) }}
     >
         {abbr?.slice(0, 3) ?? teamId.toUpperCase()}
     </div>
@@ -225,6 +226,7 @@ export const MultiHeader: React.FC = () => {
 
     const primaryColor = myTeam?.color_primary ?? '#4338ca';
     const secondary    = myTeam?.color_secondary;
+    const textColor    = myTeam?.color_text ?? getReadableTextColor(primaryColor);
     const borderColor  = hexToRgba(secondary ?? primaryColor, 0.4);
     const gradient     = `linear-gradient(97.5deg, transparent 58%, ${hexToRgba(primaryColor, 0.25)} 89%)`;
 
@@ -240,7 +242,7 @@ export const MultiHeader: React.FC = () => {
                 {myTeamId && (
                     <div
                         className="w-16 h-10 shrink-0 rounded flex items-center justify-center text-lg font-black"
-                        style={{ backgroundColor: primaryColor, color: secondary ?? '#fff' }}
+                        style={{ backgroundColor: primaryColor, color: textColor }}
                     >
                         {myTeam?.team_abbr?.slice(0, 3) ?? myTeamId.toUpperCase()}
                     </div>
@@ -289,7 +291,7 @@ export const MultiHeader: React.FC = () => {
                                     <OpponentBadge
                                         teamId={liveOpponentId}
                                         colorPrimary={liveOpponentTeam?.color_primary}
-                                        colorSecondary={liveOpponentTeam?.color_secondary}
+                                        colorText={liveOpponentTeam?.color_text}
                                         abbr={liveOpponentTeam?.team_abbr}
                                     />
                                 )}
@@ -339,7 +341,7 @@ export const MultiHeader: React.FC = () => {
                                     <OpponentBadge
                                         teamId={opponentId}
                                         colorPrimary={opponentTeam?.color_primary}
-                                        colorSecondary={opponentTeam?.color_secondary}
+                                        colorText={opponentTeam?.color_text}
                                         abbr={opponentTeam?.team_abbr}
                                     />
                                 )}

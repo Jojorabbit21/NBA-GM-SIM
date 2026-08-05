@@ -15,6 +15,7 @@ import {
     type TournamentGame,
 } from './shared/tournamentBracket.ts';
 import { archiveTournament } from './shared/tournamentArchiver.ts';
+import { insertGameShortCodes } from './finalize.ts';
 
 export interface SimResult {
     ok: boolean;
@@ -317,8 +318,21 @@ async function handleTournamentAdvance(
         );
 
         const existingIds = new Set(updatedSchedule.map((g: any) => g.id));
+        const newlyAddedGames: { id: string }[] = [];
         for (const g of bracketSchedule) {
-            if (!existingIds.has(g.id)) updatedSchedule.push(g as any);
+            if (!existingIds.has(g.id)) {
+                updatedSchedule.push(g as any);
+                newlyAddedGames.push({ id: g.id });
+            }
+        }
+
+        // [Fix 2026-08-03] 다음 라운드 경기가 새로 생기는 시점 — finalize.ts는 최초 일정(1라운드)만
+        // 숏코드를 만들고 끝나서, 2라운드 이상 경기는 URL에 원래 game_id(T_R5_M0_G6 등)가 그대로
+        // 노출되던 문제. 실패해도 로그만 남기고 계속 진행(경기 URL이 game_id로 폴백 가능하도록 설계됨).
+        if (newlyAddedGames.length > 0) {
+            await insertGameShortCodes(roomId, newlyAddedGames).catch(err =>
+                console.error(`[simRunner] insertGameShortCodes 실패(${roomId}):`, err),
+            );
         }
     }
 

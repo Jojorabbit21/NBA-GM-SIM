@@ -14,6 +14,7 @@ import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
 import { DraftPoolModal } from '../../../components/multi/DraftPoolModal';
 import type { PoolType } from '../../../components/multi/DraftPoolSettings';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
+import { getReadableTextColor } from '../../../utils/colorContrast';
 
 const VALID_POOL_TYPES: PoolType[] = ['standard', 'alltime', 'rookies'];
 
@@ -468,7 +469,7 @@ const LeagueLobbyView: React.FC = () => {
                         <div className="flex items-center gap-3">
                             <div
                                 className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                                style={{ backgroundColor: myTeam.color_primary, color: '#fff' }}
+                                style={{ backgroundColor: myTeam.color_primary, color: myTeam.color_text ?? getReadableTextColor(myTeam.color_primary) }}
                             >
                                 {myTeam.team_abbr}
                             </div>
@@ -534,7 +535,7 @@ const LeagueLobbyView: React.FC = () => {
                                                     ) : (
                                                         <div
                                                             className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
-                                                            style={{ backgroundColor: team.color_primary, color: '#fff' }}
+                                                            style={{ backgroundColor: team.color_primary, color: team.color_text ?? getReadableTextColor(team.color_primary) }}
                                                         >
                                                             {team.team_abbr}
                                                         </div>
@@ -643,13 +644,19 @@ const LeagueLobbyView: React.FC = () => {
                         abbr:           editTarget.team_abbr,
                         colorPrimary:   editTarget.color_primary,
                         colorSecondary: editTarget.color_secondary,
+                        colorText:      editTarget.color_text ?? getReadableTextColor(editTarget.color_primary),
                     }}
                     onClose={() => setEditTarget(null)}
                     onSaved={reload}
                     saveOverride={async (values) => {
+                        // [2026-08-05] "팀 설정"(TeamSettingsModal)에서 신설된 써드 컬러/코트 색상
+                        // 3종은 이 로비 모달(TeamSetupModal)엔 입력 필드가 없으므로 기존 저장값을
+                        // 그대로 유지 전송(RPC 시그니처가 11-arg로 늘어나 전부 채워야 함).
                         const { error } = await updateTeamProfile(
                             editTarget.id, userId,
                             values.name, values.abbr, values.colorPrimary, values.colorSecondary,
+                            editTarget.color_tertiary, values.colorText,
+                            editTarget.court_background, editTarget.court_paint, editTarget.court_line,
                         );
                         return { error };
                     }}

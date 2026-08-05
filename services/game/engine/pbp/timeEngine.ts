@@ -53,9 +53,13 @@ export function calculatePossessionTime(
     // 4. Floors & Ceilings
     // Absolute floor depends on context
     const floor = playType === 'Transition' ? 4 : 8;
-    
+
     if (timeTaken < floor) timeTaken = floor;
-    if (timeTaken > 23) timeTaken = 23; 
+    // [2026-08-03] 상한을 23 고정값이 아니라 state.shotClock(오펜시브 리바운드 후 14로 리셋됨)과
+    // 함께 고려 — 안 그러면 리바운드로 이어진 두 번째 시도가 실제 샷클락(14초) 규정을 무시하고
+    // 최대 23초까지 배정돼, 인사이트 포제션 막대에서 "24초 넘는 포제션이 너무 많다"로 관측됨.
+    const ceiling = Math.min(23, state.shotClock);
+    if (timeTaken > ceiling) timeTaken = ceiling;
 
     // Random Variance (+/- 1.5s)
     timeTaken += (Math.random() * 3) - 1.5;

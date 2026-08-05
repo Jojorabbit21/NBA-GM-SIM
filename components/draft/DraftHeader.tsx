@@ -118,7 +118,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             height: '240px',
                             backgroundColor: displayDisplay.colorPrimary,
                             border: `8px solid ${displayDisplay.colorSecondary}`,
-                            color: '#ffffff',
+                            color: displayDisplay.textColor,
                             fontSize: '96px',
                             opacity: 0.18,
                         }}
@@ -182,7 +182,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                                 style={{
                                     backgroundColor: currentDisplay.colorPrimary,
                                     border: `1.5px solid ${currentDisplay.colorSecondary}`,
-                                    color: '#fff',
+                                    color: currentDisplay.textColor,
                                 }}
                             >
                                 {currentDisplay.abbr.slice(0, 3)}

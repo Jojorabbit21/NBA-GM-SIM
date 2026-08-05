@@ -1,6 +1,6 @@
 
 import { GameState, TeamState, LivePlayer, RotationOverride } from './pbpTypes.ts';
-import { DepthChart } from '../../types.ts';
+import { DepthChart, RotationOutReason } from '../../types.ts';
 import { formatTime } from './timeEngine.ts';
 import { evaluateFoulTroubleAction } from './substitutionSystem.ts';
 
@@ -236,7 +236,10 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
                 teamState.onCourt.splice(idx, 1);
                 teamState.bench.push(p);
                 const hist = state.rotationHistory[p.playerId];
-                if (hist && hist.length > 0) hist[hist.length - 1].out = currentTotalSec;
+                if (hist && hist.length > 0) {
+                    hist[hist.length - 1].out = currentTotalSec;
+                    hist[hist.length - 1].outReason = 'normal';
+                }
             }
         });
 
@@ -268,7 +271,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
     }
 }
 
-export function forceSubstitution(state: GameState, team: TeamState, outPlayer: LivePlayer, reason: string) {
+export function forceSubstitution(state: GameState, team: TeamState, outPlayer: LivePlayer, reason: string, outReason?: RotationOutReason) {
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
@@ -318,7 +321,10 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
             inPlayer.position = outPlayer.position;
 
             const histOut = state.rotationHistory[outPlayer.playerId];
-            if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+            if (histOut && histOut.length > 0) {
+                histOut[histOut.length - 1].out = currentTotalSec;
+                histOut[histOut.length - 1].outReason = outReason;
+            }
 
             if (!state.rotationHistory[inPlayer.playerId]) state.rotationHistory[inPlayer.playerId] = [];
             state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: currentTotalSec });
@@ -401,7 +407,10 @@ export function benchWithOverride(
         filler.position = outPlayer.position;
 
         const histOut = state.rotationHistory[outPlayer.playerId];
-        if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+        if (histOut && histOut.length > 0) {
+            histOut[histOut.length - 1].out = currentTotalSec;
+            histOut[histOut.length - 1].outReason = reason;
+        }
         if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
         state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
         filler.lastSubInTime = state.gameClock;
@@ -617,7 +626,10 @@ export function executeGarbageSubstitution(
         inP.position = outP.position;
 
         const histOut = state.rotationHistory[outP.playerId];
-        if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+        if (histOut && histOut.length > 0) {
+            histOut[histOut.length - 1].out = currentTotalSec;
+            histOut[histOut.length - 1].outReason = 'garbage';
+        }
         if (!state.rotationHistory[inP.playerId]) state.rotationHistory[inP.playerId] = [];
         state.rotationHistory[inP.playerId].push({ in: currentTotalSec, out: currentTotalSec });
 

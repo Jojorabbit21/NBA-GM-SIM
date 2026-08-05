@@ -1,12 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
-import { Crown, Shield, Lock, Unlock } from 'lucide-react';
-import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
-import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
 
 export interface GameStatLeaders {
     pts: number;
@@ -28,13 +26,17 @@ interface BoxScoreTableProps {
     /** true면 상하로 이어붙는 seamless 스타일(border-y만) 대신 독립된 카드(전체 border+라운딩)로 렌더링
      *  — 좌우 분할 배치(splitLayout)에서 테이블이 옆 테이블과 안 붙어있으니 독립 카드처럼 보여야 함 */
     standalone?: boolean;
+    /** 헤더 바 우측에 렌더링할 커스텀 요소(예: Traditional/Advanced/Defense 셀렉터) */
+    headerRight?: React.ReactNode;
 }
 
 type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
-export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone }) => {
+export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
+    // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
+    const rosterMap = useMemo(() => new Map(team.roster.map(rp => [rp.id, rp])), [team.roster]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(prev => ({
@@ -150,11 +152,11 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             ? "w-full relative"
             : "w-full bg-slate-900 border-y border-slate-800 relative"
         }>
-            {/* Team Color Top Border */}
-            <div className="absolute top-0 left-0 right-0 h-0.5 z-10" style={{ backgroundColor: teamColor }}></div>
+            {/* Team Color Top Border — standalone(멀티플레이어)에선 탭 그룹 바로 아래 구분선이라 제거 */}
+            {!standalone && <div className="absolute top-0 left-0 right-0 h-0.5 z-10" style={{ backgroundColor: teamColor }}></div>}
 
             {/* standalone: 헤더는 테두리 없이 라벨만 — 유일한 테두리는 아래 Table 자체가 담당 */}
-            <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? '' : 'border-b border-slate-800'}`}>
+            <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
                     {badge ? (
                         <div
@@ -168,6 +170,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                     )}
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
                 </div>
+                {headerRight}
             </div>
             
             {/* standalone: Table 자체의 기본 border/shadow는 살리되 라운딩만 제거(테이블 외부가
@@ -175,9 +178,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 Table 쪽은 지움(중복 방지). */}
             <Table className={standalone ? "!rounded-none" : "!rounded-none !border-0 !shadow-none"}>
                 <TableHead>
-                    <TableHeaderCell align="left" className="px-4 sticky left-0 bg-slate-950 z-20 w-40 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-12">POS</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+                    <PlayerIdentityHeaderCells />
                     <TableHeaderCell align="center" className={`w-10 ${hideCls}`}>FAT</TableHeaderCell>
 
                     <SortableHeader label="MIN" sKey="mp" />
@@ -210,56 +211,20 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 </TableHead>
                 <TableBody>
                     {sortedBox.map(p => {
-                        const playerInfo = team.roster.find(rp => rp.id === p.playerId);
-                        const ovr = playerInfo ? calculatePlayerOvr(playerInfo) : 70;
                         const isMvp = p.playerId === mvpId;
-                        
-                        const effect = p.matchupEffect || 0;
-                        const isBuff = effect > 0;
-                        const isDebuff = effect < 0;
 
                         // Condition Color Logic (Fatigue Calculation Fix)
                         // p.condition is remaining stamina (0-100). Fatigue = 100 - p.condition.
                         const currentCondition = p.condition ?? 100;
                         const fatigueUsed = 100 - currentCondition;
-                        
+
                         let fatColor = 'text-emerald-500';
                         if (fatigueUsed > 25) fatColor = 'text-red-500';
                         else if (fatigueUsed > 15) fatColor = 'text-amber-500';
 
                         return (
                             <TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
-                                <TableCell className="px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-xs font-semibold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-white'}`}>{p.playerName}</span>
-                                        <div className="flex items-center gap-1 flex-shrink-0">
-                                            {isMvp && !standalone && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
-                                            {p.isStopper && (
-                                                <div className="flex items-center justify-center" title="Ace Stopper">
-                                                    <Shield size={12} className="text-cyan-400 fill-cyan-900" />
-                                                </div>
-                                            )}
-                                            {p.isAceTarget && (
-                                                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${isDebuff ? 'bg-red-950/50 border-red-500/30' : isBuff ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-800 border-slate-600/30'}`}>
-                                                    {isDebuff ? (
-                                                        <Lock size={10} className="text-red-400" />
-                                                    ) : (
-                                                        <Unlock size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
-                                                    )}
-                                                    <span className={`text-[9px] font-black leading-none ${isDebuff ? 'text-red-400' : isBuff ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                                        {effect > 0 ? '+' : ''}{effect}%
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </TableCell>
-                                <TableCell align="center" className="text-xs font-semibold text-white">{playerInfo?.position || '-'}</TableCell>
-                                <TableCell align="center">
-                                    <div className="flex justify-center">
-                                        <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
-                                    </div>
-                                </TableCell>
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} />
                                 <TableCell align="center" className={hideCls}>
                                     <span className={`text-xs font-semibold font-mono ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
@@ -290,7 +255,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
+                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-700">
                             <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
                         </td>
                         {/* standalone: FAT 컬럼이 숨겨져서 POS+OVR 2칸만 span(원래 POS+OVR+FAT 3칸) */}

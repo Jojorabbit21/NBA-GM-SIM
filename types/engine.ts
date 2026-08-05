@@ -64,7 +64,7 @@ export interface PbpLog {
     timeRemaining: string;
     teamId: string;
     text: string;
-    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info' | 'injury';
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info' | 'injury' | 'timeout';
     points?: 1 | 2 | 3;
     homeScore?: number;   // 이 이벤트 시점의 홈팀 누적 점수
     awayScore?: number;   // 이 이벤트 시점의 원정팀 누적 점수
@@ -74,6 +74,13 @@ export interface PbpLog {
     timeoutsLeft?: number; // 타임아웃 로그(teamId=부른 팀)일 때: 그 팀의 잔여 타임아웃 수 (멀티플레이어 리플레이용)
     foulTeamId?: string;   // 이 로그가 팀파울(보너스 대상: 비슈팅/슈팅/플래그런트) 발생 시점이면 파울한 팀 ID.
                             // freethrow 타입(슈팅파울)은 teamId가 공격팀이라 별도 필드로 파울팀을 남긴다.
+    // [2026-08-02] 포제션 단위 마커(인사이트 차트용) — 이 로그가 실제로 포제션이 끝나는 시점이면
+    // true + 결과 분류. 오펜시브 리바운드/테크니컬·플래그런트 파울(공격권 유지)은 스탬프하지 않음.
+    // 구버전 저장 데이터엔 없는 optional 필드 — 없으면 마커 UI에서 그냥 표시 안 함(소급 적용 없음).
+    isPossessionEnd?: boolean;
+    possessionOutcome?: 'scoring' | 'nonScoring' | 'turnover';
+    possessionTeamId?: string; // 이 마커가 어느 팀의 포제션인지 (teamId와 다를 수 있음 — 예: 블록/수비파울
+                                // 로그는 teamId가 수비팀이지만 포제션 자체는 공격팀 것)
 }
 
 export interface QuarterScores {
@@ -81,7 +88,10 @@ export interface QuarterScores {
     away: [number, number, number, number];
 }
 
-export type RotationData = Record<string, { in: number, out: number }[]>;
+// [2026-08-02] outReason: 이 스틴트가 왜 끝났는지(교체 사유) — 로테이션 차트 호버 툴팁용.
+// undefined면 사유 없음(경기 종료 시점에 코트 위였던 마지막 스틴트 등)
+export type RotationOutReason = 'normal' | 'foul_trouble' | 'shutdown' | 'injury' | 'foul_out' | 'garbage' | 'manual';
+export type RotationData = Record<string, { in: number, out: number, outReason?: RotationOutReason }[]>;
 
 export interface ShotEvent {
     id: string;
@@ -127,6 +137,7 @@ export interface BoxDelta {
 export interface BoxTick {
     t:  number;                    // 포세션 종료 시점 gameSec ((q-1)*720 + (720-clock))
     on: string[];                  // 이 포세션에 코트 위 있던 playerId 10명 (mp 누적 대상)
+    off?: 'home' | 'away';         // 이 포세션의 공격팀 (On/Off·라인업 리포트에서 공격/수비 포제션 구분용). [2026-08-02] 이전 저장 데이터엔 없음 — 소급 적용 없음
     mp: number;                    // 이 포세션이 소비한 분 (timeTaken/60)
     d:  Record<string, BoxDelta>;  // playerId → 변화분 (변한 선수만)
     shot?: { p: string; m: boolean }; // 이 포세션 FG 시도 결과 (있었던 경우만): p=playerId, m=성공여부 — 핫/콜드 스트릭 재구성용

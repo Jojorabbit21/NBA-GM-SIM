@@ -14,6 +14,7 @@ import { isFinal, resolveRealAt } from '../views/multi/season/multiGameReveal';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
 import type { PlayerBoxScore } from '../types/engine';
 import type { SavedPlayerState } from '../types/player';
+import { getReadableTextColor } from '../utils/colorContrast';
 
 // ─── 로스터 위젯 타입 ─────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ const MultiSeasonPage: React.FC = () => {
                                 <div className="flex items-center gap-3">
                                     <div
                                         className="w-10 h-10 rounded flex items-center justify-center text-sm font-black shrink-0"
-                                        style={{ backgroundColor: nextOpp.color_primary ?? '#334155', color: nextOpp.color_secondary ?? '#fff' }}
+                                        style={{ backgroundColor: nextOpp.color_primary ?? '#334155', color: nextOpp.color_text ?? getReadableTextColor(nextOpp.color_primary) }}
                                     >
                                         {nextOpp.team_abbr}
                                     </div>

@@ -297,7 +297,12 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] 킥아웃 마무리 context를 'drive'로 고정하면 훅슛(Hook)이 gating 조건
+                // (context === 'post' || 'roll')을 절대 못 넘어 킥아웃에서만 훅슛이 원천 봉쇄되는
+                // 문제가 있었음 — 킥아웃을 받은 선수가 페인트에서 훅슛으로 마무리하는 건 playType과
+                // 무관하게 자연스러운 장면이라 4개 playType 전부 'post'로 통일(Rim은 원래 context
+                // 무관이라 영향 없음, Paint는 Floater/Hook/Jumper 전부 열림).
+                const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.00 + passIqBonus, isKickout: true };
                 }
                 return {
@@ -353,7 +358,12 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] 킥아웃 마무리 context를 'drive'로 고정하면 훅슛(Hook)이 gating 조건
+                // (context === 'post' || 'roll')을 절대 못 넘어 킥아웃에서만 훅슛이 원천 봉쇄되는
+                // 문제가 있었음 — 킥아웃을 받은 선수가 페인트에서 훅슛으로 마무리하는 건 playType과
+                // 무관하게 자연스러운 장면이라 4개 playType 전부 'post'로 통일(Rim은 원래 context
+                // 무관이라 영향 없음, Paint는 Floater/Hook/Jumper 전부 열림).
+                const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return {
@@ -412,7 +422,12 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] 킥아웃 마무리 context를 'drive'로 고정하면 훅슛(Hook)이 gating 조건
+                // (context === 'post' || 'roll')을 절대 못 넘어 킥아웃에서만 훅슛이 원천 봉쇄되는
+                // 문제가 있었음 — 킥아웃을 받은 선수가 페인트에서 훅슛으로 마무리하는 건 playType과
+                // 무관하게 자연스러운 장면이라 4개 playType 전부 'post'로 통일(Rim은 원래 context
+                // 무관이라 영향 없음, Paint는 Floater/Hook/Jumper 전부 열림).
+                const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return {
@@ -498,7 +513,12 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] 킥아웃 마무리 context를 'drive'로 고정하면 훅슛(Hook)이 gating 조건
+                // (context === 'post' || 'roll')을 절대 못 넘어 킥아웃에서만 훅슛이 원천 봉쇄되는
+                // 문제가 있었음 — 킥아웃을 받은 선수가 페인트에서 훅슛으로 마무리하는 건 playType과
+                // 무관하게 자연스러운 장면이라 4개 playType 전부 'post'로 통일(Rim은 원래 context
+                // 무관이라 영향 없음, Paint는 Floater/Hook/Jumper 전부 열림).
+                const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return {

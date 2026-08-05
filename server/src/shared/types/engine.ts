@@ -64,7 +64,7 @@ export interface PbpLog {
     timeRemaining: string;
     teamId: string;
     text: string;
-    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info' | 'injury';
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info' | 'injury' | 'timeout';
     points?: 1 | 2 | 3;
     homeScore?: number;
     awayScore?: number;
@@ -73,6 +73,9 @@ export interface PbpLog {
     runAwayPts?: number;
     timeoutsLeft?: number;
     foulTeamId?: string;
+    isPossessionEnd?: boolean;
+    possessionOutcome?: 'scoring' | 'nonScoring' | 'turnover';
+    possessionTeamId?: string;
 }
 
 export interface QuarterScores {
@@ -80,7 +83,8 @@ export interface QuarterScores {
     away: [number, number, number, number];
 }
 
-export type RotationData = Record<string, { in: number, out: number }[]>;
+export type RotationOutReason = 'normal' | 'foul_trouble' | 'shutdown' | 'injury' | 'foul_out' | 'garbage' | 'manual';
+export type RotationData = Record<string, { in: number, out: number, outReason?: RotationOutReason }[]>;
 
 export interface ShotEvent {
     id: string;
@@ -125,6 +129,7 @@ export interface BoxDelta {
 export interface BoxTick {
     t:  number;                    // 포세션 종료 시점 gameSec ((q-1)*720 + (720-clock))
     on: string[];                  // 이 포세션에 코트 위 있던 playerId 10명 (mp 누적 대상)
+    off?: 'home' | 'away';         // 이 포세션의 공격팀 (On/Off·라인업 리포트에서 공격/수비 포제션 구분용). [2026-08-02] 이전 저장 데이터엔 없음 — 소급 적용 없음
     mp: number;                    // 이 포세션이 소비한 분 (timeTaken/60)
     d:  Record<string, BoxDelta>;  // playerId → 변화분 (변한 선수만)
     shot?: { p: string; m: boolean }; // 이 포세션 FG 시도 결과 (있었던 경우만): p=playerId, m=성공여부 — 핫/콜드 스트릭 재구성용

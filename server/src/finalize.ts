@@ -30,7 +30,10 @@ function generateShortCode(length = 8): string {
     return code;
 }
 
-async function insertGameShortCodes(roomId: string, schedule: { id: string }[]): Promise<void> {
+// [2026-08-03] export — simRunner.ts의 advanceTournamentState()가 새 라운드 경기를 생성할 때도
+// 재사용한다. 기존엔 이 함수가 finalize 시점(1라운드 일정)에만 호출돼, 2라운드 이상 경기는
+// 숏코드가 영원히 안 생겨 URL이 원래 game_id로 계속 노출되는 문제가 있었음.
+export async function insertGameShortCodes(roomId: string, schedule: { id: string }[]): Promise<void> {
     if (schedule.length === 0) return;
     const seen = new Set<string>();
     const rows = schedule.map(g => {

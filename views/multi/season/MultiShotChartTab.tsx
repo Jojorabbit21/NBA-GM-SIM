@@ -65,17 +65,11 @@ export const MultiShotChartTab: React.FC<MultiShotChartTabProps> = ({
         );
     };
 
+    // [Fix 2026-08-04] 컨테이너 크기를 별도 ResizeObserver state로 추적하던 방식 제거 — 그 state가
+    // 최신 렌더 크기를 못 따라잡은 순간(마운트 직후 등)엔 툴팁 위치 계산이 크게 어긋났다. 이제
+    // useShotChartTooltip이 호버 시점의 getBoundingClientRect()에서 컨테이너 크기도 함께 캡처해
+    // tooltip state에 담아주므로 여기서 별도로 추적할 필요가 없다.
     const containerRef = useRef<HTMLDivElement>(null);
-    const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
-    useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
-        const ro = new ResizeObserver(([entry]) => {
-            setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
-        });
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, []);
 
     const displayShots = useMemo(() => {
         return (shotEvents ?? [])
@@ -88,7 +82,7 @@ export const MultiShotChartTab: React.FC<MultiShotChartTabProps> = ({
             });
     }, [shotEvents, selectedTeamId, selectedPlayerIds]);
 
-    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave } =
+    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave, handleClick, isPinned, closePinned } =
         useShotChartTooltip(displayShots, 10);
 
     const stats = useMemo(() => {
@@ -167,6 +161,7 @@ export const MultiShotChartTab: React.FC<MultiShotChartTabProps> = ({
                         style={{ aspectRatio: '470/500' }}
                         onMouseMove={handleMouseMove}
                         onMouseLeave={handleMouseLeave}
+                        onClick={handleClick}
                     >
                         <svg ref={svgRef} viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
                             <rect width="470" height="500" fill="#020617" stroke="#334155" strokeWidth="2" />
@@ -223,8 +218,8 @@ export const MultiShotChartTab: React.FC<MultiShotChartTabProps> = ({
                         {tooltip && (
                             <ShotTooltip
                                 tooltip={tooltip}
-                                containerWidth={containerSize.w}
-                                containerHeight={containerSize.h}
+                                isPinned={isPinned}
+                                onClose={closePinned}
                             />
                         )}
                     </div>

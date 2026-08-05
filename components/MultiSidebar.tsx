@@ -5,11 +5,12 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
     Home, Users, ListOrdered, Calendar,
     GitPullRequestClosed, BarChart2,
-    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench,
+    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
+import { TeamSettingsModal } from './multi/TeamSettingsModal';
 
 const NavItem: React.FC<{
     active: boolean;
@@ -23,25 +24,27 @@ const NavItem: React.FC<{
         onClick={onClick}
         title={label}
         className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-colors duration-150 ${
-            active ? 'text-white' : 'text-zinc-700 hover:text-zinc-400'
+            active ? 'text-white' : 'text-slate-700 hover:text-slate-400'
         }`}
     >
         {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
     </button>
 );
 
-const Divider = () => <div className="w-6 h-px bg-border-dim shrink-0" />;
+const Divider = () => <div className="w-6 h-px bg-slate-800 shrink-0" />;
 
 export const MultiSidebar: React.FC = () => {
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { handleLogout } = useAuth();
-    const { league } = useLeagueContext();
+    const { league, leagueTeams } = useLeagueContext();
     const { session } = useGame();
     const isAdmin = !!(league && session?.user?.id && league.admin_user_id === session.user.id);
+    const myTeam = leagueTeams.find(t => t.user_id === session?.user?.id);
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [showTeamSettings, setShowTeamSettings] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const profileBtnRef = useRef<HTMLButtonElement>(null);
@@ -72,7 +75,7 @@ export const MultiSidebar: React.FC = () => {
     };
 
     return (
-        <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-surface-sidebar border-r border-border-default">
+        <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-slate-900 border-r border-slate-700">
 
             <nav className="flex-1 flex flex-col items-center gap-6 pt-6 pb-2 relative z-10">
                 <NavItem
@@ -141,38 +144,52 @@ export const MultiSidebar: React.FC = () => {
                     {isMenuOpen && createPortal(
                         <div
                             ref={dropdownRef}
-                            className="fixed w-48 rounded-xl overflow-hidden shadow-2xl z-[300] bg-surface-elevated border border-border-default"
+                            className="fixed w-48 rounded-xl overflow-hidden shadow-2xl z-[300] bg-slate-800 border border-slate-700"
                             style={{ bottom: `${dropdownBottom}px`, left: `${dropdownLeft}px` }}
                         >
                             <div className="p-1.5 space-y-0.5">
+                                {/* [2026-08-05] "팀 설정" 진입점 — 비어드민은 목록 최상단(뒤에 구분선),
+                                    어드민은 세션 설정 바로 아래에 위치. 팀을 아직 선점 안 했으면
+                                    설정할 대상이 없으므로 아예 숨김.
+                                    [Fix 2026-08-05] "별도 화면 이동이 아니라 세션 내부에서" 요청 —
+                                    navigate() 대신 모달을 여는 것으로 교체(라우팅 없음). */}
                                 {isAdmin && (
                                     <button
                                         onClick={() => { navigate(`/multi/leagues/${leagueId}/settings`); setIsMenuOpen(false); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                                     >
                                         <Settings2 size={14} />
                                         <span className="text-xs font-bold">세션 설정</span>
                                     </button>
                                 )}
-                                {isAdmin && <div className="my-1 border-t border-zinc-700/60" />}
+                                {myTeam && (
+                                    <button
+                                        onClick={() => { setShowTeamSettings(true); setIsMenuOpen(false); }}
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
+                                    >
+                                        <Palette size={14} />
+                                        <span className="text-xs font-bold">팀 설정</span>
+                                    </button>
+                                )}
+                                {(isAdmin || myTeam) && <div className="my-1 border-t border-slate-700/60" />}
                                 <button
                                     onClick={() => { navigate('/multi'); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                                 >
                                     <ArrowLeft size={14} />
                                     <span className="text-xs font-bold">리그 목록으로</span>
                                 </button>
                                 <button
                                     onClick={() => { navigate('/'); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                                 >
                                     <ChevronLeft size={14} />
                                     <span className="text-xs font-bold">홈으로</span>
                                 </button>
-                                <div className="my-1 border-t border-zinc-700" />
+                                <div className="my-1 border-t border-slate-700" />
                                 <button
                                     onClick={() => { handleLogout(); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                                 >
                                     <LogOut size={14} />
                                     <span className="text-xs font-bold">로그아웃</span>
@@ -183,6 +200,15 @@ export const MultiSidebar: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* [Fix 2026-08-05] "z-index 처리가 잘못된듯" — 이 <aside>가 z-20 + position:relative라
+                자체 stacking context를 갖고 있어서, 그 안의 자식인 모달의 z-50은 aside 내부에서만
+                유효하고 페이지의 다른 stacking context(라이브뷰 sticky 테이블 헤더 등)와는 안 겨룬다.
+                위 드롭다운 메뉴와 동일하게 document.body로 포탈해서 최상위 stacking context로 탈출시킨다. */}
+            {showTeamSettings && createPortal(
+                <TeamSettingsModal open={showTeamSettings} onClose={() => setShowTeamSettings(false)} />,
+                document.body
+            )}
         </aside>
     );
 };

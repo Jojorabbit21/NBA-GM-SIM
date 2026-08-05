@@ -257,28 +257,33 @@ export const GameResultView: React.FC<{
               )}
 
               {activeTab === 'ShotChart' && (
-                  <GameShotChartTab 
+                  <GameShotChartTab
                       homeTeam={home}
                       awayTeam={away}
-                      shotEvents={pbpShotEvents || []} 
+                      shotEvents={pbpShotEvents || []}
+                      homeBox={homeBox}
+                      awayBox={awayBox}
                   />
               )}
 
               {activeTab === 'PbpLog' && (
-                  <GamePbpTab 
-                      logs={pbpLogs} 
-                      homeTeam={home} 
-                      awayTeam={away} 
+                  <GamePbpTab
+                      logs={pbpLogs}
+                      homeTeam={home}
+                      awayTeam={away}
+                      shotEvents={pbpShotEvents}
                   />
               )}
 
               {activeTab === 'Rotation' && (
-                  <GameRotationTab 
+                  <GameRotationTab
                       homeTeam={home}
                       awayTeam={away}
                       homeBox={homeBox}
                       awayBox={awayBox}
                       rotationData={rotationData}
+                      pbpLogs={pbpLogs}
+                      shotEvents={pbpShotEvents}
                   />
               )}
 

@@ -217,6 +217,7 @@ export interface RoomMemberRow {
     team_abbr: string | null;
     team_color_primary: string | null;
     team_color_secondary: string | null;
+    team_color_text: string | null;
     tactics: unknown | null;
     depth_chart: unknown | null;
     is_ai: boolean;
@@ -294,6 +295,11 @@ export interface LeagueTeamRow {
     team_abbr: string;
     color_primary: string;
     color_secondary: string;
+    color_tertiary: string;
+    color_text: string;
+    court_background: string;
+    court_paint: string;
+    court_line: string;
     conference: string | null;
     user_id: string | null;
     nickname: string | null;    // profiles.nickname의 비정규화된 복사본 (팀 클레임/닉네임 변경 시 동기화)

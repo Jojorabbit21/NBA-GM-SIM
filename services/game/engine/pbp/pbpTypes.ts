@@ -2,6 +2,7 @@
 import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta } from '../../../../types';
 import { SimSettings } from '../../../../types/simSettings';
 import type { ArchetypeRatings } from './archetypeSystem';
+import type { PlayContext } from './playTypes';
 
 export interface LivePlayer extends PlayerBoxScore {
     // Current runtime attributes
@@ -299,7 +300,7 @@ export interface PossessionResult {
     isAndOne: boolean;
     
     // Stats for logs
-    shotType?: string; // "Jump Shot", "Dunk", "Layup"
+    shotType?: PlayContext['shotType']; // 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway'
     isBlock?: boolean;
     isSteal?: boolean;
 

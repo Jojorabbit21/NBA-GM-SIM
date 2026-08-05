@@ -217,7 +217,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                     (actor.attr.passIq - ikCfg.PASSIQ_BONUS_NEUTRAL) / 30 * ikCfg.PASSIQ_BONUS_SCALE);
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
+                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
+                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.00 + passIqBonus, isKickout: true };
                 }
                 return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.00 + passIqBonus, isKickout: true };
@@ -253,7 +256,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                     (actor.attr.passIq - phkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * phkCfg.PASSIQ_BONUS_SCALE);
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
+                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
+                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 + passIqBonus, isKickout: true };
@@ -293,7 +299,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
+                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
+                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 + passIqBonus, isKickout: true };
@@ -340,7 +349,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
 
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
-                    const { zone, shotType } = resolveFinish(kickTarget, 'drive', sliders, koZone);
+                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
+                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
+                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return {

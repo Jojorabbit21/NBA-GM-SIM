@@ -199,6 +199,7 @@ const MultiDraftView: React.FC = () => {
                 abbr:           t.team_abbr,
                 colorPrimary:   t.color_primary,
                 colorSecondary: t.color_secondary,
+                colorText:      t.color_text,
             };
         });
         return map;

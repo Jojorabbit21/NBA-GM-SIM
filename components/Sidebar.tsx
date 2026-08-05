@@ -45,7 +45,7 @@ const NavItem: React.FC<{
     className={`w-full flex items-center justify-center p-2 rounded-[4px] relative transition-colors duration-150 ${
       active
         ? 'text-white'
-        : 'text-zinc-700 hover:text-zinc-400'
+        : 'text-slate-700 hover:text-slate-400'
     }`}
   >
     {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
@@ -62,7 +62,7 @@ const NavItem: React.FC<{
   </button>
 );
 
-const Divider = () => <div className="w-6 h-px bg-border-dim shrink-0" />;
+const Divider = () => <div className="w-6 h-px bg-slate-800 shrink-0" />;
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
@@ -114,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   return (
     <>
-      <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-surface-sidebar border-r border-border-default">
+      <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-slate-900 border-r border-slate-700">
 
         {/* Upper navigation */}
         <nav className="flex-1 flex flex-col items-center gap-6 pt-6 pb-2 relative z-10">
@@ -245,18 +245,18 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             {isMenuOpen && createPortal(
               <div
                 ref={dropdownRef}
-                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300] bg-surface-elevated border border-border-default"
+                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300] bg-slate-800 border border-slate-700"
                 style={{
                   bottom: `${dropdownBottom}px`,
                   left: `${dropdownLeft}px`,
                 }}
               >
                 {(gmDisplayName || userEmail) && (
-                  <div className="px-3 py-2.5 border-b border-zinc-700">
-                    <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">단장</p>
-                    <p className="text-xs text-zinc-300 font-medium truncate mt-0.5">{gmDisplayName || userEmail}</p>
+                  <div className="px-3 py-2.5 border-b border-slate-700">
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">단장</p>
+                    <p className="text-xs text-slate-300 font-medium truncate mt-0.5">{gmDisplayName || userEmail}</p>
                     {gmDisplayName && userEmail && (
-                      <p className="text-[10px] text-zinc-600 truncate mt-0.5">{userEmail}</p>
+                      <p className="text-[10px] text-slate-600 truncate mt-0.5">{userEmail}</p>
                     )}
                   </div>
                 )}
@@ -277,54 +277,54 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     <Crown size={14} />
                     <span className="text-xs font-bold">명예의 전당</span>
                   </button>
-                  <div className="my-1 border-t border-zinc-700" />
+                  <div className="my-1 border-t border-slate-700" />
                   <button
                     onClick={() => { navigate('/draft-history'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <Gavel size={14} />
                     <span className="text-xs font-bold">드래프트 기록</span>
                   </button>
                   <button
                     onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <Wand2 size={14} />
                     <span className="text-xs font-bold">에디터</span>
                   </button>
-                  <div className="my-1 border-t border-zinc-700" />
+                  <div className="my-1 border-t border-slate-700" />
                   <button
                     onClick={() => { onResetClick(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
                   >
                     <RotateCcw size={14} />
                     <span className="text-xs font-bold">데이터 초기화</span>
                   </button>
                   <button
                     onClick={() => { navigate('/help'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <BookOpen size={14} />
                     <span className="text-xs font-bold">초보자 가이드</span>
                   </button>
                   <button
                     onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <FileText size={14} />
                     <span className="text-xs font-bold">이용약관</span>
                   </button>
-                  <div className="my-1 border-t border-zinc-700" />
+                  <div className="my-1 border-t border-slate-700" />
                   <button
                     onClick={() => { navigate('/'); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <Home size={14} />
                     <span className="text-xs font-bold">메인화면으로</span>
                   </button>
                   <button
                     onClick={() => { onLogout(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-surface-hover transition-all text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
                   >
                     <LogOut size={14} />
                     <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>

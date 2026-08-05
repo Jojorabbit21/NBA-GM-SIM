@@ -45,7 +45,11 @@ export function calculatePossessionTime(
     const floor = playType === 'Transition' ? 4 : 8;
 
     if (timeTaken < floor) timeTaken = floor;
-    if (timeTaken > 23) timeTaken = 23;
+    // [2026-08-03] 상한을 23 고정값이 아니라 state.shotClock(오펜시브 리바운드 후 14로 리셋됨)과
+    // 함께 고려 (client 미러 참고) — 리바운드로 이어진 시도가 실제 샷클락 규정을 무시하고
+    // 최대 23초까지 배정되던 버그 수정.
+    const ceiling = Math.min(23, state.shotClock);
+    if (timeTaken > ceiling) timeTaken = ceiling;
 
     timeTaken += (Math.random() * 3) - 1.5;
 

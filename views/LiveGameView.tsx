@@ -7,13 +7,14 @@ import { TEAM_DATA } from '../data/teamData';
 import { LiveTacticsTab } from '../components/game/tabs/LiveTacticsTab';
 import { RotationGanttChart } from '../components/dashboard/RotationGanttChart';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
-import { UserPlus, UserMinus, Clock, Users } from 'lucide-react';
+import { Clock, Users } from 'lucide-react';
 import { calculateWinProbability } from '../utils/simulationMath';
 import { calculatePlayerOvr } from '../utils/constants';
 import { useShotChartTooltip } from '../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../components/game/ShotTooltip';
 import { PlayerMarkers } from '../components/game/PlayerMarkers';
 import { CourtBackground } from '../components/game/CourtBackground';
+import { TeamStatsCompare } from '../components/game/TeamStatsCompare';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -338,107 +339,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Team Stats Compare (NBA app TEAM STATS style dual-bar chart)
-// ─────────────────────────────────────────────────────────────
-
-const COMPARE_STATS = [
-    { key: 'pts', label: 'PTS', fmt: (v: number) => String(v) },
-    { key: 'fgPct', label: 'FG%', fmt: (v: number) => v.toFixed(1) },
-    { key: 'p3Pct', label: '3P%', fmt: (v: number) => v.toFixed(1) },
-    { key: 'ftPct', label: 'FT%', fmt: (v: number) => v.toFixed(1) },
-    { key: 'oreb', label: 'OREB', fmt: (v: number) => String(v) },
-    { key: 'reb', label: 'REB', fmt: (v: number) => String(v) },
-    { key: 'ast', label: 'AST', fmt: (v: number) => String(v) },
-    { key: 'stl', label: 'STL', fmt: (v: number) => String(v) },
-    { key: 'blk', label: 'BLK', fmt: (v: number) => String(v) },
-    { key: 'tov', label: 'TOV', fmt: (v: number) => String(v) },
-    { key: 'pf', label: 'PF', fmt: (v: number) => String(v) },
-] as const;
-
-const TeamStatsCompare: React.FC<{
-    homeBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number }[];
-    awayBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number }[];
-    homeColor: string;
-    awayColor: string;
-}> = ({ homeBox, awayBox, homeColor, awayColor }) => {
-    type BoxRow = { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number };
-    const stats = useMemo(() => {
-        const sum = (arr: BoxRow[], key: keyof BoxRow) =>
-            arr.reduce((s, p) => s + (p[key] ?? 0), 0);
-
-        const hFgm = sum(homeBox, 'fgm'), hFga = sum(homeBox, 'fga');
-        const aFgm = sum(awayBox, 'fgm'), aFga = sum(awayBox, 'fga');
-        const hP3m = sum(homeBox, 'p3m'), hP3a = sum(homeBox, 'p3a');
-        const aP3m = sum(awayBox, 'p3m'), aP3a = sum(awayBox, 'p3a');
-        const hFtm = sum(homeBox, 'ftm'), hFta = sum(homeBox, 'fta');
-        const aFtm = sum(awayBox, 'ftm'), aFta = sum(awayBox, 'fta');
-
-        return {
-            pts:   { h: sum(homeBox, 'pts'), a: sum(awayBox, 'pts') },
-            fgPct: { h: hFga > 0 ? (hFgm / hFga) * 100 : 0, a: aFga > 0 ? (aFgm / aFga) * 100 : 0 },
-            p3Pct: { h: hP3a > 0 ? (hP3m / hP3a) * 100 : 0, a: aP3a > 0 ? (aP3m / aP3a) * 100 : 0 },
-            ftPct: { h: hFta > 0 ? (hFtm / hFta) * 100 : 0, a: aFta > 0 ? (aFtm / aFta) * 100 : 0 },
-            oreb:  { h: sum(homeBox, 'offReb'), a: sum(awayBox, 'offReb') },
-            reb:   { h: sum(homeBox, 'reb'), a: sum(awayBox, 'reb') },
-            ast:   { h: sum(homeBox, 'ast'), a: sum(awayBox, 'ast') },
-            stl:   { h: sum(homeBox, 'stl'), a: sum(awayBox, 'stl') },
-            blk:   { h: sum(homeBox, 'blk'), a: sum(awayBox, 'blk') },
-            tov:   { h: sum(homeBox, 'tov'), a: sum(awayBox, 'tov') },
-            pf:    { h: sum(homeBox, 'pf'), a: sum(awayBox, 'pf') },
-        };
-    }, [homeBox, awayBox]);
-
-    return (
-        <div className="shrink-0 px-3 py-2">
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">팀 스탯</p>
-            <div className="flex flex-col gap-1">
-                {COMPARE_STATS.map(({ key, label, fmt }) => {
-                    const { h, a } = stats[key as keyof typeof stats];
-                    const total = h + a;
-                    const hPct = total > 0 ? (h / total) * 100 : 50;
-                    const aPct = total > 0 ? (a / total) * 100 : 50;
-                    const hWins = h > a;
-                    const aWins = a > h;
-                    const bothZero = h === 0 && a === 0;
-
-                    return (
-                        <div key={key} className="grid grid-cols-[1fr_40px_44px_40px_1fr] items-center gap-2">
-                            {/* Away bar (grows right-to-left) */}
-                            <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-900">
-                                {!bothZero && (
-                                    <div
-                                        className="h-full rounded-sm transition-all duration-300"
-                                        style={{ width: `${aPct}%`, backgroundColor: awayColor }}
-                                    />
-                                )}
-                            </div>
-                            {/* Away value */}
-                            <span className={`text-xs font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
-                                {fmt(a)}
-                            </span>
-                            {/* Label */}
-                            <span className="text-xs font-bold text-slate-400 text-center uppercase">{label}</span>
-                            {/* Home value */}
-                            <span className={`text-xs font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
-                                {fmt(h)}
-                            </span>
-                            {/* Home bar (grows left-to-right) */}
-                            <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-900">
-                                {!bothZero && (
-                                    <div
-                                        className="h-full rounded-sm transition-all duration-300"
-                                        style={{ width: `${hPct}%`, backgroundColor: homeColor }}
-                                    />
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
+// TeamStatsCompare는 components/game/TeamStatsCompare.tsx로 추출됨 (GamePbpTab.tsx와 공용).
 
 // ─────────────────────────────────────────────────────────────
 // Quarter Scores Table
@@ -688,23 +589,16 @@ const LiveShotChart: React.FC<{
 
     // SVG court at 940x500 scale (10x of 94x50 ft). Shot coords are in 94x50 → multiply by 10.
     const S = 10;
-    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave } = useShotChartTooltip(displayShots, S);
+    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave, handleClick, isPinned, closePinned } = useShotChartTooltip(displayShots, S);
+    // [Fix 2026-08-04] 컨테이너 크기를 별도 ResizeObserver state로 추적하던 방식 제거 — 그 state가
+    // 최신 렌더 크기를 못 따라잡은 순간(마운트 직후 등)엔 툴팁 위치 계산이 크게 어긋났다. 이제
+    // useShotChartTooltip이 호버 시점의 getBoundingClientRect()에서 컨테이너 크기도 함께 캡처해
+    // tooltip state에 담아주므로 여기서 별도로 추적할 필요가 없다.
     const containerRef = useRef<HTMLDivElement>(null);
-    const [containerSize, setContainerSize] = useState({ w: 940, h: 500 });
-
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const obs = new ResizeObserver(entries => {
-            const { width, height } = entries[0].contentRect;
-            setContainerSize({ w: width, h: height });
-        });
-        obs.observe(containerRef.current);
-        return () => obs.disconnect();
-    }, []);
 
     return (
         <div ref={containerRef} className="w-full relative" style={{ aspectRatio: '940/500' }}
-            onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
+            onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
             <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
                 <CourtBackground />
 
@@ -746,7 +640,7 @@ const LiveShotChart: React.FC<{
                 })}
             </svg>
             {tooltip && (
-                <ShotTooltip tooltip={tooltip} containerWidth={containerSize.w} containerHeight={containerSize.h} />
+                <ShotTooltip tooltip={tooltip} isPinned={isPinned} onClose={closePinned} />
             )}
             {/* Marker toggle */}
             <button
@@ -1234,9 +1128,18 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </div>
                                 {/* 스크롤 로그 */}
                                 <div
-                                    className="flex-1 min-h-0 overflow-y-auto font-mono text-xs"
+                                    className="flex-1 min-h-0 overflow-y-auto font-mono text-xs bg-slate-900"
                                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
                                 >
+                                    {/* 컬럼 헤더 — 박스스코어/플레이타입 테이블과 동일 톤: bg-slate-950 sticky + text-slate-500 font-black uppercase */}
+                                    <div className="flex items-center gap-3 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
+                                        <div className="flex-shrink-0 w-5 text-center text-xs font-black uppercase text-slate-500">Q</div>
+                                        <div className="flex-shrink-0 w-10 text-center text-xs font-black uppercase text-slate-500">시간</div>
+                                        <div className="flex-shrink-0 w-5 flex justify-center text-xs font-black uppercase text-slate-500">원</div>
+                                        <div className="flex-shrink-0 w-12 text-center text-xs font-black uppercase text-slate-500">점수</div>
+                                        <div className="flex-shrink-0 w-5 flex justify-center text-xs font-black uppercase text-slate-500">홈</div>
+                                        <div className="flex-1 text-xs font-black uppercase text-slate-500">기록</div>
+                                    </div>
                                     <div className="divide-y divide-slate-800/50">
                                         {filteredLogs.map((log, i) => {
                                             const isHome = log.teamId === homeTeam.id;
@@ -1245,13 +1148,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             const isFoul = log.type === 'foul';
                                             const isTurnover = log.type === 'turnover';
                                             const isBlock = log.type === 'block';
-                                            const isInfo = log.type === 'info';
+                                            const isInfo = log.type === 'info' || log.type === 'timeout';
                                             const isInjury = log.type === 'injury';
-                                            const isFlowEvent = log.text.includes('경기 시작') || log.text.includes('종료') || log.text.includes('하프 타임');
+                                            // [Fix] teamId === 'SYSTEM'이 실제 엔진 마커 — 텍스트 매칭은 "2쿼터 시작"처럼
+                                            // '경기 시작'/'종료'/'하프 타임'을 포함하지 않는 로그를 놓쳤음 (GamePbpTab.tsx 동일 수정 참고)
+                                            const isFlowEvent = log.teamId === 'SYSTEM';
 
                                             if (isFlowEvent) {
                                                 return (
-                                                    <div key={i} className={`flex items-center justify-center py-2.5 border-y border-slate-800 ${i % 2 === 0 ? 'bg-slate-800/40' : 'bg-slate-800/20'}`}>
+                                                    <div key={i} className="flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20">
                                                         <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs uppercase tracking-widest">
                                                             <Clock size={12} />
                                                             <span>{log.text}</span>
@@ -1268,7 +1173,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     const inPlayers = inMatch[1].split(',').map(s => s.trim());
                                                     const outPlayers = outMatch[1].split(',').map(s => s.trim());
                                                     return (
-                                                        <div key={i} className={`flex items-start py-2 px-3 gap-3 ${i % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
+                                                        <div key={i} className="flex items-start py-2 px-3 gap-3 hover:bg-white/5 transition-colors">
                                                             <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-xs text-center pt-0.5">
                                                                 {log.quarter}Q
                                                             </div>
@@ -1276,15 +1181,16 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                                 {log.timeRemaining || '-'}
                                                             </div>
                                                             <div className="flex-1 flex flex-col gap-0.5 text-xs">
+                                                                <div className="text-slate-400">
+                                                                    {(isHome ? homeTeam.id : awayTeam.id).toUpperCase().slice(0, 3)} 선수교체
+                                                                </div>
                                                                 <div className="flex items-center gap-1.5 text-emerald-400">
-                                                                    <UserPlus size={11} />
                                                                     <span>IN:</span>
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {inPlayers.map((p, j) => <span key={j} className="font-bold">{p}</span>)}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5 text-red-400">
-                                                                    <UserMinus size={11} />
                                                                     <span>OUT:</span>
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {outPlayers.map((p, j) => <span key={j} className="font-bold opacity-80">{p}</span>)}
@@ -1305,7 +1211,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             else if (isTurnover) textColor = 'text-red-400';
                                             else if (isBlock) textColor = 'text-blue-400';
 
-                                            const bgClass = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : i % 2 === 0 ? 'bg-slate-800/30' : '';
+                                            const bgClass = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : 'hover:bg-white/5 transition-colors';
 
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>

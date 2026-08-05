@@ -58,6 +58,7 @@ export interface Team {
      * 이 컬러의 직사각형 배지를 그린다. 싱글플레이어(실제 NBA 팀)는 항상 undefined. */
     colorPrimary?: string | null;
     colorSecondary?: string | null;
+    colorText?: string | null;
     abbr?: string | null;
     tacticHistory?: {
         offense: Record<string, TacticStatRecord>;

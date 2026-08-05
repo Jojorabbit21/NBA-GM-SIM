@@ -13,6 +13,7 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
+import { getReadableTextColor } from '../../../utils/colorContrast';
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
@@ -778,7 +779,7 @@ const LeagueSettingsView: React.FC = () => {
                                         <span className="text-xs font-bold text-amber-400 w-5 shrink-0">#{t.draft_order}</span>
                                         <div
                                             className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shrink-0"
-                                            style={{ backgroundColor: t.color_primary, color: '#fff' }}
+                                            style={{ backgroundColor: t.color_primary, color: t.color_text ?? getReadableTextColor(t.color_primary) }}
                                         >
                                             {t.team_abbr.slice(0, 2)}
                                         </div>
@@ -847,7 +848,7 @@ const LeagueSettingsView: React.FC = () => {
                                             <div className="flex items-center gap-2.5">
                                                 <div
                                                     className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
-                                                    style={{ backgroundColor: t.color_primary, color: '#fff' }}
+                                                    style={{ backgroundColor: t.color_primary, color: t.color_text ?? getReadableTextColor(t.color_primary) }}
                                                 >
                                                     {t.team_abbr}
                                                 </div>
