@@ -7,6 +7,7 @@ import { useGame } from '../hooks/useGameContext';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
+import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { getReadableTextColor } from '../utils/colorContrast';
 import type { Player } from '../types';
@@ -23,6 +24,13 @@ function ordinal(n: number): string {
     if (n === 2) return '2nd';
     if (n === 3) return '3rd';
     return `${n}th`;
+}
+
+// 메인리그 정규시즌 경기의 date는 가상 NBA 캘린더 값(예: 2027년 10월 24일)이라 실제 연도와
+// 다를 수 있다 — 연도를 함께 보여줘야 "가상 시즌"임이 명확해진다.
+function fmtVirtualDate(dateKey: string): string {
+    const d = new Date(dateKey + 'T00:00:00');
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
 // 상대팀 배지 — TeamLogo(고정 실제 NBA 로고 이미지)는 유저가 커스텀한 팀 컬러/약어를
@@ -104,6 +112,18 @@ export const MultiHeader: React.FC = () => {
             .filter(g => g.resolvedAt != null)
             .sort((a, b) => new Date(a.resolvedAt!).getTime() - new Date(b.resolvedAt!).getTime())[0] ?? null;
     }, [schedule, myTeamId, simStart, gprd]);
+
+    // 메인리그(main_league) 세션에서 표시할 "현재 시뮬레이션 날짜" — 가상 NBA 캘린더 기준.
+    // 실제 실행 시각(scheduledAt)은 노출 금지이므로, 리그 전체 일정 중 지금(nowMs)과 가장
+    // 가까운 실제 방송 시각을 가진 경기를 찾아 그 경기의 가상 date를 "오늘"로 간주한다
+    // (내 팀에 다음 경기가 없어도 리그 전체 일정 기준으로는 항상 값이 나온다).
+    // nowMs는 1초마다 바뀌지만 날짜 단위 표시는 그렇게 자주 바뀔 필요가 없으므로 15초
+    // 버킷으로 낮춰 전체 스케줄 재스캔 빈도를 줄인다(MultiGamePbpView.tsx의 revealBucket과 동일 패턴).
+    const dateBucket = Math.floor(nowMs / 15000);
+    const currentVirtualDate = useMemo(() => {
+        if (league?.type !== 'main_league' || !simStart) return null;
+        return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
+    }, [league, schedule, simStart, gprd, dateBucket]);
 
     const opponentId  = nextGame
         ? (nextGame.homeTeamId === myTeamId ? nextGame.awayTeamId : nextGame.homeTeamId)
@@ -310,26 +330,30 @@ export const MultiHeader: React.FC = () => {
                     </div>
                 ) : nextGame && countdown ? (
                     <div className="flex flex-col items-end gap-1.5 leading-none">
-                        {/* 상단: 다음 경기 · 스테이지 · 스코어 */}
-                        <div className="flex items-center gap-1.5 text-xs text-white">
-                            <span>다음 경기</span>
-                            <span>·</span>
-                            {seriesInfo ? (
-                                <>
-                                    <span>{seriesInfo.roundLabel}</span>
-                                    {seriesInfo.targetWins > 1 && (
-                                        <>
-                                            <span>·</span>
-                                            <span className="font-medium">
-                                                {seriesInfo.myWins}-{seriesInfo.oppWins}
-                                            </span>
-                                        </>
-                                    )}
-                                </>
-                            ) : (
-                                <span>정규시즌</span>
-                            )}
-                        </div>
+                        {/* 상단: 메인리그 정규시즌은 가상 시즌 날짜, 그 외(토너먼트/플레이오프)는 라운드·스코어 */}
+                        {league?.type === 'main_league' && !nextGame.isPlayoff ? (
+                            <span className="text-base text-white font-medium">{fmtVirtualDate(nextGame.date)}</span>
+                        ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-white">
+                                <span>다음 경기</span>
+                                <span>·</span>
+                                {seriesInfo ? (
+                                    <>
+                                        <span>{seriesInfo.roundLabel}</span>
+                                        {seriesInfo.targetWins > 1 && (
+                                            <>
+                                                <span>·</span>
+                                                <span className="font-medium">
+                                                    {seriesInfo.myWins}-{seriesInfo.oppWins}
+                                                </span>
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <span>정규시즌</span>
+                                )}
+                            </div>
+                        )}
 
                         {/* 하단: vs/@ 로고 팀이름 | 타이머 */}
                         <div className="flex items-center gap-3">
@@ -365,6 +389,8 @@ export const MultiHeader: React.FC = () => {
                             {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
                         </span>
                     </div>
+                ) : currentVirtualDate ? (
+                    <span className="text-base text-white font-medium">{fmtVirtualDate(currentVirtualDate)}</span>
                 ) : (
                     <span className="text-sm text-zinc-600">예정된 경기 없음</span>
                 )}

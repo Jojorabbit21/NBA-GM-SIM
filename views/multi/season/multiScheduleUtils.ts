@@ -1,5 +1,6 @@
 
 import type { Game } from '../../../types';
+import { resolveRealAt } from './multiGameReveal';
 
 // [2026-08-04] MultiScheduleView.tsx에 로컬(비export)로 있던 날짜 헬퍼를 공용화 —
 // MultiGamePbpView.tsx의 날짜 셀렉터 스트립에서도 동일 로직이 필요해짐. kstDateKey()의
@@ -56,6 +57,29 @@ export function fmtTime(g: Game, preferVirtual = false): string {
     }
     if (g.time) return g.time;
     return '—';
+}
+
+/**
+ * 메인리그(main_league) "현재 시뮬레이션 날짜"(가상 캘린더 기준) — 리그 전체 일정 중
+ * 지금(nowMs)과 실제 방송 시각(scheduledAt)이 가장 가까운 경기를 찾아 그 경기의 가상
+ * date를 반환한다. "오늘" 배지 판정(MultiScheduleView.tsx)과 헤더 표시(MultiHeader.tsx)가
+ * 공유 — 각자 따로 계산하면 미묘하게 어긋날 위험이 있어 이 파일 하나로 합쳤다.
+ */
+export function findCurrentVirtualDate(
+    games: Game[],
+    simStart: string | null,
+    gprd: number,
+    nowMs: number,
+): string | null {
+    let bestDate: string | null = null;
+    let bestDiff = Infinity;
+    for (const g of games) {
+        const resolvedAt = resolveRealAt(g, simStart, gprd);
+        if (!resolvedAt) continue;
+        const diff = Math.abs(new Date(resolvedAt).getTime() - nowMs);
+        if (diff < bestDiff) { bestDiff = diff; bestDate = g.date; }
+    }
+    return bestDate;
 }
 
 export interface DayGroup { dateKey: string; label: string; games: Game[] }

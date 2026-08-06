@@ -14,7 +14,7 @@ import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '.
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
-import { fmtDayLabel, kstDateKey, fmtDateShort, fmtTime, groupByDay, type DayGroup } from './multiScheduleUtils';
+import { fmtDayLabel, kstDateKey, fmtDateShort, fmtTime, groupByDay, findCurrentVirtualDate, type DayGroup } from './multiScheduleUtils';
 
 const LIVE_POLL_MS = 5000;
 
@@ -369,6 +369,16 @@ const MultiScheduleView: React.FC = () => {
     const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
     const totalPlayed  = useMemo(() => allGames.filter(g => getGameDisplayState(g, serverNow) === 'final').length, [allGames, serverNow]);
 
+    // "오늘" 배지 판정 기준값 — 메인리그(preferVirtual)는 dateKey가 가상 캘린더 값이라
+    // currentSimDate(실제 KST, useSeasonContext에서 옴)와 직접 비교하면 항상 어긋난다.
+    // 이때는 findCurrentVirtualDate()로 계산한 가상 "오늘"과 비교해야 한다.
+    // serverNow는 1초마다 갱신되므로 15초 버킷으로 낮춰 allGames 재스캔 빈도를 줄인다.
+    const dateBucket = Math.floor(serverNow / 15000);
+    const todayKey = useMemo(() => {
+        if (!preferVirtual) return currentSimDate;
+        return findCurrentVirtualDate(allGames, simStart, gprd, dateBucket * 15000);
+    }, [preferVirtual, currentSimDate, allGames, simStart, gprd, dateBucket]);
+
     // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
     const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
 
@@ -391,7 +401,7 @@ const MultiScheduleView: React.FC = () => {
 
             <div className="flex flex-col gap-6">
                 {groupedByDay.map(({ dateKey, label, games }) => {
-                    const isToday = dateKey === currentSimDate;
+                    const isToday = dateKey === todayKey;
                     return (
                         <div key={dateKey}>
 

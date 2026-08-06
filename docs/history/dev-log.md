@@ -35,6 +35,25 @@
 
 ---
 
+## 2026-08-06 — 헤더에 메인리그 가상 시즌 날짜 표시 + "오늘" 배지 회귀 수정
+
+**배경**: 위 항목(가상 시즌 캘린더/실제 실행 시각 분리)에 이어 사용자 요청 — 메인리그(main_league) 세션의 헤더 우측 "다음 경기 · 정규시즌" 텍스트를 지우고 그 자리에 현재 시뮬레이션 날짜(가상 캘린더 기준)를 text-base로 표시, 내 팀에 다음 일정이 없으면 날짜만 표시. 구현 중 직전 변경의 회귀를 하나 발견: `MultiScheduleView.tsx`의 "오늘" 배지 판정(`dateKey === currentSimDate`)이 `currentSimDate`(useSeasonContext → `rooms.sim_date`, 서버가 `scheduled_at` 기준 실제 KST 날짜로 갱신)와 비교하는데, `dateKey`는 직전 변경으로 메인리그에서 가상 날짜가 됐으므로 둘이 영원히 일치하지 않게 됨 — 같이 수정.
+
+**변경 파일**:
+- `views/multi/season/multiScheduleUtils.ts` — `findCurrentVirtualDate(games, simStart, gprd, nowMs)` 신규: 리그 전체 일정 중 지금과 실제 방송 시각이 가장 가까운 경기를 찾아 그 경기의 가상 `date`를 반환. `MultiHeader.tsx`/`MultiScheduleView.tsx`가 공유.
+- `components/MultiHeader.tsx` — `fmtVirtualDate()` 신규(연도 포함 "YYYY년 M월 D일" 포맷). `nextGame && countdown` 분기에서 `league.type==='main_league' && !nextGame.isPlayoff`일 때 "다음 경기 · 정규시즌" 줄 대신 `fmtVirtualDate(nextGame.date)`를 text-base로 표시(플레이오프는 기존 라운드/스코어 표시 유지). "예정된 경기 없음" 폴백도 `currentVirtualDate`(전체 일정 기준 findCurrentVirtualDate) 있으면 날짜만 표시.
+- `views/multi/season/MultiScheduleView.tsx` — `isToday` 판정을 `preferVirtual`일 때 `findCurrentVirtualDate(allGames, simStart, gprd, ...)` 결과와 비교하도록 수정(그 외엔 기존 `currentSimDate` 그대로).
+
+**검증**: 수정 파일 전체 `tsc --noEmit`/`vite build` 통과 확인.
+
+**알려진 한계**:
+- `findCurrentVirtualDate`는 "리그 전체 일정 중 지금과 가장 가까운 경기"를 기준으로 하므로, 시즌 시작 전에는 첫 경기 날짜를, 시즌 완전 종료 후에는 마지막 경기 날짜를 "오늘"로 보여준다(의도된 근사치).
+- 메인리그 플레이오프 진입 후에는 가상 날짜 개념이 없으므로(플레이오프는 시드 기반 실제 시각으로 새로 생성) 헤더/오늘배지 모두 자동으로 기존 실제 시각 기반 표시로 되돌아간다.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-08-06 — 가상(fictional) 시즌 캘린더와 실제 실행 시각 분리
 
 **배경**: 메인리그 구현 직후 사용자가 지적: "생성된 일정에서 사용자에게 보이는 날짜/시간(예: 2027년 10월 24일 19:00)과 그 경기가 실제로 시뮬레이션되는 시각(압축된 실제 KST, 예: 2026년 8월 6일 17:00)은 서로 다른 개념이어야 하고, 후자는 사용자에게 절대 노출되면 안 된다." 그런데 직전 구현(`leagueScheduleCompressor.ts`)은 정반대로 동작하고 있었다 — `date`/`time`을 매번 `scheduledAt`(실제 압축 시각) 기준으로 덮어써서 생성기가 만든 가상 캘린더가 통째로 사라지고, 클라이언트의 `kstDateKey`/`fmtTime`도 `scheduledAt`을 우선 사용해 화면에 실제 실행 시각이 그대로 노출되는 구조였다. 또한 가상 시즌의 "연도"(예: 2027) 자체를 관리자가 지정할 방법이 없었다(`nowDate.getFullYear()` 하드코딩).
