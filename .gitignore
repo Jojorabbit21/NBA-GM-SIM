@@ -40,3 +40,4 @@ public/patches/
 
 scripts/
 .claude/settings.local.json
+.vercel
