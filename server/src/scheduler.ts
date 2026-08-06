@@ -16,6 +16,7 @@ import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { simWorkerPool } from './workers/simWorkerPool';
+import { startPlayoffs } from './shared/playoffSeeder';
 
 const POLL_INTERVAL_MS = 30_000;
 const STALE_CLAIM_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -68,8 +69,47 @@ async function tick(): Promise<void> {
         runDraftRoomPrep(),
         runScheduledDraftStarts(now),
         runSimGames(now),
+        checkSeasonCompletions(),
         cleanupCompletedRooms(),
     ]);
+}
+
+// ── F. 메인리그 정규시즌 완료 감지 → 플레이오프 자동 생성 ─────────────────────
+// bracket_data is null 조건으로 이미 플레이오프가 생성된 리그는 스킵(중복 생성 방지).
+
+async function checkSeasonCompletions(): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count')
+        .eq('type', 'main_league')
+        .eq('status', 'in_progress')
+        .is('bracket_data', null);
+
+    if (!leagues?.length) return;
+
+    for (const league of leagues) {
+        const { count: unplayed } = await supabase
+            .from('games')
+            .select('game_id', { count: 'exact', head: true })
+            .eq('league_id', league.id).eq('is_playoff', false).eq('played', false);
+        if (unplayed !== 0) continue;
+
+        // count가 0인 게 "시즌 완료"가 아니라 "게임이 아직 하나도 안 생성됨"(드래프트 진행 중
+        // 등)일 수도 있으므로, 정규시즌 게임이 실제로 존재하는지도 함께 확인한다.
+        const { count: total } = await supabase
+            .from('games')
+            .select('game_id', { count: 'exact', head: true })
+            .eq('league_id', league.id).eq('is_playoff', false);
+        if (!total) continue;
+
+        const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
+        if (!room) continue;
+
+        console.log(`[scheduler:season] league=${league.id} — regular season complete, starting playoffs`);
+        await startPlayoffs(league, room.id).catch(err =>
+            console.error(`[scheduler:season] startPlayoffs failed(${league.id}):`, err),
+        );
+    }
 }
 
 // ── A. 추첨 자동 실행 ────────────────────────────────────────────────────────

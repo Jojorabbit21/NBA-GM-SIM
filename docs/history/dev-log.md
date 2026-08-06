@@ -35,6 +35,58 @@
 
 ---
 
+## 2026-08-06 — 메인리그(정규시즌) 스케줄 압축 + 플레이오프 자동 전환 구현
+
+**배경**: 멀티플레이어에 `leagues.type='main_league'`("메인리그") UI/타입이 절반쯤 만들어져 있었으나(생성 모달, 시즌 기간 1~4주 선택 등) 실제로 동작하는 리그는 0개였다. 원인 3가지: ① 시즌 기간(1~4주) UI가 있지만 `createLeague()`에 실려가지 않는 display-only 미리보기였음, ② `finalize.ts`가 "관리자가 정한 리그 기간"과 "생성기가 필요로 하는 가상 NBA 시즌 캘린더 길이"를 혼동해서, 1주(7일)짜리 가상 캘린더로 82경기×30팀(1,230경기)을 배치하려 해 B2B/3-in-3 제약을 지킬 수 없는 상태였음, ③ 정규시즌이 끝나도 완료 판정(series_id 기반)이 안 걸려서 아무 일도 안 일어남 — 플레이오프 전환/리그 종료 처리가 전혀 없었음. 부수적으로 기존 토너먼트 브라켓의 팀 배정이 "랜덤 셔플 후 인접 페어링"이라 정규시즌 성적 기반 시드(1위 vs 8위)를 만들 수 없다는 것도 확인됨.
+
+**설계 원칙**: `scheduleGenerator.ts`(이미 검증된 82경기 알고리즘)는 건드리지 않고, 그 출력을 실제 시간으로 재배치하는 압축 단계를 새로 추가. 정규시즌 종료 후 플레이오프는 기존 토너먼트 엔진(`initializeTournamentBracket`)에 랜덤 셔플 대신 시드 순서만 넘겨서 재사용 — 그 이후 진행/완료 판정/아카이브는 games 테이블 마이그레이션 때 이미 `league.type`을 안 가리는 구조로 통합해 둔 `simRunner.ts`/`scheduler.ts`가 무수정으로 그대로 처리한다.
+
+**변경 파일**:
+- DB: `migrations/league_schedule_config.sql` — `leagues`에 `duration_weeks`/`daily_window_start_min`/`daily_window_end_min`/`playoff_team_count`(기본 8) 추가.
+- 신규 `server/src/shared/kst.ts` — KST(UTC+9) 고정 오프셋 날짜/시간 헬퍼(클라이언트 `AdminSimView.tsx`의 `KST_OFFSET_MS` 패턴 서버 이식).
+- 신규 `server/src/shared/leagueScheduleCompressor.ts` — `compressLeagueSchedule()`: 생성기 출력(이미 시간순 정렬된 `Game[]`)을 `durationWeeks*7`일 버킷으로 순서대로 나누고, 각 버킷 안에서는 `dailyWindowStart~End` 안에 균등 간격 배치. `game_seq`/`scheduledAt`/`date`/`time`을 SSOT로 덮어씀.
+- `server/src/finalize.ts` — `forceInitSchedule`/`finalizeDraft`의 non-tournament 분기 전면 교체: 가상 캘린더를 관리자 설정과 무관하게 항상 고정(`{연도}-10-21`~`{연도+1}-04-13`)으로 만들고, `compressLeagueSchedule()`로 실제 압축. 기존 `adminDurDays`/`computedSeasonEndDate` 계산과, games 마이그레이션 때 추가했던 임시 scheduledAt 보정 루프, `injectGameSeq()` 전부 삭제(압축 함수가 대체).
+- `server/src/shared/tournamentInitializer.ts` — `initSingleElim`/`initializeTournamentBracket`에 `seedMode?: 'random'|'ranked'` 파라미터 추가(기본값 `'random'`, 기존 토너먼트 동작 100% 유지). `'ranked'`면 셔플을 건너뛰고 입력 순서를 그대로 브라켓 슬롯에 사용.
+- 신규 `server/src/shared/playoffSeeder.ts` — `startPlayoffs()`: `games` 테이블에서 팀별 승/패/득실차 집계 → 상위 N팀(기본 8) → 표준 브라켓 시드 순서(`bracketSeedOrder()`, 8강이면 `[1,8,4,5,2,7,3,6]`)로 재배열 → `initializeTournamentBracket(..., 'ranked')` → `insertGames`/`insertGameShortCodes`로 저장, `bracket_data: {series}` 갱신.
+- `server/src/scheduler.ts` — `checkSeasonCompletions()` 추가(`tick()`의 `Promise.allSettled`에 편입): `type='main_league' AND status='in_progress' AND bracket_data IS NULL`인 리그마다 정규시즌 게임이 전부 played인지 확인, 맞으면 `startPlayoffs()` 호출.
+- `components/multi/CreateLeagueModal.tsx` — 일일 시뮬 시간대 `<input type="time">` 2개 추가(기본 19:00~23:00 KST), `durationWeeks`/`dailyWindowStartMin`/`dailyWindowEndMin`을 실제로 `createLeague()`에 전송. 하드코딩됐던 `REGULAR_DAYS`/`GAME_DAYS_PER_DAY` 미리보기 상수를 `Math.ceil(1230 / (durationWeeks*7))` 실제 공식으로 교체.
+- `services/multi/leagueService.ts` — `createLeague()`의 `options` 화이트리스트에 `durationWeeks`/`dailyWindowStartMin`/`dailyWindowEndMin`/`playoffTeamCount` 추가(기존 `if (opts.x !== undefined) payload.y = opts.x` 패턴 반복).
+
+**Before** (finalize.ts non-tournament 분기, 발췌 — 관리자 기간을 가상 캘린더로 오인):
+```ts
+const adminDurDays = league.season_end_date && league.season_start_date
+    ? Math.max(7, Math.round((end-start)/86400000)) : 14;
+const computedSeasonEndDate = ...; // adminDurDays 기반
+schedule = generateSeasonSchedule({ seasonStart: seasonStartDate, regularSeasonEnd: computedSeasonEndDate, ... });
+injectGameSeq(schedule);
+for (const g of schedule) g.scheduledAt = simRealStartAt + (g.game_seq/gamesPerRealDay)*86400000; // 임시 보정
+```
+
+**After**:
+```ts
+const virtualSeasonYear = nowDate.getFullYear();
+const rawSchedule = generateSeasonSchedule({
+    seasonStart: `${virtualSeasonYear}-10-21`, regularSeasonEnd: `${virtualSeasonYear+1}-04-13`, ...
+});
+schedule = compressLeagueSchedule(rawSchedule, {
+    realStartAt: simRealStartAt,
+    durationWeeks: league.duration_weeks ?? 2,
+    dailyWindowStartMin: league.daily_window_start_min ?? 1140,
+    dailyWindowEndMin:   league.daily_window_end_min   ?? 1380,
+});
+```
+
+**검증**: 신규/수정 파일 전체 브레이스 balance 스크립트로 확인, `TEAM_DATA` 정밀 재검증(정확히 30팀·6디비전×5팀 확인 — 최초 대략 검사에서 31팀으로 오판했던 걸 정밀 정규식으로 재확인해 정정), `initializeLeagueTeams(roomId, 30)`이 이 30팀 전체를 그대로 쓰는 것 확인(추가 조치 불필요). `bun`/`tsc` 로컬 미설치로 런타임 빌드 검증은 못 함 — **아직 fly.io/Vercel에 배포 안 됨, 실제 30팀 메인리그 생성~정규시즌~플레이오프 E2E 테스트 미실행**.
+
+**알려진 한계**:
+- `playoff_team_count`가 2의 거듭제곱이 아니면(기본 8은 안전) `initSingleElim()`의 기존 부전승(bye) 배치 로직이 정확한 시드 배정을 보장 못함(기존 토너먼트 엔진의 원래 한계, 이번에 안 고침).
+- `compressLeagueSchedule()`은 정렬된 리스트를 균등 청크로 나누는 근사 방식이라, 생성기의 원래 "같은 날 경기"가 압축 경계에서 두 실제 날짜로 쪼개질 수 있음(페이스 감각은 유지되나 완벽한 보존은 아님).
+- 리그 생성 시 `duration_weeks`가 없으면(구버전 리그) 기본 2주로 폴백.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨. DB 컬럼(`duration_weeks` 등)은 하위호환 nullable이라 롤백해도 기존 토너먼트 리그에 영향 없음.
+
+---
+
 ## 2026-08-06 — `rooms.schedule` JSONB → `games` 정규화 테이블 마이그레이션
 
 **배경**: 멀티플레이어 데이터 송수신 구조 조사에서 `rooms.schedule`(경기 배열)이 경기 하나 끝날 때마다

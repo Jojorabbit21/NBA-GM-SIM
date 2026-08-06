@@ -188,8 +188,12 @@ function initSingleElim(
     startDate: string,
     intervalMinutes: number,
     simRealStartAt?: string | null,
+    // 'ranked'면 teams가 이미 표준 브라켓 시드 순서(1번,꼴찌,...)로 정렬돼 들어온다고 보고
+    // 셔플을 건너뛴다 — 정규시즌 성적 기반 플레이오프 시딩용(playoffSeeder.ts).
+    // 기본값 'random'은 기존 토너먼트 동작(셔플 후 인접 페어링)을 그대로 유지한다.
+    seedMode: 'random' | 'ranked' = 'random',
 ): { series: PlayoffSeries[]; schedule: Game[] } {
-    const shuffled = seededShuffle(teams, seed + ':seeding');
+    const shuffled = seedMode === 'ranked' ? teams : seededShuffle(teams, seed + ':seeding');
     const size = nextPow2(shuffled.length);
     const slots: (LeagueTeamRow | null)[] = [
         ...shuffled,
@@ -373,6 +377,7 @@ export function initializeTournamentBracket(
     startDate: string,
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
     simRealStartAt?: string | null,
+    seedMode: 'random' | 'ranked' = 'random',
 ): TournamentBracketResult {
     const targetWins       = targetWinsFromFormat(matchFormat);
     const finalsTargetWins = targetWinsFromFormat(finalsMatchFormat ?? matchFormat);
@@ -381,5 +386,5 @@ export function initializeTournamentBracket(
         return initRoundRobin(teams, startDate, intervalMinutes, simRealStartAt);
     }
 
-    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes, simRealStartAt);
+    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes, simRealStartAt, seedMode);
 }

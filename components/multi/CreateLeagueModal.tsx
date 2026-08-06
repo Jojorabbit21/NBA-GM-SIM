@@ -39,6 +39,16 @@ function kstLocalToIso(local: string): string {
     return new Date(new Date(`${local}:00Z`).getTime() - KST_OFFSET_MS).toISOString();
 }
 
+// "HH:MM" → 자정 기준 분. server/src/shared/leagueScheduleCompressor.ts가 그대로 받는 형식.
+function hhmmToMin(hhmm: string): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+}
+
+// 메인리그 총 경기 수(30팀×82경기÷2) — 미리보기용. 실제 값은 서버의 generateSeasonSchedule()이
+// 결정하지만(디비전 구성에 따라 미세하게 달라질 수 있음), 30팀 고정 표준 포맷에서는 항상 1,230.
+const MAIN_LEAGUE_TOTAL_GAMES = 1230;
+
 // 리그 시작 시각의 최소 허용값(현재로부터 1시간 뒤) — 로터리 추첨이 리그 시작 40분 전에
 // 잡히는데, 시작 시간이 지금으로부터 35분 이내면 세션 생성 즉시 로터리 예정 시각이 과거가
 // 되어 스케줄러가 곧바로(그리고 방/멤버 준비도 안 된 채로) 추첨을 실행해버리는 버그가 생긴다.
@@ -100,6 +110,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     // ── 메인리그 전용 ──────────────────────────────────────────────────────────
     const [tier,          setTier]          = useState<Tier>('d1');
     const [durationWeeks, setDurationWeeks] = useState(2);
+    // 일일 시뮬 시간대(KST) — 이 시간대 안에서만 경기가 진행된다. 기본 저녁 19:00~23:00.
+    const [dailyWindowStart, setDailyWindowStart] = useState('19:00');
+    const [dailyWindowEnd,   setDailyWindowEnd]   = useState('23:00');
 
     // ── 드래프트 (공통) ────────────────────────────────────────────────────────
     const [totalRounds,    setTotalRounds]    = useState(10);
@@ -210,6 +223,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftOvrMax,
                         seasonStartDate:      refToday,
                         seasonEndDate:        endDate,
+                        durationWeeks,
+                        dailyWindowStartMin: hhmmToMin(dailyWindowStart),
+                        dailyWindowEndMin:   hhmmToMin(dailyWindowEnd),
                     },
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
@@ -242,11 +258,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     };
 
     // ── 시즌 기간 미리보기 ─────────────────────────────────────────────────────
-    const REGULAR_DAYS       = [5, 10, 16, 20];
-    const GAME_DAYS_PER_DAY  = [17, 9, 6, 5];
-    const regularDays        = REGULAR_DAYS[durationWeeks - 1];
-    const gameDaysPerDay     = GAME_DAYS_PER_DAY[durationWeeks - 1];
-    const lastSlotKst        = `${10 + Math.floor((gameDaysPerDay - 1) * 30 / 60)}:${String(((gameDaysPerDay - 1) * 30) % 60).padStart(2, '0')}`;
+    // server/src/shared/leagueScheduleCompressor.ts와 동일한 공식 — 실제 압축 결과와
+    // 일치하는 값을 미리 보여준다.
+    const totalRegularDays = durationWeeks * 7;
+    const gamesPerDay      = Math.ceil(MAIN_LEAGUE_TOTAL_GAMES / totalRegularDays);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -420,7 +435,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                 </div>
 
                                 <div>
-                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">시즌 기간</label>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">정규시즌 기간</label>
                                     <div className="flex gap-2 flex-wrap">
                                         {[1, 2, 3, 4].map(w => (
                                             <ToggleBtn
@@ -433,20 +448,40 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                             </ToggleBtn>
                                         ))}
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">일일 시뮬 시간대 (KST)</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="time"
+                                            value={dailyWindowStart}
+                                            onChange={e => setDailyWindowStart(e.target.value)}
+                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                        <span className="text-slate-500 text-xs">~</span>
+                                        <input
+                                            type="time"
+                                            value={dailyWindowEnd}
+                                            onChange={e => setDailyWindowEnd(e.target.value)}
+                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">이 시간대 안에서만 경기가 진행됩니다.</p>
+
                                     <div className="bg-slate-800/60 rounded-lg px-3 py-2.5 mt-2 space-y-1">
                                         <div className="flex justify-between text-[11px]">
                                             <span className="text-slate-500 ko-normal">정규시즌</span>
-                                            <span className="text-slate-300 font-mono">{regularDays}일 · {gameDaysPerDay}경기/일</span>
-                                        </div>
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-slate-500 ko-normal">플레이오프</span>
-                                            <span className="text-slate-300 font-mono">{durationWeeks * 7 - regularDays}일</span>
+                                            <span className="text-slate-300 font-mono">{totalRegularDays}일 · 하루 약 {gamesPerDay}경기</span>
                                         </div>
                                         <div className="flex justify-between text-[11px]">
                                             <span className="text-slate-500 ko-normal">일일 시뮬 시간대</span>
-                                            <span className="text-slate-300 font-mono">10:00 ~ {lastSlotKst} KST</span>
+                                            <span className="text-slate-300 font-mono">{dailyWindowStart} ~ {dailyWindowEnd} KST</span>
                                         </div>
                                     </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        정규시즌이 끝나면 상위 8팀이 자동으로 플레이오프에 진출합니다.
+                                    </p>
                                 </div>
 
                                 <div className="border-t border-slate-800 pt-5" />

@@ -95,6 +95,11 @@ export interface CreateLeagueParams {
         draftScheduledAt:     string | null;
         lotteryScheduledAt:   string | null;
         realTimePace:         string;
+        // 메인리그 스케줄 압축 설정
+        durationWeeks:        number;
+        dailyWindowStartMin:  number;
+        dailyWindowEndMin:    number;
+        playoffTeamCount:     number;
     }>;
 }
 
@@ -150,6 +155,10 @@ export const createLeague = async (
     if (opts.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = opts.draftScheduledAt;
     if (opts.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = opts.lotteryScheduledAt;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
+    if (opts.durationWeeks        !== undefined) payload.duration_weeks          = opts.durationWeeks;
+    if (opts.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = opts.dailyWindowStartMin;
+    if (opts.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = opts.dailyWindowEndMin;
+    if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
     for (let attempt = 0; attempt < 3; attempt++) {

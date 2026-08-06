@@ -7,6 +7,7 @@
  */
 import { supabase } from './supabaseAdmin';
 import { generateSeasonSchedule } from './shared/scheduleGenerator';
+import { compressLeagueSchedule } from './shared/leagueScheduleCompressor';
 import { initializeTournamentBracket } from './shared/tournamentInitializer';
 import { TEAM_DATA } from './shared/teamData';
 import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
@@ -105,14 +106,6 @@ function resolveSimRealStartAt(tournamentStart: string | null, nowDate: Date): s
         if (target > nowDate.getTime()) return new Date(target).toISOString();
     }
     return new Date(Math.round(nowDate.getTime() / 600_000) * 600_000).toISOString();
-}
-
-function injectGameSeq(schedule: any[]): void {
-    const uniqueDates = [...new Set(schedule.map((g: any) => g.date as string))].sort();
-    const dateToSeq = new Map<string, number>(uniqueDates.map((d, i) => [d, i]));
-    for (const game of schedule) {
-        game.game_seq = dateToSeq.get(game.date) ?? 0;
-    }
 }
 
 /**
@@ -262,7 +255,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min')
         .eq('id', room.league_id)
         .single();
 
@@ -293,6 +286,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
     const seasonStartDate = tournamentStart ? tournamentStart.slice(0, 10) : nowDate.toISOString().slice(0, 10);
     // 토너먼트는 유저가 지정한 시:분(tournament_start_at)을 시뮬레이션 시각의 기준점(game_seq=0)으로
     // 그대로 사용한다 — 이미 지난 시각이면(드래프트가 늦게 끝나는 등) 지금 시각을 10분 단위로 반올림해 사용.
+    // 메인리그는 tournamentStart가 없으므로 항상 "지금(10분 단위 반올림)"이 리그 실제 시작 시각이 된다.
     const simRealStartAt = resolveSimRealStartAt(tournamentStart, nowDate);
     // 토너먼트 경기 간 간격(기본 30분) — games_per_real_day로 환산해 저장(어드민 설정값 없으면 기본치를 그대로 확정)
     const gamesPerRealDay = league.games_per_real_day ?? 48;
@@ -319,25 +313,27 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
         const filteredTeamData = Object.fromEntries(
             Object.entries(TEAM_DATA).filter(([slug]) => teamSlugs.has(slug)),
         );
-        const seasonYear = parseInt(seasonStartDate.slice(0, 4), 10);
-        const computedEnd = league.season_end_date ?? (() => {
-            const d = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 14);
-            return d.toISOString().slice(0, 10);
-        })();
-        schedule = generateSeasonSchedule(
-            { seasonYear, seasonStart: seasonStartDate, regularSeasonEnd: computedEnd,
-              allStarStart: `${seasonYear + 1}-02-13`, allStarEnd: `${seasonYear + 1}-02-18` },
+        // 가상 NBA 시즌 캘린더는 관리자 설정과 무관하게 항상 고정된 현실적인 길이(약 175일,
+        // All-Star 브레이크 포함)를 쓴다 — generateSeasonSchedule()이 82경기×30팀(1,230경기)을
+        // B2B/3-in-3 제약을 지키며 배치하려면 이 정도 길이가 필요하다("리그 주기"인 1~4주와는
+        // 완전히 다른 개념 — 그건 아래 compressLeagueSchedule()이 별도로 적용한다).
+        const virtualSeasonYear = nowDate.getFullYear();
+        const rawSchedule = generateSeasonSchedule(
+            {
+                seasonYear:       virtualSeasonYear,
+                seasonStart:      `${virtualSeasonYear}-10-21`,
+                regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
+                allStarStart:     `${virtualSeasonYear + 1}-02-13`,
+                allStarEnd:       `${virtualSeasonYear + 1}-02-18`,
+            },
             filteredTeamData as any,
         );
-        injectGameSeq(schedule);
-        // [migration 2026-08-06] 정규시즌 경로는 원래 scheduledAt을 안 채웠다(스케줄러가 game_seq를
-        // 매 tick 역산하는 폴백으로 커버) — games 테이블 기반 스케줄러는 그 폴백이 없으므로
-        // 생성 시점에 SSOT로 확정해 둔다. 안 하면 정규시즌 경기가 하나도 자동 시뮬되지 않는다.
-        for (const g of schedule as any[]) {
-            g.scheduledAt = new Date(
-                Math.round((new Date(simRealStartAt).getTime() + (g.game_seq / gamesPerRealDay) * 86_400_000) / 60_000) * 60_000,
-            ).toISOString();
-        }
+        schedule = compressLeagueSchedule(rawSchedule, {
+            realStartAt:         simRealStartAt,
+            durationWeeks:       league.duration_weeks ?? 2,
+            dailyWindowStartMin: league.daily_window_start_min ?? 1140, // 기본 19:00 KST
+            dailyWindowEndMin:   league.daily_window_end_min   ?? 1380, // 기본 23:00 KST
+        });
     }
 
     if (bracketData) {
@@ -406,7 +402,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min')
         .eq('id', room.league_id)
         .single();
 
@@ -455,17 +451,6 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     const gamesPerRealDay = league.games_per_real_day ?? 48;
     const intervalMinutes = 1440 / gamesPerRealDay;
 
-    const adminDurDays = (() => {
-        if (league.season_start_date && league.season_end_date) {
-            return Math.max(7, Math.round(
-                (new Date(league.season_end_date).getTime() - new Date(league.season_start_date).getTime()) / 86_400_000,
-            ));
-        }
-        return 14;
-    })();
-    const endD = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + adminDurDays);
-    const computedSeasonEndDate = endD.toISOString().slice(0, 10);
-
     // ── 일정 / 브라켓 생성 ──────────────────────────────────────────────────
     let schedule: any[];
     let bracketData: { series: any[]; schedule: any[] } | null = null;
@@ -489,25 +474,25 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         const filteredTeamData = Object.fromEntries(
             Object.entries(TEAM_DATA).filter(([slug]) => teamSlugs.has(slug)),
         );
-        const seasonYear = parseInt(seasonStartDate.slice(0, 4), 10);
-        schedule = generateSeasonSchedule(
+        // forceInitSchedule과 동일 — 가상 캘린더는 항상 고정된 현실적인 길이, 관리자가
+        // 정한 "리그 주기"(1~4주)는 compressLeagueSchedule()에서 별도로 적용.
+        const virtualSeasonYear = nowDate.getFullYear();
+        const rawSchedule = generateSeasonSchedule(
             {
-                seasonYear,
-                seasonStart:      seasonStartDate,
-                regularSeasonEnd: computedSeasonEndDate,
-                allStarStart:     `${seasonYear + 1}-02-13`,
-                allStarEnd:       `${seasonYear + 1}-02-18`,
+                seasonYear:       virtualSeasonYear,
+                seasonStart:      `${virtualSeasonYear}-10-21`,
+                regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
+                allStarStart:     `${virtualSeasonYear + 1}-02-13`,
+                allStarEnd:       `${virtualSeasonYear + 1}-02-18`,
             },
             filteredTeamData as any,
         );
-        injectGameSeq(schedule);
-        // [migration 2026-08-06] forceInitSchedule과 동일 이유 — season 경로도 scheduledAt을
-        // 생성 시점에 SSOT로 확정해 둔다(안 하면 정규시즌 경기가 하나도 자동 시뮬되지 않음).
-        for (const g of schedule as any[]) {
-            g.scheduledAt = new Date(
-                Math.round((new Date(simRealStartAt).getTime() + (g.game_seq / gamesPerRealDay) * 86_400_000) / 60_000) * 60_000,
-            ).toISOString();
-        }
+        schedule = compressLeagueSchedule(rawSchedule, {
+            realStartAt:         simRealStartAt,
+            durationWeeks:       league.duration_weeks ?? 2,
+            dailyWindowStartMin: league.daily_window_start_min ?? 1140, // 기본 19:00 KST
+            dailyWindowEndMin:   league.daily_window_end_min   ?? 1380, // 기본 23:00 KST
+        });
     }
 
     // ── 브라켓/리그 저장 ──────────────────────────────────────────────────────
