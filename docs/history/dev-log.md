@@ -35,6 +35,180 @@
 
 ---
 
+## 2026-08-06 — `rooms.schedule` JSONB → `games` 정규화 테이블 마이그레이션
+
+**배경**: 멀티플레이어 데이터 송수신 구조 조사에서 `rooms.schedule`(경기 배열)이 경기 하나 끝날 때마다
+전체를 읽어 하나만 고쳐 통째로 다시 쓰는(read-modify-write) 패턴이라 동시 쓰기 레이스(lost-update)에
+취약하다는 걸 발견 → `games` 테이블(경기당 1행)로 정규화. `leagues.bracket_data.schedule`도 `rooms.schedule`과
+바이트 단위로 100% 동일함이 확인되어(DB 직접 조회) 함께 제거, `bracket_data`는 `{series}`만 남김.
+상세 설계는 `/Users/bokjung/.claude/plans/validated-shimmying-pebble.md` 참조.
+**핵심 원칙**: 클라이언트가 소비하는 `schedule: Game[]` 인메모리 형태는 그대로 유지 — `useSeasonContext()`로
+받는 ~15개 소비 컴포넌트(MultiScheduleView/MultiStandingsView/TournamentBracketView/MultiHeader 등)는 무수정.
+
+**DB 마이그레이션**:
+- `migrations/games_table.sql` — `games` 테이블 신설. PK `(room_id, game_id)`(`game_pbp`/`game_sim_claims`와 동일 관례), 부분 인덱스 `games_due_idx`(스케줄러 due 질의용)/`games_room_series_idx`(시리즈 조회용), RLS 3종(`g_member_select`=`my_room_ids()`, `g_service_write`=service_role, `g_admin_write`=리그 admin), `supabase_realtime` publication 등록.
+- `migrations/backfill_games.sql` — `rooms.schedule` JSONB → `games` 백필(멱등, `ON CONFLICT DO UPDATE`). **컷오버 전에만 안전** — 컷오버 후 재실행 시 최신 데이터를 stale로 덮어씀.
+- `migrations/rollback_games_to_jsonb.sql` — 역방향 복원용(문제 발생 시 구버전 재배포 전 실행).
+- 실행 결과: 1차 백필 직후 `games` 4,843행, `rooms.schedule` 총합 4,843행 — 행 수/필드 단위 정합성 검증 0건 불일치.
+
+**서버 변경 (`server/src/**`)**:
+- `finalize.ts` — `insertGames()` 헬퍼 신규(camelCase Game[] → snake_case row 변환 유일 경계, 500개 배치 upsert). `forceInitSchedule`/`finalizeDraft` 양쪽: season 경로에 `scheduledAt` 계산 로직 추가(**중요** — 기존엔 이 경로가 scheduledAt을 안 채워서 스케줄러의 game_seq 역산 폴백에 의존했는데, 새 SQL 질의엔 그 폴백이 없어 안 채우면 정규시즌 경기가 하나도 자동 시뮬 안 됨. 프로덕션에 season 리그가 0개라 지금 안 드러날 뿐 실사용 시 바로 터질 문제), `bracket_data`를 `{series}`로 축소, `rooms.update()`에서 `schedule` 제거 후 방어적 `games` 선삭제(결정론적 game_id 재충돌 방지) + `insertGames()`.
+- `simRunner.ts` — 방 로드 시 `schedule` select 제거, 해당 경기 1행만 `games`에서 조회. 기록은 배열 전체 재작성 대신 `games.update({...}).eq('played', false)` 조건부 UPDATE(0 rows면 다른 프로세스가 이미 기록 — game_sim_claims에 이은 2차 동시성 방어선). `handleTournamentAdvance`는 `bracket_data`에서 `schedule` 제거, 시리즈 확정 시 `games.delete()`로 prune(+ `game_short_codes` 동반 삭제로 기존 고아 버그도 수정), `advanceTournamentState`(순수 함수, 미변경)에는 현재 `games` 행으로 만든 stub 배열을 넘겨 늘어난 뒷부분만 신규 라운드 경기로 추출해 `insertGames()`.
+- `scheduler.ts` — `runSimGames`가 전체 방의 schedule을 Node 메모리로 스캔하던 것을 `games_due_idx` 인덱스 질의 1번으로 교체. `advanceSimDates`도 집계 질의 2번으로 교체 + **값이 바뀔 때만 `rooms.sim_date` 쓰도록 가드 추가**(기존엔 매 30초 tick마다 무조건 써서 전 접속자에게 불필요한 Realtime 브로드캐스트 발생). 불필요해진 `gameSeqToRealMs`/`resolveGameRealMs`/`LeagueRow`/`RoomRow` 삭제.
+- `shared/tournamentArchiver.ts` — `bracket_data.schedule` 대신 `games` 테이블 조회로 `schedMap` 구성. 미사용 `TournamentGame` import 제거.
+
+**클라이언트 변경**:
+- 신규 `services/multi/gameQueries.ts` — `loadSchedule()`/`loadGame()`/`countGames()`. **`toIsoZ()` 정규화가 핵심** — PostgREST의 `timestamptz` 반환 형식(`+00:00`)이 기존 JSONB의 JS `toISOString()`(`...Z`) 형식과 달라, 안 맞추면 `AdminSimView`의 문자열 직접 비교·`MultiScheduleView`의 `.localeCompare()` 정렬이 미묘하게 깨질 수 있었음.
+- `hooks/useMultiGameData.ts` — 초기 로드를 `loadSchedule()` 호출로 교체(재시도 루프 유지). **오늘 이 세션 초반에 추가했던 `rooms` UPDATE Realtime 구독(payload.new.schedule 직접 반영)을 `games` 테이블 구독으로 완전히 대체** — 300ms 디바운스 후 `loadSchedule()` 전체 재조회 방식으로 변경(시리즈 확정 시 UPDATE+DELETE+INSERT가 한꺼번에 오므로 병합보다 안전). `forceSave()`에서 `schedule` 필드 제거.
+- `services/multi/roomPersistence.ts` — `loadRoom()`/`saveRoom()`에서 `schedule` 필드 제거.
+- `services/multi/leagueService.ts` — `updateGameScheduledAt()`을 `games` 대상 단건 조회+가드 UPDATE로 재작성. `saveBracketData()` 삭제(호출부 0건 확인). `resetTournament()`에 `games`/`game_short_codes` 삭제 추가(결정론적 game_id 재충돌 방지 + 기존 재드래프트 실패 버그 동반 수정).
+- `views/multi/season/MultiGamePbpView.tsx` — 경기 1건 scheduledAt 조회를 `rooms.schedule` 배열 fetch에서 `loadGame()` 단일 row 조회로 교체.
+- `views/multi/league/AdminSimView.tsx` — 일정 관리 테이블 로드를 `loadSchedule()` 재사용으로 교체(로컬 함수명 충돌 방지 위해 `refreshSchedule`로 개명).
+- `views/multi/league/MultiDraftView.tsx` — 드래프트 완료 후 준비 완료 폴링을 `countGames()`로 교체.
+- 삭제: `services/multi/engineStateAdapter.ts`(호출부 0건, `room.schedule` 참조라 방치 시 조용히 깨짐).
+
+**무수정 확인**: MultiScheduleView, MultiStandingsView, TournamentBracketView, MultiLeaderboardView, MultiRosterView, MultiTacticsView, seasonContext.ts, multiGameReveal.ts, multiSeasonUtils.ts, multiScheduleUtils.ts, MultiHeader.tsx, TournamentChampionModal.tsx, TeamGameLog.tsx, pages/MultiSeasonPage.tsx — 전부 `useSeasonContext()`의 `schedule: Game[]`만 소비, `rowToGame()`이 동일 형태를 반환하므로 무변경.
+
+**검증**: 코드 5+개 파일 전체 재독해로 중괄호/타입/누락 수동 확인(브레이스 balance 스크립트로 교차 확인). `bun`/`tsc` 로컬 미설치로 빌드 검증은 못 함. DB 마이그레이션/1차 백필은 실행 완료 + 검증 쿼리(행 수 일치, 필드 단위 불일치 0건) 통과. **서버/클라이언트 배포 및 컷오버(서버 정지→2차 백필→배포→재기동)는 아직 미실행** — 사용자 확인 후 진행 예정.
+
+**롤백 방법**: 컷오버 전이면 코드 변경분만 되돌리면 됨(DB는 `games` 테이블만 새로 생겼을 뿐 `rooms.schedule`/`bracket_data`는 그대로라 무영향). 컷오버 후라면 `migrations/rollback_games_to_jsonb.sql` 실행 → 이 커밋 이전 서버/클라이언트로 재배포.
+
+---
+
+## 2026-08-06 — 멀티플레이어 데이터 송수신 구조 개선 (schedule Realtime 구독 + 라이브 PBP delta 폴링)
+
+**배경**: 멀티플레이어 클라이언트-서버 데이터 송수신 구조를 조사한 결과 2가지 개선 지점 발견 →
+1. `rooms.schedule`이 `useMultiGameData` 마운트 시 1회만 fetch되고 이후 절대 갱신 안 됨 — 스탠딩/브라켓/스케줄 화면에 머물러 있으면 다른 경기가 끝나도 반영 안 되고 재진입해야만 보임.
+2. 라이브 PBP 폴링(`/live-game`, 5초 간격)이 매번 "지금까지 공개된 이벤트 전체"를 재전송 — 쿼터가 진행될수록 매 폴링 payload가 계속 커짐. `game_pbp` row는 시뮬레이션이 끝난 시점에 이미 완성된 고정 배열이고, live 구간은 그걸 10분에 걸쳐 시간차 공개하는 클라이언트 연출용 창(window)일 뿐이라 — 이전 poll 결과는 항상 다음 poll 결과의 접두사(prefix)임이 보장되어 delta(증분)만 보내도 안전.
+
+DB 확인 결과 `rooms` 테이블은 이미 `supabase_realtime` publication에 등록돼 있어 DB 설정 변경 없이 클라이언트 구독 코드만 추가하면 됐음(`leagues`/`room_members`에 이미 동일 패턴이 `hooks/useCurrentLeague.ts`에 존재 — 그대로 준용).
+
+**변경 파일**:
+- `hooks/useMultiGameData.ts` (client) — `rooms` UPDATE Realtime 구독 추가. `payload.new.schedule`만 뽑아 `setSchedule()` — 같은 row의 다른 필드(simSettings/teamFinances 등, `forceSave()`로만 저장되는 로컬 편집 상태)를 덮어쓰지 않기 위해 전체 row refetch가 아니라 필드 단위로만 반영.
+- `server/src/liveGameView.ts` (server) — `buildWindowedViewSince()` 추가. 기존 `buildWindowedView()`의 필터링 로직은 전혀 안 건드리고, 그 결과를 `since` 커서(`events`/`shots`/`box` 각각 이미 받은 개수) 기준으로 slice만 해서 신규분 + 누적 카운트(`eventCount`/`shotCount`/`boxCount`)를 반환.
+- `server/src/index.ts` (server) — `handleLiveGame`이 `sinceEvents`/`sinceShots`/`sinceBox` 쿼리 파라미터를 파싱해 `buildWindowedViewSince()`에 전달 (파라미터 없으면 기존과 동일하게 전체 반환 — 하위호환).
+- `services/multi/liveGameService.ts` (client) — `fetchLiveGameView()`에 `since?: LiveGameSinceCursor` 파라미터 추가, `WindowedGameView`에 `eventCount`/`shotCount`/`boxCount` 필드 추가.
+- `views/multi/season/MultiGamePbpView.tsx` (client) — `eventCountRef`/`shotCountRef`/`boxCountRef`로 커서 추적(경기 전환 시 리셋). 최초 로드(`isFirst=true`)는 전체 반환·풀 교체, 이후 5초 간격 폴링(`isFirst=false`)은 커서를 같이 보내 delta만 받아 `gameData.events`/`shot_events`/`box_timeline`에 append.
+
+**Before** (MultiGamePbpView.tsx 폴링 부분, 발췌):
+```ts
+const load = async () => {
+    const result = await fetchLiveGameView(room.id, resolvedGameId, session?.access_token);
+    ...
+    setGameData({ ...전체 필드를 매번 결과값으로 통째 교체... });
+};
+load();
+const timer = displayState === 'live' ? setInterval(load, LIVE_POLL_MS) : null;
+```
+
+**After**:
+```ts
+const load = async (isFirst: boolean) => {
+    const result = await fetchLiveGameView(room.id, resolvedGameId, session?.access_token,
+        isFirst ? undefined : { events: eventCountRef.current, shots: shotCountRef.current, box: boxCountRef.current });
+    ...
+    eventCountRef.current = result.eventCount; /* shot/box 동일 */
+    setGameData(prev => isFirst || !prev
+        ? { ...전체 교체(최초와 동일)... }
+        : { ...prev, events: [...prev.events, ...result.events], /* shot_events/box_timeline 동일 append */ });
+};
+load(true);
+const timer = displayState === 'live' ? setInterval(() => load(false), LIVE_POLL_MS) : null;
+```
+
+**검증**: 수정한 5개 파일 전체를 다시 읽어 중괄호 balance + 로직 정합성 수동 확인. `bun`/`tsc` 로컬 미설치·환경 문제로 빌드 검증은 못 함. **서버(`server/`) 쪽은 아직 fly.io에 배포 안 됨, 클라이언트 쪽도 아직 배포/실기기 테스트 안 함** — 둘 다 반영해야 실제로 동작(서버가 delta 응답을 안 주면 클라이언트는 `since` 파라미터를 보내도 구버전 서버가 무시하고 항상 풀 데이터를 반환하므로 안전하게 하위호환되지만, 개선 효과는 서버 배포 후에만 발생).
+
+**주의사항**: `useCurrentLeague.ts`의 `leagues`/`room_members` 구독과 달리, `useMultiGameData.ts`의 새 구독은 payload를 직접 읽어(`payload.new.schedule`) refetch 없이 처리 — 이 방식은 `schedule` 컬럼이 매번 update 대상에 포함되어 있다는 전제(현재 이 프로젝트의 모든 `rooms` writer가 `schedule`을 항상 같이 써서 이 전제가 성립함)에 의존한다. 향후 `schedule`을 갱신하지 않는 새로운 `rooms` UPDATE 경로가 생기면 해당 이벤트에서는 `payload.new.schedule`이 undefined일 수 있는데, 이 경우 그냥 무시하도록(`if (updatedSchedule) setSchedule(...)`) 이미 방어돼 있음.
+
+**롤백 방법**: 위 Before 블록 + 각 파일의 diff 되돌리면 됨. `hooks/useMultiGameData.ts`는 새로 추가한 `useEffect` 블록 전체 삭제, `server/src/index.ts`는 `buildWindowedView` import로 원복.
+
+---
+
+## 2026-08-06 — fly.io 서버 무응답 사고 조사 후 game_sim_claims 락 정리 로직 수정
+
+**배경**: fly.io 멀티플레이어 서버(`basketballgm-app-server`)가 응답 없이 멈추는 사고 발생(2026-08-06 00:21~00:37 UTC, 머신 재시작으로 복구) → 로그/DB 조사 중 `game_sim_claims`(경기 중복 시뮬레이션 방지용 락 테이블)가 4,683건까지 쌓여있고 그중 4,679건이 이미 `game_pbp`(완료된 경기)를 가진 채로 영구히 안 지워지고 있는 걸 발견. 원인은 `runSimulation()`이 클레임을 **성공 경로에서는 삭제하지 않고 실패(catch) 경로에서만 삭제**하도록 되어 있던 것 — 정상 완료된 경기의 락이 테이블에 평생 남는 구조. 이 때문에 안전망인 `sweepStaleClaims()`가 매번 스캔해야 할 행이 계속 불어났고, 실제로 8시간 넘게 안 풀린 고아 클레임(`T_R3_M1_G5`, room `ee49f5d1-...`)도 하나 발견됨(정확한 원인은 미확정 — 클레임 생성 12분 후 머신 재시작 이력과 시간상 겹침).
+이번 무응답 사고 자체의 근본 원인은 확정하지 못함(fly.io 로그 보존 기간이 짧아 사고 순간의 메모리 상태 등 직접 증거는 유실, 256MB VM의 메모리 압박이 유력한 가설). 다만 조사 중 발견한 클레임 미청소 버그는 코드로 명확히 확인·수정 가능해 바로 반영.
+
+**변경 파일**:
+- `server/src/simRunner.ts` (server 전용, client 미러 없음) — 클레임 획득 성공 이후 전체 처리를 내부 `try/finally`로 감싸, 성공/실패 어느 경로든 `finally` 한 곳에서만 클레임을 삭제하도록 통합 (기존엔 성공 return 직전과 바깥 `catch` 두 곳에 동일한 delete 코드가 중복)
+- `server/src/workers/simWorkerPool.ts` (server 전용, client 미러 없음) — `sweepStaleClaims()`를 "claim마다 game_pbp 존재 여부 개별 조회 후 없는 것만 삭제"에서 "10분 지난 클레임은 성공/실패 무관하게 단일 DELETE로 통째 삭제"로 단순화 + `.select()`로 삭제된 행 전체를 돌려받던 것을 `{ count: 'exact' }`로 교체(개수만 필요하므로 행 데이터 왕복 제거)
+
+**후속 정리 (/simplify, 같은 날)**: 최초 수정본은 `simRunner.ts` 성공 경로에 delete를 추가하는 방식이라 기존 catch 블록의 delete와 완전히 중복되는 코드였음. `/simplify`의 Simplification·Altitude 두 관점 에이전트가 독립적으로 동일하게 "단일 `try/finally`로 합쳐야 한다"고 지적(단, "이미 클레임됨" 스킵 경로는 애초에 이 프로세스 소유가 아니므로 감싸면 안 됨)해 반영. Reuse 에이전트가 제안한 `simWorkerPool.deleteClaim()` 재사용은 워커 스레드(simRunner.ts) ↔ 메인 스레드 싱글턴(simWorkerPool.ts) 간 경계 때문에 불가능한 false positive로 판정, 미적용. Efficiency 에이전트가 제안한 "클레임 삭제를 스케줄/토너먼트 업데이트와 병렬 실행"은 이득이 적고(워커 스레드 내부, non-hot path) 단일 삭제 지점 원칙과 상충돼 스킵, `.select()` → `{count:'exact'}` 교체만 채택.
+
+**Before** (simRunner.ts, 최종 발췌 — 클레임 획득 이후):
+```ts
+        if (claimErr) { ...; return { ok: true, skipped: true, reason: 'already claimed' }; }
+
+        const { homeTeamId, awayTeamId } = game;
+        // ... 2~7단계 로직 ...
+        return { ok: true, homeScore, awayScore, simDurationMs };
+
+    } catch (err) {
+        console.error('[simRunner] error:', err);
+        await supabase.from('game_sim_claims').delete().eq('room_id', roomId).eq('game_id', gameId);
+        return { ok: false, error: String(err) };
+    }
+```
+
+**After**:
+```ts
+        if (claimErr) { ...; return { ok: true, skipped: true, reason: 'already claimed' }; }
+
+        try {
+            const { homeTeamId, awayTeamId } = game;
+            // ... 2~7단계 로직 (기존과 동일, 들여쓰기만 1단 깊어짐) ...
+            return { ok: true, homeScore, awayScore, simDurationMs };
+        } finally {
+            await supabase.from('game_sim_claims').delete().eq('room_id', roomId).eq('game_id', gameId);
+        }
+
+    } catch (err) {
+        console.error('[simRunner] error:', err);
+        return { ok: false, error: String(err) };
+    }
+```
+
+**Before** (simWorkerPool.ts `sweepStaleClaims`, 원본):
+```ts
+    async sweepStaleClaims(): Promise<void> {
+        const cutoffIso = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+        const { data: staleClaims, error } = await supabase
+            .from('game_sim_claims')
+            .select('room_id, game_id')
+            .lt('claimed_at', cutoffIso);
+        if (error) { console.error(...); return; }
+        if (!staleClaims?.length) return;
+
+        for (const claim of staleClaims) {
+            const { data: pbp } = await supabase
+                .from('game_pbp').select('game_id')
+                .eq('room_id', claim.room_id).eq('game_id', claim.game_id)
+                .maybeSingle();
+            if (!pbp) await this.deleteClaim(claim.room_id, claim.game_id);
+        }
+    }
+```
+
+**After** (최종):
+```ts
+    async sweepStaleClaims(): Promise<void> {
+        const cutoffIso = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+        const { count, error } = await supabase
+            .from('game_sim_claims')
+            .delete({ count: 'exact' })
+            .lt('claimed_at', cutoffIso);
+        if (error) { console.error('[simPool] stale claim sweep failed:', error.message); return; }
+        if (count) console.log(`[simPool] stale claim sweep: removed ${count} claim(s)...`);
+    }
+```
+
+**검증**: `npx tsc --noEmit`은 이 프로젝트가 Bun 전용이라 사전에도 다수 무관한 타입 에러(Bun 전역 타입 등)가 있어 전체 통과는 확인 못 함 — 수정한 두 파일을 처음부터 끝까지 다시 읽어 중괄호/들여쓰기 정합성 수동 확인(특히 `try` 중첩 구조). `bun` 로컬 미설치로 런타임 빌드 체크는 못 함. **아직 fly.io에 배포 안 됨** (`server/` 코드는 별도 배포 필요 — 로컬 수정만 반영된 상태).
+기존에 쌓인 4,683건의 레거시 클레임은 이 수정이 배포되면 다음 `sweepStaleClaims()` 실행(부팅 직후 1회 + 5분 간격)에서 나이 조건만으로 자동 일괄 삭제됨 — 별도 수동 SQL 정리 불필요.
+
+**롤백 방법**: 위 Before 블록 두 개로 그대로 되돌리면 됨.
+
+---
+
 ## 2026-08-05 — [정리] /simplify 4관점 리뷰(Reuse/Simplification/Efficiency/Altitude) 후속 정리
 
 **배경**: 팀 설정/코트 색상 세션의 diff 전체를 4개 에이전트(Reuse/Simplification/Efficiency/Altitude)로 병렬 리뷰한 뒤, 동작 변경 없는 범위 내에서 발견된 중복·비효율을 직접 정리.

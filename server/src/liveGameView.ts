@@ -158,6 +158,39 @@ export function buildWindowedView(row: GamePbpSource, nowMs: number): WindowedGa
     };
 }
 
+export interface WindowedGameViewDelta extends Omit<WindowedGameView, 'events' | 'shotEvents' | 'boxTimeline'> {
+    events:      PbpLog[];   // since 파라미터 이후 새로 공개된 것만 (없으면 전체)
+    shotEvents:  ShotEvent[];
+    boxTimeline: BoxTick[];
+    eventCount:  number;     // 지금까지 공개된 누적 총 개수 — 다음 요청의 since로 그대로 사용
+    shotCount:   number;
+    boxCount:    number;
+}
+
+/**
+ * buildWindowedView()의 결과를 since 커서 이후분만 잘라서 반환한다.
+ * live 구간 폴링(5초 간격)마다 지금까지 공개된 이벤트 전체를 매번 재전송하던 것을
+ * 이미 받은 만큼(since)은 건너뛰고 새로 공개된 구간만 보내도록 줄이기 위함 — 쿼터가
+ * 진행될수록 매 폴링 payload가 계속 커지는 문제를 없앤다. 필터링 로직 자체는 전혀
+ * 건드리지 않고(원본과 동일한 결과 위에 slice만 적용) 그대로 재사용한다.
+ */
+export function buildWindowedViewSince(
+    row: GamePbpSource,
+    nowMs: number,
+    since: { events?: number; shots?: number; box?: number } = {},
+): WindowedGameViewDelta {
+    const full = buildWindowedView(row, nowMs);
+    return {
+        ...full,
+        events:      full.events.slice(since.events ?? 0),
+        shotEvents:  full.shotEvents.slice(since.shots ?? 0),
+        boxTimeline: full.boxTimeline.slice(since.box ?? 0),
+        eventCount:  full.events.length,
+        shotCount:   full.shotEvents.length,
+        boxCount:    full.boxTimeline.length,
+    };
+}
+
 /** 일정 리스트용 요약치 — events에서 마지막으로 공개된 누적 스코어 + 쿼터/게임클락만 뽑는다. */
 export interface LiveGameSummary {
     gameId:    string;

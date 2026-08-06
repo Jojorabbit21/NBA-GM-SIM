@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { supabase } from '../services/supabaseClient';
 import type { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
 import type { SimSettings } from '../types/simSettings';
 import type { OffseasonPhase } from '../types/app';
@@ -15,6 +16,7 @@ import type { CoachFAPool, LeagueCoachingData } from '../types/coaching';
 import type { LotteryResult } from '../services/draft/lotteryEngine';
 import { loadRoom, saveRoom, saveMemberTactics } from '../services/multi/roomPersistence';
 import { loadRoomMember } from '../services/multi/roomQueries';
+import { loadSchedule } from '../services/multi/gameQueries';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { buildSeasonConfig } from '../utils/seasonConfig';
 import type { SeasonConfig } from '../utils/seasonConfig';
@@ -226,10 +228,12 @@ export function useMultiGameData(
                 if (room.lottery_result)        setLotteryResult(room.lottery_result as LotteryResult);
                 if (room.retired_player_ids)    setRetiredPlayerIds(room.retired_player_ids as string[]);
                 if (room.roster_state)          { /* teams 파싱은 별도 처리 필요 */ }
-                if (room.schedule) {
-                    setSchedule(room.schedule as Game[]);
+                // [migration 2026-08-06] rooms.schedule 대신 games 테이블에서 로드.
+                const games = await loadSchedule(roomId);
+                if (games.length > 0) {
+                    setSchedule(games);
                 } else {
-                    // [Fix 2026-07-29] 드래프트 완료 직후 진입하면 finalizeDraft()가 아직 schedule을
+                    // [Fix 2026-07-29] 드래프트 완료 직후 진입하면 finalizeDraft()가 아직 games를
                     // 못 썼을 수 있음 — 무한 폴링이 아니라 이 최초 로드 시점에만 국한된 짧은 재시도
                     // (최대 4회 × 1.5초 = 6초). DraftCompletedScreen 쪽 폴링이 1차 방어선이고, 이건
                     // 그 화면을 거치지 않고 다른 경로로 시즌 화면에 바로 들어온 경우의 백업.
@@ -237,9 +241,9 @@ export function useMultiGameData(
                         for (let i = 0; i < 4 && !cancelled; i++) {
                             await new Promise(r => setTimeout(r, 1500));
                             if (cancelled) return;
-                            const retryRoom = await loadRoom(roomId);
-                            if (retryRoom?.schedule) {
-                                setSchedule(retryRoom.schedule as Game[]);
+                            const retryGames = await loadSchedule(roomId);
+                            if (retryGames.length > 0) {
+                                setSchedule(retryGames);
                                 return;
                             }
                         }
@@ -275,6 +279,41 @@ export function useMultiGameData(
         init();
         return () => { cancelled = true; };
     }, [roomId, userId]);
+
+    // ── games Realtime 구독 (스케줄 갱신) ───────────────────────────────────────
+    // [migration 2026-08-06] rooms UPDATE 구독(payload.new.schedule 직접 반영) 방식에서
+    // games 테이블 구독으로 이관. 시리즈 확정 시 UPDATE(결과 기록) + DELETE(잔여 경기 prune)
+    // + INSERT(다음 라운드 생성)가 한꺼번에 몰려오므로, 이벤트마다 개별 병합하는 대신
+    // 300ms 디바운스 후 loadSchedule()로 전체 재조회한다 — 최대 186행이라 재조회 비용은
+    // 무시할 수준이고, 병합 로직 없이 항상 최신 상태로 수렴하는 게 더 안전하다.
+    useEffect(() => {
+        if (!roomId) return;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let cancelled = false;
+
+        const refetch = () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(async () => {
+                const games = await loadSchedule(roomId);
+                if (!cancelled) setSchedule(games);
+            }, 300);
+        };
+
+        const channel = supabase
+            .channel(`room-games-${roomId}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'games', filter: `room_id=eq.${roomId}` },
+                refetch,
+            )
+            .subscribe();
+
+        return () => {
+            cancelled = true;
+            if (timer) clearTimeout(timer);
+            supabase.removeChannel(channel);
+        };
+    }, [roomId]);
 
     // 전술/뎁스차트는 더 이상 자동 저장하지 않는다 — 사용자가 저장 버튼을 눌러야만
     // room_members에 반영되고, 그래야 실제 경기 시뮬레이션(simRunner.ts)에도 반영된다.
@@ -323,7 +362,6 @@ export function useMultiGameData(
                 coachFAPool:           s.coachFAPool,
                 retiredPlayerIds:      s.retiredPlayerIds,
                 lotteryResult:         s.lotteryResult,
-                schedule:              s.schedule,
             }),
             // 멤버 개인 전술
             saveMemberTactics(s.roomId, s.userId, s.userTactics, s.depthChart),

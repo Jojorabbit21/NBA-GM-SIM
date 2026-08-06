@@ -38,7 +38,6 @@ export interface RoomSavePayload {
     coachFAPool?:          CoachFAPool | null;
     retiredPlayerIds?:     string[] | null;
     lotteryResult?:        any | null;
-    schedule?:             any[] | null;
     status?:               'active' | 'finished';
 }
 
@@ -75,7 +74,6 @@ export const saveRoom = async (
     if (fields.coachFAPool         !== undefined) payload.coach_fa_pool           = fields.coachFAPool;
     if (fields.retiredPlayerIds    !== undefined) payload.retired_player_ids      = fields.retiredPlayerIds;
     if (fields.lotteryResult       !== undefined) payload.lottery_result          = fields.lotteryResult;
-    if (fields.schedule            !== undefined) payload.schedule                = fields.schedule;
     if (fields.status              !== undefined) payload.status                  = fields.status;
 
     const { error } = await supabase
@@ -99,7 +97,7 @@ export const loadRoom = async (roomId: string) => {
             league_pick_assets, league_cap_history, league_trade_blocks,
             league_trade_offers, league_gm_profiles, league_fa_pool,
             league_fa_market, league_training_configs, coach_fa_pool,
-            retired_player_ids, lottery_result, schedule,
+            retired_player_ids, lottery_result,
             schema_version, created_at, updated_at
         `)
         .eq('id', roomId)

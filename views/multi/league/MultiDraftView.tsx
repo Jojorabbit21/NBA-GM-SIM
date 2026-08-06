@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, GripHorizontal, ChevronLeft, Bot } from 'lucide-react';
-import { supabase } from '../../../services/supabaseClient';
+import { countGames } from '../../../services/multi/gameQueries';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
@@ -530,15 +530,11 @@ const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ roomId, onN
 
             // [Fix 2026-07-29] leagues.status는 finalizeDraft() 시작 "직후"(실제 일정/전술 생성이
             // 끝나기 전) 원자적 claim으로 바로 'in_progress'가 되는 플래그라 완료 신호로 쓸 수 없었음
-            // — "드래프트 완료" 화면에서 시즌으로 이동한 직후 rooms.schedule이 아직 비어있어 일정이
-            // 안 보이는 버그의 원인. rooms.schedule 실제 생성 여부를 직접 확인하도록 수정.
-            const { data } = await supabase
-                .from('rooms')
-                .select('schedule')
-                .eq('id', roomId)
-                .maybeSingle();
+            // — "드래프트 완료" 화면에서 시즌으로 이동한 직후 일정이 아직 비어있어 안 보이는 버그의
+            // 원인. [migration 2026-08-06] rooms.schedule 대신 games 테이블 행 존재 여부로 확인.
+            const n = await countGames(roomId);
             if (cancelled) return;
-            if (Array.isArray(data?.schedule) && data.schedule.length > 0) {
+            if (n > 0) {
                 setProgress(100);
                 setIsReady(true);
             } else {

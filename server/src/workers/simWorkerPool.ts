@@ -72,31 +72,25 @@ class SimWorkerPool {
         });
     }
 
-    /** game_sim_claims 중 STALE_CLAIM_MS 이상 지났는데 대응하는 game_pbp row가 없는 것 삭제.
-     *  워커 크래시 시 안전망(handleCrash)이 못 잡는 극단적 상황(컨테이너 자체 종료 등) 대비 이중 안전망. */
+    /** game_sim_claims 중 STALE_CLAIM_MS 이상 지난 것을 전부 삭제.
+     *  워커 크래시 시 안전망(handleCrash)이 못 잡는 극단적 상황(컨테이너 자체 종료 등) 대비 이중 안전망.
+     *  [2026-08-06] 예전엔 claim마다 game_pbp 존재 여부를 개별 조회해 "성공했는데 못 지워진 것"만
+     *  골라 지웠는데, 이제 runSimulation() 성공 경로에서도 자기 클레임을 직접 지우므로(아래 참고),
+     *  10분 넘게 남은 클레임은 성공/실패 여부와 무관하게 이미 자기 역할(동시 처리 방지)을
+     *  다한 것 — 그냥 나이만 보고 통째로 지운다. 클레임당 왕복 쿼리도 없앴고,
+     *  DELETE ... WHERE는 클라이언트 select 기본 행 제한과 무관하게 매칭되는 행 전체에 적용된다. */
     async sweepStaleClaims(): Promise<void> {
         const cutoffIso = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
-        const { data: staleClaims, error } = await supabase
+        const { count, error } = await supabase
             .from('game_sim_claims')
-            .select('room_id, game_id')
+            .delete({ count: 'exact' })
             .lt('claimed_at', cutoffIso);
         if (error) {
-            console.error('[simPool] stale claim query failed:', error.message);
+            console.error('[simPool] stale claim sweep failed:', error.message);
             return;
         }
-        if (!staleClaims?.length) return;
-
-        for (const claim of staleClaims) {
-            const { data: pbp } = await supabase
-                .from('game_pbp')
-                .select('game_id')
-                .eq('room_id', claim.room_id)
-                .eq('game_id', claim.game_id)
-                .maybeSingle();
-            if (!pbp) {
-                console.warn(`[simPool] sweeping stale claim room=${claim.room_id} game=${claim.game_id}`);
-                await this.deleteClaim(claim.room_id, claim.game_id);
-            }
+        if (count) {
+            console.log(`[simPool] stale claim sweep: removed ${count} claim(s) older than ${STALE_CLAIM_MS / 60_000}min`);
         }
     }
 

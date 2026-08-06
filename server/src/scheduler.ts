@@ -263,26 +263,9 @@ async function cleanupCompletedRooms(): Promise<void> {
 
 // 경기 예정 1분 전 사전계산 (30초 폴링 대응)
 const SIM_LEAD_MS = 60 * 1000;
-
-// game_seq → 현실 실행 시각 변환.
-// 10분 단위로 반올림하면 경기 간격(intervalMinutes)이 10의 배수가 아닐 때(예: 15분) 슬롯마다
-// 독립적으로 스냅되며 20분/10분이 번갈아 나오는 간격 불균일 버그가 생긴다 — 분 단위로만
-// 반올림해 부동소수점 오차만 제거한다.
-function gameSeqToRealMs(seq: number, simRealStartAt: string, gamesPerRealDay: number): number {
-    const raw = new Date(simRealStartAt).getTime() + (seq / gamesPerRealDay) * 86_400_000;
-    return Math.round(raw / 60_000) * 60_000;
-}
-
-// game.scheduledAt(SSOT, 생성 시점에 저장된 값)이 있으면 그대로 쓰고, 없는(레거시) 스케줄만
-// game_seq로부터 재계산한다.
-function resolveGameRealMs(game: any, league: LeagueRow | undefined): number | undefined {
-    if (game.scheduledAt) return new Date(game.scheduledAt).getTime();
-    const seq: number | undefined = game.game_seq;
-    if (seq != null && league?.sim_real_start_at) {
-        return gameSeqToRealMs(seq, league.sim_real_start_at, league.games_per_real_day ?? 5);
-    }
-    return undefined;
-}
+// due 질의 배치 상한 — in_progress 리그가 7개×≤186경기인 현재 규모론 도달 불가하지만,
+// 장기 다운타임 후 백로그가 쌓일 경우를 대비해 도달 시 경고만 남긴다.
+const DUE_QUERY_LIMIT = 500;
 
 // 실시각(ms) → KST 달력 날짜(YYYY-MM-DD). game.date(슬롯 기반 계산값)는 자정 근처에서
 // 실제 KST 날짜와 어긋날 수 있어(예: 23:40 다음 슬롯이 00:10), sim_date 갱신 시에는
@@ -295,116 +278,107 @@ function kstDateFromMs(ms: number): string {
     return `${y}-${m}-${d}`;
 }
 
-interface LeagueRow {
-    id: string;
-    sim_real_start_at: string | null;
-    games_per_real_day: number;
-}
-
-interface RoomRow {
-    id: string;
-    league_id: string;
-    schedule: any;
-    sim_date: string;
-}
-
+// [migration 2026-08-06] 방마다 rooms.schedule 전체를 Node 메모리로 읽어 JS로 훑던 것을
+// games 테이블의 부분 인덱스(games_due_idx) 질의 하나로 대체 — scheduler.ts 원본 로직/버그
+// 히스토리는 docs/history/dev-log.md 2026-08-06 항목 참조.
 async function runSimGames(now: string): Promise<void> {
-    const cutoffMs = Date.now() + SIM_LEAD_MS;
+    const cutoffIso = new Date(Date.now() + SIM_LEAD_MS).toISOString();
 
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, sim_real_start_at, games_per_real_day')
+        .select('id')
         .eq('status', 'in_progress');
 
     if (!leagues?.length) return;
-
-    const leagueMap = new Map<string, LeagueRow>(leagues.map((l: any) => [l.id, l]));
     const leagueIds = leagues.map((l: any) => l.id);
 
-    const { data: rooms } = await supabase
-        .from('rooms')
-        .select('id, league_id, schedule, sim_date')
-        .in('league_id', leagueIds);
+    const { data: due } = await supabase
+        .from('games')
+        .select('room_id, game_id')
+        .in('league_id', leagueIds)
+        .eq('played', false)
+        .not('scheduled_at', 'is', null)
+        .lte('scheduled_at', cutoffIso)
+        .order('scheduled_at', { ascending: true })
+        .limit(DUE_QUERY_LIMIT);
 
-    if (!rooms?.length) return;
-
-    const tasks: { roomId: string; gameId: string }[] = [];
-
-    for (const room of rooms as RoomRow[]) {
-        const league = leagueMap.get(room.league_id);
-        const schedule: any[] = room.schedule ?? [];
-
-        for (const game of schedule) {
-            if (game.played) continue;
-            const realMs = resolveGameRealMs(game, league);
-            if (realMs != null) {
-                if (realMs <= cutoffMs) tasks.push({ roomId: room.id, gameId: game.id });
-            } else {
-                // 폴백: scheduledAt/game_seq 둘 다 없으면 당일 날짜 기준
-                if (game.date === now.slice(0, 10)) tasks.push({ roomId: room.id, gameId: game.id });
-            }
-        }
+    const tasks = (due ?? []).map(g => ({ roomId: g.room_id as string, gameId: g.game_id as string }));
+    if (tasks.length >= DUE_QUERY_LIMIT) {
+        console.warn(`[scheduler:sim] due 질의가 limit(${DUE_QUERY_LIMIT})에 도달 — 백로그 누적 의심`);
     }
 
-    if (!tasks.length) return;
+    // 안전망: scheduled_at이 없는 미실행 경기는 이 질의에 절대 안 잡혀 영원히 자동 시뮬되지
+    // 않으므로 눈에 띄게 경고 로그를 남긴다(정상 경로에선 finalize.ts가 항상 채움).
+    const { count: orphanCount } = await supabase
+        .from('games')
+        .select('game_id', { count: 'exact', head: true })
+        .in('league_id', leagueIds).eq('played', false).is('scheduled_at', null);
+    if (orphanCount) {
+        console.warn(`[scheduler:sim] scheduled_at 누락 미실행 경기 ${orphanCount}건 — 자동 시뮬 불가`);
+    }
 
-    console.log(`[scheduler:sim] ${tasks.length} game(s) to simulate`);
+    if (tasks.length) {
+        console.log(`[scheduler:sim] ${tasks.length} game(s) to simulate`);
 
-    // 워커 풀이 동시성을 관리하므로 여기서는 전부 동시에 넘기기만 하면 된다 — 풀 크기만큼
-    // 실제 병렬 처리되고, 나머지는 풀 내부 큐에서 대기한다. 메인 스레드는 이 await 동안
-    // 블로킹되지 않으므로(워커에서 계산하는 동안 HTTP/WS 요청을 계속 처리 가능) 예전처럼
-    // 경기 사이에 수동으로 양보(setImmediate)해줄 필요가 없다(2026-07-27 — worker thread 분리).
-    const results = await Promise.allSettled(
-        tasks.map(({ roomId, gameId }) => simWorkerPool.runSimulationInWorker(roomId, gameId)),
-    );
-    results.forEach((r, i) => {
-        const { roomId, gameId } = tasks[i];
-        if (r.status === 'rejected') {
-            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.reason}`);
-        } else if (!r.value.ok && !r.value.skipped) {
-            console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.value.error}`);
-        }
-    });
+        // 워커 풀이 동시성을 관리하므로 여기서는 전부 동시에 넘기기만 하면 된다 — 풀 크기만큼
+        // 실제 병렬 처리되고, 나머지는 풀 내부 큐에서 대기한다. 메인 스레드는 이 await 동안
+        // 블로킹되지 않으므로(워커에서 계산하는 동안 HTTP/WS 요청을 계속 처리 가능) 예전처럼
+        // 경기 사이에 수동으로 양보(setImmediate)해줄 필요가 없다(2026-07-27 — worker thread 분리).
+        const results = await Promise.allSettled(
+            tasks.map(({ roomId, gameId }) => simWorkerPool.runSimulationInWorker(roomId, gameId)),
+        );
+        results.forEach((r, i) => {
+            const { roomId, gameId } = tasks[i];
+            if (r.status === 'rejected') {
+                console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.reason}`);
+            } else if (!r.value.ok && !r.value.skipped) {
+                console.error(`[scheduler:sim] room=${roomId} game=${gameId} error=${r.value.error}`);
+            }
+        });
+    }
 
-    await advanceSimDates(rooms as RoomRow[], leagueMap, now.slice(0, 10));
+    await advanceSimDates(leagueIds, now.slice(0, 10));
 }
 
-async function advanceSimDates(
-    rooms:     RoomRow[],
-    leagueMap: Map<string, LeagueRow>,
-    today:     string,
-): Promise<void> {
-    const nowMs = Date.now();
+// [migration 2026-08-06] 방마다 스케줄 전체를 훑던 3중 루프를 집계 질의 2번으로 대체.
+async function advanceSimDates(leagueIds: string[], today: string): Promise<void> {
+    const nowIso = new Date().toISOString();
 
-    for (const room of rooms) {
-        const league   = leagueMap.get(room.league_id);
-        const schedule: any[] = room.schedule ?? [];
+    // ① "이미 방송 시각이 지난 경기"가 있는 방(sim_date 전진 후보) — 그중 아직 미실행인 게
+    // 하나라도 있으면 그 방은 전진 보류(기존 dueGames.every(played) 조건과 동일 의미).
+    const { data: dueRows } = await supabase
+        .from('games')
+        .select('room_id, played')
+        .in('league_id', leagueIds)
+        .lte('scheduled_at', nowIso);
 
-        let allCurrentPlayed: boolean;
+    const hasDue  = new Set<string>();
+    const blocked = new Set<string>();
+    for (const r of dueRows ?? []) {
+        hasDue.add(r.room_id);
+        if (!r.played) blocked.add(r.room_id);
+    }
 
-        if (league?.sim_real_start_at) {
-            const dueGames = schedule.filter((g: any) => {
-                const realMs = resolveGameRealMs(g, league);
-                return realMs != null && realMs <= nowMs;
-            });
-            allCurrentPlayed = dueGames.length > 0 && dueGames.every((g: any) => g.played);
-        } else {
-            const todayGames = schedule.filter((g: any) => g.date === today);
-            allCurrentPlayed = todayGames.length > 0 && todayGames.every((g: any) => g.played);
-        }
+    // ② 방별 다음 미실행 경기 시각 (scheduled_at 오름차순 → 방마다 첫 row가 next)
+    const { data: upcoming } = await supabase
+        .from('games')
+        .select('room_id, scheduled_at')
+        .in('league_id', leagueIds)
+        .eq('played', false)
+        .order('scheduled_at', { ascending: true });
 
-        if (allCurrentPlayed) {
-            const upcoming = schedule
-                .filter((g: any) => !g.played)
-                .map((g: any) => {
-                    const realMs = resolveGameRealMs(g, league);
-                    if (realMs != null) return kstDateFromMs(realMs);
-                    return g.date ?? '';
-                })
-                .filter(Boolean)
-                .sort();
-            const nextDate = upcoming[0] ?? today;
-            await supabase.from('rooms').update({ sim_date: nextDate }).eq('id', room.id);
-        }
+    const nextByRoom = new Map<string, string>();
+    for (const r of upcoming ?? []) {
+        if (r.scheduled_at && !nextByRoom.has(r.room_id)) nextByRoom.set(r.room_id, r.scheduled_at);
+    }
+
+    for (const roomId of hasDue) {
+        if (blocked.has(roomId)) continue;
+        const nextAt   = nextByRoom.get(roomId);
+        const nextDate = nextAt ? kstDateFromMs(new Date(nextAt).getTime()) : today;
+        // 값이 안 바뀌면 쓰지 않는다 — 매 tick마다 무조건 쓰면 그때마다 rooms Realtime UPDATE가
+        // 전 접속자에게 불필요하게 브로드캐스트된다.
+        await supabase.from('rooms').update({ sim_date: nextDate })
+            .eq('id', roomId).neq('sim_date', nextDate);
     }
 }

@@ -22,7 +22,7 @@ import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
-import { buildWindowedView, buildLiveSummary, REPLAY_DURATION_MS, type GamePbpSource } from './liveGameView';
+import { buildWindowedViewSince, buildLiveSummary, REPLAY_DURATION_MS, type GamePbpSource } from './liveGameView';
 import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
@@ -375,7 +375,18 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
 
     if (!row) return json({ ok: false, error: 'not found' }, 404);
 
-    return json(buildWindowedView(row as GamePbpSource, Date.now()));
+    // sinceEvents/sinceShots/sinceBox — 클라이언트가 지난 폴링에서 이미 받은 개수(eventCount 등)를
+    // 그대로 돌려보내면, 매번 지금까지 공개된 전체를 재전송하는 대신 그 이후 새로 공개된
+    // 구간만 내려준다. 파라미터가 없으면(최초 조회) 기존과 동일하게 전체를 반환.
+    const parseSince = (key: string) => {
+        const raw = url.searchParams.get(key);
+        return raw != null ? parseInt(raw, 10) : undefined;
+    };
+    return json(buildWindowedViewSince(row as GamePbpSource, Date.now(), {
+        events: parseSince('sinceEvents'),
+        shots:  parseSince('sinceShots'),
+        box:    parseSince('sinceBox'),
+    }));
 }
 
 async function handleLiveGames(req: Request, url: URL): Promise<Response> {

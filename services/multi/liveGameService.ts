@@ -15,14 +15,24 @@ export interface WindowedGameView {
     homeTeamId:    string;
     awayTeamId:    string;
     gameStartTime: string;
-    events:        PbpLog[];
+    events:        PbpLog[];   // since를 보냈다면 그 이후 새로 공개된 것만
     shotEvents:    ShotEvent[];
     boxTimeline:   BoxTick[];
+    eventCount:    number;     // 누적 총 개수 — 다음 호출의 since로 그대로 전달
+    shotCount:     number;
+    boxCount:      number;
     homeBox:       PlayerBoxScore[];
     awayBox:       PlayerBoxScore[];
     homeScore?:    number;
     awayScore?:    number;
     rotationData?: RotationData; // final일 때만 포함
+}
+
+/** live 폴링 시 이미 받은 만큼(count)을 서버에 알려 그 이후 새로 공개된 구간만 받기 위한 커서. */
+export interface LiveGameSinceCursor {
+    events?: number;
+    shots?:  number;
+    box?:    number;
 }
 
 export interface LiveGameSummary {
@@ -44,10 +54,15 @@ export const fetchLiveGameView = async (
     roomId: string,
     gameId: string,
     accessToken?: string,
+    since?: LiveGameSinceCursor,
 ): Promise<WindowedGameView | { ok: false; error: string }> => {
     try {
         const headers = await authHeader(accessToken);
-        const res = await fetch(`${FLY_SERVER}/live-game?roomId=${roomId}&gameId=${gameId}`, { headers });
+        const params = new URLSearchParams({ roomId, gameId });
+        if (since?.events != null) params.set('sinceEvents', String(since.events));
+        if (since?.shots  != null) params.set('sinceShots',  String(since.shots));
+        if (since?.box    != null) params.set('sinceBox',    String(since.box));
+        const res = await fetch(`${FLY_SERVER}/live-game?${params.toString()}`, { headers });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return { ok: false, error: data?.error ?? `HTTP ${res.status}` };
         return data as WindowedGameView;

@@ -48,6 +48,36 @@ export async function insertGameShortCodes(roomId: string, schedule: { id: strin
     }
 }
 
+// [migration 2026-08-06] rooms.schedule JSONB 대신 games 테이블에 일괄 삽입.
+// 순수 함수(initializeTournamentBracket / generateSeasonSchedule)가 만든 camelCase Game[]을
+// snake_case row로 변환하는 유일한 경계 — 서버 쪽 매핑은 여기 하나만 유지한다.
+// simRunner.ts의 handleTournamentAdvance()가 새 라운드 경기를 삽입할 때도 재사용한다.
+export interface ScheduleGameLike {
+    id: string; homeTeamId: string; awayTeamId: string; date: string;
+    time?: string; game_seq?: number; scheduledAt?: string;
+    played?: boolean; isPlayoff?: boolean; seriesId?: string;
+}
+
+export async function insertGames(
+    roomId: string, leagueId: string, games: ScheduleGameLike[],
+): Promise<{ error: string | null }> {
+    if (games.length === 0) return { error: null };
+    const rows = games.map(g => ({
+        room_id: roomId, league_id: leagueId, game_id: g.id,
+        home_team_id: g.homeTeamId, away_team_id: g.awayTeamId,
+        game_date: g.date, game_time: g.time ?? null,
+        game_seq: g.game_seq ?? null, scheduled_at: g.scheduledAt ?? null,
+        played: false, is_playoff: g.isPlayoff ?? false, series_id: g.seriesId ?? null,
+    }));
+    // 정규시즌은 ~1230경기가 될 수 있음 — tournament_game_log 배치 삽입(archiver)과 동일하게 500개씩.
+    for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await supabase.from('games')
+            .upsert(rows.slice(i, i + 500), { onConflict: 'room_id,game_id', ignoreDuplicates: true });
+        if (error) return { error: error.message };
+    }
+    return { error: null };
+}
+
 // 멀티플레이어 AI 팀 전용 — 로스터 기반 계산값 대신 모든 슬라이더를 중간값(5)으로 고정한다.
 // 사람 팀/싱글플레이어 CPU는 영향받지 않음(generateAutoTactics()의 기본 계산 결과를 그대로 씀).
 // [2026-08-01 Fix] pnrDefense는 다른 슬라이더와 달리 0~10이 아니라 0~2 스케일(0=Drop,1=Hedge,
@@ -220,12 +250,15 @@ async function applyLeagueNormalization(
 export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; error?: string }> {
     const { data: room } = await supabase
         .from('rooms')
-        .select('id, league_id, draft_cursor, schedule')
+        .select('id, league_id, draft_cursor')
         .eq('id', roomId)
         .single();
 
     if (!room) return { ok: false, error: 'room not found' };
-    if (room.schedule) return { ok: false, error: 'schedule already exists' };
+    // [migration 2026-08-06] rooms.schedule 존재 여부 대신 games 테이블 행 수로 판정.
+    const { count: existingGames } = await supabase
+        .from('games').select('game_id', { count: 'exact', head: true }).eq('room_id', roomId);
+    if ((existingGames ?? 0) > 0) return { ok: false, error: 'schedule already exists' };
 
     const { data: league } = await supabase
         .from('leagues')
@@ -297,18 +330,31 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
             filteredTeamData as any,
         );
         injectGameSeq(schedule);
+        // [migration 2026-08-06] 정규시즌 경로는 원래 scheduledAt을 안 채웠다(스케줄러가 game_seq를
+        // 매 tick 역산하는 폴백으로 커버) — games 테이블 기반 스케줄러는 그 폴백이 없으므로
+        // 생성 시점에 SSOT로 확정해 둔다. 안 하면 정규시즌 경기가 하나도 자동 시뮬되지 않는다.
+        for (const g of schedule as any[]) {
+            g.scheduledAt = new Date(
+                Math.round((new Date(simRealStartAt).getTime() + (g.game_seq / gamesPerRealDay) * 86_400_000) / 60_000) * 60_000,
+            ).toISOString();
+        }
     }
 
     if (bracketData) {
-        const { error } = await supabase.from('leagues').update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay }).eq('id', room.league_id);
+        const { error } = await supabase.from('leagues').update({ bracket_data: { series: bracketData.series }, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay }).eq('id', room.league_id);
         if (error) return { ok: false, error: `bracket save: ${error.message}` };
     } else {
         await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
     }
 
+    // [migration 2026-08-06] rooms.schedule 대신 games 테이블에 삽입. 결정론적 game_id
+    // (T_R1_M0_G1 등)가 리셋 후 재초기화 시 PK와 충돌할 수 있어 방어적으로 먼저 지운다.
+    await supabase.from('games').delete().eq('room_id', roomId);
+    const { error: gamesErr } = await insertGames(roomId, room.league_id, schedule);
+    if (gamesErr) return { ok: false, error: `games save: ${gamesErr}` };
+
     const { error: saveErr } = await supabase.from('rooms').update({
         roster_state: rosterState,
-        schedule,
         sim_date: seasonStartDate,
         draft_cursor: { ...(room.draft_cursor as any ?? {}), status: 'finalized', finalizedAt: simRealStartAt },
     }).eq('id', roomId);
@@ -455,13 +501,20 @@ export async function finalizeDraft(roomId: string): Promise<void> {
             filteredTeamData as any,
         );
         injectGameSeq(schedule);
+        // [migration 2026-08-06] forceInitSchedule과 동일 이유 — season 경로도 scheduledAt을
+        // 생성 시점에 SSOT로 확정해 둔다(안 하면 정규시즌 경기가 하나도 자동 시뮬되지 않음).
+        for (const g of schedule as any[]) {
+            g.scheduledAt = new Date(
+                Math.round((new Date(simRealStartAt).getTime() + (g.game_seq / gamesPerRealDay) * 86_400_000) / 60_000) * 60_000,
+            ).toISOString();
+        }
     }
 
     // ── 브라켓/리그 저장 ──────────────────────────────────────────────────────
     if (bracketData) {
         const { error: bracketErr } = await supabase
             .from('leagues')
-            .update({ bracket_data: bracketData, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay })
+            .update({ bracket_data: { series: bracketData.series }, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay })
             .eq('id', room.league_id);
         if (bracketErr) {
             console.error(`[finalize] bracket save error: ${bracketErr.message}`);
@@ -471,12 +524,20 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
     }
 
+    // [migration 2026-08-06] rooms.schedule 대신 games 테이블 삽입. 결정론적 game_id가
+    // 재초기화 시 PK와 충돌할 수 있어 방어적으로 먼저 지운다.
+    await supabase.from('games').delete().eq('room_id', roomId);
+    const { error: gamesErr } = await insertGames(roomId, room.league_id, schedule);
+    if (gamesErr) {
+        console.error(`[finalize] games save error: ${gamesErr}`);
+        return;
+    }
+
     // ── rooms 저장 ────────────────────────────────────────────────────────────
     const { error: saveErr } = await supabase
         .from('rooms')
         .update({
             roster_state: rosterState,
-            schedule,
             sim_date:     seasonStartDate,
             draft_cursor: { status: 'finalized', finalizedAt: simRealStartAt },
         })

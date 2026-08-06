@@ -730,48 +730,29 @@ export const simGameOverride = async (
 };
 
 // ─── 개별 경기 일정(scheduledAt) 변경 (어드민) ────────────────────────────────
-// rooms.schedule JSONB 배열에서 해당 경기만 찾아 scheduledAt을 갱신한다.
-// 이미 플레이된 경기는 결과가 확정돼 있으므로 변경하지 않는다.
+// [migration 2026-08-06] rooms.schedule JSONB 배열 read-modify-write 대신 games 테이블
+// 단건 조회+가드 UPDATE. 이미 플레이된 경기는 결과가 확정돼 있으므로 변경하지 않는다.
 
 export const updateGameScheduledAt = async (
     roomId: string,
     gameId: string,
     scheduledAtIso: string,
 ): Promise<{ error: string | null }> => {
-    const { data, error: fetchErr } = await supabase
-        .from('rooms')
-        .select('schedule')
-        .eq('id', roomId)
-        .single();
-    if (fetchErr || !data) return { error: fetchErr?.message ?? '방을 찾을 수 없습니다.' };
-
-    const schedule = (data.schedule as any[] | null) ?? [];
-    const target = schedule.find(g => g.id === gameId);
+    const { data: target, error: fetchErr } = await supabase
+        .from('games')
+        .select('played')
+        .eq('room_id', roomId).eq('game_id', gameId)
+        .maybeSingle();
+    if (fetchErr) return { error: fetchErr.message };
     if (!target) return { error: '해당 경기를 찾을 수 없습니다.' };
     if (target.played) return { error: '이미 종료된 경기는 일정을 변경할 수 없습니다.' };
 
-    const updatedSchedule = schedule.map(g =>
-        g.id === gameId ? { ...g, scheduledAt: scheduledAtIso } : g,
-    );
-
+    // TOCTOU(위 조회~아래 UPDATE 사이 시뮬레이션 완료) 방지를 위해 UPDATE에도 played=false를 건다.
     const { error } = await supabase
-        .from('rooms')
-        .update({ schedule: updatedSchedule })
-        .eq('id', roomId);
+        .from('games')
+        .update({ scheduled_at: scheduledAtIso })
+        .eq('room_id', roomId).eq('game_id', gameId).eq('played', false);
 
-    return { error: error?.message ?? null };
-};
-
-// ─── 토너먼트 브라켓 데이터 저장 ─────────────────────────────────────────────
-
-export const saveBracketData = async (
-    leagueId: string,
-    bracket: { series: unknown[]; schedule?: unknown[] },
-): Promise<{ error: string | null }> => {
-    const { error } = await supabase
-        .from('leagues')
-        .update({ bracket_data: bracket })
-        .eq('id', leagueId);
     return { error: error?.message ?? null };
 };
 
@@ -804,7 +785,16 @@ export const resetTournament = async (
         .eq('id', leagueId);
     if (leagueErr) return { error: leagueErr.message, archiveEdition };
 
-    // rooms 초기화
+    // [migration 2026-08-06] games 삭제 — game_id가 결정론적(T_R1_M0_G1 등)이라 지우지
+    // 않으면 재드래프트 시 (room_id, game_id) PK 충돌로 finalize가 실패한다.
+    // game_short_codes도 함께 정리(기존엔 안 지워서 재드래프트 시 UNIQUE 충돌로
+    // 숏코드 insert가 조용히 실패하던 버그가 있었음 — 이번에 같이 고침).
+    const { error: gamesErr } = await supabase.from('games').delete().eq('room_id', roomId);
+    if (gamesErr) return { error: gamesErr.message, archiveEdition };
+    await supabase.from('game_short_codes').delete().eq('room_id', roomId);
+
+    // rooms 초기화 — schedule은 이제 games 테이블이 SSOT이지만, 컬럼 정리(별도 후속) 전까지
+    // 롤백 안전망으로 빈 배열을 유지해 둔다.
     const { error: roomErr } = await supabase
         .from('rooms')
         .update({ schedule: [], roster_state: {} })

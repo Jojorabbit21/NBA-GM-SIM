@@ -4,7 +4,7 @@
  * Called once from simulate-game when all series are finished.
  */
 import { createClient } from '@supabase/supabase-js';
-import type { PlayoffSeries, TournamentGame } from './tournamentBracket.ts';
+import type { PlayoffSeries } from './tournamentBracket.ts';
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -98,9 +98,15 @@ export async function archiveTournament(
         .single();
     if (leagueErr || !league?.bracket_data) return { error: leagueErr?.message ?? 'No bracket data' };
 
-    const bracketData    = league.bracket_data as { series: PlayoffSeries[]; schedule: TournamentGame[] };
-    const series         = bracketData.series ?? [];
-    const bracketSchedule = bracketData.schedule ?? [];
+    const bracketData = league.bracket_data as { series: PlayoffSeries[] };
+    const series      = bracketData.series ?? [];
+
+    // [migration 2026-08-06] bracket_data.schedule 대신 games 테이블에서 조회.
+    const { data: gameRows, error: gamesErr } = await supabase
+        .from('games')
+        .select('game_id, series_id, game_date')
+        .eq('room_id', roomId);
+    if (gamesErr) return { error: gamesErr.message };
 
     // 2. League teams
     const { data: leagueTeams, error: teamsErr } = await supabase
@@ -218,28 +224,28 @@ export async function archiveTournament(
         if (trErr) return { error: trErr.message };
     }
 
-    // 8. Build lookup maps from bracket schedule
-    const schedMap  = new Map<string, TournamentGame>();
+    // 8. Build lookup maps from games rows
+    const schedMap  = new Map<string, { game_id: string; series_id: string | null; game_date: string }>();
     const seriesMap = new Map<string, PlayoffSeries>();
-    for (const g of bracketSchedule) schedMap.set(g.id, g);
-    for (const s of series)          seriesMap.set(s.id, s);
+    for (const g of gameRows ?? []) schedMap.set(g.game_id, g);
+    for (const s of series)         seriesMap.set(s.id, s);
 
     // 9. Game log
     const gameLogRows = pbpList.map(pbp => {
         const sg      = schedMap.get(pbp.game_id);
-        const s       = sg?.seriesId ? seriesMap.get(sg.seriesId) : null;
-        const gameNum = sg?.id.match(/_G(\d+)$/)?.[1];
+        const s       = sg?.series_id ? seriesMap.get(sg.series_id) : null;
+        const gameNum = pbp.game_id.match(/_G(\d+)$/)?.[1];
         return {
             archive_id: archiveId,
             game_id:    pbp.game_id,
-            series_id:  sg?.seriesId ?? null,
+            series_id:  sg?.series_id ?? null,
             round:      s?.round ?? null,
             game_num:   gameNum ? parseInt(gameNum, 10) : null,
             home_slug:  pbp.home_team_id,
             away_slug:  pbp.away_team_id,
             home_score: pbp.home_score,
             away_score: pbp.away_score,
-            played_at:  sg?.date ?? null,
+            played_at:  sg?.game_date ?? null,
         };
     });
 
@@ -252,7 +258,7 @@ export async function archiveTournament(
     const playerStatRows: any[] = [];
     for (const pbp of pbpList) {
         const sg    = schedMap.get(pbp.game_id);
-        const s     = sg?.seriesId ? seriesMap.get(sg.seriesId) : null;
+        const s     = sg?.series_id ? seriesMap.get(sg.series_id) : null;
         const round = s?.round ?? null;
 
         const expandBox = (boxes: any[], teamSlug: string) => {
@@ -260,7 +266,7 @@ export async function archiveTournament(
                 playerStatRows.push({
                     archive_id:  archiveId,
                     game_id:     pbp.game_id,
-                    series_id:   sg?.seriesId ?? null,
+                    series_id:   sg?.series_id ?? null,
                     round,
                     player_id:   String(box.playerId ?? ''),
                     player_name: box.playerName ?? '',

@@ -15,6 +15,7 @@ import type { Game, ShotEvent, Team, Player } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
 import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
 import { fetchLiveGameView, fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
+import { loadGame } from '../../../services/multi/gameQueries';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
 import { GameShotChartTab } from '../../../components/game/tabs/GameShotChartTab';
@@ -1662,6 +1663,11 @@ const MultiGamePbpView: React.FC = () => {
     const [activeSection, setActiveSection] = useState<string>('insights');
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const resultScrollRef = useRef<HTMLDivElement>(null);
+    // live 폴링 델타 커서 — 서버가 이미 보낸 만큼(count)을 기억해뒀다가 다음 폴링에 같이 보내면
+    // 그 이후 새로 공개된 이벤트만 받아 gameData에 append한다(매번 전체 재전송 방지).
+    const eventCountRef = useRef(0);
+    const shotCountRef  = useRef(0);
+    const boxCountRef   = useRef(0);
 
     // [Fix 2026-08-05] "진행중인 경기를 보다가 시작 전 경기로 넘어가면 이전 경기 데이터가 그대로
     // 남아있다" 버그 — 이 뷰는 라우트가 바뀌어도(:gameId만 바뀜) 컴포넌트가 리마운트되지 않으므로
@@ -1688,6 +1694,9 @@ const MultiGamePbpView: React.FC = () => {
         setScheduledAt(undefined);
         setGamePlayed(false);
         setIsLoading(true);
+        eventCountRef.current = 0;
+        shotCountRef.current  = 0;
+        boxCountRef.current   = 0;
     }, [resolvedGameId]);
     const [rosterCache, setRosterCache] = useState<Record<string, Player>>({});
     // [Fix 2026-08-05] "경기 전환 시 OVR이 70으로 잠깐 보였다가 정정된다" 버그 — rosterCache는
@@ -1706,8 +1715,8 @@ const MultiGamePbpView: React.FC = () => {
     // 누가 언제 접속해도 동일한 시점에 동일한 상태가 나온다.
     const displayState = getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed }, serverNow);
 
-    // rooms.schedule에서 scheduledAt 조회. game_pbp는 RLS로 정시 전 row가 숨겨지므로
-    // scheduled 상태 판정에는 schedule 쪽 정보가 필요하다.
+    // [migration 2026-08-06] rooms.schedule 배열 fetch 대신 games 테이블 단일 row 조회.
+    // game_pbp는 RLS로 정시 전 row가 숨겨지므로 scheduled 상태 판정에는 이 정보가 필요하다.
     // 토너먼트 경기는 scheduledAt이 저장되지 않고 game_seq만 있으므로 resolveRealAt으로
     // 반드시 역산해야 한다 — 그냥 game.scheduledAt만 읽으면 항상 undefined가 되어
     // displayState가 영원히 'scheduled'로 고정되고, 이어지는 PBP 조회 effect가
@@ -1716,19 +1725,13 @@ const MultiGamePbpView: React.FC = () => {
         if (!room?.id || !resolvedGameId) return;
         let cancelled = false;
         (async () => {
-            const { data } = await supabase
-                .from('rooms')
-                .select('schedule')
-                .eq('id', room.id)
-                .single();
+            const game = await loadGame(room.id, resolvedGameId);
             if (cancelled) return;
-            const schedule = (data?.schedule as Game[] | null) ?? [];
-            const game = schedule.find(g => g.id === resolvedGameId);
             // [Fix 2026-08-04] "종료된 경기인데도 시작 전 화면이 스쳐간다" 버그의 진짜 원인 —
             // resolvedGameId는 마운트 시 일단 URL의 gameId(짧은 코드일 수 있음)로 먼저 세팅되고,
             // 실제 game_id로의 변환은 별도 effect가 비동기로 처리한다(game_short_codes 조회).
             // 그 변환이 끝나기 전 이 effect가 먼저 돌면 resolvedGameId가 아직 짧은 코드라
-            // schedule에서 못 찾는 게 정상인데, 예전엔 이걸 "찾아봤는데 없다"로 확정 처리해
+            // games에서 못 찾는 게 정상인데, 예전엔 이걸 "찾아봤는데 없다"로 확정 처리해
             // scheduledAt=null/gamePlayed=false를 세팅했음 — 그 결과 displayState가 일시적으로
             // 'scheduled'로 오판되어 화면이 스쳐갔다. 못 찾으면 아무 것도 확정하지 않고
             // resolvedGameId가 실제 game_id로 갱신되면서 이 effect가 재실행되길 기다린다.
@@ -1762,35 +1765,62 @@ const MultiGamePbpView: React.FC = () => {
         if (displayState === 'scheduled') { setIsLoading(false); return; }
         let cancelled = false;
 
-        const load = async () => {
-            const result = await fetchLiveGameView(room.id, resolvedGameId, session?.access_token);
+        // isFirst=false(interval 폴링)면 지금까지 받은 개수(커서)를 같이 보내 그 이후 새로
+        // 공개된 구간만 받는다 — 매번 지금까지 전체를 재전송하던 것을 delta로 줄인 것.
+        // 언더라잉 데이터(row.events 등)는 시뮬레이션이 이미 끝난 뒤 한 번에 저장된 고정
+        // 배열이고 elapsed 임계값만 시간이 갈수록 커지므로, 이전 poll 결과는 항상 다음 poll
+        // 결과의 접두사(prefix)다 — append만으로 안전하게 재구성 가능.
+        const load = async (isFirst: boolean) => {
+            const result = await fetchLiveGameView(
+                room.id, resolvedGameId, session?.access_token,
+                isFirst ? undefined : { events: eventCountRef.current, shots: shotCountRef.current, box: boxCountRef.current },
+            );
             if (cancelled) return;
             if (!('state' in result)) {
                 setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
                 setIsLoading(false);
                 return;
             }
-            setGameData({
-                game_id:         result.gameId,
-                home_team_id:    result.homeTeamId,
-                away_team_id:    result.awayTeamId,
-                home_score:      result.homeScore ?? 0,
-                away_score:      result.awayScore ?? 0,
-                game_start_time: result.gameStartTime,
-                events:          result.events,
-                shot_events:     result.shotEvents,
-                home_box:        result.homeBox as PlayerBoxScore[],
-                away_box:        result.awayBox as PlayerBoxScore[],
-                box_timeline:    result.boxTimeline,
-                rotation_data:   result.rotationData,
+            eventCountRef.current = result.eventCount;
+            shotCountRef.current  = result.shotCount;
+            boxCountRef.current   = result.boxCount;
+
+            setGameData(prev => {
+                if (isFirst || !prev) {
+                    return {
+                        game_id:         result.gameId,
+                        home_team_id:    result.homeTeamId,
+                        away_team_id:    result.awayTeamId,
+                        home_score:      result.homeScore ?? 0,
+                        away_score:      result.awayScore ?? 0,
+                        game_start_time: result.gameStartTime,
+                        events:          result.events,
+                        shot_events:     result.shotEvents,
+                        home_box:        result.homeBox as PlayerBoxScore[],
+                        away_box:        result.awayBox as PlayerBoxScore[],
+                        box_timeline:    result.boxTimeline,
+                        rotation_data:   result.rotationData,
+                    };
+                }
+                return {
+                    ...prev,
+                    home_score:    result.homeScore ?? prev.home_score,
+                    away_score:    result.awayScore ?? prev.away_score,
+                    events:        [...prev.events, ...result.events],
+                    shot_events:   [...prev.shot_events, ...result.shotEvents],
+                    box_timeline:  [...(prev.box_timeline ?? []), ...result.boxTimeline],
+                    home_box:      result.homeBox as PlayerBoxScore[],
+                    away_box:      result.awayBox as PlayerBoxScore[],
+                    rotation_data: result.rotationData ?? prev.rotation_data,
+                };
             });
             setError(null);
             setIsLoading(false);
         };
 
         setIsLoading(true);
-        load();
-        const timer = displayState === 'live' ? setInterval(load, LIVE_POLL_MS) : null;
+        load(true);
+        const timer = displayState === 'live' ? setInterval(() => load(false), LIVE_POLL_MS) : null;
         return () => { cancelled = true; if (timer) clearInterval(timer); };
     }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt]);
 

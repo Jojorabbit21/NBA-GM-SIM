@@ -4,8 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Play, FastForward, Clock, CheckCircle2, Loader2, AlertCircle, RefreshCw, Pencil, Check, X } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
-import { supabase } from '../../../services/supabaseClient';
 import { simGameOverride, updateGameScheduledAt } from '../../../services/multi/leagueService';
+import { loadSchedule as loadGamesSchedule } from '../../../services/multi/gameQueries';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -77,19 +77,16 @@ const AdminSimView: React.FC = () => {
     const [schedule,     setSchedule]     = useState<ScheduleGame[]>([]);
     const [schedLoading, setSchedLoading] = useState(true);
 
-    const loadSchedule = useCallback(async () => {
+    // [migration 2026-08-06] rooms.schedule 대신 games 테이블 조회로 교체.
+    const refreshSchedule = useCallback(async () => {
         if (!room?.id) return;
         setSchedLoading(true);
-        const { data } = await supabase
-            .from('rooms')
-            .select('schedule')
-            .eq('id', room.id)
-            .single();
-        setSchedule((data?.schedule as ScheduleGame[] | null) ?? []);
+        const games = await loadGamesSchedule(room.id);
+        setSchedule(games as ScheduleGame[]);
         setSchedLoading(false);
     }, [room?.id]);
 
-    useEffect(() => { loadSchedule(); }, [loadSchedule]);
+    useEffect(() => { refreshSchedule(); }, [refreshSchedule]);
 
     // 비어드민 접근 차단
     useEffect(() => {
@@ -156,8 +153,8 @@ const AdminSimView: React.FC = () => {
         addLog({ type: 'info', text: '$' });
 
         setRunning(false);
-        await loadSchedule(); // 스케줄 새로고침
-    }, [running, simOneGame, addLog, loadSchedule]);
+        await refreshSchedule(); // 스케줄 새로고침
+    }, [running, simOneGame, addLog, refreshSchedule]);
 
     // ── 액션 버튼 핸들러 ──────────────────────────────────────────────────────
     const handleSimUpToNow = () => {
@@ -192,9 +189,9 @@ const AdminSimView: React.FC = () => {
         const { error } = await updateGameScheduledAt(room.id, gameId, iso);
         if (error) { setScheduleErr(error); return false; }
         setScheduleErr(null);
-        await loadSchedule();
+        await refreshSchedule();
         return true;
-    }, [room?.id, loadSchedule]);
+    }, [room?.id, refreshSchedule]);
 
     // ── 통계 ──────────────────────────────────────────────────────────────────
     const totalGames   = schedule.length;
@@ -235,7 +232,7 @@ const AdminSimView: React.FC = () => {
                     <span className="ko-normal">설정으로 돌아가기</span>
                 </button>
                 <button
-                    onClick={loadSchedule}
+                    onClick={refreshSchedule}
                     disabled={schedLoading || running}
                     className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors disabled:opacity-40"
                 >
