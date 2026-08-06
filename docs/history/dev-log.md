@@ -35,6 +35,64 @@
 
 ---
 
+## 2026-08-06 — 가상(fictional) 시즌 캘린더와 실제 실행 시각 분리
+
+**배경**: 메인리그 구현 직후 사용자가 지적: "생성된 일정에서 사용자에게 보이는 날짜/시간(예: 2027년 10월 24일 19:00)과 그 경기가 실제로 시뮬레이션되는 시각(압축된 실제 KST, 예: 2026년 8월 6일 17:00)은 서로 다른 개념이어야 하고, 후자는 사용자에게 절대 노출되면 안 된다." 그런데 직전 구현(`leagueScheduleCompressor.ts`)은 정반대로 동작하고 있었다 — `date`/`time`을 매번 `scheduledAt`(실제 압축 시각) 기준으로 덮어써서 생성기가 만든 가상 캘린더가 통째로 사라지고, 클라이언트의 `kstDateKey`/`fmtTime`도 `scheduledAt`을 우선 사용해 화면에 실제 실행 시각이 그대로 노출되는 구조였다. 또한 가상 시즌의 "연도"(예: 2027) 자체를 관리자가 지정할 방법이 없었다(`nowDate.getFullYear()` 하드코딩).
+
+**설계**: `date`/`time`(가상 NBA 캘린더 표시값)과 `scheduledAt`(실제 압축 실행 시각, 내부 스케줄링/라이브 상태 판정 전용)을 완전히 분리해서 유지한다. 단, 플레이오프(`isPlayoff=true`)는 시드 기반으로 새로 생성되며 애초에 `date`/`time`이 `scheduledAt`과 같은 실제 시각에서 파생되므로(자정 경계 보정을 위해) 기존처럼 `scheduledAt` 우선을 유지 — 즉 "가상 캘린더 우선 표시"는 `league.type==='main_league' && !game.isPlayoff`인 경우에만 적용한다.
+
+**변경 파일**:
+- DB: `migrations/league_virtual_season_year.sql` — `leagues.virtual_season_year integer` 추가(nullable, 미지정 시 서버가 생성 시점 실제 연도로 폴백).
+- `server/src/shared/leagueScheduleCompressor.ts` — `compressLeagueSchedule()`에서 `date`/`time` 덮어쓰기 완전 제거. 이제 `game_seq`/`scheduledAt`만 갱신하고, 생성기가 붙인 가상 캘린더 `date`/`time`은 그대로 보존.
+- `server/src/finalize.ts` — `forceInitSchedule`/`finalizeDraft` 양쪽 모두 `leagues` select에 `virtual_season_year` 추가, `const virtualSeasonYear = nowDate.getFullYear()` → `league.virtual_season_year ?? nowDate.getFullYear()`.
+- `views/multi/season/multiScheduleUtils.ts` — `kstDateKey`/`fmtDateShort`/`fmtTime`/`groupByDay`에 `preferVirtual` 파라미터(기본 `false`) 추가. `preferVirtual && !g.isPlayoff`일 때만 `date`/`time`을 그대로 반환, 아니면 기존처럼 `scheduledAt` 우선(토너먼트/플레이오프 자정 경계 보정 로직 그대로 유지).
+- `views/multi/season/MultiScheduleView.tsx` — `preferVirtual = league?.type === 'main_league'` 계산, `GameRow`/`groupByDay` 호출부에 전파.
+- `views/multi/season/MultiGamePbpView.tsx` — `GameDateStripProps`에 `preferVirtual` 추가, `groupByDay`/`kstDateKey` 호출부에 전파, 렌더 호출부에서 `league?.type === 'main_league'` 전달.
+- `components/multi/CreateLeagueModal.tsx` — `virtualSeasonYear` state(기본값 `현재연도+1`) + 숫자 입력 UI 추가, `createLeague()` options에 포함.
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`에 `virtualSeasonYear` 추가, `payload.virtual_season_year` 매핑.
+
+**Before** (`leagueScheduleCompressor.ts`, 발췌):
+```ts
+return {
+    ...g,
+    game_seq:    i,
+    scheduledAt: scheduledAt.toISOString(),
+    date: kstDateStr(scheduledAt),   // 가상 캘린더를 실제 시각으로 덮어씀 — 버그
+    time: kstTimeStr(scheduledAt),
+};
+```
+`multiScheduleUtils.ts`(발췌):
+```ts
+export function kstDateKey(g: Game): string {
+    if (g.scheduledAt) { /* scheduledAt 무조건 우선 */ }
+    return g.date.slice(0, 10);
+}
+```
+
+**After**:
+```ts
+// leagueScheduleCompressor.ts
+return { ...g, game_seq: i, scheduledAt: scheduledAt.toISOString() }; // date/time 보존
+
+// multiScheduleUtils.ts
+export function kstDateKey(g: Game, preferVirtual = false): string {
+    if (preferVirtual && !g.isPlayoff) return g.date.slice(0, 10); // 가상 캘린더 우선
+    if (g.scheduledAt) { /* 기존 로직 그대로 */ }
+    return g.date.slice(0, 10);
+}
+```
+
+**검증**: 수정한 서버(`finalize.ts`, `leagueScheduleCompressor.ts`)와 클라이언트(`multiScheduleUtils.ts`, `MultiScheduleView.tsx`, `MultiGamePbpView.tsx`, `CreateLeagueModal.tsx`, `leagueService.ts`) 파일 전부 `tsc --noEmit`에 새 에러 없음 확인(기존에 있던 무관 에러만 남음). 마이그레이션은 Supabase MCP로 직접 적용 완료. 실제 30팀 메인리그 생성 후 화면에 가상 캘린더 날짜가 뜨는지 E2E는 배포 후 확인 필요.
+
+**알려진 한계**:
+- `virtual_season_year`를 지정 안 하면 리그 "생성 시점"의 실제 연도로 폴백 — 예를 들어 2026년 12월에 생성하면 가상 시즌도 2026-27 시즌으로 시작(사용자가 원하면 UI에서 직접 다른 연도를 입력해야 함).
+- `preferVirtual` 판정은 `league.type`에만 의존 — 메인리그의 정규시즌 경기(`isPlayoff=false`)만 가상 캘린더를 쓰고, 같은 리그의 플레이오프 경기는 자동으로 실제 시각 표시로 전환됨(의도된 동작).
+- 기존에 이미 생성된(구버전 코드로 생성된) 메인리그가 있다면 `date`/`time`이 이미 `scheduledAt`과 동일한 값으로 덮어써진 상태라, 이번 수정 이후에도 그 리그의 표시는 달라지지 않음(가상 캘린더가 애초에 저장 시점에 유실됐으므로) — 새로 생성되는 리그부터 정상 적용.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨. `virtual_season_year` 컬럼은 nullable이라 롤백해도 기존 데이터에 영향 없음.
+
+---
+
 ## 2026-08-06 — 메인리그(정규시즌) 스케줄 압축 + 플레이오프 자동 전환 구현
 
 **배경**: 멀티플레이어에 `leagues.type='main_league'`("메인리그") UI/타입이 절반쯤 만들어져 있었으나(생성 모달, 시즌 기간 1~4주 선택 등) 실제로 동작하는 리그는 0개였다. 원인 3가지: ① 시즌 기간(1~4주) UI가 있지만 `createLeague()`에 실려가지 않는 display-only 미리보기였음, ② `finalize.ts`가 "관리자가 정한 리그 기간"과 "생성기가 필요로 하는 가상 NBA 시즌 캘린더 길이"를 혼동해서, 1주(7일)짜리 가상 캘린더로 82경기×30팀(1,230경기)을 배치하려 해 B2B/3-in-3 제약을 지킬 수 없는 상태였음, ③ 정규시즌이 끝나도 완료 판정(series_id 기반)이 안 걸려서 아무 일도 안 일어남 — 플레이오프 전환/리그 종료 처리가 전혀 없었음. 부수적으로 기존 토너먼트 브라켓의 팀 배정이 "랜덤 셔플 후 인접 페어링"이라 정규시즌 성적 기반 시드(1위 vs 8위)를 만들 수 없다는 것도 확인됨.

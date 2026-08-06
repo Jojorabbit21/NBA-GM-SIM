@@ -16,7 +16,17 @@ export function fmtDayLabel(dateKey: string): string {
 // 실제 KST 자정 경계와 어긋날 수 있다(예: 23:40 다음 슬롯이 00:10인데도 g.date가 그대로).
 // "시간" 컬럼과 항상 같은 진실(scheduledAt의 KST 환산)을 기준으로 삼아야 자정을 넘는 경기가
 // 정확한 다음날 날짜로 표시된다.
-export function kstDateKey(g: Game): string {
+//
+// [2026-08-06] preferVirtual — 메인리그(main_league) 정규시즌 경기는 date/time이
+// scheduledAt과 무관한 "가상 NBA 캘린더" 값(예: 2027년 10월 24일)이라 사용자에게는
+// 반드시 이 값을 보여줘야 한다(실제 실행 시각인 scheduledAt은 노출 금지). 반면 토너먼트와
+// 메인리그 플레이오프(isPlayoff=true, 시드 기반으로 새로 생성됨)는 date/time이 scheduledAt과
+// 같은 실제 시각에서 파생된 값이라 자정 경계 보정을 위해 scheduledAt을 그대로 우선한다.
+// 호출부는 league.type === 'main_league' && !g.isPlayoff 조건으로 이 플래그를 넘겨야 한다.
+export function kstDateKey(g: Game, preferVirtual = false): string {
+    if (preferVirtual && !g.isPlayoff) {
+        return g.date.slice(0, 10);
+    }
     if (g.scheduledAt) {
         const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
         const y = kst.getUTCFullYear();
@@ -27,13 +37,17 @@ export function kstDateKey(g: Game): string {
     return g.date.slice(0, 10);
 }
 
-export function fmtDateShort(g: Game): string {
-    const dt = new Date(kstDateKey(g) + 'T00:00:00');
+export function fmtDateShort(g: Game, preferVirtual = false): string {
+    const dt = new Date(kstDateKey(g, preferVirtual) + 'T00:00:00');
     return `${dt.getMonth() + 1}/${dt.getDate()}`;
 }
 
 // scheduledAt (UTC ISO) → KST 시각 문자열. game_seq 방식은 normalize 후 호출하므로 항상 scheduledAt 있음.
-export function fmtTime(g: Game): string {
+// preferVirtual 조건은 kstDateKey와 동일(메인리그 정규시즌 경기만 가상 시각 우선).
+export function fmtTime(g: Game, preferVirtual = false): string {
+    if (preferVirtual && !g.isPlayoff) {
+        return g.time ?? '—';
+    }
     if (g.scheduledAt) {
         const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
         const h = kst.getUTCHours().toString().padStart(2, '0');
@@ -48,10 +62,10 @@ export interface DayGroup { dateKey: string; label: string; games: Game[] }
 
 // games는 반드시 scheduledAt(또는 date) 기준 오름차순 정렬된 상태로 넘겨야 한다 — 순차 비교로만
 // 그룹을 묶으므로(정렬 안 된 입력은 같은 날짜가 여러 그룹으로 쪼개질 수 있음).
-export function groupByDay(games: Game[]): DayGroup[] {
+export function groupByDay(games: Game[], preferVirtual = false): DayGroup[] {
     const groups: DayGroup[] = [];
     for (const g of games) {
-        const dateKey = kstDateKey(g);
+        const dateKey = kstDateKey(g, preferVirtual);
         const last = groups[groups.length - 1];
         if (last && last.dateKey === dateKey) {
             last.games.push(g);

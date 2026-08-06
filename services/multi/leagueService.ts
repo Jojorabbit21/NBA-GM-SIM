@@ -100,6 +100,9 @@ export interface CreateLeagueParams {
         dailyWindowStartMin:  number;
         dailyWindowEndMin:    number;
         playoffTeamCount:     number;
+        // 가상 시즌 연도 — 사용자에게 표시되는 정규시즌 캘린더 연도(예: 2027). 미지정 시
+        // 서버가 생성 시점의 실제 연도로 폴백한다.
+        virtualSeasonYear:    number;
     }>;
 }
 
@@ -159,6 +162,7 @@ export const createLeague = async (
     if (opts.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = opts.dailyWindowStartMin;
     if (opts.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = opts.dailyWindowEndMin;
     if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
+    if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
     for (let attempt = 0; attempt < 3; attempt++) {

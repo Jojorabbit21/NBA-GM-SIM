@@ -255,7 +255,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
         .eq('id', room.league_id)
         .single();
 
@@ -317,7 +317,8 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
         // All-Star 브레이크 포함)를 쓴다 — generateSeasonSchedule()이 82경기×30팀(1,230경기)을
         // B2B/3-in-3 제약을 지키며 배치하려면 이 정도 길이가 필요하다("리그 주기"인 1~4주와는
         // 완전히 다른 개념 — 그건 아래 compressLeagueSchedule()이 별도로 적용한다).
-        const virtualSeasonYear = nowDate.getFullYear();
+        // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
+        const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,
@@ -402,7 +403,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
         .eq('id', room.league_id)
         .single();
 
@@ -476,7 +477,8 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         );
         // forceInitSchedule과 동일 — 가상 캘린더는 항상 고정된 현실적인 길이, 관리자가
         // 정한 "리그 주기"(1~4주)는 compressLeagueSchedule()에서 별도로 적용.
-        const virtualSeasonYear = nowDate.getFullYear();
+        // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
+        const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,

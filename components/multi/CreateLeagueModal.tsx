@@ -113,6 +113,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     // 일일 시뮬 시간대(KST) — 이 시간대 안에서만 경기가 진행된다. 기본 저녁 19:00~23:00.
     const [dailyWindowStart, setDailyWindowStart] = useState('19:00');
     const [dailyWindowEnd,   setDailyWindowEnd]   = useState('23:00');
+    // 가상 시즌 연도 — 사용자에게 보여지는 정규시즌 캘린더 연도(예: 2027년 10월 개막).
+    // 실제 리그가 시뮬레이션되는 시각(압축된 실제 시간)과는 무관한 표시 전용 값이다.
+    const [virtualSeasonYear, setVirtualSeasonYear] = useState(new Date().getFullYear() + 1);
 
     // ── 드래프트 (공통) ────────────────────────────────────────────────────────
     const [totalRounds,    setTotalRounds]    = useState(10);
@@ -226,6 +229,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         durationWeeks,
                         dailyWindowStartMin: hhmmToMin(dailyWindowStart),
                         dailyWindowEndMin:   hhmmToMin(dailyWindowEnd),
+                        virtualSeasonYear,
                     },
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
@@ -432,6 +436,19 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                             </ToggleBtn>
                                         ))}
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">가상 시즌 연도</label>
+                                    <input
+                                        type="number"
+                                        value={virtualSeasonYear}
+                                        onChange={e => setVirtualSeasonYear(Number(e.target.value) || virtualSeasonYear)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        사용자에게 표시되는 정규시즌 개막 연도입니다(예: {virtualSeasonYear}년 10월 개막). 실제 시뮬레이션 진행 속도와는 무관합니다.
+                                    </p>
                                 </div>
 
                                 <div>

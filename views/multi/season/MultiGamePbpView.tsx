@@ -1277,10 +1277,11 @@ interface GameDateStripProps {
     roomId: string | undefined;
     accessToken: string | undefined;
     getGameUrlId: (gameId: string) => string;
+    preferVirtual: boolean;
 }
 
 const GameDateStrip: React.FC<GameDateStripProps> = ({
-    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, serverNow, roomId, accessToken, getGameUrlId,
+    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, serverNow, roomId, accessToken, getGameUrlId, preferVirtual,
 }) => {
     const navigate = useNavigate();
 
@@ -1306,7 +1307,7 @@ const GameDateStrip: React.FC<GameDateStripProps> = ({
             .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
     [schedule, simStart, gprd, revealedSeriesById]);
 
-    const groupedByDay = useMemo(() => groupByDay(allGames), [allGames]);
+    const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
 
     const currentGame = useMemo(() => allGames.find(g => g.id === currentGameId), [allGames, currentGameId]);
     const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
@@ -1315,9 +1316,9 @@ const GameDateStrip: React.FC<GameDateStripProps> = ({
     // 사용자가 화살표로 다른 날짜를 골라놓은 뒤 currentGame이 바뀌어도 선택이 안 튀게 한다.
     useEffect(() => {
         if (selectedDateKey === null && currentGame) {
-            setSelectedDateKey(kstDateKey(currentGame));
+            setSelectedDateKey(kstDateKey(currentGame, preferVirtual));
         }
-    }, [selectedDateKey, currentGame]);
+    }, [selectedDateKey, currentGame, preferVirtual]);
 
     const dateKeys = useMemo(() => groupedByDay.map(g => g.dateKey), [groupedByDay]);
     const activeDateKey = selectedDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
@@ -2234,6 +2235,7 @@ const MultiGamePbpView: React.FC = () => {
             roomId={room?.id}
             accessToken={session?.access_token}
             getGameUrlId={getGameUrlId}
+            preferVirtual={league?.type === 'main_league'}
         />
     );
 

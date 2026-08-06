@@ -95,9 +95,10 @@ interface GameRowProps {
     onView: (gameId: string) => void;
     serverNow: number;
     zebra: boolean;
+    preferVirtual: boolean;
 }
 
-const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, serverNow, zebra }) => {
+const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, serverNow, zebra, preferVirtual }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
@@ -109,12 +110,12 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
         }`}>
             {/* 날짜 */}
             <span className="w-10 text-center font-mono text-xs font-medium text-slate-300">
-                {fmtDateShort(g)}
+                {fmtDateShort(g, preferVirtual)}
             </span>
 
             {/* 시간 (KST) */}
             <span className="w-12 text-center font-mono text-xs font-medium text-slate-300">
-                {fmtTime(g)}
+                {fmtTime(g, preferVirtual)}
             </span>
 
             {/* 토너먼트 라운드 */}
@@ -267,6 +268,10 @@ const MultiScheduleView: React.FC = () => {
     const { getGameUrlId } = useGameShortCodes(room?.id);
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
+    // 메인리그 정규시즌 경기는 date/time이 가상 NBA 캘린더 값이라 사용자에게 그대로 보여줘야
+    // 한다(실제 실행 시각인 scheduledAt은 노출 금지) — 플레이오프(isPlayoff)는 kstDateKey 내부에서
+    // 별도로 scheduledAt 우선으로 처리되므로 여기선 리그 타입만 확인하면 된다.
+    const preferVirtual = league?.type === 'main_league';
     const { session } = useGame();
     const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useSeasonContext();
     const serverNow = useServerClock();
@@ -361,7 +366,7 @@ const MultiScheduleView: React.FC = () => {
 
     // 시간순 정렬(allGames가 이미 scheduledAt 기준 오름차순) — 종료된 경기가 과거 시각이라
     // 자연히 최상단에, 진행중/예정 경기는 시간이 흐른 순서 그대로 아래에 이어진다.
-    const groupedByDay = useMemo(() => groupByDay(allGames), [allGames]);
+    const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
     const totalPlayed  = useMemo(() => allGames.filter(g => getGameDisplayState(g, serverNow) === 'final').length, [allGames, serverNow]);
 
     // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
@@ -414,6 +419,7 @@ const MultiScheduleView: React.FC = () => {
                                     onView={handleView}
                                     serverNow={serverNow}
                                     zebra={i % 2 === 1}
+                                    preferVirtual={preferVirtual}
                                 />
                             ))}
                         </div>
