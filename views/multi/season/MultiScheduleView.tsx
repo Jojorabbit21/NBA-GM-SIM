@@ -120,13 +120,12 @@ const EMPTY_CELL = '-';
 interface MatchupTeamBlockProps {
     team: any;
     fallbackId: string;
-    isMyTeam: boolean;
     showLive?: boolean;
 }
 
 // 원정/홈 팀을 로고 배지 대신 "셀 배경 = 팀 메인 컬러" 블록으로 표시. 두 블록을 붙여서
 // (gap 없이) 렌더링하면 매치업 컬럼 전체가 원정/홈 컬러로 절반씩 나뉜 하나의 띠처럼 보인다.
-const MatchupTeamBlock: React.FC<MatchupTeamBlockProps> = ({ team, fallbackId, isMyTeam, showLive }) => {
+const MatchupTeamBlock: React.FC<MatchupTeamBlockProps> = ({ team, fallbackId, showLive }) => {
     const colorPrimary = team?.color_primary ?? '#334155';
     const colorText = team?.color_text ?? getReadableTextColor(colorPrimary);
     return (
@@ -134,11 +133,11 @@ const MatchupTeamBlock: React.FC<MatchupTeamBlockProps> = ({ team, fallbackId, i
             // py-4가 이 블록의 실질 높이(및 grid 행 높이 자동계산의 기준)를 키운다 — h-full은
             // 퍼센트 높이라 행 높이를 정하는 계산에서는 auto로 취급되고 stretch로만 채워지므로,
             // "행을 지금보다 높게" 요구사항은 반드시 실제 padding으로 만들어야 한다.
-            className={`flex-1 h-full min-w-0 flex items-center gap-2 px-3 py-4 ${isMyTeam ? 'ring-2 ring-inset ring-yellow-400' : ''}`}
+            className="flex-1 h-full min-w-0 flex items-center gap-2 px-3 py-4"
             style={{ backgroundColor: colorPrimary, color: colorText }}
         >
             <span className="font-bold text-sm shrink-0 ko-normal">{team?.team_abbr ?? fallbackId}</span>
-            <span className="text-sm truncate ko-normal">{team?.team_name ?? fallbackId}</span>
+            <span className="font-bold text-sm truncate ko-normal">{team?.team_name ?? fallbackId}</span>
             {showLive && (
                 <span className="flex items-center gap-1 shrink-0 animate-pulse ml-auto">
                     <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -160,10 +159,10 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
     const pillBtn = "flex items-center justify-center gap-1 h-7 px-2.5 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal";
 
     return (
-        <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 items-stretch px-2 border-b border-slate-800 border-l-4 transition-colors ${
+        <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 items-stretch px-2 border-b border-slate-800 transition-colors ${
             isMyGame
-                ? 'border-l-emerald-500 bg-emerald-500/10'
-                : `border-l-transparent hover:bg-slate-800/40 ${zebra ? 'bg-slate-800/25' : ''}`
+                ? 'bg-emerald-500/20'
+                : `hover:bg-slate-800/40 ${zebra ? 'bg-slate-800/25' : ''}`
         }`}>
             {/* 날짜 */}
             <div className="h-full flex items-center justify-center">
@@ -188,8 +187,8 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
 
             {/* 매치업(원정+홈) — 로고 없이 팀 컬러 배경 블록 2개를 패딩 없이 붙여서 표시 */}
             <div className="flex h-full">
-                <MatchupTeamBlock team={away} fallbackId={g.awayTeamId} isMyTeam={g.awayTeamId === myTeamId} />
-                <MatchupTeamBlock team={home} fallbackId={g.homeTeamId} isMyTeam={g.homeTeamId === myTeamId} showLive={state === 'live'} />
+                <MatchupTeamBlock team={away} fallbackId={g.awayTeamId} />
+                <MatchupTeamBlock team={home} fallbackId={g.homeTeamId} showLive={state === 'live'} />
             </div>
 
             {/* PTS 리더 — 경기 종료 후에만 표시 */}

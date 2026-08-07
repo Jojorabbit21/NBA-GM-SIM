@@ -35,6 +35,19 @@
 
 ---
 
+## 2026-08-07 — 리스트 행 마이팀 강조 방식 정리(좌측선 제거, 배경 진하게), 매치업 텍스트 볼드
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx`
+
+- `MatchupTeamBlock`: 내 팀 표시용 `ring-2 ring-inset ring-yellow-400`(노란 테두리) 제거, 이제 안 쓰는 `isMyTeam` prop도 인터페이스/호출부에서 함께 삭제. 팀 이름 span에 `font-bold` 추가(약어는 이미 볼드였음 — 이제 원정/홈 텍스트 전체가 볼드).
+- `GameRow` 행 컨테이너: 내 팀 경기 강조를 `border-l-4 border-l-emerald-500 bg-emerald-500/10`(좌측 강조선 + 옅은 배경)에서 `bg-emerald-500/20`(좌측선 삭제, 배경 불투명도 10%→20%로 상향)로 변경. `border-l-4`/`border-l-transparent` 클래스 자체도 제거.
+
+**검증**: `tsc --noEmit`/`vite build` 통과, 중괄호 balance 스크립트로 확인.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-08-07 — 매치업 컬럼 상한 480px + 남는 공간 PTS/REB/AST 균등 분배
 
 **배경**: 실제 화면 스크린샷 피드백 — 매치업 컬럼이 `1fr`로 남는 공간을 전부 가져가서 원정/홈 영역이 화면의 절반 이상을 차지할 정도로 지나치게 넓어짐. "50%까지 줄여도 될거같다" → 이어서 "줄어든 만큼 PTS/REB/AST를 균등하게 늘려달라"는 후속 요청.
