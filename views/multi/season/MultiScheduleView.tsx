@@ -546,16 +546,18 @@ const MultiScheduleView: React.FC = () => {
         try { localStorage.setItem('nbagm:scheduleViewMode', viewMode); } catch { /* 용량 초과 등 무시 */ }
     }, [viewMode]);
 
-    // 카드 뷰에서 현재 보고 있는 날짜 — 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴).
-    const [selectedCardDate, setSelectedCardDate] = useState<string | null>(null);
+    // 현재 보고 있는 날짜 — 리스트/카드 모드 공통으로 공유(둘 다 하루치만 보여줌).
+    // 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴).
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
     useEffect(() => {
-        if (selectedCardDate === null && todayKey) setSelectedCardDate(todayKey);
-    }, [selectedCardDate, todayKey]);
-    const activeCardDate = selectedCardDate ?? todayKey ?? groupedByDay[0]?.dateKey ?? null;
-    const cardDayGames = useMemo(
-        () => groupedByDay.find(g => g.dateKey === activeCardDate)?.games ?? [],
-        [groupedByDay, activeCardDate],
+        if (selectedDate === null && todayKey) setSelectedDate(todayKey);
+    }, [selectedDate, todayKey]);
+    const activeDate = selectedDate ?? todayKey ?? groupedByDay[0]?.dateKey ?? null;
+    const activeDayGroup = useMemo(
+        () => groupedByDay.find(g => g.dateKey === activeDate) ?? null,
+        [groupedByDay, activeDate],
     );
+    const activeDayGames = activeDayGroup?.games ?? [];
 
     if (isLoading) {
         return (
@@ -598,51 +600,47 @@ const MultiScheduleView: React.FC = () => {
                 </div>
             </div>
 
-            {viewMode === 'list' ? (
-                <div className="flex flex-col gap-6">
-                    {groupedByDay.map(({ dateKey, label, games }) => {
-                        const isToday = dateKey === todayKey;
-                        return (
-                            <div key={dateKey}>
-
-                                {/* 날짜 헤더 — 박스 없이 제목만 */}
-                                <div className="flex items-center gap-2 mb-2">
-                                    <h2 className={`text-base font-bold ko-normal ${isToday ? 'text-indigo-300' : 'text-white'}`}>{label}</h2>
-                                    {isToday && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
-                                    <span className="text-xs text-slate-500 ko-normal">{games.length}경기</span>
-                                </div>
-
-                                {/* 컬럼 헤더 */}
-                                {COLUMN_HEADER}
-
-                                {/* 경기 행 */}
-                                {games.map((g, i) => (
-                                    <GameRow
-                                        key={g.id}
-                                        g={g}
-                                        state={getGameDisplayState(g, serverNow)}
-                                        teamMap={teamMap}
-                                        myTeamId={myTeamId}
-                                        liveSummaries={liveSummaries}
-                                        gameLeadersMap={gameLeadersMap}
-                                        roundLabelMap={roundLabelMap}
-                                        onView={handleView}
-                                        serverNow={serverNow}
-                                        zebra={i % 2 === 1}
-                                        preferVirtual={preferVirtual}
-                                    />
-                                ))}
-                            </div>
-                        );
-                    })}
-                </div>
-            ) : activeCardDate ? (
+            {activeDate ? (
                 <div>
-                    <DateControlBar activeDate={activeCardDate} todayKey={todayKey} onChange={setSelectedCardDate} />
+                    <DateControlBar activeDate={activeDate} todayKey={todayKey} onChange={setSelectedDate} />
 
-                    {cardDayGames.length > 0 ? (
+                    {activeDayGames.length === 0 ? (
+                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                    ) : viewMode === 'list' ? (
+                        <div>
+                            {/* 날짜 헤더 — 박스 없이 제목만 */}
+                            <div className="flex items-center gap-2 mb-2">
+                                <h2 className={`text-base font-bold ko-normal ${activeDate === todayKey ? 'text-indigo-300' : 'text-white'}`}>
+                                    {activeDayGroup?.label ?? fmtDayLabel(activeDate)}
+                                </h2>
+                                {activeDate === todayKey && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
+                                <span className="text-xs text-slate-500 ko-normal">{activeDayGames.length}경기</span>
+                            </div>
+
+                            {/* 컬럼 헤더 */}
+                            {COLUMN_HEADER}
+
+                            {/* 경기 행 */}
+                            {activeDayGames.map((g, i) => (
+                                <GameRow
+                                    key={g.id}
+                                    g={g}
+                                    state={getGameDisplayState(g, serverNow)}
+                                    teamMap={teamMap}
+                                    myTeamId={myTeamId}
+                                    liveSummaries={liveSummaries}
+                                    gameLeadersMap={gameLeadersMap}
+                                    roundLabelMap={roundLabelMap}
+                                    onView={handleView}
+                                    serverNow={serverNow}
+                                    zebra={i % 2 === 1}
+                                    preferVirtual={preferVirtual}
+                                />
+                            ))}
+                        </div>
+                    ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {cardDayGames.map(g => (
+                            {activeDayGames.map(g => (
                                 <GameCard
                                     key={g.id}
                                     g={g}
@@ -656,8 +654,6 @@ const MultiScheduleView: React.FC = () => {
                                 />
                             ))}
                         </div>
-                    ) : (
-                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
                     )}
                 </div>
             ) : null}

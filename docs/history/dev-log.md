@@ -52,6 +52,8 @@
 - "달력"(월간 그리드) 보기 모드는 이번 범위에서 제외 — 사용자 확인 결과 이번엔 리스트/카드 2종만 구현하기로 결정, 별도 요청 시 추가 예정.
 - 날짜 이동은 로컬 `Date.setMonth()`/`setDate()` 기반이라 월말 날짜(예: 1/31 -1개월)에서 JS 자체의 날짜 오버플로 처리를 그대로 따름(별도 보정 없음).
 
+**[후속 수정, 같은 날]**: 사용자 피드백 — "리스트도 날짜를 선택해서 하루치 일정만 보여주면 좋겠음". 처음엔 카드 모드만 날짜 필터가 적용되고 리스트 모드는 여전히 전체 기간이 한 번에 스크롤되는 구조였음. `selectedCardDate`/`activeCardDate`/`cardDayGames`를 `selectedDate`/`activeDate`/`activeDayGames`로 일반화해 리스트/카드 두 모드가 `DateControlBar`와 "선택된 하루치 경기만" 필터링을 공유하도록 변경 — 리스트 모드도 이제 `groupedByDay.map()`으로 전체 날짜를 순회하는 대신 `activeDayGroup` 하나만 렌더링. `tsc --noEmit`/`vite build` 재확인.
+
 **롤백 방법**: 이 커밋의 diff를 되돌리면 됨. `nbagm:scheduleViewMode` localStorage 키는 신규 값이라 롤백해도 기존 동작에 영향 없음.
 
 ---
