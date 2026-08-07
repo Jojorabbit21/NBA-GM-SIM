@@ -35,6 +35,23 @@
 
 ---
 
+## 2026-08-07 — 연도 드롭다운 제거, 날짜 셀 크기/정렬/폰트 재조정
+
+**배경**: 사용자 피드백 4가지 — ① 날짜 셀 콘텐츠 수직 중앙 정렬 ② 상단 연도 선택 행 제거 ③ 요일 폰트 12px(`text-xs`), 날짜 폰트 16px(`text-base`)로 변경 ④ 날짜 셀 전체 크기 확대 + 셀 사이 간격 확대.
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx`
+
+- `DateControlBar`에서 연도 드롭다운 행 전체 삭제 — `isYearMenuOpen`/`yearMenuRef`/`sortedDates`/`availableYears`/`activeYear`/`selectYear` 관련 state·로직 전부 제거, 날짜 캐러셀 한 줄만 남김.
+- 날짜 셀을 `px-2.5 pt-4 pb-1.5`(비대칭 padding 기반) → `w-16 h-16`(고정 정사각형) + `flex flex-col items-center justify-center`로 변경 — padding으로 어림잡던 것 대신 flex 정렬로 콘텐츠가 셀 안에서 정확히 수직/수평 중앙에 온다.
+- 요일 span `text-[10px]` → `text-xs`(12px), 날짜 숫자 span `text-sm` → `text-base`(16px).
+- 캐러셀 바깥 `<div className="flex items-center gap-0.5">` → `gap-2`로 셀 사이 간격 확대.
+
+**검증**: `tsc --noEmit`/`vite build` 통과, 중괄호 balance 스크립트로 확인.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-08-07 — 날짜 캐러셀 세부 스타일 조정(정사각형 카드, 인디고 강조)
 
 **배경**: 바로 위 항목(연도 드롭다운 + 날짜 캐러셀) 직후 세부 스타일 피드백 4가지: ① 연도 폰트 `text-xs`→`text-sm`, 좌우 구분선 삭제 ② 둘째 줄 날짜 카드가 정사각형이 되도록 상단 패딩 확대 ③ 날짜 숫자 폰트를 모노 대신 기본 폰트로 ④ 활성 날짜 카드와 `<`/`>` 화살표에 인디고 색상 적용.

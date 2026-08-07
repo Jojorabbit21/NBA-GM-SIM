@@ -396,13 +396,9 @@ interface DateControlBarProps {
 const CAROUSEL_OFFSETS = [-3, -2, -1, 0, 1, 2, 3];
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
-// [2026-08-07] 레퍼런스 이미지(모바일 스케줄 앱) 참고 요청 — 연도(드롭다운) + 하루씩 넘기는
-// 날짜 캐러셀 2단 구성으로 교체. 가운데(선택된 날짜) 칸을 클릭하면 MonthCalendarPopover가
-// 뜬다(GameDateStrip과 동일 컴포넌트 재사용).
+// [2026-08-07] 연도 드롭다운 행 제거(사용자 요청) — 날짜 캐러셀 한 줄만 남김. 가운데(선택된
+// 날짜) 칸을 클릭하면 MonthCalendarPopover가 뜬다(GameDateStrip과 동일 컴포넌트 재사용).
 const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, selectableDates }) => {
-    const [isYearMenuOpen, setIsYearMenuOpen] = useState(false);
-    const yearMenuRef = useRef<HTMLDivElement>(null);
-
     const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
     const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
     const dateMenuRef = useRef<HTMLDivElement>(null);
@@ -416,129 +412,86 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
     }, [isDateMenuOpen, activeDate]);
 
     useEffect(() => {
-        if (!isDateMenuOpen && !isYearMenuOpen) return;
+        if (!isDateMenuOpen) return;
         const handler = (e: MouseEvent) => {
-            if (isDateMenuOpen && !dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
-            if (isYearMenuOpen && !yearMenuRef.current?.contains(e.target as Node)) setIsYearMenuOpen(false);
+            if (!dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, [isDateMenuOpen, isYearMenuOpen]);
+    }, [isDateMenuOpen]);
 
-    // 시즌이 걸쳐 있는 연도만 드롭다운에 노출(예: 2026년 10월 개막 시즌이면 2026/2027).
-    const sortedDates = useMemo(() => [...selectableDates].sort(), [selectableDates]);
-    const availableYears = useMemo(() => {
-        const years = new Set<number>();
-        for (const dk of sortedDates) years.add(Number(dk.slice(0, 4)));
-        return [...years].sort((a, b) => a - b);
-    }, [sortedDates]);
-    const activeYear = Number(activeDate.slice(0, 4));
-
-    const selectYear = (year: number) => {
-        const match = sortedDates.find(dk => dk.startsWith(String(year)));
-        if (match) onChange(match);
-        setIsYearMenuOpen(false);
-    };
+    // 셀 크기(w-16 h-16)를 flex 정렬 기준으로 삼아 내부 콘텐츠(요일+날짜)가 수직/수평
+    // 모두 중앙 정렬되도록 한다 — 이전엔 padding으로만 잡아서 정확히 중앙이 아니었다.
+    const cellBase = "flex flex-col items-center justify-center w-16 h-16 rounded-md transition-colors shrink-0";
 
     return (
-        <div className="flex flex-col items-center gap-1.5 w-full">
-            {/* 연도 — 클릭하면 시즌이 걸쳐 있는 연도만 선택 가능한 드롭다운 */}
-            <div ref={yearMenuRef} className="relative flex items-center justify-center">
-                <button
-                    onClick={() => setIsYearMenuOpen(o => !o)}
-                    className="px-1 text-sm font-bold text-slate-400 hover:text-white transition-colors ko-normal tabular-nums"
-                >
-                    {activeYear}
-                </button>
-                {isYearMenuOpen && availableYears.length > 0 && (
-                    <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-30 bg-slate-900 border border-slate-700 rounded-md shadow-2xl py-1 min-w-[72px]">
-                        {availableYears.map(y => (
-                            <button
-                                key={y}
-                                onClick={() => selectYear(y)}
-                                className={`block w-full px-4 py-1.5 text-sm font-bold text-center tabular-nums transition-colors ${
-                                    y === activeYear ? 'text-white bg-slate-800' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                                }`}
-                            >
-                                {y}
-                            </button>
-                        ))}
+        <div className="flex items-center gap-2">
+            <button
+                onClick={() => onChange(addDaysToKey(activeDate, -1))}
+                className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
+            >
+                <ChevronLeft size={16} />
+            </button>
+
+            {CAROUSEL_OFFSETS.map(offset => {
+                const dk = addDaysToKey(activeDate, offset);
+                const isActive = offset === 0;
+                const weekday = WEEKDAYS_KO[new Date(dk + 'T00:00:00').getDay()];
+                const cellContent = (
+                    <div className="flex flex-col items-center justify-center gap-1 leading-none">
+                        <span className={`text-xs font-medium ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
+                            {weekday}
+                        </span>
+                        <span className={`font-bold text-base tabular-nums ko-normal ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                            {fmtMonthDot(dk)}
+                        </span>
                     </div>
-                )}
-            </div>
+                );
 
-            {/* 날짜 캐러셀 — 화살표는 하루씩 이동, 칸을 직접 클릭해도 그 날짜로 바로 이동.
-                가운데(선택된 날짜) 칸만 클릭 시 데이트피커(월간 달력)가 뜬다. */}
-            <div className="flex items-center gap-0.5">
-                <button
-                    onClick={() => onChange(addDaysToKey(activeDate, -1))}
-                    className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
-                >
-                    <ChevronLeft size={16} />
-                </button>
-
-                {CAROUSEL_OFFSETS.map(offset => {
-                    const dk = addDaysToKey(activeDate, offset);
-                    const isActive = offset === 0;
-                    const weekday = WEEKDAYS_KO[new Date(dk + 'T00:00:00').getDay()];
-                    const cellContent = (
-                        <div className="flex flex-col items-center leading-tight">
-                            <span className={`text-[10px] font-medium ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
-                                {weekday}
-                            </span>
-                            <span className={`font-bold text-sm tabular-nums ko-normal ${isActive ? 'text-white' : 'text-slate-300'}`}>
-                                {fmtMonthDot(dk)}
-                            </span>
-                        </div>
-                    );
-
-                    if (!isActive) {
-                        return (
-                            <button
-                                key={offset}
-                                onClick={() => onChange(dk)}
-                                className="flex items-center justify-center px-2.5 pt-4 pb-1.5 rounded-md hover:bg-slate-700/60 transition-colors shrink-0"
-                            >
-                                {cellContent}
-                            </button>
-                        );
-                    }
-
+                if (!isActive) {
                     return (
-                        <div key={offset} ref={dateMenuRef} className="relative shrink-0">
-                            <button
-                                onClick={e => {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    setMenuPos({ x: rect.left, y: rect.bottom });
-                                    setIsDateMenuOpen(o => !o);
-                                }}
-                                className={`flex items-center justify-center px-2.5 pt-4 pb-1.5 rounded-md transition-colors ${
-                                    isDateMenuOpen ? 'bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-500'
-                                }`}
-                            >
-                                {cellContent}
-                            </button>
-                            {isDateMenuOpen && viewYM && menuPos && (
-                                <MonthCalendarPopover
-                                    position={menuPos}
-                                    viewYM={viewYM}
-                                    onViewYMChange={setViewYM}
-                                    selectableDates={selectableDates}
-                                    activeDateKey={activeDate}
-                                    onSelect={selected => { onChange(selected); setIsDateMenuOpen(false); }}
-                                />
-                            )}
-                        </div>
+                        <button
+                            key={offset}
+                            onClick={() => onChange(dk)}
+                            className={`${cellBase} hover:bg-slate-700/60`}
+                        >
+                            {cellContent}
+                        </button>
                     );
-                })}
+                }
 
-                <button
-                    onClick={() => onChange(addDaysToKey(activeDate, 1))}
-                    className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
-                >
-                    <ChevronRight size={16} />
-                </button>
-            </div>
+                return (
+                    <div key={offset} ref={dateMenuRef} className="relative shrink-0">
+                        <button
+                            onClick={e => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setMenuPos({ x: rect.left, y: rect.bottom });
+                                setIsDateMenuOpen(o => !o);
+                            }}
+                            className={`${cellBase} ${isDateMenuOpen ? 'bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                        >
+                            {cellContent}
+                        </button>
+                        {isDateMenuOpen && viewYM && menuPos && (
+                            <MonthCalendarPopover
+                                position={menuPos}
+                                viewYM={viewYM}
+                                onViewYMChange={setViewYM}
+                                selectableDates={selectableDates}
+                                activeDateKey={activeDate}
+                                onSelect={selected => { onChange(selected); setIsDateMenuOpen(false); }}
+                            />
+                        )}
+                    </div>
+                );
+            })}
+
+            <button
+                onClick={() => onChange(addDaysToKey(activeDate, 1))}
+                className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
+            >
+                <ChevronRight size={16} />
+            </button>
         </div>
     );
 };
