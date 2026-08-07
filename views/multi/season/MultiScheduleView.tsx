@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Tv, LayoutList, LayoutGrid } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
@@ -391,20 +391,39 @@ interface DateControlBarProps {
 
 const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange }) => {
     const navBtn = "px-2.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:bg-slate-700/60 hover:text-white transition-colors ko-normal";
+    // 숨겨진 <input type="date">를 opacity-0로 겹쳐서 클릭을 위임하는 방식은 브라우저에 따라
+    // (특히 label을 통한 간접 클릭) 네이티브 데이트피커가 안 뜨는 경우가 있다 — 보이는 버튼의
+    // 클릭 핸들러에서 showPicker()를 직접 호출해 확실하게 피커를 띄운다(미지원 브라우저는
+    // input.click()으로 폴백).
+    const dateInputRef = useRef<HTMLInputElement>(null);
+    const openDatePicker = () => {
+        const el = dateInputRef.current;
+        if (!el) return;
+        if (typeof el.showPicker === 'function') el.showPicker();
+        else el.click();
+    };
     return (
         <div className="flex items-center gap-1 flex-wrap">
             <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, -1))}>저번달</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -7))}>저번주</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -1))}>어제</button>
-            <label className="relative flex items-center px-3 py-1.5 rounded-md bg-slate-700 text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap">
-                {fmtFullDate(activeDate)}
+            <div className="relative">
+                <button
+                    type="button"
+                    onClick={openDatePicker}
+                    className="flex items-center px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap transition-colors"
+                >
+                    {fmtFullDate(activeDate)}
+                </button>
                 <input
+                    ref={dateInputRef}
                     type="date"
                     value={activeDate}
                     onChange={e => e.target.value && onChange(e.target.value)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    tabIndex={-1}
+                    className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
                 />
-            </label>
+            </div>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 1))}>내일</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 7))}>다음주</button>
             <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, 1))}>다음달</button>

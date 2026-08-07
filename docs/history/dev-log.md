@@ -35,6 +35,43 @@
 
 ---
 
+## 2026-08-07 — 헤더 날짜 클릭 시 데이트피커 확실히 뜨도록 수정
+
+**배경**: 사용자 피드백 — "헤더 가운데의 날짜를 누르면 데이트피커가 뜨도록 해줘." 기존 구현은 보이는 날짜 라벨을 `<label>`로 감싸고 그 안에 `opacity-0` `<input type="date">`를 겹쳐서, label 클릭 시 브라우저가 자동으로 내부 input에 클릭을 위임하는 방식이었다 — 그런데 이 간접 클릭 위임 방식은 브라우저/버전에 따라 네이티브 데이트피커가 안 뜨고 포커스만 잡히는 경우가 있어 신뢰할 수 없었다.
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx`
+
+**Before**:
+```tsx
+<label className="... cursor-pointer ...">
+    {fmtFullDate(activeDate)}
+    <input type="date" value={activeDate} onChange={...} className="absolute inset-0 opacity-0 cursor-pointer" />
+</label>
+```
+
+**After**:
+```tsx
+const dateInputRef = useRef<HTMLInputElement>(null);
+const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.click();
+};
+...
+<div className="relative">
+    <button type="button" onClick={openDatePicker} className="...">{fmtFullDate(activeDate)}</button>
+    <input ref={dateInputRef} type="date" value={activeDate} onChange={...} tabIndex={-1} className="absolute inset-0 opacity-0 pointer-events-none" />
+</div>
+```
+보이는 버튼의 클릭 핸들러가 `HTMLInputElement.showPicker()`를 직접 호출해 피커를 확실히 띄우고(Chrome/Edge/Firefox 최신 버전 지원), 미지원 브라우저는 `input.click()`로 폴백한다. 숨겨진 input은 `pointer-events-none`으로 만들어 클릭 이벤트가 오직 버튼에서만 발생하도록 정리.
+
+**검증**: `tsc --noEmit`/`vite build` 통과.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-08-07 — 시즌 일정 헤더/바디 완전 플랫화(slate) + 테이블 14px + 컬럼폭 고정
 
 **배경**: 바로 위 항목(인디고 헤더 통합) 직후 사용자가 정확한 레이아웃 시안을 제시 — 헤더를 `[시즌 일정] ── [저번달][저번주][어제][날짜][내일][다음주][다음달] ── [리스트/카드]` 한 줄로 완전히 압축, 색상은 인디고 대신 slate(배경과는 구분되게), 페이지 패딩/컨테이너 박스(둥근 모서리·테두리 카드)를 전부 제거해 헤더·바디가 화면 가장자리에 딱 붙게. 바디도 동일하게 컨테이너 해체 + 패딩 삭제, 내부 테이블은 보더 라디우스만 삭제(테두리는 유지), 헤더 컬럼과 바디 컬럼 폭이 정확히 일치하도록, 폰트는 14px 고정.
