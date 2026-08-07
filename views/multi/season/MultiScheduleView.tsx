@@ -65,27 +65,37 @@ interface TeamCellProps {
     colorText?: string | null;
     isMyTeam: boolean;
     showLive?: boolean;
+    // 'sm' = 카드 뷰(기존 크기), 'lg' = 리스트 테이블(16px 이상 유지).
+    size?: 'sm' | 'lg';
 }
 
-const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive }) => (
-    <div className="flex items-center gap-1.5 min-w-0">
+const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive, size = 'sm' }) => (
+    <div className={`flex items-center min-w-0 ${size === 'lg' ? 'gap-2.5' : 'gap-1.5'}`}>
         <div
-            className="w-9 h-5 rounded text-[10px] font-black flex items-center justify-center shrink-0"
+            className={`rounded font-black flex items-center justify-center shrink-0 ${
+                size === 'lg' ? 'w-12 h-8 text-xs' : 'w-9 h-5 text-[10px]'
+            }`}
             style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
         >
             {abbr.slice(0, 3)}
         </div>
-        <span className={`font-medium truncate text-xs ko-normal ${isMyTeam ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}>
+        <span className={`font-medium truncate ko-normal ${size === 'lg' ? 'text-base' : 'text-xs'} ${isMyTeam ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}>
             {name}
         </span>
         {showLive && (
             <span className="flex items-center gap-1 shrink-0 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                <span className="text-[10px] font-bold text-red-400">LIVE</span>
+                <span className={`font-bold text-red-400 ${size === 'lg' ? 'text-xs' : 'text-[10px]'}`}>LIVE</span>
             </span>
         )}
     </div>
 );
+
+// 일정 테이블(리스트 뷰) 공통 그리드/타이포 — 날짜/시간/팀/스탯/스코어 등 모든 셀이 항상
+// 16px(text-base) 이상을 유지하도록 컬럼 폭도 그에 맞춰 넉넉하게 잡는다. 좁은 화면에서는
+// 패널에 가로 스크롤이 생기는 쪽을 택한다(글자를 다시 작게 줄이지 않기 위함).
+const SCHEDULE_GRID_COLS =
+    'grid-cols-[72px_72px_88px_minmax(190px,1fr)_minmax(190px,1fr)_160px_160px_160px_92px_110px_88px]';
 
 interface GameRowProps {
     g: Game;
@@ -108,21 +118,23 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
     const roundLabel = g.isPlayoff && g.seriesId ? roundLabelMap[g.seriesId] : undefined;
 
     return (
-        <div className={`grid grid-cols-[auto_auto_auto_160px_1fr_auto_auto_auto_auto_auto_auto] gap-x-4 items-center px-2 py-2 border-b border-slate-800/70 ${
-            isMyGame ? 'bg-emerald-500/20' : zebra ? 'bg-white/[0.025]' : ''
+        <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 items-center px-4 py-3.5 border-b border-slate-800 border-l-4 transition-colors ${
+            isMyGame
+                ? 'border-l-emerald-500 bg-emerald-500/10'
+                : `border-l-transparent hover:bg-slate-800/40 ${zebra ? 'bg-slate-800/25' : ''}`
         }`}>
             {/* 날짜 */}
-            <span className="w-10 text-center font-mono text-xs font-medium text-slate-300">
+            <span className="text-center font-mono text-base font-medium text-slate-300">
                 {fmtDateShort(g, preferVirtual)}
             </span>
 
             {/* 시간 (KST) */}
-            <span className="w-12 text-center font-mono text-xs font-medium text-slate-300">
+            <span className="text-center font-mono text-base font-medium text-slate-300">
                 {fmtTime(g, preferVirtual)}
             </span>
 
             {/* 토너먼트 라운드 */}
-            <span className="w-14 text-xs font-medium text-slate-300 ko-normal truncate">
+            <span className="text-base font-medium text-slate-300 ko-normal truncate">
                 {roundLabel ?? ''}
             </span>
 
@@ -130,6 +142,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
             <div className="min-w-0">
                 {away ? (
                     <TeamCell
+                        size="lg"
                         name={away.team_name}
                         abbr={away.team_abbr}
                         colorPrimary={away.color_primary ?? '#334155'}
@@ -137,7 +150,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                         isMyTeam={g.awayTeamId === myTeamId}
                     />
                 ) : (
-                    <span className="text-xs font-medium text-slate-300">{g.awayTeamId}</span>
+                    <span className="text-base font-medium text-slate-300">{g.awayTeamId}</span>
                 )}
             </div>
 
@@ -145,6 +158,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
             <div className="min-w-0">
                 {home ? (
                     <TeamCell
+                        size="lg"
                         name={home.team_name}
                         abbr={home.team_abbr}
                         colorPrimary={home.color_primary ?? '#334155'}
@@ -153,59 +167,59 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                         showLive={state === 'live'}
                     />
                 ) : (
-                    <span className="text-xs font-medium text-slate-300">{g.homeTeamId}</span>
+                    <span className="text-base font-medium text-slate-300">{g.homeTeamId}</span>
                 )}
             </div>
 
             {/* PTS 리더 — 경기 종료 후에만 표시 */}
-            <span className="w-28 truncate text-xs font-medium text-slate-300 ko-normal">
+            <span className="truncate text-base font-medium text-slate-300 ko-normal">
                 {state === 'final' && gameLeadersMap[g.id]?.pts
                     ? `${gameLeadersMap[g.id].pts!.name} (${gameLeadersMap[g.id].pts!.value})`
                     : ''}
             </span>
 
             {/* REB 리더 */}
-            <span className="w-28 truncate text-xs font-medium text-slate-300 ko-normal">
+            <span className="truncate text-base font-medium text-slate-300 ko-normal">
                 {state === 'final' && gameLeadersMap[g.id]?.reb
                     ? `${gameLeadersMap[g.id].reb!.name} (${gameLeadersMap[g.id].reb!.value})`
                     : ''}
             </span>
 
             {/* AST 리더 */}
-            <span className="w-28 truncate text-xs font-medium text-slate-300 ko-normal">
+            <span className="truncate text-base font-medium text-slate-300 ko-normal">
                 {state === 'final' && gameLeadersMap[g.id]?.ast
                     ? `${gameLeadersMap[g.id].ast!.name} (${gameLeadersMap[g.id].ast!.value})`
                     : ''}
             </span>
 
             {/* 스코어 (원정-홈 순) */}
-            <div className="w-16 flex items-center justify-center gap-0.5 font-mono tabular-nums text-xs">
+            <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-lg">
                 {state === 'final' && g.homeScore != null && g.awayScore != null ? (
                     <>
-                        <span className="text-slate-300 font-semibold">{g.awayScore}</span>
-                        <span className="text-slate-400 mx-0.5">-</span>
-                        <span className="text-slate-300 font-semibold">{g.homeScore}</span>
+                        <span className="text-slate-200 font-bold">{g.awayScore}</span>
+                        <span className="text-slate-500">-</span>
+                        <span className="text-slate-200 font-bold">{g.homeScore}</span>
                     </>
                 ) : state === 'live' ? (() => {
                     const live = liveSummaries[g.id];
                     if (!live || live.homeScore == null || live.awayScore == null) {
-                        return <span className="text-red-400 font-bold animate-pulse">LIVE</span>;
+                        return <span className="text-red-400 font-bold text-base animate-pulse">LIVE</span>;
                     }
                     const liveHomeWon = live.homeScore > live.awayScore;
                     return (
                         <>
                             <span className={liveHomeWon ? 'text-white font-bold' : 'text-yellow-400 font-bold'}>{live.awayScore}</span>
-                            <span className="text-slate-400 mx-0.5">-</span>
+                            <span className="text-slate-500">-</span>
                             <span className={liveHomeWon ? 'text-yellow-400 font-bold' : 'text-white font-bold'}>{live.homeScore}</span>
                         </>
                     );
                 })() : (
-                    <span className="text-slate-300">—</span>
+                    <span className="text-slate-500 text-base">—</span>
                 )}
             </div>
 
             {/* 쿼터/게임클락 (LIVE) / 종료 표시 (완료) */}
-            <span className={`w-16 text-center font-mono text-xs ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-300'}`}>
+            <span className={`text-center font-mono text-base ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-300'}`}>
                 {state === 'live' && liveSummaries[g.id]
                     ? `Q${liveSummaries[g.id].quarter ?? 1} ${liveSummaries[g.id].clock ?? ''}`
                     : state === 'final'
@@ -213,30 +227,30 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                     : ''}
             </span>
 
-            {/* 보기/리뷰 버튼 — 행 높이가 라이브/비라이브에 따라 달라지지 않도록 h-5로 고정.
+            {/* 보기/리뷰 버튼 —
                 [Fix 2026-08-04] 시작 전 경기도 미리 중계방에 입장 가능(정시가 되면 화면이 자동으로
                 라이브로 전환됨) — 라이브 버튼과 동일한 모양, 색상만 슬레이트로 구분. */}
-            <div className="w-16 h-5 flex items-center justify-center">
+            <div className="flex items-center justify-center">
                 {state === 'live' ? (
                     <button
                         onClick={() => onView(g.id)}
-                        className="flex items-center justify-center gap-1 h-5 px-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-[10px] font-bold leading-none transition-all active:scale-95 ko-normal"
+                        className="flex items-center justify-center gap-1.5 h-8 px-3 bg-red-600 hover:bg-red-500 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal"
                     >
-                        <Tv size={10} />
+                        <Tv size={13} />
                         보기
                     </button>
                 ) : state === 'scheduled' ? (
                     <button
                         onClick={() => onView(g.id)}
-                        className="flex items-center justify-center gap-1 h-5 px-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-[10px] font-bold leading-none transition-all active:scale-95 ko-normal"
+                        className="flex items-center justify-center gap-1.5 h-8 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal"
                     >
-                        <Tv size={10} />
+                        <Tv size={13} />
                         보기
                     </button>
                 ) : (
                     <button
                         onClick={() => onView(g.id)}
-                        className="flex items-center gap-1 text-xs font-medium leading-none text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
+                        className="flex items-center gap-1 text-base font-medium leading-none text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
                     >
                         리뷰
                     </button>
@@ -247,18 +261,18 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
 };
 
 const COLUMN_HEADER = (
-    <div className="grid grid-cols-[auto_auto_auto_160px_1fr_auto_auto_auto_auto_auto_auto] gap-x-4 px-2 py-1.5 border-b border-slate-700">
-        <span className="text-xs font-medium text-slate-300 ko-normal w-10 text-center">날짜</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-12 text-center">시간</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-14">라운드</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal">원정</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal">홈</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-28">PTS</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-28">REB</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-28">AST</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-16 text-center">스코어</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-16 text-center">쿼터/시간</span>
-        <span className="text-xs font-medium text-slate-300 ko-normal w-16 text-center">보기</span>
+    <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 px-4 py-3 bg-slate-800/60 border-b border-slate-700`}>
+        <span className="text-base font-semibold text-slate-400 ko-normal text-center">날짜</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal text-center">시간</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">라운드</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">원정</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">홈</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">PTS</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">REB</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal">AST</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal text-center">스코어</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal text-center">쿼터/시간</span>
+        <span className="text-base font-semibold text-slate-400 ko-normal text-center">보기</span>
     </div>
 );
 
@@ -569,7 +583,8 @@ const MultiScheduleView: React.FC = () => {
 
     return (
         <div className="p-6 text-slate-200 pretendard">
-            <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+            {/* 페이지 헤더 — 패널 바깥, 화면 최상단 타이틀 */}
+            <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
                 <div>
                     <h1 className="text-xl font-black text-white ko-tight">시즌 일정</h1>
                     <p className="text-sm text-slate-500 ko-normal mt-1">
@@ -581,82 +596,86 @@ const MultiScheduleView: React.FC = () => {
                 <div className="flex items-center gap-1 bg-slate-800/60 rounded-lg p-1 shrink-0">
                     <button
                         onClick={() => setViewMode('list')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold ko-normal transition-colors ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold ko-normal transition-colors ${
                             viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        <LayoutList size={14} />
+                        <LayoutList size={15} />
                         리스트
                     </button>
                     <button
                         onClick={() => setViewMode('card')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold ko-normal transition-colors ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold ko-normal transition-colors ${
                             viewMode === 'card' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        <LayoutGrid size={14} />
+                        <LayoutGrid size={15} />
                         카드
                     </button>
                 </div>
             </div>
 
-            {activeDate ? (
-                <div>
-                    <DateControlBar activeDate={activeDate} todayKey={todayKey} onChange={setSelectedDate} />
+            {/* 일정 패널 — 날짜 컨트롤 + 본문(리스트/카드)을 하나의 틀로 묶어 시각적 골조를 만든다 */}
+            {activeDate && (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+                    {/* 날짜 컨트롤 바 — 패널 내부 상단 툴바(구분 배경으로 본문과 분리) */}
+                    <div className="px-4 py-3 bg-slate-950/40 border-b border-slate-800">
+                        <DateControlBar activeDate={activeDate} todayKey={todayKey} onChange={setSelectedDate} />
+                    </div>
 
-                    {activeDayGames.length === 0 ? (
-                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
-                    ) : viewMode === 'list' ? (
-                        <div>
-                            {/* 날짜 헤더 — 박스 없이 제목만 */}
-                            <div className="flex items-center gap-2 mb-2">
-                                <h2 className={`text-base font-bold ko-normal ${activeDate === todayKey ? 'text-indigo-300' : 'text-white'}`}>
-                                    {activeDayGroup?.label ?? fmtDayLabel(activeDate)}
-                                </h2>
-                                {activeDate === todayKey && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
-                                <span className="text-xs text-slate-500 ko-normal">{activeDayGames.length}경기</span>
+                    {/* 선택된 날짜 요약 */}
+                    <div className="flex items-center gap-2 px-4 pt-4">
+                        <h2 className={`text-base font-bold ko-normal ${activeDate === todayKey ? 'text-indigo-300' : 'text-white'}`}>
+                            {activeDayGroup?.label ?? fmtDayLabel(activeDate)}
+                        </h2>
+                        {activeDate === todayKey && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
+                        <span className="text-xs text-slate-500 ko-normal">{activeDayGames.length}경기</span>
+                    </div>
+
+                    {/* 본문: 리스트 테이블 또는 카드 그리드 */}
+                    <div className="p-4">
+                        {activeDayGames.length === 0 ? (
+                            <p className="text-base text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                        ) : viewMode === 'list' ? (
+                            <div className="rounded-lg border border-slate-800 overflow-hidden overflow-x-auto">
+                                {COLUMN_HEADER}
+                                {activeDayGames.map((g, i) => (
+                                    <GameRow
+                                        key={g.id}
+                                        g={g}
+                                        state={getGameDisplayState(g, serverNow)}
+                                        teamMap={teamMap}
+                                        myTeamId={myTeamId}
+                                        liveSummaries={liveSummaries}
+                                        gameLeadersMap={gameLeadersMap}
+                                        roundLabelMap={roundLabelMap}
+                                        onView={handleView}
+                                        serverNow={serverNow}
+                                        zebra={i % 2 === 1}
+                                        preferVirtual={preferVirtual}
+                                    />
+                                ))}
                             </div>
-
-                            {/* 컬럼 헤더 */}
-                            {COLUMN_HEADER}
-
-                            {/* 경기 행 */}
-                            {activeDayGames.map((g, i) => (
-                                <GameRow
-                                    key={g.id}
-                                    g={g}
-                                    state={getGameDisplayState(g, serverNow)}
-                                    teamMap={teamMap}
-                                    myTeamId={myTeamId}
-                                    liveSummaries={liveSummaries}
-                                    gameLeadersMap={gameLeadersMap}
-                                    roundLabelMap={roundLabelMap}
-                                    onView={handleView}
-                                    serverNow={serverNow}
-                                    zebra={i % 2 === 1}
-                                    preferVirtual={preferVirtual}
-                                />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {activeDayGames.map(g => (
-                                <GameCard
-                                    key={g.id}
-                                    g={g}
-                                    state={getGameDisplayState(g, serverNow)}
-                                    teamMap={teamMap}
-                                    myTeamId={myTeamId}
-                                    liveSummaries={liveSummaries}
-                                    gameLeadersMap={gameLeadersMap}
-                                    onView={handleView}
-                                    preferVirtual={preferVirtual}
-                                />
-                            ))}
-                        </div>
-                    )}
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {activeDayGames.map(g => (
+                                    <GameCard
+                                        key={g.id}
+                                        g={g}
+                                        state={getGameDisplayState(g, serverNow)}
+                                        teamMap={teamMap}
+                                        myTeamId={myTeamId}
+                                        liveSummaries={liveSummaries}
+                                        gameLeadersMap={gameLeadersMap}
+                                        onView={handleView}
+                                        preferVirtual={preferVirtual}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            ) : null}
+            )}
         </div>
     );
 };
