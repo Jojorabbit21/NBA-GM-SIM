@@ -59,37 +59,6 @@ function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
 
 // ── 서브 컴포넌트 ──────────────────────────────────────────────────────────────
 
-interface TeamCellProps {
-    name: string;
-    abbr: string;
-    colorPrimary: string;
-    colorText?: string | null;
-    isMyTeam: boolean;
-    showLive?: boolean;
-}
-
-// 카드 뷰(GameCard) 전용 — 리스트 뷰는 로고 배지 대신 팀 컬러를 셀 배경 전체에 칠하는
-// 방식으로 바뀌어(아래 GameRow의 매치업 셀 참조) 더 이상 이 배지를 쓰지 않는다.
-const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive }) => (
-    <div className="flex items-center gap-1.5 min-w-0">
-        <div
-            className="w-9 h-5 rounded text-[10px] font-black flex items-center justify-center shrink-0"
-            style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
-        >
-            {abbr.slice(0, 3)}
-        </div>
-        <span className={`font-medium truncate ko-normal text-xs ${isMyTeam ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}>
-            {name}
-        </span>
-        {showLive && (
-            <span className="flex items-center gap-1 shrink-0 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                <span className="font-bold text-red-400 text-[10px]">LIVE</span>
-            </span>
-        )}
-    </div>
-);
-
 // 일정 테이블(리스트 뷰) 컬럼 폭 — 전부 고정값(auto 없음)으로 지정해야 컬럼 헤더 행과 각
 // 경기 행이 별개의 grid 컨테이너(행마다 독립 인스턴스)라도 컬럼별 폭이 항상 정확히 일치한다.
 // 원정/홈은 하나의 "매치업" 컬럼으로 합쳐서 그 안을 flex-1 두 칸으로 나눈다 — 그래야 두 팀
@@ -315,8 +284,11 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
 
     const awayScore = state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : null;
     const homeScore = state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : null;
-    // 리스트 뷰(GameRow)와 동일한 규칙 — 진행중 경기는 이기고 있는 팀을 흰색/굵게 표시.
-    const liveHomeWon = state === 'live' && homeScore != null && awayScore != null ? homeScore > awayScore : null;
+
+    const awayColorPrimary = away?.color_primary ?? '#334155';
+    const awayColorText = away?.color_text ?? getReadableTextColor(awayColorPrimary);
+    const homeColorPrimary = home?.color_primary ?? '#334155';
+    const homeColorText = home?.color_text ?? getReadableTextColor(homeColorPrimary);
 
     return (
         <div className={`flex flex-col rounded-lg border overflow-hidden ${
@@ -324,7 +296,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
         }`}>
             {/* 상단: 상태 배지 + 보기 버튼 */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800/70">
-                <span className="flex items-center gap-1.5 text-xs font-bold ko-normal">
+                <span className="flex items-center gap-1.5 text-sm font-bold ko-normal">
                     {state === 'live' ? (
                         <>
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -333,47 +305,39 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                     ) : state === 'final' ? (
                         <span className="text-slate-400">Final</span>
                     ) : (
-                        <span className="text-slate-400 font-mono">{fmtTime(g, preferVirtual)}</span>
+                        <span className="text-slate-400 ko-normal">{fmtTime(g, preferVirtual)}</span>
                     )}
                 </span>
                 <button
                     onClick={() => onView(g.id)}
-                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
                 >
-                    <Tv size={11} />
+                    <Tv size={13} />
                     보기
                 </button>
             </div>
 
-            {/* 팀 행 */}
-            <div className="flex flex-col gap-2 px-3 py-3">
-                <div className="flex items-center justify-between gap-2">
-                    <TeamCell
-                        name={away?.team_name ?? g.awayTeamId}
-                        abbr={away?.team_abbr ?? g.awayTeamId}
-                        colorPrimary={away?.color_primary ?? '#334155'}
-                        colorText={away?.color_text}
-                        isMyTeam={g.awayTeamId === myTeamId}
-                    />
-                    <span className={`font-mono text-sm tabular-nums shrink-0 ${
-                        liveHomeWon === null ? 'font-semibold text-slate-200' : liveHomeWon ? 'font-bold text-yellow-400' : 'font-bold text-white'
-                    }`}>
-                        {awayScore ?? ''}
-                    </span>
+            {/* 팀 행 — 로고 배지 대신 리스트와 동일하게 팀 컬러를 행 배경 전체에 칠함 */}
+            <div className="flex flex-col">
+                <div
+                    className="flex items-center justify-between gap-2 px-3 py-2.5"
+                    style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
+                >
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-bold text-sm shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
+                        <span className="font-bold text-sm truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
+                    </div>
+                    <span className="font-bold text-sm tabular-nums shrink-0 ko-normal">{awayScore ?? '-'}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                    <TeamCell
-                        name={home?.team_name ?? g.homeTeamId}
-                        abbr={home?.team_abbr ?? g.homeTeamId}
-                        colorPrimary={home?.color_primary ?? '#334155'}
-                        colorText={home?.color_text}
-                        isMyTeam={g.homeTeamId === myTeamId}
-                    />
-                    <span className={`font-mono text-sm tabular-nums shrink-0 ${
-                        liveHomeWon === null ? 'font-semibold text-slate-200' : liveHomeWon ? 'font-bold text-white' : 'font-bold text-yellow-400'
-                    }`}>
-                        {homeScore ?? ''}
-                    </span>
+                <div
+                    className="flex items-center justify-between gap-2 px-3 py-2.5"
+                    style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
+                >
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-bold text-sm shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
+                        <span className="font-bold text-sm truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
+                    </div>
+                    <span className="font-bold text-sm tabular-nums shrink-0 ko-normal">{homeScore ?? '-'}</span>
                 </div>
             </div>
 
@@ -384,13 +348,13 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                         const l = leaders[stat];
                         if (!l) return null;
                         return (
-                            <div key={stat} className="flex items-center justify-between gap-2 text-[11px]">
+                            <div key={stat} className="flex items-center justify-between gap-2 text-sm">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                     <span className="w-7 shrink-0 font-bold text-slate-500 ko-normal">{stat.toUpperCase()}</span>
                                     <span className="truncate text-slate-300 ko-normal">{l.name}</span>
                                     {l.position && <span className="shrink-0 text-slate-500 ko-normal">{l.position}</span>}
                                 </div>
-                                <span className="shrink-0 font-mono font-semibold text-slate-200">{l.value}</span>
+                                <span className="shrink-0 font-semibold text-slate-200 ko-normal">{l.value}</span>
                             </div>
                         );
                     })}
@@ -729,7 +693,7 @@ const MultiScheduleView: React.FC = () => {
                         ))}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
                         {activeDayGames.map(g => (
                             <GameCard
                                 key={g.id}
