@@ -95,7 +95,10 @@ const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText
 // 원정/홈은 하나의 "매치업" 컬럼으로 합쳐서 그 안을 flex-1 두 칸으로 나눈다 — 그래야 두 팀
 // 색상 블록 사이에 grid gap이 끼어들지 않는다(패딩 제거 요구사항).
 const SCHEDULE_GRID_COLS =
-    'grid-cols-[56px_64px_64px_minmax(320px,1fr)_128px_128px_128px_72px_80px_72px]';
+    // 매치업 컬럼은 더 이상 1fr로 남는 공간을 전부 가져가지 않는다 — 넓은 화면에서
+    // 원정/홈 영역이 지나치게 넓어진다는 피드백으로 480px 상한을 둠. 그렇게 줄어든 만큼의
+    // 남는 공간은 PTS/REB/AST 세 컬럼이 1fr로 균등하게 나눠 가진다.
+    'grid-cols-[56px_64px_64px_minmax(320px,480px)_minmax(128px,1fr)_minmax(128px,1fr)_minmax(128px,1fr)_72px_80px_72px]';
 
 interface GameRowProps {
     g: Game;

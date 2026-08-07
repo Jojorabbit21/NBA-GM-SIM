@@ -35,6 +35,21 @@
 
 ---
 
+## 2026-08-07 — 매치업 컬럼 상한 480px + 남는 공간 PTS/REB/AST 균등 분배
+
+**배경**: 실제 화면 스크린샷 피드백 — 매치업 컬럼이 `1fr`로 남는 공간을 전부 가져가서 원정/홈 영역이 화면의 절반 이상을 차지할 정도로 지나치게 넓어짐. "50%까지 줄여도 될거같다" → 이어서 "줄어든 만큼 PTS/REB/AST를 균등하게 늘려달라"는 후속 요청.
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx`
+
+- 매치업 컬럼: `minmax(320px,1fr)` → `minmax(320px,480px)` — 더 이상 `1fr`이 아니라 480px 상한 고정.
+- PTS/REB/AST 세 컬럼: 고정 `128px` → `minmax(128px,1fr)` 각각 — 매치업 컬럼이 안 가져가게 된 남는 공간을 이 세 컬럼이 `1fr` 3개로 균등하게 나눠 가짐.
+
+**검증**: `tsc --noEmit`/`vite build` 통과, 중괄호 balance 스크립트로 확인.
+
+**롤백 방법**: `minmax(320px,480px)`→`minmax(320px,1fr)`, PTS/REB/AST `minmax(128px,1fr)`→`128px`로 되돌리면 됨.
+
+---
+
 ## 2026-08-07 — 매치업 컬럼 최소폭 축소(팀당 180px → 160px)
 
 **변경 파일**: `views/multi/season/MultiScheduleView.tsx` — `SCHEDULE_GRID_COLS`의 매치업 컬럼 `minmax(360px,1fr)` → `minmax(320px,1fr)`(원정/홈이 그 안에서 `flex-1` 50:50 분할이므로 팀당 최소폭 180px→160px). `tsc --noEmit`/`vite build` 통과.
