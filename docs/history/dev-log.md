@@ -35,6 +35,27 @@
 
 ---
 
+## 2026-08-07 — 시즌 일정 화면에 카드 보기 모드 추가 (리스트/카드 토글)
+
+**배경**: 메인리그는 최대 1230경기가 하나의 리스트로 전부 스크롤되어 특정 날짜 경기를 찾기 힘들다는 피드백. 기존 리스트 뷰(`MultiScheduleView.tsx`)는 그대로 유지하되, 하루 단위로 경기를 카드 그리드로 보여주는 보기 모드를 토글 옵션으로 추가.
+
+**변경 파일**:
+- `services/multi/gameLeadersCache.ts` — `StatLeader`에 `position?: string` 추가(카드에 "이름 포지션" 표기용).
+- `views/multi/season/MultiScheduleView.tsx` — `computeGameLeaders()`가 `position`도 함께 담도록 수정. `GameCard`(카드 1장), `DateControlBar`(날짜 컨트롤 바) 신규 컴포넌트 추가. 메인 컴포넌트에 `viewMode`('list'|'card', localStorage 영속) 상태와 `selectedCardDate`(카드 뷰에서 보고 있는 날짜, 최초 진입 시 "오늘"로 자동 선택) 상태 추가. 상단에 리스트/카드 토글 버튼, 카드 모드일 때 `groupedByDay`에서 선택된 날짜의 경기만 4열 반응형 그리드(`grid-cols-1 sm:2 lg:3 xl:4`)로 렌더링.
+- `views/multi/season/multiScheduleUtils.ts` — `addDaysToKey`/`addMonthsToKey`(날짜 컨트롤 바의 저번주/저번달 등 이동용, 로컬 Y/M/D 컴포넌트로만 계산해 UTC 변환 밀림 방지), `fmtFullDate`(연도 포함 날짜 라벨) 신규 추가.
+
+**카드 디자인**: 상태 배지(Final/진행중 쿼터+클락/예정 시각) + 보기 버튼 → 원정/홈 팀 로고+이름+점수(진행중 경기는 리스트 뷰와 동일하게 이기는 팀 흰색 강조) → 종료된 경기만 PTS/REB/AST 리더(이름+포지션+기록) 표시. 날짜 컨트롤 바는 `[저번달][저번주][<][일자(datepicker)][>][다음주][다음달] ------- [오늘]` 구조, "일자" 라벨은 투명 `<input type="date">`를 겹쳐서 클릭 시 브라우저 네이티브 데이트피커가 뜨도록 구현(커스텀 캘린더 팝오버는 이번 범위에서 제외).
+
+**검증**: `tsc --noEmit`/`vite build` 통과 확인.
+
+**알려진 한계**:
+- "달력"(월간 그리드) 보기 모드는 이번 범위에서 제외 — 사용자 확인 결과 이번엔 리스트/카드 2종만 구현하기로 결정, 별도 요청 시 추가 예정.
+- 날짜 이동은 로컬 `Date.setMonth()`/`setDate()` 기반이라 월말 날짜(예: 1/31 -1개월)에서 JS 자체의 날짜 오버플로 처리를 그대로 따름(별도 보정 없음).
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨. `nbagm:scheduleViewMode` localStorage 키는 신규 값이라 롤백해도 기존 동작에 영향 없음.
+
+---
+
 ## 2026-08-06 — 헤더에 메인리그 가상 시즌 날짜 표시 + "오늘" 배지 회귀 수정
 
 **배경**: 위 항목(가상 시즌 캘린더/실제 실행 시각 분리)에 이어 사용자 요청 — 메인리그(main_league) 세션의 헤더 우측 "다음 경기 · 정규시즌" 텍스트를 지우고 그 자리에 현재 시뮬레이션 날짜(가상 캘린더 기준)를 text-base로 표시, 내 팀에 다음 일정이 없으면 날짜만 표시. 구현 중 직전 변경의 회귀를 하나 발견: `MultiScheduleView.tsx`의 "오늘" 배지 판정(`dateKey === currentSimDate`)이 `currentSimDate`(useSeasonContext → `rooms.sim_date`, 서버가 `scheduled_at` 기준 실제 KST 날짜로 갱신)와 비교하는데, `dateKey`는 직전 변경으로 메인리그에서 가상 날짜가 됐으므로 둘이 영원히 일치하지 않게 됨 — 같이 수정.

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Tv } from 'lucide-react';
+import { Loader2, Tv, ChevronLeft, ChevronRight, LayoutList, LayoutGrid } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -14,7 +14,10 @@ import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '.
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
-import { fmtDayLabel, kstDateKey, fmtDateShort, fmtTime, groupByDay, findCurrentVirtualDate, type DayGroup } from './multiScheduleUtils';
+import {
+    fmtDayLabel, kstDateKey, fmtDateShort, fmtTime, groupByDay, findCurrentVirtualDate,
+    addDaysToKey, addMonthsToKey, fmtFullDate, type DayGroup,
+} from './multiScheduleUtils';
 
 const LIVE_POLL_MS = 5000;
 
@@ -28,9 +31,9 @@ function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBox
     const rebP = topBy(p => p.reb);
     const astP = topBy(p => p.ast);
     return {
-        pts: ptsP ? { name: ptsP.playerName, value: ptsP.pts } : undefined,
-        reb: rebP ? { name: rebP.playerName, value: rebP.reb } : undefined,
-        ast: astP ? { name: astP.playerName, value: astP.ast } : undefined,
+        pts: ptsP ? { name: ptsP.playerName, value: ptsP.pts, position: ptsP.position } : undefined,
+        reb: rebP ? { name: rebP.playerName, value: rebP.reb, position: rebP.position } : undefined,
+        ast: astP ? { name: astP.playerName, value: astP.ast, position: astP.position } : undefined,
     };
 }
 
@@ -259,6 +262,157 @@ const COLUMN_HEADER = (
     </div>
 );
 
+// ── 카드 뷰 ───────────────────────────────────────────────────────────────────
+// [2026-08-07] 리그당 최대 1230경기가 한 리스트로 전부 스크롤되어 보기 힘들다는 피드백 —
+// 기존 리스트 뷰는 그대로 두고, 하루치 경기만 카드로 보여주는 뷰를 토글 옵션으로 추가.
+
+interface GameCardProps {
+    g: Game;
+    state: GameDisplayState;
+    teamMap: Record<string, any>;
+    myTeamId: string | null;
+    liveSummaries: Record<string, LiveGameSummary>;
+    gameLeadersMap: Record<string, GameLeaders>;
+    onView: (gameId: string) => void;
+    preferVirtual: boolean;
+}
+
+const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, onView, preferVirtual }) => {
+    const home = teamMap[g.homeTeamId];
+    const away = teamMap[g.awayTeamId];
+    const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
+    const live = liveSummaries[g.id];
+    const leaders = gameLeadersMap[g.id];
+
+    const awayScore = state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : null;
+    const homeScore = state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : null;
+    // 리스트 뷰(GameRow)와 동일한 규칙 — 진행중 경기는 이기고 있는 팀을 흰색/굵게 표시.
+    const liveHomeWon = state === 'live' && homeScore != null && awayScore != null ? homeScore > awayScore : null;
+
+    return (
+        <div className={`flex flex-col rounded-lg border overflow-hidden ${
+            isMyGame ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/60'
+        }`}>
+            {/* 상단: 상태 배지 + 보기 버튼 */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800/70">
+                <span className="flex items-center gap-1.5 text-xs font-bold ko-normal">
+                    {state === 'live' ? (
+                        <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-red-400">Q{live?.quarter ?? 1} {live?.clock ?? ''}</span>
+                        </>
+                    ) : state === 'final' ? (
+                        <span className="text-slate-400">Final</span>
+                    ) : (
+                        <span className="text-slate-400 font-mono">{fmtTime(g, preferVirtual)}</span>
+                    )}
+                </span>
+                <button
+                    onClick={() => onView(g.id)}
+                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
+                >
+                    <Tv size={11} />
+                    보기
+                </button>
+            </div>
+
+            {/* 팀 행 */}
+            <div className="flex flex-col gap-2 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                    <TeamCell
+                        name={away?.team_name ?? g.awayTeamId}
+                        abbr={away?.team_abbr ?? g.awayTeamId}
+                        colorPrimary={away?.color_primary ?? '#334155'}
+                        colorText={away?.color_text}
+                        isMyTeam={g.awayTeamId === myTeamId}
+                    />
+                    <span className={`font-mono text-sm tabular-nums shrink-0 ${
+                        liveHomeWon === null ? 'font-semibold text-slate-200' : liveHomeWon ? 'font-bold text-yellow-400' : 'font-bold text-white'
+                    }`}>
+                        {awayScore ?? ''}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                    <TeamCell
+                        name={home?.team_name ?? g.homeTeamId}
+                        abbr={home?.team_abbr ?? g.homeTeamId}
+                        colorPrimary={home?.color_primary ?? '#334155'}
+                        colorText={home?.color_text}
+                        isMyTeam={g.homeTeamId === myTeamId}
+                    />
+                    <span className={`font-mono text-sm tabular-nums shrink-0 ${
+                        liveHomeWon === null ? 'font-semibold text-slate-200' : liveHomeWon ? 'font-bold text-white' : 'font-bold text-yellow-400'
+                    }`}>
+                        {homeScore ?? ''}
+                    </span>
+                </div>
+            </div>
+
+            {/* 리더 (종료된 경기만) */}
+            {state === 'final' && leaders && (
+                <div className="flex flex-col gap-1.5 px-3 py-2.5 border-t border-slate-800/70 bg-black/10">
+                    {(['pts', 'reb', 'ast'] as const).map(stat => {
+                        const l = leaders[stat];
+                        if (!l) return null;
+                        return (
+                            <div key={stat} className="flex items-center justify-between gap-2 text-[11px]">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="w-7 shrink-0 font-bold text-slate-500 ko-normal">{stat.toUpperCase()}</span>
+                                    <span className="truncate text-slate-300 ko-normal">{l.name}</span>
+                                    {l.position && <span className="shrink-0 text-slate-500 ko-normal">{l.position}</span>}
+                                </div>
+                                <span className="shrink-0 font-mono font-semibold text-slate-200">{l.value}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface DateControlBarProps {
+    activeDate: string;
+    todayKey: string | null;
+    onChange: (dateKey: string) => void;
+}
+
+const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, todayKey, onChange }) => {
+    const navBtn = "px-2.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:bg-slate-800 transition-colors ko-normal";
+    const arrowBtn = "p-1.5 rounded-md text-slate-300 hover:bg-slate-800 transition-colors";
+    return (
+        <div className="flex items-center gap-1 mb-4 flex-wrap">
+            <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, -1))}>저번달</button>
+            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -7))}>저번주</button>
+            <button className={arrowBtn} onClick={() => onChange(addDaysToKey(activeDate, -1))}>
+                <ChevronLeft size={16} />
+            </button>
+            <label className="relative flex items-center px-3 py-1.5 rounded-md bg-slate-800 text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap">
+                {fmtFullDate(activeDate)}
+                <input
+                    type="date"
+                    value={activeDate}
+                    onChange={e => e.target.value && onChange(e.target.value)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+            </label>
+            <button className={arrowBtn} onClick={() => onChange(addDaysToKey(activeDate, 1))}>
+                <ChevronRight size={16} />
+            </button>
+            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 7))}>다음주</button>
+            <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, 1))}>다음달</button>
+            <div className="flex-1" />
+            <button
+                className="px-2.5 py-1.5 rounded-md text-xs font-bold text-indigo-400 hover:bg-indigo-500/10 disabled:opacity-40 disabled:hover:bg-transparent transition-colors ko-normal"
+                onClick={() => todayKey && onChange(todayKey)}
+                disabled={!todayKey}
+            >
+                오늘
+            </button>
+        </div>
+    );
+};
+
 // ── 메인 뷰 ───────────────────────────────────────────────────────────────────
 
 const MultiScheduleView: React.FC = () => {
@@ -382,6 +536,27 @@ const MultiScheduleView: React.FC = () => {
     // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
     const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
 
+    // 리스트/카드 보기 모드 — 리그당 최대 1230경기가 리스트 하나로 전부 스크롤되는 문제 완화용.
+    // 선택은 기기에 저장해 다음 방문에도 유지.
+    const [viewMode, setViewMode] = useState<'list' | 'card'>(() => {
+        try { return (localStorage.getItem('nbagm:scheduleViewMode') as 'list' | 'card') === 'card' ? 'card' : 'list'; }
+        catch { return 'list'; }
+    });
+    useEffect(() => {
+        try { localStorage.setItem('nbagm:scheduleViewMode', viewMode); } catch { /* 용량 초과 등 무시 */ }
+    }, [viewMode]);
+
+    // 카드 뷰에서 현재 보고 있는 날짜 — 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴).
+    const [selectedCardDate, setSelectedCardDate] = useState<string | null>(null);
+    useEffect(() => {
+        if (selectedCardDate === null && todayKey) setSelectedCardDate(todayKey);
+    }, [selectedCardDate, todayKey]);
+    const activeCardDate = selectedCardDate ?? todayKey ?? groupedByDay[0]?.dateKey ?? null;
+    const cardDayGames = useMemo(
+        () => groupedByDay.find(g => g.dateKey === activeCardDate)?.games ?? [],
+        [groupedByDay, activeCardDate],
+    );
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -392,32 +567,83 @@ const MultiScheduleView: React.FC = () => {
 
     return (
         <div className="p-6 text-slate-200 pretendard">
-            <div className="mb-6">
-                <h1 className="text-xl font-black text-white ko-tight">시즌 일정</h1>
-                <p className="text-sm text-slate-500 ko-normal mt-1">
-                    전체 {allGames.length}경기 &nbsp;·&nbsp; 완료 {totalPlayed} &nbsp;·&nbsp; 잔여 {allGames.length - totalPlayed}
-                </p>
+            <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+                <div>
+                    <h1 className="text-xl font-black text-white ko-tight">시즌 일정</h1>
+                    <p className="text-sm text-slate-500 ko-normal mt-1">
+                        전체 {allGames.length}경기 &nbsp;·&nbsp; 완료 {totalPlayed} &nbsp;·&nbsp; 잔여 {allGames.length - totalPlayed}
+                    </p>
+                </div>
+
+                {/* 보기 모드 토글 */}
+                <div className="flex items-center gap-1 bg-slate-800/60 rounded-lg p-1 shrink-0">
+                    <button
+                        onClick={() => setViewMode('list')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold ko-normal transition-colors ${
+                            viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <LayoutList size={14} />
+                        리스트
+                    </button>
+                    <button
+                        onClick={() => setViewMode('card')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold ko-normal transition-colors ${
+                            viewMode === 'card' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <LayoutGrid size={14} />
+                        카드
+                    </button>
+                </div>
             </div>
 
-            <div className="flex flex-col gap-6">
-                {groupedByDay.map(({ dateKey, label, games }) => {
-                    const isToday = dateKey === todayKey;
-                    return (
-                        <div key={dateKey}>
+            {viewMode === 'list' ? (
+                <div className="flex flex-col gap-6">
+                    {groupedByDay.map(({ dateKey, label, games }) => {
+                        const isToday = dateKey === todayKey;
+                        return (
+                            <div key={dateKey}>
 
-                            {/* 날짜 헤더 — 박스 없이 제목만 */}
-                            <div className="flex items-center gap-2 mb-2">
-                                <h2 className={`text-base font-bold ko-normal ${isToday ? 'text-indigo-300' : 'text-white'}`}>{label}</h2>
-                                {isToday && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
-                                <span className="text-xs text-slate-500 ko-normal">{games.length}경기</span>
+                                {/* 날짜 헤더 — 박스 없이 제목만 */}
+                                <div className="flex items-center gap-2 mb-2">
+                                    <h2 className={`text-base font-bold ko-normal ${isToday ? 'text-indigo-300' : 'text-white'}`}>{label}</h2>
+                                    {isToday && <span className="text-[10px] font-bold text-indigo-400 bg-indigo-900/50 px-1.5 py-0.5 rounded ko-normal">오늘</span>}
+                                    <span className="text-xs text-slate-500 ko-normal">{games.length}경기</span>
+                                </div>
+
+                                {/* 컬럼 헤더 */}
+                                {COLUMN_HEADER}
+
+                                {/* 경기 행 */}
+                                {games.map((g, i) => (
+                                    <GameRow
+                                        key={g.id}
+                                        g={g}
+                                        state={getGameDisplayState(g, serverNow)}
+                                        teamMap={teamMap}
+                                        myTeamId={myTeamId}
+                                        liveSummaries={liveSummaries}
+                                        gameLeadersMap={gameLeadersMap}
+                                        roundLabelMap={roundLabelMap}
+                                        onView={handleView}
+                                        serverNow={serverNow}
+                                        zebra={i % 2 === 1}
+                                        preferVirtual={preferVirtual}
+                                    />
+                                ))}
                             </div>
+                        );
+                    })}
+                </div>
+            ) : activeCardDate ? (
+                <div>
+                    <DateControlBar activeDate={activeCardDate} todayKey={todayKey} onChange={setSelectedCardDate} />
 
-                            {/* 컬럼 헤더 */}
-                            {COLUMN_HEADER}
-
-                            {/* 경기 행 */}
-                            {games.map((g, i) => (
-                                <GameRow
+                    {cardDayGames.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {cardDayGames.map(g => (
+                                <GameCard
                                     key={g.id}
                                     g={g}
                                     state={getGameDisplayState(g, serverNow)}
@@ -425,17 +651,16 @@ const MultiScheduleView: React.FC = () => {
                                     myTeamId={myTeamId}
                                     liveSummaries={liveSummaries}
                                     gameLeadersMap={gameLeadersMap}
-                                    roundLabelMap={roundLabelMap}
                                     onView={handleView}
-                                    serverNow={serverNow}
-                                    zebra={i % 2 === 1}
                                     preferVirtual={preferVirtual}
                                 />
                             ))}
                         </div>
-                    );
-                })}
-            </div>
+                    ) : (
+                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                    )}
+                </div>
+            ) : null}
         </div>
     );
 };

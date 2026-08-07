@@ -82,6 +82,36 @@ export function findCurrentVirtualDate(
     return bestDate;
 }
 
+// 카드 뷰의 날짜 컨트롤 바(저번달/저번주/화살표/데이트피커)용 날짜 산술 — 항상 로컬
+// Y/M/D 컴포넌트로만 계산해서 toISOString() 같은 UTC 변환에 의한 날짜 밀림을 피한다.
+function dateKeyToLocalDate(dateKey: string): Date {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+function localDateToKey(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+export function addDaysToKey(dateKey: string, days: number): string {
+    const d = dateKeyToLocalDate(dateKey);
+    d.setDate(d.getDate() + days);
+    return localDateToKey(d);
+}
+export function addMonthsToKey(dateKey: string, months: number): string {
+    const d = dateKeyToLocalDate(dateKey);
+    d.setMonth(d.getMonth() + months);
+    return localDateToKey(d);
+}
+
+// 날짜 컨트롤 바 중앙 라벨 — 가상 시즌 연도가 실제 연도와 다를 수 있어(예: 2027년) 연도까지 표기.
+export function fmtFullDate(dateKey: string): string {
+    const d = dateKeyToLocalDate(dateKey);
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+}
+
 export interface DayGroup { dateKey: string; label: string; games: Game[] }
 
 // games는 반드시 scheduledAt(또는 date) 기준 오름차순 정렬된 상태로 넘겨야 한다 — 순차 비교로만

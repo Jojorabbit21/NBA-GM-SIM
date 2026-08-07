@@ -4,7 +4,7 @@
 // 재시뮬레이션 제외), 한 번 조회한 리더는 다시 조회할 필요가 없다.
 // 설계 배경: docs/plan/schedule-leaders-cache-plan.md
 
-export interface StatLeader { name: string; value: number }
+export interface StatLeader { name: string; value: number; position?: string }
 export interface GameLeaders { pts?: StatLeader; reb?: StatLeader; ast?: StatLeader }
 
 const keyFor = (roomId: string) => `nbagm:gameLeaders:${roomId}`;
