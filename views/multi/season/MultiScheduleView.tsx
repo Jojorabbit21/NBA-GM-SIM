@@ -66,27 +66,25 @@ interface TeamCellProps {
     colorText?: string | null;
     isMyTeam: boolean;
     showLive?: boolean;
-    // 'sm' = 카드 뷰(기존 크기), 'lg' = 리스트 테이블(14px 고정).
-    size?: 'sm' | 'lg';
 }
 
-const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive, size = 'sm' }) => (
-    <div className={`flex items-center min-w-0 ${size === 'lg' ? 'gap-2' : 'gap-1.5'}`}>
+// 카드 뷰(GameCard) 전용 — 리스트 뷰는 로고 배지 대신 팀 컬러를 셀 배경 전체에 칠하는
+// 방식으로 바뀌어(아래 GameRow의 매치업 셀 참조) 더 이상 이 배지를 쓰지 않는다.
+const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText, isMyTeam, showLive }) => (
+    <div className="flex items-center gap-1.5 min-w-0">
         <div
-            className={`rounded font-black flex items-center justify-center shrink-0 ${
-                size === 'lg' ? 'w-10 h-6 text-xs' : 'w-9 h-5 text-[10px]'
-            }`}
+            className="w-9 h-5 rounded text-[10px] font-black flex items-center justify-center shrink-0"
             style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
         >
             {abbr.slice(0, 3)}
         </div>
-        <span className={`font-medium truncate ko-normal ${size === 'lg' ? 'text-sm' : 'text-xs'} ${isMyTeam ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}>
+        <span className={`font-medium truncate ko-normal text-xs ${isMyTeam ? 'text-yellow-400 font-bold' : 'text-slate-300'}`}>
             {name}
         </span>
         {showLive && (
             <span className="flex items-center gap-1 shrink-0 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                <span className={`font-bold text-red-400 ${size === 'lg' ? 'text-sm' : 'text-[10px]'}`}>LIVE</span>
+                <span className="font-bold text-red-400 text-[10px]">LIVE</span>
             </span>
         )}
     </div>
@@ -94,8 +92,10 @@ const TeamCell: React.FC<TeamCellProps> = ({ name, abbr, colorPrimary, colorText
 
 // 일정 테이블(리스트 뷰) 컬럼 폭 — 전부 고정값(auto 없음)으로 지정해야 컬럼 헤더 행과 각
 // 경기 행이 별개의 grid 컨테이너(행마다 독립 인스턴스)라도 컬럼별 폭이 항상 정확히 일치한다.
+// 원정/홈은 하나의 "매치업" 컬럼으로 합쳐서 그 안을 flex-1 두 칸으로 나눈다 — 그래야 두 팀
+// 색상 블록 사이에 grid gap이 끼어들지 않는다(패딩 제거 요구사항).
 const SCHEDULE_GRID_COLS =
-    'grid-cols-[56px_64px_64px_180px_minmax(180px,1fr)_128px_128px_128px_72px_80px_72px]';
+    'grid-cols-[56px_64px_64px_minmax(360px,1fr)_128px_128px_128px_72px_80px_72px]';
 
 interface GameRowProps {
     g: Game;
@@ -111,89 +111,107 @@ interface GameRowProps {
     preferVirtual: boolean;
 }
 
+// 값이 없을 때 항상 "-"로 표시(빈 셀 방지) — PTS/REB/AST/쿼터·상태 컬럼 공통.
+const EMPTY_CELL = '-';
+
+interface MatchupTeamBlockProps {
+    team: any;
+    fallbackId: string;
+    isMyTeam: boolean;
+    showLive?: boolean;
+}
+
+// 원정/홈 팀을 로고 배지 대신 "셀 배경 = 팀 메인 컬러" 블록으로 표시. 두 블록을 붙여서
+// (gap 없이) 렌더링하면 매치업 컬럼 전체가 원정/홈 컬러로 절반씩 나뉜 하나의 띠처럼 보인다.
+const MatchupTeamBlock: React.FC<MatchupTeamBlockProps> = ({ team, fallbackId, isMyTeam, showLive }) => {
+    const colorPrimary = team?.color_primary ?? '#334155';
+    const colorText = team?.color_text ?? getReadableTextColor(colorPrimary);
+    return (
+        <div
+            // py-4가 이 블록의 실질 높이(및 grid 행 높이 자동계산의 기준)를 키운다 — h-full은
+            // 퍼센트 높이라 행 높이를 정하는 계산에서는 auto로 취급되고 stretch로만 채워지므로,
+            // "행을 지금보다 높게" 요구사항은 반드시 실제 padding으로 만들어야 한다.
+            className={`flex-1 h-full min-w-0 flex items-center gap-2 px-3 py-4 ${isMyTeam ? 'ring-2 ring-inset ring-yellow-400' : ''}`}
+            style={{ backgroundColor: colorPrimary, color: colorText }}
+        >
+            <span className="font-bold text-sm shrink-0 ko-normal">{team?.team_abbr ?? fallbackId}</span>
+            <span className="text-sm truncate ko-normal">{team?.team_name ?? fallbackId}</span>
+            {showLive && (
+                <span className="flex items-center gap-1 shrink-0 animate-pulse ml-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                    <span className="font-bold text-xs">LIVE</span>
+                </span>
+            )}
+        </div>
+    );
+};
+
 const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, serverNow, zebra, preferVirtual }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
     const roundLabel = g.isPlayoff && g.seriesId ? roundLabelMap[g.seriesId] : undefined;
+    const leaders = gameLeadersMap[g.id];
+
+    // 필 스타일(보기/리뷰 버튼) 공통 — 색상만 상태별로 다르다.
+    const pillBtn = "flex items-center justify-center gap-1 h-7 px-2.5 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal";
 
     return (
-        <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 items-center px-2 py-2 border-b border-slate-800 border-l-4 transition-colors ${
+        <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 items-stretch px-2 border-b border-slate-800 border-l-4 transition-colors ${
             isMyGame
                 ? 'border-l-emerald-500 bg-emerald-500/10'
                 : `border-l-transparent hover:bg-slate-800/40 ${zebra ? 'bg-slate-800/25' : ''}`
         }`}>
             {/* 날짜 */}
-            <span className="text-center font-mono text-sm font-medium text-slate-300">
-                {fmtDateShort(g, preferVirtual)}
-            </span>
-
-            {/* 시간 (KST) */}
-            <span className="text-center font-mono text-sm font-medium text-slate-300">
-                {fmtTime(g, preferVirtual)}
-            </span>
-
-            {/* 토너먼트 라운드 */}
-            <span className="text-sm font-medium text-slate-300 ko-normal truncate">
-                {roundLabel ?? ''}
-            </span>
-
-            {/* 원정팀 */}
-            <div className="min-w-0">
-                {away ? (
-                    <TeamCell
-                        size="lg"
-                        name={away.team_name}
-                        abbr={away.team_abbr}
-                        colorPrimary={away.color_primary ?? '#334155'}
-                        colorText={away.color_text}
-                        isMyTeam={g.awayTeamId === myTeamId}
-                    />
-                ) : (
-                    <span className="text-sm font-medium text-slate-300">{g.awayTeamId}</span>
-                )}
+            <div className="h-full flex items-center justify-center">
+                <span className="text-center text-sm font-medium text-slate-300 ko-normal">
+                    {fmtDateShort(g, preferVirtual)}
+                </span>
             </div>
 
-            {/* 홈팀 */}
-            <div className="min-w-0">
-                {home ? (
-                    <TeamCell
-                        size="lg"
-                        name={home.team_name}
-                        abbr={home.team_abbr}
-                        colorPrimary={home.color_primary ?? '#334155'}
-                        colorText={home.color_text}
-                        isMyTeam={g.homeTeamId === myTeamId}
-                        showLive={state === 'live'}
-                    />
-                ) : (
-                    <span className="text-sm font-medium text-slate-300">{g.homeTeamId}</span>
-                )}
+            {/* 시간 (KST) */}
+            <div className="h-full flex items-center justify-center">
+                <span className="text-center text-sm font-medium text-slate-300 ko-normal">
+                    {fmtTime(g, preferVirtual)}
+                </span>
+            </div>
+
+            {/* 토너먼트 라운드 */}
+            <div className="h-full flex items-center justify-center">
+                <span className="text-sm font-medium text-slate-300 ko-normal truncate text-center">
+                    {roundLabel ?? EMPTY_CELL}
+                </span>
+            </div>
+
+            {/* 매치업(원정+홈) — 로고 없이 팀 컬러 배경 블록 2개를 패딩 없이 붙여서 표시 */}
+            <div className="flex h-full">
+                <MatchupTeamBlock team={away} fallbackId={g.awayTeamId} isMyTeam={g.awayTeamId === myTeamId} />
+                <MatchupTeamBlock team={home} fallbackId={g.homeTeamId} isMyTeam={g.homeTeamId === myTeamId} showLive={state === 'live'} />
             </div>
 
             {/* PTS 리더 — 경기 종료 후에만 표시 */}
-            <span className="truncate text-sm font-medium text-slate-300 ko-normal">
-                {state === 'final' && gameLeadersMap[g.id]?.pts
-                    ? `${gameLeadersMap[g.id].pts!.name} (${gameLeadersMap[g.id].pts!.value})`
-                    : ''}
-            </span>
+            <div className="h-full flex items-center">
+                <span className="truncate text-sm font-medium text-slate-300 ko-normal">
+                    {state === 'final' && leaders?.pts ? `${leaders.pts.name} (${leaders.pts.value})` : EMPTY_CELL}
+                </span>
+            </div>
 
             {/* REB 리더 */}
-            <span className="truncate text-sm font-medium text-slate-300 ko-normal">
-                {state === 'final' && gameLeadersMap[g.id]?.reb
-                    ? `${gameLeadersMap[g.id].reb!.name} (${gameLeadersMap[g.id].reb!.value})`
-                    : ''}
-            </span>
+            <div className="h-full flex items-center">
+                <span className="truncate text-sm font-medium text-slate-300 ko-normal">
+                    {state === 'final' && leaders?.reb ? `${leaders.reb.name} (${leaders.reb.value})` : EMPTY_CELL}
+                </span>
+            </div>
 
             {/* AST 리더 */}
-            <span className="truncate text-sm font-medium text-slate-300 ko-normal">
-                {state === 'final' && gameLeadersMap[g.id]?.ast
-                    ? `${gameLeadersMap[g.id].ast!.name} (${gameLeadersMap[g.id].ast!.value})`
-                    : ''}
-            </span>
+            <div className="h-full flex items-center">
+                <span className="truncate text-sm font-medium text-slate-300 ko-normal">
+                    {state === 'final' && leaders?.ast ? `${leaders.ast.name} (${leaders.ast.value})` : EMPTY_CELL}
+                </span>
+            </div>
 
             {/* 스코어 (원정-홈 순) */}
-            <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-sm">
+            <div className="h-full flex items-center justify-center gap-1 tabular-nums text-sm ko-normal">
                 {state === 'final' && g.homeScore != null && g.awayScore != null ? (
                     <>
                         <span className="text-slate-300 font-semibold">{g.awayScore}</span>
@@ -214,44 +232,37 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                         </>
                     );
                 })() : (
-                    <span className="text-slate-300">—</span>
+                    <span className="text-slate-300">{EMPTY_CELL}</span>
                 )}
             </div>
 
             {/* 쿼터/게임클락 (LIVE) / 종료 표시 (완료) */}
-            <span className={`text-center font-mono text-sm ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-300'}`}>
-                {state === 'live' && liveSummaries[g.id]
-                    ? `Q${liveSummaries[g.id].quarter ?? 1} ${liveSummaries[g.id].clock ?? ''}`
-                    : state === 'final'
-                    ? '종료'
-                    : ''}
-            </span>
+            <div className="h-full flex items-center justify-center">
+                <span className={`text-center text-sm ko-normal ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-300'}`}>
+                    {state === 'live' && liveSummaries[g.id]
+                        ? `Q${liveSummaries[g.id].quarter ?? 1} ${liveSummaries[g.id].clock ?? ''}`
+                        : state === 'final'
+                        ? '종료'
+                        : EMPTY_CELL}
+                </span>
+            </div>
 
-            {/* 보기/리뷰 버튼 —
+            {/* 보기/리뷰 버튼 — 셋 다 동일한 필 스타일, 색상만 상태별로 구분.
                 [Fix 2026-08-04] 시작 전 경기도 미리 중계방에 입장 가능(정시가 되면 화면이 자동으로
                 라이브로 전환됨) — 라이브 버튼과 동일한 모양, 색상만 슬레이트로 구분. */}
-            <div className="flex items-center justify-center">
+            <div className="h-full flex items-center justify-center">
                 {state === 'live' ? (
-                    <button
-                        onClick={() => onView(g.id)}
-                        className="flex items-center justify-center gap-1 h-7 px-2.5 bg-red-600 hover:bg-red-500 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal"
-                    >
+                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-red-600 hover:bg-red-500`}>
                         <Tv size={12} />
                         보기
                     </button>
                 ) : state === 'scheduled' ? (
-                    <button
-                        onClick={() => onView(g.id)}
-                        className="flex items-center justify-center gap-1 h-7 px-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal"
-                    >
+                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-slate-700 hover:bg-slate-600`}>
                         <Tv size={12} />
                         보기
                     </button>
                 ) : (
-                    <button
-                        onClick={() => onView(g.id)}
-                        className="flex items-center gap-1 text-sm font-medium leading-none text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
-                    >
+                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-indigo-600 hover:bg-indigo-500`}>
                         리뷰
                     </button>
                 )}
@@ -264,9 +275,11 @@ const COLUMN_HEADER = (
     <div className={`grid ${SCHEDULE_GRID_COLS} gap-x-4 px-2 py-2 bg-slate-800/60 border-b border-slate-700`}>
         <span className="text-sm font-medium text-slate-300 ko-normal text-center">날짜</span>
         <span className="text-sm font-medium text-slate-300 ko-normal text-center">시간</span>
-        <span className="text-sm font-medium text-slate-300 ko-normal">라운드</span>
-        <span className="text-sm font-medium text-slate-300 ko-normal">원정</span>
-        <span className="text-sm font-medium text-slate-300 ko-normal">홈</span>
+        <span className="text-sm font-medium text-slate-300 ko-normal text-center">라운드</span>
+        <div className="flex">
+            <span className="flex-1 text-sm font-medium text-slate-300 ko-normal text-center">원정</span>
+            <span className="flex-1 text-sm font-medium text-slate-300 ko-normal text-center">홈</span>
+        </div>
         <span className="text-sm font-medium text-slate-300 ko-normal">PTS</span>
         <span className="text-sm font-medium text-slate-300 ko-normal">REB</span>
         <span className="text-sm font-medium text-slate-300 ko-normal">AST</span>
