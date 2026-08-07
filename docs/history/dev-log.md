@@ -35,6 +35,21 @@
 
 ---
 
+## 2026-08-07 — 일정 화면 데이트피커를 라이브게임뷰와 동일한 월간 달력으로 통일
+
+**배경**: 사용자 피드백 — "라이브게임뷰 상단의 날짜를 누르면 나오는 데이트피커랑 다른데?" 직전 커밋에서 `MultiScheduleView.tsx`의 날짜 컨트롤 바에 네이티브 `<input type="date">`(`showPicker()`) 방식을 적용했는데, `MultiGamePbpView.tsx`의 `GameDateStrip`(라이브게임뷰 상단 날짜 셀렉터)은 이미 자체 제작한 월간 달력 드롭다운(`fixed` 위치의 커스텀 그리드, 경기 있는 날짜만 선택 가능)을 쓰고 있어서 두 화면의 데이트피커 모양이 서로 달랐다.
+
+**변경 파일**:
+- 신규 `views/multi/season/MonthCalendarPopover.tsx` — `GameDateStrip`에 있던 월간 달력 드롭다운(월 이동 화살표 + 요일 헤더 + 날짜 그리드, `selectableDates`에 없는 날짜는 비활성) 을 그대로 뽑아 공용 컴포넌트화.
+- `views/multi/season/MultiGamePbpView.tsx` — `GameDateStrip`의 인라인 달력 렌더링 블록(~60줄)을 `<MonthCalendarPopover>` 호출로 교체(동작/스타일 100% 동일, 로직만 이동).
+- `views/multi/season/MultiScheduleView.tsx` — `DateControlBar`의 네이티브 `<input type="date">`/`showPicker()` 구현을 제거하고, `GameDateStrip`과 동일한 트리거 버튼(클릭 시 `getBoundingClientRect()`로 위치 계산) + `<MonthCalendarPopover>` 패턴으로 교체. `selectableDates`는 `groupedByDay`에서 뽑은 dateKey 집합(`scheduleDateSet`)을 새 prop으로 전달 — 경기가 있는 날짜만 선택 가능(GameDateStrip과 동일 제약).
+
+**검증**: `tsc --noEmit`/`vite build` 통과, 두 파일 모두 중괄호 balance 스크립트로 확인. 이제 두 화면의 데이트피커는 동일한 컴포넌트를 공유하므로 앞으로 한쪽만 바뀌고 다른 쪽이 안 바뀌는 드리프트가 구조적으로 불가능해짐.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨. `MonthCalendarPopover.tsx`는 신규 파일이라 롤백 시 그냥 삭제.
+
+---
+
 ## 2026-08-07 — 헤더 날짜 클릭 시 데이트피커 확실히 뜨도록 수정
 
 **배경**: 사용자 피드백 — "헤더 가운데의 날짜를 누르면 데이트피커가 뜨도록 해줘." 기존 구현은 보이는 날짜 라벨을 `<label>`로 감싸고 그 안에 `opacity-0` `<input type="date">`를 겹쳐서, label 클릭 시 브라우저가 자동으로 내부 input에 클릭을 위임하는 방식이었다 — 그런데 이 간접 클릭 위임 방식은 브라우저/버전에 따라 네이티브 데이트피커가 안 뜨고 포커스만 잡히는 경우가 있어 신뢰할 수 없었다.

@@ -14,6 +14,7 @@ import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '.
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
+import { MonthCalendarPopover } from './MonthCalendarPopover';
 import {
     kstDateKey, fmtDateShort, fmtTime, groupByDay, findCurrentVirtualDate,
     addDaysToKey, addMonthsToKey, fmtFullDate, type DayGroup,
@@ -387,42 +388,67 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
 interface DateControlBarProps {
     activeDate: string;
     onChange: (dateKey: string) => void;
+    // 경기가 있는 날짜만 데이트피커에서 선택 가능하게 — GameDateStrip(라이브게임뷰 상단
+    // 날짜 셀렉터)과 동일한 제약. 이 Set은 groupedByDay에서 뽑은 dateKey 전체다.
+    selectableDates: Set<string>;
 }
 
-const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange }) => {
+// [2026-08-07] 라이브게임뷰(GameDateStrip) 상단 날짜 셀렉터의 데이트피커와 이 화면의
+// 데이트피커가 서로 다르게 생겼다는 피드백 — 네이티브 <input type="date">로 구현했던 걸
+// 걷어내고, GameDateStrip과 동일한 MonthCalendarPopover(월간 달력 드롭다운)를 그대로 재사용.
+const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, selectableDates }) => {
     const navBtn = "px-2.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:bg-slate-700/60 hover:text-white transition-colors ko-normal";
-    // 숨겨진 <input type="date">를 opacity-0로 겹쳐서 클릭을 위임하는 방식은 브라우저에 따라
-    // (특히 label을 통한 간접 클릭) 네이티브 데이트피커가 안 뜨는 경우가 있다 — 보이는 버튼의
-    // 클릭 핸들러에서 showPicker()를 직접 호출해 확실하게 피커를 띄운다(미지원 브라우저는
-    // input.click()으로 폴백).
-    const dateInputRef = useRef<HTMLInputElement>(null);
-    const openDatePicker = () => {
-        const el = dateInputRef.current;
-        if (!el) return;
-        if (typeof el.showPicker === 'function') el.showPicker();
-        else el.click();
-    };
+
+    const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
+    const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+    const dateMenuRef = useRef<HTMLDivElement>(null);
+    const [viewYM, setViewYM] = useState<[number, number] | null>(null);
+
+    // 드롭다운을 열 때마다 현재 선택된 날짜의 달로 초기화(GameDateStrip과 동일 패턴).
+    useEffect(() => {
+        if (!isDateMenuOpen) return;
+        const [y, m] = activeDate.split('-').map(Number);
+        setViewYM([y, m - 1]);
+    }, [isDateMenuOpen, activeDate]);
+
+    useEffect(() => {
+        if (!isDateMenuOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (!dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [isDateMenuOpen]);
+
     return (
         <div className="flex items-center gap-1 flex-wrap">
             <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, -1))}>저번달</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -7))}>저번주</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -1))}>어제</button>
-            <div className="relative">
+            <div ref={dateMenuRef} className="relative">
                 <button
                     type="button"
-                    onClick={openDatePicker}
-                    className="flex items-center px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap transition-colors"
+                    onClick={e => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPos({ x: rect.left, y: rect.bottom });
+                        setIsDateMenuOpen(o => !o);
+                    }}
+                    className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap transition-colors ${
+                        isDateMenuOpen ? 'bg-slate-600' : 'bg-slate-700 hover:bg-slate-600'
+                    }`}
                 >
                     {fmtFullDate(activeDate)}
                 </button>
-                <input
-                    ref={dateInputRef}
-                    type="date"
-                    value={activeDate}
-                    onChange={e => e.target.value && onChange(e.target.value)}
-                    tabIndex={-1}
-                    className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
-                />
+                {isDateMenuOpen && viewYM && menuPos && (
+                    <MonthCalendarPopover
+                        position={menuPos}
+                        viewYM={viewYM}
+                        onViewYMChange={setViewYM}
+                        selectableDates={selectableDates}
+                        activeDateKey={activeDate}
+                        onSelect={dk => { onChange(dk); setIsDateMenuOpen(false); }}
+                    />
+                )}
             </div>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 1))}>내일</button>
             <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 7))}>다음주</button>
@@ -540,6 +566,8 @@ const MultiScheduleView: React.FC = () => {
     // 자연히 최상단에, 진행중/예정 경기는 시간이 흐른 순서 그대로 아래에 이어진다.
     const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
     const totalPlayed  = useMemo(() => allGames.filter(g => getGameDisplayState(g, serverNow) === 'final').length, [allGames, serverNow]);
+    // 데이트피커에서 경기가 있는 날짜만 선택 가능하도록(GameDateStrip과 동일 제약).
+    const scheduleDateSet = useMemo(() => new Set(groupedByDay.map(g => g.dateKey)), [groupedByDay]);
 
     // "오늘" 배지 판정 기준값 — 메인리그(preferVirtual)는 dateKey가 가상 캘린더 값이라
     // currentSimDate(실제 KST, useSeasonContext에서 옴)와 직접 비교하면 항상 어긋난다.
@@ -593,7 +621,7 @@ const MultiScheduleView: React.FC = () => {
             <div className="flex items-center justify-between gap-4 flex-wrap px-4 py-3 bg-slate-900 border-b border-slate-800">
                 <h1 className="text-lg font-black text-white ko-tight shrink-0">시즌 일정</h1>
 
-                {activeDate && <DateControlBar activeDate={activeDate} onChange={setSelectedDate} />}
+                {activeDate && <DateControlBar activeDate={activeDate} onChange={setSelectedDate} selectableDates={scheduleDateSet} />}
 
                 <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 shrink-0">
                     <button

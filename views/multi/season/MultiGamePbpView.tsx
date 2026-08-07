@@ -6,6 +6,7 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { computeWL } from './multiSeasonUtils';
 import { fmtDayLabel, kstDateKey, groupByDay } from './multiScheduleUtils';
+import { MonthCalendarPopover } from './MonthCalendarPopover';
 import { useGame } from '../../../hooks/useGameContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { supabase } from '../../../services/supabaseClient';
@@ -1475,68 +1476,16 @@ const GameDateStrip: React.FC<GameDateStripProps> = ({
                 </button>
 
                 {/* 월간 달력 — 경기가 있는 날짜만 선택 가능(없는 날짜는 비활성) */}
-                {isDateMenuOpen && viewYM && menuPos && (() => {
-                    const [vy, vm] = viewYM; // vm: 0-indexed
-                    const firstWeekday = new Date(vy, vm, 1).getDay();
-                    const daysInMonth = new Date(vy, vm + 1, 0).getDate();
-                    const cells: (number | null)[] = [
-                        ...Array.from({ length: firstWeekday }, () => null),
-                        ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-                    ];
-                    while (cells.length % 7 !== 0) cells.push(null);
-
-                    return (
-                        <div
-                            className="fixed z-30 w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
-                            style={{ left: menuPos.x, top: menuPos.y }}
-                        >
-                            <div className="flex items-center justify-between mb-2">
-                                <button
-                                    onClick={() => setViewYM(vm === 0 ? [vy - 1, 11] : [vy, vm - 1])}
-                                    className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                >
-                                    <ChevronLeft size={16} />
-                                </button>
-                                <span className="text-sm font-bold text-white tabular-nums">{vy}년 {vm + 1}월</span>
-                                <button
-                                    onClick={() => setViewYM(vm === 11 ? [vy + 1, 0] : [vy, vm + 1])}
-                                    className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                >
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-7 gap-1 mb-1">
-                                {['일', '월', '화', '수', '목', '금', '토'].map(d => (
-                                    <div key={d} className="text-xs font-bold text-slate-500 text-center">{d}</div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-7 gap-1">
-                                {cells.map((day, i) => {
-                                    if (day === null) return <div key={i} />;
-                                    const dk = `${vy}-${String(vm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                    const hasGame = gameDateSet.has(dk);
-                                    const isActive = dk === activeDateKey;
-                                    return (
-                                        <button
-                                            key={i}
-                                            disabled={!hasGame}
-                                            onClick={() => { setSelectedDateKey(dk); setIsDateMenuOpen(false); }}
-                                            className={`h-8 rounded text-xs font-bold tabular-nums transition-colors ${
-                                                isActive
-                                                    ? 'bg-indigo-600 text-white ring-1 ring-inset ring-indigo-400'
-                                                    : hasGame
-                                                        ? 'text-white hover:bg-slate-800 cursor-pointer'
-                                                        : 'text-slate-700 cursor-not-allowed'
-                                            }`}
-                                        >
-                                            {day}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })()}
+                {isDateMenuOpen && viewYM && menuPos && (
+                    <MonthCalendarPopover
+                        position={menuPos}
+                        viewYM={viewYM}
+                        onViewYMChange={setViewYM}
+                        selectableDates={gameDateSet}
+                        activeDateKey={activeDateKey ?? ''}
+                        onSelect={dk => { setSelectedDateKey(dk); setIsDateMenuOpen(false); }}
+                    />
+                )}
             </div>
 
             {/* 좌측 이동 버튼 — 우측 버튼과 동일한 패턴(끝 도달 시 비활성화, 인디고 색상) */}
