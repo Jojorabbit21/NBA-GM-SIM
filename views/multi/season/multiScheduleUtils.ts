@@ -112,6 +112,12 @@ export function fmtFullDate(dateKey: string): string {
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`;
 }
 
+// 날짜 캐러셀 셀 표기용 — dateKey가 이미 zero-padded "YYYY-MM-DD"라 문자열만 잘라 쓰면 된다.
+export function fmtMonthDot(dateKey: string): string {
+    const [, m, d] = dateKey.split('-');
+    return `${m}.${d}`;
+}
+
 export interface DayGroup { dateKey: string; label: string; games: Game[] }
 
 // games는 반드시 scheduledAt(또는 date) 기준 오름차순 정렬된 상태로 넘겨야 한다 — 순차 비교로만

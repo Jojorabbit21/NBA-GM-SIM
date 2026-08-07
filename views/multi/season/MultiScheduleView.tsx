@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Tv, LayoutList, LayoutGrid } from 'lucide-react';
+import { Loader2, Tv, LayoutList, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -16,8 +16,8 @@ import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import {
-    kstDateKey, fmtDateShort, fmtTime, groupByDay, findCurrentVirtualDate,
-    addDaysToKey, addMonthsToKey, fmtFullDate, type DayGroup,
+    kstDateKey, fmtDateShort, fmtTime, fmtMonthDot, groupByDay, findCurrentVirtualDate,
+    addDaysToKey, type DayGroup,
 } from './multiScheduleUtils';
 
 const LIVE_POLL_MS = 5000;
@@ -393,11 +393,15 @@ interface DateControlBarProps {
     selectableDates: Set<string>;
 }
 
-// [2026-08-07] 라이브게임뷰(GameDateStrip) 상단 날짜 셀렉터의 데이트피커와 이 화면의
-// 데이트피커가 서로 다르게 생겼다는 피드백 — 네이티브 <input type="date">로 구현했던 걸
-// 걷어내고, GameDateStrip과 동일한 MonthCalendarPopover(월간 달력 드롭다운)를 그대로 재사용.
+const CAROUSEL_OFFSETS = [-3, -2, -1, 0, 1, 2, 3];
+const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
+
+// [2026-08-07] 레퍼런스 이미지(모바일 스케줄 앱) 참고 요청 — 연도(드롭다운) + 하루씩 넘기는
+// 날짜 캐러셀 2단 구성으로 교체. 가운데(선택된 날짜) 칸을 클릭하면 MonthCalendarPopover가
+// 뜬다(GameDateStrip과 동일 컴포넌트 재사용).
 const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, selectableDates }) => {
-    const navBtn = "px-2.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:bg-slate-700/60 hover:text-white transition-colors ko-normal";
+    const [isYearMenuOpen, setIsYearMenuOpen] = useState(false);
+    const yearMenuRef = useRef<HTMLDivElement>(null);
 
     const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
     const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -412,47 +416,131 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
     }, [isDateMenuOpen, activeDate]);
 
     useEffect(() => {
-        if (!isDateMenuOpen) return;
+        if (!isDateMenuOpen && !isYearMenuOpen) return;
         const handler = (e: MouseEvent) => {
-            if (!dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
+            if (isDateMenuOpen && !dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
+            if (isYearMenuOpen && !yearMenuRef.current?.contains(e.target as Node)) setIsYearMenuOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, [isDateMenuOpen]);
+    }, [isDateMenuOpen, isYearMenuOpen]);
+
+    // 시즌이 걸쳐 있는 연도만 드롭다운에 노출(예: 2026년 10월 개막 시즌이면 2026/2027).
+    const sortedDates = useMemo(() => [...selectableDates].sort(), [selectableDates]);
+    const availableYears = useMemo(() => {
+        const years = new Set<number>();
+        for (const dk of sortedDates) years.add(Number(dk.slice(0, 4)));
+        return [...years].sort((a, b) => a - b);
+    }, [sortedDates]);
+    const activeYear = Number(activeDate.slice(0, 4));
+
+    const selectYear = (year: number) => {
+        const match = sortedDates.find(dk => dk.startsWith(String(year)));
+        if (match) onChange(match);
+        setIsYearMenuOpen(false);
+    };
 
     return (
-        <div className="flex items-center gap-1 flex-wrap">
-            <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, -1))}>저번달</button>
-            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -7))}>저번주</button>
-            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, -1))}>어제</button>
-            <div ref={dateMenuRef} className="relative">
+        <div className="flex flex-col items-center gap-1.5 w-full">
+            {/* 연도 — 클릭하면 시즌이 걸쳐 있는 연도만 선택 가능한 드롭다운 */}
+            <div ref={yearMenuRef} className="relative flex items-center gap-3 w-full max-w-[220px]">
+                <div className="flex-1 h-px bg-slate-700" />
                 <button
-                    type="button"
-                    onClick={e => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setMenuPos({ x: rect.left, y: rect.bottom });
-                        setIsDateMenuOpen(o => !o);
-                    }}
-                    className={`flex items-center px-3 py-1.5 rounded-md text-sm font-bold text-white cursor-pointer ko-normal whitespace-nowrap transition-colors ${
-                        isDateMenuOpen ? 'bg-slate-600' : 'bg-slate-700 hover:bg-slate-600'
-                    }`}
+                    onClick={() => setIsYearMenuOpen(o => !o)}
+                    className="px-1 text-xs font-bold text-slate-400 hover:text-white transition-colors ko-normal tabular-nums"
                 >
-                    {fmtFullDate(activeDate)}
+                    {activeYear}
                 </button>
-                {isDateMenuOpen && viewYM && menuPos && (
-                    <MonthCalendarPopover
-                        position={menuPos}
-                        viewYM={viewYM}
-                        onViewYMChange={setViewYM}
-                        selectableDates={selectableDates}
-                        activeDateKey={activeDate}
-                        onSelect={dk => { onChange(dk); setIsDateMenuOpen(false); }}
-                    />
+                <div className="flex-1 h-px bg-slate-700" />
+                {isYearMenuOpen && availableYears.length > 0 && (
+                    <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-30 bg-slate-900 border border-slate-700 rounded-md shadow-2xl py-1 min-w-[72px]">
+                        {availableYears.map(y => (
+                            <button
+                                key={y}
+                                onClick={() => selectYear(y)}
+                                className={`block w-full px-4 py-1.5 text-sm font-bold text-center tabular-nums transition-colors ${
+                                    y === activeYear ? 'text-white bg-slate-800' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                }`}
+                            >
+                                {y}
+                            </button>
+                        ))}
+                    </div>
                 )}
             </div>
-            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 1))}>내일</button>
-            <button className={navBtn} onClick={() => onChange(addDaysToKey(activeDate, 7))}>다음주</button>
-            <button className={navBtn} onClick={() => onChange(addMonthsToKey(activeDate, 1))}>다음달</button>
+
+            {/* 날짜 캐러셀 — 화살표는 하루씩 이동, 칸을 직접 클릭해도 그 날짜로 바로 이동.
+                가운데(선택된 날짜) 칸만 클릭 시 데이트피커(월간 달력)가 뜬다. */}
+            <div className="flex items-center gap-0.5">
+                <button
+                    onClick={() => onChange(addDaysToKey(activeDate, -1))}
+                    className="p-1.5 rounded-md text-slate-400 hover:bg-slate-700/60 hover:text-white transition-colors shrink-0"
+                >
+                    <ChevronLeft size={16} />
+                </button>
+
+                {CAROUSEL_OFFSETS.map(offset => {
+                    const dk = addDaysToKey(activeDate, offset);
+                    const isActive = offset === 0;
+                    const weekday = WEEKDAYS_KO[new Date(dk + 'T00:00:00').getDay()];
+                    const cellContent = (
+                        <div className="flex flex-col items-center leading-tight">
+                            <span className={`text-[10px] font-medium ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                                {weekday}
+                            </span>
+                            <span className={`font-mono font-bold text-sm tabular-nums ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                                {fmtMonthDot(dk)}
+                            </span>
+                        </div>
+                    );
+
+                    if (!isActive) {
+                        return (
+                            <button
+                                key={offset}
+                                onClick={() => onChange(dk)}
+                                className="flex items-center justify-center px-2.5 py-1.5 rounded-md hover:bg-slate-700/60 transition-colors shrink-0"
+                            >
+                                {cellContent}
+                            </button>
+                        );
+                    }
+
+                    return (
+                        <div key={offset} ref={dateMenuRef} className="relative shrink-0">
+                            <button
+                                onClick={e => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setMenuPos({ x: rect.left, y: rect.bottom });
+                                    setIsDateMenuOpen(o => !o);
+                                }}
+                                className={`flex items-center justify-center px-2.5 py-1.5 rounded-md transition-colors ${
+                                    isDateMenuOpen ? 'bg-slate-600' : 'bg-slate-700 hover:bg-slate-600'
+                                }`}
+                            >
+                                {cellContent}
+                            </button>
+                            {isDateMenuOpen && viewYM && menuPos && (
+                                <MonthCalendarPopover
+                                    position={menuPos}
+                                    viewYM={viewYM}
+                                    onViewYMChange={setViewYM}
+                                    selectableDates={selectableDates}
+                                    activeDateKey={activeDate}
+                                    onSelect={selected => { onChange(selected); setIsDateMenuOpen(false); }}
+                                />
+                            )}
+                        </div>
+                    );
+                })}
+
+                <button
+                    onClick={() => onChange(addDaysToKey(activeDate, 1))}
+                    className="p-1.5 rounded-md text-slate-400 hover:bg-slate-700/60 hover:text-white transition-colors shrink-0"
+                >
+                    <ChevronRight size={16} />
+                </button>
+            </div>
         </div>
     );
 };
@@ -617,13 +705,18 @@ const MultiScheduleView: React.FC = () => {
         <div className="text-slate-200 pretendard">
             {/* 통합 헤더 — 타이틀, 날짜 컨트롤, 리스트·카드 토글을 한 줄에 배치.
                 컨테이너(카드 박스)를 쓰지 않고 페이지 가장자리까지 꽉 차는 색상 띠 하나로만
-                구분한다 — 배경(slate-950)과 구분되도록 slate-900 + 하단 보더만 사용. */}
-            <div className="flex items-center justify-between gap-4 flex-wrap px-4 py-3 bg-slate-900 border-b border-slate-800">
-                <h1 className="text-lg font-black text-white ko-tight shrink-0">시즌 일정</h1>
+                구분한다 — 배경(slate-950)과 구분되도록 slate-900 + 하단 보더만 사용.
+                [2026-08-07] 3영역 폭을 2:6:2 그리드로 고정 — flex justify-between은 양쪽
+                아이템 크기에 따라 가운데 그룹이 미묘하게 안 맞을 수 있어, 날짜 컨트롤이
+                항상 정확히 화면 중앙(전체 폭의 60%)에 오도록 grid-cols로 고정폭 배분. */}
+            <div className="grid grid-cols-[2fr_6fr_2fr] items-center gap-4 px-4 py-3 bg-slate-900 border-b border-slate-800">
+                <h1 className="text-lg font-black text-white ko-tight truncate">시즌 일정</h1>
 
-                {activeDate && <DateControlBar activeDate={activeDate} onChange={setSelectedDate} selectableDates={scheduleDateSet} />}
+                <div className="flex justify-center min-w-0">
+                    {activeDate && <DateControlBar activeDate={activeDate} onChange={setSelectedDate} selectableDates={scheduleDateSet} />}
+                </div>
 
-                <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 shrink-0">
+                <div className="flex items-center justify-end gap-1 bg-slate-800 rounded-md p-1 shrink-0 justify-self-end">
                     <button
                         onClick={() => setViewMode('list')}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
