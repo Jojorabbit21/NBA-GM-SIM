@@ -109,7 +109,7 @@ export function addMonthsToKey(dateKey: string, months: number): string {
 export function fmtFullDate(dateKey: string): string {
     const d = dateKeyToLocalDate(dateKey);
     const days = ['일', '월', '화', '수', '목', '금', '토'];
-    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`;
 }
 
 export interface DayGroup { dateKey: string; label: string; games: Game[] }
