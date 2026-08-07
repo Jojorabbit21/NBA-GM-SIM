@@ -443,15 +443,13 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
     return (
         <div className="flex flex-col items-center gap-1.5 w-full">
             {/* 연도 — 클릭하면 시즌이 걸쳐 있는 연도만 선택 가능한 드롭다운 */}
-            <div ref={yearMenuRef} className="relative flex items-center gap-3 w-full max-w-[220px]">
-                <div className="flex-1 h-px bg-slate-700" />
+            <div ref={yearMenuRef} className="relative flex items-center justify-center">
                 <button
                     onClick={() => setIsYearMenuOpen(o => !o)}
-                    className="px-1 text-xs font-bold text-slate-400 hover:text-white transition-colors ko-normal tabular-nums"
+                    className="px-1 text-sm font-bold text-slate-400 hover:text-white transition-colors ko-normal tabular-nums"
                 >
                     {activeYear}
                 </button>
-                <div className="flex-1 h-px bg-slate-700" />
                 {isYearMenuOpen && availableYears.length > 0 && (
                     <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-30 bg-slate-900 border border-slate-700 rounded-md shadow-2xl py-1 min-w-[72px]">
                         {availableYears.map(y => (
@@ -474,7 +472,7 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
             <div className="flex items-center gap-0.5">
                 <button
                     onClick={() => onChange(addDaysToKey(activeDate, -1))}
-                    className="p-1.5 rounded-md text-slate-400 hover:bg-slate-700/60 hover:text-white transition-colors shrink-0"
+                    className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
                 >
                     <ChevronLeft size={16} />
                 </button>
@@ -485,10 +483,10 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
                     const weekday = WEEKDAYS_KO[new Date(dk + 'T00:00:00').getDay()];
                     const cellContent = (
                         <div className="flex flex-col items-center leading-tight">
-                            <span className={`text-[10px] font-medium ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-medium ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
                                 {weekday}
                             </span>
-                            <span className={`font-mono font-bold text-sm tabular-nums ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                            <span className={`font-bold text-sm tabular-nums ko-normal ${isActive ? 'text-white' : 'text-slate-300'}`}>
                                 {fmtMonthDot(dk)}
                             </span>
                         </div>
@@ -499,7 +497,7 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
                             <button
                                 key={offset}
                                 onClick={() => onChange(dk)}
-                                className="flex items-center justify-center px-2.5 py-1.5 rounded-md hover:bg-slate-700/60 transition-colors shrink-0"
+                                className="flex items-center justify-center px-2.5 pt-4 pb-1.5 rounded-md hover:bg-slate-700/60 transition-colors shrink-0"
                             >
                                 {cellContent}
                             </button>
@@ -514,8 +512,8 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
                                     setMenuPos({ x: rect.left, y: rect.bottom });
                                     setIsDateMenuOpen(o => !o);
                                 }}
-                                className={`flex items-center justify-center px-2.5 py-1.5 rounded-md transition-colors ${
-                                    isDateMenuOpen ? 'bg-slate-600' : 'bg-slate-700 hover:bg-slate-600'
+                                className={`flex items-center justify-center px-2.5 pt-4 pb-1.5 rounded-md transition-colors ${
+                                    isDateMenuOpen ? 'bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-500'
                                 }`}
                             >
                                 {cellContent}
@@ -536,7 +534,7 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
 
                 <button
                     onClick={() => onChange(addDaysToKey(activeDate, 1))}
-                    className="p-1.5 rounded-md text-slate-400 hover:bg-slate-700/60 hover:text-white transition-colors shrink-0"
+                    className="p-1.5 rounded-md text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-colors shrink-0"
                 >
                     <ChevronRight size={16} />
                 </button>
