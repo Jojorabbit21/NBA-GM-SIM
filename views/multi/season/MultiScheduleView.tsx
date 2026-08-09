@@ -292,7 +292,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
 
     return (
         <div className={`flex flex-col rounded-lg border overflow-hidden ${
-            isMyGame ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/60'
+            isMyGame ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-800'
         }`}>
             {/* 상단: 상태 배지 + 보기 버튼 */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800/70">
@@ -317,27 +317,32 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                 </button>
             </div>
 
-            {/* 팀 행 — 로고 배지 대신 리스트와 동일하게 팀 컬러를 행 배경 전체에 칠함 */}
+            {/* 팀 행 — 로고 배지 대신 리스트와 동일하게 팀 컬러를 행 배경 전체에 칠함.
+                점수 영역만 별도 중립 배경 박스로 분리해 팀 테마 색이 들어가지 않게 한다. */}
             <div className="flex flex-col">
-                <div
-                    className="flex items-center justify-between gap-2 px-3 py-2.5"
-                    style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
-                >
-                    <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-stretch">
+                    <div
+                        className="flex-1 flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
+                    >
                         <span className="font-bold text-sm shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
                     </div>
-                    <span className="font-bold text-sm tabular-nums shrink-0 ko-normal">{awayScore ?? '-'}</span>
+                    <div className="flex items-center justify-center px-3 bg-slate-900/70 shrink-0">
+                        <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{awayScore ?? '-'}</span>
+                    </div>
                 </div>
-                <div
-                    className="flex items-center justify-between gap-2 px-3 py-2.5"
-                    style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
-                >
-                    <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-stretch">
+                    <div
+                        className="flex-1 flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
+                    >
                         <span className="font-bold text-sm shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
                     </div>
-                    <span className="font-bold text-sm tabular-nums shrink-0 ko-normal">{homeScore ?? '-'}</span>
+                    <div className="flex items-center justify-center px-3 bg-slate-900/70 shrink-0">
+                        <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{homeScore ?? '-'}</span>
+                    </div>
                 </div>
             </div>
 
