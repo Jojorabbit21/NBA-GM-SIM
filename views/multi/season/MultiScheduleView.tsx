@@ -633,25 +633,35 @@ const MultiScheduleView: React.FC = () => {
                     {activeDate && <DateControlBar activeDate={activeDate} onChange={setSelectedDate} selectableDates={scheduleDateSet} />}
                 </div>
 
-                <div className="flex items-center justify-end gap-1 bg-slate-800 rounded-md p-1 shrink-0 justify-self-end">
+                <div className="flex items-center justify-end gap-2 shrink-0 justify-self-end">
+                    {/* 리스트/카드 셀렉터 좌측 — 오늘 날짜로 바로 이동 */}
                     <button
-                        onClick={() => setViewMode('list')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
-                            viewMode === 'list' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
-                        }`}
+                        onClick={() => todayKey && setSelectedDate(todayKey)}
+                        disabled={!todayKey}
+                        className="px-3 py-1.5 rounded-md text-sm font-bold text-indigo-400 hover:bg-indigo-500/20 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent transition-colors ko-normal"
                     >
-                        <LayoutList size={15} />
-                        리스트
+                        오늘
                     </button>
-                    <button
-                        onClick={() => setViewMode('card')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
-                            viewMode === 'card' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
-                        }`}
-                    >
-                        <LayoutGrid size={15} />
-                        카드
-                    </button>
+                    <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1">
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
+                                viewMode === 'list' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                        >
+                            <LayoutList size={15} />
+                            리스트
+                        </button>
+                        <button
+                            onClick={() => setViewMode('card')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
+                                viewMode === 'card' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                        >
+                            <LayoutGrid size={15} />
+                            카드
+                        </button>
+                    </div>
                 </div>
             </div>
 
