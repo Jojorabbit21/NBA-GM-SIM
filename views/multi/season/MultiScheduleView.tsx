@@ -282,7 +282,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
 
     // 필 스타일(보기/리뷰 버튼) — GameRow와 동일한 규칙: 종료된 경기만 "리뷰"(인디고),
     // 나머지는 "보기"(라이브=빨강, 예정=슬레이트).
-    const pillBtn = "flex items-center gap-1 h-7 px-2.5 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal";
+    const pillBtn = "flex items-center gap-1 h-7 px-2.5 text-white rounded-md text-base font-bold leading-none transition-all active:scale-95 ko-normal";
 
     const awayScore = state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : null;
     const homeScore = state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : null;
@@ -298,7 +298,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
         }`}>
             {/* 상단: 상태 배지 + 보기 버튼 */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800/70">
-                <span className="flex items-center gap-1.5 text-sm font-bold ko-normal">
+                <span className="flex items-center gap-1.5 text-base font-bold ko-normal">
                     {state === 'live' ? (
                         <>
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
