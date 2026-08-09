@@ -322,25 +322,25 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
             <div className="flex flex-col">
                 <div className="flex items-stretch">
                     <div
-                        className="flex-[6] flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0"
                         style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
                     >
                         <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
                         <span className="font-bold text-base sm:text-xl truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
                     </div>
-                    <div className="flex-[4] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
+                    <div className="flex-[3] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-base sm:text-xl tabular-nums text-slate-100 ko-normal">{awayScore ?? '-'}</span>
                     </div>
                 </div>
                 <div className="flex items-stretch">
                     <div
-                        className="flex-[6] flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0"
                         style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
                     >
                         <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
                         <span className="font-bold text-base sm:text-xl truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
                     </div>
-                    <div className="flex-[4] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
+                    <div className="flex-[3] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-base sm:text-xl tabular-nums text-slate-100 ko-normal">{homeScore ?? '-'}</span>
                     </div>
                 </div>
@@ -699,9 +699,9 @@ const MultiScheduleView: React.FC = () => {
                     </div>
                 ) : (
                     <div className="flex flex-col gap-6 p-4">
-                        {/* 진행중 → 예정 → 종료 순으로 별도 섹션에 배치(라벨 없음) — 섹션마다
+                        {/* 종료 → 진행중 → 예정 순으로 별도 섹션에 배치(라벨 없음) — 섹션마다
                             해당 상태의 경기만 5열 그리드로 나열, 해당 상태 경기가 없으면 섹션 자체를 생략. */}
-                        {(['live', 'scheduled', 'final'] as const).map(bucket => {
+                        {(['final', 'live', 'scheduled'] as const).map(bucket => {
                             const games = activeDayGames.filter(g => getGameDisplayState(g, serverNow) === bucket);
                             if (games.length === 0) return null;
                             return (
