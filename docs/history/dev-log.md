@@ -35,6 +35,22 @@
 
 ---
 
+## 2026-08-09 — 카드 뷰: 팀/점수 배경 통일, 종료 경기 리뷰 버튼, 리더 영역 삭제
+
+**배경**: 사용자 요청 3가지 — ① 팀/점수 영역 배경을 동일한 팀 프라이머리 컬러로, 텍스트는 팀 텍스트 컬러로 통일(직전에 분리했던 중립 점수 박스를 다시 합침) ② 종료된 경기는 리스트와 동일하게 "보기" 대신 "리뷰" 버튼(인디고 필) ③ 카드의 PTS/REB/AST 리더 영역 완전 삭제.
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx`
+
+- 팀/점수 배경: 각 팀 행을 감싸는 `<div style={{backgroundColor, color}}>`를 팀명 영역과 점수 영역의 공통 부모로 올려서 둘 다 같은 배경/텍스트 색을 상속받도록 변경(점수 전용 `bg-slate-900/70` 박스 제거).
+- 보기/리뷰 버튼: `GameRow`와 동일한 `pillBtn` 패턴 도입 — `state==='final'`이면 `bg-indigo-600` "리뷰", 아니면 라이브(`bg-red-600`)/예정(`bg-slate-700`) "보기".
+- 리더(PTS/REB/AST) 섹션 블록 전체 삭제. 더 이상 안 쓰는 `gameLeadersMap` prop도 `GameCardProps`/호출부에서 함께 제거.
+
+**검증**: `tsc --noEmit`/`vite build` 통과, 중괄호 balance 스크립트로 확인.
+
+**롤백 방법**: 이 커밋의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-08-09 — 카드 뷰 팀/점수 비율 7:3, 섹션 순서 종료→진행중→예정으로 변경
 
 **변경 파일**: `views/multi/season/MultiScheduleView.tsx`

@@ -270,17 +270,19 @@ interface GameCardProps {
     teamMap: Record<string, any>;
     myTeamId: string | null;
     liveSummaries: Record<string, LiveGameSummary>;
-    gameLeadersMap: Record<string, GameLeaders>;
     onView: (gameId: string) => void;
     preferVirtual: boolean;
 }
 
-const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, onView, preferVirtual }) => {
+const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSummaries, onView, preferVirtual }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
     const live = liveSummaries[g.id];
-    const leaders = gameLeadersMap[g.id];
+
+    // 필 스타일(보기/리뷰 버튼) — GameRow와 동일한 규칙: 종료된 경기만 "리뷰"(인디고),
+    // 나머지는 "보기"(라이브=빨강, 예정=슬레이트).
+    const pillBtn = "flex items-center gap-1 h-7 px-2.5 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal";
 
     const awayScore = state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : null;
     const homeScore = state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : null;
@@ -308,63 +310,43 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                         <span className="text-slate-400 ko-normal">{fmtTime(g, preferVirtual)}</span>
                     )}
                 </span>
-                <button
-                    onClick={() => onView(g.id)}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors ko-normal"
-                >
-                    <Tv size={13} />
-                    보기
-                </button>
+                {state === 'final' ? (
+                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-indigo-600 hover:bg-indigo-500`}>
+                        리뷰
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => onView(g.id)}
+                        className={`${pillBtn} ${state === 'live' ? 'bg-red-600 hover:bg-red-500' : 'bg-slate-700 hover:bg-slate-600'}`}
+                    >
+                        <Tv size={13} />
+                        보기
+                    </button>
+                )}
             </div>
 
             {/* 팀 행 — 로고 배지 대신 리스트와 동일하게 팀 컬러를 행 배경 전체에 칠함.
-                점수 영역만 별도 중립 배경 박스로 분리해 팀 테마 색이 들어가지 않게 한다. */}
+                점수 영역도 같은 배경/텍스트 색을 그대로 이어받는다(별도 중립 배경 없음). */}
             <div className="flex flex-col">
-                <div className="flex items-stretch">
-                    <div
-                        className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0"
-                        style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
-                    >
+                <div className="flex items-stretch" style={{ backgroundColor: awayColorPrimary, color: awayColorText }}>
+                    <div className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0">
                         <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
                         <span className="font-bold text-base sm:text-xl truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
                     </div>
-                    <div className="flex-[3] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
-                        <span className="font-bold text-base sm:text-xl tabular-nums text-slate-100 ko-normal">{awayScore ?? '-'}</span>
+                    <div className="flex-[3] flex items-center justify-end px-3 min-w-0">
+                        <span className="font-bold text-base sm:text-xl tabular-nums ko-normal">{awayScore ?? '-'}</span>
                     </div>
                 </div>
-                <div className="flex items-stretch">
-                    <div
-                        className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0"
-                        style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
-                    >
+                <div className="flex items-stretch" style={{ backgroundColor: homeColorPrimary, color: homeColorText }}>
+                    <div className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0">
                         <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
                         <span className="font-bold text-base sm:text-xl truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
                     </div>
-                    <div className="flex-[3] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
-                        <span className="font-bold text-base sm:text-xl tabular-nums text-slate-100 ko-normal">{homeScore ?? '-'}</span>
+                    <div className="flex-[3] flex items-center justify-end px-3 min-w-0">
+                        <span className="font-bold text-base sm:text-xl tabular-nums ko-normal">{homeScore ?? '-'}</span>
                     </div>
                 </div>
             </div>
-
-            {/* 리더 (종료된 경기만) */}
-            {state === 'final' && leaders && (
-                <div className="flex flex-col gap-1.5 px-3 py-2.5 border-t border-slate-800/70 bg-black/10">
-                    {(['pts', 'reb', 'ast'] as const).map(stat => {
-                        const l = leaders[stat];
-                        if (!l) return null;
-                        return (
-                            <div key={stat} className="flex items-center justify-between gap-2 text-sm">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="w-7 shrink-0 font-bold text-slate-500 ko-normal">{stat.toUpperCase()}</span>
-                                    <span className="truncate text-slate-300 ko-normal">{l.name}</span>
-                                    {l.position && <span className="shrink-0 text-slate-500 ko-normal">{l.position}</span>}
-                                </div>
-                                <span className="shrink-0 font-semibold text-slate-200 ko-normal">{l.value}</span>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
         </div>
     );
 };
@@ -714,7 +696,6 @@ const MultiScheduleView: React.FC = () => {
                                             teamMap={teamMap}
                                             myTeamId={myTeamId}
                                             liveSummaries={liveSummaries}
-                                            gameLeadersMap={gameLeadersMap}
                                             onView={handleView}
                                             preferVirtual={preferVirtual}
                                         />
