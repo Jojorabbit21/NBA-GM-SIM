@@ -322,25 +322,25 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
             <div className="flex flex-col">
                 <div className="flex items-stretch">
                     <div
-                        className="flex-1 flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        className="flex-[6] flex items-center gap-2 px-3 py-2.5 min-w-0"
                         style={{ backgroundColor: awayColorPrimary, color: awayColorText }}
                     >
                         <span className="font-bold text-sm shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
                     </div>
-                    <div className="flex items-center justify-center px-3 bg-slate-900/70 shrink-0">
+                    <div className="flex-[4] flex items-center justify-center px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{awayScore ?? '-'}</span>
                     </div>
                 </div>
                 <div className="flex items-stretch">
                     <div
-                        className="flex-1 flex items-center gap-2 px-3 py-2.5 min-w-0"
+                        className="flex-[6] flex items-center gap-2 px-3 py-2.5 min-w-0"
                         style={{ backgroundColor: homeColorPrimary, color: homeColorText }}
                     >
                         <span className="font-bold text-sm shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
                     </div>
-                    <div className="flex items-center justify-center px-3 bg-slate-900/70 shrink-0">
+                    <div className="flex-[4] flex items-center justify-center px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{homeScore ?? '-'}</span>
                     </div>
                 </div>
