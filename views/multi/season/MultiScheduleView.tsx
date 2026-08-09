@@ -328,7 +328,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                         <span className="font-bold text-sm shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
                     </div>
-                    <div className="flex-[4] flex items-center justify-center px-3 bg-slate-900/70 min-w-0">
+                    <div className="flex-[4] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{awayScore ?? '-'}</span>
                     </div>
                 </div>
@@ -340,7 +340,7 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                         <span className="font-bold text-sm shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
                         <span className="font-bold text-sm truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
                     </div>
-                    <div className="flex-[4] flex items-center justify-center px-3 bg-slate-900/70 min-w-0">
+                    <div className="flex-[4] flex items-center justify-end px-3 bg-slate-900/70 min-w-0">
                         <span className="font-bold text-sm tabular-nums text-slate-100 ko-normal">{homeScore ?? '-'}</span>
                     </div>
                 </div>
