@@ -5,7 +5,8 @@
 // 설계 배경: docs/plan/schedule-leaders-cache-plan.md
 
 export interface StatLeader { name: string; value: number; position?: string }
-export interface GameLeaders { pts?: StatLeader; reb?: StatLeader; ast?: StatLeader }
+export interface QuarterScores { home: number[]; away: number[] }
+export interface GameLeaders { pts?: StatLeader; reb?: StatLeader; ast?: StatLeader; quarterScores?: QuarterScores }
 
 const keyFor = (roomId: string) => `nbagm:gameLeaders:${roomId}`;
 

@@ -35,6 +35,33 @@
 
 ---
 
+## 2026-08-09 — 카드 뷰 대개편: 3열+좌우 배치, 쿼터별 점수, 팀 에이스 표시
+
+**배경**: 사용자 요청 — ① 카드 그리드 5열→3열 ② 원정/홈 상하 배치→좌우 배치 ③ 진행중/종료 카드에 쿼터별 점수 테이블 + PTS/REB/AST 리더 ④ 예정 카드엔 팀별 "에이스" 선수 1명. 조사 결과 쿼터별 점수와 에이스(OVR) 둘 다 기존 데이터로는 불가능해서 새 데이터 파이프라인을 추가함(사용자 지시대로 이번 배치 작업들은 Vercel 배포 없이 로컬 커밋만 진행, 추후 한 번에 배포 예정).
+
+**변경 파일**:
+- 신규 `migrations/game_pbp_quarter_scores.sql` — `game_pbp.quarter_scores jsonb` 컬럼 추가(Supabase에 적용 완료).
+- `server/src/liveGameView.ts` — `computeQuarterScoresFromEvents(events)` 신규: PBP 로그의 쿼터별 누적 스코어 스냅샷 차분으로 쿼터별 득점을 파생(연장전도 배열 인덱스 4,5,...로 정확히 분리 — 기존 싱글플레이어 `extractQuarterScores()`/`MultiGamePbpView`의 `QuarterScores` 컴포넌트는 4쿼터 고정 슬롯이라 OT를 전부 Q4에 합산하던 한계를 여기선 재발 안 시킴). `LiveGameSummary`에 `quarterScores` 필드 추가, `buildLiveSummary()`가 live 상태면 elapsed 필터링된 이벤트로(자동 스포일러 방지), final이면 전체 이벤트로 계산해 채움.
+- `server/src/simRunner.ts` — `game_pbp` upsert 시 `quarter_scores: computeQuarterScoresFromEvents(result.pbpLogs)` 추가(시뮬레이션 완료 시 1회 계산 후 영구 저장 — 카드/리스트 화면이 매번 전체 PBP 로그를 다시 훑지 않아도 됨).
+- `services/multi/liveGameService.ts` — `LiveGameSummary.quarterScores` 필드 미러링.
+- `services/multi/gameLeadersCache.ts` — `QuarterScores` 타입 신규 export, `GameLeaders`에 `quarterScores?: QuarterScores` 추가(리더 캐시와 동일한 localStorage 캐시에 함께 저장 — 종료된 경기는 재조회 불필요).
+- `views/multi/season/MultiScheduleView.tsx`:
+  - 리더 조회 select에 `quarter_scores` 추가, 캐시 업데이트 시 함께 저장.
+  - `quarterScoresMap` 신규 useMemo — 상태가 `live`면 `liveSummaries[id].quarterScores`, 아니면 `gameLeadersMap[id].quarterScores`를 사용해 한 곳으로 병합.
+  - `teamAceMap` 신규 — `leagueTeams`의 전체 로스터 ID를 한 번에 `meta_players`(`id,name,position,base_attributes,tendencies`)로 벌크 조회 → `mapRawPlayerToRuntimePlayer()` + `calculatePlayerOvr()`로 팀별 OVR 최고 선수를 계산해 `team_slug` 키로 캐싱.
+  - `GameCard` 전면 개편: 그리드 `2xl:grid-cols-5` 제거(3열 최대), 원정/홈을 상하 두 줄 대신 좌우 두 칸(`flex-1` 각각 팀 컬러 배경 + 팀 약어/이름/큰 점수)으로 재배치. 상태별 디테일 영역 분기 — `scheduled`는 신규 `AceMiniCard`(팀별 에이스 이름/포지션/OVR) 좌우 배치, `live`/`final`은 신규 `QuarterScoreTable`(쿼터별 점수, 연장전 동적 컬럼) + 기존 PTS/REB/AST 리더 섹션(이전에 삭제했던 걸 복원).
+
+**검증**: 클라이언트 `tsc --noEmit`/`vite build`, 서버 `tsc --noEmit`(기존에 있던 무관한 에러 1건 외 신규 에러 없음 확인) 통과. 중괄호 balance 스크립트로 JSX 구조 확인. DB 마이그레이션은 Supabase에 적용 완료.
+
+**알려진 한계**:
+- `computeQuarterScoresFromEvents()`는 기존 싱글플레이어/멀티 PBP 리플레이 화면의 4쿼터 고정 로직과 별개의 새 구현이라, 이 셋 사이에 결과가 미묘하게 다를 가능성은 낮지만 완전히 검증되진 않음(추후 실제 경기로 육안 대조 권장).
+- `teamAceMap`은 리그 전체 로스터를 한 번에 벌크 조회 — 팀 수×로스터 크기가 매우 큰 리그에서는 초기 로딩이 다소 걸릴 수 있음(캐싱/재요청 최적화는 아직 없음).
+- **이번 커밋들은 사용자 지시에 따라 Vercel/fly.io 배포를 하지 않음 — 로컬 커밋만 완료된 상태, 추후 배포 지시 대기.**
+
+**롤백 방법**: 클라이언트/서버 diff를 되돌리고, DB 컬럼은 nullable이라 남겨둬도 무해함(원하면 `ALTER TABLE game_pbp DROP COLUMN quarter_scores;`).
+
+---
+
 ## 2026-08-09 — 헤더 리스트/카드 셀렉터 좌측에 "오늘" 버튼 추가
 
 **배경**: 날짜 캐러셀 재설계(연도 드롭다운 제거) 때 함께 빠졌던 "오늘로 이동" 버튼을, 이번엔 날짜 컨트롤 바가 아니라 헤더 우측(리스트/카드 셀렉터 바로 왼쪽)에 별도 버튼으로 복원해달라는 요청.

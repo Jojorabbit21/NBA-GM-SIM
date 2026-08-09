@@ -42,6 +42,7 @@ export interface LiveGameSummary {
     awayScore?: number;
     quarter?:   number;
     clock?:     string;
+    quarterScores?: { home: number[]; away: number[] };
 }
 
 async function authHeader(accessToken?: string): Promise<Record<string, string>> {

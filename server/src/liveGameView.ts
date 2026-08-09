@@ -70,6 +70,40 @@ function identityOnly(box: PlayerBoxScore[]): PlayerBoxScore[] {
     return box.map(p => ({ playerId: p.playerId, playerName: p.playerName, position: p.position }));
 }
 
+/**
+ * PBP 이벤트 로그(누적 스코어 스냅샷 포함)에서 쿼터별 득점을 파생시킨다. 각 쿼터의
+ * "마지막 스코어 이벤트" 누적값을 그 쿼터 종료 시점 점수로 삼고, 이전 쿼터 누적값과의
+ * 차이로 쿼터 득점을 구한다. 쿼터 번호(5=OT1, 6=OT2, ...)를 그대로 배열 인덱스로 매핑하므로
+ * (기존 싱글플레이어 extractQuarterScores()나 MultiGamePbpView의 QuarterScores 컴포넌트와
+ * 달리) 4쿼터 고정 슬롯이 아니라 연장전이 몇 개든 각자 별도 칸으로 정확히 분리된다.
+ * `events`가 elapsed 기준으로 이미 잘린 배열이면(라이브 구간) 자연히 "지금까지 끝난
+ * 쿼터까지"만 채워지고, 진행 중인 쿼터는 그 시점까지의 부분 점수가 된다(스포일러 없음 —
+ * 실제 TV 중계와 동일하게 진행 중 쿼터의 현재까지 점수는 보여줘도 무방하다).
+ */
+export function computeQuarterScoresFromEvents(events: PbpLog[]): { home: number[]; away: number[] } {
+    const lastByQuarter = new Map<number, { home: number; away: number }>();
+    for (const e of events) {
+        if (e.homeScore == null || e.awayScore == null) continue;
+        lastByQuarter.set(e.quarter, { home: e.homeScore, away: e.awayScore });
+    }
+    const quarters = [...lastByQuarter.keys()].sort((a, b) => a - b);
+    const home: number[] = [];
+    const away: number[] = [];
+    let prevHome = 0, prevAway = 0;
+    for (const q of quarters) {
+        const cum = lastByQuarter.get(q)!;
+        home[q - 1] = cum.home - prevHome;
+        away[q - 1] = cum.away - prevAway;
+        prevHome = cum.home;
+        prevAway = cum.away;
+    }
+    for (let i = 0; i < home.length; i++) {
+        if (home[i] == null) home[i] = 0;
+        if (away[i] == null) away[i] = 0;
+    }
+    return { home, away };
+}
+
 interface RotationEntry { in: number; out: number }
 
 export interface GamePbpSource {
@@ -199,13 +233,17 @@ export interface LiveGameSummary {
     awayScore?: number;
     quarter?:   number;
     clock?:     string; // "MM:SS" 잔여 시간
+    quarterScores?: { home: number[]; away: number[] };
 }
 
 export function buildLiveSummary(row: GamePbpSource, nowMs: number): LiveGameSummary {
     const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs);
 
     if (state === 'final') {
-        return { gameId: row.game_id, state, homeScore: row.home_score, awayScore: row.away_score };
+        return {
+            gameId: row.game_id, state, homeScore: row.home_score, awayScore: row.away_score,
+            quarterScores: computeQuarterScoresFromEvents(row.events ?? []),
+        };
     }
     if (state === 'not_started') {
         return { gameId: row.game_id, state };
@@ -222,5 +260,6 @@ export function buildLiveSummary(row: GamePbpSource, nowMs: number): LiveGameSum
         awayScore: last.awayScore ?? 0,
         quarter:   last.quarter,
         clock:     last.timeRemaining,
+        quarterScores: computeQuarterScoresFromEvents(visible),
     };
 }

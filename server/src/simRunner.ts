@@ -16,6 +16,7 @@ import {
 } from './shared/tournamentBracket.ts';
 import { archiveTournament } from './shared/tournamentArchiver.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
+import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 
 export interface SimResult {
     ok: boolean;
@@ -207,6 +208,9 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 sim_duration_ms: simDurationMs,
                 box_timeline:    result.boxTimeline ?? [],
                 rotation_data:   result.rotationData ?? {},
+                // 카드/리스트 화면에서 매번 events(전체 PBP 로그, 경기당 수십~백KB) 전체를 다시
+                // 훑지 않도록, 쿼터별 점수는 시뮬레이션 완료 시 한 번만 계산해 별도 컬럼에 저장.
+                quarter_scores:  computeQuarterScoresFromEvents(result.pbpLogs ?? []),
             }, { onConflict: 'room_id,game_id' });
 
             // ── 6. games 테이블 업데이트 ───────────────────────────────────────

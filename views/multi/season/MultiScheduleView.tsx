@@ -10,10 +10,12 @@ import { useServerClock } from '../../../utils/serverClock';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
-import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders } from '../../../services/multi/gameLeadersCache';
+import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders, type QuarterScores } from '../../../services/multi/gameLeadersCache';
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
+import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
+import { calculatePlayerOvr } from '../../../utils/constants';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import {
     kstDateKey, fmtDateShort, fmtTime, fmtMonthDot, groupByDay, findCurrentVirtualDate,
@@ -270,15 +272,22 @@ interface GameCardProps {
     teamMap: Record<string, any>;
     myTeamId: string | null;
     liveSummaries: Record<string, LiveGameSummary>;
+    gameLeadersMap: Record<string, GameLeaders>;
+    quarterScoresMap: Record<string, QuarterScores>;
+    teamAceMap: Record<string, TeamAce>;
     onView: (gameId: string) => void;
     preferVirtual: boolean;
 }
 
-const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSummaries, onView, preferVirtual }) => {
+const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, quarterScoresMap, teamAceMap, onView, preferVirtual }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
     const live = liveSummaries[g.id];
+    const leaders = gameLeadersMap[g.id];
+    const quarterScores = quarterScoresMap[g.id];
+    const awayAce = teamAceMap[g.awayTeamId];
+    const homeAce = teamAceMap[g.homeTeamId];
 
     // 필 스타일(보기/리뷰 버튼) — GameRow와 동일한 규칙: 종료된 경기만 "리뷰"(인디고),
     // 나머지는 "보기"(라이브=빨강, 예정=슬레이트).
@@ -325,28 +334,107 @@ const GameCard: React.FC<GameCardProps> = ({ g, state, teamMap, myTeamId, liveSu
                 )}
             </div>
 
-            {/* 팀 행 — 로고 배지 대신 리스트와 동일하게 팀 컬러를 행 배경 전체에 칠함.
-                점수 영역도 같은 배경/텍스트 색을 그대로 이어받는다(별도 중립 배경 없음). */}
-            <div className="flex flex-col">
-                <div className="flex items-stretch" style={{ backgroundColor: awayColorPrimary, color: awayColorText }}>
-                    <div className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0">
-                        <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
-                        <span className="font-bold text-base sm:text-xl truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
-                    </div>
-                    <div className="flex-[3] flex items-center justify-end px-3 min-w-0">
-                        <span className="font-bold text-base sm:text-xl tabular-nums ko-normal">{awayScore ?? '-'}</span>
-                    </div>
+            {/* 팀 스코어 영역 — 원정/홈을 좌/우로 분할, 각자 팀 컬러 배경 전체를 칠함. */}
+            <div className="flex items-stretch divide-x divide-slate-950">
+                <div className="flex-1 flex flex-col items-center gap-1 py-3 px-2 min-w-0" style={{ backgroundColor: awayColorPrimary, color: awayColorText }}>
+                    <span className="font-bold text-sm ko-normal">{away?.team_abbr ?? g.awayTeamId}</span>
+                    <span className="font-bold text-sm truncate ko-normal text-center">{away?.team_name ?? g.awayTeamId}</span>
+                    <span className="font-black text-2xl sm:text-3xl tabular-nums ko-normal">{awayScore ?? '-'}</span>
                 </div>
-                <div className="flex items-stretch" style={{ backgroundColor: homeColorPrimary, color: homeColorText }}>
-                    <div className="flex-[7] flex items-center gap-2 px-3 py-2.5 min-w-0">
-                        <span className="font-bold text-base sm:text-xl shrink-0 ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
-                        <span className="font-bold text-base sm:text-xl truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
-                    </div>
-                    <div className="flex-[3] flex items-center justify-end px-3 min-w-0">
-                        <span className="font-bold text-base sm:text-xl tabular-nums ko-normal">{homeScore ?? '-'}</span>
-                    </div>
+                <div className="flex-1 flex flex-col items-center gap-1 py-3 px-2 min-w-0" style={{ backgroundColor: homeColorPrimary, color: homeColorText }}>
+                    <span className="font-bold text-sm ko-normal">{home?.team_abbr ?? g.homeTeamId}</span>
+                    <span className="font-bold text-sm truncate ko-normal text-center">{home?.team_name ?? g.homeTeamId}</span>
+                    <span className="font-black text-2xl sm:text-3xl tabular-nums ko-normal">{homeScore ?? '-'}</span>
                 </div>
             </div>
+
+            {/* 디테일 영역 — 진행중/종료: 쿼터별 점수 + PTS/REB/AST 리더. 예정: 팀별 에이스 1명. */}
+            {state === 'scheduled' ? (
+                <div className="flex items-stretch divide-x divide-slate-800/70 border-t border-slate-800/70">
+                    <AceMiniCard ace={awayAce} />
+                    <AceMiniCard ace={homeAce} />
+                </div>
+            ) : (
+                <>
+                    {quarterScores && (
+                        <QuarterScoreTable
+                            quarterScores={quarterScores}
+                            awayAbbr={away?.team_abbr ?? g.awayTeamId}
+                            homeAbbr={home?.team_abbr ?? g.homeTeamId}
+                        />
+                    )}
+                    {leaders && (
+                        <div className="flex flex-col gap-1.5 px-3 py-2.5 border-t border-slate-800/70 bg-black/10">
+                            {(['pts', 'reb', 'ast'] as const).map(stat => {
+                                const l = leaders[stat];
+                                if (!l) return null;
+                                return (
+                                    <div key={stat} className="flex items-center justify-between gap-2 text-sm">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="w-7 shrink-0 font-bold text-slate-500 ko-normal">{stat.toUpperCase()}</span>
+                                            <span className="truncate text-slate-300 ko-normal">{l.name}</span>
+                                            {l.position && <span className="shrink-0 text-slate-500 ko-normal">{l.position}</span>}
+                                        </div>
+                                        <span className="shrink-0 font-semibold text-slate-200 ko-normal">{l.value}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+};
+
+// 예정된 경기 카드 — 팀별 로스터 중 OVR이 가장 높은 "에이스" 선수 1명만 보여준다.
+interface TeamAce { name: string; position: string; ovr: number }
+
+const AceMiniCard: React.FC<{ ace?: TeamAce }> = ({ ace }) => (
+    <div className="flex-1 flex flex-col items-center justify-center gap-0.5 px-3 py-3 min-w-0">
+        {ace ? (
+            <>
+                <span className="text-[10px] font-bold text-slate-500 ko-normal">에이스</span>
+                <span className="font-bold text-sm truncate ko-normal text-center">{ace.name}</span>
+                <span className="text-xs text-slate-400 ko-normal">{ace.position} · OVR {ace.ovr}</span>
+            </>
+        ) : (
+            <span className="text-xs text-slate-600 ko-normal">-</span>
+        )}
+    </div>
+);
+
+// 쿼터별 점수 테이블 — 진행중 경기는 서버가 이미 지난(elapsed) 쿼터까지만 채워서 내려주므로
+// 아직 안 끝난 쿼터는 자연히 빈 칸으로 표시된다(스포일러 방지).
+const QuarterScoreTable: React.FC<{ quarterScores: QuarterScores; awayAbbr: string; homeAbbr: string }> = ({ quarterScores, awayAbbr, homeAbbr }) => {
+    const cols = Math.max(quarterScores.away.length, quarterScores.home.length, 4);
+    const labels = Array.from({ length: cols }, (_, i) => (i < 4 ? `${i + 1}Q` : `OT${i - 3}`));
+    return (
+        <div className="px-3 py-2.5 border-t border-slate-800/70">
+            <table className="w-full text-sm ko-normal">
+                <thead>
+                    <tr>
+                        <th className="text-left font-medium text-slate-500 w-10" />
+                        {labels.map(label => (
+                            <th key={label} className="text-center font-medium text-slate-500 w-8">{label}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td className="text-left font-bold text-slate-300">{awayAbbr}</td>
+                        {labels.map((_, i) => (
+                            <td key={i} className="text-center tabular-nums text-slate-300">{quarterScores.away[i] ?? ''}</td>
+                        ))}
+                    </tr>
+                    <tr>
+                        <td className="text-left font-bold text-slate-300">{homeAbbr}</td>
+                        {labels.map((_, i) => (
+                            <td key={i} className="text-center tabular-nums text-slate-300">{quarterScores.home[i] ?? ''}</td>
+                        ))}
+                    </tr>
+                </tbody>
+            </table>
         </div>
     );
 };
@@ -515,13 +603,13 @@ const MultiScheduleView: React.FC = () => {
 
             const { data } = await supabase
                 .from('game_pbp')
-                .select('game_id, home_box, away_box')
+                .select('game_id, home_box, away_box, quarter_scores')
                 .eq('room_id', room.id)
                 .in('game_id', missingIds);
             if (cancelled || !data) return;
             const updates: Record<string, GameLeaders> = {};
-            for (const row of data as { game_id: string; home_box: PlayerBoxScore[] | null; away_box: PlayerBoxScore[] | null }[]) {
-                updates[row.game_id] = computeGameLeaders(row.home_box, row.away_box);
+            for (const row of data as { game_id: string; home_box: PlayerBoxScore[] | null; away_box: PlayerBoxScore[] | null; quarter_scores: QuarterScores | null }[]) {
+                updates[row.game_id] = { ...computeGameLeaders(row.home_box, row.away_box), quarterScores: row.quarter_scores ?? undefined };
             }
             setGameLeadersMap(mergeGameLeadersCache(room.id, updates));
         };
@@ -610,6 +698,50 @@ const MultiScheduleView: React.FC = () => {
     );
     const activeDayGames = activeDayGroup?.games ?? [];
 
+    // 카드 뷰 쿼터별 점수 — 진행중이면 liveSummaries(서버가 elapsed까지만 잘라 내려줌),
+    // 종료됐으면 gameLeadersMap(=game_pbp.quarter_scores, 한 번 계산돼 캐시된 값)에서 가져온다.
+    const quarterScoresMap = useMemo(() => {
+        const map: Record<string, QuarterScores> = {};
+        for (const g of activeDayGames) {
+            const s = getGameDisplayState(g, serverNow);
+            const qs = s === 'live' ? liveSummaries[g.id]?.quarterScores : gameLeadersMap[g.id]?.quarterScores;
+            if (qs) map[g.id] = qs;
+        }
+        return map;
+    }, [activeDayGames, serverNow, liveSummaries, gameLeadersMap]);
+
+    // 카드 뷰 "에이스" 선수 — 팀 로스터 전체를 한 번만 벌크 조회해 OVR 최고 선수를 뽑는다
+    // (예정된 경기 카드는 아직 박스스코어가 없으므로 로스터 능력치로 대체 표시).
+    const [teamAceMap, setTeamAceMap] = useState<Record<string, TeamAce>>({});
+    useEffect(() => {
+        if (!leagueTeams.length) return;
+        let cancelled = false;
+        (async () => {
+            const allIds = leagueTeams.flatMap(t => t.roster ?? []);
+            if (allIds.length === 0) return;
+            const { data } = await supabase
+                .from('meta_players')
+                .select('id, name, position, base_attributes, tendencies')
+                .in('id', allIds);
+            if (cancelled || !data) return;
+            const playerById = new Map<string, any>(data.map((r: any) => [String(r.id), r]));
+            const map: Record<string, TeamAce> = {};
+            for (const t of leagueTeams) {
+                let best: TeamAce | null = null;
+                for (const pid of t.roster ?? []) {
+                    const raw = playerById.get(pid);
+                    if (!raw) continue;
+                    const player = mapRawPlayerToRuntimePlayer(raw, false);
+                    const ovr = calculatePlayerOvr(player);
+                    if (!best || ovr > best.ovr) best = { name: player.name, position: player.position, ovr };
+                }
+                if (best) map[t.team_slug] = best;
+            }
+            if (!cancelled) setTeamAceMap(map);
+        })();
+        return () => { cancelled = true; };
+    }, [leagueTeams]);
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -697,7 +829,7 @@ const MultiScheduleView: React.FC = () => {
                             const games = activeDayGames.filter(g => getGameDisplayState(g, serverNow) === bucket);
                             if (games.length === 0) return null;
                             return (
-                                <div key={bucket} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                                <div key={bucket} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {games.map(g => (
                                         <GameCard
                                             key={g.id}
@@ -706,6 +838,9 @@ const MultiScheduleView: React.FC = () => {
                                             teamMap={teamMap}
                                             myTeamId={myTeamId}
                                             liveSummaries={liveSummaries}
+                                            gameLeadersMap={gameLeadersMap}
+                                            quarterScoresMap={quarterScoresMap}
+                                            teamAceMap={teamAceMap}
                                             onView={handleView}
                                             preferVirtual={preferVirtual}
                                         />
