@@ -640,7 +640,7 @@ const MultiScheduleView: React.FC = () => {
                         disabled={!todayKey}
                         className="px-3 py-1.5 rounded-md text-sm font-bold text-indigo-400 hover:bg-indigo-500/20 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent transition-colors ko-normal"
                     >
-                        오늘
+                        오늘로 이동
                     </button>
                     <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1">
                         <button
