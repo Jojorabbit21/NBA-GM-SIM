@@ -10,18 +10,18 @@ interface StarRatingProps {
     className?: string;
 }
 
-/** OVR 기반 별점 그라디언트 — [상단 하이라이트, 메인, 하단 섀도] */
+/** OVR 기반 별점 그라디언트 — [상단 하이라이트, 메인, 하단 섀도]. 5점대는 노랑, 별이 줄어들수록 빨간색에 가까워짐 */
 const getStarGradient = (stars: number, ovr: number): [string, string, string] => {
-    if (stars >= 5.0 && ovr >= 97) return ['#a5f3fc', '#22d3ee', '#0891b2']; // cyan
-    if (stars >= 5.0) return ['#fdba74', '#f97316', '#c2410c'];              // orange
-    if (stars >= 4.5) return ['#fed7aa', '#fb923c', '#ea580c'];              // orange light
-    if (stars >= 4.0) return ['#fde68a', '#fbbf24', '#d97706'];              // amber
-    if (stars >= 3.5) return ['#fef08a', '#facc15', '#ca8a04'];              // yellow
-    if (stars >= 3.0) return ['#d9f99d', '#a3e635', '#65a30d'];              // lime
-    if (stars >= 2.5) return ['#bbf7d0', '#4ade80', '#16a34a'];              // green
-    if (stars >= 2.0) return ['#a7f3d0', '#34d399', '#059669'];              // emerald
-    if (stars >= 1.5) return ['#cbd5e1', '#94a3b8', '#64748b'];              // slate
-    return ['#94a3b8', '#64748b', '#475569'];                                // slate dark
+    if (stars >= 5.0 && ovr >= 97) return ['#fef9c3', '#eab308', '#a16207']; // gold (elite)
+    if (stars >= 5.0) return ['#fef08a', '#facc15', '#ca8a04'];              // yellow
+    if (stars >= 4.5) return ['#fde68a', '#fbbf24', '#d97706'];              // amber
+    if (stars >= 4.0) return ['#fed7aa', '#fb923c', '#ea580c'];              // orange light
+    if (stars >= 3.5) return ['#fdba74', '#f97316', '#c2410c'];              // orange
+    if (stars >= 3.0) return ['#fecaca', '#f87171', '#b91c1c'];              // red light
+    if (stars >= 2.5) return ['#fca5a5', '#ef4444', '#b91c1c'];              // red
+    if (stars >= 2.0) return ['#f87171', '#dc2626', '#991b1b'];              // red dark
+    if (stars >= 1.5) return ['#ef4444', '#b91c1c', '#7f1d1d'];              // red darker
+    return ['#dc2626', '#991b1b', '#450a0a'];                                // red darkest
 };
 
 const STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z';

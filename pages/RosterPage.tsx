@@ -19,6 +19,7 @@ const RosterPage: React.FC = () => {
                 navigate(`/player/${player.id}`, { state: { player, teamId: pTeamId, teamName } });
             }}
             schedule={gameData.schedule}
+            currentSimDate={gameData.currentSimDate}
             userId={session?.user?.id}
             onViewGameResult={(result) => {
                 navigate(`/result/${result.gameId ?? result.id ?? 'unknown'}`, { state: { result } });

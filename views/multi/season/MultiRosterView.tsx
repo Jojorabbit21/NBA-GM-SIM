@@ -1,18 +1,43 @@
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonContext } from './seasonContext';
-import { supabase } from '../../../services/supabaseClient';
+import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
+import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { RosterView } from '../../RosterView';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { isFinal } from './multiGameReveal';
+import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
-import type { Team, Player } from '../../../types';
+import type { Team, Player, Game } from '../../../types';
 import type { PlayerStats } from '../../../types/player';
+
+// game_pbp box(선수별)에서 팀 단위 경기별 합산 스탯 산출 (TeamGameLog의 homeStats/awayStats용)
+function sumTeamBoxStats(box: any[]): Record<string, number> {
+    const keys = ['reb', 'offReb', 'defReb', 'ast', 'stl', 'blk', 'tov', 'pf', 'techFouls', 'flagrantFouls', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'];
+    const s: Record<string, number> = Object.fromEntries(keys.map(k => [k, 0]));
+    for (const bs of box) {
+        for (const k of keys) s[k] += bs[k] ?? 0;
+    }
+    return s;
+}
+
+// game_pbp 행들에서 gameId → { homeStats, awayStats } 맵 생성 (TeamGameLog 팀 스탯 컬럼용)
+function buildGameTeamStatsMap(pbpRows: any[]): Map<string, { homeStats: Record<string, number>; awayStats: Record<string, number> }> {
+    const map = new Map<string, { homeStats: Record<string, number>; awayStats: Record<string, number> }>();
+    for (const row of pbpRows) {
+        if (!row.game_id) continue;
+        map.set(row.game_id, {
+            homeStats: sumTeamBoxStats(row.home_box ?? []),
+            awayStats: sumTeamBoxStats(row.away_box ?? []),
+        });
+    }
+    return map;
+}
 
 // game_pbp 박스스코어에서 선수별 누적 스탯 집계 (zone 포함)
 function buildStatsMap(pbpRows: any[], serverNow: number): Map<string, Partial<PlayerStats>> {
@@ -61,6 +86,20 @@ function buildStatsMap(pbpRows: any[], serverNow: number): Map<string, Partial<P
                     plusMinus:          add('plusMinus'),
                     contestedAttempted: add('contestedAttempted'),
                     contestedMade:      add('contestedMade'),
+                    // 존별 수비 스탯 (기록 탭 Defense 카테고리용) — MultiLeaderboardView.tsx와 동일하게
+                    // 누락돼 있던 필드. 여기 없으면 useLeaderboardData가 항상 0으로 읽어 DFG% 등이 집계 안 됨.
+                    defRAAttempted:   add('defRAAttempted'),
+                    defRAMade:        add('defRAMade'),
+                    defITPAttempted:  add('defITPAttempted'),
+                    defITPMade:       add('defITPMade'),
+                    defMIDAttempted:  add('defMIDAttempted'),
+                    defMIDMade:       add('defMIDMade'),
+                    defCNRAttempted:  add('defCNRAttempted'),
+                    defCNRMade:       add('defCNRMade'),
+                    defWINGAttempted: add('defWINGAttempted'),
+                    defWINGMade:      add('defWINGMade'),
+                    defATBAttempted:  add('defATBAttempted'),
+                    defATBMade:       add('defATBMade'),
                     // zone 세부 스탯 (샷 차트용) — bs.zoneData에서 접근
                     zone_rim_m:    addZ('zone_rim_m'),
                     zone_rim_a:    addZ('zone_rim_a'),
@@ -130,102 +169,155 @@ const MultiRosterView: React.FC = () => {
     const { league, room, leagueTeams, members, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
-    const { schedule, tendencySeed } = useSeasonContext();
+    const { schedule, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
+
+    // MultiScheduleView.tsx와 동일한 preferVirtual 패턴 — 메인리그(main_league)는
+    // 로스터 일정 탭의 달력이 가상 NBA 시즌 캘린더(game.date)로 그려지는데,
+    // room.sim_date(roomSimDate)는 실제 KST 날짜(scheduler.ts의 kstDateFromMs 참조,
+    // 서버가 다음 경기 실행 타이밍을 잡기 위한 값)라 직접 비교하면 항상 어긋난다 —
+    // findCurrentVirtualDate로 계산한 가상 "오늘"을 써야 한다. main_league가 아닌
+    // 리그 타입(예: 토너먼트)은 애초에 date가 실제 시각 기준이라 roomSimDate를 그대로 쓴다.
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
+    const preferVirtual = league?.type === 'main_league';
+    const currentSimDate = useMemo(() => {
+        if (!preferVirtual) return roomSimDate;
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? roomSimDate;
+    }, [preferVirtual, roomSimDate, schedule, simStart, gprd]);
+
     const location = useLocation();
+    const navigate = useNavigate();
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const { getGameUrlId } = useGameShortCodes(room?.id);
     const navState = (location.state ?? {}) as { viewPlayer?: Player; viewTeamId?: string };
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const myTeamId = useMemo(
         () => members.find(m => m.user_id === session?.user?.id)?.team_id ?? null,
         [members, session],
     );
 
-    const [allTeams,     setAllTeams]     = useState<Team[]>([]);
-    const [gameLogMap,   setGameLogMap]   = useState<Map<string, any[]>>(new Map());
-    const [fetchLoading, setFetchLoading] = useState(false);
-
-    // viewingPlayer: { player, teamId, teamName }
-    const [viewing, setViewing] = useState<{ player: Player; teamId: string; teamName: string } | null>(null);
-
-    // 헤더 검색 → navigate state로 선수/팀 자동 열기 (allTeams 로드 완료 후 1회 실행)
-    const navHandledRef = useRef(false);
-    useEffect(() => {
-        if (navHandledRef.current || !navState.viewPlayer || !allTeams.length) return;
-        navHandledRef.current = true;
-        const { viewPlayer, viewTeamId } = navState;
-        const team = viewTeamId ? allTeams.find(t => t.id === viewTeamId) : null;
-        const freshPlayer = team?.roster.find(p => p.id === viewPlayer.id) ?? viewPlayer;
-        setViewing({ player: freshPlayer, teamId: viewTeamId ?? '', teamName: team?.name ?? '' });
-    }, [allTeams]); // eslint-disable-line react-hooks/exhaustive-deps
+    // 헤더 우측 GM 닉네임 표시용 — AI팀은 null(미표시)
+    const teamNicknames = useMemo(
+        () => Object.fromEntries(leagueTeams.map(lt => [lt.team_slug, lt.is_ai ? null : lt.nickname])),
+        [leagueTeams],
+    );
 
     const allRosterIds = useMemo(
         () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
         [leagueTeams],
     );
 
-    useEffect(() => {
-        if (!allRosterIds.length || !room?.id) return;
-        let cancelled = false;
-        setFetchLoading(true);
+    // 홈 화면 로스터 위젯/리더보드와 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가
+    // 같으면 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이 즉시 뜬다.
+    const selectRosterData = useCallback((raw: LeagueRawStatsData) => {
+        const serverNow = getServerNow();
+        const playerBaseMap = new Map<string, Player>(
+            raw.playersRaw.map((r: any) => [
+                String(r.id),
+                mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true),
+            ]),
+        );
+        const statsMap = buildStatsMap(raw.pbpRows, serverNow);
+        const logMap   = buildGameLogMap(raw.pbpRows, serverNow);
 
-        const load = async () => {
-            const [playersRes, pbpRes] = await Promise.all([
-                supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies')
-                    .in('id', allRosterIds),
-                supabase
-                    .from('game_pbp')
-                    .select('home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time')
-                    .eq('room_id', room.id),
-            ]);
+        const builtTeams: Team[] = leagueTeams.map(lt => ({
+            id:            lt.team_slug,
+            name:          lt.team_name,
+            city:          '',
+            logo:          lt.team_abbr,
+            conference:    (lt.conference as 'East' | 'West') ?? 'East',
+            division:      '',
+            wins:          0,
+            losses:        0,
+            budget:        0,
+            salaryCap:     0,
+            luxuryTaxLine: 0,
+            colorPrimary:   lt.color_primary,
+            colorSecondary: lt.color_secondary,
+            abbr:           lt.team_abbr,
+            roster: (lt.roster ?? []).map(id => {
+                const base = playerBaseMap.get(id);
+                if (!base) return null;
+                return { ...base, stats: { ...(base.stats ?? {}), ...(statsMap.get(id) ?? {}) } as PlayerStats };
+            }).filter(Boolean) as Player[],
+        }));
 
-            if (cancelled) return;
-
-            const serverNow = getServerNow();
-            const playerBaseMap = new Map<string, Player>(
-                (playersRes.data ?? []).map((raw: any) => [
-                    String(raw.id),
-                    mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true),
-                ]),
-            );
-            const statsMap = buildStatsMap(pbpRes.data ?? [], serverNow);
-            const logMap   = buildGameLogMap(pbpRes.data ?? [], serverNow);
-
-            const builtTeams: Team[] = leagueTeams.map(lt => ({
-                id:            lt.team_slug,
-                name:          lt.team_name,
-                city:          '',
-                logo:          lt.team_abbr,
-                conference:    (lt.conference as 'East' | 'West') ?? 'East',
-                division:      '',
-                wins:          0,
-                losses:        0,
-                budget:        0,
-                salaryCap:     0,
-                luxuryTaxLine: 0,
-                colorPrimary:   lt.color_primary,
-                colorSecondary: lt.color_secondary,
-                abbr:           lt.team_abbr,
-                roster: (lt.roster ?? []).map(id => {
-                    const base = playerBaseMap.get(id);
-                    if (!base) return null;
-                    return { ...base, stats: { ...(base.stats ?? {}), ...(statsMap.get(id) ?? {}) } as PlayerStats };
-                }).filter(Boolean) as Player[],
-            }));
-
-            setAllTeams(builtTeams);
-            setGameLogMap(logMap);
-            setFetchLoading(false);
+        return {
+            builtTeams,
+            logMap,
+            gameTeamStatsMap: buildGameTeamStatsMap(raw.pbpRows),
         };
+    }, [leagueTeams, useCustomOverrides]);
 
-        load();
-        return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allRosterIds.join(','), room?.id]);
+    const {
+        data: rosterData,
+        isPending: fetchLoading,
+        refetch: refetchRoster,
+    } = useLeagueRawStats(room?.id, allRosterIds, selectRosterData);
 
-    const onViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
-        setViewing({ player, teamId: teamId ?? '', teamName: teamName ?? '' });
-    }, []);
+    const allTeams         = rosterData?.builtTeams ?? [];
+    const gameLogMap       = rosterData?.logMap ?? new Map<string, any[]>();
+    const gameTeamStatsMap = rosterData?.gameTeamStatsMap ?? new Map<string, { homeStats: Record<string, number>; awayStats: Record<string, number> }>();
+
+    // 선수 상세 열림 상태를 로컬 state가 아니라 URL 쿼리 파라미터(?player=&team=)로 관리한다.
+    // 로컬 state로만 열면 브라우저 히스토리에 기록이 안 남아서, 브라우저 뒤로가기를 누르면
+    // 로스터 화면을 건너뛰고 그 이전 화면(예: 순위표)으로 바로 튕기는 문제가 있었다.
+    const viewingPlayerId = searchParams.get('player');
+    const viewingTeamId   = searchParams.get('team');
+    const viewing = useMemo(() => {
+        if (!viewingPlayerId) return null;
+        const team = viewingTeamId ? allTeams.find(t => t.id === viewingTeamId) : undefined;
+        const player = team?.roster.find(p => p.id === viewingPlayerId);
+        if (!player) return null;
+        return { player, teamId: viewingTeamId ?? '', teamName: team?.name ?? '' };
+    }, [viewingPlayerId, viewingTeamId, allTeams]);
+
+    const openPlayer = useCallback((playerId: string, teamId?: string) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('player', playerId);
+            if (teamId) next.set('team', teamId); else next.delete('team');
+            return next;
+        });
+    }, [setSearchParams]);
+
+    // 헤더 검색 → navigate state로 선수/팀 자동 열기 (allTeams 로드 완료 후 1회 실행)
+    const navHandledRef = useRef(false);
+    useEffect(() => {
+        if (navHandledRef.current || !navState.viewPlayer || !allTeams.length) return;
+        navHandledRef.current = true;
+        openPlayer(navState.viewPlayer.id, navState.viewTeamId);
+    }, [allTeams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const onViewPlayer = useCallback((player: Player, teamId?: string) => {
+        openPlayer(player.id, teamId);
+    }, [openPlayer]);
+
+    // TeamGameLog(경기 기록 탭)용 — schedule에 game_pbp 기반 팀 단위 박스스코어(homeStats/awayStats) 병합
+    const scheduleWithStats = useMemo(
+        () => schedule.map(g => {
+            const st = gameTeamStatsMap.get(g.id);
+            return st ? ({ ...g, homeStats: st.homeStats, awayStats: st.awayStats } as Game) : g;
+        }),
+        [schedule, gameTeamStatsMap],
+    );
+
+    const onScoreClick = useCallback((gameId: string) => {
+        navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
+    }, [navigate, leagueId, getGameUrlId]);
+
+    // 경기 기록 탭 진입 시점에만 최신 game_pbp로 재조회 (로스터 탭은 자주 안 바뀌니 캐시 그대로 사용)
+    // 탭을 빠르게 왔다갔다해도 쿨다운(3초) 안에서는 재조회를 건너뛴다.
+    const RECORDS_REFETCH_COOLDOWN_MS = 3000;
+    const lastRecordsRefetchRef = useRef(0);
+    const onRosterTabChange = useCallback((t: string) => {
+        if (t !== 'records') return;
+        const now = Date.now();
+        if (now - lastRecordsRefetchRef.current < RECORDS_REFETCH_COOLDOWN_MS) return;
+        lastRecordsRefetchRef.current = now;
+        refetchRoster();
+    }, [refetchRoster]);
 
     const isLoading = leagueLoading || fetchLoading;
 
@@ -254,7 +346,7 @@ const MultiRosterView: React.FC = () => {
                 tendencySeed={tendencySeed ?? undefined}
                 seasonShort={room?.season ?? '2025-26'}
                 myTeamId={myTeamId ?? undefined}
-                onBack={() => setViewing(null)}
+                onBack={() => navigate(-1)}
                 hideSections={HIDE_SECTIONS}
                 externalGameLog={gameLogMap.get(viewing.player.id) ?? []}
                 externalGameLogLoading={false}
@@ -268,8 +360,13 @@ const MultiRosterView: React.FC = () => {
             myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
             initialTeamId={navState.viewTeamId ?? myTeamId}
             onViewPlayer={onViewPlayer}
+            schedule={scheduleWithStats}
+            onScoreClick={onScoreClick}
             userId={session?.user?.id}
+            currentSimDate={currentSimDate}
             hideTabs={['coaching', 'draftPicks']}
+            onTabChange={onRosterTabChange}
+            teamNicknames={teamNicknames}
         />
     );
 };

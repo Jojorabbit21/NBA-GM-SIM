@@ -55,9 +55,11 @@ interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
     subText?: string;
     image?: string;
     onClick?: () => void;
-    colorScale?: boolean; 
+    colorScale?: boolean;
     stickyLeft?: boolean;
     style?: React.CSSProperties;
+    /** variant="attribute"의 값 폰트를 font-mono로 렌더링할지 여부 (기본값 true) */
+    mono?: boolean;
 }
 
 const getAttrColor = (val: number) => {
@@ -125,7 +127,7 @@ export const TableHeaderCell = ({
     const cellStyle = { ...style, width: width, minWidth: width };
 
     return (
-        <th 
+        <th
             className={`py-3 px-1.5 whitespace-nowrap border-b border-slate-800 ${alignClass} ${cursorClass} ${stickyClass} ${className}`}
             style={cellStyle}
             onClick={sortable ? onSort : undefined}
@@ -157,6 +159,7 @@ export const TableCell = ({
     colorScale = false,
     stickyLeft = false,
     style,
+    mono = true,
     ...props
 }: TableCellProps) => {
     
@@ -201,7 +204,7 @@ export const TableCell = ({
                 const numVal = Number(value);
                 const colorClass = colorScale ? getAttrColor(numVal) : 'text-slate-400';
                 return (
-                    <span className={`font-mono font-black tabular-nums ${colorClass}`}>
+                    <span className={`${mono ? 'font-mono' : ''} font-black tabular-nums ${colorClass}`}>
                         {value}
                     </span>
                 );

@@ -4,7 +4,7 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
-import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP, ATTR_AVG_KEYS } from '../../data/attributeConfig';
+import { ATTR_GROUPS, ATTR_LABEL, ATTR_KR_LABEL, ATTR_NAME_MAP, ATTR_AVG_KEYS } from '../../data/attributeConfig';
 
 interface RosterGridProps {
     team: Team;
@@ -23,7 +23,7 @@ const WIDTHS = {
     POS: 60,
     AGE: 50,
     OVR: 60,
-    ATTR: 54,
+    ATTR: 64,
     STAT: 60
 };
 
@@ -33,6 +33,9 @@ const GROUP_LABEL_KR: Record<string, string> = {
     INSIDE: '인사이드 스코어링', OUTSIDE: '아웃사이드 스코어링', PLAYMAKING: '플레이메이킹',
     DEFENSE: '수비능력', REBOUND: '리바운드', ATHLETIC: '운동능력',
 };
+
+// [2026-08-11] 능력치 약어 범례 — 사용자 요청으로 숨김 처리(코드는 보존, 필요시 true로 복원)
+const SHOW_ATTR_LEGEND = false;
 
 const STATS_COLS = [
     { key: 'g', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' },
@@ -147,7 +150,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             {/* Table 1: Main Stats / Attributes / Salary */}
             {(tab === 'roster' || tab === 'stats') && (
             <div className={tab === 'stats' ? '' : 'flex-1 min-h-0'}>
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={tab === 'roster'} className="!rounded-none !border-x-0 !border-t-0">
+            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={tab === 'roster'} className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
                 <colgroup>
                     <col style={{ width: WIDTHS.NAME }} />
                     <col style={{ width: WIDTHS.POS }} />
@@ -162,7 +165,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <tr className="h-10">
                         <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                             <div className="h-full flex items-center justify-center">
-                                <span className="text-xs font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
+                                <span className="text-sm font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
                             </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => {
@@ -171,7 +174,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             return (
                                 <th key={g.id} colSpan={visibleKeys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
                                     <div className="h-full flex items-center justify-center">
-                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
+                                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
                                     </div>
                                 </th>
                             );
@@ -179,14 +182,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         {tab === 'stats' && (
                             <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
-                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
+                                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
                                 </div>
                             </th>
                         )}
                         {renderRowAction && <th className="bg-slate-950 border-b border-slate-800" />}
                     </tr>
                     {/* Header Row 2: Labels */}
-                    <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
+                    <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
                         {/* Use inline styles to force border removal and width locking */}
                         <TableHeaderCell 
                             style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} 
@@ -238,7 +241,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {/* Use inline styles to force border removal and width locking */}
                             <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
-                                    <span className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                    <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                     {p.health !== 'Healthy' && (
                                         <span 
                                             className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
@@ -249,8 +252,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     )}
                                 </div>
                             </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
                             <TableCell 
                                 style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                                 className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
@@ -261,12 +264,12 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
                                 .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
                                 .map(k => (
-                                    <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
+                                    <TableCell key={k} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={(p as any)[k]} variant="attribute" colorScale mono={false} />
                                 ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
                                 if (p.stats.mp === 0) {
-                                    return <TableCell key={c.key} align="center" className="border-r border-slate-800/30"><span className="font-mono font-medium text-xs text-slate-600">-</span></TableCell>;
+                                    return <TableCell key={c.key} align="center" className="border-r border-slate-800/30"><span className="font-medium text-sm text-slate-600">-</span></TableCell>;
                                 }
 
                                 const val = getSortValue(p, c.key);
@@ -288,7 +291,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 
                                 return (
                                     <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
-                                        <span className={`font-mono font-medium text-xs tabular-nums ${textColor}`}>
+                                        <span className={`font-medium text-sm tabular-nums ${textColor}`}>
                                             {displayVal}
                                         </span>
                                     </TableCell>
@@ -303,20 +306,20 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 {showFooter && <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         {/* Use inline styles to force border removal and width locking */}
-                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-xs uppercase tracking-widest">팀 평균</TableCell>
+                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-sm uppercase tracking-widest">팀 평균</TableCell>
                         <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
-                        <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
+                        <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-sm">{averages.attr.age}</TableCell>
                         <TableCell 
                             style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                             className="border-r border-slate-800 bg-slate-950 text-center"
                         >
-                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
+                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
                             .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
                             .map(k => (
-                                <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
+                                <TableCell key={k} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={averages.attr[k]} variant="attribute" colorScale mono={false} />
                             ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             // G, GS, MIN은 팀 평균에서 제외 (빈칸 처리)
@@ -342,7 +345,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             
                             return (
                                 <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
-                                    <span className={`font-mono font-medium text-xs tabular-nums ${textColor}`}>
+                                    <span className={`font-medium text-sm tabular-nums ${textColor}`}>
                                         {displayVal}
                                     </span>
                                 </TableCell>
@@ -354,6 +357,47 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             </div>
             )}
 
+            {/* 능력치 약어 범례 — 컬럼 폭 때문에 이름을 다 못 보여주니 약어 뜻을 항상 보이는 곳에 정리.
+                본문 테이블의 그룹 순서(인사이드/아웃사이드/...)를 그대로 컬럼으로 삼은 표 형태 — 구분선 없이
+                간격만으로 열을 구분하고, 텍스트는 굵기/색상 전부 톤 하나로 통일해 은은하게 처리한다.
+                [2026-08-11] 사용자 요청으로 숨김 처리 — 코드는 그대로 보존. */}
+            {tab === 'roster' && SHOW_ATTR_LEGEND && (() => {
+                const legendCols = ATTR_GROUPS.map(g => ({
+                    id: g.id,
+                    label: GROUP_LABEL_KR[g.label] || g.label,
+                    items: g.keys.filter(k => !ATTR_AVG_KEYS.has(k)),
+                }));
+                const maxRows = Math.max(...legendCols.map(c => c.items.length));
+                return (
+                    <div className="shrink-0 bg-slate-950 px-4 py-3 overflow-x-auto custom-scrollbar">
+                        <table className="text-xs text-slate-500 font-normal border-separate" style={{ borderSpacing: '24px 4px' }}>
+                            <thead>
+                                <tr>
+                                    {legendCols.map(c => (
+                                        <th key={c.id} className="text-left font-normal text-slate-500 whitespace-nowrap pb-1">
+                                            {c.label}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Array.from({ length: maxRows }).map((_, i) => (
+                                    <tr key={i}>
+                                        {legendCols.map(c => {
+                                            const k = c.items[i];
+                                            return (
+                                                <td key={c.id} className="text-left text-slate-500 font-normal whitespace-nowrap">
+                                                    {k ? `${ATTR_LABEL[k]} ${ATTR_KR_LABEL[k] || k}` : ''}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            })()}
         </div>
     );
 };
