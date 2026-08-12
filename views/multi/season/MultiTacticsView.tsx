@@ -1,24 +1,21 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Save, Check } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonContext } from './seasonContext';
 import { TabBar } from '../../../components/common/TabBar';
-import { DepthChartEditor } from '../../../components/dashboard/DepthChartEditor';
-import { RotationGanttChart } from '../../../components/dashboard/RotationGanttChart';
+import { DepthRotationBoard } from '../../../components/dashboard/DepthRotationBoard';
 import { TacticsSlidersPanel } from '../../../components/dashboard/tactics/TacticsSlidersPanel';
 import { PlayerTacticsPanel } from '../../../components/dashboard/tactics/PlayerTacticsPanel';
 import { supabase } from '../../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { generateAutoTactics } from '../../../services/gameEngine';
-import { calculatePlayerOvr } from '../../../utils/constants';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal } from './multiGameReveal';
 import type { Team, Player } from '../../../types';
 
-type MultiTacticsTab = 'depth' | 'rotation' | 'team' | 'player';
+type MultiTacticsTab = 'depth' | 'team' | 'player';
 
 // 팀 전술 탭의 슈팅 존 히트맵(TeamZoneChart)은 roster[].stats.zone_rim_m 등을 합산해서
 // 그리는데, 드래프트 직후 새로 매핑한 Player는 stats가 전부 0(defaultStats)이라 항상
@@ -35,11 +32,8 @@ const MultiTacticsView: React.FC = () => {
     const { league, leagueTeams, members, room, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
-    const navigate = useNavigate();
-    const { leagueId } = useParams<{ leagueId: string }>();
-    const base = `/multi/leagues/${leagueId}/season`;
 
-    const [activeTab, setActiveTab] = useState<MultiTacticsTab>('team');
+    const [activeTab, setActiveTab] = useState<MultiTacticsTab>('depth');
 
     const myTeamId = useMemo(
         () => members.find(m => m.user_id === session?.user?.id)?.team_id ?? null,
@@ -158,15 +152,7 @@ const MultiTacticsView: React.FC = () => {
         roster:        rosterPlayers,
     }), [myTeamId, myTeamRow?.team_name, rosterPlayers]);
 
-    const healthySorted = useMemo(
-        () => rosterPlayers.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
-        [rosterPlayers],
-    );
     const coachName = coachingData?.[myTeamId ?? '']?.headCoach?.name;
-
-    const handleViewPlayer = useCallback((player: Player) => {
-        navigate(`${base}/roster`, { state: { viewPlayer: player, viewTeamId: myTeamId } });
-    }, [navigate, base, myTeamId]);
 
     // tactics가 없는 신규 유저: 로스터 로드 완료 후 자동 생성
     // preserveDraftOrder=true — 드래프트에서 먼저 뽑은 선수가 선발을 유지하고,
@@ -191,10 +177,9 @@ const MultiTacticsView: React.FC = () => {
         <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
             <TabBar
                 tabs={[
-                    { id: 'depth' as MultiTacticsTab,    label: '뎁스 차트' },
-                    { id: 'rotation' as MultiTacticsTab, label: '로테이션' },
-                    { id: 'team' as MultiTacticsTab,     label: '팀 전술' },
-                    { id: 'player' as MultiTacticsTab,   label: '개인 전술' },
+                    { id: 'depth' as MultiTacticsTab,  label: '뎁스 차트 · 로테이션' },
+                    { id: 'team' as MultiTacticsTab,   label: '팀 전술' },
+                    { id: 'player' as MultiTacticsTab, label: '개인 전술' },
                 ]}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -229,23 +214,12 @@ const MultiTacticsView: React.FC = () => {
             />
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                 {activeTab === 'depth' && (
-                    <DepthChartEditor
+                    <DepthRotationBoard
                         team={team}
                         tactics={userTactics!}
                         depthChart={depthChart}
                         onUpdateDepthChart={setDepthChart}
                         onUpdateTactics={setUserTactics}
-                        coachName={coachName}
-                    />
-                )}
-                {activeTab === 'rotation' && (
-                    <RotationGanttChart
-                        team={team}
-                        tactics={userTactics!}
-                        depthChart={depthChart}
-                        healthySorted={healthySorted}
-                        onUpdateTactics={setUserTactics}
-                        onViewPlayer={handleViewPlayer}
                         coachName={coachName}
                     />
                 )}

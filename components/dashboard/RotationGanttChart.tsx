@@ -7,13 +7,13 @@ import { AlertCircle, RotateCcw, ChevronDown } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface Stint {
+export interface Stint {
     start: number; // 0-based minute index
     end: number;
     valid: boolean; // true = exactly 5 players on court
 }
 
-interface DragState {
+export interface DragState {
     playerId: string;
     startMin: number;
     currentMin: number;
@@ -22,8 +22,9 @@ interface DragState {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Merges consecutive active minutes into stint segments, split at validation boundaries */
-function computeStints(playerMap: boolean[], minuteCounts: number[]): Stint[] {
+/** Merges consecutive active minutes into stint segments, split at validation boundaries.
+ *  DepthRotationBoard.tsx도 동일한 스틴트 계산이 필요해 공용으로 export한다. */
+export function computeStints(playerMap: boolean[], minuteCounts: number[]): Stint[] {
     const stints: Stint[] = [];
     let i = 0;
     while (i < 48) {
@@ -38,7 +39,7 @@ function computeStints(playerMap: boolean[], minuteCounts: number[]): Stint[] {
 
 // ── GanttBar (memoized inner component) ──────────────────────────────────────
 
-interface GanttBarProps {
+export interface GanttBarProps {
     playerId: string;
     stints: Stint[];
     dragging: DragState | null;
@@ -48,10 +49,19 @@ interface GanttBarProps {
     currentMinute?: number;
     lockedBefore?: number;
     readOnly?: boolean;
+    /** true면 12분(쿼터) 경계선도 다른 6분 보조선과 동일한 회색으로 그린다(인디고 강조 없음).
+     *  DepthRotationBoard.tsx 전용 — 기본 false로 기존(RotationManager/싱글플레이어) 룩은 그대로. */
+    flatGridLines?: boolean;
+    /** true면 쿼터별 배경 음영(홀/짝 번갈아 slate-900↔950)을 없애고 4쿼터 전부 slate-800으로
+     *  통일한다. DepthRotationBoard.tsx 전용 — 기본 false로 기존 룩은 그대로. */
+    flatQuarterBg?: boolean;
+    /** true면 활성 구간(stint) 블록의 모서리 둥글기(rounded)를 없앤다.
+     *  DepthRotationBoard.tsx 전용 — 기본 false로 기존 룩은 그대로. */
+    sharpStintCorners?: boolean;
 }
 
-const GanttBar: React.FC<GanttBarProps> = React.memo(
-    ({ playerId, stints, dragging, onMouseDown, onMouseMove, currentMinute, lockedBefore, readOnly }) => {
+export const GanttBar: React.FC<GanttBarProps> = React.memo(
+    ({ playerId, stints, dragging, onMouseDown, onMouseMove, currentMinute, lockedBefore, readOnly, flatGridLines, flatQuarterBg, sharpStintCorners }) => {
         const barRef = useRef<HTMLDivElement>(null);
 
         const getMinute = useCallback((clientX: number): number => {
@@ -78,34 +88,52 @@ const GanttBar: React.FC<GanttBarProps> = React.memo(
                     if (isDraggingThis) onMouseMove(playerId, getMinute(e.clientX));
                 }}
             >
-                {/* Background: alternating quarter shading */}
-                <div className="absolute inset-0 flex pointer-events-none">
-                    {[0, 1, 2, 3].map(q => (
-                        <div
-                            key={q}
-                            className={`flex-1 h-full ${q % 2 === 0 ? 'bg-slate-900/60' : 'bg-slate-950/60'}`}
-                        />
-                    ))}
-                </div>
+                {/* Background: alternating quarter shading.
+                    flatQuarterBg(DepthRotationBoard 전용)일 땐 4쿼터 전부 slate-900/60 단색으로
+                    통일한다 — 여백/마진 없음, 경계 없이 쭉 이어진 하나의 배경. */}
+                {flatQuarterBg ? (
+                    <div className="absolute inset-0 flex pointer-events-none">
+                        {[0, 1, 2, 3].map(q => (
+                            <div key={q} className="flex-1 h-full bg-slate-900/60" />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="absolute inset-0 flex pointer-events-none">
+                        {[0, 1, 2, 3].map(q => (
+                            <div
+                                key={q}
+                                className={`flex-1 h-full ${q % 2 === 0 ? 'bg-slate-900/60' : 'bg-slate-950/60'}`}
+                            />
+                        ))}
+                    </div>
+                )}
 
-                {/* Grid lines: minor every 6min, major at quarters */}
-                {[6, 12, 18, 24, 30, 36, 42].map(m => (
-                    <div
-                        key={m}
-                        className={`absolute top-0 bottom-0 pointer-events-none ${
-                            m % 12 === 0
-                                ? 'w-0.5 bg-indigo-500/35'
-                                : 'w-px bg-slate-700/50'
-                        }`}
-                        style={{ left: `${m / 48 * 100}%` }}
-                    />
-                ))}
+                {/* Grid lines: minor every 6min, major at quarters.
+                    flatGridLines(DepthRotationBoard 전용)일 땐 6분 단위 보조선/쿼터 경계선을 전부
+                    안 그리고, 대신 맨 왼쪽(1쿼터 좌측)·맨 오른쪽(4쿼터 우측) 바깥쪽 경계에만
+                    slate-800 구분선을 그린다. */}
+                {flatGridLines ? (
+                    <>
+                        <div className="absolute top-0 bottom-0 left-0 w-px bg-slate-800 pointer-events-none" />
+                        <div className="absolute top-0 bottom-0 right-0 w-px bg-slate-800 pointer-events-none" />
+                    </>
+                ) : (
+                    [6, 12, 18, 24, 30, 36, 42].map(m => (
+                        <div
+                            key={m}
+                            className={`absolute top-0 bottom-0 pointer-events-none ${
+                                m % 12 === 0 ? 'w-0.5 bg-indigo-500/35' : 'w-px bg-slate-700/50'
+                            }`}
+                            style={{ left: `${m / 48 * 100}%` }}
+                        />
+                    ))
+                )}
 
                 {/* Active stint blocks */}
                 {stints.map((stint, idx) => (
                     <div
                         key={idx}
-                        className={`absolute top-1.5 bottom-1.5 rounded pointer-events-none ${
+                        className={`absolute top-1.5 bottom-1.5 pointer-events-none ${sharpStintCorners ? '' : 'rounded'} ${
                             stint.valid
                                 ? 'bg-emerald-500/40 border border-emerald-500/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
                                 : 'bg-red-500/30 border border-red-500/50'
@@ -152,6 +180,9 @@ const GanttBar: React.FC<GanttBarProps> = React.memo(
         if (prev.currentMinute !== next.currentMinute) return false;
         if (prev.lockedBefore !== next.lockedBefore) return false;
         if (prev.readOnly !== next.readOnly) return false;
+        if (prev.flatGridLines !== next.flatGridLines) return false;
+        if (prev.flatQuarterBg !== next.flatQuarterBg) return false;
+        if (prev.sharpStintCorners !== next.sharpStintCorners) return false;
 
         const prevDrag = prev.dragging?.playerId === prev.playerId ? prev.dragging : null;
         const nextDrag = next.dragging?.playerId === next.playerId ? next.dragging : null;
