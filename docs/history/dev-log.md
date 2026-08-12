@@ -35,36 +35,3013 @@
 
 ---
 
-## 2026-08-10 — 순위 화면 클린치 표시 + 어드민 플레이오프 형식 설정(컨퍼런스별 진출 인원/플레이인 토너먼트) 서버 반영
+## 2026-08-12 — DepthRotationBoard: 위반 사항 없을 때 초록색 "정상" 배너 표시
 
-**배경**: 사용자 요청 — ① 순위 화면에 플레이오프 진출확정/탈락 표시(클린치 로직) 추가 ② 어드민이 컨퍼런스별 플레이오프 진출 팀 수와 플레이인 토너먼트 활성화 여부를 세션별로 설정 가능하게. 조사 결과 멀티플레이어는 기존에 (a) `leagues.playoff_team_count`가 "리그 전체" top-N을 의미했고 컨퍼런스 구분이 아예 없었으며 (b) 플레이인 자체가 없었고 (c) 순위 화면엔 클린치 표시가 전혀 없었음(싱글플레이어 `StandingsView`에만 존재). 사용자에게 "클린치 표시용 설정을 서버의 실제 플레이오프 브라켓 생성 로직에도 반영할지" 확인 → "클라이언트 + 서버 브라켓 생성 로직까지 함께" 선택 → 서버 시뮬레이션 엔진(정규시즌 종료 자동 트리거)까지 전면 수정.
-
-**핵심 설계**: 컨퍼런스 분리를 위해 기존 공용 토너먼트 엔진(`tournamentInitializer.ts`의 `initSingleElim`)은 **전혀 수정하지 않았다** — 대신 동부 N팀을 표준 브라켓 시드로 정렬해 앞쪽 N슬롯에, 서부 N팀을 뒤쪽 N슬롯에 배치해서 2N팀 단일 브라켓으로 넘기면, 매치인덱스/2 트리 구조상 앞/뒤 절반이 결승 라운드 전까지 서로 만나지 않아 "컨퍼런스 파이널→파이널" 구조가 자연히 재현된다(2N이 2의 거듭제곱일 때만 정확 — 8+8=16처럼 기본값 조합은 항상 정확, 비-2^n 인원수는 기존에도 있던 부전승 배치 한계와 동일선상). 플레이인은 컨퍼런스당 3개 미니시리즈(`PI_{CONF}_7v8`/`9v10`/`8th`, round:0)로 `bracket_data.series`에 저장 — 표준 라운드 전진(`advanceTournamentState`)은 라운드 루프가 1부터 시작해 round:0을 항상 안전하게 무시하므로, 새 파일 `playInSeeder.ts`가 `simRunner.ts` 훅을 통해 별도로 전진시킨다.
+**배경**: 사용자 요청 — 기존엔 5명 미만/초과/혹사 위반이 있을 때만 경고 배너가 뜨고, 문제 없을 땐 그 자리에 아무것도 안 보였음. 문제 없을 때도 같은 위치에 초록색 틴트로 "정상"임을 알려주는 문구 표시.
 
 **변경 파일**:
-- 신규 `migrations/league_play_in.sql` — `leagues.play_in_enabled boolean DEFAULT true` 추가(Supabase 프로젝트 `buummihpewiaeltywdff`에 적용 완료).
-- `server/src/shared/tournamentBracket.ts` — `PlayoffSeries.conference` 타입을 리터럴 `'BPL'`에서 `'East'|'West'|'BPL'`로 확장(이 필드는 advancement 로직에서 읽히지 않아 순수 타입 변경, 로직 영향 없음). `generateAllSeriesGames`를 `export`로 변경(playInSeeder.ts가 재사용).
-- `server/src/shared/playoffSeeder.ts` — 전면 리라이트. `computeStandings`(리그 전체) → `computeStandingsByConference`(East/West 분리, `league_teams.conference` 조인)로 교체. `startPlayoffs`는 이제 컨퍼런스별 top-N(플레이인 없음 경로)만 담당. 신규 `buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, priorSeries=[])` — 두 컨퍼런스 qualified 목록을 시드 후 병합해 기존 엔진에 넘기는 공유 핵심 로직(`startPlayoffs`와 `playInSeeder.ts`가 공유). `priorSeries`는 호출자의 배열 레퍼런스를 그대로 받아 거기에 새 본선 시리즈를 `push`하고 단일 update로 저장 — 재조회 read-modify-write를 하지 않아 simRunner.ts가 직후 같은 배열로 한 번 더 저장해도 최신 상태를 재기록할 뿐이라 안전(자세한 이유는 파일 내 주석).
-- 신규 `server/src/shared/playInSeeder.ts` — `startPlayIn(league, roomId)`: 정규시즌 종료 시 컨퍼런스당 (N-2+1)~(N-2+4)위 4팀으로 플레이인 미니시리즈 생성(7v8/9v10은 즉시 게임 생성, 8th 디사이더는 참가팀 TBD라 보류). `handlePlayInAdvance(league, roomId, series, finishedSeriesId)`: 7v8/9v10 완료 시 디사이더 슬롯 채우고 게임 생성, 컨퍼런스당 팀 부족(4팀 미만)이면 그 컨퍼런스는 플레이인 건너뛰고 자동 top-N으로 대체, round:0 6개 시리즈가 모두 끝나면 자동클린치(N-2)+플레이인 결과(seed7/8)를 합쳐 `buildAndStoreConferenceBracket` 호출.
-- `server/src/simRunner.ts` — `handleTournamentAdvance`의 `leagues` select에 `playoff_team_count` 추가. 기존 승패 집계+`advanceTournamentState` 호출 블록 직후, 최종 `bracket_data` 저장 직전에 `if (seriesObj.round === 0 && seriesObj.finished) await handlePlayInAdvance(...)` 훅 추가.
-- `server/src/scheduler.ts` — `checkSeasonCompletions`의 `leagues` select에 `play_in_enabled` 추가, `startPlayoffs` 단일 호출을 `league.play_in_enabled ? startPlayIn : startPlayoffs` 분기로 교체.
-- `services/multi/roomQueries.ts` — `LeagueRow`에 `playoff_team_count: number | null`, `play_in_enabled: boolean | null` 필드 추가(기존 DB 컬럼은 있었으나 TS 타입에 없었음).
-- `services/multi/leagueService.ts` — `CreateLeagueParams.options`에 `playInEnabled` 추가, `UpdateLeagueSettingsParams`에 `playoffTeamCount`/`playInEnabled` 추가(기존엔 생성 시점 옵션만 있고 세션 중 편집 API가 없었음) + `updateLeagueSettings` payload 매핑.
-- `views/multi/league/LeagueSettingsView.tsx` — "엔진 설정" 섹션 아래 신규 "플레이오프 형식" 섹션(`league.type==='main_league' && !league.bracket_data`일 때만 노출 — 플레이오프 시작 전까지 언제든 변경 가능, `!isInProgress` 아님) 추가: 컨퍼런스별 진출 팀 수(숫자 입력, 2~16) + 플레이인 활성화(체크박스, 안내 문구에 자동진출/플레이인 인원 실시간 계산 표시) + 독립 저장 버튼(`handleSavePlayoffSettings`).
-- `views/multi/season/MultiStandingsView.tsx`:
-  - 신규 `computeClinchStatus()` — 싱글플레이어 `StandingsView`의 하드코딩(6위/10위) 클린치 알고리즘을 `autoClinchCount`/`lastQualifyingRank`(어드민 설정값 기반)로 일반화해 컨퍼런스별 계산. 팀 이름 색상에 반영(진출확정=emerald, 탈락=slate-600, 그 외=기본 — 싱글플레이어와 동일하게 clinched_playin은 별도 색상 없음).
-  - `TournamentBracket` 래퍼에서 `series.filter(s => s.round >= 1)`로 round:0(플레이인) 항목을 걸러내고 본선 브라켓만 `TournamentBracketView`에 전달 — 그 컴포넌트의 그리드 레이아웃 계산(`matchIndex`, `T_R{round}_M{idx}` 파싱)이 round:0을 다루도록 만들어져 있지 않아 그대로 넘기면 깨짐. 플레이인 경기 자체는 일반 경기처럼 스케줄 화면엔 정상 노출됨.
-- 부수적으로 `views/multi/season/multiSeasonUtils.ts`(직전 커밋에서 이미 `div`/`conf` 필드 추가됨)는 이번 변경과 별개.
-- **참고**: 이 커밋에 포함된 `MultiStandingsView.tsx` diff에는 위 클린치/브라켓 필터링 외에도, 같은 파일에서 이후 세션들에 걸쳐 추가된 후속 기능(컨퍼런스 화면 진출권 커트라인 구분선, 몬테카를로 기반 플레이오프 진출 확률(PO%) 시뮬레이션+바 그래프+hover 툴팁)이 함께 들어있음 — 전부 이 클린치/플레이인 설정값(`autoClinchCount`/`lastQualifyingRank`/`playInEnabled`)을 그대로 재사용하는 후속 UI 작업이라 별도 항목으로 쪼개지 않고 여기 기록만 남김. 상세 변경 내용은 각 기능의 개별 커밋 시점에 별도 dev-log 항목으로 추가 예정.
+- `components/dashboard/DepthRotationBoard.tsx`
 
-**검증**: 서버 `tsc --noEmit -p server/tsconfig.json` — 이번에 수정/신규 작성한 4개 파일(`playoffSeeder.ts`/`playInSeeder.ts`/`tournamentBracket.ts`/`simRunner.ts`/`scheduler.ts`)에서 신규 에러 없음(기존에 있던 Bun 타입/tournamentArchiver.ts 등 무관한 에러만 남아있음, 사전 확인). 클라이언트 `vite build` 성공 + 수정 파일 4개(`MultiStandingsView.tsx`/`LeagueSettingsView.tsx`/`leagueService.ts`/`roomQueries.ts`) 격리 `tsc --noEmit`에서 신규 에러 없음(기존 `SimSettings.normalization` 등 무관 에러만 잔존).
+**변경**: `lucide-react`에서 `CheckCircle2` 아이콘 추가 임포트. 기존 `{조건 && <빨간 배너>}` 구조를 `{조건 ? <빨간 배너> : <초록 배너>}` 삼항으로 변경 — 위반이 하나도 없으면 `bg-emerald-500/10 border-emerald-500/20` 톤에 체크 아이콘 + "뎁스 차트·로테이션 정상 — 위반 사항 없음" 텍스트를 같은 위치(표 바로 아래)에 표시.
+
+**검증**: Playwright로 (1) 정확히 5명이 매 순간 뛰도록(스타터 5명 0~41분, 벤치 5명 42~47분, 아무도 42분 초과 안 함) 구성한 데이터에서 초록 배너가 뜨고 텍스트가 정확히 "뎁스 차트·로테이션 정상 — 위반 사항 없음"임을 확인 + 배너 스크린샷 확인. (2) 회귀 확인 — 완전히 빈 로테이션(위반 있음) 데이터에서는 여전히 빨간 배너("5명 미만: ...")가 정상적으로 뜸을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `CheckCircle2` 임포트 제거, 삼항을 다시 `{조건 && <빨간 배너>}`로, 초록 배너 블록 제거하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 그룹 구분선 색상 slate-600 → slate-700로 낮춤
+
+**배경**: 직전 항목(그룹 사이 구분선 slate-600)이 사용자 눈엔 너무 밝아 "slate-700으로 낮춰봐" 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: `groupEndBorder`와 뎁스라벨 rowSpan 셀의 `border-b-slate-600` → `border-b-slate-700`(전체 2곳).
+
+**검증**: Playwright로 그룹 마지막 행의 `border-bottom-color`가 `rgb(51,65,85)`(slate-700)임을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `border-b-slate-700`을 `border-b-slate-600`으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 주전/벤치/써드 그룹 사이에 굵은 구분선 추가
+
+**배경**: 사용자 요청 — 주전(5행)/벤치(5행)/써드(5행) 그룹 사이 경계가 잘 안 보여서, 그룹 사이에 구분선 추가.
+
+**시행착오**: 처음엔 `<tr>`의 className에 `border-b-2 border-slate-600`을 조건부로 줬는데, `border-separate` 테이블 레이아웃에서는 `<tr>` 자체의 border가 실제로 페인트되지 않는다는 걸 Playwright로 실측 확인(computed style은 값이 잡히지만 화면엔 안 그려짐) — 그래서 각 행의 **모든 `<td>`에 개별적으로** 굵은 하단 테두리를 주는 방식으로 변경. 이 과정에서 일부 셀이 이미 쓰고 있던 `${SB}`(`border-r border-slate-800`, 오른쪽 구분선)와 새 `border-slate-600`(색상, 전체 side 적용)을 같이 쓰면 Tailwind가 오른쪽 테두리 색까지 slate-600으로 덮어써버리는 문제가 있었음(이전 세션에도 겪었던 동일한 함정) — `border-b-slate-600`처럼 방향성 색상 클래스로 바꿔 해결.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: 각 행 렌더링 시 `isGroupEnd = posIdx === POSITIONS.length - 1`(그 그룹의 마지막 포지션, C)을 계산해 `groupEndBorder = isGroupEnd ? 'border-b-2 border-b-slate-600' : 'border-b border-b-slate-800/50'`를 만들고, 8개 `<td>`(뎁스라벨 rowSpan 셀 포함) 전부의 하단 테두리 클래스를 이걸로 교체.
+
+**검증**: Playwright로 각 그룹 마지막 행("C")의 모든 `<td>`에서 `border-bottom-width: 2px`, `border-bottom-color: rgb(71,85,105)`(slate-600)임을 확인, 오른쪽 구분선(`border-right-color`)은 여전히 `rgb(30,41,59)`(slate-800)로 안 바뀌었음을 확인(색상 충돌 없음). 스크린샷으로 "주전" 그룹의 마지막 행(C)과 "벤치" 그룹의 첫 행(PG) 사이에 뚜렷한 구분선이 보임을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `isGroupEnd`/`groupEndBorder` 계산 제거, 8개 `<td>`를 각각 원래의 `border-b border-slate-800`(sticky 4개)/`border-b border-slate-800/50`(나머지 4개)로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 뎁스 차트가 이미 최적 배정이면 "포지션 자동 배정" 스킵
+
+**배경**: 직전 항목에서 "포지션 자동 배정"이 로테이션까지 같이 덮어쓰도록 바꿨는데, 뎁스 차트 배정 결과가 지금과 완전히 같은 경우(=이미 최적)에도 매번 로테이션을 "Overwork"로 재계산해버려 사용자가 직접 조정해둔 출전시간이 날아가는 문제가 생김. 이미 최적 배정이면 아무것도 안 하고 스킵하도록 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: 두 뎁스 차트가 15슬롯 전부 동일한지 비교하는 순수 함수 `depthChartsEqual(a, b)` 추가. `handleAutoFillDepth`에서 `newChart`를 다 만든 직후, 현재 `depthChart`(prop)와 완전히 같으면 로테이션 재계산/`onUpdateTactics`/`onUpdateDepthChart` 전부 건너뛰고 드롭다운만 닫음.
+```tsx
+function depthChartsEqual(a: DepthChart, b: DepthChart): boolean {
+    return POSITIONS.every(pos => a[pos].every((id, i) => id === b[pos][i]));
+}
+// handleAutoFillDepth 내부, newChart 계산 직후
+if (depthChart && depthChartsEqual(newChart, depthChart)) {
+    setIsDepthDropdownOpen(false);
+    return;
+}
+```
+
+**검증**: 실제 상태를 갖는 React 래퍼로 Playwright 테스트 — (1) 첫 "포지션 위임" 클릭 → 뎁스 차트 배정 + 로테이션 자동 배정(주전 PG 36분). (2) 사용자가 그 선수의 로테이션을 수동으로 5분(0~4분)만 남게 수정. (3) 다시 "포지션 위임" 클릭 → 뎁스 차트가 이미 최적(1번 결과와 동일)이라 스킵되어, 수동 조정한 5분이 36분으로 덮어써지지 않고 그대로 유지됨을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `depthChartsEqual` 및 `handleAutoFillDepth`의 스킵 `if` 블록을 제거하면 매번 무조건 재배정하던 이전 상태로 돌아감.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: "포지션 자동 배정" 클릭 시 로테이션(출전시간) 배정까지 한 번에 실행
+
+**배경**: 사용자 요청 — 기존엔 "포지션 자동 배정"(`handleAutoFillDepth`)을 누르면 뎁스 차트만 채워지고 로테이션은 빈 상태로 초기화됐음(사용자가 "출전시간 자동 배정"을 별도로 또 눌러야 했음). 한 번의 클릭으로 포지션 배정 + 로테이션 배정까지 같이 되도록 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**원인/설계**: `handleAllocateRotation`(로테이션 자동 배정)은 기존 `depthChart`(prop, 클로저)를 읽어서 분배 로직을 수행하는데, `handleAutoFillDepth`가 방금 새로 만든 `newChart`는 아직 `onUpdateDepthChart`를 통해 props로 올라가지 않은 상태라 같은 동기 함수 안에서 `handleAllocateRotation`을 그대로 호출하면 옛날 `depthChart`를 기준으로 계산되는 문제가 있음. 그래서 분배 로직 자체를 컴포넌트 클로저에 안 묶인 순수 함수 `computeRotationMap(chart, mode, roster)`로 분리해, 양쪽에서 각자 원하는 `chart`(기존 prop 또는 방금 만든 newChart)를 직접 넘겨 쓸 수 있게 함.
+
+**변경**:
+- 모듈 레벨에 `computeRotationMap()` 추가(`handleAllocateRotation`에 있던 분배 로직 그대로 이전, 로직 변경 없음).
+- `handleAllocateRotation`: 내부 분배 로직 제거하고 `computeRotationMap(depthChart, mode, team.roster)` 호출로 축약.
+- `handleAutoFillDepth`: 뎁스 차트(`newChart`)를 만든 직후, `computeRotationMap(newChart, 'Overwork', team.roster)`로 로테이션까지 함께 계산해 `onUpdateTactics({ ...tactics, starters: newStarters, rotationMap: newRotationMap })` 한 번으로 반영(기존엔 `rotationMap: {}`로 초기화만 했음). 배분 모드는 "출전시간 자동 배정" 버튼의 기본 클릭과 동일한 `'Overwork'`(주전 혹사) 사용.
+
+**검증**: 실제 상태를 갖는 React 래퍼로 Playwright 테스트 — "포지션 위임"(포지션 자동 배정) 버튼 클릭 전 `rotationMap`에 출전 기록이 있는 선수 0명 → 클릭 후 10명(주전 5명 36분, 벤치 5명 12분, 써드는 Overwork 모드 특성상 0분)으로 채워짐을 확인. 스크린샷으로 뎁스 차트(포지션 배정)와 로테이션 막대(출전시간)가 한 번의 클릭으로 동시에 채워지는 것을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `handleAutoFillDepth`의 `rotationMap: newRotationMap`을 `rotationMap: {}`로 되돌리면 됨(순수 함수 `computeRotationMap` 분리 자체는 리팩터링이라 남겨둬도 무방하나, 완전 원복하려면 `handleAllocateRotation` 내부에 분배 로직을 다시 인라인하고 `computeRotationMap` 제거).
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 뎁스 번호 → 주전/벤치/써드 명칭, "주전 PG" 순서로 컬럼 재배치 + 병합 + 배경색 스왑
+
+**배경**: 사용자 요청 4건(연속) — (1) 1/2/3 뎁스 번호를 "주전"/"벤치"/"써드"로 변경. (2) 기존 "PG 1" 표기를 "주전 PG"처럼 뎁스라벨이 먼저 오도록 컬럼 순서 교체. (3) 방금 순서를 바꾼 뎁스라벨(주전/벤치/써드)이 정렬 변경(뎁스별 묶음)으로 인해 5개 행마다 중복 표기되는 것을 rowSpan으로 병합. (4) 위 재배치로 인해 어긋난 두 컬럼의 배경색(포지션=slate-800, 뎁스라벨=slate-900)도 서로 스왑.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 명칭**: `const DEPTH_LABELS = ['1', '2', '3']` → `['주전', '벤치', '써드']`. `depthIndex`(0/1/2)는 그대로 로직에 쓰이므로 다른 곳 영향 없음(표시 텍스트만 교체).
+
+**변경 2 — 컬럼 순서/폭**: 기존 [포지션(40px, sticky left-0) → 뎁스라벨(40px, left-40)] 순서를 [뎁스라벨(56px, left-0) → 포지션(40px, left-56)]으로 교체 — "주전"/"벤치"/"써드"가 "PG"보다 넓은 폭이 필요해 40→56px로 확장. 이에 따라 이후 컬럼들의 sticky `left` 오프셋 전부 재계산: 핸들 80→96, 선수 select 108→124, OVR 308→324. 헤더 쪽도 "슬롯" `w-[80px]`→`w-[96px]`, "선수" `left-[80px]`→`left-[96px]`, OVR `left-[308px]`→`left-[324px]`로 동기화.
+
+**변경 3 — 뎁스라벨 셀 병합**: `POSITIONS.map(pos => ...)` → `POSITIONS.map((pos, posIdx) => ...)`로 인덱스 추가, 뎁스라벨 `<td>`를 `posIdx === 0`일 때만 `rowSpan={POSITIONS.length}`(5)로 렌더링해 같은 뎁스 그룹(예: 주전 5행) 전체에 한 번만 표시. 흰색 강조 조건도 "그 뎁스의 5포지션 슬롯 중 하나라도 선수 있음"(`POSITIONS.some(p => depthChart[p][depthIndex])`)으로 변경(기존엔 자기 행의 selectedPlayer만 봤음 — 병합 셀이라 그룹 전체를 봐야 함).
+
+**변경 4 — 배경색 스왑**: 뎁스라벨 `<td>`는 `${SK}`(slate-900) → `bg-slate-800`, 포지션 `<td>`는 `bg-slate-800` → `${SK}`(slate-900)로 맞바꿔, 컬럼이 왼쪽/오른쪽으로 재배치된 뒤에도 "왼쪽 컬럼은 밝게, 오른쪽은 어둡게"라는 기존 시각적 관계가 유지되도록 함.
+
+**검증**: Playwright로 (1) 렌더된 첫 5행의 라벨이 "주전"(rowSpan 병합, 1번만 DOM에 존재)+"PG/SG/SF/PF/C"(매행) 조합으로 나옴을 확인. (2) 뎁스라벨 `<td>`의 `background-color`가 `rgb(30,41,59)`(slate-800), 포지션 `<td>`가 `rgb(15,23,42)`(slate-900)로 스왑됨을 확인. 스크린샷으로 "주전 PG / 주전 SG / ... / 벤치 PG / ..." 순서와 배경색 배치를 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `DEPTH_LABELS`를 `['1','2','3']`으로, 컬럼 순서/오프셋/폭을 이전 값(포지션 먼저 40px, 뎁스라벨 다음 40px, 핸들 80/select 108/OVR 308)으로, 뎁스라벨 rowSpan 로직 제거(매 행 렌더), 배경색을 원래대로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 행 정렬을 "포지션별 묶음"에서 "뎁스번호별 묶음"으로 변경
+
+**배경**: 사용자 요청 — 기존 PG1,PG2,PG3,SG1,SG2,SG3,...(포지션별로 뎁스 1~3 묶음) 순서를, PG1,SG1,SF1,PF1,C1,PG2,SG2,...(뎁스 번호별로 5개 포지션 묶음) 순서로 변경.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: `tbody` 렌더 루프를 `POSITIONS.map(pos => DEPTH_LABELS.map(...))` → `DEPTH_LABELS.map((depthLabel, depthIndex) => POSITIONS.map(pos => ...))`로 바깥/안쪽 루프 순서 교체. 이에 따라 같은 포지션(PG1/PG2/PG3)이 더 이상 연속된 행이 아니게 되어, 포지션 라벨 셀의 `rowSpan={3}` 병합(예: `depthIndex === 0`일 때만 렌더링)을 제거하고 **모든 행에 포지션 라벨을 각각 렌더링**하도록 변경.
+
+**Before**:
+```tsx
+{POSITIONS.map(pos => DEPTH_LABELS.map((depthLabel, depthIndex) => {
+    ...
+    {depthIndex === 0 && (
+        <td rowSpan={3} ...>{String(pos)}</td>
+    )}
+    ...
+}))}
+```
+
+**After**:
+```tsx
+{DEPTH_LABELS.map((depthLabel, depthIndex) => POSITIONS.map(pos => {
+    ...
+    <td ...>{String(pos)}</td>
+    ...
+}))}
+```
+
+**검증**: Playwright로 렌더된 15개 행의 포지션+뎁스번호 텍스트 순서를 실측 — `PG1,SG1,SF1,PF1,C1,PG2,SG2,SF2,PF2,C2,PG3,SG3,SF3,PF3,C3` 순서로 정확히 일치함을 확인. 스크린샷으로 각 행마다 포지션 라벨이 개별적으로 표시되는 것을 시각 확인. `handleSlotSwap`/`handleSlotChange` 등은 `{pos, idx}` 데이터 기준으로 동작해 렌더 순서와 무관하므로 별도 로직 수정 불필요. `npx vite build` 통과.
+
+**롤백 방법**: 루프 순서를 `POSITIONS.map(pos => DEPTH_LABELS.map(...))`로, 포지션 라벨 `<td>`를 `depthIndex === 0 && <td rowSpan={3}>...`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 내 상대분 표기를 0-based(0~11) → 1-based(1~12)로 수정
+
+**배경**: 직전 항목에서 쿼터 내 상대분을 절대분(0~47) % 12로 계산해 0~11 범위로 표시했는데("2쿼터 0분"), 사용자가 1~12 범위여야 한다고 지적(농구에서 쿼터는 통상 1분~12분으로 셈).
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: `minutesToRanges()`에서 상대분 계산을 `indices[i] % 12` → `(indices[i] % 12) + 1`로(시작/끝 양쪽 다).
+
+**검증**: Playwright로 절대분 0(1쿼터 첫 분)/12(2쿼터 첫 분)/23(2쿼터 마지막 분)에 6명이 동시 출전하는 테스트 — `"1쿼터 1분"`, `"2쿼터 1분"`, `"2쿼터 12분"`으로 정확히 1-based 표시됨을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `(indices[i] % 12) + 1`을 `indices[i] % 12`로 되돌리면 됨(0-based).
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 위반 구간 표기법을 "절대분" → "N쿼터 상대분"으로, 단일분은 "N분" 단축 표기
+
+**배경**: 직전 항목(위반 분을 절대 분 인덱스로 표시, 단일 분도 "N~N분")에 대해 사용자 요청 2건 — (1) 1분짜리 단일 구간은 "0~0분"이 아니라 "0분"으로. (2) "17분", "24분"처럼 0~47 절대 분으로 보여주지 말고, "N쿼터 M분"/"N쿼터 시작~끝분" 형태(쿼터 + 쿼터 내 상대분)로 표기.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: `minutesToRanges()`를 절대 분 기준 병합에서 "쿼터 경계(12분)에서 항상 구간을 끊고, 쿼터+쿼터 내 상대분(0~11)"으로 표시하도록 재작성. 단일 분(시작===끝)은 `~끝` 생략.
+```tsx
+function minutesToRanges(indices: number[]): string {
+    if (indices.length === 0) return '';
+    const ranges: string[] = [];
+    let i = 0;
+    while (i < indices.length) {
+        const quarter = Math.floor(indices[i] / 12) + 1;
+        const start = indices[i] % 12;
+        let prev = start;
+        let j = i + 1;
+        while (j < indices.length && indices[j] === indices[j - 1] + 1 && Math.floor(indices[j] / 12) + 1 === quarter) {
+            prev = indices[j] % 12;
+            j++;
+        }
+        ranges.push(start === prev ? `${quarter}쿼터 ${start}분` : `${quarter}쿼터 ${start}~${prev}분`);
+        i = j;
+    }
+    return ranges.join(', ');
+}
+```
+연속 구간이 쿼터 경계(12분 단위)를 넘으면 자동으로 쿼터별로 쪼개짐(예: 10~13분(절대) → "1쿼터 10~11분, 2쿼터 0~1분").
+
+**검증**: Playwright로 6명이 5분(단일)/10~13분(쿼터 경계를 넘는 연속)/17분(단일)에 동시 출전하는 테스트 데이터 구성 — 배너에 정확히 `"1쿼터 5분, 1쿼터 10~11분, 2쿼터 0~1분, 2쿼터 5분"`으로 표시됨을 확인(단일 분은 축약, 쿼터 경계에서 정확히 분리). `npx vite build` 통과.
+
+**롤백 방법**: `minutesToRanges()`를 직전 항목의 절대분 버전(쿼터 구분 없이 `${start}~${prev}분`, 단일도 항상 `~`포함)으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 검증 경고 배너를 3줄로 분리 + 5명 미만/초과 구간을 실제 분(minute)으로 표시
+
+**배경**: 사용자 요청 — (1) 5명 미만/5명 초과/혹사 경고를 한 줄(flex-wrap)에 몰아 표시하던 것을 각각 별도 줄로. (2) 5명 미만/초과는 "N개 구간" 같은 개수 요약 대신, 실제 위반되는 분(minute)을 직접 표시 — 연속되면 "0~5분" 처럼 구간으로 묶어서.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 구간 병합 헬퍼**: 위반 분 인덱스 배열을 연속 구간으로 묶어 문자열화하는 `minutesToRanges()` 모듈 레벨 함수 추가. 연속 여부와 관계없이 모든 구간을 `시작~끝분` 형식으로 통일(단일 분도 `N~N분`).
+```tsx
+function minutesToRanges(indices: number[]): string {
+    if (indices.length === 0) return '';
+    const ranges: string[] = [];
+    let start = indices[0], prev = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+        const cur = indices[i];
+        if (cur === prev + 1) { prev = cur; continue; }
+        ranges.push(`${start}~${prev}분`);
+        start = cur; prev = cur;
+    }
+    ranges.push(`${start}~${prev}분`);
+    return ranges.join(', ');
+}
+```
+
+**변경 2 — validation 계산**: 기존 `under5Count`/`over5Count`(개수만) 대신 `under5Minutes`/`over5Minutes`(위반 분 인덱스 배열 전체)를 계산해 반환하도록 변경.
+
+**변경 3 — 배너 레이아웃**: 배너 컨테이너를 `flex flex-wrap gap-4 items-center`(한 줄에 다 몰아넣기) → `flex flex-col gap-1`(세로 스택)로 변경, 각 경고를 자기 `<AlertCircle>` 아이콘을 가진 별도 `<div className="flex items-center gap-2">`로 분리. 텍스트는 `{validation.under5Count}개 구간` → `{minutesToRanges(validation.under5Minutes)}` 등으로 교체.
+
+**검증**: Playwright로 6명이 0~2분(연속)+10분(단일)에 동시 출전, 1명이 0~42분(43분) 출전하는 테스트 데이터를 구성 — 배너가 정확히 3개 줄(`<div>`)로 렌더링되고, 텍스트가 각각 `"5명 미만: 3~9분, 11~47분"` / `"5명 초과: 0~2분, 10~10분"` / `"혹사 경고: OVERWORKED_PLAYER"`로 나오는 것을 DOM 텍스트 및 배너 요소 스크린샷으로 확인. `npx vite build` 통과.
+
+**롤백 방법**: `minutesToRanges` 함수 제거, `validation`을 `under5Count`/`over5Count`(개수) 계산으로 되돌리고, 배너를 `flex flex-wrap gap-4 items-center` 한 줄 레이아웃 + `{count}개 구간` 텍스트로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 포지션 셀 배경색 slate-700 → slate-800로 재조정
+
+**배경**: 직전 항목(slate-900→slate-700)이 사용자 눈엔 너무 밝아 "slate-800으로 낮춰봐" 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: 포지션 `<td>`의 `bg-slate-700` → `bg-slate-800`.
+
+**검증**: Playwright로 `background-color`가 `rgb(30,41,59)`(slate-800)임을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `bg-slate-800`을 `bg-slate-700`(또는 `${SK}`=slate-900, 최초 상태)으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 포지션(PG/SG/SF/PF/C) 셀 배경색 slate-900 → slate-700
+
+**배경**: 사용자 요청 — "포지션 슬롯 바디 열의 색상을 slate-700으로" (`AskUserQuestion`으로 배경색 vs 텍스트색 확인 결과 "셀 배경색"으로 확정, 순번 컬럼은 대상 아님).
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: 포지션(rowSpan=3) `<td>`의 배경 클래스를 공용 상수 `${SK}`(`bg-slate-900`, 다른 여러 셀과 공유) 대신 이 셀에만 직접 `bg-slate-700`을 지정 — `SK` 상수 자체는 건드리지 않아 다른 셀(순번/선수/OVR/시간/초기화)엔 영향 없음.
+
+**검증**: Playwright로 포지션 `<td>`의 `background-color`가 `rgb(51,65,85)`(slate-700)로 바뀌고, 바로 옆 순번 `<td>`는 `rgb(15,23,42)`(slate-900) 그대로임을 확인. 스크린샷으로 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 포지션 `<td>`의 `bg-slate-700`을 `${SK}`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 슬롯(포지션)·순번 라벨, 선수 선택 시에만 흰색
+
+**배경**: 사용자 요청 — "슬롯"(PG/SG/SF/PF/C 라벨)과 "순번"(1/2/3 뎁스 번호) 바디 텍스트를, 해당 슬롯에 선수가 선택되어 있을 때만 흰색으로.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**:
+```tsx
+// 순번(뎁스 번호) — 자기 행의 selectedPlayer 기준
+<span className={`text-sm font-bold tracking-widest ${selectedPlayer ? 'text-white' : 'text-slate-600'}`}>{depthLabel}</span>
+
+// 슬롯(포지션, rowSpan=3) — 같은 포지션 그룹(PG1~PG3) 중 하나라도 선수가 있으면 흰색
+<span className={`text-sm font-bold tracking-widest ${depthChart[pos].some(Boolean) ? 'text-white' : 'text-slate-500'}`}>{String(pos)}</span>
+```
+순번 라벨은 자기 행(depthIndex) 하나만 보고 판단하면 되지만, 포지션 라벨은 `rowSpan={3}`으로 3개 행(PG1/PG2/PG3)에 걸쳐 하나만 렌더링되므로, 그 포지션 슬롯 3개 중 하나라도 선수가 있으면(`depthChart[pos].some(Boolean)`) 흰색으로 판단하도록 함 — depthIndex===0 행 하나만 보면 PG2/PG3에 선수가 있어도 흰색이 안 켜지는 문제를 피함.
+
+**검증**: Playwright로 PG1=선수 있음/PG2=비어있음/PG3=선수 있음인 테스트 데이터로 확인 — 포지션 라벨("PG")은 흰색(`rgb(255,255,255)`, 그룹 내 하나라도 있으므로), 순번 라벨은 PG1·PG3만 흰색이고 PG2는 기존 회색(`rgb(71,85,105)`, slate-600)으로 유지됨을 확인. 스크린샷으로 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 두 `<span>`의 조건부 클래스를 제거하고 각각 고정 `text-slate-500`/`text-slate-600`으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — RotationGanttChart: 멀티 뎁스차트 쿼터 배경색 slate-800/60 → slate-900/60
+
+**배경**: 사용자 질문("쿼터 그룹의 배경색이 어떻게 설정되어있나?")에 `flatQuarterBg` 단색이 `bg-slate-800/60`임을 답변한 뒤, `slate-900`으로 바꿔달라는 요청.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx`
+
+**변경**: `flatQuarterBg`일 때 4분할 배경 div의 클래스를 `bg-slate-800/60` → `bg-slate-900/60`으로(불투명도 60%는 유지, 색상만 한 단계 더 어둡게).
+
+**검증**: Playwright로 4쿼터 배경 div의 `background-color`가 전부 `rgba(15,23,42,0.6)`(slate-900/60)로 동일함을 확인. 스크린샷으로 전체 톤이 더 어두워졌음을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `bg-slate-900/60`을 `bg-slate-800/60`으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 초기화 컬럼 너비 40px → 54px
+
+**배경**: 사용자 요청 — "초기화" 컬럼 너비를 40px에서 54px로 확장.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: `<colgroup>`의 마지막(8번째, 초기화) `<col>`을 `{ width: 40 }` → `{ width: 54 }`로. 헤더 `<th>`의 vestigial 클래스(`w-[40px] min-w-[40px]`)도 `w-[54px] min-w-[54px]`로 동기화(실제 폭 결정은 colgroup이 권위 소스이지만, 코드 가독성을 위해 함께 갱신).
+
+**검증**: Playwright로 헤더 `<th>`·바디 `<td>` 둘 다 `getBoundingClientRect().width === 54`임을 확인. `npx vite build` 통과.
+
+**롤백 방법**: colgroup 마지막 `<col>`을 `{ width: 40 }`으로, 헤더 `<th>` 클래스를 `w-[40px] min-w-[40px]`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard/RotationGanttChart: 로테이션 막대 각지게, 1쿼터 좌측/4쿼터 우측에만 구분선, 쿼터 컬럼에도 행 구분선
+
+**배경**: 직전 "원점 롤백" 이후 사용자 요청 3건: (1) 로테이션 막대(스틴트 블록)의 모서리 둥글기 제거. (2) 쿼터 구분선을 다시 넣되 이번엔 1쿼터 좌측·4쿼터 우측(바깥쪽 두 곳)에만, 헤더/바디 모두, `slate-800` 색상으로. (3) 다른 컬럼(선수 등)에 이미 있는 행 가로 구분선을 쿼터 컬럼에도 적용.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx`
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 막대 각짐**: `GanttBarProps`에 `sharpStintCorners?: boolean` 추가(기본 `false`). stint 블록 className에서 `rounded`를 조건부로 뺌:
+```tsx
+className={`absolute top-1.5 bottom-1.5 pointer-events-none ${sharpStintCorners ? '' : 'rounded'} ${...}`}
+```
+`DepthRotationBoard.tsx`의 `<GanttBar>` 호출에 `sharpStintCorners` 추가. 싱글플레이어(`RotationManager`)는 미전달이라 기존 `rounded` 그대로.
+
+**변경 2 — 바깥쪽 전용 구분선**: `flatGridLines`일 때 그리던 격자선(이전엔 빈 배열)을 "맨 왼쪽/맨 오른쪽 1px씩만" 그리도록 변경:
+```tsx
+{flatGridLines ? (
+    <>
+        <div className="absolute top-0 bottom-0 left-0 w-px bg-slate-800 pointer-events-none" />
+        <div className="absolute top-0 bottom-0 right-0 w-px bg-slate-800 pointer-events-none" />
+    </>
+) : ( /* 싱글플레이어 6/12/18/24/30/36/42분 격자선 그대로 */ )}
+```
+헤더 쪽은 `DepthRotationBoard.tsx`의 "1쿼터~4쿼터" `<th>`에서 라벨 사이 내부 구분선(25/50/75%, 절대위치 3개) 블록을 삭제 — 바깥쪽 `border-l`/`border-r`(이미 `slate-800`, OVR↔쿼터·쿼터↔시간 경계)만 남김. `relative` 클래스도 더 이상 안 쓰여서 함께 제거.
+
+**변경 3 — 쿼터 컬럼 행 구분선**: 간트 바 `<td>`에 다른 바디 셀들과 동일한 `border-b border-slate-800/50` 추가(기존 `p-0 h-9` → `p-0 h-9 border-b border-slate-800/50`).
+
+**검증**: Playwright로 (1) 멀티 stint 블록 `border-radius: 0px` vs 싱글 `4px` 확인. (2) 헤더 `<th>` 내부 절대위치 구분선 개수 `0개`, 바깥 `border-left/right-width` `1px`(`rgb(30,41,59)`) 확인. (3) 바디에서 `left:0px`/`right:0px` 위치에 `rgb(30,41,59)`(slate-800, 반투명 아님) 선 2개만 존재함을 확인. 스크린샷으로 헤더 라벨 사이엔 선이 없고 바깥쪽 경계만 남았음을 시각 확인. `npx vite build` 통과.
+
+**변경 3 관련 주의사항**: `border-slate-800/50`은 선수/OVR/시간 등 배경이 `bg-slate-900`(SK)인 컬럼에선 육안으로 (희미하게나마) 보이지만, 쿼터 컬럼은 배경이 `bg-slate-800/60`이라 테두리 색과 거의 같아 스크린샷상 사실상 안 보임 — "선수 행과 동일한 클래스를 그대로 적용해달라"는 요청을 문자 그대로 반영한 결과이며, 임의로 다른 색으로 바꾸지 않음(과거 이 부분에서 사용자가 명시적으로 지정한 색과 다른 색을 썼다가 강한 반발을 산 전례 있음 — [[feedback_quarter_divider_overengineering]] 참고). 가시성이 필요하면 별도로 색상 조정 요청 필요.
+
+**롤백 방법**: `sharpStintCorners` 관련 코드 제거, 격자선을 다시 빈 배열로, 헤더에 내부 구분선 3개 블록 재추가, 간트 `<td>`에서 `border-b border-slate-800/50` 제거하면 직전 "원점 롤백" 상태로 돌아감.
+
+---
+
+## 2026-08-12 — DepthRotationBoard/RotationGanttChart: 쿼터 배경/여백/구분선 전부 원점(단색·무여백·무구분선)으로 롤백
+
+**배경**: 직전 몇 항목에 걸쳐 시도한 쿼터 블록 스타일링(1/3·2/4쿼터 교차 배경색, 좌우 여백, 1쿼터 좌측 구분선 등)이 실제 화면에서 여백이 두껍고 어두운 구분선처럼 보여 사용자가 강하게 거부 — "다시 처음으로 돌리자. 쿼터 블록 배경색 전부 통일하고 좌우 패딩 없애. 그리고 구분선도 없애." 요청. 여러 차례의 반복 스타일링 시도를 전부 되돌려 가장 단순한 원형(전 쿼터 단색 `slate-800/60`, 여백 없음, 격자선 없음)으로 복귀.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx`
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 배경**: `flatQuarterBg`일 때 4분할 배경의 마진(`ml-2 mr-1`/`mx-1`/`ml-1 mr-2`)과 교차 색상(`slate-600/50`↔`slate-700/40`)을 제거, 단일 `bg-slate-800/60`로 전부 통일:
+```tsx
+{flatQuarterBg ? (
+    <div className="absolute inset-0 flex pointer-events-none">
+        {[0, 1, 2, 3].map(q => (
+            <div key={q} className="flex-1 h-full bg-slate-800/60" />
+        ))}
+    </div>
+) : ( /* 싱글플레이어 alternating 배경 그대로 */ )}
+```
+
+**변경 2 — 격자선**: `flatGridLines`일 때 그리던 쿼터 경계선(기존 `[0, 12, 24, 36]`)을 전부 제거 — 빈 배열로 변경, 아무 격자선도 안 그림:
+```tsx
+{(flatGridLines ? [] : [6, 12, 18, 24, 30, 36, 42]).map(m => (...))}
+```
+
+**변경 3 — 여백**: `DepthRotationBoard.tsx`의 간트 바 `<td>`에서 `overflow-hidden`(더 이상 필요 없는 안전장치) 제거 — `px-2` 패딩은 이미 전전 항목에서 제거된 상태라 이번엔 `p-0 h-9`만 남김.
+
+**검증**: Playwright로 4개 쿼터 배경 div가 전부 동일 클래스(`flex-1 h-full bg-slate-800/60`)·동일 폭(218px)·동일 `background-color`(rgba(30,41,59,0.6))임을 확인, 격자선 개수 `0개`, `<td>` 패딩 `0px`임을 확인. 스크린샷으로 쿼터 4개가 여백/구분선 없이 완전히 하나로 이어진 단색 배경임을 시각 확인. 같은 페이지에 싱글플레이어(`RotationManager`)도 나란히 마운트해 기존 alternating 배경 + 인디고 격자선이 그대로임을 재확인(영향 없음). `npx vite build` 통과.
+
+**주의사항**: 이번 롤백으로 이전 몇 항목(1/3·2/4쿼터 교차색, 여백 통일, 1쿼터 좌측 구분선)의 구현 내용은 전부 무효화됨 — 향후 다시 필요해지면 새로 설계해야 하며 이 커밋들을 단순 재적용하지 말 것(사용자가 명시적으로 싫다고 한 디자인이었음).
+
+**롤백 방법**(이 항목 자체를 되돌리는 경우): 바로 위 "1~4쿼터 좌우 여백을 전부 8px로 통일 + 1쿼터 좌측 경계 구분선 추가" 항목의 After 코드로 되돌리면 됨 — 단, 사용자가 명시적으로 거부한 디자인이므로 재적용 전 반드시 재확인할 것.
+
+---
+
+## 2026-08-12 — DepthRotationBoard/RotationGanttChart: 1~4쿼터 좌우 여백을 전부 8px로 통일 + 1쿼터 좌측 경계 구분선 추가
+
+**배경**: 사용자 요청 2건 — (1) 그동안 1쿼터 좌측/4쿼터 우측(바깥쪽)에만 있던 여백을, 1/2/3/4쿼터 전부(쿼터끼리의 안쪽 경계 포함) 좌우 동일한 값으로 적용. (2) 1쿼터 좌측 경계선(OVR↔쿼터 블록 사이)에 구분선 추가.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx`
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 여백 통일**: 기존엔 `<td>`의 `px-2`(바깥쪽 8px) + 별도 `-left-2`/`-right-2` 블리드 스트립(바깥쪽 색 보정)으로 바깥쪽에만 여백이 있고, 쿼터끼리(1-2/2-3/3-4쿼터)는 여백 없이 맞닿아 있었음. 이제 4쿼터 배경 div 각각에 마진을 줘서 모든 경계(바깥쪽 2곳 + 안쪽 3곳) 여백이 전부 8px로 통일되도록 함:
+```tsx
+// RotationGanttChart.tsx — flatQuarterBg일 때
+{[0, 1, 2, 3].map(q => (
+    <div key={q} className={`flex-1 h-full ${
+        q === 0 ? 'ml-2 mr-1' : q === 3 ? 'ml-1 mr-2' : 'mx-1'
+    } ${q % 2 === 0 ? 'bg-slate-600/50' : 'bg-slate-700/40'}`} />
+))}
+```
+바깥쪽(1쿼터 좌측/4쿼터 우측)은 그 쿼터 혼자 8px(`ml-2`/`mr-2`)를 부담하고, 안쪽 경계는 인접한 두 쿼터가 4px(`mr-1`+`ml-1`)씩 나눠 합쳐서 8px가 되는 방식 — 결과적으로 다섯 군데 여백이 전부 8px로 실측 일치(아래 검증 참고). `DepthRotationBoard.tsx`의 `<td>`는 더 이상 자체 패딩이 필요 없어져 `py-0 px-2` → `p-0`로, 기존 색 보정용 블리드 스트립도 이 변경으로 자연히 제거.
+
+**변경 2 — 1쿼터 좌측 구분선**: 격자선 배열(`flatGridLines`일 때)에 `0`(0%, 간트 바 왼쪽 끝 = OVR↔쿼터 경계)을 추가 — 다른 쿼터 경계선(12/24/36분)과 동일한 스타일(`w-px bg-slate-700/50`)로 그려짐.
+```tsx
+{(flatGridLines ? [0, 12, 24, 36] : [6, 12, 18, 24, 30, 36, 42]).map(m => (...))}
+```
+
+**검증**: Playwright로 다섯 개 여백(바깥쪽 좌/1-2쿼터/2-3쿼터/3-4쿼터/바깥쪽 우)의 실측 폭이 전부 정확히 `8px`, 4쿼터 각각의 렌더 폭도 전부 동일(`208px`, 1300px 컨테이너 기준)함을 확인. 1쿼터 좌측 경계 구분선이 `left: 0%`에 정상 렌더링됨을 확인. 스크린샷으로 5개 여백 간격이 균일하고 각 여백에 얇은 구분선이 지나가는 것을 시각 확인. 싱글플레이어(`RotationManager`)는 같은 페이지에 나란히 마운트해 쿼터 배경 div에 마진이 전혀 없고(기존 그대로 맞닿음), 격자선도 여전히 7개(0분 라인 없음)임을 확인 — 영향 없음. `npx vite build` 통과.
+
+**주의사항**: 안쪽 경계(예: 25% 지점)의 구분선 위치가 그 경계 여백의 정중앙(4px)이 아니라 살짝 한쪽으로 치우쳐(~2px/~6px) 그려짐 — flex 배분 특성상 발생하는 미세한 오차이며, 8px 폭의 여백 안에서는 육안상 거의 구별 안 되는 수준이라 별도 보정하지 않음.
+
+**롤백 방법**: `RotationGanttChart.tsx`에서 쿼터 배경 div의 조건부 마진 클래스 제거(플레인 `flex-1 h-full ${color}`로), 격자선 배열에서 `0` 제거, `DepthRotationBoard.tsx`의 `<td>`를 `py-0 px-2`로 되돌리면 됨(이전 블리드 스트립 버전은 그 이전 dev-log 항목 참고).
+
+---
+
+## 2026-08-12 — DepthRotationBoard/RotationGanttChart: 1쿼터·3쿼터 / 2쿼터·4쿼터 배경색 교차 적용 (slate + 불투명도)
+
+**배경**: 이전 여러 항목에 걸쳐 전 쿼터를 `slate-800/60` 단색으로 통일했던 것을, 사용자가 다시 "1쿼터/3쿼터는 밝게, 2쿼터/4쿼터는 약간만 밝게" 번갈아 칠하는 스타일로 변경 요청 (slate 색상 + 불투명도 사용 지정).
+
+**추가로 함께 고친 문제**: 직전 항목("쿼터 바디 여백 색 일치")에서 여백(`<td>`의 `px-2` 패딩)에 `bg-slate-800/60`을 칠하고, `GanttBar` 내부에도 같은 색을 또 칠하고 있어 반투명 2겹이 겹쳐 콘텐츠 영역이 여백보다 진하게 보이는 버그가 남아있었음(사용자가 확대 스크린샷으로 재지적). 이번 변경에서 근본적으로 해결 — `<td>` 자체의 배경을 제거하고, `GanttBar` 쪽에서 여백까지 포함해 한 번만 칠하는 구조로 변경.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `flatQuarterBg`가 `true`일 때: (1) 4분할 배경을 `q%2===0 ? 'bg-slate-600/50' : 'bg-slate-700/40'`(1/3쿼터 밝게, 2/4쿼터 약간만 밝게)로 변경. (2) 좌우 여백까지 같은 색이 이어지도록, 기존 `absolute inset-0`(td의 패딩 안쪽까지만 커버) 배경과 별개로 `-left-2 w-2`(1쿼터색)·`-right-2 w-2`(4쿼터색) 고정폭 스트립을 추가— 이 폭(8px)은 `DepthRotationBoard.tsx`의 `<td>` `px-2` 패딩과 정확히 일치. `flatQuarterBg`가 `false`(싱글플레이어)면 기존 코드 그대로.
+- `components/dashboard/DepthRotationBoard.tsx` — 간트 바 `<td>`에서 `bg-slate-800/60` 제거(`GanttBar`가 이제 패딩 영역까지 전부 그리므로 중복 필요 없음), `overflow-hidden` 추가(여백 스트립이 혹시라도 인접 컬럼으로 새지 않도록 안전장치).
+
+**핵심 변경**:
+```tsx
+// RotationGanttChart.tsx
+{flatQuarterBg ? (
+    <>
+        <div className="absolute inset-0 flex pointer-events-none">
+            {[0, 1, 2, 3].map(q => (
+                <div key={q} className={`flex-1 h-full ${q % 2 === 0 ? 'bg-slate-600/50' : 'bg-slate-700/40'}`} />
+            ))}
+        </div>
+        <div className="absolute top-0 bottom-0 -left-2 w-2 bg-slate-600/50 pointer-events-none" />
+        <div className="absolute top-0 bottom-0 -right-2 w-2 bg-slate-700/40 pointer-events-none" />
+    </>
+) : ( /* 기존 싱글플레이어용 alternating slate-900/950 배경 그대로 */ )}
+```
+
+**검증**: Playwright로 (1) `<td>`가 더 이상 자체 배경색을 갖지 않음(투명)을 확인. (2) `GanttBar` 내부에 이중 레이어(배경 div가 2개 겹쳐 그려지는 것)가 없음을 확인 — 레이어가 정확히 하나만 해당 영역을 덮음. 스크린샷으로 1쿼터 좌측 여백↔1쿼터 콘텐츠, 4쿼터 콘텐츠↔4쿼터 우측 여백 사이에 색 경계가 전혀 없이 이어지고, 1/3쿼터가 2/4쿼터보다 뚜렷이 밝은 것을 시각 확인. 싱글플레이어(`RotationManager`)는 같은 페이지에 나란히 마운트해 기존 alternating `slate-900/950` + 인디고 격자선이 그대로임을 확인(여백 스트립 없음, `flatQuarterBg` 분기 진입 안 함). `npx vite build` 통과.
+
+**주의사항**: 여백 스트립의 폭(`-left-2`/`-right-2`, 8px)이 `DepthRotationBoard.tsx`의 `<td>` `px-2` 패딩값과 하드코딩으로 맞춰져 있음 — 추후 그 패딩값을 바꾸면 이 스트립 폭도 같이 바꿔야 함(현재는 같은 컴포넌트 내 지역적 결합이라 문제 없으나, 리팩터링 시 주의).
+
+**롤백 방법**: `RotationGanttChart.tsx`의 `flatQuarterBg` 분기를 이전 단일 `absolute inset-0` + `bg-slate-800/60` 통일 버전으로, `DepthRotationBoard.tsx`의 `<td>`에 `bg-slate-800/60`(overflow-hidden 제거)를 다시 추가하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 바디 여백 색을 OVR 컬럼이 아닌 쿼터 블록 자체 배경과 일치시키도록 수정
+
+**배경**: 직전 수정(여백에 `${SK}`=`bg-slate-900` 적용, OVR 컬럼과 통일)을 사용자가 스크린샷으로 재지적 — 잘못된 기준이었음. 여백은 OVR 컬럼이 아니라 "쿼터 블록 자체"에 포함되는 부분이므로, 쿼터 블록의 배경(간트 바가 그리는 `flatQuarterBg` 음영)과 같은 색이어야 한다는 지적. 이전 수정 후에도 여백(연한 남색)과 실제 간트 콘텐츠 영역(`GanttBar`가 그리는 `bg-slate-800/60`) 사이에 색 경계가 보이는 문제가 여전히 남아있었음.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<td className={`py-0 px-2 h-9 ${SK}`}>
+```
+
+**After**:
+```tsx
+<td className="py-0 px-2 h-9 bg-slate-800/60">
+```
+
+`GanttBar` 내부의 쿼터 음영 div가 쓰는 것과 정확히 동일한 클래스(`bg-slate-800/60`)를 `<td>` 자체에 그대로 적용 — 같은 배경 위에 같은 반투명 색을 겹치므로 여백과 콘텐츠 영역이 픽셀 단위로 동일한 색이 됨.
+
+**검증**: Playwright로 `<td>`의 `background-color`와 `GanttBar` 내부 쿼터 음영 div의 `background-color`가 둘 다 정확히 `rgba(30,41,59,0.6)`으로 일치함을 확인. 스크린샷으로 OVR↔쿼터 경계선을 제외하면 여백과 콘텐츠 영역 사이에 색 경계가 전혀 안 보임을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 해당 `<td>`의 `bg-slate-800/60`을 이전 값으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 바디 여백 부분의 배경색이 다른 행과 달라 보이는 문제 수정
+
+**배경**: 직전 항목(1쿼터 좌측/4쿼터 우측 바깥 패딩 추가)에서 생긴 여백 부분이, 사용자 보기에 `slate-950`이 적용된 것처럼 다른 행과 이질감이 든다는 지적 — 여백은 유지하되 색만 다른 행과 통일 요청.
+
+**원인**: 간트 바 `<td>`는 자체 배경색이 없었음 — 이전엔 `GanttBar`가 셀을 100% 꽉 채워서 안 보였는데, 패딩을 추가하면서 `GanttBar`가 안쪽으로 들어가고 `<td>` 자체의 (지정 안 된, 즉 투명) 배경이 패딩 영역에 그대로 드러나 뒤쪽 페이지 배경(어두운 톤)이 비쳐 보였음. 반면 다른 컬럼(OVR/시간/초기화 등)은 전부 `${SK}`(`bg-slate-900`)를 갖고 있어 통일된 색이었음.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<td className="py-0 px-2 h-9">
+```
+
+**After**:
+```tsx
+<td className={`py-0 px-2 h-9 ${SK}`}>
+```
+
+**검증**: Playwright로 간트 바 `<td>`와 OVR `<td>`의 `background-color`가 둘 다 `rgb(15,23,42)`(slate-900)로 동일함을 확인. 스크린샷으로 1쿼터 좌측/4쿼터 우측 여백이 다른 행과 이질감 없이 자연스럽게 이어지면서도 패딩(들여쓰기)은 그대로 유지됨을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 해당 `<td>`에서 `${SK}` 제거하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 1쿼터 좌측/4쿼터 우측 바깥쪽에 약간의 패딩 추가
+
+**배경**: 사용자 요청 — 쿼터 블록(1~4쿼터, 헤더+바디 공용)이 좌우 경계선에 내용(라벨/막대)이 딱 붙어있던 것을 완화, 1쿼터 왼쪽·4쿼터 오른쪽 바깥 가장자리에 약간의 여백 부여.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<th className={`relative ${SH} border-l border-r border-t border-b border-slate-800 py-3 px-0`}>
+...
+<td className="p-0 h-9">
+```
+
+**After**:
+```tsx
+<th className={`relative ${SH} border-l border-r border-t border-b border-slate-800 py-3 px-2`}>
+...
+<td className="py-0 px-2 h-9">
+```
+
+**동작 원리**: 헤더 `<th>`와 바디 `<td>`는 각각 1~4쿼터 전체(라벨 4개 / `GanttBar` 하나)를 감싸는 단일 셀이라, 이 셀에 좌우 패딩(`px-2`, 8px)을 주면 안쪽 콘텐츠(쿼터 라벨들, 배경 음영, 격자선, 로테이션 막대) 전체가 양쪽 가장자리에서 8px씩 안으로 들어와 그려짐 — 결과적으로 "1쿼터 좌측 여백"과 "4쿼터 우측 여백"만 생기고, 쿼터끼리의 내부 경계(25/50/75%)는 셀 너비 대비 비율로 계산되므로 위치가 그대로 유지됨.
+
+**검증**: Playwright로 헤더 라벨 묶음과 바디 `GanttBar`의 좌우 여백이 각각 `8~9px`(th는 border-l/r 1px 포함이라 9px, td는 테두리 없어 8px — 시각적으로 무시 가능한 1px 차이)로 실측됨을 확인. 스크린샷으로 1쿼터 왼쪽/4쿼터 오른쪽에 여백이 생기고 쿼터 사이 경계는 그대로 정렬되어 있음을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `<th>`의 `px-2`를 `px-0`으로, `<td>`의 `py-0 px-2`를 `p-0`으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 간트 바(쿼터) 컬럼의 행 가로 구분선 삭제
+
+**배경**: 직전 항목에서 배경색과 구별되도록 `slate-600`으로 밝게 바꿔 추가한 간트 바 컬럼의 행 구분선을, 사용자가 시각적으로 좋지 않다고 판단해 완전히 삭제 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<td className="p-0 h-9 border-b border-slate-600">
+```
+
+**After**:
+```tsx
+<td className="p-0 h-9">
+```
+
+**검증**: Playwright로 간트 바 `<td>`의 `border-bottom-width`가 `0px`임을 확인. 스크린샷으로 쿼터 영역에서 행 구분선이 완전히 사라지고, 다른 컬럼(슬롯/선수/OVR/시간/초기화)의 기존 구분선은 그대로 유지됨을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 해당 `<td>`에 `border-b border-slate-600`을 다시 추가하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 헤더 라벨 사이 구분선이 중간에 끊겨 보이는 버그 수정
+
+**배경**: 직전 항목에서 추가한 "1쿼터/2쿼터/3쿼터/4쿼터" 라벨 사이 구분선을, 사용자가 스크린샷으로 지적 — OVR↔쿼터 사이의 구분선(`<th>` 자체 테두리, 셀 전체 높이를 꽉 채움)과 달리 라벨 사이 구분선은 세로 중간에서 붕 뜬 채 끊겨 보임. 이런 스타일 차이를 의도한 적이 없다는 지적.
+
+**원인**: 라벨 사이 구분선을 텍스트 라벨을 감싸는 안쪽 `<div>`(`flex-1 flex items-center justify-center`, 높이는 텍스트 줄높이만큼인 `auto`)에 `border-r`로 붙였던 것이 원인. `<th>` 자체의 테두리는 테이블 셀 박스라 레이아웃 후 실제 셀 높이(46px)를 그대로 갖지만, 셀 내부의 일반 `<div>`는 부모가 명시적 높이를 안 주면 `height:auto`(텍스트 높이인 20px)로만 그려짐 — `h-full`을 시도했으나 테이블 셀 안에서 퍼센트 높이가 기대대로 상속되지 않아 여전히 20px로 남았음(테이블 셀의 퍼센트 높이 전파는 브라우저별로 불안정).
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<th className={`${SH} border-l border-r border-t border-b border-slate-800 py-3 px-0`}>
+    <div className="flex text-sm font-black">
+        {['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map((q, qi) => (
+            <div key={q} className={`flex-1 flex items-center justify-center text-slate-400 ${qi < 3 ? 'border-r border-slate-800' : ''}`}>{q}</div>
+        ))}
+    </div>
+</th>
+```
+
+**After**:
+```tsx
+<th className={`relative ${SH} border-l border-r border-t border-b border-slate-800 py-3 px-0`}>
+    <div className="flex text-sm font-black">
+        {['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map(q => (
+            <div key={q} className="flex-1 flex items-center justify-center text-slate-400">{q}</div>
+        ))}
+    </div>
+    {[25, 50, 75].map(pct => (
+        <div key={pct} className="absolute top-0 bottom-0 w-px bg-slate-800 pointer-events-none" style={{ left: `${pct}%` }} />
+    ))}
+</th>
+```
+`<th>`에 `relative`를 주고, 구분선을 라벨 div가 아니라 `<th>`의 직계 자식으로 절대위치(`top-0 bottom-0`)에 그림 — `GanttBar`가 자기 내부 격자선을 그리는 방식과 동일한 패턴. 절대위치 자식의 top/bottom 기준(containing block)은 `<th>`의 padding box라 셀 전체 높이(테두리 안쪽)를 그대로 채운다.
+
+**검증**: Playwright로 구분선 3개(25%/50%/75%)의 `getBoundingClientRect().height`가 `44px`(=`<th>` 전체 높이 46px − 상하 테두리 각 1px)로 `<th>`의 padding box 높이와 정확히 일치함을 확인 — 더 이상 중간에서 끊기지 않음. 스크린샷으로 OVR↔쿼터 구분선과 동일하게 셀 전체 높이를 채우는 것을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `<th>`에서 `relative` 제거, 절대위치 구분선 3개 블록 제거, 라벨 div에 `${qi < 3 ? 'border-r border-slate-800' : ''}` 조건부 클래스를 다시 붙이면 직전(버그 있던) 상태로 돌아감.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 헤더 사이 수직 구분선 추가 + 간트 바 중간 격자선 제거 + 행 가로 구분선 가시성 수정
+
+**배경**: 직전 항목(쿼터 헤더 상하 구분선)을 사용자가 스크린샷으로 확인한 뒤 3가지 지적: (1) "1쿼터/2쿼터/3쿼터/4쿼터" 라벨 사이에는 여전히 구분선이 없다. (2) 대신 간트 바 안에서 각 쿼터 "중간"(6/18/30/42분 지점)에 의도치 않은 수직 구분선이 보인다. (3) 가로(행) 구분선도 추가해달라.
+
+**원인 조사**:
+- (1)(2)는 같은 근본 원인 — `GanttBar`의 격자선이 6/12/18/24/30/36/42분(6분 간격) 전부를 동일한 회색(`bg-slate-700/50`)으로 그리는데, `flatGridLines`(인디고 강조 제거) 적용 후에는 쿼터 경계(12/24/36분)와 쿼터 중간(6/18/30/42분)이 시각적으로 구별되지 않았음 — 오히려 "중간" 선들이 잡음처럼 보임. 반면 헤더 쪽 "1쿼터~4쿼터" 라벨 사이에는애초에 구분선 자체가 없었음(이전 세션에 인디고 버전을 삭제한 뒤 재추가 안 됨).
+- (3) 행 하단 구분선(`border-b border-slate-800/50`)은 모든 컬럼에 이미 존재했지만, 간트 바 컬럼만 `flatQuarterBg`로 칠해진 배경색(`bg-slate-800/60`)이 테두리 색(`rgba(30,41,59,0.5)`)과 거의 동일해 사실상 안 보였음 — Playwright로 실측한 두 색상이 서로 구별 불가한 수준으로 근접함을 확인. 다른 컬럼(OVR 등)은 배경이 `bg-slate-900`(뚜렷이 다른 색)이라 같은 테두리색이어도 잘 보였음.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `flatGridLines`가 `true`일 때 격자선 배열을 `[6,12,18,24,30,36,42]`에서 `[12,24,36]`(쿼터 경계만)으로 축소. `flatGridLines`가 `false`(싱글플레이어)면 기존 7개 전부 그대로.
+- `components/dashboard/DepthRotationBoard.tsx` — (a) 헤더 "1쿼터~4쿼터" 라벨 4개 중 앞 3개에 `border-r border-slate-800` 추가(라벨 사이 구분선, `GanttBar`의 12/24/36분 격자선과 픽셀 단위로 일치). (b) 간트 바 `<td>`의 `border-b border-slate-800/50` → `border-b border-slate-600`으로 변경(배경과 구별되는 밝기로 조정, 행 구분선 가시성 확보).
+
+**핵심 변경**:
+```tsx
+// RotationGanttChart.tsx
+{(flatGridLines ? [12, 24, 36] : [6, 12, 18, 24, 30, 36, 42]).map(m => (...))}
+
+// DepthRotationBoard.tsx — 헤더
+{['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map((q, qi) => (
+    <div key={q} className={`flex-1 flex items-center justify-center text-slate-400 ${qi < 3 ? 'border-r border-slate-800' : ''}`}>{q}</div>
+))}
+
+// DepthRotationBoard.tsx — 간트 바 td
+<td className="p-0 h-9 border-b border-slate-600">
+```
+
+**검증**: Playwright로 (1) 헤더 라벨 4개 중 앞 3개의 `border-right-width===1px`(색 `rgb(30,41,59)`), 마지막(4쿼터)은 `0px`임을 확인. (2) 간트 바 내부 격자선 개수가 정확히 `3개`, 위치가 `25%/50%/75%`(쿼터 경계, 헤더 구분선과 동일 위치)임을 확인 — 6분 "중간" 선은 더 이상 렌더링 안 됨. (3) 간트 바 `<td>`의 `border-bottom-color`가 `rgba(71,85,105,0.6→1)`(slate-600, 배경과 뚜렷이 구별)로 변경됨을 확인. 스크린샷으로 헤더 세로 구분선·격자선 정렬·행 가로 구분선 모두 시각 확인. 싱글플레이어(`RotationManager`)는 같은 페이지에 나란히 마운트해 격자선이 여전히 `7개`(6/12/18/24/30/36/42분, 인디고 강조 포함)로 전혀 변경되지 않았음을 확인. `npx vite build` 통과.
+
+**주의사항**: 간트 바 컬럼의 행 구분선만 `slate-600`으로 다른 컬럼(`slate-800/50`)보다 밝은 별도 색상을 씀 — 배경색이 다르기 때문에 의도적으로 다르게 준 것이며 버그 아님.
+
+**롤백 방법**: `RotationGanttChart.tsx`의 격자선 배열을 flatGridLines 조건 없이 항상 `[6,12,18,24,30,36,42]`로, `DepthRotationBoard.tsx`의 헤더 라벨 조건부 클래스 제거, 간트 바 `<td>`를 `border-slate-800/50`으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 헤더("1쿼터~4쿼터")에 상단 구분선 추가
+
+**배경**: 사용자 요청 — 쿼터 헤더 `<th>`가 기존에 좌우(`border-l border-r`)/하단(`border-b`) 구분선만 갖고 있었는데, 상단 구분선도 추가해달라는 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<th className={`${SH} border-l border-r border-b border-slate-800 py-3 px-0`}>
+```
+
+**After**:
+```tsx
+<th className={`${SH} border-l border-r border-t border-b border-slate-800 py-3 px-0`}>
+```
+
+**검증**: Playwright로 "1쿼터~4쿼터" 헤더 `<th>`의 computed `border-top-width`가 `1px`, 색상이 `rgb(30,41,59)`(slate-800, 좌우/하단과 동일)임을 확인. 스크린샷으로 헤더 상단에 얇은 구분선이 추가된 것을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 해당 `<th>`에서 `border-t` 제거하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: fillStintBlocks 롤백 (요청에 따라 이전 상태로 복귀)
+
+**배경**: 바로 아래 항목("활성 로테이션 막대가 행을 꽉 채우도록")을 사용자가 롤백 요청.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `GanttBarProps`의 `fillStintBlocks?: boolean` 제거, 구조분해 인자에서 제거, stint 블록 className을 `absolute top-1.5 bottom-1.5 rounded pointer-events-none ...`로 원복, `React.memo` 비교 함수에서 `fillStintBlocks` 비교 라인 제거.
+- `components/dashboard/DepthRotationBoard.tsx` — `<GanttBar>` 호출부에서 `fillStintBlocks` prop 제거(`flatGridLines`/`flatQuarterBg`만 남김).
+
+**검증**: `npx vite build` 통과(기존부터 있던 `Circular chunk` 경고만 존재, 이번 변경과 무관).
+
+**롤백 방법**: 바로 아래 "활성 로테이션 막대가 행을 꽉 채우도록" 항목의 After 코드로 다시 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 활성 로테이션 막대가 행을 꽉 채우도록(GanttBar fillStintBlocks 옵션), 보더 라디우스 제거
+
+**배경**: 사용자가 뎁스차트/로테이션 통합 화면(`DepthRotationBoard`)의 활성 구간(stint) 막대에 대해, 상하 여백 없이 셀 높이를 꽉 채우고 모서리 둥글기도 없애달라고 요청.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `GanttBarProps`에 `fillStintBlocks?: boolean` 추가(기본 `false`), stint 블록 `<div>`의 className을 조건부로 변경, `React.memo` 비교 함수에도 추가. `flatGridLines`/`flatQuarterBg`와 동일한 opt-in 패턴 — 싱글플레이어(`RotationManager`)가 쓰는 기본 동작(상하 여백 + 둥근 모서리)은 그대로 유지.
+- `components/dashboard/DepthRotationBoard.tsx` — `<GanttBar>` 호출에 `fillStintBlocks` 추가.
+
+**Before**:
+```tsx
+{stints.map((stint, idx) => (
+    <div key={idx} className={`absolute top-1.5 bottom-1.5 rounded pointer-events-none ${
+        stint.valid ? '...' : '...'
+    }`} style={{ left: ..., width: ... }} />
+))}
+```
+
+**After**:
+```tsx
+{stints.map((stint, idx) => (
+    <div key={idx} className={`absolute pointer-events-none ${fillStintBlocks ? 'inset-y-0' : 'top-1.5 bottom-1.5 rounded'} ${
+        stint.valid ? '...' : '...'
+    }`} style={{ left: ..., width: ... }} />
+))}
+```
+
+**검증**:
+- `npx vite build` 통과.
+- Playwright로 `DepthRotationBoard`/`RotationManager`를 나란히 마운트(동일 rotationMap 데이터)해 stint 블록 실측: 멀티(`#multi`)는 `barHeight===stintHeight`(35px 꽉 참) & `border-radius: 0px`, 싱글(`#single`)은 기존과 동일하게 `stintHeight(23px) < barHeight(35px)`(상하 여백 유지) & `border-radius: 4px` — 싱글플레이어 영향 없음 확인.
+
+**롤백 방법**: `fillStintBlocks` 관련 코드 제거(RotationGanttChart.tsx의 prop/className 조건/memo 비교, DepthRotationBoard.tsx의 호출부 prop) — stint 블록 className을 `absolute top-1.5 bottom-1.5 rounded pointer-events-none ...`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 배경색 slate-800 통일(GanttBar flatQuarterBg 옵션) + 슬롯/슬롯번호 컬럼 40px로 확장
+
+**배경**: 사용자가 먼저 1/3쿼터 vs 2/4쿼터 배경색 설정을 질문(`GanttBar`의 번갈아 나오는 `bg-slate-900/60`↔`bg-slate-950/60`)한 뒤, 둘 다 `slate-800`로 통일해달라고 요청. 이어서 슬롯/슬롯번호 컬럼(각 28px/22px)을 둘 다 40px로 확장 요청.
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `GanttBarProps`에 `flatQuarterBg?: boolean` 추가(기본 `false`), 쿼터 배경 음영 계산에 반영, `React.memo` 비교 함수에도 추가. `flatGridLines`와 동일한 패턴 — 싱글플레이어(`RotationManager`)가 쓰는 기본 동작은 그대로 유지.
+- `components/dashboard/DepthRotationBoard.tsx` — `<GanttBar>` 호출에 `flatQuarterBg` 추가. `colgroup`의 첫 두 `<col>`(포지션/뎁스번호)을 `28`/`22` → `40`/`40`으로. 이어지는 모든 sticky `left-[Npx]` 오프셋을 재계산해 갱신: 핸들/선수 `50→80`, 선수 select `78→108`, OVR/OVR경계 `278→308`. 슬롯 헤더 `<th>`의 `w-[50px]`도 `w-[80px]`로.
+
+**핵심 변경(쿼터 배경)**:
+```tsx
+className={`flex-1 h-full ${flatQuarterBg ? 'bg-slate-800/60' : q % 2 === 0 ? 'bg-slate-900/60' : 'bg-slate-950/60'}`}
+```
+
+**검증**:
+- 배경색: Playwright로 `DepthRotationBoard`/`RotationManager`를 나란히 마운트해 각 쿼터 배경의 `background-color`를 실측 — 멀티는 4쿼터 전부 `rgba(30,41,59,0.6)`(slate-800)로 통일, 싱글은 그대로 `rgba(15,23,42,0.6)`/`rgba(2,6,23,0.6)`(slate-900/950 번갈아) 유지됨을 확인.
+- 컬럼 폭: 첫 번째 데이터 행의 각 `<td>` 폭을 실측 — `[40, 40, 28, 200, 40, (나머지), 40, 40]`으로 포지션/뎁스번호가 정확히 40px씩, 이후 컬럼(선수 이름 표시 영역 등)도 겹침/잘림 없이 정상 정렬됨을 확인.
+- `npx vite build` 통과.
+
+**롤백 방법**: `flatQuarterBg` 관련 코드 제거(RotationGanttChart.tsx의 prop/조건/memo 비교, DepthRotationBoard.tsx의 호출부 prop), colgroup 첫 두 `<col>`을 `28`/`22`로, 이후 sticky `left` 오프셋들을 이전 값(50/78/278)으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 테이블 헤더 높이를 로스터/리더보드와 동일하게(45px) 통일
+
+**배경**: 사용자 질문 — 뎁스차트 헤더 높이가 몇인지, 로스터(`RosterOverviewGrid.tsx`)/리더보드 등 다른 테이블과 동일하게 맞춰달라는 요청. 실측 결과 뎁스차트는 29px, 로스터는 45px로 차이가 있었음.
+
+**원인 조사**: 로스터 쪽은 공용 `TableHeaderCell`(`components/common/Table.tsx`)을 쓰는데, 이 컴포넌트가 `py-3`(상하 12px 패딩) + `border-b` 1px를 갖고 있어 `text-sm` 컨텐츠와 합쳐 자연스럽게 45px가 됨 — 정작 그 위 `<tr>`에 붙어있던 `h-10`(40px) 클래스는 셀 자체 패딩이 이미 더 크기 때문에 실제로는 아무 영향이 없었음(고 실제로는 min-height처럼 무시됨). `DepthRotationBoard.tsx`는 공용 컴포넌트 없이 raw `<th>`를 쓰고 있어 패딩이 없어 텍스트 줄높이만큼(29px)만 나왔던 것.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: 헤더 `<tr>`의 `h-10`(먼저 시도했으나 45px에 못 미쳐 폐기) 대신, 모든 헤더 `<th>` 6개 전부에 `py-3` 패딩 직접 추가(공용 `TableHeaderCell`과 동일한 값) — 슬롯/선수/OVR/쿼터(1~4쿼터)/시간/초기화. 쿼터 `<th>`는 `p-0`→`py-3 px-0`로, 내부 flex div의 `h-full`은 이제 불필요해 제거.
+
+**검증**: Playwright로 `DepthRotationBoard`와 `RosterOverviewGrid`를 같은 페이지에 나란히 마운트해 헤더 행의 `getBoundingClientRect().height`를 비교 — 수정 전 `29px vs 45px` → 수정 후 `45px vs 45px`로 정확히 일치. `npx vite build` 통과.
+
+**롤백 방법**: 헤더 6개 `<th>`에서 `py-3` 제거, 쿼터 `<th>`를 `p-0`으로, 내부 div에 `h-7`(또는 `h-full`) 복원하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 헤더 2행(분 마커) 삭제 + 쿼터 헤더 좌우 구분선 + 오류 배너를 표 바로 아래로 이동
+
+**배경**: 사용자 요청 3건 — (1) 헤더 2행째(2/4/6…48분 마커 행) 삭제. (2) "1쿼터~4쿼터" 헤더 컬럼에도 다른 헤더 컬럼처럼 좌우 slate 구분선 추가. (3) 5명 미만/초과·혹사 경고 배너가 화면 맨 아래로 밀려 붙던 것을 표(뎁스 차트) 바로 아래로 이동.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경 1 — 헤더 2행 삭제**: `<thead>`의 두 번째 `<tr>`(분 마커) 전체 제거. 첫 번째 `<tr>`의 나머지 헤더 셀들에 남아있던 `rowSpan={2}`도 함께 제거(더 이상 2행이 없으므로).
+
+**변경 2 — 쿼터 헤더 구분선**: `1쿼터~4쿼터`를 감싸는 `<th>`에 `border-l border-r border-b border-slate-800` 추가. 처음엔 `border-slate-800`(좌우)과 `border-slate-800/50`(하단)을 섞어 썼다가, Tailwind의 `border-{color}` 유틸리티가 4면 전체의 `border-color`를 설정한다는 점 때문에 나중 클래스가 좌우 색상까지 덮어써 좌우가 의도와 다르게 50% 불투명도로 나온 걸 발견 — 하나의 solid `border-slate-800` 색상 클래스로 통일해 수정.
+
+**변경 3 — 오류 배너 위치**: 배너를 `flex-1 overflow-auto` 스크롤 컨테이너 바깥의 별도 flex 형제(화면 맨 아래로 늘어남)에서 그 컨테이너 **안**, `</table>` 바로 뒤로 이동 — 표 내용과 함께 스크롤되며 항상 마지막 행에 바로 붙어 보임.
+
+**검증**: Playwright로 (1) `thead tr` 개수가 `1`임을 확인, (2) 쿼터 헤더의 좌우 `border-width`가 `1px`이고 색상이 `rgb(30,41,59)`(slate-800, 좌우 동일)임을 확인, (3) 표를 일부러 아주 큰 컨테이너(2000px) 안에 넣고 마지막 행 하단 좌표와 배너 상단 좌표를 비교해 간격이 `0px`임을 확인(화면 하단이 아니라 표 바로 아래 붙음). `npx vite build` 통과.
+
+**롤백 방법**: 헤더 2행 블록을 다시 추가하고 관련 셀에 `rowSpan={2}` 복원, 쿼터 헤더에서 `border-l border-r` 제거, 배너를 `overflow-auto` 컨테이너 바깥으로 다시 이동하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 간트 바 내부 12분(쿼터) 경계 인디고 격자선도 제거 (GanttBar에 flatGridLines 옵션 추가)
+
+**배경**: 직전 항목에서 헤더의 쿼터 라벨 구분선만 지웠는데, 사용자가 "그것도 지우라고 한 거였다"고 지적 — 실제로는 각 행의 간트 바 안에서 12/24/36분 지점마다 그려지는 굵은 인디고 세로선(쿼터 경계 격자선)까지 포함한 요청이었음. 이 격자선은 `RotationGanttChart.tsx`의 `GanttBar` 컴포넌트 내부에 있는데, 이 컴포넌트는 싱글플레이어(`RotationManager.tsx`→`DashboardView.tsx`)도 그대로 쓰고 있어서 직접 색을 빼면 싱글플레이어 로테이션 화면까지 같이 바뀌는 문제가 있음(이전 세션 결정 — "멀티만 먼저" 범위 밖).
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `GanttBarProps`에 `flatGridLines?: boolean` 추가(기본 `false`), 12분 경계 격자선의 인디고 강조를 이 플래그가 true일 때만 건너뛰도록 조건 추가. `React.memo` 비교 함수에도 반영.
+- `components/dashboard/DepthRotationBoard.tsx` — `<GanttBar>` 호출에 `flatGridLines` prop 추가(멀티 전용 사용처만 켬).
+
+**핵심 변경**:
+```tsx
+// RotationGanttChart.tsx — GanttBar 내부
+className={`absolute top-0 bottom-0 pointer-events-none ${
+    m % 12 === 0 && !flatGridLines
+        ? 'w-0.5 bg-indigo-500/35'
+        : 'w-px bg-slate-700/50'
+}`}
+```
+`flatGridLines`가 `true`면 12분 경계도 다른 6분 보조선과 똑같은 회색(`bg-slate-700/50`)으로 그려져 인디고가 완전히 사라짐 — 기본값 `false`라 `RotationManager`/싱글플레이어 쪽 호출부는 아무것도 안 바뀜.
+
+**검증**: Playwright로 `DepthRotationBoard`와 `RotationManager`를 같은 페이지에 나란히 마운트해 `bg-indigo-500/35` 클래스를 가진 격자선 개수를 각각 셈 — 멀티는 `0개`(정상 제거), 싱글은 `3개`(12/24/36분, 그대로 유지)로 정확히 분리 확인. `npx vite build` 통과.
+
+**롤백 방법**: `DepthRotationBoard.tsx`의 `<GanttBar>`에서 `flatGridLines` prop 제거(또는 `RotationGanttChart.tsx`의 `flatGridLines` 관련 코드 전부 제거해 완전히 되돌림).
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 쿼터 사이(1-2/2-3/3-4쿼터) 헤더 인디고 구분선도 제거
+
+**배경**: 직전 항목에서 1쿼터/4쿼터 바깥쪽 구분선만 지웠는데, 사용자가 쿼터 라벨 사이(내부) 구분선도 마저 제거 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: "1쿼터/2쿼터/3쿼터/4쿼터" 헤더 라벨 div에서 `qi < 3 ? 'border-r-2 border-indigo-500/40' : ''` 조건부 클래스 제거(고정 클래스만 남김). 헤더 레벨 구분선만 대상 — 각 행의 `GanttBar`(간트 바 내부, 12/24/36분 지점의 인디고 격자선)는 `RotationGanttChart.tsx`의 공용 컴포넌트라 손대지 않음(싱글플레이어 `RotationManager`/`DashboardView`도 같이 쓰므로 범위 밖).
+
+**검증**: Playwright로 "1쿼터"~"4쿼터" 4개 라벨 div의 computed `border-right-width`가 전부 `0px`임을 확인. `npx vite build` 통과.
+
+**주의사항**: 각 행의 간트 바 내부 격자선(12분 단위 인디고 세로선)은 이번 변경 대상이 아니라 그대로 남아있음 — 필요하면 별도 요청 필요.
+
+**롤백 방법**: 헤더 라벨 div에 `${qi < 3 ? 'border-r-2 border-indigo-500/40' : ''}` 조건부 클래스를 다시 추가하면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 1쿼터/4쿼터 바깥쪽 인디고 구분선 제거
+
+**배경**: 사용자 요청 — 간트 영역(1~4쿼터) 바로 바깥쪽에 있던 굵은 인디고 구분선(OVR↔1쿼터 경계, 4쿼터↔시간 경계) 제거. 쿼터 사이(1-2, 2-3, 3-4쿼터) 내부 구분선은 요청 대상 아님.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**변경**: OVR 헤더/바디 `<th>`/`<td>`에서 `border-r-2 border-r-indigo-500/50` 제거, "시간" 헤더/바디에서 `border-l-2 border-l-indigo-500/50` 제거(총 4곳). 대체 테두리 없이 완전히 제거 — 요청이 "삭제"였으므로 얇은 회색 구분선으로도 대체하지 않음.
+
+**검증**: Playwright로 OVR 셀의 `border-right-width`, 시간 셀의 `border-left-width`가 둘 다 `0px`임을 확인. 스크린샷으로 1쿼터/4쿼터 바깥쪽은 구분선 없이 이어지고, 쿼터 사이 내부 구분선(1-2/2-3/3-4쿼터)은 그대로 남아있음을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: OVR에 `border-r-2 border-r-indigo-500/50`, 시간에 `border-l-2 border-l-indigo-500/50`을 다시 추가하면 됨.
+
+---
+
+## 2026-08-12 — 멀티 전술 화면 기본 탭을 "뎁스 차트"로 변경 + 선수 이름 폰트 text-sm 누락 수정
+
+**배경**: 사용자 요청 — (1) 전술 화면(`MultiTacticsView.tsx`) 진입 시 기본으로 보이는 탭을 "팀 전술" 대신 "뎁스 차트 · 로테이션"으로. (2) `DepthRotationBoard.tsx`의 선수 이름 표시 텍스트가 `text-sm`이 아닌 것 같다는 제보 — 확인 결과 실제로 `text-xs`(12px)로 남아있었음(앞서 폰트 일괄 조정 때 이 부분만 빠짐).
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` — `useState<MultiTacticsTab>('team')` → `useState<MultiTacticsTab>('depth')`
+- `components/dashboard/DepthRotationBoard.tsx` — 선수 선택 `<select>`/`<option>`/오버레이 표시 텍스트 3곳 전부 `text-xs` → `text-sm`
+
+**검증**: Playwright로 렌더링된 선수 이름 텍스트의 computed `font-size`가 `14px`(text-sm)임을 확인. `npx vite build` 통과. 기본 탭 변경은 단순 초기값 변경이라 빌드 통과로 충분히 검증됨(별도 렌더 테스트 생략).
+
+**롤백 방법**: `useState` 초기값을 `'team'`으로, 선수 이름 관련 3개 클래스를 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 슬롯 초기화 버튼을 "시간" 컬럼에서 분리, 상시 노출되는 별도 "초기화" 컬럼으로
+
+**배경**: 사용자 요청 — "시간" 컬럼에 마우스를 올려야만 나타나던 재설정(RotateCcw) 아이콘을 분리해서, "시간" 컬럼 오른쪽에 별도 "초기화" 컬럼을 새로 만들고 거기에 항상 보이는 초기화 버튼을 배치.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<td ...>  {/* 시간 셀 하나에 숫자+호버 버튼이 absolute로 겹쳐 있었음 */}
+    <div className="relative flex items-center justify-center h-full">
+        <span className="... group-hover:opacity-0 transition-opacity">{totalMins}</span>
+        {totalMins > 0 && (
+            <button className="absolute inset-0 ... opacity-0 group-hover:opacity-100 transition-opacity">
+                <RotateCcw size={12} />
+            </button>
+        )}
+    </div>
+</td>
+```
+
+**After**:
+```tsx
+<td ...>{selectedPlayer && <span className="text-sm font-semibold ...">{totalMins}</span>}</td>  {/* 시간 — 숫자만 */}
+
+<td ...>  {/* 신규 초기화 컬럼 — 항상 보임 */}
+    {selectedPlayer && totalMins > 0 && (
+        <button onClick={...} className="flex items-center justify-center w-full" title="이 슬롯 출전시간 초기화">
+            <RotateCcw size={12} className="text-slate-400 hover:text-red-400 transition-colors" />
+        </button>
+    )}
+</td>
+```
+`colgroup`/헤더 1행에 40px "초기화" 컬럼 추가(시간 컬럼 바로 뒤, 맨 끝).
+
+**검증**: Playwright로 마우스를 화면 좌상단 멀리 둔 상태에서도 초기화 버튼의 `opacity`가 `1`(항상 보임)임을 확인, 헤더 라벨 목록에 "초기화"가 "시간" 다음으로 존재함을 확인, 실제 클릭 시 해당 슬롯의 출전 분이 10→0으로 정상 초기화됨을 확인. 스크린샷으로 두 컬럼이 나란히 분리된 것 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: "초기화" 컬럼(colgroup/헤더/바디 `<td>`)을 제거하고, "시간" 셀을 Before 블록의 hover-overlay 구조로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 폰트 사이즈 통일(text-sm) + "시간" 컬럼을 4쿼터 우측으로 이동
+
+**배경**: 사용자에게 폰트 사이즈 실측 결과(Playwright)를 보고한 뒤, 다음 조정 요청 — 드롭다운 서브 설명(9px→text-xs), 테이블 헤더/분 마커/포지션·뎁스번호 라벨/출전 분 숫자/검증 경고 배너를 전부 `text-sm`으로, 분 마커·출전 분 숫자는 `font-mono`도 해제. 이어서 "시간" 컬럼(총 출전 분)을 OVR 다음(간트 앞)이 아니라 4쿼터 간트 오른쪽 끝으로 옮겨달라는 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**폰트 변경**: `text-[9px]`→`text-xs`(드롭다운 서브), `text-xs`→`text-sm`(헤더 행/1~4쿼터 라벨/분 마커/선수 선택 텍스트는 유지—요청 안 됨), `text-[10px]`→`text-sm`(포지션·뎁스번호 라벨, 검증 배너), 분 마커·출전 분 숫자는 `text-sm`으로 바꾸며 `font-mono` 클래스 제거.
+
+**컬럼 재배치 — "시간"을 간트 오른쪽으로**:
+```tsx
+// colgroup: 시간(40px) col을 OVR 다음이 아니라 간트(flex) col 뒤로 이동
+<col style={{ width: 40 }} />  {/* OVR */}
+<col />                         {/* 간트(48분) */}
+<col style={{ width: 40 }} />  {/* 시간 — 맨 끝으로 이동 */}
+```
+헤더 1행에서 "시간" `<th>`를 "1쿼터~4쿼터" `<th>` 뒤로 옮기고, 더 이상 sticky-left 그룹에 속하지 않으므로 `sticky left-[318px]` 제거. 대신 왼쪽 경계선(`border-l-2 border-l-indigo-500/50`)으로 간트와의 구분을 표시 — 기존에 "시간"이 갖고 있던 "sticky 영역 끝" 표시자(`border-r-2 border-r-indigo-500/50`)는 이제 실제로 sticky-left 그룹의 마지막 컬럼이 된 OVR로 옮김. 바디 `<td>`도 동일하게: 시간 셀을 간트 `<td>` 뒤로 옮기고 sticky 제거, OVR 셀에 `border-r-2` 적용.
+
+**검증**: Playwright로 폰트 사이즈(14px 확인) 및 `font-family`가 더 이상 모노스페이스가 아님을 확인. 컬럼 이동은 첫 행의 셀 순서를 실측해 `[PG, 1, 핸들, 선수, OVR, 간트, 시간]`으로 "시간"이 마지막 컬럼임을 확인, 스크린샷으로 4쿼터 오른쪽에 구분선과 함께 배치된 것을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: colgroup에서 시간 col을 OVR 다음으로 되돌리고, 헤더/바디의 시간 셀을 간트 앞으로 옮기고 sticky/`border-r-2`를 원래대로 복원, OVR의 `border-r-2`를 `${SB}`로 되돌리면 됨. 폰트는 각 클래스를 표에 적힌 이전 값으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 포지션·뎁스번호 컬럼 사이 구분선 추가
+
+**배경**: 직전 항목에서 슬롯 컬럼을 포지션(rowSpan=3 병합)/뎁스번호로 분리할 때 포지션 셀의 오른쪽 구분선을 빼먹음(핸들-선수 구분선 제거 작업 때 썼던 클래스를 그대로 복사한 실수) — 사용자가 구분선 추가 요청.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before/After**: 포지션 `<td rowSpan={3}>`의 className에서 빠져있던 `${SB}`(`border-r border-slate-800`)를 추가.
+
+**검증**: Playwright로 "PG" 셀의 computed `border-right-width`가 `1px`(색상 slate-800)임을 확인, 스크린샷으로 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 포지션 `<td>`에서 `${SB}` 제거.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 컬럼 폭 깨짐 수정(colgroup 도입) + 슬롯 컬럼을 포지션/뎁스번호로 분리(포지션 행 병합)
+
+**배경**: 직전 항목(핸들+선수 헤더 colSpan 병합) 적용 후 사용자 스크린샷 제보 — 실제 데이터(긴 한글 선수명)로 렌더링하니 "선수" 컬럼이 화면 대부분을 잡아먹고 OVR/시간/간트 영역이 오른쪽 끝으로 밀려 폭이 완전히 깨짐. 원인: 이 테이블은 `table-layout: auto`(기본값)이고 `<colgroup>` 없이 각 `<td>`의 `w-[Npx]` 클래스에만 의존했는데, 헤더에 `colSpan={2}`가 섞이자 브라우저의 자동 컬럼폭 계산이 컬럼별 폭 정보를 제대로 못 지켜 컬럼 하나가 내용에 맞춰 무제한 확장됨.
+
+이어서 사용자가 슬롯 컬럼도 "C | 1" 처럼 포지션/뎁스번호 두 하위 컬럼으로 나눠달라고 요청했고, 곧바로 "PG PG PG 반복하지 말고 포지션 행은 병합해서 P | 1 / | 2 / | 3 형태로" 정정.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**핵심 수정 1 — colgroup 도입 (폭 버그 근본 수정)**:
+```tsx
+<table className="border-separate border-spacing-0 w-full" style={{ minWidth: '960px', tableLayout: 'fixed' }}>
+    <colgroup>
+        <col style={{ width: 28 }} />  {/* 포지션 */}
+        <col style={{ width: 22 }} />  {/* 뎁스번호 */}
+        <col style={{ width: 28 }} />  {/* 드래그 핸들 */}
+        <col style={{ width: 200 }} /> {/* 선수 */}
+        <col style={{ width: 40 }} />  {/* OVR */}
+        <col style={{ width: 40 }} />  {/* 시간 */}
+        <col />                        {/* 간트(48분) — 나머지 전부 */}
+    </colgroup>
+```
+`table-layout: fixed`로 바꿔서 컬럼폭을 colgroup이 전적으로 결정하도록 강제 — 이제 헤더에 colSpan이 몇 개 섞여도 실제 렌더 폭은 항상 고정값을 따른다.
+
+**핵심 수정 2 — 슬롯 컬럼을 포지션(rowSpan=3 병합)/뎁스번호 두 컬럼으로 분리**:
+```tsx
+{depthIndex === 0 && (
+    <td rowSpan={3} className="sticky left-0 ...">{String(pos)}</td>
+)}
+<td className="sticky left-[28px] ...">{depthLabel}</td>
+```
+`RotationGanttChart.tsx`의 원래 POS 컬럼(`rowSpan={players.length}`) 패턴과 동일한 방식 — "PG"가 3행에 걸쳐 한 번만 표시되고, 그 옆에 1/2/3이 행마다 표시됨. 헤더의 "슬롯" 라벨은 두 하위 컬럼에 걸쳐 `colSpan={2}`로 유지(직전 "선수" 헤더 병합과 동일 패턴).
+
+**검증**: Playwright로 실제 긴 한글 선수명(카이리 어빙 등 10명) 데이터로 재현 — 바디 첫 행 셀 폭이 `[28, 22, 28, 200, 40, 40, 나머지]`로 정확히 고정값을 따름을 확인(스크린샷 버그 재현 안 됨). "PG" 텍스트를 가진 `<td>`가 정확히 1개이고 `rowspan="3"`임을 확인, 스크린샷으로 P|1/2/3 형태 시각 확인. `npx vite build` 통과.
+
+**주의사항**: `table-layout: fixed` 적용으로 각 `<td>`/`<th>`에 남아있는 `w-[Npx]`/`min-w-[Npx]` 클래스는 이제 사실상 무시됨(colgroup이 우선) — 죽은 코드는 아니지만 실제 폭 결정에는 관여하지 않음. 이후 컬럼을 추가/변경할 땐 반드시 colgroup도 함께 갱신할 것(안 그러면 다시 이번과 같은 폭 깨짐 재발).
+
+**롤백 방법**: colgroup 제거, `tableLayout: 'fixed'` 제거, 슬롯 `<td>`를 병합 이전 단일 셀(`{String(pos)}{depthLabel}`)로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 드래그 핸들 컬럼과 선수 컬럼 헤더 병합 + 바디 구분선 제거
+
+**배경**: 사용자 요청 — 직전 항목에서 추가한 드래그 핸들 컬럼(28px, 헤더 빈칸)과 "선수" 컬럼 헤더 셀을 하나로 합치고, 바디 테이블에서도 핸들 셀과 선수 이름 셀 사이 세로 구분선을 없애 시각적으로 한 덩어리처럼 보이게.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+<th rowSpan={2} className="sticky left-[50px] ... w-[28px] min-w-[28px]"></th>
+<th rowSpan={2} className="sticky left-[78px] ... w-[200px] min-w-[200px] text-left px-3">선수</th>
+...
+<td className={`sticky left-[50px] z-30 ${SK} text-center align-middle ${SB} border-b border-slate-800`}> {/* 핸들 — border-r 있음 */}
+```
+
+**After**:
+```tsx
+<th rowSpan={2} colSpan={2} className="sticky left-[50px] ... w-[228px] min-w-[228px] text-left px-3">선수</th>
+...
+<td className={`sticky left-[50px] z-30 ${SK} text-center align-middle border-b border-slate-800`}> {/* 핸들 — border-r(SB) 제거 */}
+```
+헤더는 `colSpan={2}`로 두 컬럼(28px+200px=228px)을 하나의 "선수" 셀로 병합. 바디는 핸들 `<td>`에서만 오른쪽 구분선(`SB`=`border-r border-slate-800`)을 뺐고, 선수 셀 자체의 오른쪽 구분선(OVR 컬럼과의 경계)은 그대로 유지.
+
+**검증**: Playwright로 헤더 "선수" 셀의 `colspan` 속성이 정확히 `2`임을 확인, 스크린샷으로 핸들-이름 사이 구분선이 사라지고 "슬롯" 컬럼과의 경계선만 남은 것을 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: 헤더 `colSpan={2}` 제거하고 빈 `<th>`를 다시 분리, 핸들 `<td>`에 `${SB}` 다시 추가.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 선수 드롭다운 좌측에 드래그 핸들 추가 — 슬롯 간 드래그 스왑
+
+**배경**: 사용자 요청 — 각 슬롯 행의 선수 드롭다운 왼쪽에 드래그 핸들을 두고, 다른 슬롯으로 드래그하면 두 슬롯의 선수가 서로 교체되도록.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**구현**:
+- `handleSlotChange`의 rotationMap 재매핑 로직을 `remapRotationByChart(oldChart, newChart, oldMap)` 공용 헬퍼로 추출(로직 동일, 재사용을 위한 리팩터).
+- `handleSlotSwap(from, to)` 신설 — 두 슬롯의 뎁스차트 항목을 맞바꾸고, `remapRotationByChart`로 rotationMap도 함께 재매핑(슬롯 기준 재매핑이라 "구간이 슬롯을 따라간다" 규칙이 스왑에도 자동으로 적용됨 — 새 코드 없이 기존 헬퍼 재사용). 스왑되는 두 슬롯 중 `depthIndex===0`(주전)이 있으면 `starters`도 갱신.
+- 네이티브 HTML5 드래그앤드롭(`draggable`/`onDragStart`/`onDragOver`/`onDrop`) 사용 — `LiveGameView.tsx`의 벤치 교체 UI와 동일한 기존 코드베이스 관례를 그대로 따름(별도 라이브러리 도입 없음). 핸들 아이콘은 `GripVertical`(lucide-react).
+- 테이블에 스티키 컬럼 하나(핸들, 28px)가 추가되면서 이후 컬럼(선수/OVR/시간)의 `left` 오프셋을 50→78, 250→278, 290→318로 조정.
+- 드롭 대상 행에 `bg-indigo-500/10` 하이라이트 표시(`dropTargetSlot` 상태).
+
+**검증**: Playwright `locator.dragTo()`로 실제 HTML5 드래그앤드롭을 재현 — PG1(p1, 0~9분 출전)의 핸들을 PG2(p2, 20~24분 출전) 행으로 드래그 → `depthChart.PG`가 `['p1','p2','p3']`→`['p2','p1','p3']`로 교체되고, p1은 PG2 자리였던 20~24분 구간을, p2는 PG1 자리였던 0~9분 구간을 정확히 이어받음을 확인(선수와 출전 구간이 슬롯 기준으로 함께 맞바뀜). `npx vite build` 통과.
+
+**롤백 방법**: 핸들 `<th>`/`<td>`, `draggedSlot`/`dropTargetSlot` 상태, `handleSlotSwap`, `remapRotationByChart`/`cloneDepthChart` 헬퍼를 제거하고 컬럼 `left` 오프셋을 이전 값(50/250/290)으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — DepthRotationBoard: 미배정 슬롯도 GanttBar 배경(격자/쿼터 음영)이 끊기지 않게 수정
+
+**배경**: 사용자 제보 — 선수가 선택되지 않은 슬롯 행은 그냥 회색 빈 박스라서, 위에서 아래로 훑어볼 때 로테이션 차트의 격자무늬/쿼터 음영이 그 행에서 뚝 끊겨 보임.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+
+**Before**:
+```tsx
+{selectedId ? (
+    <GanttBar playerId={selectedId} stints={stints} dragging={dragging} onMouseDown={handleBarMouseDown} onMouseMove={handleBarMouseMove} />
+) : (
+    <div className="w-full h-full bg-slate-950/40" />
+)}
+```
+
+**After**:
+```tsx
+{/* 선수 미배정 슬롯도 GanttBar를 readOnly로 그려서 배경 격자/쿼터 음영이
+    행마다 끊기지 않고 이어지도록 한다 — 상호작용만 막는다. */}
+<GanttBar
+    playerId={selectedId ?? `__empty_${String(pos)}_${depthIndex}`}
+    stints={selectedId ? stints : []}
+    dragging={selectedId ? dragging : null}
+    onMouseDown={handleBarMouseDown}
+    onMouseMove={handleBarMouseMove}
+    readOnly={!selectedId}
+/>
+```
+`GanttBar` 자체는 배경(쿼터 음영 4분할)/그리드선(6분 간격, 12분 단위 굵은선)을 항상 그리므로, 빈 슬롯도 같은 컴포넌트를 `stints=[]`(활성 구간 없음) + `readOnly`(드래그/클릭 무반응)로 렌더링하면 시각적으로는 이어지고 조작만 막힌다.
+
+**검증**: Playwright로 PG만 채우고 나머지 12슬롯을 미배정 상태로 둔 뒤 스크린샷 확인 — 15행 전부 동일한 격자/쿼터 음영이 끊김 없이 이어짐. `npx vite build` 통과.
+
+**롤백 방법**: `GanttBar` 삼항을 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — 멀티 전술 화면: 뎁스 차트·로테이션을 완전히 하나의 편집 UI로 재설계 (직전 항목의 단순 스택 대체)
+
+**배경**: 직전 항목은 `RotationManager`(기존 `DepthChartEditor` 위 + `RotationGanttChart` 아래, 두 개 표를 그냥 시각적으로 붙인 것)를 재사용했는데, 사용자가 진짜 원한 건 "완전히 하나로 합친" 편집 UI — 행 = 포지션×뎁스 슬롯(PG1/PG2/PG3/SG1.../C3, 15행) 하나에 [선수 드롭다운] + [그 슬롯의 48분 출전 바]를 한 줄로 두는 구조. 구현 전 4가지 동작을 확정: (1) 슬롯에서 선수를 바꾸면 그 슬롯에 그려둔 출전 구간은 유지되고 새 선수가 이어받음, (2) 15슬롯 어디에도 없는 선수는 자동 0분(완전 벤치), (3) 선수 선택은 드롭다운, (4) 멀티만 먼저 적용(싱글 `DashboardView`/`RotationManager`는 안 건드림).
+
+**변경 파일**:
+- `components/dashboard/RotationGanttChart.tsx` — `GanttBar`/`computeStints`/`Stint`/`DragState`를 export로 전환(로직 변경 없음, 새 컴포넌트가 재사용하기 위함)
+- `components/dashboard/DepthRotationBoard.tsx` (신규) — 15슬롯 통합 표
+- `views/multi/season/MultiTacticsView.tsx` — `RotationManager` → `DepthRotationBoard`로 교체, 더 이상 안 쓰는 `healthySorted`/`handleViewPlayer`/`navigate`/`base`/`leagueId`/`useNavigate`/`useParams`/`calculatePlayerOvr` 정리
+
+**핵심 로직 — 슬롯 기준 rotationMap 재매핑** (`DepthRotationBoard.tsx`의 `handleSlotChange`):
+```ts
+// 15슬롯(pos×depthIndex) 전부를 old→new 뎁스차트로 비교해서, 각 슬롯 포지션에
+// 그려져 있던 구간을 그 슬롯의 새 점유자에게 옮겨 붙인다. 이제 아무 슬롯에도
+// 없는 선수는 결과 map에서 빠져 자동으로 0분이 된다.
+const oldMap = tacticsRef.current.rotationMap || {};
+const newMap: Record<string, boolean[]> = {};
+POSITIONS.forEach(p => {
+    for (let i = 0; i < 3; i++) {
+        const oldPid = oldChart[p][i];
+        const newPid = newChart[p][i];
+        const bar = oldPid ? (oldMap[oldPid] ?? EMPTY_48()) : EMPTY_48();
+        if (newPid) newMap[newPid] = bar;
+    }
+});
+```
+`DepthChartEditor`의 슬롯-교체 dedup 로직(같은 선수가 다른 슬롯에 있으면 그 슬롯 비움)과 `RotationGanttChart`의 `GanttBar`+드래그 커밋 로직은 그대로 재사용 — 새로 짠 부분은 이 재매핑 함수와 15행 고정 테이블 렌더링뿐. 툴바는 기존 두 컴포넌트의 자동 배정 기능(포지션: 능력치/체력 우선, 출전시간: 주전 혹사/균형분배/공산농구)을 그대로 유지.
+
+**검증**:
+1. 재매핑 로직 자체를 Node에서 순수 함수로 재현해 2개 시나리오 확인 — (a) 같은 슬롯에서 A→B 교체 시 B가 A의 구간을 정확히 이어받고 A는 map에서 빠짐, (b) 선수가 슬롯1→슬롯2로 이동할 때(슬롯2에 원래 다른 선수가 있던 경우) 이동한 선수는 슬롯2의 기존 구간을 이어받고(자기 옛 구간은 버려짐) 슬롯2에 있던 선수는 완전히 빠짐 — 둘 다 의도대로 동작.
+2. Playwright로 실제 컴포넌트를 마운트해 브라우저 조작으로 재확인 — 15행(PG1~C3) 정상 렌더링, select 15개 존재, 실제 드롭다운으로 PG1의 선수를 교체하자 새 선수가 기존 구간(0~9분)을 그대로 이어받고 이전 선수는 rotationMap에서 빠짐을 확인. `npx vite build` 통과.
+
+**주의사항**: 싱글플레이어(`DashboardView.tsx`/`RotationManager.tsx`)는 이번 변경 대상이 아님 — 여전히 기존 분리된 뎁스차트+로테이션 스택 방식. `DepthRotationBoard`는 "RES"(뎁스차트 밖 예비 선수) 행이 없음 — 15슬롯에 안 들어간 선수는 화면에 아예 안 뜨고 자동 0분 처리(사용자가 확정한 사양).
+
+**롤백 방법**: `MultiTacticsView.tsx`의 `DepthRotationBoard` import/사용을 `RotationManager`로 되돌리고(직전 dev-log 항목 참조), 제거했던 `healthySorted`/`handleViewPlayer` 등을 복원하면 됨. `RotationGanttChart.tsx`의 export 추가는 되돌릴 필요 없음(하위 호환).
+
+---
+
+## 2026-08-12 — 멀티 전술 화면: 뎁스 차트 + 로테이션 탭을 하나로 통합
+
+**배경**: 사용자 요청 — 멀티 전술 화면(`MultiTacticsView.tsx`)의 "뎁스 차트"/"로테이션" 탭을 위아래로 붙여 한 화면으로 통합. 조사 결과 싱글플레이어(`DashboardView.tsx`)엔 이미 정확히 이 조합을 하는 `RotationManager.tsx`(`DepthChartEditor` 위 + `RotationGanttChart` 아래, 동일한 `flex-1 overflow-y-auto` 스크롤 컨테이너 안에서 이미 프로덕션에서 검증된 레이아웃)가 있어 새로 만들지 않고 그대로 재사용.
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx`
+
+**Before**: 탭 4개(`depth`/`rotation`/`team`/`player`) — `depth` 탭엔 `DepthChartEditor`만, `rotation` 탭엔 `RotationGanttChart`만 별도 렌더.
+
+**After**: 탭 3개(`depth`/`team`/`player`) — `depth` 탭 라벨을 "뎁스 차트 · 로테이션"으로 변경, 내용은 `RotationManager`(`components/dashboard/RotationManager.tsx`, 싱글이 이미 쓰던 컴포넌트) 하나로 교체. `DepthChartEditor`/`RotationGanttChart` 개별 import 제거, `RotationManager` import 추가. props는 기존에 두 컴포넌트에 각각 넘기던 것의 합집합(`team`/`tactics`/`depthChart`/`healthySorted`/`onUpdateDepthChart`/`onUpdateTactics`/`onViewPlayer`/`coachName`)을 그대로 전달 — 새로 계산한 값 없음.
+
+**검증**: `npx vite build` 통과(타입 수준에서 `RotationManager`의 prop 인터페이스와 정확히 일치 확인). `RotationManager` 자체는 수정하지 않은 기존 컴포넌트이고 싱글플레이어에서 이미 동일한 스크롤 컨테이너 패턴(`flex-1 min-h-0 overflow-y-auto`) 안에서 정상 동작 중이므로 별도 mock 데이터 렌더 테스트는 생략 — `GameTactics`/`DepthChart`/`Player[]` 목업을 처음부터 구성하는 비용 대비 검증 이득이 낮다고 판단.
+
+**주의사항**: 목업 데이터 기반 실제 브라우저 렌더링 검증은 하지 않았음 — 실제 사용 중 레이아웃이 이상하면 알려주세요.
+
+**롤백 방법**: `RotationManager` import를 `DepthChartEditor`/`RotationGanttChart`로, `depth` 탭 내용을 두 컴포넌트로 분리해 되돌리고, `'rotation'` 탭을 탭 목록/타입에 다시 추가하면 됨.
+
+---
+
+## 2026-08-12 — 경기 전 중계 화면(점보트론) 카운트다운을 MM:SS → HH:MM:SS로 수정
+
+**배경**: 사용자 제보(스크린샷) — 경기 시작 전 중계 화면의 큰 카운트다운 숫자가 남은 시간이 1시간을 넘으면 "429:01"처럼 분이 60으로 안 나뉘고 그대로 누적 표시됨. `MultiGamePbpView.tsx:244`의 `fmtCountdown()`이 `m = totalSec/60`(60 이상으로 올라갈 수 있음)만 쓰고 시간 단위가 아예 없었음. 1시간 미만이어도 항상 `00:MM:SS` 형태로 통일해달라는 요청도 포함.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx`
+
+**Before**:
+```ts
+function fmtCountdown(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+```
+
+**After**:
+```ts
+function fmtCountdown(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+```
+
+**검증**: Node로 함수 직접 실행 — 스크린샷 값(429분1초) → `07:09:01`, 1시간 미만(65초) → `00:01:05`, 0초 → `00:00:00`, 24시간 초과(25시간) → `25:00:00`(카운트다운이라 시간 상한 없이 계속 누적, 의도된 동작) 모두 확인. 순수 함수라 DOM 없이 산술 검증만으로 충분. `npx vite build` 통과.
+
+**주의사항**: `views/multi/season/MultiGamePbpView.legacy.tsx`에도 동일한 이름의 `fmtCountdown()`(MM:SS 버그 포함)이 있으나, 이 파일은 어디서도 import되지 않는 죽은 코드라 손대지 않음.
+
+**롤백 방법**: `h` 계산 줄과 반환 템플릿을 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — 멀티 헤더 날짜 옆 가상 경기 시각 텍스트 다시 숨김
+
+**배경**: 사용자 요청 — 직전 두 항목에서 추가한 "날짜 옆 시간 표시"(`19:30` 같은 텍스트)가 굳이 필요 없다고 판단, 다시 숨겨달라는 요청. 시간 계산 정확성 자체(가상 30분 차이가 실제 7시간대로 나오는 이유)는 별도로 설명 완료 — 버그 아님. 날짜만 보여주는 이전 상태로 되돌림.
+
+**변경 파일**:
+- `components/MultiHeader.tsx`
+
+**Before**:
+```tsx
+<span className="text-base text-white font-medium">
+    {fmtVirtualDate(currentVirtualDate ?? nextGame.date)}
+    {currentVirtualGame?.time && <span className="text-zinc-400"> {currentVirtualGame.time}</span>}
+</span>
+// (currentVirtualDate 없음 브랜치도 동일하게 time 표시 있었음)
+const currentVirtualGame = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return null;
+    return findCurrentVirtualGame(schedule, simStart, gprd, dateBucket * 15000);
+}, [...]);
+const currentVirtualDate = currentVirtualGame?.date ?? null;
+```
+
+**After**:
+```tsx
+<span className="text-base text-white font-medium">
+    {fmtVirtualDate(currentVirtualDate ?? nextGame.date)}
+</span>
+const currentVirtualDate = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return null;
+    return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
+}, [...]);
+```
+`findCurrentVirtualGame` import를 `findCurrentVirtualDate`로 되돌리고 `currentVirtualGame` 중간 변수 제거 — "다음 경기가 있어도 현재 가상 날짜를 보여준다"는 직전 항목의 핵심 수정(더 이상 `nextGame.date`가 아니라 `currentVirtualDate`를 우선 사용하는 부분)은 그대로 유지, 시간 텍스트만 제거.
+
+`multiScheduleUtils.ts`의 `findCurrentVirtualGame()` 함수 자체는 그대로 둠 — `findCurrentVirtualDate()`가 내부적으로 이 함수를 감싸는 구조라 삭제하면 오히려 원래 구현으로 되돌리는 추가 작업이 필요해짐.
+
+**검증**: `npx vite build` 통과, `currentVirtualGame`/`findCurrentVirtualGame` 잔여 참조 없음(grep 확인).
+
+**롤백 방법**: 날짜 span 안에 `{currentVirtualGame?.time && <span className="text-zinc-400"> {currentVirtualGame.time}</span>}`를 다시 추가하고 `currentVirtualDate` 계산을 `findCurrentVirtualGame` 기반으로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — 멀티 헤더: 다음 경기가 있을 때도 "현재" 가상 시각을 표시
+
+**배경**: 직전 항목은 "다음 경기 없음" 상태에서만 현재 가상 날짜+시각을 보여줬는데, 사용자 지적 — 다음 경기가 있어도(카운트다운 중이어도) 지금이 가상 캘린더상 몇 시인지는 보여야 하지 않냐. 확인해보니 `nextGame && countdown` 분기는 상단 라벨에 `fmtVirtualDate(nextGame.date)` — **다음 경기의 날짜**를 보여주고 있었음(현재 시각이 아님). 그 아래 카운트다운은 "다음 경기까지 남은 시간"이라 서로 다른 정보인데 "현재가 언제인지"는 아예 안 보이는 상태였음.
+
+**변경 파일**:
+- `components/MultiHeader.tsx`
+
+**Before**:
+```tsx
+{league?.type === 'main_league' && !nextGame.isPlayoff ? (
+    <span className="text-base text-white font-medium">{fmtVirtualDate(nextGame.date)}</span>
+) : ( ... )}
+```
+
+**After**:
+```tsx
+{league?.type === 'main_league' && !nextGame.isPlayoff ? (
+    <span className="text-base text-white font-medium">
+        {fmtVirtualDate(currentVirtualDate ?? nextGame.date)}
+        {currentVirtualGame?.time && <span className="text-zinc-400"> {currentVirtualGame.time}</span>}
+    </span>
+) : ( ... )}
+```
+`currentVirtualDate`가 `null`인 예외 상황(예: `simStart` 미설정)에서만 기존처럼 `nextGame.date`로 폴백 — 정상 경로에서는 항상 "지금" 가상 날짜/시각을 보여준다. 아래쪽 "다음 경기까지" 카운트다운은 그대로 유지(서로 다른 정보이므로).
+
+**검증**: Playwright로 "지금과 가장 가까운 경기(2027-03-14, 이미 played)"와 "다음 미실행 경기(nextGame, 2027-03-15)"가 서로 다른 시나리오를 만들어 확인 — 헤더 라벨은 `nextGame.date`(2027-03-15)가 아니라 `findCurrentVirtualGame`이 계산한 "지금"(2027년 3월 14일 19:30)을 정확히 표시함을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `fmtVirtualDate(currentVirtualDate ?? nextGame.date)` + time 표시를 `fmtVirtualDate(nextGame.date)`로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — 멀티 헤더 "오늘" 날짜 옆에 가상 경기 시각 표시
+
+**배경**: 사용자 요청 — 멀티 헤더 우측의 "오늘" 가상 날짜 배지(`2027년 3월 14일` 형태, 다음 경기가 없을 때만 노출) 옆에 시간도 같이 보여달라(가상 경기 시각 쪽으로 확정 — 실시간 카운트다운이 아니라 `game.time`).
+
+**변경 파일**:
+- `views/multi/season/multiScheduleUtils.ts` — `findCurrentVirtualDate`가 내부에서 매칭한 게임 전체가 아니라 `date` 문자열만 반환해서 `time`을 꺼낼 방법이 없었음. `findCurrentVirtualGame()`(전체 `Game` 반환)을 신설하고, 기존 `findCurrentVirtualDate()`는 이 함수의 결과에서 `.date`만 꺼내는 얇은 래퍼로 재구현(다른 두 호출부의 시그니처는 그대로 유지).
+- `components/MultiHeader.tsx` — `findCurrentVirtualDate` → `findCurrentVirtualGame`로 교체해 `currentVirtualGame`(전체 게임)을 얻고, `currentVirtualDate`는 거기서 파생. 날짜 배지 렌더링에 `currentVirtualGame?.time` 추가.
+
+**Before**:
+```ts
+// multiScheduleUtils.ts
+export function findCurrentVirtualDate(games, simStart, gprd, nowMs): string | null {
+    let bestDate: string | null = null;
+    ...
+    if (diff < bestDiff) { bestDiff = diff; bestDate = g.date; }
+    ...
+    return bestDate;
+}
+
+// MultiHeader.tsx
+const currentVirtualDate = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return null;
+    return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
+}, [...]);
+...
+<span>{fmtVirtualDate(currentVirtualDate)}</span>
+```
+
+**After**:
+```ts
+// multiScheduleUtils.ts
+export function findCurrentVirtualGame(games, simStart, gprd, nowMs): Game | null {
+    let best: Game | null = null;
+    ...
+    if (diff < bestDiff) { bestDiff = diff; best = g; }
+    ...
+    return best;
+}
+export function findCurrentVirtualDate(games, simStart, gprd, nowMs): string | null {
+    return findCurrentVirtualGame(games, simStart, gprd, nowMs)?.date ?? null;
+}
+
+// MultiHeader.tsx
+const currentVirtualGame = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return null;
+    return findCurrentVirtualGame(schedule, simStart, gprd, dateBucket * 15000);
+}, [...]);
+const currentVirtualDate = currentVirtualGame?.date ?? null;
+...
+<span>
+    {fmtVirtualDate(currentVirtualDate)}
+    {currentVirtualGame?.time && <span className="text-zinc-400"> {currentVirtualGame.time}</span>}
+</span>
+```
+"다음 경기" 카운트다운이 있는 branch(`nextGame && countdown`)는 건드리지 않음 — 거기는 이미 타이머가 따로 있어 시간 중복 표시라 불필요.
+
+**검증**: Playwright로 `findCurrentVirtualGame` + 렌더링 JSX를 그대로 재현해 실제 마운트 — "2027년 3월 14일 19:30" 형태로 정확히 렌더링됨을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `multiScheduleUtils.ts`의 `findCurrentVirtualGame` 제거하고 `findCurrentVirtualDate`를 원래 구현으로 되돌린 뒤, `MultiHeader.tsx`의 `currentVirtualGame`/`time` 표시 부분 제거.
+
+---
+
+## 2026-08-12 — currentSimDate를 다시 findCurrentVirtualDate로 (room.sim_date는 실제 KST 날짜였음 — 개념 자체가 틀렸던 것 확인)
+
+**배경**: 직전 항목에서 "서버 권위값이 더 정확하다"는 논리로 `room.sim_date`(`useSeasonContext().currentSimDate`)로 되돌렸는데, 사용자가 재차 지적 — "sim_date는 가상의 세션 내 날짜지, 현실 날짜가 아니다." 코드를 다시 정독한 결과 **사용자 말이 맞고 직전 두 항목의 전제 자체가 틀렸음**을 확인:
+
+- `server/src/scheduler.ts`의 `advanceSimDates()`가 쓰는 `kstDateFromMs()`는 이름 그대로 **실제 KST(한국시) 달력 날짜**를 계산하는 함수. `rooms.sim_date`는 서버가 "다음 경기를 언제 실행할지" 스케줄링 타이밍을 잡기 위한 **실제 날짜** 값이었고, 로스터 화면의 "일정" 탭 달력이 그리는 좌표계(가상 NBA 시즌 캘린더, `game.date`)와는 전혀 다른 축.
+- 같은 코드베이스의 `MultiScheduleView.tsx:665-673`에 이 정확히 같은 문제를 이미 겪고 고쳐놓은 코드가 있었음:
+  ```ts
+  // "오늘" 배지 판정 기준값 — 메인리그(preferVirtual)는 dateKey가 가상 캘린더 값이라
+  // currentSimDate(실제 KST, useSeasonContext에서 옴)와 직접 비교하면 항상 어긋난다.
+  // 이때는 findCurrentVirtualDate()로 계산한 가상 "오늘"과 비교해야 한다.
+  const todayKey = useMemo(() => {
+      if (!preferVirtual) return currentSimDate;
+      return findCurrentVirtualDate(allGames, simStart, gprd, dateBucket * 15000);
+  }, [...]);
+  ```
+  즉 "2026-08-12 — 멀티 로스터 일정 탭의 currentSimDate를 stale한 room.sim_date 대신 MultiHeader와 동일한 실시간 계산 방식으로 교체" 항목(`findCurrentVirtualDate` 사용)이 원래 정답이었고, 그 다음 항목("근본 수정: rooms.sim_date realtime 구독 복구")에서 되돌린 게 실수였음. 이 되돌리기 전에 `MultiScheduleView.tsx`의 기존 패턴을 먼저 확인했어야 함(`feedback_code_first_principle.md`).
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `MultiScheduleView.tsx`와 동일한 `preferVirtual`(`league?.type === 'main_league'`) 분기 패턴으로 `currentSimDate` 재계산
+
+**Before** (직전 항목):
+```tsx
+const { schedule, tendencySeed, currentSimDate } = useSeasonContext();  // room.sim_date(실제 KST) 그대로 사용
+```
+
+**After**:
+```tsx
+const { schedule, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
+
+const simStart = league?.sim_real_start_at ?? null;
+const gprd     = league?.games_per_real_day ?? 5;
+const preferVirtual = league?.type === 'main_league';
+const currentSimDate = useMemo(() => {
+    if (!preferVirtual) return roomSimDate;
+    return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? roomSimDate;
+}, [preferVirtual, roomSimDate, schedule, simStart, gprd]);
+```
+`main_league`(가상 시즌 캘린더 사용)는 `findCurrentVirtualDate`로 계산한 가상 날짜를, 그 외 리그 타입(예: 토너먼트, date가 실제 시각 기준)은 `roomSimDate`(=`room.sim_date`)를 그대로 사용 — `MultiScheduleView.tsx`와 완전히 동일한 분기.
+
+직전 항목에서 `useMultiGameData.ts`에 추가한 `rooms.sim_date` realtime 구독은 **그대로 유지** — `preferVirtual`이 false인 리그 타입에서 `roomSimDate`를 직접 쓰는 경로도 있고, `currentSimDate`를 참조하는 다른 화면(트레이드/이적시장 등)도 많아 staleness 수정 자체는 여전히 유효.
+
+**검증**: Playwright로 `findCurrentVirtualDate`와 `TeamScheduleCalendar`를 함께 실제 마운트해 종단 검증 — `simStart`/`game_seq` 기반으로 계산한 가상 날짜("2027-03-14")와, 일부러 다르게 설정한 "실제 KST 날짜" 값("2026-08-12")이 서로 다름을 확인하고, 달력에는 계산된 가상 날짜(3/14) 셀에만 노란 링이 표시됨을 확인. `npx vite build` 통과.
+
+**주의사항**: `TeamScheduleCalendar.tsx`/`RosterView.tsx`/`pages/RosterPage.tsx`(싱글) 쪽은 변경 없음 — 싱글플레이의 `gameData.currentSimDate`는 애초에 실시간 압축 스케줄링이 없어 `game.date`와 동일 축이라 원래부터 맞는 값이었음(`components/MainLayout.tsx`에서 `nextGame.date === currentSimDate`로 직접 비교하는 기존 코드가 이를 방증).
+
+**롤백 방법**: `MultiRosterView.tsx`의 `preferVirtual`/`findCurrentVirtualDate` 블록을 제거하고 `const { schedule, tendencySeed, currentSimDate } = useSeasonContext();`로 되돌리면 됨(단, 이는 다시 버그 있는 상태로 되돌아가는 것이므로 권장하지 않음).
+
+---
+
+## 2026-08-12 — currentSimDate staleness 근본 수정: rooms.sim_date realtime 구독 복구 (직전 항목 방식 폐기, 이후 다시 폐기 — 아래 최신 항목 참조)
+
+**배경**: 직전 항목에서 `currentSimDate`를 `MultiHeader.tsx`와 동일한 `findCurrentVirtualDate`(스케줄 기반 추정치) 방식으로 재계산하도록 바꿨는데, 사용자 지적 — "그건 서버가 이미 알고 있는 정확한 값을 클라이언트가 다시 추측하는 것 아니냐, 신뢰성이 떨어진다. fly 서버는 정확한 날짜를 항상 알고 있지 않나?" 조사 결과 **맞는 지적**: `server/src/scheduler.ts`의 `advanceSimDates()`가 각 방(room)의 실제 경기 실행 진행 상황을 보고 `rooms.sim_date`를 정확하게 갱신하는 **권위 있는 소스**였음(`findCurrentVirtualDate`는 "지금과 가장 가까운 방송 시각의 경기"를 찾는 추정치일 뿐). 진짜 문제는 애초에 클라이언트(`useMultiGameData.ts`)가 이 권위값을 최초 로드 후 다시 안 가져온다는 것뿐이었으므로, 추정치로 우회하는 대신 **stale의 원인 자체(realtime 구독 부재)를 고치는 방향으로 재작업**.
+
+**변경 파일**:
+- `hooks/useMultiGameData.ts` — `rooms` 테이블 UPDATE 이벤트에 대한 realtime 구독 추가(sim_date 전용, 2026-08-06에 제거됐던 rooms 구독을 이 용도로만 가볍게 복구)
+- `views/multi/season/MultiRosterView.tsx` — 직전 항목에서 추가한 `findCurrentVirtualDate`/`simStart`/`gprd` 계산 블록 전부 제거, `useSeasonContext().currentSimDate`를 그대로 다시 사용(가장 단순한 형태로 복귀)
+
+**Before** (직전 항목의 MultiRosterView.tsx):
+```tsx
+const { schedule, tendencySeed } = useSeasonContext();
+const simStart = league?.sim_real_start_at ?? null;
+const gprd     = league?.games_per_real_day ?? 5;
+const currentSimDate = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return undefined;
+    return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? undefined;
+}, [league, schedule, simStart, gprd]);
+```
+
+**After**:
+```tsx
+// hooks/useMultiGameData.ts — games 구독 바로 아래에 추가
+useEffect(() => {
+    if (!roomId) return;
+    const channel = supabase
+        .channel(`room-simdate-${roomId}`)
+        .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+            (payload) => {
+                const nextDate = (payload.new as { sim_date?: string })?.sim_date;
+                if (nextDate) setCurrentSimDate(nextDate);
+            },
+        )
+        .subscribe();
+    return () => { supabase.removeChannel(channel); };
+}, [roomId]);
+
+// views/multi/season/MultiRosterView.tsx — 단순 재사용으로 복귀
+const { schedule, tendencySeed, currentSimDate } = useSeasonContext();
+```
+
+**검증**:
+- `select * from pg_publication_tables where pubname='supabase_realtime'`로 `rooms` 테이블이 이미 Postgres publication에 포함돼 있음을 확인(인프라 변경 불필요, 클라이언트 구독 코드만 있으면 됨).
+- Node 스크립트로 실제 프로젝트에 anon key로 `rooms` UPDATE realtime 구독을 걸고 SQL로 `sim_date`를 직접 변경해 이벤트 수신을 시도 — **`TIMED_OUT`으로 실패**. 원인 확인: `rooms`/`games` 둘 다 RLS(`rowsecurity=true`) 활성화 상태라, 로그인 세션 없는 anon-only 테스트 클라이언트로는 realtime 구독 자체가 RLS에 막혀 인증 없이는 재현 불가(반면 실제 앱은 항상 로그인 세션을 갖고 동일한 `games` 구독 패턴이 이미 프로덕션에서 정상 동작 중이므로, 코드 패턴 자체는 검증된 것과 동일). 테스트로 변경했던 sim_date는 원래 값(2026-08-12)으로 즉시 복구함.
+- `npx vite build` 통과.
+
+**주의사항**: 이 realtime 테스트는 로그인 세션이 있는 실제 브라우저 환경에서 재확인이 필요함(anon-key 스크립트로는 RLS 때문에 직접 재현 불가) — 다음에 문제가 재발하면 브라우저 devtools에서 `room-simdate-{roomId}` 채널의 구독 상태를 확인할 것.
+
+**롤백 방법**: `useMultiGameData.ts`의 새 `useEffect` 블록 제거, `MultiRosterView.tsx`를 이전 항목의 `findCurrentVirtualDate` 버전 또는 원래 `useSeasonContext().currentSimDate` 단순 버전으로 되돌리면 됨(현재 상태가 이미 후자).
+
+---
+
+## 2026-08-12 — 멀티 로스터 일정 탭의 currentSimDate를 stale한 room.sim_date 대신 MultiHeader와 동일한 실시간 계산 방식으로 교체 (폐기됨 — 아래 항목 참조)
+
+**배경**: 직전 항목에서 `currentSimDate`를 `useSeasonContext()`(→ `useMultiGameData.ts`의 `room.sim_date`)에서 가져오도록 배선했는데, 사용자 제보 — 실제 시뮬 날짜(3/14)가 캘린더에 반영이 안 됨. 원인 조사 결과 `room.sim_date`는 `useMultiGameData.ts`의 `init()` 이펙트에서 **최초 1회만** `setCurrentSimDate`로 세팅되고, 이후 realtime 구독은 `games` 테이블만 감시(`rooms` 구독은 2026-08-06에 의도적으로 제거)해서 서버의 `scheduler.ts`가 백그라운드에서 계속 `sim_date`를 전진시켜도 클라이언트 값은 절대 안 바뀜(세션을 오래 켜둘수록 stale). Supabase에서 `rooms.sim_date` 컬럼(text, "YYYY-MM-DD")과 실제 값도 직접 조회해 포맷 문제는 아님을 확인.
+
+반면 헤더(`MultiHeader.tsx`)의 날짜 표시는 전혀 다른 방식 — `room.sim_date`를 안 쓰고, `findCurrentVirtualDate(schedule, simStart, gprd, nowMs)`로 "지금(real time)과 가장 가까운 방송 시각을 가진 경기의 가상 date"를 매번 다시 계산한다. `schedule`은 `games` 테이블 realtime 구독으로 항상 최신이라 이 계산도 항상 최신 — 그래서 헤더는 안 밀리고 내 캘린더만 밀렸던 것.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx`
+
+**Before**:
+```tsx
+const { schedule, tendencySeed, currentSimDate } = useSeasonContext();  // stale room.sim_date
+```
+
+**After**:
+```tsx
+import { findCurrentVirtualDate } from './multiScheduleUtils';
+...
+const { schedule, tendencySeed } = useSeasonContext();
+
+// MultiHeader.tsx와 동일한 방식 — schedule(games 구독으로 항상 최신) + 리그 시간압축
+// 설정만으로 "지금 이 순간의 가상 날짜"를 매 렌더마다 재계산. getServerNow()는
+// Date.now() + 서버-클라이언트 클럭 오프셋 보정(utils/serverClock.ts).
+const simStart = league?.sim_real_start_at ?? null;
+const gprd     = league?.games_per_real_day ?? 5;
+const currentSimDate = useMemo(() => {
+    if (league?.type !== 'main_league' || !simStart) return undefined;
+    return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? undefined;
+}, [league, schedule, simStart, gprd]);
+```
+`RosterView`로 전달하는 부분(`currentSimDate={currentSimDate}`)은 그대로 유지 — 값을 만드는 소스만 교체.
+
+**검증**: `npx vite build` 통과. `findCurrentVirtualDate`/`getServerNow`는 `MultiHeader.tsx`가 이미 프로덕션에서 검증된 방식으로 쓰고 있는 함수를 그대로 재사용한 것이라 별도 재현 테스트는 생략 — 로직 자체의 정확성은 헤더 표시가 항상 맞았다는 사실로 이미 간접 검증됨.
+
+**주의사항**: `league?.type !== 'main_league'`인 리그(토너먼트 등)이거나 `simStart` 미설정 시 `currentSimDate`는 `undefined` → `TeamScheduleCalendar`가 실제 브라우저 날짜로 폴백(이전 동작과 동일, 더 나빠지지 않음).
+
+**롤백 방법**: `const { schedule, tendencySeed, currentSimDate } = useSeasonContext();`로 되돌리고 `simStart`/`gprd`/`useMemo` 블록과 `findCurrentVirtualDate` import 제거.
+
+---
+
+## 2026-08-12 — 캘린더 "오늘" 기준을 실제 브라우저 날짜 → 시뮬레이션 날짜로 수정
+
+**배경**: 직전 항목에서 "오늘 날짜" 강조를 `new Date()`(실제 브라우저 날짜) 기준으로 구현했는데, 사용자 지적 — 여기서 말하는 "오늘"은 게임 내 시뮬레이션 진행 날짜(`currentSimDate`)를 뜻함. `TeamScheduleCalendar.tsx`엔 애초에 이 값을 받는 prop이 없어서 실제 날짜로 계산했던 게 원인. 같은 파일의 `initialYM`(초기 진입 월 계산)도 동일하게 실제 날짜를 기준(`today`/`new Date()` 폴백)으로 삼고 있어서 같이 수정 — 방치하면 시뮬레이션 연도가 실제 연도와 달라지는 순간(예: 시즌이 2027년까지 진행) 초기 진입 월도 어긋남.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx` — `currentSimDate?: string` prop 추가, `todayStr`/`initialYM` 전부 이 값 기준으로 계산(미전달 시에만 실제 날짜로 방어적 폴백)
+- `views/RosterView.tsx` — `currentSimDate` prop 추가, `TeamScheduleCalendar`로 그대로 전달
+- `pages/RosterPage.tsx`(싱글) — `currentSimDate={gameData.currentSimDate}` 전달(다른 화면인 `SchedulePage.tsx`가 이미 쓰던 것과 동일 필드)
+- `views/multi/season/MultiRosterView.tsx`(멀티) — `useSeasonContext()`에서 `currentSimDate` 추가로 구조분해(`useMultiGameData.ts`의 `room.sim_date` 기반 값), `RosterView`로 전달
+
+**Before**:
+```tsx
+const todayStr = new Date().toISOString().slice(0, 10);
+const initialYM = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    ...
+    const d = target ? new Date(...) : new Date();
+    ...
+}, [teamGames]);
+```
+
+**After**:
+```tsx
+const todayStr = currentSimDate ?? new Date().toISOString().slice(0, 10);
+const initialYM = useMemo(() => {
+    const upcoming = [...teamGames].filter(g => !g.played && g.date >= todayStr)...
+    const d = target ? new Date(...) : new Date(todayStr + 'T00:00:00');
+    ...
+}, [teamGames]);
+```
+
+**검증**: Playwright로 `currentSimDate="2026-03-14"`(실제 브라우저 날짜와 무관한 값)를 전달해 확인 — 3월 14일 셀에 정확히 노란 링(`ring-2 ring-yellow-400`) box-shadow가 적용됨을 확인. `npx vite build` 통과.
+
+**주의사항**: `currentSimDate` 미전달 시(방어적 기본값) 실제 브라우저 날짜로 폴백 — 정상 경로(RosterPage/MultiRosterView를 거쳐 렌더링되는 경우)에서는 항상 전달되므로 실제로 폴백이 발동할 일은 없어야 함.
+
+**롤백 방법**: `currentSimDate` prop과 그 사용을 4개 파일에서 각각 제거하고 `new Date()` 직접 호출로 되돌리면 됨.
+
+---
+
+## 2026-08-12 — 캘린더 오늘 날짜 셀에 노란색 아웃라인 강조
+
+**배경**: 사용자 요청 — 오늘 날짜에 해당하는 셀을 노란색 아웃라인으로 강조.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: 오늘 날짜 셀도 다른 날짜와 시각적으로 동일 — 별도 강조 없음.
+
+**After**:
+```tsx
+const todayStr = new Date().toISOString().slice(0, 10);
+...
+const isToday = dateKey === todayStr;
+// 경기 없는 셀
+className={`... ${isToday ? 'ring-2 ring-yellow-400 ring-inset' : ''}`}
+// 경기 있는 셀(버튼) — 기존 border/배경색 로직은 그대로 두고 ring만 추가
+className={`... ${isToday ? 'ring-2 ring-yellow-400 ring-inset' : ''}`}
+```
+`border` 대신 `ring`(box-shadow 기반)을 써서 기존 셀의 `border`(옅은 slate/black) 색상·두께 로직을 건드리지 않고 위에 노란 테두리만 얹음 — 경기가 있어 배경이 팀 컬러로 덮인 셀에도 동일하게 적용 가능.
+
+**검증**: Playwright로 오늘 날짜 텍스트를 가진 셀을 찾아 computed `box-shadow`에 `rgb(250,204,21) 0px 0px 0px 2px inset`(yellow-400, ring-2)이 포함됨을 확인 — 경기 없는 셀 케이스와 경기 있는 셀(팀 컬러 배경) 케이스 둘 다 검증. 스크린샷으로 시각 확인. `npx vite build` 통과.
+
+**롤백 방법**: `todayStr` 선언과 `isToday` 계산, 두 곳의 `ring-2 ring-yellow-400 ring-inset` 삼항 삽입을 제거하면 됨.
+
+---
+
+## 2026-08-12 — 캘린더 스크롤바 숨김 + 쉐브론 버튼을 바디 좌우 끝에 정렬
+
+**배경**: 사용자 제보 — 달이 6행짜리라 세로 스크롤이 생기면 스크롤바 폭만큼 `overflow-y-auto` 컨테이너의 사용 가능 너비가 줄어들어 `max-w-4xl mx-auto` 캘린더 블록이 좌측으로 밀리는 현상. 추가 요청 — 월 이동 쉐브린(`<`/`>`) 버튼을 헤더 자체의 좌우 끝이 아니라 "캘린더 바디의 좌우 끝" 바로 위에 오도록 정렬.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**:
+```tsx
+<div className="flex items-center justify-between px-4 py-3 border-b ... shrink-0">
+    <button>‹</button>
+    <span>{vy}년 {vm+1}월</span>
+    <button>›</button>
+</div>
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 pb-4">
+  <div className="max-w-4xl mx-auto bg-slate-900 p-4">...</div>
+</div>
+```
+헤더는 `px-4`(자체 여백)로 쉐브론이 헤더 가장자리에 위치 — 바디는 `px-12`+`max-w-4xl mx-auto`로 훨씬 안쪽에서 시작해 서로 안 맞음. `custom-scrollbar`는 스크롤바를 계속 보여주는 클래스라 콘텐츠가 넘칠 때 폭이 줄어듦.
+
+**After**:
+```tsx
+<div className="px-12 py-3 border-b ... shrink-0">
+  <div className="max-w-4xl mx-auto flex items-center justify-between">
+    <button>‹</button>
+    <span>{vy}년 {vm+1}월</span>
+    <button>›</button>
+  </div>
+</div>
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide px-12 pb-4">
+  <div className="max-w-4xl mx-auto bg-slate-900 p-4">...</div>
+</div>
+```
+헤더에도 바디와 동일한 `px-12` + `max-w-4xl mx-auto` 박스 모델을 적용해 쉐브론이 항상 바디 블록의 정확한 좌/우 경계 위에 오도록 함(같은 폭 계산식을 공유하므로 화면 크기가 달라져도 항상 일치). 스크롤바는 `custom-scrollbar`(항상 표시) → `custom-scrollbar-hide`(`index.css`에 이미 정의된 기존 유틸리티, `scrollbar-width:none`+`::-webkit-scrollbar{display:none}`)로 교체 — 스크롤 기능은 그대로 유지되고 트랙만 안 보여서 폭 변화가 없음.
+
+**검증**: Playwright로 강제 오버플로우 상황(컨테이너 높이 420px)을 만들어 확인 — `scrollHeight > clientHeight`(스크롤 발생함) 이면서 `offsetWidth - clientWidth === 0`(스크롤바가 폭을 차지하지 않음) 확인. 쉐브론 버튼의 좌/우 바깥쪽 경계가 바디 블록의 좌/우 경계와 픽셀 단위로 정확히 일치함을 좌표 비교로 확인(둘 다 48px/852px). 스크린샷으로 최종 확인. `npx vite build` 통과.
+
+**롤백 방법**: 헤더를 `flex items-center justify-between px-4 py-3 ...`로, 바디의 `custom-scrollbar-hide`를 `custom-scrollbar`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 캘린더 바디 배경 블록 내부에 패딩 추가
+
+**배경**: 사용자 요청 — 직전 두 항목에서 헤더-바디 간격 제거 + 카드 컨테이너 패딩 제거로 요일/날짜 그리드가 배경 블록 가장자리에 딱 붙어있었는데, 블록 "내부"에는 다시 여백을 넣어달라는 요청. 헤더와 블록 사이 간격(0px)은 그대로 유지하면서, 블록 자체의 안쪽 여백만 추가하는 것이 핵심.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: `<div className="max-w-4xl mx-auto bg-slate-900">` — 내부 패딩 없음, 그리드가 블록 가장자리에 바로 붙음.
+
+**After**: `<div className="max-w-4xl mx-auto bg-slate-900 p-4">` — `p-4`(16px) 내부 패딩 추가. 패딩은 이 블록 안쪽에만 적용되므로 블록 자체의 바깥 경계(헤더와 맞닿는 지점)는 그대로 유지됨 — 배경은 헤더에 계속 붙어있고, 그 안의 콘텐츠(요일 행 + 날짜 그리드)만 사방 16px 인셋.
+
+**검증**: Playwright로 (1) 헤더-블록 간격 여전히 0px, (2) 블록 padding 16px, (3) 요일 행이 블록 좌/상단에서 정확히 16px 안쪽에서 시작함을 확인. 스크린샷으로 최종 확인. `npx vite build` 통과.
+
+**롤백 방법**: `p-4` 제거.
+
+---
+
+## 2026-08-11 — 캘린더 헤더-바디 사이 간격 제거
+
+**배경**: 사용자 요청 — 달력 헤더(월 이동 네비 바)와 바디(요일+날짜 그리드) 사이에 남아있던 상단 여백 제거.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: `<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 py-4">` — `py-4`로 상하 모두 16px 패딩, 헤더 바로 아래에도 16px 간격 발생.
+
+**After**: `<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 pb-4">` — 상단 패딩 제거(`py-4`→`pb-4`), 하단 패딩은 유지.
+
+**검증**: Playwright로 헤더 하단 경계와 바디(달력 배경 블록) 상단 경계 좌표 비교 — `gapPx: 0` 확인. 스크린샷으로 헤더 테두리에 달력 블록이 바로 붙어 보임을 확인. `npx vite build` 통과.
+
+**롤백 방법**: `pb-4` → `py-4`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 캘린더 카드 컨테이너 해체 (라운드/패딩 제거)
+
+**배경**: 직전 항목에서 달력 그리드를 감싸는 `bg-slate-900 rounded-xl p-4` 박스형 컨테이너를 만들었는데, 사용자가 그 "카드처럼 감싸는" 처리 자체를 걷어내고 라운드도 없애달라고 요청.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: `<div className="max-w-4xl mx-auto bg-slate-900 rounded-xl p-4">`
+
+**After**: `<div className="max-w-4xl mx-auto bg-slate-900">`
+- `rounded-xl`(border-radius), `p-4`(내부 패딩) 제거 — 배경색 구분(slate-900 vs 페이지 기본 slate-950)과 `max-w-4xl` 폭 캡은 유지, 각진 사각형으로 그리드가 배경 블록 가장자리에 바로 붙는 형태.
+
+**검증**: Playwright computed-style로 `border-radius: 0px`, `padding: 0px` 확인, `bg-slate-900`는 그대로 유지됨을 확인. 스크린샷으로 카드 느낌 없이 각진 배경 블록으로 보이는 것 확인. `npx vite build` 통과.
+
+**롤백 방법**: `rounded-xl p-4`를 다시 추가하면 됨.
+
+---
+
+## 2026-08-11 — 캘린더 헤더/바디 배경색 조정 (slate 한 단계 밝게, 여백과 카드 영역 색상 분리)
+
+**배경**: 사용자 요청 — (1) 캘린더 헤더 영역 밝기를 한 단계 밝게, 바디 영역도 동일한 색으로. (2) 경기 없는 날 셀도 약간 밝게. (3) [중간 수정] 바디 전체를 통일하지 말고, 실제 달력 카드 영역과 좌우 여백 영역의 색을 다르게. slate 칩 내에서 결정.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: 헤더/바디 모두 배경 클래스 없음(부모 `MainLayout.tsx`의 `bg-slate-950` 그대로 노출). 경기 없는 날 셀도 배경 없음(투명).
+
+**After**:
+```tsx
+// 헤더 — 페이지 기본(slate-950)보다 한 단계 밝게
+<div className="... border-b border-slate-800 bg-slate-900 shrink-0">
+
+// 바디 바깥(좌우 여백 px-12 영역)은 배경 없음 — 페이지 기본색(slate-950) 그대로 노출
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 py-4">
+  {/* 달력 카드 영역만 헤더와 동일한 slate-900으로 분리 */}
+  <div className="max-w-4xl mx-auto bg-slate-900 rounded-xl p-4">
+    ...
+    {/* 경기 없는 날 셀 — 카드(slate-900)보다 한 단계 더 밝게 */}
+    <div className="aspect-square rounded-lg border border-slate-800/60 bg-slate-800/60 p-1.5 flex flex-col">
+```
+
+**검증**: Playwright computed-style로 확인 — 헤더 `rgb(15,23,42)`(slate-900), 카드 영역도 동일 `rgb(15,23,42)`, 카드 바깥 여백은 `rgba(0,0,0,0)`(투명, 페이지 배경 그대로), 경기 없는 셀은 `rgba(30,41,59,0.6)`(slate-800/60, 카드보다 한 단계 밝음). 스크린샷으로 최종 확인 — 여백/카드/셀 3단 명도 구분이 의도대로 보임. `npx vite build` 통과.
+
+**롤백 방법**: 위 3개 className 변경분(헤더 `bg-slate-900` 제거, 내부 wrapper `bg-slate-900 rounded-xl p-4` 제거, 빈 셀 `bg-slate-800/60` 제거)을 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 캘린더 좌우 여백/셀 크기 조정 (1차 480px 캡 과도 축소 → 수정)
+
+**배경**: 직전 항목에서 캘린더 바디에 좌우 여백을 주려고 `max-w-[480px] mx-auto`를 적용했는데, 실제 넓은 화면(2560px 폭)에서 캡이 지나치게 작아 셀이 63px까지 쪼그라들고 텍스트가 서로 겹쳐 보이는 문제 발생 — 사용자가 스크린샷으로 지적. 고정 480px 캡이 화면 폭과 무관하게 항상 같은 절대값으로 작동한 게 원인.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**:
+```tsx
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 py-4">
+  <div className="max-w-[480px] mx-auto">
+    ...
+```
+셀 버튼 `className`에 `overflow-hidden` 없음 — 텍스트가 넘치면 셀 밖(옆/아래 셀 위)으로 그대로 삐져나감.
+
+**After**:
+```tsx
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-12 py-4">
+  <div className="max-w-4xl mx-auto">    {/* 480px → max-w-4xl(896px) */}
+    ...
+```
+셀 버튼에 `overflow-hidden` 추가 — 혹시 텍스트가 셀보다 커도 잘려서 다른 셀을 침범하지 않도록 안전망.
+
+**검증**: Playwright로 2560px 폭 컨테이너에서 재확인 — 셀 123×123px(이전 63px 대비 약 2배), "vs POR / 100-95" 등 텍스트가 셀 안에 완전히 들어가고 겹침 없음(`anySpanOverflowsCell: false`), 좌우 여백도 자연스럽게 확보. 스크린샷으로 최종 확인.
+
+**롤백 방법**: `max-w-4xl` → `max-w-[480px]`로, `overflow-hidden` 제거하면 이전 상태로 복귀.
+
+---
+
+## 2026-08-11 — 로스터 화면 "일정" 탭 캘린더 셀 재디자인 (팀 컬러 배경 + 클릭 가능한 예정 경기)
+
+**배경**: 사용자 요청 — `TeamScheduleCalendar.tsx`(로스터 화면 > 일정 탭) 셀 디자인 개편. (1) 헤더/날짜 폰트 확대, (2) 경기 있는 셀 배경을 상대팀 컬러로, 텍스트도 그에 맞게, (3) 로고 대신 팀 약어를 셀 중앙에 크게, 그 밑에 완료 경기는 스코어(클릭→박스스코어)/예정 경기는 시작 시간(클릭→중계 전 화면), (4) 각 요소 폰트 사이즈 지정.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx`
+
+**Before**: 월 헤더 `text-sm`, 요일 헤더 `text-xs`, 날짜 숫자 `text-[11px]`, 상대팀 `TeamLogo`+약어 텍스트(`text-[10px]`), 스코어/예정 텍스트 `text-[11px]`. 셀 배경은 항상 slate 계열 고정. 예정 경기는 `disabled`로 클릭 자체가 막혀있었음(`if (!game.played) return;`).
+
+**After**:
+```tsx
+// 클릭 가능 조건 — onScoreClick(경기 상세/중계 화면)이 있으면 예정 경기도 클릭 가능.
+// 멀티는 MultiGamePbpView가 scheduled/live/final을 한 화면에서 다 처리하므로 항상 가능.
+// 싱글(onScoreClick 미전달, RosterPage.tsx가 안 넘김)은 완료 경기 박스스코어만 가능 —
+// 예정 경기를 미리보는 화면 자체가 싱글엔 없음.
+const isClickable = !!onScoreClick || game.played;
+const cellBg = oppTeam?.colorPrimary ?? undefined;
+const cellText = getReadableTextColor(cellBg);   // utils/colorContrast.ts, WCAG 명도 기준 흑/백 자동 선택
+
+<button
+    disabled={!isClickable || isFetching}
+    style={cellBg ? { backgroundColor: cellBg, color: cellText } : undefined}
+    className={`... ${isClickable ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
+>
+    <span className="text-base ...">{day}</span>                    {/* 날짜: text-base */}
+    <span className="text-2xl font-black ...">{isHome?'vs':'@'} {oppTeam?.abbr}</span>  {/* 약어: text-2xl, 로고 제거 */}
+    {game.played
+        ? <span className="text-xl font-black ...">{myScore}-{oppScore}</span>          {/* 스코어: text-xl */}
+        : <span className="text-xl font-black ...">{game.time ?? '예정'}</span>}        {/* 시작시간: text-xl, 없으면 '예정' */}
+</button>
+```
+월 헤더 `text-sm`→`text-base`, 요일 헤더 `text-xs`→`text-base`. 클릭 시 `handleGameClick`이 `onScoreClick`을 최우선으로 호출(경기 진행 상태 무관) — 없을 때만 기존 `fetchFullGameResult`(완료 경기 전용) 폴백.
+
+**검증**: Playwright로 `TeamScheduleCalendar` 단독 마운트해 확인 — (1) 셀 배경색이 상대팀 `colorPrimary`와 일치, (2) 폰트 사이즈 날짜 16px/약어 24px/스코어·시간 20px/헤더 16px 모두 정확히 반영, (3) `onScoreClick` 전달 시 완료 경기·예정 경기(19:30 표시) 클릭 둘 다 해당 gameId로 정상 호출, (4) `onScoreClick` 미전달(싱글플레이 패턴) 시 예정 경기 버튼이 `disabled=true`로 클릭 자체가 막혀있음을 확인. `npx vite build` 통과, 콘솔 에러 없음.
+
+**주의사항**: 싱글플레이(`RosterPage.tsx`)는 현재 `onScoreClick`을 넘기지 않아 예정 경기 셀이 계속 비활성 상태로 남음 — 싱글플레이엔애초에 "예정 경기 중계 전 화면"이라는 개념 자체가 없음(오늘 경기만 `ScheduleView.tsx`의 `onSpectateGame`/`onStartUserGame`으로 시작 가능, 그마저 로스터 화면과는 별개 경로). 싱글에서도 이 기능이 필요해지면 별도 논의 필요. `game.time` 필드가 없는 경우(CSV 원본에 시간 컬럼이 없던 예전 시즌 데이터 등) "예정"으로 폴백.
+
+**롤백 방법**: 위 Before 스니펫 형태로 셀 렌더링 블록과 `handleGameClick`의 `!game.played` 얼리 리턴 순서를 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 "로스터" 탭 테이블에서 레이팅 컬럼을 OVR 우측으로 이동
+
+**배경**: 사용자 요청 — `RosterOverviewGrid.tsx`(로스터 화면 > 로스터 탭)의 컬럼 순서 중 "레이팅"(StarRating)이 맨 우측(태그 뒤)에 있었는데, OVR 바로 오른쪽으로 옮겨달라는 요청.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx`
+
+**Before**: 컬럼 순서 — 이름/포지션/나이/OVR(sticky 끝, border-r)/키/몸무게/아키타입/세컨더리/태그(border-r)/레이팅(맨 끝, border 없음)
+
+**After**: 컬럼 순서 — 이름/포지션/나이/OVR(sticky 끝, border-r 유지)/레이팅(신규 border-r)/키/몸무게/아키타입/세컨더리/태그(맨 끝, border-r 제거)
+- `colgroup`의 `<col>` 순서, 헤더 `TableHeaderCell` 순서, 바디 `TableCell` 순서를 모두 동일하게 재배치.
+- 레이팅은 sticky 컬럼으로 만들지 않음(요청 범위 밖) — OVR까지만 계속 sticky, 레이팅부터는 기존처럼 일반 스크롤 컬럼.
+- 경계선(`border-r`)은 시각적으로 항상 "그 컬럼이 마지막인지"를 따라가야 하므로 OVR→레이팅 사이에 새로 추가하고, 태그(이제 진짜 마지막 컬럼)에서는 제거.
+
+**검증**: Playwright로 `RosterOverviewGrid`만 단독 마운트해 `thead th` 텍스트 순서 확인 — `이름, 포지션, 나이, OVR, 레이팅, 키, 몸무게, 아키타입, 태그` 순으로 정상 반영. `npx vite build` 통과, 콘솔 에러 없음.
+
+**롤백 방법**: Before 순서로 `<col>`/헤더/바디 셀 3곳을 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 내 로스터 진입 시에도 ?rteam= 파라미터를 항상 붙이도록 통일
+
+**배경**: 직전 항목에서 "타 팀" 로스터로 이동하는 링크(순위표/헤더 검색)에만 `?rteam=`을 붙였는데, 사용자 지적 — "내 로스터로 들어갈 때도 항상 파라미터를 붙이면, 타팀에만 붙이는 특수 케이스 자체가 없어져서 더 간단하지 않냐". 맞는 방향이라 멀티플레이어에서 `/roster`(내 팀, 파라미터 없음)로 이동하는 나머지 지점들도 전부 `?rteam=<myTeamId>`를 붙이도록 통일. 이제 "내 팀이라 파라미터 생략"이라는 예외가 없어짐 — 모든 로스터 진입이 동일한 규칙(항상 어떤 팀인지 URL에 명시)을 따름.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` — 좌측 고정 네비 "로스터" 아이콘 클릭
+- `components/dashboard/MultiHeaderNavMenu.tsx` — 헤더 드롭다운 "로스터" 항목 (`DropdownItem`에 `navTo` 필드 추가 — active 판정은 쿼리 없는 `path`로, 실제 이동은 쿼리 포함 `navTo`로 분리)
+- `components/MultiHeader.tsx` — `MultiHeaderNavMenu`에 `myTeamId` prop 전달 추가
+- `pages/MultiSeasonPage.tsx` — 홈 대시보드 "내 로스터" 위젯의 "전체 보기" 버튼, 우측 "메뉴" 그리드의 "로스터" 버튼
+
+**Before**:
+```tsx
+// MultiSidebar.tsx
+onClick={() => navigate(`${base}/roster`)}
+
+// MultiHeaderNavMenu.tsx
+const teamItems: DropdownItem[] = [
+    { label: '로스터',   path: `${base}/roster` },
+    ...
+];
+onClick={() => handleNav(item.path)}
+
+// MultiSeasonPage.tsx
+action={{ label: "전체 보기", onClick: () => goTo('roster') }}
+...
+onClick={() => item.enabled ? goTo(item.key) : undefined}
+```
+
+**After**:
+```tsx
+// MultiSidebar.tsx
+onClick={() => navigate(myTeam ? `${base}/roster?rteam=${myTeam.team_slug}` : `${base}/roster`)}
+
+// MultiHeaderNavMenu.tsx (신규 myTeamId prop, MultiHeader.tsx에서 전달)
+const teamItems: DropdownItem[] = [
+    { label: '로스터',   path: `${base}/roster`, navTo: myTeamId ? `${base}/roster?rteam=${myTeamId}` : `${base}/roster` },
+    ...
+];
+onClick={() => handleNav(item.navTo ?? item.path)}
+
+// MultiSeasonPage.tsx
+action={{ label: "전체 보기", onClick: () => goTo(myTeamId ? `roster?rteam=${myTeamId}` : 'roster') }}
+...
+onClick={() => item.enabled ? goTo(item.key === 'roster' && myTeamId ? `roster?rteam=${myTeamId}` : item.key) : undefined}
+```
+
+**검증**: `npx vite build` 통과, 콘솔/타입 에러 없음. `?rteam=` 자체의 동작(마운트 즉시 반영, 탭 전환에도 유지)은 직전 두 항목에서 이미 Playwright로 검증된 동일 메커니즘을 그대로 재사용하는 것이라 별도 재현 테스트는 생략 — 이번 변경은 각 nav 지점의 `navigate()` 호출 문자열에 쿼리를 추가하는 기계적 변경.
+
+**주의사항**: `MultiHeaderNavMenu`의 `isItemActive(path)`는 여전히 쿼리 없는 `path`로 active 여부를 판정 — `navTo`(쿼리 포함, 실제 이동 대상)와 분리해뒀기 때문에 "로스터" 탭이 활성화 표시되는 로직 자체는 안 바뀜. `myTeamId`가 아직 로딩 전(null)인 순간에 클릭하면 파라미터 없이 `/roster`로만 이동 — RosterView가 이 경우 `initialTeamId`/`myTeamId` prop으로 정상 폴백하므로 문제 없음.
+
+**롤백 방법**: 각 파일의 `navigate`/`goTo`/`navTo` 호출을 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 타팀 로스터 진입 시 location.state 대신 URL 쿼리(?rteam=)를 직접 전달하도록 정리
+
+**배경**: 직전 항목에서 `RosterView.tsx` 내부에 `initialTeamId`(location.state 기반)를 마운트 시 `?rteam=`으로 "박제"하는 방어적 useEffect를 추가해 버그는 막았지만, 사용자가 "그냥 로스터 화면에 들어갈 때부터 param을 전달하면 더 깔끔하지 않냐"고 지적 — 맞는 지적. 호출부(순위표/헤더 검색)가 애초에 `location.state`가 아니라 URL 쿼리로 팀을 넘기면, RosterView가 렌더링되기도 전에 이미 URL이 정답 상태이므로 반응형 패치에 의존할 필요가 없어짐.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — 팀 이름 클릭 핸들러
+- `components/MultiHeader.tsx` — `handleViewTeam` (헤더 검색에서 팀 클릭)
+- (RosterView.tsx의 `?rteam=` 하이드레이션 useEffect는 그대로 유지 — 다른 caller가 실수로 다시 state 패턴을 쓰더라도 안전망 역할)
+
+**Before**:
+```tsx
+// MultiStandingsView.tsx
+onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster`, {
+    state: { viewTeamId: t.team_slug },
+})}
+
+// MultiHeader.tsx
+const handleViewTeam = useCallback((teamSlug: string) => {
+    navigate(`${base}/roster`, { state: { viewTeamId: teamSlug } });
+}, [navigate, base]);
+```
+
+**After**:
+```tsx
+// MultiStandingsView.tsx
+onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
+
+// MultiHeader.tsx
+const handleViewTeam = useCallback((teamSlug: string) => {
+    navigate(`${base}/roster?rteam=${teamSlug}`);
+}, [navigate, base]);
+```
+(`viewPlayer`를 함께 넘기는 다른 navigate 호출들 — `MultiLeaderboardView`/`MultiTacticsView`/`MultiHeader`의 `handleViewPlayer` — 는 그대로 둠. `openPlayer()`가 이미 push 방식으로 `?player=&team=`을 URL에 반영하고 있어 이번 replace-state-클리어 버그의 영향을 받지 않았음.)
+
+**검증**: `?rteam=teamB`가 이미 실린 URL로 직접 진입(location.state 전혀 없이) → 첫 렌더부터 B팀 정상 표시, 탭 전환 후에도 B팀 유지 확인(Playwright). `npx vite build` 통과, 콘솔 에러 없음.
+
+**롤백 방법**: 두 파일의 `navigate(...)` 호출을 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 순위표에서 타팀 로스터 진입 후 탭 전환 시 내 팀으로 되돌아가는 버그 수정
+
+**배경**: 사용자 제보 — 순위표에서 타 팀 이름 클릭 → 그 팀 로스터로 진입은 잘 되는데, 이후 아무 탭이나 누르면 내 팀 화면으로 바뀜. 원인 규명: `MultiRosterView.tsx`는 타팀 진입 시 `navigate('/roster', {state:{viewTeamId}})`로 팀 정보를 URL이 아닌 `location.state`에만 실어 보내는데, 직전 항목에서 추가한 `handleTabChange`의 `setSearchParams(fn, {replace:true})` 호출이 react-router 내부적으로 `navigator.replace(path, options.state, options)`를 호출하면서 `options.state`를 안 넘기면 `location.state`가 통째로 `undefined`로 덮어써짐(react-router 7.13.1, `chunk-LFPYN7LY.mjs`의 `useSearchParams`/`useNavigate` 구현 직접 확인). 즉 탭을 한 번이라도 클릭하는 순간 `navState.viewTeamId`가 사라져 `initialTeamId`가 `myTeamId`로 폴백됨.
+
+**변경 파일**:
+- `views/RosterView.tsx` (client 전용 — server 미러 없음)
+
+**Before**:
+```tsx
+const rteamParam = searchParams.get('rteam');
+const fallbackTeamId = initialTeamId || myTeamId;
+const selectedTeamId = (rteamParam && allTeams.some(t => t.id === rteamParam)) ? rteamParam : fallbackTeamId;
+// initialTeamId를 URL에 반영하는 로직 없음 — location.state에만 의존
+```
+
+**After**:
+```tsx
+// initialTeamId(주로 location.state 기반)가 내 팀과 다르면 마운트 시점에 즉시 ?rteam=으로
+// URL에 박제 — 이후 handleTabChange 등 어떤 setSearchParams({replace:true}) 호출이
+// location.state를 지우더라도 rteam은 URL 자체에 있으므로 영향받지 않는다.
+useEffect(() => {
+  if (initialTeamId && initialTeamId !== myTeamId && !searchParams.get('rteam')) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('rteam', initialTeamId);
+      return next;
+    }, { replace: true });
+  }
+}, [initialTeamId]);
+```
+
+**검증**: `location.state`로 타팀을 넘기는 `navigate(path, {state:{viewTeamId}})` 패턴을 그대로 재현한 Playwright 테스트 — B팀 클릭 직후 URL이 즉시 `/roster?rteam=teamB`로 바뀜을 확인. 이후 "능력치"/"경기 기록" 탭을 연달아 클릭해도 헤더 팀명이 계속 "Busan B팀"으로 유지됨(수정 전에는 첫 탭 클릭에서 A팀으로 복귀했을 것). `npx vite build` 통과, 콘솔 에러 없음.
+
+**주의사항**: 이 문제의 근본 원인(react-router `setSearchParams`가 `location.state`를 암묵적으로 지움)은 RosterView에만 있는 게 아니라 `useSearchParams`+`location.state`를 함께 쓰는 다른 화면에도 잠재할 수 있음 — 유사 패턴(탭/필터 상태는 URL, 초기 진입 데이터는 state)을 쓰는 화면을 새로 만들 때 참고.
+
+**롤백 방법**: 위 `useEffect` 블록만 제거하면 됨(직전 항목의 `rteam` 관련 코드는 그대로 유지).
+
+---
+
+## 2026-08-11 — 로스터 화면 팀 전환 시 브라우저 히스토리 미기록 버그 수정
+
+**배경**: 사용자 제보 — 내 팀 로스터 > 경기 기록 탭 > 상대팀 이름 클릭(타팀 로스터로 전환) > 브라우저 뒤로가기를 누르면 로스터 화면을 완전히 건너뛰고 그 이전 화면(순위표 등)으로 바로 튕김. 원인: `RosterView.tsx`의 `selectedTeamId`가 순수 로컬 `useState`라서 팀 전환(헤더 드롭다운 클릭, `TeamGameLog`의 `onTeamClick`) 시 URL/히스토리에 아무 기록도 남기지 않았음 — `?tab=` URL 동기화(직전 항목)를 적용하며 탭 전환의 `push`/`replace` 구분은 다뤘지만, 팀 전환 경로 자체는 손대지 않아 남아있던 문제.
+
+**변경 파일**:
+- `views/RosterView.tsx` (client 전용 — server 미러 없음)
+
+**Before**:
+```tsx
+const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
+...
+useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);
+...
+// 헤더 드롭다운
+onClick={() => { setSelectedTeamId(t.id); setTeamMenuOpen(false); }}
+...
+// TeamGameLog 상대팀 클릭
+onTeamClick={(teamId) => { setSelectedTeamId(teamId); handleTabChange('overview'); }}
+```
+
+**After**:
+```tsx
+// selectedTeamId를 로컬 state로 들고 있지 않고 ?rteam= 쿼리 파라미터에서 파생.
+// MultiRosterView가 이미 쓰는 ?team=(선수 상세용)과 키가 겹치지 않도록 rteam으로 분리.
+const rteamParam = searchParams.get('rteam');
+const fallbackTeamId = initialTeamId || myTeamId;
+const selectedTeamId = (rteamParam && allTeams.some(t => t.id === rteamParam)) ? rteamParam : fallbackTeamId;
+const handleTeamChange = (teamId: string, opts?: { tab?: RosterTab }) => {
+  setSearchParams(prev => {
+    const next = new URLSearchParams(prev);
+    next.set('rteam', teamId);
+    if (opts?.tab) next.set('tab', opts.tab);
+    return next;
+  }); // replace: true 없음 → push(히스토리 엔트리 생성)
+};
+...
+onClick={() => { handleTeamChange(t.id); setTeamMenuOpen(false); }}
+...
+onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
+```
+탭 전환(`handleTabChange`)은 기존대로 `{ replace: true }` 유지 — 팀 전환만 `push`로 바뀐 것이 이번 변경의 핵심.
+
+**검증**: `BrowserRouter` 기반 재현 테스트(Playwright) — 순위화면→로스터 이동(A팀)→경기 기록 탭→상대팀(B팀) 클릭 시 URL이 `/roster?tab=overview&rteam=teamB`로 바뀜을 확인. 뒤로가기 1회 시 `/roster?tab=records`로 복귀하며 헤더 팀명도 A팀으로 정상 복원(순위화면으로 튕기지 않음). 뒤로가기 2회째에 비로소 순위화면 도달. `npx vite build` 통과, 콘솔 에러 없음.
+
+**주의사항**: 이 컴포넌트는 싱글(`/roster/:teamId` 경로 파라미터)과 멀티(`location.state.viewTeamId`) 양쪽에서 공유되는데, `rteam`은 두 경우 모두 초기 팀 위에 "얹히는" 오버라이드로만 동작 — 부모가 새 `initialTeamId`로 재진입시키면(경로 변경 또는 `navigate(path, {state})`, 둘 다 기존 쿼리스트링을 지움) `rteam`이 없어져 자연히 새 초기값을 따름.
+
+**롤백 방법**: Before 블록 내용으로 그대로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 멀티플레이어 로스터 화면 진입 시 매번 로더 뜨는 문제 수정
+
+**배경**: 사용자 제보 — 로스터 화면 진입 시마다 로더가 먼저 뜸. 원인: `MultiRosterView.tsx`가 `meta_players`+`game_pbp`를 `useState`+`useEffect`로 캐싱 없이 매번 새로 fetch(리더보드가 이전에 겪었던 것과 동일 패턴). 로스터 구성은 자주 안 바뀌지만 `game_pbp` 기반 스탯은 시뮬레이션마다 바뀌므로, staleTime 튜닝 대신 기본 캐시(전역 기본값 Infinity) + 수동 새로고침 버튼 조합으로 가기로 사용자와 합의.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `useState`+`useEffect` fetch를 `useQuery`로 전환(`queryKey: ['multiRosterData', room?.id, allRosterIds.join(',')]`, staleTime 미지정=전역 기본 Infinity), `isPending`→`fetchLoading`, `isFetching`→`fetchRefreshing`, `refetch`→`refetchRoster`로 매핑
+- `views/RosterView.tsx` — `onRefresh?: () => void; refreshing?: boolean;` prop 추가, 헤더 바 우측(`ml-auto`)에 `RefreshCw` 아이콘 버튼 렌더링(팀 테마 색상 적용, `refreshing`일 때 `animate-spin`)
+
+**Before**:
+```tsx
+// MultiRosterView.tsx
+const [allTeams, setAllTeams] = useState<Team[]>([]);
+...
+useEffect(() => {
+    if (!allRosterIds.length || !room?.id) return;
+    let cancelled = false;
+    setFetchLoading(true);
+    const load = async () => { /* fetch → setAllTeams/setGameLogMap/setFetchLoading(false) */ };
+    load();
+    return () => { cancelled = true; };
+}, [allRosterIds.join(','), room?.id]);
+```
+
+**After**:
+```tsx
+// MultiRosterView.tsx
+const {
+    data: rosterData,
+    isPending: fetchLoading,
+    isFetching: fetchRefreshing,
+    refetch: refetchRoster,
+} = useQuery({
+    queryKey: ['multiRosterData', room?.id, allRosterIds.join(',')],
+    enabled: allRosterIds.length > 0 && !!room?.id,
+    queryFn: async () => { /* 동일 fetch/집계 로직, { builtTeams, logMap, gameTeamStatsMap } 반환 */ },
+});
+const allTeams = rosterData?.builtTeams ?? [];
+```
+`<RosterView onRefresh={() => refetchRoster()} refreshing={fetchRefreshing} .../>` 추가.
+
+**검증**: `vite build` 정상 통과. Playwright로 `RosterView`에 `onRefresh`/`refreshing` mock을 넘겨 렌더링 → 헤더 우측에 새로고침 버튼이 정상 표시되고, 클릭 시 콜백이 호출되며(`window.__refreshClicks === 1`) `refreshing=true` 동안 스피너 회전 애니메이션이 적용됨을 스크린샷으로 확인.
+
+**주의사항 / 한계:**
+- `onRefresh`를 안 넘기면(싱글플레이어 `RosterPage.tsx`) 버튼이 렌더링되지 않아 기존 레이아웃 그대로 유지됨(회귀 없음).
+- 로스터 구성(선수 이동) 자체는 `allRosterIds`가 바뀌면 queryKey가 달라져 자동 재조회되지만, **같은 로스터 상태에서 경기만 새로 시뮬레이션된 경우**(스탯만 갱신) 자동 반영되지 않으므로 사용자가 새로고침 버튼을 눌러야 함 — 사용자와 사전 합의된 트레이드오프.
+
+**롤백 방법**: `MultiRosterView.tsx`의 `useQuery` 블록을 Before의 `useState`+`useEffect` 조합으로 되돌리고, `RosterView.tsx`에서 `onRefresh`/`refreshing` prop과 헤더의 새로고침 버튼 JSX를 제거.
+
+---
+
+## 2026-08-11 — 로스터 새로고침 버튼 제거, "경기 기록" 탭 진입 시 자동 재조회로 변경
+
+**배경**: 사용자 피드백 — 로스터 탭(선수 능력치)은 자주 안 바뀌지만 경기 기록 탭은 매번 최신 데이터를 봐야 하는데, 굳이 사용자가 수동으로 새로고침 버튼을 눌러야 하는 이유가 뭐냐는 지적. 로스터 탭과 경기 기록 탭이 같은 `game_pbp` 원본에서 파생되는 구조라, "경기 기록 탭에 진입하는 시점"을 트리거로 삼아 그때만 자동으로 재조회하면 별도 버튼 없이도 원하는 신선도를 얻을 수 있음 — 바로 전 커밋(위 항목)에서 추가한 수동 새로고침 버튼을 곧바로 대체.
+
+**변경 파일**:
+- `views/RosterView.tsx` — `onRefresh`/`refreshing` prop과 헤더의 `RefreshCw` 버튼 제거, 대신 `onTabChange?: (tab: RosterTab) => void` prop 추가 → `RosterTabs`의 탭 전환 시 내부 `setTab`과 함께 부모에도 알림(`handleTabChange`)
+- `views/multi/season/MultiRosterView.tsx` — `onRefresh`/`refreshing` prop 전달 제거, `onRosterTabChange(t)`(`t === 'records'`일 때만 `refetchRoster()` 호출)를 `onTabChange`로 연결. 더 이상 안 쓰는 `isFetching: fetchRefreshing` 구조분해도 제거
+
+**Before**:
+```tsx
+// RosterView.tsx 헤더
+{onRefresh && (
+    <button onClick={onRefresh} disabled={refreshing} ...>
+        <RefreshCw className={refreshing ? 'animate-spin' : ''} />
+    </button>
+)}
+// MultiRosterView.tsx
+<RosterView ... onRefresh={() => refetchRoster()} refreshing={fetchRefreshing} />
+```
+
+**After**:
+```tsx
+// RosterView.tsx
+const handleTabChange = (t: RosterTab) => { setTab(t); onTabChange?.(t); };
+...
+<RosterTabs activeTab={tab} onTabChange={handleTabChange} hideTabs={hideTabs} />
+// MultiRosterView.tsx
+const onRosterTabChange = useCallback((t: string) => {
+    if (t === 'records') refetchRoster();
+}, [refetchRoster]);
+...
+<RosterView ... onTabChange={onRosterTabChange} />
+```
+
+**검증**: `vite build` 정상 통과. Playwright로 `RosterView`에 `onTabChange` mock을 넘겨 렌더링 → "경기 기록" 탭 클릭 시 `onTabChange('records')`가 정상 호출됨을 확인(`window.__tabChanges === ["records"]`).
+
+**주의사항 / 한계:**
+- 로스터 탭(선수 능력치)은 여전히 화면 최초 진입 시 캐시된 데이터를 그대로 보여줌 — 트레이드 등으로 로스터 구성 자체가 바뀌면 `allRosterIds`가 달라져 queryKey가 바뀌므로 자동 재조회되지만, 같은 로스터 상태에서 스탯만 갱신된 경우는 경기 기록 탭에 들어가기 전까진 반영 안 됨(의도된 동작).
+- 경기 기록 탭 재진입마다(같은 세션에서 왔다갔다해도) 매번 재조회를 시도함 — React Query가 내부적으로 동일 요청 중복은 처리하지만, 탭을 빠르게 여러 번 왔다갔다하면 그만큼 Supabase 호출이 늘어날 수 있음.
+
+**롤백 방법**: 위 두 파일을 Before 상태로 되돌리면 됨(수동 새로고침 버튼 방식으로 복원).
+
+---
+
+## 2026-08-11 — 기록 탭: font-mono 해제 + Traditional/Advanced/Shooting/Defense 4단 스택 뷰로 전면 교체
+
+**배경**: 사용자 요청 — ① 기록 탭(`RosterGrid tab="stats"`) 테이블의 `font-mono` 해제 ② 기록 탭을 Traditional > Advanced > Shooting > Defense 순으로 4개 차트를 스택해서 보여주는 구조로 전면 개편(기존엔 Traditional 15개 컬럼짜리 단일 테이블뿐이었음).
+
+**변경 파일**:
+- `components/roster/RosterGrid.tsx` — `tab === 'stats'` 바디의 `font-mono` 3곳 제거(값 없음 "-" 표시, 일반 스탯 값, 팀 평균 값).
+- `components/roster/RosterStatsStack.tsx` (신규) — 리더보드가 이미 쓰고 있는 `hooks/useLeaderboardData.ts`+`components/leaderboard/LeaderboardTable.tsx`를 **팀 로스터 하나로 스코프를 좁혀 그대로 재사용**. Advanced 카테고리(TS%/eFG%/TOV%/USG%/ORTG 등)처럼 직접 재구현하면 위험한 공식을 새로 짜지 않기 위한 선택 — `useLeaderboardData([team], schedule, [], sortConfig, 'Players', ...)`를 카테고리별로 4번 호출(섹션마다 독립적인 정렬 상태), 각각을 `<LeaderboardTable statCategory={...}>`로 렌더링해 Traditional→Advanced→Shooting→Defense 순으로 세로 스택. 리더보드와 동일한 히트맵 컬러링도 팀 로스터 범위 안에서 그대로 적용됨(팀 내 최고/최저가 자동으로 강조됨).
+- `views/RosterView.tsx` — "기록" 탭 렌더링을 `<RosterGrid tab="stats">` → `<RosterStatsStack team schedule onPlayerClick>`로 교체.
+
+**검증**: `vite build` 정상 통과. Playwright로 8명 목업 선수(전체 능력치/존별 슈팅/수비 스탯 포함)를 넣어 "기록" 탭 렌더링 — 섹션 헤더가 정확히 TRADITIONAL→ADVANCED→SHOOTING→DEFENSE 순서로 나타남을 확인, 각 섹션 테이블의 컬럼 수(25/19/45/32)와 실제 계산값(TS% 66.0%, RIM FGM 2.0 등, 0/NaN 없음)이 정상 렌더링됨을 DOM에서 직접 확인. 콘솔 에러 없음.
+
+**주의사항 / 한계:**
+- 각 섹션은 높이 480px 고정 + 내부 스크롤 — 로스터가 15명이면 한 섹션 안에서 스크롤이 필요할 수 있음(4개를 전부 펼쳐서 보여주면 페이지가 지나치게 길어지는 것을 방지하기 위한 절충).
+- `useLeaderboardData`를 섹션마다 독립 호출하다 보니 팀 하나짜리 데이터를 4번 재계산함 — 로스터 규모(15명 이하)에서는 성능상 문제없는 수준.
+- 행 클릭 시 선수 상세로 이동하는 기존 `onViewPlayer` 콜백을 그대로 재사용(리더보드의 `handleRowClick`과 동일하게 원본 `Player` 객체를 `team.roster`에서 재조회 후 전달).
+
+**롤백 방법**: `RosterView.tsx`의 "기록" 탭을 `<RosterGrid team={selectedTeam} tab="stats" onPlayerClick={...} />`로 되돌리고, `RosterStatsStack.tsx` 파일을 삭제하면 됨. `RosterGrid.tsx`의 font-mono는 각 줄에 `font-mono `를 다시 추가하면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 탭 상태를 URL 쿼리 파라미터(?tab=)로 동기화
+
+**배경**: 사용자 요청 — 로스터 화면(및 궁극적으론 다른 모든 화면)에서 탭을 바꾸면 URL에 반영되게. 범위가 넓어(탭 상태를 쓰는 화면이 최소 11곳 발견: RosterView/DraftView/FAView/StandingsView/MultiTacticsView/AdminTeamEditorView/LeagueListView/QuickPlayPage/TacticsBoard 등) 우선 로스터 화면에 검증된 패턴을 적용하기로 함(이후 다른 화면 확산은 별도 요청 시 진행).
+
+**변경 파일**:
+- `views/RosterView.tsx` — 탭 상태(`useState<RosterTab>`)를 제거하고 `useSearchParams()`(`?tab=`)에서 유도하도록 전환. `handleTabChange`는 `setSearchParams(prev => {...}, { replace: true })`로 URL을 갱신 — `MultiLeaderboardView.tsx`의 필터 상태 URL 동기화와 동일하게 **replace**(탭 전환마다 브라우저 히스토리를 쌓지 않음 — push였다면 탭 5번 클릭 후 뒤로가기 5번 눌러야 이전 페이지로 나가는 나쁜 UX가 됐을 것). `hideTabs`에 포함되거나 유효하지 않은 `tab` 쿼리값은 `'overview'`로 안전하게 폴백.
+
+**Before**:
+```tsx
+const [tab, setTab] = useState<RosterTab>('overview');
+const handleTabChange = (t: RosterTab) => { setTab(t); onTabChange?.(t); };
+```
+
+**After**:
+```tsx
+const [searchParams, setSearchParams] = useSearchParams();
+const tabParam = searchParams.get('tab') as RosterTab | null;
+const tab: RosterTab = (tabParam && VALID_ROSTER_TABS.includes(tabParam) && !hideTabs?.includes(tabParam)) ? tabParam : 'overview';
+const handleTabChange = (t: RosterTab) => {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', t); return next; }, { replace: true });
+    onTabChange?.(t);
+};
+```
+
+**검증**: `vite build` 정상 통과. `BrowserRouter`+Playwright로 실제 브라우저 URL 확인 — "능력치" 클릭 시 `?tab=attributes`, "선수 기록" 클릭 시 `?tab=stats`로 정확히 반영, 새로고침 후에도 `?tab=stats` 그대로 유지(마지막 탭 복원), 탭을 여러 번 전환해도 `window.history.length`가 늘지 않아 replace 방식이 정상 동작함을 확인. 콘솔 에러 없음.
+
+**주의사항 / 한계:**
+- 이번엔 로스터 화면에만 적용 — 나머지 10여 개 화면(DraftView/FAView/StandingsView 등)은 동일 패턴으로 확산 가능하나 별도 작업으로 미룸.
+- `MultiRosterView.tsx`가 이미 쓰고 있는 `?player=&team=`(선수 상세) 쿼리 파라미터와 `?tab=`은 서로 다른 키라 충돌 없이 공존함(둘 다 `new URLSearchParams(prev)`로 기존 파라미터를 보존한 채 갱신).
+
+**롤백 방법**: `tab`/`handleTabChange`를 Before 블록의 `useState` 기반으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 경기 기록 탭 상대팀 이름 클릭 시 로스터 전환 + "기록" 탭 이름 "선수 기록"으로 변경
+
+**배경**: 사용자 요청 — ① 경기 기록 탭에서 상대팀 이름을 클릭하면 그 팀 로스터 화면으로 바로 전환 ② "기록" 탭 라벨을 "선수 기록"으로 변경(다른 탭들과의 구분을 명확히 — "능력치"/"선수 기록"/"경기 기록"/"일정").
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — `TeamGameLogProps`에 `onTeamClick?: (teamId: string) => void` 추가, 상대팀 이름+로고 영역을 클릭 가능하게 만들어 클릭 시 `onTeamClick(row.oppId)` 호출(호버 시 인디고 색상+밑줄로 클릭 가능함을 표시).
+- `views/RosterView.tsx` — `<TeamGameLog onTeamClick={(teamId) => { setSelectedTeamId(teamId); setTab('overview'); }}>` 연결 — 상대팀 클릭 시 헤더의 팀 전환 드롭다운과 동일한 방식으로 팀을 바꾸고, "로스터"(overview) 탭으로 전환.
+- `components/roster/RosterTabs.tsx` — `{ id: 'stats', label: '기록' }` → `{ id: 'stats', label: '선수 기록' }`.
+
+**검증**: `vite build` 정상 통과. Playwright로 2팀(A/B, 각각 다른 선수) 목업 렌더링 — 탭 라벨이 `[로스터, 능력치, 선수 기록, 경기 기록, 일정, ...]`로 정확히 표시됨을 확인. "경기 기록" 탭에서 상대팀(Team B) 이름 클릭 → 헤더 팀명이 "City Team A"→"City Team B"로 전환, 화면에 B팀 선수("B Player 0")가 표시되고 A팀 선수는 사라짐을 확인(로스터 탭으로 정상 전환됨). 콘솔 에러 없음.
+
+**롤백 방법**: `TeamGameLog.tsx`에서 `onTeamClick` prop과 클릭 핸들러 제거, `RosterView.tsx`의 `onTeamClick` 연결 제거, `RosterTabs.tsx`의 라벨을 "기록"으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 경기 기록 탭 컬럼 헤더 2행: "구분+상대"/"결과+스코어" 헤더 셀만 병합(바디는 유지)
+
+**배경**: 사용자 요청 — 컬럼 헤더 2행에서 "구분"+"상대" 헤더 셀을 하나로 합쳐 "상대"로, "결과"+"스코어" 헤더 셀을 하나로 합쳐 "결과"로 표시. 1차 시도에서 실제 데이터 컬럼 자체를 합쳐버렸다가("vs Team B" 한 셀, "W 100-95" 한 셀) 사용자가 "컬럼 헤더의 셀만 병합해달라고, 컬럼 자체를 병합하라는 게 아니다"라고 정정 — 바디 데이터는 기존처럼 5개 컬럼(날짜/구분/상대/결과/스코어)으로 분리 유지하고, 헤더 라벨만 `colSpan`으로 두 칸을 하나로 보여주는 방식으로 재작업.
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — `GAME_INFO_COLS`/바디 셀(`renderGameRow`)은 원래 5컬럼 구조로 되돌림. 컬럼 헤더 2행만 `GAME_INFO_COLS.map(...)` 제네릭 렌더링 대신 수동으로 재작성 — 날짜(1칸, 정렬 가능 유지) + 상대(`colSpan={2}`, "구분"+"상대" 컬럼 폭을 덮음) + 결과(`colSpan={2}`, "결과"+"스코어" 컬럼 폭을 덮음).
+
+**검증**: `vite build` 정상 통과. Playwright로 확인 — 헤더 2행이 `[{text:"날짜",colSpan:1}, {text:"상대",colSpan:2}, {text:"결과",colSpan:2}]`로 정확히 렌더링되고, 바디 게임 행은 여전히 `["01/01","vs","Team B","W","100-95"]` 5개 분리된 셀로 유지됨을 확인. 콘솔 에러 없음.
+
+**주의사항 / 한계:**
+- 1차 시도(컬럼 자체 병합)는 즉시 되돌림 — git 히스토리에 남지만 최종 상태는 이번 항목이 정답.
+
+**롤백 방법**: 컬럼 헤더 2행을 `GAME_INFO_COLS.map(...)` 제네릭 렌더링으로 되돌리면 됨(구분/상대/결과/스코어 각각 별도 헤더 셀).
+
+---
+
+## 2026-08-11 — 경기 기록 탭 헤더 1행(그룹행) 높이/색상을 2행에 맞춤
+
+**배경**: 사용자 요청 — 헤더 1행("경기 정보"/"팀 스탯" 그룹행, 기존 `h-8`=32px)을 2행(날짜/구분/... 컬럼 라벨행, 실측 45px)과 같은 높이로. "경기 정보" 셀 텍스트 색상이 "팀 스탯"보다 어두웠던 것도 통일.
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — 그룹행의 고정 높이(`<tr className="h-8">`, `<th ... h-8>`, 내부 div `h-full`)를 제거하고 `TableHeaderCell`과 동일한 `py-3` 패딩으로 전환(고정 px 대신 패딩 기준으로 통일해, 폰트 크기가 나중에 또 바뀌어도 2행과 자동으로 맞도록 함). "경기 정보" 텍스트 색상 `text-slate-500` → `text-slate-400`("팀 스탯"과 동일).
+
+**검증**: `vite build` 정상 통과. Playwright 실측 — 1행/2행 높이 둘 다 45px로 일치, "경기 정보"/"팀 스탯" 텍스트 색상 둘 다 `rgb(148,163,184)`(slate-400)로 동일함을 확인. 콘솔 에러 없음.
+
+**롤백 방법**: 그룹행에 `h-8`을 다시 추가하고 `py-3`을 제거, "경기 정보" 색상을 `text-slate-500`으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 경기 기록 탭 시즌 평균 행 상하 패딩 확대
+
+**배경**: 사용자 요청 — 시즌 평균(푸터) 행의 상하 패딩(기존 8px, `py-2`)을 `py-3`(12px)로.
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — 시즌 평균 행의 `TableCell` 2곳(라벨 셀, 스탯 값 셀들)에 `!py-3` 추가(공용 `TableCell`의 기본 `py-2`를 오버라이드하려면 `!` 필요 — 이 세션에서 반복된 동일 이슈). 고정 높이였던 `<tr className="h-10">`도 패딩 증가분만큼 자연스럽게 늘어나도록 `h-10` 제거(고정폭 대신 콘텐츠 기준 높이).
+
+**검증**: `vite build` 정상 통과. Playwright로 실측 — 패딩 8px→12px, 행 높이 41px→49px로 정상 반영됨을 확인.
+
+**롤백 방법**: `!py-3`를 제거하고 `<tr>`에 `className="h-10"`을 다시 추가하면 됨.
+
+---
+
+## 2026-08-11 — 경기 기록 탭 폰트 사이즈 text-sm 통일 + font-mono 해제
+
+**배경**: 사용자 요청 — 경기 기록 탭(`TeamGameLog.tsx`)의 `text-xs`(12px)를 전부 `text-sm`(14px)로, `font-mono`도 해제(다른 탭들과 동일한 처리 방향).
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — 그룹 헤더/컬럼 라벨/날짜/구분/상대팀명/결과/스코어/스탯 값/섹션 라벨/시즌 평균 라벨·값 등 `text-xs` 11곳 전부 `text-sm`으로 변경, `statCellClass`(스탯 값)와 스코어 span, 시즌 평균 값의 `font-mono` 3곳 제거.
+
+**검증**: `vite build` 정상 통과. Playwright로 목업 일정(5경기, 팀 스탯 포함) 렌더링 후 "경기 기록" 탭 클릭 — 그룹 헤더/상대팀명/스탯 셀/시즌 평균 라벨·값 전부 `font-size: 14px`, `font-family`가 Pretendard(sans-serif)로 정상 확인. 콘솔 에러 없음.
+
+**롤백 방법**: `text-sm`을 `text-xs`로 되돌리고 제거한 3곳에 `font-mono `를 다시 추가하면 됨.
+
+---
+
+## 2026-08-11 — 기록 탭 드롭다운 헤더 상하 패딩 확대
+
+**배경**: 사용자 요청 — 기록 탭 상단 카테고리 드롭다운 헤더의 높이가 답답해 보임(실측 37px, `py-2`=8px). 패딩을 조금 늘려달라는 요청.
+
+**변경 파일**:
+- `components/roster/RosterStatsStack.tsx` — 헤더 바 `px-4 py-2` → `px-4 py-3`(8px→12px).
+
+**검증**: `vite build` 정상 통과. Playwright로 실측 — 헤더 높이 37px→45px로 정확히 반영됨(`paddingTop`/`paddingBottom` 12px 확인).
+
+**롤백 방법**: `py-3`→`py-2`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 기록 탭 Defense 카테고리 존별 수치 미집계 버그 수정
+
+**배경**: 사용자 제보 — 기록 탭 Defense 카테고리에서 선수들의 존별 수비 수치(DFGM/DFGA/DFG%)가 전부 0으로 나옴. 원인 확인 결과 `MultiRosterView.tsx`의 `buildStatsMap()`(멀티플레이어 로스터 화면의 선수 스탯 집계 함수)이 `contestedAttempted`/`contestedMade`는 집계하면서 6존×2(Attempted/Made) = 12개 존별 수비 필드(`defRAAttempted`/`defRAMade`/`defITPAttempted`/... )는 전혀 합산하지 않고 있었음. `hooks/useLeaderboardData.ts`는 이 필드들이 `player.stats`에 이미 합산돼 있다고 가정하고 그대로 읽기만 하므로(`s['def${z}Attempted'] || 0`), 없는 필드는 항상 0으로 처리됨. **완전히 동일한 문제가 `MultiLeaderboardView.tsx`(멀티 리더보드 화면)에서는 이미 예전에 발견되어 고쳐져 있었는데(dev-log "Defense 탭... 누락돼 있던 필드" 기록), 로스터 화면 쪽 집계 함수엔 그 수정이 전파되지 않았던 것** — `feedback_propagate_new_params.md`에 기록된 "새 파라미터는 모든 호출 경로에 전파 필수" 케이스 그대로.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `buildStatsMap()`에 `MultiLeaderboardView.tsx`와 동일한 12개 존별 수비 필드(`defRAAttempted/Made`, `defITPAttempted/Made`, `defMIDAttempted/Made`, `defCNRAttempted/Made`, `defWINGAttempted/Made`, `defATBAttempted/Made`) 집계 추가(기존 `add()` 헬퍼로 동일 패턴).
+
+**검증**: `vite build` 정상 통과. 합산 로직 자체를 Node 스크립트로 분리 재현 — 2경기치 mock 박스스코어(`defRAAttempted: 2+3, defRAMade: 1+2` 등)를 넣어 합계가 정확히 누적됨(5/3/3/1)을 확인. `MultiRosterView.tsx` 전체는 실 Supabase 데이터가 필요해 마운트 검증 대신, 추가된 12개 필드가 정확히 반영됐음을 grep으로 재확인.
+
+**주의사항 / 한계:**
+- 이번 수정 이후 새로 시뮬레이션되는 경기부터 정상 집계됨 — 과거에 이미 저장된 `game_pbp` 데이터 자체는 문제없이 `defRAAttempted` 등 필드를 갖고 있으므로(원본 박스스코어엔 이미 기록돼 있었음, 집계 함수만 안 읽었던 것) 새로고침/재조회만으로 바로 정상 표시됨 — 별도 데이터 마이그레이션 불필요.
+
+**롤백 방법**: `buildStatsMap()`에서 추가한 12줄(defRA~defATB)을 제거하면 됨.
+
+---
+
+## 2026-08-11 — 기록 탭: 4단 스택 폐기, 테이블 1개 + 드롭다운 카테고리 전환으로 변경
+
+**배경**: 사용자 피드백 — 4개 테이블을 세로로 붙여놓으니 산만함. 테이블 하나만 두고 드롭다운으로 Traditional/Advanced/Shooting/Defense를 전환하는 방식으로 변경 요청.
+
+**변경 파일**:
+- `components/roster/RosterStatsStack.tsx` — 4개 섹션을 반복 렌더링하던 `SECTIONS.map(...)` 구조를 제거하고, `useState<StatCategory>('Traditional')`로 현재 카테고리 하나만 상태로 관리. 상단에 리더보드 툴바와 동일한 스타일의 `Dropdown`(공용 컴포넌트) 트리거 버튼을 추가해 카테고리 전환. 테이블 자체(`CategoryTable`, 기존 `StatSection`을 개명)는 그대로 재사용하되, 섹션 라벨 바/`fullHeight={false}` 등 스택 전용 코드를 제거하고 다시 `fullHeight`(단일 테이블이 영역을 꽉 채움)로 복원. 카테고리 전환 시 `key={category}`로 강제 리마운트해 정렬 상태를 그 카테고리의 기본 정렬로 초기화.
+
+**검증**: `vite build` 정상 통과. Playwright로 확인 — 초기 진입 시 테이블 1개(Traditional 컬럼: 이름/포지션/나이/OVR/G/MIN/PTS/OREB), 드롭다운에서 "SHOOTING" 클릭 시 테이블은 여전히 1개인 채로 헤더가 Shooting 존 그룹(RIM/PAINT/MID LEFT...)으로 정확히 전환되고 트리거 텍스트도 "SHOOTING"으로 갱신됨을 확인. 콘솔 에러 없음.
+
+**롤백 방법**: `RosterStatsStack.tsx`를 이전 버전(4단 스택 버전)으로 되돌리면 됨 — git 히스토리 참고.
+
+---
+
+## 2026-08-11 — 기록 탭 재작성: 리더보드 컴포넌트 대신 기존 RosterGrid 스타일 4단 스택 + 단일 페이지 스크롤
+
+**배경**: 사용자 지적 — 직전 구현(`LeaderboardTable` 그대로 재사용)이 리더보드 고유의 스타일(#/TeamBadge/영문 라벨 등)을 그대로 가져와 로스터 화면의 기존 디자인 정체성과 안 맞았고, 섹션마다 480px 고정 높이+내부 스크롤을 줘서 "스크롤 안의 스크롤"이 되어 페이지 스크롤 경험이 매끄럽지 않았음. "이전 테이블 디자인(RosterGrid 스타일)을 4개 수직으로 배치"해달라는 요청.
+
+**변경 파일**:
+- `components/roster/RosterStatsStack.tsx` (전면 재작성) — `<LeaderboardTable>` 컴포넌트 재사용을 걷어내고, 대신 값 계산 공식만 `LeaderboardTable.tsx`의 Players 모드 로직(퍼게임 환산, 존별 슈팅/수비 스탯, 히트맵)을 그대로 옮겨와 순수 함수(`getStatCellValue`/`formatValue`)로 분리 — 화면 스타일과 무관하게 안전하게 재사용하되, 리더보드 본체(`LeaderboardTable.tsx`)는 전혀 건드리지 않아 실제 리더보드 화면에 회귀 위험 없음. 렌더링은 `RosterGrid.tsx`와 동일한 시각 언어로 새로 작성 — 이름/포지션/나이/OVR sticky 4컬럼(한글 라벨), Shooting/Defense는 존별 2행 그룹 헤더(RosterGrid의 능력치 그룹 헤더와 동일 패턴), "팀 평균" 푸터 행. `<Table fullHeight={false}>`로 각 섹션이 내용에 맞게 자연스러운 높이로 쌓이도록 하고(내부 스크롤 없음), `RosterStatsStack`의 바깥 컨테이너 하나(`h-full overflow-y-auto`)만 스크롤을 담당 — 각 섹션 헤더는 `sticky`로 그 섹션을 스크롤하는 동안만 상단에 붙어있다가 다음 섹션으로 넘어가면 자연스럽게 다음 섹션 헤더가 이어받음.
+
+**검증**: `vite build` 정상 통과. Playwright로 8명 목업 선수(전체 스탯 포함) 렌더링 후 확인 — ① 헤더 라벨이 "이름/포지션/나이/OVR"(리더보드의 "PLAYER/POS/OVR/#" 아님)로 RosterGrid 스타일 유지됨 ② Shooting/Defense 2행 그룹 헤더(RIM/PAINT/... , RA/ITP/...) 정상 ③ 4개 섹션 wrapper 전부 `scrollHeight === clientHeight`(내부 스크롤 없음), 반면 바깥 컨테이너는 `scrollHeight 2028 vs clientHeight 791`로 전체를 아우르는 단일 스크롤 확인 ④ 셀 폰트가 `Pretendard`(sans-serif) 14px로 font-mono 아님 확인 ⑤ 값(TS% 66.0%, RIM 2.0 등)과 섹션 순서(TRADITIONAL→ADVANCED→SHOOTING→DEFENSE) 정확. 콘솔 에러 없음.
+
+**주의사항 / 한계:**
+- 팀 평균 행은 각 선수의 계산된 값(raw)을 단순 산술 평균한 것 — 기존 RosterGrid의 %스탯 가중평균(makes 합/attempts 합)과는 다른 근사치. 로스터 규모(15명 이하)에서는 차이가 미미하지만 정밀한 가중평균이 필요하면 추후 보정 가능.
+- 값 계산 공식은 `LeaderboardTable.tsx`에서 그대로 복사해온 것이라 원본이 수정되면 이 파일도 별도로 동기화해야 함(공용 함수로 추출하지 않고 의도적으로 복제 — 리더보드 화면 자체를 건드리는 리스크를 피하기 위한 선택).
+
+**롤백 방법**: `RosterStatsStack.tsx`를 이전 버전(LeaderboardTable 재사용 버전)으로 되돌리면 됨 — git 히스토리 참고.
+
+---
+
+## 2026-08-11 — 능력치 범례 숨김 처리 + 팀 평균 OVR 배지 불투명도 제거
+
+**배경**: 사용자 요청 — ① 방금 재작성한 능력치 범례를 숨김 처리(코드는 삭제하지 말고 보존) ② "팀 평균" 푸터 행의 OVR 배지에 걸려 있던 반투명 처리(`opacity-80`) 제거.
+
+**변경 파일**:
+- `components/roster/RosterGrid.tsx` — `SHOW_ATTR_LEGEND = false` 상수 신설, 범례 렌더 조건에 `&& SHOW_ATTR_LEGEND` 추가(이 세션에서 이미 쓰던 "비활성화 플래그로 코드 보존" 패턴 — `MultiStandingsView.tsx`의 `PLAYOFF_TOOLTIP_ENABLED`와 동일 방식). 팀 평균 OVR 배지의 `className`에서 `opacity-80` 제거.
+
+**검증**: `vite build` 정상 통과. Playwright 렌더링 후 DOM 확인 — 범례 `<table>`이 더 이상 렌더링되지 않음(`hasLegendTable: false`), 팀 평균 OVR 배지 `opacity: 1`로 정상 확인.
+
+**롤백 방법**: `SHOW_ATTR_LEGEND`를 `true`로 바꾸면 범례가 즉시 복원됨. OVR 배지는 `className`에 `opacity-80`을 다시 추가하면 됨.
+
+---
+
+## 2026-08-11 — 능력치 컬럼 폭 흔들림 수정 + 범례를 실제 `<table>` 구조로 재작성
+
+**배경**: 사용자 요청 — ① 이전에 발견만 하고 미뤄뒀던 능력치 컬럼 폭 미세 흔들림(54~60px)을 실제로 해결 ② 방금 추가한 범례의 레이아웃이 정돈되어 보이지 않는다는 지적 — 폰트 색상/굵기를 어두운 톤 하나로 통일, 폰트 사이즈 한 단계 축소, `flex flex-wrap` 대신 진짜 `<table>` 구조로 값을 넣고, 구분선은 없애기.
+
+**컬럼 폭 흔들림 수정**:
+- 처음엔 `components/common/Table.tsx`의 `TableHeaderCell`에 `overflow-hidden`+`maxWidth` 하드 캡을 걸어 `table-layout:fixed`가 진짜 강제되도록 고치려 했으나, 이 컴포넌트가 앱 전체 304곳에서 쓰이고 있어 다른 화면의 헤더 라벨이 의도치 않게 잘릴 위험이 있다고 판단해 **되돌림**(공용 컴포넌트 전역 변경은 리스크 대비 이득이 낮음).
+- 대신 `components/roster/RosterGrid.tsx`의 `WIDTHS.ATTR`을 `54` → `64`로 상향(실측 최대 필요 폭이 약 60.3px였던 것에 여유를 둠) — 이제 모든 라벨이 지정폭 안에 들어가 애초에 컬럼이 늘어날 필요가 없어짐. 로컬 스코프 수정이라 다른 화면엔 영향 없음.
+
+**범례 재작성**:
+- `components/roster/RosterGrid.tsx` — 범례를 `flex flex-wrap` 그룹 나열 → 진짜 `<table>`(그룹당 1컬럼 × 최대 8행)로 전면 재작성. 헤더 행=그룹명, 각 셀="약어 + 한글 이름". 테두리 없음(`border` 관련 클래스 미사용, `border-separate`+`borderSpacing: '24px 4px'`로 간격만으로 열 구분). 폰트는 헤더/값 구분 없이 전부 `text-xs text-slate-500 font-normal`로 통일(기존엔 약어만 밝고 굵게, 이름은 옅게 — 색상/굵기가 섞여 있었음).
+
+**검증**: `vite build` 정상 통과. Playwright로 실제 렌더링 후 DOM 검사 — 능력치 헤더 41개 컬럼 폭이 전부 정확히 64px로 완전히 균일해짐(이전 54~60.3px 산개 → 흔들림 완전 해소)을 확인. 범례는 `<table>` 태그로 렌더링됨을 확인, `border: 0px solid`(구분선 없음), td/th 전부 `color: rgb(100,116,139)`(slate-500)/`font-weight: 400`/`font-size: 12px`(text-xs, 기존 text-sm에서 한 단계 축소)로 완전히 통일됨을 `getComputedStyle`로 확인.
+
+**주의사항 / 한계:**
+- `Table.tsx`(공용 컴포넌트) 자체는 변경하지 않고 되돌렸음 — 이번 수정은 `RosterGrid.tsx`에 로컬 스코프로만 적용되어 다른 화면에 영향 없음.
+- 범례 테이블은 그룹별 항목 수가 달라(3~8개) 짧은 그룹(리바운드=3개) 아래쪽엔 빈 셀이 생기지만, 정렬은 그대로 유지되도록 의도한 구조.
+
+**롤백 방법**: `WIDTHS.ATTR`을 `64`→`54`로, 범례 블록을 이전 `flex flex-wrap` 버전으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 능력치 탭 하단 여백 색상 통일 + 능력치 약어 범례 추가
+
+**배경**: 사용자 요청 — ① 능력치 탭(`RosterGrid` tab='roster') 테이블 하단 빈 공간을 로스터 탭과 같은 색으로 마감 ② 36개 능력치 컬럼이 약어(CLS/LAY/DNK 등)로만 표시돼 뜻을 알기 어려운 문제 — 구조 개선안(세로 회전 헤더 / 그룹 평균 우선+확장)을 제시했으나 사용자가 직접 낸 아이디어: "테이블 하단에 능력치 범례를 작성해줘".
+
+**진단(부가 발견)**: 실제 브라우저 렌더링으로 확인한 결과, `table-layout: fixed`에 54px 고정폭을 지정했음에도 `OCON`/`DCON`/`HNDL`/`POST` 등 라벨+padding이 54px보다 넓은 컬럼은 브라우저가 54.2~60px 사이로 미세하게 늘려버려 컬럼 폭이 살짝씩 어긋나는 게 "들쭉날쭉"의 실체였음(텍스트 잘림 자체는 없었음). 이번 범례 추가로 근본 원인(약어의 의미 파악 어려움)을 해결.
+
+**변경 파일**:
+- `components/roster/RosterGrid.tsx` — `<Table>`의 `className`에 `!bg-slate-950` 추가(로스터 탭과 동일 처리). `tab === 'roster'`일 때 테이블 하단에 범례 섹션 신설 — `ATTR_GROUPS`를 그대로 순회해 그룹별로 그룹 평균(AVG) 제외 나머지 키들을 "약어 + 한글 짧은 이름"(`ATTR_LABEL`+`ATTR_KR_LABEL`, 기존 attributeConfig.ts에 이미 있던 데이터 재사용) 형태로 나열. `data/attributeConfig.ts`에서 `ATTR_KR_LABEL` import 추가.
+
+**검증**: `vite build` 정상 통과. Playwright로 실제 렌더링 후 DOM에서 범례 블록을 직접 파싱 — 6개 그룹(인사이드/아웃사이드/플레이메이킹/수비능력/리바운드/운동능력) × 그룹당 4~8개 항목, 총 36개 능력치가 전부 "약어 한글이름"(예: `CLS 훅/플로터`, `HNDL 볼 핸들링`, `PPRC 패스 경로 예측`) 형태로 정확히 렌더링됨을 확인, 콘솔 에러 없음.
+
+**주의사항 / 한계:**
+- 컬럼 폭 미세 흔들림(54~60px) 자체는 이번에 손대지 않음 — 육안상 크게 거슬리지 않는 수준이라 범례 추가로 "의미 파악" 문제부터 해결. 필요시 추후 폭 튜닝 가능.
+- 범례는 `tab === 'roster'`(능력치)에만 표시 — `tab === 'stats'`(기록 탭)는 PTS/REB 등 이미 익숙한 약어라 범례 불필요로 판단해 제외.
+
+**롤백 방법**: `RosterGrid.tsx`에서 범례 섹션(`{tab === 'roster' && (...)}` 블록)과 `!bg-slate-950` 클래스를 제거하면 됨.
+
+---
+
+## 2026-08-11 — 퀵플레이 화면 전환도 동일한 "브라우저 뒤로가기 튕김" 버그 수정
+
+**배경**: 로스터 화면 뒤로가기 버그를 고친 뒤 "비슷한 케이스가 더 있는지" 사용자 요청으로 전체 코드베이스 조사(`views/multi/` 전역은 이미 전부 `navigate()` 기반으로 정상, 문제 없음을 확인). 대신 싱글플레이어 **퀵플레이(`pages/QuickPlayPage.tsx`)** 에서 동일한 패턴을 발견 — `/quick` 라우트 하나 안에서 설정→라이브 관전→결과 3단계를 전부 `useState`(`showLive`/`liveParams`/`result`)로만 전환하고 있어서, URL이 계속 `/quick`에 머물고 브라우저 히스토리에 단계 전환 기록이 안 남았음. 결과/라이브 화면에서 브라우저 뒤로가기를 누르면 설정 화면을 건너뛰고 `/quick` 진입 이전 화면(모드선택 등)으로 바로 튕기는 문제.
+
+**변경 파일**:
+- `pages/QuickPlayPage.tsx` — `showLive`/`liveParams`/`result` 세 `useState`를 제거하고 `location.state`(`useLocation()`)에서 유도하도록 전환. 로스터 화면 때와 달리 결과/라이브 페이로드가 박스스코어·PBP 로그를 포함해 URL에 담기엔 너무 커서, `useSearchParams` 대신 **같은 pathname(`/quick`)으로 `navigate(path, { state })`를 호출하는 방식**을 사용 — URL은 안 바뀌지만 `state`가 다르면 여전히 진짜 브라우저 히스토리 항목이 push됨(단, `replace:true`를 넘기면 그 항목을 갱신만 하고 새로 쌓지 않음). 설정→라이브는 push(뒤로가기 시 설정으로 복귀), 라이브→결과(게임 자동 종료)는 replace(이미 끝난 라이브 화면으로는 못 돌아가므로, 결과에서 뒤로가기 누르면 라이브를 건너뛰고 곧장 설정으로). "다시 설정"/완전 초기화 버튼도 `navigate('/quick', {replace:true})`로 명시적 리셋.
+- 팀/로스터/뎁스차트/전술 등 나머지 설정값은 여전히 로컬 `useState`로 유지 — 같은 라우트(`/quick`)로의 `navigate` 호출은 컴포넌트를 리마운트시키지 않고 리렌더만 하므로 그대로 보존됨.
+
+**검증**: `vite build` 정상 통과. `QuickPlayPage` 전체는 팀 선택/DB fetch 등이 얽혀 있어 실제 마운트 대신, 동일한 push/replace 패턴만 분리한 최소 harness(`BrowserRouter` + Playwright `page.goBack()`)로 검증 — setup→live(push)→result(replace) 전환 후 브라우저 뒤로가기 1번을 누르면 (이미 끝난) 라이브 화면을 건너뛰고 곧장 설정 화면으로 정상 복귀함을 확인(`hasLive: false, hasSetup: true`).
+
+**주의사항 / 한계:**
+- `components/ProtectedLayout.tsx`가 전역 시뮬 컨텍스트 상태(`sim.liveGameTarget`/`sim.spectateTarget`)로 화면 전체에 `<LiveGameView>`를 덮어씌우는 것도 같은 계열의 패턴이지만, 시뮬 중엔 사용자가 뒤로가기를 누를 상황이 거의 없고 종료 시 자동으로 `/result/:id`(실제 라우트)로 넘어가서 우선순위가 낮다고 판단해 이번엔 손대지 않음(사용자와 사전 합의).
+
+**롤백 방법**: `QuickPlayPage.tsx`의 `showLive`/`liveParams`/`result`를 Before처럼 `useState`로 되돌리고, `navigate('/quick', {state,...})` 호출들을 각각의 `setShowLive`/`setLiveParams`/`setResult` 호출로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 선수 상세 뷰, 브라우저 뒤로가기가 순위표로 튀는 버그 수정
+
+**배경**: 사용자 제보 — 팀 화면(능력치/로스터)에서 선수 이름 클릭 → 선수 상세로 이동 후 뒤로가기를 누르면 순위 화면으로 튐. 원인: `MultiRosterView.tsx`가 선수 상세를 실제 라우트 이동 없이 `useState`(`viewing`)만으로 덮어 그리고 있었음 — URL이 계속 `/roster`에 머물러 브라우저 히스토리에 "선수 상세를 열었다"는 기록 자체가 없었고, 그래서 브라우저 자체 뒤로가기를 누르면 로스터 화면을 건너뛰고 그 이전 화면(순위표 등)으로 바로 이동했음. `PlayerDetailView` 안의 인앱 "←" 버튼(`onBack`)은 로컬 state만 지워서 정상 동작했지만, 브라우저 뒤로가기와는 동작이 어긋나 있었음.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — 선수 상세 열림 상태를 `useState` 대신 URL 쿼리 파라미터(`?player=&team=`, `useSearchParams`)로 관리하도록 전환. `onViewPlayer`/헤더 검색 자동열기 모두 `setSearchParams`(기본 push, 히스토리 항목 생성)로 통일한 `openPlayer()` 헬퍼 사용. `viewing` 값은 `allTeams`+쿼리 파라미터에서 매 렌더 유도(`useMemo`). `PlayerDetailView`의 `onBack`을 `() => setViewing(null)` → `() => navigate(-1)`로 변경 — 인앱 버튼과 브라우저 뒤로가기가 이제 동일하게 "방금 push된 선수 상세 히스토리 항목을 pop"하는 동작으로 통일됨.
+
+**Before**:
+```tsx
+const [viewing, setViewing] = useState<{...} | null>(null);
+const onViewPlayer = (player, teamId, teamName) => setViewing({ player, teamId: teamId ?? '', teamName: teamName ?? '' });
+...
+onBack={() => setViewing(null)}
+```
+
+**After**:
+```tsx
+const [searchParams, setSearchParams] = useSearchParams();
+const viewing = useMemo(() => { /* searchParams.get('player'/'team') + allTeams에서 유도 */ }, [...]);
+const openPlayer = (playerId, teamId) => setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('player', playerId); ...; return next; });
+const onViewPlayer = (player, teamId) => openPlayer(player.id, teamId);
+...
+onBack={() => navigate(-1)}
+```
+
+**검증**: `vite build` 정상 통과. 실제 `BrowserRouter` + Playwright `page.goBack()`(진짜 브라우저 히스토리 API 사용)로 재현 검증 — `history.pushState`로 "순위표→로스터" 2단계를 미리 쌓아둔 뒤 선수를 열고 **브라우저 자체** 뒤로가기를 1번 누르면 로스터 목록으로 정상 복귀(수정 전이었다면 여기서 바로 순위표로 튀었을 상황), 한 번 더 눌러야 순위표로 이동함을 확인. 인앱 "뒤로가기" 버튼도 동일하게 정상 동작 확인.
+
+**주의사항 / 한계:**
+- `RosterView.tsx`/`PlayerDetailView.tsx`는 손대지 않음 — `onBack` 콜백을 무엇으로 구현할지는 호출부(`MultiRosterView`) 책임이라 컴포넌트 계약은 그대로 유지됨.
+- 싱글플레이어(`pages/RosterPage.tsx`)는 원래부터 `/player/:id` 실제 라우트로 이동하는 방식이라 이번 버그 대상이 아니었음(회귀 없음, 미수정).
+
+**롤백 방법**: `MultiRosterView.tsx`의 `viewing`/`onViewPlayer`/`onBack`을 Before 블록의 `useState` 기반 구현으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 능력치 탭(RosterGrid) 폰트 사이즈를 로스터 탭과 통일 + 능력치 값 font-mono 해제
+
+**배경**: 사용자 요청 — "능력치" 탭(`RosterGrid`) 테이블 폰트를 "로스터" 탭(`RosterOverviewGrid`, 이번 세션에서 `text-sm`으로 통일해둔 상태)과 동일하게 맞추고, 능력치 값의 `font-mono`를 해제.
+
+**변경 파일**:
+- `components/roster/RosterGrid.tsx` — 그룹 헤더/컬럼 라벨/이름/포지션/나이/능력치 값/팀 평균 등 테이블 전역의 `text-xs`(12px)를 `text-sm`(14px)로 일괄 변경(OVR 배지 내부 숫자의 `!text-xs`는 기존 선례대로 그대로 유지). 능력치 값 셀(바디+팀평균 푸터 2곳)에 `mono={false}` 추가.
+- `components/common/Table.tsx` — **중요 발견**: 처음에 RosterGrid의 `className`에서 `font-mono`만 지웠더니 실제로는 아무 변화가 없었음 — `variant="attribute"`의 값 텍스트는 `TableCell` 내부에 `font-mono`가 하드코딩되어 있어 바깥 `className`으로는 제어가 안 됐음(다른 화면 `DraftView.tsx`도 같은 `variant="attribute"`를 쓰기 때문에 전역으로 빼버릴 수도 없었음). `TableCellProps`에 `mono?: boolean`(기본 `true`, 기존 동작 그대로) 프로퍼티를 신설해 `attribute` variant의 `font-mono` 적용 여부를 호출부에서 선택할 수 있게 만듦.
+
+**검증**: `vite build` 정상 통과. Playwright로 실제 능력치 키(`ins/closeShot/layup/...` 등)를 채운 목업 선수로 `RosterGrid tab="roster"`를 렌더링 후 `getComputedStyle`로 직접 확인 — 그룹 헤더/컬럼 라벨/선수 이름 전부 `font-size: 14px`, 능력치 값 셀도 `font-size: 14px`이면서 `font-family`가 `"Pretendard Variable", Pretendard, sans-serif`로 monospace가 완전히 빠진 것을 확인(1차 시도에서 값을 못 찾아 null이 나왔던 걸 재확인 과정에서 mock 데이터의 능력치 키가 실제 config 키와 안 맞았던 것으로 판명 — 올바른 키로 재검증해 확정).
+
+**주의사항 / 한계:**
+- `Table.tsx`의 `TableCell` 변경은 새 optional prop 추가라 `mono` 미지정 시 기본값 `true`로 기존 동작 그대로 — `DraftView.tsx`의 `variant="attribute"` 사용처는 영향 없음(회귀 없음).
+- "기록"(stats) 탭의 스탯 값들은 이번 요청 범위가 아니라 `font-mono` 그대로 유지.
+
+**롤백 방법**: `RosterGrid.tsx`의 `text-sm`을 `text-xs`로, `mono={false}` 제거. `Table.tsx`의 `mono` prop과 조건부 렌더링을 제거하고 `font-mono`를 다시 하드코딩.
+
+---
+
+## 2026-08-11 — StarRating 색상 스케일 재설계 (5점=노랑 → 낮아질수록 빨강)
+
+**배경**: 사용자 요청 — 별점(`StarRating`) 색상을 5점대는 노랑, 별 개수가 줄어들수록 빨간색에 가까워지도록. 기존엔 5점(97+는 시안, 그 외는 주황)→1점(슬레이트 회색)으로 색상 계통이 뒤섞여 있어 "낮을수록 나쁘다"는 직관이 약했음.
+
+**변경 파일**:
+- `components/common/StarRating.tsx` — `getStarGradient()`의 9단계 임계값별 hex 그라디언트를 노랑(5.0, 97+는 골드)→호박색(4.5)→연주황(4.0)→주황(3.5)→연빨강(3.0)→빨강(2.5)→진빨강(2.0)→더 진한 빨강(1.5)→가장 어두운 빨강(1.5 미만)으로 전면 교체.
+
+**Before**: 5.0(97+)=시안, 5.0=주황, 4.5=연주황, 4.0=호박, 3.5=노랑, 3.0=라임, 2.5=초록, 2.0=에메랄드, 1.5=슬레이트, 미만=슬레이트 다크
+
+**After**: 5.0(97+)=골드, 5.0=노랑, 4.5=호박, 4.0=연주황, 3.5=주황, 3.0=연빨강, 2.5=빨강, 2.0=진빨강, 1.5=더 진한 빨강, 미만=가장 어두운 빨강
+
+**검증**: `vite build` 정상 통과. Playwright로 OVR 99/90/80/70/60 5개 케이스를 `StarRating`에 렌더링 후 SVG `linearGradient stop`의 실제 `stop-color` 값을 DOM에서 직접 추출해 확인 — OVR 99(5.0★)=`#fef9c3/#eab308/#a16207`(골드), OVR 90(4.0★)=주황 계열, OVR 80(3.0★)=연빨강, OVR 70(1.5★)=빨강, OVR 60(0.5★)=`#dc2626/#991b1b/#450a0a`(가장 진한 빨강)로 예상한 그라디언트 순서와 정확히 일치.
+
+**주의사항 / 한계:**
+- `StarRating`은 로스터 탭 외에도 `PlayerDetailView.tsx`("리그 레벨"/"포지션 평점")에서도 공용으로 쓰이는 컴포넌트라, 이 색상 변경이 그 화면에도 동일하게 반영됨(의도된 전역 변경).
+
+**롤백 방법**: `getStarGradient()`를 Before 색상표로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 정보 라인 칩 스타일 제거(플레인 텍스트화) + GM 닉네임 "GM : 이름" 포맷
+
+**배경**: 사용자 요청 — 방금 추가한 정보 라인(컨퍼런스 순위/전적/승률/GB)을 칩(pill) 스타일 대신 플레인 텍스트로, 폰트는 `text-base`(16px)로. GM 닉네임은 이름만이 아니라 "GM : 이름" 형식으로.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 정보 라인 `<span>`의 `px-2.5 py-1 rounded-md text-xs font-bold bg-white/10` → `text-base font-bold`(배경/패딩/라운딩 제거), 간격 `gap-2`→`gap-3`. GM 닉네임 표시를 `{gmNickname}` → `GM : {gmNickname}`로 변경.
+
+**검증**: `vite build` 정상 통과. Playwright로 렌더링 후 각 span의 `getComputedStyle`을 직접 추출해 확인 — 정보 라인 4개 모두 `background-color: transparent`, `padding: 0`, `border-radius: 0`, `font-size: 16px`(text-base)로 정상 반영됨. GM 닉네임 텍스트가 "GM : 보스턴GM" 형식으로 정확히 렌더링됨.
+
+**롤백 방법**: 정보 라인 span 클래스를 이전 칩 스타일(`px-2.5 py-1 rounded-md text-xs font-bold bg-white/10`)로, GM 닉네임 텍스트를 `{gmNickname}`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 헤더에 컨퍼런스 순위/전적/승률/GB 정보 라인 + GM 닉네임 추가
+
+**배경**: 사용자 요청 — 드롭다운 버튼 안의 단순 전적 텍스트를 빼서, 드롭다운 우측에 `[동부 컨퍼런스 0위] [0W-0L] [.000 Win%] [GB 0.0]` 형태의 정보 라인으로 구성. 헤더 가장 우측엔 해당 팀 담당 GM(단장)의 닉네임을 표시하되 AI팀이면 미표시.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 드롭다운 버튼에서 전적 `<span>` 제거. `conferenceStandings`(useMemo)로 `schedule`+`allTeams.conference` 기준 실시간 승/패/승률/GB 계산(정렬은 승률desc→승수desc, GB는 컨퍼런스 리더 기준 `((리더W-리더L)-(팀W-팀L))/2`). 드롭다운 우측에 4개 배지(`bg-white/10` pill) 정보 라인 추가, 헤더 최우측(`ml-auto`)에 `teamNicknames` 맵 또는(미지정 시) `userNickname`(내 팀 한정) 기반 GM 닉네임 표시. `RosterViewProps`에 `teamNicknames?: Record<string, string | null>` prop 신설.
+- `views/multi/season/MultiRosterView.tsx` — `leagueTeams`(`LeagueTeamRow[]`, 이미 `is_ai`/`nickname` 필드 보유)로부터 `teamNicknames` 맵을 만들어 `<RosterView teamNicknames={...}>`로 전달.
+
+**검증**: `vite build` 정상 통과. Playwright로 2팀(동부, 4연전+1경기 결과 조합: ATL 3승2패/BOS 2승3패)+1팀(서부, GB 계산 제외 확인용) 목업 스케줄을 넣어 렌더링 — BOS 선택 시 "동부 컨퍼런스 2위 / 2W-3L / .400 Win% / GB 1.0" 정확히 계산됨, 드롭다운으로 ATL(리더)로 전환 시 "동부 컨퍼런스 1위 / 3W-2L / .600 Win% / GB 0.0"으로 정확히 갱신됨을 확인. `teamNicknames`에서 BOS는 닉네임 있음(우측에 "보스턴GM" 표시), ATL은 `null`(AI팀 가정) → 전환 시 닉네임 영역이 정상적으로 사라짐을 스크린샷으로 확인.
+
+**주의사항 / 한계:**
+- 멀티/싱글 공용 컴포넌트라 멀티플레이어 전용 "정시+10분 공개 딜레이"(`isFinal`/`multiGameReveal`) 로직 없이 `game.played` 값만으로 집계함 — 방금 시뮬된 경기가 순위표 공식 페이지보다 이 헤더에 몇 분 더 빨리 반영될 수 있음(사소한 불일치, 필요시 추후 조정).
+- 싱글플레이어(`RosterPage.tsx`)는 `teamNicknames`를 안 넘기므로 기존처럼 내 팀 한정으로만 `userNickname`을 표시(다른 팀은 전부 AI 취급) — 회귀 없음.
+
+**롤백 방법**: `RosterView.tsx`의 드롭다운 버튼에 전적 `<span>`을 복원하고, 정보 라인/GM 닉네임 블록 및 `conferenceStandings`/`teamNicknames` 관련 코드를 제거. `MultiRosterView.tsx`의 `teamNicknames` 계산/전달 제거.
+
+---
+
+## 2026-08-11 — 로스터 화면 헤더 팀 로고 삭제
+
+**배경**: 사용자 요청 — 로스터 화면 헤더의 팀 로고(TeamBadge)를 그냥 삭제.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 헤더 바 드롭다운 버튼 안의 `<TeamBadge .../>` 삭제(팀명/전적/드롭다운 화살표는 유지). 팀 전환 드롭다운 목록 안의 팀별 `TeamBadge`는 이번 요청 범위가 아니라 그대로 둠.
+
+**검증**: `vite build` 정상 통과. Playwright로 렌더링 — 헤더에 로고 없이 팀명/전적/화살표만 표시됨을 스크린샷으로 확인.
+
+**롤백 방법**: 삭제한 `<TeamBadge teamId={selectedTeam.id} abbr={selectedTeam.abbr} colorPrimary={selectedTeam.colorPrimary} colorSecondary={selectedTeam.colorSecondary} size="lg" />` 블록을 팀명 `<span>` 앞에 다시 추가.
+
+---
+
+## 2026-08-11 — 로스터 화면 헤더(로고/팀명/전적) 텍스트·배지 크기 확대
+
+**배경**: 사용자 요청 — 로스터 화면 헤더의 팀명(`text-sm`)이 최소 `text-lg`, 전적(`text-xs`)이 최소 `text-base`는 돼야 함. 로고도 그에 맞게 확대, 드롭다운 화살표 아이콘은 그대로 유지.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 헤더 바의 `<TeamBadge size="sm">` → `size="lg"`(현재 프리셋 중 최대), 팀명 `text-sm`→`text-lg`, 전적 `text-xs`→`text-base`. `ChevronDown`/`ChevronUp` 아이콘은 `size={16}` 그대로 유지.
+
+**검증**: `vite build` 정상 통과. Playwright로 애틀랜타(ATL) 팀 컬러 목업 렌더링 — 로고 배지/팀명/전적 텍스트가 모두 확대된 것을 스크린샷으로 확인.
+
+**롤백 방법**: `TeamBadge size="lg"`→`"sm"`, 팀명 `text-lg`→`text-sm`, 전적 `text-base`→`text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 화면 탭바 팀 테마 색상 적용 + 로스터 탭 테이블 여백 색상 통일
+
+**배경**: 사용자 요청 — ① 로스터 화면 탭바(로스터/능력치/기록/경기 기록/일정 등) 그룹도 상단 헤더 바처럼 팀 프라이머리/텍스트 컬러를 적용 ② "로스터" 탭 테이블에서 마지막 행 이후 남는 빈 공간을 테이블 헤더 행과 같은 배경색(`bg-slate-950`)으로 마감.
+
+**변경 파일**:
+- `components/common/TabBar.tsx` — 공용 컴포넌트(FrontOfficeView/TacticsBoard/FAView/DraftView 등 다른 화면에서도 사용)라 기존 동작을 깨지 않도록 optional `theme?: { bg, text, accent }` prop 추가. `theme`가 주어지면 배경을 `theme.bg`로, 활성 탭 텍스트/밑줄은 `theme.text`/`theme.accent`(불투명), 비활성 탭은 `theme.text` 60% 불투명도로 렌더링. `theme` 미지정 시(다른 화면들) 기존 `bg-slate-950`+인디고 스타일 그대로 유지.
+- `components/roster/RosterTabs.tsx` — `theme` prop 추가해 `TabBar`로 그대로 전달.
+- `views/RosterView.tsx` — 헤더 바 렌더링에 이미 쓰던 `theme`(`getTeamTheme(selectedTeam?.id, teamColors)`)을 `<RosterTabs theme={theme}>`로 동일하게 전달.
+- `components/roster/RosterOverviewGrid.tsx` — `<Table>`의 `className`에 `!bg-slate-950` 추가(기존 `!rounded-none !border-x-0 !border-t-0`에 이어붙임) — 테이블 컨테이너 자체 배경이 헤더 행과 같은 색이 되어, 행이 다 채워지지 않은 하단 여백도 자연스럽게 헤더와 동일 톤으로 마감됨(각 셀은 자기 배경색을 갖고 있어 실제 데이터 행에는 영향 없음).
+
+**검증**: `vite build` 정상 통과. Playwright로 실제 애틀랜타(ATL, 빨강) 팀 컬러 데이터를 넣어 `RosterView` 렌더링 — 탭바 배경이 헤더와 동일한 빨간색으로 이어지고, 활성 탭("로스터")은 흰 텍스트+밑줄, 비활성 탭들은 옅은 흰색으로 표시됨을 확인. 로스터 탭 테이블 하단 빈 공간도 헤더 행과 같은 톤으로 자연스럽게 마감됨을 스크린샷으로 확인.
+
+**주의사항 / 한계:**
+- `TabBar`는 공용 컴포넌트라 `theme` prop을 안 넘기는 다른 화면(FrontOffice/전술판/FA/드래프트 등)은 기존 slate/인디고 스타일 그대로 — 회귀 없음.
+- 테이블 여백 배경색 통일은 이번엔 "로스터" 탭(`RosterOverviewGrid`)에만 적용 — 다른 탭(능력치/기록 등)의 `RosterGrid`는 요청 범위 밖이라 손대지 않음.
+
+**롤백 방법**: `TabBar.tsx`에서 `theme` prop과 관련 조건부 스타일 제거, `RosterTabs.tsx`/`RosterView.tsx`의 `theme` 전달 제거, `RosterOverviewGrid.tsx`의 `!bg-slate-950` 제거.
+
+---
+
+## 2026-08-11 — 로스터 탭(RosterOverviewGrid) 디자인 수정 2차
+
+**배경**: 사용자 요청 — ① 레이팅 컬럼을 맨 우측으로 이동 ② 아키타입/세컨더리 컬럼 헤더는 "아키타입" 하나로 통합하되 바디 셀은 그대로 2개 분리 유지 ③ 아키타입/세컨더리/태그 텍스트를 흰색+보통 굵기(font-normal)로 ④ 이름/포지션/나이/키/몸무게/아키타입/세컨더리/태그 텍스트 컬러를 전부 흰색으로 통일.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx` — 컬럼 순서를 이름/포지션/나이/OVR/키/몸무게/아키타입/세컨더리/태그/레이팅으로 재배치(레이팅을 맨 끝으로), 아키타입+세컨더리 헤더를 `<TableHeaderCell colSpan={2}>아키타입</TableHeaderCell>` 하나로 병합(바디는 기존처럼 별도 `<TableCell>` 2개 유지), 포지션/나이 색상을 `text-slate-500`→`text-white`, 아키타입/세컨더리/태그를 `text-slate-200`/`text-slate-400`/`text-slate-300` 등 개별 색상→전부 `text-white font-normal`로 통일
+
+**검증**: `vite build` 정상 통과. Playwright로 재검증 — 스크린샷에서 레이팅이 맨 우측, "아키타입" 헤더 하나가 두 컬럼 너비를 덮으면서 바디는 프라이머리/세컨더리가 분리된 두 셀로 표시됨, 이름·포지션·나이·키·몸무게·아키타입·세컨더리·태그 텍스트가 전부 흰색으로 통일된 것을 육안 확인.
+
+**롤백 방법**: 이전 커밋("로스터 탭(RosterOverviewGrid) 디자인 수정" 1차) 버전으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 로스터 탭(RosterOverviewGrid) 디자인 수정
+
+**배경**: 사용자 요청 — 방금 만든 "로스터" 탭(선수 기본사항 테이블)의 상위 그룹 헤더 제거, 폰트 확대, 레이팅 별 크기 확대, 아키타입 프라이머리/세컨더리를 별도 컬럼으로 분리, 태그 색상을 임의 색 대신 밝은 회색으로 통일, 전 컬럼 font-mono 해제.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx` — ① "선수 정보"/"기본 사항" 상위 `<tr colSpan>` 그룹 헤더 행 삭제, 컬럼 라벨 행만 유지 ② 헤더/바디 텍스트 `text-xs`(12px) → `text-sm`(14px) 일괄 변경 ③ `<StarRating size="sm">` → `size="lg"` ④ 아키타입 컬럼 하나(프라이머리+세컨더리 2줄 스택) → "아키타입"/"세컨더리" 2개 컬럼으로 분리(`WIDTHS.ARCHETYPE`+`WIDTHS.SECONDARY` 신설) ⑤ 태그 pill의 `style={{color: t.color, ...}}` 개별 색상 제거 → `text-slate-300` 콤마 구분 텍스트로 통일 ⑥ 키/몸무게 셀의 `font-mono` 제거
+
+**검증**: `vite build` 정상 통과. Playwright로 아키타입/태그가 채워진 목업 선수 8명을 `RosterOverviewGrid` 단독 마운트해 렌더링 — 콘솔 에러 없음, 스크린샷으로 그룹 헤더 없음/폰트 확대/별 5개 크게 표시/아키타입·세컨더리 별도 컬럼/태그 밝은 회색 통일 전부 육안 확인.
+
+**롤백 방법**: 이전 커밋(바로 위 "팀 화면 탭 재구성" 항목)의 `RosterOverviewGrid.tsx` 버전으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 팀 화면 탭 재구성: 로스터(신설)/능력치(개명)/기록(신설)/경기 기록/일정(신설) 5탭 체제
+
+**배경**: 사용자 요청 — 팀 화면에 로스터/경기 기록 2탭만 있어 정보가 부족함. 기존 "로스터" 탭(능력치 그리드)을 "능력치"로 개명하고, 그 왼쪽에 선수 기본사항(이름/포지션/나이/OVR + 키/몸무게/레이팅/아키타입/태그)을 보여주는 신규 "로스터" 탭 신설. "능력치" 오른쪽에 시즌 기록 테이블 "기록" 탭 신설. "경기 기록" 오른쪽에 팀 일정을 달력으로 보여주는 "일정" 탭 신설(싱글플레이어 `ScheduleView.tsx`는 시뮬레이션 시작/관전 등 싱글 전용 로직과 얽혀 있어 그대로 재사용하지 않고, 멀티에서 이미 쓰는 순수 달력 그리드 `MonthCalendarPopover.tsx` 패턴을 베이스로 새로 작성).
+
+**변경 파일**:
+- `components/roster/RosterTabs.tsx` — `RosterTab` 유니온을 `'roster'|'records'|'coaching'|'draftPicks'` → `'overview'|'attributes'|'stats'|'records'|'schedule'|'coaching'|'draftPicks'`로 확장, 탭 순서/라벨 갱신(로스터/능력치/기록/경기 기록/일정/코칭 스태프/드래프트 픽)
+- `components/roster/RosterOverviewGrid.tsx` (신규) — 이름/포지션/나이/OVR(고정 컬럼, `RosterGrid`와 동일 스타일) + 키/몸무게/레이팅(`StarRating` 재사용, OVR 기반)/아키타입(프라이머리·세컨더리, `getArchetypeDisplayInfo`)/태그(`getTraitTagDisplayInfo`, 최대 3개 색상 뱃지) 테이블. `player.archetypeState`가 없으면 `assignArchetypes(player, '2025-26')`로 폴백(PlayerDetailView와 동일 패턴).
+- `components/roster/TeamScheduleCalendar.tsx` (신규) — 월간 그리드 달력. `schedule`에서 해당 팀 경기만 필터링해 날짜별로 배치, 완료 경기는 상대팀/W·L/스코어 표시 후 클릭 시 `onScoreClick`(멀티) 또는 `onViewGameResult`+`fetchFullGameResult`(싱글, `TeamGameLog.tsx`와 동일 폴백 패턴) 호출. 초기 진입 월은 다음 예정 경기 → 최근 경기 → 이번 달 순으로 자동 결정.
+- `views/RosterView.tsx` — 새 탭 4종 와이어링: `overview`→`RosterOverviewGrid`, `attributes`→`RosterGrid tab="roster"`(기존 컨텐츠 그대로), `stats`→`RosterGrid tab="stats"`(이미 구현되어 있던 시즌 평균 그리드를 탭으로 노출만 하면 됐음 — 신규 컴포넌트 불필요), `schedule`→`TeamScheduleCalendar`. 기본 활성 탭을 `'roster'`→`'overview'`로 변경.
+
+**검증**: `vite build` 정상 통과. Playwright로 `RosterView`에 아키타입/키/몸무게가 채워진 목업 선수 10명 + 8/12경기 목업 일정을 넣어 5개 탭 전부 클릭 순회 — 콘솔 에러 0건, 스크린샷으로 로스터(레이팅 별/아키타입/태그 정상 표시), 능력치, 기록(시즌 평균), 경기 기록, 일정(월간 그리드에 상대팀·W/L·스코어 정상 배치) 전부 확인. 아키타입/태그가 영어 라벨("Primary Creator" 등)로 뜨는 건 `ARCHETYPE_DISPLAY`의 기본값이 원래 영어이고 DB 커스텀 라벨 설정이 있어야 한글로 바뀌는 기존 동작(`PlayerDetailView.tsx`의 "선수 유형" 섹션과 완전히 동일한 소스 함수 사용) — 이번에 새로 생긴 문제가 아님.
+
+**주의사항 / 한계:**
+- 국적(nationality) 컬럼은 `Player` 타입에 해당 필드 자체가 없어 이번 작업에서 제외(사용자 확인).
+- `RosterGrid`의 내부 `tab: 'roster' | 'stats'` prop과 새 `RosterTab`의 `'attributes'`/`'stats'` id는 이름이 겹치지 않게 분리되어 있음 — `RosterGrid`는 그대로 두고 `RosterView`에서 어떤 `RosterTab`일 때 어떤 `RosterGrid.tab` 값을 넘길지만 매핑함.
+- `TeamScheduleCalendar`의 싱글플레이어 경로(`fetchFullGameResult`)는 `TeamGameLog.tsx`와 동일하게 `user_game_results` 테이블 기반이라 멀티플레이어에서는 반드시 `onScoreClick`을 넘겨야 정상 동작(이미 `MultiRosterView.tsx`가 넘기고 있어 문제 없음).
+
+**롤백 방법**: `RosterTabs.tsx`의 `RosterTab` 유니온/`TABS`를 Before 상태로 되돌리고, `RosterView.tsx`의 탭 렌더링 분기를 `'roster'`/`'records'`/`'coaching'`/`'draftPicks'` 4종으로 되돌린 뒤 `RosterOverviewGrid.tsx`/`TeamScheduleCalendar.tsx` 두 파일을 삭제하면 됨.
+
+---
+
+## 2026-08-11 — 홈 위젯/로스터/리더보드 원본 fetch 통합 (공유 쿼리로 재구조, 로더 3중 문제 근본 해결)
+
+**배경**: 사용자가 "홈 화면 로스터 위젯도 또 로더가 돌고, 로스터/리더보드도 각각 최초 진입 시 로더가 또 돈다 — 실제 사용자 입장에서 답답하다"고 강하게 지적. 원인 재점검 결과, 이전까지의 패치들은 각 화면의 "자기 자신의" 로더만 개별적으로 손봤을 뿐, 세 화면(`MultiSeasonPage` 홈 위젯 / `MultiRosterView` / `MultiLeaderboardView`)이 **각자 독립적으로** 거의 동일한 `meta_players`+`game_pbp` 원본 데이터를 따로 fetch하고 있었다는 구조적 중복이 근본 원인이었음. 특히 홈 위젯은 React Query조차 아닌 순수 `useEffect`+`useState`라 이전 localStorage 영속화의 혜택도 못 받고 있었음.
+
+**변경 파일**:
+- `hooks/useLeagueRawStats.ts` (신규) — `meta_players`+`game_pbp` 원본 fetch를 감싸는 공유 `useQuery` 훅. `queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')]` 고정, `select` 옵션으로 화면별로 다른 파생 데이터 모양을 만들도록 제네릭하게 설계 — 같은 key를 쓰는 호출끼리는 원본 fetch(네트워크 요청)를 공유하고 `select`만 각자 다르게 실행됨(React Query 표준 패턴).
+- `views/multi/season/MultiRosterView.tsx` — 자체 `useQuery`(`queryKey: 'multiRosterData'`) 제거, `useLeagueRawStats(room?.id, allRosterIds, selectRosterData)`로 교체(select가 기존 `builtTeams`/`logMap`/`gameTeamStatsMap` 계산을 그대로 수행)
+- `views/multi/season/MultiLeaderboardView.tsx` — 자체 `useQuery`(`queryKey: 'multiLeaderboardStats'`) 제거, 동일하게 `useLeagueRawStats(room?.id, allRosterIds, selectLeaderboardTeams)`로 교체(단, `staleTime: 2분` 개별 설정은 제거 — 이제 전역 기본값 Infinity로 통일돼 다른 두 화면과 캐시 신선도 기준이 일치함)
+- `pages/MultiSeasonPage.tsx` — 로스터 위젯의 `useEffect`+`useState` 수동 fetch 완전 제거. `allRosterIds`를 (내 팀만이 아니라) Roster/Leaderboard와 동일하게 **리그 전체 로스터**로 바꿔 같은 queryKey를 타도록 하고, `select`(`selectMyTeamStats`)에서 내 팀 선수만 필터링. `rooms.roster_state`(컨디션/부상)는 원본과 무관한 별도 소스라 자체 `useQuery(['roomRosterState', room?.id])`로 분리해 캐싱만 적용.
+
+**Before** (세 화면이 각자 다른 queryKey로 중복 fetch):
+```
+MultiSeasonPage   → useEffect  → meta_players(내 팀만)+game_pbp(내 팀 경기만)+rooms.roster_state
+MultiRosterView   → useQuery('multiRosterData', ...)      → meta_players(전체)+game_pbp(전체)
+MultiLeaderboardView → useQuery('multiLeaderboardStats', ...) → meta_players(전체)+game_pbp(전체)
+```
+
+**After** (세 화면이 같은 queryKey로 원본 fetch 공유):
+```
+MultiSeasonPage      → useLeagueRawStats(room.id, 전체rosterIds, selectMyTeamStats)     ─┐
+MultiRosterView      → useLeagueRawStats(room.id, 전체rosterIds, selectRosterData)      ─┼─ 같은 queryKey → 원본 fetch 1회만 실행, select만 다르게 적용
+MultiLeaderboardView → useLeagueRawStats(room.id, 전체rosterIds, selectLeaderboardTeams) ─┘
+```
+
+**검증**: `vite build` 정상 통과, 세 파일 모두 신규 타입 에러 없음. React Query의 "같은 queryKey + 다른 select" 공유 메커니즘 자체를 Playwright로 별도 harness 검증 — 서로 다른 `select`를 쓰는 두 컴포넌트를 동시에 마운트해도 원본 `queryFn`은 **1회만** 실행되고(`fetchCount: 1`) 각자 올바른 파생값을 받음을 확인(`A:["p1"]`, `B:3`).
+
+**주의사항 / 한계:**
+- 홈 위젯이 이제 "내 팀 로스터"가 아니라 "리그 전체 로스터"를 기준으로 원본 데이터를 요청하므로, 홈 화면에 **가장 먼저** 들어가는 사용자 입장에서는 이전보다 약간 더 많은 데이터(리그 전체)를 한 번에 받게 됨 — 대신 이후 로스터/리더보드 화면 진입이 즉시 캐시 히트로 바뀌는 트레이드오프.
+- `MultiLeaderboardView`의 개별 `staleTime: 2분` 설정이 사라지고 전역 `Infinity`로 통일됨에 따라, 예전에 "2분 지나면 자동으로 조금 더 자주 재검증"되던 미세한 동작 차이가 사라짐 — 다른 화면들과 동일하게 수동 새로고침/탭 진입 트리거로만 갱신.
+- `game_id`, `home_score`, `away_score` 등 리더보드가 원래 select하지 않던 컬럼도 이제 공유 쿼리에 포함돼 함께 내려옴(로스터 화면 쪽 필요 컬럼과 합친 슈퍼셋) — 응답 payload가 약간 커지지만 이미 같은 요청 1번에 다 포함되므로 실질적 비용 증가는 미미함.
+
+**롤백 방법**: 세 파일에서 `useLeagueRawStats` 호출을 각자의 Before 블록에 있던 개별 `useQuery`/`useEffect` 원본 fetch 코드로 되돌리고, `hooks/useLeagueRawStats.ts` 파일을 삭제하면 됨.
+
+---
+
+## 2026-08-11 — 새로고침 시 캐시 localStorage 영속화 추가 (React Query persist)
+
+**배경**: 사용자 지적 — 로스터/리더보드 화면은 브라우저 새로고침 시 항상 로더가 뜬다. React Query 캐시가 메모리에만 있고 저장소에 남지 않아(persister 미설정) 새로고침마다 캐시가 완전히 초기화되기 때문. localStorage 캐시는 널리 쓰이는 방법이라는 사용자 확인 후 도입.
+
+**변경 파일**:
+- `package.json` — `@tanstack/query-sync-storage-persister`, `@tanstack/react-query-persist-client` 추가 (둘 다 `@tanstack/react-query` v5와 동일 버전 라인)
+- `index.tsx` — `QueryClientProvider` → `PersistQueryClientProvider`로 교체, `createSyncStoragePersister({ storage: window.localStorage, key: 'nba-gm-sim-query-cache' })` + `maxAge: 24시간` 적용
+
+**Before**:
+```tsx
+import { QueryClientProvider } from '@tanstack/react-query';
+...
+<QueryClientProvider client={queryClient}>
+    <App />
+</QueryClientProvider>
+```
+
+**After**:
+```tsx
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+...
+const persister = createSyncStoragePersister({ storage: window.localStorage, key: 'nba-gm-sim-query-cache' });
+...
+<PersistQueryClientProvider client={queryClient} persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}>
+    <App />
+</PersistQueryClientProvider>
+```
+
+**검증**: `vite build` 정상 통과. Playwright로 별도 harness(`useQuery` 하나만 있는 최소 앱)를 `PersistQueryClientProvider`로 감싸 테스트 — 최초 로드 시 정상적으로 fetch(LOADING→DATA, fetchCount=1) 후 localStorage에 캐시가 저장됨(477 bytes) 확인, `page.reload()`로 새로고침 재현 시 로더 없이 즉시 캐시된 DATA가 보이고 `queryFn`이 재호출되지 않음(fetchCount 그대로) 확인 — staleTime:Infinity 전역 설정 덕분에 복원된 캐시도 "신선한"것으로 취급되어 자동 재요청되지 않음.
+
+**주의사항 / 한계:**
+- `useCurrentLeague`/`useMultiGameData`(리그/시즌 메타데이터)는 React Query가 아니라 순수 `useState`+`useEffect` 기반이라 이 영속화의 적용 대상이 아님 — 이 둘의 로딩은 아래 "로더 두 번" 수정으로 별도 해결.
+- 캐시가 24시간 지나면 폐기되고 정상 재조회됨. 그 전이라도 각 화면의 수동 새로고침 버튼/탭 진입 트리거로 언제든 최신화 가능(staleTime:Infinity라 자동 재검증은 없음).
+- localStorage 용량(보통 5~10MB)을 넘는 대형 쿼리 결과가 쌓이면 저장 실패 가능성이 있으나, persister 자체가 내부적으로 실패를 무시하도록 되어 있어 앱 크래시로 이어지진 않음.
+
+**롤백 방법**: `index.tsx`를 `QueryClientProvider`+`@tanstack/react-query`의 `QueryClientProvider`로 되돌리고, `package.json`에서 두 패키지 제거 후 `npm install`.
+
+---
+
+## 2026-08-11 — 멀티플레이어 시즌 화면 진입 시 로더가 두 번 뜨는 문제 수정 (LeagueLayout/MultiSeasonLayout 게이트 병합)
+
+**배경**: 사용자 지적 — 로스터/리더보드 화면에 새로고침으로 들어가면 로더가 "두 번" 뜬다. 원인: `LeagueLayout.tsx`는 리그/방 메타데이터(`state.isLoading`, `useCurrentLeague` — 순수 `useState`/`useEffect`)만 기다리고 바로 `<Outlet/>`을 내려주는데, 그 안의 `MultiSeasonLayout.tsx`가 이어서 시즌 데이터(`gameData.isLoading`, `useMultiGameData` — 역시 순수 `useState`/`useEffect`)를 또 기다리며 똑같이 생긴 자기 자신의 로더를 별도로 띄움 — 서로 다른 두 컴포넌트가 순차로 거의 동일한 풀스크린 로더를 렌더링해 "로더가 깜빡이며 두 번 뜨는" 것처럼 보임. 로비/설정 화면은 시즌 데이터를 기다릴 필요가 없어 의도적으로 분리해둔 구조였으나, `/season` 라우트로 곧바로 진입하는 경우엔 이 분리가 부작용이 됨.
+
+**변경 파일**:
+- `views/multi/league/LeagueLayout.tsx` — `useLocation()`으로 현재 경로가 `/season`을 포함하는지 판별(`isSeasonRoute`), 해당 라우트일 때만 `state.isLoading || gameData.isLoading`을 함께 기다려 로더 게이트를 하나로 합침. 로비/설정 라우트는 기존처럼 `state.isLoading`만 기준으로 삼아 시즌 데이터를 기다리지 않는 동작 그대로 유지.
+
+**Before**:
+```tsx
+export function LeagueLayout() {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const state = useCurrentLeague();
+    const { session } = useGame();
+    const gameData = useMultiGameData(session, state.room?.id ?? null);
+
+    if (state.isLoading) {
+        return <div className="..."><Loader2 .../></div>;
+    }
+    ...
+}
+```
+
+**After**:
+```tsx
+export function LeagueLayout() {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const location = useLocation();
+    const state = useCurrentLeague();
+    const { session } = useGame();
+    const gameData = useMultiGameData(session, state.room?.id ?? null);
+
+    const isSeasonRoute = location.pathname.includes('/season');
+    const isLoading = state.isLoading || (isSeasonRoute && gameData.isLoading);
+
+    if (isLoading) {
+        return <div className="..."><Loader2 .../></div>;
+    }
+    ...
+}
+```
+
+**검증**: `vite build` 정상 통과, 신규 타입 에러 없음. `MultiSeasonLayout.tsx`의 기존 `gameData.isLoading` 자체 게이트는 그대로 유지(제거하지 않음) — 이제 LeagueLayout이 이미 다 기다린 뒤에만 그쪽 Outlet이 렌더링되므로 사실상 항상 false로 통과하는 "안전장치"로만 남음(직접 URL 진입 등 예외 상황 대비, 코드 주석에 명시된 기존 의도 유지). 실제 Supabase 인증/리그 세션이 필요한 라우팅 로직이라 목업 브라우저 렌더링 검증은 어려워 코드 리뷰 + 빌드로 검증을 대신함.
+
+**주의사항 / 한계:**
+- `MultiRosterView`/`MultiLeaderboardView` 자체의 3번째 로딩 단계(각자의 `meta_players`+`game_pbp` useQuery)는 이 수정 대상이 아님 — 이건 위 localStorage 영속화 항목이 완화해줌(새로고침 시에도 캐시가 있으면 즉시 표시).
+- `isSeasonRoute` 판별은 `location.pathname.includes('/season')` 문자열 매칭이라, 향후 다른 곳에 우연히 `/season`이 들어간 경로가 추가되면 오탐할 수 있음(현재 라우팅 구조상 문제 없음).
+
+**롤백 방법**: `LeagueLayout.tsx`의 `isLoading` 계산을 `state.isLoading`으로, 게이트 조건을 `if (state.isLoading)`으로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 경기 기록 탭 재조회에 3초 쿨다운 추가 (빠른 탭 왕복 시 중복 재조회 방지)
+
+**배경**: 사용자 지적 — 바로 전 항목에서 "경기 기록 탭 진입 시 자동 재조회"로 바꿨는데, 탭을 빠르게 왔다갔다하면 그때마다 재조회가 시작될 수 있음. React Query는 "동시에 진행 중인" 동일 요청은 자체적으로 중복 제거하지만, 이미 완료된 요청을 짧은 간격으로 또 호출하는 건 막아주지 않으므로 별도 쿨다운 가드가 필요.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `onRosterTabChange`에 `lastRecordsRefetchRef`(useRef, 마지막 재조회 시각)로 3초 쿨다운 가드 추가. 디바운스(호출 지연) 대신 쿨다운(즉시 1회 실행 + 이후 일정 시간 무시) 방식을 택함 — "탭 진입 즉시 최신화"라는 원래 의도를 유지하기 위함.
+
+**Before**:
+```tsx
+const onRosterTabChange = useCallback((t: string) => {
+    if (t === 'records') refetchRoster();
+}, [refetchRoster]);
+```
+
+**After**:
+```tsx
+const RECORDS_REFETCH_COOLDOWN_MS = 3000;
+const lastRecordsRefetchRef = useRef(0);
+const onRosterTabChange = useCallback((t: string) => {
+    if (t !== 'records') return;
+    const now = Date.now();
+    if (now - lastRecordsRefetchRef.current < RECORDS_REFETCH_COOLDOWN_MS) return;
+    lastRecordsRefetchRef.current = now;
+    refetchRoster();
+}, [refetchRoster]);
+```
+
+**검증**: `vite build` 정상 통과. 동일 가드 로직을 Node 스크립트로 분리 시뮬레이션 — 3초 이내 빠른 탭 왕복(0/500/1000/1500ms) 시 재조회 1회로 묶이고, 쿨다운 경과 후(+3200ms) 재진입 시 정상적으로 다시 재조회됨을 확인.
+
+**주의사항 / 한계:**
+- 쿨다운 시간(3초)은 임의로 정한 값 — 실제 사용 패턴상 너무 짧거나 길면 조정 필요.
+
+**롤백 방법**: `onRosterTabChange`를 Before의 단순 `if (t === 'records') refetchRoster();` 형태로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 멀티플레이어 홈(시즌 인덱스) 화면 진입 시 매번 로더 뜨는 문제 수정
+
+**배경**: 사용자 제보 — 멀티플레이어 "홈" 화면(`/multi/leagues/:leagueId/season` 인덱스 라우트)에 들어올 때마다 로더가 돎. 원인: 로스터/순위/리더보드 화면은 전부 `LeagueLayout`이 1회 로드해 `SeasonCtx`로 내려주는 공유 데이터(`useSeasonContext()`)를 재사용하는데, `MultiSeasonPage.tsx`만 `useMultiGameData(session, room?.id ?? null)`를 직접 다시 호출해 room/schedule/roster를 화면 진입마다 처음부터 재조회하고 있었음(예전 방식이 마이그레이션 안 된 채 남아있던 코드).
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `useMultiGameData` 직접 호출 제거, `useSeasonContext()`(공유 컨텍스트)로 교체. 이로 인해 더 이상 안 쓰이는 `session`/`useGame` import도 함께 제거.
+
+**Before**:
+```tsx
+import { useMultiGameData } from '../hooks/useMultiGameData';
+import { useGame } from '../hooks/useGameContext';
+...
+const { session }  = useGame();
+const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
+```
+
+**After**:
+```tsx
+import { useSeasonContext } from '../views/multi/season/seasonContext';
+...
+const { isLoading: gameLoading, schedule, myTeamId } = useSeasonContext();
+```
+
+**검증**: `vite build` 정상 통과, 신규 타입 에러 없음. `useSeasonContext()`의 반환 타입(`MultiGameDataReturn`)이 `isLoading`/`schedule`/`myTeamId` 필드를 그대로 포함하고 있어 필드명 변경 없이 그대로 교체 가능함을 `hooks/useMultiGameData.ts` 반환 객체 확인으로 검증. `LeagueLayout.tsx`가 `<SeasonCtx.Provider value={useMultiGameData(...)}>`로 이미 상위에서 데이터를 제공하고 있고 `MultiSeasonPage`가 그 하위 라우트임을 라우팅 트리(App.tsx)로 확인.
+
+**주의사항 / 한계:**
+- 실 Supabase 세션/리그/방 상태가 필요한 데이터 배선 변경이라 목업 브라우저 렌더링 검증은 적용하지 않고 빌드/타입체크로 대체함.
+
+**롤백 방법**: import를 `useMultiGameData`/`useGame`으로 되돌리고 `const { session } = useGame();` + `useMultiGameData(session, room?.id ?? null)` 호출로 원복.
+
+---
+
+## 2026-08-11 — 멀티플레이어 로스터 화면 "경기 기록" 탭 빈 화면 버그 수정
+
+**배경**: 사용자 제보 — 멀티플레이어 로스터 화면의 "경기 기록" 탭에 아무것도 안 뜸. 원인 조사 결과 3중 문제였음: (1) `RosterView.tsx`가 `onViewGameResult` prop이 있어야만 탭 내용을 렌더링하는데 `MultiRosterView.tsx`가 이 prop 자체를 안 넘김, (2) `schedule` prop도 안 넘겨서 넘겼어도 빈 목록, (3) `TeamGameLog.tsx`의 스코어 클릭 핸들러가 싱글플레이어 전용 `fetchFullGameResult`(`user_game_results` 테이블 쿼리)를 내부에서 직접 호출하는 구조라 멀티플레이어 데이터로는 절대 값을 못 찾아 클릭해도 반응 없음.
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — `onScoreClick?: (gameId: string) => void` prop 추가, `handleGameClick`에서 이 prop이 있으면 `fetchFullGameResult` 호출 없이 즉시 gameId만 전달하고 리턴
+- `views/RosterView.tsx` — `onScoreClick` prop 추가·pass-through, "records" 탭 렌더 게이트를 `onViewGameResult && (...)` → `(onViewGameResult || onScoreClick) && (...)`로 완화
+- `views/multi/season/MultiRosterView.tsx` — `game_pbp` select에 `game_id` 추가, `sumTeamBoxStats`/`buildGameTeamStatsMap`으로 경기별 팀 단위 박스스코어(homeStats/awayStats) 집계, `scheduleWithStats`(useMemo)로 `useSeasonContext().schedule`에 병합해 `<RosterView schedule={...}>`로 전달, `onScoreClick`으로 `/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}` 네비게이션(기존 MultiScheduleView/TournamentBracketView와 동일 패턴, `useGameShortCodes` 재사용)
+
+**Before**:
+```tsx
+// MultiRosterView.tsx
+<RosterView
+    allTeams={allTeams}
+    myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
+    initialTeamId={navState.viewTeamId ?? myTeamId}
+    onViewPlayer={onViewPlayer}
+    userId={session?.user?.id}
+    hideTabs={['coaching', 'draftPicks']}
+/>
+```
+
+**After**:
+```tsx
+// MultiRosterView.tsx
+<RosterView
+    allTeams={allTeams}
+    myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
+    initialTeamId={navState.viewTeamId ?? myTeamId}
+    onViewPlayer={onViewPlayer}
+    schedule={scheduleWithStats}
+    onScoreClick={onScoreClick}
+    userId={session?.user?.id}
+    hideTabs={['coaching', 'draftPicks']}
+/>
+```
+
+**검증**: `vite build` 정상 통과(에러 없음). Playwright로 `RosterView`를 목업 schedule(5경기, homeStats/awayStats 포함)로 마운트 → "경기 기록" 탭 클릭 시 실제 날짜/상대/W-L/스코어/팀 스탯(PTS~FTM 등)이 정상 렌더링되고 시즌 평균 푸터도 계산됨을 스크린샷으로 확인. 스코어 클릭 시 `onScoreClick(gameId)`가 정상 호출됨을 콘솔 값으로 확인(`window.__lastScoreClick === 'g0'`).
+
+**주의사항 / 한계:**
+- `TeamGameLog.tsx`는 싱글/멀티 공용 컴포넌트 — 싱글플레이어(`pages/RosterPage.tsx`)는 여전히 기존 `onViewGameResult`+`fetchFullGameResult` 경로를 그대로 사용하므로 회귀 없음(`onScoreClick`을 안 넘기면 기존 분기 그대로 탐).
+- 팀 단위 박스스코어는 `game_pbp.home_box`/`away_box`(선수별 배열)를 매 로스터 화면 진입 시 합산하는 방식 — 경기 수가 매우 많아지면(풀시즌 82경기+) 합산 비용이 늘어날 수 있으나 현재는 로스터 진입 시 1회 계산이라 문제 없음.
+
+**롤백 방법**: 위 세 파일을 Before 상태로 되돌리면 됨 — `TeamGameLog.tsx`의 `onScoreClick` 관련 라인 제거, `RosterView.tsx` 게이트를 `onViewGameResult &&`로 원복, `MultiRosterView.tsx`의 `<RosterView>` 호출에서 `schedule`/`onScoreClick` prop 제거.
+
+---
+
+## 2026-08-11 — 리더보드 푸터 텍스트 한국어화
+
+**배경**: 사용자 요청 — 푸터 좌측 "Showing X–Y of Z" 표시와 우측 "Rows" 라벨이 영어로 남아 있어 한국어로 변경.
+
+**변경 파일**:
+- `views/LeaderboardView.tsx` — 페이지네이션 푸터 좌측/우측 텍스트
+
+**Before**:
+```tsx
+Showing {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)} of {sortedData.length}
+...
+<span className="text-sm font-bold text-slate-500">Rows</span>
+```
+
+**After**:
+```tsx
+총 {sortedData.length}명 중 {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)}
+...
+<span className="text-sm font-bold text-slate-500">페이지 당</span>
+```
+
+**검증**: `tsc --noEmit` 통과, Playwright로 목업 데이터(40명) 렌더링 스크린샷 확인 — "총 40명 중 1–25", "페이지 당 25" 정상 표시.
+
+**롤백 방법**: Before 블록 텍스트로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 리더보드 팀 > 수비 탭 DFGA 컬럼 컬러 스케일(히트맵) 누락 수정
+
+**배경**: 사용자가 "리더보드의 팀 > 수비에서 DFGA 컬럼들에는 컬러 스케일이 적용이 안되네"라고 제보. 같은 존(RA/ITP/MID/CNR/WING/ATB)의 DFGM, DFG% 컬럼은 이미 정상적으로 히트맵 색상이 적용되는데 DFGA만 색상 없이 렌더링됨.
+
+**변경 파일**:
+- `data/leaderboardConfig.ts` — `DEFENSE_COLUMNS`(선수 모드)와 `TEAMS_DEFENSE_COLUMNS`(팀 모드) 두 곳의 `dfg${z}_a` (DFGA) 컬럼 정의에서 `isHeatmap: false` → `isHeatmap: true`
+
+**Before**:
+```ts
+{ key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: false, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
+```
+
+**After**:
+```ts
+{ key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: true, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
+```
+(팀 모드 `TEAMS_DEFENSE_COLUMNS` 쪽은 `format: 'number' as const` 차이만 있고 동일하게 수정)
+
+**검증**:
+- `LeaderboardTable.tsx`의 히트맵 렌더링 로직(4곳)이 전부 `col.isHeatmap` 플래그 하나로만 분기 → `getHeatmapStyle(col.key, val, statRanges, showHeatmap, col.isInverse)` 호출. DFGM/DFG%가 이미 이 경로로 정상 동작 중이므로 동일 메커니즘.
+- `useLeaderboardData.ts`에서 `statRanges['dfg${z}_a']` 값은 이번 수정 이전부터 이미 계산되고 있었음(기존 코드, 미변경) → range 데이터는 이미 존재했고 컬럼 설정의 플래그만 꺼져 있던 상태였음.
+- `tsc --noEmit`(leaderboardConfig.ts 단독) 및 `vite build` 정상 통과, 신규 에러 없음.
+- 실제 브라우저 렌더링 재현 시도(Playwright 목업 데이터)는 목업 통계 구조가 실제 게임로그 기반 집계 파이프라인과 형태가 달라 전 컬럼이 0으로 표시되는 이슈로 결론 내지 못함 — 코드 경로 검토로 대체 확인.
+
+**롤백 방법**: 위 두 줄 `isHeatmap: true` → `isHeatmap: false`로 되돌리면 됨.
+
+---
+
+## 2026-08-11 — 리더보드 좁은 컬럼 헤더 라벨 잘림 버그 수정 (Shooting/Defense/Attributes 탭)
+
+**배경**: 사용자가 슈팅 탭 스크린샷 제보 — RIM/PAINT 등 존별 FGM/FGA/FG% 헤더가 "F..."로 잘려 보임. 원인 파악 요청 후 직접 진단.
+
+**원인**: `data/leaderboardConfig.ts`의 `WIDTHS.ZONE`(45px, "dense zone stats용으로 좁게" 의도적 설계)/`ATTR_W`(44px)/`DEF_ZONE_W`(55px)가 전부 헤더 폰트 12px(`text-xs`) 기준으로 맞춰진 좁은 폭이었는데, 이전 세션에서 리더보드 컬럼 헤더 전체를 `text-sm`(14px)로 통일하면서 "FGM"/"FGA"/"FG%"/"OCON"/"DRAW"/"DFGM" 같은 3~4글자 라벨이 넘쳐서 CSS `truncate`로 잘림. 실제 데이터 값이 아니라 헤더 라벨만 깨진 것.
+
+**변경 파일**:
+- `data/leaderboardConfig.ts` — `WIDTHS.ZONE` 45→66, `WIDTHS.OVR` 50→62, `DEF_ZONE_W` 55→76, `ATTR_W` 44→76.
+- 단순 텍스트폭 계산이 아니라 **실측 기반**으로 값을 잡음: 처음엔 fallback 폰트로 텍스트폭을 추정해 1차 조정했으나 여전히 잘리는 컬럼이 있었음(특히 **정렬 화살표 아이콘이 붙는 컬럼**은 라벨 텍스트 폭 + 패딩(12px) + 화살표·gap(~14px)까지 필요해서 여유가 훨씬 더 필요). 임시 테스트 하니스로 각 탭을 실제 렌더링한 뒤 `span.scrollWidth > span.clientWidth`로 실제 잘림 여부를 헤드리스 브라우저에서 직접 측정 → 잘리는 컬럼이 없어질 때까지 반복 조정. 각 탭에 존재하는 서로 다른 라벨을 각각 정렬 상태로 지정해 전수 확인.
+
+**검증**: 헤드리스 브라우저로 Traditional/Shooting/Advanced/Defense/Attributes 5개 탭 전부, 기본 정렬 상태 + 문제 컬럼들을 정렬한 상태(화살표 표시 상태) 전수 스캔 — 잘리는 헤더 라벨 0건 확인. `tsc --noEmit`/`vite build` 통과.
+
+**알려진 한계**: 컬럼 폭이 넓어진 만큼 Shooting/Defense/Attributes 탭의 전체 테이블 가로 길이가 늘어나 가로 스크롤이 더 길어짐(테이블은 이미 가로 스크롤 되는 구조라 기능적으로는 문제 없음).
+
+---
+
+## 2026-08-10 — PO% 바 그래프 스타일 개선
+
+**배경**: 사용자 요청 — 바 그래프 좌우 폭 확대, 상하 높이 확대, 보더 라디우스 삭제, 퍼센트 구간별 색상 적용.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — PO% 셀: 바 트랙 `w-8 h-1.5 rounded-full` → `w-12 h-2.5`(라운딩 제거). 퍼센트 구간별 색상(`poColor`/`poBarColor`) 추가 — 75% 이상 emerald, 25~74% amber, 25% 미만 red — 바 채움색과 텍스트 색 모두 동일 기준 적용.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**후속 수정(같은 날, 1)**: 컬럼 폭을 넓히는 대신(92→104 되돌림) `TableCell`의 기본 `px-3` 패딩을 `!px-1`로 좁혀 여백을 줄임 — `components/common/Table.tsx`의 `TableCell`이 `py-2 px-3 ...`를 하드코딩해서 뒤에 붙는 `className`의 `px-1`이 Tailwind 생성 순서상 이길 보장이 없어 `!important` 접두사 사용(이 파일의 `Table` 컴포넌트에도 이미 `!rounded-none` 등 동일 패턴 존재).
+
+**후속 수정(같은 날, 2)**: "좌우 패딩을 줄여달라"는 요청의 의도가 셀 여백 축소 자체가 아니라 "그 여백만큼 바 그래프가 더 넓어지게"였는데, 바를 여전히 고정폭(`w-12`)으로 둔 채 컨테이너만 `justify-center`로 가운데 정렬해서 패딩을 줄여도 바 크기는 그대로였음(빈 공간만 이동). `w-12` → `flex-1`로 교체해 바가 남은 가로 공간을 전부 채우도록 수정(퍼센트 텍스트만 `w-8 shrink-0`로 고정), `justify-center` 제거.
+
+**후속 수정(같은 날, 3)**: `!px-1`(4px)이 지나치게 좁아 사실상 패딩이 없는 것처럼 보인다는 피드백 — `!px-2`(8px)로 완화(기본 12px보다는 줄이되 0에 가깝지 않은 절충값).
+
+**후속 수정(같은 날, 4)**: 결국 패딩 오버라이드 자체를 제거하고 다른 컬럼과 동일한 `TableCell` 기본값(`px-3`, 12px)으로 완전히 되돌림.
+
+**후속 수정(같은 날, 5) — PO% 바 hover 툴팁 추가**: 사용자 요청 — 순위는 낮은데 PO%가 더 높은 역전 케이스가 가끔 있어서 왜 그런지 보여주는 툴팁 필요. 몬테카를로 결과 자체는 SOS의 RPI 가중치 같은 "공식 구성요소"가 없는 블랙박스라, 대신 확률에 가장 직접적인 영향을 주는 입력값들을 보여주기로 함(역전의 가장 흔한 원인인 "잔여 일정 강도" 포함).
+- 신규 `OddsBreakdown` 타입 + `computeOddsBreakdownMap()`: 컨퍼런스 순위, 현재 전적/승률, 잔여 경기 수, **잔여 일정 상대 평균 승률**(아직 비공개인 남은 경기의 상대 슬러그를 모아 각 상대의 현재 승률을 평균 — 순위가 낮아도 잔여 일정이 쉬우면 확률이 더 높게 나오는 이유를 직접적으로 보여줌), 자동진출 컷/마지막 진출권 컷까지 게임차(`gbAuto`/`gbLast`, 기존 `cutoffLines`와 동일한 반 경기차 공식).
+- `LeagueStandingsTable`에 `oddsBreakdownMap`도 `playoffOddsMap`과 동일하게 `useState(() => ...)` lazy initializer로 마운트 시 1회 계산 — 둘이 항상 같은 시점의 데이터를 설명하도록 스냅샷을 맞춤.
+- 재사용 가능한 공용 Tooltip 컴포넌트가 이 코드베이스에 없어서(`components/common/SliderControl.tsx`의 `group-hover` 인라인 패턴 참고), PO% 바를 `relative group/po`로 감싸고 `opacity-0 group-hover/po:opacity-100` 팝업을 바 위(`bottom-full`)에 배치. `fmtGB()` 헬퍼 추가(컷 안쪽이면 "컷 안쪽", 아니면 "N.N경기 차").
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**배경**: 사용자 지적 — 직전 구현은 `playoffOddsMap`을 `useMemo`로 두고 `serverNowMs`(매초 틱) 기반 의존성을 썼는데, 이러면 사용자가 화면을 보는 동안에도 주기적으로 재계산되어 값이 흔들리고 매번 1000회 시뮬레이션이 반복 실행됨. ESPN/Basketball-Reference 실제 사례 조사 결과 둘 다 반복 시뮬레이션 방식(5,000회/7,500회) 자체는 맞지만, **뷰어의 브라우저가 아니라 서버가 미리 계산해두고 캐시된 결과만 보여주는 구조**라 사용자가 보는 동안 값이 변하지 않음. 사용자는 서버 배치 계산까지는 원치 않고, "클라이언트에서 화면 진입 시 딱 한 번 계산해서 고정"을 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `playoffOddsMap`을 `useMemo(deps: [...oddsNowMinute...])`에서 `useState(() => computePlayoffOddsMap(...))`(lazy initializer)로 교체. React의 `useState` lazy initializer는 컴포넌트 최초 마운트 시 1회만 실행되고 이후 리렌더(정렬/모드 변경, `serverNowMs` 틱 등)에는 재실행되지 않음 — 화면을 나갔다 재진입(리마운트)하면 그때 다시 계산됨.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**알려진 한계**: 화면에 머무는 동안 새로 확정되는 경기 결과는 PO%에 실시간 반영되지 않음(재진입 전까지 고정) — 사용자가 명시적으로 원한 트레이드오프.
+
+**후속 수정(같은 날) — 툴팁 비활성화 + PPG/OPPG/SOS 색상 코딩 + L10 중립색**: 사용자가 "6개 항목을 점수화해서 100점 만점으로" 요청했으나, PO%는 몬테카를로 시뮬레이션이라 가중합으로 분해되는 실제 수식이 없고 6개 항목도 서로 파생 관계라 겹친다는 점을 설명 후, 사용자가 방향을 바꿔 툴팁 자체를 비활성화 요청(코드는 보존).
+- `PlayoffOddsCell` 상단에 `PLAYOFF_TOOLTIP_ENABLED = false` 스위치 추가 — `handleEnter`와 포탈 렌더 조건 양쪽에서 이 플래그로 게이팅. `true`로 되돌리면 즉시 재활성화되는 구조, 로직 삭제 없음.
+- `LeagueStandingsTable`에 `leagueAverages`(PPG/OPPG/SOS 리그 평균) useMemo 신규 추가. DIFF 컬럼과 동일한 방식으로 PPG(평균보다 높으면 emerald)/OPPG(평균보다 **낮으면** emerald — 실점은 적을수록 좋아 방향 반대)/SOS(평균보다 높으면 emerald) 색상 분기 추가.
+- L10 컬럼의 동률(무승부 아님, 5승5패 등) 케이스 색상을 `text-white`→`text-slate-300`으로 변경(사용자 요청 — 양/음 어느 쪽도 아닐 때 흰색 대신 밝은 slate 톤 사용). DIFF/STREAK/PPG/OPPG/SOS는 이미 중립색이 `text-slate-500`이라 변경 없음(사용자가 "흰색이었던 곳"을 지적한 것으로 판단).
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**후속 수정(같은 날) — 커서 되돌림**: 툴팁 비활성화로 물음표(`cursor-help`) 커서가 더 이상 의미 없어져 PO% 바 트랙에서 `cursor-help` 클래스 제거(기본 커서로 복귀).
+
+**후속 수정(같은 날) — W/L 컬럼 색상 스케일 추가**: `leagueAverages`에 `wins`/`losses` 리그 평균 추가. W는 평균보다 높으면 emerald(PPG와 동일 방향), L은 평균보다 **낮으면** emerald(패배는 적을수록 좋아 방향 반대, OPPG와 동일 패턴).
+
+**후속 수정(같은 날) — 툴팁 잘림 현상 수정**: 사용자 지적 — 툴팁이 화면에서 잘려 보임. 원인은 `components/common/Table.tsx`의 테이블 컨테이너가 `overflow-auto`라서, 셀 안에 `absolute`로 띄운 팝업이 스크롤 영역 경계에서 잘렸기 때문(우측 끝 컬럼일수록 심함) — `group-hover` CSS만으로는 해결 불가.
+- 신규 `PlayoffOddsCell` 컴포넌트로 분리(행마다 독립된 hover state/ref가 필요해 `.map()` 내부 인라인 JSX로는 훅을 못 씀). `createPortal`(react-dom)로 `document.body`에 직접 렌더링 + `getBoundingClientRect()` 기반 `position: fixed` 좌표 계산 — `components/common/Dropdown.tsx`가 이미 쓰던 정확히 같은 패턴을 재사용. 좌우 뷰포트 경계 밖으로 나가지 않도록 `Math.max/min`으로 클램프.
+- `PlayoffOddsCell`는 마운트 시 1회 계산되는 `oddsBreakdownMap`(부모의 `useState` 스냅샷)을 prop으로만 받고 자체 계산은 안 함 — 데이터 스냅샷 일관성 유지.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**배경**: 사용자 요청 — SOS 우측에 "PO%" 컬럼, 짧은 바 그래프 + 퍼센트(`[=====-----] 00%` 식) 표기. 직전에 논의한 접근(로그5 승률 기반 몬테카를로 반복 시뮬레이션)을 그대로 구현.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx`:
+  - `COLS`에 `{key:'po', label:'PO%', width:92, sortable:true}`를 `sos` 뒤에 추가.
+  - `getSortValue`/`getCellValue`에 `po: number` 파라미터 추가(`getCellValue`의 `case 'po'`는 렌더 특수분기로 우회돼 실제로는 호출 안 되지만 시그니처 일관성을 위해 유지).
+  - 신규 `log5WinProb(pA, pB)` — 세이버메트릭스 표준 log5 공식(`(pA - pA*pB) / (pA + pB - 2*pA*pB)`), 양쪽 다 0승이면 0.5로 폴백.
+  - 신규 `computePlayoffOddsMap(leagueTeams, statsMap, schedule, nowMs, playoffTeamsPerConf, playInEnabled)` — `PLAYOFF_ODDS_ITERATIONS=1000`회 반복: ①현재 확정 기록(statsMap)에서 시작 ②아직 비공개(`!isFinal`, 이미 `played`돼도 스포일러라 실제 스코어는 안 봄)인 남은 경기를 매 시행 log5 확률로 새로 굴림 ③시뮬레이션된 최종 승률로 컨퍼런스별 정렬 ④`playInEnabled`면 상위 (N-2)팀 자동진출 + 나머지 4팀(7~10위)이 미니 플레이인(7v8→승자 7시드, 패자는 9v10 승자와 디사이더→승자 8시드) 시뮬레이션까지 반영, 아니면 단순 top-N ⑤진출한 시행 횟수/1000 = 확률. 수학적으로 이미 클린치/탈락 확정된 팀은 모든 시행에서 결과가 갈리지 않아 자연히 정확히 100%/0%로 수렴(별도 보정 불필요, `clinchMap`과 독립 계산이지만 항상 일치).
+  - `LeagueStandingsTable`에 `playoffOddsMap` useMemo 추가 — `serverNowMs`를 분 단위로 반올림한 `oddsNowMinute`을 의존성으로 써서 매초 재계산되는 걸 방지(1000회 반복 시뮬레이션이 매초 도는 건 낭비 — 공개 게이팅 자체가 10분 단위라 1분 정밀도로 충분).
+  - 데이터 컬럼 렌더 루프에서 `c.key==='po'`일 때만 특수 분기 — 텍스트 대신 `w-8 h-1.5` 트랙(bg-slate-700) + 확률만큼 채워지는 `bg-indigo-400` 바 + `xx%` 텍스트를 렌더.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**알려진 한계**: 컨퍼런스 순위 동률 타이브레이커는 실제 NBA 규정(맞대결/디비전 성적 등) 대신 무작위 처리 — 확률값에 아주 미세한 근사 오차가 생길 수 있음(표본 1000회 기준 체감 불가 수준). 리그 크기가 30팀 고정이라는 전제(사용자 확인)로 컨퍼런스당 팀 부족 등 예외 처리는 최소한만 함.
+
+**배경**: 사용자 요청 — L10 우측에 SOS 컬럼 신규, ESPN RPI 방식(0.25×자팀 승률 + 0.50×상대 평균 승률 + 0.25×상대의 상대 평균 승률)으로 계산. 멀티플레이어 리그는 항상 30팀 고정이라(사용자 확인) 표본 부족으로 인한 왜곡 같은 예외케이스는 고려하지 않음.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx`:
+  - `multiGameReveal`에서 `isFinal` re-import(직전 리팩터링 때 미사용으로 제거했던 걸 SOS 계산에 다시 필요해 복원).
+  - `COLS`에 `{ key:'sos', label:'SOS', width:58, sortable:true }`를 `l10` 바로 뒤에 추가.
+  - `getSortValue`/`getCellValue`에 `sos: number` 파라미터 추가, `case 'sos'` 분기(`fmtPct`로 `.512` 형태 표시 — PCT와 동일 포맷).
+  - 신규 `computeSosMap(leagueTeams, statsMap, schedule, serverNowMs)`: ①경기 결과(`isFinal` 게이팅, `is_playoff:false`)로 팀별 맞대결 전적(h2h)과 "경기당 상대 슬러그 목록"(상대와 여러 번 붙으면 그만큼 중복 포함 — 가중 평균 목적)을 1회 구축 ②`winPctExcluding(opp, team)` — opp의 승률에서 team과의 맞대결만 제외(자기 자신과의 경기로 상대 승률이 왜곡되는 걸 막는 RPI 표준 관행) ③OWP(상대 평균 승률) = 각 상대 인스턴스의 `winPctExcluding` 평균 ④OOWP(상대의 상대 평균 승률) = 각 상대 인스턴스의 OWP 평균(제외 보정 없음, NCAA RPI 관행) ⑤최종 `0.25×자팀승률 + 0.50×OWP + 0.25×OOWP`.
+  - `LeagueStandingsTable`에 `sosMap` useMemo 추가(`statsMap`/`schedule`/`serverNowMs` 의존), 정렬 비교자와 셀 렌더링에 `sosMap[team_slug] ?? 0`으로 전달.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**알려진 한계**: 정규시즌 전체(과거+미래 경기 전부)가 아니라 **이미 확정 공개된(isFinal) 경기만** 반영 — 시즌 초반엔 표본이 적어 SOS 값이 요동칠 수 있음(실제 NBA RPI도 동일한 특성). "잔여 일정 SOS"(앞으로 만날 상대만 별도 집계)는 이번 범위에 없음.
+
+**배경**: 사용자 요청 — 순위 테이블에서 팀 이름 클릭 시 해당 팀 화면으로 이동. 조사 결과 멀티플레이어는 `team_slug` 전용 라우트(`/team/:teamId` 류)가 없고, 기존에도(`MultiLeaderboardView.tsx`) 고정 경로 `/multi/leagues/:leagueId/season/roster`에 `navigate(path, {state:{viewTeamId}})`로 보고 싶은 팀을 실어 보내는 컨벤션을 씀 — `MultiRosterView.tsx`가 `location.state.viewTeamId`를 읽어 `initialTeamId`로 넘기는 구조라 URL 파라미터 없이도 임의 팀을 볼 수 있음. 동일 패턴을 그대로 재사용.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `react-router-dom`에서 `useNavigate`/`useParams` import 추가, `LeagueStandingsTable`에서 `leagueId`(useParams) 획득. 팀명 `<span>`에 `onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster`, {state:{viewTeamId: t.team_slug}})}` + `cursor-pointer hover:underline` 추가(클린치 색상 로직은 그대로 유지).
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 확인 후 요청 — `font-mono`가 붙어있던 곳은 순위 번호 셀과 W/L/PCT 등 데이터 값 셀뿐이었는데(팀명·헤더 라벨·타이틀은 원래 mono 아니었음), 이 두 곳의 mono도 제거해달라는 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — 순위(rank) 셀과 데이터 컬럼 셀 두 곳에서 `font-mono` 클래스만 제거(`tabular-nums`는 숫자 자릿수 정렬 목적이라 유지).
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 지적 — 컨퍼런스/디비전 그룹 서브헤더의 세로 구분선(`border-r border-slate-800`)이 컬러 배경 틴트(40% 알파) 위에서 거의 안 보임.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `groupTint` 객체에 `borderColor: ${groupColor}b3`(약 70% 알파, 배경의 40%보다 진한 동일 컬러) 추가. 기존 `border-slate-800` Tailwind 클래스는 그대로 두되(폭 지정용) 인라인 `style.borderColor`가 우선 적용돼 색만 컨퍼런스 컬러로 교체됨 — "기타"(groupColor 없음) 그룹은 `groupTint`가 `undefined`라 기존 slate-800 그대로 유지.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 지적 — 리그 탭 헤더(TableHeaderCell, lucide `ArrowUp`/`ArrowDown` 아이콘)와 컨퍼런스/디비전 탭 그룹 서브헤더(유니코드 `▼`/`▲` 텍스트)가 서로 다른 화살표 모양을 씀 + 리그 탭 헤더가 그룹 서브헤더보다 높이가 살짝 더 큼(TableHeaderCell엔 `py-3`가 있는데 그룹 서브헤더 `<td>`엔 수직 패딩이 없어서 `h-10`에 딱 맞게 눌려 있었음) + 직전 "컬럼 헤더 흰색 통일" 작업을 리그 탭만 되돌리고 컨퍼런스/디비전은 흰색 유지 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx`:
+  - `lucide-react` import에 `ArrowUp`, `ArrowDown` 추가.
+  - 리그 모드 헤더 `<tr>` 텍스트 색상 `text-white` → `text-slate-500`로 되돌림(컨퍼런스/디비전 그룹 서브헤더 `<tr>`는 `text-white` 그대로 유지).
+  - 그룹 서브헤더의 `▼`/`▲` 유니코드 문자를 `TableHeaderCell`(`components/common/Table.tsx`)과 동일한 `ArrowUp`/`ArrowDown` 아이콘(size 10, strokeWidth 3, text-indigo-400) + `flex items-center justify-center gap-1` 래퍼로 교체 — 렌더 구조를 `TableHeaderCell` 내부와 동일하게 맞춤.
+  - 그룹 서브헤더 팀 라벨 `<td>`와 컬럼 라벨 `<td>` 양쪽에 `py-3` 추가 — `TableHeaderCell`의 `py-3`와 동일한 수직 패딩을 줘서 실제 렌더 높이를 리그 탭 헤더와 맞춤(`h-10`은 두 곳 다 그대로 두되, 콘텐츠+패딩이 더 크면 `h-10`을 넘어 자연스럽게 늘어나는 테이블 셀 특성 이용).
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 요청 — 컬럼 헤더(#, TEAM, W, L, PCT...) 텍스트 색상을 흰색으로 통일.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — 리그 모드 상단 고정 헤더 `<tr>`와 컨퍼런스/디비전 모드 그룹 서브헤더 `<tr>` 두 곳의 기본 텍스트 클래스를 `text-slate-500` → `text-white`로 변경(`replace_all`, 두 tr이 완전히 동일한 className이라 한 번에 교체됨). 컬럼 라벨(W/L/PCT 등)은 자체 텍스트 색상이 없어 부모 tr 색상을 상속하므로 이걸로 충분 — 그룹 라벨 셀(동부 컨퍼런스 등)은 이미 별도 `text-white`/`text-indigo-400` 클래스가 있어 영향 없음.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 요청 — 동부(#1D4289)/서부(#C8102E) 컨퍼런스 컬러를 순위 테이블 그룹 헤더 행에 적용, 컨퍼런스/디비전 모드에만(리그 모드는 그룹 헤더 자체가 없어 해당 없음). 배경색 틴트(20% 불투명도) + 라벨 흰색 유지 방식으로 사용자 확인.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `RankedTeamRow`에 `groupColor?: string` 필드 추가. `CONFERENCE_COLORS`(East/West 헥스값)와 `DIVISION_CONFERENCE`(6개 디비전→소속 컨퍼런스 고정 매핑, 실제 NBA 구조: Atlantic/Central/Southeast=East, Northwest/Pacific/Southwest=West) 신규 상수. `buildGroup()`에 `groupColor` 파라미터 추가 — Conference 모드는 East/West 컬러, Division 모드는 해당 디비전의 소속 컨퍼런스 컬러, "기타"(division 없는 가상 팀)는 색상 없음(기존 인디고 유지). 그룹 헤더 `<tr>`의 각 `<td>`에 `style={{backgroundColor: groupColor+'66'}}`(hex 뒤 알파 서픽스, `bg-slate-950` 위에서 20%는 거의 안 보여 40%로 조정 — 최초 적용 후 사용자 확인해 즉시 수정) 인라인 스타일 추가 — Tailwind `bg-slate-950` 클래스와 함께 있어도 인라인 스타일이 우선 적용됨. 라벨 텍스트 색상은 `groupColor` 있으면 `text-white`, 없으면 기존 `text-indigo-400`.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**배경**: 사용자 요청 — 직전 클린치 표시 작업에 이어, 컨퍼런스 화면에 플레이오프 진출팀 커트라인 구분선 추가.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `cutoffLines` useMemo 신규(싱글플레이어 `StandingsView`의 하드코딩 6/10위 컷라인 패턴을 어드민 설정값 `autoClinchCount`/`lastQualifyingRank`로 일반화). `mode!=='Conference'`면 빈 Set 반환(리그/디비전 화면은 정렬 기준이 컨퍼런스 순위가 아니라 컷 위치가 무의미해서 렌더 안 함). `TableRow` 바로 아래에 `cutoffLines.auto`(자동진출 컷, 에메랄드 1px 라인)/`cutoffLines.last`(플레이인 포함 마지막 진출권 컷, 호박색 1px 라인) 조건부 `<tr><td colSpan={COLS.length}>` 삽입.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음.
+
+**알려진 한계**: 플레이인 비활성화 리그는 `auto`/`last` 컷이 같은 순위라 사실상 한 줄(에메랄드)만 그려짐 — 의도된 동작.
+
+---
+
+## 2026-08-10 — "선수/기본" 탭 드롭다운 폰트 확대 + 값 필터 select를 공용 Dropdown으로 교체
+
+**배경**: 사용자 요청 — ① "선수/기본" 탭 드롭다운(공용 `components/common/Dropdown.tsx` 사용) 내부 텍스트도 `text-sm`으로 ② 값 필터의 항목(G/PTS/...) 선택과 부등호(>=/<=/...) 선택이 OS 기본 `<select>`라 스타일이 다르게 뜸 — 공용 Dropdown 모달로 교체.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardToolbar.tsx`:
+  - "선수/기본" 탭 Dropdown 2곳의 `items` — `label`을 문자열 대신 `<span className="text-sm">...</span>`로 감쌈. `Dropdown.tsx` 자체(`text-xs` 하드코딩)는 건드리지 않음 — `Dropdown`이 헤더 내비게이션/트레이드 협상 등 6곳에서 더 쓰이는 공용 컴포넌트라 전역 변경 시 무관한 화면까지 영향받음. 자식 요소 자체 클래스가 상속값을 이기는 CSS 캐스케이드를 이용해 이 두 드롭다운만 국소적으로 14px로 오버라이드.
+  - 값 필터의 카테고리 `<select>`/연산자 `<select>` 2곳을 `Dropdown` 컴포넌트로 교체 — 트리거 버튼(현재 선택값 + 체브런)과 `items`(옵션 배열 매핑, `label`도 동일하게 `text-sm` span으로 감쌈)로 재구성. 기존 `h-full`(퍼센트 높이, 부모 `h-[36px]` 컨테이너 기준)은 `Dropdown` 내부 래퍼 구조상 퍼센트 높이가 정상 해석되지 않아 트리거 버튼에 `h-[36px]` 고정값으로 직접 지정.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**후속 버그 수정(같은 날) — 호버 시 레이아웃 깨짐**: 사용자가 "마우스를 호버링하니까 영역이 사라진다"고 스크린샷으로 보고. 원인은 트리거 버튼에 `w-32`(카테고리)/`w-14`(연산자) 고정폭 + `justify-between`을 같이 써서 라벨과 체브런 아이콘을 박스 양 끝으로 밀어붙였는데, `Dropdown` 컴포넌트의 트리거 래퍼(`<div className="cursor-pointer">{trigger}</div>`)가 자체 폭 제약이 없는 일반 block 요소라 실제 렌더 폭이 의도한 128px/56px보다 훨씬 넓게 잡혀 라벨-아이콘 사이에 큰 빈 공간이 생김.
+- 고정폭(`w-32`/`w-14`)과 `justify-between`을 제거하고, 버튼이 콘텐츠에 맞춰 자연스럽게 줄어드는(content-hugging) `flex items-center gap-1.5` + `whitespace-nowrap`로 교체. 라벨엔 `max-w-[96px] truncate` 안전장치만 추가.
+- 검증: `npx playwright install chromium` 후, 프로젝트 루트에 임시 하니스(`__toolbar_test.html`/`.tsx`, mock props로 `LeaderboardToolbar` 단독 마운트 — 실제 로그인 없이 컴포넌트만 검증)를 만들어 Vite dev 서버(5174)에서 헤드리스 브라우저로 실제 hover/click 테스트. 버튼의 `boundingBox()`가 hover 전후 완전히 동일(52×36, 42×36)함을 확인, 드롭다운 패널도 정상 위치에 렌더됨을 스크린샷으로 확인 후 하니스 파일 삭제.
+
+**후속 버그 수정(같은 날) — 호버 시 버튼이 헤더에 파묻혀 사라짐**: 사용자가 "팀/포지션은 호버 시 텍스트가 흰색+보더가 밝아지는데, 카테고리/연산자 버튼은 호버하면 보더가 사라지고 배경이 헤더 배경과 같아져서 버튼 자체가 사라지는 것처럼 보인다"고 재보고. 원인은 트리거 버튼에 넣은 `hover:bg-slate-900`이 툴바 전체를 감싸는 헤더 바(`<div className="... bg-slate-900">`)의 배경색과 정확히 같아서, 호버하면 버튼이 헤더 배경에 파묻혀 경계가 안 보였음(Team/Position 버튼은 애초에 이런 hover 배경 전환이 없이 텍스트 색만 바뀌는 방식이라 이 문제가 없었음).
+- `components/leaderboard/LeaderboardToolbar.tsx` — 카테고리/연산자 트리거 버튼 2곳의 `hover:bg-slate-900` → `hover:bg-slate-800`으로 변경(헤더 배경보다 한 단계 밝은 톤이라 항상 눈에 띄는 하이라이트가 됨, 헤더/기본 박스 배경 어느 쪽과도 겹치지 않음).
+- 검증: 같은 방식으로 임시 하니스 재생성 → 헤드리스 브라우저로 카테고리/연산자 버튼 각각 hover 후 스크린샷 확인 → 밝은 회색 배경이 뚜렷이 보이는 것 확인 → 하니스 파일 삭제.
+
+---
+
+## 2026-08-10 — 멀티 리더보드 "매번 로더" 문제 해결: React Query staleTime + 수동 새로고침 버튼
+
+**배경**: 사용자 질문 — "왜 리더보드 화면에 들어올 때는 항상 로더가 뜨는거지?" 조사 결과 `MultiLeaderboardView.tsx`가 컨텍스트에 없는 전체 리그 로스터+박스스코어(`meta_players`+`game_pbp`)를 매번 자체 재조회/재집계하는 `useEffect`를 갖고 있었고, 캐시 없이 컴포넌트가 재마운트될 때마다(탭 이동 후 복귀 등) 무조건 재실행되며, 그 로딩 상태를 전체 화면 로더 게이팅에 그대로 묶어놔서 항상 로더가 떴음(순위/일정 화면은 자체 fetch가 없거나 로딩 게이트에 안 묶여있어 이 문제가 없었음). 이후 대화에서 "staleTime + 수동 새로고침 버튼" 조합으로 가기로 결정 — 프로젝트에 이미 깔려서 다른 훅들(`useSaveSummary.ts`, `useGameData.ts` 등)이 쓰고 있는 React Query(`@tanstack/react-query`, 전역 기본 `staleTime: Infinity`)를 그대로 활용.
+
+**변경 파일**:
+- `views/multi/season/MultiLeaderboardView.tsx` — 기존 `useState`(`teams`/`fetchLoading`) + `useEffect`(cancelled 플래그 수동 관리) 조합을 `useQuery<Team[]>`로 교체. `queryKey: ['multiLeaderboardStats', room?.id, allRosterIds.join(',')]`(기존 effect의 의존성 배열과 동일 기준 유지), `staleTime: 2분`, `enabled`로 데이터 준비 전 스킵. `isPending`을 `fetchLoading`으로 매핑(최초 1회만 true — 캐시 있으면 재마운트 시 로더 없이 즉시 표시), `isFetching`을 `fetchRefreshing`으로 매핑(수동 새로고침 스피너용), `refetch`를 `onRefresh` prop으로 전달.
+- `views/LeaderboardView.tsx` — `LeaderboardViewProps`에 `onRefresh?`/`refreshing?` 추가, `<LeaderboardToolbar>`로 그대로 전달(싱글플레이어 `LeaderboardPage`는 이 prop을 안 넘기므로 버튼 자체가 안 뜸 — 싱글은 애초에 네트워크 fetch가 없어 새로고침 개념이 불필요).
+- `components/leaderboard/LeaderboardToolbar.tsx` — `onRefresh?`/`refreshing?` prop 추가. "정규시즌/플레이오프" 토글 바로 우측에 `RefreshCw` 아이콘 버튼 신규(≤`onRefresh`가 있을 때만 렌더) — 클릭 시 `onRefresh()` 호출, `refreshing`이면 `animate-spin` + 버튼 비활성화(중복 클릭 방지).
+
+**검증**: `npx playwright install chromium` 완료 상태 재사용, 임시 하니스(`__toolbar_test.html`/`.tsx`, `onRefresh` mock 포함)로 실제 클릭 테스트 — 버튼이 툴 위치(정규시즌/플레이오프 토글 바로 뒤)에 정확히 뜨는 것, 클릭 시 콜백이 정확히 1회 호출되는 것, `refreshing` 동안 아이콘이 회전하는 것을 스크린샷+DOM 텍스트로 확인 후 하니스 삭제. `vite build` 성공(격리 `tsc` 실행에서 `MultiLeaderboardView.tsx`의 `isFinal({scheduledAt: row.game_start_time}, ...)` 타입 에러가 하나 나오지만 `git diff`로 확인 결과 이번 변경과 무관한 기존 코드 — 손대지 않음).
+
+**알려진 한계**: `staleTime`(2분) 동안은 방금 끝난 경기 결과가 화면에 자동 반영되지 않음 — 사용자가 새로고침 버튼을 눌러야 함(이번 대화에서 논의 후 사용자가 명시적으로 선택한 트레이드오프, 자동 폴링/이벤트 기반 무효화는 이번 범위에 포함하지 않음).
+
+---
+
+## 2026-08-10 — 리더보드 필터 그룹 hover 효과 통일
+
+**배경**: 사용자 요청 — 이름검색/팀/포지션/값필터/색상스케일 토글/정규시즌·플레이오프 토글의 hover 효과가 제각각(검색창은 hover 없음, 팀/포지션은 텍스트색만 변화, 값필터의 카테고리/연산자 버튼은 배경색 변화, 토글 2종은 보더 밝아짐)이라 통일 요청.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardToolbar.tsx` — 이미 토글 2종(색상 스케일, 정규시즌/플레이오프)과 새로고침 버튼이 쓰고 있던 `hover:border-slate-700`(보더 밝아짐)을 공통 기준으로 삼아 나머지에 통일 적용:
+  - 검색창 컨테이너: hover 효과 없음 → `hover:border-slate-700` 추가.
+  - 팀/포지션 드롭다운 트리거(미선택 상태): 기존 `hover:text-white`는 유지하고 `hover:border-slate-700` 추가(선택 상태 (`border-indigo-500/50`)는 이미 자체 강조색이 있어 변경 안 함).
+  - 값 필터(카테고리/연산자/입력값/+ 전체를 감싸는 바깥 컨테이너): `hover:border-slate-700` 추가. 대신 카테고리·연산자 버튼 자체에 있던 `hover:bg-slate-800`(직전 턴에 "헤더에 파묻힘" 버그를 고치며 넣은 것)는 제거 — 자식을 hover해도 마우스가 부모 영역 위에 있는 것과 같아 바깥 컨테이너의 보더가 그대로 반응하므로, 배경색 방식과 보더색 방식 두 "언어"가 한 그룹 안에 섞이는 걸 막음.
+  - "+"(필터 추가) 버튼은 토글류가 아니라 별도 액션 버튼이라 기존 `hover:text-white hover:bg-indigo-600/20`을 그대로 유지(의도적 예외).
+
+**검증**: 임시 하니스로 6개 위젯을 순서대로 hover하며 스크린샷 비교 — 전부 보더가 밝아지는 동일한 반응 확인(값 필터는 내부 어느 세그먼트를 hover해도 바깥 박스 전체 보더가 반응). `tsc --noEmit`/`vite build` 통과.
+
+---
+
+## 2026-08-10 — 리더보드 페이지네이션 버튼 스타일 변경
+
+**배경**: 사용자 요청 — 하단 페이지네이션(1 2 3 ... 버튼) 간격을 넓히고, 선택 안 된 버튼은 채움(`bg-slate-800`) 없애고 숫자를 인디고색으로.
+
+**변경 파일**:
+- `views/LeaderboardView.tsx` — 페이지 버튼 컨테이너 `gap-1`→`gap-2`. 페이지 번호 버튼의 미선택 상태를 `bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white` → `text-indigo-400 hover:bg-slate-800 hover:text-indigo-300`(배경 제거, 인디고 텍스트, hover 시에만 은은한 배경). 선택된 페이지(`bg-indigo-600 text-white`)는 그대로 유지. 이전/다음 화살표 버튼도 페이지 번호 버튼과 일관되게 같은 방식(채움 제거, 인디고 아이콘)으로 통일.
+
+**검증**: 임시 하니스(`__pagination_test.html`/`.tsx`, mock 30명 선수+`itemsPerPage:5`로 6페이지 재현)로 실제 렌더링 확인 — 선택된 페이지만 인디고 채움, 나머지는 무배경 인디고 텍스트, 넓어진 간격 스크린샷으로 확인 후 하니스 삭제. `tsc --noEmit`/`vite build` 통과.
+
+---
+
+## 2026-08-10 — 리더보드 테이블 스크롤바 숨김
+
+**배경**: 사용자 요청 — 순위 테이블에 이미 적용했던 것과 동일하게 리더보드 테이블도 스크롤바 숨김.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardTable.tsx` — `<Table>` 2곳(빈 데이터 상태 분기, 실제 데이터 렌더 분기) 모두에 기존 유틸 클래스 `custom-scrollbar-hide`(`index.css`에 이미 정의됨, `views/ScheduleView.tsx`/`MultiGamePbpView.tsx`/`MultiStandingsView.tsx`에서 이미 쓰던 패턴) 추가.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**배경**: 사용자 요청 — 헤더(LeaderboardToolbar)의 "선수/기본" 탭 텍스트는 `text-base`(16px)→`text-lg`(18px), 나머지 `text-xs`(12px)는 전부 `text-sm`(14px), `text-[9px]`로 고정된 배지는 `text-xs`(12px)로. 푸터(페이지네이션)도 동일하게 `text-xs`→`text-sm`.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardToolbar.tsx` — "선수/기본" 탭 버튼 2곳 + "/" 구분자 `text-base`→`text-lg`. 나머지 전체 `text-xs`→`text-sm`(검색창, 팀/포지션 드롭다운, 드롭다운 내부 항목, 커스텀 필터, 색상스케일/시즌타입 토글, 활성 필터 칩, "모두 제거" 버튼). 팀/포지션 선택 개수 배지 2곳(`text-[9px]`)은 `text-xs`(12px)로.
+  - **버그 수정**: 최초 파이썬 스크립트로 `text-[9px]→text-xs`, `text-xs→text-sm`을 순서대로 일괄 치환했더니, 방금 변환된 `text-xs`(원래 9px였던 것)가 두 번째 치환 규칙에 다시 걸려 `text-sm`(14px)까지 가버리는 이중치환 버그 발생 — 배지 2곳(L207, L271)만 `text-xs`로 재수정.
+- `views/LeaderboardView.tsx` — 페이지네이션 푸터의 `text-xs` 5곳("Showing X-Y of Z", 페이지 번호 버튼, 생략부호, "Rows" 라벨+셀렉트) 전부 `text-sm`으로.
+
+**검증**: 두 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+**배경**: 사용자 요청 — 순위 테이블(MultiStandingsView, 헤더~데이터 전부 14px)과 리더보드 테이블(LeaderboardTable, 전부 12px)의 폰트 크기를 비교해달라는 요청 이후, 리더보드 쪽의 컬럼 헤더/그룹 라벨/순위 숫자/팀·선수 이름/데이터 값을 순위 테이블 기준(14px)으로 맞춰달라는 후속 요청.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardTable.tsx` — `text-xs`(12px) → `text-sm`(14px)로 변경한 곳: `contentTextClass`(L61, 순위 숫자+기본 데이터 값 공용 클래스), 컬럼 헤더 `<tr>` 4곳(L98/129/191/222, `replace_all`로 동일 문자열 일괄 교체), 그룹 라벨 `<th>` 2곳(L122/215, Attributes/Defense/Shooting 탭의 2단 그룹헤더), 선수 이름 span(L301), 팀 이름 span(L391), +/- 컬럼 색상 오버라이드(L419), Attributes 카테고리 값 색상 오버라이드(L423).
+- OVR 배지 숫자(L306, `!text-xs`)는 사용자가 요청한 5개 카테고리(컬럼헤더/그룹라벨/순위숫자/이름/데이터값)에 포함되지 않아 그대로 둠 — 배지 컴포넌트 자체 크기(`!w-7 !h-7`)와 세트라 텍스트만 키우면 배지 안에서 잘릴 위험.
+
+**검증**: 해당 파일 격리 `tsc --noEmit` 신규 에러 없음. `vite build` 성공.
+
+---
+
+## 2026-08-10 — 멀티 순위 화면 테이블 폰트 12px→14px 확대
+
+**배경**: 사용자 요청 — 순위 테이블(컬럼 헤더 + 바디)의 폰트 크기를 조사해달라는 요청에 이어, 컬럼 헤더/그룹 라벨(`text-[10px]`, 10px)과 바디(순위·팀명·데이터 값, `text-xs`, 12px)를 전부 `text-sm`(14px)으로 통일해달라는 후속 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — 컬럼 헤더 `<tr>`(L222, 리그 모드 상단 고정 헤더), 그룹 서브헤더 `<tr>`(L246, 컨퍼런스/디비전 모드), 순위 셀(L267), 팀명 span(L275), 데이터 값 셀(L296) 총 5곳의 `text-[10px]`/`text-xs`를 `text-sm`으로 변경.
+
+**Before**: `text-[10px]`(헤더·그룹라벨) / `text-xs`(순위·팀명·데이터값)
+**After**: 전부 `text-sm`(14px)
+
+**검증**: `tsc --noEmit`(해당 파일 격리 실행) 에러 없음.
+
+**배경**: 사용자 요청 — ① 헤더의 "DIVISION 1 · 1시즌 · 진행 0/0경기" 서브텍스트 삭제 ② 헤더 배경/폰트를 시즌 일정 화면과 동일하게(`bg-slate-900 border-b border-slate-800`, `text-lg font-black text-white ko-tight`) 통일 ③ 헤더 우측에 리그/컨퍼런스/디비전 셀렉터 추가 ④ 싱글플레이어 `StandingsView`와 동일한 그룹 테이블 구조로 구성 ⑤ 팀명 옆 "AI" 텍스트, 내 팀 하이라이트(`bg-indigo-900/20`)·"내 팀" 태그 삭제.
+조사 결과 멀티플레이어 `league_teams`는 `conference`만 있고 `division` 컬럼 자체가 없음(가상 토너먼트 보충팀엔 conference도 없이 `East`/`West`만 있고 division 개념이 원천적으로 없음). 디비전 탭 처리 방식을 사용자에게 확인한 결과 "실제 팀만 `data/teamData.ts`의 `TEAM_DATA[team_slug].division`으로 조회해 그룹핑, division이 없는 팀(가상 팀)은 '기타' 그룹으로 묶는다"로 결정.
+
+**변경 파일**:
+- `views/multi/season/multiSeasonUtils.ts` — `MultiStandingsRecord`에 `div`/`conf` 승패 필드 추가, `MultiTeamMeta` 인터페이스 신규 export. `computeMultiStandingsStats()`에 4번째 인자 `teamMeta: Record<string, MultiTeamMeta> = {}` 추가 — 홈/원정 두 팀의 `division`/`conference`가 서로 같을 때만 `div`/`conf` 승패를 집계(싱글플레이어 `utils/standingsStats.ts`의 DIV/CONF 집계 로직과 동일한 방식).
+- `views/multi/season/MultiStandingsView.tsx`:
+  - `LeagueStandingsTable`에 `mode: 'League'|'Conference'|'Division'` state 추가(URL 파라미터 아닌 로컬 state). 헤더를 `flex justify-between + bg-slate-900 border-b border-slate-800`로 교체하고 서브텍스트 `<p>`(리그명/시즌/진행경기) 완전히 삭제, 우측에 세그먼트 버튼(리그/컨퍼런스/디비전) 추가.
+  - `TEAM_DATA`(`data/teamData.ts`)와 `DIVISION_KOREAN`(`data/mappings.ts`) import — `teamMeta` useMemo로 `team_slug → {conference, division}` 맵 구성(division은 TEAM_DATA 조회, 없으면 null).
+  - `rankedRows` useMemo 신규: 싱글플레이어 `StandingsView`의 `buildGroup`/`sortTeams` 패턴을 그대로 이식. League=단일 그룹, Conference=East/West 그룹("동부/서부 컨퍼런스" 라벨), Division=`DIVISION_ORDER` 6개 순회 후 division 없는 팀은 "기타"로 마지막에 추가.
+  - 그룹 서브헤더 행(`groupLabel` 존재 시 `colSpan={2}` 병합 셀 + 정렬 가능한 컬럼 헤더) — 싱글플레이어 코드와 동일 구조로 신규 렌더.
+  - COLS에 `div`/`conf`(HOME/AWAY 사이 아니라 뒤에 삽입) 컬럼 추가, `getSortValue`/`getCellValue`에 해당 case 추가 — 싱글플레이어 COLS와 동일 컬럼 셋 구성.
+  - `isMe`(내 팀 하이라이트, `bg-indigo-900/20`), "내 팀" 태그, `t.is_ai &&` "AI" 텍스트 완전히 제거. `myTeamId`/`leagueName`/`seasonNumber` prop을 `LeagueStandingsTable`에서 제거(더 이상 사용 안 함 — `MultiStandingsView` 메인 컴포넌트에서 `TournamentBracket`엔 계속 전달).
+  - 미사용 `isFinal` import 제거(`resolveRealAt`만 남음).
+
+**Before** (헤더 + 팀 셀, 발췌):
+```tsx
+<div className="px-4 py-3 shrink-0">
+    <h1 className="text-lg font-black text-white ko-tight">리그 순위</h1>
+    <p className="text-xs text-slate-500 ko-normal mt-0.5">
+        {leagueName ?? ''} &nbsp;·&nbsp; {seasonNumber}시즌 &nbsp;·&nbsp; 진행 {gamesPlayed}/{totalGames}경기
+    </p>
+</div>
+...
+<TableRow key={t.id} className={isMe ? 'bg-indigo-900/20' : ''}>
+  ...
+  <span className={... isMe ? 'text-white font-bold' : 'text-slate-200'}>{t.team_name}</span>
+  {t.is_ai && <span className="text-[10px] text-slate-600 font-normal">AI</span>}
+  {isMe && <span className="text-[10px] text-indigo-400 font-bold ko-normal">내 팀</span>}
+```
+
+**After** (핵심 발췌):
+```tsx
+<div className="flex items-center justify-between px-4 py-3 shrink-0 bg-slate-900 border-b border-slate-800">
+    <h1 className="text-lg font-black text-white ko-tight truncate">리그 순위</h1>
+    <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 shrink-0">
+        {MODE_TABS.map(t => <button onClick={() => setMode(t.id)} ...>{t.label}</button>)}
+    </div>
+</div>
+...
+<TableRow>
+  ...
+  <span className="text-xs truncate text-slate-200">{t.team_name}</span>
+```
+
+**검증**: `npx tsc --noEmit`(수정한 두 파일만 대상, esModuleInterop/skipLibCheck 옵션으로 격리 실행) — `MultiStandingsView.tsx`/`multiSeasonUtils.ts` 관련 신규 타입 에러 없음 확인(다른 파일들의 기존 무관 에러는 그대로 남아있음, 이번 변경과 무관).
 
 **알려진 한계**:
-- **컨퍼런스 크기가 다르면(한쪽만 플레이인 대상 팀 부족)** East/West qualified 인원수가 달라져 "앞 N슬롯/뒤 N슬롯이 각각 독립 서브트리"라는 전제가 깨질 수 있음 — 소규모 커스텀 리그(가상 팀 다수)에서만 발생 가능한 엣지케이스, 기존에도 문서화되어 있던 비-2^n 인원수 시드 부정확 한계와 동일선상으로 남겨둠.
-- **동시성**: `handlePlayInAdvance`의 "6개 시리즈 모두 완료 → 본선 브라켓 생성" 체크와 `handleTournamentAdvance` 최하단의 "전체 완료 → 아카이브" 체크 둘 다 read-check-act 레이스 가능성이 있음(두 게임이 정확히 같은 순간 완료될 때) — 단, 계산이 결정론적이라 최악의 경우 중복 기록 없이 동일 값을 한 번 더 쓰는 정도이며, 이는 이 코드베이스에 기존에도 있던 "allDone→archive" 체크와 동일 수준의 허용된 리스크(수정 범위 밖).
-- **서버 미배포**: 이번 서버 변경(`server/src/`)은 로컬 커밋 상태이며 fly.io 배포는 하지 않음 — 실제로 새 리그의 정규시즌이 끝나 플레이오프/플레이인이 트리거되기 전까지는 배포가 필요.
-- 플레이인 경기는 `TournamentBracketView`(브라켓 그래픽)엔 표시되지 않고 일정 화면(리스트/카드)에만 일반 경기로 노출됨 — 별도 플레이인 전용 UI는 이번 범위에서 구현하지 않음.
-- 기존에 이미 생성된 리그(마이그레이션 이전 `playoff_team_count` 값)는 컬럼 의미가 "리그 전체"에서 "컨퍼런스당"으로 바뀌었으므로, 다음 정규시즌 종료 시 진출 팀 수가 이전과 달라질 수 있음(예: 기존 8=리그 전체 8팀 → 이제 8=컨퍼런스당 8팀=총 16팀). 기존 리그 어드민은 설정 화면에서 재확인 필요.
+- 싱글플레이어 `StandingsView`에 있는 플레이오프/플레이인 컷오프 라인(6위/10위 구분선)과 클린치 상태 색상은 이번 작업에 포함하지 않음 — 멀티플레이어는 리그 크기가 가변적(`maxTeams`)이라 6+4 플레이오프 포맷을 그대로 가정할 수 없어 스코프에서 제외.
+- 디비전 그룹 중 "기타"(가상 팀 등 division 없는 팀)는 싱글플레이어엔 없는 그룹이라 완전히 동일한 구성은 아님 — 사용자 확인 하에 결정된 처리 방식.
 
 ---
 
