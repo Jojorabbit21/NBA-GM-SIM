@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Play, Loader2, ChevronDown, Check } from 'lucide-react';
 import { useQuickPlayPresence } from '../hooks/useQuickPlayPresence';
 import type { Player, GameTactics, DepthChart, SimulationResult } from '../types';
@@ -30,6 +30,21 @@ const TAB_LABELS: { id: QuickTab; label: string }[] = [
 ];
 
 const ALL_TEAM_IDS = Object.keys(TEAM_DATA);
+
+// 라이브 시뮬/결과 데이터는 용량이 커서(박스스코어, PBP 로그 등) URL에 못 담으므로
+// location.state로 들고 다닌다 — navigate(pathname, {state}) 형태로 넘겨도 실제 브라우저
+// 히스토리 항목이 push되므로, useState로만 화면을 전환할 때 생기는 "뒤로가기 시 설정 화면을
+// 건너뛰고 /quick 진입 이전 화면으로 튕기는" 문제(로스터 화면에서 겪었던 것과 동일)를 막는다.
+type QuickLiveParams = {
+    homeTeam: ReturnType<typeof buildVirtualTeam>;
+    awayTeam: ReturnType<typeof buildVirtualTeam>;
+    hTactics: GameTactics;
+    aTactics: GameTactics;
+    hDepth: DepthChart;
+    aDepth: DepthChart;
+    seed: string;
+};
+type QuickPlayNavState = { phase?: 'live' | 'result'; liveParams?: QuickLiveParams; result?: SimulationResult };
 
 // ─── 팀 셀렉터 드롭다운 ───────────────────────────────────────────────────────
 
@@ -219,6 +234,8 @@ const TeamColumn: React.FC<TeamColumnProps> = ({
 
 const QuickPlayPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const navState = (location.state ?? {}) as QuickPlayNavState;
     const onlineCount = useQuickPlayPresence();
 
     const [tab, setTab]               = useState<QuickTab>('roster');
@@ -233,17 +250,11 @@ const QuickPlayPage: React.FC = () => {
     const [pool, setPool]             = useState<Player[]>([]);
     const [poolLoading, setPoolLoading] = useState(true);
     const [poolType, setPoolType]     = useState<PoolType>('current');
-    const [showLive, setShowLive]     = useState(false);
-    const [liveParams, setLiveParams] = useState<{
-        homeTeam: ReturnType<typeof buildVirtualTeam>;
-        awayTeam: ReturnType<typeof buildVirtualTeam>;
-        hTactics: GameTactics;
-        aTactics: GameTactics;
-        hDepth: import('../types').DepthChart;
-        aDepth: import('../types').DepthChart;
-        seed: string;
-    } | null>(null);
-    const [result, setResult]         = useState<SimulationResult | null>(null);
+
+    // 화면 단계(설정/라이브/결과)는 로컬 state가 아니라 location.state에서 유도한다 (위 주석 참고).
+    const showLive   = navState.phase === 'live';
+    const liveParams = navState.phase === 'live'   ? (navState.liveParams ?? null) : null;
+    const result     = navState.phase === 'result' ? (navState.result ?? null)     : null;
 
     // poolType 변경 시 meta_players 재fetch
     useEffect(() => {
@@ -298,14 +309,17 @@ const QuickPlayPage: React.FC = () => {
         const hDepth   = homeDepth   ?? buildDefaultDepthChart(homeRoster, hTactics);
         const aDepth   = awayDepth   ?? buildDefaultDepthChart(awayRoster, aTactics);
 
-        setLiveParams({ homeTeam, awayTeam, hTactics, aTactics, hDepth, aDepth, seed: `quick-${Date.now()}` });
-        setShowLive(true);
-    }, [awayTeamId, homeTeamId, awayRoster, homeRoster, awayDepth, homeDepth, awayTactics, homeTactics, canSim]);
+        const liveParams: QuickLiveParams = { homeTeam, awayTeam, hTactics, aTactics, hDepth, aDepth, seed: `quick-${Date.now()}` };
+        navigate('/quick', { state: { phase: 'live', liveParams } });
+    }, [navigate, awayTeamId, homeTeamId, awayRoster, homeRoster, awayDepth, homeDepth, awayTactics, homeTactics, canSim]);
 
-    const handleReplay = () => { setResult(null); setTab('roster'); };
+    // "다시 설정"/완전 초기화는 뒤로가기가 아니라 명시적 사용자 액션이라 replace로 현재
+    // 히스토리 항목의 state만 비운다(설정 단계 자체는 새 항목을 쌓지 않음 — 애초에 /quick
+    // 최초 진입 시점의 항목이라 항상 존재).
+    const handleReplay = () => { navigate('/quick', { replace: true }); setTab('roster'); };
     const handleHome   = () => navigate('/');
     const handleReset  = () => {
-        setResult(null); setShowLive(false); setLiveParams(null);
+        navigate('/quick', { replace: true });
         setAwayTeamId(null); setHomeTeamId(null);
         setAwayRoster([]); setHomeRoster([]);
         setAwayDepth(null); setHomeDepth(null);
@@ -332,8 +346,9 @@ const QuickPlayPage: React.FC = () => {
                 simSettings={qpSimSettings}
                 hideTimeout
                 onGameEnd={(simResult) => {
-                    setResult(simResult);
-                    setShowLive(false);
+                    // 방금 끝난 라이브 화면으로는 다시 뒤로갈 수 없으므로 push가 아닌 replace —
+                    // 결과 화면에서 뒤로가기를 누르면 라이브를 건너뛰고 곧장 설정 화면으로 돌아간다.
+                    navigate('/quick', { state: { phase: 'result', result: simResult }, replace: true });
                 }}
             />
         );
