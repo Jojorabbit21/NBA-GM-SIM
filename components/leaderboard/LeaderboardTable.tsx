@@ -58,7 +58,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         return val;
     };
 
-    const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
+    const contentTextClass = "text-sm font-medium text-white font-mono tabular-nums";
 
     // Attributes / Defense 탭: 2행 그룹 헤더 데이터 생성
     // row1 — non-grouped cols: rowSpan=2 / grouped cols: 그룹 레이블(colSpan)
@@ -86,7 +86,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     if (data.length === 0) {
         return (
             <div className="relative h-full">
-                <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                <Table className="!rounded-none !border-0 !shadow-none custom-scrollbar-hide" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                     <colgroup>
                         {visibleColumns.map(col => (
                             <col key={col.key} style={{ width: col.width }} />
@@ -95,7 +95,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                     <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
                         {headerData ? (
                             <>
-                                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                                <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
                                     {headerData.row1.map((item, i) => {
                                         if (item.type === 'nogroup') {
                                             const { col, colIdx } = item;
@@ -119,14 +119,14 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         }
                                         return (
                                             <th key={i} colSpan={item.colSpan}
-                                                className="bg-slate-950 border-b border-r border-slate-800 text-xs font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
+                                                className="bg-slate-950 border-b border-r border-slate-800 text-sm font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
                                             >
                                                 {item.label}
                                             </th>
                                         );
                                     })}
                                 </tr>
-                                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                                <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
                                     {headerData.row2.map(({ col, colIdx }) => {
                                         const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
                                         const style = getStickyStyle(col, isLastSticky);
@@ -178,7 +178,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     }
 
     return (
-        <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
+        <Table className="!rounded-none !border-0 !shadow-none custom-scrollbar-hide" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
                 {visibleColumns.map(col => (
                     <col key={col.key} style={{ width: col.width }} />
@@ -188,7 +188,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
                 {headerData ? (
                     <>
-                        <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                        <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
                             {headerData.row1.map((item, i) => {
                                 if (item.type === 'nogroup') {
                                     const { col, colIdx } = item;
@@ -212,14 +212,14 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 }
                                 return (
                                     <th key={i} colSpan={item.colSpan}
-                                        className="bg-slate-950 border-b border-r border-slate-800 text-xs font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
+                                        className="bg-slate-950 border-b border-r border-slate-800 text-sm font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
                                     >
                                         {item.label}
                                     </th>
                                 );
                             })}
                         </tr>
-                        <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-7">
+                        <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
                             {headerData.row2.map(({ col, colIdx }) => {
                                 const isLastSticky = (visibleColumns[colIdx + 1] && visibleColumns[colIdx + 1].stickyLeft === undefined) || !visibleColumns[colIdx + 1];
                                 const style = getStickyStyle(col, isLastSticky);
@@ -298,7 +298,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                                     colorSecondary={p.teamColorSecondary}
                                                     size="sm"
                                                 />
-                                                <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer block">{p.name}</span>
+                                                <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer block">{p.name}</span>
                                             </div>
                                         );
                                     }
@@ -388,7 +388,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                                     colorSecondary={t.colorSecondary}
                                                     size="sm"
                                                 />
-                                                <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
+                                                <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
                                             </div>
                                         );
                                     }
@@ -416,11 +416,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 if (col.key === 'pm') {
                                     const val = parseFloat(cellContent as string);
                                     const color = val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-500';
-                                    finalTextColor = `text-xs font-medium font-mono tabular-nums ${color}`;
+                                    finalTextColor = `text-sm font-medium font-mono tabular-nums ${color}`;
                                 } else if (col.category === 'Attributes') {
                                     const val = Number(cellContent);
                                     const color = val >= 90 ? 'text-fuchsia-400' : val >= 80 ? 'text-emerald-400' : val >= 70 ? 'text-amber-400' : 'text-slate-500';
-                                    finalTextColor = `text-xs font-black font-mono tabular-nums ${color}`;
+                                    finalTextColor = `text-sm font-black font-mono tabular-nums ${color}`;
                                 }
                                 
                                 return (

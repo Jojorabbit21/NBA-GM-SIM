@@ -1,10 +1,10 @@
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
-import { supabase } from '../../../services/supabaseClient';
+import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { LeaderboardView, type LeaderboardFilterState } from '../../LeaderboardView';
 import { INITIAL_STATS } from '../../../utils/constants';
@@ -66,37 +66,19 @@ const MultiLeaderboardView: React.FC = () => {
         setSearchParams(params, { replace: true });
     };
 
-    const [teams, setTeams] = useState<Team[]>([]);
-    const [fetchLoading, setFetchLoading] = useState(false);
-
     const allRosterIds = useMemo(
         () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
         [leagueTeams],
     );
 
-    useEffect(() => {
-        if (!allRosterIds.length || !room?.id) return;
-        let cancelled = false;
-        setFetchLoading(true);
-
-        const fetchData = async () => {
-            const [playersRes, pbpRes] = await Promise.all([
-                supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies')
-                    .in('id', allRosterIds),
-                supabase
-                    .from('game_pbp')
-                    .select('home_box, away_box, home_team_id, away_team_id, game_start_time')
-                    .eq('room_id', room.id),
-            ]);
-
-            if (cancelled) return;
-
+    // 홈 화면 로스터 위젯/로스터 화면과 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가
+    // 같으면 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이 즉시 뜬다.
+    // 최신 경기 결과를 바로 보고 싶으면 툴바의 새로고침 버튼(onRefresh)으로 수동 강제 갱신.
+    const selectLeaderboardTeams = useCallback((raw: LeagueRawStatsData): Team[] => {
             const playerBaseMap = new Map<string, Player>(
-                (playersRes.data ?? []).map((raw: any) => [
-                    String(raw.id),
-                    mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true),
+                raw.playersRaw.map((r: any) => [
+                    String(r.id),
+                    mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true),
                 ]),
             );
 
@@ -105,7 +87,7 @@ const MultiLeaderboardView: React.FC = () => {
             const statsMap = new Map<string, ReturnType<typeof INITIAL_STATS>>();
             const serverNow = getServerNow();
 
-            for (const row of (pbpRes.data ?? [])) {
+            for (const row of raw.pbpRows) {
                 if (!isFinal({ scheduledAt: row.game_start_time }, serverNow)) continue;
                 const sides: { box: PlayerBoxScore[] }[] = [
                     { box: row.home_box ?? [] },
@@ -207,14 +189,15 @@ const MultiLeaderboardView: React.FC = () => {
                 }).filter(Boolean) as Player[],
             }));
 
-            setTeams(builtTeams);
-            setFetchLoading(false);
-        };
+            return builtTeams;
+    }, [leagueTeams, useCustomOverrides]);
 
-        fetchData();
-        return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allRosterIds.join(','), room?.id]);
+    const {
+        data: teams = [],
+        isPending: fetchLoading,
+        isFetching: fetchRefreshing,
+        refetch: refetchTeams,
+    } = useLeagueRawStats(room?.id, allRosterIds, selectLeaderboardTeams);
 
     const handleViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
         navigate(`/multi/leagues/${leagueId}/season/roster`, {
@@ -253,6 +236,8 @@ const MultiLeaderboardView: React.FC = () => {
             hideSeasonType={isTournament}
             savedState={savedFilterState}
             onStateChange={handleFilterStateChange}
+            onRefresh={() => refetchTeams()}
+            refreshing={fetchRefreshing}
         />
     );
 };

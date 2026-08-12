@@ -30,9 +30,12 @@ interface LeaderboardViewProps {
   savedState?: LeaderboardFilterState | null;
   onStateChange?: (state: LeaderboardFilterState) => void;
   hideSeasonType?: boolean;
+  /** 캐시된 데이터를 수동으로 다시 불러오는 버튼 — 제공된 경우에만 렌더링(멀티플레이어 전용). */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -174,6 +177,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               seasonType={seasonType}
               setSeasonType={setSeasonType}
               hideSeasonType={hideSeasonType}
+              onRefresh={onRefresh}
+              refreshing={refreshing}
               searchQuery={searchQuery}
               setSearchQuery={(q: string) => {
                   if (q && !searchQuery) {
@@ -209,30 +214,30 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       {/* Pagination Footer */}
       <div className="relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50">
               {/* Left: Showing info */}
-              <div className="text-xs font-bold text-slate-500 w-48">
-                  Showing {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)} of {sortedData.length}
+              <div className="text-sm font-bold text-slate-500 w-48">
+                  총 {sortedData.length}명 중 {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)}
               </div>
 
               {/* Center: Page buttons */}
-              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
                   <button
                       onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo(0, 0); }}
                       disabled={currentPage === 1}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                       <ChevronLeft size={14} />
                   </button>
 
                   {getPageNumbers().map((page, idx) =>
                       page === '...'
-                          ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-xs text-slate-600 font-bold select-none">··</span>
+                          ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-sm text-slate-600 font-bold select-none">··</span>
                           : <button
                               key={page}
                               onClick={() => { setCurrentPage(page); window.scrollTo(0, 0); }}
-                              className={`w-7 h-7 text-xs font-bold rounded-lg transition-all ${
+                              className={`w-7 h-7 text-sm font-bold rounded-lg transition-all ${
                                   currentPage === page
                                       ? 'bg-indigo-600 text-white'
-                                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                      : 'text-indigo-400 hover:bg-slate-800 hover:text-indigo-300'
                               }`}
                           >
                               {page}
@@ -242,7 +247,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   <button
                       onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo(0, 0); }}
                       disabled={currentPage === totalPages || totalPages === 0}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                       <ChevronRight size={14} />
                   </button>
@@ -250,11 +255,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
               {/* Right: Items per page */}
               <div className="ml-auto flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500">Rows</span>
+                  <span className="text-sm font-bold text-slate-500">페이지 당</span>
                   <select
                       value={itemsPerPage}
                       onChange={e => handleItemsPerPageChange(Number(e.target.value))}
-                      className="bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      className="bg-slate-800 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
                   >
                       {[25, 50, 75, 100].map(n => (
                           <option key={n} value={n}>{n}</option>

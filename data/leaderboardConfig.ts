@@ -36,10 +36,10 @@ export const WIDTHS = {
     RANK: 50,
     NAME: 200,
     POS: 50,
-    OVR: 50,
+    OVR: 62, // "OVR" 헤더가 정렬 화살표와 함께 표시될 때 text-sm(14px)에서 잘려서(실측 확인) 넓힘
     STAT: 55,
     PCT: 60,
-    ZONE: 45, // Narrower for dense zone stats
+    ZONE: 66, // 헤더 폰트 12px→14px(text-sm) 확대 이후 "FGM/FGA/FG%" 라벨이 45px에서 잘려서(F...) 넓힘(정렬 화살표 아이콘이 붙는 컬럼까지 고려) — 여전히 dense zone stats용으로 좁게 유지
     W: 40,
     L: 40,
 };
@@ -186,7 +186,7 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
 ];
 
 // Defense Columns
-const DEF_ZONE_W = 55;
+const DEF_ZONE_W = 76; // 헤더 text-sm(14px) 기준 "DFGM/DFGA/DFG%" 라벨이 정렬 화살표 붙은 상태에서도 안 잘리도록 여유폭 확보(실측)
 const DEF_ZONES = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
 export const DEFENSE_COLUMNS: ColumnDef[] = [
     { key: 'g',    label: 'G',    width: WIDTHS.STAT, sortable: true, isHeatmap: false, category: 'Defense', format: 'integer' },
@@ -195,7 +195,7 @@ export const DEFENSE_COLUMNS: ColumnDef[] = [
     { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
     ...DEF_ZONES.flatMap(z => ([
         { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
-        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: false, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
+        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: true, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
         { key: `dfg${z}%`,  label: 'DFG%', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  isInverse: true, attrGroup: z, category: 'Defense' as const, format: 'percent' as const },
     ])),
 ];
@@ -214,7 +214,7 @@ export const DEFENSE_STAT_OPTIONS = [
 ];
 
 // Attributes Columns (Players Only) — 공유 설정(ATTR_GROUPS)에서 자동 생성
-const ATTR_W = 44;
+const ATTR_W = 76; // 헤더 text-sm(14px) 기준 "OCON"/"DRAW"/"DCON" 등 4~5글자 라벨이 정렬 화살표 붙은 상태에서도 안 잘리도록 여유폭 확보(실측)
 const ATTRIBUTES_COLUMNS: ColumnDef[] = ATTR_GROUPS.flatMap(group =>
     group.keys.map(key => {
         const lbKey = toLeaderboardKey(key);
@@ -315,7 +315,7 @@ const TEAMS_DEFENSE_COLUMNS: ColumnDef[] = [
     { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
     ...DEF_ZONES.flatMap(z => ([
         { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'number' as const },
-        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: false, attrGroup: z, category: 'Defense' as const, format: 'number' as const },
+        { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: true, attrGroup: z, category: 'Defense' as const, format: 'number' as const },
         { key: `dfg${z}%`,  label: 'DFG%', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  isInverse: true, attrGroup: z, category: 'Defense' as const, format: 'percent' as const },
     ])),
 ];
