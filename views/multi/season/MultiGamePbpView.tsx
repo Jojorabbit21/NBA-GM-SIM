@@ -243,9 +243,10 @@ interface TeamStats {
 
 function fmtCountdown(ms: number): string {
     const totalSec = Math.floor(ms / 1000);
-    const m = Math.floor(totalSec / 60);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
     const s = totalSec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // 싱글플레이어 GameResultView의 탭 컴포넌트(GameBoxScoreTab/GameShotChartTab/GamePbpTab/

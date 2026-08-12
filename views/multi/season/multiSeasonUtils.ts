@@ -28,6 +28,8 @@ export interface MultiStandingsRecord {
     pct: number;
     home: { w: number; l: number };
     away: { w: number; l: number };
+    div: { w: number; l: number };
+    conf: { w: number; l: number };
     ppg: number;
     oppg: number;
     diff: number;
@@ -35,16 +37,24 @@ export interface MultiStandingsRecord {
     l10: { w: number; l: number };
 }
 
+/** 팀별 conference/division 소속 — DIV/CONF 전적 집계에만 쓰인다. division이 없는 팀(가상 팀 등)은 null. */
+export interface MultiTeamMeta {
+    conference: string | null;
+    division: string | null;
+}
+
 export function computeMultiStandingsStats(
     slugs: string[],
     schedule: Game[],
     serverNowMs: number,
+    teamMeta: Record<string, MultiTeamMeta> = {},
 ): Record<string, MultiStandingsRecord> {
     const result: Record<string, MultiStandingsRecord> = {};
     for (const slug of slugs) {
         result[slug] = {
             slug, wins: 0, losses: 0, pct: 0,
             home: { w: 0, l: 0 }, away: { w: 0, l: 0 },
+            div: { w: 0, l: 0 }, conf: { w: 0, l: 0 },
             ppg: 0, oppg: 0, diff: 0, streak: '-', l10: { w: 0, l: 0 },
         };
     }
@@ -65,6 +75,15 @@ export function computeMultiStandingsStats(
 
         if (homeWon) { hr.wins++; ar.losses++; hr.home.w++; ar.away.l++; }
         else          { ar.wins++; hr.losses++; hr.home.l++; ar.away.w++; }
+
+        const hMeta = teamMeta[g.homeTeamId];
+        const aMeta = teamMeta[g.awayTeamId];
+        if (hMeta?.division && hMeta.division === aMeta?.division) {
+            if (homeWon) { hr.div.w++; ar.div.l++; } else { ar.div.w++; hr.div.l++; }
+        }
+        if (hMeta?.conference && hMeta.conference === aMeta?.conference) {
+            if (homeWon) { hr.conf.w++; ar.conf.l++; } else { ar.conf.w++; hr.conf.l++; }
+        }
 
         teamGames[g.homeTeamId]?.push({ date: g.date, won: homeWon, pts: hs, opp: as });
         teamGames[g.awayTeamId]?.push({ date: g.date, won: !homeWon, pts: as, opp: hs });

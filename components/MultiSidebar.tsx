@@ -88,7 +88,7 @@ export const MultiSidebar: React.FC = () => {
                     active={pathname.startsWith(`${base}/roster`)}
                     icon={<Users />}
                     label="로스터"
-                    onClick={() => navigate(`${base}/roster`)}
+                    onClick={() => navigate(myTeam ? `${base}/roster?rteam=${myTeam.team_slug}` : `${base}/roster`)}
                 />
                 <NavItem
                     active={pathname.startsWith(`${base}/tactics`)}

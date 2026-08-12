@@ -60,26 +60,36 @@ export function fmtTime(g: Game, preferVirtual = false): string {
 }
 
 /**
- * 메인리그(main_league) "현재 시뮬레이션 날짜"(가상 캘린더 기준) — 리그 전체 일정 중
- * 지금(nowMs)과 실제 방송 시각(scheduledAt)이 가장 가까운 경기를 찾아 그 경기의 가상
- * date를 반환한다. "오늘" 배지 판정(MultiScheduleView.tsx)과 헤더 표시(MultiHeader.tsx)가
- * 공유 — 각자 따로 계산하면 미묘하게 어긋날 위험이 있어 이 파일 하나로 합쳤다.
+ * 메인리그(main_league) "현재 시뮬레이션 시점"(가상 캘린더 기준) — 리그 전체 일정 중
+ * 지금(nowMs)과 실제 방송 시각(scheduledAt)이 가장 가까운 경기를 찾아 반환한다. "오늘" 배지
+ * 판정(MultiScheduleView.tsx)과 헤더 날짜/시간 표시(MultiHeader.tsx)가 공유 — 각자 따로
+ * 계산하면 미묘하게 어긋날 위험이 있어 이 파일 하나로 합쳤다.
  */
+export function findCurrentVirtualGame(
+    games: Game[],
+    simStart: string | null,
+    gprd: number,
+    nowMs: number,
+): Game | null {
+    let best: Game | null = null;
+    let bestDiff = Infinity;
+    for (const g of games) {
+        const resolvedAt = resolveRealAt(g, simStart, gprd);
+        if (!resolvedAt) continue;
+        const diff = Math.abs(new Date(resolvedAt).getTime() - nowMs);
+        if (diff < bestDiff) { bestDiff = diff; best = g; }
+    }
+    return best;
+}
+
+/** findCurrentVirtualGame()의 date만 필요한 호출부(오늘 강조 등)용 얇은 래퍼. */
 export function findCurrentVirtualDate(
     games: Game[],
     simStart: string | null,
     gprd: number,
     nowMs: number,
 ): string | null {
-    let bestDate: string | null = null;
-    let bestDiff = Infinity;
-    for (const g of games) {
-        const resolvedAt = resolveRealAt(g, simStart, gprd);
-        if (!resolvedAt) continue;
-        const diff = Math.abs(new Date(resolvedAt).getTime() - nowMs);
-        if (diff < bestDiff) { bestDiff = diff; bestDate = g.date; }
-    }
-    return bestDate;
+    return findCurrentVirtualGame(games, simStart, gprd, nowMs)?.date ?? null;
 }
 
 // 카드 뷰의 날짜 컨트롤 바(저번달/저번주/화살표/데이트피커)용 날짜 산술 — 항상 로컬

@@ -315,6 +315,30 @@ export function useMultiGameData(
         };
     }, [roomId]);
 
+    // ── rooms.sim_date Realtime 구독 ────────────────────────────────────────────
+    // [2026-08-12] currentSimDate는 init()에서 최초 1회만 세팅되고 그 뒤로는 갱신 경로가
+    // 없어서, 서버(scheduler.ts의 advanceSimDates)가 백그라운드에서 sim_date를 전진시켜도
+    // 세션을 오래 켜둔 클라이언트는 stale한 값을 계속 들고 있는 문제가 있었다. 2026-08-06
+    // 마이그레이션 때 games 구독으로 옮기며 rooms 구독을 통째로 제거했던 게 원인 — sim_date
+    // 용도로만 가볍게 복구한다. 서버가 값이 바뀔 때만 쓰도록 이미 최적화해뒀으므로
+    // (scheduler.ts 주석 참조) 이벤트 빈도는 낮다(보통 하루 1회 수준).
+    useEffect(() => {
+        if (!roomId) return;
+        const channel = supabase
+            .channel(`room-simdate-${roomId}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+                (payload) => {
+                    const nextDate = (payload.new as { sim_date?: string })?.sim_date;
+                    if (nextDate) setCurrentSimDate(nextDate);
+                },
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [roomId]);
+
     // 전술/뎁스차트는 더 이상 자동 저장하지 않는다 — 사용자가 저장 버튼을 눌러야만
     // room_members에 반영되고, 그래야 실제 경기 시뮬레이션(simRunner.ts)에도 반영된다.
     // (과거엔 여기서 1.5초 디바운스 자동 저장을 했었음 — 편집 중인 미확정 값이 그대로

@@ -241,7 +241,7 @@ export const MultiHeader: React.FC = () => {
     }, [navigate, base]);
 
     const handleViewTeam = useCallback((teamSlug: string) => {
-        navigate(`${base}/roster`, { state: { viewTeamId: teamSlug } });
+        navigate(`${base}/roster?rteam=${teamSlug}`);
     }, [navigate, base]);
 
     const primaryColor = myTeam?.color_primary ?? '#4338ca';
@@ -286,6 +286,7 @@ export const MultiHeader: React.FC = () => {
                     leagueTeams={leagueTeams}
                     poolPlayers={poolPlayers}
                     rosterMap={rosterMap}
+                    myTeamId={myTeamId}
                     onViewPlayer={handleViewPlayer}
                     onViewTeam={handleViewTeam}
                 />
@@ -330,9 +331,12 @@ export const MultiHeader: React.FC = () => {
                     </div>
                 ) : nextGame && countdown ? (
                     <div className="flex flex-col items-end gap-1.5 leading-none">
-                        {/* 상단: 메인리그 정규시즌은 가상 시즌 날짜, 그 외(토너먼트/플레이오프)는 라운드·스코어 */}
+                        {/* 상단: 메인리그 정규시즌은 "지금" 가상 날짜(다음 경기 날짜 아님 — 다음
+                            경기까지 카운트다운은 바로 아래에 별도로 있음), 그 외(토너먼트/플레이오프)는 라운드·스코어 */}
                         {league?.type === 'main_league' && !nextGame.isPlayoff ? (
-                            <span className="text-base text-white font-medium">{fmtVirtualDate(nextGame.date)}</span>
+                            <span className="text-base text-white font-medium">
+                                {fmtVirtualDate(currentVirtualDate ?? nextGame.date)}
+                            </span>
                         ) : (
                             <div className="flex items-center gap-1.5 text-xs text-white">
                                 <span>다음 경기</span>
@@ -390,7 +394,9 @@ export const MultiHeader: React.FC = () => {
                         </span>
                     </div>
                 ) : currentVirtualDate ? (
-                    <span className="text-base text-white font-medium">{fmtVirtualDate(currentVirtualDate)}</span>
+                    <span className="text-base text-white font-medium">
+                        {fmtVirtualDate(currentVirtualDate)}
+                    </span>
                 ) : (
                     <span className="text-sm text-zinc-600">예정된 경기 없음</span>
                 )}

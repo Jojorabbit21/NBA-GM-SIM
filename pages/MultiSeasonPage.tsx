@@ -1,10 +1,11 @@
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Loader2, ChevronRight } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
-import { useMultiGameData } from '../hooks/useMultiGameData';
-import { useGame } from '../hooks/useGameContext';
+import { useSeasonContext } from '../views/multi/season/seasonContext';
+import { useLeagueRawStats, type LeagueRawStatsData } from '../hooks/useLeagueRawStats';
 import { supabase } from '../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { OvrBadge } from '../components/common/OvrBadge';
@@ -84,9 +85,8 @@ const MultiSeasonPage: React.FC = () => {
     const navigate     = useNavigate();
     const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
-    const { session }  = useGame();
 
-    const { isLoading: gameLoading, schedule, myTeamId } = useMultiGameData(session, room?.id ?? null);
+    const { isLoading: gameLoading, schedule, myTeamId } = useSeasonContext();
     const serverNow = useServerClock();
 
     const isLoading = leagueLoading || gameLoading;
@@ -94,113 +94,111 @@ const MultiSeasonPage: React.FC = () => {
     const myTeam = leagueTeams.find(t => t.team_slug === myTeamId) ?? null;
     const primaryColor = myTeam?.color_primary ?? '#4f46e5';
 
-    const [rosterPlayers, setRosterPlayers] = useState<RosterWidgetPlayer[]>([]);
-    const rosterKey = myTeam?.roster?.join(',') ?? '';
+    // 로스터 화면/리더보드 화면과 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가 같으면
+    // 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이 즉시 뜬다. 이 위젯은
+    // 내 팀 선수만 필요하므로 select에서 myTeam.roster/myTeamId 기준으로 걸러낸다.
+    const allRosterIds = useMemo(
+        () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
+        [leagueTeams],
+    );
 
-    useEffect(() => {
-        if (!myTeam?.roster?.length || !room?.id || !myTeamId) return;
-        let cancelled = false;
+    const selectMyTeamStats = useCallback((raw: LeagueRawStatsData) => {
+        if (!myTeam?.roster?.length || !myTeamId) return null;
 
-        const fetchRosterData = async () => {
-            const [playersRes, pbpRes, roomRes] = await Promise.all([
-                supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies')
-                    .in('id', myTeam.roster),
-                supabase
-                    .from('game_pbp')
-                    .select('home_box, away_box, home_team_id, game_start_time')
-                    .eq('room_id', room.id)
-                    .or(`home_team_id.eq.${myTeamId},away_team_id.eq.${myTeamId}`),
-                supabase
-                    .from('rooms')
-                    .select('roster_state')
-                    .eq('id', room.id)
-                    .single(),
-            ]);
+        const playerMap = new Map<string, ReturnType<typeof mapRawPlayerToRuntimePlayer>>();
+        for (const r of raw.playersRaw) {
+            if (!myTeam.roster.includes(String(r.id))) continue;
+            playerMap.set(String(r.id), mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
+        }
 
-            if (cancelled) return;
-
-            const playerMap = new Map<string, ReturnType<typeof mapRawPlayerToRuntimePlayer>>();
-            for (const raw of playersRes.data ?? []) {
-                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true));
+        // 정시+10분 경과 — final 상태인 경기만 집계 (live 구간 박스는 비공개)
+        const statsMap = new Map<string, { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number; mp: number; gp: number }>();
+        const now = getServerNow();
+        for (const game of raw.pbpRows) {
+            if (game.home_team_id !== myTeamId && game.away_team_id !== myTeamId) continue;
+            if (!isFinal({ scheduledAt: game.game_start_time }, now)) continue;
+            const box = (game.home_team_id === myTeamId ? game.home_box : game.away_box) as PlayerBoxScore[] | null;
+            for (const entry of box ?? []) {
+                if (entry.mp <= 0) continue;
+                const prev = statsMap.get(entry.playerId) ?? { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, mp: 0, gp: 0 };
+                statsMap.set(entry.playerId, {
+                    pts: prev.pts + entry.pts,
+                    reb: prev.reb + entry.reb,
+                    ast: prev.ast + entry.ast,
+                    stl: prev.stl + entry.stl,
+                    blk: prev.blk + entry.blk,
+                    tov: prev.tov + entry.tov,
+                    fgm: prev.fgm + entry.fgm,
+                    fga: prev.fga + entry.fga,
+                    p3m: prev.p3m + entry.p3m,
+                    p3a: prev.p3a + entry.p3a,
+                    ftm: prev.ftm + entry.ftm,
+                    fta: prev.fta + entry.fta,
+                    mp:  prev.mp  + entry.mp,
+                    gp:  prev.gp  + 1,
+                });
             }
+        }
 
-            // 정시+10분 경과 — final 상태인 경기만 집계 (live 구간 박스는 비공개)
-            const statsMap = new Map<string, { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number; mp: number; gp: number }>();
-            const now = getServerNow();
-            for (const game of pbpRes.data ?? []) {
-                if (!isFinal({ scheduledAt: game.game_start_time }, now)) continue;
-                const box = (game.home_team_id === myTeamId ? game.home_box : game.away_box) as PlayerBoxScore[] | null;
-                for (const entry of box ?? []) {
-                    if (entry.mp <= 0) continue;
-                    const prev = statsMap.get(entry.playerId) ?? { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, mp: 0, gp: 0 };
-                    statsMap.set(entry.playerId, {
-                        pts: prev.pts + entry.pts,
-                        reb: prev.reb + entry.reb,
-                        ast: prev.ast + entry.ast,
-                        stl: prev.stl + entry.stl,
-                        blk: prev.blk + entry.blk,
-                        tov: prev.tov + entry.tov,
-                        fgm: prev.fgm + entry.fgm,
-                        fga: prev.fga + entry.fga,
-                        p3m: prev.p3m + entry.p3m,
-                        p3a: prev.p3a + entry.p3a,
-                        ftm: prev.ftm + entry.ftm,
-                        fta: prev.fta + entry.fta,
-                        mp:  prev.mp  + entry.mp,
-                        gp:  prev.gp  + 1,
-                    });
-                }
-            }
+        return { playerMap, statsMap };
+    }, [myTeam, myTeamId, useCustomOverrides]);
 
-            const rosterState = ((roomRes.data as any)?.roster_state ?? {}) as Record<string, SavedPlayerState | number>;
+    const { data: myTeamStats } = useLeagueRawStats(room?.id, allRosterIds, selectMyTeamStats);
 
-            const players: RosterWidgetPlayer[] = myTeam.roster.map(id => {
-                const p = playerMap.get(id);
-                const stats = statsMap.get(id);
-                const state = rosterState[id];
-                const condition = typeof state === 'object' ? (state.condition ?? 100) : 100;
-                const health = typeof state === 'object' ? (state.health ?? 'Healthy') : 'Healthy';
-                const injuryType = typeof state === 'object' ? state.injuryType : undefined;
-                const gp = stats?.gp ?? 0;
-                return {
-                    id,
-                    name: p?.name ?? id,
-                    position: p?.position ?? '-',
-                    ovr: p?.ovr ?? 0,
-                    condition,
-                    health,
-                    injuryType,
-                    gamesPlayed: gp,
-                    avgMp:  stats ? stats.mp  / gp : 0,
-                    avgPts: stats ? stats.pts / gp : 0,
-                    avgReb: stats ? stats.reb / gp : 0,
-                    avgAst: stats ? stats.ast / gp : 0,
-                    avgStl: stats ? stats.stl / gp : 0,
-                    avgBlk: stats ? stats.blk / gp : 0,
-                    avgTov: stats ? stats.tov / gp : 0,
-                    totalFgm: stats?.fgm ?? 0,
-                    totalFga: stats?.fga ?? 0,
-                    totalP3m: stats?.p3m ?? 0,
-                    totalP3a: stats?.p3a ?? 0,
-                    totalFtm: stats?.ftm ?? 0,
-                    totalFta: stats?.fta ?? 0,
-                    fgPct:  stats && stats.fga > 0 ? stats.fgm / stats.fga * 100 : null,
-                    p3Pct:  stats && stats.p3a > 0 ? stats.p3m / stats.p3a * 100 : null,
-                    tsPct:  stats && (stats.fga + 0.44 * stats.fta) > 0
-                        ? stats.pts / (2 * (stats.fga + 0.44 * stats.fta)) * 100
-                        : null,
-                };
-            }).sort((a, b) => b.ovr - a.ovr);
+    // roster_state(컨디션/부상)는 위 원본 fetch와 무관한 별도 소스(rooms 테이블) — 가볍고
+    // 이 위젯 전용이라 굳이 공유 쿼리에 합치지 않고 자체 useQuery로 캐싱만 적용.
+    const { data: roomRosterState } = useQuery({
+        queryKey: ['roomRosterState', room?.id],
+        enabled: !!room?.id,
+        queryFn: async () => {
+            const { data } = await supabase.from('rooms').select('roster_state').eq('id', room!.id).single();
+            return ((data as any)?.roster_state ?? {}) as Record<string, SavedPlayerState | number>;
+        },
+    });
 
-            setRosterPlayers(players);
-        };
+    const rosterPlayers: RosterWidgetPlayer[] = useMemo(() => {
+        if (!myTeam?.roster?.length || !myTeamStats) return [];
+        const { playerMap, statsMap } = myTeamStats;
+        const rosterState = roomRosterState ?? {};
 
-        fetchRosterData();
-        return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rosterKey, room?.id, myTeamId, useCustomOverrides]);
+        return myTeam.roster.map(id => {
+            const p = playerMap.get(id);
+            const stats = statsMap.get(id);
+            const state = rosterState[id];
+            const condition = typeof state === 'object' ? (state.condition ?? 100) : 100;
+            const health = typeof state === 'object' ? (state.health ?? 'Healthy') : 'Healthy';
+            const injuryType = typeof state === 'object' ? state.injuryType : undefined;
+            const gp = stats?.gp ?? 0;
+            return {
+                id,
+                name: p?.name ?? id,
+                position: p?.position ?? '-',
+                ovr: p?.ovr ?? 0,
+                condition,
+                health,
+                injuryType,
+                gamesPlayed: gp,
+                avgMp:  stats ? stats.mp  / gp : 0,
+                avgPts: stats ? stats.pts / gp : 0,
+                avgReb: stats ? stats.reb / gp : 0,
+                avgAst: stats ? stats.ast / gp : 0,
+                avgStl: stats ? stats.stl / gp : 0,
+                avgBlk: stats ? stats.blk / gp : 0,
+                avgTov: stats ? stats.tov / gp : 0,
+                totalFgm: stats?.fgm ?? 0,
+                totalFga: stats?.fga ?? 0,
+                totalP3m: stats?.p3m ?? 0,
+                totalP3a: stats?.p3a ?? 0,
+                totalFtm: stats?.ftm ?? 0,
+                totalFta: stats?.fta ?? 0,
+                fgPct:  stats && stats.fga > 0 ? stats.fgm / stats.fga * 100 : null,
+                p3Pct:  stats && stats.p3a > 0 ? stats.p3m / stats.p3a * 100 : null,
+                tsPct:  stats && (stats.fga + 0.44 * stats.fta) > 0
+                    ? stats.pts / (2 * (stats.fga + 0.44 * stats.fta)) * 100
+                    : null,
+            };
+        }).sort((a, b) => b.ovr - a.ovr);
+    }, [myTeam, myTeamStats, roomRosterState]);
 
     // schedule은 서버가 game_seq(압축 인덱스)로만 채워 저장 — scheduledAt이 없으면 multiGameReveal의
     // isFinal이 played 값에만 의존해 방금 시뮬된 경기의 결과가 정시+10분 전에도 그대로 노출된다
@@ -395,7 +393,7 @@ const MultiSeasonPage: React.FC = () => {
                         <SectionHeader
                             title="내 로스터"
                             color={primaryColor}
-                            action={{ label: "전체 보기", onClick: () => goTo('roster') }}
+                            action={{ label: "전체 보기", onClick: () => goTo(myTeamId ? `roster?rteam=${myTeamId}` : 'roster') }}
                         />
                         <div className="overflow-x-auto">
                         <table className="w-full table-auto text-xs">
@@ -494,7 +492,7 @@ const MultiSeasonPage: React.FC = () => {
                             {NAV_ITEMS.map(item => (
                                 <button
                                     key={item.key}
-                                    onClick={() => item.enabled ? goTo(item.key) : undefined}
+                                    onClick={() => item.enabled ? goTo(item.key === 'roster' && myTeamId ? `roster?rteam=${myTeamId}` : item.key) : undefined}
                                     disabled={!item.enabled}
                                     className={`
                                         flex flex-col items-center justify-center gap-1 p-3 rounded-lg text-xs font-bold transition-colors

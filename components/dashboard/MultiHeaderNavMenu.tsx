@@ -11,6 +11,7 @@ interface MultiHeaderNavMenuProps {
     leagueTeams:   LeagueTeamRow[];
     poolPlayers:   Player[];
     rosterMap:     Map<string, string>;
+    myTeamId?:     string | null;
     onViewPlayer:  (player: Player, teamSlug: string | null) => void;
     onViewTeam:    (teamSlug: string) => void;
 }
@@ -20,6 +21,8 @@ type DropdownId = 'team' | 'league' | null;
 interface DropdownItem {
     label: string;
     path: string;
+    /** 실제 navigate() 대상 — 쿼리 파라미터 포함. 미지정 시 path를 그대로 사용. */
+    navTo?: string;
     dividerBefore?: boolean;
 }
 
@@ -28,6 +31,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
     leagueTeams,
     poolPlayers,
     rosterMap,
+    myTeamId,
     onViewPlayer,
     onViewTeam,
 }) => {
@@ -72,7 +76,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
     const isItemActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
     const teamItems: DropdownItem[] = [
-        { label: '로스터',   path: `${base}/roster` },
+        { label: '로스터',   path: `${base}/roster`, navTo: myTeamId ? `${base}/roster?rteam=${myTeamId}` : `${base}/roster` },
         { label: '전술 설정', path: `${base}/tactics` },
     ];
 
@@ -96,7 +100,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
                     <React.Fragment key={item.path}>
                         {item.dividerBefore && <div className="my-1 border-t border-zinc-700" />}
                         <button
-                            onClick={() => handleNav(item.path)}
+                            onClick={() => handleNav(item.navTo ?? item.path)}
                             className={`px-3 py-1 text-xs rounded text-left transition-colors ${
                                 active
                                     ? 'bg-white/15 text-white font-semibold'
