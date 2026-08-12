@@ -72,6 +72,10 @@ export interface LeagueRow {
     tournament_format: string | null;
     match_format: string | null;
     finals_match_format: string | null;
+    /** 컨퍼런스별 플레이오프 진출 팀 수(리그 전체 총원이 아님) — 기본 8. */
+    playoff_team_count: number | null;
+    /** NBA 방식 플레이인 토너먼트(7~10위) 활성화 여부 — 기본 true. */
+    play_in_enabled: boolean | null;
     bracket_data: unknown | null;
     season_start_date: string;
     season_end_date: string | null;

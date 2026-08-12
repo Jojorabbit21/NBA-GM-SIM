@@ -15,6 +15,7 @@ import {
     type TournamentGame,
 } from './shared/tournamentBracket.ts';
 import { archiveTournament } from './shared/tournamentArchiver.ts';
+import { handlePlayInAdvance } from './shared/playInSeeder.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 
@@ -275,7 +276,7 @@ async function handleTournamentAdvance(
     // games UPDATE가 이미 기록했다 — 여기서는 시리즈 진행(series)과 다음 라운드 경기 생성만 담당.
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at')
+        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -351,6 +352,16 @@ async function handleTournamentAdvance(
                 console.error(`[simRunner] insertGameShortCodes 실패(${roomId}):`, err),
             );
         }
+    }
+
+    // 플레이인 미니시리즈(round:0) 완료 감지 — 표준 라운드 전진(advanceTournamentState)은
+    // round 1부터만 처리하므로 round:0은 위 블록에서 항상 그대로 지나쳐진다. 여기서
+    // series를 직접 mutate(디사이더 슬롯 채우기, 본선 브라켓 생성 등)한 뒤 이어서 저장한다.
+    if (seriesObj.round === 0 && seriesObj.finished) {
+        await handlePlayInAdvance(
+            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count },
+            roomId, series, seriesId,
+        ).catch(err => console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err));
     }
 
     await supabase.from('leagues')

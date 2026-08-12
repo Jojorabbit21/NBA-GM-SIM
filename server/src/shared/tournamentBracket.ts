@@ -15,7 +15,10 @@ export interface TournamentTeam {
 export interface PlayoffSeries {
     id: string;
     round: number;
-    conference: 'BPL';
+    // 'East'|'West'는 컨퍼런스별 플레이인 미니시리즈(round:0) 전용 — 메인 브라켓(round>=1)은
+    // 항상 'BPL'로 생성된다(initSingleElim이 컨퍼런스를 구분하지 않고 East/West를
+    // 시드 순서로 한 배열의 앞/뒤 절반에 배치하는 트릭만으로 컨퍼런스 브라켓을 재현하기 때문).
+    conference: 'East' | 'West' | 'BPL';
     higherSeedId: string;
     lowerSeedId:  string;
     higherSeedWins: number;
@@ -124,7 +127,7 @@ function slotToScheduledAt(simRealStartAt: string, slot: number, intervalMinutes
  * 배치되며, 슬롯 간 실제 시간 간격은 intervalMinutes(games_per_real_day로 환산)로 결정된다.
  * 시리즈가 일찍 끝나면 남은 게임은 played: false인 채로 방치된다.
  */
-function generateAllSeriesGames(
+export function generateAllSeriesGames(
     seriesId: string,
     higherSeedId: string,
     lowerSeedId: string,

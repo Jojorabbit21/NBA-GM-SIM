@@ -35,6 +35,39 @@
 
 ---
 
+## 2026-08-10 — 순위 화면 클린치 표시 + 어드민 플레이오프 형식 설정(컨퍼런스별 진출 인원/플레이인 토너먼트) 서버 반영
+
+**배경**: 사용자 요청 — ① 순위 화면에 플레이오프 진출확정/탈락 표시(클린치 로직) 추가 ② 어드민이 컨퍼런스별 플레이오프 진출 팀 수와 플레이인 토너먼트 활성화 여부를 세션별로 설정 가능하게. 조사 결과 멀티플레이어는 기존에 (a) `leagues.playoff_team_count`가 "리그 전체" top-N을 의미했고 컨퍼런스 구분이 아예 없었으며 (b) 플레이인 자체가 없었고 (c) 순위 화면엔 클린치 표시가 전혀 없었음(싱글플레이어 `StandingsView`에만 존재). 사용자에게 "클린치 표시용 설정을 서버의 실제 플레이오프 브라켓 생성 로직에도 반영할지" 확인 → "클라이언트 + 서버 브라켓 생성 로직까지 함께" 선택 → 서버 시뮬레이션 엔진(정규시즌 종료 자동 트리거)까지 전면 수정.
+
+**핵심 설계**: 컨퍼런스 분리를 위해 기존 공용 토너먼트 엔진(`tournamentInitializer.ts`의 `initSingleElim`)은 **전혀 수정하지 않았다** — 대신 동부 N팀을 표준 브라켓 시드로 정렬해 앞쪽 N슬롯에, 서부 N팀을 뒤쪽 N슬롯에 배치해서 2N팀 단일 브라켓으로 넘기면, 매치인덱스/2 트리 구조상 앞/뒤 절반이 결승 라운드 전까지 서로 만나지 않아 "컨퍼런스 파이널→파이널" 구조가 자연히 재현된다(2N이 2의 거듭제곱일 때만 정확 — 8+8=16처럼 기본값 조합은 항상 정확, 비-2^n 인원수는 기존에도 있던 부전승 배치 한계와 동일선상). 플레이인은 컨퍼런스당 3개 미니시리즈(`PI_{CONF}_7v8`/`9v10`/`8th`, round:0)로 `bracket_data.series`에 저장 — 표준 라운드 전진(`advanceTournamentState`)은 라운드 루프가 1부터 시작해 round:0을 항상 안전하게 무시하므로, 새 파일 `playInSeeder.ts`가 `simRunner.ts` 훅을 통해 별도로 전진시킨다.
+
+**변경 파일**:
+- 신규 `migrations/league_play_in.sql` — `leagues.play_in_enabled boolean DEFAULT true` 추가(Supabase 프로젝트 `buummihpewiaeltywdff`에 적용 완료).
+- `server/src/shared/tournamentBracket.ts` — `PlayoffSeries.conference` 타입을 리터럴 `'BPL'`에서 `'East'|'West'|'BPL'`로 확장(이 필드는 advancement 로직에서 읽히지 않아 순수 타입 변경, 로직 영향 없음). `generateAllSeriesGames`를 `export`로 변경(playInSeeder.ts가 재사용).
+- `server/src/shared/playoffSeeder.ts` — 전면 리라이트. `computeStandings`(리그 전체) → `computeStandingsByConference`(East/West 분리, `league_teams.conference` 조인)로 교체. `startPlayoffs`는 이제 컨퍼런스별 top-N(플레이인 없음 경로)만 담당. 신규 `buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, priorSeries=[])` — 두 컨퍼런스 qualified 목록을 시드 후 병합해 기존 엔진에 넘기는 공유 핵심 로직(`startPlayoffs`와 `playInSeeder.ts`가 공유). `priorSeries`는 호출자의 배열 레퍼런스를 그대로 받아 거기에 새 본선 시리즈를 `push`하고 단일 update로 저장 — 재조회 read-modify-write를 하지 않아 simRunner.ts가 직후 같은 배열로 한 번 더 저장해도 최신 상태를 재기록할 뿐이라 안전(자세한 이유는 파일 내 주석).
+- 신규 `server/src/shared/playInSeeder.ts` — `startPlayIn(league, roomId)`: 정규시즌 종료 시 컨퍼런스당 (N-2+1)~(N-2+4)위 4팀으로 플레이인 미니시리즈 생성(7v8/9v10은 즉시 게임 생성, 8th 디사이더는 참가팀 TBD라 보류). `handlePlayInAdvance(league, roomId, series, finishedSeriesId)`: 7v8/9v10 완료 시 디사이더 슬롯 채우고 게임 생성, 컨퍼런스당 팀 부족(4팀 미만)이면 그 컨퍼런스는 플레이인 건너뛰고 자동 top-N으로 대체, round:0 6개 시리즈가 모두 끝나면 자동클린치(N-2)+플레이인 결과(seed7/8)를 합쳐 `buildAndStoreConferenceBracket` 호출.
+- `server/src/simRunner.ts` — `handleTournamentAdvance`의 `leagues` select에 `playoff_team_count` 추가. 기존 승패 집계+`advanceTournamentState` 호출 블록 직후, 최종 `bracket_data` 저장 직전에 `if (seriesObj.round === 0 && seriesObj.finished) await handlePlayInAdvance(...)` 훅 추가.
+- `server/src/scheduler.ts` — `checkSeasonCompletions`의 `leagues` select에 `play_in_enabled` 추가, `startPlayoffs` 단일 호출을 `league.play_in_enabled ? startPlayIn : startPlayoffs` 분기로 교체.
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `playoff_team_count: number | null`, `play_in_enabled: boolean | null` 필드 추가(기존 DB 컬럼은 있었으나 TS 타입에 없었음).
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`에 `playInEnabled` 추가, `UpdateLeagueSettingsParams`에 `playoffTeamCount`/`playInEnabled` 추가(기존엔 생성 시점 옵션만 있고 세션 중 편집 API가 없었음) + `updateLeagueSettings` payload 매핑.
+- `views/multi/league/LeagueSettingsView.tsx` — "엔진 설정" 섹션 아래 신규 "플레이오프 형식" 섹션(`league.type==='main_league' && !league.bracket_data`일 때만 노출 — 플레이오프 시작 전까지 언제든 변경 가능, `!isInProgress` 아님) 추가: 컨퍼런스별 진출 팀 수(숫자 입력, 2~16) + 플레이인 활성화(체크박스, 안내 문구에 자동진출/플레이인 인원 실시간 계산 표시) + 독립 저장 버튼(`handleSavePlayoffSettings`).
+- `views/multi/season/MultiStandingsView.tsx`:
+  - 신규 `computeClinchStatus()` — 싱글플레이어 `StandingsView`의 하드코딩(6위/10위) 클린치 알고리즘을 `autoClinchCount`/`lastQualifyingRank`(어드민 설정값 기반)로 일반화해 컨퍼런스별 계산. 팀 이름 색상에 반영(진출확정=emerald, 탈락=slate-600, 그 외=기본 — 싱글플레이어와 동일하게 clinched_playin은 별도 색상 없음).
+  - `TournamentBracket` 래퍼에서 `series.filter(s => s.round >= 1)`로 round:0(플레이인) 항목을 걸러내고 본선 브라켓만 `TournamentBracketView`에 전달 — 그 컴포넌트의 그리드 레이아웃 계산(`matchIndex`, `T_R{round}_M{idx}` 파싱)이 round:0을 다루도록 만들어져 있지 않아 그대로 넘기면 깨짐. 플레이인 경기 자체는 일반 경기처럼 스케줄 화면엔 정상 노출됨.
+- 부수적으로 `views/multi/season/multiSeasonUtils.ts`(직전 커밋에서 이미 `div`/`conf` 필드 추가됨)는 이번 변경과 별개.
+- **참고**: 이 커밋에 포함된 `MultiStandingsView.tsx` diff에는 위 클린치/브라켓 필터링 외에도, 같은 파일에서 이후 세션들에 걸쳐 추가된 후속 기능(컨퍼런스 화면 진출권 커트라인 구분선, 몬테카를로 기반 플레이오프 진출 확률(PO%) 시뮬레이션+바 그래프+hover 툴팁)이 함께 들어있음 — 전부 이 클린치/플레이인 설정값(`autoClinchCount`/`lastQualifyingRank`/`playInEnabled`)을 그대로 재사용하는 후속 UI 작업이라 별도 항목으로 쪼개지 않고 여기 기록만 남김. 상세 변경 내용은 각 기능의 개별 커밋 시점에 별도 dev-log 항목으로 추가 예정.
+
+**검증**: 서버 `tsc --noEmit -p server/tsconfig.json` — 이번에 수정/신규 작성한 4개 파일(`playoffSeeder.ts`/`playInSeeder.ts`/`tournamentBracket.ts`/`simRunner.ts`/`scheduler.ts`)에서 신규 에러 없음(기존에 있던 Bun 타입/tournamentArchiver.ts 등 무관한 에러만 남아있음, 사전 확인). 클라이언트 `vite build` 성공 + 수정 파일 4개(`MultiStandingsView.tsx`/`LeagueSettingsView.tsx`/`leagueService.ts`/`roomQueries.ts`) 격리 `tsc --noEmit`에서 신규 에러 없음(기존 `SimSettings.normalization` 등 무관 에러만 잔존).
+
+**알려진 한계**:
+- **컨퍼런스 크기가 다르면(한쪽만 플레이인 대상 팀 부족)** East/West qualified 인원수가 달라져 "앞 N슬롯/뒤 N슬롯이 각각 독립 서브트리"라는 전제가 깨질 수 있음 — 소규모 커스텀 리그(가상 팀 다수)에서만 발생 가능한 엣지케이스, 기존에도 문서화되어 있던 비-2^n 인원수 시드 부정확 한계와 동일선상으로 남겨둠.
+- **동시성**: `handlePlayInAdvance`의 "6개 시리즈 모두 완료 → 본선 브라켓 생성" 체크와 `handleTournamentAdvance` 최하단의 "전체 완료 → 아카이브" 체크 둘 다 read-check-act 레이스 가능성이 있음(두 게임이 정확히 같은 순간 완료될 때) — 단, 계산이 결정론적이라 최악의 경우 중복 기록 없이 동일 값을 한 번 더 쓰는 정도이며, 이는 이 코드베이스에 기존에도 있던 "allDone→archive" 체크와 동일 수준의 허용된 리스크(수정 범위 밖).
+- **서버 미배포**: 이번 서버 변경(`server/src/`)은 로컬 커밋 상태이며 fly.io 배포는 하지 않음 — 실제로 새 리그의 정규시즌이 끝나 플레이오프/플레이인이 트리거되기 전까지는 배포가 필요.
+- 플레이인 경기는 `TournamentBracketView`(브라켓 그래픽)엔 표시되지 않고 일정 화면(리스트/카드)에만 일반 경기로 노출됨 — 별도 플레이인 전용 UI는 이번 범위에서 구현하지 않음.
+- 기존에 이미 생성된 리그(마이그레이션 이전 `playoff_team_count` 값)는 컬럼 의미가 "리그 전체"에서 "컨퍼런스당"으로 바뀌었으므로, 다음 정규시즌 종료 시 진출 팀 수가 이전과 달라질 수 있음(예: 기존 8=리그 전체 8팀 → 이제 8=컨퍼런스당 8팀=총 16팀). 기존 리그 어드민은 설정 화면에서 재확인 필요.
+
+---
+
 ## 2026-08-09 — 카드 뷰 대개편: 3열+좌우 배치, 쿼터별 점수, 팀 에이스 표시
 
 **배경**: 사용자 요청 — ① 카드 그리드 5열→3열 ② 원정/홈 상하 배치→좌우 배치 ③ 진행중/종료 카드에 쿼터별 점수 테이블 + PTS/REB/AST 리더 ④ 예정 카드엔 팀별 "에이스" 선수 1명. 조사 결과 쿼터별 점수와 에이스(OVR) 둘 다 기존 데이터로는 불가능해서 새 데이터 파이프라인을 추가함(사용자 지시대로 이번 배치 작업들은 Vercel 배포 없이 로컬 커밋만 진행, 추후 한 번에 배포 예정).

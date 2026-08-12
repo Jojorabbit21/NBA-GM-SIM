@@ -99,7 +99,10 @@ export interface CreateLeagueParams {
         durationWeeks:        number;
         dailyWindowStartMin:  number;
         dailyWindowEndMin:    number;
+        /** 컨퍼런스별 진출 팀 수(리그 전체 총원이 아님) */
         playoffTeamCount:     number;
+        /** NBA 방식 플레이인 토너먼트(7~10위) 활성화 여부 */
+        playInEnabled:        boolean;
         // 가상 시즌 연도 — 사용자에게 표시되는 정규시즌 캘린더 연도(예: 2027). 미지정 시
         // 서버가 생성 시점의 실제 연도로 폴백한다.
         virtualSeasonYear:    number;
@@ -162,6 +165,7 @@ export const createLeague = async (
     if (opts.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = opts.dailyWindowStartMin;
     if (opts.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = opts.dailyWindowEndMin;
     if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
+    if (opts.playInEnabled        !== undefined) payload.play_in_enabled         = opts.playInEnabled;
     if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
@@ -343,6 +347,10 @@ export interface UpdateLeagueSettingsParams {
     matchFormat?:        string | null;
     finalsMatchFormat?:  string | null;
     gamesPerRealDay?:    number;
+    /** 컨퍼런스별 플레이오프 진출 팀 수(리그 전체 총원이 아님) */
+    playoffTeamCount?:   number;
+    /** NBA 방식 플레이인 토너먼트(7~10위) 활성화 여부 */
+    playInEnabled?:      boolean;
     /** 관리자 전용 엔진 설정(부상/가비지타임 등) — rooms.sim_settings에 저장 */
     simSettings?:        SimSettings;
 }
@@ -368,6 +376,8 @@ export const updateLeagueSettings = async (
     if (p.matchFormat          !== undefined) payload.match_format            = p.matchFormat;
     if (p.finalsMatchFormat    !== undefined) payload.finals_match_format     = p.finalsMatchFormat;
     if (p.gamesPerRealDay      !== undefined) payload.games_per_real_day      = p.gamesPerRealDay;
+    if (p.playoffTeamCount     !== undefined) payload.playoff_team_count      = p.playoffTeamCount;
+    if (p.playInEnabled        !== undefined) payload.play_in_enabled         = p.playInEnabled;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
     if (error) return { error: error.message };

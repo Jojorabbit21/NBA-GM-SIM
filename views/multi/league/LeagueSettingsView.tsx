@@ -86,6 +86,8 @@ const LeagueSettingsView: React.FC = () => {
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
+    const [playoffTeamsPerConf, setPlayoffTeamsPerConf] = useState(8);
+    const [playInEnabled,        setPlayInEnabled]       = useState(true);
     const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
@@ -97,6 +99,11 @@ const LeagueSettingsView: React.FC = () => {
     const [savingSim,  setSavingSim]  = useState(false);
     const [saveSimOk,  setSaveSimOk]  = useState(false);
     const [saveSimErr, setSaveSimErr] = useState<string | null>(null);
+
+    // ── 플레이오프 형식 저장 상태 — bracket_data가 아직 없을 때만(플레이오프 시작 전) 변경 가능 ──
+    const [savingPlayoff,  setSavingPlayoff]  = useState(false);
+    const [savePlayoffOk,  setSavePlayoffOk]  = useState(false);
+    const [savePlayoffErr, setSavePlayoffErr] = useState<string | null>(null);
 
     // ── lottery state ─────────────────────────────────────────────────────────
     const [lotteryRunning, setLotteryRunning] = useState(false);
@@ -143,6 +150,8 @@ const LeagueSettingsView: React.FC = () => {
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
         const gprd = (league as any).games_per_real_day ?? 48;
         setTournamentIntervalMin(Math.round(1440 / gprd));
+        setPlayoffTeamsPerConf(league.playoff_team_count ?? 8);
+        setPlayInEnabled(league.play_in_enabled ?? true);
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
@@ -243,6 +252,23 @@ const LeagueSettingsView: React.FC = () => {
         if (err) { setSaveSimErr(err); return; }
         setSaveSimOk(true);
         setTimeout(() => setSaveSimOk(false), 2000);
+        reload();
+    };
+
+    const handleSavePlayoffSettings = async () => {
+        if (!league?.id) return;
+        setSavingPlayoff(true);
+        setSavePlayoffOk(false);
+        setSavePlayoffErr(null);
+        const { error: err } = await updateLeagueSettings({
+            leagueId: league.id,
+            playoffTeamCount: playoffTeamsPerConf,
+            playInEnabled,
+        });
+        setSavingPlayoff(false);
+        if (err) { setSavePlayoffErr(err); return; }
+        setSavePlayoffOk(true);
+        setTimeout(() => setSavePlayoffOk(false), 2000);
         reload();
     };
 
@@ -452,6 +478,72 @@ const LeagueSettingsView: React.FC = () => {
                     }
                 </button>
             </section>
+
+            {/* ── 플레이오프 형식 (관리자 전용, 플레이오프 시작 전까지 진행 중 세션에서도 변경 가능) ── */}
+            {league.type === 'main_league' && !league.bracket_data && (
+                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Trophy size={14} className="text-indigo-400" />
+                        플레이오프 형식
+                    </h2>
+                    <p className="text-xs text-slate-500 ko-normal">
+                        정규시즌이 끝나고 플레이오프 대진표가 만들어지기 전까지만 변경할 수 있습니다.
+                    </p>
+
+                    <div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">컨퍼런스별 진출 팀 수</span>
+                            <input
+                                type="number"
+                                min={2}
+                                max={16}
+                                step={1}
+                                value={playoffTeamsPerConf}
+                                onChange={e => setPlayoffTeamsPerConf(Math.min(16, Math.max(2, Math.round(Number(e.target.value) || 0))))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                            동부/서부 각 컨퍼런스에서 몇 팀이 플레이오프에 진출할지 정합니다(리그 전체가 아닌 컨퍼런스당 인원).
+                        </p>
+                    </div>
+
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            playInEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={playInEnabled}
+                            onChange={e => setPlayInEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${playInEnabled ? 'text-white' : 'text-slate-400'}`}>플레이인 토너먼트</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">
+                                켜면 상위 {Math.max(0, playoffTeamsPerConf - 2)}팀은 자동 진출, 나머지 4팀(7~10위)이 미니 토너먼트로 마지막 2자리를 다툽니다.
+                                끄면 컨퍼런스별 상위 {playoffTeamsPerConf}팀이 곧바로 진출합니다.
+                            </span>
+                        </div>
+                    </label>
+
+                    {savePlayoffErr && <p className="text-xs text-red-400 ko-normal">{savePlayoffErr}</p>}
+
+                    <button
+                        onClick={handleSavePlayoffSettings}
+                        disabled={savingPlayoff}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                    >
+                        {savingPlayoff
+                            ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
+                            : savePlayoffOk
+                            ? '저장됨 ✓'
+                            : <><Save size={13} />저장</>
+                        }
+                    </button>
+                </section>
+            )}
 
             {/* ── 토너먼트 종료 & 초기화 ──────────────────────────────────────── */}
             {league.status === 'finished' && (

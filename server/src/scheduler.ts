@@ -17,6 +17,7 @@ import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
+import { startPlayIn } from './shared/playInSeeder';
 
 const POLL_INTERVAL_MS = 30_000;
 const STALE_CLAIM_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -80,7 +81,7 @@ async function tick(): Promise<void> {
 async function checkSeasonCompletions(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled')
         .eq('type', 'main_league')
         .eq('status', 'in_progress')
         .is('bracket_data', null);
@@ -105,9 +106,10 @@ async function checkSeasonCompletions(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        console.log(`[scheduler:season] league=${league.id} — regular season complete, starting playoffs`);
-        await startPlayoffs(league, room.id).catch(err =>
-            console.error(`[scheduler:season] startPlayoffs failed(${league.id}):`, err),
+        console.log(`[scheduler:season] league=${league.id} — regular season complete, starting postseason`);
+        const startPostseason = (league as any).play_in_enabled ? startPlayIn : startPlayoffs;
+        await startPostseason(league, room.id).catch(err =>
+            console.error(`[scheduler:season] startPostseason failed(${league.id}):`, err),
         );
     }
 }
