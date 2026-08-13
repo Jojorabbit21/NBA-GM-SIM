@@ -21,7 +21,7 @@
  * 전용). 과거에는 여기서 date/time을 scheduledAt 기준으로 덮어써서 가상 캘린더가
  * 통째로 사라지는 버그가 있었다.
  */
-import { kstMidnightPlusDays, addMinutes } from './kst.ts';
+import { kstMidnightPlusDays, addMinutes, kstMinuteOfDay } from './kst.ts';
 
 export interface CompressibleGame {
     id: string;
@@ -61,10 +61,19 @@ export function compressLeagueSchedule<T extends CompressibleGame>(
     const windowMin = Math.max(1, config.dailyWindowEndMin - config.dailyWindowStartMin);
     const intervalMin = Math.max(1, windowMin / gamesPerDay);
 
+    // [Fix 2026-08-13] realStartAt(리그 실제 시작/드래프트 완료 시각)이 그날의 일일 시뮬
+    // 시간대(dailyWindowStartMin) 도중이거나 이미 지난 뒤라면, 1일차를 오늘로 잡으면 "윈도우
+    // 시작~지금" 구간 슬롯들이 스케줄이 만들어지는 바로 그 순간 이미 "과거"가 되어 곧바로
+    // 자동 시뮬레이션되는 버그가 있었다(예: 09:00~18:00 윈도우인데 정오에 드래프트를 끝내면
+    // 09:00~12:00 구간이 생성 직후 몰아서 처리됨). 그날 윈도우가 이미 시작됐으면(>=
+    // dailyWindowStartMin) 1일차 자체를 다음 날로 민다 — 아직 시작 전(예: 새벽에 리그 생성)
+    // 이면 오늘 그대로 1일차로 쓴다.
+    const startDayOffset = kstMinuteOfDay(new Date(config.realStartAt)) >= config.dailyWindowStartMin ? 1 : 0;
+
     return games.map((g, i) => {
         const dayIndex   = Math.floor(i / gamesPerDay);
         const indexInDay = i % gamesPerDay;
-        const dayMidnight = kstMidnightPlusDays(config.realStartAt, dayIndex);
+        const dayMidnight = kstMidnightPlusDays(config.realStartAt, startDayOffset + dayIndex);
         const scheduledAt = addMinutes(dayMidnight, config.dailyWindowStartMin + indexInDay * intervalMin);
 
         return {

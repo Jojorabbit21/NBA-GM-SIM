@@ -44,3 +44,9 @@ export function kstTimeStr(date: Date): string {
     const mi = String(kst.getUTCMinutes()).padStart(2, '0');
     return `${h}:${mi}`;
 }
+
+/** KST 기준 그날 자정(00:00)으로부터 경과한 분(0~1439). */
+export function kstMinuteOfDay(date: Date): number {
+    const kst = new Date(date.getTime() + KST_OFFSET_MS);
+    return kst.getUTCHours() * 60 + kst.getUTCMinutes();
+}

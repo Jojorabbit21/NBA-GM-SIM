@@ -35,6 +35,33 @@
 
 ---
 
+## 2026-08-13 — compressLeagueSchedule: 리그 시작 시각이 일일 윈도우 도중/이후면 1일차를 다음날로
+
+**배경**: 사용자 신고 — 오후 12시(정오)에 새 리그를 만들고 실제 방송 시간대를 오전 9시~오후 6시로 설정, 드래프트를 돌렸더니 드래프트 완료 직후 이미 2경기가 "패" 처리돼 있었음("오후 12시 이전 경기는 어떻게 시뮬레이션되나?"). 서브에이전트 조사 + DB 실증(가장 최근 생성된 리그: 정오 생성, 09~18시 윈도우 — 생성 후 8분 만에 09:00~12:0x 구간 **62경기**가 이미 자동 시뮬레이션됨, 계속 증가 중) 결과 원인 확인. 사용자가 수정 방향(윈도우 도중/이후면 다음날부터 시작)에 동의해 진행.
+
+**원인**: `compressLeagueSchedule()`(`server/src/shared/leagueScheduleCompressor.ts`)이 1일차를 항상 `realStartAt`(드래프트 완료 시각)의 KST **날짜**로 고정하고, 그 날짜의 `dailyWindowStartMin`(예: 09:00)부터 경기를 채워나감 — `kstMidnightPlusDays()`가 `realStartAt`의 시:분을 버리고 날짜만 취하기 때문. 정오에 드래프트가 끝나도 그날 09:00~정오 구간에 경기가 배치되고, 그 `scheduled_at`은 생성되는 순간 이미 "과거"라 스케줄러(`scheduler.ts`)의 30초 폴링이 즉시 자동 시뮬레이션함.
+
+**변경 파일**:
+- `server/src/shared/kst.ts` — `kstMinuteOfDay(date)` 신규(KST 기준 그날 자정으로부터 경과 분, 0~1439).
+- `server/src/shared/leagueScheduleCompressor.ts` — `compressLeagueSchedule()`에 `startDayOffset` 계산 추가: `kstMinuteOfDay(realStartAt) >= dailyWindowStartMin`이면(=오늘 윈도우가 이미 시작됐거나 지났으면) 1일차를 내일로 미룸(`kstMidnightPlusDays(realStartAt, startDayOffset + dayIndex)`). 아직 윈도우 시작 전(예: 새벽에 리그 생성)이면 오늘 그대로 1일차.
+
+**핵심 변경**:
+```ts
+// Before
+const dayMidnight = kstMidnightPlusDays(config.realStartAt, dayIndex);
+
+// After
+const startDayOffset = kstMinuteOfDay(new Date(config.realStartAt)) >= config.dailyWindowStartMin ? 1 : 0;
+...
+const dayMidnight = kstMidnightPlusDays(config.realStartAt, startDayOffset + dayIndex);
+```
+
+**검증**: `tsx`로 실제 실행해 4개 케이스 확인 — ①정오 생성(윈도우 도중) → 다음날 09:00부터 시작 ②저녁 8시 생성(윈도우 지난 이후) → 다음날 09:00부터 ③새벽 6시 생성(윈도우 시작 전) → 오늘 09:00부터(변경 없음) ④윈도우 시작 시각과 정확히 같은 시각(경계값) → "도중"으로 취급해 다음날부터 — 4개 전부 기대값과 정확히 일치. `tsc --noEmit -p server/tsconfig.json` 신규 에러 없음. fly.io 배포(machine v136) 완료, 200 응답 확인.
+
+**롤백 방법**: `leagueScheduleCompressor.ts`의 `startDayOffset` 계산 제거하고 `kstMidnightPlusDays(config.realStartAt, dayIndex)`로 되돌리면 됨(`kst.ts`의 `kstMinuteOfDay`는 다른 곳에서 안 쓰이면 같이 제거 가능).
+
+---
+
 ## 2026-08-13 — DraftRoom: pause()/resume()도 write-then-commit으로 통일
 
 **배경**: 직전 항목(`activate()` write-then-commit 수정) 직후 사용자가 "같은 패턴의 결함이 뭐냐"고 물어 `pause()`/`resume()`도 동일한 안티패턴(메모리 먼저 변경 → DB write 에러 미확인)을 갖고 있음을 설명 — 특히 `resume()`은 write 실패 시 DB(`paused`)와 메모리(`active`+타이머 작동) 불일치로, 지난번 고친 DIVISION 2 드래프트 정지 사고와 **동일한 증상**(재접속마다 같은 실패 반복)을 재현할 수 있다고 지적. 사용자가 진행 승인.
