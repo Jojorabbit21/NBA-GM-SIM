@@ -35,6 +35,35 @@
 
 ---
 
+## 2026-08-13 — 드래프트 시작 경쟁 상태(race condition) 수정: prepareDraftRoom vs activateDraftRoom
+
+**배경**: 사용자 신고 — 새 리그(DIVISION 2)에서 드래프트 진행 중 픽 제한시간(30초)이 지나도 다음 픽으로 안 넘어감. 조사(서브에이전트 + fly.io 로그 실측) 결과 실제 장애 원인은 다음 경쟁 상태:
+1. 로터리 완료 직후 `handleRunLottery`가 `claimAndPrepareRoom`→`prepareDraftRoom`을 이어 실행(무거운 비동기: 선수풀 조회+AI 슬롯 채움+픽오더 생성, ~1초 소요). 이 동안 `league_teams.draft_order`는 이미 커밋돼있어 로비 화면엔 "드래프트 즉시 시작" 버튼이 먼저 뜬다.
+2. 관리자가 그 버튼을 누르면 `activateDraftRoom`이 `draft_config`가 아직 null인 걸 보고(1번이 아직 끝나기 전) 레거시 폴백 `_runStartDraft`로 빠져서 **자체적으로 또 한 번** `buildDraftSetup`을 돌리고 `draft_cursor`를 `active`로 씀.
+3. 1초 뒤 원래 1번의 `prepareDraftRoom`이 뒤늦게 끝나며 `draft_cursor`를 다시 `{status:'waiting', currentPickStartedAt:null}`로 **무조건 덮어씀** — 서로 존재를 모른 채 같은 DB 행을 경합.
+4. 결과: 서버 메모리의 `DraftRoom` 인스턴스는 여전히 `active`로 믿고 픽 타이머를 돌리지만, DB는 `waiting`이라 `submit_draft_pick_v2` RPC가 매번 `draft_not_active`로 거부 — 드래프트가 영구히 멈춤. 이 상태에서 벗어날 UI/API 경로도 없음(`status='drafting'`이 되면 시작 버튼이 사라지고, 수동 재시도 API도 `status!=='recruiting'`이면 거부).
+
+fly 로그로 시퀀스 실측 확인(2026-08-12 15:00:53~15:05:00, 매 WS 재인증마다 동일 실패 반복).
+
+**변경 파일**:
+- `server/src/startDraft.ts`
+
+**변경 1 — `activateDraftRoom`**: `draft_config`뿐 아니라 `draft_cursor.status`도 함께 조회. `status==='preparing'`(= `claimAndPrepareRoom`이 이미 선점해 준비 중)이면 곧바로 `_runStartDraft`로 폴백하지 않고, 500ms 간격 최대 10회(최대 5초) 재조회하며 준비가 끝나길 기다린다. 그래도 안 끝나면 `{ok:false, error:'still being prepared'}` 반환(에러 응답, 무조건 재시작 아님).
+
+**변경 2 — `prepareDraftRoom`**: 최종 write를 `.eq('id', roomId)` 무조건 업데이트 대신 `.contains('draft_cursor', {status:'preparing'})` 조건부 업데이트로 변경 — 그 사이 다른 경로(activateDraftRoom/_runStartDraft)가 이미 `active`로 활성화해버렸다면(cursor가 더 이상 `preparing`이 아니면) 덮어쓰지 않고 스킵. 변경 1(재시도 대기)과 짝을 이루는 방어선.
+
+**변경 3 — `activateDraftRoom`의 메모리 캐시 분기**: `existing.activate()`가 `false`(= 상태가 `waiting`이 아니어서 아무 것도 안 바뀜)를 반환해도 기존엔 경고 로그만 찍고 `ok:true`+`leagues.status='drafting'`을 그대로 확정하던 "조용한 성공" 결함도 함께 수정 — 이제 `{ok:false, error:...}`를 반환.
+
+**검증**: `tsc --noEmit -p server/tsconfig.json` — 이 파일에 남아있는 기존 타입 에러 4건(`Property 'error' does not exist...`)은 변경 전/후 동일한 라인 내용·개수로 확인(내 변경과 무관한 기존 이슈, `git stash`로 대조 확인). fly.io 배포(`fly deploy`, machine v133) 완료, `https://basketballgm-app-server.fly.dev/` 200 응답 확인.
+
+**주의사항 / 한계**:
+- 원인이 됐던 DIVISION 2 리그는 조사 도중 사용자가 직접 삭제한 것으로 보여(DB에서 리그/룸 레코드 자체가 사라짐), 별도의 "당장 복구"(draft_cursor 수동 리셋)는 적용하지 못했음 — 새로 만드는 리그부터 이번 수정이 적용됨.
+- 서브에이전트 조사에서 함께 발견된 인접 결함 2건은 이번 범위에서 **수정하지 않음**(이번 장애의 직접 트리거는 아니었고, 실패 시 동작 정책 결정이 필요해 별도 검토 필요): (1) `DraftRoom.activate()`가 `supabase.update()` 실패를 확인하지 않아 DB 쓰기가 조용히 실패해도 메모리 상태만 앞서나갈 수 있음. (2) `DraftRoom.onAiPick()`/`onPickTimeout()`이 `persistPick()` 실패 시 타이머를 재예약하지 않아(`if (!result) return;`), RPC가 일시적으로 실패하면 그 픽은 다음 WS 재인증(`index.ts`의 "active인데 타이머 없으면 재시작")까지 멈춤.
+
+**롤백 방법**: `server/src/startDraft.ts`의 세 변경분을 각각 이전 형태(무조건 `.eq('id', roomId)` 업데이트, `draft_config`만 조회 후 바로 `_runStartDraft` 폴백, `activate()` 실패 시에도 `ok:true` 반환)로 되돌리면 됨.
+
+---
+
 ## 2026-08-12 — DepthRotationBoard: 위반 사항 없을 때 초록색 "정상" 배너 표시
 
 **배경**: 사용자 요청 — 기존엔 5명 미만/초과/혹사 위반이 있을 때만 경고 배너가 뜨고, 문제 없을 땐 그 자리에 아무것도 안 보였음. 문제 없을 때도 같은 위치에 초록색 틴트로 "정상"임을 알려주는 문구 표시.

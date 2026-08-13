@@ -327,11 +327,21 @@ export async function prepareDraftRoom(
 
     const draftCursor = { status: 'waiting' as const, currentPickIndex: 0, currentPickStartedAt: null };
 
-    const { error: roomErr } = await supabase
+    // [Fix 2026-08-13] activateDraftRoom(_runStartDraft 폴백 경로)이 이 사이 이미 활성화(active)
+    // 해버렸을 수 있으므로, cursor가 여전히 'preparing'(claimAndPrepareRoom이 클레임 시 써둔 값)일
+    // 때만 반영한다 — 무조건 덮어쓰면 이미 시작된 드래프트를 waiting으로 되돌려버리는 경쟁 상태가
+    // 재현된다(activateDraftRoom 쪽의 폴링 재시도와 짝을 이루는 방어선, 위 파일 상단 설명 참조).
+    const { data: updatedRows, error: roomErr } = await supabase
         .from('rooms')
         .update({ draft_config: built.setup.draftConfig, draft_cursor: draftCursor, draft_state: null })
-        .eq('id', roomId);
+        .eq('id', roomId)
+        .contains('draft_cursor', { status: 'preparing' })
+        .select('id');
     if (roomErr) return { ok: false, error: roomErr.message };
+    if (!updatedRows?.length) {
+        console.warn(`[prepareDraftRoom] room ${roomId}: cursor no longer 'preparing' — skip overwrite (already activated by another path)`);
+        return { ok: true };
+    }
 
     // leagues.status는 그대로 'recruiting' 유지 — 로터리 후에도 팀 변경만 막힐 뿐 리그 상태는 안 바뀐다.
     console.log(`[prepareDraftRoom] room ${roomId} prepared (waiting)`);
@@ -368,11 +378,27 @@ export async function activateDraftRoom(
     leagueId: string,
     roomId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-    const { data: room } = await supabase
-        .from('rooms')
-        .select('draft_config')
-        .eq('id', roomId)
-        .single();
+    const selectRoom = () =>
+        supabase.from('rooms').select('draft_config, draft_cursor').eq('id', roomId).single();
+
+    let { data: room } = await selectRoom();
+
+    // [Fix 2026-08-13] claimAndPrepareRoom이 이미 이 방을 선점해 준비 중(cursor.status==='preparing')
+    // 이면, draft_config가 아직 안 채워졌다고 곧바로 아래 _runStartDraft로 폴백하면 안 된다 —
+    // buildDraftSetup()이 두 곳(prepareDraftRoom과 _runStartDraft)에서 동시에 돌게 되고, 나중에
+    // 끝난 쪽이 먼저 쓴 draft_cursor(active)를 덮어써버리는 경쟁 상태가 생긴다. 실제 장애 사례:
+    // 2026-08-12 DIVISION 2 — 로터리 직후 prepareDraftRoom 진행 중에 어드민이 "즉시 시작"을 눌러
+    // _runStartDraft가 active로 활성화했는데, 약 1초 뒤 prepareDraftRoom의 완료 write가 cursor를
+    // 다시 waiting으로 덮어써서 드래프트가 영구히 멈췄다(픽 타이머는 메모리에서 계속 돌지만
+    // submit_draft_pick_v2 RPC가 DB 기준 draft_not_active로 매번 거부). 준비가 끝날 때까지(보통
+    // 1초 내외) 최대 5초 짧게 재시도한다.
+    for (let i = 0; i < 10 && (room?.draft_cursor as any)?.status === 'preparing'; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        ({ data: room } = await selectRoom());
+    }
+    if ((room?.draft_cursor as any)?.status === 'preparing') {
+        return { ok: false, error: 'draft room is still being prepared, please retry shortly' };
+    }
 
     // draft_config가 아직 없으면(prepare가 안 된 레거시/예외 경로) 기존 전체 로직으로 폴백.
     if (!room?.draft_config) {
@@ -386,7 +412,11 @@ export async function activateDraftRoom(
     if (existing) {
         const activated = await existing.activate();
         if (!activated) {
+            // [Fix 2026-08-13] 예전엔 여기서 경고만 찍고 그대로 ok:true를 반환해, 실제로는
+            // 아무 것도 안 바뀌었는데(activate()가 false = status가 'waiting'이 아니었음) 성공한
+            // 것처럼 leagues.status만 'drafting'으로 확정해버리는 "조용한 성공" 결함이 있었다.
             console.warn(`[activateDraftRoom] room ${roomId}: activate() returned false (status was not 'waiting')`);
+            return { ok: false, error: `room ${roomId} could not be activated (unexpected status)` };
         }
         await supabase.from('leagues').update({ status: 'drafting' }).eq('id', leagueId);
         return { ok: true };
