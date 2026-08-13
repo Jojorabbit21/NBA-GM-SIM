@@ -8,12 +8,12 @@ import { TabBar } from '../../../components/common/TabBar';
 import { DepthRotationBoard } from '../../../components/dashboard/DepthRotationBoard';
 import { TacticsSlidersPanel } from '../../../components/dashboard/tactics/TacticsSlidersPanel';
 import { PlayerTacticsPanel } from '../../../components/dashboard/tactics/PlayerTacticsPanel';
-import { supabase } from '../../../services/supabaseClient';
+import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { generateAutoTactics } from '../../../services/gameEngine';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal } from './multiGameReveal';
-import type { Team, Player } from '../../../types';
+import type { Team } from '../../../types';
 
 type MultiTacticsTab = 'depth' | 'team' | 'player';
 
@@ -76,57 +76,51 @@ const MultiTacticsView: React.FC = () => {
         return () => window.removeEventListener('beforeunload', handler);
     }, [isTacticsDirty]);
 
-    const [rosterPlayers, setRosterPlayers] = useState<Player[]>([]);
-    const rosterKey = myTeamRow?.roster?.join(',') ?? '';
+    // 홈 위젯/로스터/리더보드 화면과 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가
+    // 같으면(room.id + 리그 전체 로스터 id 목록) 다른 화면을 먼저 방문했을 때 이미 캐시가
+    // 워밍돼 있어 로더 없이 즉시 뜬다. [Fix 2026-08-13] 예전엔 이 화면만 별도 useEffect 2개로
+    // meta_players/game_pbp를 각자 fetch해서, 화면(탭바+패널 껍데기)은 isReady(userTactics만
+    // 확인)로 먼저 뜨고 레이더차트/슈팅맵은 두 fetch가 각자 끝나는 시점에 뒤늦게 채워지는
+    // "워터폴" 현상이 있었다 — 이제 isReady에 이 fetch의 로딩 상태도 포함시켜 함께 기다린다.
+    const allRosterIds = useMemo(
+        () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
+        [leagueTeams],
+    );
 
-    useEffect(() => {
-        if (!myTeamRow?.roster?.length) return;
-        const draftOrder = myTeamRow.roster;
-        supabase
-            .from('meta_players')
-            .select('id, name, position, base_attributes, tendencies')
-            .in('id', draftOrder)
-            .then(({ data }) => {
-                if (!data) return;
-                // .in() 조회는 입력 배열 순서를 보장하지 않으므로, 드래프트 픽 순서(roster 배열 순서)대로 재정렬
-                const byId = new Map(data.map((raw: any) => [String(raw.id), raw]));
-                const ordered = draftOrder.map(id => byId.get(String(id))).filter(Boolean);
-                setRosterPlayers(ordered.map((raw: any) => mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true)));
-            });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rosterKey]);
+    const selectTacticsData = useCallback((raw: LeagueRawStatsData) => {
+        // .in() 조회는 입력 배열 순서를 보장하지 않으므로, 드래프트 픽 순서(roster 배열 순서)대로 재정렬
+        const draftOrder = myTeamRow?.roster ?? [];
+        const byId = new Map(raw.playersRaw.map((r: any) => [String(r.id), r]));
+        const orderedRaw = draftOrder.map(id => byId.get(String(id))).filter(Boolean);
+        const rosterPlayers = orderedRaw.map((r: any) => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
 
-    // 슈팅 존 히트맵용 — 우리 팀이 치른 경기들의 박스스코어에서 선수별 존 슛 집계를 누적
-    const [zoneStatsMap, setZoneStatsMap] = useState<Map<string, Record<string, number>>>(new Map());
+        // 슈팅 존 히트맵용 — 우리 팀이 치른 경기들의 박스스코어에서 선수별 존 슛 집계를 누적
+        const now = getServerNow();
+        const zoneMap = new Map<string, Record<string, number>>();
+        for (const row of raw.pbpRows as any[]) {
+            if (row.home_team_id !== myTeamId && row.away_team_id !== myTeamId) continue;
+            if (!isFinal({ scheduledAt: row.game_start_time, played: true }, now)) continue;
+            const box = row.home_team_id === myTeamId ? (row.home_box ?? []) : (row.away_box ?? []);
+            for (const bs of box as any[]) {
+                if (!bs.playerId) continue;
+                const zd = bs.zoneData ?? {};
+                const prev = zoneMap.get(bs.playerId) ?? {};
+                const next = { ...prev };
+                for (const k of ZONE_KEYS) next[k] = (prev[k] ?? 0) + (zd[k] ?? 0);
+                zoneMap.set(bs.playerId, next);
+            }
+        }
 
-    useEffect(() => {
-        if (!room?.id || !myTeamId) return;
-        let cancelled = false;
-        supabase
-            .from('game_pbp')
-            .select('home_box, away_box, home_team_id, away_team_id, game_start_time')
-            .eq('room_id', room.id)
-            .or(`home_team_id.eq.${myTeamId},away_team_id.eq.${myTeamId}`)
-            .then(({ data }) => {
-                if (cancelled || !data) return;
-                const now = getServerNow();
-                const map = new Map<string, Record<string, number>>();
-                for (const row of data as any[]) {
-                    if (!isFinal({ scheduledAt: row.game_start_time, played: true }, now)) continue;
-                    const box = row.home_team_id === myTeamId ? (row.home_box ?? []) : (row.away_box ?? []);
-                    for (const bs of box as any[]) {
-                        if (!bs.playerId) continue;
-                        const zd = bs.zoneData ?? {};
-                        const prev = map.get(bs.playerId) ?? {};
-                        const next = { ...prev };
-                        for (const k of ZONE_KEYS) next[k] = (prev[k] ?? 0) + (zd[k] ?? 0);
-                        map.set(bs.playerId, next);
-                    }
-                }
-                setZoneStatsMap(map);
-            });
-        return () => { cancelled = true; };
-    }, [room?.id, myTeamId]);
+        return { rosterPlayers, zoneMap };
+    }, [myTeamRow?.roster, myTeamId, useCustomOverrides]);
+
+    const {
+        data: tacticsRawData,
+        isPending: rosterFetchLoading,
+    } = useLeagueRawStats(room?.id, allRosterIds, selectTacticsData);
+
+    const rosterPlayers = tacticsRawData?.rosterPlayers ?? [];
+    const zoneStatsMap  = tacticsRawData?.zoneMap ?? new Map<string, Record<string, number>>();
 
     const rosterWithZoneStats = useMemo(() => {
         if (zoneStatsMap.size === 0) return rosterPlayers;
@@ -163,7 +157,7 @@ const MultiTacticsView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gameLoading, userTactics, rosterPlayers.length, team, setUserTactics]);
 
-    const isReady = !leagueLoading && !gameLoading && !!userTactics;
+    const isReady = !leagueLoading && !gameLoading && !!userTactics && !rosterFetchLoading;
 
     if (!isReady) {
         return (

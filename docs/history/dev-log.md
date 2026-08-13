@@ -35,6 +35,23 @@
 
 ---
 
+## 2026-08-13 — MultiTacticsView: 레이더차트/슈팅맵 데이터 fetch를 useLeagueRawStats로 이전(워터폴 제거)
+
+**배경**: 사용자 질문 — "팀 전술 화면에 들어가면 레이더나 슈팅맵이 화면 로드 후 약간의 딜레이 뒤 데이터가 채워지는 이유는?" 조사 결과, 이 화면만 로스터/리더보드/홈위젯이 이미 받은 `useLeagueRawStats` 공유 캐시 리팩터링에서 빠져있었음 — `isReady` 게이트가 `userTactics`만 확인하고, 레이더차트/슈팅맵이 실제로 쓰는 로스터/슈팅존 데이터는 별도 `useEffect` 2개(`meta_players`, `game_pbp` 각각 직접 쿼리)로 `isReady`와 무관하게 독립적으로 fetch됨 — 그래서 탭바/패널 껍데기는 먼저 뜨고 두 fetch가 각자 끝나는 시점에 차트가 뒤늦게 채워지는 워터폴이 있었음. 사용자가 로스터/리더보드처럼 `useLeagueRawStats`로 통합하는 방향에 동의해 진행.
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx`
+
+**변경**: `meta_players`/`game_pbp`를 각각 쿼리하던 `useEffect` 2개 + `useState`(`rosterPlayers`, `zoneStatsMap`)를 제거하고, `useLeagueRawStats(room?.id, allRosterIds, selectTacticsData)` 한 번으로 교체(`MultiRosterView.tsx`와 동일 패턴, queryKey가 같아 캐시 공유). 기존 두 `useEffect`의 계산 로직(드래프트 순서 재정렬, 슈팅 존 누적)은 그대로 `selectTacticsData` 콜백 안으로 옮김 — 로직 자체는 변경 없음. `isReady` 게이트에 `!rosterFetchLoading`(`useLeagueRawStats`의 `isPending`) 추가 — 이제 화면은 로스터/슈팅존 데이터까지 준비된 뒤에 한 번에 뜬다. 더 이상 안 쓰는 `supabase` import와 `Player` 타입 import 제거.
+
+**검증**: `npx vite build` 성공. 전체 `tsc --noEmit`에서 이 파일 관련 신규 에러 없음. Playwright로 `/multi/leagues/.../season/tactics` 라우트 이동 시 JS 참조/임포트 에러 없음을 확인(콘솔에 뜬 에러는 비로그인 상태의 Supabase 406 응답뿐, `MultiProtectedLayout`이 `/`로 정상 리다이렉트).
+
+**주의사항 / 한계**: 실제 로그인된 멀티플레이어 세션에서 화면이 렌더링되는 것까지는(레이더차트/슈팅맵이 로딩 완료 후 한 번에 채워지는지, 캐시 공유가 실제로 로더 스킵을 만드는지) 인증 장벽 때문에 이번 세션에서 직접 확인하지 못함 — 로직은 이미 프로덕션에서 검증된 `MultiRosterView.tsx`와 동일 패턴을 그대로 따랐음.
+
+**롤백 방법**: `useLeagueRawStats` 호출과 `selectTacticsData`를 제거하고, 원래의 `meta_players`/`game_pbp` `useEffect` 2개 + `useState`(`rosterPlayers`, `zoneStatsMap`)로 되돌리고 `isReady`에서 `!rosterFetchLoading` 제거하면 됨.
+
+---
+
 ## 2026-08-13 — compressLeagueSchedule: 리그 시작 시각이 일일 윈도우 도중/이후면 1일차를 다음날로
 
 **배경**: 사용자 신고 — 오후 12시(정오)에 새 리그를 만들고 실제 방송 시간대를 오전 9시~오후 6시로 설정, 드래프트를 돌렸더니 드래프트 완료 직후 이미 2경기가 "패" 처리돼 있었음("오후 12시 이전 경기는 어떻게 시뮬레이션되나?"). 서브에이전트 조사 + DB 실증(가장 최근 생성된 리그: 정오 생성, 09~18시 윈도우 — 생성 후 8분 만에 09:00~12:0x 구간 **62경기**가 이미 자동 시뮬레이션됨, 계속 증가 중) 결과 원인 확인. 사용자가 수정 방향(윈도우 도중/이후면 다음날부터 시작)에 동의해 진행.
