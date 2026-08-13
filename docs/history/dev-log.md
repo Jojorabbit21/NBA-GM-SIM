@@ -35,6 +35,21 @@
 
 ---
 
+## 2026-08-13 — 멀티 팀 전술 화면: "로스터 레이더" 차트 삭제
+
+**배경**: 사용자 요청 — 팀 전술 화면 요소 개편의 첫 단계로 "로스터 레이더"(레이더 차트) 삭제. 조사 결과 이 차트가 있는 `TacticsDataPanel.tsx`는 멀티(`MultiTacticsView`)뿐 아니라 싱글플레이어(`TacticsBoard`)·관리자 팀 에디터(`AdminTeamEditorView`)까지 공유하는 컴포넌트라 범위를 확인 → "멀티만" 선택.
+
+**변경 파일**:
+- `components/dashboard/tactics/TacticsDataPanel.tsx` — `hideRadar?: boolean` prop 추가(기본 `false`). `true`면 "로스터 레이더" 제목 `<h5>`와 `<RadarChart>` 둘 다 안 그림 — 남은 "슈팅 존 히트맵"이 `flex-1`이라 자동으로 남은 폭을 전부 채움.
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — `hideRadar?` prop 추가해 `TacticsDataPanel`에 그대로 전달.
+- `views/multi/season/MultiTacticsView.tsx` — `<TacticsSlidersPanel>` 호출에 `hideRadar`(바로 boolean prop) 추가.
+
+**검증**: `npx vite build` 성공. Playwright로 `TacticsDataPanel`을 `hideRadar` true/false 두 인스턴스로 나란히 마운트 — `true`는 "로스터 레이더" 텍스트가 DOM에 아예 없고 "슈팅 존 히트맵"만 남아 폭을 꽉 채움, `false`(싱글플레이어/관리자 에디터 기본값)는 기존 그대로 둘 다 렌더링됨을 확인. 스크린샷으로 레이아웃도 확인.
+
+**롤백 방법**: `MultiTacticsView.tsx`의 `<TacticsSlidersPanel>`에서 `hideRadar` 제거하면 됨(prop 배관 자체는 남겨둬도 무해).
+
+---
+
 ## 2026-08-13 — MultiTacticsView: 레이더차트/슈팅맵 데이터 fetch를 useLeagueRawStats로 이전(워터폴 제거)
 
 **배경**: 사용자 질문 — "팀 전술 화면에 들어가면 레이더나 슈팅맵이 화면 로드 후 약간의 딜레이 뒤 데이터가 채워지는 이유는?" 조사 결과, 이 화면만 로스터/리더보드/홈위젯이 이미 받은 `useLeagueRawStats` 공유 캐시 리팩터링에서 빠져있었음 — `isReady` 게이트가 `userTactics`만 확인하고, 레이더차트/슈팅맵이 실제로 쓰는 로스터/슈팅존 데이터는 별도 `useEffect` 2개(`meta_players`, `game_pbp` 각각 직접 쿼리)로 `isReady`와 무관하게 독립적으로 fetch됨 — 그래서 탭바/패널 껍데기는 먼저 뜨고 두 fetch가 각자 끝나는 시점에 차트가 뒤늦게 채워지는 워터폴이 있었음. 사용자가 로스터/리더보드처럼 `useLeagueRawStats`로 통합하는 방향에 동의해 진행.

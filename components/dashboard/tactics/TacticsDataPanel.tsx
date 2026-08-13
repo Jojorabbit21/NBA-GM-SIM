@@ -10,9 +10,12 @@ interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
     defensiveStats?: DefensiveStats;
+    /** true면 "로스터 레이더" 차트를 아예 안 그린다(슈팅 존 히트맵이 남은 폭을 전부 채움).
+     *  MultiTacticsView.tsx 전용 — 기본 false로 싱글플레이어/관리자 에디터는 그대로. */
+    hideRadar?: boolean;
 }
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats, hideRadar }) => {
     const [showOpponentZone, setShowOpponentZone] = useState(false);
     const hasOpponentData = defensiveStats && defensiveStats.gamesPlayed > 0 && Object.keys(defensiveStats.oppZoneStats).length > 0;
 
@@ -21,7 +24,9 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
             {/* Section 1: Radar + Zone Heatmap — vertically centered */}
             <div className="flex flex-col gap-2 pb-5 border-b border-slate-800">
                 <div className="flex gap-4">
-                    <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
+                    {!hideRadar && (
+                        <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
+                    )}
                     <div className="flex-1 flex items-center justify-between">
                         <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
                         {hasOpponentData && (
@@ -39,9 +44,11 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                        <RadarChart roster={roster} hideTitle />
-                    </div>
+                    {!hideRadar && (
+                        <div className="flex-1">
+                            <RadarChart roster={roster} hideTitle />
+                        </div>
+                    )}
                     <div className="flex-1">
                         <TeamZoneChart
                             roster={roster}

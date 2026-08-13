@@ -23,9 +23,10 @@ interface TacticsSlidersPanelProps {
     roster: Player[];
     defensiveStats?: DefensiveStats;
     slidersOnly?: boolean;
+    hideRadar?: boolean;
 }
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly, hideRadar }) => {
 
     const sliders = { ...DEFAULT_SLIDERS, ...tactics.sliders };
 
@@ -39,7 +40,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
             {/* Left: Data Charts (7/12) — slidersOnly 모드에서는 숨김 */}
             {!slidersOnly && (
             <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
-                <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} />
+                <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} hideRadar={hideRadar} />
             </div>
             )}
 

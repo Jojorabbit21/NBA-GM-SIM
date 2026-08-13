@@ -223,6 +223,7 @@ const MultiTacticsView: React.FC = () => {
                             tactics={userTactics!}
                             onUpdateTactics={setUserTactics}
                             roster={rosterWithZoneStats}
+                            hideRadar
                         />
                     </div>
                 )}
