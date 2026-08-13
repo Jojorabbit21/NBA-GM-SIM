@@ -404,15 +404,32 @@ export class DraftRoom {
 
     // ── pause / resume ────────────────────────────────────────────────────────
 
+    // [Fix 2026-08-13] pause/resume 둘 다 activate()와 동일한 write-then-commit로 변경 —
+    // DB write가 성공했을 때만 메모리(this.status 등)를 바꾸고 타이머를 정리/재개한다. 실패하면
+    // 메모리를 아예 안 건드리므로(=아무 일도 안 일어난 것과 동일) 롤백이 필요 없다. 예전엔
+    // 메모리를 먼저 바꾸고 write 에러를 무시해서, resume() 쪽은 특히 write 실패 시 DB는
+    // 'paused'인데 메모리는 'active'+타이머 작동 중이 되어 지난번 고친 드래프트 정지 사고와
+    // 동일한 증상(재접속마다 같은 실패 반복)을 재현할 수 있었다.
+
     async pause(adminUserId: string): Promise<boolean> {
         if (this.status !== 'active') return false;
+
+        const nextPausedAt = new Date().toISOString();
+        const nextCursor: DraftCursor = {
+            ...this.getCursor(),
+            status: 'paused',
+            pausedAt: nextPausedAt,
+        };
+
+        const { error } = await supabase.from('rooms').update({ draft_cursor: nextCursor }).eq('id', this.roomId);
+        if (error) {
+            console.error(`[DraftRoom:${this.roomId}] pause() DB write failed: ${error.message}`);
+            return false;
+        }
+
         this.clearTimers();
         this.status   = 'paused';
-        this.pausedAt = new Date().toISOString();
-
-        await supabase.from('rooms').update({
-            draft_cursor: this.getCursor(),
-        }).eq('id', this.roomId);
+        this.pausedAt = nextPausedAt;
 
         this.broadcastCursor();
         console.log(`[DraftRoom:${this.roomId}] paused by ${adminUserId}`);
@@ -424,14 +441,23 @@ export class DraftRoom {
 
         // 남은 시간 보존: startedAt을 (일시정지 경과분만큼 미룸)
         const pausedMs = Date.now() - new Date(this.pausedAt).getTime();
-        const newStartedAt = new Date(new Date(this.currentPickStartedAt).getTime() + pausedMs);
-        this.currentPickStartedAt = newStartedAt.toISOString();
+        const nextStartedAt = new Date(new Date(this.currentPickStartedAt).getTime() + pausedMs).toISOString();
+        const nextCursor: DraftCursor = {
+            ...this.getCursor(),
+            status: 'active',
+            currentPickStartedAt: nextStartedAt,
+            pausedAt: undefined,
+        };
+
+        const { error } = await supabase.from('rooms').update({ draft_cursor: nextCursor }).eq('id', this.roomId);
+        if (error) {
+            console.error(`[DraftRoom:${this.roomId}] resume() DB write failed: ${error.message}`);
+            return false;
+        }
+
+        this.currentPickStartedAt = nextStartedAt;
         this.status   = 'active';
         this.pausedAt = undefined;
-
-        await supabase.from('rooms').update({
-            draft_cursor: this.getCursor(),
-        }).eq('id', this.roomId);
 
         this.broadcastCursor();
         this.scheduleNext();

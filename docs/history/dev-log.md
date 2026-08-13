@@ -35,6 +35,37 @@
 
 ---
 
+## 2026-08-13 — DraftRoom: pause()/resume()도 write-then-commit으로 통일
+
+**배경**: 직전 항목(`activate()` write-then-commit 수정) 직후 사용자가 "같은 패턴의 결함이 뭐냐"고 물어 `pause()`/`resume()`도 동일한 안티패턴(메모리 먼저 변경 → DB write 에러 미확인)을 갖고 있음을 설명 — 특히 `resume()`은 write 실패 시 DB(`paused`)와 메모리(`active`+타이머 작동) 불일치로, 지난번 고친 DIVISION 2 드래프트 정지 사고와 **동일한 증상**(재접속마다 같은 실패 반복)을 재현할 수 있다고 지적. 사용자가 진행 승인.
+
+**변경 파일**:
+- `server/src/DraftRoom.ts`
+
+**변경**: `pause()`/`resume()` 둘 다 다음 커서(`nextCursor`)를 로컬 변수로 먼저 구성 → DB write → **성공했을 때만** `this.status`/`this.pausedAt`/`this.currentPickStartedAt`에 반영 + (`pause`는) `clearTimers()` / (`resume`은) `scheduleNext()` 호출. 실패하면 메모리를 안 건드리므로 `pause()`는 계속 진행 중인 상태 그대로, `resume()`은 계속 일시정지 상태 그대로 유지되고 `false`만 반환.
+
+**핵심 변경**:
+```ts
+// resume() — Before: 메모리 먼저 바꾸고 write 에러 무시, scheduleNext()는 무조건 실행
+this.currentPickStartedAt = newStartedAt.toISOString();
+this.status = 'active'; this.pausedAt = undefined;
+await supabase.from('rooms').update({ draft_cursor: this.getCursor() }).eq('id', this.roomId);
+this.scheduleNext();
+
+// resume() — After: write 성공 후에만 메모리 반영 + scheduleNext()
+const nextCursor: DraftCursor = { ...this.getCursor(), status: 'active', currentPickStartedAt: nextStartedAt, pausedAt: undefined };
+const { error } = await supabase.from('rooms').update({ draft_cursor: nextCursor }).eq('id', this.roomId);
+if (error) { console.error(...); return false; }
+this.currentPickStartedAt = nextStartedAt; this.status = 'active'; this.pausedAt = undefined;
+this.scheduleNext();
+```
+
+**검증**: `tsc --noEmit -p server/tsconfig.json` — 새로 추가된 에러 없음(기존 Bun 타입 에러만 잔존). fly.io 배포(machine v135) 완료, `https://basketballgm-app-server.fly.dev/` 200 응답 확인.
+
+**롤백 방법**: `pause()`/`resume()`을 각각 "메모리 먼저 변경 → `getCursor()`로 DB write(에러 미확인) → `clearTimers()`/`scheduleNext()`" 순서로 되돌리면 됨(직전 항목 커밋 이전 형태).
+
+---
+
 ## 2026-08-13 — DraftRoom: 메모리/DB 불일치 결함 2건 추가 수정(직전 경쟁 상태 조사 중 발견)
 
 **배경**: 직전 항목(드래프트 시작 경쟁 상태 수정) 조사 중 함께 발견했던, "실패를 조용히 삼키고 메모리만 앞서나간다"는 같은 계열의 결함 2건을 사용자와 정책 합의 후 수정.
