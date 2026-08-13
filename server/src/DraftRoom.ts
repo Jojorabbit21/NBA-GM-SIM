@@ -25,6 +25,11 @@ const AI_MIN_DELAY_MS = 2500;
 const AI_MAX_DELAY_MS = 3500;
 const CHUNK_SIZE = 100;
 
+// persistPick() 실패(주로 순간적인 DB/네트워크 장애) 시 같은 픽을 재시도하는 정책.
+// onAiPick()/onPickTimeout() 공용 — 무한 재시도로 RPC를 계속 두드리지 않도록 상한을 둔다.
+const MAX_PICK_RETRY = 3;
+const PICK_RETRY_DELAY_MS = 3000;
+
 // WS 소켓에 붙이는 메타데이터
 export interface WsData {
     userId: string;
@@ -315,7 +320,10 @@ export class DraftRoom {
         return this.picks.filter(p => p.teamId === teamId).map(p => p.position);
     }
 
-    private async onAiPick(): Promise<void> {
+    // retryCount>0이면 직전 persistPick() 실패(주로 순간적인 DB/네트워크 장애)에 대한 재시도
+    // 호출 — scheduleNext()를 다시 거치지 않고 같은 픽 시도를 곧바로 재예약한다(정책은 파일
+    // 상단 MAX_PICK_RETRY/PICK_RETRY_DELAY_MS 참조).
+    private async onAiPick(retryCount = 0): Promise<void> {
         if (this.status !== 'active') return;
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry || (!entry.isAi && !this.autoPickUserIds.has(entry.userId))) return;
@@ -330,33 +338,51 @@ export class DraftRoom {
         // entry.isAi 그대로 전달 — 오토픽 모드로 대납되는 실제 사람 유저는 is_ai=false로
         // 정확히 기록되어야 draft_picks 감사 기록/향후 기능에서 AI 슬롯과 혼동되지 않는다.
         const result = await this.persistPick(entry.userId, bestId, entry.isAi ?? false);
-        if (!result) return;
+        if (!result) {
+            if (retryCount < MAX_PICK_RETRY) {
+                console.warn(`[DraftRoom:${this.roomId}] onAiPick persist 실패 — ${PICK_RETRY_DELAY_MS}ms 후 재시도 (${retryCount + 1}/${MAX_PICK_RETRY})`);
+                this.aiTimer = setTimeout(() => this.onAiPick(retryCount + 1), PICK_RETRY_DELAY_MS);
+            } else {
+                console.error(`[DraftRoom:${this.roomId}] onAiPick 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 전까지 멈춤`);
+            }
+            return;
+        }
 
         this.applyPickToMemory(result);
         this.broadcastDelta(result);
         this.scheduleNext();
     }
 
-    private async onPickTimeout(): Promise<void> {
+    private async onPickTimeout(retryCount = 0): Promise<void> {
         if (this.status !== 'active') return;
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry || entry.isAi) return;
 
-        console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
-
-        // 연속 타임아웃 횟수 추적 — 세션 설정(autoPickAfterMisses)에 도달하면 오토픽 모드로 전환
-        const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
-        this.pickMissCounts.set(entry.userId, misses);
-        if (misses >= this.config.autoPickAfterMisses) {
-            this.autoPickUserIds.add(entry.userId);
-            console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} hit ${misses} consecutive timeout(s) → auto-pick mode`);
+        // 연속 미스 카운트/오토픽 전환 판정은 최초 타임아웃(retryCount===0)에만 한다 —
+        // persistPick 재시도 때마다 다시 돌리면 같은 타임아웃 1건이 여러 번 집계된다.
+        if (retryCount === 0) {
+            console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
+            const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
+            this.pickMissCounts.set(entry.userId, misses);
+            if (misses >= this.config.autoPickAfterMisses) {
+                this.autoPickUserIds.add(entry.userId);
+                console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} hit ${misses} consecutive timeout(s) → auto-pick mode`);
+            }
         }
 
         const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
         if (!bestId) return;
 
         const result = await this.persistPick(entry.userId, bestId);
-        if (!result) return;
+        if (!result) {
+            if (retryCount < MAX_PICK_RETRY) {
+                console.warn(`[DraftRoom:${this.roomId}] onPickTimeout persist 실패 — ${PICK_RETRY_DELAY_MS}ms 후 재시도 (${retryCount + 1}/${MAX_PICK_RETRY})`);
+                this.pickTimer = setTimeout(() => this.onPickTimeout(retryCount + 1), PICK_RETRY_DELAY_MS);
+            } else {
+                console.error(`[DraftRoom:${this.roomId}] onPickTimeout 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 전까지 멈춤`);
+            }
+            return;
+        }
 
         this.applyPickToMemory(result);
         this.broadcastDelta(result);
@@ -422,26 +448,47 @@ export class DraftRoom {
     async activate(): Promise<boolean> {
         if (this.status !== 'waiting') return false;
 
+        // [Fix 2026-08-13] "쓰기 성공 후에만 메모리에 반영"(write-then-commit) — 예전엔 메모리를
+        // 먼저 active로 바꾼 뒤 DB write 결과(error)를 확인 안 해서, write가 실패해도 그냥
+        // 넘어가 메모리(active, 타이머 돎)와 DB(여전히 waiting)가 갈라질 수 있었다. 이제 DB
+        // write가 실제로 성공했을 때만 메모리 상태를 바꾼다 — 실패하면 메모리를 안 건드렸으니
+        // 롤백도 필요 없이 그냥 false 반환, 호출부(activateDraftRoom)가 에러로 처리한다.
+
         // 드래프트 시작 순간 룸에 연결돼 있지 않은(=WS 소켓 없는) 유저는 즉시 오토픽 모드로 전환.
-        // pickOrder는 라운드마다 유저가 반복되므로 유저당 한 번만 판정한다.
+        // pickOrder는 라운드마다 유저가 반복되므로 유저당 한 번만 판정한다. DB write 성공 전까지는
+        // this.autoPickUserIds를 건드리지 않고 로컬 Set에 모아둔다.
         const connected = this.getConnectedUserIds();
         const seen = new Set<string>();
+        const newAutoPickUserIds = new Set<string>();
         for (const entry of this.config.pickOrder) {
             if (entry.isAi || seen.has(entry.userId)) continue;
             seen.add(entry.userId);
             if (!connected.has(entry.userId)) {
-                this.autoPickUserIds.add(entry.userId);
+                newAutoPickUserIds.add(entry.userId);
                 console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} not connected at draft start → auto-pick mode`);
             }
         }
 
-        this.status               = 'active';
-        this.currentPickIndex     = 0;
-        this.currentPickStartedAt = new Date().toISOString();
+        const nextCursor: DraftCursor = {
+            status:               'active',
+            currentPickIndex:     0,
+            currentPickStartedAt: new Date().toISOString(),
+            autoPickUserIds:      [...this.autoPickUserIds, ...newAutoPickUserIds],
+            serverNow:            new Date().toISOString(),
+        };
 
-        await supabase.from('rooms').update({
-            draft_cursor: this.getCursor(),
+        const { error } = await supabase.from('rooms').update({
+            draft_cursor: nextCursor,
         }).eq('id', this.roomId);
+        if (error) {
+            console.error(`[DraftRoom:${this.roomId}] activate() DB write failed: ${error.message}`);
+            return false;
+        }
+
+        for (const id of newAutoPickUserIds) this.autoPickUserIds.add(id);
+        this.status               = 'active';
+        this.currentPickIndex     = nextCursor.currentPickIndex;
+        this.currentPickStartedAt = nextCursor.currentPickStartedAt;
 
         this.broadcastCursor();
         this.scheduleNext();

@@ -35,6 +35,27 @@
 
 ---
 
+## 2026-08-13 — DraftRoom: 메모리/DB 불일치 결함 2건 추가 수정(직전 경쟁 상태 조사 중 발견)
+
+**배경**: 직전 항목(드래프트 시작 경쟁 상태 수정) 조사 중 함께 발견했던, "실패를 조용히 삼키고 메모리만 앞서나간다"는 같은 계열의 결함 2건을 사용자와 정책 합의 후 수정.
+
+**변경 파일**:
+- `server/src/DraftRoom.ts`
+
+**변경 1 — `activate()`: write-then-commit으로 순서 변경**: 기존엔 `this.status='active'`를 먼저 메모리에 반영한 뒤 `supabase.update()`를 호출하고 에러를 확인하지 않았음 — write가 실패해도 메모리는 `active`인 채로 타이머가 돌아, DB(`waiting`)와 갈라지는 직전 항목과 동일 계열의 불일치가 재현될 수 있었음. 이제 다음 커서 객체(`nextCursor`, `autoPickUserIds` 판정 결과 포함)를 로컬 변수로 먼저 구성 → DB write → **성공했을 때만** `this.status`/`this.currentPickIndex`/`this.currentPickStartedAt`/`this.autoPickUserIds`에 반영. 실패하면 메모리를 안 건드렸으므로 롤백 없이 `false`만 반환(호출부 `activateDraftRoom`이 이미 에러로 처리하도록 직전 항목에서 고쳐둠).
+
+**변경 2 — `onAiPick()`/`onPickTimeout()`: persistPick 실패 시 짧은 지연 재시도**: 기존엔 `persistPick()`(= `submit_draft_pick_v2` RPC) 실패 시 `if (!result) return;`로 그냥 멈추고 타이머를 다시 안 걸어서, 일시적 DB/네트워크 장애 한 번에 드래프트가 (누군가 재접속해 `index.ts`의 "active인데 타이머 없으면 재시작" 로직이 트리거될 때까지) 완전히 멈췄음. 모듈 상단에 `MAX_PICK_RETRY=3`, `PICK_RETRY_DELAY_MS=3000` 상수 추가, 두 메서드에 `retryCount` 파라미터를 추가해 실패 시 3초 뒤 같은 픽을 재시도(최대 3회) — 그래도 안 되면 포기하고 `console.error`로 크게 로그만 남김(무한 재시도 방지, 기존 재접속 기반 복구는 최후 안전망으로 유지). `onPickTimeout()`의 연속 미스 카운트/오토픽 전환 판정은 `retryCount===0`일 때만 실행하도록 분리 — 안 그러면 재시도할 때마다 같은 타임아웃 1건이 중복 집계됨.
+
+**검증**: `tsc --noEmit -p server/tsconfig.json` — 두 파일에 새로 추가된 에러 없음(남아있는 에러는 전부 Bun 타입 선언 누락 등 기존부터 있던 무관한 것들, 전체 목록 대조 확인). fly.io 배포(machine v134) 완료, `https://basketballgm-app-server.fly.dev/` 200 응답 확인.
+
+**주의사항 / 한계**:
+- `onAiPick()`의 `getBestAvailableId`가 `null`을 반환하는 경로(포지션 제약으로 뽑을 선수 없음)는 이번 재시도 정책 대상에서 제외 — 재시도해도 안 바뀌는 성격이 다른 문제라 별도 검토 필요(제약 완화 폴백 등).
+- `pause()`/`resume()`(`DraftRoom.ts`)도 `activate()`와 동일한 "메모리 먼저, DB write 에러 미확인" 패턴을 갖고 있음 — 이번 범위에서는 안 고침(사용자가 activate()만 지정).
+
+**롤백 방법**: `MAX_PICK_RETRY`/`PICK_RETRY_DELAY_MS` 상수와 `retryCount` 파라미터/재시도 분기를 제거하고 `onAiPick`/`onPickTimeout`을 `if (!result) return;`로, `activate()`를 "메모리 먼저 변경 → DB write(에러 미확인)" 순서로 되돌리면 됨.
+
+---
+
 ## 2026-08-13 — 드래프트 시작 경쟁 상태(race condition) 수정: prepareDraftRoom vs activateDraftRoom
 
 **배경**: 사용자 신고 — 새 리그(DIVISION 2)에서 드래프트 진행 중 픽 제한시간(30초)이 지나도 다음 픽으로 안 넘어감. 조사(서브에이전트 + fly.io 로그 실측) 결과 실제 장애 원인은 다음 경쟁 상태:
