@@ -41,3 +41,6 @@ public/patches/
 scripts/
 .claude/settings.local.json
 .vercel
+
+# 벤치마크 리서치용 외부 레퍼런스 클론 (docs/research/zengm-benchmark-analysis.md)
+zengm-master/

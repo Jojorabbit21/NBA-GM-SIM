@@ -10,7 +10,7 @@ import { useServerClock } from '../../../utils/serverClock';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
-import { loadGameLeadersCache, mergeGameLeadersCache, type GameLeaders, type QuarterScores } from '../../../services/multi/gameLeadersCache';
+import { loadGameLeadersCache, mergeGameLeadersCache, computeGameLeaders, type GameLeaders, type QuarterScores } from '../../../services/multi/gameLeadersCache';
 import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -23,22 +23,6 @@ import {
 } from './multiScheduleUtils';
 
 const LIVE_POLL_MS = 5000;
-
-// ── 경기 리더(득점/리바운드/어시스트) ─────────────────────────────────────────
-
-function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBoxScore[] | null): GameLeaders {
-    const all = [...(homeBox ?? []), ...(awayBox ?? [])];
-    const topBy = (fn: (p: PlayerBoxScore) => number) =>
-        all.reduce<PlayerBoxScore | null>((best, p) => (!best || fn(p) > fn(best) ? p : best), null);
-    const ptsP = topBy(p => p.pts);
-    const rebP = topBy(p => p.reb);
-    const astP = topBy(p => p.ast);
-    return {
-        pts: ptsP ? { name: ptsP.playerName, value: ptsP.pts, position: ptsP.position } : undefined,
-        reb: rebP ? { name: rebP.playerName, value: rebP.reb, position: rebP.position } : undefined,
-        ast: astP ? { name: astP.playerName, value: astP.ast, position: astP.position } : undefined,
-    };
-}
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 // [2026-08-04] 날짜 관련 헬퍼(fmtDayLabel/kstDateKey/fmtDateShort/fmtTime/groupByDay)는
@@ -650,10 +634,17 @@ const MultiScheduleView: React.FC = () => {
                 ...g,
                 scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt,
             }))
-            // g.date는 달력 날짜(YYYY-MM-DD)만 갖고 있어 같은 날 여러 경기가 팀/시리즈 생성 순서로
-            // 묶여버렸다 — 실제 예정 시각(scheduledAt) 기준으로 정렬해야 시간순이 된다.
-            .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
-    [schedule, simStart, gprd, revealedSeriesById]);
+            // 메인리그 정규시즌 경기는 화면에 "가상 NBA 캘린더" date/time을 그대로 보여주므로
+            // (preferVirtual) 정렬도 그 값 기준이어야 한다. scheduledAt(내부 압축 실행 시각)으로
+            // 정렬하면 표시되는 date/time과 실제 정렬 순서가 어긋나 같은 날짜 안에서도 시간 역순으로
+            // 뜨는 버그가 있었다 — 플레이오프/토너먼트(isPlayoff)는 date/time이 없거나 scheduledAt에서
+            // 파생되므로 그대로 scheduledAt을 기준으로 쓴다.
+            .sort((a, b) => {
+                const keyA = preferVirtual && !a.isPlayoff ? `${a.date}T${a.time ?? '00:00'}` : (a.scheduledAt ?? a.date);
+                const keyB = preferVirtual && !b.isPlayoff ? `${b.date}T${b.time ?? '00:00'}` : (b.scheduledAt ?? b.date);
+                return keyA.localeCompare(keyB);
+            }),
+    [schedule, simStart, gprd, revealedSeriesById, preferVirtual]);
 
     // 시간순 정렬(allGames가 이미 scheduledAt 기준 오름차순) — 종료된 경기가 과거 시각이라
     // 자연히 최상단에, 진행중/예정 경기는 시간이 흐른 순서 그대로 아래에 이어진다.
