@@ -2,15 +2,15 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Network, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useSeasonContext } from './seasonContext';
-import { computeMultiStandingsStats } from './multiSeasonUtils';
+import { computeMultiStandingsStats, computePlayoffOddsMap } from './multiSeasonUtils';
 import type { MultiStandingsRecord, MultiTeamMeta } from './multiSeasonUtils';
 import { isFinal, resolveRealAt } from './multiGameReveal';
 import { useServerClock } from '../../../utils/serverClock';
-import TournamentBracketView from './TournamentBracketView';
+import { PostseasonBracket } from './PostseasonBracket';
 import {
     Table, TableHead, TableBody, TableRow,
     TableHeaderCell, TableCell,
@@ -290,106 +290,9 @@ function computeSosMap(
 }
 
 // ── PO%(플레이오프 진출 확률) — 몬테카를로 시뮬레이션 ────────────────────────
-// 아직 결과가 공개되지 않은(!isFinal, 스포일러 방지 게이팅과 동일 기준) 경기들을
-// log5 승률 공식으로 반복 시뮬레이션해서, 각 팀이 컨퍼런스 최종 진출권(플레이인
-// 활성화 시 그 결과까지 반영한 최종 N팀)에 들어간 시행 비율을 확률로 쓴다.
-// 이미 수학적으로 클린치/탈락이 확정된 팀은 어떤 시행에서도 결과가 갈리지 않으므로
-// 자연히 정확히 100%/0%로 수렴한다(clinchMap과 별도 로직이지만 결과는 항상 일치).
-
-const PLAYOFF_ODDS_ITERATIONS = 1000;
-
-function log5WinProb(pA: number, pB: number): number {
-    if (pA <= 0 && pB <= 0) return 0.5;
-    const denom = pA + pB - 2 * pA * pB;
-    if (denom <= 0) return pA > pB ? 1 : pA < pB ? 0 : 0.5;
-    return (pA - pA * pB) / denom;
-}
-
-function computePlayoffOddsMap(
-    leagueTeams: LeagueTeam[],
-    statsMap: Record<string, MultiStandingsRecord>,
-    schedule: ReturnType<typeof useMultiGameData>['schedule'],
-    nowMs: number,
-    playoffTeamsPerConf: number,
-    playInEnabled: boolean,
-): Record<string, number> {
-    const autoClinchCount = playInEnabled ? Math.max(0, playoffTeamsPerConf - 2) : playoffTeamsPerConf;
-
-    const baseWL = new Map<string, { w: number; l: number }>();
-    for (const t of leagueTeams) {
-        const rec = statsMap[t.team_slug];
-        baseWL.set(t.team_slug, { w: rec?.wins ?? 0, l: rec?.losses ?? 0 });
-    }
-
-    // 결과가 이미 나왔어도 아직 비공개(!isFinal)면 실제 스코어를 들여다보지 않고
-    // 매 시행 log5 확률로 새로 결정한다 — 순위 화면의 다른 스탯들과 동일한 스포일러 기준.
-    const pendingGames = schedule.filter(g => !g.isPlayoff && !isFinal(g, nowMs));
-
-    const teamsByConf: Record<'East' | 'West', LeagueTeam[]> = {
-        East: leagueTeams.filter(t => t.conference === 'East'),
-        West: leagueTeams.filter(t => t.conference === 'West'),
-    };
-
-    const qualifiedCount: Record<string, number> = {};
-    for (const t of leagueTeams) qualifiedCount[t.team_slug] = 0;
-
-    const pickWinner = (
-        wl: Map<string, { w: number; l: number }>, a: LeagueTeam, b: LeagueTeam,
-    ): { winner: LeagueTeam; loser: LeagueTeam } => {
-        const ra = wl.get(a.team_slug)!, rb = wl.get(b.team_slug)!;
-        const pa = ra.w / ((ra.w + ra.l) || 1);
-        const pb = rb.w / ((rb.w + rb.l) || 1);
-        return Math.random() < log5WinProb(pa, pb) ? { winner: a, loser: b } : { winner: b, loser: a };
-    };
-
-    for (let iter = 0; iter < PLAYOFF_ODDS_ITERATIONS; iter++) {
-        const wl = new Map<string, { w: number; l: number }>();
-        for (const [slug, rec] of baseWL) wl.set(slug, { w: rec.w, l: rec.l });
-
-        // 남은(비공개 포함) 정규시즌 경기를 전부 한 번씩 가상 시뮬레이션.
-        for (const g of pendingGames) {
-            const home = wl.get(g.homeTeamId);
-            const away = wl.get(g.awayTeamId);
-            if (!home || !away) continue;
-            const pHome = home.w / ((home.w + home.l) || 1);
-            const pAway = away.w / ((away.w + away.l) || 1);
-            if (Math.random() < log5WinProb(pHome, pAway)) { home.w++; away.l++; }
-            else { away.w++; home.l++; }
-        }
-
-        // 시뮬레이션된 최종 성적으로 컨퍼런스별 진출팀 확정(자동진출 + 플레이인).
-        for (const conf of ['East', 'West'] as const) {
-            const teams = teamsByConf[conf];
-            if (teams.length === 0) continue;
-
-            const sorted = [...teams].sort((a, b) => {
-                const ra = wl.get(a.team_slug)!, rb = wl.get(b.team_slug)!;
-                const pa = ra.w / ((ra.w + ra.l) || 1);
-                const pb = rb.w / ((rb.w + rb.l) || 1);
-                if (pb !== pa) return pb - pa;
-                return Math.random() - 0.5; // 동률 타이브레이커는 근사(무작위)로 처리
-            });
-
-            let qualified: LeagueTeam[];
-            if (playInEnabled && sorted.length >= autoClinchCount + 4) {
-                const auto = sorted.slice(0, autoClinchCount);
-                const [s7, s8, s9, s10] = sorted.slice(autoClinchCount, autoClinchCount + 4);
-                const r78   = pickWinner(wl, s7, s8);
-                const r910  = pickWinner(wl, s9, s10);
-                const seed8 = pickWinner(wl, r78.loser, r910.winner).winner;
-                qualified = [...auto, r78.winner, seed8];
-            } else {
-                qualified = sorted.slice(0, playoffTeamsPerConf);
-            }
-
-            for (const t of qualified) qualifiedCount[t.team_slug]++;
-        }
-    }
-
-    const result: Record<string, number> = {};
-    for (const t of leagueTeams) result[t.team_slug] = (qualifiedCount[t.team_slug] ?? 0) / PLAYOFF_ODDS_ITERATIONS;
-    return result;
-}
+// 계산 로직(computePlayoffOddsMap/log5WinProb/PLAYOFF_ODDS_ITERATIONS)은
+// multiSeasonUtils.ts로 이동 — 홈 화면(MultiSeasonPage.tsx)도 동일한 PO% 값을
+// 보여줘야 해서 공유 유틸로 옮기고 여기서는 import해서 씀.
 
 // ── PO% 툴팁용 근거 지표 ──────────────────────────────────────────────────────
 // 몬테카를로 결과 자체는 SOS의 RPI 가중치 같은 "공식 구성요소"가 없는 블랙박스라,
@@ -889,44 +792,13 @@ const LeagueStandingsTable: React.FC<{
     );
 };
 
-// ── 토너먼트 브라켓 ───────────────────────────────────────────────────────────
-
-const TournamentBracket: React.FC<{
-    bracketData: unknown | null;
-    schedule: ReturnType<typeof useMultiGameData>['schedule'];
-    myTeamId: string | null;
-}> = ({ bracketData, schedule, myTeamId }) => {
-    const { leagueTeams } = useLeagueContext();
-    const bracket = bracketData as { series: ReturnType<typeof useMultiGameData>['playoffSeries'] } | null;
-    // round:0은 컨퍼런스별 플레이인 미니시리즈(playInSeeder.ts) — 표준 브라켓 그리드 레이아웃
-    // 계산(TournamentBracketView의 matchIndex/열 배치)은 round>=1의 T_R{round}_M{idx} 트리
-    // 구조만 가정하므로, 여기서 걸러내고 본선 브라켓만 넘긴다. 플레이인 경기 자체는 일정
-    // 화면(스케줄)에는 일반 경기와 동일하게 그대로 노출된다.
-    const series = (bracket?.series ?? []).filter(s => s.round >= 1);
-
-    if (!series.length) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-slate-200 pretendard">
-                <Network size={40} className="text-slate-600" />
-                <div className="text-center">
-                    <h2 className="text-lg font-black text-slate-300 ko-tight">토너먼트 브라켓</h2>
-                    <p className="text-sm text-slate-500 ko-normal mt-1">브라켓 데이터가 아직 없습니다.</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <TournamentBracketView
-            series={series}
-            schedule={schedule}
-            leagueTeams={leagueTeams}
-            myTeamId={myTeamId}
-        />
-    );
-};
-
 // ── 메인 뷰 ──────────────────────────────────────────────────────────────────
+//
+// "리그 순위" 메뉴는 main_league 여부와 무관하게 항상 정규시즌 순위표만 보여준다. 플레이오프
+// 브라켓은 사이드바의 별도 "플레이오프" 메뉴(MultiPlayoffsView, bracket_data 존재 시에만
+// 노출)로 완전히 분리했다 — 리그 순위 화면 안에서 브라켓으로 바뀌어버리면 포스트시즌 진행
+// 중 정규시즌 최종 순위를 볼 방법이 없어지기 때문. tournament 타입 리그는 애초에 정규시즌이
+// 없으므로(단일 브라켓 경쟁 방식) 이 메뉴가 곧 브라켓이다.
 
 const MultiStandingsView: React.FC = () => {
     const { league, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
@@ -945,9 +817,7 @@ const MultiStandingsView: React.FC = () => {
         );
     }
 
-    const isTournament = league?.type === 'tournament';
-
-    if (isTournament) {
+    if (league?.type === 'tournament') {
         // schedule은 서버가 game_seq(압축 인덱스)로만 채워 저장 — scheduledAt이 없으면
         // multiGameReveal의 isStarted/isFinal이 played 값에만 의존해 경기가 항상
         // 'scheduled'로 묶여버린다. MultiScheduleView와 동일하게 여기서도 정규화한다.
@@ -959,7 +829,7 @@ const MultiStandingsView: React.FC = () => {
         }));
 
         return (
-            <TournamentBracket
+            <PostseasonBracket
                 bracketData={league?.bracket_data ?? null}
                 schedule={normalizedSchedule}
                 myTeamId={myTeamId}

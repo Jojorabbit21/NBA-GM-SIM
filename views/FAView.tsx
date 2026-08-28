@@ -438,7 +438,6 @@ export const FAView: React.FC<FAViewProps> = ({
                         team={faTeamForGrid}
                         tab="roster"
                         showFooter={false}
-                        hideAvgColumns={true}
                         onPlayerClick={(player) => onViewPlayer?.(player)}
                         renderRowAction={(player) => {
                             const entry = market?.entries.find(e => e.playerId === player.id);

@@ -80,6 +80,25 @@ export const SliderControl: React.FC<{
 
   const percentage = ((localValue - min) / (max - min)) * 100;
 
+  // 값(채워진 비율)에 비례해 어두운 에메랄드(낮음)~밝은 에메랄드(높음)로 채움 색상 변화
+  // (hue 160 — 이 앱 전반에서 "좋음/높음"을 나타내는 에메랄드 #10b981과 동일 계열)
+  const fillColor = useMemo(() => {
+    const lightness = 30 + (Math.max(0, Math.min(100, percentage)) / 100) * 33;
+    return `hsl(160, 84%, ${lightness}%)`;
+  }, [percentage]);
+
+  // 네이티브 range 썸(핸들)은 트랙 전체 폭이 아니라 (트랙폭 - 썸폭) 구간 안에서만 움직이므로
+  // 중심 위치가 항상 "썸 반폭 ~ 트랙폭 - 썸 반폭" 사이에 있다. 그런데 배경 그라데이션의 경계는
+  // 단순 percentage%(트랙 전체 폭 기준)로 계산되어 있어서 이 둘이 어긋난다 — 중간값에서는 오차가
+  // 작아 안 보이지만 0%/100%(1단계·9단계처럼 끝값 근처)에서는 썸 반폭(7px)만큼 크게 벌어져
+  // 핸들이 채움 경계와 어긋나 보였다. calc()로 썸 폭을 보정해 실제 썸 중심 위치와 정확히 맞춘다.
+  const THUMB_WIDTH_PX = 14; // w-3.5
+  const trackBackground = useMemo(() => {
+    const ratio = Math.max(0, Math.min(1, percentage / 100));
+    const stop = `calc(${ratio} * (100% - ${THUMB_WIDTH_PX}px) + ${THUMB_WIDTH_PX / 2}px)`;
+    return `linear-gradient(to right, ${fillColor} ${stop}, #1e293b ${stop})`;
+  }, [fillColor, percentage]);
+
   // 보조 레이블: 명시된 경우 그대로, 아니면 자동
   const autoSubLabel = steps
     ? steps[Math.max(0, Math.min(steps.length - 1, localValue))]?.label ?? ''
@@ -92,15 +111,15 @@ export const SliderControl: React.FC<{
     return (
       <div className="space-y-1.5 w-full py-1">
         <div className="flex justify-between items-end">
-          <span className="text-xs font-semibold text-white">{label}</span>
+          <span className="text-sm font-semibold text-white">{label}</span>
         </div>
         <div className="h-1.5 rounded-[4px] overflow-hidden" style={{ backgroundColor: '#27272A' }}>
           <div className="h-full rounded-[4px]" style={{ width: `${pct}%`, backgroundColor: '#4f46e5' }} />
         </div>
         {(leftLabel || rightLabel) && (
           <div className="flex justify-between">
-            {leftLabel  && <span className="text-[10px] font-medium text-[#A1A1AA]">{leftLabel}</span>}
-            {rightLabel && <span className="text-[10px] font-medium text-[#A1A1AA]">{rightLabel}</span>}
+            {leftLabel  && <span className="text-sm font-medium text-[#A1A1AA]">{leftLabel}</span>}
+            {rightLabel && <span className="text-sm font-medium text-[#A1A1AA]">{rightLabel}</span>}
           </div>
         )}
       </div>
@@ -112,21 +131,22 @@ export const SliderControl: React.FC<{
       {/* 레이블 행 */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-1.5 relative group/tooltip">
-          <span className="text-xs font-semibold text-white">{label}</span>
+          <span className="text-sm font-semibold text-white">{label}</span>
           {tooltip && (
             <>
               <HelpCircle size={12} className="text-[#71717A] hover:text-[#6366f1] transition-colors cursor-help" />
-              <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#27272A] border border-[#3F3F46] text-[#A1A1AA] text-[11px] p-2 rounded-lg shadow-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 font-medium break-keep leading-relaxed">
+              <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#27272A] border border-[#3F3F46] text-[#A1A1AA] text-xs p-2 rounded-lg shadow-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 font-medium break-keep leading-relaxed">
                 {tooltip}
               </div>
             </>
           )}
         </div>
-        <span className="text-xs font-semibold text-[#A1A1AA]">{displaySubLabel}</span>
+        <span className="text-sm font-semibold text-[#A1A1AA]">{displaySubLabel}</span>
       </div>
 
-      {/* 트랙 행 */}
-      <div className="relative flex items-center h-5">
+      {/* 트랙 행 — 바디/핸들 보더 라디우스를 rounded-full이 아닌 핸들 너비(w-3.5=14px)의
+          절반인 7px로 통일 */}
+      <div className="relative flex items-center h-8">
         <input
           type="range"
           min={min}
@@ -135,8 +155,8 @@ export const SliderControl: React.FC<{
           onChange={handleChange}
           onMouseUp={handleCommit}
           onKeyUp={handleCommit}
-          className="w-full h-1.5 rounded-[4px] appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:cursor-pointer"
-          style={{ background: `linear-gradient(to right, #4f46e5 ${percentage}%, #27272A ${percentage}%)` }}
+          className="w-full h-8 rounded-[7px] appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-8 [&::-webkit-slider-thumb]:rounded-[7px] [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-8 [&::-moz-range-thumb]:rounded-[7px] [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:cursor-pointer"
+          style={{ background: trackBackground }}
         />
       </div>
     </div>

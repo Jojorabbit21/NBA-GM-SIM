@@ -2,7 +2,7 @@
 import React from 'react';
 import { TabBar } from '../common/TabBar';
 
-export type RosterTab = 'overview' | 'attributes' | 'stats' | 'records' | 'schedule' | 'coaching' | 'draftPicks';
+export type RosterTab = 'overview' | 'attributes' | 'stats' | 'records' | 'schedule' | 'finance' | 'coaching' | 'draftPicks';
 
 interface RosterTabsProps {
     activeTab: RosterTab;
@@ -17,6 +17,7 @@ const TABS: { id: RosterTab; label: string }[] = [
     { id: 'stats', label: '선수 기록' },
     { id: 'records', label: '경기 기록' },
     { id: 'schedule', label: '일정' },
+    { id: 'finance', label: '재정' },
     { id: 'coaching', label: '코칭 스태프' },
     { id: 'draftPicks', label: '드래프트 픽' },
 ];

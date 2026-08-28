@@ -21,6 +21,7 @@ import { startPlayIn } from './shared/playInSeeder';
 
 const POLL_INTERVAL_MS = 30_000;
 const STALE_CLAIM_SWEEP_INTERVAL_MS = 5 * 60_000;
+const TRADE_OFFER_EXPIRE_INTERVAL_MS = 10 * 60_000;
 
 // setInterval은 콜백이 끝나길 기다리지 않는다 — 처리할 경기가 많아 한 번의 tick()이
 // POLL_INTERVAL_MS보다 오래 걸리면, 이전 tick이 안 끝났는데 다음 tick이 그대로 겹쳐서
@@ -57,7 +58,24 @@ export function startScheduler(): void {
         );
     }, STALE_CLAIM_SWEEP_INTERVAL_MS);
 
+    // 유저 트레이드 제안 만료 처리 — expires_at은 RPC들이 항상 직접 검사하므로 이 스위퍼가
+    // 늦거나 죽어도 만료된 제안이 수락되는 일은 없다. status를 물리적으로 'expired'로
+    // 갱신해 인박스 조회를 단순하게(= 클라에서 별도 만료 필터링 불필요) 유지하는 용도.
+    sweepExpiredTradeOffers().catch(e =>
+        console.error('[scheduler] trade offer expire sweep error:', e)
+    );
+    setInterval(() => {
+        sweepExpiredTradeOffers().catch(e =>
+            console.error('[scheduler] trade offer expire sweep error:', e)
+        );
+    }, TRADE_OFFER_EXPIRE_INTERVAL_MS);
+
     console.log('[scheduler] started (30s interval)');
+}
+
+async function sweepExpiredTradeOffers(): Promise<void> {
+    const { error } = await supabase.rpc('expire_trade_offers');
+    if (error) console.error('[scheduler] expire_trade_offers RPC error:', error.message);
 }
 
 // ── 메인 틱 ──────────────────────────────────────────────────────────────────

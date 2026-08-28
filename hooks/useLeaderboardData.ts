@@ -2,17 +2,11 @@
 import { useMemo } from 'react';
 import { Team, Game, Player } from '../types';
 import { calculatePlayerOvr, INITIAL_STATS } from '../utils/constants';
-import { FilterItem, ViewMode, ATTRIBUTE_KEYS, ATTR_PLAYER_PROPS } from '../data/leaderboardConfig';
+import { FilterItem, ViewMode, ATTRIBUTE_KEYS, getAttrValue as getAttrVal } from '../data/leaderboardConfig';
 import { isFinal } from '../views/multi/season/multiGameReveal';
 import { useServerClock } from '../utils/serverClock';
 
 export type SeasonType = 'regular' | 'playoff';
-
-// Helper: get attribute value from Player object
-const getAttrVal = (p: any, key: string): number => {
-    const prop = ATTR_PLAYER_PROPS[key] ?? key;
-    return (p[prop] as number) ?? 0;
-};
 
 const ZONE_KEYS = [
     'zone_rim', 'zone_paint', 

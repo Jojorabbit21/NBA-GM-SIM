@@ -13,20 +13,25 @@ interface TacticsDataPanelProps {
     /** true면 "로스터 레이더" 차트를 아예 안 그린다(슈팅 존 히트맵이 남은 폭을 전부 채움).
      *  MultiTacticsView.tsx 전용 — 기본 false로 싱글플레이어/관리자 에디터는 그대로. */
     hideRadar?: boolean;
+    /** true면 "슈팅 존 히트맵"도 아예 안 그린다(별도 "인사이트" 탭으로 이동).
+     *  MultiTacticsView.tsx 전용 — 기본 false로 싱글플레이어/관리자 에디터는 그대로. */
+    hideZoneChart?: boolean;
 }
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats, hideRadar }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats, hideRadar, hideZoneChart }) => {
     const [showOpponentZone, setShowOpponentZone] = useState(false);
     const hasOpponentData = defensiveStats && defensiveStats.gamesPlayed > 0 && Object.keys(defensiveStats.oppZoneStats).length > 0;
 
     return (
         <div className="flex flex-col gap-5">
-            {/* Section 1: Radar + Zone Heatmap — vertically centered */}
+            {/* Section 1: Radar + Zone Heatmap — 둘 다 hide면 섹션 자체를 안 그림(빈 여백/구분선 방지) */}
+            {(!hideRadar || !hideZoneChart) && (
             <div className="flex flex-col gap-2 pb-5 border-b border-slate-800">
                 <div className="flex gap-4">
                     {!hideRadar && (
                         <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
                     )}
+                    {!hideZoneChart && (
                     <div className="flex-1 flex items-center justify-between">
                         <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
                         {hasOpponentData && (
@@ -42,6 +47,7 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                             </button>
                         )}
                     </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-4">
                     {!hideRadar && (
@@ -49,15 +55,17 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                             <RadarChart roster={roster} hideTitle />
                         </div>
                     )}
+                    {!hideZoneChart && (
                     <div className="flex-1">
                         <TeamZoneChart
                             roster={roster}
                             zoneOverride={showOpponentZone && hasOpponentData ? defensiveStats!.oppZoneStats : undefined}
-                            fullWidth hideTitle
                         />
                     </div>
+                    )}
                 </div>
             </div>
+            )}
 
             {/* Section 2: Play Type Analysis */}
             <div className="pb-5">

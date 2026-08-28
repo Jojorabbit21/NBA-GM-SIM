@@ -3,22 +3,27 @@ import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react'
 import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
-import { formatMoney, formatMoneyFull } from '../utils/formatMoney';
+import { formatMoneyFull } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TeamBadge } from '../components/common/TeamBadge';
 import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { TabBar } from '../components/common/TabBar';
 import {
-    ZONE_PATHS, COURT_LINES, ZONE_AVG,
+    ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
-    getZoneStyle, getZoneVolumeStyle, getZonePillColors
+    ZONE_PATHS,
+    COURT_LINES,
+    getZoneStyle,
 } from '../utils/courtZones';
-import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConfig';
+import { hexbin as d3Hexbin } from 'd3-hexbin';
+import { scaleSequential } from 'd3-scale';
+import { interpolateViridis } from 'd3-scale-chromatic';
+import { COMPACT_ATTR_GROUPS, ATTR_KR_LABEL, getCompactAttrValue, type CompactAttrItem } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
-import { HeaderAwardTrophies } from '../components/common/PlayerAwardBadges';
 import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../services/playerDevelopment/archetypeEvaluator';
 import type { PlayerArchetypeState } from '../types/archetype';
 import { generateSaveTendencies } from '../utils/hiddenTendencies';
@@ -38,11 +43,19 @@ interface PlayerDetailViewProps {
     onNegotiate?: () => void;   // FA 계약 협상
     onExtension?: () => void;   // 우리팀 계약 연장
     onRelease?: () => void;     // 우리팀 방출
+    // 브레드크럼 팀/선수 드롭다운으로 다른 선수를 선택했을 때 호출 — 지정 시(멀티플레이어)
+    // 이 콜백이 URL 네비게이션(navigate)까지 처리하고, 미지정 시(싱글플레이어) 기존처럼
+    // 컴포넌트 로컬 state만 바꾼다. 지정하지 않으면 드롭다운으로 선수를 바꿔도 주소창의
+    // playerId가 그대로 남는 문제가 있었다.
+    onSelectPlayer?: (playerId: string) => void;
     // 멀티플레이 경량화 — 지정한 섹션을 숨긴다
     hideSections?: Array<'contract' | 'awards' | 'injuryHistory'>;
     // 멀티플레이 경량화 — 외부에서 주입하는 gameLog (없으면 싱글 훅 사용)
     externalGameLog?: any[];
     externalGameLogLoading?: boolean;
+    // 샷 차트 탭 — 이 선수의 개별 슛 이벤트(x/y 좌표, courtCoordinates.ts 기준 풀코트
+    // x:0~94ft/y:0~50ft). d3-hexbin 밀도 히트맵(메인 샷 차트)의 원본 데이터.
+    externalShotEvents?: any[];
 }
 
 
@@ -151,6 +164,27 @@ function formatCareerCell(key: string, raw: any): string {
     if (key === 'season' || key === 'team') return String(raw);
     if (INT_COLS.has(key))  return String(Math.round(Number(raw)));
     return Number(raw).toFixed(1);
+}
+
+// ── 헤더 시즌/커리어 스탯 라인 ──
+const HEADER_STAT_KEYS = [
+    { key: 'gp', label: 'G' }, { key: 'min', label: 'MP' },
+    { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' },
+    { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' },
+    { key: 'fg_pct', label: 'FG%' }, { key: 'fg3_pct', label: '3P%' }, { key: 'ft_pct', label: 'FT%' },
+    { key: 'ts_pct', label: 'TS%' },
+];
+
+function formatHeaderStat(key: string, row: Record<string, any> | null): string {
+    if (!row || row[key] == null) return '-';
+    const formatted = formatCareerCell(key, row[key]);
+    return PCT_COLS.has(key) ? `${formatted}%` : formatted;
+}
+
+// "2025-2026" → "2025-26" (이미 축약 형식이면 그대로 통과)
+function shortenSeasonLabel(s: string): string {
+    const m = s.match(/^(\d{4})-(\d{4})$/);
+    return m ? `${m[1]}-${m[2].slice(-2)}` : s;
 }
 
 function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
@@ -336,11 +370,11 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-const getAttrBg = (val: number) => {
-    if (val >= 90) return 'bg-fuchsia-500/10';
-    if (val >= 80) return 'bg-emerald-500/10';
-    if (val >= 70) return 'bg-amber-500/10';
-    return '';
+const getAttrBarColor = (val: number) => {
+    if (val >= 90) return 'bg-fuchsia-400';
+    if (val >= 80) return 'bg-emerald-400';
+    if (val >= 70) return 'bg-amber-400';
+    return 'bg-slate-500';
 };
 
 // ── Stat value resolver ──
@@ -581,7 +615,7 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
     ];
 }
 
-const ROW_HEIGHT = 32; // h-8 = 32px
+const ROW_HEIGHT = 36; // text-sm(20px 라인하이트) + py-2(16px) — text-xs(32px)에서 상향
 const OVERSCAN = 5;
 
 const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties; rowBaseStyle?: React.CSSProperties; dividerColor?: string; subHeaderTextStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, subHeaderStyle, rowAltStyle, rowBaseStyle, dividerColor, subHeaderTextStyle }) => {
@@ -620,7 +654,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
         <div className="relative overflow-hidden h-full" style={{ contain: 'strict' }}>
             <div
                 ref={scrollRef}
-                className="absolute inset-0 overflow-y-auto overscroll-none"
+                className="absolute inset-0 overflow-hidden"
                 onScroll={handleScroll}
             >
                 {gameLogLoading && teamId && (
@@ -635,7 +669,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 )}
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
-                        <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                        <table className="w-full text-left border-separate border-spacing-0 text-sm">
                             <thead className="sticky top-0 z-40">
                                 <tr>
                                     {GAME_LOG_COLS.map((c, i) => (
@@ -661,7 +695,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                                 className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r' : ''}`}
                                                 style={{ ...((startIdx + vi) % 2 !== 0 ? rowAltStyle : rowBaseStyle), ...(ci < cells.length - 1 && dividerColor ? { borderRightColor: dividerColor } : undefined) }}
                                             >
-                                                <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
+                                                <span className={`font-medium ${cell.color || 'text-white'}`}>
                                                     {cell.val}
                                                 </span>
                                             </td>
@@ -681,7 +715,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, hideSections, externalGameLog, externalGameLogLoading }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
@@ -734,6 +768,51 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
+
+    // 헤더 어워드 배지 + 중간열 "수상 내역" 위젯이 함께 쓰는 전체 수상 목록
+    // (실제 NBA 커리어 BRef 이력 + 시뮬 어워드 병합, season+type 중복 제거는 각 소비처에서 처리).
+    const allAwards = useMemo(() => {
+        const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
+            (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
+        );
+        // player.awards(현재 멀티 시즌 실시간 스탬프)는 room.season 원본 포맷("2025-2026")을
+        // 그대로 갖고 있어 career_history(이미 "2024-25" 축약형)와 섞이면 표기가 어긋난다 — 표시 전 통일.
+        const liveAwards = (player.awards ?? []).map(a => ({ ...a, season: shortenSeasonLabel(a.season) }));
+        return [...historicalAwards, ...liveAwards].filter(Boolean);
+    }, [player.career_history, player.awards]);
+
+    // 헤더 트로피 배지 — 챔피언(플레이오프 한정, REG_SEASON_CHAMPION 제외)/MVP/DPOY/올-오펜시브
+    // (ALL_NBA_1~3 통합)/올-디펜시브(ALL_DEF_1~2 통합) 5종만, 카테고리당 1개 배지 + count.
+    // 올스타는 아직 어워드 시스템 자체에 없어(runAwardVoting 미구현) 이번엔 제외.
+    const headerAwardBadges = useMemo(() => {
+        // MVP/DPOY는 수상자만(rank 1 또는 rank 없음) — 후보(2위 이하)는 헤더에 안 보여줌.
+        const winnersOnly = allAwards.filter((a: any) => {
+            if (a.type === 'MVP' || a.type === 'DPOY') return a.rank === 1 || a.rank == null;
+            return true;
+        });
+        const bySeasons: Record<string, string[]> = { CHAMPION: [], MVP: [], DPOY: [], ALL_LEAGUE: [], ALL_DEF: [] };
+        const seen = new Set<string>();
+        for (const a of winnersOnly) {
+            const dedupeKey = `${a.type}__${a.season}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            if (a.type === 'CHAMPION') bySeasons.CHAMPION.push(a.season);
+            else if (a.type === 'MVP') bySeasons.MVP.push(a.season);
+            else if (a.type === 'DPOY') bySeasons.DPOY.push(a.season);
+            else if (a.type === 'ALL_NBA_1' || a.type === 'ALL_NBA_2' || a.type === 'ALL_NBA_3') bySeasons.ALL_LEAGUE.push(a.season);
+            else if (a.type === 'ALL_DEF_1' || a.type === 'ALL_DEF_2') bySeasons.ALL_DEF.push(a.season);
+        }
+        const CATEGORY_META: { key: string; label: string; color: string; bg: string }[] = [
+            { key: 'CHAMPION',   label: '챔피언',      color: 'text-amber-400',   bg: 'bg-amber-400/15' },
+            { key: 'MVP',        label: 'MVP',         color: 'text-yellow-400',  bg: 'bg-yellow-400/15' },
+            { key: 'DPOY',       label: 'DPOY',        color: 'text-blue-400',    bg: 'bg-blue-400/15' },
+            { key: 'ALL_LEAGUE', label: '올-오펜시브', color: 'text-indigo-400',  bg: 'bg-indigo-400/15' },
+            { key: 'ALL_DEF',    label: '올-디펜시브', color: 'text-emerald-400', bg: 'bg-emerald-400/15' },
+        ];
+        return CATEGORY_META
+            .map(c => ({ ...c, count: bySeasons[c.key].length, seasons: [...bySeasons[c.key]].sort((a, b) => b.localeCompare(a)) }))
+            .filter(c => c.count > 0);
+    }, [allAwards]);
 
     // 포지션 내 백분위 → 별점 (0.5~5.0)
     const positionStars = useMemo(() => {
@@ -793,9 +872,40 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         }),
     [player.stats, leagueZoneAvg]);
 
-    const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
+    // "샷 차트" 탭 최하단 hexbin 밀도 차트용 — 개별 슛 좌표(courtCoordinates.ts 기준
+    // 풀코트 x:0~94ft/y:0~50ft, 홈/원정 섞여 있어 x>47이면 94-x로 하프코트 정규화)를
+    // courtZones.ts의 435×403 캔버스 좌표로 변환(PAINT 사각형에서 역산한 스케일 재사용)한
+    // 뒤 d3-hexbin으로 육각형 비닝, 빈도를 viridis(보라→노랑) 컬러스케일에 매핑.
+    const shotHexbins = useMemo(() => {
+        if (!externalShotEvents || externalShotEvents.length === 0) return null;
+        const SCALE_X = 8.525;  // px per ft, 좌우(원본=y)
+        const SCALE_Y = 8.616;  // px per ft, 깊이(원본=x, 베이스라인부터)
+        const HOOP_CENTER_X = 217.3;
+        const BASELINE_Y = 401.6;
+        const points: [number, number][] = (externalShotEvents as any[]).map(ev => {
+            const halfX = ev.x > 47 ? 94 - ev.x : ev.x;
+            return [
+                HOOP_CENTER_X + (ev.y - 25) * SCALE_X,
+                BASELINE_Y - halfX * SCALE_Y,
+            ];
+        });
+        const hexbinGen = d3Hexbin<[number, number]>()
+            .x(d => d[0])
+            .y(d => d[1])
+            .radius(9)
+            .extent([[0, 0], [435, 403]]);
+        const bins = hexbinGen(points);
+        const maxCount = Math.max(1, ...bins.map(b => b.length));
+        return {
+            hexagonPath: hexbinGen.hexagon(),
+            bins,
+            colorScale: scaleSequential(interpolateViridis).domain([0, maxCount]),
+        };
+    }, [externalShotEvents]);
+
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
     const [careerMode, setCareerMode] = useState<'regular' | 'playoff'>('regular');
+    const [activeTab, setActiveTab] = useState<'profile' | 'ratings' | 'records' | 'shotchart'>('profile');
 
     // 현재 시뮬 시즌 팀 약어 (teamId uppercase, 없으면 '—')
     const simTeamAbbr = (teamId ?? '').toUpperCase() || '—';
@@ -882,14 +992,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         return simRegularRow ? [simRegularRow, ...historical] : historical;
     }, [player.career_history, simRegularRow, seasonShort]);
 
+    // 헤더 "커리어" 스탯 라인 — career_history가 없는 선수(멀티플레이어)는 careerRegular에
+    // 이번 시즌 한 행만 있어 "시즌" 줄과 값이 같아짐(멀티는 다중 시즌 이력이 없어 자연스러운 폴백).
+    const headerCareerAvg = useMemo(() => {
+        const avg = computeCareerAvg(careerRegular, '커리어');
+        return avg.gp ? avg : null;
+    }, [careerRegular]);
+
     const careerPlayoff = useMemo(() => {
         const historical = (player.career_history ?? []).filter(r => r.playoff && r.season !== seasonShort);
         return simPlayoffRow ? [simPlayoffRow, ...historical] : historical;
     }, [player.career_history, simPlayoffRow, seasonShort]);
 
     const hasCareerPlayoff = careerPlayoff.length > 0;
-    const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
-    const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
 
     // New player identity archetype system (UI display)
     const playerArchetypeState = useMemo<PlayerArchetypeState>(() => {
@@ -905,12 +1020,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
             {/* ═══ 브레드크럼 바 ═══ */}
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-white/10 shrink-0" style={{ backgroundColor: theme.bg }}>
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-800 bg-slate-950 shrink-0">
                 {/* 뒤로 버튼 */}
                 <button
                     onClick={onBack}
-                    className="flex items-center justify-center w-7 h-7 rounded-md bg-black/30 hover:bg-black/50 transition-colors shrink-0"
-                    style={{ color: theme.text }}
+                    className="flex items-center justify-center w-7 h-7 rounded-md bg-black/30 hover:bg-black/50 text-slate-200 transition-colors shrink-0"
                 >
                     <ArrowLeft size={14} />
                 </button>
@@ -921,8 +1035,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 <div ref={teamDropRef} className="relative">
                     <button
                         onClick={() => { setTeamDropOpen(o => !o); setPlayerDropOpen(false); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors"
-                        style={{ color: theme.text }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors"
                     >
                         {teamId && (
                             <TeamBadge
@@ -943,7 +1056,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     key={t.id}
                                     onClick={() => {
                                         const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-                                        if (roster.length > 0) { setPlayer(roster[0]); setTeamId(t.id); }
+                                        if (roster.length > 0) {
+                                            if (onSelectPlayer) onSelectPlayer(roster[0].id);
+                                            else { setPlayer(roster[0]); setTeamId(t.id); }
+                                        }
                                         setTeamDropOpen(false);
                                     }}
                                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
@@ -968,8 +1084,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 <div ref={playerDropRef} className="relative min-w-0">
                     <button
                         onClick={() => { setPlayerDropOpen(o => !o); setTeamDropOpen(false); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 transition-colors max-w-[180px]"
-                        style={{ color: theme.text }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors max-w-[180px]"
                     >
                         <span className="text-xs font-bold truncate">{player.name}</span>
                         {currentTeamRoster.length > 1 && <ChevronDown size={11} className="opacity-60 shrink-0" />}
@@ -979,7 +1094,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             {currentTeamRoster.map(p => (
                                 <button
                                     key={p.id}
-                                    onClick={() => { setPlayer(p); setPlayerDropOpen(false); }}
+                                    onClick={() => {
+                                        if (onSelectPlayer) onSelectPlayer(p.id);
+                                        else setPlayer(p);
+                                        setPlayerDropOpen(false);
+                                    }}
                                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${p.id === player.id ? 'text-white font-bold' : 'text-slate-300'}`}
                                 >
                                     <span className="font-mono w-6 text-center shrink-0 text-slate-400">{calculatePlayerOvr(p)}</span>
@@ -1029,41 +1148,117 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 )}
             </div>
 
+            {/* ═══ 프로필 헤더 — 이름/포지션/소속팀/키/체중/샐러리/등번호 요약 ═══ */}
+            <div className="flex items-center gap-4 px-4 py-5 bg-slate-900 border-b border-slate-800 shrink-0">
+                {teamId && (
+                    <TeamBadge
+                        teamId={teamId}
+                        abbr={currentTeam?.abbr}
+                        colorPrimary={currentTeam?.colorPrimary}
+                        colorSecondary={currentTeam?.colorSecondary}
+                        size="lg"
+                        className="self-stretch !h-auto !w-24 !text-2xl"
+                    />
+                )}
+                <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <OvrBadge value={calculatedOvr} size="lg" className="shrink-0 !w-10 !h-10 !text-2xl" />
+                        <h1 className="text-3xl font-black text-white truncate">{player.name}</h1>
+                        {player.jerseyNumber != null && (
+                            <span className="text-3xl font-bold text-slate-500 shrink-0">#{player.jerseyNumber}</span>
+                        )}
+                        {headerAwardBadges.length > 0 && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                {headerAwardBadges.map(b => (
+                                    <span
+                                        key={b.key}
+                                        className={`relative group flex items-center gap-1 px-1.5 py-0.5 rounded text-sm font-bold cursor-default ${b.bg}`}
+                                    >
+                                        <span className={b.color}>{b.label}</span>
+                                        {b.count > 1 && <span className={b.color}>×{b.count}</span>}
+                                        {/* 네이티브 title 툴팁(호버 ~1초 지연) 대신 group-hover로 즉시 노출 */}
+                                        <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs font-normal text-slate-200 whitespace-nowrap shadow-xl z-50">
+                                            {b.seasons.join(', ')}
+                                        </span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 text-base text-slate-300 whitespace-nowrap">
+                        <span>{teamName ?? 'FA'}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.position}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.age}세</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.height ? `${player.height}cm` : '-'}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.weight ? `${player.weight}kg` : '-'}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.contract ? formatMoneyFull(player.salary) : '-'}</span>
+                    </div>
+                </div>
+
+                {/* 시즌/커리어 G·MP·PTS·REB·AST·STL·BLK·FG%·3P%·FT%·TS% 테이블 —
+                    border-collapse 사용: border-separate+spacing이었을 땐 셀마다 구분선이
+                    독립적으로 그려져 칸 사이 여백만큼 선이 뚝뚝 끊겨 보였다. collapse로
+                    바꾸면 인접 셀이 하나의 선을 공유해 이어진 실선이 된다 — 대신 예전
+                    border-spacing이 주던 칸 간격은 각 셀의 padding(px-3/py-1)으로 대체. */}
+                <table className="text-sm ml-auto shrink-0 whitespace-nowrap border-collapse">
+                    <thead>
+                        <tr>
+                            <th className="border-r border-slate-700 pr-3 pb-1" />
+                            {HEADER_STAT_KEYS.map(sk => (
+                                <th key={sk.key} className="text-right font-normal text-slate-500 px-3 pb-1">{sk.label}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {([
+                            { label: `${shortenSeasonLabel(seasonShort)} 시즌`, row: simRegularRow },
+                            { label: '커리어', row: headerCareerAvg },
+                        ] as { label: string; row: Record<string, any> | null }[]).map(({ label, row }) => (
+                            <tr key={label}>
+                                <td className="text-left text-slate-500 border-r border-slate-700 pr-3 py-1">{label}</td>
+                                {HEADER_STAT_KEYS.map(sk => (
+                                    <td key={sk.key} className="text-right text-white px-3 py-1">{formatHeaderStat(sk.key, row)}</td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* ═══ 탭 바 ═══ */}
+            <TabBar
+                tabs={[
+                    { id: 'profile', label: '프로필' },
+                    { id: 'ratings', label: '레이팅' },
+                    { id: 'records', label: '기록' },
+                    { id: 'shotchart', label: '샷 차트' },
+                ]}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                theme={theme}
+            />
+
             {/* ═══ 단일 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
-                <div className="grid items-start gap-4 p-4" style={{ gridTemplateColumns: '2fr 8fr' }}>
+                {activeTab === 'profile' && (
+                <div className="grid min-h-full border border-slate-800" style={{ gridTemplateColumns: '2fr 2fr 6fr' }}>
 
-                    {/* ══════════════ 좌열 (3fr) ══════════════ */}
-                    <div className="flex flex-col gap-4">
+                    {/* ══════════════ 좌열 (3fr) — 리더보드/순위표처럼 카드 여백 없이 다닥다닥 붙인 그리드 ══════════════ */}
+                    <div className="flex flex-col bg-slate-900 border-r border-slate-800">
 
                         {/* ── 위젯 1: 선수 정보 통합 카드 ── */}
                         {(() => {
-                            const allAwards: any[] = [
-                                ...(player.career_history?.filter(s => !s.playoff).flatMap(s =>
-                                    (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean)
-                                ) ?? []),
-                                ...(player.awards ?? []),
-                            ];
                             return (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg">
-
-                                {/* ─ 헤더: OVR + 이름 + 액션 버튼 ─ */}
-                                <div className="p-4 rounded-t-lg" style={{ backgroundColor: theme.bg }}>
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <OvrBadge value={calculatedOvr} size="md" />
-                                        <h2 className="text-xl font-black uppercase tracking-tight truncate" style={{ color: theme.text }}>{player.name}</h2>
-                                    </div>
-                                </div>
-
-                                {/* ─ 트로피 행 ─ */}
-                                {allAwards.length > 0 && (
-                                    <div className="px-4 py-3 border-t border-slate-800">
-                                        <HeaderAwardTrophies awards={allAwards} />
-                                    </div>
-                                )}
+                            <div>
 
                                 {/* ─ 기본 정보 ─ */}
-                                <div className="px-4 pt-3 pb-3 border-t border-slate-800 space-y-1">
+                                <div className="px-4 pt-3 pb-3 space-y-1">
+                                    <div className="text-sm font-bold text-white mb-1.5">선수 정보</div>
                                     {[
                                         { label: '팀', value: teamId ? <span className="flex items-center gap-1"><TeamBadge teamId={teamId} abbr={currentTeam?.abbr} colorPrimary={currentTeam?.colorPrimary} colorSecondary={currentTeam?.colorSecondary} size="xs" />{teamName || 'FA'}</span> : 'FA' },
                                         { label: '포지션', value: player.position },
@@ -1075,7 +1270,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         { label: '리그 레벨', value: <StarRating ovr={calculatedOvr} size="md" /> },
                                         { label: '포지션 평점', value: positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-' },
                                     ].map(({ label, value }) => (
-                                        <div key={label} className="flex justify-between items-center text-xs">
+                                        <div key={label} className="flex justify-between items-center text-sm">
                                             <span className="text-slate-500 shrink-0">{label}</span>
                                             <span className="font-semibold text-slate-200 text-right">{value}</span>
                                         </div>
@@ -1094,8 +1289,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 { label: '예상 복귀', value: player.returnDate ?? '-' },
                                             ].map(({ label, value }) => (
                                                 <div key={label} className="flex justify-between items-center">
-                                                    <span className="text-xs text-slate-500 shrink-0">{label}</span>
-                                                    <span className="text-xs font-semibold text-white text-right">{value}</span>
+                                                    <span className="text-sm text-slate-500 shrink-0">{label}</span>
+                                                    <span className="text-sm font-semibold text-white text-right">{value}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -1107,19 +1302,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     <div className="px-4 py-3 border-t border-slate-800 space-y-1">
                                         <div className="text-sm font-bold text-white mb-1.5">선수 유형</div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-500">아키타입</span>
-                                            <span className="text-xs font-semibold text-white">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
+                                            <span className="text-sm text-slate-500">아키타입</span>
+                                            <span className="text-sm font-semibold text-white">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
                                         </div>
                                         {playerArchetypeState.secondary && (
                                             <div className="flex justify-between items-center">
-                                                <span className="text-xs text-slate-500">보조 유형</span>
-                                                <span className="text-xs font-semibold text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
+                                                <span className="text-sm text-slate-500">보조 유형</span>
+                                                <span className="text-sm font-semibold text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
                                             </div>
                                         )}
                                         {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
                                             <div key={tag} className="flex justify-between items-center">
-                                                <span className="text-xs text-slate-500">{i === 0 ? '특성' : ''}</span>
-                                                <span className="text-xs text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
+                                                <span className="text-sm text-slate-500">{i === 0 ? '특성' : ''}</span>
+                                                <span className="text-sm text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -1133,8 +1328,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
                                     ].map(({ label, value }) => (
                                         <div key={label} className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-500">{label}</span>
-                                            <span className="text-xs text-white font-semibold">{value}</span>
+                                            <span className="text-sm text-slate-500">{label}</span>
+                                            <span className="text-sm text-white font-semibold">{value}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -1161,19 +1356,34 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 { label: '기질', ...tmpLbl },
                                             ].map(({ label, text, color }) => (
                                                 <div key={label} className="flex justify-between items-center">
-                                                    <span className="text-xs text-slate-500">{label}</span>
-                                                    <span className={`text-xs font-semibold ${color}`}>{text}</span>
+                                                    <span className="text-sm text-slate-500">{label}</span>
+                                                    <span className={`text-sm font-semibold ${color}`}>{text}</span>
                                                 </div>
                                             ));
                                         })()}
                                     </div>
                                 )}
 
-                                {/* ─ 스카우팅 리포트 ─ */}
+                                {/* ─ 스카우팅 리포트 — 장점/단점/특징 구간 라벨 없이, 문장별 +/-/무기호로 표기.
+                                    긍정 → 부정 → 중립 순으로 정렬(같은 감정 안에서는 생성 순서 유지, stable sort) ─ */}
                                 {scoutReport.length > 0 && (
-                                    <div className="px-4 py-3 border-t border-slate-800">
-                                        <div className="text-sm font-bold text-white mb-1.5">스카우팅 리포트</div>
-                                        <span className="text-xs text-white">{scoutReport}</span>
+                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
+                                        <div className="text-sm font-bold text-white mb-1">스카우팅 리포트</div>
+                                        {[...scoutReport].sort((a, b) => {
+                                            const order = { positive: 0, negative: 1, neutral: 2 } as const;
+                                            return order[a.sentiment] - order[b.sentiment];
+                                        }).map((s, i) => (
+                                            <div
+                                                key={i}
+                                                className={`text-sm ${
+                                                    s.sentiment === 'positive' ? 'text-emerald-400'
+                                                        : s.sentiment === 'negative' ? 'text-rose-400'
+                                                        : 'text-white'
+                                                }`}
+                                            >
+                                                {s.sentiment === 'positive' ? '+ ' : s.sentiment === 'negative' ? '- ' : ''}{s.text}
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
 
@@ -1181,38 +1391,44 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             );
                         })()}
 
+                    </div>{/* end 좌열 */}
+
+                    {/* ══════════════ 중간열 — 계약/수상/부상 등 부가 정보 ══════════════ */}
+                    <div className="flex flex-col bg-slate-900 border-r border-slate-800">
+
                         {/* ── 위젯 6: 계약 정보 ── */}
-                        {!hideSections?.includes('contract') && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                        {!hideSections?.includes('contract') && (
+                        <div className="px-4 py-3 space-y-1">
                             {player.prevSalary != null ? (
                                 // 생성 FA 선수: 직전 계약 전체 연도 표시
                                 <>
-                                    <SectionHeader title="직전 계약" style={sectionBg} />
+                                    <div className="text-sm font-bold text-white mb-1.5">직전 계약</div>
                                     {player.prevContract && player.prevContract.years.length > 0 ? (
-                                        <div className="px-4 py-3 space-y-1">
+                                        <>
                                             {player.prevContract.years.map((sal, i) => {
                                                 const n = player.prevContract!.years.length;
                                                 // career_history는 최신순(index 0 = 가장 최근) → 계약 첫 해 = history[n-1]
                                                 const seasonLabel = player.career_history?.[n - 1 - i]?.season;
                                                 return (
-                                                    <div key={i} className="flex justify-between items-center text-xs">
-                                                        <span className="text-slate-600">{seasonLabel ?? `Year ${i + 1}`}</span>
-                                                        <span className="font-mono font-bold text-slate-600">{formatMoney(sal)}</span>
+                                                    <div key={i} className="flex justify-between items-center text-sm">
+                                                        <span className="text-slate-500">{seasonLabel ?? `Year ${i + 1}`}</span>
+                                                        <span className="text-slate-400">{formatMoneyFull(sal)}</span>
                                                     </div>
                                                 );
                                             })}
-                                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
+                                            <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-800">
                                                 <span className="text-slate-500">AAV</span>
-                                                <span className="font-mono text-slate-400">
-                                                    {formatMoney(player.prevContract.years.reduce((a, b) => a + b, 0) / player.prevContract.years.length)}
+                                                <span className="text-slate-400">
+                                                    {formatMoneyFull(player.prevContract.years.reduce((a, b) => a + b, 0) / player.prevContract.years.length)}
                                                 </span>
                                             </div>
-                                            <div className="flex justify-between items-center text-xs">
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400">
                                                     {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
                                                 </span>
                                             </div>
-                                            <div className="flex justify-between items-center text-xs">
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">드래프트</span>
                                                 <span className="text-slate-400">
                                                     {player.draftRound === 1
@@ -1224,84 +1440,76 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                         : '-'}
                                                 </span>
                                             </div>
-                                        </div>
+                                        </>
                                     ) : (
                                         // 폴백: 기존 DB 선수 (prev_contract 없음)
-                                        <div className="px-4 py-3 space-y-1">
-                                            <div className="flex justify-between items-center text-xs">
+                                        <>
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">연평균 연봉</span>
-                                                <span className="font-mono font-bold text-slate-400">{formatMoney(player.prevSalary)}</span>
+                                                <span className="text-slate-400">{formatMoneyFull(player.prevSalary)}</span>
                                             </div>
                                             {player.prevTeamTenure != null && (
-                                                <div className="flex justify-between items-center text-xs">
+                                                <div className="flex justify-between items-center text-sm">
                                                     <span className="text-slate-500">재직 기간</span>
                                                     <span className="text-slate-400">{player.prevTeamTenure}년</span>
                                                 </div>
                                             )}
-                                        </div>
+                                        </>
                                     )}
                                 </>
                             ) : (
                                 // 일반 선수: 현재 계약 표시
                                 <>
-                                    <SectionHeader title="계약 정보" style={sectionBg} />
+                                    <div className="text-sm font-bold text-white mb-1.5">계약 정보</div>
                                     {!player.contract || player.contract.years.length === 0 ? (
-                                        <div className="flex items-center justify-center h-20">
-                                            <span className="text-slate-500 text-xs">계약 정보가 없습니다</span>
-                                        </div>
+                                        <div className="text-sm text-slate-500">계약 정보가 없습니다</div>
                                     ) : (
-                                        <div className="px-4 py-3 space-y-1">
+                                        <>
                                             {player.contract.years.map((sal, i) => {
                                                 const baseYear    = parseInt(seasonShort.split('-')[0]);
                                                 const yearStart   = baseYear - player.contract!.currentYear + i;
                                                 const seasonLabel = `${yearStart}-${String(yearStart + 1).slice(-2)}`;
                                                 const isCurrent   = i === player.contract!.currentYear;
-                                                const isCompleted = i < player.contract!.currentYear;
-                                                const opt         = player.contract!.option;
-                                                const isOptionYear = opt && opt.year === i;
                                                 return (
-                                                    <div key={i} className="flex justify-between items-center text-xs">
-                                                        <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-600' : 'text-slate-500'}`}>
-                                                            {seasonLabel}
-                                                            {isCurrent && <span className="text-indigo-400 font-black">현재</span>}
-                                                            {isOptionYear && <span className="text-slate-500">{opt!.type === 'player' ? '선수옵션' : '팀옵션'}</span>}
-                                                        </span>
-                                                        <span className={`font-mono font-bold ${isCompleted ? 'text-slate-600' : 'text-slate-200'}`}>
-                                                            {formatMoney(sal)}
+                                                    <div
+                                                        key={i}
+                                                        className="flex justify-between items-center text-sm -mx-4 px-4 rounded"
+                                                    >
+                                                        <span className={isCurrent ? 'text-emerald-400' : 'text-slate-500'}>{seasonLabel}</span>
+                                                        <span className={isCurrent ? 'text-emerald-400' : 'text-slate-200'}>
+                                                            {formatMoneyFull(sal)}
                                                         </span>
                                                     </div>
                                                 );
                                             })}
-                                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
+                                            <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-800">
                                                 <span className="text-slate-500">AAV</span>
-                                                <span className="font-mono text-slate-300">
-                                                    {formatMoney(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}
+                                                <span className="text-slate-300">
+                                                    {formatMoneyFull(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}
                                                 </span>
                                             </div>
-                                            <div className="flex justify-between items-center text-xs">
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400 flex items-center gap-1">
                                                     {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
                                                     {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
                                                 </span>
                                             </div>
-                                        </div>
+                                        </>
                                     )}
                                 </>
                             )}
-                        </div>}
+                        </div>
+                        )}
 
-                        {/* ── 위젯 7: 수상 내역 ── */}
+                        {/* ── 위젯 7: 수상 내역 (allAwards는 헤더 트로피 배지와 공유하는 useMemo) ── */}
                         {!hideSections?.includes('awards') && (() => {
-                            const historicalAwards = (player.career_history?.filter(s => !s.playoff) ?? []).flatMap(s =>
-                                (s.awards ?? []).map((a: any) => normalizeBrefAward(a, s.season)).filter(Boolean) as any[]
-                            );
-                            const allAwards = [...historicalAwards, ...(player.awards ?? [])].filter(Boolean);
-                            if (allAwards.length === 0) return null;
                             return (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="수상 내역" style={sectionBg} />
-                            {(() => {
+                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
+                            <div className="text-sm font-bold text-white mb-1.5">수상 내역</div>
+                            {allAwards.length === 0 ? (
+                                <div className="text-sm text-slate-500">수상 내역이 없습니다</div>
+                            ) : (() => {
                                 const BASE_NAME: Record<string, string> = {
                                     CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승',
                                     MVP: '올해의 선수', FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
@@ -1322,18 +1530,18 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     DEF1: '1st', DEF2: '2nd',
                                 };
                                 const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+                                const sortedAwards = [...allAwards].sort((a, b) => {
+                                    const sc = (b.season ?? '').localeCompare(a.season ?? '');
+                                    if (sc !== 0) return sc;
+                                    const orderMap: Record<string, number> = {
+                                        CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
+                                        ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
+                                    };
+                                    return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
+                                });
                                 return (
-                                    <div className="px-4 py-3 space-y-1">
-                                        {[...allAwards]
-                                            .sort((a, b) => {
-                                                const sc = (b.season ?? '').localeCompare(a.season ?? '');
-                                                if (sc !== 0) return sc;
-                                                const orderMap: Record<string, number> = {
-                                                    CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
-                                                    ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
-                                                };
-                                                return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
-                                            })
+                                    <>
+                                        {sortedAwards
                                             .map((entry, idx) => {
                                                 const ranked = entry.type?.match(/^(.+)-(\d+)$/);
                                                 const baseCode = ranked ? ranked[1] : entry.type;
@@ -1343,18 +1551,22 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 if (rankNum !== null) {
                                                     detail = toOrdinal(rankNum);
                                                 } else if ((entry.type === 'MVP' || entry.type === 'DPOY') && (entry as any).rank != null) {
-                                                    detail = (entry as any).rank === 1 ? '1st (수상)' : toOrdinal((entry as any).rank);
+                                                    detail = toOrdinal((entry as any).rank);
                                                 } else {
                                                     detail = BASE_DETAIL[entry.type] ?? '-';
                                                 }
+                                                // 정렬이 이미 시즌 내림차순이라 같은 시즌 항목은 항상 연달아 나온다 —
+                                                // 바로 앞 항목과 시즌이 같으면 연도를 비워 하나로 묶인 것처럼 보이게 함.
+                                                const sameSeasonAsPrev = idx > 0 && sortedAwards[idx - 1].season === entry.season;
                                                 return (
-                                                    <div key={idx} className="flex justify-between items-center text-xs">
-                                                        <span className="text-slate-500">{entry.season}</span>
-                                                        <span className="text-slate-200 font-semibold">{displayName} <span className="text-slate-400 font-normal">{detail}</span></span>
+                                                    <div key={idx} className={`flex items-center text-sm gap-2 ${!sameSeasonAsPrev && idx > 0 ? 'pt-2' : ''}`}>
+                                                        <span className="text-slate-500 w-14 shrink-0">{sameSeasonAsPrev ? '' : entry.season}</span>
+                                                        <span className="text-slate-200 flex-1 text-right">{displayName}</span>
+                                                        <span className="text-slate-200 text-right shrink-0" style={{ width: 30 }}>{detail}</span>
                                                     </div>
                                                 );
                                             })}
-                                    </div>
+                                    </>
                                 );
                             })()}
                         </div>
@@ -1362,14 +1574,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         })()}
 
                         {/* ── 위젯 8: 부상 이력 ── */}
-                        {!hideSections?.includes('injuryHistory') && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="부상 이력" style={sectionBg} />
+                        {!hideSections?.includes('injuryHistory') && (
+                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
+                            <div className="text-sm font-bold text-white mb-1.5">부상 이력</div>
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
-                                <div className="flex items-center justify-center h-20">
-                                    <span className="text-slate-500 text-xs">부상 이력이 없습니다</span>
-                                </div>
+                                <div className="text-sm text-slate-500">부상 이력이 없습니다</div>
                             ) : (
-                                <div className="px-4 py-3 space-y-1">
+                                <>
                                     {[...player.injuryHistory]
                                         .sort((a, b) => b.date.localeCompare(a.date))
                                         .map((entry, idx) => {
@@ -1379,57 +1590,79 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 entry.severity === 'Major' ? 'text-amber-400' :
                                                 'text-slate-200';
                                             return (
-                                                <div key={idx} className="flex justify-between items-center text-xs">
+                                                <div key={idx} className="flex justify-between items-center text-sm">
                                                     <span className="text-slate-500">{dateStr} <span className={`${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>{entry.isTraining ? '훈련' : '경기'}</span></span>
                                                     <span className={`font-semibold ${severityColor}`}>{entry.injuryType} <span className="text-slate-500 font-normal">{entry.duration}</span></span>
                                                 </div>
                                             );
                                         })}
-                                </div>
+                                </>
                             )}
-                        </div>}
+                        </div>
+                        )}
 
-                    </div>{/* end 좌열 */}
+                    </div>{/* end 중간열 */}
 
-                    {/* ══════════════ 우열 (7fr) ══════════════ */}
-                    <div className="flex flex-col gap-4">
+                    {/* ══════════════ 우열 — 능력치 ══════════════ */}
+                    <div className="flex flex-col bg-slate-900">
 
                         {/* ── 위젯 A: 능력치 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="능력치" style={sectionBg} />
+                        <div>
+                            <div className="px-4 py-3 text-sm font-bold text-white">능력치</div>
                             {(() => {
-                                const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
+                                // 콤보 항목(sourceKeys 2개 이상)의 시즌 증감(▲/▼)은 각 원본 능력치 증감의
+                                // 평균, 이벤트 툴팁은 원본 능력치들의 changeLog를 합쳐서 보여준다.
+                                const compactLabel = (item: CompactAttrItem) => {
+                                    if (item.krLabel) return item.krLabel;
+                                    if (item.sourceKeys.length === 1) return ATTR_KR_LABEL[item.sourceKeys[0]] || item.label;
+                                    return item.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join(' / ');
+                                };
+                                // 이 위젯 전용 3열 배치 — 6개 카테고리(3/4/3/5/2/4개)를 7개씩 균등한
+                                // 3묶음(인사이드+아웃사이드, 수비+리바운드, 패스+운동능력)으로 합쳐서 표시.
+                                // RosterGrid/리더보드는 여전히 원래 6개 카테고리 구조(COMPACT_ATTR_GROUPS)를 그대로 씀.
+                                const byId = (id: string) => COMPACT_ATTR_GROUPS.find(g => g.id === id)!;
+                                const MERGED_GROUPS = [
+                                    { id: 'INS_OUT', label: '인사이드+아웃사이드', items: [...byId('INS').items, ...byId('OUT').items] },
+                                    { id: 'DEF_REB', label: '수비+리바운드', items: [...byId('DEF').items, ...byId('REB').items] },
+                                    { id: 'PLM_ATH', label: '패스+운동능력', items: [...byId('PLM').items, ...byId('ATH').items] },
+                                ];
+                                const maxRows = Math.max(...MERGED_GROUPS.map(g => g.items.length));
                                 return (
-                                    <div className="grid grid-cols-6">
-                                        {ATTR_GROUPS.map((gr, gi) => {
-                                            const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                                            const avgVal = (player as any)[gr.keys[0]] || 0;
-                                            const isLastCol = gi === ATTR_GROUPS.length - 1;
-                                            const emptyRows = maxRows - attrKeys.length;
+                                    <div className="grid grid-cols-3">
+                                        {MERGED_GROUPS.map((gr) => {
+                                            const emptyRows = maxRows - gr.items.length;
                                             return (
-                                                <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800' : ''}`}>
-                                                    <div className="h-10 flex items-center justify-center border-b border-slate-800 bg-slate-800">
-                                                        <span className="text-xs font-black uppercase text-slate-500">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
-                                                    </div>
-                                                    {attrKeys.map((k) => {
-                                                        const val = (player as any)[k] || 0;
-                                                        const seasonDelta = player.seasonStartAttributes
-                                                            ? val - (player.seasonStartAttributes[k] ?? val)
+                                                <div key={gr.id} className="flex flex-col">
+                                                    {gr.items.map((item) => {
+                                                        const val = getCompactAttrValue(player, item);
+                                                        const seasonDeltas = player.seasonStartAttributes
+                                                            ? item.sourceKeys.map(k => {
+                                                                const cur = (player as any)[k] || 0;
+                                                                return cur - (player.seasonStartAttributes![k] ?? cur);
+                                                            })
+                                                            : [];
+                                                        const seasonDelta = seasonDeltas.length > 0
+                                                            ? Math.round(seasonDeltas.reduce((s, d) => s + d, 0) / seasonDeltas.length)
                                                             : 0;
                                                         const attrEvents = (seasonDelta !== 0 && player.changeLog)
-                                                            ? player.changeLog.filter(e => e.attribute === k)
+                                                            ? player.changeLog.filter(e => item.sourceKeys.includes(e.attribute))
                                                             : [];
                                                         return (
-                                                            <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
-                                                                <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
+                                                            <div key={item.key} className="flex items-center gap-4 px-4 py-4">
+                                                                <div className="flex-1 min-w-0 flex flex-col justify-center gap-2.5">
+                                                                    <span className="text-sm font-bold text-white truncate">{compactLabel(item)}</span>
+                                                                    <div className="h-[9px] rounded-full bg-slate-800 overflow-hidden">
+                                                                        <div className={`h-full rounded-full ${getAttrBarColor(val)}`} style={{ width: `${Math.min(100, Math.max(0, val))}%` }} />
+                                                                    </div>
+                                                                </div>
                                                                 <div className="flex items-center gap-3 shrink-0">
                                                                     {seasonDelta !== 0 && (
-                                                                        <span className={`relative group font-mono font-black text-xs tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                        <span className={`relative group font-mono font-black text-sm tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                                                             {seasonDelta > 0 ? '▲' : '▼'} {Math.abs(seasonDelta)}
                                                                             {attrEvents.length > 0 && (
                                                                                 <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:flex flex-col gap-0.5 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-xl z-50 whitespace-nowrap">
                                                                                     {attrEvents.map((evt, i) => (
-                                                                                        <span key={i} className="flex items-center gap-2 text-[11px] font-normal">
+                                                                                        <span key={i} className="flex items-center gap-2 text-sm font-normal">
                                                                                             <span className="text-slate-500 font-mono">{evt.date.slice(5)}</span>
                                                                                             <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>{evt.delta > 0 ? '▲' : '▼'}</span>
                                                                                             <span className="text-slate-300 font-mono">{evt.oldValue} → {evt.newValue}</span>
@@ -1439,18 +1672,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                             )}
                                                                         </span>
                                                                     )}
-                                                                    <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
+                                                                    <span className={`font-black text-2xl tabular-nums ${getAttrColor(val)}`}>{val}</span>
                                                                 </div>
                                                             </div>
                                                         );
                                                     })}
                                                     {Array.from({ length: emptyRows }).map((_, i) => (
-                                                        <div key={`empty-${i}`} className="h-9 border-b border-slate-800" />
+                                                        <div key={`empty-${i}`} className="h-[63px]" />
                                                     ))}
-                                                    <div className={`flex items-center justify-between px-3 h-10 border-t border-slate-800 bg-slate-800 ${getAttrBg(avgVal)}`}>
-                                                        <span className="text-xs font-black uppercase text-slate-500">종합</span>
-                                                        <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
-                                                    </div>
                                                 </div>
                                             );
                                         })}
@@ -1459,21 +1688,34 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             })()}
                         </div>
 
-                        {/* ── 위젯 B: 커리어 기록 ── */}
+                    </div>{/* end 우열 */}
+
+                </div>
+                )}
+
+                {activeTab === 'ratings' && (
+                    <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
+                        준비 중입니다
+                    </div>
+                )}
+
+                {activeTab === 'records' && (
+                    <div className="flex flex-col gap-4">
+                        {/* ── 커리어 기록(시즌 기록) — 프로필 탭에서 이동 ── */}
                         {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                                <SectionHeader title="기록" style={sectionBg}>
-                                    <select value={careerMode} onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')} className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
+                            <div>
+                                <SectionHeader title="기록" className="bg-slate-800">
+                                    <select value={careerMode} onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')} className="pl-2.5 pr-7 py-1 text-sm font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
                                         <option value="regular">정규시즌</option>
                                         {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
                                     </select>
-                                    <select value={careerTab} onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')} className="pl-2.5 pr-7 py-1 text-xs font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
+                                    <select value={careerTab} onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')} className="pl-2.5 pr-7 py-1 text-sm font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
                                         <option value="trad">기본</option>
                                         <option value="adv">어드밴스드</option>
                                     </select>
                                 </SectionHeader>
                                 <div className="overflow-x-auto custom-scrollbar">
-                                    <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                    <table className="w-full text-left border-separate border-spacing-0 text-sm">
                                         <thead>
                                             <tr>
                                                 {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
@@ -1506,7 +1748,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                 const isSticky = ci === 0;
                                                                 const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
                                                                 return (
-                                                                    <td key={col.key} className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
+                                                                    <td key={col.key} className={`px-3 py-2 whitespace-nowrap border-b border-slate-800 ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
                                                                         style={{ ...rowBg, ...(isSubRow && isSticky ? { borderLeft: '2px solid #1e293b', paddingLeft: '20px' } : {}), color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined }}>
                                                                         {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
                                                                     </td>
@@ -1530,7 +1772,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     return (
                                                         <tr key={ai} style={isCareer ? { backgroundColor: '#1e293b' } : { backgroundColor: '#1e293b', opacity: 0.75 }}>
                                                             {cols.map((col, ci) => (
-                                                                <td key={col.key} className={`px-3 py-1.5 font-mono tabular-nums whitespace-nowrap border-t ${ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'}`}
+                                                                <td key={col.key} className={`px-3 py-1.5 whitespace-nowrap border-t ${ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold text-white' : 'text-slate-300'}`}
                                                                     style={{ backgroundColor: '#1e293b', borderTopColor: isCareer ? '#334155' : '#1e293b', color: '#64748b', ...(isCareer && ci !== 0 ? { color: 'white' } : {}) }}>
                                                                     {formatCareerCell(col.key, avgRow[col.key])}
                                                                 </td>
@@ -1545,10 +1787,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             </div>
                         )}
 
-                        {/* ── 위젯 C: 최근 경기 ── */}
-                        {!gameLogLoading && gameLog && gameLog.length > 0 && <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="최근 경기" style={sectionBg} />
-                            <div style={{ height: Math.min(gameLog.length * ROW_HEIGHT + ROW_HEIGHT, 400) }} className="relative">
+                        {/* ── 최근 경기 ── */}
+                        {!gameLogLoading && gameLog && gameLog.length > 0 ? <div>
+                            <SectionHeader title="최근 경기" className="bg-slate-800" />
+                            <div style={{ height: gameLog.length * ROW_HEIGHT + ROW_HEIGHT }} className="relative">
                                 <VirtualGameLog
                                     gameLog={gameLog}
                                     gameLogLoading={gameLogLoading}
@@ -1560,120 +1802,63 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     subHeaderTextStyle={{ color: '#64748b' }}
                                 />
                             </div>
-                        </div>}
+                        </div> : (
+                            <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
+                                최근 경기 기록이 없습니다
+                            </div>
+                        )}
+                    </div>
+                )}
 
-                        {/* ── 위젯 D: 샷차트 + 구역별 야투 기록 ── */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-                            <SectionHeader title="샷 차트" style={sectionBg}>
-                                <div className="flex items-center rounded-lg overflow-hidden border border-white/20 text-xs font-bold">
-                                    <button
-                                        onClick={() => setShotChartMode('efficiency')}
-                                        className="px-2.5 py-1 transition-colors"
-                                        style={shotChartMode === 'efficiency' ? { backgroundColor: 'rgba(0,0,0,0.35)', color: theme.text } : { backgroundColor: 'transparent', color: 'rgba(255,255,255,0.4)' }}
-                                    >성공률</button>
-                                    <button
-                                        onClick={() => setShotChartMode('volume')}
-                                        className="px-2.5 py-1 transition-colors"
-                                        style={shotChartMode === 'volume' ? { backgroundColor: 'rgba(0,0,0,0.35)', color: theme.text } : { backgroundColor: 'transparent', color: 'rgba(255,255,255,0.4)' }}
-                                    >시도수</button>
-                                </div>
-                            </SectionHeader>
-                            <div className="grid" style={{ gridTemplateColumns: '4fr 6fr' }}>
-                            {/* 좌: 샷차트 SVG */}
-                            <div className="p-3 border-r border-slate-800">
-                                <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-slate-700">
-                                    <svg viewBox="0 0 435 403" className="w-full h-full">
+                {activeTab === 'shotchart' && (
+                    <div>
+                        {/* ── 메인 샷 차트 — d3-hexbin 밀도 히트맵(빈도=viridis) 아래에 존별
+                            성공률 배경(초록, 최대 30% 불투명도)을 깔고, 코트 라인은 완전
+                            불투명으로 맨 위에 그려 항상 선명하게 보이도록 함. 예전에 있던
+                            "존 10개 고정 구역 성공률 차트"(TeamZoneChartInsight)와 그 옆
+                            구역별 테이블은 정보가 중복돼 제거하고 이 차트 하나로 통합함. */}
+                        {shotHexbins ? (
+                            <>
+                                <SectionHeader title="샷 차트" className="bg-slate-800">
+                                    <span className="text-xs font-normal text-slate-400">{(externalShotEvents as any[]).length}개</span>
+                                </SectionHeader>
+                                <div className="p-4 flex justify-center">
+                                    <svg viewBox="0 0 435 403" className="w-full max-w-xl">
                                         <rect x="0" y="0" width="435" height="403" fill="#020617" />
+                                        {/* 존별 성공률 배경 — getZoneStyle과 동일한 공식(FG% 비례)이지만
+                                            hexbin 아래 깔리는 배경이라 상한을 0.50 → 0.30으로 낮춤. */}
                                         <g>
-                                            {chartZones.map((z, i) => {
-                                                const style = shotChartMode === 'efficiency'
-                                                    ? getZoneStyle(z.m, z.a, z.avg)
-                                                    : getZoneVolumeStyle(z.a, maxAttempts);
-                                                return (
-                                                    <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke={style.fill} strokeWidth={0.5} strokeOpacity={style.opacity} className="transition-all duration-300" />
-                                                );
+                                            {chartZones.map(z => {
+                                                const pct = z.a > 0 ? z.m / z.a : 0;
+                                                const opacity = z.a > 0 ? Math.min(0.30, pct * 0.30) : 0.02;
+                                                return <path key={z.key} d={ZONE_PATHS[z.pathKey]} fill="#10b981" fillOpacity={opacity} />;
                                             })}
                                         </g>
-                                        <g fill="#0f172a" fillRule="evenodd" stroke="none" pointerEvents="none">
+                                        <g>
+                                            {shotHexbins.bins.map((bin, i) => (
+                                                <path
+                                                    key={i}
+                                                    d={shotHexbins.hexagonPath}
+                                                    transform={`translate(${bin.x},${bin.y})`}
+                                                    fill={shotHexbins.colorScale(bin.length)}
+                                                />
+                                            ))}
+                                        </g>
+                                        {/* 코트 라인은 맨 위, 완전 불투명 — 밀집 구역에서도 항상 선명하게 */}
+                                        <g fill="rgba(255,255,255,1)" fillRule="evenodd" pointerEvents="none">
                                             {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
-                                        </g>
-                                        <g pointerEvents="none">
-                                            {chartZones.map((z, i) => {
-                                                if (shotChartMode === 'efficiency') {
-                                                    const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
-                                                    const style = getZoneStyle(z.m, z.a, z.avg);
-                                                    const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                                    const w = 54, h = z.a > 0 ? 42 : 32;
-                                                    return (
-                                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                            <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
-                                                            <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">{pct}%</text>
-                                                            {z.a > 0 && <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">{z.m}/{z.a}</text>}
-                                                        </g>
-                                                    );
-                                                } else {
-                                                    const volPct = totalAttempts > 0 ? (z.a / totalAttempts * 100).toFixed(1) : '0.0';
-                                                    const w = 54, h = z.a > 0 ? 42 : 32;
-                                                    const pillFill = z.a > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(30,41,59,0.8)';
-                                                    const textFill = z.a > 0 ? '#ffffff' : '#94a3b8';
-                                                    const borderStroke = z.a > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)';
-                                                    return (
-                                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                            <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
-                                                            <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">{z.a}</text>
-                                                            {z.a > 0 && <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">{volPct}%</text>}
-                                                        </g>
-                                                    );
-                                                }
-                                            })}
                                         </g>
                                     </svg>
                                 </div>
+                            </>
+                        ) : (
+                            <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
+                                슛 기록이 없습니다
                             </div>
-                            {/* 우: 구역별 야투 기록 테이블 */}
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full text-left border-separate border-spacing-0 text-xs">
-                                    <thead>
-                                        <tr className="bg-slate-800">
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 bg-slate-800 text-slate-400">구역</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">시도</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">성공</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">성공률</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">평균</th>
-                                            <th className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 text-right text-slate-400">vs 평균</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {chartZones.map((z, i) => {
-                                            const pct = z.a > 0 ? z.m / z.a : null;
-                                            const delta = pct !== null ? pct - z.avg : null;
-                                            const rowBg = i % 2 !== 0 ? { backgroundColor: 'rgba(255,255,255,0.02)' } : {};
-                                            const deltaColor = delta === null ? 'text-slate-600'
-                                                : delta > 0.03 ? 'text-emerald-400'
-                                                : delta < -0.03 ? 'text-rose-400'
-                                                : 'text-slate-400';
-                                            return (
-                                                <tr key={z.key} style={rowBg}>
-                                                    <td className="px-3 py-2 font-bold whitespace-nowrap border-b border-slate-800 sticky left-0 z-10 text-slate-200" style={rowBg}>{(z as any).label}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-300">{z.a > 0 ? z.a : '-'}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-300">{z.a > 0 ? z.m : '-'}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right font-bold text-white">{pct !== null ? `${(pct * 100).toFixed(1)}%` : '-'}</td>
-                                                    <td className="px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right text-slate-400">{(z.avg * 100).toFixed(1)}%</td>
-                                                    <td className={`px-3 py-2 font-mono tabular-nums whitespace-nowrap border-b border-slate-800 text-right font-bold ${deltaColor}`}>
-                                                        {delta !== null ? `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%` : '-'}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                            </div>{/* end grid 2:8 */}
-                        </div>
+                        )}
+                    </div>
+                )}
 
-                    </div>{/* end 우열 */}
-
-                </div>
             </div>
         </div>
     );

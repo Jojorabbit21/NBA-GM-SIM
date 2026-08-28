@@ -1,18 +1,19 @@
 
-import React, { useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useMemo, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
+import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { RosterView } from '../../RosterView';
-import { PlayerDetailView } from '../../PlayerDetailView';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { isFinal } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
+import { computeGameLeaders, type GameLeaders } from '../../../services/multi/gameLeadersCache';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerStats } from '../../../types/player';
 
@@ -35,6 +36,17 @@ function buildGameTeamStatsMap(pbpRows: any[]): Map<string, { homeStats: Record<
             homeStats: sumTeamBoxStats(row.home_box ?? []),
             awayStats: sumTeamBoxStats(row.away_box ?? []),
         });
+    }
+    return map;
+}
+
+// game_pbp 행들에서 gameId → 경기 리더(PTS/REB/AST) 맵 생성 (TeamScheduleCalendar
+// "최우수선수" 컬럼용) — MultiScheduleView.tsx가 쓰는 computeGameLeaders와 동일 로직 재사용.
+function buildGameLeadersMap(pbpRows: any[]): Map<string, GameLeaders> {
+    const map = new Map<string, GameLeaders>();
+    for (const row of pbpRows) {
+        if (!row.game_id) continue;
+        map.set(row.game_id, computeGameLeaders(row.home_box ?? [], row.away_box ?? []));
     }
     return map;
 }
@@ -128,48 +140,11 @@ function buildStatsMap(pbpRows: any[], serverNow: number): Map<string, Partial<P
     return statsMap;
 }
 
-// game_pbp 박스스코어에서 선수별 경기 기록 목록 빌드 (최근 경기용)
-function buildGameLogMap(pbpRows: any[], serverNow: number): Map<string, any[]> {
-    const logMap = new Map<string, any[]>();
-
-    for (const row of pbpRows) {
-        if (!isFinal({ scheduledAt: row.game_start_time, played: true }, serverNow)) continue;
-
-        const addSide = (box: any[], isHome: boolean) => {
-            const oppId = isHome ? row.away_team_id : row.home_team_id;
-            for (const bs of box) {
-                if (!bs.playerId || bs.mp <= 0) continue;
-                const entry = {
-                    date:          (row.game_start_time ?? '').slice(0, 10),
-                    opponentId:    oppId,
-                    isHome,
-                    teamScore:     isHome ? row.home_score : row.away_score,
-                    opponentScore: isHome ? row.away_score : row.home_score,
-                    isPlayoff:     false,
-                    ...bs,
-                };
-                const prev = logMap.get(bs.playerId) ?? [];
-                logMap.set(bs.playerId, [...prev, entry]);
-            }
-        };
-        addSide(row.home_box ?? [], true);
-        addSide(row.away_box ?? [], false);
-    }
-
-    // 날짜 내림차순 정렬
-    for (const [id, logs] of logMap) {
-        logMap.set(id, logs.sort((a, b) => b.date.localeCompare(a.date)));
-    }
-    return logMap;
-}
-
-const HIDE_SECTIONS: Array<'contract' | 'awards' | 'injuryHistory'> = ['contract', 'awards', 'injuryHistory'];
-
 const MultiRosterView: React.FC = () => {
     const { league, room, leagueTeams, members, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
-    const { schedule, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
+    const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
 
     // MultiScheduleView.tsx와 동일한 preferVirtual 패턴 — 메인리그(main_league)는
     // 로스터 일정 탭의 달력이 가상 NBA 시즌 캘린더(game.date)로 그려지는데,
@@ -185,12 +160,10 @@ const MultiRosterView: React.FC = () => {
         return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? roomSimDate;
     }, [preferVirtual, roomSimDate, schedule, simStart, gprd]);
 
-    const location = useLocation();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { getGameUrlId } = useGameShortCodes(room?.id);
-    const navState = (location.state ?? {}) as { viewPlayer?: Player; viewTeamId?: string };
-    const [searchParams, setSearchParams] = useSearchParams();
+    const { getPlayerUrlId } = usePlayerShortCodes();
 
     const myTeamId = useMemo(
         () => members.find(m => m.user_id === session?.user?.id)?.team_id ?? null,
@@ -219,7 +192,6 @@ const MultiRosterView: React.FC = () => {
             ]),
         );
         const statsMap = buildStatsMap(raw.pbpRows, serverNow);
-        const logMap   = buildGameLogMap(raw.pbpRows, serverNow);
 
         const builtTeams: Team[] = leagueTeams.map(lt => ({
             id:            lt.team_slug,
@@ -245,8 +217,8 @@ const MultiRosterView: React.FC = () => {
 
         return {
             builtTeams,
-            logMap,
             gameTeamStatsMap: buildGameTeamStatsMap(raw.pbpRows),
+            gameLeadersMap: buildGameLeadersMap(raw.pbpRows),
         };
     }, [leagueTeams, useCustomOverrides]);
 
@@ -257,50 +229,28 @@ const MultiRosterView: React.FC = () => {
     } = useLeagueRawStats(room?.id, allRosterIds, selectRosterData);
 
     const allTeams         = rosterData?.builtTeams ?? [];
-    const gameLogMap       = rosterData?.logMap ?? new Map<string, any[]>();
     const gameTeamStatsMap = rosterData?.gameTeamStatsMap ?? new Map<string, { homeStats: Record<string, number>; awayStats: Record<string, number> }>();
+    const gameLeadersMap   = rosterData?.gameLeadersMap ?? new Map<string, GameLeaders>();
 
-    // 선수 상세 열림 상태를 로컬 state가 아니라 URL 쿼리 파라미터(?player=&team=)로 관리한다.
-    // 로컬 state로만 열면 브라우저 히스토리에 기록이 안 남아서, 브라우저 뒤로가기를 누르면
-    // 로스터 화면을 건너뛰고 그 이전 화면(예: 순위표)으로 바로 튕기는 문제가 있었다.
-    const viewingPlayerId = searchParams.get('player');
-    const viewingTeamId   = searchParams.get('team');
-    const viewing = useMemo(() => {
-        if (!viewingPlayerId) return null;
-        const team = viewingTeamId ? allTeams.find(t => t.id === viewingTeamId) : undefined;
-        const player = team?.roster.find(p => p.id === viewingPlayerId);
-        if (!player) return null;
-        return { player, teamId: viewingTeamId ?? '', teamName: team?.name ?? '' };
-    }, [viewingPlayerId, viewingTeamId, allTeams]);
+    // 선수 이름 클릭 → 선수 프로필 전용 캐노니컬 라우트(MultiPlayerDetailView)로 이동.
+    // 예전엔 이 화면 안에서 ?player=&team= 쿼리파라미터로 PlayerDetailView를 바꿔치기했는데,
+    // 로스터/리더보드/인사이트/헤더 검색 등 어디서 선수를 열든 동일한 고유 URL로 들어가도록
+    // 통일했다(뒤로가기·새로고침·링크 공유가 전부 자연스럽게 동작).
+    const onViewPlayer = useCallback((player: Player) => {
+        navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(player.id)}`);
+    }, [navigate, leagueId, getPlayerUrlId]);
 
-    const openPlayer = useCallback((playerId: string, teamId?: string) => {
-        setSearchParams(prev => {
-            const next = new URLSearchParams(prev);
-            next.set('player', playerId);
-            if (teamId) next.set('team', teamId); else next.delete('team');
-            return next;
-        });
-    }, [setSearchParams]);
-
-    // 헤더 검색 → navigate state로 선수/팀 자동 열기 (allTeams 로드 완료 후 1회 실행)
-    const navHandledRef = useRef(false);
-    useEffect(() => {
-        if (navHandledRef.current || !navState.viewPlayer || !allTeams.length) return;
-        navHandledRef.current = true;
-        openPlayer(navState.viewPlayer.id, navState.viewTeamId);
-    }, [allTeams]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const onViewPlayer = useCallback((player: Player, teamId?: string) => {
-        openPlayer(player.id, teamId);
-    }, [openPlayer]);
-
-    // TeamGameLog(경기 기록 탭)용 — schedule에 game_pbp 기반 팀 단위 박스스코어(homeStats/awayStats) 병합
+    // TeamGameLog(경기 기록 탭)용 — schedule에 game_pbp 기반 팀 단위 박스스코어(homeStats/awayStats) 병합.
+    // leaders(PTS/REB/AST 리더)도 같이 병합 — TeamScheduleCalendar(일정 탭) "최우수선수" 컬럼용.
     const scheduleWithStats = useMemo(
         () => schedule.map(g => {
             const st = gameTeamStatsMap.get(g.id);
-            return st ? ({ ...g, homeStats: st.homeStats, awayStats: st.awayStats } as Game) : g;
+            const leaders = gameLeadersMap.get(g.id);
+            return (st || leaders)
+                ? ({ ...g, homeStats: st?.homeStats, awayStats: st?.awayStats, leaders } as Game)
+                : g;
         }),
-        [schedule, gameTeamStatsMap],
+        [schedule, gameTeamStatsMap, gameLeadersMap],
     );
 
     const onScoreClick = useCallback((gameId: string) => {
@@ -319,6 +269,33 @@ const MultiRosterView: React.FC = () => {
         refetchRoster();
     }, [refetchRoster]);
 
+    // "재정" 탭 — 리그의 캡 마스터 스위치(cap_enabled)가 꺼져있으면 아예 숨김.
+    const capSettings = useMemo(() => {
+        if (!league?.cap_enabled) return undefined;
+        return {
+            capEnabled:         league.cap_enabled,
+            salaryCapAmount:    league.salary_cap_amount,
+            luxuryTaxEnabled:   league.luxury_tax_enabled,
+            luxuryTaxAmount:    league.luxury_tax_amount,
+            apron1Enabled:      league.apron1_enabled,
+            apron1Amount:       league.apron1_amount,
+            apron2Enabled:      league.apron2_enabled,
+            apron2Amount:       league.apron2_amount,
+            salaryFloorEnabled: league.salary_floor_enabled,
+            salaryFloorAmount:  league.salary_floor_amount,
+        };
+    }, [league]);
+
+    // 페이롤 테이블 첫 시즌 컬럼 연도 — NBA 시즌은 10월 시작~이듬해 6월 종료이므로
+    // 7월 이전(1~6월)이면 시즌 시작 연도가 작년(MultiHeader.tsx의 seasonShortFromDate와 동일 규칙).
+    const baseSeasonYear = useMemo(() => {
+        const src = league?.season_start_date;
+        if (!src) return new Date().getFullYear();
+        const d = new Date(src + 'T00:00:00');
+        const m = d.getMonth() + 1;
+        return m >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+    }, [league?.season_start_date]);
+
     const isLoading = leagueLoading || fetchLoading;
 
     if (isLoading) {
@@ -329,36 +306,11 @@ const MultiRosterView: React.FC = () => {
         );
     }
 
-    if (viewing) {
-        // allTeams에서 최신 stats가 반영된 선수로 교체
-        const freshPlayer = allTeams
-            .find(t => t.id === viewing.teamId)
-            ?.roster.find(p => p.id === viewing.player.id)
-            ?? viewing.player;
-
-        return (
-            <PlayerDetailView
-                player={freshPlayer}
-                teamId={viewing.teamId}
-                teamName={viewing.teamName}
-                allTeams={allTeams}
-                schedule={schedule}
-                tendencySeed={tendencySeed ?? undefined}
-                seasonShort={room?.season ?? '2025-26'}
-                myTeamId={myTeamId ?? undefined}
-                onBack={() => navigate(-1)}
-                hideSections={HIDE_SECTIONS}
-                externalGameLog={gameLogMap.get(viewing.player.id) ?? []}
-                externalGameLogLoading={false}
-            />
-        );
-    }
-
     return (
         <RosterView
             allTeams={allTeams}
             myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
-            initialTeamId={navState.viewTeamId ?? myTeamId}
+            initialTeamId={myTeamId}
             onViewPlayer={onViewPlayer}
             schedule={scheduleWithStats}
             onScoreClick={onScoreClick}
@@ -367,6 +319,8 @@ const MultiRosterView: React.FC = () => {
             hideTabs={['coaching', 'draftPicks']}
             onTabChange={onRosterTabChange}
             teamNicknames={teamNicknames}
+            capSettings={capSettings}
+            baseSeasonYear={baseSeasonYear}
         />
     );
 };

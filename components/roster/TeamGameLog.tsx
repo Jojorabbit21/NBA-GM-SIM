@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team, Game } from '../../types';
-import { TeamLogo } from '../common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
 import { fetchFullGameResult } from '../../services/queries';
 import { Loader2 } from 'lucide-react';
@@ -53,6 +52,9 @@ const STAT_COLS = [
 ];
 
 const STAT_WIDTH = 56;
+// FG%/3P%/FT%/TS%는 "00.0%" 형태라 다른 스탯 컬럼보다 자릿수가 많아 살짝 더 넓게.
+const WIDE_STAT_KEYS = new Set(['fg%', '3p%', 'ft%', 'ts%']);
+const statColWidth = (key: string) => WIDE_STAT_KEYS.has(key) ? STAT_WIDTH + 10 : STAT_WIDTH;
 const TOTAL_COLS = GAME_INFO_COLS.length + STAT_COLS.length;
 
 type GameRow = {
@@ -145,15 +147,15 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         playoffRows: sortedRows.filter(r => r.isPlayoff),
     }), [sortedRows]);
 
-    // Season averages
-    const seasonAvg = useMemo(() => {
-        const n = gameRows.length;
+    // 평균 계산 — 정규 시즌/플레이오프를 따로 집계해야 해서 범용 헬퍼로 분리.
+    const computeAvg = (rows: GameRow[]): Record<string, number> | null => {
+        const n = rows.length;
         if (n === 0) return null;
         const avg: Record<string, number> = {};
         STAT_COLS.forEach(c => {
             if (c.key.includes('%')) {
                 let num = 0, den = 0;
-                gameRows.forEach(r => {
+                rows.forEach(r => {
                     if (c.key === 'fg%') { num += r.stats.fgm; den += r.stats.fga; }
                     else if (c.key === '3p%') { num += r.stats['3pm']; den += r.stats['3pa']; }
                     else if (c.key === 'ft%') { num += r.stats.ftm; den += r.stats.fta; }
@@ -161,11 +163,20 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 });
                 avg[c.key] = den > 0 ? num / den : 0;
             } else {
-                avg[c.key] = gameRows.reduce((sum, r) => sum + (r.stats[c.key] || 0), 0) / n;
+                avg[c.key] = rows.reduce((sum, r) => sum + (r.stats[c.key] || 0), 0) / n;
             }
         });
         return avg;
-    }, [gameRows]);
+    };
+
+    const regularAvg = useMemo(() => computeAvg(regularRows), [regularRows]);
+    const playoffAvg = useMemo(() => computeAvg(playoffRows), [playoffRows]);
+
+    // 정규 시즌/플레이오프 평균 행의 "결과" 셀에 표시할 전적(승-패).
+    const toRecord = (rows: GameRow[]) => {
+        const wins = rows.filter(r => r.isWin).length;
+        return `${wins}-${rows.length - wins}`;
+    };
 
     const handleGameClick = async (gameId: string) => {
         if (onScoreClick) { onScoreClick(gameId); return; }
@@ -228,7 +239,6 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                         className={`flex items-center gap-2 ${onTeamClick ? 'cursor-pointer group/opp' : ''}`}
                         onClick={onTeamClick ? () => onTeamClick(row.oppId) : undefined}
                     >
-                        <TeamLogo teamId={row.oppId} size="sm" />
                         <span className={`text-sm font-semibold text-slate-300 uppercase truncate transition-colors ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
                             {oppTeam?.name || row.oppId}
                         </span>
@@ -285,23 +295,10 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
                 {GAME_INFO_COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
-                {STAT_COLS.map(c => <col key={c.key} style={{ width: STAT_WIDTH }} />)}
+                {STAT_COLS.map(c => <col key={c.key} style={{ width: statColWidth(c.key) }} />)}
             </colgroup>
 
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
-                {/* Group row */}
-                <tr>
-                    <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 py-3">
-                        <div className="flex items-center justify-center">
-                            <span className="text-sm font-black text-slate-400 tracking-widest">경기 정보</span>
-                        </div>
-                    </th>
-                    <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 py-3">
-                        <div className="flex items-center justify-center">
-                            <span className="text-sm font-black text-slate-400 tracking-widest">팀 스탯</span>
-                        </div>
-                    </th>
-                </tr>
                 {/* Column headers — 구분+상대, 결과+스코어는 헤더 셀만 병합(바디 컬럼은 그대로 분리 유지) */}
                 <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-8">
                     <TableHeaderCell
@@ -356,20 +353,42 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 )}
             </TableBody>
 
-            {seasonAvg && (
-                <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
-                    <tr>
-                        <TableCell colSpan={GAME_INFO_COLS.length} className="!py-3 pl-4 text-left bg-slate-950 border-r border-slate-800">
-                            <span className="font-black text-indigo-400 text-sm tracking-widest">시즌 평균 ({gameRows.length}경기)</span>
-                        </TableCell>
-                        {STAT_COLS.map(c => (
-                            <TableCell key={c.key} className="!py-3 border-r border-slate-800/30 text-center">
-                                <span className="text-sm font-medium text-slate-400 tabular-nums">
-                                    {formatAvg(c.key, seasonAvg[c.key])}
-                                </span>
+            {(regularAvg || playoffAvg) && (
+                <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
+                    {regularAvg && (
+                        <tr>
+                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950 border-r border-slate-800">
+                                <span className="font-black text-indigo-400 text-sm tracking-widest">정규 시즌</span>
                             </TableCell>
-                        ))}
-                    </tr>
+                            <TableCell colSpan={2} className="!py-3 border-r border-slate-800 text-center bg-slate-950">
+                                <span className="text-sm font-medium text-slate-400 tabular-nums">{toRecord(regularRows)}</span>
+                            </TableCell>
+                            {STAT_COLS.map(c => (
+                                <TableCell key={c.key} className="!py-3 border-r border-slate-800/30 text-center">
+                                    <span className="text-sm font-medium text-slate-400 tabular-nums">
+                                        {formatAvg(c.key, regularAvg[c.key])}
+                                    </span>
+                                </TableCell>
+                            ))}
+                        </tr>
+                    )}
+                    {playoffAvg && (
+                        <tr>
+                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950 border-r border-slate-800 border-t border-slate-800/50">
+                                <span className="font-black text-indigo-400 text-sm tracking-widest">플레이오프</span>
+                            </TableCell>
+                            <TableCell colSpan={2} className="!py-3 border-r border-slate-800 border-t border-slate-800/50 text-center bg-slate-950">
+                                <span className="text-sm font-medium text-slate-400 tabular-nums">{toRecord(playoffRows)}</span>
+                            </TableCell>
+                            {STAT_COLS.map(c => (
+                                <TableCell key={c.key} className="!py-3 border-r border-slate-800/30 border-t border-slate-800/50 text-center">
+                                    <span className="text-sm font-medium text-slate-400 tabular-nums">
+                                        {formatAvg(c.key, playoffAvg[c.key])}
+                                    </span>
+                                </TableCell>
+                            ))}
+                        </tr>
+                    )}
                 </TableFoot>
             )}
         </Table>

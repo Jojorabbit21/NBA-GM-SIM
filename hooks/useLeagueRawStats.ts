@@ -11,10 +11,16 @@ import { supabase } from '../services/supabaseClient';
 export interface LeagueRawStatsData {
     playersRaw: any[];
     pbpRows: any[];
+    /** 이 리그(room) 안에서 이미 끝난 과거 시즌들의 최종 스탯 스냅샷 —
+     *  meta_players.career_history(전체 리그 공유·실제 NBA 커리어)와 별개로 room_id 단위로
+     *  격리 저장된다(여러 리그가 동시에 돌아도 서로 안 섞임). 시즌 롤오버 기능이 아직 없어
+     *  현재는 항상 빈 배열이지만, buildLeagueTeams()가 이미 이 필드를 merge하도록 준비돼 있다. */
+    leagueSeasonRows: { player_id: string; season: string; stat_line: Record<string, any> }[];
 }
 
-const RAW_PLAYER_COLS = 'id, name, position, base_attributes, tendencies';
+const RAW_PLAYER_COLS = 'id, name, position, base_attributes, tendencies, career_history';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
+const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
 
 export function useLeagueRawStats<T = LeagueRawStatsData>(
     roomId: string | undefined,
@@ -25,13 +31,15 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
         queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')],
         enabled: allRosterIds.length > 0 && !!roomId,
         queryFn: async (): Promise<LeagueRawStatsData> => {
-            const [playersRes, pbpRes] = await Promise.all([
+            const [playersRes, pbpRes, seasonRes] = await Promise.all([
                 supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds),
                 supabase.from('game_pbp').select(RAW_PBP_COLS).eq('room_id', roomId!),
+                supabase.from('league_player_seasons').select(RAW_LEAGUE_SEASON_COLS).eq('room_id', roomId!),
             ]);
             return {
                 playersRaw: playersRes.data ?? [],
                 pbpRows: pbpRes.data ?? [],
+                leagueSeasonRows: seasonRes.data ?? [],
             };
         },
         select,

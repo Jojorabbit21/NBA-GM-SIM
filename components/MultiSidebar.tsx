@@ -4,13 +4,15 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
     Home, Users, ListOrdered, Calendar,
-    GitPullRequestClosed, BarChart2,
+    GitPullRequestClosed, BarChart2, ArrowLeftRight, Trophy,
     CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
 import { TeamSettingsModal } from './multi/TeamSettingsModal';
+import { supabase } from '../services/supabaseClient';
+import { listPendingTradeOffers } from '../services/multi/tradeService';
 
 const NavItem: React.FC<{
     active: boolean;
@@ -18,7 +20,8 @@ const NavItem: React.FC<{
     label: string;
     onClick: () => void;
     buttonRef?: React.RefObject<HTMLButtonElement>;
-}> = ({ active, icon, label, onClick, buttonRef }) => (
+    badge?: number;
+}> = ({ active, icon, label, onClick, buttonRef, badge }) => (
     <button
         ref={buttonRef}
         onClick={onClick}
@@ -28,6 +31,11 @@ const NavItem: React.FC<{
         }`}
     >
         {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
+        {!!badge && (
+            <span className="absolute top-0.5 right-1 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold">
+                {badge > 9 ? '9+' : badge}
+            </span>
+        )}
     </button>
 );
 
@@ -38,10 +46,37 @@ export const MultiSidebar: React.FC = () => {
     const { pathname } = useLocation();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { handleLogout } = useAuth();
-    const { league, leagueTeams } = useLeagueContext();
+    const { league, room, leagueTeams } = useLeagueContext();
     const { session } = useGame();
     const isAdmin = !!(league && session?.user?.id && league.admin_user_id === session.user.id);
     const myTeam = leagueTeams.find(t => t.user_id === session?.user?.id);
+    // main_league는 정규시즌 종료 시 playoffSeeder/playInSeeder가 leagues.bracket_data를
+    // 채우지만 league.type은 절대 'tournament'로 바뀌지 않는다 — bracket_data 존재 여부로
+    // 포스트시즌 진입을 판별해 "플레이오프" 메뉴를 노출한다. tournament 타입은 "순위표"
+    // 메뉴 자체가 곧 브라켓이라 별도 메뉴가 필요 없다.
+    const hasPlayoffs = !!league?.bracket_data && league?.type !== 'tournament';
+
+    // 받은 트레이드 제안(대기중) 개수 — 사이드바 트레이드 아이콘 배지용
+    const roomId = room?.id ?? null;
+    const myTeamDbId = myTeam?.id ?? null;
+    const [pendingTradeCount, setPendingTradeCount] = useState(0);
+    useEffect(() => {
+        if (!roomId || !myTeamDbId) { setPendingTradeCount(0); return; }
+        let cancelled = false;
+        const fetchCount = async () => {
+            const { incoming } = await listPendingTradeOffers(roomId, myTeamDbId);
+            if (!cancelled) setPendingTradeCount(incoming.length);
+        };
+        fetchCount();
+        const channel = supabase
+            .channel(`sidebar-trade-badge-${roomId}-${myTeamDbId}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'league_trade_offers', filter: `to_team_id=eq.${myTeamDbId}` },
+                fetchCount,
+            )
+            .subscribe();
+        return () => { cancelled = true; supabase.removeChannel(channel); };
+    }, [roomId, myTeamDbId]);
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showTeamSettings, setShowTeamSettings] = useState(false);
@@ -105,6 +140,14 @@ export const MultiSidebar: React.FC = () => {
                     label="순위표"
                     onClick={() => navigate(`${base}/standings`)}
                 />
+                {hasPlayoffs && (
+                    <NavItem
+                        active={pathname.startsWith(`${base}/playoffs`)}
+                        icon={<Trophy />}
+                        label="플레이오프"
+                        onClick={() => navigate(`${base}/playoffs`)}
+                    />
+                )}
                 <NavItem
                     active={pathname.startsWith(`${base}/leaderboard`)}
                     icon={<BarChart2 />}
@@ -116,6 +159,13 @@ export const MultiSidebar: React.FC = () => {
                     icon={<Calendar />}
                     label="일정"
                     onClick={() => navigate(`${base}/schedule`)}
+                />
+                <NavItem
+                    active={pathname.startsWith(`${base}/front-office`)}
+                    icon={<ArrowLeftRight />}
+                    label="트레이드"
+                    onClick={() => navigate(`${base}/front-office`)}
+                    badge={pendingTradeCount}
                 />
 
                 {isAdmin && (

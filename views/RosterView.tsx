@@ -12,6 +12,7 @@ import { RosterStatsStack } from '../components/roster/RosterStatsStack';
 import { RosterTabs, RosterTab } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
 import { TeamScheduleCalendar } from '../components/roster/TeamScheduleCalendar';
+import { TeamPayrollTable, type RosterCapSettings } from '../components/roster/TeamPayrollTable';
 import { TeamBadge } from '../components/common/TeamBadge';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
@@ -41,11 +42,23 @@ interface RosterViewProps {
   onTabChange?: (tab: RosterTab) => void;
   /** 시뮬레이션 상의 현재 날짜(YYYY-MM-DD) — "일정" 탭 캘린더의 오늘 강조 기준 */
   currentSimDate?: string;
+  /** 리그 샐러리캡 설정(멀티플레이어 전용) — 전달된 경우에만 "재정" 탭이 노출됨.
+   * 싱글플레이어는 이 prop을 넘기지 않으므로 자동으로 탭이 숨겨짐(별도 hideTabs 지정 불필요). */
+  capSettings?: RosterCapSettings;
+  /** "재정" 탭 페이롤 테이블의 첫 시즌 연도(예: 2026 → "2026-27" 컬럼부터 시작). */
+  baseSeasonYear?: number;
 }
 
-const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'coaching', 'draftPicks'];
+const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear }) => {
+  // capSettings가 없으면(싱글플레이어) "재정" 탭 자체를 숨김 — 호출부마다 hideTabs에
+  // 'finance'를 일일이 추가하지 않아도 되도록 여기서 한 번에 처리.
+  const effectiveHideTabs = useMemo(
+    () => (capSettings ? hideTabs : [...(hideTabs ?? []), 'finance' as RosterTab]),
+    [hideTabs, capSettings],
+  );
+
   // 탭 상태를 URL 쿼리 파라미터(?tab=)로 관리 — 새로고침/북마크/공유 링크에서도 마지막으로
   // 보던 탭이 유지된다. 탭 전환은 히스토리를 계속 쌓지 않고 현재 항목만 갱신(replace) —
   // MultiLeaderboardView의 필터 상태 URL 동기화와 동일한 방침.
@@ -56,7 +69,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   // 키 이름을 MultiRosterView가 이미 쓰는 ?team=(선수 상세용)과 겹치지 않게 rteam으로 분리.
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as RosterTab | null;
-  const tab: RosterTab = (tabParam && VALID_ROSTER_TABS.includes(tabParam) && !hideTabs?.includes(tabParam))
+  const tab: RosterTab = (tabParam && VALID_ROSTER_TABS.includes(tabParam) && !effectiveHideTabs?.includes(tabParam))
     ? tabParam
     : 'overview';
   const handleTabChange = (t: RosterTab) => {
@@ -220,7 +233,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       </div>
 
       {/* Tab Navigation — FrontOfficeView 스타일 */}
-      <RosterTabs activeTab={tab} onTabChange={handleTabChange} hideTabs={hideTabs} theme={theme} />
+      <RosterTabs activeTab={tab} onTabChange={handleTabChange} hideTabs={effectiveHideTabs} theme={theme} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -264,6 +277,16 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   onScoreClick={onScoreClick}
                   userId={userId}
                   currentSimDate={currentSimDate}
+                  onPlayerClick={onViewPlayer}
+                  onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
+              />
+          )}
+          {tab === 'finance' && capSettings && (
+              <TeamPayrollTable
+                  team={selectedTeam}
+                  capSettings={capSettings}
+                  baseSeasonYear={baseSeasonYear ?? new Date().getFullYear()}
+                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
               />
           )}
           {tab === 'coaching' && (

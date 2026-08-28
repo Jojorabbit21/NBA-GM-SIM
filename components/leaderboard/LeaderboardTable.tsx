@@ -5,7 +5,7 @@ import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamBadge } from '../common/TeamBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
-import { PLAYER_COLUMNS, TEAM_COLUMNS, ColumnDef, ViewMode, StatCategory } from '../../data/leaderboardConfig';
+import { PLAYER_COLUMNS, TEAM_COLUMNS, ColumnDef, ViewMode, StatCategory, getAttrValue } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
 
 interface LeaderboardTableProps {
@@ -58,7 +58,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         return val;
     };
 
-    const contentTextClass = "text-sm font-medium text-white font-mono tabular-nums";
+    const contentTextClass = "text-sm font-medium text-white tabular-nums";
 
     // Attributes / Defense 탭: 2행 그룹 헤더 데이터 생성
     // row1 — non-grouped cols: rowSpan=2 / grouped cols: 그룹 레이블(colSpan)
@@ -305,10 +305,9 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'position') cellContent = p.position;
                                     else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>;
                                     
-                                    // Handle Attribute Columns (direct Player property access, no per-game division)
+                                    // Handle Attribute Columns — 단일/콤보(압축) 능력치 공용 조회
                                     else if (col.category === 'Attributes') {
-                                        const prop = col.playerProp || col.key;
-                                        cellContent = (p as any)[prop] ?? 0;
+                                        cellContent = getAttrValue(p, col.key);
                                     }
 
                                     // Handle Zone Stats (Dynamic Keys)
@@ -416,11 +415,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 if (col.key === 'pm') {
                                     const val = parseFloat(cellContent as string);
                                     const color = val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-500';
-                                    finalTextColor = `text-sm font-medium font-mono tabular-nums ${color}`;
+                                    finalTextColor = `text-sm font-medium tabular-nums ${color}`;
                                 } else if (col.category === 'Attributes') {
                                     const val = Number(cellContent);
                                     const color = val >= 90 ? 'text-fuchsia-400' : val >= 80 ? 'text-emerald-400' : val >= 70 ? 'text-amber-400' : 'text-slate-500';
-                                    finalTextColor = `text-sm font-black font-mono tabular-nums ${color}`;
+                                    finalTextColor = `text-sm font-black tabular-nums ${color}`;
                                 }
                                 
                                 return (

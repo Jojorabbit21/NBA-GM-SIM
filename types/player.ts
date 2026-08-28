@@ -197,6 +197,8 @@ export interface Player {
     weight: number;
     salary: number;
     contractYears: number;
+    /** 등번호 — base_attributes.num (DB) */
+    jerseyNumber?: number;
     ovr: number;
     /** 주 아키타입 표시 라벨(예: "Rim Protector") — OVR 계산 시 같이 산출됨 */
     archetype?: string;

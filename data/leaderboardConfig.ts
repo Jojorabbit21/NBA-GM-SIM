@@ -1,5 +1,5 @@
 
-import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP } from './attributeConfig';
+import { ATTR_NAME_MAP, COMPACT_ATTR_GROUPS, getCompactAttrValue, type CompactAttrItem } from './attributeConfig';
 
 // Types
 export type SortKey = string;
@@ -27,7 +27,6 @@ export interface ColumnDef {
     stickyLeft?: number; // Pixel value for sticky positioning
     stickyShadow?: boolean; // Show shadow on this sticky column
     category?: StatCategory | 'Common'; // Which tab this column belongs to
-    playerProp?: string; // For Attributes columns: the actual Player object property name (when key differs)
     attrGroup?: string; // Attributes 탭 전용: 카테고리 그룹 (INSIDE, OUTSIDE 등)
 }
 
@@ -104,23 +103,34 @@ export const OPPONENT_STAT_OPTIONS = [
     { value: 'opp_pf', label: 'Opp PF' },
 ];
 
-// Leaderboard에서 Traditional 스탯 키와 충돌하는 능력치 키 → 별칭 매핑
-const ATTR_KEY_CONFLICTS: Record<string, string> = { 'reb': 'attr_reb', 'blk': 'attr_blk' };
+// Leaderboard에서 Traditional/Defense 스탯 키와 충돌하는 압축 능력치 키 → 별칭 매핑
+// (압축 이전엔 'reb'도 카테고리 평균 키로 충돌했으나, 압축 목록엔 카테고리 평균이 없어 제거)
+const ATTR_KEY_CONFLICTS: Record<string, string> = { 'blk': 'attr_blk' };
 const toLeaderboardKey = (key: string) => ATTR_KEY_CONFLICTS[key] || key;
 
-// Filter Options - Attributes (공유 설정에서 자동 생성)
-export const ATTRIBUTES_STAT_OPTIONS = ATTR_GROUPS.flatMap(g =>
-    g.keys.map(k => ({ value: toLeaderboardKey(k), label: ATTR_NAME_MAP[k]?.match(/\((.+)\)/)?.[1] || k }))
+// 리더보드 키(충돌 별칭 적용 후) → 압축 능력치 정의 — 값 조회에 Players/Teams 공용 사용.
+const COMPACT_ITEM_BY_LB_KEY: Record<string, CompactAttrItem> = Object.fromEntries(
+    COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => [toLeaderboardKey(item.key), item]),
 );
 
-// Attribute key → Player property mapping (only needed when they differ)
-export const ATTR_PLAYER_PROPS: Record<string, string> = Object.fromEntries(
-    Object.entries(ATTR_KEY_CONFLICTS).map(([prop, alias]) => [alias, prop])
+// 단일 능력치면 그 값 그대로, 콤보(예: INS=closeShot+layup 평균)면 평균 — "능력치" 탭
+// (RosterGrid)과 동일한 압축 체계를 리더보드 Attributes 카테고리에도 그대로 적용.
+export function getAttrValue(p: any, lbKey: string): number {
+    const item = COMPACT_ITEM_BY_LB_KEY[lbKey];
+    return item ? getCompactAttrValue(p, item) : 0;
+}
+
+// Filter Options - Attributes (압축 설정에서 자동 생성)
+export const ATTRIBUTES_STAT_OPTIONS = COMPACT_ATTR_GROUPS.flatMap(g =>
+    g.items.map(item => ({
+        value: toLeaderboardKey(item.key),
+        label: item.sourceKeys.map(k => ATTR_NAME_MAP[k]?.match(/\((.+)\)/)?.[1] || k).join(' + '),
+    }))
 );
 
 // All attribute column keys (used by hooks for detection)
 export const ATTRIBUTE_KEYS = new Set(
-    ATTR_GROUPS.flatMap(g => g.keys.map(toLeaderboardKey))
+    COMPACT_ATTR_GROUPS.flatMap(g => g.items.map(item => toLeaderboardKey(item.key)))
 );
 
 // Zone Definitions
@@ -213,21 +223,17 @@ export const DEFENSE_STAT_OPTIONS = [
     ]),
 ];
 
-// Attributes Columns (Players Only) — 공유 설정(ATTR_GROUPS)에서 자동 생성
-const ATTR_W = 76; // 헤더 text-sm(14px) 기준 "OCON"/"DRAW"/"DCON" 등 4~5글자 라벨이 정렬 화살표 붙은 상태에서도 안 잘리도록 여유폭 확보(실측)
-const ATTRIBUTES_COLUMNS: ColumnDef[] = ATTR_GROUPS.flatMap(group =>
-    group.keys.map(key => {
-        const lbKey = toLeaderboardKey(key);
-        return {
-            key: lbKey,
-            label: ATTR_LABEL[key],
-            width: ATTR_W,
-            sortable: true,
-            category: 'Attributes' as const,
-            attrGroup: group.label,
-            ...(lbKey !== key ? { playerProp: key } : {}),
-        };
-    })
+// Attributes Columns (Players Only) — "능력치" 탭(RosterGrid)과 동일한 압축 설정에서 자동 생성
+const ATTR_W = 76; // 헤더 text-sm(14px) 기준 4~5글자 라벨이 정렬 화살표 붙은 상태에서도 안 잘리도록 여유폭 확보(실측)
+const ATTRIBUTES_COLUMNS: ColumnDef[] = COMPACT_ATTR_GROUPS.flatMap(group =>
+    group.items.map(item => ({
+        key: toLeaderboardKey(item.key),
+        label: item.label,
+        width: ATTR_W,
+        sortable: true,
+        category: 'Attributes' as const,
+        attrGroup: group.label,
+    }))
 );
 
 // Opponent Columns (Teams Only)

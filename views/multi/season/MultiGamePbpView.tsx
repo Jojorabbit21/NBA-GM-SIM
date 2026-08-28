@@ -1,21 +1,18 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { Loader2, Clock } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { computeWL } from './multiSeasonUtils';
-import { fmtDayLabel, kstDateKey, groupByDay } from './multiScheduleUtils';
-import { MonthCalendarPopover } from './MonthCalendarPopover';
 import { useGame } from '../../../hooks/useGameContext';
-import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { supabase } from '../../../services/supabaseClient';
 import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
 import type { Game, ShotEvent, Team, Player } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
-import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
-import { fetchLiveGameView, fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
+import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt } from './multiGameReveal';
+import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
@@ -1246,322 +1243,6 @@ const GameInsightsPanel: React.FC<{
     );
 };
 
-// ─── GameDateStrip ────────────────────────────────────────────────────────────
-// [2026-08-04] 경기 결과 화면 최상단에 ESPN 스코어보드 스트립 스타일로 날짜 셀렉터 +
-// 그 날짜의 리그 전체 경기를 가로 스크롤 카드로 보여주고 클릭 시 바로 이동하는 섹션.
-// 무거운 game_pbp/PBP 로그를 조회하지 않고 이미 메모리에 있는 schedule(최종 스코어 포함) +
-// fetchLiveGamesSummary(라이브 스코어만 가벼운 서버 엔드포인트)만으로 구성.
-
-interface TeamStripInfo { team_name: string; team_abbr: string; color_primary?: string | null; color_text?: string | null }
-
-// [Fix 2026-08-04] 로고/컬러 배지 대신 팀 컬러로 물들인 약어 텍스트만 표시 — 폰트 크기는
-// 스코어와 동일한 text-sm으로 맞춤(둘 다 한 줄 안에서 나란히 읽히도록).
-const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean }> = ({ team, teamId, score, won }) => (
-    <div className="flex items-center justify-between gap-2">
-        <span className={`text-sm font-black tabular-nums truncate ${won ? 'text-white' : 'text-slate-500'}`}>
-            {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
-        </span>
-        {score != null && (
-            <span className={`text-sm font-mono tabular-nums ${won ? 'text-white font-black' : 'text-slate-500 font-bold'}`}>{score}</span>
-        )}
-    </div>
-);
-
-interface GameDateStripProps {
-    leagueId: string | undefined;
-    currentGameId: string | undefined;
-    schedule: Game[];
-    teamMap: Record<string, TeamStripInfo>;
-    simStart: string | null;
-    gprd: number;
-    bracketData: unknown;
-    serverNow: number;
-    roomId: string | undefined;
-    accessToken: string | undefined;
-    getGameUrlId: (gameId: string) => string;
-    preferVirtual: boolean;
-}
-
-const GameDateStrip: React.FC<GameDateStripProps> = ({
-    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, serverNow, roomId, accessToken, getGameUrlId, preferVirtual,
-}) => {
-    const navigate = useNavigate();
-
-    // MultiScheduleView.tsx와 동일한 계산(플레이오프 시리즈 미공개 매치업 스포일러 차단 포함) —
-    // scheduledAt 보정 + 시간순 정렬.
-    // [Fix 2026-08-05] serverNow(1초 틱)를 그대로 deps에 넣으면 매초 스케줄 전체를 재스캔한다 —
-    // "리플레이 공개 여부"는 분 단위로만 바뀌므로 15초 버킷으로 낮춰 재계산 빈도를 줄인다.
-    const revealBucket = Math.floor(serverNow / 15000);
-    const revealedSeriesById = useMemo(() => {
-        const series: any[] = (bracketData as any)?.series ?? [];
-        if (!series.length) return null;
-        return computeRevealedSeries(series, schedule as any, serverNow);
-    }, [bracketData, schedule, revealBucket]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const allGames = useMemo(() =>
-        [...schedule]
-            .filter(g => {
-                if (!g.isPlayoff || !g.seriesId || !revealedSeriesById) return true;
-                const gated = revealedSeriesById.get(g.seriesId);
-                return !!gated && gated.higherSeedId !== 'TBD' && gated.lowerSeedId !== 'TBD';
-            })
-            .map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt }))
-            .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
-    [schedule, simStart, gprd, revealedSeriesById]);
-
-    const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
-
-    const currentGame = useMemo(() => allGames.find(g => g.id === currentGameId), [allGames, currentGameId]);
-    const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
-
-    // 처음 진입 시 현재 보고 있는 경기의 날짜로 자동 선택. 초기값이 아직 없을 때만 반영해서
-    // 사용자가 화살표로 다른 날짜를 골라놓은 뒤 currentGame이 바뀌어도 선택이 안 튀게 한다.
-    useEffect(() => {
-        if (selectedDateKey === null && currentGame) {
-            setSelectedDateKey(kstDateKey(currentGame, preferVirtual));
-        }
-    }, [selectedDateKey, currentGame, preferVirtual]);
-
-    const dateKeys = useMemo(() => groupedByDay.map(g => g.dateKey), [groupedByDay]);
-    const activeDateKey = selectedDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
-    const activeIdx = activeDateKey ? dateKeys.indexOf(activeDateKey) : -1;
-    const activeGroup = activeIdx >= 0 ? groupedByDay[activeIdx] : null;
-
-    // "2026" / "8.3" 2줄 표기용 — activeDateKey(YYYY-MM-DD)에서 직접 뽑음(라벨 문자열 파싱 대신).
-    const [activeYear, activeMonth, activeDay] = activeDateKey
-        ? activeDateKey.split('-').map(Number)
-        : [0, 0, 0];
-
-    // 날짜 드롭다운 — 클릭하면 월간 달력이 펼쳐지고, 경기가 있는 날짜만 선택 가능.
-    // [Fix 2026-08-04] 부모 컨테이너 기준 absolute 대신, 클릭한 지점(clientX/clientY)에 고정
-    // 위치(position: fixed)로 띄운다 — 어디를 눌러도 그 자리 근처에서 펼쳐진다.
-    const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
-    const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-    const dateMenuRef = useRef<HTMLDivElement>(null);
-    // [Fix 2026-08-04] 경기 카드 리스트가 화면 우측 끝을 넘어가도 스크롤할 방법이 없다는 피드백 —
-    // 가로 스크롤 컨테이너에 ref를 달고, 맨 우측에 ">" 버튼으로 scrollBy 이동.
-    const gameStripRef = useRef<HTMLDivElement>(null);
-    // [Fix 2026-08-05] "라이브/기록 화면 진입 시 상단 경기 리스트가 현재 선택한 경기로 포커스되게"
-    // 요청 — 날짜는 이미 자동 선택되지만(위 useEffect), 그 날짜의 경기가 많으면 현재 보고 있는
-    // 카드가 가로 스크롤 밖에 있을 수 있어 수동으로 찾아 스크롤해야 했다. 현재 카드에 ref를 달아
-    // 자동으로 보이는 위치로 스크롤.
-    // [Fix 2026-08-05] "스크롤해도 다시 원래 위치로 돌아간다" 버그 — activeGroup을 의존성으로 쓰면
-    // revealedSeriesById(플레이오프 시리즈 미공개 판정)가 serverNow(1초 틱)에 의존해 매초 새
-    // 객체로 재계산되고, 그게 allGames→groupedByDay→activeGroup까지 매초 새 참조로 전파되어
-    // 이 effect가 1초마다 재실행되며 스크롤을 계속 원위치로 되돌리고 있었다. 실제로 다시 스크롤할
-    // 필요가 있는 시점(날짜 전환/경기 전환)만 잡도록 원시값(activeDateKey, currentGameId)만 의존.
-    const currentCardRef = useRef<HTMLButtonElement>(null);
-    useEffect(() => {
-        currentCardRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-    }, [activeDateKey, currentGameId]);
-    // [Fix 2026-08-04] "무한스크롤처럼 느껴진다"는 피드백 — 스크롤바를 숨겨놔서 끝에 도달했는지
-    // 알 방법이 없었음. 스크롤 위치를 추적해 끝에 도달하면 우측 버튼을 비활성화(회색 처리)해서
-    // "여기가 끝"임을 명확히 보여준다. [Fix 2026-08-04] 좌측 이동 버튼 추가 요청으로 canScrollLeft도 함께 추적.
-    const [canScrollRight, setCanScrollRight] = useState(false);
-    const [canScrollLeft, setCanScrollLeft] = useState(false);
-    const updateScrollState = () => {
-        const el = gameStripRef.current;
-        if (!el) return;
-        setCanScrollRight(el.scrollWidth - el.scrollLeft - el.clientWidth > 4);
-        setCanScrollLeft(el.scrollLeft > 4);
-    };
-    useEffect(() => {
-        updateScrollState();
-        const el = gameStripRef.current;
-        if (!el) return;
-        const ro = new ResizeObserver(updateScrollState);
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, [activeGroup]);
-    // [Fix 2026-08-04] "경기 리스트를 마우스 드래그로 스크롤" 요청 — 트랙패드/스크롤바 없이도
-    // 마우스로 클릭+드래그하면 좌우로 스크롤되도록 처리. 드래그가 실제로 발생했을 때만(임계값
-    // 3px 초과) 다음 클릭을 캡처 단계에서 막아, 드래그 끝에 카드 위에서 손을 떼도 경기 상세로
-    // 잘못 이동하지 않게 한다.
-    const dragRef = useRef<{ startX: number; startScrollLeft: number } | null>(null);
-    const wasDraggedRef = useRef(false);
-    const handleStripMouseDown = (e: React.MouseEvent) => {
-        const el = gameStripRef.current;
-        if (!el) return;
-        dragRef.current = { startX: e.pageX, startScrollLeft: el.scrollLeft };
-    };
-    const handleStripMouseMove = (e: React.MouseEvent) => {
-        const drag = dragRef.current;
-        const el = gameStripRef.current;
-        if (!drag || !el) return;
-        const dx = e.pageX - drag.startX;
-        if (Math.abs(dx) > 3) {
-            wasDraggedRef.current = true;
-            el.scrollLeft = drag.startScrollLeft - dx;
-        }
-    };
-    const endStripDrag = () => { dragRef.current = null; };
-    const handleStripClickCapture = (e: React.MouseEvent) => {
-        if (wasDraggedRef.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            wasDraggedRef.current = false;
-        }
-    };
-    useEffect(() => {
-        if (!isDateMenuOpen) return;
-        const handler = (e: MouseEvent) => {
-            if (!dateMenuRef.current?.contains(e.target as Node)) setIsDateMenuOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [isDateMenuOpen]);
-
-    const gameDateSet = useMemo(() => new Set(dateKeys), [dateKeys]);
-
-    // 달력이 보여주는 연/월(선택된 날짜와 별개 — 화살표로 다른 달을 미리보기만 할 수 있음).
-    // 드롭다운을 열 때마다 현재 선택된 날짜의 달로 초기화.
-    const [viewYM, setViewYM] = useState<[number, number] | null>(null);
-    useEffect(() => {
-        if (isDateMenuOpen && activeDateKey) {
-            const [y, m] = activeDateKey.split('-').map(Number);
-            setViewYM([y, m - 1]);
-        }
-    }, [isDateMenuOpen, activeDateKey]);
-
-    // 진행 중(LIVE)인 경기의 실시간 스코어 — MultiScheduleView.tsx와 동일한 5초 폴링.
-    const [liveSummaries, setLiveSummaries] = useState<Record<string, LiveGameSummary>>({});
-    useEffect(() => {
-        if (!roomId) return;
-        let cancelled = false;
-        const poll = async () => {
-            const summaries = await fetchLiveGamesSummary(roomId, accessToken);
-            if (cancelled) return;
-            setLiveSummaries(Object.fromEntries(summaries.map(s => [s.gameId, s])));
-        };
-        poll();
-        const timer = setInterval(poll, 5000);
-        return () => { cancelled = true; clearInterval(timer); };
-    }, [roomId, accessToken]);
-
-    if (!activeGroup) return null;
-
-    return (
-        <div className="shrink-0 flex items-stretch bg-slate-950 border-b border-slate-800 h-[76px]">
-            {/* 날짜 셀렉터 — 화살표 이동 + 클릭 시 전체 날짜 드롭다운.
-                [Fix 2026-08-04] "> 버튼과 날짜 영역은 인디고 색을 적용해봐" 요청으로 배경을
-                indigo-600으로 채운 하나의 칩(chip)처럼 표현. */}
-            <div ref={dateMenuRef} className="relative shrink-0 flex items-center gap-0.5 px-1.5 bg-indigo-600 border-r border-indigo-700">
-                <button
-                    onClick={() => activeIdx > 0 && setSelectedDateKey(dateKeys[activeIdx - 1])}
-                    disabled={activeIdx <= 0}
-                    className="p-0.5 rounded text-indigo-200 hover:text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                >
-                    <ChevronLeft size={16} />
-                </button>
-                <button
-                    onClick={(e) => {
-                        // [Fix 2026-08-04] 클릭 좌표(clientX/Y) 대신 날짜 버튼 자신의 위치를 써서
-                        // "어딜 눌러도 날짜선택영역 바로 좌측 하단"에 여백 없이 붙도록 고정.
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setMenuPos({ x: rect.left, y: rect.bottom });
-                        setIsDateMenuOpen(o => !o);
-                    }}
-                    className={`flex flex-col items-center justify-center px-3 py-2 rounded transition-colors ${isDateMenuOpen ? 'bg-indigo-500' : 'hover:bg-indigo-500'}`}
-                >
-                    <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">{activeYear}</span>
-                    <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">
-                        {activeMonth}.{activeDay}
-                    </span>
-                </button>
-                <button
-                    onClick={() => activeIdx >= 0 && activeIdx < dateKeys.length - 1 && setSelectedDateKey(dateKeys[activeIdx + 1])}
-                    disabled={activeIdx < 0 || activeIdx >= dateKeys.length - 1}
-                    className="p-0.5 rounded text-indigo-200 hover:text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                >
-                    <ChevronRight size={16} />
-                </button>
-
-                {/* 월간 달력 — 경기가 있는 날짜만 선택 가능(없는 날짜는 비활성) */}
-                {isDateMenuOpen && viewYM && menuPos && (
-                    <MonthCalendarPopover
-                        position={menuPos}
-                        viewYM={viewYM}
-                        onViewYMChange={setViewYM}
-                        selectableDates={gameDateSet}
-                        activeDateKey={activeDateKey ?? ''}
-                        onSelect={dk => { setSelectedDateKey(dk); setIsDateMenuOpen(false); }}
-                    />
-                )}
-            </div>
-
-            {/* 좌측 이동 버튼 — 우측 버튼과 동일한 패턴(끝 도달 시 비활성화, 인디고 색상) */}
-            <button
-                onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
-                disabled={!canScrollLeft}
-                className="shrink-0 w-8 flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 disabled:cursor-default transition-colors"
-            >
-                <ChevronLeft size={18} />
-            </button>
-
-            {/* 그 날짜의 경기 카드 — 가로 스크롤 */}
-            <div
-                ref={gameStripRef}
-                onScroll={updateScrollState}
-                onMouseDown={handleStripMouseDown}
-                onMouseMove={handleStripMouseMove}
-                onMouseUp={endStripDrag}
-                onMouseLeave={endStripDrag}
-                onClickCapture={handleStripClickCapture}
-                className="flex-1 min-w-0 overflow-x-auto flex select-none cursor-grab active:cursor-grabbing"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-            >
-                {activeGroup.games.map(g => {
-                    const state = getGameDisplayState(g, serverNow);
-                    const live = liveSummaries[g.id];
-                    const isCurrent = g.id === currentGameId;
-                    const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
-                    const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
-                    const statusLabel = state === 'final' ? '종료'
-                        : state === 'live' ? (live ? `${live.quarter ?? 1}Q ${live.clock ?? ''}` : 'LIVE')
-                        : '예정';
-
-                    return (
-                        <button
-                            key={g.id}
-                            ref={isCurrent ? currentCardRef : undefined}
-                            onClick={() => !isCurrent && navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
-                            className={`shrink-0 w-36 px-3 py-2 flex flex-col justify-center gap-1 border-r border-slate-800 transition-colors text-left cursor-pointer ${
-                                isCurrent ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-500/50' : 'hover:bg-slate-900'
-                            }`}
-                        >
-                            <span className={`text-xs font-bold uppercase tracking-wider ${state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
-                                {statusLabel}
-                            </span>
-                            <StripTeamRow
-                                team={teamMap[g.awayTeamId]}
-                                teamId={g.awayTeamId}
-                                score={state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : undefined}
-                                won={awayWon}
-                            />
-                            <StripTeamRow
-                                team={teamMap[g.homeTeamId]}
-                                teamId={g.homeTeamId}
-                                score={state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : undefined}
-                                won={homeWon}
-                            />
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* 리스트가 화면 우측 끝을 넘어가도 스크롤할 방법이 없다는 피드백 — 맨 우측에
-                고정 화살표 버튼 추가, 클릭 시 스트립을 오른쪽으로 스크롤. */}
-            <button
-                onClick={() => gameStripRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
-                disabled={!canScrollRight}
-                className="shrink-0 w-8 flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 disabled:cursor-default transition-colors"
-            >
-                <ChevronRight size={18} />
-            </button>
-        </div>
-    );
-};
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const MultiGamePbpView: React.FC = () => {
@@ -1569,17 +1250,9 @@ const MultiGamePbpView: React.FC = () => {
     const { room, leagueTeams, league } = useLeagueContext();
     const { schedule }         = useSeasonContext();
     const { session }           = useGame();
-    const { getGameUrlId }      = useGameShortCodes(room?.id);
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
-
-    // 날짜 셀렉터 스트립(GameDateStrip)용 — team_slug → 팀 표시정보 맵
-    const stripTeamMap = useMemo(() => {
-        const m: Record<string, { team_name: string; team_abbr: string; color_primary?: string | null; color_text?: string | null }> = {};
-        for (const t of leagueTeams) m[t.team_slug] = t;
-        return m;
-    }, [leagueTeams]);
 
     // [2026-08-01] URL의 gameId는 짧은 코드(신규 리그) 또는 원래 game_id(T_R1_M0_G1 등, 구
     // 리그/매핑 없음)일 수 있음 — game_short_codes에서 역조회, 매핑이 없으면 그대로 폴백.
@@ -1871,8 +1544,8 @@ const MultiGamePbpView: React.FC = () => {
     // 전적은 경기 하나가 리플레이 종료될 때만 바뀌므로 초 단위 정확도가 필요 없다.
     const wl = useMemo(() => {
         const slugs = [homeTeamId, awayTeamId].filter((s): s is string => !!s);
-        return computeWL(schedule, slugs, serverNow);
-    }, [schedule, homeTeamId, awayTeamId, revealBucket]); // eslint-disable-line react-hooks/exhaustive-deps
+        return computeWL(schedule, slugs, serverNow, league?.type === 'tournament');
+    }, [schedule, homeTeamId, awayTeamId, revealBucket, league?.type]); // eslint-disable-line react-hooks/exhaustive-deps
     const homeWL = homeTeamId ? wl[homeTeamId] : undefined;
     const awayWL = awayTeamId ? wl[awayTeamId] : undefined;
 
@@ -2167,27 +1840,9 @@ const MultiGamePbpView: React.FC = () => {
     // ── Loading / Scheduled / Error ───────────────────────────────────────────
 
     // [Fix 2026-08-04] "다른 경기로 전환하면 화면 전체가 로더로 바뀐다" 피드백 — 이전엔 이
-    // 컴포넌트가 로딩/스케줄/에러 상태일 때 전부 조기 return으로 GameDateStrip을 포함한 화면
-    // 전체를 스피너 하나로 덮어버렸다(GameDateStrip은 gameData/isLoading과 무관하게 항상 그릴
-    // 수 있는 데이터만 쓰므로 이 게이트보다 먼저 렌더될 이유가 없었음). 날짜 스트립을 변수로
-    // 뽑아 모든 분기에서 상단에 고정 배치하고, 로더/카운트다운/에러는 그 아래 body 영역에만
-    // 표시되게 해서 게임 전환 중에도 상단 스트립(날짜/경기 목록)은 계속 보이고 클릭 가능하다.
-    const dateStrip = (
-        <GameDateStrip
-            leagueId={leagueId}
-            currentGameId={resolvedGameId}
-            schedule={schedule}
-            teamMap={stripTeamMap}
-            simStart={simStart}
-            gprd={gprd}
-            bracketData={league?.bracket_data}
-            serverNow={serverNow}
-            roomId={room?.id}
-            accessToken={session?.access_token}
-            getGameUrlId={getGameUrlId}
-            preferVirtual={league?.type === 'main_league'}
-        />
-    );
+    // [2026-08-28] 날짜 스트립(GameDateStrip)은 더 이상 이 화면이 직접 그리지 않는다 —
+    // MultiSeasonLayout이 헤더 바로 아래에 전역으로 하나만 그리도록 옮겨서(모든 시즌 화면에
+    // 공통 배치), 여기서 또 그리면 이 화면(경기 관람)에서만 스트립이 중복 표시된다.
 
     // [Fix 2026-08-05] "예정 경기가 라이브로 전환되는 순간 박스스코어가 사라지고 안내 문구로
     // 바뀌었다가 다시 리셋된 것처럼 보인다" 버그 — scheduled→live는 resolvedGameId가 안 바뀌는
@@ -2201,7 +1856,6 @@ const MultiGamePbpView: React.FC = () => {
     if (scheduledAt === undefined) {
         return (
             <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
-                {dateStrip}
                 <div className="flex-1 min-h-0 flex items-center justify-center bg-slate-950">
                     <Loader2 size={28} className="animate-spin text-indigo-400" />
                 </div>
@@ -2218,7 +1872,6 @@ const MultiGamePbpView: React.FC = () => {
     if (error) {
         return (
             <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
-                {dateStrip}
                 <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950">
                     <p className="text-slate-400 text-sm ko-normal">{error}</p>
                 </div>
@@ -2228,9 +1881,6 @@ const MultiGamePbpView: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
-
-            {/* ── 날짜 셀렉터 + 리그 전체 경기 스트립 ── */}
-            {dateStrip}
 
             {/* ── 스코어버그 헤더 ──
                 좌:중:우 = 4:3:4 고정 비율. 좌/우 컬럼은 팀 메인컬러 단색 배경(absolute 레이어로

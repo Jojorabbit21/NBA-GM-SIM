@@ -7,6 +7,7 @@ import { StarRating } from '../common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../services/playerDevelopment/archetypeEvaluator';
 import type { PlayerArchetypeState } from '../../types/archetype';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface RosterOverviewGridProps {
     team: Team;
@@ -17,11 +18,19 @@ type SortConfig = { key: string; direction: 'asc' | 'desc' };
 
 const WIDTHS = {
     NAME: 180, POS: 60, AGE: 50, OVR: 60,
-    HEIGHT: 70, WEIGHT: 70, ARCHETYPE: 150, SECONDARY: 150, TAGS: 220, RATING: 140,
+    HEIGHT: 70, WEIGHT: 70, SALARY: 110, REMAINING: 80, AAV: 110,
+    ARCHETYPE: 150, SECONDARY: 150, TAGS: 220, RATING: 140,
 };
 
 function getPlayerArchetypeState(p: Player): PlayerArchetypeState {
     return p.archetypeState ?? assignArchetypes(p, '2025-26');
+}
+
+// 잔여 계약기간(현재 시즌 포함) 동안의 평균 연봉 — AAV(Average Annual Value).
+function getRemainingAav(p: Player): number {
+    if (!p.contract || p.contractYears <= 0) return 0;
+    const remainingTotal = p.contract.years.slice(p.contract.currentYear).reduce((s, v) => s + v, 0);
+    return remainingTotal / p.contractYears;
 }
 
 const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
@@ -45,6 +54,9 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
         if (key === 'ovr') return calculatePlayerOvr(p);
         if (key === 'height') return p.height ?? 0;
         if (key === 'weight') return p.weight ?? 0;
+        if (key === 'salary') return p.salary ?? 0;
+        if (key === 'contractYears') return p.contractYears ?? 0;
+        if (key === 'aav') return getRemainingAav(p);
         return 0;
     };
 
@@ -75,6 +87,9 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                         <col style={{ width: WIDTHS.RATING }} />
                         <col style={{ width: WIDTHS.HEIGHT }} />
                         <col style={{ width: WIDTHS.WEIGHT }} />
+                        <col style={{ width: WIDTHS.SALARY }} />
+                        <col style={{ width: WIDTHS.REMAINING }} />
+                        <col style={{ width: WIDTHS.AAV }} />
                         <col style={{ width: WIDTHS.ARCHETYPE }} />
                         <col style={{ width: WIDTHS.SECONDARY }} />
                         <col style={{ width: WIDTHS.TAGS }} />
@@ -104,6 +119,9 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             <TableHeaderCell width={WIDTHS.RATING} className="border-r border-slate-800">레이팅</TableHeaderCell>
                             <TableHeaderCell width={WIDTHS.HEIGHT} className="border-r border-slate-800" sortable onSort={() => handleSort('height')} sortDirection={sortConfig.key === 'height' ? sortConfig.direction : null}>키</TableHeaderCell>
                             <TableHeaderCell width={WIDTHS.WEIGHT} className="border-r border-slate-800" sortable onSort={() => handleSort('weight')} sortDirection={sortConfig.key === 'weight' ? sortConfig.direction : null}>몸무게</TableHeaderCell>
+                            <TableHeaderCell width={WIDTHS.SALARY} className="border-r border-slate-800" sortable onSort={() => handleSort('salary')} sortDirection={sortConfig.key === 'salary' ? sortConfig.direction : null}>샐러리</TableHeaderCell>
+                            <TableHeaderCell width={WIDTHS.REMAINING} className="border-r border-slate-800" sortable onSort={() => handleSort('contractYears')} sortDirection={sortConfig.key === 'contractYears' ? sortConfig.direction : null}>잔여계약</TableHeaderCell>
+                            <TableHeaderCell width={WIDTHS.AAV} className="border-r border-slate-800" sortable onSort={() => handleSort('aav')} sortDirection={sortConfig.key === 'aav' ? sortConfig.direction : null}>AAV</TableHeaderCell>
                             <TableHeaderCell colSpan={2} className="border-r border-slate-800">아키타입</TableHeaderCell>
                             <TableHeaderCell width={WIDTHS.TAGS} align="left" className="pl-3">태그</TableHeaderCell>
                         </tr>
@@ -118,10 +136,10 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             return (
                                 <TableRow key={p.id} className="group">
                                     <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                        <span className="text-sm font-semibold text-white truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                        <span className="text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-white font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-white font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
                                     <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
                                         <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
@@ -130,15 +148,18 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                                     </TableCell>
                                     <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.height ? `${p.height}cm` : '-'}</TableCell>
                                     <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.weight ? `${p.weight}kg` : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm font-normal text-white truncate">{primaryInfo.label}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm font-normal text-white truncate">{secondaryInfo ? secondaryInfo.label : ''}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.contract ? formatMoney(p.salary) : '-'}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.contract ? `${p.contractYears}년` : '-'}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800 text-sm text-white">{p.contract ? formatMoney(getRemainingAav(p)) : '-'}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white truncate">{primaryInfo.label}</TableCell>
+                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white truncate">{secondaryInfo ? secondaryInfo.label : ''}</TableCell>
                                     <TableCell align="left" className="pl-3">
                                         <div className="flex flex-wrap gap-1">
                                             {tagInfos.length === 0 && <span className="text-sm text-slate-600">-</span>}
                                             {tagInfos.map((t, i) => (
                                                 <span
                                                     key={i}
-                                                    className="text-sm font-normal text-white whitespace-nowrap"
+                                                    className="text-sm text-white whitespace-nowrap"
                                                 >
                                                     {t.label}{i < tagInfos.length - 1 ? ',' : ''}
                                                 </span>

@@ -59,6 +59,66 @@ export const ATTR_KR_LABEL: Record<string, string> = {
     speed: '속도', agility: '민첩성', strength: '근력', vertical: '점프력', stamina: '지구력', hustle: '허슬', durability: '내구도',
 };
 
+// "능력치" 탭(RosterGrid)/리더보드 Attributes 카테고리/선수 프로필 능력치 위젯 전용 압축
+// 컬럼 — 원래 36개 능력치를 21개로 줄인 표시 전용 뷰(사용자 요청). 여러 raw 능력치를
+// 평균 내 하나로 합친 항목(sourceKeys.length > 1)과, 단일 능력치를 그대로 보여주는 항목이
+// 섞여 있다. DraftView/시즌 리포트는 여전히 위의 ATTR_GROUPS(전체 36개)를 그대로 쓴다.
+export interface CompactAttrItem {
+    key: string;
+    label: string;
+    sourceKeys: string[];
+    /** PlayerDetailView 등에서 쓸 한글 표시명 — 없으면 sourceKeys의 한글명을 "/"로 이어붙인다. */
+    krLabel?: string;
+}
+export interface CompactAttrGroup { id: string; label: string; items: CompactAttrItem[] }
+
+export const COMPACT_ATTR_GROUPS: CompactAttrGroup[] = [
+    { id: 'INS', label: 'INSIDE', items: [
+        { key: 'insCombo', label: 'INS', sourceKeys: ['closeShot', 'layup'], krLabel: '골밑 득점' },
+        { key: 'dunk', label: 'DUNK', sourceKeys: ['dunk'] },
+        { key: 'postPlay', label: 'POST', sourceKeys: ['postPlay'] },
+    ] },
+    { id: 'OUT', label: 'OUTSIDE', items: [
+        { key: 'midRange', label: 'MID', sourceKeys: ['midRange'] },
+        { key: 'threeCombo', label: '3PT', sourceKeys: ['threeCorner', 'three45', 'threeTop'], krLabel: '3점' },
+        { key: 'ft', label: 'FT', sourceKeys: ['ft'] },
+        { key: 'shotIq', label: 'SIQ', sourceKeys: ['shotIq'] },
+    ] },
+    { id: 'PLM', label: 'PLAYMAKING', items: [
+        { key: 'passAcc', label: 'PASS', sourceKeys: ['passAcc'] },
+        { key: 'handling', label: 'HNDL', sourceKeys: ['handling'] },
+        { key: 'passIq', label: 'PIQ', sourceKeys: ['passIq'] },
+    ] },
+    { id: 'DEF', label: 'DEFENSE', items: [
+        { key: 'intDef', label: 'INTD', sourceKeys: ['intDef'] },
+        { key: 'perDef', label: 'PERD', sourceKeys: ['perDef'] },
+        { key: 'steal', label: 'STL', sourceKeys: ['steal'] },
+        { key: 'blk', label: 'BLK', sourceKeys: ['blk'] },
+        { key: 'defConsist', label: 'DCON', sourceKeys: ['defConsist'] },
+    ] },
+    { id: 'REB', label: 'REBOUND', items: [
+        { key: 'offReb', label: 'OREB', sourceKeys: ['offReb'] },
+        { key: 'defReb', label: 'DREB', sourceKeys: ['defReb'] },
+    ] },
+    { id: 'ATH', label: 'ATHLETIC', items: [
+        { key: 'spdCombo', label: 'SPD', sourceKeys: ['speed', 'agility'], krLabel: '속도' },
+        { key: 'strength', label: 'STR', sourceKeys: ['strength'] },
+        { key: 'vertical', label: 'VERT', sourceKeys: ['vertical'] },
+        { key: 'stamina', label: 'STA', sourceKeys: ['stamina'] },
+    ] },
+];
+
+/** 압축 항목 키 → 정의 (단일 항목 조회용) */
+export const COMPACT_ITEM_BY_KEY: Record<string, CompactAttrItem> = Object.fromEntries(
+    COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => [item.key, item]),
+);
+
+/** 단일 능력치면 그 값 그대로, 복수(콤보)면 평균(반올림) — 표시/정렬/팀·리그 평균 계산에서 공통 사용. */
+export function getCompactAttrValue(p: any, item: CompactAttrItem): number {
+    const sum = item.sourceKeys.reduce((s, k) => s + (p[k] || 0), 0);
+    return Math.round(sum / item.sourceKeys.length);
+}
+
 /** 전체 능력치 이름 — 툴팁용 (한국어 + 영어) */
 export const ATTR_NAME_MAP: Record<string, string> = {
     ins: '인사이드 득점 평균 (Inside Scoring Avg)',

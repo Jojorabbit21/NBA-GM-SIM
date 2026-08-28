@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft, Save, Loader2, AlertCircle, CalendarDays,
-    Clock, Users, Shield, Trash2, RotateCcw, Trophy, PlayCircle, Activity,
+    Clock, Users, Shield, Trash2, RotateCcw, Trophy, PlayCircle, Activity, DollarSign,
 } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
 import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament } from '../../../services/multi/leagueService';
@@ -26,6 +26,15 @@ function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: num
     }
     return closest;
 }
+
+// 2026-27 시즌 NBA 공식 발표 수치(2026-06 기준) — 신규 리그 DB 기본값과 동일하게 맞춤.
+const CAP_DEFAULTS = {
+    salaryCapAmount:   164_961_000,
+    luxuryTaxAmount:   200_428_000,
+    apron1Amount:      209_015_000,
+    apron2Amount:      221_686_000,
+    salaryFloorAmount: 148_465_000,
+};
 
 function fmtConference(conf: string | null): string {
     if (!conf) return '—';
@@ -95,6 +104,21 @@ const LeagueSettingsView: React.FC = () => {
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
 
+    // ── 샐러리캡 설정(관리자 전용) — 마스터 스위치(capEnabled) + 세부 항목 5개(각각 개별 on/off + 금액) ──
+    const [capEnabled,         setCapEnabled]         = useState(true);
+    const [salaryCapAmount,    setSalaryCapAmount]    = useState(CAP_DEFAULTS.salaryCapAmount);
+    const [luxuryTaxEnabled,   setLuxuryTaxEnabled]   = useState(true);
+    const [luxuryTaxAmount,    setLuxuryTaxAmount]    = useState(CAP_DEFAULTS.luxuryTaxAmount);
+    const [apron1Enabled,      setApron1Enabled]      = useState(true);
+    const [apron1Amount,       setApron1Amount]       = useState(CAP_DEFAULTS.apron1Amount);
+    const [apron2Enabled,      setApron2Enabled]      = useState(true);
+    const [apron2Amount,       setApron2Amount]       = useState(CAP_DEFAULTS.apron2Amount);
+    const [salaryFloorEnabled, setSalaryFloorEnabled] = useState(true);
+    const [salaryFloorAmount, setSalaryFloorAmount]   = useState(CAP_DEFAULTS.salaryFloorAmount);
+    const [savingCap,  setSavingCap]  = useState(false);
+    const [saveCapOk,  setSaveCapOk]  = useState(false);
+    const [saveCapErr, setSaveCapErr] = useState<string | null>(null);
+
     // ── 엔진 설정(관리자 전용) 저장 상태 — 스케줄 저장과 독립적으로 진행 중 세션에서도 변경 가능 ──
     const [savingSim,  setSavingSim]  = useState(false);
     const [saveSimOk,  setSaveSimOk]  = useState(false);
@@ -155,6 +179,16 @@ const LeagueSettingsView: React.FC = () => {
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
+        setCapEnabled((league as any).cap_enabled ?? true);
+        setSalaryCapAmount((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount);
+        setLuxuryTaxEnabled((league as any).luxury_tax_enabled ?? true);
+        setLuxuryTaxAmount((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount);
+        setApron1Enabled((league as any).apron1_enabled ?? true);
+        setApron1Amount((league as any).apron1_amount ?? CAP_DEFAULTS.apron1Amount);
+        setApron2Enabled((league as any).apron2_enabled ?? true);
+        setApron2Amount((league as any).apron2_amount ?? CAP_DEFAULTS.apron2Amount);
+        setSalaryFloorEnabled((league as any).salary_floor_enabled ?? true);
+        setSalaryFloorAmount((league as any).salary_floor_amount ?? CAP_DEFAULTS.salaryFloorAmount);
     }, [league]);
 
     // 비어드민 접근 차단
@@ -270,6 +304,43 @@ const LeagueSettingsView: React.FC = () => {
         setSavePlayoffOk(true);
         setTimeout(() => setSavePlayoffOk(false), 2000);
         reload();
+    };
+
+    const handleSaveCapSettings = async () => {
+        if (!league?.id) return;
+        setSavingCap(true);
+        setSaveCapOk(false);
+        setSaveCapErr(null);
+        const { error: err } = await updateLeagueSettings({
+            leagueId: league.id,
+            capEnabled,
+            salaryCapAmount,
+            luxuryTaxEnabled,
+            luxuryTaxAmount,
+            apron1Enabled,
+            apron1Amount,
+            apron2Enabled,
+            apron2Amount,
+            salaryFloorEnabled,
+            salaryFloorAmount,
+        });
+        setSavingCap(false);
+        if (err) { setSaveCapErr(err); return; }
+        setSaveCapOk(true);
+        setTimeout(() => setSaveCapOk(false), 2000);
+        reload();
+    };
+
+    // 폼 값만 기본값(2026-27 시즌 NBA 공식 수치)으로 되돌림 — on/off 여부는 건드리지 않고
+    // 금액만 초기화, 실제 저장은 "저장" 버튼을 눌러야 반영됨.
+    const handleResetCapDefaults = () => {
+        setSalaryCapAmount(CAP_DEFAULTS.salaryCapAmount);
+        setLuxuryTaxAmount(CAP_DEFAULTS.luxuryTaxAmount);
+        setApron1Amount(CAP_DEFAULTS.apron1Amount);
+        setApron2Amount(CAP_DEFAULTS.apron2Amount);
+        setSalaryFloorAmount(CAP_DEFAULTS.salaryFloorAmount);
+        setSaveCapOk(false);
+        setSaveCapErr(null);
     };
 
     const handleRunLottery = async () => {
@@ -477,6 +548,168 @@ const LeagueSettingsView: React.FC = () => {
                         : <><Save size={13} />저장</>
                     }
                 </button>
+            </section>
+
+            {/* ── 샐러리캡 설정 (관리자 전용, 진행 중 세션에서도 변경 가능) ─────────── */}
+            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <DollarSign size={14} className="text-emerald-400" />
+                    샐러리캡 설정
+                </h2>
+                <p className="text-xs text-slate-500 ko-normal">
+                    마스터 스위치를 끄면 세부 항목과 무관하게 캡 전체가 비활성화됩니다. 현재는 값 저장만 하며, 트레이드 로직에는 아직 강제 적용되지 않습니다.
+                </p>
+
+                <label
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                        capEnabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                    }`}
+                >
+                    <input
+                        type="checkbox"
+                        checked={capEnabled}
+                        onChange={e => setCapEnabled(e.target.checked)}
+                        className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                    />
+                    <div className="flex-1 min-w-0">
+                        <span className={`text-xs font-bold ${capEnabled ? 'text-white' : 'text-slate-400'}`}>샐러리캡 활성화</span>
+                        <span className="ml-2 text-xs text-slate-500 ko-normal">전체 마스터 스위치</span>
+                    </div>
+                </label>
+
+                <div className={`space-y-2 ${capEnabled ? '' : 'opacity-40 pointer-events-none'}`}>
+                    <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/60 border border-transparent">
+                        <span className="text-xs font-bold text-slate-300">캡 금액</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">$</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step={1_000_000}
+                                value={salaryCapAmount}
+                                onChange={e => setSalaryCapAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                                className="w-28 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        luxuryTaxEnabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent'
+                    }`}>
+                        <input
+                            type="checkbox"
+                            checked={luxuryTaxEnabled}
+                            onChange={e => setLuxuryTaxEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                        />
+                        <span className={`text-xs font-bold flex-1 ${luxuryTaxEnabled ? 'text-white' : 'text-slate-400'}`}>사치세</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">$</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step={1_000_000}
+                                value={luxuryTaxAmount}
+                                onChange={e => setLuxuryTaxAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                                className="w-28 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        apron1Enabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent'
+                    }`}>
+                        <input
+                            type="checkbox"
+                            checked={apron1Enabled}
+                            onChange={e => setApron1Enabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                        />
+                        <span className={`text-xs font-bold flex-1 ${apron1Enabled ? 'text-white' : 'text-slate-400'}`}>1차 에이프런</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">$</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step={1_000_000}
+                                value={apron1Amount}
+                                onChange={e => setApron1Amount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                                className="w-28 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        apron2Enabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent'
+                    }`}>
+                        <input
+                            type="checkbox"
+                            checked={apron2Enabled}
+                            onChange={e => setApron2Enabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                        />
+                        <span className={`text-xs font-bold flex-1 ${apron2Enabled ? 'text-white' : 'text-slate-400'}`}>2차 에이프런</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">$</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step={1_000_000}
+                                value={apron2Amount}
+                                onChange={e => setApron2Amount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                                className="w-28 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        salaryFloorEnabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent'
+                    }`}>
+                        <input
+                            type="checkbox"
+                            checked={salaryFloorEnabled}
+                            onChange={e => setSalaryFloorEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                        />
+                        <span className={`text-xs font-bold flex-1 ${salaryFloorEnabled ? 'text-white' : 'text-slate-400'}`}>샐러리 플로어</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">$</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step={1_000_000}
+                                value={salaryFloorAmount}
+                                onChange={e => setSalaryFloorAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                                className="w-28 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {saveCapErr && <p className="text-xs text-red-400 ko-normal">{saveCapErr}</p>}
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleSaveCapSettings}
+                        disabled={savingCap}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                    >
+                        {savingCap
+                            ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
+                            : saveCapOk
+                            ? '저장됨 ✓'
+                            : <><Save size={13} />저장</>
+                        }
+                    </button>
+                    <button
+                        onClick={handleResetCapDefaults}
+                        disabled={savingCap}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl text-sm font-bold text-slate-300 transition-colors"
+                    >
+                        <RotateCcw size={13} />
+                        기본값으로 복원
+                    </button>
+                </div>
             </section>
 
             {/* ── 플레이오프 형식 (관리자 전용, 플레이오프 시작 전까지 진행 중 세션에서도 변경 가능) ── */}

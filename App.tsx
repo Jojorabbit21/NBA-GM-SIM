@@ -32,12 +32,14 @@ import { LeagueLayout } from './views/multi/league/LeagueLayout';
 import MultiSeasonPage from './pages/MultiSeasonPage';
 import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
 import MultiStandingsView from './views/multi/season/MultiStandingsView';
+import MultiPlayoffsView from './views/multi/season/MultiPlayoffsView';
 import MultiScheduleView from './views/multi/season/MultiScheduleView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
-import MultiComingSoonView from './views/multi/season/MultiComingSoonView';
+import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
+import MultiPlayerDetailView from './views/multi/season/MultiPlayerDetailView';
 import AdminSimView from './views/multi/league/AdminSimView';
 import AdminTeamEditorView from './views/multi/league/AdminTeamEditorView';
 
@@ -381,11 +383,13 @@ const App: React.FC = () => {
                                 <Route index element={<MultiSeasonPage />} />
                                 <Route path="roster"       element={<MultiRosterView />} />
                                 <Route path="standings"    element={<MultiStandingsView />} />
+                                <Route path="playoffs"     element={<MultiPlayoffsView />} />
                                 <Route path="schedule"     element={<MultiScheduleView />} />
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
-                                <Route path="front-office" element={<MultiComingSoonView title="프론트 오피스" />} />
+                                <Route path="front-office" element={<MultiFrontOfficeView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
+                                <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                             </Route>
                         </Route>
                     </Route>

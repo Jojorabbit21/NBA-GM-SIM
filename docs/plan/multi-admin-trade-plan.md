@@ -8,6 +8,13 @@
 > `AdminTeamEditorView.tsx`(어드민이 팀별 뎁스차트/로테이션/전술을 보는 화면)에 "트레이드" 탭을
 > 추가해, 어드민이 두 팀 사이에 선수를 직접 맞교환할 수 있게 한다. CBA/샐러리 매칭 없는 단순
 > 스왑(어드민 전용 관리 도구) — 유저 간 협상형 트레이드 시스템(로드맵 항목)과는 별개.
+>
+> **후속: 유저 간 협상형 트레이드는 2026-08-18에 별도 구현 완료.** `league_trade_offers`/
+> `league_trade_offer_players`/`league_trade_blocks` 테이블 + `create_trade_offer`/
+> `respond_trade_offer` RPC + `views/multi/season/MultiFrontOfficeView.tsx`. 상세는
+> `docs/history/dev-log.md`의 "2026-08-18 — 멀티플레이어 유저 간 협상형 트레이드 시스템
+> 신규 구축" 항목 참조. 이 문서의 §5 "트레이드 알림/이력" 미정 사항도 해당 구현으로 해소됨
+> (이력은 `league_trade_offers.status='accepted'`가 곧 히스토리, 알림은 프론트오피스 배지).
 
 ---
 

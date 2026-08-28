@@ -4,14 +4,16 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
-import { ATTR_GROUPS, ATTR_LABEL, ATTR_KR_LABEL, ATTR_NAME_MAP, ATTR_AVG_KEYS } from '../../data/attributeConfig';
+import {
+    ATTR_NAME_MAP, ATTR_KR_LABEL,
+    COMPACT_ATTR_GROUPS, COMPACT_ITEM_BY_KEY, getCompactAttrValue,
+} from '../../data/attributeConfig';
 
 interface RosterGridProps {
     team: Team;
     tab: 'roster' | 'stats';
     onPlayerClick: (player: Player) => void;
     showFooter?: boolean;
-    hideAvgColumns?: boolean;
     renderRowAction?: (player: Player) => React.ReactNode;
 }
 
@@ -46,7 +48,7 @@ const STATS_COLS = [
 ];
 
 
-export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, hideAvgColumns = false, renderRowAction }) => {
+export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, renderRowAction }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     const handleSort = (key: string) => {
@@ -80,7 +82,12 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             return tsa > 0 ? p.stats.pts / (2 * tsa) : 0; 
         }
 
-        // 3. Attribute Fallback (Root properties like 'ins', 'out', 'speed', etc.)
+        // 3. 압축 능력치 콤보(여러 raw 능력치 평균) — 단일 항목 키는 raw 프로퍼티명과 동일해
+        // 아래 fallback에서 자연히 처리되므로, 콤보(INS/3PT/SPD)만 여기서 특별 처리.
+        const compactItem = COMPACT_ITEM_BY_KEY[key];
+        if (compactItem) return getCompactAttrValue(p, compactItem);
+
+        // 4. Attribute Fallback (Root properties like 'speed', 'strength', etc.)
         if (key in p) return (p as any)[key];
 
         return 0;
@@ -100,12 +107,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     const averages = useMemo(() => {
         const count = team.roster.length || 1;
         const attrAvg: any = {};
-        const allAttrKeys = ATTR_GROUPS.flatMap(g => g.keys);
-        allAttrKeys.push('ovr', 'age');
-        
-        allAttrKeys.forEach(k => {
-            if (k === 'ovr') attrAvg[k] = Math.round(team.roster.reduce((sum, p) => sum + calculatePlayerOvr(p), 0) / count);
-            else attrAvg[k] = Math.round(team.roster.reduce((sum, p) => sum + ((p as any)[k] || 0), 0) / count);
+        attrAvg.ovr = Math.round(team.roster.reduce((sum, p) => sum + calculatePlayerOvr(p), 0) / count);
+        attrAvg.age = Math.round(team.roster.reduce((sum, p) => sum + (p.age || 0), 0) / count);
+
+        COMPACT_ATTR_GROUPS.flatMap(g => g.items).forEach(item => {
+            attrAvg[item.key] = Math.round(team.roster.reduce((sum, p) => sum + getCompactAttrValue(p, item), 0) / count);
         });
         
         const statAvg: any = {};
@@ -156,38 +162,27 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <col style={{ width: WIDTHS.POS }} />
                     <col style={{ width: WIDTHS.AGE }} />
                     <col style={{ width: WIDTHS.OVR }} />
-                    {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k)).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
+                    {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
                     {tab === 'stats' && STATS_COLS.map((_, i) => <col key={`stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
                     {renderRowAction && <col style={{ width: 80 }} />}
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
-                    {/* Header Row 1: Groups */}
-                    <tr className="h-10">
-                        <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
-                            <div className="h-full flex items-center justify-center">
-                                <span className="text-sm font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
-                            </div>
-                        </th>
-                        {tab === 'roster' && ATTR_GROUPS.map(g => {
-                            const visibleKeys = hideAvgColumns ? g.keys.filter(k => !ATTR_AVG_KEYS.has(k)) : g.keys;
-                            if (visibleKeys.length === 0) return null;
-                            return (
-                                <th key={g.id} colSpan={visibleKeys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                    <div className="h-full flex items-center justify-center">
-                                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
-                                    </div>
-                                </th>
-                            );
-                        })}
-                        {tab === 'stats' && (
+                    {/* Header Row 1: Groups — "능력치" 탭(tab==='roster')은 요청에 따라 삭제, "stats" 모드만 유지 */}
+                    {tab === 'stats' && (
+                        <tr className="h-10">
+                            <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-sm font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
+                                </div>
+                            </th>
                             <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
                                 </div>
                             </th>
-                        )}
-                        {renderRowAction && <th className="bg-slate-950 border-b border-slate-800" />}
-                    </tr>
+                            {renderRowAction && <th className="bg-slate-950 border-b border-slate-800" />}
+                        </tr>
+                    )}
                     {/* Header Row 2: Labels */}
                     <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
                         {/* Use inline styles to force border removal and width locking */}
@@ -212,23 +207,19 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
                         >OVR</TableHeaderCell>
                         
-                        {tab === 'roster' && ATTR_GROUPS.map(g =>
-                            g.keys
-                                .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
-                                .map(k => (
-                                    <TableHeaderCell
-                                        key={k}
-                                        width={WIDTHS.ATTR}
-                                        className="border-r border-slate-800"
-                                        sortable
-                                        onSort={() => handleSort(k)}
-                                        sortDirection={sortConfig.key === k ? sortConfig.direction : null}
-                                        title={ATTR_NAME_MAP[k] || k}
-                                    >
-                                        {ATTR_LABEL[k] || k}
-                                    </TableHeaderCell>
-                                ))
-                        )}
+                        {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
+                            <TableHeaderCell
+                                key={item.key}
+                                width={WIDTHS.ATTR}
+                                className="border-r border-slate-800"
+                                sortable
+                                onSort={() => handleSort(item.key)}
+                                sortDirection={sortConfig.key === item.key ? sortConfig.direction : null}
+                                title={item.sourceKeys.map(k => ATTR_NAME_MAP[k] || k).join(' + ')}
+                            >
+                                {item.label}
+                            </TableHeaderCell>
+                        ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
                             <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
                         ))}
@@ -241,7 +232,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {/* Use inline styles to force border removal and width locking */}
                             <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                    <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                     {p.health !== 'Healthy' && (
                                         <span 
                                             className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
@@ -261,11 +252,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
-                            {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
-                                .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
-                                .map(k => (
-                                    <TableCell key={k} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={(p as any)[k]} variant="attribute" colorScale mono={false} />
-                                ))}
+                            {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
+                                <TableCell key={item.key} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={getCompactAttrValue(p, item)} variant="attribute" colorScale mono={false} />
+                            ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
                                 if (p.stats.mp === 0) {
@@ -316,11 +305,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                         </TableCell>
 
-                        {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys)
-                            .filter(k => !hideAvgColumns || !ATTR_AVG_KEYS.has(k))
-                            .map(k => (
-                                <TableCell key={k} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={averages.attr[k]} variant="attribute" colorScale mono={false} />
-                            ))}
+                        {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
+                            <TableCell key={item.key} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={averages.attr[item.key]} variant="attribute" colorScale mono={false} />
+                        ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             // G, GS, MIN은 팀 평균에서 제외 (빈칸 처리)
                             if (['g', 'gs', 'mp'].includes(c.key)) {
@@ -362,10 +349,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 간격만으로 열을 구분하고, 텍스트는 굵기/색상 전부 톤 하나로 통일해 은은하게 처리한다.
                 [2026-08-11] 사용자 요청으로 숨김 처리 — 코드는 그대로 보존. */}
             {tab === 'roster' && SHOW_ATTR_LEGEND && (() => {
-                const legendCols = ATTR_GROUPS.map(g => ({
+                const legendCols = COMPACT_ATTR_GROUPS.map(g => ({
                     id: g.id,
                     label: GROUP_LABEL_KR[g.label] || g.label,
-                    items: g.keys.filter(k => !ATTR_AVG_KEYS.has(k)),
+                    items: g.items,
                 }));
                 const maxRows = Math.max(...legendCols.map(c => c.items.length));
                 return (
@@ -384,10 +371,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 {Array.from({ length: maxRows }).map((_, i) => (
                                     <tr key={i}>
                                         {legendCols.map(c => {
-                                            const k = c.items[i];
+                                            const item = c.items[i];
+                                            const krLabel = item?.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join('+');
                                             return (
                                                 <td key={c.id} className="text-left text-slate-500 font-normal whitespace-nowrap">
-                                                    {k ? `${ATTR_LABEL[k]} ${ATTR_KR_LABEL[k] || k}` : ''}
+                                                    {item ? `${item.label} ${krLabel}` : ''}
                                                 </td>
                                             );
                                         })}

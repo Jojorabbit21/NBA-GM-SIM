@@ -6,18 +6,13 @@ import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
+import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { getReadableTextColor } from '../utils/colorContrast';
+import { CONF_NAMES } from '../utils/playoffLogic';
 import type { Player } from '../types';
-
-function hexToRgba(hex: string, alpha: number): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-}
 
 function ordinal(n: number): string {
     if (n === 1) return '1st';
@@ -33,27 +28,20 @@ function fmtVirtualDate(dateKey: string): string {
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-// 상대팀 배지 — TeamLogo(고정 실제 NBA 로고 이미지)는 유저가 커스텀한 팀 컬러/약어를
-// 반영하지 못해, 상대가 팀 컬러를 바꿔도 항상 원래 로고만 보이는 버그가 있었다.
-// "내 팀" 배지와 동일하게 league_teams의 color_primary/color_secondary/team_abbr로 그린다.
-const OpponentBadge: React.FC<{
-    teamId: string;
-    colorPrimary?: string | null;
-    colorText?: string | null;
-    abbr?: string | null;
-}> = ({ teamId, colorPrimary, colorText, abbr }) => (
-    <div
-        className="w-9 h-7 shrink-0 rounded flex items-center justify-center text-xs font-black"
-        style={{ backgroundColor: colorPrimary ?? '#334155', color: colorText ?? getReadableTextColor(colorPrimary) }}
-    >
-        {abbr?.slice(0, 3) ?? teamId.toUpperCase()}
-    </div>
-);
+// NBA 시즌은 10월에 시작해 이듬해 6월에 끝나므로, 7월 이전(1~6월)이면 시즌 시작 연도가
+// 작년이다 — "2026-27" 형태로 표기(단일플레이어 utils/seasonConfig.ts의 seasonShort와 동일 포맷).
+function seasonShortFromDate(dateKey: string): string {
+    const d = new Date(dateKey + 'T00:00:00');
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const startYear = m >= 7 ? y : y - 1;
+    return `${startYear}-${String(startYear + 1).slice(2)}`;
+}
 
 export const MultiHeader: React.FC = () => {
     const { league, leagueTeams, members } = useLeagueContext();
     const { session } = useGame();
-    const { schedule } = useSeasonContext();
+    const { schedule, roomId } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
@@ -189,9 +177,15 @@ export const MultiHeader: React.FC = () => {
 
         const totalRounds = allSeries.reduce((max: number, x: any) => Math.max(max, x.round ?? 1), 1);
         const r = s.round ?? 1;
-        const roundLabel = r === totalRounds ? '결승'
+        const isFinalRound = r === totalRounds;
+        const baseRoundLabel = isFinalRound ? '결승'
             : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
             : `${r}라운드`;
+        // 결승은 동/서부 통합이라 컨퍼런스 접두어 없음 — 그 이전 라운드만 "동부 1라운드"처럼 표시.
+        const confPrefix = !isFinalRound && s.conference && s.conference !== 'BPL'
+            ? (CONF_NAMES[s.conference] ?? s.conference) + ' '
+            : '';
+        const roundLabel = confPrefix + baseRoundLabel;
 
         // schedule 기반 실시간 승수 계산 — 리플레이(10분) 공개 전 경기는 집계에서 제외.
         // 서버는 시뮬레이션 직후 bracket_data.series를 즉시 갱신하므로, played 여부만으로
@@ -236,170 +230,129 @@ export const MultiHeader: React.FC = () => {
     }, [league, schedule, simStart, gprd, nowMs]);
     const isMyTeamChampion = !!(tournamentChampionId && myTeamId && tournamentChampionId === myTeamId);
 
-    const handleViewPlayer = useCallback((player: Player, teamSlug: string | null) => {
-        navigate(`${base}/roster`, { state: { viewPlayer: player, viewTeamId: teamSlug } });
-    }, [navigate, base]);
+    const { getPlayerUrlId } = usePlayerShortCodes();
+    const handleViewPlayer = useCallback((player: Player) => {
+        navigate(`${base}/player/${getPlayerUrlId(player.id)}`);
+    }, [navigate, base, getPlayerUrlId]);
 
     const handleViewTeam = useCallback((teamSlug: string) => {
         navigate(`${base}/roster?rteam=${teamSlug}`);
     }, [navigate, base]);
 
     const primaryColor = myTeam?.color_primary ?? '#4338ca';
-    const secondary    = myTeam?.color_secondary;
     const textColor    = myTeam?.color_text ?? getReadableTextColor(primaryColor);
-    const borderColor  = hexToRgba(secondary ?? primaryColor, 0.4);
-    const gradient     = `linear-gradient(97.5deg, transparent 58%, ${hexToRgba(primaryColor, 0.25)} 89%)`;
+
+    // "날짜" 칸 — 메인리그면 가상 오늘 날짜, 없으면 다음 경기의 날짜로 대체.
+    const dateLabel = currentVirtualDate
+        ? fmtVirtualDate(currentVirtualDate)
+        : nextGame ? fmtVirtualDate(nextGame.date) : null;
+    // "시즌 N"이 아니라 실제 연도 기반 "2026-27" 형태로 표기.
+    const seasonYearLabel = currentVirtualDate
+        ? seasonShortFromDate(currentVirtualDate)
+        : nextGame ? seasonShortFromDate(nextGame.date) : null;
+
+    // [2026-08-26] 실제 예정된 경기가 없을 때 "시즌정보" 칸을 비워두지 않고 목업 "다음 경기"
+    // 표시를 보여주기로 결정(사용자 확인 후 유지 요청). 실제 데이터가 있으면 항상 실데이터 우선.
+    const fallbackMode        = !myLiveGame && !(nextGame && countdown) && !tournamentChampionId;
+    const fallbackOpponent    = leagueTeams.find(t => t.team_slug !== myTeamId) ?? null;
+    const displayOpponent     = fallbackMode ? fallbackOpponent : opponentTeam;
+    const displayOpponentId   = fallbackMode ? fallbackOpponent?.team_slug ?? null : opponentId;
+    const displayIsAway       = fallbackMode ? true : isAway;
+    const displayCountdown    = fallbackMode ? '1:23:45' : countdown;
+    const displayCountdownColor = fallbackMode ? 'text-indigo-400' : countdownColor;
+    const displaySeriesInfo   = fallbackMode ? { roundLabel: '동부 1라운드', myWins: 2, oppWins: 1, targetWins: 4 } : seriesInfo;
+    const showNextGame        = fallbackMode || (!!nextGame && !!countdown);
 
     return (
         <div
-            className="w-full sticky top-0 z-[100] flex items-center h-[80px] relative shrink-0"
-            style={{ backgroundImage: gradient, borderBottom: `2px solid ${borderColor}` }}
+            className="w-full sticky top-0 z-[100] flex items-center justify-between h-10 relative shrink-0 bg-slate-900 border-b border-slate-700"
         >
             <div className="absolute inset-0 backdrop-blur-[20px] bg-[rgba(0,0,0,0.1)] pointer-events-none" />
 
-            {/* 왼쪽: 내 팀 정보 (싱글 DashboardHeader와 동일 구조) */}
-            <div className="flex items-center gap-4 pl-8 flex-1 min-w-0 relative z-10">
-                {myTeamId && (
+            {/* 왼쪽: 팀정보(팀 테마 컬러 비스듬한 배경) / 시즌정보(다음 경기·라이브 압축 포함) */}
+            <div className="flex items-center min-w-0 h-full relative z-10">
+                {/* 팀 테마 컬러 비스듬한 배경 — clip-path 퍼센트 기준이라 팀명 길이에 맞춰 자동으로 늘어남 */}
+                <div className="relative inline-flex items-center h-full pl-6 pr-8 shrink-0">
+                    {/* 사선 오프셋을 퍼센트가 아닌 고정 px(calc)로 지정 — 퍼센트면 컨텐츠(팀명+
+                        전적+순위+리그명)가 길어질수록 사선 폭도 비례해서 커져 텍스트가 삐져나감. */}
                     <div
-                        className="w-16 h-10 shrink-0 rounded flex items-center justify-center text-lg font-black"
-                        style={{ backgroundColor: primaryColor, color: textColor }}
-                    >
-                        {myTeam?.team_abbr?.slice(0, 3) ?? myTeamId.toUpperCase()}
-                    </div>
-                )}
-                <div className="flex flex-col gap-0.5 min-w-0">
-                    <span className="text-xl font-semibold text-white leading-7 truncate">
+                        className="absolute inset-0"
+                        style={{ backgroundColor: primaryColor, clipPath: 'polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%)' }}
+                    />
+                    <span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
                         {myTeam?.team_name ?? '내 팀'}
+                        <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>
+                        {league?.name && (
+                            <span className="font-medium ml-1.5 opacity-80">
+                                {rank > 0 ? `${ordinal(rank)} in ` : ''}{league.name}
+                            </span>
+                        )}
                     </span>
-                    <div className="text-sm leading-5 truncate">
-                        <span className="text-status-success-default font-medium">{wins}W-{losses}L</span>
-                        {rank > 0 && <span className="text-text-muted"> {ordinal(rank)} in </span>}
-                        <span className="text-text-muted">{league?.name ?? '—'}</span>
-                    </div>
+                </div>
+
+                {dateLabel && (
+                    <span className="text-sm text-white font-medium shrink-0 whitespace-nowrap pl-3">{dateLabel}</span>
+                )}
+
+                {seasonYearLabel && (
+                    <span className="text-sm text-text-muted shrink-0 whitespace-nowrap pl-3">{seasonYearLabel} 시즌</span>
+                )}
+
+                <div className="flex items-center gap-1.5 text-sm text-text-muted min-w-0 truncate pl-3">
+                    {myLiveGame ? (
+                        <>
+                            <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                            </span>
+                            <span className="text-red-400 font-bold shrink-0">LIVE</span>
+                            <span className="shrink-0">{isLiveAway ? '@' : 'vs'} {liveOpponentTeam?.team_abbr ?? liveOpponentId ?? '—'}</span>
+                            <button
+                                onClick={handleWatchLiveGame}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-sm font-bold transition-all active:scale-95 shrink-0"
+                            >
+                                <Tv size={12} />
+                                보기
+                            </button>
+                        </>
+                    ) : showNextGame ? (
+                        <>
+                            {displaySeriesInfo && (
+                                <span className="shrink-0">
+                                    {displaySeriesInfo.roundLabel}
+                                    {displaySeriesInfo.targetWins > 1 && ` ${displaySeriesInfo.myWins}-${displaySeriesInfo.oppWins}`}
+                                </span>
+                            )}
+                            <span className="shrink-0">{displayIsAway ? '@' : 'vs'} {displayOpponent?.team_abbr ?? displayOpponentId ?? '—'}</span>
+                            <span className={`flex items-center gap-1 font-semibold shrink-0 ${displayCountdownColor}`}>
+                                <Timer size={12} />
+                                {displayCountdown}
+                            </span>
+                        </>
+                    ) : tournamentChampionId ? (
+                        <>
+                            <Trophy size={13} className={`shrink-0 ${isMyTeamChampion ? 'text-amber-400' : 'text-zinc-500'}`} />
+                            <span className={`shrink-0 font-semibold ${isMyTeamChampion ? 'text-amber-400' : 'text-zinc-400'}`}>
+                                {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
+                            </span>
+                        </>
+                    ) : null}
                 </div>
             </div>
 
-            {/* 중앙: 네비게이션 탭 + 검색창 */}
-            <div className="absolute left-1/2 -translate-x-1/2 z-10">
+            {/* 오른쪽: 검색창 + 메뉴 */}
+            <div className="flex items-center gap-3 pr-6 shrink-0 relative z-10">
                 <MultiHeaderNavMenu
-                    teamPrimaryColor={primaryColor}
                     leagueTeams={leagueTeams}
                     poolPlayers={poolPlayers}
                     rosterMap={rosterMap}
                     myTeamId={myTeamId}
+                    roomId={roomId}
+                    hasPlayoffs={!!league?.bracket_data && league?.type !== 'tournament'}
+                    capEnabled={!!league?.cap_enabled}
                     onViewPlayer={handleViewPlayer}
                     onViewTeam={handleViewTeam}
                 />
-            </div>
-
-            {/* 오른쪽: 다음 경기 */}
-            <div className="flex items-center pr-8 shrink-0 relative z-10">
-                {myLiveGame ? (
-                    <div className="flex items-center gap-3">
-                        <div className="flex flex-col items-end gap-1.5 leading-none">
-                            <div className="flex items-center gap-1.5 text-xs text-red-400 font-bold">
-                                <span className="relative flex h-1.5 w-1.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-                                </span>
-                                <span>경기 진행중</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-base text-zinc-400 font-medium">
-                                    {isLiveAway ? '@' : 'vs'}
-                                </span>
-                                {liveOpponentId && (
-                                    <OpponentBadge
-                                        teamId={liveOpponentId}
-                                        colorPrimary={liveOpponentTeam?.color_primary}
-                                        colorText={liveOpponentTeam?.color_text}
-                                        abbr={liveOpponentTeam?.team_abbr}
-                                    />
-                                )}
-                                <span className="text-xl font-semibold text-white">
-                                    {liveOpponentTeam?.team_name ?? liveOpponentId ?? '—'}
-                                </span>
-                            </div>
-                        </div>
-                        <button
-                            onClick={handleWatchLiveGame}
-                            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 shrink-0"
-                        >
-                            <Tv size={14} />
-                            보기
-                        </button>
-                    </div>
-                ) : nextGame && countdown ? (
-                    <div className="flex flex-col items-end gap-1.5 leading-none">
-                        {/* 상단: 메인리그 정규시즌은 "지금" 가상 날짜(다음 경기 날짜 아님 — 다음
-                            경기까지 카운트다운은 바로 아래에 별도로 있음), 그 외(토너먼트/플레이오프)는 라운드·스코어 */}
-                        {league?.type === 'main_league' && !nextGame.isPlayoff ? (
-                            <span className="text-base text-white font-medium">
-                                {fmtVirtualDate(currentVirtualDate ?? nextGame.date)}
-                            </span>
-                        ) : (
-                            <div className="flex items-center gap-1.5 text-xs text-white">
-                                <span>다음 경기</span>
-                                <span>·</span>
-                                {seriesInfo ? (
-                                    <>
-                                        <span>{seriesInfo.roundLabel}</span>
-                                        {seriesInfo.targetWins > 1 && (
-                                            <>
-                                                <span>·</span>
-                                                <span className="font-medium">
-                                                    {seriesInfo.myWins}-{seriesInfo.oppWins}
-                                                </span>
-                                            </>
-                                        )}
-                                    </>
-                                ) : (
-                                    <span>정규시즌</span>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 하단: vs/@ 로고 팀이름 | 타이머 */}
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-base text-zinc-400 font-medium">
-                                    {isAway ? '@' : 'vs'}
-                                </span>
-                                {opponentId && (
-                                    <OpponentBadge
-                                        teamId={opponentId}
-                                        colorPrimary={opponentTeam?.color_primary}
-                                        colorText={opponentTeam?.color_text}
-                                        abbr={opponentTeam?.team_abbr}
-                                    />
-                                )}
-                                <span className="text-xl font-semibold text-white">
-                                    {opponentTeam?.team_name ?? opponentId ?? '—'}
-                                </span>
-                            </div>
-                            <div className="w-px h-7 bg-white/10 shrink-0" />
-                            <div className={`flex items-center gap-1.5 ${countdownColor}`}>
-                                <Timer size={14} />
-                                <span className="text-base font-mono font-semibold tabular-nums">
-                                    {countdown}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                ) : tournamentChampionId ? (
-                    <div className="flex items-center gap-2">
-                        <Trophy size={16} className={isMyTeamChampion ? 'text-amber-400' : 'text-zinc-500'} />
-                        <span className={`text-sm font-semibold ${isMyTeamChampion ? 'text-amber-400' : 'text-zinc-400'}`}>
-                            {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
-                        </span>
-                    </div>
-                ) : currentVirtualDate ? (
-                    <span className="text-base text-white font-medium">
-                        {fmtVirtualDate(currentVirtualDate)}
-                    </span>
-                ) : (
-                    <span className="text-sm text-zinc-600">예정된 경기 없음</span>
-                )}
             </div>
         </div>
     );

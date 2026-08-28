@@ -211,7 +211,7 @@ const CategoryTable: React.FC<{
                             <TableRow key={p.id} className="group">
                                 <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                     <span
-                                        className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                        className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
                                         onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
                                     >
                                         {p.name}

@@ -112,15 +112,15 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
     return (
         <div ref={containerRef} className="relative w-[340px]">
             <div
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 cursor-text border ${
+                className={`flex items-center gap-2 px-4 h-7 transition-all duration-200 cursor-text border ${
                     isFocused
-                        ? 'bg-surface-sunken border-border-emphasis'
-                        : 'bg-surface-flat border-border-default hover:border-border-emphasis'
+                        ? 'bg-slate-800 border-slate-600'
+                        : 'bg-slate-900 border-slate-700 hover:border-slate-600'
                 }`}
                 style={{ boxShadow: 'inset 0px 2px 4px rgba(0,0,0,0.15)' }}
                 onClick={() => inputRef.current?.focus()}
             >
-                <Search size={16} className="text-text-disabled shrink-0" />
+                <Search size={16} className="text-slate-500 shrink-0" />
                 <input
                     ref={inputRef}
                     type="text"
@@ -129,31 +129,31 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
                     onFocus={() => { setIsFocused(true); setIsOpen(true); }}
                     onBlur={() => setIsFocused(false)}
                     placeholder="팀, 선수 검색"
-                    className="bg-transparent border-none outline-none flex-1 text-sm font-medium text-text-primary placeholder:text-text-disabled min-w-0"
+                    className="bg-transparent border-none outline-none flex-1 text-sm font-medium text-white placeholder:text-slate-500 min-w-0"
                 />
                 {query && (
                     <button
                         onClick={e => { e.stopPropagation(); setQuery(''); inputRef.current?.focus(); }}
                         className="shrink-0"
                     >
-                        <X size={14} className="text-text-muted hover:text-text-primary transition-colors" />
+                        <X size={14} className="text-slate-400 hover:text-white transition-colors" />
                     </button>
                 )}
             </div>
 
             {showDropdown && (
                 <div
-                    className="absolute left-0 top-full mt-1 w-full rounded-xl overflow-hidden z-[200] bg-surface-card border border-border-default max-h-[320px] overflow-y-auto custom-scrollbar"
+                    className="absolute left-0 top-full mt-1 w-full rounded-sm overflow-hidden z-[200] bg-slate-900 border border-slate-700 max-h-[320px] overflow-y-auto custom-scrollbar scrollbar-slate"
                     style={{ boxShadow: '0px 20px 25px -5px rgba(0,0,0,0.1), 0px 10px 10px -5px rgba(0,0,0,0.04)' }}
                 >
                     {grouped.length === 0 ? (
-                        <div className="bg-surface-sidebar px-3 py-2">
-                            <span className="text-xs font-semibold text-text-muted">검색 결과 없음</span>
+                        <div className="bg-slate-800 px-3 py-1">
+                            <span className="text-xs font-semibold text-slate-400">검색 결과 없음</span>
                         </div>
                     ) : grouped.map(group => (
                         <div key={group.type}>
-                            <div className="bg-surface-sidebar px-3 py-2">
-                                <span className="text-xs font-semibold text-text-muted">
+                            <div className="bg-slate-800 px-3 py-1">
+                                <span className="text-xs font-semibold text-slate-400">
                                     {CATEGORY_LABELS[group.type]}
                                 </span>
                             </div>
@@ -161,12 +161,12 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
                                 <button
                                     key={i}
                                     onClick={() => handleSelect(result)}
-                                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-surface-hover transition-colors text-left"
+                                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-800 transition-colors text-left"
                                 >
                                     {result.type === 'team' && (
                                         <>
                                             <TeamLogo teamId={result.team.team_slug} size="custom" className="w-6 h-6 shrink-0" />
-                                            <span className="text-xs font-semibold text-text-muted truncate flex-1">
+                                            <span className="text-xs font-semibold text-slate-300 truncate flex-1">
                                                 {result.team.team_name}
                                             </span>
                                         </>
@@ -174,22 +174,16 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
                                     {result.type === 'player' && (
                                         <>
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-4 !h-4 !text-[10px] shrink-0" />
-                                                <span className="text-xs font-semibold text-text-muted truncate">
+                                                <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-5 !h-5 !text-xs shrink-0" />
+                                                <span className="text-xs font-semibold text-slate-300 truncate">
                                                     {result.player.name}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <span
-                                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-                                                    style={{
-                                                        backgroundColor: result.teamColor ?? '#3f3f46',
-                                                        color: '#ffffff',
-                                                    }}
-                                                >
-                                                    {result.teamAbbr ?? 'FA'}
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                                                    {result.teamAbbr ?? 'Free Agent'}
                                                 </span>
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-card text-text-secondary border border-border-default whitespace-nowrap">
+                                                <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
                                                     {result.player.position}
                                                 </span>
                                             </div>

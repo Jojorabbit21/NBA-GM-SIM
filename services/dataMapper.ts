@@ -384,6 +384,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
         career_history: Array.isArray(raw.career_history) ? raw.career_history
             : Array.isArray(baseAttrs?.career_history) ? baseAttrs.career_history
             : undefined,
+
+        // 등번호 (base_attributes.num — PlayerEditorPage가 쓰는 것과 동일한 DB 키)
+        jerseyNumber: baseAttrs?.num != null ? Number(baseAttrs.num) : undefined,
     };
 
     // 계약 데이터 구성 (JSONB contract 또는 salary/contractYears fallback)

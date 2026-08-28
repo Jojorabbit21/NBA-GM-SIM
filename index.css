@@ -175,6 +175,16 @@ body {
 .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
 .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* 슬레이트 계열 배경(멀티 헤더 검색 드롭다운 등)에서 기본(zinc 계열) 스크롤바 대신 사용 */
+.scrollbar-slate::-webkit-scrollbar-track { background: #0f172a; }
+.scrollbar-slate::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 5px;
+    border: 2px solid #0f172a;
+}
+.scrollbar-slate::-webkit-scrollbar-thumb:hover { background: #475569; }
+.scrollbar-slate { scrollbar-width: thin; scrollbar-color: #334155 #0f172a; }
+
 /* Seven Segment & LED Effects */
 .font-digital { font-family: 'Seven Segment', monospace; }
 

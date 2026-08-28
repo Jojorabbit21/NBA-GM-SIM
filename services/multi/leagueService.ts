@@ -216,6 +216,10 @@ export const createRoom = async (
             season:        params.season        ?? '2025-2026',
             season_number: params.seasonNumber  ?? 1,
             sim_date:      params.simDate        ?? '2025-10-20',
+            // 히든 텐던시(선수 성격/멘탈/스카우팅 리포트 + PBP 엔진 시드) 생성용 —
+            // 방마다 고유해야 하므로 생성 시점에 한 번만 발급해 영속화(싱글의
+            // useGameData.ts tendency_seed 발급 패턴과 동일).
+            tendency_seed: crypto.randomUUID(),
             ...(params.simSettings ? { sim_settings: params.simSettings } : {}),
         })
         .select('id, league_id, max_players, status, created_at')
@@ -353,6 +357,17 @@ export interface UpdateLeagueSettingsParams {
     playInEnabled?:      boolean;
     /** 관리자 전용 엔진 설정(부상/가비지타임 등) — rooms.sim_settings에 저장 */
     simSettings?:        SimSettings;
+    /** [2026-08-26] 샐러리캡 마스터 스위치 + 세부 항목(각각 개별 on/off + 금액). */
+    capEnabled?:          boolean;
+    salaryCapAmount?:     number;
+    luxuryTaxEnabled?:    boolean;
+    luxuryTaxAmount?:     number;
+    apron1Enabled?:       boolean;
+    apron1Amount?:        number;
+    apron2Enabled?:       boolean;
+    apron2Amount?:        number;
+    salaryFloorEnabled?:  boolean;
+    salaryFloorAmount?:   number;
 }
 
 export const updateLeagueSettings = async (
@@ -378,6 +393,16 @@ export const updateLeagueSettings = async (
     if (p.gamesPerRealDay      !== undefined) payload.games_per_real_day      = p.gamesPerRealDay;
     if (p.playoffTeamCount     !== undefined) payload.playoff_team_count      = p.playoffTeamCount;
     if (p.playInEnabled        !== undefined) payload.play_in_enabled         = p.playInEnabled;
+    if (p.capEnabled           !== undefined) payload.cap_enabled             = p.capEnabled;
+    if (p.salaryCapAmount      !== undefined) payload.salary_cap_amount       = p.salaryCapAmount;
+    if (p.luxuryTaxEnabled     !== undefined) payload.luxury_tax_enabled      = p.luxuryTaxEnabled;
+    if (p.luxuryTaxAmount      !== undefined) payload.luxury_tax_amount       = p.luxuryTaxAmount;
+    if (p.apron1Enabled        !== undefined) payload.apron1_enabled          = p.apron1Enabled;
+    if (p.apron1Amount         !== undefined) payload.apron1_amount           = p.apron1Amount;
+    if (p.apron2Enabled        !== undefined) payload.apron2_enabled          = p.apron2Enabled;
+    if (p.apron2Amount         !== undefined) payload.apron2_amount           = p.apron2Amount;
+    if (p.salaryFloorEnabled   !== undefined) payload.salary_floor_enabled    = p.salaryFloorEnabled;
+    if (p.salaryFloorAmount    !== undefined) payload.salary_floor_amount     = p.salaryFloorAmount;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
     if (error) return { error: error.message };

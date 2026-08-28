@@ -51,6 +51,16 @@ export interface LeagueRow {
     max_teams: number;
     season_number: number;
     cap_enabled: boolean;
+    /** [2026-08-26] 어드민 세부 설정 — cap_enabled는 전체 마스터 스위치, 아래는 각각 개별 on/off + 금액(달러). */
+    salary_cap_amount: number;
+    luxury_tax_enabled: boolean;
+    luxury_tax_amount: number;
+    apron1_enabled: boolean;
+    apron1_amount: number;
+    apron2_enabled: boolean;
+    apron2_amount: number;
+    salary_floor_enabled: boolean;
+    salary_floor_amount: number;
     finance_enabled: boolean;
     trade_enabled: boolean;
     fa_enabled: boolean;
@@ -310,6 +320,11 @@ export interface LeagueTeamRow {
     is_ai: boolean;
     draft_order: number | null;
     roster: string[];           // player_id[]
+    /** [2026-08-26] 트레이드 블록과 별개 — 팀 단위로 "원하는 대가"를 표현하는 위시리스트. */
+    trade_request_note: string | null;
+    trade_request_positions: string[];
+    trade_request_player_ids: string[];
+    trade_request_archetypes: string[];
     created_at: string;
 }
 
