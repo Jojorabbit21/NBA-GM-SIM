@@ -34,6 +34,7 @@ import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
 import MultiStandingsView from './views/multi/season/MultiStandingsView';
 import MultiPlayoffsView from './views/multi/season/MultiPlayoffsView';
 import MultiScheduleView from './views/multi/season/MultiScheduleView';
+import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
 import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
@@ -381,6 +382,7 @@ const App: React.FC = () => {
                             <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
                             <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
                                 <Route index element={<MultiSeasonPage />} />
+                                <Route path="news"         element={<MultiNewsFeedView />} />
                                 <Route path="roster"       element={<MultiRosterView />} />
                                 <Route path="standings"    element={<MultiStandingsView />} />
                                 <Route path="playoffs"     element={<MultiPlayoffsView />} />

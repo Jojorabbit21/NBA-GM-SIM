@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
-    Home, Users, ListOrdered, Calendar,
+    Home, Users, ListOrdered, Calendar, Newspaper,
     GitPullRequestClosed, BarChart2, ArrowLeftRight, Trophy,
     CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
 } from 'lucide-react';
@@ -118,6 +118,12 @@ export const MultiSidebar: React.FC = () => {
                     icon={<Home />}
                     label="홈"
                     onClick={() => navigate(base)}
+                />
+                <NavItem
+                    active={pathname.startsWith(`${base}/news`)}
+                    icon={<Newspaper />}
+                    label="뉴스피드"
+                    onClick={() => navigate(`${base}/news`)}
                 />
                 <NavItem
                     active={pathname.startsWith(`${base}/roster`)}

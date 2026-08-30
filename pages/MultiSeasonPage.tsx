@@ -2,10 +2,11 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Flame, TrendingUp, Star, ArrowLeftRight, Tv, type LucideIcon } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../hooks/useLeagueRawStats';
+import { useLeagueHeadlines, type LeagueEvent, type LeagueEventType } from '../hooks/useLeagueHeadlines';
 import { useGameShortCodes } from '../hooks/useGameShortCodes';
 import { useGame } from '../hooks/useGameContext';
 import { supabase } from '../services/supabaseClient';
@@ -326,6 +327,52 @@ const LeagueStandingsCard: React.FC<{
                     })}
                 </tbody>
             </table>
+        </div>
+    );
+};
+
+// 리그 소식(League Headlines) — 경기 결과/연승/개인 활약/선수 연속 기록/유저간
+// 트레이드처럼 서버가 이미 "주목할 만한" 사건만 league_events에 걸러 담아 두므로
+// (server/src/simRunner.ts, respond_trade_offer RPC), 여기서는 최근 것들을 그대로
+// 나열만 한다. 내 팀이 걸린 소식은 배경만 살짝 강조(순위표의 emerald 강조와 동일 톤).
+const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
+    game_result: Tv,
+    player_feat: Star,
+    player_streak: Flame,
+    win_streak: TrendingUp,
+    trade: ArrowLeftRight,
+};
+
+const LeagueHeadlinesCard: React.FC<{
+    roomId: string | undefined;
+    myTeamSlug: string | null;
+    primaryColor: string;
+}> = ({ roomId, myTeamSlug, primaryColor }) => {
+    const { data: events, isLoading } = useLeagueHeadlines(roomId, myTeamSlug);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+            <SectionHeader title="리그 소식" color={primaryColor} />
+            {isLoading ? (
+                <p className="text-slate-500 text-xs text-center py-6 ko-normal">불러오는 중...</p>
+            ) : !events || events.length === 0 ? (
+                <p className="text-slate-500 text-xs text-center py-6 ko-normal">아직 소식이 없습니다.</p>
+            ) : (
+                <ul className="divide-y divide-slate-800">
+                    {events.map((e: LeagueEvent) => {
+                        const Icon = HEADLINE_ICON[e.type];
+                        return (
+                            <li
+                                key={e.id}
+                                className={`flex items-start gap-2 px-3 py-2 ${e.involvesMyTeam ? 'bg-emerald-500/10' : ''}`}
+                            >
+                                <Icon size={14} className="text-slate-500 mt-0.5 shrink-0" />
+                                <span className="text-xs text-slate-300 ko-normal leading-snug">{e.headline}</span>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </div>
     );
 };
@@ -917,6 +964,13 @@ const MultiSeasonPage: React.FC = () => {
                         playInEnabled={league?.play_in_enabled ?? true}
                         isTournament={isTournamentLeague}
                         onViewAll={() => goTo('standings')}
+                    />
+
+                    {/* 리그 소식 — 대량득점차/연승/개인 활약/유저간 트레이드 헤드라인 */}
+                    <LeagueHeadlinesCard
+                        roomId={room?.id}
+                        myTeamSlug={myTeamId}
+                        primaryColor={primaryColor}
                     />
 
                 </div>

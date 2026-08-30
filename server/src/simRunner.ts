@@ -18,6 +18,7 @@ import { archiveTournament } from './shared/tournamentArchiver.ts';
 import { handlePlayInAdvance } from './shared/playInSeeder.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
+import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, type DetectedEvent } from './shared/leagueEvents.ts';
 
 export interface SimResult {
     ok: boolean;
@@ -39,7 +40,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         // ── 1. 방 데이터 로드 ──────────────────────────────────────────────
         const { data: room } = await supabase
             .from('rooms')
-            .select('roster_state, tendency_seed, sim_settings, coaching_staff, league_id')
+            .select('roster_state, tendency_seed, sim_settings, coaching_staff, league_id, season_number')
             .eq('id', roomId)
             .single();
         if (!room) return { ok: false, error: 'Room not found' };
@@ -236,6 +237,60 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             if (!applied?.length) {
                 console.warn(`[simRunner] ${gameId} — 다른 프로세스가 이미 기록함, 토너먼트 전진 스킵`);
                 return { ok: true, skipped: true, reason: 'already recorded' };
+            }
+
+            // ── 6.5. 리그 소식(League Headlines) 이벤트 감지 ──────────────────────
+            // "주목할 만한" 경기 결과만 골라 league_events에 기록 — 실패해도 게임 저장
+            // 자체(위에서 이미 커밋됨)를 막으면 안 되므로 감지/삽입 전체를 try/catch로
+            // 감싸 로그만 남기고 넘어간다.
+            try {
+                const events: DetectedEvent[] = [];
+
+                // 경기 결과 — 마진 상관없이 항상 1건(MVP 포함).
+                events.push(detectGameResult(
+                    homeTeamRow.team_name, awayTeamRow.team_name,
+                    homeTeamId, awayTeamId, homeScore, awayScore,
+                    result.homeBox, result.awayBox,
+                ));
+
+                // 개인 활약 — 자격 있는 선수마다 각각 1건.
+                events.push(...detectPlayerFeats(result.homeBox, result.awayBox));
+
+                // 선수 연속 기록 — player_stat_streaks 갱신 후 보고 기준 넘은 것만 반환.
+                events.push(...await detectPlayerStatStreaks(supabase, roomId, result.homeBox, result.awayBox));
+
+                for (const [teamSlug, teamName] of [
+                    [homeTeamId, homeTeamRow.team_name],
+                    [awayTeamId, awayTeamRow.team_name],
+                ] as const) {
+                    const { data: recentGames } = await supabase
+                        .from('games')
+                        .select('home_team_id, away_team_id, home_score, away_score')
+                        .eq('room_id', roomId)
+                        .eq('played', true)
+                        .or(`home_team_id.eq.${teamSlug},away_team_id.eq.${teamSlug}`)
+                        .order('game_date', { ascending: false })
+                        .order('game_seq', { ascending: false })
+                        .limit(15);
+                    const streak = detectWinStreak(teamSlug, teamName, recentGames ?? []);
+                    if (streak) events.push(streak);
+                }
+
+                if (events.length > 0) {
+                    await supabase.from('league_events').insert(events.map(e => ({
+                        room_id: roomId,
+                        league_id: (room as any).league_id ?? '',
+                        season_number: (room as any).season_number ?? null,
+                        game_id: gameId,
+                        type: e.type,
+                        team_ids: e.teamIds,
+                        player_ids: e.playerIds,
+                        score: e.score,
+                        payload: { headline: e.headline },
+                    })));
+                }
+            } catch (err) {
+                console.error(`[simRunner] 리그 소식 이벤트 생성 실패 room=${roomId} game=${gameId}:`, err);
             }
 
             // ── 7. 토너먼트 처리 ───────────────────────────────────────────────
