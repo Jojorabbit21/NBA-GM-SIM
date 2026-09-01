@@ -2,7 +2,7 @@
 import React from 'react';
 
 interface TabBarProps<T extends string> {
-    tabs: { id: T; label: string }[];
+    tabs: { id: T; label: string; badge?: number }[];
     activeTab: T;
     onTabChange: (tab: T) => void;
     /** 탭 버튼 영역 우측 끝에 추가로 배치할 컨텐츠 (예: 저장 버튼) */
@@ -36,7 +36,16 @@ export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSl
                             borderColor: isActive ? theme.accent : 'transparent',
                         } : undefined}
                     >
-                        {t.label}
+                        <span className="relative">
+                            {t.label}
+                            {/* [2026-08-31] 사이드바 NavItem 배지와 동일한 스타일(bg-red-500, 9+ 캡) —
+                                미확인 항목이 있는 탭에 표시. */}
+                            {!!t.badge && (
+                                <span className="absolute -top-2 -right-3 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold normal-case">
+                                    {t.badge > 9 ? '9+' : t.badge}
+                                </span>
+                            )}
+                        </span>
                     </button>
                 );
             })}

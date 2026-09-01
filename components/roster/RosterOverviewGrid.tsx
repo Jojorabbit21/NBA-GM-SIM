@@ -8,10 +8,13 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../services/playerDevelopment/archetypeEvaluator';
 import type { PlayerArchetypeState } from '../../types/archetype';
 import { formatMoney } from '../../utils/formatMoney';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 interface RosterOverviewGridProps {
     team: Team;
     onPlayerClick: (player: Player) => void;
+    /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+    enableHoverCard?: boolean;
 }
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' };
@@ -40,7 +43,7 @@ const getStickyStyle = (left: number, width: number, isLast: boolean = false) =>
     borderRight: isLast ? undefined : 'none',
 });
 
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick }) => {
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     const handleSort = (key: string) => {
@@ -136,7 +139,9 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             return (
                                 <TableRow key={p.id} className="group">
                                     <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                        <span className="text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                        <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                            <span className="text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                        </PlayerHoverCard>
                                     </TableCell>
                                     <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                                     <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>

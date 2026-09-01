@@ -58,7 +58,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         // [migration 2026-08-06] rooms.schedule 전체 스캔 대신 games 테이블에서 해당 경기 1행만 조회.
         const { data: game } = await supabase
             .from('games')
-            .select('home_team_id, away_team_id, played, scheduled_at, game_seq, series_id')
+            .select('home_team_id, away_team_id, played, scheduled_at, game_seq, series_id, game_date')
             .eq('room_id', roomId).eq('game_id', gameId)
             .maybeSingle();
         if (!game) return { ok: false, error: 'Game not found in schedule' };
@@ -246,18 +246,20 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             try {
                 const events: DetectedEvent[] = [];
 
-                // 경기 결과 — 마진 상관없이 항상 1건(MVP 포함).
+                // 경기 결과 — 마진 상관없이 항상 1건(MVP 포함). pbpShotEvents는 초박빙/버저비터
+                // 판정용 — 게임 로그(위 5단계에서 game_pbp에 이미 저장한 것과 동일 배열,
+                // 새 조회 없이 그대로 재사용).
                 events.push(detectGameResult(
                     homeTeamRow.team_name, awayTeamRow.team_name,
                     homeTeamId, awayTeamId, homeScore, awayScore,
-                    result.homeBox, result.awayBox,
+                    result.homeBox, result.awayBox, result.pbpShotEvents,
                 ));
 
                 // 개인 활약 — 자격 있는 선수마다 각각 1건.
-                events.push(...detectPlayerFeats(result.homeBox, result.awayBox));
+                events.push(...detectPlayerFeats(result.homeBox, result.awayBox, homeTeamId, awayTeamId, homeScore, awayScore));
 
                 // 선수 연속 기록 — player_stat_streaks 갱신 후 보고 기준 넘은 것만 반환.
-                events.push(...await detectPlayerStatStreaks(supabase, roomId, result.homeBox, result.awayBox));
+                events.push(...await detectPlayerStatStreaks(supabase, roomId, result.homeBox, result.awayBox, homeTeamId, awayTeamId, homeScore, awayScore));
 
                 for (const [teamSlug, teamName] of [
                     [homeTeamId, homeTeamRow.team_name],
@@ -265,28 +267,35 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 ] as const) {
                     const { data: recentGames } = await supabase
                         .from('games')
-                        .select('home_team_id, away_team_id, home_score, away_score')
+                        .select('id, game_date, home_team_id, away_team_id, home_score, away_score')
                         .eq('room_id', roomId)
                         .eq('played', true)
                         .or(`home_team_id.eq.${teamSlug},away_team_id.eq.${teamSlug}`)
                         .order('game_date', { ascending: false })
                         .order('game_seq', { ascending: false })
                         .limit(15);
-                    const streak = detectWinStreak(teamSlug, teamName, recentGames ?? []);
+                    const streak = await detectWinStreak(supabase, roomId, teamSlug, teamName, recentGames ?? []);
                     if (streak) events.push(streak);
                 }
 
                 if (events.length > 0) {
+                    // payload 봉투(v/headline)는 여기서 한 번만 붙인다 — leagueEvents.ts의
+                    // 6개 반환 지점마다 반복하지 않기 위해(services/multi/leagueEventPayload.ts
+                    // 가 v===1을 구조화 payload 판별 기준으로 씀).
+                    // sim_date: 이 배치의 모든 이벤트가 이 경기 하나에서 나왔으므로
+                    // game.game_date(인게임 날짜, wall-clock scheduled_at과 다름) 그대로
+                    // 공유 — 뉴스피드 헤더의 날짜 범위 필터가 이 컬럼을 조회한다.
                     await supabase.from('league_events').insert(events.map(e => ({
                         room_id: roomId,
                         league_id: (room as any).league_id ?? '',
                         season_number: (room as any).season_number ?? null,
                         game_id: gameId,
+                        sim_date: game.game_date,
                         type: e.type,
                         team_ids: e.teamIds,
                         player_ids: e.playerIds,
                         score: e.score,
-                        payload: { headline: e.headline },
+                        payload: { v: 1, headline: e.headline, ...e.payload },
                     })));
                 }
             } catch (err) {

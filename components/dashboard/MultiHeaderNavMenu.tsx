@@ -57,7 +57,8 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
         let cancelled = false;
         const fetchCount = async () => {
             const { incoming } = await listPendingTradeOffers(roomId, myTeamDbId);
-            if (!cancelled) setPendingTradeCount(incoming.length);
+            // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
+            if (!cancelled) setPendingTradeCount(incoming.filter(o => !o.to_team_read_at).length);
         };
         fetchCount();
         const channel = supabase
@@ -108,7 +109,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
     const isTeamActive    = pathname.startsWith(`${base}/roster`);
     const isTacticsActive = pathname.startsWith(`${base}/tactics`);
     const isLeagueActive  = pathname.startsWith(`${base}/standings`) || pathname.startsWith(`${base}/leaderboard`)
-        || pathname.startsWith(`${base}/schedule`) || pathname.startsWith(`${base}/front-office`)
+        || pathname.startsWith(`${base}/schedule`) || pathname.startsWith(`${base}/transaction`)
         || pathname.startsWith(`${base}/playoffs`);
 
     // tabValue가 있으면 같은 경로 안에서 ?tab= 값까지 맞아야 활성 처리(로스터/전술처럼
@@ -146,7 +147,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
         ...(hasPlayoffs ? [{ label: '플레이오프', path: `${base}/playoffs` }] : []),
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
-        { label: '트레이드',  path: `${base}/front-office`, badge: pendingTradeCount },
+        { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },
     ];
 
     // 각진 플랫 드롭다운 — 버튼 바로 아래 틈 없이 붙고(mt-0), 항목은 알약형 칩이 아니라

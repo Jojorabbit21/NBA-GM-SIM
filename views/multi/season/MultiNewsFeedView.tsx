@@ -1,64 +1,422 @@
 
-import React from 'react';
-import { Flame, TrendingUp, Star, ArrowLeftRight, Tv, Loader2, type LucideIcon } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
-import { useLeagueHeadlines, type LeagueEvent, type LeagueEventType } from '../../../hooks/useLeagueHeadlines';
+import { useLeagueNewsFeed, type LeagueEvent, type LeagueEventType, type NewsSortOrder } from '../../../hooks/useLeagueHeadlines';
+import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
+import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
+import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
+import { useServerClock } from '../../../utils/serverClock';
+import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
+import { TeamBadge } from '../../../components/common/TeamBadge';
+import { StoryCard, tierFromScore } from './newsFeedCards';
+import { buildPlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { findCurrentVirtualDate, addDaysToKey } from './multiScheduleUtils';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 
-// 뉴스피드 — 시즌 홈의 "리그 소식" 위젯(MultiSeasonPage.tsx, 최근 8개만)과 동일한
-// league_events 소스를 더 넓게(50개) 보여주는 전용 화면. 아이콘 매핑은 그 위젯과
-// 동일한 값을 이 화면에도 로컬로 둔다(프레젠테이셔널 마크업은 화면마다 각자 두는
-// 이 프로젝트 관례 — 로직/데이터는 useLeagueHeadlines 훅으로 공유).
-const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
-    game_result: Tv,
-    player_feat: Star,
-    player_streak: Flame,
-    win_streak: TrendingUp,
-    trade: ArrowLeftRight,
+// [2026-09-01] 좌측 리스트 헤더 아래 타입 필터 행 — 메세지 타입별로 다중 선택 필터링.
+// 빈 배열 = 전체 타입(팀 필터와 동일한 관례). game_result를 선택해도 useLeagueNewsFeed의
+// 기본 쿼리가 이미 "특이케이스만"으로 좁혀둔 상태 위에 추가로 좁히는 것이라(중복 방지
+// 원칙 유지), 일반 경기 결과 전체가 나오진 않는다.
+const ALL_NEWS_TYPES: LeagueEventType[] = ['game_result', 'player_feat', 'player_streak', 'win_streak', 'trade'];
+const TYPE_LABEL: Record<LeagueEventType, string> = {
+    game_result: '경기결과',
+    player_feat: '개인활약',
+    player_streak: '연속기록',
+    win_streak: '팀연승',
+    trade: '트레이드',
 };
 
-const NUM_FEED_ITEMS = 50;
-
+// [2026-09-01] 좁은 단일 컬럼 리스트 → 실제 뉴스 사이트 같은 그리드로 개편.
+// 데이터는 useLeagueNewsFeed 훅으로 공유, 프레젠테이셔널 마크업은 newsFeedCards.tsx.
+//
+// [2026-09-01] "경기 결과" 전용 섹션 삭제(사용자 요청) — MultiSeasonLayout이 이미 모든
+// 시즌 화면 상단에 GameDateStrip(일정/라이브 스코어 가로 스크롤)을 그려서 일반 경기
+// 결과를 뉴스피드에 또 나열하면 중복. 대량득점차 승리 같은 "특이케이스"만
+// useLeagueNewsFeed가 서버 쿼리 단계에서 걸러 "리그 소식" 피드에 합쳐 넣는다
+// (hooks/useLeagueHeadlines.ts GAME_RESULT_MIN_SCORE 참고) — record/teamOvr은 그
+// 특이케이스 카드(GameResultCard, 그리드에서도 항상 한 행 전체 차지)가 팀 전적/OVR을
+// 보여주려고 여전히 필요.
+//
+// [2026-09-01] 헤더 필터(팀/빅뉴스/정렬) 추가 — 리더보드 툴바(components/leaderboard/
+// LeaderboardToolbar.tsx)의 시각 언어를 그대로 재현. 팀 필터는 처음에 공용 Dropdown의
+// 단일선택 텍스트 리스트로 만들었다가, 리더보드와 시각적으로 달라 보인다는 피드백을 받고
+// 리더보드 팀 필터와 완전히 동일한 구현(fixed 포지셔닝 커스텀 패널 + 체크박스 다중선택 +
+// "모두 선택" + TeamBadge)으로 다시 맞췄다. 리더보드 툴바 컴포넌트 자체는 리더보드 전용
+// 필터 상태(선수/팀 모드, 스탯 카테고리 등)에 강결합돼 있어 그대로 import할 수 없어서
+// 마크업만 복제(화면 밖에서 재사용되는 조합은 아니라 공용 컴포넌트로 뽑지 않음).
+//
+// [2026-09-01] 날짜 하루 단위 이동 스텝퍼 + 기본값 "오늘" 추가 — 사용자가 명시적으로
+// "이 날짜는 시뮬레이션 날짜"라고 지정. simDateFrom/simDateTo 기본값을 빈 문자열(전체 기간)
+// 에서 오늘의 "가상 시즌 날짜"로 바꿔 첫 진입 시 오늘 하루치만 보이게 하고, 타이틀 옆
+// 스텝퍼(◀ 날짜 ▶)가 두 값을 함께 ±1일씩 밀어(범위 폭은 유지) 하루 단위 이동을 지원한다.
+// 필터바의 두 날짜 인풋(기존 구현)은 명시적 범위 지정용으로 그대로 두고 — 두 컨트롤이
+// 같은 state를 공유해 항상 동기화됨.
+//
+// [버그 수정] 처음엔 "오늘"을 useSeasonContext().currentSimDate(rooms.sim_date)로 잡았는데,
+// 이건 실제(wall-clock) KST 날짜다(server/src/scheduler.ts의 advanceSimDates가
+// kstDateFromMs(scheduled_at)로 채움) — 메인리그는 games.game_date(=league_events.sim_date)가
+// 압축 스케줄이 아니라 가상 NBA 캘린더 날짜(예: "2027-10-24", server/src/finalize.ts가
+// virtual_season_year로 시즌을 생성)라서 currentSimDate와 값 자체가 다르다. 그래서 기본값이
+// "오늘"이 아니라 사실상 무작위한 실제 날짜로 보였던 것 — MultiScheduleView.tsx가 이미
+// 겪은 문제이고 거기서 쓰는 해법(findCurrentVirtualDate)을 그대로 재사용한다.
 const MultiNewsFeedView: React.FC = () => {
-    const { room } = useLeagueContext();
-    const { myTeamId } = useSeasonContext();
-    const { data: events, isLoading } = useLeagueHeadlines(room?.id, myTeamId, NUM_FEED_ITEMS);
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const { league, room, leagueTeams } = useLeagueContext();
+    const { myTeamId, currentSimDate, schedule } = useSeasonContext();
+    const serverNow = useServerClock();
+    // 메인리그만 game_date가 가상 캘린더 — 토너먼트는 game_date 자체가 실제 방송 시각
+    // 기반이라 currentSimDate(실제 KST)를 그대로 써야 함(MultiScheduleView.tsx와 동일 분기).
+    const isMainLeague = league?.type === 'main_league';
+    const todaySimDate = useMemo(() => {
+        if (!isMainLeague) return currentSimDate;
+        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
+    }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
+    // useSeasonContext().teams는 멀티플레이어 경로에서 항상 빈 배열([])로 남아있는
+    // 미사용 필드다(useMultiGameData 내부에서 setTeams를 호출하는 코드가 없음 — 실제로
+    // 채워주는 곳은 싱글플레이어 useGameData.ts뿐). 다른 멀티 화면들(로스터/전술/트레이드)은
+    // 전부 이 필드 대신 buildLeagueTeams() 또는 useMultiSearchData()로 직접 로스터를 구성한다.
+    // 뉴스피드도 동일하게 트레이드 화면(MultiFrontOfficeView.tsx)에서 이미 검증된
+    // useMultiSearchData(전체 드래프트풀 Player[] + playerId→team_slug 역인덱스)를 재사용.
+    const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
+    const navigate = useNavigate();
+    const { getGameUrlId } = useGameShortCodes(room?.id);
+    const { getPlayerUrlId } = usePlayerShortCodes();
+
+    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+    const [selectedTypes, setSelectedTypes] = useState<LeagueEventType[]>([]);
+    const toggleType = (t: LeagueEventType) => {
+        setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+    };
+    const [bigNewsOnly, setBigNewsOnly] = useState(false);
+    const [sortOrder, setSortOrder] = useState<NewsSortOrder>('latest');
+    // 인게임(시뮬레이션) 날짜 범위 — league_events.sim_date(games.game_date 스냅샷) 기준.
+    // 실제 wall-clock 날짜(createdAt)가 아니라 리그가 압축 스케줄로 진행되는 인게임 날짜.
+    // 기본값 = 오늘의 "가상 시즌 날짜"(todaySimDate) 하루만 — 빈 문자열은 "전체 기간"(필터
+    // 인풋의 초기화 버튼으로만 도달 가능, 스텝퍼는 항상 특정 날짜로 복귀시킴).
+    const [simDateFrom, setSimDateFrom] = useState<string>(todaySimDate);
+    const [simDateTo, setSimDateTo] = useState<string>(todaySimDate);
+
+    // 스텝퍼 — from/to를 항상 함께 ±1일 밀어 범위 폭을 유지한다. 전체 기간(둘 다 '') 상태에서
+    // 누르면 오늘을 기준으로 하루짜리 범위로 복귀.
+    const shiftDateRange = (deltaDays: number) => {
+        setSimDateFrom(prev => addDaysToKey(prev || todaySimDate, deltaDays));
+        setSimDateTo(prev => addDaysToKey(prev || todaySimDate, deltaDays));
+    };
+    const resetToToday = () => { setSimDateFrom(todaySimDate); setSimDateTo(todaySimDate); };
+    const isDefaultToday = simDateFrom === todaySimDate && simDateTo === todaySimDate;
+    const dateLabel = !simDateFrom && !simDateTo
+        ? '전체 기간'
+        : simDateFrom === simDateTo
+            ? simDateFrom
+            : `${simDateFrom || '처음'} ~ ${simDateTo || '지금'}`;
+
+    const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
+    const teamBtnRef = useRef<HTMLButtonElement>(null);
+    const [teamDropdownPos, setTeamDropdownPos] = useState({ top: 0, right: 0 });
+
+    const handleTeamDropdownToggle = () => {
+        if (!isTeamDropdownOpen && teamBtnRef.current) {
+            const rect = teamBtnRef.current.getBoundingClientRect();
+            setTeamDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+        }
+        setIsTeamDropdownOpen(v => !v);
+    };
+
+    const toggleTeam = (teamSlug: string) => {
+        setSelectedTeams(prev => prev.includes(teamSlug) ? prev.filter(id => id !== teamSlug) : [...prev, teamSlug]);
+    };
+
+    const { stories, isLoading, hasMore, fetchNextPage, isFetchingNextPage } = useLeagueNewsFeed(
+        room?.id, myTeamId,
+        { teamSlugs: selectedTeams, types: selectedTypes, bigNewsOnly, sortOrder, simDateFrom: simDateFrom || null, simDateTo: simDateTo || null },
+    );
+
+    // [2026-09-01] 좌측 리스트 + 우측 디테일 레이아웃 — 트레이드 > 메세지함
+    // (MultiFrontOfficeView.tsx의 inbox 탭, selectedOfferId/selectedOffer 패턴)을 그대로
+    // 가져옴. id 하나만 상태로 두고 실제 선택 항목은 .find() ?? stories[0]로 파생 —
+    // 필터/페이지 변경으로 선택했던 항목이 목록에서 사라지면 자동으로 맨 위 항목으로
+    // 폴백된다(별도 리셋 이펙트 불필요, 원본과 동일한 동작).
+    const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+    const selectedEvent = stories.find(e => e.id === selectedEventId) ?? stories[0] ?? null;
+
+    const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultToday;
+
+    const teamBySlug = useMemo(() => {
+        const m = new Map<string, LeagueTeamRow>();
+        for (const t of leagueTeams) m.set(t.team_slug, t);
+        return m;
+    }, [leagueTeams]);
+
+    const sortedTeams = useMemo(() => [...leagueTeams].sort((a, b) => a.team_slug.localeCompare(b.team_slug)), [leagueTeams]);
+
+    // 뉴스피드 이벤트엔 완전한 Player 객체가 없어(이름/스탯만) hover 카드를 위해
+    // playerId → {Player, 소속팀 약어}를 별도로 만들어 내려준다 — 방출/은퇴 등으로 로스터에서
+    // 사라진 선수는 teamAbbr만 빈 문자열이 되고(팝업 헤더에 표시 안 함) 능력치 팝업 자체는
+    // 그대로 뜬다. (MultiScheduleView.tsx도 동일한 buildPlayerCardMap을 공유.)
+    const playerCardMap = useMemo(
+        () => buildPlayerCardMap(poolPlayers, rosterMap, slug => teamBySlug.get(slug)?.team_abbr),
+        [poolPlayers, rosterMap, teamBySlug],
+    );
+
+    const openGame = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
+    const openPlayer = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);
+    // 팀 이동 — MultiStandingsView.tsx/MultiFrontOfficeView.tsx가 이미 쓰는 것과 동일한
+    // 라우트(별도 경로 세그먼트가 아니라 로스터 화면에 ?rteam= 쿼리로 팀 지정).
+    const openTeam = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
 
     return (
-        <div className="text-slate-200 pretendard">
-            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800">
-                <h1 className="text-lg font-black text-white ko-tight truncate">뉴스피드</h1>
+        <div className="h-full flex flex-col overflow-hidden text-slate-200 pretendard">
+            <div className="flex flex-col border-b border-slate-800 bg-slate-900 shrink-0">
+                <div className="px-4 py-3 flex flex-col md:flex-row items-center gap-3">
+                    <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+                        <h1 className="text-lg font-black text-white ko-tight truncate">뉴스피드</h1>
+
+                        {/* 날짜 하루 단위 이동 스텝퍼 — 기본값은 오늘의 인게임 날짜. 화살표는
+                            simDateFrom/simDateTo를 함께 ±1일 밀어 범위 폭을 유지한다. */}
+                        <div className="flex items-center gap-0.5 h-[30px] bg-slate-950 rounded-lg border border-slate-800 pl-1 pr-1">
+                            <button
+                                onClick={() => shiftDateRange(-1)}
+                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                title="하루 전"
+                            >
+                                <ChevronLeft size={14} />
+                            </button>
+                            <span className="text-sm text-slate-400 px-1 whitespace-nowrap">{dateLabel}</span>
+                            <button
+                                onClick={() => shiftDateRange(1)}
+                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                title="하루 후"
+                            >
+                                <ChevronRight size={14} />
+                            </button>
+                            {!isDefaultToday && (
+                                <button
+                                    onClick={resetToToday}
+                                    className="text-sm font-bold text-indigo-400 hover:text-indigo-300 pl-1.5 pr-2 ml-0.5 border-l border-slate-800 transition-colors"
+                                >
+                                    오늘
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 md:ml-auto w-full md:w-auto">
+                        {/* 팀별 필터 — 다중 선택. 리더보드 팀 필터(components/leaderboard/
+                            LeaderboardToolbar.tsx)와 완전히 동일한 마크업: fixed 포지셔닝
+                            커스텀 패널 + 체크박스 + "모두 선택" + TeamBadge. */}
+                        <div className="relative">
+                            <button
+                                ref={teamBtnRef}
+                                className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-sm font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'}`}
+                                onClick={handleTeamDropdownToggle}
+                            >
+                                <span>팀</span>
+                                {selectedTeams.length > 0 && (
+                                    <span className="bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedTeams.length}</span>
+                                )}
+                                <ChevronDown size={12} />
+                            </button>
+
+                            {isTeamDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-[100]" onClick={() => setIsTeamDropdownOpen(false)} />
+                                    <div
+                                        className="fixed w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
+                                        style={{ top: teamDropdownPos.top, right: teamDropdownPos.right }}
+                                    >
+                                        <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
+                                            <div
+                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
+                                                onClick={() => setSelectedTeams(selectedTeams.length === sortedTeams.length ? [] : sortedTeams.map(t => t.team_slug))}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.length === sortedTeams.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                    {selectedTeams.length === sortedTeams.length && <Check size={10} className="text-white" />}
+                                                </div>
+                                                <span className={`text-sm font-bold ${selectedTeams.length === sortedTeams.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
+                                            </div>
+                                            <div className="h-px bg-slate-800 mx-2 my-1" />
+                                            {sortedTeams.map(team => (
+                                                <div
+                                                    key={team.team_slug}
+                                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
+                                                    onClick={() => toggleTeam(team.team_slug)}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.includes(team.team_slug) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                        {selectedTeams.includes(team.team_slug) && <Check size={10} className="text-white" />}
+                                                    </div>
+                                                    <TeamBadge
+                                                        teamId={team.team_slug}
+                                                        abbr={team.team_abbr}
+                                                        colorPrimary={team.color_primary}
+                                                        colorSecondary={team.color_secondary}
+                                                        colorText={team.color_text}
+                                                        size="sm"
+                                                    />
+                                                    <span className={`text-sm font-bold ${selectedTeams.includes(team.team_slug) ? 'text-white' : 'text-slate-400'}`}>{team.team_name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* 빅뉴스만/전체 — 리더보드 "색상 스케일" 토글과 동일한 단일 라벨 스위치 */}
+                        <div
+                            className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
+                            onClick={() => setBigNewsOnly(v => !v)}
+                            title="중요도 높은 소식만 보기"
+                        >
+                            <span className={`text-sm font-bold transition-colors whitespace-nowrap ${bigNewsOnly ? 'text-indigo-400' : 'text-slate-500'}`}>빅 뉴스만</span>
+                            <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${bigNewsOnly ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${bigNewsOnly ? 'right-0.5' : 'left-0.5'}`} />
+                            </div>
+                        </div>
+
+                        {/* 최신순/오래된순 — 리더보드 "정규시즌/플레이오프" 토글과 동일한 양쪽 라벨 스위치 */}
+                        <div
+                            className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
+                            onClick={() => setSortOrder(o => (o === 'latest' ? 'oldest' : 'latest'))}
+                            title="정렬 순서 전환"
+                        >
+                            <span className={`text-sm font-bold transition-colors whitespace-nowrap ${sortOrder === 'latest' ? 'text-indigo-400' : 'text-slate-500'}`}>최신순</span>
+                            <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${sortOrder === 'oldest' ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${sortOrder === 'oldest' ? 'right-0.5' : 'left-0.5'}`} />
+                            </div>
+                            <span className={`text-sm font-bold transition-colors whitespace-nowrap ${sortOrder === 'oldest' ? 'text-indigo-400' : 'text-slate-500'}`}>오래된순</span>
+                        </div>
+
+                        {/* 날짜 범위 필터 — 인게임(시뮬레이션) 날짜 기준(games.game_date/
+                            league_events.sim_date). 실제(wall-clock) 날짜가 아님. 리더보드
+                            필터바엔 대응되는 컨트롤이 없어 다른 h-[36px] 필터 pill과 동일한
+                            톤으로 새로 맞춤(Search 인풋 pill과 동일한 bg-slate-950 보더 스타일). */}
+                        <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors shadow-sm shrink-0">
+                            <div className="pl-3 pr-2 flex items-center justify-center text-slate-500 shrink-0">
+                                <Calendar size={14} />
+                            </div>
+                            <input
+                                type="date"
+                                value={simDateFrom}
+                                onChange={(e) => setSimDateFrom(e.target.value)}
+                                max={simDateTo || undefined}
+                                className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
+                                title="시작 인게임 날짜"
+                            />
+                            <span className="text-slate-600 text-xs">~</span>
+                            <input
+                                type="date"
+                                value={simDateTo}
+                                onChange={(e) => setSimDateTo(e.target.value)}
+                                min={simDateFrom || undefined}
+                                className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
+                                title="종료 인게임 날짜"
+                            />
+                            {(simDateFrom || simDateTo) && (
+                                <button
+                                    onClick={() => { setSimDateFrom(''); setSimDateTo(''); }}
+                                    className="h-full px-2 flex items-center justify-center border-l border-slate-800 text-slate-600 hover:text-white transition-colors shrink-0"
+                                    title="날짜 필터 초기화"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div className="max-w-2xl mx-auto py-4 px-4">
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-16">
-                        <Loader2 size={24} className="animate-spin text-indigo-400" />
+            {/* [2026-09-01] 좌측 리스트 + 우측 디테일 — 트레이드 > 메세지함(MultiFrontOfficeView.tsx
+                inbox 탭)의 레이아웃을 그대로 가져옴: 부모(h-full flex flex-col overflow-hidden)
+                아래 flex-1 min-h-0 flex로 좌/우 두 패널을 만들고, 각 패널이 자체
+                overflow-y-auto를 가져 독립적으로 스크롤된다(원본과 동일한 스크롤 메커니즘 —
+                반응형 좌/우 전환 없음, 항상 30%/70% 고정 분할도 원본 그대로). */}
+            <div className="flex-1 min-h-0 flex">
+                <div className="w-[30%] shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar bg-slate-900">
+                    <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800">
+                        <div className="px-3 py-2 text-sm font-black uppercase text-slate-500 ko-normal">
+                            리그 소식
+                        </div>
+                        {/* [2026-09-01] 메세지 타입별 필터 요청 — 팀 필터와 동일한 다중 선택 관례
+                            (빈 배열 = 전체 타입). 팀 필터 드롭다운의 체크박스 행과 동일한 마크업
+                            (w-4 h-4 체크박스 + text-sm 라벨)을 옵션 5개뿐이라 드롭다운 없이
+                            인라인으로 바로 배치. */}
+                        <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-3 pb-2">
+                            {ALL_NEWS_TYPES.map(t => {
+                                const checked = selectedTypes.includes(t);
+                                return (
+                                    <div
+                                        key={t}
+                                        className="flex items-center gap-1.5 cursor-pointer"
+                                        onClick={() => toggleType(t)}
+                                    >
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                            {checked && <Check size={10} className="text-white" />}
+                                        </div>
+                                        <span className={`text-sm font-bold ${checked ? 'text-white' : 'text-slate-400'}`}>{TYPE_LABEL[t]}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
-                ) : !events || events.length === 0 ? (
-                    <p className="text-sm text-slate-500 ko-normal py-16 text-center">아직 소식이 없습니다.</p>
-                ) : (
-                    <ul className="flex flex-col gap-2">
-                        {events.map((e: LeagueEvent) => {
-                            const Icon = HEADLINE_ICON[e.type];
-                            return (
-                                <li
-                                    key={e.id}
-                                    className={`flex items-start gap-3 px-4 py-3 rounded-lg border ${
-                                        e.involvesMyTeam
-                                            ? 'bg-emerald-500/10 border-emerald-500/30'
-                                            : 'bg-slate-900 border-slate-800'
-                                    }`}
-                                >
-                                    <Icon size={16} className="text-slate-500 mt-0.5 shrink-0" />
-                                    <span className="flex-1 min-w-0 text-sm text-slate-200 ko-normal leading-snug">{e.headline}</span>
-                                    <span className="text-xs text-slate-500 tabular-nums shrink-0 ko-normal">{formatRelativeTime(e.createdAt)}</span>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-16">
+                            <Loader2 size={22} className="animate-spin text-indigo-400" />
+                        </div>
+                    ) : stories.length === 0 ? (
+                        <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">
+                            {hasActiveFilter ? '조건에 맞는 소식이 없습니다.' : '아직 소식이 없습니다.'}
+                        </p>
+                    ) : (
+                        <>
+                            {/* [2026-09-01] 실제(wall-clock) 상대시각("0분 전") 대신 이벤트가 발생한
+                                인게임(시뮬레이션) 날짜(e.simDate)를 표시 — 사용자 요청. simDate가 없는
+                                이론상의 경우(백필 이전 이벤트, 사실상 없음)만 상대시각으로 폴백. */}
+                            {stories.map((e: LeagueEvent) => {
+                                const selected = e.id === selectedEvent?.id;
+                                return (
+                                    <div
+                                        key={e.id}
+                                        onClick={() => setSelectedEventId(e.id)}
+                                        className={`flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-slate-800/50 text-sm ko-normal transition-colors ${
+                                            selected ? 'bg-slate-700 text-white' : 'bg-slate-900 hover:bg-white/5'
+                                        }`}
+                                    >
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${e.involvesMyTeam ? 'bg-emerald-500' : ''}`} />
+                                        <span className={`flex-1 min-w-0 truncate leading-snug ${selected ? 'text-white' : 'text-slate-300'}`}>{e.headline}</span>
+                                        <span className={`shrink-0 text-xs tabular-nums ${selected ? 'text-slate-300' : 'text-slate-600'}`}>{e.simDate ?? formatRelativeTime(e.createdAt)}</span>
+                                    </div>
+                                );
+                            })}
+                            {hasMore && (
+                                <div className="p-3">
+                                    <button
+                                        onClick={() => fetchNextPage()}
+                                        disabled={isFetchingNextPage}
+                                        className="w-full px-4 py-2 text-sm font-semibold text-slate-300 bg-slate-950 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 ko-normal"
+                                    >
+                                        {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar bg-slate-900 p-10">
+                    {selectedEvent ? (
+                        <StoryCard
+                            event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
+                            roomId={room?.id}
+                            onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
+                            tier={tierFromScore(selectedEvent.score)}
+                        />
+                    ) : (
+                        <div className="h-full flex items-center justify-center text-slate-600 text-sm ko-normal">선택된 소식이 없습니다.</div>
+                    )}
+                </div>
             </div>
         </div>
     );

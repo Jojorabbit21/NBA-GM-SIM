@@ -26,6 +26,13 @@ export interface TradeOfferRow {
     resolved_by:  string | null;
     resolved_as_admin: boolean;
     created_at:   string;
+    // 오퍼 생성 시점 rooms.sim_date 스냅샷(인게임 날짜) — 리그마다 압축 스케줄로 진행돼
+    // 실제(wall-clock) 날짜와 전혀 다르므로 created_at 대신 이 값을 표시에 써야 함.
+    // 2026-08-31 이전 생성된 오퍼는 컬럼 자체가 없었으므로 null.
+    sim_date_at_creation: string | null;
+    // 이 오퍼를 "받은" 팀(to_team_id)이 읽은 시각 — null이면 안읽음. 발신 오퍼(내가 보낸
+    // 것)는 읽음 개념을 적용하지 않으므로 항상 null이어도 무방.
+    to_team_read_at: string | null;
     league_trade_offer_players: TradeOfferPlayerRow[];
 }
 
@@ -101,6 +108,13 @@ export const respondTradeOffer = async (
         p_offer_id: offerId,
         p_action:   action,
     });
+    if (error) return { error: mapTradeOfferError(error.message ?? '') };
+    return { error: null };
+};
+
+/** 받은 오퍼를 읽음 처리 — to_team_id 소유 팀 유저만 가능(RPC에서 소유권 검증). */
+export const markTradeOfferRead = async (offerId: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('mark_trade_offer_read', { p_offer_id: offerId });
     if (error) return { error: mapTradeOfferError(error.message ?? '') };
     return { error: null };
 };

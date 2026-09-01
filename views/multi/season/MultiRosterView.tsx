@@ -316,6 +316,7 @@ const MultiRosterView: React.FC = () => {
             onScoreClick={onScoreClick}
             userId={session?.user?.id}
             currentSimDate={currentSimDate}
+            enableHoverCard
             hideTabs={['coaching', 'draftPicks']}
             onTabChange={onRosterTabChange}
             teamNicknames={teamNicknames}

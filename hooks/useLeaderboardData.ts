@@ -695,6 +695,7 @@ export const useLeaderboardData = (
                     const s = p.stats as any;
                     
                     if (sortConfig.key === 'name') return p.name;
+                    if (sortConfig.key === 'team') return (p as any).teamAbbr || '';
                     if (sortConfig.key === 'position') return p.position;
                     if (sortConfig.key === 'ovr') return calculatePlayerOvr(p);
 

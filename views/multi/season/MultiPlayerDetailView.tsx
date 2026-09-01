@@ -7,6 +7,7 @@ import { useSeasonContext } from './seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerShotEvents } from '../../../hooks/usePlayerShotEvents';
+import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { resolveRealAt, isFinal } from './multiGameReveal';
@@ -51,6 +52,13 @@ const MultiPlayerDetailView: React.FC = () => {
     const { getPlayerUrlId, resolvePlayerId, isLoading: shortCodesLoading } = usePlayerShortCodes();
     const playerId = playerUrlId ? resolvePlayerId(playerUrlId) : undefined;
     const navigate = useNavigate();
+    const { getGameUrlId } = useGameShortCodes(room?.id);
+
+    // "최근 경기" 테이블의 RESULT 점수 클릭 시 해당 경기 박스스코어(경기 관람 화면)로 이동.
+    const handleGameClick = useCallback((gameId: string) => {
+        if (!leagueId) return;
+        navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
+    }, [navigate, leagueId, getGameUrlId]);
 
     // 브레드크럼 팀/선수 드롭다운으로 다른 선수를 선택했을 때 — 로컬 state만 바꾸면
     // 주소창의 playerId가 그대로 남아 새로고침/뒤로가기/공유가 깨진다(이 화면을 캐노니컬
@@ -99,6 +107,7 @@ const MultiPlayerDetailView: React.FC = () => {
                 const bs = (side.box as any[]).find(b => b.playerId === playerId);
                 if (!bs || bs.mp <= 0) continue;
                 rows.push({
+                    gameId: row.game_id,
                     date: dateByGameId.get(row.game_id) ?? (row.game_start_time ?? '').slice(0, 10),
                     opponentId: side.oppTeamId,
                     isHome: side.isHome,
@@ -188,6 +197,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalGameLog={playerGameLog}
             externalGameLogLoading={gameLogPending}
             externalShotEvents={playerShotEvents}
+            onGameClick={handleGameClick}
         />
     );
 };

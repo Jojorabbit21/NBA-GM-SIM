@@ -8,6 +8,7 @@ import {
     ATTR_NAME_MAP, ATTR_KR_LABEL,
     COMPACT_ATTR_GROUPS, COMPACT_ITEM_BY_KEY, getCompactAttrValue,
 } from '../../data/attributeConfig';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 interface RosterGridProps {
     team: Team;
@@ -15,6 +16,8 @@ interface RosterGridProps {
     onPlayerClick: (player: Player) => void;
     showFooter?: boolean;
     renderRowAction?: (player: Player) => React.ReactNode;
+    /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+    enableHoverCard?: boolean;
 }
 
 type SortConfig = { key: string; direction: 'asc' | 'desc'; };
@@ -48,7 +51,7 @@ const STATS_COLS = [
 ];
 
 
-export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, renderRowAction }) => {
+export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, renderRowAction, enableHoverCard = false }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     const handleSort = (key: string) => {
@@ -232,7 +235,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {/* Use inline styles to force border removal and width locking */}
                             <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                    <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                        <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                    </PlayerHoverCard>
                                     {p.health !== 'Healthy' && (
                                         <span 
                                             className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}

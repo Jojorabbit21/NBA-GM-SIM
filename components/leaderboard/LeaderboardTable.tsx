@@ -3,10 +3,10 @@ import React from 'react';
 import { Player } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { TeamBadge } from '../common/TeamBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PLAYER_COLUMNS, TEAM_COLUMNS, ColumnDef, ViewMode, StatCategory, getAttrValue } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 interface LeaderboardTableProps {
     data: any[];
@@ -19,10 +19,13 @@ interface LeaderboardTableProps {
     showHeatmap: boolean;
     currentPage: number;
     itemsPerPage: number;
+    /** 선수 이름에 hover 시 능력치+스탯 요약 팝업 표시 — 멀티플레이어 전용 기능이라
+     *  호출부에서 명시적으로 켜야 함(싱글플레이어는 미지정 시 기본 false). */
+    enableHoverCard?: boolean;
 }
 
 export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
-    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage
+    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage, enableHoverCard = false
 }) => {
     
     // Select column config based on mode
@@ -270,7 +273,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                     const stickyCellClass = "bg-slate-900 group-hover:bg-slate-800 transition-colors z-30";
 
                     return (
-                        <TableRow key={mode === 'Players' ? item.id : item.id} className="group h-10">
+                        <TableRow key={mode === 'Players' ? item.id : item.id} className={`group ${mode === 'Players' ? 'h-10' : 'h-11'}`}>
                             {visibleColumns.map((col, idx) => {
                                 const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
                                 const style = getStickyStyle(col, isLastSticky);
@@ -290,18 +293,12 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     if (col.key === 'rank') cellContent = rank;
                                     else if (col.key === 'name') {
                                         cellContent = (
-                                            <div className="flex items-center gap-3">
-                                                <TeamBadge
-                                                    teamId={p.teamId}
-                                                    abbr={p.teamAbbr}
-                                                    colorPrimary={p.teamColorPrimary}
-                                                    colorSecondary={p.teamColorSecondary}
-                                                    size="sm"
-                                                />
+                                            <PlayerHoverCard player={p} teamAbbr={p.teamAbbr} enabled={enableHoverCard}>
                                                 <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer block">{p.name}</span>
-                                            </div>
+                                            </PlayerHoverCard>
                                         );
                                     }
+                                    else if (col.key === 'team') cellContent = p.teamAbbr;
                                     else if (col.key === 'position') cellContent = p.position;
                                     else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>;
                                     
@@ -379,16 +376,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     if (col.key === 'rank') cellContent = rank;
                                     else if (col.key === 'name') {
                                         cellContent = (
-                                            <div className="flex items-center gap-3">
-                                                <TeamBadge
-                                                    teamId={t.id}
-                                                    abbr={t.abbr}
-                                                    colorPrimary={t.colorPrimary}
-                                                    colorSecondary={t.colorSecondary}
-                                                    size="sm"
-                                                />
-                                                <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
-                                            </div>
+                                            <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
                                         );
                                     }
                                     else if (col.key === 'wins') cellContent = t.wins;

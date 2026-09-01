@@ -5,6 +5,7 @@ import { formatMoney, formatMoneyFull } from '../../utils/formatMoney';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 // RosterGrid.tsx(로스터/능력치/선수 기록 탭)와 동일한 디자인 언어 — 2단 헤더(그룹행+라벨행),
 // !rounded-none 풀블리드 테이블, 이름|포지션|나이|오버롤 다중 sticky 컬럼.
@@ -41,6 +42,11 @@ interface TeamPayrollTableProps {
     /** 페이롤 테이블의 첫 번째 시즌 컬럼 연도(예: 2026 → "2026-27") — 계약의 currentYear가 이 시즌을 가리킨다고 가정. */
     baseSeasonYear: number;
     onPlayerClick?: (player: Player) => void;
+    /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐.
+     *  (지금은 capSettings 미지정 시 "재정" 탭 자체가 숨겨져 싱글플레이어에선 우연히 안전하지만,
+     *  RosterGrid/RosterOverviewGrid/RosterStatsStack 등 다른 형제 컴포넌트와 게이트 방식을
+     *  통일해 향후 capSettings가 싱글에도 노출되는 변경이 생겨도 안전하도록 함.) */
+    enableHoverCard?: boolean;
 }
 
 const toBarPct = (v: number, max: number) => Math.min(100, Math.max(0, (v / max) * 100));
@@ -63,7 +69,7 @@ function capPctColor(pct: number): string {
     return '#ef4444';
 }
 
-export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSettings, baseSeasonYear, onPlayerClick }) => {
+export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSettings, baseSeasonYear, onPlayerClick, enableHoverCard = false }) => {
     // 연도 컬럼 헤더를 클릭하면 그 시즌 연봉 기준으로 정렬 — 기본은 0번(현재 시즌) 내림차순.
     const [sortCol, setSortCol] = useState(0);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -252,7 +258,9 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                     {players.map(p => (
                         <TableRow key={p.id} className="group" onClick={onPlayerClick ? () => onPlayerClick(p) : undefined}>
                             <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                <span className="text-sm font-semibold text-slate-200 truncate">{p.name}</span>
+                                <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                    <span className="text-sm font-semibold text-slate-200 truncate">{p.name}</span>
+                                </PlayerHoverCard>
                             </TableCell>
                             <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                             <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>

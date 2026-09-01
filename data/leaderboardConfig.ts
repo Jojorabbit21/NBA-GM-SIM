@@ -34,6 +34,7 @@ export interface ColumnDef {
 export const WIDTHS = {
     RANK: 50,
     NAME: 200,
+    TEAM: 60,
     POS: 50,
     OVR: 62, // "OVR" 헤더가 정렬 화살표와 함께 표시될 때 text-sm(14px)에서 잘려서(실측 확인) 넓힘
     STAT: 55,
@@ -256,8 +257,9 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     // Sticky Columns
     { key: 'rank', label: '#', width: WIDTHS.RANK, stickyLeft: 0, category: 'Common' },
     { key: 'name', label: 'PLAYER', width: WIDTHS.NAME, sortable: true, stickyLeft: WIDTHS.RANK, category: 'Common' },
-    { key: 'position', label: 'POS', width: WIDTHS.POS, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME, category: 'Common' },
-    { key: 'ovr', label: 'OVR', width: WIDTHS.OVR, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS, stickyShadow: true, category: 'Common' },
+    { key: 'team', label: 'TEAM', width: WIDTHS.TEAM, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME, category: 'Common' },
+    { key: 'position', label: 'POS', width: WIDTHS.POS, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME + WIDTHS.TEAM, category: 'Common' },
+    { key: 'ovr', label: 'OVR', width: WIDTHS.OVR, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME + WIDTHS.TEAM + WIDTHS.POS, stickyShadow: true, category: 'Common' },
     
     // [Updated] Moved G and MP to Traditional category so they are hidden in Shooting view
     { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional' },

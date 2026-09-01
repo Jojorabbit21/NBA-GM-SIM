@@ -591,7 +591,7 @@ const MultiTacticsView: React.FC = () => {
                                     <TeamZoneChartInsight roster={myTeamWithFullStats.roster} />
                                 </div>
                                 <div className="flex-[6]">
-                                    <TeamZoneStatsTable roster={myTeamWithFullStats.roster} onPlayerClick={handleViewPlayer} />
+                                    <TeamZoneStatsTable roster={myTeamWithFullStats.roster} teamAbbr={myTeamWithFullStats.abbr ?? undefined} onPlayerClick={handleViewPlayer} />
                                 </div>
                             </div>
                         )}

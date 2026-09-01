@@ -15,6 +15,12 @@
 -- [적용 완료] 2026-08-28 Supabase MCP로 실제 DB에 반영 완료(apply_migration).
 -- search_path는 get_advisors의 function_search_path_mutable 권고에 따라
 -- SET search_path = public으로 고정(search_path 인젝션 방지).
+--
+-- [적용 완료] 2026-08-30 샷 차트 "팀별 필터" 기능을 위해 각 슛 이벤트에 homeTeamId/
+-- awayTeamId를 함께 내려주도록 수정(elem || jsonb_build_object(...)) — shot_events
+-- 자체엔 슈터의 자기 팀 id(teamId)만 있고 상대팀 id가 없어서, 클라이언트에서
+-- teamId와 비교해 상대팀을 계산하려면 이 두 값이 필요함. 기존 저장된 shot_events
+-- 데이터에도 그대로 적용되는 조회 시점 추가라 소급 적용됨(엔진/스키마 변경 아님).
 -- ============================================================
 
 create or replace function get_player_shot_events(p_room_id uuid, p_player_id text)
@@ -23,7 +29,7 @@ language sql
 stable
 set search_path = public
 as $$
-  select elem
+  select elem || jsonb_build_object('homeTeamId', gp.home_team_id, 'awayTeamId', gp.away_team_id)
   from game_pbp gp,
        jsonb_array_elements(gp.shot_events) as elem
   where gp.room_id = p_room_id

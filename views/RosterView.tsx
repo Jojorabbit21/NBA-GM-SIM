@@ -47,11 +47,13 @@ interface RosterViewProps {
   capSettings?: RosterCapSettings;
   /** "재정" 탭 페이롤 테이블의 첫 시즌 연도(예: 2026 → "2026-27" 컬럼부터 시작). */
   baseSeasonYear?: number;
+  /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+  enableHoverCard?: boolean;
 }
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false }) => {
   // capSettings가 없으면(싱글플레이어) "재정" 탭 자체를 숨김 — 호출부마다 hideTabs에
   // 'finance'를 일일이 추가하지 않아도 되도록 여기서 한 번에 처리.
   const effectiveHideTabs = useMemo(
@@ -241,6 +243,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               <RosterOverviewGrid
                   team={selectedTeam}
                   onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
               />
           )}
           {tab === 'attributes' && (
@@ -248,6 +251,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   team={selectedTeam}
                   tab="roster"
                   onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
               />
           )}
           {tab === 'stats' && (
@@ -255,6 +259,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   team={selectedTeam}
                   schedule={schedule}
                   onPlayerClick={onViewPlayer}
+                  enableHoverCard={enableHoverCard}
               />
           )}
           {tab === 'records' && (onViewGameResult || onScoreClick) && (
@@ -279,6 +284,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   currentSimDate={currentSimDate}
                   onPlayerClick={onViewPlayer}
                   onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
+                  enableHoverCard={enableHoverCard}
               />
           )}
           {tab === 'finance' && capSettings && (

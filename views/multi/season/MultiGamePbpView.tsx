@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Loader2, Clock } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -31,6 +31,9 @@ import { toGameSeconds } from '../../../utils/gameClock';
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
 const TEAM_TIMEOUTS_TOTAL = 4;
+// [2026-09-01] ?section= 딥링크 검증용 — 6섹션 탭 배열(아래 렌더 안, ~2100줄 근방)의 id와
+// 동일한 값 목록. 그 배열은 JSX 안에서 렌더 시점에 만들어져 재사용이 번거로워 별도로 둠.
+const VALID_PBP_SECTIONS = ['insights', 'box', 'pbp', 'shotchart', 'rotation', 'onoff'] as const;
 
 // [Simplify 2026-08-05] 점보트론 원정/홈 슬롯에서 각각 그대로 복붙돼 있던 타임아웃 도트 렌더링을
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
@@ -1247,6 +1250,10 @@ const GameInsightsPanel: React.FC<{
 
 const MultiGamePbpView: React.FC = () => {
     const { leagueId, gameId } = useParams<{ leagueId: string; gameId: string }>();
+    // 뉴스피드의 "박스스코어" 버튼 등이 ?section=box로 넘어오면 진입 시 바로 그 섹션으로
+    // 스크롤(아래 딥링크 useEffect). 다른 화면들처럼 파라미터 없이 들어오면 기본값(insights)
+    // 그대로 — 기존 "게임으로 이동" 링크는 전혀 영향받지 않는다.
+    const [searchParams] = useSearchParams();
     const { room, leagueTeams, league } = useLeagueContext();
     const { schedule }         = useSeasonContext();
     const { session }           = useGame();
@@ -1808,6 +1815,22 @@ const MultiGamePbpView: React.FC = () => {
         Object.values(sectionRefs.current).forEach(el => el && observer.observe(el));
         return () => observer.disconnect();
     }, [showBox, gameData]);
+
+    // [2026-09-01] 박스스코어 딥링크 — 뉴스피드 등 외부에서 ?section=box로 들어오면 6섹션
+    // 페이지가 준비되는 즉시(showBox=true) 그 섹션으로 스크롤. deepLinkedRef로 한 번만
+    // 실행 — showBox/gameData가 폴링으로 계속 갱신돼도 사용자가 이미 다른 곳으로 스크롤한
+    // 뒤에 강제로 다시 점프시키지 않는다.
+    const deepLinkedRef = useRef(false);
+    useEffect(() => {
+        if (!showBox || deepLinkedRef.current) return;
+        const section = searchParams.get('section');
+        if (!section || !VALID_PBP_SECTIONS.includes(section as (typeof VALID_PBP_SECTIONS)[number])) return;
+        const el = sectionRefs.current[section];
+        if (!el) return;
+        deepLinkedRef.current = true;
+        setActiveSection(section);
+        el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }, [showBox, gameData, searchParams]);
 
     // ── final 전용: 싱글플레이어 탭 재사용을 위한 어댑터 + 집계 ─────────────────
     const homeTeamAdapter = useMemo(

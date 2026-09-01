@@ -33,7 +33,7 @@ export const MonthCalendarPopover = React.forwardRef<HTMLDivElement, MonthCalend
         return (
             <div
                 ref={ref}
-                className="fixed z-30 w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
+                className="fixed z-50 w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
                 style={{ left: position.x, top: position.y }}
             >
                 <div className="flex items-center justify-between mb-2">

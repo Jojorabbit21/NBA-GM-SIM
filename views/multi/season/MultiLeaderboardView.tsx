@@ -127,6 +127,7 @@ const MultiLeaderboardView: React.FC = () => {
             onStateChange={handleFilterStateChange}
             onRefresh={() => refetchTeams()}
             refreshing={fetchRefreshing}
+            enableHoverCard
         />
     );
 };

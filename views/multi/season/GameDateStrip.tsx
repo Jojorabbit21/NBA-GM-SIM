@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { kstDateKey, groupByDay } from './multiScheduleUtils';
+import { kstDateKey, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
@@ -82,7 +82,17 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     }, [selectedDateKey, currentGame, preferVirtual]);
 
     const dateKeys = useMemo(() => groupedByDay.map(g => g.dateKey), [groupedByDay]);
-    const activeDateKey = selectedDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
+    // [Fix 2026-08-28] "상단 스트립이 계속 리그 마지막 날로 이동한다" 버그 — 이 컴포넌트가
+    // MultiSeasonLayout에 전역 배치된 뒤로는 경기 관람 화면이 아닌 한 currentGameId가 없어(위
+    // useEffect가 절대 selectedDateKey를 채우지 못함), 예전 폴백이었던 dateKeys 배열의 마지막
+    // 항목(=시즌 스케줄 최종일)이 그대로 초기 표시일로 쓰이고 있었다. "오늘 경기 목록"이라는
+    // 이름에 맞게, 아직 아무 날짜도 직접 고르지 않았을 때는 "오늘"(서버 시각 기준 가장 가까운
+    // 경기의 날짜 — MultiScheduleView/MultiHeader의 "오늘" 배지 판정과 동일 로직)로 폴백한다.
+    const todayDateKey = useMemo(() => {
+        const g = findCurrentVirtualGame(allGames, simStart, gprd, serverNow);
+        return g ? kstDateKey(g, preferVirtual) : null;
+    }, [allGames, simStart, gprd, serverNow, preferVirtual]);
+    const activeDateKey = selectedDateKey ?? todayDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
     const activeIdx = activeDateKey ? dateKeys.indexOf(activeDateKey) : -1;
     const activeGroup = activeIdx >= 0 ? groupedByDay[activeIdx] : null;
 
@@ -202,13 +212,12 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     return (
         <div className="shrink-0 flex items-stretch bg-slate-950 border-b border-slate-800 h-[76px]">
             {/* 날짜 셀렉터 — 화살표 이동 + 클릭 시 전체 날짜 드롭다운.
-                [Fix 2026-08-04] "> 버튼과 날짜 영역은 인디고 색을 적용해봐" 요청으로 배경을
-                indigo-600으로 채운 하나의 칩(chip)처럼 표현. */}
-            <div ref={dateMenuRef} className="relative shrink-0 flex items-center gap-0.5 px-1.5 bg-indigo-600 border-r border-indigo-700">
+                [Fix 2026-08-29] 인디고 색상을 slate 계열로 변경. */}
+            <div ref={dateMenuRef} className="relative shrink-0 flex items-center gap-0.5 px-1.5 bg-slate-800 border-r border-slate-700">
                 <button
                     onClick={() => activeIdx > 0 && setSelectedDateKey(dateKeys[activeIdx - 1])}
                     disabled={activeIdx <= 0}
-                    className="p-0.5 rounded text-indigo-200 hover:text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                     <ChevronLeft size={16} />
                 </button>
@@ -220,7 +229,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                         setMenuPos({ x: rect.left, y: rect.bottom });
                         setIsDateMenuOpen(o => !o);
                     }}
-                    className={`flex flex-col items-center justify-center px-3 py-2 rounded transition-colors ${isDateMenuOpen ? 'bg-indigo-500' : 'hover:bg-indigo-500'}`}
+                    className={`flex flex-col items-center justify-center px-3 py-2 rounded transition-colors ${isDateMenuOpen ? 'bg-slate-700' : 'hover:bg-slate-700'}`}
                 >
                     <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">{activeYear}</span>
                     <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">
@@ -230,7 +239,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 <button
                     onClick={() => activeIdx >= 0 && activeIdx < dateKeys.length - 1 && setSelectedDateKey(dateKeys[activeIdx + 1])}
                     disabled={activeIdx < 0 || activeIdx >= dateKeys.length - 1}
-                    className="p-0.5 rounded text-indigo-200 hover:text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                     <ChevronRight size={16} />
                 </button>

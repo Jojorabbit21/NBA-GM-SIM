@@ -6,6 +6,7 @@ import { fetchFullGameResult } from '../../services/queries';
 import { getReadableTextColor } from '../../utils/colorContrast';
 import type { GameMvp } from '../../services/multi/gameLeadersCache';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 interface TeamScheduleCalendarProps {
     team: Team;
@@ -21,11 +22,13 @@ interface TeamScheduleCalendarProps {
     onPlayerClick?: (player: Player, teamId?: string, teamName?: string) => void;
     /** 좌측 리스트의 "상대" 팀명 클릭 → 그 팀 화면으로 이동. */
     onTeamClick?: (teamId: string) => void;
+    /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+    enableHoverCard?: boolean;
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team, schedule, allTeams, onViewGameResult, onScoreClick, userId, currentSimDate, onPlayerClick, onTeamClick }) => {
+export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team, schedule, allTeams, onViewGameResult, onScoreClick, userId, currentSimDate, onPlayerClick, onTeamClick, enableHoverCard = false }) => {
     const teamGames = useMemo(
         () => schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id),
         [schedule, team.id],
@@ -209,12 +212,14 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                                         <TableCell align="left" className="pl-4 align-middle text-sm">
                                             {game.played && mvp ? (
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <span
-                                                        className={`text-slate-200 shrink-0 ${mvpPlayer && onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                        onClick={mvpPlayer && onPlayerClick ? () => onPlayerClick(mvpPlayer, mvpTeam?.id, mvpTeam?.name) : undefined}
-                                                    >
-                                                        {mvp.name}
-                                                    </span>
+                                                    <PlayerHoverCard player={mvpPlayer} teamAbbr={mvpTeam?.abbr} enabled={enableHoverCard}>
+                                                        <span
+                                                            className={`text-slate-200 shrink-0 ${mvpPlayer && onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                            onClick={mvpPlayer && onPlayerClick ? () => onPlayerClick(mvpPlayer, mvpTeam?.id, mvpTeam?.name) : undefined}
+                                                        >
+                                                            {mvp.name}
+                                                        </span>
+                                                    </PlayerHoverCard>
                                                     {mvp.stats.length > 0 && (
                                                         <span className="text-white truncate">
                                                             {mvp.stats.map(s => `${s.value} ${s.label}`).join(', ')}

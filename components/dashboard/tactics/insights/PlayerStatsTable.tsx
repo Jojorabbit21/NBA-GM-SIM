@@ -2,6 +2,7 @@
 import React from 'react';
 import { useLeaderboardData } from '../../../../hooks/useLeaderboardData';
 import type { Team, Game, Player } from '../../../../types';
+import { PlayerHoverCard } from '../../../common/PlayerHoverCard';
 
 interface PlayerStatsTableProps {
     team: Team;
@@ -43,7 +44,8 @@ function formatValue(val: number, format?: 'percent'): string {
 /** 인사이트 탭 "선수 스탯" 위젯 — 로스터 전원을 한 테이블에 1차 스탯 위주로 나열. RosterStatsStack
  *  (리더보드 스타일, 카테고리 드롭다운+스티키 컬럼+히트맵)을 그대로 옮겨오지 않고, 데이터 계산만
  *  useLeaderboardData를 재사용(중복 구현 방지)하고 화면은 TeamStatRankList와 같은 톤의 단순 리스트로
- *  새로 작성 — "바디 너비를 100% 채우는 무거운 테이블은 최소화" 원칙에 맞춤. */
+ *  새로 작성 — "바디 너비를 100% 채우는 무거운 테이블은 최소화" 원칙에 맞춤. 선수명 hover의
+ *  PlayerHoverCard는 항상 활성(MultiTacticsView.tsx 전용 컴포넌트라 enableHoverCard 게이트 불필요). */
 export const PlayerStatsTable: React.FC<PlayerStatsTableProps> = ({ team, schedule, onPlayerClick }) => {
     const sortConfig = React.useMemo(() => ({ key: 'pts', direction: 'desc' as const }), []);
     const { sortedData } = useLeaderboardData(
@@ -76,12 +78,14 @@ export const PlayerStatsTable: React.FC<PlayerStatsTableProps> = ({ team, schedu
                                 key={p.id}
                                 className={`flex items-center gap-2 px-3 py-2.5 ${i % 2 === 1 ? 'bg-slate-700/25' : ''} ${isLast ? '' : 'border-b border-slate-800/60'}`}
                             >
-                                <span
-                                    className="text-sm font-normal text-slate-200 w-28 shrink-0 text-left truncate hover:text-indigo-400 cursor-pointer transition-colors"
-                                    onClick={() => onPlayerClick?.(p as Player)}
-                                >
-                                    {p.name}
-                                </span>
+                                <PlayerHoverCard player={p as Player} teamAbbr={p.teamAbbr}>
+                                    <span
+                                        className="text-sm font-normal text-slate-200 w-28 shrink-0 text-left truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                        onClick={() => onPlayerClick?.(p as Player)}
+                                    >
+                                        {p.name}
+                                    </span>
+                                </PlayerHoverCard>
                                 <span className="text-sm font-normal text-slate-500 w-9 shrink-0 text-center">{p.position}</span>
                                 {COLUMNS.map(c => (
                                     <span key={c.key} className="text-sm font-normal text-white flex-1 text-right">

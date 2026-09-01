@@ -9,11 +9,14 @@ import { Dropdown } from '../common/Dropdown';
 import { useLeaderboardData } from '../../hooks/useLeaderboardData';
 import { PLAYER_COLUMNS, ColumnDef, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 interface RosterStatsStackProps {
     team: Team;
     schedule: Game[];
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
+    /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+    enableHoverCard?: boolean;
 }
 
 // [2026-08-11] 4개를 세로로 붙여놓으니 산만하다는 피드백으로, 테이블 하나 + 드롭다운으로 카테고리
@@ -130,7 +133,8 @@ const CategoryTable: React.FC<{
     category: StatCategory;
     defaultSort: string;
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
-}> = ({ team, schedule, category, defaultSort, onPlayerClick }) => {
+    enableHoverCard?: boolean;
+}> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard }) => {
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: defaultSort, direction: 'desc' });
     const { sortedData, statRanges } = useLeaderboardData(
         [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular',
@@ -210,12 +214,14 @@ const CategoryTable: React.FC<{
                         return (
                             <TableRow key={p.id} className="group">
                                 <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                    <span
-                                        className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
-                                        onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
-                                    >
-                                        {p.name}
-                                    </span>
+                                    <PlayerHoverCard player={originalPlayer} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                        <span
+                                            className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
+                                            onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
+                                        >
+                                            {p.name}
+                                        </span>
+                                    </PlayerHoverCard>
                                 </TableCell>
                                 <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                                 <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
@@ -257,7 +263,7 @@ const CategoryTable: React.FC<{
     );
 };
 
-export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick }) => {
+export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false }) => {
     const [category, setCategory] = useState<StatCategory>('Traditional');
     const current = CATEGORIES.find(c => c.key === category) ?? CATEGORIES[0];
 
@@ -288,6 +294,7 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                 category={category}
                 defaultSort={current.defaultSort}
                 onPlayerClick={onPlayerClick}
+                enableHoverCard={enableHoverCard}
             />
         </div>
     );

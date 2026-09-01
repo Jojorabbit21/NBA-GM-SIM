@@ -33,9 +33,11 @@ interface LeaderboardViewProps {
   /** 캐시된 데이터를 수동으로 다시 불러오는 버튼 — 제공된 경우에만 렌더링(멀티플레이어 전용). */
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
+  enableHoverCard?: boolean;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -208,6 +210,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               showHeatmap={showHeatmap}
               currentPage={currentPage}
               itemsPerPage={itemsPerPage}
+              enableHoverCard={enableHoverCard}
           />
       </div>
 

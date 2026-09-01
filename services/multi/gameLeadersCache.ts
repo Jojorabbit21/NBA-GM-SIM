@@ -10,11 +10,16 @@ export interface StatLeader { name: string; value: number; position?: string }
 export interface QuarterScores { home: number[]; away: number[] }
 export interface MvpStatLine { label: string; value: number }
 export interface GameMvp { playerId: string; name: string; position?: string; stats: MvpStatLine[] }
-export interface GameLeaders { pts?: StatLeader; reb?: StatLeader; ast?: StatLeader; quarterScores?: QuarterScores; mvp?: GameMvp }
+export interface GameLeaders {
+    pts?: StatLeader; reb?: StatLeader; ast?: StatLeader; quarterScores?: QuarterScores;
+    mvp?: GameMvp;
+    /** 양 팀 각각의 최우수선수 — MultiScheduleView.tsx 리스트 뷰 "최우수선수" 컬럼(팀당 1명)용. */
+    mvpHome?: GameMvp; mvpAway?: GameMvp;
+}
 
-// PlayerBoxScore[] (home_box/away_box) → 경기 전체(양 팀 통틀어) PTS/REB/AST 리더 1명씩.
-// MultiScheduleView.tsx/MultiSeasonPage.tsx가 공유(로직 중복 방지 — 타입도 이 파일에 있으니
-// 같이 두는 게 자연스러움).
+// PlayerBoxScore[] (home_box/away_box) → 경기 전체(양 팀 통틀어) PTS/REB/AST 리더 1명씩 +
+// 전체 MVP 1명 + 팀별 MVP 각 1명. MultiScheduleView.tsx/MultiSeasonPage.tsx가 공유(로직
+// 중복 방지 — 타입도 이 파일에 있으니 같이 두는 게 자연스러움).
 export function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBoxScore[] | null): GameLeaders {
     const all = [...(homeBox ?? []), ...(awayBox ?? [])];
     const topBy = (fn: (p: PlayerBoxScore) => number) =>
@@ -26,7 +31,9 @@ export function computeGameLeaders(homeBox: PlayerBoxScore[] | null, awayBox: Pl
         pts: ptsP ? { name: ptsP.playerName, value: ptsP.pts, position: ptsP.position } : undefined,
         reb: rebP ? { name: rebP.playerName, value: rebP.reb, position: rebP.position } : undefined,
         ast: astP ? { name: astP.playerName, value: astP.ast, position: astP.position } : undefined,
-        mvp: computeGameMvp(homeBox, awayBox),
+        mvp: bestFromBox(all),
+        mvpHome: bestFromBox(homeBox),
+        mvpAway: bestFromBox(awayBox),
     };
 }
 
@@ -50,17 +57,16 @@ const MVP_STAT_CANDIDATES: { key: 'pts' | 'reb' | 'ast' | 'stl' | 'blk'; label: 
     { key: 'blk', label: 'BLK', threshold: 2 },
 ];
 
-// PlayerBoxScore[] (home_box/away_box) → PIE 최댓값 선수 1명 + 그 선수의 두드러진 대표
-// 스탯(최대 5개, 임계값 미만은 제외) — TeamScheduleCalendar.tsx "최우수선수" 컬럼용.
-export function computeGameMvp(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBoxScore[] | null): GameMvp | undefined {
-    const all = [...(homeBox ?? []), ...(awayBox ?? [])];
-    if (all.length === 0) return undefined;
+// box(선수 목록) → PIE 최댓값 선수 1명 + 그 선수의 두드러진 대표 스탯(최대 5개, 임계값
+// 미만은 제외). computeGameMvp(전체 통합)/computeGameLeaders(팀별)가 공유하는 내부 헬퍼.
+function bestFromBox(box: PlayerBoxScore[] | null): GameMvp | undefined {
+    if (!box || box.length === 0) return undefined;
 
-    let best = all[0];
+    let best = box[0];
     let bestScore = pieRaw(best);
-    for (let i = 1; i < all.length; i++) {
-        const score = pieRaw(all[i]);
-        if (score > bestScore) { best = all[i]; bestScore = score; }
+    for (let i = 1; i < box.length; i++) {
+        const score = pieRaw(box[i]);
+        if (score > bestScore) { best = box[i]; bestScore = score; }
     }
 
     const stats = MVP_STAT_CANDIDATES
@@ -71,6 +77,12 @@ export function computeGameMvp(homeBox: PlayerBoxScore[] | null, awayBox: Player
         .map(({ label, value }) => ({ label, value }));
 
     return { playerId: best.playerId, name: best.playerName, position: best.position, stats };
+}
+
+// PlayerBoxScore[] (home_box/away_box) → PIE 최댓값 선수 1명(양 팀 통틀어) —
+// TeamScheduleCalendar.tsx "최우수선수" 컬럼용.
+export function computeGameMvp(homeBox: PlayerBoxScore[] | null, awayBox: PlayerBoxScore[] | null): GameMvp | undefined {
+    return bestFromBox([...(homeBox ?? []), ...(awayBox ?? [])]);
 }
 
 const keyFor = (roomId: string) => `nbagm:gameLeaders:${roomId}`;

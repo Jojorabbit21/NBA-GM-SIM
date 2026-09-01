@@ -35,6 +35,11 @@ export interface MultiGameDataReturn {
     roomId:        string | null;
 
     // 팀/일정
+    /** @deprecated 멀티플레이어 경로에서 이 필드를 채워주는 setTeams 호출이 이 훅 안 어디에도
+     *  없어 항상 빈 배열로 남는다(MultiNewsFeedView.tsx/MultiScheduleView.tsx가 각각 독립적으로
+     *  이 버그를 겪고 useMultiSearchData()로 우회했다 — 2026-09-01). 전체 로스터가 필요하면
+     *  services/multi/buildLeagueTeams.ts(buildLeagueTeams) 또는 hooks/useMultiSearchData.ts를
+     *  대신 사용할 것. */
     teams:               Team[];
     setTeams:            (t: Team[]) => void;
     schedule:            Game[];

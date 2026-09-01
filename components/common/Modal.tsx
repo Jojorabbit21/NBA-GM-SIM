@@ -12,17 +12,21 @@ interface ModalProps {
     size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
     headerColor?: string;
     className?: string;
+    /** 모달 자체의 X 버튼(제목 있을 때 헤더 안 / 없을 때 우상단 absolute)을 감춤 —
+     *  children 쪽에서 커스텀 위치의 닫기 버튼을 직접 그릴 때(onClose 호출) 사용. */
+    hideCloseButton?: boolean;
 }
 
-export const Modal: React.FC<ModalProps> = ({ 
-    isOpen, 
-    onClose, 
-    children, 
-    title, 
+export const Modal: React.FC<ModalProps> = ({
+    isOpen,
+    onClose,
+    children,
+    title,
     footer,
-    size = 'lg', 
+    size = 'lg',
     headerColor,
-    className = ''
+    className = '',
+    hideCloseButton = false,
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -78,19 +82,21 @@ export const Modal: React.FC<ModalProps> = ({
                 {(title) && (
                     <div className="px-8 py-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center relative z-10 shrink-0">
                         <div className="flex-1 text-xl font-bold text-white">{title}</div>
-                        <button 
-                            onClick={onClose} 
-                            className="p-2 ml-4 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
+                        {!hideCloseButton && (
+                            <button
+                                onClick={onClose}
+                                className="p-2 ml-4 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                            >
+                                <X size={24} />
+                            </button>
+                        )}
                     </div>
                 )}
-                
+
                 {/* Close button if no header */}
-                {!title && (
-                    <button 
-                        onClick={onClose} 
+                {!title && !hideCloseButton && (
+                    <button
+                        onClick={onClose}
                         className="absolute top-6 right-6 p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors z-50"
                     >
                         <X size={24} />

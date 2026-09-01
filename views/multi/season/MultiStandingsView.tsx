@@ -15,7 +15,6 @@ import {
     Table, TableHead, TableBody, TableRow,
     TableHeaderCell, TableCell,
 } from '../../../components/common/Table';
-import { TeamLogo } from '../../../components/common/TeamLogo';
 import { TEAM_DATA } from '../../../data/teamData';
 import { DIVISION_KOREAN } from '../../../data/mappings';
 
@@ -705,20 +704,17 @@ const LeagueStandingsTable: React.FC<{
                                         </TableCell>
 
                                         {/* Team */}
-                                        <TableCell className="pl-4 border-r border-slate-800/30">
-                                            <div className="flex items-center gap-2.5">
-                                                <TeamLogo teamId={t.team_slug} size="sm" />
-                                                <span
-                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
-                                                    className={`text-sm truncate cursor-pointer hover:underline ${
-                                                        clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
-                                                            : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
-                                                            : 'text-slate-200'
-                                                    }`}
-                                                >
-                                                    {t.team_name}
-                                                </span>
-                                            </div>
+                                        <TableCell align="left" className="pl-4 border-r border-slate-800/30">
+                                            <span
+                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
+                                                className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
+                                                    clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
+                                                        : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
+                                                        : 'text-slate-200'
+                                                }`}
+                                            >
+                                                {t.team_name}
+                                            </span>
                                         </TableCell>
 
                                         {/* Data columns */}

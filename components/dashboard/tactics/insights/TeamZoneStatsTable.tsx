@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import type { Player } from '../../../../types';
 import { ZONE_CONFIG, ZONE_AVG } from '../../../../utils/courtZones';
+import { PlayerHoverCard } from '../../../common/PlayerHoverCard';
 
 // TeamZoneChart.tsx의 ZONE_STAT_MAP과 동일(그쪽은 export 안 되어 있어 로컬로 재정의) — 10존
 // 각각의 원시 zone_*_m/zone_*_a 스탯 키. ZONE_CONFIG 선언 순서 그대로 테이블 행 순서로 사용.
@@ -32,8 +33,9 @@ interface ZoneRow {
 /** 기존 TeamZoneEfficiencyTable(존별 팀 전체 성공/시도·FG%)과 TeamZoneLeadersTable(존별
  *  성공개수·성공률 팀 내 1위 선수)을 한 행에 합친 테이블. 두 표 모두 ZONE_CONFIG 순서를
  *  그대로 행 순서로 쓰던 걸 하나의 useMemo에서 같이 계산. 선수명은 클릭 시 onPlayerClick으로
- *  프로필 이동. */
-export const TeamZoneStatsTable: React.FC<{ roster: Player[]; onPlayerClick?: (player: Player) => void }> = ({ roster, onPlayerClick }) => {
+ *  프로필 이동, hover 시 PlayerHoverCard(항상 활성 — MultiTacticsView.tsx 전용 컴포넌트라
+ *  enableHoverCard 게이트 불필요). */
+export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string; onPlayerClick?: (player: Player) => void }> = ({ roster, teamAbbr, onPlayerClick }) => {
     const rows = useMemo((): ZoneRow[] => {
         return ZONE_CONFIG.map(cfg => {
             const stat = ZONE_STAT_KEYS[cfg.key];
@@ -110,12 +112,14 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; onPlayerClick?: (p
                             </span>
                             {row.countLeader ? (
                                 <>
-                                    <span
-                                        className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
-                                        onClick={() => onPlayerClick?.(row.countLeader!.player)}
-                                    >
-                                        {row.countLeader.player.name}
-                                    </span>
+                                    <PlayerHoverCard player={row.countLeader.player} teamAbbr={teamAbbr}>
+                                        <span
+                                            className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
+                                            onClick={() => onPlayerClick?.(row.countLeader!.player)}
+                                        >
+                                            {row.countLeader.player.name}
+                                        </span>
+                                    </PlayerHoverCard>
                                     <span className={`text-sm font-normal text-slate-300 tabular-nums text-left ${VALUE_CLS}`}>{row.countLeader.value}</span>
                                 </>
                             ) : (
@@ -126,12 +130,14 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; onPlayerClick?: (p
                             )}
                             {row.pctLeader ? (
                                 <>
-                                    <span
-                                        className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
-                                        onClick={() => onPlayerClick?.(row.pctLeader!.player)}
-                                    >
-                                        {row.pctLeader.player.name}
-                                    </span>
+                                    <PlayerHoverCard player={row.pctLeader.player} teamAbbr={teamAbbr}>
+                                        <span
+                                            className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
+                                            onClick={() => onPlayerClick?.(row.pctLeader!.player)}
+                                        >
+                                            {row.pctLeader.player.name}
+                                        </span>
+                                    </PlayerHoverCard>
                                     <span className={`text-sm font-normal text-slate-300 tabular-nums text-left ${VALUE_CLS}`}>{(row.pctLeader.value * 100).toFixed(1)}%</span>
                                 </>
                             ) : (

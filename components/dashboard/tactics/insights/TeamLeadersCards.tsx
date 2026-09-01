@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useLeaderboardData } from '../../../../hooks/useLeaderboardData';
 import type { Team, Game, Player } from '../../../../types';
+import { PlayerHoverCard } from '../../../common/PlayerHoverCard';
 
 interface LeaderStatConfig {
     key: string;
@@ -26,22 +27,27 @@ function formatValue(val: number, format?: 'percent'): string {
     return val.toFixed(1);
 }
 
+// useLeaderboardData가 'Players' 모드 sortedData에 얹어주는 teamAbbr(Player 타입 자체엔
+// 없는 필드) — hover 카드 헤더에 소속팀 약어를 표시하기 위해 타입만 좁혀서 그대로 사용.
+type PlayerWithTeamAbbr = Player & { teamAbbr?: string };
+
 interface LeaderCard {
     key: string;
     label: string;
-    player: Player;
+    player: PlayerWithTeamAbbr;
     value: number;
     format?: 'percent';
     rank: number;
     total: number;
-    top5: { player: Player; value: number }[];
+    top5: { player: PlayerWithTeamAbbr; value: number }[];
 }
 
 /** 인사이트 탭 "선수 스탯" 테이블 위 — PTS/REB/AST/STL/BLK/3P% 6개 스탯의 팀 리더(우리 로스터
  *  중 해당 스탯 1위 선수)를 카드로 나열. 순위는 leagueTeams(30팀 전체 로스터)를 기준으로 리그
  *  전체 선수 중 몇 위인지 계산 — 팀 순위(30개 중 몇 위)와 스케일이 달라 TeamStatRankList의
  *  fuchsia/emerald/blue 3단계 색상 컨벤션은 쓰지 않고 단일 색으로 표시. 선수명은 전부 클릭 시
- *  onPlayerClick으로 프로필 이동. */
+ *  onPlayerClick으로 프로필 이동, hover 시 PlayerHoverCard(항상 활성 — MultiTacticsView.tsx
+ *  전용 컴포넌트라 enableHoverCard 게이트 불필요, 다른 곳에서 import되지 않음). */
 export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string; schedule: Game[]; onPlayerClick?: (player: Player) => void }> = ({ leagueTeams, myTeamId, schedule, onPlayerClick }) => {
     const sortConfig = useMemo(() => ({ key: 'pts', direction: 'desc' as const }), []);
     const { sortedData } = useLeaderboardData(
@@ -62,11 +68,11 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
             const top5 = ranked
                 .filter((p: any) => p.teamId === myTeamId)
                 .slice(0, 5)
-                .map((p: any) => ({ player: p as Player, value: stat.compute(p.stats, p.stats.g || 1) }));
+                .map((p: any) => ({ player: p as PlayerWithTeamAbbr, value: stat.compute(p.stats, p.stats.g || 1) }));
             return {
                 key: stat.key,
                 label: stat.label,
-                player: leader as Player,
+                player: leader as PlayerWithTeamAbbr,
                 value: stat.compute(leader.stats, g),
                 format: stat.format,
                 rank,
@@ -91,12 +97,14 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
                     {/* 상단(리더) 영역 — slate-800 배경으로 아래 TOP5 리스트와 구분(구분선 대신 면적으로 분리) */}
                     <div className="bg-slate-800 px-3 py-2 flex flex-col gap-1">
                         <span className="text-sm font-normal text-slate-300 uppercase tracking-wider">{c.label}</span>
-                        <span
-                            className="text-sm font-normal text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
-                            onClick={() => onPlayerClick?.(c.player)}
-                        >
-                            {c.player.name}
-                        </span>
+                        <PlayerHoverCard player={c.player} teamAbbr={c.player.teamAbbr}>
+                            <span
+                                className="text-sm font-normal text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                onClick={() => onPlayerClick?.(c.player)}
+                            >
+                                {c.player.name}
+                            </span>
+                        </PlayerHoverCard>
                         <div className="flex items-baseline justify-between">
                             <span className="text-lg font-normal text-white tabular-nums">{formatValue(c.value, c.format)}</span>
                             <span className="text-lg font-normal text-white tabular-nums">리그 {c.rank}위</span>
@@ -106,12 +114,14 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
                     <div className="flex flex-col gap-0.5 px-3 py-1.5">
                         {c.top5.map((p, i) => (
                             <div key={i} className="flex items-center justify-between gap-2">
-                                <span
-                                    className="text-sm font-normal text-slate-400 truncate hover:text-indigo-400 cursor-pointer transition-colors"
-                                    onClick={() => onPlayerClick?.(p.player)}
-                                >
-                                    {i + 1}. {p.player.name}
-                                </span>
+                                <PlayerHoverCard player={p.player} teamAbbr={p.player.teamAbbr}>
+                                    <span
+                                        className="text-sm font-normal text-slate-400 truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                        onClick={() => onPlayerClick?.(p.player)}
+                                    >
+                                        {i + 1}. {p.player.name}
+                                    </span>
+                                </PlayerHoverCard>
                                 <span className="text-sm font-normal text-slate-300 tabular-nums shrink-0">{formatValue(p.value, c.format)}</span>
                             </div>
                         ))}

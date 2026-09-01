@@ -56,7 +56,8 @@ export const MultiSidebar: React.FC = () => {
     // 메뉴 자체가 곧 브라켓이라 별도 메뉴가 필요 없다.
     const hasPlayoffs = !!league?.bracket_data && league?.type !== 'tournament';
 
-    // 받은 트레이드 제안(대기중) 개수 — 사이드바 트레이드 아이콘 배지용
+    // 받은 트레이드 제안 중 안읽은 것 개수 — 사이드바 트레이드 아이콘 배지용
+    // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
     const roomId = room?.id ?? null;
     const myTeamDbId = myTeam?.id ?? null;
     const [pendingTradeCount, setPendingTradeCount] = useState(0);
@@ -65,7 +66,7 @@ export const MultiSidebar: React.FC = () => {
         let cancelled = false;
         const fetchCount = async () => {
             const { incoming } = await listPendingTradeOffers(roomId, myTeamDbId);
-            if (!cancelled) setPendingTradeCount(incoming.length);
+            if (!cancelled) setPendingTradeCount(incoming.filter(o => !o.to_team_read_at).length);
         };
         fetchCount();
         const channel = supabase
@@ -167,10 +168,10 @@ export const MultiSidebar: React.FC = () => {
                     onClick={() => navigate(`${base}/schedule`)}
                 />
                 <NavItem
-                    active={pathname.startsWith(`${base}/front-office`)}
+                    active={pathname.startsWith(`${base}/transaction`)}
                     icon={<ArrowLeftRight />}
                     label="트레이드"
-                    onClick={() => navigate(`${base}/front-office`)}
+                    onClick={() => navigate(`${base}/transaction`)}
                     badge={pendingTradeCount}
                 />
 

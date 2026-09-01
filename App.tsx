@@ -389,7 +389,7 @@ const App: React.FC = () => {
                                 <Route path="schedule"     element={<MultiScheduleView />} />
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
-                                <Route path="front-office" element={<MultiFrontOfficeView />} />
+                                <Route path="transaction"  element={<MultiFrontOfficeView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                             </Route>
