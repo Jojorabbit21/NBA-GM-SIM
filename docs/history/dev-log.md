@@ -35,6 +35,270 @@
 
 ---
 
+## 2026-09-02 — 뉴스피드 "전체 기간" 캐시가 최신 날짜를 놓치는 버그 수정
+
+**배경**: 사용자 리포트 — 현재 시뮬레이션 날짜가 11/13인데, 뉴스 화면을 "전체 기간"으로
+두면 11/12까지밖에 안 보이고, 날짜를 11/13으로 직접 필터하면 11/13 뉴스가 정상적으로
+나옴. 원인 조사 결과 DB 데이터 자체는 정상(`league_events.sim_date`에 11/13 이벤트가
+제대로 쌓여 있고 `created_at` 순서도 `sim_date`와 일치)이라 데이터 문제가 아니라 클라이언트
+캐싱 문제 — `index.tsx`의 QueryClient가 `staleTime: Infinity` + `refetchOnWindowFocus: false`
++ localStorage 영속 캐시로 설정돼 있어("서버 부하 감소", "클라이언트가 Source of Truth"),
+`useLeagueNewsFeed`의 "전체 기간" 쿼리(queryKey에 날짜가 `null`)는 Realtime INSERT 구독의
+무효화(`useLeagueEventsRealtime`, 400ms 디바운스) 없이는 절대 스스로 재조회되지 않는다.
+소켓이 잠깐 끊겼다 재연결되는 구간(탭 백그라운드, 네트워크 순단 등)의 INSERT는 통지받지
+못해 그 시점 상태로 캐시가 멈춰버릴 수 있는 반면, 날짜를 새로 지정하면 이전에 캐시된 적
+없는 queryKey라 무조건 새로 fetch돼 우연히 최신으로 보였던 것. `MultiFrontOfficeView.tsx`가
+이미 인박스 탭에서 겪고 고친 것과 동일한 유형의 문제(주석 참고: "staleTime: Infinity + 영속
+캐시라 이 화면 밖에서 생긴 변경은... 탭에 들어올 때마다 한 번 재조회해서 반영").
+
+**변경 파일**:
+- `views/multi/season/MultiNewsFeedView.tsx` — `useEffect`/`useQueryClient` import 추가,
+  `room?.id`가 정해지면(=화면 진입 시) `['leagueNewsStories', room.id]` 쿼리를 한 번
+  무효화하는 이펙트 추가(`MultiFrontOfficeView.tsx`의 "탭 진입 시 재조회" 패턴 재사용).
+
+**Before**: `useLeagueNewsFeed()` 호출 후 별도 무효화 트리거 없음 — Realtime 구독이 유일한
+갱신 경로.
+
+**After**:
+```tsx
+const queryClient = useQueryClient();
+useEffect(() => {
+    if (room?.id) queryClient.invalidateQueries({ queryKey: ['leagueNewsStories', room.id] });
+}, [room?.id, queryClient]);
+```
+
+**검증**: `npx tsc --noEmit` — 해당 파일 관련 에러 없음. Supabase MCP로 실제 방 데이터
+(`league_events` sim_date별 count/created_at 순서) 조회해 서버 쪽 데이터/정렬 로직에는
+문제가 없음을 확인.
+
+**롤백 방법**: 위 `useEffect` 블록과 관련 import 2줄을 제거하면 됨(기능 자체는 그대로,
+화면 진입 시 자동 새로고침만 없어짐 — Realtime 무효화만으로 되돌아감).
+
+---
+
+## 2026-09-02 — 연속 기록 서신: 박스스코어 제거 + 연속 기록 리스트를 테이블화
+
+**배경**: 사용자 요청 — 연속 기록(`player_streak`) 서신에서 그 경기의 전체 박스스코어(양팀
+전원)를 제거하고, 대신 연속 기록 리스트 자체를 PTS/REB/AST/STL/BLK/TOV/PF/FG%/3P%/FT%
+컬럼을 갖춘 테이블로 표시. 텍스트 스타일은 기존 박스스코어(`TeamBoxTable`)와 동일하게
+(`BOX_HEADER_CELL`/`BOX_STAT_CELL`, `pct()`, 테두리 없는 얇은 구분선). 기존엔 `statValue`
+(연속 기록의 기준 스탯 하나)만 서버가 내려줘서 나머지 스탯을 표시할 수 없었음 — 서버가
+그 경기의 선수 전체 스탯 라인을 함께 내려주도록 확장.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `PlayerStreakPayload.streaks[].games[]`에
+  `pts/reb/ast/stl/blk/tov/pf/fgm/fga/p3m/p3a/ftm/fta` 필드 추가, `gamesForRule()`이
+  이미 조회해둔 `playerBox`에서 값을 채움(추가 DB 조회 불필요)
+- `services/multi/leagueEventPayload.ts` (client 미러) — `PlayerStreakGame` 인터페이스에
+  동일 필드 추가, `parsePlayerStreakGame()`이 숫자 아니면 0으로 방어적 파싱(2026-09-02
+  이전 옛 이벤트는 이 필드가 없어 전부 0 — 카드는 깨지지 않고 0으로 채워진 테이블로 폴백)
+- `views/multi/season/newsFeedCards.tsx` — `StreakCard`: `useGameBoxScore`/
+  `useBoxScorePlayerCardMap`/`BoxScoreHeadline`/`TeamBoxTable`(박스스코어 렌더)와
+  `roomId`/`onOpenGame` prop 제거. "N경기 연속" 리스트를 `<div>` 한 줄 텍스트에서 위 10개
+  컬럼을 가진 `<table>`로 교체(날짜/상대 매치업 2열 + 스탯 10열). `StoryCard` 디스패처의
+  `StreakCard` 호출부도 `roomId`/`onOpenGame` 제거.
+
+**Before** (newsFeedCards.tsx StreakCard 리스트 부분):
+```tsx
+{s.games.map(g => (
+    <div key={g.gameId} className="flex items-center gap-2 py-2 text-sm">
+        <span className="text-slate-500 shrink-0">{g.gameDate}</span>
+        ...
+        <span className="font-bold text-slate-300">{g.statValue} {s.statKey.toUpperCase()}</span>
+    </div>
+))}
+{/* 이후 useGameBoxScore로 그 경기의 양팀 전체 박스스코어(TeamBoxTable×2)를 렌더 */}
+```
+
+**After**: `<table>` + `BOX_HEADER_CELL`/`BOX_STAT_CELL`로 날짜/상대/PTS/REB/AST/STL/BLK/
+TOV/PF/FG%/3P%/FT% 12열 렌더, 박스스코어 섹션(`isBoxLoading`/`boxScore`/안내 문구) 전체 삭제.
+
+**검증**: `npx tsc --noEmit`으로 확인 — 위 3개 파일 관련 에러 없음(레포에 기존부터 있던
+무관한 타입 에러들만 남아 있음, exit 0).
+
+**롤백 방법**: 세 파일 모두 이 커밋 이전 상태로 되돌리면 됨(client/server 미러 쌍이라
+`leagueEvents.ts`/`leagueEventPayload.ts` 반드시 같이 롤백 — 하나만 되돌리면 파싱 필드
+불일치로 새 스탯이 전부 0으로 표시됨, 단 카드 자체는 깨지지 않음).
+
+**[2026-09-02 후속]**: 날짜 컬럼이 다른 셀보다 어두운 `text-slate-500`였던 걸 제거해
+`BOX_STAT_CELL` 기본 밝기(`text-slate-300`)로 통일. 스코어(`{away}-{home}`)를 클릭하면
+그 경기 결과 화면으로 이동하도록 `onOpenGame` prop을 다시 추가(`StreakCard`/`StoryCard`
+디스패처)하고 스코어 텍스트에 `onClick={() => onOpenGame(g.gameId)}` + 인디고 호버 밑줄
+스타일 연결(다른 카드의 팀명 클릭과 동일한 시각 언어).
+
+---
+
+## 2026-09-02 — 올-디펜시브 팀 서신 테이블에 TOVF 추가
+
+**배경**: 사용자 요청 — 직전 작업(DPOY 서신 TOVF 추가)에 이어, 올-디펜시브 팀(`all_def_team`)
+서신 테이블에도 DFG% 옆에 TOVF 표시. `AllTeamPlayer.statLine`이 DPOY와 동일한
+`AwardStatLine`(`tovfpg` 이미 포함)을 공유하고, `runAwardVoting()`이 `content.dpoyRanking`/
+`content.allDefTeams`를 동일한 candidates 풀에서 한 번에 생성하므로 awardVoting.ts /
+DB RPC 쪽은 추가 변경 불필요 — payload 매핑과 UI 컬럼만 연결하면 됨.
+
+**변경 파일**:
+- `services/multi/leagueEventPayload.ts` — `AllDefTeamEntry`에 `tovfpg: number` 추가,
+  `all_def_team` 파싱부에 `tovfpg: num(p.tovfpg)` 추가(구버전 이벤트는 0 폴백).
+- `server/src/postSeasonAwards.ts` — `all_def_team` 이벤트 payload의 tier별 players
+  매핑에 `tovfpg: p.statLine.tovfpg` 추가(dfgPct 다음).
+- `views/multi/season/newsFeedCards.tsx` — `AllDefTeamCard`의 `statCols`에
+  `{ label: 'TOVF', get: (p) => p.tovfpg.toFixed(1) }`을 DFG% 바로 다음에 추가.
+
+**검증**: `npx tsc --noEmit -p .` — `tovfpg`/`AllDefTeamEntry`/`leagueEventPayload`/
+`newsFeedCards` 관련 에러 0건. DB 마이그레이션 추가 적용 불필요(직전 작업에서 이미
+`get_league_season_awards_stats` RPC에 `tov_forced` 반영 완료 — 같은 `PlayerStats.tovForced`
+소스를 재사용).
+
+**한계**: 마이그레이션 적용 이전 경기로 채워진 기존 시즌은 직전 항목과 동일한 이유로
+TOVF가 0으로 표시됨.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨(DB 변경 없음).
+
+---
+
+## 2026-09-02 — tovForced(TOVF) 시즌 누적 집계 + 리더보드/DPOY 서신 노출
+
+**배경**: 사용자 요청 — 앞서 추가한 경기당(`PlayerBoxScore`) `tovForced`를 (1) 리더보드
+"선수 > 수비" 탭에 "TOVF" 약어로 노출, (2) 멀티플레이어 "올해의 수비수(DPOY)" 서신
+테이블에도 표시. 두 화면 모두 **시즌 누적** 스탯을 쓰므로, 직전 작업에서 범위 밖으로
+남겨뒀던 시즌 집계 파이프라인(`PlayerStats`, 싱글 stateReplayer/멀티 buildLeagueTeams,
+멀티 서버 RPC)까지 전부 연결.
+
+**변경 파일**:
+- `types/player.ts` / `server/src/shared/types/player.ts` — `PlayerStats`에
+  `tovForced: number` 추가(시즌 누적).
+- `utils/constants.ts` / `server/src/shared/utils/constants.ts` — `INITIAL_STATS()`에
+  `tovForced: 0` 추가.
+- `services/stateReplayer.ts` — `applyBoxScore()`에서 경기별 `tovForced`를 시즌
+  누적(`target.tovForced`)에 합산(싱글플레이어 상태 재구성 경로).
+- `services/multi/buildLeagueTeams.ts` — 멀티플레이어 클라이언트 측 시즌 집계
+  reducer에 `tovForced: (prev.tovForced ?? 0) + (bs.tovForced ?? 0)` 추가.
+- `data/leaderboardConfig.ts` — `DEFENSE_COLUMNS`(선수 리더보드 "수비" 탭)와
+  `DEFENSE_STAT_OPTIONS`(필터 드롭다운)에 `{ key: 'tovForced', label: 'TOVF' }`를
+  STL/BLK 다음, DREB 앞에 추가. 팀 전용 `TEAMS_DEFENSE_COLUMNS`는 미포함(요청 범위가
+  "선수" 한정).
+- `hooks/useLeaderboardData.ts` — 경기당 평균 변환이 필요한 카운팅 스탯 화이트리스트
+  3곳(heatmap range 계산, 필터, 정렬)에 `'tovForced'` 추가.
+- `components/leaderboard/LeaderboardTable.tsx` — 셀 렌더링 분기에
+  `else if (col.key === 'tovForced') rawVal = (s.tovForced||0)/g;` 추가.
+- `utils/awardVoting.ts` / `server/src/shared/multi/awardVoting.ts` — `AwardStatLine`에
+  `tovfpg`(경기당 TOVF) 추가, 후보 생성부에서 `(p.stats.tovForced ?? 0) / g`로 계산.
+  DPOY 스코어링 가중치 자체는 변경하지 않음(표시 전용 필드로만 추가).
+- `services/multi/leagueEventPayload.ts` — `DpoyAwardEntry`에 `tovfpg` 추가 +
+  파싱부에 `num(r.tovfpg)`(구버전 이벤트엔 필드가 없어 안전하게 0 폴백).
+- `server/src/postSeasonAwards.ts` — `zeroStats()`에 `tovForced: 0` 추가, RPC 응답
+  매핑에 `tovForced: Number(s.tov_forced ?? 0)` 추가, DPOY 이벤트 payload의 ranking
+  엔트리에 `tovfpg: r.statLine.tovfpg` 추가.
+- `views/multi/season/newsFeedCards.tsx` — `DpoyAwardCard`: 히어로 스탯라인에 TOVF
+  span 추가(BPG 다음), 순위표 헤더/바디에 TOVF 컬럼 추가(BPG 다음, DREB 앞).
+- **DB 마이그레이션** `migrations/add_tov_forced_to_awards_rpc.sql` (Supabase 프로젝트
+  `buummihpewiaeltywdff`에 적용 완료) — `get_league_season_awards_stats(uuid)` RPC를
+  DROP 후 CREATE로 확장, `game_pbp.home_box/away_box` JSONB에서
+  `sum(COALESCE((elem->>'tovForced')::numeric, 0)) AS tov_forced` 컬럼 추가. 이 RPC가
+  멀티플레이어 시즌 종료 시 DPOY/MVP 산정에 쓰이는 유일한 서버측 시즌 스탯 소스라
+  이 마이그레이션 없이는 서신 테이블에 실제 값이 채워지지 않음(RPC 확장 전까지는
+  `Number(s.tov_forced ?? 0)`가 항상 0 반환 — 안전한 폴백이라 크래시는 없었음).
+
+**검증**:
+- `npx tsc --noEmit -p .` — `tovForced`/`tovfpg`/`foulSubtype` 관련 에러 0건.
+- Supabase MCP로 마이그레이션 적용 후 `pg_get_function_result()`로 반환 타입에
+  `tov_forced numeric`이 정확한 위치(tov 다음, pf 앞)에 들어갔는지 재확인 완료.
+- 서버(Deno) 측은 로컬 tsc 대상에서 제외되어 별도 컴파일 검증 불가 — client와 구조적으로
+  동일한 미러 수정이라 리스크 낮음(직전 tovForced 엔진 작업과 동일한 사유).
+
+**한계**:
+- 기존에 이미 끝난 멀티플레이어 시즌(이 마이그레이션 적용 이전 경기들)은 `home_box`/
+  `away_box` JSONB에 애초에 `tovForced` 키가 없으므로 RPC가 0으로 집계함 — 소급 재계산
+  불가(엔진이 tovForced를 기록하지 않은 시점의 경기 데이터라 원본에 값 자체가 없음).
+  새로 진행되는 시즌부터 정상 집계됨.
+- 싱글플레이어 기존 세이브도 동일 — `tovForced` 필드 추가 이전에 저장된
+  `user_game_results`의 박스스코어에는 값이 없어 과거 경기분은 0으로 집계.
+
+**롤백 방법**:
+- 코드: 이번 커밋 diff를 되돌리면 됨.
+- DB: `migrations/add_pf_to_awards_rpc.sql`의 CREATE FUNCTION 본문(tov_forced 컬럼만
+  제거한 버전)을 다시 적용하거나, Supabase MCP `apply_migration`으로 이번 파일의
+  `tov_forced` 관련 라인만 제거한 DROP+CREATE를 재실행.
+
+---
+
+## 2026-09-02 — Turnover Forced(tovForced) 스탯 추가 (스틸 + 차징 유도만 귀속, Tier 1)
+
+**배경**: 사용자 요청 — 상대 턴오버를 유발한 수비수에게 크레딧을 주는 "Turnover Forced" 스탯
+구현. PBP 엔진 조사 결과, 논스틸 턴오버 중 확률식에 실제 수비수 개인 능력치가 기여하는
+경로는 차징(`defender.attr.defConsist`)뿐이었고, 일리걸 스크린/샷클락 바이얼레이션/
+비강제 턴오버는 개인 귀속 근거(인과관계)가 없어 제외(Tier 2/3, 보류). 스틸+차징만
+포함하는 Tier 1으로 범위 확정 후 진행.
+
+**변경 파일** (client/server 미러 쌍 전부 동반 수정):
+- `types/engine.ts` / `server/src/shared/types/engine.ts` — `PlayerBoxScore`에
+  `tovForced: number` 필드 추가.
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — `PossessionResult`에
+  `foulSubtype?: 'charge' | 'illegalScreen'` 추가(오펜시브 파울 세부 유형 구분용).
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` —
+  차징 반환 객체에 `foulSubtype: 'charge'`, 일리걸 스크린 반환 객체에
+  `foulSubtype: 'illegalScreen'` 추가.
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` —
+  (1) turnover 분기: `isSteal && defender`일 때 `defender.tovForced += 1` 추가(기존
+  `defender.stl += 1`과 나란히). (2) offensiveFoul 분기: 기존 `playType` 기반 추측
+  (`isCharge = playType === 'Iso' || 'PostUp' || 'Transition'`, 커멘터리 텍스트 전용
+  휴리스틱이라 정확도가 낮았음)를 `result.foulSubtype === 'charge'`로 교체 — 정확한
+  판정이 됨과 동시에 `isCharge && defender`일 때 `defender.tovForced += 1` 추가.
+- `services/game/engine/pbp/initializer.ts` / `server/.../initializer.ts` — LivePlayer
+  생성 시 `tovForced: 0` 초기화 추가.
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — `mapToBox()`
+  최종 박스스코어 매핑에 `tovForced: p.tovForced` 추가.
+- `pages/MultiSeasonPage.tsx`, `views/multi/season/MultiGamePbpView.tsx`(2곳),
+  `views/multi/season/MultiGamePbpView.legacy.tsx` — `PlayerBoxScore` 타입을 만족시키는
+  `emptyBoxRow`류 헬퍼들에 `tovForced: 0` 추가(타입 필수 필드라 tsc 에러로 발견/수정).
+
+**Before**:
+```ts
+// statsMappers.ts (client) — turnover 분기
+if (isSteal && defender) {
+    defender.stl += 1;
+}
+
+// statsMappers.ts (client) — offensiveFoul 분기
+const isCharge = playType === 'Iso' || playType === 'PostUp' || playType === 'Transition';
+```
+
+**After**:
+```ts
+// statsMappers.ts (client) — turnover 분기
+if (isSteal && defender) {
+    defender.stl += 1;
+    defender.tovForced += 1;
+}
+
+// statsMappers.ts (client) — offensiveFoul 분기
+const isCharge = result.foulSubtype === 'charge';
+if (isCharge && defender) {
+    defender.tovForced += 1;
+}
+```
+
+**검증**: `npx tsc --noEmit -p .` 실행 — `tovForced`/`foulSubtype` 관련 에러 0건(수정 전
+발생했던 4건: `pages/MultiSeasonPage.tsx`, `services/game/engine/pbp/liveEngine.ts` x2,
+`views/multi/season/MultiGamePbpView*.tsx` x2 전부 해소). 그 외 기존에 있던 무관한
+사전 에러들은 이번 변경과 무관(베이스라인에도 존재). 서버(Deno) 측은 로컬에 deno 바이너리가
+없어 별도 컴파일 검증은 못 했으나, client와 구조적으로 완전히 동일한 미러 수정이라 리스크 낮음.
+
+**한계**:
+- 일리걸 스크린/샷클락 바이얼레이션/비강제 턴오버는 tovForced에 미포함(Tier 2/3) — 확률식에
+  개인 수비수 기여 항이 원천적으로 없어 귀속 근거가 없음. 필요 시 별도 확률식 재설계 필요.
+- 시즌 누적 스탯(`types/player.ts`의 `PlayerStats`, 세이브/커리어 통계)에는 미반영 — 이번
+  변경은 라이브 PBP 엔진의 경기당 박스스코어(`PlayerBoxScore`)까지만 적용됨. 시즌
+  리더보드/커리어 스탯에 노출하려면 박스스코어 집계 경로에 추가 작업 필요.
+- 멀티플레이어 실시간 중계용 `BoxDelta`(진행 중 박스스코어 점진 공개, `types/engine.ts`)에도
+  미포함 — 이미 defReb 등 다수 필드가 의도적으로 빠져있는 curated subset이라 기존 패턴을
+  따름. 최종 박스스코어(경기 종료 후)에는 정상 반영됨.
+- UI(BoxScoreTable.tsx 등)에 컬럼 노출은 이번 범위에 포함 안 함 — 별도 요청 시 추가.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨(15개 파일, tovForced/foulSubtype 관련 라인만).
+
+---
+
 ## 2026-09-02 — "정규시즌 MVP" → "정규시즌 올해의 선수"로 명칭 변경 + MVP/DPOY 서신 제목에서 선수 이름 제거
 
 **배경**: 사용자 요청 — (1) 올해의 선수/올해의 수비수 서신 제목에 선수 이름 표기 금지,

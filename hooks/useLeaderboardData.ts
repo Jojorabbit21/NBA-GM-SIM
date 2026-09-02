@@ -489,6 +489,7 @@ export const useLeaderboardData = (
                 update('stl', s.stl / g);
                 update('blk', s.blk / g);
                 update('tov', s.tov / g);
+                update('tovForced', (s.tovForced || 0) / g);
                 update('pf', (s.pf || 0) / g);
                 update('fgm', s.fgm / g);
                 update('fga', s.fga / g);
@@ -638,7 +639,7 @@ export const useLeaderboardData = (
                                     // Per Game for traditional counts
                                     // Advanced stats are already ratios, so no /g
                                     // Traditional counts need /g
-                                    if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'oreb', 'dreb', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(filter.category!)) {
+                                    if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'oreb', 'dreb', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(filter.category!)) {
                                         itemVal = itemVal / g;
                                     }
                                 }
@@ -722,7 +723,7 @@ export const useLeaderboardData = (
                     if (s[statKey] !== undefined) {
                         const val = s[statKey];
                         // Count stats: per-game. pm is already pre-calculated as per-game.
-                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
+                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
                             return val / g;
                         }
                         return val;

@@ -203,6 +203,7 @@ export const DEFENSE_COLUMNS: ColumnDef[] = [
     { key: 'g',    label: 'G',    width: WIDTHS.STAT, sortable: true, isHeatmap: false, category: 'Defense', format: 'integer' },
     { key: 'stl',  label: 'STL',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
     { key: 'blk',  label: 'BLK',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    { key: 'tovForced', label: 'TOVF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Defense', format: 'number' },
     { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
     ...DEF_ZONES.flatMap(z => ([
         { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
@@ -216,6 +217,7 @@ export const DEFENSE_STAT_OPTIONS = [
     { value: 'g',     label: 'G' },
     { value: 'stl',   label: 'STL' },
     { value: 'blk',   label: 'BLK' },
+    { value: 'tovForced', label: 'TOVF' },
     { value: 'dreb',  label: 'DREB' },
     ...DEF_ZONES.flatMap(z => [
         { value: `dfg${z}_m`, label: `${z} DFGM` },

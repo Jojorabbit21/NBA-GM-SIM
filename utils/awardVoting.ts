@@ -21,6 +21,8 @@ export interface AwardStatLine {
     tovpg: number;
     /** 경기당 개인파울(PF). */
     pfpg: number;
+    /** 경기당 상대 턴오버 유발(TOVF/G) — 스틸 + 차징 유도. */
+    tovfpg: number;
 }
 
 export interface AwardCandidate {
@@ -159,6 +161,7 @@ function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerM
                     gamesStarted: p.stats.gs ?? 0,
                     tovpg: p.stats.tov / g,
                     pfpg: p.stats.pf / g,
+                    tovfpg: (p.stats.tovForced ?? 0) / g,
                 },
                 teamWins: team.wins,
                 teamLosses: team.losses,

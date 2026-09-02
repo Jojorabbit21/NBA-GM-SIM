@@ -48,10 +48,17 @@ export interface PlayerFeatDetail {
 
 /** [2026-09-02] 선수 연속기록을 구성하는 경기 하나 — win_streak의 WinStreakGame과 동일한
  * 패턴이지만 mvp(팀 전체 최고 활약) 대신 statValue(이 선수 개인의 해당 스탯 실측치)를 담는다. */
+/** [2026-09-02] 서버 미러(leagueEvents.ts) — 연속 기록 리스트를 텍스트에서 박스스코어
+ * 스타일 테이블(PTS/REB/AST/STL/BLK/TOV/PF/FG%/3P%/FT%)로 재설계하며 statValue 하나만으론
+ * 부족해 그 경기의 전체 스탯 라인을 추가. 이 필드가 생기기 전(2026-09-02 이전) 이벤트는
+ * 전부 0으로 파싱됨(parsePlayerStreakGame) — 테이블이 0으로 채워지는 정도로 폴백, 카드
+ * 자체는 그대로 렌더링. */
 export interface PlayerStreakGame {
     gameId: string; gameDate: string;
     homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
     statValue: number;
+    pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; pf: number;
+    fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number;
 }
 
 export interface PlayerStreakDetail {
@@ -145,6 +152,8 @@ export interface DpoyAwardEntry {
     spg: number; bpg: number; drebpg: number; orebpg: number;
     /** 상대가 이 선수에게 컨테스트당했을 때의 필드골 성공률(DFG%). */
     dfgPct: number;
+    /** 경기당 상대 턴오버 유발(TOVF/G) — 스틸 + 차징 유도. */
+    tovfpg: number;
 }
 export interface DpoyAwardDetail {
     kind: 'dpoy_award';
@@ -170,6 +179,8 @@ export interface AllDefTeamEntry {
     spg: number; bpg: number;
     g: number; gs: number; mpg: number; orebpg: number; drebpg: number; dfgPct: number;
     pfpg: number; tovpg: number;
+    /** 경기당 상대 턴오버 유발(TOVF/G) — 스틸 + 차징 유도. */
+    tovfpg: number;
 }
 export interface AllDefTeamTier { tier: number; players: AllDefTeamEntry[] }
 export interface AllDefTeamDetail {
@@ -237,10 +248,14 @@ function parsePlayerStreakGame(raw: any): PlayerStreakGame | undefined {
     if (!raw || !isNonEmptyString(raw.gameId) || !isNonEmptyString(raw.gameDate)) return undefined;
     if (!isNonEmptyString(raw.homeSlug) || !isNonEmptyString(raw.awaySlug)) return undefined;
     if (typeof raw.homeScore !== 'number' || typeof raw.awayScore !== 'number') return undefined;
+    const num = (v: any): number => typeof v === 'number' ? v : 0;
     return {
         gameId: raw.gameId, gameDate: raw.gameDate,
         homeSlug: raw.homeSlug, awaySlug: raw.awaySlug, homeScore: raw.homeScore, awayScore: raw.awayScore,
-        statValue: typeof raw.statValue === 'number' ? raw.statValue : 0,
+        statValue: num(raw.statValue),
+        pts: num(raw.pts), reb: num(raw.reb), ast: num(raw.ast), stl: num(raw.stl), blk: num(raw.blk),
+        tov: num(raw.tov), pf: num(raw.pf),
+        fgm: num(raw.fgm), fga: num(raw.fga), p3m: num(raw.p3m), p3a: num(raw.p3a), ftm: num(raw.ftm), fta: num(raw.fta),
     };
 }
 
@@ -398,7 +413,7 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                         points: num(r.points), firstPlaceVotes: num(r.firstPlaceVotes),
                         rankVotes: Array.isArray(r.rankVotes) ? r.rankVotes.map(num) : [0, 0, 0],
                         spg: num(r.spg), bpg: num(r.bpg), drebpg: num(r.drebpg),
-                        orebpg: num(r.orebpg), dfgPct: num(r.dfgPct),
+                        orebpg: num(r.orebpg), dfgPct: num(r.dfgPct), tovfpg: num(r.tovfpg),
                     }));
                 if (ranking.length === 0) return LEGACY;
                 return { kind: 'dpoy_award', season: payload.season, ranking };
@@ -439,7 +454,7 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                                 spg: num(p.spg), bpg: num(p.bpg),
                                 g: num(p.g), gs: num(p.gs), mpg: num(p.mpg),
                                 orebpg: num(p.orebpg), drebpg: num(p.drebpg), dfgPct: num(p.dfgPct),
-                                pfpg: num(p.pfpg), tovpg: num(p.tovpg),
+                                pfpg: num(p.pfpg), tovpg: num(p.tovpg), tovfpg: num(p.tovfpg),
                             })),
                     }));
                 if (tiers.length === 0) return LEGACY;

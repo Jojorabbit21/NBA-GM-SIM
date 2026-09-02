@@ -52,10 +52,20 @@ export interface PlayerStreakPayload {
      * [2026-09-02] 각 규칙에 games 배열 추가 — 그 연속기록을 구성하는 경기들(최신순, win_streak의
      * WinStreakPayload.games와 동일한 패턴). statValue는 그 경기에서 이 선수의 해당 스탯
      * (statKey) 실측치 — 팀 전체 MVP가 아니라 이 선수 개인의 박스스코어 한 줄이라 win_streak의
-     * mvp 필드와 달리 그냥 숫자 하나(카드가 "N PTS"처럼 라벨을 직접 붙임). */
+     * mvp 필드와 달리 그냥 숫자 하나(카드가 "N PTS"처럼 라벨을 직접 붙임).
+     * [2026-09-02 후속] 연속 기록 리스트를 텍스트 한 줄에서 박스스코어 스타일 테이블로
+     * 재설계(사용자 요청) — statValue 하나만으로는 PTS/REB/AST/STL/BLK/TOV/PF/FG%/3P%/FT%를
+     * 전부 보여줄 수 없어서, 그 경기에서 이 선수의 전체 스탯 라인(PlayerBoxScore 서브셋)을
+     * 함께 담는다. gamesForRule이 이미 playerBox 전체를 갖고 있어 서버 쪽 추가 조회는
+     * 불필요(클라이언트 미러: services/multi/leagueEventPayload.ts). */
     streaks: {
         ruleKey: string; statKey: string; min: number; count: number; label: string;
-        games: { gameId: string; gameDate: string; homeSlug: string; awaySlug: string; homeScore: number; awayScore: number; statValue: number }[];
+        games: {
+            gameId: string; gameDate: string; homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
+            statValue: number;
+            pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; pf: number;
+            fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number;
+        }[];
     }[];
     /** 연속기록이 갱신(보고 기준 도달)된 바로 그 경기의 최종 스코어. */
     homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
@@ -533,6 +543,12 @@ export async function detectPlayerStatStreaks(
                 homeSlug: g.home_team_id, awaySlug: g.away_team_id,
                 homeScore: g.home_score!, awayScore: g.away_score!,
                 statValue,
+                pts: playerBox?.pts ?? 0, reb: (playerBox?.offReb ?? 0) + (playerBox?.defReb ?? 0),
+                ast: playerBox?.ast ?? 0, stl: playerBox?.stl ?? 0, blk: playerBox?.blk ?? 0,
+                tov: playerBox?.tov ?? 0, pf: playerBox?.pf ?? 0,
+                fgm: playerBox?.fgm ?? 0, fga: playerBox?.fga ?? 0,
+                p3m: playerBox?.p3m ?? 0, p3a: playerBox?.p3a ?? 0,
+                ftm: playerBox?.ftm ?? 0, fta: playerBox?.fta ?? 0,
             };
         });
 

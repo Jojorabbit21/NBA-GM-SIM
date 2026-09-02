@@ -95,7 +95,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                             <col key={col.key} style={{ width: col.width }} />
                         ))}
                     </colgroup>
-                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
+                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                         {headerData ? (
                             <>
                                 <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
@@ -151,24 +151,26 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 </tr>
                             </>
                         ) : (
-                            visibleColumns.map((col, idx) => {
-                                const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
-                                const style = getStickyStyle(col, isLastSticky);
-                                return (
-                                    <TableHeaderCell
-                                        key={col.key}
-                                        style={style}
-                                        stickyLeft={col.stickyLeft !== undefined}
-                                        align={col.key === 'name' ? 'left' : 'center'}
-                                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
-                                        sortable={col.sortable}
-                                        onSort={() => col.sortable && onSort(col.key)}
-                                        sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
-                                    >
-                                        {col.label}
-                                    </TableHeaderCell>
-                                );
-                            })
+                            <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-10">
+                                {visibleColumns.map((col, idx) => {
+                                    const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                                    const style = getStickyStyle(col, isLastSticky);
+                                    return (
+                                        <TableHeaderCell
+                                            key={col.key}
+                                            style={style}
+                                            stickyLeft={col.stickyLeft !== undefined}
+                                            align={col.key === 'name' ? 'left' : 'center'}
+                                            className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                            sortable={col.sortable}
+                                            onSort={() => col.sortable && onSort(col.key)}
+                                            sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                        >
+                                            {col.label}
+                                        </TableHeaderCell>
+                                    );
+                                })}
+                            </tr>
                         )}
                     </TableHead>
                     <TableBody />
@@ -188,7 +190,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                 ))}
             </colgroup>
 
-            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!headerData}>
+            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {headerData ? (
                     <>
                         <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-7">
@@ -244,25 +246,27 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                         </tr>
                     </>
                 ) : (
-                    visibleColumns.map((col, idx) => {
-                        const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
-                        const style = getStickyStyle(col, isLastSticky);
+                    <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-10">
+                        {visibleColumns.map((col, idx) => {
+                            const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                            const style = getStickyStyle(col, isLastSticky);
 
-                        return (
-                            <TableHeaderCell
-                                key={col.key}
-                                style={style}
-                                stickyLeft={col.stickyLeft !== undefined}
-                                align={col.key === 'name' ? 'left' : 'center'}
-                                className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
-                                sortable={col.sortable}
-                                onSort={() => col.sortable && onSort(col.key)}
-                                sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
-                            >
-                                {col.label}
-                            </TableHeaderCell>
-                        );
-                    })
+                            return (
+                                <TableHeaderCell
+                                    key={col.key}
+                                    style={style}
+                                    stickyLeft={col.stickyLeft !== undefined}
+                                    align={col.key === 'name' ? 'left' : 'center'}
+                                    className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                    sortable={col.sortable}
+                                    onSort={() => col.sortable && onSort(col.key)}
+                                    sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                >
+                                    {col.label}
+                                </TableHeaderCell>
+                            );
+                        })}
+                    </tr>
                 )}
             </TableHead>
 
@@ -342,6 +346,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         else if (col.key === 'stl') rawVal = s.stl/g;
                                         else if (col.key === 'blk') rawVal = s.blk/g;
                                         else if (col.key === 'tov') rawVal = s.tov/g;
+                                        else if (col.key === 'tovForced') rawVal = (s.tovForced||0)/g;
                                         else if (col.key === 'pf') rawVal = (s.pf||0)/g;
                                         else if (col.key === 'fgm') rawVal = s.fgm/g;
                                         else if (col.key === 'fga') rawVal = s.fga/g;

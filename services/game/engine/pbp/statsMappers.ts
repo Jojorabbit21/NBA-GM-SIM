@@ -298,6 +298,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         
         if (isSteal && defender) {
             defender.stl += 1;
+            defender.tovForced += 1;
         }
         addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');
 
@@ -385,9 +386,15 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.pf += 1;
         actor.tov += 1;
 
-        const isCharge = playType === 'Iso' || playType === 'PostUp' || playType === 'Transition';
+        const isCharge = result.foulSubtype === 'charge';
         const foulDesc = isCharge ? '차지' : '일리걸 스크린';
         const ejectionText = actor.pf >= 6 ? ' — 6반칙 퇴장!' : '';
+
+        // 차징만 tovForced 귀속 — defConsist가 실제 확률에 기여해 인과관계 있음(일리걸 스크린은
+        // flat rate라 defender 능력치와 무관, 귀속 제외)
+        if (isCharge && defender) {
+            defender.tovForced += 1;
+        }
 
         addLog(state, offTeam.id, `${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`, 'foul', undefined, undefined, 'turnover');
 

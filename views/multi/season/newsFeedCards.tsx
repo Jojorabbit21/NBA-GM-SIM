@@ -558,19 +558,25 @@ export const FeatCard: React.FC<{
 
 // FeatCard와 완전히 동일한 문서형 레이아웃(같은 "단일 경기에 묶인 개인 기록" 계열이라 일관성
 // 유지) — 상단 배지만 "N경기 연속"으로 다름.
+// [2026-09-02] "연속 기록 서신에서는 박스스코어를 빼고, 대신 연속 기록 리스트 자체를
+// PTS/REB/AST/STL/BLK/TOV/PF/FG%/3P%/FT% 컬럼을 갖춘 테이블로 보여달라" 요청 — 이 경기
+// 하나의 전체 박스스코어(양팀 전원)는 이 선수 개인의 연속 기록과 무관한 정보라 제거하고,
+// 대신 연속 기록을 구성하는 "이 선수의" 경기별 스탯 라인을 테이블로 표시한다. 스타일은
+// TeamBoxTable(박스스코어)과 동일한 톤(BOX_HEADER_CELL/BOX_STAT_CELL, pct(), 테두리 없는
+// 얇은 구분선)을 그대로 재사용 — "기존 서신에 쓰던 박스스코어와 동일한 스타일" 요청 반영.
+// 이제 경기당 박스스코어를 즉석 조회할 필요가 없어져 useGameBoxScore/roomId는 함께
+// 제거(entry는 playerCardMap에서 바로 조회 — player_streak 이벤트의 playerIds가 이미
+// 이 선수 하나를 커버하므로 boxPlayerCardMap 없이도 충분, buildPlayerCardMap 참고).
+// onOpenGame은 유지 — [2026-09-02 후속] 스코어 클릭 시 그 경기 결과 화면으로 이동 요청.
 export const StreakCard: React.FC<{
     event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
-    roomId: string | undefined;
-    onPlayerClick?: (playerId: string) => void; onOpenGame?: (gameId: string) => void; onOpenTeam?: (teamSlug: string) => void;
-}> = ({ event, teamBySlug, playerCardMap, roomId, onPlayerClick, onOpenGame, onOpenTeam }) => {
+    onPlayerClick?: (playerId: string) => void; onOpenTeam?: (teamSlug: string) => void;
+    onOpenGame?: (gameId: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onPlayerClick, onOpenTeam, onOpenGame }) => {
     if (event.detail.kind !== 'player_streak') return null;
-    const { player, game, streaks } = event.detail;
+    const { player, streaks } = event.detail;
     const blurb = buildNewsBlurb(event, teamBySlug);
-    const { data: boxScore, isLoading: isBoxLoading } = useGameBoxScore(roomId, event.gameId);
-    // 박스스코어에 등장하는 선수 전원(수십 명) — 헤더로 넘어온 playerCardMap은 이 선수 한
-    // 명만 커버해서, 박스스코어 테이블 안 나머지 선수들은 시즌 스탯 없이 표시되던 문제.
-    const boxPlayerCardMap = useBoxScorePlayerCardMap(roomId, boxScore, playerCardMap);
-    const entry = boxPlayerCardMap.get(player.id);
+    const entry = playerCardMap.get(player.id);
 
     return (
         <div className="max-w-5xl space-y-6 ko-normal relative">
@@ -600,64 +606,76 @@ export const StreakCard: React.FC<{
 
             {/* [2026-09-02] "연속기록 중인 모든 경기의 결과를 표시할 수 있나" 요청 — WinStreakCard의
                 "연승 경기 기록" 리스트와 동일한 패턴. 동시에 여러 규칙(예: 20+득점 연속 + 10+리바운드
-                연속)이 걸려 있으면 규칙별로 각각 리스트를 만든다(규칙마다 연속 길이/경기 구성이
+                연속)이 걸려 있으면 규칙별로 각각 테이블을 만든다(규칙마다 연속 길이/경기 구성이
                 다를 수 있어서 — server/src/shared/leagueEvents.ts의 gamesForRule 참고). */}
             {streaks.filter(s => s.games.length > 0).map(s => (
-                <div key={s.ruleKey} className="space-y-1">
+                <div key={s.ruleKey} className="space-y-2">
                     <h4 className="text-base font-black text-white uppercase">{s.label} 연속 기록</h4>
-                    <div className="divide-y divide-slate-800/60">
-                        {s.games.map(g => {
-                            const homeTeam = teamBySlug.get(g.homeSlug);
-                            const awayTeam = teamBySlug.get(g.awaySlug);
-                            return (
-                                <div key={g.gameId} className="flex items-center gap-2 py-2 text-sm">
-                                    <span className="text-slate-500 shrink-0">{g.gameDate}</span>
-                                    <span
-                                        className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
-                                    >
-                                        {awayTeam?.team_abbr ?? g.awaySlug}
-                                    </span>
-                                    <span className="text-slate-300">{g.awayScore}-{g.homeScore}</span>
-                                    <span
-                                        className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
-                                    >
-                                        {homeTeam?.team_abbr ?? g.homeSlug}
-                                    </span>
-                                    <span className="text-slate-600">|</span>
-                                    <span className="font-bold text-slate-300">{g.statValue} {s.statKey.toUpperCase()}</span>
-                                </div>
-                            );
-                        })}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-700">
+                                    <th className={BOX_HEADER_CELL}>날짜</th>
+                                    <th className={BOX_HEADER_CELL}>상대</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>PTS</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>REB</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>AST</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>STL</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>BLK</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>TOV</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>PF</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>FG%</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>3P%</th>
+                                    <th className={`${BOX_HEADER_CELL} text-center`}>FT%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {s.games.map(g => {
+                                    const homeTeam = teamBySlug.get(g.homeSlug);
+                                    const awayTeam = teamBySlug.get(g.awaySlug);
+                                    return (
+                                        <tr key={g.gameId} className="border-b border-slate-800/60">
+                                            <td className={`${BOX_STAT_CELL} whitespace-nowrap`}>{g.gameDate}</td>
+                                            <td className={`${BOX_STAT_CELL} whitespace-nowrap`}>
+                                                <span
+                                                    className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                    onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
+                                                >
+                                                    {awayTeam?.team_abbr ?? g.awaySlug}
+                                                </span>
+                                                {' '}
+                                                <span
+                                                    className={onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                                    onClick={onOpenGame ? () => onOpenGame(g.gameId) : undefined}
+                                                >
+                                                    {g.awayScore}-{g.homeScore}
+                                                </span>
+                                                {' '}
+                                                <span
+                                                    className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                    onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
+                                                >
+                                                    {homeTeam?.team_abbr ?? g.homeSlug}
+                                                </span>
+                                            </td>
+                                            <td className={`${BOX_STAT_CELL} text-center font-bold text-white`}>{g.pts}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.reb}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.ast}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.stl}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.blk}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.tov}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.pf}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.fgm, g.fga)}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.p3m, g.p3a)}</td>
+                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.ftm, g.fta)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             ))}
-
-            {isBoxLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
-            ) : boxScore ? (
-                <div className="space-y-4">
-                    <BoxScoreHeadline
-                        game={game} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam}
-                        onOpenGame={event.gameId && onOpenGame ? () => onOpenGame(event.gameId!) : undefined}
-                    />
-                    <TeamBoxTable team={teamBySlug.get(boxScore.awayTeamId)} teamSlug={boxScore.awayTeamId} box={boxScore.awayBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} highlightPlayerId={player.id} />
-                    <TeamBoxTable team={teamBySlug.get(boxScore.homeTeamId)} teamSlug={boxScore.homeTeamId} box={boxScore.homeBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} highlightPlayerId={player.id} />
-                </div>
-            ) : event.gameId ? (
-                // [2026-09-01 버그 수정] game_pbp RLS(g_member_select와 달리 "+10분 지연" 조건이
-                // 걸려 있음 — migrations 쪽 정책 "room members can read game_pbp":
-                // game_start_time + 10분 <= now()) 때문에 방금 시뮬레이션된 경기는 박스스코어
-                // 행 자체가 조회되지 않는다(존재는 하지만 RLS가 가려서 null로 옴). 이전엔 이
-                // 경우를 "데이터 없음"과 구분 안 하고 조용히 아무것도 안 그려서 사용자가 버그로
-                // 오인했다 — 이유를 명시.
-                <p className="text-xs text-slate-500 ko-normal py-4 text-center border border-dashed border-slate-800 rounded-lg">
-                    박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
-                </p>
-            ) : null}
 
             <BrandMark className="h-3 w-auto" />
         </div>
@@ -1190,6 +1208,7 @@ export const DpoyAwardCard: React.FC<{
                     statLine={<>
                         <span><b className="text-white">{winner.spg.toFixed(1)}</b> SPG</span>
                         <span><b className="text-white">{winner.bpg.toFixed(1)}</b> BPG</span>
+                        <span><b className="text-white">{winner.tovfpg.toFixed(1)}</b> TOVF</span>
                         <span><b className="text-white">{winner.drebpg.toFixed(1)}</b> DREB</span>
                         <span><b className="text-white">{winner.orebpg.toFixed(1)}</b> OREB</span>
                         <span><b className="text-white">{formatAwardPct(winner.dfgPct)}</b> DFG%</span>
@@ -1208,6 +1227,7 @@ export const DpoyAwardCard: React.FC<{
                             <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
                             <th className={AWARD_RANK_TH}>SPG</th>
                             <th className={AWARD_RANK_TH}>BPG</th>
+                            <th className={AWARD_RANK_TH}>TOVF</th>
                             <th className={AWARD_RANK_TH}>DREB</th>
                             <th className={AWARD_RANK_TH}>OREB</th>
                             <th className={AWARD_RANK_TH}>DFG%</th>
@@ -1246,6 +1266,7 @@ export const DpoyAwardCard: React.FC<{
                                     </td>
                                     <td className={AWARD_RANK_TD}>{r.spg.toFixed(1)}</td>
                                     <td className={AWARD_RANK_TD}>{r.bpg.toFixed(1)}</td>
+                                    <td className={AWARD_RANK_TD}>{r.tovfpg.toFixed(1)}</td>
                                     <td className={AWARD_RANK_TD}>{r.drebpg.toFixed(1)}</td>
                                     <td className={AWARD_RANK_TD}>{r.orebpg.toFixed(1)}</td>
                                     <td className={AWARD_RANK_TD}>{formatAwardPct(r.dfgPct)}</td>
@@ -1398,6 +1419,7 @@ export const AllDefTeamCard: React.FC<{
                             { label: 'PF', get: (p: AllDefTeamEntry) => p.pfpg.toFixed(1) },
                             { label: 'TOV', get: (p: AllDefTeamEntry) => p.tovpg.toFixed(1) },
                             { label: 'DFG%', get: (p: AllDefTeamEntry) => formatAwardPct(p.dfgPct) },
+                            { label: 'TOVF', get: (p: AllDefTeamEntry) => p.tovfpg.toFixed(1) },
                         ]}
                         teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick}
                     />
@@ -1451,7 +1473,7 @@ export const StoryCard: React.FC<{
     switch (event.detail.kind) {
         case 'game_result': return <GameResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'player_feat': return <FeatCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onPlayerClick={onPlayerClick} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} />;
-        case 'player_streak': return <StreakCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onPlayerClick={onPlayerClick} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} />;
+        case 'player_streak': return <StreakCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} onOpenGame={onOpenGame} />;
         case 'win_streak': return <WinStreakCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'trade': return <TradeCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />;
         case 'power_ranking': return <PowerRankingCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;

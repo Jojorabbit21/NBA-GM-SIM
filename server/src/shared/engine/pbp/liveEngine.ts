@@ -617,7 +617,7 @@ export function extractSimResult(state: GameState): SimulationResult {
                 playerName: p.playerName,
                 position: p.position,
                 pts: p.pts, reb: p.reb, offReb: p.offReb, defReb: p.defReb,
-                ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov,
+                ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov, tovForced: p.tovForced,
                 fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
                 rimM: p.rimM, rimA: p.rimA, midM: p.midM, midA: p.midA,
                 mp: parseFloat(p.mp.toFixed(1)),

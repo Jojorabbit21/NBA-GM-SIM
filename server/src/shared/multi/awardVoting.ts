@@ -20,6 +20,7 @@ export interface AwardStatLine {
     gamesStarted: number;
     tovpg: number;
     pfpg: number;
+    tovfpg: number;
 }
 
 export interface AwardCandidate {
@@ -156,6 +157,7 @@ function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerM
                     gamesStarted: p.stats.gs ?? 0,
                     tovpg: p.stats.tov / g,
                     pfpg: p.stats.pf / g,
+                    tovfpg: (p.stats.tovForced ?? 0) / g,
                 },
                 teamWins: team.wins,
                 teamLosses: team.losses,

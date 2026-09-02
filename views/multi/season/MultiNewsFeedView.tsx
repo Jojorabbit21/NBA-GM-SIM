@@ -1,5 +1,6 @@
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
@@ -186,6 +187,19 @@ const MultiNewsFeedView: React.FC = () => {
         room?.id, myTeamId,
         { teamSlugs: selectedTeams, types: selectedTypes, bigNewsOnly, sortOrder, simDateFrom: simDateFrom || null, simDateTo: simDateTo || null },
     );
+
+    // [2026-09-02 버그 수정] "전체 기간"으로 두면 오늘(예: 11/13) 뉴스가 하루 전(11/12)까지만
+    // 보이는데, 날짜를 직접 11/13으로 필터링하면 정상적으로 나오는 문제 — staleTime: Infinity
+    // + 로컬스토리지 영속 캐시(index.tsx)라 이 훅의 쿼리는 Realtime INSERT 무효화 없이는
+    // 저절로 최신화되지 않는다. Realtime 채널이 잠깐 끊겼다 재연결되는 구간(브라우저 탭
+    // 백그라운드/네트워크 순단 등)의 INSERT는 통지받지 못해 "전체 기간" 캐시가 그 시점에서
+    // 멈춰버릴 수 있는 반면, 날짜를 새로 지정하면 이전에 없던 queryKey라 무조건 새로 fetch돼
+    // 우연히 최신 상태로 보인 것. MultiFrontOfficeView.tsx의 "인박스 탭 진입 시 재조회"와
+    // 동일한 해법 — 화면 진입 시 한 번 무효화해 놓친 갱신을 흡수한다.
+    const queryClient = useQueryClient();
+    useEffect(() => {
+        if (room?.id) queryClient.invalidateQueries({ queryKey: ['leagueNewsStories', room.id] });
+    }, [room?.id, queryClient]);
 
     // [2026-09-01] 좌측 리스트 + 우측 디테일 레이아웃 — 트레이드 > 메세지함
     // (MultiFrontOfficeView.tsx의 inbox 탭, selectedOfferId/selectedOffer 패턴)을 그대로

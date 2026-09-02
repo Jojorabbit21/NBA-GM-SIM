@@ -196,7 +196,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
             isHelpPlay: !!result.isHelpPlay,
         });
-        if (isSteal && defender) defender.stl += 1;
+        if (isSteal && defender) { defender.stl += 1; defender.tovForced += 1; }
         addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');
 
     } else if (type === 'foul') {
@@ -258,9 +258,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     } else if (type === 'offensiveFoul') {
         actor.pf += 1;
         actor.tov += 1;
-        const isCharge = playType === 'Iso' || playType === 'PostUp' || playType === 'Transition';
+        const isCharge = result.foulSubtype === 'charge';
         const foulDesc = isCharge ? '차지' : '일리걸 스크린';
         const ejectionText = actor.pf >= 6 ? ' — 6반칙 퇴장!' : '';
+        if (isCharge && defender) { defender.tovForced += 1; }
         addLog(state, offTeam.id, `${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`, 'foul', undefined, undefined, 'turnover');
         if (actor.pf === 6) addLog(state, offTeam.id, `🚨 ${actor.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
 

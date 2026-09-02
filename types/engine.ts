@@ -13,6 +13,7 @@ export interface PlayerBoxScore {
     stl: number;
     blk: number;
     tov: number;
+    tovForced: number; // 상대 턴오버 유발 (스틸 + 차징 유도, NBA 관례상 스틸과 동일 취급)
     fgm: number;
     fga: number;
     p3m: number;

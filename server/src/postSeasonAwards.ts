@@ -23,7 +23,7 @@ import type { Team, Player, PlayerStats, PlayerAwardType } from './shared/types.
 function zeroStats(): PlayerStats {
     return {
         g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0,
-        tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0,
+        tov: 0, tovForced: 0, pf: 0, techFouls: 0, flagrantFouls: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0,
         ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, plusMinus: 0,
         contestedAttempted: 0, contestedMade: 0,
     };
@@ -125,6 +125,7 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
                     g: s.g, gs: Number(s.gs), mp: Number(s.mp), pts: Number(s.pts), reb: Number(s.reb),
                     offReb: Number(s.off_reb), defReb: Number(s.def_reb), ast: Number(s.ast),
                     stl: Number(s.stl), blk: Number(s.blk), tov: Number(s.tov), pf: Number(s.pf),
+                    tovForced: Number(s.tov_forced ?? 0),
                     fgm: Number(s.fgm), fga: Number(s.fga), p3m: Number(s.p3m), p3a: Number(s.p3a),
                     ftm: Number(s.ftm), fta: Number(s.fta),
                     contestedAttempted: Number(s.contested_attempted), contestedMade: Number(s.contested_made),
@@ -233,7 +234,7 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
                     points: r.points, firstPlaceVotes: r.firstPlaceVotes,
                     rankVotes: dpoyVoteBreakdown.get(r.playerId) ?? [0, 0, 0],
                     spg: r.statLine.spg, bpg: r.statLine.bpg, drebpg: r.statLine.drebpg,
-                    orebpg: r.statLine.orebpg, dfgPct: r.statLine.dfgPct,
+                    orebpg: r.statLine.orebpg, dfgPct: r.statLine.dfgPct, tovfpg: r.statLine.tovfpg,
                 })),
             },
         });
@@ -280,7 +281,7 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
                         spg: p.statLine.spg, bpg: p.statLine.bpg,
                         g: p.statLine.gamesPlayed, gs: p.statLine.gamesStarted, mpg: p.statLine.mpg,
                         orebpg: p.statLine.orebpg, drebpg: p.statLine.drebpg, dfgPct: p.statLine.dfgPct,
-                        pfpg: p.statLine.pfpg, tovpg: p.statLine.tovpg,
+                        pfpg: p.statLine.pfpg, tovpg: p.statLine.tovpg, tovfpg: p.statLine.tovfpg,
                     })),
                 })),
             },

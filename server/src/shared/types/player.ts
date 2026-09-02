@@ -13,6 +13,7 @@ export interface PlayerStats {
     stl: number;
     blk: number;
     tov: number;
+    tovForced: number;
     pf: number;
     techFouls: number;
     flagrantFouls: number;

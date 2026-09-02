@@ -286,6 +286,10 @@ export interface PossessionResult {
     isBlock?: boolean;
     isSteal?: boolean;
 
+    // [New] offensiveFoul 세부 유형 — 차징(defender.attr.defConsist가 실제 확률에 기여)만
+    // tovForced 귀속 대상. 일리걸 스크린은 defender 능력치와 무관한 flat rate라 귀속 제외.
+    foulSubtype?: 'charge' | 'illegalScreen';
+
     isAceTarget?: boolean;
     matchupEffect?: number;
 

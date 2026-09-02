@@ -87,6 +87,7 @@ export function buildLeagueTeams(
                     stl:           prev.stl + bs.stl,
                     blk:           prev.blk + bs.blk,
                     tov:           prev.tov + bs.tov,
+                    tovForced:     (prev.tovForced ?? 0) + (bs.tovForced ?? 0),
                     pf:            prev.pf + (bs.pf ?? 0),
                     techFouls:     prev.techFouls + (bs.techFouls ?? 0),
                     flagrantFouls: prev.flagrantFouls + (bs.flagrantFouls ?? 0),

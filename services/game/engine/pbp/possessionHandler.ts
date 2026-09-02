@@ -688,6 +688,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             offTeam, defTeam, actor, defender,
             points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             helpDefenderId,
+            foulSubtype: 'charge' as const,
         };
     }
 
@@ -712,6 +713,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             offTeam, defTeam, actor: actualScreener, defender,
             points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             helpDefenderId,
+            foulSubtype: 'illegalScreen' as const,
         };
     }
 

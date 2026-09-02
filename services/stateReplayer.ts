@@ -127,6 +127,7 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.stl += (statLine.stl || 0);
             target.blk += (statLine.blk || 0);
             target.tov += (statLine.tov || 0);
+            target.tovForced = (target.tovForced || 0) + (statLine.tovForced || 0);
             target.fgm += (statLine.fgm || 0);
             target.fga += (statLine.fga || 0);
             target.p3m += (statLine.p3m || 0);
