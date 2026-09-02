@@ -59,6 +59,12 @@ interface PlayerDetailViewProps {
     // 샷 차트 탭 — 이 선수의 개별 슛 이벤트(x/y 좌표, courtCoordinates.ts 기준 풀코트
     // x:0~94ft/y:0~50ft). d3-hexbin 밀도 히트맵(메인 샷 차트)의 원본 데이터.
     externalShotEvents?: any[];
+    // [2026-09-02] "수상 내역" 하단 "선수 이동 내역" 위젯 — 지정 시(현재 멀티플레이어만)에만
+    // 렌더링되고, 미지정(싱글플레이어)이면 위젯 자체가 생략된다(externalGameLog와 동일한
+    // "opt-in by presence" 패턴 — hideSections 방식과 달리 싱글에 아직 없는 데이터 소스라
+    // 기본 숨김이 아니라 기본 미표시가 맞음). PlayerTransactionEntry: services/multi/
+    // playerHistoryService.ts 참고.
+    externalTransactionHistory?: { date: string | null; type: string; fromTeamAbbr: string | null; toTeamAbbr: string; draftRound?: number; draftPick?: number }[];
 }
 
 
@@ -800,7 +806,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, onGameClick }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
@@ -1892,6 +1898,42 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         </div>
                             );
                         })()}
+
+                        {/* ── 위젯 7.5: 선수 이동 내역(현재 멀티플레이어 전용 — externalTransactionHistory가
+                            주어졌을 때만 렌더). 날짜|타입|이동 순. 드래프트는 "이전팀→현재팀" 화살표
+                            표기 대신(애초에 이전 팀이 없음) "1R 3rd LAL"처럼 라운드/픽 순번/팀만 표기
+                            — 트레이드(fromAbbr → toAbbr)와 시각적으로 구분된다. */}
+                        {externalTransactionHistory !== undefined && (
+                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
+                            <div className="text-base font-bold text-white mb-1.5">선수 이동 내역</div>
+                            {externalTransactionHistory.length === 0 ? (
+                                <div className="text-sm text-slate-500">이동 내역이 없습니다</div>
+                            ) : (() => {
+                                const TX_TYPE_LABEL: Record<string, string> = {
+                                    draft: '드래프트', trade: '트레이드', fa: 'FA', waive: '웨이브',
+                                };
+                                const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+                                return (
+                                    <>
+                                        {externalTransactionHistory.map((entry, idx) => {
+                                            const dateStr = entry.date ? entry.date.slice(2).replace(/-/g, '/') : '-';
+                                            return (
+                                                <div key={idx} className="flex items-center text-sm gap-2">
+                                                    <span className="text-slate-500 w-16 shrink-0">{dateStr}</span>
+                                                    <span className="text-slate-400 w-16 shrink-0">{TX_TYPE_LABEL[entry.type] ?? entry.type}</span>
+                                                    <span className="text-slate-200 flex-1 text-right">
+                                                        {entry.type === 'draft' && entry.draftRound != null && entry.draftPick != null
+                                                            ? `${entry.draftRound}R ${toOrdinal(entry.draftPick)} ${entry.toTeamAbbr}`
+                                                            : `${entry.fromTeamAbbr ?? '—'} → ${entry.toTeamAbbr}`}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                        )}
 
                         {/* ── 위젯 8: 부상 이력 ── */}
                         {!hideSections?.includes('injuryHistory') && (

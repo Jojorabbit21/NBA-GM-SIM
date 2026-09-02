@@ -333,6 +333,67 @@ function buildTradeBlurb(d: Extract<LeagueEvent['detail'], { kind: 'trade' }>, s
     ];
 }
 
+// ── power_ranking ────────────────────────────────────────────────────────
+// [2026-09-02] "본문이 한 줄뿐이라 너무 짧다, 실제 뉴스기사처럼 3~4줄로" 요청 — 오프닝(1위
+// 팀+점수) → 1위 팀의 공수 성향(offenseScore/defenseScore 격차로 판정) → 전월 대비
+// 상승/하락 팀(없으면 "첫 발표" 플레이버로 대체), 총 3문단 고정 구조.
+// [후속] 클로저 문단("실제 성적이 쌓이기 시작하면...")은 불필요하다는 요청으로 삭제.
+
+const POWER_RANKING_OPENERS: ((v: { topTeam: string; teamCount: number; topPower: number }) => string)[] = [
+    v => `로스터 능력치와 조합을 기준으로 집계한 이번 달 파워랭킹에서 ${i(v.topTeam)} ${v.teamCount}개 팀 중 1위(${v.topPower}점)에 올랐다.`,
+    v => `이번 달 파워랭킹 1위는 ${v.topTeam}이 차지했다. ${v.topPower}점으로 리그 전체 ${v.teamCount}개 팀 중 가장 높은 평가를 받았다.`,
+    v => `${eun(v.topTeam)} ${v.topPower}점을 기록하며 이번 달 리그 파워랭킹 정상에 섰다.`,
+];
+
+const OFFENSE_LED_LINES: ((v: { team: string }) => string)[] = [
+    v => `공격 조합의 완성도가 특히 높게 평가되며 수비보다 득점 쪽에서 강점을 지닌 팀으로 분석됐다.`,
+    v => `${i(v.team)} 다양한 공격 옵션을 앞세워 수비보다 득점 조합에서 더 높은 점수를 받았다.`,
+];
+const DEFENSE_LED_LINES: ((v: { team: string }) => string)[] = [
+    v => `탄탄한 수비 조합이 강점으로 꼽히며 공격보다 수비 쪽 평가가 두드러졌다.`,
+    v => `${i(v.team)} 수비 조합에서 리그 최상위권 평가를 받아 이번 순위의 발판을 마련했다.`,
+];
+const BALANCED_LINES: ((v: { team: string }) => string)[] = [
+    v => `공격과 수비 양쪽 모두 고르게 높은 점수를 받으며 뚜렷한 약점이 없는 팀으로 평가됐다.`,
+    v => `${i(v.team)} 공수 밸런스가 고르게 잡힌 로스터라는 점이 순위에 크게 반영됐다.`,
+];
+
+const POWER_RANKING_NO_HISTORY_FLAVOR: (() => string)[] = [
+    () => `이번이 이 리그의 첫 파워랭킹 발표라 아직 전월 대비 순위 변동은 집계되지 않았다.`,
+    () => `첫 순위표인 만큼 다음 달 발표에서 어느 팀이 순위를 끌어올릴지에 관심이 쏠린다.`,
+];
+
+function buildPowerRankingBlurb(d: Extract<LeagueEvent['detail'], { kind: 'power_ranking' }>, seed: string, teamBySlug: Map<string, LeagueTeamRow>): string[] {
+    const top = d.full[0];
+    if (!top) return [];
+    const topTeam = teamName(top.teamSlug, teamBySlug);
+    const lines: string[] = [
+        pick(seed, 'opener', POWER_RANKING_OPENERS)({ topTeam, teamCount: d.full.length, topPower: top.powerScore }),
+    ];
+
+    if (top.offenseScore != null && top.defenseScore != null) {
+        const diff = top.offenseScore - top.defenseScore;
+        const pool = diff >= 15 ? OFFENSE_LED_LINES : diff <= -15 ? DEFENSE_LED_LINES : BALANCED_LINES;
+        lines.push(pick(seed, 'character', pool)({ team: topTeam }));
+    }
+
+    if (d.riser && d.faller) {
+        const riserTeam = teamName(d.riser.teamSlug, teamBySlug);
+        const fallerTeam = teamName(d.faller.teamSlug, teamBySlug);
+        lines.push(`${riserTeam}은(는) 지난달 ${d.riser.fromRank}위에서 이번 달 ${d.riser.rank}위로 가장 크게 순위가 뛰어올랐고, ${fallerTeam}은(는) 반대로 ${d.faller.fromRank}위에서 ${d.faller.rank}위로 가장 크게 순위가 내려앉았다.`);
+    } else if (d.riser) {
+        const riserTeam = teamName(d.riser.teamSlug, teamBySlug);
+        lines.push(`${riserTeam}은(는) 지난달 ${d.riser.fromRank}위에서 이번 달 ${d.riser.rank}위로, 이번 달 가장 큰 상승세를 보인 팀으로 이름을 올렸다.`);
+    } else if (d.faller) {
+        const fallerTeam = teamName(d.faller.teamSlug, teamBySlug);
+        lines.push(`${fallerTeam}은(는) 지난달 ${d.faller.fromRank}위에서 이번 달 ${d.faller.rank}위로, 이번 달 가장 크게 순위가 내려앉은 팀이 됐다.`);
+    } else {
+        lines.push(pick(seed, 'no-history', POWER_RANKING_NO_HISTORY_FLAVOR)());
+    }
+
+    return lines;
+}
+
 // LeagueEventDetail의 kind별로 문단 배열을 조합. legacy/파싱 실패 시 null(카드가 기존
 // 헤드라인만 표시). 반환값은 문단(문장 그룹) 배열 — 호출부가 각각 별도 줄로 렌더링해
 // "한 줄"이 아니라 여러 줄짜리 기사처럼 보이게 한다.
@@ -346,6 +407,151 @@ export function buildNewsBlurb(event: LeagueEvent, teamBySlug: Map<string, Leagu
         case 'player_streak': return buildPlayerStreakBlurb(d, seed, teamBySlug);
         case 'win_streak': return buildWinStreakBlurb(d, seed, teamBySlug);
         case 'trade': return buildTradeBlurb(d, seed, teamBySlug);
+        case 'power_ranking': return buildPowerRankingBlurb(d, seed, teamBySlug);
         default: return null;
+    }
+}
+
+// ── 기사 제목(H1) 바리에이션 ─────────────────────────────────────────────────
+// [2026-09-01] "기사 제목도 바리에이션을 만들고 싶다, 항목당 10~15개" 요청 — DB에 저장된
+// league_events.payload.headline(서버가 이벤트 생성 시점에 딱 1번만 만들어 영구 저장하는
+// 문자열, 좌측 리스트 행 등에 계속 쓰임)은 그대로 두고, 상세뷰 카드의 큰 제목(H1)에만
+// 쓰이는 별도 varied 제목을 클라이언트에서 만든다. 본문(buildNewsBlurb)과 동일한 원리로
+// event.id 기반 결정론적 pick(slot: 'title')이라 같은 이벤트는 항상 같은 제목(새로고침해도
+// 안 바뀜). 모든 풀이 "이름"(선수명/팀명)으로 시작하도록 직접 이어붙이는 방식이라(문자열
+// 앞부분을 추측해서 자르는 게 아니라 애초에 `이름 + rest`로 조립) 카드가 이름 부분만 골라
+// 클릭 가능하게 만드는 기존 로직(HeadlineTitle 등)과 그대로 맞물린다. 카드형 UI를 유지 중인
+// trade(TradeCard)는 아직 이 "레터 H1" 자체가 없어 이번 범위에서 제외 — 필요해지면 TradeCard도
+// 레터로 재설계한 뒤에 추가.
+
+const TRIPLE_DOUBLE_TITLES: ((v: { opp: string; statLine: string }) => string)[] = [
+    v => `, ${v.statLine}으로 완벽한 트리플더블`,
+    v => `, ${v.opp}전 트리플더블 작성`,
+    () => `, 스탯시트를 지배한 트리플더블`,
+    v => `, ${v.statLine} 트리플더블로 승리 견인`,
+    () => `, 커리어에 남을 트리플더블 추가`,
+    v => `, ${eul(v.opp)} 무너뜨린 만능 활약`,
+    () => `, 코트 전역을 지배하다`,
+    () => `, 화려한 트리플더블 쇼 연출`,
+    () => `, 완성형 스탯라인 완성`,
+    v => `, ${v.opp}전 값진 트리플더블`,
+    () => `, 트리플더블로 존재감 과시`,
+    v => `, ${v.statLine}의 만능 활약`,
+];
+
+const DOUBLE_DOUBLE_TITLES: ((v: { opp: string; statLine: string }) => string)[] = [
+    v => `, ${v.statLine}의 안정적인 더블더블`,
+    v => `, ${v.opp}전 더블더블 신고`,
+    () => `, 꾸준함이 만든 더블더블`,
+    v => `, ${v.statLine}으로 제 몫 완수`,
+    () => `, 묵묵히 채운 더블더블`,
+    v => `, ${eul(v.opp)} 상대로 알찬 활약`,
+    () => `, 더블더블로 팀 승리 뒷받침`,
+    () => `, 흔들림 없는 더블더블 행진`,
+    v => `, ${v.opp}전에도 어김없는 활약`,
+    () => `, 확실한 두 자릿수 활약`,
+    () => `, 안정감 돋보인 더블더블`,
+    v => `, ${v.statLine}의 알찬 하루`,
+];
+
+const STAT_EXPLOSION_TITLES: ((v: { opp: string; statLine: string }) => string)[] = [
+    v => `, ${v.statLine}의 대폭발`,
+    v => `, ${v.opp}전 스탯 폭발`,
+    () => `, 누구도 못 막은 하루`,
+    v => `, ${v.statLine}으로 코트 지배`,
+    () => `, 커리어 최고의 한 판`,
+    v => `, ${eul(v.opp)} 압도한 맹활약`,
+    () => `, 폭발적인 활약으로 팀 승리 견인`,
+    v => `, ${v.opp}의 수비를 무너뜨린 밤`,
+    () => `, 역대급 스탯라인 작성`,
+    v => `, ${v.statLine}의 화려한 밤`,
+    () => `, 이날만큼은 무적`,
+    () => `, 압도적인 원맨쇼`,
+];
+
+const FEAT_TITLE_BY_KIND: Record<'triple_double' | 'double_double' | 'stat_explosion', ((v: { opp: string; statLine: string }) => string)[]> = {
+    triple_double: TRIPLE_DOUBLE_TITLES,
+    double_double: DOUBLE_DOUBLE_TITLES,
+    stat_explosion: STAT_EXPLOSION_TITLES,
+};
+
+const STREAK_TITLES: ((v: { opp: string; count: number; label: string }) => string)[] = [
+    v => `, ${v.count}경기 연속 ${v.label} 행진`,
+    () => `, 흔들림 없는 연속 기록`,
+    v => `, ${v.opp}전에도 이어진 꾸준함`,
+    v => `, ${v.count}경기째 이어지는 상승세`,
+    () => `, 리듬을 잃지 않는 활약`,
+    () => `, 연속 기록 경신 중`,
+    v => `, ${v.label} 행진 계속`,
+    () => `, 꺾이지 않는 페이스`,
+    v => `, ${v.count}경기 연속의 위엄`,
+    () => `, 물오른 감각 지속`,
+    () => `, 멈추지 않는 활약`,
+    v => `, ${v.opp}전에도 여전한 존재감`,
+];
+
+const GAME_RESULT_TITLES: ((v: { loser: string; winnerScore: number; loserScore: number }) => string)[] = [
+    v => `, ${v.loser}에게 ${v.winnerScore}-${v.loserScore} 승리`,
+    v => `, ${eul(v.loser)} 꺾고 승리 질주`,
+    v => `, ${v.winnerScore}-${v.loserScore}로 완승`,
+    v => `, ${eul(v.loser)} 제압`,
+    () => `, 값진 승리 추가`,
+    v => `, ${v.loser}전 승리로 상승세`,
+    () => `, 접전 끝에 승리`,
+    v => `, ${v.winnerScore}-${v.loserScore} 스코어로 승기 잡아`,
+    v => `, ${v.loser} 상대로 완벽한 승리`,
+    () => `, 승리로 분위기 반전`,
+    v => `, ${v.loser}와의 대결 승리로 마무리`,
+    () => `, 승리의 주인공`,
+];
+
+const WIN_STREAK_TITLES: ((v: { streak: number }) => string)[] = [
+    v => `, ${v.streak}연승 행진`,
+    () => `, 거침없는 상승세`,
+    v => `, ${v.streak}연승으로 리그 강타`,
+    () => `, 멈추지 않는 연승 가도`,
+    () => `, 연승 행진 지속`,
+    v => `, ${v.streak}연승째 순항`,
+    () => `, 리그를 흔드는 상승세`,
+    () => `, 연승의 주인공`,
+    v => `, ${v.streak}연승 달성`,
+    () => `, 파죽지세`,
+    () => `, 상승세 이어가`,
+    v => `, ${v.streak}연승으로 존재감 과시`,
+];
+
+// player_feat/player_streak/game_result/win_streak만 지원(트레이드는 위 주석 참고,
+// 레터 H1 자체가 아직 없어 제외). 그 외 kind(legacy 포함)는 null → 호출부가
+// event.headline(DB 저장값)으로 폴백.
+export function buildNewsTitle(event: LeagueEvent, teamBySlug: Map<string, LeagueTeamRow>): string | null {
+    const d = event.detail;
+    const seed = event.id;
+
+    switch (d.kind) {
+        case 'player_feat': {
+            const opp = teamName(d.opponentSlug, teamBySlug);
+            const statLine = d.stats.map(s => `${s.value} ${s.label}`).join(', ');
+            const pool = FEAT_TITLE_BY_KIND[d.featKind] ?? DOUBLE_DOUBLE_TITLES;
+            return d.player.name + pick(seed, 'title', pool)({ opp, statLine });
+        }
+        case 'player_streak': {
+            const opp = teamName(d.opponentSlug, teamBySlug);
+            const primary = d.streaks[0];
+            return d.player.name + pick(seed, 'title', STREAK_TITLES)({ opp, count: primary.count, label: primary.label });
+        }
+        case 'game_result': {
+            const homeWon = d.homeScore > d.awayScore;
+            const winnerName = teamName(homeWon ? d.homeSlug : d.awaySlug, teamBySlug);
+            const loser = teamName(homeWon ? d.awaySlug : d.homeSlug, teamBySlug);
+            const winnerScore = Math.max(d.homeScore, d.awayScore);
+            const loserScore = Math.min(d.homeScore, d.awayScore);
+            return winnerName + pick(seed, 'title', GAME_RESULT_TITLES)({ loser, winnerScore, loserScore });
+        }
+        case 'win_streak': {
+            const team = teamName(d.teamSlug, teamBySlug);
+            return team + pick(seed, 'title', WIN_STREAK_TITLES)({ streak: d.streak });
+        }
+        default:
+            return null;
     }
 }

@@ -7,6 +7,7 @@ import { useSeasonContext } from './seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerShotEvents } from '../../../hooks/usePlayerShotEvents';
+import { usePlayerTransactionHistory } from '../../../hooks/usePlayerTransactionHistory';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
@@ -129,6 +130,9 @@ const MultiPlayerDetailView: React.FC = () => {
     // 전송하게 돼 너무 무겁다는 걸 확인하고 RPC 방식으로 교체함).
     const { data: playerShotEvents = [] } = usePlayerShotEvents(room?.id, playerId);
 
+    // "선수 이동 내역" 위젯용 — 드래프트+성사된 트레이드(services/multi/playerHistoryService.ts).
+    const { data: transactionHistory = [] } = usePlayerTransactionHistory(room?.id, playerId, leagueTeams);
+
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
     const normalizedSchedule = useMemo(
@@ -197,6 +201,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalGameLog={playerGameLog}
             externalGameLogLoading={gameLogPending}
             externalShotEvents={playerShotEvents}
+            externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
         />
     );

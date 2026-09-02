@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Ban, Check, Clock, GripVertical, Loader2, Minus, Plus, RotateCcw, ShieldAlert, X } from 'lucide-react';
+import { Ban, Calendar, Check, GripVertical, Loader2, Minus, Plus, RotateCcw, Search, ShieldAlert, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats } from '../../../hooks/useLeagueRawStats';
+import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { TabBar } from '../../../components/common/TabBar';
 import { Modal } from '../../../components/common/Modal';
@@ -16,11 +17,12 @@ import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { getReadableTextColor } from '../../../utils/colorContrast';
-import { formatMoney } from '../../../utils/formatMoney';
+import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
 import { ARCHETYPE_LABEL, type OvrArchetype } from '../../../utils/ovrEngine';
 import {
     createTradeOffer, respondTradeOffer, markTradeOfferRead, listPendingTradeOffers, listAllPendingTradeOffers,
     listTradeHistory, listTradeBlocks, setTradeBlock, updateTeamTradeRequest,
+    listMyResolvedTradeOffers, listAllResolvedTradeOffers,
     type TradeOfferRow, type TradeOfferAction,
 } from '../../../services/multi/tradeService';
 import type { Player } from '../../../types';
@@ -70,13 +72,20 @@ const ARCHETYPE_GROUPS: { label: string; keys: OvrArchetype[] }[] = [
 type Tab = 'leagueBlocks' | 'inbox' | 'new' | 'history';
 
 const TABS: { id: Tab; label: string }[] = [
-    { id: 'leagueBlocks', label: '트레이드 블록' },
-    { id: 'inbox',        label: '메세지함' },
     { id: 'new',          label: '새 제안' },
+    { id: 'inbox',        label: '메세지함' },
+    { id: 'leagueBlocks', label: '트레이드 블록' },
     { id: 'history',      label: '히스토리' },
 ];
 
 const TAB_IDS: Tab[] = TABS.map(t => t.id);
+
+// 인게임 날짜(YYYY-MM-DD)를 히스토리 테이블용 "yy/mm/dd" 형태로 축약 표시.
+function formatSimDateShort(isoDate: string | null): string {
+    if (!isoDate) return '-';
+    const [y, m, d] = isoDate.split('-');
+    return `${y.slice(2)}/${m}/${d}`;
+}
 
 // 168시간(7일) 만료까지 남은 시간을 "3일 4시간" 형태로 표시
 function formatRemaining(expiresAt: string): string {
@@ -94,6 +103,32 @@ function formatRemaining(expiresAt: string): string {
 const STATUS_LABEL: Record<string, string> = {
     pending: '대기중', accepted: '수락됨', rejected: '거절됨',
     cancelled: '취소됨', expired: '만료됨', invalidated: '무효화됨',
+};
+
+// [2026-09-02] "메세지함" 좌측 리스트 상단 필터 — 뉴스피드(MultiNewsFeedView.tsx)의 필터
+// 조합 방식과 동일하게 맞춤: 뉴스피드는 팀/타입/빅뉴스/날짜처럼 서로 다른 필터 "그룹"끼리는
+// AND로 결합하고, 같은 그룹 안에서 여러 개 고르면 OR로 묶인다(예: 타입 여러 개 선택 시
+// 그 타입들 중 하나라도 맞으면 통과, 팀 필터도 동시에 걸려 있으면 그 팀들 중 하나이면서
+// 동시에 선택한 타입 중 하나여야 함 — hooks/useLeagueHeadlines.ts의 .in()/.eq() 체이닝
+// 참고). 여기서도 방향(받은/보낸)과 처리상태(수락/거절/취소)를 별개 그룹으로 취급 —
+// 한 화면에 5개를 평평하게 나열하지만 실제로는 그룹별로 걸러진다.
+type InboxFilterKey = 'incoming' | 'outgoing' | 'accepted' | 'rejected' | 'cancelled';
+const INBOX_DIRECTION_FILTERS: InboxFilterKey[] = ['incoming', 'outgoing'];
+const INBOX_STATUS_FILTERS: InboxFilterKey[] = ['accepted', 'rejected', 'cancelled'];
+const INBOX_FILTERS: { key: InboxFilterKey; label: string }[] = [
+    { key: 'incoming',  label: '받은 제안' },
+    { key: 'outgoing',  label: '보낸 제안' },
+    { key: 'accepted',  label: '수락' },
+    { key: 'rejected',  label: '거절' },
+    { key: 'cancelled', label: '취소' },
+];
+// [2026-09-02] "취소" 필터는 만료(expired)도 함께 묶어서 매칭 — 사용자 요청. 편지
+// 하단 메시지는 여전히 취소/만료를 구분해서 보여주므로(renderOfferLetter), 필터 버킷만
+// 합치고 실제 표시 문구는 그대로 다름.
+const INBOX_STATUS_MATCH: Record<string, string[]> = {
+    accepted: ['accepted'],
+    rejected: ['rejected'],
+    cancelled: ['cancelled', 'expired'],
 };
 
 // [2026-08-31] "새 제안" 화면 로스터/제공 리스트 전용 정보 구조 — [+/-버튼] | 오버롤배지 |
@@ -250,29 +285,6 @@ const MultiFrontOfficeView: React.FC = () => {
         return m;
     }, [rosterMap, teamAbbrBySlug]);
 
-    // "트레이드 블록" 테이블의 매물 선수/요구 선수 컬럼 — 선수 이름 하나하나를 클릭해서
-    // 선수 상세 화면으로 이동할 수 있도록 쉼표 구분 텍스트 대신 개별 <span>으로 렌더.
-    const renderPlayerList = useCallback((ids: string[]) => (
-        <>
-            {ids.map((id, idx) => {
-                const p = poolById.get(id);
-                return (
-                    <React.Fragment key={id}>
-                        {idx > 0 && <span className="text-slate-600 text-sm">, </span>}
-                        <PlayerHoverCard player={p} teamAbbr={playerTeamAbbrById.get(id)}>
-                            <span
-                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
-                                className="text-slate-300 ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400"
-                            >
-                                {p?.name ?? id}
-                            </span>
-                        </PlayerHoverCard>
-                    </React.Fragment>
-                );
-            })}
-        </>
-    ), [poolById, playerTeamAbbrById, navigate, leagueId, getPlayerUrlId]);
-
     // [TEMP 테스트 기간 한정 2026-08-30] 지금은 리그에 인간 GM이 관리자 본인뿐이라 정상
     // 조건(인간 팀만)으로는 "제안하기"가 항상 비활성화됨 — 관리자 계정에 한해 AI 팀도 대상에
     // 포함시켜 트레이드 제안 플로우를 테스트할 수 있게 함. `create_trade_offer` RPC도 관리자
@@ -289,7 +301,7 @@ const MultiFrontOfficeView: React.FC = () => {
     // 딥링크로 특정 탭에 바로 진입할 수 있음(싱글플레이어 FrontOfficeView와 동일한 패턴).
     const [searchParams, setSearchParams] = useSearchParams();
     const rawTab = searchParams.get('tab');
-    const activeTab: Tab = (rawTab && TAB_IDS.includes(rawTab as Tab)) ? (rawTab as Tab) : 'leagueBlocks';
+    const activeTab: Tab = (rawTab && TAB_IDS.includes(rawTab as Tab)) ? (rawTab as Tab) : 'new';
     const setActiveTab = useCallback((tab: Tab) => {
         setSearchParams({ tab }, { replace: true });
     }, [setSearchParams]);
@@ -302,6 +314,28 @@ const MultiFrontOfficeView: React.FC = () => {
     // 동일한 패턴. 선택된 오퍼가 목록에서 사라지면(수락/거절/취소 후 refetch) 다음 렌더에서
     // 자동으로 목록 첫 번째로 대체됨(아래 selectedOffer 계산 참고) — 별도 리셋 이펙트 불필요.
     const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
+    // "메세지함" 좌측 리스트 상단 필터 체크박스 상태 — 빈 배열은 "전체 표시"(뉴스피드
+    // selectedTypes와 동일한 관례).
+    const [selectedInboxFilters, setSelectedInboxFilters] = useState<InboxFilterKey[]>([]);
+    const toggleInboxFilter = (key: InboxFilterKey) => {
+        setSelectedInboxFilters(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    };
+
+    // "히스토리" 탭 필터 — 팀(참여 팀 중 하나라도 일치)/날짜(인게임 날짜 범위)/검색(팀명·
+    // 선수명). 날짜는 수락일(sim_date_at_resolution) 기준, 없으면(마이그레이션 이전 데이터)
+    // 제안일(sim_date_at_creation)로 대체 — 뉴스피드(MultiNewsFeedView.tsx)의 인게임 날짜
+    // 범위 필터와 동일한 패턴.
+    const [historyTeamFilter, setHistoryTeamFilter] = useState<string>('');
+    const [historyDateFrom, setHistoryDateFrom] = useState('');
+    const [historyDateTo, setHistoryDateTo] = useState('');
+    const [historySearch, setHistorySearch] = useState('');
+    const hasHistoryFilter = !!(historyTeamFilter || historyDateFrom || historyDateTo || historySearch.trim());
+    const resetHistoryFilters = () => {
+        setHistoryTeamFilter('');
+        setHistoryDateFrom('');
+        setHistoryDateTo('');
+        setHistorySearch('');
+    };
 
     // [2026-08-30] 예전엔 useState+useEffect로 직접 fetch해서, 이 화면(컴포넌트)이 마운트될
     // 때마다(탭을 나갔다가 다시 들어올 때마다) initialLoading이 매번 true로 리셋되어 전체 화면
@@ -334,21 +368,54 @@ const MultiFrontOfficeView: React.FC = () => {
 
             let incoming: TradeOfferRow[] = [];
             let outgoing: TradeOfferRow[] = [];
+            let resolved: TradeOfferRow[] = [];
             if (myTeamRow) {
-                const res = await listPendingTradeOffers(roomId!, myTeamRow.id);
+                const [res, resolvedRows] = await Promise.all([
+                    listPendingTradeOffers(roomId!, myTeamRow.id),
+                    listMyResolvedTradeOffers(roomId!, myTeamRow.id),
+                ]);
                 incoming = res.incoming;
                 outgoing = res.outgoing;
+                resolved = resolvedRows;
             }
             const adminAll = isAdmin ? await listAllPendingTradeOffers(roomId!) : [];
+            const adminResolved = isAdmin ? await listAllResolvedTradeOffers(roomId!) : [];
 
-            return { tradeableByTeam, history: historyRows, incoming, outgoing, adminAll };
+            return { tradeableByTeam, history: historyRows, incoming, outgoing, resolved, adminAll, adminResolved };
         },
     });
     const tradeableByTeam = tradeData?.tradeableByTeam ?? EMPTY_TRADEABLE_MAP;
     const history         = tradeData?.history ?? EMPTY_OFFERS;
     const incoming        = tradeData?.incoming ?? EMPTY_OFFERS;
     const outgoing        = tradeData?.outgoing ?? EMPTY_OFFERS;
+    const resolved        = tradeData?.resolved ?? EMPTY_OFFERS;
     const adminAll        = tradeData?.adminAll ?? EMPTY_OFFERS;
+    const adminResolved   = tradeData?.adminResolved ?? EMPTY_OFFERS;
+
+    // "히스토리" 탭 필터 적용 — 팀(제안/수락 어느 쪽이든 일치)·날짜(수락일, 없으면 제안일로
+    // 대체)·검색어(팀명 또는 참여 선수명 부분 일치) 전부 AND로 결합.
+    const filteredHistory = useMemo(() => {
+        const query = historySearch.trim().toLowerCase();
+        return history.filter(o => {
+            if (historyTeamFilter && o.from_team_id !== historyTeamFilter && o.to_team_id !== historyTeamFilter) {
+                return false;
+            }
+            const tradeDate = o.sim_date_at_resolution ?? o.sim_date_at_creation;
+            if (historyDateFrom && (!tradeDate || tradeDate < historyDateFrom)) return false;
+            if (historyDateTo && (!tradeDate || tradeDate > historyDateTo)) return false;
+            if (query) {
+                const fromTeam = teamById.get(o.from_team_id);
+                const toTeam = teamById.get(o.to_team_id);
+                const teamNames = `${fromTeam?.team_name ?? ''} ${toTeam?.team_name ?? ''}`.toLowerCase();
+                const playerNames = o.league_trade_offer_players
+                    .map(p => poolById.get(p.player_id)?.name ?? '')
+                    .join(' ')
+                    .toLowerCase();
+                if (!teamNames.includes(query) && !playerNames.includes(query)) return false;
+            }
+            return true;
+        });
+    }, [history, historyTeamFilter, historyDateFrom, historyDateTo, historySearch, teamById, poolById]);
 
     // [2026-08-31] staleTime: Infinity + 영속 캐시(index.tsx)라 다른 유저/AI가 새로 보낸
     // 오퍼처럼 이 화면 밖에서 생긴 변경은 로컬 뮤테이션(수락/거절/취소/전송) 없이는 절대
@@ -359,16 +426,19 @@ const MultiFrontOfficeView: React.FC = () => {
         if (activeTab === 'inbox') refreshTradeData();
     }, [activeTab, refreshTradeData]);
 
-    // "인박스" 탭 — 받은/보낸 대기 중 제안을 하나의 시간순 리스트로 병합. incoming/outgoing은
-    // 각각 이미 created_at desc로 정렬돼 있지만 둘을 합치면 다시 정렬해야 시간순이 유지됨.
+    // "인박스" 탭 — 받은/보낸 대기 중 제안 + 최근 처리된(수락/거절/취소) 오퍼를 하나의 리스트로
+    // 병합. [2026-09-02] 처리된 오퍼도 히스토리로 남겨달라는 요청 반영 — 정렬 기준은 "가장 최근
+    // 활동 시각"(처리된 건 resolved_at, 대기 중인 건 created_at)이라야 방금 수락/거절/취소한
+    // 오퍼가 목록 맨 위로 자연스럽게 올라온다.
+    const activityTime = (o: TradeOfferRow) => new Date(o.resolved_at ?? o.created_at).getTime();
     const pendingInbox = useMemo(
-        () => [...incoming, ...outgoing].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        ),
-        [incoming, outgoing],
+        () => [...incoming, ...outgoing, ...resolved].sort((a, b) => activityTime(b) - activityTime(a)),
+        [incoming, outgoing, resolved],
     );
-    // 어드민은 리그 전체 대기 제안(adminAll), 일반 유저는 자기 팀 기준 병합 리스트(pendingInbox).
-    const inboxList = isAdmin ? adminAll : pendingInbox;
+    // 어드민은 리그 전체 제안(대기+처리됨), 일반 유저는 자기 팀 기준 병합 리스트(pendingInbox).
+    const inboxList = isAdmin
+        ? [...adminAll, ...adminResolved].sort((a, b) => activityTime(b) - activityTime(a))
+        : pendingInbox;
     // "메세지함" 탭/사이드바 배지용 — 내가 "받은" 오퍼 중 안읽은 것만 카운트. incoming은
     // myTeamRow가 있을 때만 채워지므로(어드민 여부와 무관) isAdmin으로 따로 가드할 필요 없음
     // — 어드민 계정이 동시에 팀 오너인 경우(이 프로젝트의 현재 유일한 테스트 계정 구조,
@@ -390,8 +460,24 @@ const MultiFrontOfficeView: React.FC = () => {
         // 내 팀과 무관한 리그 전체 오퍼 — 어드민만 볼 수 있음(adminAll에만 존재).
         return { showAccept: true, showReject: true, showCancel: true };
     };
-    // 선택된 오퍼가 목록에서 사라지면(수락/거절/취소 후 refetch) 자동으로 목록 첫 번째로 대체.
-    const selectedOffer = inboxList.find(o => o.id === selectedOfferId) ?? inboxList[0] ?? null;
+    // 상단 필터 체크박스 적용 — 방향(받은/보낸) 그룹과 처리상태(수락/거절/취소) 그룹은
+    // 서로 AND로 결합(둘 다 선택돼 있으면 둘 다 만족해야 함), 같은 그룹 안에서 여러 개
+    // 선택하면 OR(그 중 하나만 맞으면 통과) — 뉴스피드 필터 조합 방식과 동일.
+    const filteredInboxList = useMemo(() => {
+        const directionSel = selectedInboxFilters.filter(f => INBOX_DIRECTION_FILTERS.includes(f));
+        const statusSel = selectedInboxFilters.filter(f => INBOX_STATUS_FILTERS.includes(f));
+        if (directionSel.length === 0 && statusSel.length === 0) return inboxList;
+        return inboxList.filter(o => {
+            const direction = getOfferOpts(o).direction;
+            const directionOk = directionSel.length === 0 || (!!direction && directionSel.includes(direction));
+            const statusOk = statusSel.length === 0 || statusSel.some(f => INBOX_STATUS_MATCH[f].includes(o.status));
+            return directionOk && statusOk;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inboxList, selectedInboxFilters, myTeamRow]);
+    // 선택된 오퍼가 목록에서 사라지면(수락/거절/취소 후 refetch, 또는 필터로 걸러짐) 자동으로
+    // (필터링된) 목록 첫 번째로 대체.
+    const selectedOffer = filteredInboxList.find(o => o.id === selectedOfferId) ?? filteredInboxList[0] ?? null;
 
     // 리스트에서 오퍼를 선택 — 내가 "받은" 안읽은 오퍼면 읽음 처리(RPC)까지 함께 수행.
     // isAdmin 여부와 무관하게 "내 팀이 받은 오퍼인지"만 기준으로 판단(getOfferOpts와 동일한
@@ -481,6 +567,81 @@ const MultiFrontOfficeView: React.FC = () => {
     // 안 올라가 있어 정상 조건으론 선택 자체가 불가능함. `create_trade_offer` RPC도 같은
     // 조건(관리자+AI 팀 대상)으로 player_not_tradeable 체크를 완화해뒀음(마이그레이션 참고).
     const isTestUnblockedTarget = isAdmin && !!targetTeamRow?.is_ai;
+
+    // [2026-09-02] 이름 hover 카드(PlayerHoverCard)의 시즌 스탯용 — poolPlayers(meta_players만
+    // 조회)는 stats가 항상 0이라 이 화면의 호버 카드는 전부 "시즌 기록 없음"만 떴다. 활성 탭에
+    // 실제로 화면에 보이는 선수 id만(리그 전체 풀을 매번 긁지 않도록) usePlayerSeasonStatsBatch로
+    // 가볍게 조회해 poolById를 덮어쓴 버전을 만든다 — 뉴스피드(newsFeedCards.tsx)가 이미 쓰는
+    // 것과 동일한 패턴. "새 제안" 탭은 이미 위에서 계산해둔 statsRosterIds를 그대로 재사용.
+    const statsRequestIds = useMemo(() => {
+        if (activeTab === 'new') return statsRosterIds;
+        if (activeTab === 'leagueBlocks') {
+            const ids = new Set<string>();
+            for (const s of tradeableByTeam.values()) for (const id of s) ids.add(id);
+            for (const t of leagueTeams) for (const id of (t.trade_request_player_ids ?? [])) ids.add(id);
+            return [...ids];
+        }
+        if (activeTab === 'history') {
+            const ids = new Set<string>();
+            for (const o of history) for (const p of o.league_trade_offer_players) ids.add(p.player_id);
+            return [...ids];
+        }
+        if (activeTab === 'inbox' && selectedOffer) {
+            return selectedOffer.league_trade_offer_players.map(p => p.player_id);
+        }
+        return [];
+    }, [activeTab, statsRosterIds, tradeableByTeam, leagueTeams, history, selectedOffer]);
+    const { data: seasonStatsBatch } = usePlayerSeasonStatsBatch(roomId ?? undefined, statsRequestIds);
+    const poolByIdWithStats = useMemo(() => {
+        if (!seasonStatsBatch || Object.keys(seasonStatsBatch).length === 0) return poolById;
+        const merged = new Map(poolById);
+        for (const [id, stats] of Object.entries(seasonStatsBatch)) {
+            const p = merged.get(id);
+            if (p) merged.set(id, { ...p, stats: { ...p.stats, ...stats } });
+        }
+        return merged;
+    }, [poolById, seasonStatsBatch]);
+
+    // "트레이드 블록" 테이블의 매물 선수/요구 선수 컬럼 — 선수 이름 하나하나를 클릭해서
+    // 선수 상세 화면으로 이동할 수 있도록 쉼표 구분 텍스트 대신 개별 <span>으로 렌더.
+    const renderPlayerList = useCallback((ids: string[]) => (
+        <>
+            {ids.map((id, idx) => {
+                const p = poolByIdWithStats.get(id);
+                return (
+                    <React.Fragment key={id}>
+                        {idx > 0 && <span className="text-slate-600 text-sm">, </span>}
+                        <PlayerHoverCard player={p} teamAbbr={playerTeamAbbrById.get(id)}>
+                            <span
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
+                                className="text-slate-300 ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400"
+                            >
+                                {p?.name ?? id}
+                            </span>
+                        </PlayerHoverCard>
+                    </React.Fragment>
+                );
+            })}
+        </>
+    ), [poolByIdWithStats, playerTeamAbbrById, navigate, leagueId, getPlayerUrlId]);
+
+    // "히스토리" 탭 테이블용 — 트레이드 한 건이 선수 N명을 포함하면 <tr>도 N개(+합계 1행)로
+    // 나눈다(요청: 한 트레이드=한 행이 아니라 선수 수만큼 행 분리, 날짜/팀명은 rowSpan으로
+    // 병합, 맨 아래에 합계 행 별도). 이 헬퍼는 그 중 "선수 이름" 셀 하나만 렌더.
+    const renderHistoryPlayerCell = useCallback((id: string | null) => {
+        if (!id) return null;
+        const p = poolByIdWithStats.get(id);
+        return (
+            <PlayerHoverCard player={p} teamAbbr={playerTeamAbbrById.get(id)}>
+                <span
+                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
+                    className="text-slate-300 ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                >
+                    {p?.name ?? id}
+                </span>
+            </PlayerHoverCard>
+        );
+    }, [poolByIdWithStats, playerTeamAbbrById, navigate, leagueId, getPlayerUrlId]);
 
     const [cartMine, setCartMine] = useState<Set<string>>(new Set());
     const [cartTheirs, setCartTheirs] = useState<Set<string>>(new Set());
@@ -677,78 +838,12 @@ const MultiFrontOfficeView: React.FC = () => {
         );
     }
 
-    const renderOfferCard = (offer: TradeOfferRow, opts: { showAccept?: boolean; showReject?: boolean; showCancel?: boolean; direction?: 'incoming' | 'outgoing' }) => {
-        const fromTeam = teamById.get(offer.from_team_id);
-        const toTeam = teamById.get(offer.to_team_id);
-        const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
-        const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
-        const busy = respondingId === offer.id;
-        return (
-            <div key={offer.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between text-sm ko-normal">
-                    <span className="font-bold text-white flex items-center gap-2">
-                        {opts.direction === 'incoming' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">받음</span>
-                        )}
-                        {opts.direction === 'outgoing' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shrink-0">보냄</span>
-                        )}
-                        {fromTeam?.team_name ?? '?'} → {toTeam?.team_name ?? '?'}
-                    </span>
-                    <span className="text-slate-500 flex items-center gap-1">
-                        <Clock size={13} />
-                        {offer.status === 'pending' ? formatRemaining(offer.expires_at) : STATUS_LABEL[offer.status]}
-                    </span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-sm ko-normal">
-                    <div>
-                        <div className="text-slate-500 mb-1">{fromTeam?.team_name} 제공</div>
-                        <div className="space-y-0.5">
-                            {mine.length === 0 && <span className="text-slate-600">없음</span>}
-                            {mine.map(id => <div key={id} className="text-white">{poolById.get(id)?.name ?? id}</div>)}
-                        </div>
-                    </div>
-                    <div>
-                        <div className="text-slate-500 mb-1">{toTeam?.team_name} 제공</div>
-                        <div className="space-y-0.5">
-                            {theirs.length === 0 && <span className="text-slate-600">없음</span>}
-                            {theirs.map(id => <div key={id} className="text-white">{poolById.get(id)?.name ?? id}</div>)}
-                        </div>
-                    </div>
-                </div>
-                {offer.message && (
-                    <p className="text-sm text-slate-400 ko-normal bg-slate-800/60 rounded-lg px-3 py-2">"{offer.message}"</p>
-                )}
-                <div className="flex items-center gap-2">
-                    {opts.showAccept && (
-                        <button onClick={() => handleRespond(offer.id, 'accept')} disabled={busy}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-emerald-700/60 hover:bg-emerald-600/60 text-emerald-200 disabled:opacity-40">
-                            {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} 수락
-                        </button>
-                    )}
-                    {opts.showReject && (
-                        <button onClick={() => handleRespond(offer.id, 'reject')} disabled={busy}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-red-950/60 hover:bg-red-900/60 text-red-300 disabled:opacity-40">
-                            <X size={14} /> 거절
-                        </button>
-                    )}
-                    {opts.showCancel && (
-                        <button onClick={() => handleRespond(offer.id, 'cancel')} disabled={busy}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-40">
-                            <X size={14} /> 취소
-                        </button>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
     // "메세지함" 탭 우측 디테일 패널 — 싱글플레이 인박스(ScoutReportRenderer 등)의 "서신"
     // 디자인 언어(space-y-8 text-slate-300 leading-relaxed, prose 느낌)를 가져오되, 이건
     // 대화체 편지가 아니라 실제 문서 형식(제목/날짜/발신/수신/본문/자산 표/서명 없는 액션
     // 버튼)이라 구조는 사용자가 지정한 "트레이드 제안서" 양식을 그대로 따름. max-w로 폭을
     // 제한하고 mx-auto를 안 줘서 좌측에 붙게 해 실제 종이 문서를 왼쪽에 올려둔 느낌을 냄
-    // (renderOfferCard와 달리 카드/배경 박스 없이 순수 텍스트 레이아웃).
+    // (카드/배경 박스 없이 순수 텍스트 레이아웃).
     const renderOfferLetter = (offer: TradeOfferRow, opts: { showAccept?: boolean; showReject?: boolean; showCancel?: boolean; direction?: 'incoming' | 'outgoing' }) => {
         const fromTeam = teamById.get(offer.from_team_id);
         const toTeam = teamById.get(offer.to_team_id);
@@ -793,7 +888,7 @@ const MultiFrontOfficeView: React.FC = () => {
                 <div className="space-y-1">
                     {playerIds.length === 0 && <p className="text-sm text-slate-600">없음</p>}
                     {playerIds.map(id => {
-                        const p = poolById.get(id);
+                        const p = poolByIdWithStats.get(id);
                         const s = statsByPlayerId.get(id);
                         return (
                             <div key={id} className="flex items-center gap-3 text-sm">
@@ -868,33 +963,48 @@ const MultiFrontOfficeView: React.FC = () => {
                     </div>
                 )}
 
-                <div className="flex items-center gap-2">
-                    {opts.showAccept && (
-                        <button onClick={() => handleRespond(offer.id, 'accept')} disabled={busy}
-                            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 disabled:opacity-40">
-                            {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} 수락하기
-                        </button>
-                    )}
-                    {opts.showReject && (
-                        <button onClick={() => handleRespond(offer.id, 'reject')} disabled={busy}
-                            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 disabled:opacity-40">
-                            <X size={14} /> 거절하기
-                        </button>
-                    )}
-                    {opts.showCancel && (
-                        <button onClick={() => handleRespond(offer.id, 'cancel')} disabled={busy}
-                            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-40">
-                            <X size={14} /> 취소하기
-                        </button>
-                    )}
-                </div>
+                {/* [2026-09-02] 처리된 오퍼는 버튼 대신 결과 메시지를 남겨 "메세지함"에서
+                    히스토리로 확인할 수 있게 함 — 색상/문구는 사용자 지정. */}
+                {offer.status === 'pending' ? (
+                    <div className="flex items-center gap-2">
+                        {opts.showAccept && (
+                            <button onClick={() => handleRespond(offer.id, 'accept')} disabled={busy}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 disabled:opacity-40">
+                                {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} 수락하기
+                            </button>
+                        )}
+                        {opts.showReject && (
+                            <button onClick={() => handleRespond(offer.id, 'reject')} disabled={busy}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 disabled:opacity-40">
+                                <X size={14} /> 거절하기
+                            </button>
+                        )}
+                        {opts.showCancel && (
+                            <button onClick={() => handleRespond(offer.id, 'cancel')} disabled={busy}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-40">
+                                <X size={14} /> 취소하기
+                            </button>
+                        )}
+                    </div>
+                ) : offer.status === 'accepted' ? (
+                    <p className="text-sm font-bold text-emerald-400">트레이드가 수락되었습니다!</p>
+                ) : offer.status === 'rejected' ? (
+                    <p className="text-sm font-bold text-red-400">트레이드가 거절되었습니다.</p>
+                ) : offer.status === 'cancelled' ? (
+                    <p className="text-sm font-bold text-slate-300">트레이드 제안을 취소하였습니다.</p>
+                ) : offer.status === 'expired' ? (
+                    <p className="text-sm font-bold text-slate-300">제안이 만료되었습니다.</p>
+                ) : null}
             </div>
         );
     };
 
     // "인박스" 탭 좌측 리스트 — [안읽음점]/발신/수신/날짜/남은시간 5열 표. 헤더와 행이 같은
     // grid-cols를 써야 칸이 어긋나지 않으므로 클래스를 상수로 공유.
-    const INBOX_ROW_GRID = 'grid grid-cols-[14px_52px_52px_40px_1fr] gap-1.5';
+    // [2026-09-02] 발신/수신/날짜/남은시간 4개 컬럼 너비를 균일하게(1fr씩) — 이전엔
+    // 마지막 "남은시간" 컬럼만 1fr라 상태 라벨(짧은 텍스트)이 좌측 리스트 우측에 큰
+    // 여백을 남겼음. 안읽음 점 컬럼(14px)만 고정폭 유지.
+    const INBOX_ROW_GRID = 'grid grid-cols-[14px_1fr_1fr_1fr_1fr] gap-1.5';
 
     const renderOfferListRow = (offer: TradeOfferRow) => {
         const opts = getOfferOpts(offer);
@@ -1245,6 +1355,76 @@ const MultiFrontOfficeView: React.FC = () => {
                 }
             />
 
+            {/* "히스토리" 탭 전용 필터 — 뉴스피드(MultiNewsFeedView.tsx) 필터 바와 동일한
+                h-[36px] pill 톤(검색 인풋은 리더보드 LeaderboardToolbar.tsx 패턴 재사용). */}
+            {activeTab === 'history' && (
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-950 shrink-0">
+                    <div className="relative h-[36px] bg-slate-900 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors shadow-sm shrink-0 w-56">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                            <Search size={14} />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="팀, 선수 이름 검색"
+                            value={historySearch}
+                            onChange={e => setHistorySearch(e.target.value)}
+                            className="h-full w-full bg-transparent pl-9 pr-8 text-sm font-bold text-white outline-none placeholder:text-slate-600 ko-normal"
+                        />
+                        {historySearch && (
+                            <button
+                                onClick={() => setHistorySearch('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
+
+                    <select
+                        value={historyTeamFilter}
+                        onChange={e => setHistoryTeamFilter(e.target.value)}
+                        className={`h-[36px] px-3 bg-slate-900 rounded-lg border shadow-sm text-sm font-bold outline-none cursor-pointer transition-colors ${historyTeamFilter ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 hover:border-slate-700 text-slate-400'}`}
+                    >
+                        <option value="">전체 팀</option>
+                        {sortedTeams.map(t => (
+                            <option key={t.id} value={t.id}>{t.team_name}</option>
+                        ))}
+                    </select>
+
+                    <div className="flex items-center h-[36px] bg-slate-900 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors shadow-sm shrink-0">
+                        <div className="pl-3 pr-2 flex items-center justify-center text-slate-500 shrink-0">
+                            <Calendar size={14} />
+                        </div>
+                        <input
+                            type="date"
+                            value={historyDateFrom}
+                            onChange={e => setHistoryDateFrom(e.target.value)}
+                            max={historyDateTo || undefined}
+                            className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
+                            title="시작 날짜"
+                        />
+                        <span className="text-slate-600 text-xs">~</span>
+                        <input
+                            type="date"
+                            value={historyDateTo}
+                            onChange={e => setHistoryDateTo(e.target.value)}
+                            min={historyDateFrom || undefined}
+                            className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
+                            title="종료 날짜"
+                        />
+                    </div>
+
+                    {hasHistoryFilter && (
+                        <button
+                            onClick={resetHistoryFilters}
+                            className="flex items-center gap-1 h-[36px] px-3 rounded-lg text-sm font-bold text-slate-500 hover:text-white transition-colors"
+                        >
+                            <X size={12} /> 필터 초기화
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
                 {initialLoading ? (
                     <div className="flex items-center justify-center py-16">
@@ -1268,7 +1448,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                 <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">요구 포지션</TableHeaderCell>
                                 <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">아키타입</TableHeaderCell>
                                 <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">요구 선수</TableHeaderCell>
-                                <TableHeaderCell className="bg-slate-950" />
+                                <TableHeaderCell className="bg-slate-950" width="1%" />
                             </tr>
                         </TableHead>
                         <TableBody>
@@ -1332,7 +1512,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <span className="text-slate-600 text-sm">없음</span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="text-center align-top py-2.5">
+                                        <TableCell className="text-center align-top py-2.5" style={{ width: '1%' }}>
                                             {!isOwnTeam && (
                                                 <button
                                                     disabled={!isTargetable}
@@ -1405,7 +1585,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <PlayerListHeader showContract={capEnabled} />
                                                 <tbody>
                                                     {myRoster.filter(p => !cartMine.has(p.id)).map(p => (
-                                                        <PlayerChip key={p.id} player={p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} />
+                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} />
                                                     ))}
                                                 </tbody>
                                             </table>
@@ -1427,7 +1607,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                         <PlayerTableCols showContract={capEnabled} />
                                                         <tbody>
                                                             {[...cartMine].map(id => (
-                                                                <PlayerChip key={id} player={poolById.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleMine(id)} teamAbbr={myTeamRow.team_abbr} />
+                                                                <PlayerChip key={id} player={poolByIdWithStats.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleMine(id)} teamAbbr={myTeamRow.team_abbr} />
                                                             ))}
                                                         </tbody>
                                                     </table>
@@ -1471,7 +1651,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <PlayerListHeader showContract={capEnabled} />
                                                 <tbody>
                                                     {targetRoster.filter(p => !cartTheirs.has(p.id)).map(p => (
-                                                        <PlayerChip key={p.id} player={p} playerId={p.id}
+                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id}
                                                             blocked={!targetTradeableIds.has(p.id) && !isTestUnblockedTarget}
                                                             showContract={capEnabled}
                                                             stats={statsByPlayerId.get(p.id)}
@@ -1495,7 +1675,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                         <PlayerTableCols showContract={capEnabled} />
                                                         <tbody>
                                                             {[...cartTheirs].map(id => (
-                                                                <PlayerChip key={id} player={poolById.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleTheirs(id)} teamAbbr={targetTeamRow?.team_abbr} />
+                                                                <PlayerChip key={id} player={poolByIdWithStats.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleTheirs(id)} teamAbbr={targetTeamRow?.team_abbr} />
                                                             ))}
                                                         </tbody>
                                                     </table>
@@ -1616,19 +1796,44 @@ const MultiFrontOfficeView: React.FC = () => {
                         )}
                         <div className="flex-1 min-h-0 flex">
                             <div className="w-[30%] shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar bg-slate-900">
-                                <div className={`${INBOX_ROW_GRID} px-3 py-2 border-b border-slate-800 sticky top-0 z-10 bg-slate-950 text-sm font-black uppercase text-slate-500 ko-normal`}>
-                                    <span />
-                                    <span>발신</span>
-                                    <span>수신</span>
-                                    <span>날짜</span>
-                                    <span>남은시간</span>
+                                <div className="sticky top-0 z-10 bg-slate-950">
+                                    {/* [2026-09-02] 방향/처리상태 필터 — 뉴스피드(MultiNewsFeedView.tsx)
+                                        메시지 타입 체크박스와 동일한 마크업(w-4 h-4 체크박스 + text-sm
+                                        굵은 라벨), 다중 선택 시 OR, 빈 선택 = 전체 표시. 헤더 행과 함께
+                                        하나의 sticky 컨테이너로 묶어 스크롤 시 같이 고정되게 함. */}
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-3 pt-2 pb-2 border-b border-slate-800">
+                                        {INBOX_FILTERS.map(f => {
+                                            const checked = selectedInboxFilters.includes(f.key);
+                                            return (
+                                                <div
+                                                    key={f.key}
+                                                    className="flex items-center gap-1.5 cursor-pointer"
+                                                    onClick={() => toggleInboxFilter(f.key)}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                        {checked && <Check size={10} className="text-white" />}
+                                                    </div>
+                                                    <span className={`text-sm font-bold ${checked ? 'text-white' : 'text-slate-400'}`}>{f.label}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className={`${INBOX_ROW_GRID} px-3 py-2 border-b border-slate-800 text-sm font-black uppercase text-slate-500 ko-normal`}>
+                                        <span />
+                                        <span>발신</span>
+                                        <span>수신</span>
+                                        <span>날짜</span>
+                                        <span>남은시간</span>
+                                    </div>
                                 </div>
                                 {!isAdmin && !myTeamRow ? (
                                     <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">소속 팀이 없습니다.</p>
-                                ) : inboxList.length === 0 ? (
-                                    <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">대기 중인 제안이 없습니다.</p>
+                                ) : filteredInboxList.length === 0 ? (
+                                    <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">
+                                        {inboxList.length === 0 ? '대기 중인 제안이 없습니다.' : '조건에 맞는 제안이 없습니다.'}
+                                    </p>
                                 ) : (
-                                    inboxList.map(renderOfferListRow)
+                                    filteredInboxList.map(renderOfferListRow)
                                 )}
                             </div>
                             <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar bg-slate-900 p-10">
@@ -1639,22 +1844,102 @@ const MultiFrontOfficeView: React.FC = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="p-8 pb-20 space-y-6">
-                        {actionError && (
-                            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
-                                <ShieldAlert size={15} className="shrink-0" /> {actionError}
-                            </div>
-                        )}
+                    // "히스토리" 탭 — [2026-09-02] 카드 목록 → 테이블로 개편. leagueBlocks 탭과
+                    // 동일한 Table 컴포넌트/열 구분선(border-r) 패턴 재사용.
+                    // [2026-09-02 v2] 사용자 요청 — 트레이드 한 건을 <tr> 한 행이 아니라 "포함된
+                    // 선수 수만큼" 행으로 분리(2대2면 선수 행 2개 + 합계 행 1개 = 3행). 날짜/
+                    // 제안팀/수락팀/수락일처럼 트레이드 단위로 한 번만 정해지는 값은 rowSpan으로
+                    // 그 트레이드의 전체 행에 걸쳐 병합. 양측 선수 수가 다르면(2대3 등) 적은 쪽은
+                    // 자기 행 이후 빈 칸으로 두고, 맨 마지막 행에서 양쪽 각각의 연봉 합계만 표시.
+                    <Table className="!rounded-none !shadow-none !border-t-0" fullHeight={false} tableStyle={{ tableLayout: 'auto', width: '100%' }}>
+                        <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
+                            <tr className="h-10 text-slate-500 text-sm font-black uppercase">
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">날짜</TableHeaderCell>
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">수락일</TableHeaderCell>
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">제안 팀</TableHeaderCell>
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">선수</TableHeaderCell>
+                                <TableHeaderCell align="right" className="pr-4 border-r border-slate-800 bg-slate-950">연봉</TableHeaderCell>
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">수락 팀</TableHeaderCell>
+                                <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">선수</TableHeaderCell>
+                                <TableHeaderCell align="right" className="pr-4 bg-slate-950">연봉</TableHeaderCell>
+                            </tr>
+                        </TableHead>
+                        <TableBody>
+                            {filteredHistory.length === 0 ? (
+                                <tr>
+                                    <TableCell colSpan={8} className="text-center text-slate-500 text-sm py-10">
+                                        {history.length === 0 ? '성사된 트레이드가 없습니다.' : '조건에 맞는 트레이드가 없습니다.'}
+                                    </TableCell>
+                                </tr>
+                            ) : filteredHistory.flatMap((o, tradeIdx) => {
+                                const fromTeam = teamById.get(o.from_team_id);
+                                const toTeam = teamById.get(o.to_team_id);
+                                const mine = o.league_trade_offer_players.filter(p => p.from_team_id === o.from_team_id).map(p => p.player_id);
+                                const theirs = o.league_trade_offer_players.filter(p => p.from_team_id === o.to_team_id).map(p => p.player_id);
+                                const proposedDate = formatSimDateShort(o.sim_date_at_creation);
+                                const acceptedDate = formatSimDateShort(o.sim_date_at_resolution);
+                                // 선수 행 개수 — 양측 중 더 많은 쪽 기준, 최소 1(둘 다 0명인 경우는
+                                // 실질적으로 없지만 방어적으로 유지).
+                                const rowCount = Math.max(mine.length, theirs.length, 1);
+                                // 트레이드 건끼리 교차 색상(zebra) — 같은 트레이드에 속한 행 전부 동일 배경.
+                                const zebraClass = tradeIdx % 2 === 1 ? 'bg-slate-950/40' : undefined;
 
-                        {activeTab === 'history' && (
-                            <div className="space-y-3">
-                                {history.length === 0 && (
-                                    <p className="text-sm text-slate-500 ko-normal py-8 text-center">성사된 트레이드가 없습니다.</p>
-                                )}
-                                {history.map(o => renderOfferCard(o, {}))}
-                            </div>
-                        )}
-                    </div>
+                                return Array.from({ length: rowCount }, (_, i) => {
+                                    const mineId = i < mine.length ? mine[i] : null;
+                                    const theirsId = i < theirs.length ? theirs[i] : null;
+                                    const mineP = mineId ? poolById.get(mineId) : undefined;
+                                    const theirsP = theirsId ? poolById.get(theirsId) : undefined;
+
+                                    return (
+                                        <tr key={`${o.id}-${i}`} className={zebraClass}>
+                                            {i === 0 && (
+                                                <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5 text-sm text-slate-400 whitespace-nowrap">
+                                                    {proposedDate}
+                                                </TableCell>
+                                            )}
+                                            {i === 0 && (
+                                                <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5 text-sm text-slate-400 whitespace-nowrap">
+                                                    {acceptedDate}
+                                                </TableCell>
+                                            )}
+                                            {i === 0 && (
+                                                <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
+                                                    <span
+                                                        onClick={() => fromTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${fromTeam.team_slug}`)}
+                                                        className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                                                    >
+                                                        {fromTeam?.team_name ?? '?'}
+                                                    </span>
+                                                </TableCell>
+                                            )}
+                                            <TableCell align="left" className="border-r border-slate-800/30 pl-4 py-2">
+                                                {mineId ? renderHistoryPlayerCell(mineId) : (i === 0 && mine.length === 0 ? <span className="text-slate-600 text-sm">없음</span> : null)}
+                                            </TableCell>
+                                            <TableCell align="right" className="border-r border-slate-800/30 pr-4 py-2 text-sm text-slate-300 whitespace-nowrap">
+                                                {mineId ? (mineP?.contract ? formatMoneyFull(mineP.salary) : '-') : ''}
+                                            </TableCell>
+                                            {i === 0 && (
+                                                <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
+                                                    <span
+                                                        onClick={() => toTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${toTeam.team_slug}`)}
+                                                        className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                                                    >
+                                                        {toTeam?.team_name ?? '?'}
+                                                    </span>
+                                                </TableCell>
+                                            )}
+                                            <TableCell align="left" className="border-r border-slate-800/30 pl-4 py-2">
+                                                {theirsId ? renderHistoryPlayerCell(theirsId) : (i === 0 && theirs.length === 0 ? <span className="text-slate-600 text-sm">없음</span> : null)}
+                                            </TableCell>
+                                            <TableCell align="right" className="pr-4 py-2 text-sm text-slate-300 whitespace-nowrap">
+                                                {theirsId ? (theirsP?.contract ? formatMoneyFull(theirsP.salary) : '-') : ''}
+                                            </TableCell>
+                                        </tr>
+                                    );
+                                });
+                            })}
+                        </TableBody>
+                    </Table>
                 )}
             </div>
 

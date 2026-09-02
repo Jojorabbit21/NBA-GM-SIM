@@ -1,6 +1,6 @@
 
 import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -11,8 +11,9 @@ import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { useServerClock } from '../../../utils/serverClock';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamBadge } from '../../../components/common/TeamBadge';
-import { StoryCard, tierFromScore } from './newsFeedCards';
-import { buildPlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { StoryCard, extractEventPlayerIds } from './newsFeedCards';
+import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import { findCurrentVirtualDate, addDaysToKey } from './multiScheduleUtils';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 
@@ -20,14 +21,21 @@ import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 // 빈 배열 = 전체 타입(팀 필터와 동일한 관례). game_result를 선택해도 useLeagueNewsFeed의
 // 기본 쿼리가 이미 "특이케이스만"으로 좁혀둔 상태 위에 추가로 좁히는 것이라(중복 방지
 // 원칙 유지), 일반 경기 결과 전체가 나오진 않는다.
-const ALL_NEWS_TYPES: LeagueEventType[] = ['game_result', 'player_feat', 'player_streak', 'win_streak', 'trade'];
-const TYPE_LABEL: Record<LeagueEventType, string> = {
-    game_result: '경기결과',
-    player_feat: '개인활약',
-    player_streak: '연속기록',
-    win_streak: '팀연승',
-    trade: '트레이드',
-};
+// [2026-09-02] MVP/DPOY/올-오펜시브/올-디펜시브 4개 타입을 필터 체크박스에서 "수상" 하나로
+// 묶어달라는 요청 — 체크박스 옵션 단위가 더 이상 LeagueEventType 1:1이 아니라 타입 배열을
+// 갖는 그룹이 됐다. 쿼리 쪽(useLeagueNewsFeed의 types 필터)은 그대로 LeagueEventType[]를
+// 받으므로, 그룹 체크박스를 토글하면 그 그룹의 타입 전부를 한꺼번에 selectedTypes에
+// 추가/제거한다(toggleTypeGroup).
+interface NewsTypeFilterOption { label: string; types: LeagueEventType[] }
+const NEWS_TYPE_FILTER_OPTIONS: NewsTypeFilterOption[] = [
+    { label: '경기결과', types: ['game_result'] },
+    { label: '개인활약', types: ['player_feat'] },
+    { label: '연속기록', types: ['player_streak'] },
+    { label: '팀연승', types: ['win_streak'] },
+    { label: '트레이드', types: ['trade'] },
+    { label: '파워랭킹', types: ['power_ranking'] },
+    { label: '수상', types: ['mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'] },
+];
 
 // [2026-09-01] 좁은 단일 컬럼 리스트 → 실제 뉴스 사이트 같은 그리드로 개편.
 // 데이터는 useLeagueNewsFeed 훅으로 공유, 프레젠테이셔널 마크업은 newsFeedCards.tsx.
@@ -62,6 +70,12 @@ const TYPE_LABEL: Record<LeagueEventType, string> = {
 // virtual_season_year로 시즌을 생성)라서 currentSimDate와 값 자체가 다르다. 그래서 기본값이
 // "오늘"이 아니라 사실상 무작위한 실제 날짜로 보였던 것 — MultiScheduleView.tsx가 이미
 // 겪은 문제이고 거기서 쓰는 해법(findCurrentVirtualDate)을 그대로 재사용한다.
+// 좌측 리스트 우측 날짜 — "YYYY-MM-DD" 형태인 simDate를 "YY/MM/DD"로 축약 표시(사용자 요청).
+function formatSimDateShort(simDate: string): string {
+    const [y, m, d] = simDate.split('-');
+    return y && m && d ? `${y.slice(2)}/${m}/${d}` : simDate;
+}
+
 const MultiNewsFeedView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, room, leagueTeams } = useLeagueContext();
@@ -85,28 +99,67 @@ const MultiNewsFeedView: React.FC = () => {
     const { getGameUrlId } = useGameShortCodes(room?.id);
     const { getPlayerUrlId } = usePlayerShortCodes();
 
-    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-    const [selectedTypes, setSelectedTypes] = useState<LeagueEventType[]>([]);
-    const toggleType = (t: LeagueEventType) => {
-        setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+    // [2026-09-02] 필터 값(날짜 범위/팀/빅뉴스/정렬)을 새로고침·뒤로가기 후에도 기억하도록
+    // 로컬 state 대신 URL 쿼리 파라미터를 단일 소스로 사용(사용자 요청 — 타입 필터
+    // selectedTypes는 요청 범위 밖이라 그대로 로컬 state 유지). 필터 클릭마다 히스토리
+    // 엔트리가 쌓이지 않도록 { replace: true }로 갱신.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const updateParams = (updates: Record<string, string | null>) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            for (const [key, value] of Object.entries(updates)) {
+                if (value) next.set(key, value);
+                else next.delete(key);
+            }
+            return next;
+        }, { replace: true });
     };
-    const [bigNewsOnly, setBigNewsOnly] = useState(false);
-    const [sortOrder, setSortOrder] = useState<NewsSortOrder>('latest');
+
+    const selectedTeams = useMemo(() => {
+        const raw = searchParams.get('teams');
+        return raw ? raw.split(',').filter(Boolean) : [];
+    }, [searchParams]);
+    const setSelectedTeams = (teams: string[]) => updateParams({ teams: teams.length > 0 ? teams.join(',') : null });
+
+    const [selectedTypes, setSelectedTypes] = useState<LeagueEventType[]>([]);
+    // "수상" 그룹처럼 타입 여러 개를 한 체크박스로 묶은 경우, 그 그룹의 타입 전부를 한꺼번에
+    // 추가/제거한다 — 전부 선택돼 있으면 전부 해제, 하나라도 안 돼 있으면 전부 선택.
+    const toggleTypeGroup = (types: LeagueEventType[]) => {
+        setSelectedTypes(prev => {
+            const allSelected = types.every(t => prev.includes(t));
+            return allSelected ? prev.filter(t => !types.includes(t)) : [...new Set([...prev, ...types])];
+        });
+    };
+
+    const bigNewsOnly = searchParams.get('big') === '1';
+    const setBigNewsOnly = (v: boolean) => updateParams({ big: v ? '1' : null });
+
+    const sortOrder: NewsSortOrder = searchParams.get('sort') === 'oldest' ? 'oldest' : 'latest';
+    const setSortOrder = (o: NewsSortOrder) => updateParams({ sort: o === 'oldest' ? 'oldest' : null });
+
     // 인게임(시뮬레이션) 날짜 범위 — league_events.sim_date(games.game_date 스냅샷) 기준.
     // 실제 wall-clock 날짜(createdAt)가 아니라 리그가 압축 스케줄로 진행되는 인게임 날짜.
-    // 기본값 = 오늘의 "가상 시즌 날짜"(todaySimDate) 하루만 — 빈 문자열은 "전체 기간"(필터
-    // 인풋의 초기화 버튼으로만 도달 가능, 스텝퍼는 항상 특정 날짜로 복귀시킴).
-    const [simDateFrom, setSimDateFrom] = useState<string>(todaySimDate);
-    const [simDateTo, setSimDateTo] = useState<string>(todaySimDate);
+    // [2026-09-02] 기본값을 "오늘" 하루에서 "전체 기간"(빈 문자열)으로 변경 — 진입 시 오늘
+    // 날짜로 자동 좁혀지는 게 불편하다는 사용자 피드백. 스텝퍼(◀/▶)나 "오늘" 버튼으로는
+    // 여전히 특정 날짜로 이동 가능.
+    const simDateFrom = searchParams.get('from') ?? '';
+    const simDateTo = searchParams.get('to') ?? '';
+    const setSimDateRange = (from: string, to: string) => updateParams({ from: from || null, to: to || null });
 
     // 스텝퍼 — from/to를 항상 함께 ±1일 밀어 범위 폭을 유지한다. 전체 기간(둘 다 '') 상태에서
     // 누르면 오늘을 기준으로 하루짜리 범위로 복귀.
     const shiftDateRange = (deltaDays: number) => {
-        setSimDateFrom(prev => addDaysToKey(prev || todaySimDate, deltaDays));
-        setSimDateTo(prev => addDaysToKey(prev || todaySimDate, deltaDays));
+        setSimDateRange(
+            addDaysToKey(simDateFrom || todaySimDate, deltaDays),
+            addDaysToKey(simDateTo || todaySimDate, deltaDays),
+        );
     };
-    const resetToToday = () => { setSimDateFrom(todaySimDate); setSimDateTo(todaySimDate); };
+    const resetToToday = () => setSimDateRange(todaySimDate, todaySimDate);
     const isDefaultToday = simDateFrom === todaySimDate && simDateTo === todaySimDate;
+    // [2026-09-02] 기본값이 "전체 기간"으로 바뀌면서 isDefaultToday(오늘 버튼 표시용)와
+    // "필터를 안 건드린 초기 상태"의 의미가 갈라졌다 — 날짜 필터 자체는 더 이상 "활성
+    // 필터"로 취급하지 않는다(선택했을 때만 활성).
+    const isDefaultDateFilter = !simDateFrom && !simDateTo;
     const dateLabel = !simDateFrom && !simDateTo
         ? '전체 기간'
         : simDateFrom === simDateTo
@@ -126,7 +179,7 @@ const MultiNewsFeedView: React.FC = () => {
     };
 
     const toggleTeam = (teamSlug: string) => {
-        setSelectedTeams(prev => prev.includes(teamSlug) ? prev.filter(id => id !== teamSlug) : [...prev, teamSlug]);
+        setSelectedTeams(selectedTeams.includes(teamSlug) ? selectedTeams.filter(id => id !== teamSlug) : [...selectedTeams, teamSlug]);
     };
 
     const { stories, isLoading, hasMore, fetchNextPage, isFetchingNextPage } = useLeagueNewsFeed(
@@ -142,7 +195,7 @@ const MultiNewsFeedView: React.FC = () => {
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const selectedEvent = stories.find(e => e.id === selectedEventId) ?? stories[0] ?? null;
 
-    const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultToday;
+    const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultDateFilter;
 
     const teamBySlug = useMemo(() => {
         const m = new Map<string, LeagueTeamRow>();
@@ -156,9 +209,24 @@ const MultiNewsFeedView: React.FC = () => {
     // playerId → {Player, 소속팀 약어}를 별도로 만들어 내려준다 — 방출/은퇴 등으로 로스터에서
     // 사라진 선수는 teamAbbr만 빈 문자열이 되고(팝업 헤더에 표시 안 함) 능력치 팝업 자체는
     // 그대로 뜬다. (MultiScheduleView.tsx도 동일한 buildPlayerCardMap을 공유.)
-    const playerCardMap = useMemo(
+    const basePlayerCardMap = useMemo(
         () => buildPlayerCardMap(poolPlayers, rosterMap, slug => teamBySlug.get(slug)?.team_abbr),
         [poolPlayers, rosterMap, teamBySlug],
+    );
+
+    // poolPlayers(meta_players만 조회)는 stats가 항상 0이라 hover 카드에 "시즌 기록 없음"만
+    // 뜨는 문제 — 좌/우 분할 레이아웃이라 실제로 렌더되는 건 selectedEvent 하나뿐이므로,
+    // 그 이벤트에 등장하는 선수(보통 1~4명)의 시즌 누적만 가볍게 조회해 덮어쓴다. 리그
+    // 전체 game_pbp를 받아오는 useLeagueRawStats보다 훨씬 가벼움(get_player_season_stats_batch
+    // RPC가 서버에서 스캔하고 이 몇 명 결과만 내려줌).
+    const selectedEventPlayerIds = useMemo(
+        () => selectedEvent ? extractEventPlayerIds(selectedEvent) : [],
+        [selectedEvent],
+    );
+    const { data: selectedEventStats } = usePlayerSeasonStatsBatch(room?.id, selectedEventPlayerIds);
+    const playerCardMap = useMemo(
+        () => selectedEventStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, selectedEventStats) : basePlayerCardMap,
+        [basePlayerCardMap, selectedEventStats],
     );
 
     const openGame = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
@@ -172,7 +240,9 @@ const MultiNewsFeedView: React.FC = () => {
             <div className="flex flex-col border-b border-slate-800 bg-slate-900 shrink-0">
                 <div className="px-4 py-3 flex flex-col md:flex-row items-center gap-3">
                     <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
-                        <h1 className="text-lg font-black text-white ko-tight truncate">뉴스피드</h1>
+                        {/* [2026-09-02] "리그 소식" 텍스트를 The Basketball Chronicle
+                            로고(newsFeedCards.tsx의 BrandMark와 동일 파일)로 대체(사용자 요청). */}
+                        <img src="/images/bc2.svg" alt="The Basketball Chronicle" className="h-5 w-auto" />
 
                         {/* 날짜 하루 단위 이동 스텝퍼 — 기본값은 오늘의 인게임 날짜. 화살표는
                             simDateFrom/simDateTo를 함께 ±1일 밀어 범위 폭을 유지한다. */}
@@ -267,7 +337,7 @@ const MultiNewsFeedView: React.FC = () => {
                         {/* 빅뉴스만/전체 — 리더보드 "색상 스케일" 토글과 동일한 단일 라벨 스위치 */}
                         <div
                             className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
-                            onClick={() => setBigNewsOnly(v => !v)}
+                            onClick={() => setBigNewsOnly(!bigNewsOnly)}
                             title="중요도 높은 소식만 보기"
                         >
                             <span className={`text-sm font-bold transition-colors whitespace-nowrap ${bigNewsOnly ? 'text-indigo-400' : 'text-slate-500'}`}>빅 뉴스만</span>
@@ -279,7 +349,7 @@ const MultiNewsFeedView: React.FC = () => {
                         {/* 최신순/오래된순 — 리더보드 "정규시즌/플레이오프" 토글과 동일한 양쪽 라벨 스위치 */}
                         <div
                             className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
-                            onClick={() => setSortOrder(o => (o === 'latest' ? 'oldest' : 'latest'))}
+                            onClick={() => setSortOrder(sortOrder === 'latest' ? 'oldest' : 'latest')}
                             title="정렬 순서 전환"
                         >
                             <span className={`text-sm font-bold transition-colors whitespace-nowrap ${sortOrder === 'latest' ? 'text-indigo-400' : 'text-slate-500'}`}>최신순</span>
@@ -300,7 +370,7 @@ const MultiNewsFeedView: React.FC = () => {
                             <input
                                 type="date"
                                 value={simDateFrom}
-                                onChange={(e) => setSimDateFrom(e.target.value)}
+                                onChange={(e) => setSimDateRange(e.target.value, simDateTo)}
                                 max={simDateTo || undefined}
                                 className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
                                 title="시작 인게임 날짜"
@@ -309,14 +379,14 @@ const MultiNewsFeedView: React.FC = () => {
                             <input
                                 type="date"
                                 value={simDateTo}
-                                onChange={(e) => setSimDateTo(e.target.value)}
+                                onChange={(e) => setSimDateRange(simDateFrom, e.target.value)}
                                 min={simDateFrom || undefined}
                                 className="h-full bg-transparent px-1 text-sm text-slate-400 outline-none [color-scheme:dark] w-[124px]"
                                 title="종료 인게임 날짜"
                             />
                             {(simDateFrom || simDateTo) && (
                                 <button
-                                    onClick={() => { setSimDateFrom(''); setSimDateTo(''); }}
+                                    onClick={() => setSimDateRange('', '')}
                                     className="h-full px-2 flex items-center justify-center border-l border-slate-800 text-slate-600 hover:text-white transition-colors shrink-0"
                                     title="날짜 필터 초기화"
                                 >
@@ -336,26 +406,25 @@ const MultiNewsFeedView: React.FC = () => {
             <div className="flex-1 min-h-0 flex">
                 <div className="w-[30%] shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar bg-slate-900">
                     <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800">
-                        <div className="px-3 py-2 text-sm font-black uppercase text-slate-500 ko-normal">
-                            리그 소식
-                        </div>
-                        {/* [2026-09-01] 메세지 타입별 필터 요청 — 팀 필터와 동일한 다중 선택 관례
+                        {/* [2026-09-02] "리그 소식" 라벨 삭제(사용자 요청) — 페이지 상단 제목이
+                            이미 "리그 소식"이라 중복. 필터 행만 남김.
+                            [2026-09-01] 메세지 타입별 필터 요청 — 팀 필터와 동일한 다중 선택 관례
                             (빈 배열 = 전체 타입). 팀 필터 드롭다운의 체크박스 행과 동일한 마크업
                             (w-4 h-4 체크박스 + text-sm 라벨)을 옵션 5개뿐이라 드롭다운 없이
                             인라인으로 바로 배치. */}
-                        <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-3 pb-2">
-                            {ALL_NEWS_TYPES.map(t => {
-                                const checked = selectedTypes.includes(t);
+                        <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-3 pt-2 pb-2">
+                            {NEWS_TYPE_FILTER_OPTIONS.map(opt => {
+                                const checked = opt.types.every(t => selectedTypes.includes(t));
                                 return (
                                     <div
-                                        key={t}
+                                        key={opt.label}
                                         className="flex items-center gap-1.5 cursor-pointer"
-                                        onClick={() => toggleType(t)}
+                                        onClick={() => toggleTypeGroup(opt.types)}
                                     >
                                         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
                                             {checked && <Check size={10} className="text-white" />}
                                         </div>
-                                        <span className={`text-sm font-bold ${checked ? 'text-white' : 'text-slate-400'}`}>{TYPE_LABEL[t]}</span>
+                                        <span className={`text-sm font-bold ${checked ? 'text-white' : 'text-slate-400'}`}>{opt.label}</span>
                                     </div>
                                 );
                             })}
@@ -384,9 +453,8 @@ const MultiNewsFeedView: React.FC = () => {
                                             selected ? 'bg-slate-700 text-white' : 'bg-slate-900 hover:bg-white/5'
                                         }`}
                                     >
-                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${e.involvesMyTeam ? 'bg-emerald-500' : ''}`} />
                                         <span className={`flex-1 min-w-0 truncate leading-snug ${selected ? 'text-white' : 'text-slate-300'}`}>{e.headline}</span>
-                                        <span className={`shrink-0 text-xs tabular-nums ${selected ? 'text-slate-300' : 'text-slate-600'}`}>{e.simDate ?? formatRelativeTime(e.createdAt)}</span>
+                                        <span className={`shrink-0 text-sm tabular-nums ${selected ? 'text-white' : 'text-slate-300'}`}>{e.simDate ? formatSimDateShort(e.simDate) : formatRelativeTime(e.createdAt)}</span>
                                     </div>
                                 );
                             })}
@@ -411,7 +479,6 @@ const MultiNewsFeedView: React.FC = () => {
                             event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
                             roomId={room?.id}
                             onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
-                            tier={tierFromScore(selectedEvent.score)}
                         />
                     ) : (
                         <div className="h-full flex items-center justify-center text-slate-600 text-sm ko-normal">선택된 소식이 없습니다.</div>

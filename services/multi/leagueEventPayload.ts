@@ -46,6 +46,14 @@ export interface PlayerFeatDetail {
     game?: GameRef;
 }
 
+/** [2026-09-02] 선수 연속기록을 구성하는 경기 하나 — win_streak의 WinStreakGame과 동일한
+ * 패턴이지만 mvp(팀 전체 최고 활약) 대신 statValue(이 선수 개인의 해당 스탯 실측치)를 담는다. */
+export interface PlayerStreakGame {
+    gameId: string; gameDate: string;
+    homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
+    statValue: number;
+}
+
 export interface PlayerStreakDetail {
     kind: 'player_streak';
     player: { id: string; name: string };
@@ -53,8 +61,11 @@ export interface PlayerStreakDetail {
     opponentSlug: string;
     /** [2026-09-01] 단수 streak → 복수 streaks — 한 경기에서 여러 규칙(20+득점 연속 +
      * 10+리바운드 연속 등)이 동시에 자격을 얻으면 이벤트 여러 건이 아니라 하나로 묶어
-     * 배열에 전부 담는다(server/src/shared/leagueEvents.ts 미러). */
-    streaks: { ruleKey: string; statKey: string; min: number; count: number; label: string }[];
+     * 배열에 전부 담는다(server/src/shared/leagueEvents.ts 미러).
+     * [2026-09-02] 각 규칙에 games 추가 — 그 연속기록을 구성하는 경기 목록(최신순). 이
+     * 필드가 생기기 전(2026-09-02 이전) 이벤트는 빈 배열 — 카드가 경기 리스트 없이
+     * 렌더링(폴백, win_streak과 동일한 하위호환 원칙). */
+    streaks: { ruleKey: string; statKey: string; min: number; count: number; label: string; games: PlayerStreakGame[] }[];
     game?: GameRef;
 }
 
@@ -85,12 +96,99 @@ export interface TradeDetail {
 
 export interface LegacyDetail { kind: 'legacy' }
 
+export interface PowerRankingEntry {
+    teamSlug: string;
+    teamName: string;
+    rank: number;
+    powerScore: number;
+    /** [2026-09] "재능"/"공격"/"수비" 컬럼 — 이 필드 추가 이전(구 이벤트)에는 없을 수 있어
+     * optional(카드가 '-'로 폴백). */
+    talentScore?: number;
+    offenseScore?: number;
+    defenseScore?: number;
+}
+
+/** [2026-09] "매월 초 파워랭킹" 뉴스 — 서버 미러: server/src/postPowerRankingNews.ts의
+ * PowerRankingPayloadData. 필드명을 바꿀 땐 반드시 양쪽 다 같이 고칠 것(client/server 미러
+ * 쌍 — dev-log.md 기록 대상). */
+export interface PowerRankingDetail {
+    kind: 'power_ranking';
+    month: string; // 'YYYY-MM'
+    full: PowerRankingEntry[]; // 전체 팀, rank 오름차순
+    riser?: PowerRankingEntry & { fromRank: number };
+    faller?: PowerRankingEntry & { fromRank: number };
+}
+
+/** [2026-09] 정규시즌 종료 1일 후 발표되는 시즌 어워드 뉴스 — 서버 미러:
+ * server/src/postSeasonAwards.ts. 필드명을 바꿀 땐 반드시 양쪽 다 같이 고칠 것(client/server
+ * 미러 쌍 — dev-log.md 기록 대상). */
+export interface MvpAwardEntry {
+    playerId: string; playerName: string; teamSlug: string; position: string;
+    points: number; firstPlaceVotes: number;
+    /** [1위표, 2위표, 3위표, 4위표, 5위표] 개수 — server/src/postSeasonAwards.ts의
+     * mvpVoteBreakdown(components/inbox/AwardsReportViewer.tsx와 동일 집계 방식)에서 채움. */
+    rankVotes: number[];
+    ppg: number; rpg: number; apg: number; spg: number; bpg: number;
+    fgPct: number; p3Pct: number; ftPct: number;
+}
+export interface MvpAwardDetail {
+    kind: 'mvp_award';
+    season: string;
+    ranking: MvpAwardEntry[]; // 1~5위, 오름차순
+}
+
+export interface DpoyAwardEntry {
+    playerId: string; playerName: string; teamSlug: string; position: string;
+    points: number; firstPlaceVotes: number;
+    /** [1위표, 2위표, 3위표] 개수 — mvp_award의 rankVotes와 동일한 개념(topN=3). */
+    rankVotes: number[];
+    spg: number; bpg: number; drebpg: number; orebpg: number;
+    /** 상대가 이 선수에게 컨테스트당했을 때의 필드골 성공률(DFG%). */
+    dfgPct: number;
+}
+export interface DpoyAwardDetail {
+    kind: 'dpoy_award';
+    season: string;
+    ranking: DpoyAwardEntry[]; // 1~3위, 오름차순
+}
+
+export interface AllNbaTeamEntry {
+    playerId: string; playerName: string; teamSlug: string; pos: 'G' | 'F' | 'C';
+    ppg: number; rpg: number; apg: number;
+    g: number; gs: number; mpg: number; spg: number; bpg: number; tovpg: number;
+    fgPct: number; p3Pct: number; ftPct: number;
+}
+export interface AllTeamTier { tier: number; players: AllNbaTeamEntry[] }
+export interface AllNbaTeamDetail {
+    kind: 'all_nba_team';
+    season: string;
+    tiers: AllTeamTier[]; // tier 1~3
+}
+
+export interface AllDefTeamEntry {
+    playerId: string; playerName: string; teamSlug: string; pos: 'G' | 'F' | 'C';
+    spg: number; bpg: number;
+    g: number; gs: number; mpg: number; orebpg: number; drebpg: number; dfgPct: number;
+    pfpg: number; tovpg: number;
+}
+export interface AllDefTeamTier { tier: number; players: AllDefTeamEntry[] }
+export interface AllDefTeamDetail {
+    kind: 'all_def_team';
+    season: string;
+    tiers: AllDefTeamTier[]; // tier 1~2
+}
+
 export type LeagueEventDetail =
     | GameResultDetail
     | PlayerFeatDetail
     | PlayerStreakDetail
     | WinStreakDetail
     | TradeDetail
+    | PowerRankingDetail
+    | MvpAwardDetail
+    | DpoyAwardDetail
+    | AllNbaTeamDetail
+    | AllDefTeamDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -133,12 +231,28 @@ function parseWinStreakGame(raw: any): WinStreakGame | undefined {
     };
 }
 
-type StreakEntry = { ruleKey: string; statKey: string; min: number; count: number; label: string };
+// [2026-09-02] 연속기록을 구성하는 경기 하나 검증 — parseWinStreakGame과 동일한 원리지만
+// mvp 대신 statValue(숫자, 없으면 0 취급 — 이 필드 자체가 없는 걸로 카드가 깨지면 안 됨).
+function parsePlayerStreakGame(raw: any): PlayerStreakGame | undefined {
+    if (!raw || !isNonEmptyString(raw.gameId) || !isNonEmptyString(raw.gameDate)) return undefined;
+    if (!isNonEmptyString(raw.homeSlug) || !isNonEmptyString(raw.awaySlug)) return undefined;
+    if (typeof raw.homeScore !== 'number' || typeof raw.awayScore !== 'number') return undefined;
+    return {
+        gameId: raw.gameId, gameDate: raw.gameDate,
+        homeSlug: raw.homeSlug, awaySlug: raw.awaySlug, homeScore: raw.homeScore, awayScore: raw.awayScore,
+        statValue: typeof raw.statValue === 'number' ? raw.statValue : 0,
+    };
+}
+
+type StreakEntry = { ruleKey: string; statKey: string; min: number; count: number; label: string; games: PlayerStreakGame[] };
 
 function parseStreakEntry(raw: any): StreakEntry | undefined {
     if (!raw || !isNonEmptyString(raw.ruleKey) || !isNonEmptyString(raw.statKey) || !isNonEmptyString(raw.label)) return undefined;
     if (typeof raw.min !== 'number' || typeof raw.count !== 'number') return undefined;
-    return { ruleKey: raw.ruleKey, statKey: raw.statKey, min: raw.min, count: raw.count, label: raw.label };
+    const games = Array.isArray(raw.games)
+        ? raw.games.map(parsePlayerStreakGame).filter((g: PlayerStreakGame | undefined): g is PlayerStreakGame => !!g)
+        : [];
+    return { ruleKey: raw.ruleKey, statKey: raw.statKey, min: raw.min, count: raw.count, label: raw.label, games };
 }
 
 // [2026-09-01] "같은 경기에서 여러 스트릭이 겹치면 뉴스가 여러 건 생기는" 문제 수정 —
@@ -159,6 +273,23 @@ function parseGameRef(raw: any): GameRef | undefined {
     if (!raw || !isNonEmptyString(raw.homeSlug) || !isNonEmptyString(raw.awaySlug)) return undefined;
     if (typeof raw.homeScore !== 'number' || typeof raw.awayScore !== 'number') return undefined;
     return { homeSlug: raw.homeSlug, awaySlug: raw.awaySlug, homeScore: raw.homeScore, awayScore: raw.awayScore };
+}
+
+function parsePowerRankingEntry(raw: any): PowerRankingEntry | undefined {
+    if (!raw || !isNonEmptyString(raw.teamSlug) || !isNonEmptyString(raw.teamName)) return undefined;
+    if (typeof raw.rank !== 'number' || typeof raw.powerScore !== 'number') return undefined;
+    return {
+        teamSlug: raw.teamSlug, teamName: raw.teamName, rank: raw.rank, powerScore: raw.powerScore,
+        talentScore: typeof raw.talentScore === 'number' ? raw.talentScore : undefined,
+        offenseScore: typeof raw.offenseScore === 'number' ? raw.offenseScore : undefined,
+        defenseScore: typeof raw.defenseScore === 'number' ? raw.defenseScore : undefined,
+    };
+}
+
+function parsePowerRankingMover(raw: any): (PowerRankingEntry & { fromRank: number }) | undefined {
+    const entry = parsePowerRankingEntry(raw);
+    if (!entry || typeof raw.fromRank !== 'number') return undefined;
+    return { ...entry, fromRank: raw.fromRank };
 }
 
 // v===1이지만 형태가 깨진 payload(반쯤 쓰인 마이그레이션, 수동 편집 등)가 그리드를
@@ -227,6 +358,92 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     aOut: Array.isArray(payload.aOut) ? payload.aOut : [],
                     bOut: Array.isArray(payload.bOut) ? payload.bOut : [],
                 };
+            }
+            case 'power_ranking': {
+                if (!isNonEmptyString(payload.month) || !Array.isArray(payload.full)) return LEGACY;
+                const full = payload.full.map(parsePowerRankingEntry).filter((e: PowerRankingEntry | undefined): e is PowerRankingEntry => !!e);
+                if (full.length === 0) return LEGACY;
+                return {
+                    kind: 'power_ranking',
+                    month: payload.month,
+                    full,
+                    riser: parsePowerRankingMover(payload.riser),
+                    faller: parsePowerRankingMover(payload.faller),
+                };
+            }
+            case 'mvp_award': {
+                if (!isNonEmptyString(payload.season) || !Array.isArray(payload.ranking)) return LEGACY;
+                const num = (v: unknown) => typeof v === 'number' ? v : 0;
+                const ranking: MvpAwardEntry[] = payload.ranking
+                    .filter((r: any) => r && isNonEmptyString(r.playerId) && isNonEmptyString(r.playerName) && isNonEmptyString(r.teamSlug))
+                    .map((r: any): MvpAwardEntry => ({
+                        playerId: r.playerId, playerName: r.playerName, teamSlug: r.teamSlug,
+                        position: isNonEmptyString(r.position) ? r.position : '',
+                        points: num(r.points), firstPlaceVotes: num(r.firstPlaceVotes),
+                        rankVotes: Array.isArray(r.rankVotes) ? r.rankVotes.map(num) : [0, 0, 0, 0, 0],
+                        ppg: num(r.ppg), rpg: num(r.rpg), apg: num(r.apg), spg: num(r.spg), bpg: num(r.bpg),
+                        fgPct: num(r.fgPct), p3Pct: num(r.p3Pct), ftPct: num(r.ftPct),
+                    }));
+                if (ranking.length === 0) return LEGACY;
+                return { kind: 'mvp_award', season: payload.season, ranking };
+            }
+            case 'dpoy_award': {
+                if (!isNonEmptyString(payload.season) || !Array.isArray(payload.ranking)) return LEGACY;
+                const num = (v: unknown) => typeof v === 'number' ? v : 0;
+                const ranking: DpoyAwardEntry[] = payload.ranking
+                    .filter((r: any) => r && isNonEmptyString(r.playerId) && isNonEmptyString(r.playerName) && isNonEmptyString(r.teamSlug))
+                    .map((r: any): DpoyAwardEntry => ({
+                        playerId: r.playerId, playerName: r.playerName, teamSlug: r.teamSlug,
+                        position: isNonEmptyString(r.position) ? r.position : '',
+                        points: num(r.points), firstPlaceVotes: num(r.firstPlaceVotes),
+                        rankVotes: Array.isArray(r.rankVotes) ? r.rankVotes.map(num) : [0, 0, 0],
+                        spg: num(r.spg), bpg: num(r.bpg), drebpg: num(r.drebpg),
+                        orebpg: num(r.orebpg), dfgPct: num(r.dfgPct),
+                    }));
+                if (ranking.length === 0) return LEGACY;
+                return { kind: 'dpoy_award', season: payload.season, ranking };
+            }
+            case 'all_nba_team': {
+                if (!isNonEmptyString(payload.season) || !Array.isArray(payload.tiers)) return LEGACY;
+                const num = (v: unknown) => typeof v === 'number' ? v : 0;
+                const tiers: AllTeamTier[] = payload.tiers
+                    .filter((t: any) => t && typeof t.tier === 'number' && Array.isArray(t.players))
+                    .map((t: any): AllTeamTier => ({
+                        tier: t.tier,
+                        players: t.players
+                            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+                            .map((p: any): AllNbaTeamEntry => ({
+                                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                                pos: p.pos === 'G' || p.pos === 'F' || p.pos === 'C' ? p.pos : 'F',
+                                ppg: num(p.ppg), rpg: num(p.rpg), apg: num(p.apg),
+                                g: num(p.g), gs: num(p.gs), mpg: num(p.mpg),
+                                spg: num(p.spg), bpg: num(p.bpg), tovpg: num(p.tovpg),
+                                fgPct: num(p.fgPct), p3Pct: num(p.p3Pct), ftPct: num(p.ftPct),
+                            })),
+                    }));
+                if (tiers.length === 0) return LEGACY;
+                return { kind: 'all_nba_team', season: payload.season, tiers };
+            }
+            case 'all_def_team': {
+                if (!isNonEmptyString(payload.season) || !Array.isArray(payload.tiers)) return LEGACY;
+                const num = (v: unknown) => typeof v === 'number' ? v : 0;
+                const tiers: AllDefTeamTier[] = payload.tiers
+                    .filter((t: any) => t && typeof t.tier === 'number' && Array.isArray(t.players))
+                    .map((t: any): AllDefTeamTier => ({
+                        tier: t.tier,
+                        players: t.players
+                            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+                            .map((p: any): AllDefTeamEntry => ({
+                                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                                pos: p.pos === 'G' || p.pos === 'F' || p.pos === 'C' ? p.pos : 'F',
+                                spg: num(p.spg), bpg: num(p.bpg),
+                                g: num(p.g), gs: num(p.gs), mpg: num(p.mpg),
+                                orebpg: num(p.orebpg), drebpg: num(p.drebpg), dfgPct: num(p.dfgPct),
+                                pfpg: num(p.pfpg), tovpg: num(p.tovpg),
+                            })),
+                    }));
+                if (tiers.length === 0) return LEGACY;
+                return { kind: 'all_def_team', season: payload.season, tiers };
             }
             default:
                 return LEGACY;

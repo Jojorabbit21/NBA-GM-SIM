@@ -41,6 +41,7 @@ const SchedulePage: React.FC = () => {
             isSimulating={sim.isSimulating}
             playoffSeries={gameData.playoffSeries}
             seasonStartYear={gameData.seasonConfig?.startYear}
+            onTeamClick={(teamId) => navigate(`/roster/${teamId}`)}
         />
     );
 };

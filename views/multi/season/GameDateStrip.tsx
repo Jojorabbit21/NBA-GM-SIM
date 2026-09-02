@@ -257,14 +257,18 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 )}
             </div>
 
-            {/* 좌측 이동 버튼 — 우측 버튼과 동일한 패턴(끝 도달 시 비활성화, 인디고 색상) */}
-            <button
-                onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
-                disabled={!canScrollLeft}
-                className="shrink-0 w-8 flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 disabled:cursor-default transition-colors"
-            >
-                <ChevronLeft size={18} />
-            </button>
+            {/* 좌측 이동 버튼 — 우측 버튼과 동일한 패턴(끝 도달 시 비활성화, slate 색상).
+                [2026-09-02] 스크롤할 내용 자체가 없으면(경기 수가 적어 카드가 넘치지 않으면)
+                canScrollLeft/Right 둘 다 false가 되므로, 그 경우 버튼을 아예 숨긴다. */}
+            {(canScrollLeft || canScrollRight) && (
+                <button
+                    onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+                    disabled={!canScrollLeft}
+                    className="shrink-0 w-8 flex items-center justify-center bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:cursor-default transition-colors"
+                >
+                    <ChevronLeft size={18} />
+                </button>
+            )}
 
             {/* 그 날짜의 경기 카드 — 가로 스크롤 */}
             <div
@@ -318,14 +322,17 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
             </div>
 
             {/* 리스트가 화면 우측 끝을 넘어가도 스크롤할 방법이 없다는 피드백 — 맨 우측에
-                고정 화살표 버튼 추가, 클릭 시 스트립을 오른쪽으로 스크롤. */}
-            <button
-                onClick={() => gameStripRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
-                disabled={!canScrollRight}
-                className="shrink-0 w-8 flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 disabled:cursor-default transition-colors"
-            >
-                <ChevronRight size={18} />
-            </button>
+                고정 화살표 버튼 추가, 클릭 시 스트립을 오른쪽으로 스크롤. 좌측 버튼과 동일하게
+                스크롤이 필요 없을 땐 숨김. */}
+            {(canScrollLeft || canScrollRight) && (
+                <button
+                    onClick={() => gameStripRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
+                    disabled={!canScrollRight}
+                    className="shrink-0 w-8 flex items-center justify-center bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:cursor-default transition-colors"
+                >
+                    <ChevronRight size={18} />
+                </button>
+            )}
         </div>
     );
 };

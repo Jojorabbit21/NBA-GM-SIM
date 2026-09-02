@@ -267,7 +267,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 ] as const) {
                     const { data: recentGames } = await supabase
                         .from('games')
-                        .select('id, game_date, home_team_id, away_team_id, home_score, away_score')
+                        .select('game_id, game_date, home_team_id, away_team_id, home_score, away_score')
                         .eq('room_id', roomId)
                         .eq('played', true)
                         .or(`home_team_id.eq.${teamSlug},away_team_id.eq.${teamSlug}`)

@@ -1,7 +1,36 @@
 
-import type { Team, Player } from '../../types';
-import type { ArchetypeModuleScores } from '../../types/archetype';
-import { calcModuleScores } from '../playerDevelopment/archetypeEvaluator';
+/**
+ * powerRanking.ts — 서버 미러.
+ * 원본: services/multi/powerRanking.ts. 공식/가중치를 바꿀 땐 반드시 양쪽 다 같이 고칠 것
+ * (client/server 미러 쌍 — dev-log.md 기록 대상).
+ *
+ * 클라이언트는 calcModuleScores를 services/playerDevelopment/archetypeEvaluator.ts에서
+ * 가져오지만, 서버엔 그 파일(포지션 게이트/트레이트 태그 등 이 계산에 불필요한 로직 포함)의
+ * 이식본이 없다 — 여기선 그중 실제로 필요한 11개 모듈 추출 부분만 로컬로 재현했다
+ * (계산 자체는 이미 이식되어 있는 ovrEngine.ts/ovrUtils.ts를 그대로 호출).
+ */
+import type { Team, Player } from '../types.ts';
+import type { ArchetypeModuleScores } from '../types/archetype.ts';
+import { calculateModules } from '../utils/ovrEngine.ts';
+import { adaptPlayerToInput } from '../utils/ovrUtils.ts';
+
+function calcModuleScores(player: Player): ArchetypeModuleScores {
+    const input = adaptPlayerToInput(player);
+    const mod = calculateModules(input.ratings, input.primaryPosition);
+    return {
+        rimFinishing: mod.rimFinishing,
+        postCraft: mod.postCraft,
+        spotUpShooting: mod.spotUpShooting,
+        shotCreation: mod.shotCreation,
+        playmaking: mod.playmaking,
+        offballAttack: mod.offballAttack,
+        poaDefense: mod.poaDefense,
+        teamDefense: mod.teamDefense,
+        rimProtection: mod.rimProtection,
+        rebounding: mod.rebounding,
+        motorAvailability: mod.motorAvailability,
+    };
+}
 
 const MODULE_NAMES: (keyof ArchetypeModuleScores)[] = [
     'rimFinishing', 'postCraft', 'spotUpShooting', 'shotCreation', 'playmaking',
@@ -102,11 +131,9 @@ export interface TeamPowerRanking {
     talentScore: number;
     /** 11개 역할 모듈의 리그 내 백분위을 조화평균한 값 (0~100) — 약점이 있으면 크게 깎임 */
     compositionScore: number;
-    /** 공격 계열 6개 모듈(rimFinishing/postCraft/spotUpShooting/shotCreation/playmaking/
-     * offballAttack) 백분위의 조화평균 (0~100) — compositionScore의 하위 분해, UI "공격" 컬럼용 */
+    /** 공격 계열 6개 모듈 백분위의 조화평균 (0~100) — UI "공격" 컬럼용 */
     offenseScore: number;
-    /** 수비 계열 5개 모듈(poaDefense/teamDefense/rimProtection/rebounding/motorAvailability)
-     * 백분위의 조화평균 (0~100) — compositionScore의 하위 분해, UI "수비" 컬럼용 */
+    /** 수비 계열 5개 모듈 백분위의 조화평균 (0~100) — UI "수비" 컬럼용 */
     defenseScore: number;
     /** 포지션별 전력 격차의 리그 내 백분위 (0~100) */
     positionBalanceScore: number;

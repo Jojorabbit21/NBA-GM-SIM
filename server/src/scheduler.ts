@@ -18,6 +18,12 @@ import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
 import { startPlayIn } from './shared/playInSeeder';
+import { recomputeAndPostPowerRankings } from './postPowerRankingNews';
+import { computeAndPostSeasonAwards } from './postSeasonAwards';
+
+// 정규시즌 종료 후 어워드를 발표하기까지의 지연 — "종료 즉시"가 아니라 하루 뒤 발표되도록
+// leagues.regular_season_ended_at + 이 값을 기준으로 runScheduledSeasonAwards()가 트리거한다.
+const SEASON_AWARDS_DELAY_MS = 24 * 60 * 60_000;
 
 const POLL_INTERVAL_MS = 30_000;
 const STALE_CLAIM_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -89,6 +95,7 @@ async function tick(): Promise<void> {
         runScheduledDraftStarts(now),
         runSimGames(now),
         checkSeasonCompletions(),
+        runScheduledSeasonAwards(now),
         cleanupCompletedRooms(),
     ]);
 }
@@ -99,7 +106,7 @@ async function tick(): Promise<void> {
 async function checkSeasonCompletions(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at')
         .eq('type', 'main_league')
         .eq('status', 'in_progress')
         .is('bracket_data', null);
@@ -124,10 +131,54 @@ async function checkSeasonCompletions(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
+        // 정규시즌 종료 시각 1회 스탬프 — runScheduledSeasonAwards()가 "이 시각+1일"을 기준으로
+        // 어워드 발표를 트리거한다. bracket_data가 채워지기 전까지는 이 함수가 매 틱 재실행되므로
+        // 이미 값이 있으면 건너뛴다(최초 감지 시각을 덮어쓰지 않기 위함).
+        if (!(league as any).regular_season_ended_at) {
+            await supabase.from('leagues')
+                .update({ regular_season_ended_at: new Date().toISOString() })
+                .eq('id', league.id).is('regular_season_ended_at', null);
+        }
+
         console.log(`[scheduler:season] league=${league.id} — regular season complete, starting postseason`);
         const startPostseason = (league as any).play_in_enabled ? startPlayIn : startPlayoffs;
         await startPostseason(league, room.id).catch(err =>
             console.error(`[scheduler:season] startPostseason failed(${league.id}):`, err),
+        );
+    }
+}
+
+// ── F-1. 정규시즌 종료 1일 후 시즌 어워드(MVP/DPOY/올-오펜시브/올-디펜시브) 발표 ──────────────
+// checkSeasonCompletions()가 스탬프한 regular_season_ended_at + SEASON_AWARDS_DELAY_MS가
+// 지난 리그를 찾아 한 번만 computeAndPostSeasonAwards()를 실행한다. 플레이오프 시작 여부와
+// 무관하게(bracket_data 필터 없음 — checkSeasonCompletions와 달리 이 시점엔 이미 플레이오프가
+// 시작돼 있는 게 정상) 동작해야 하므로 별도 쿼리로 분리했다. 완료 여부는
+// league_player_awards에 이미 행이 있는지로 판별(멱등성 — insert도 ON CONFLICT DO NOTHING).
+async function runScheduledSeasonAwards(now: string): Promise<void> {
+    const cutoff = new Date(new Date(now).getTime() - SEASON_AWARDS_DELAY_MS).toISOString();
+
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id')
+        .eq('type', 'main_league')
+        .not('regular_season_ended_at', 'is', null)
+        .lte('regular_season_ended_at', cutoff);
+
+    if (!leagues?.length) return;
+
+    for (const league of leagues) {
+        const { count: alreadyPosted } = await supabase
+            .from('league_player_awards')
+            .select('id', { count: 'exact', head: true })
+            .eq('league_id', league.id);
+        if ((alreadyPosted ?? 0) > 0) continue;
+
+        const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
+        if (!room) continue;
+
+        console.log(`[scheduler:season] league=${league.id} — posting season awards`);
+        await computeAndPostSeasonAwards(room.id, league.id).catch(err =>
+            console.error(`[scheduler:season] computeAndPostSeasonAwards failed(${league.id}):`, err),
         );
     }
 }
@@ -406,17 +457,20 @@ async function advanceSimDates(leagueIds: string[], today: string): Promise<void
 
     // ① "이미 방송 시각이 지난 경기"가 있는 방(sim_date 전진 후보) — 그중 아직 미실행인 게
     // 하나라도 있으면 그 방은 전진 보류(기존 dueGames.every(played) 조건과 동일 의미).
+    // league_id도 함께 받아두는 이유: 아래 월 경계 감지 시 파워랭킹 게시에 필요.
     const { data: dueRows } = await supabase
         .from('games')
-        .select('room_id, played')
+        .select('room_id, league_id, played')
         .in('league_id', leagueIds)
         .lte('scheduled_at', nowIso);
 
     const hasDue  = new Set<string>();
     const blocked = new Set<string>();
+    const leagueIdByRoom = new Map<string, string>();
     for (const r of dueRows ?? []) {
         hasDue.add(r.room_id);
         if (!r.played) blocked.add(r.room_id);
+        if (r.league_id) leagueIdByRoom.set(r.room_id, r.league_id);
     }
 
     // ② 방별 다음 미실행 경기 시각 (scheduled_at 오름차순 → 방마다 첫 row가 next)
@@ -432,13 +486,51 @@ async function advanceSimDates(leagueIds: string[], today: string): Promise<void
         if (r.scheduled_at && !nextByRoom.has(r.room_id)) nextByRoom.set(r.room_id, r.scheduled_at);
     }
 
-    for (const roomId of hasDue) {
-        if (blocked.has(roomId)) continue;
+    // 실제로 전진할 후보 방들의 "현재" sim_date/season_number를 미리 읽어둔다 — 월 경계
+    // (예: 2026-10 → 2026-11) 감지에 이전 값이 필요한데, 기존 코드는 .neq() 조건만으로
+    // UPDATE했을 뿐 이전 값을 조회하지 않았다.
+    const candidateRoomIds = [...hasDue].filter(id => !blocked.has(id));
+    const prevStateByRoom = new Map<string, { simDate: string | null; seasonNumber: number | null }>();
+    if (candidateRoomIds.length > 0) {
+        const { data: roomRows } = await supabase
+            .from('rooms')
+            .select('id, sim_date, season_number')
+            .in('id', candidateRoomIds);
+        for (const r of roomRows ?? []) {
+            prevStateByRoom.set(r.id, { simDate: r.sim_date, seasonNumber: r.season_number });
+        }
+    }
+
+    const monthBoundaryRooms: { roomId: string; leagueId: string; seasonNumber: number | null; month: string }[] = [];
+
+    for (const roomId of candidateRoomIds) {
         const nextAt   = nextByRoom.get(roomId);
         const nextDate = nextAt ? kstDateFromMs(new Date(nextAt).getTime()) : today;
+        const prev = prevStateByRoom.get(roomId);
         // 값이 안 바뀌면 쓰지 않는다 — 매 tick마다 무조건 쓰면 그때마다 rooms Realtime UPDATE가
         // 전 접속자에게 불필요하게 브로드캐스트된다.
         await supabase.from('rooms').update({ sim_date: nextDate })
             .eq('id', roomId).neq('sim_date', nextDate);
+
+        // 가상 날짜의 월(YYYY-MM)이 바뀌면 "매월 초" 파워랭킹 재계산 트리거 — sim_date가
+        // 아직 한 번도 없던 방(시즌 첫 경기 직전)도 첫 달로 취급해 함께 게시한다.
+        const prevMonth = prev?.simDate ? prev.simDate.slice(0, 7) : null;
+        const nextMonth = nextDate.slice(0, 7);
+        if (prevMonth !== nextMonth) {
+            const leagueId = leagueIdByRoom.get(roomId);
+            if (leagueId) {
+                monthBoundaryRooms.push({ roomId, leagueId, seasonNumber: prev?.seasonNumber ?? null, month: nextMonth });
+            }
+        }
+    }
+
+    if (monthBoundaryRooms.length > 0) {
+        await Promise.allSettled(
+            monthBoundaryRooms.map(({ roomId, leagueId, seasonNumber, month }) =>
+                recomputeAndPostPowerRankings(roomId, leagueId, seasonNumber, month).catch(err =>
+                    console.error(`[scheduler:power-ranking] room=${roomId} ${month} 게시 실패:`, err),
+                ),
+            ),
+        );
     }
 }

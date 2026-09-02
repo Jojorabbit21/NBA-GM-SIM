@@ -21,6 +21,7 @@ interface ScheduleViewProps {
   isSimulating?: boolean;
   playoffSeries?: PlayoffSeries[];
   seasonStartYear?: number;
+  onTeamClick?: (teamId: string) => void;
 }
 
 interface CalendarCell {
@@ -31,7 +32,7 @@ interface CalendarCell {
   month: number;        // 0-indexed
 }
 
-export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult, calendarOnly = false, onSpectateGame, onStartUserGame, isSimulating = false, playoffSeries = [], seasonStartYear = 2025 }) => {
+export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult, calendarOnly = false, onSpectateGame, onStartUserGame, isSimulating = false, playoffSeries = [], seasonStartYear = 2025, onTeamClick }) => {
   const MIN_MONTH = useMemo(() => new Date(seasonStartYear, 9, 1), [seasonStartYear]);   // October
   const MAX_MONTH = useMemo(() => new Date(seasonStartYear + 1, 5, 1), [seasonStartYear]); // June
 
@@ -550,10 +551,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                           {/* Away Team Row */}
                           <div className="flex items-center gap-3">
                             <TeamLogo teamId={awayTeam.id} size="sm" />
-                            <div className="flex-1 min-w-0">
+                            <div
+                              className={`flex-1 min-w-0 ${onTeamClick ? 'cursor-pointer' : ''}`}
+                              onClick={onTeamClick ? (e) => { e.stopPropagation(); onTeamClick(awayTeam.id); } : undefined}
+                            >
                               <div className={`text-xs font-black uppercase truncate ${
                                 isMyGame && game.awayTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
-                              }`}>
+                              } ${onTeamClick ? 'hover:underline' : ''}`}>
                                 {awayTeam.city} {awayTeam.name}
                               </div>
                               <div className="text-xs text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
@@ -573,10 +577,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                           {/* Home Team Row */}
                           <div className="flex items-center gap-3">
                             <TeamLogo teamId={homeTeam.id} size="sm" />
-                            <div className="flex-1 min-w-0">
+                            <div
+                              className={`flex-1 min-w-0 ${onTeamClick ? 'cursor-pointer' : ''}`}
+                              onClick={onTeamClick ? (e) => { e.stopPropagation(); onTeamClick(homeTeam.id); } : undefined}
+                            >
                               <div className={`text-xs font-black uppercase truncate ${
                                 isMyGame && game.homeTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
-                              }`}>
+                              } ${onTeamClick ? 'hover:underline' : ''}`}>
                                 {homeTeam.city} {homeTeam.name}
                               </div>
                               <div className="text-xs text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>

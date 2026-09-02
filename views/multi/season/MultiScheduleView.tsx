@@ -65,6 +65,7 @@ interface GameRowProps {
     roundLabelMap: Record<string, string>;
     onView: (gameId: string) => void;
     onPlayerClick: (playerId: string) => void;
+    onTeamClick: (teamSlug: string) => void;
     playerCardMap: PlayerCardMap;
     serverNow: number;
     preferVirtual: boolean;
@@ -74,7 +75,7 @@ interface GameRowProps {
 // 값이 없을 때 항상 "-"로 표시(빈 셀 방지) — 최우수선수/쿼터·상태 컬럼 공통.
 const EMPTY_CELL = '-';
 
-const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, onPlayerClick, playerCardMap, serverNow, preferVirtual, showRound }) => {
+const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, onPlayerClick, onTeamClick, playerCardMap, serverNow, preferVirtual, showRound }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
@@ -112,13 +113,23 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
 
             {/* 원정 */}
             <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
-                <span className="font-semibold text-slate-200 truncate ko-normal">{away?.team_name ?? g.awayTeamId}</span>
+                <span
+                    className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
+                    onClick={() => onTeamClick(g.awayTeamId)}
+                >
+                    {away?.team_name ?? g.awayTeamId}
+                </span>
             </TableCell>
 
             {/* 홈 */}
             <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
                 <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-semibold text-slate-200 truncate ko-normal">{home?.team_name ?? g.homeTeamId}</span>
+                    <span
+                        className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
+                        onClick={() => onTeamClick(g.homeTeamId)}
+                    >
+                        {home?.team_name ?? g.homeTeamId}
+                    </span>
                     {state === 'live' && (
                         <span className="flex items-center gap-1 shrink-0 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -508,6 +519,9 @@ const MultiScheduleView: React.FC = () => {
     const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
     // 최우수선수 이름 클릭 → 선수 프로필(MultiPlayerDetailView) 캐노니컬 라우트로 이동.
     const handlePlayerClick = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);
+    // 원정/홈 팀 이름 클릭 → 팀 로스터 화면으로 이동. MultiFrontOfficeView/MultiStandingsView와
+    // 동일한 ?rteam= 쿼리 패턴(팀 slug 기반).
+    const handleTeamClick = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
 
     // 현재 보고 있는 날짜 — 하루치만 보여준다.
     // 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴).
@@ -646,6 +660,7 @@ const MultiScheduleView: React.FC = () => {
                                     roundLabelMap={roundLabelMap}
                                     onView={handleView}
                                     onPlayerClick={handlePlayerClick}
+                                    onTeamClick={handleTeamClick}
                                     playerCardMap={playerCardMap}
                                     serverNow={serverNow}
                                     preferVirtual={preferVirtual}

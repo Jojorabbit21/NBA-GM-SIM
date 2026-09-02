@@ -30,6 +30,10 @@ export interface TradeOfferRow {
     // 실제(wall-clock) 날짜와 전혀 다르므로 created_at 대신 이 값을 표시에 써야 함.
     // 2026-08-31 이전 생성된 오퍼는 컬럼 자체가 없었으므로 null.
     sim_date_at_creation: string | null;
+    // [2026-09-02] 오퍼가 처리(accept/reject/cancel)된 시점 rooms.sim_date 스냅샷 —
+    // sim_date_at_creation과 동일한 이유(리그마다 다른 압축 스케줄로 resolved_at만으론
+    // 인게임 날짜를 알 수 없음). 이 컬럼 추가 이전 처리된 오퍼는 null.
+    sim_date_at_resolution: string | null;
     // 이 오퍼를 "받은" 팀(to_team_id)이 읽은 시각 — null이면 안읽음. 발신 오퍼(내가 보낸
     // 것)는 읽음 개념을 적용하지 않으므로 항상 null이어도 무방.
     to_team_read_at: string | null;
@@ -155,6 +159,36 @@ export const listTradeHistory = async (roomId: string): Promise<TradeOfferRow[]>
     const { data } = await supabase.from('league_trade_offers').select(OFFER_SELECT)
         .eq('room_id', roomId).eq('status', 'accepted')
         .order('resolved_at', { ascending: false });
+    return (data ?? []) as unknown as TradeOfferRow[];
+};
+
+// [2026-09-02] "메세지함" 탭에 수락/거절/취소된 오퍼도 히스토리로 남기기 위한 조회.
+// listPendingTradeOffers/listAllPendingTradeOffers(사이드바 안읽음 배지 등에서도 재사용 중)는
+// status='pending' 고정 동작을 그대로 유지해야 해서 건드리지 않고 별도 함수로 뺐다.
+const RESOLVED_OFFER_STATUSES: TradeOfferStatus[] = ['accepted', 'rejected', 'cancelled', 'expired'];
+
+/** 내 팀이 관련된(받았거나 보낸) 최근 처리된 오퍼 — 메세지함 인박스 리스트에 병합용. */
+export const listMyResolvedTradeOffers = async (
+    roomId: string,
+    teamId: string,
+    limit = 50,
+): Promise<TradeOfferRow[]> => {
+    const { data } = await supabase.from('league_trade_offers').select(OFFER_SELECT)
+        .eq('room_id', roomId)
+        .in('status', RESOLVED_OFFER_STATUSES)
+        .or(`from_team_id.eq.${teamId},to_team_id.eq.${teamId}`)
+        .order('resolved_at', { ascending: false })
+        .limit(limit);
+    return (data ?? []) as unknown as TradeOfferRow[];
+};
+
+/** 어드민용 — 방 전체의 최근 처리된 오퍼. */
+export const listAllResolvedTradeOffers = async (roomId: string, limit = 100): Promise<TradeOfferRow[]> => {
+    const { data } = await supabase.from('league_trade_offers').select(OFFER_SELECT)
+        .eq('room_id', roomId)
+        .in('status', RESOLVED_OFFER_STATUSES)
+        .order('resolved_at', { ascending: false })
+        .limit(limit);
     return (data ?? []) as unknown as TradeOfferRow[];
 };
 

@@ -35,6 +35,1513 @@
 
 ---
 
+## 2026-09-02 — "정규시즌 MVP" → "정규시즌 올해의 선수"로 명칭 변경 + MVP/DPOY 서신 제목에서 선수 이름 제거
+
+**배경**: 사용자 요청 — (1) 올해의 선수/올해의 수비수 서신 제목에 선수 이름 표기 금지,
+(2) "정규시즌 MVP" 명칭을 "정규시즌 올해의 선수"로 교체. "올-NBA"→"올-오펜시브" 때와
+동일한 원칙 적용 — 내부 코드 식별자(`mvp_award` 타입 문자열, `PlayerAwardType`의
+`'MVP'` 값, `MvpAwardCard` 컴포넌트명 등)는 그대로 두고 사용자에게 보이는 한국어
+텍스트만 변경.
+
+**변경 파일**:
+- `server/src/postSeasonAwards.ts` — `mvp_award`/`dpoy_award` 이벤트의 `payload.headline`
+  (좌측 뉴스 리스트에 표시되는 제목)에서 선수 이름/팀명 제거 + "MVP"→"정규시즌 올해의
+  선수"로 교체(DPOY는 이미 "정규시즌 올해의 수비수"였고 이름만 제거).
+  `headline: \`${season} 정규시즌 MVP — ${mvp.playerName}(${teamName(mvp.teamId)})\`` →
+  `headline: \`${season} 정규시즌 올해의 선수\`` (DPOY도 동일 패턴). 이후 아무 데서도
+  안 쓰이게 된 `teamName`/`nameByTeamSlug` 헬퍼도 같이 삭제(죽은 코드).
+- `views/multi/season/newsFeedCards.tsx` — `MvpAwardCard`/`DpoyAwardCard`의 h1(카드
+  본문 제목)에서도 동일하게 선수 이름 제거 + MVP 쪽 명칭 교체.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인(92줄/66줄)과 동일 —
+신규 에러 0건(헬퍼 삭제로 인한 참조 누락도 없음 확인). MAIN 1 룸의 예시 이벤트 2건
+헤드라인도 갱신.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 뉴스피드 타입 필터에서 MVP/DPOY/올-오펜시브/올-디펜시브를 "수상" 체크박스 하나로 통합
+
+**배경**: 사용자 요청 — 뉴스 리스트 상단 타입 필터 체크박스에서 4개 어워드 타입을
+개별 체크박스가 아니라 "수상" 하나로 묶어달라는 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNewsFeedView.tsx` — 기존 `ALL_NEWS_TYPES`(LeagueEventType[])
+  + `TYPE_LABEL`(1:1 라벨 맵) 구조를 `NEWS_TYPE_FILTER_OPTIONS`(`{label, types: LeagueEventType[]}[]`)
+  로 교체 — "수상" 옵션 하나가 `['mvp_award','dpoy_award','all_nba_team','all_def_team']`
+  4개 타입을 담음. `toggleType(t)`(단일 타입) → `toggleTypeGroup(types)`(그룹 전체를 한꺼번에
+  추가/제거, 전부 선택 상태면 전부 해제)로 교체. 체크 표시는 그룹의 모든 타입이 selectedTypes에
+  들어있을 때만 켜짐. 쿼리 쪽(`useLeagueNewsFeed`의 `types` 필터)은 여전히 평범한
+  `LeagueEventType[]`을 받으므로 변경 없음 — 그룹은 순수 UI 레이어 개념.
+
+**검증**: 클라이언트 `npx tsc --noEmit` — 기존 베이스라인(92줄)과 동일, 신규 에러 0건.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨(`ALL_NEWS_TYPES`/`TYPE_LABEL`/`toggleType`
+원복).
+
+---
+
+## 2026-09-02 — 올-디펜시브 테이블에 PF/TOV 컬럼 추가
+
+**배경**: 사용자 요청 — 올-디펜시브 테이블에 PF(개인파울)/TOV(턴오버) 추가. TOV는
+바로 전 항목(G/GS/MPG/TOPG 등 추가)에서 올-오펜시브용으로 이미 `AwardStatLine.tovpg`를
+추가해뒀던 걸 재사용. PF는 이번에 처음 추가 — RPC가 `pf`(개인파울)를 아예 집계하지
+않고 있었음.
+
+**변경 파일 (엔진 미러 쌍)**:
+- `utils/awardVoting.ts` / `server/src/shared/multi/awardVoting.ts` — `AwardStatLine`에
+  `pfpg` 추가, `buildCandidates()`에서 `pfpg: p.stats.pf / g` 계산.
+
+**변경 파일 (DB — RPC 확장, 적용 완료)**:
+- `migrations/add_pf_to_awards_rpc.sql` (신규) — `get_league_season_awards_stats`에
+  `pf` 합계 컬럼 추가. gs 추가 때와 동일하게 반환 타입 변경이라 DROP 후 CREATE로 적용.
+
+**변경 파일 (오케스트레이션/타입/UI)**:
+- `server/src/postSeasonAwards.ts` — RPC 결과 매핑에 `pf: Number(s.pf)` 추가,
+  `all_def_team` payload에 `pfpg`/`tovpg` 추가.
+- `services/multi/leagueEventPayload.ts` — `AllDefTeamEntry`에 `pfpg`/`tovpg` 추가.
+- `views/multi/season/newsFeedCards.tsx` — 올-디펜시브 `statCols`에 PF/TOV 컬럼 추가
+  (DREB 다음, DFG% 이전).
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인(92줄/66줄)과 동일 —
+신규 에러 0건. Supabase에 RPC 마이그레이션 적용 완료. MAIN 1 룸의 예시 올-디펜시브
+이벤트도 pfpg/tovpg 포함해 갱신.
+
+**롤백 방법**: RPC는 `migrations/add_gs_to_awards_rpc.sql` 버전(pf 없는 버전)으로
+`DROP FUNCTION` 후 재생성. 나머지 파일은 이번 커밋 diff 되돌리면 됨.
+
+---
+
+## 2026-09-02 — [버그 수정] "더보기" 페이징 시 뉴스피드 카드 중복 렌더링 + 올-오펜시브/올-디펜시브 컬럼 순서 조정
+
+**배경**: 사용자 리포트 — 뉴스피드에서 "더보기"로 다음 페이지를 불러오면 콘솔에
+"Encountered two children with the same key" 경고가 다수 발생(리스트 렌더에서 동일
+league_events.id가 두 번 나타남). 원인: `useLeagueNewsFeed`(useLeagueHeadlines.ts)의
+페이징 쿼리가 `order('created_at', ascending)` 하나만으로 정렬한 뒤 `.range()` 오프셋
+페이징을 하는데, Postgres에서 **한 insert 문장으로 여러 행을 한 번에 넣으면 그 행들의
+`now()`(=created_at DEFAULT)가 전부 동일값**이 된다 — 정확히 이번에 만든
+`postSeasonAwards.ts`가 mvp_award/dpoy_award/all_nba_team/all_def_team 4건을 한
+`insert()` 호출로 묶어 넣는 패턴, 그리고 이번 세션에서 테스트용으로 여러 행을 한 INSERT
+문으로 넣은 MAIN 1 예시 데이터가 정확히 이 상황을 만들어 잠재 버그를 표면화시켰다.
+동점(created_at 완전히 같음) 행들 사이의 상대 순서가 페이지 경계에서 안정적으로
+보장되지 않아 페이지 1과 페이지 2에 같은 행이 중복 반환되거나 반대로 누락될 수 있음 —
+offset(range) 기반 페이징에서 정렬 키에 동점이 있을 때 흔히 나는 클래식 버그.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `useLeagueNewsFeed`의 페이징 쿼리에
+  `.order('id', { ascending: true })`를 2차 정렬 키로 추가(`.order('created_at', ...)` 뒤).
+  id(uuid)는 텍스트 정렬이라 사람이 보기엔 의미 없는 순서지만, 페이지 간 완전히
+  결정론적인 순서를 보장하는 게 목적이라 문제 없음.
+
+**추가로 함께 처리한 변경**: 올-오펜시브/올-디펜시브 뉴스카드 표에서 G/GS/MPG 컬럼을
+"팀" 컬럼 바로 다음으로 이동(사용자 요청) — `views/multi/season/newsFeedCards.tsx`의
+`AllNbaTeamCard`/`AllDefTeamCard` `statCols` 배열 순서만 재배치(로직 변경 없음).
+
+**검증**: 클라이언트 `npx tsc --noEmit` — 기존 베이스라인(92줄)과 동일, 신규 에러 0건.
+
+**롤백 방법**: `useLeagueHeadlines.ts`의 `.order('id', ...)` 라인만 제거하면 원상복구(단,
+제거하면 이 버그가 재발하므로 권장 안 함). statCols 순서는 배열 재배치라 원하는 순서로
+다시 옮기면 됨.
+
+---
+
+## 2026-09-02 — [버그 수정] usePlayerSeasonStatsBatch가 Map을 반환해서 새로고침 후 뉴스피드가 크래시하던 문제
+
+**배경**: 사용자 리포트 — 뉴스 페이지 진입 시 `Uncaught TypeError: statsByPlayerId.get is
+not a function` (PlayerHoverCard.tsx:43, mergeStatsIntoPlayerCardMap 내부). 원인:
+`index.tsx`가 `PersistQueryClientProvider`(`createSyncStoragePersister`, 커스텀
+serialize/deserialize 없음)로 react-query 캐시를 localStorage에 `JSON.stringify`로
+영속화하는데, `Map`은 JSON 직렬화하면 `"{}"`가 돼(Map 고유 데이터가 전부 유실) 새로고침
+후 캐시가 복원되면 그 쿼리의 `data`가 진짜 Map이 아니라 빈 plain object가 된다.
+`defaultOptions.staleTime: Infinity`라 재조회도 자동으로 안 일어나 영구히 깨진 채로 남고,
+소비처가 `.get()`/`.size`/`for..of`(전부 Map 전용 API)를 호출하는 순간 크래시.
+`usePlayerSeasonStatsBatch`(신규 아님 — 기존 훅)가 정확히 이 패턴이었고, 마침 이번
+세션에서 어워드 카드 테스트하며 사용자에게 "하드 리프레시" 해보라고 안내한 게 이 잠복
+버그를 처음 표면화시킨 것으로 보임(하드 리프레시 = PersistQueryClientProvider 리하이드레이션
+트리거).
+
+**변경 파일**:
+- `hooks/usePlayerSeasonStatsBatch.ts` — `PlayerSeasonStatsBatch` 타입을
+  `Map<string, Partial<PlayerStats>>` → `Record<string, Partial<PlayerStats>>`로 변경
+  (plain object는 JSON 직렬화에 안전 — 근본 해결). `queryFn`도 `new Map()`+`.set()`
+  대신 `{}`+인덱스 대입으로 변경.
+- `components/common/PlayerHoverCard.tsx` — `mergeStatsIntoPlayerCardMap`의
+  `statsByPlayerId` 파라미터 타입을 Record로 변경, `.size===0`→`Object.keys(...).length===0`,
+  `.get(id)`→`statsByPlayerId[id]`.
+- `views/multi/season/MultiFrontOfficeView.tsx` — `seasonStatsBatch.size===0`→
+  `Object.keys(seasonStatsBatch).length===0`, `for (const [id,stats] of seasonStatsBatch)`→
+  `for (const [id,stats] of Object.entries(seasonStatsBatch))`(Map 전용 이터레이션 프로토콜
+  제거).
+- `views/multi/season/newsFeedCards.tsx`/`MultiNewsFeedView.tsx`는 `mergeStatsIntoPlayerCardMap`에
+  그대로 전달만 하는 소비처라 타입이 자동으로 맞춰짐(직접 수정 불필요).
+
+**동작 확인**: 이미 오염된(과거 세션에 Map→`{}`로 영속화된) localStorage 캐시 엔트리는,
+수정 후에도 여전히 `{}` 그대로지만 이제 "빈 Record"로 정상 해석되어(`Object.keys({}).length
+=== 0` → true) 크래시 대신 "이 선수들 시즌 스탯 없음" 상태로 안전하게 폴백한다 — 별도로
+캐시 버전을 강제로 무효화하지 않아도 자연 치유됨(선택된 이벤트가 바뀌면 새 queryKey로
+정상 재조회).
+
+**검증**: 클라이언트 `npx tsc --noEmit` — 기존 베이스라인(92줄)과 동일, 신규 에러 0건.
+
+**롤백 방법**: 위 3개 파일의 Record 관련 변경을 Map 버전으로 되돌리면 됨 — 단, 되돌리면
+이 버그가 재발하므로 되돌리지 말 것. 만약 다른 원인으로 롤백이 꼭 필요하면
+`createSyncStoragePersister`에 Map을 보존하는 커스텀 serialize/deserialize를 추가하는
+대안도 있음(이번엔 영향 범위가 이 훅 하나뿐이라 더 간단한 Record 전환 선택).
+
+---
+
+## 2026-09-02 — 올-오펜시브/올-디펜시브 테이블에 스탯 컬럼 대량 추가(G/GS/MPG/TOPG 등 신규 필드 포함)
+
+**배경**: 사용자 요청 — 올-오펜시브 테이블에 G/GS/MPG/SPG/BPG/TOPG/FG%/3P%/FT% 추가,
+올-디펜시브 테이블에 G/GS/MPG/OREB/DREB/DFG% 추가. 그중 G(경기수)/DFG%/OREB/DREB는
+이미 엔진에 있었지만, **GS(선발 출전 횟수)와 TOPG(경기당 턴오버)는 이번에 처음
+`AwardStatLine`에 추가**됨 — GS는 RPC가 애초에 집계하지 않고 있었고(box score엔
+`gs` 필드가 있었지만 시즌 합계 RPC가 그걸 sum하지 않음), TOPG는 스코어링 공식 내부에서만
+쓰던 `_tovpg`를 공개 statLine으로 새로 노출.
+
+**변경 파일 (엔진 미러 쌍)**:
+- `utils/awardVoting.ts` / `server/src/shared/multi/awardVoting.ts` — `AwardStatLine`에
+  `gamesStarted`/`tovpg` 추가, `buildCandidates()`에서 `gamesStarted: p.stats.gs ?? 0`,
+  `tovpg: p.stats.tov / g` 계산 추가.
+
+**변경 파일 (DB — RPC 확장, 적용 완료)**:
+- `migrations/add_gs_to_awards_rpc.sql` (신규) — `get_league_season_awards_stats`에
+  `gs`(선발 출전 합계) 컬럼 추가. **주의**: 기존 컬럼 중간에 새 컬럼을 끼워 넣어 반환
+  타입(OUT 파라미터) 자체가 바뀌는 케이스라 `CREATE OR REPLACE FUNCTION`이 Postgres
+  42P13 에러로 거부됨 → `DROP FUNCTION` 후 `CREATE FUNCTION`으로 재적용(마이그레이션
+  파일에도 반영). 앞으로 이 RPC의 반환 컬럼 순서를 바꾸거나 중간에 컬럼을 추가할 땐
+  항상 이 순서(DROP 먼저)를 따를 것.
+
+**변경 파일 (오케스트레이션/타입/UI)**:
+- `server/src/postSeasonAwards.ts` — RPC 결과 매핑에 `gs: Number(s.gs)` 추가,
+  `all_nba_team`/`all_def_team` payload의 각 `players` 엔트리에 신규 스탯 필드 전부 추가
+  (올-디펜시브는 기존 spg/bpg를 유지한 채로 추가 — 처음에 통째로 갈아끼우다가 spg/bpg가
+  빠지는 실수를 발견해 바로잡음).
+- `services/multi/leagueEventPayload.ts` — `AllNbaTeamEntry`/`AllDefTeamEntry` 타입에
+  신규 필드 추가, 두 파서를 mvp_award/dpoy_award와 동일한 방어적 파싱(숫자 아니면 0,
+  pos가 G/F/C 아니면 'F' 폴백)으로 재작성 — 기존엔 payload.tiers를 검증 없이 그대로
+  통과시켜서 옛 이벤트(신규 필드 없음)를 열면 `.toFixed()` 에러가 날 수 있었음.
+- `views/multi/season/newsFeedCards.tsx` — 두 카드의 `statCols`에 신규 컬럼 추가.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인(92줄/66줄)과 동일 —
+신규 에러 0건. Supabase에 RPC 마이그레이션 적용 완료(DROP+CREATE 재시도로 성공).
+MAIN 1 룸의 예시 올-오펜시브/올-디펜시브 이벤트 둘 다 신규 필드 포함해 전체 재구성.
+
+**롤백 방법**: RPC는 `migrations/add_contested_stats_to_awards_rpc.sql` 버전(gs 없는
+버전)으로 `DROP FUNCTION` 후 재생성. 나머지 파일은 이번 커밋 diff 되돌리면 됨.
+
+---
+
+## 2026-09-02 — "올-NBA" 표기를 "올-오펜시브"로 정정 + 올-오펜시브/올-디펜시브 카드를 카드그리드→티어별 테이블로 재설계
+
+**배경**: 사용자 지적 — 정식 명칭은 "올-NBA"가 아니라 "올-오펜시브". 또한 올-오펜시브/
+올-디펜시브 뉴스카드가 티어당 5명을 작은 카드 그리드(`grid-cols-5`)로 보여주고 있었는데,
+이걸 MVP/DPOY 순위표와 같은 "티어별 테이블(테이블당 5행)" 형태로 바꾸고 시즌 스탯도
+표에 넣어달라는 요청. 내부 코드 식별자(`all_nba_team` 타입 문자열, `AllNbaTeamCard` 등
+컴포넌트/인터페이스 이름)는 바꾸지 않음 — 이미 DB에 쌓인/앞으로 쌓일 `league_events.type`
+값과 무관하게, 사용자에게 보이는 한국어 라벨만 정정하면 되는 요청으로 판단.
+
+**변경 파일 (표기 정정, 코드 식별자는 유지)**:
+- `server/src/scheduler.ts`, `server/src/postSeasonAwards.ts`(주석 2곳 + 실제 헤드라인
+  문자열 `${season} 올-오펜시브 팀 발표`), `views/multi/season/MultiNewsFeedView.tsx`
+  (`TYPE_LABEL.all_nba_team`), `views/multi/season/newsFeedCards.tsx`(카드 h1) — "올-NBA"
+  → "올-오펜시브" 일괄 치환(`sed`).
+
+**변경 파일 (카드그리드 → 티어별 테이블)**:
+- `views/multi/season/newsFeedCards.tsx` — `AllTeamSection`을
+  `grid grid-cols-1 sm:grid-cols-5`(선수당 카드 1개) 마크업에서 MVP/DPOY와 동일한 테이블
+  마크업(로고 없이 팀 약어 텍스트, 포지션 별도 컬럼, `statCols` prop으로 시즌 스탯 컬럼
+  주입)으로 재작성. 올-오펜시브는 PPG/RPG/APG, 올-디펜시브는 SPG/BPG를 각각 호출부
+  (`AllNbaTeamCard`/`AllDefTeamCard`)에서 주입 — 두 데이터가 이미 payload에 있었으나
+  (처음 구현부터 계산은 돼 있었음) 카드에 표시되지 않고 있던 것을 이번에 노출.
+  `AllNbaTeamEntry`/`AllDefTeamEntry` 타입을 `leagueEventPayload.ts`에서 새로 import.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인(92줄/66줄)과 동일 —
+신규 에러 0건. MAIN 1 룸의 예시 올-오펜시브 이벤트 헤드라인도 갱신.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨(표기 치환은 `sed` 역치환 또는 diff 되돌리기,
+`AllTeamSection`은 이전 카드그리드 버전으로 복원).
+
+---
+
+## 2026-09-02 — DPOY 카드에 OREB/DFG% 추가 (TRB%/STL%/BLK%는 팀+상대 시즌 집계가 새로 필요해 보류)
+
+**배경**: 사용자 요청 — DPOY 스탯에 OREB, DFG%(상대가 이 선수에게 컨테스트당했을 때
+필드골 성공률), TRB%/STL%/BLK% 추가. 뒤 3개는 Basketball-Reference 정식 공식이 선수
+개인 스탯이 아니라 "소속팀 시즌 전체 출전시간/리바운드 총합 + 상대팀들이 이 팀을
+상대로 기록한 슛시도/리바운드/턴오버 총합"(포제션 추정치)까지 필요해 지금 있는 "룸 전체
+선수 개인 스탯" RPC로는 계산 불가 — 사용자 확인 후 이번엔 OREB/DFG%만, 나머지는 보류로
+범위 확정.
+
+**변경 파일 (엔진 미러 쌍 — dfgPct 필드 추가)**:
+- `utils/awardVoting.ts` (client) / `server/src/shared/multi/awardVoting.ts` (server 미러)
+  — `AwardStatLine.dfgPct` 추가, `buildCandidates()`에서
+  `p.stats.contestedMade / p.stats.contestedAttempted`로 계산(0으로 나누기 방지).
+  orebpg는 이미 있던 필드 그대로 재사용.
+
+**변경 파일 (DB — RPC 확장)**:
+- `migrations/add_contested_stats_to_awards_rpc.sql` (신규, 적용 완료) —
+  `get_league_season_awards_stats`에 `contested_attempted`/`contested_made` 합계
+  컬럼 추가(`CREATE OR REPLACE FUNCTION`). PBP 엔진이 이미 수비수 쪽에 기록해두던
+  `contestedAttempted`/`contestedMade`(server/src/shared/engine/pbp/statsMappers.ts)를
+  룸 전체 집계에 반영.
+- `migrations/add_league_player_awards.sql`(이전 항목에서 작성한 기반 마이그레이션 —
+  `league_player_awards` 테이블/`leagues.regular_season_ended_at` 컬럼)은 **아직 실제 DB에
+  미적용** 상태. 이번 RPC 확장 마이그레이션은 `CREATE OR REPLACE`라 테이블 존재 여부와
+  무관하게 단독 적용됨.
+
+**변경 파일 (오케스트레이션/타입/UI)**:
+- `server/src/postSeasonAwards.ts` — `zeroStats()`/RPC 결과 매핑에
+  `contestedAttempted`/`contestedMade` 추가, `dpoy_award` payload에 `orebpg`/`dfgPct` 추가.
+- `services/multi/leagueEventPayload.ts` — `DpoyAwardEntry`에 `orebpg`/`dfgPct` 추가.
+- `views/multi/season/newsFeedCards.tsx` — DPOY 히어로 스탯 라인 + 순위표에 OREB/DFG%
+  컬럼 추가.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인(92줄/66줄)과 정확히
+동일 — 신규 에러 0건. Supabase에 RPC 마이그레이션 적용 완료(`apply_migration` 성공).
+MAIN 1 룸의 예시 DPOY 이벤트도 새 필드 포함해 UPDATE로 갱신.
+
+**롤백 방법**: RPC는 `migrations/add_league_player_awards.sql`에 있던 원래 버전으로
+`CREATE OR REPLACE FUNCTION`(contested_* 컬럼 없는 버전) 재적용. 나머지 파일은 이번 커밋
+diff 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 멀티 DPOY 어워드 뉴스카드도 MVP와 동일하게 재설계(트로피 히어로 + 순위별 득표수)
+
+**배경**: 사용자 요청 — 바로 위 항목(MVP 카드 재설계)과 동일한 처리를 DPOY 카드에도
+적용, 트로피 이미지는 `/images/dpoy.webp`. 스탯 컬럼은 MVP처럼 PPG 계열을 새로 추가하지
+않고 기존 DPOY 관련 스탯(SPG/BPG/DREB)을 유지 — 사용자가 새 스탯 목록을 지정한 건 MVP
+때뿐이라 DPOY는 구조(트로피/무로고/포지션 컬럼/순위별 득표수)만 동일하게 맞춤.
+
+**변경 파일**:
+- `server/src/postSeasonAwards.ts` — `content.ballots`에서 `dpoyVoteBreakdown`(1~3위
+  득표수, mvpVoteBreakdown과 동일 원리, topN=3) 집계 추가, `dpoy_award` payload의 각
+  `ranking` 엔트리에 `rankVotes` 추가.
+- `services/multi/leagueEventPayload.ts` — `DpoyAwardEntry`에 `rankVotes: number[]`
+  추가, `dpoy_award` 파서를 mvp_award와 동일한 방어적 파싱으로 재작성.
+- `views/multi/season/newsFeedCards.tsx` — 공용 `AwardRankTable`(더 이상 아무도 안 씀 →
+  삭제)을 대체해, MVP/DPOY 트로피 히어로 마크업을 `AwardHero` 컴포넌트로 뽑아 공유
+  (트로피 이미지+선정자 이름/포지션/팀+통계 라인, `statLine`은 각 카드가 다른
+  `ReactNode`로 주입). `DpoyAwardCard`도 MVP와 같은 구조의 전용 테이블(로고 제거, 포지션
+  별도 컬럼, 1~3위 득표수 컬럼, 총 득표 컬럼)로 재작성.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인 대비 신규 에러 0건.
+MAIN 1 룸의 기존 예시 `dpoy_award` 이벤트도 `rankVotes` 포함해 UPDATE로 갱신.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 됨 — `AwardRankTable` 삭제분만 예외적으로 복원이
+필요하면 바로 위 MVP 항목의 커밋(이 항목 직전 diff)에서 원본을 가져올 것.
+
+---
+
+## 2026-09-02 — 멀티 MVP 어워드 뉴스카드 재설계(트로피 히어로 + 순위별 득표수 + 추가 스탯)
+
+**배경**: 사용자 요청 — MVP 순위표 위에 `/images/mvp.webp` 트로피 이미지, 그 아래 MVP
+선정자 정보+시즌 스탯 표시. 순위표에서는 팀 로고 삭제, 포지션을 별도 컬럼으로 분리,
+APG 옆에 SPG/BPG/FG%/3P%/FT% 추가, 1~5위 득표수(순위별 표 개수, 총 득표수와는 다름)도
+표시. 싱글플레이어 `AwardsReportViewer.tsx`가 이미 `content.ballots`에서 즉석 집계하는
+동일 개념("1위표, 2위표, ... 5위표")을 참고했으나, 멀티는 `ballots`(100인 전체 투표 원본)를
+`league_events`에 저장하지 않으므로 발표 시점(`postSeasonAwards.ts`)에 미리 집계해
+payload에 구조화 필드로 박아둬야 했음.
+
+**변경 파일 (엔진 미러 쌍 — ftPct 필드 추가)**:
+- `utils/awardVoting.ts` (client)
+- `server/src/shared/multi/awardVoting.ts` (server 미러)
+
+**Before**:
+```ts
+export interface AwardStatLine {
+    ppg: number; rpg: number; apg: number; spg: number; bpg: number;
+    mpg: number; tsPct: number; gamesPlayed: number;
+    fgPct: number; p3Pct: number; orebpg: number; drebpg: number;
+}
+// buildCandidates() 내부
+fgPct: fga > 0 ? p.stats.fgm / fga : 0,
+p3Pct: p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0,
+orebpg: p.stats.offReb / g,
+```
+
+**After**:
+```ts
+export interface AwardStatLine {
+    ppg: number; rpg: number; apg: number; spg: number; bpg: number;
+    mpg: number; tsPct: number; gamesPlayed: number;
+    fgPct: number; p3Pct: number; ftPct: number; orebpg: number; drebpg: number;
+}
+// buildCandidates() 내부
+fgPct: fga > 0 ? p.stats.fgm / fga : 0,
+p3Pct: p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0,
+ftPct: fta > 0 ? p.stats.ftm / fta : 0,
+orebpg: p.stats.offReb / g,
+```
+
+`ftPct`는 싱글플레이어 `AwardsReportViewer.tsx`는 아직 쓰지 않음(그쪽 UI는 이번에 안 건드림) —
+멀티 뉴스카드 전용으로 추가된 필드지만 엔진(공용 코드)에 넣었으므로 양쪽 다 값은 채워짐.
+
+**변경 파일 (오케스트레이션 — MVP 순위별 득표수 집계 + payload 확장)**:
+- `server/src/postSeasonAwards.ts` — `runAwardVoting()` 직후 `content.ballots`에서
+  `mvpVoteBreakdown: Map<playerId, [1위표,2위표,3위표,4위표,5위표]>` 집계(로직은
+  `AwardsReportViewer.tsx`의 `mvpVoteBreakdown`과 동일), `mvp_award` payload의 각
+  `ranking` 엔트리에 `rankVotes`/`spg`/`bpg`/`fgPct`/`p3Pct`/`ftPct` 추가. DPOY
+  payload는 이번 요청 범위 밖이라 그대로 둠.
+
+**변경 파일 (client 타입/파서)**:
+- `services/multi/leagueEventPayload.ts` — `MvpAwardEntry`에 `rankVotes`/`spg`/`bpg`/
+  `fgPct`/`p3Pct`/`ftPct` 추가, `mvp_award` 파서를 방어적 파싱(숫자 아니면 0, 배열
+  아니면 `[0,0,0,0,0]`)으로 재작성.
+
+**변경 파일 (카드 UI)**:
+- `views/multi/season/newsFeedCards.tsx` — `MvpAwardCard`를 공용 `AwardRankTable`
+  사용에서 전용 마크업으로 분리(DPOY는 계속 `AwardRankTable` 사용, 미변경).
+  트로피 히어로(`/images/mvp.webp` + 선정자 이름/포지션/팀/PPG·RPG·APG·SPG·BPG·FG%·
+  3P%·FT%) 추가. 순위표: `TeamBadge` 로고 제거(팀 약어 텍스트만), 포지션 별도 컬럼,
+  스탯 컬럼 8개(PPG~FT%), 1~5위 득표수 컬럼 5개 + 총 득표(points) 컬럼. 컬럼이 많아져
+  `overflow-x-auto` 래퍼 추가.
+
+**검증**: 클라이언트/서버 `npx tsc --noEmit` 둘 다 기존 베이스라인 대비 신규 에러 0건
+(`AwardStatLine`을 참조하는 다른 파일 없음을 grep으로 확인 — 인터페이스에 필수 필드
+추가해도 깨지는 소비처 없음). Supabase MAIN 1 룸의 기존 예시 `mvp_award` 이벤트 payload를
+새 필드 포함해 UPDATE로 갱신, 실제 렌더링 확인 가능하도록 함.
+
+**롤백 방법**: 위 5개 파일의 "After" 블록을 "Before"로 되돌리고(엔진 파일 2개는 diff 그대로
+역적용), `postSeasonAwards.ts`/`leagueEventPayload.ts`/`newsFeedCards.tsx`는 이번 커밋
+diff를 되돌리면 됨 — 기존 로직 삭제 없이 필드/마크업 추가만 했으므로 충돌 위험 낮음.
+
+---
+
+## 2026-09-02 — 선수 연속기록/팀 연승 레터의 "경기 결과 리스트"가 항상 빈 배열로 렌더링되던 버그 수정
+
+**배경**: 사용자 요청으로 뉴스피드의 "연속 기록" 서신 본문에 그 연속기록을 구성하는 경기들의
+결과를 리스트로 표시하도록(`StreakCard`) 이미 구현해뒀는데, 실제로는 전혀 표시되지 않는다는
+버그 리포트. 원인 추적 결과 `detectPlayerStatStreaks()`/`detectWinStreak()`가 `games` 테이블에서
+연속기록을 구성하는 경기들을 조회할 때 `select('id, ...')`로 존재하지 않는 컬럼 `id`를 요청하고
+있었다 — `public.games`의 실제 PK는 `game_id`(복합 PK `room_id, game_id`)이고 `id` 컬럼 자체가
+없음(Supabase MCP `list_tables`로 실제 스키마 확인). Supabase 쿼리 실패 시 `{ data, error }`를
+반환하는데 이 두 함수 모두 `error`를 무시하고 `data`만 구조분해했기 때문에, 컬럼 존재하지 않는 에러가
+조용히 삼켜지고 `recentGames`가 항상 `null` → `streakGames = []`로 처리되어 `games` 배열이 매번
+빈 배열로 나갔다. `player_streak`는 헤드라인/본문 문구는 그대로 나오되 게임 리스트만 안 보였고(카드가
+`s.games.length > 0`으로 필터링), `win_streak`는 아예 스트릭 판정 루프(`recentGames` 순회)가 빈
+배열이라 이벤트 자체가 생성 안 되는 더 심각한 증상.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `detectWinStreak()` 파라미터 타입 `{ id: string; ... }` →
+  `{ game_id: string; ... }`, 함수 내부 `g.id` 참조 전부 `g.game_id`로 교체.
+  `detectPlayerStatStreaks()` 내 신규 추가된(아직 커밋 전) games 조회 블록의
+  `select('id, ...')` → `select('game_id, ...')`, `g.id` 참조 전부 `g.game_id`로 교체.
+- `server/src/simRunner.ts` — `detectWinStreak()` 호출 전 `recentGames` 조회 쿼리의
+  `select('id, ...')` → `select('game_id, ...')` (server 미러 없음, 이 두 파일이 유일한 정의/호출 지점).
+
+**Before**:
+```ts
+const { data: recentGames } = await supabase
+    .from('games')
+    .select('id, game_date, home_team_id, away_team_id, home_score, away_score')
+    ...
+const gameIds = streakGames.map(g => g.id);
+```
+
+**After**:
+```ts
+const { data: recentGames } = await supabase
+    .from('games')
+    .select('game_id, game_date, home_team_id, away_team_id, home_score, away_score')
+    ...
+const gameIds = streakGames.map(g => g.game_id);
+```
+
+**검증**: Supabase MCP `list_tables`(project `buummihpewiaeltywdff`)로 `public.games` 실제 컬럼
+목록 확인(`game_id`는 있고 `id`는 없음, PK는 `(room_id, game_id)`) — 이번 수정 후 `game_id` 기준
+select/매핑이 실제 스키마와 일치함을 확인. `tsc --noEmit`은 기존에도 무관한 대량 에러(Bun 타입,
+Supabase 제네릭 등)가 있어 신규 에러 유무만 diff로 별도 확인, 이번 변경으로 인한 신규 타입 에러 없음.
+실제 시뮬레이션 실행으로 뉴스피드 렌더링까지는 미확인(서버 배포/시뮬레이션 필요).
+
+**롤백 방법**: 위 Before 블록대로 `select`의 `id`→`game_id` 되돌리고 `g.game_id`→`g.id`, 타입의
+`game_id: string`→`id: string`으로 되돌리면 됨(단, 되돌리면 버그가 재발함 — 실제로는 롤백 대상이 아니라
+이번 커밋이 최초 정상 동작 버전).
+
+---
+
+## 2026-09-02 — 멀티플레이어 정규시즌 어워드(MVP/DPOY/올-NBA/올-디펜시브) 선정+발송 파이프라인 신규 추가
+
+**배경**: 사용자 요청 — 정규시즌 종료 시 어워드를 선정해 발송하는 로직 추가, 발표는 종료
+직후가 아니라 "하루 뒤"로 지연. 기존엔 서버 파이프라인이 전혀 없었고,
+`MultiPlayerDetailView.tsx`가 페이지를 열 때마다 `runAwardVoting()`(싱글플레이어 엔진)을
+클라이언트에서 즉석 재계산해 선수 프로필 위젯만 채워주는 임시방편만 있었다(영구 저장/뉴스
+발표 없음). 이 위젯은 서버와 동일한 시드(`${roomId}_${season}_awards`)를 쓰므로 이번 변경
+대상에서 제외 — 정규시즌 종료 후엔 스탯이 고정되어 어차피 서버 계산과 동일한 결과가 나옴
+(사용자 확인 후 범위에서 제외 확정).
+
+**신규 파일**:
+- `migrations/add_league_player_awards.sql` — `leagues.regular_season_ended_at`(정규시즌
+  종료 시각 1회 스탬프) 컬럼 추가 + `league_player_awards` 테이블(room_id 스코프, UNIQUE
+  (room_id, season_number, player_id, award_type, rank)로 멱등성 확보 — 다른 room 관련
+  테이블과 동일하게 "테이블 하나 + room_id" 패턴, room별 테이블 생성 안 함) +
+  `get_league_season_awards_stats(p_room_id)` RPC(room 전체 선수의 **정규시즌 한정**
+  누적 스탯 — 기존 `get_player_season_stats_batch`는 player_id 필터 전용+is_playoff
+  필터 없음이라 이 용도엔 못 씀. offReb/defReb 분리 합계도 신규 — DPOY 스코어링에 필요하나
+  기존 RPC엔 reb 합계만 있었음).
+- `server/src/shared/multi/awardVoting.ts` — `utils/awardVoting.ts`의 서버 미러(스코어링
+  공식 100% 동일, `calculatePlayerOvr` 대신 서버에 이미 있는 `calculateOvr`(ovrUtils.ts)만 교체).
+- `server/src/postSeasonAwards.ts` — 오케스트레이션(`postPowerRankingNews.ts`와 동일 구조).
+  `computeAndPostSeasonAwards(roomId, leagueId)`: league_teams(로스터)+games(정규시즌
+  승패)+get_league_season_awards_stats(시즌 스탯)로 `Team[]` 구성 → `runAwardVoting()` 실행 →
+  `league_player_awards`에 upsert(ignoreDuplicates) → `league_events`에 4건
+  (`mvp_award`/`dpoy_award`/`all_nba_team`/`all_def_team`) insert.
+
+**변경 파일 (트리거)**:
+- `server/src/scheduler.ts` — `checkSeasonCompletions()`에 `regular_season_ended_at` 최초
+  스탬프 로직 추가(정규시즌 완료 감지 시, 플레이오프 시작 직전). 신규
+  `runScheduledSeasonAwards(now)`를 `tick()`의 `Promise.allSettled`에 추가 — 30초마다
+  `regular_season_ended_at + 24시간(SEASON_AWARDS_DELAY_MS)`이 지났고
+  `league_player_awards`에 아직 행이 없는 리그를 찾아 1회 실행.
+
+**변경 파일 (client — 뉴스피드 4개 카드 타입 추가)**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 4개 타입 추가 +
+  `STORY_TYPES`(뉴스피드 그리드 쿼리 필터)에도 추가(빠뜨리면 이벤트가 insert는 되지만
+  메인 피드 쿼리에서 걸러져 아예 안 보임 — 실제로 처음엔 빠뜨렸다가 발견해 추가함).
+- `services/multi/leagueEventPayload.ts` — `MvpAwardDetail`/`DpoyAwardDetail`/
+  `AllNbaTeamDetail`/`AllDefTeamDetail` 타입 + `parseLeagueEventPayload` case 4개
+  (서버 payload 구조 미러 — 필드명 바꿀 때 `postSeasonAwards.ts`와 반드시 같이 수정).
+- `views/multi/season/newsFeedCards.tsx` — `MvpAwardCard`/`DpoyAwardCard`(순위표,
+  `PowerRankingCard`와 동일한 레터 구조)/`AllNbaTeamCard`/`AllDefTeamCard`(티어별 섹션)
+  4개 신규 컴포넌트 + `extractEventPlayerIds`/`HEADLINE_ICON`/`StoryCard` switch에 case 추가.
+  파워랭킹의 AI 기사체 문단(`newsBlurb.ts` 변주 시스템)은 이번엔 생략 — 표/카드 중심으로만
+  구성(필요하면 후속 작업으로 추가 가능).
+- `views/multi/season/MultiNewsFeedView.tsx` — `ALL_NEWS_TYPES`/`TYPE_LABEL`에 4개 추가.
+- `pages/MultiSeasonPage.tsx` — 이 파일에도 별도의 `HEADLINE_ICON: Record<LeagueEventType,
+  LucideIcon>`가 있어 4개 타입 안 채우면 타입에러 발생 → 여기도 동일하게 추가.
+
+**동작 요약**: 정규시즌 전 경기 종료 → `regular_season_ended_at` 스탬프 → 24시간 후 스케줄러가
+`computeAndPostSeasonAwards` 1회 실행 → DB 영구 저장 + 뉴스피드 4개 카드 게시. 선수 프로필
+위젯(`MultiPlayerDetailView.tsx`)은 이번 변경과 무관하게 그대로 동작(같은 시드라 결과 일치).
+
+**검증**: 클라이언트 `npx tsc --noEmit -p tsconfig.json` — 기존 베이스라인 대비 신규 에러 0건
+(MultiSeasonPage.tsx의 `HEADLINE_ICON` 타입에러 1건 발견 후 수정 완료, 이후 재실행 클린).
+서버 `cd server && npx tsc --noEmit -p tsconfig.json` — 신규 파일(`postSeasonAwards.ts`,
+`shared/multi/awardVoting.ts`) 관련 에러 0건(기존 에러는 전부 `@types/bun` 미설치 등
+이 변경과 무관한 사전 존재 이슈).
+
+**롤백 방법**: `migrations/add_league_player_awards.sql`의 `ALTER TABLE`/`CREATE TABLE`/
+`CREATE FUNCTION`을 각각 `DROP` (regular_season_ended_at 컬럼 드롭 시 진행 중인 지연 발표가
+날아가므로 주의) + 이 커밋에서 추가된 파일/코드 블록 되돌리기. 신규 파일이라 삭제만 하면
+되고, 기존 파일 변경분은 위 목록의 "추가" 블록만 되돌리면 됨(기존 로직 수정 없이 case/엔트리
+추가만 했으므로 충돌 위험 낮음).
+
+---
+
+## 2026-09-02 — 선수 프로필 "선수 이동 내역" 위젯 신규 추가(멀티 전용, 드래프트+트레이드)
+
+**배경**: 사용자 요청 — 선수 프로필의 "수상 내역" 위젯 바로 아래에 그 선수의 리그 내
+이동 내역(드래프트/트레이드/FA/웨이브)을 "날짜 | 타입 | 이전팀→현재팀" 형태로 추가.
+드래프트 행은 "이전 팀"이 없으므로 화살표 대신 "1R 3rd LAL"(라운드/픽 순번/팀) 형태로
+표기하도록 재요청받아 반영. 멀티만 우선 진행(싱글은 범위 밖).
+
+FA/웨이브는 멀티플레이어에 그 기능 자체가 아직 없어(로드맵 예정) 이번엔 드래프트+트레이드
+2종만 실제로 채워진다 — 타입 자체는 미리 정의해둬서 나중에 기능이 생기면 서비스 함수에
+조회만 추가하면 됨.
+
+**신규 파일**:
+- `services/multi/playerHistoryService.ts` — `listPlayerTransactionHistory(roomId, playerId, leagueTeams)`.
+  드래프트(`draft_picks` 테이블, room_id+player_id로 최대 1건)와 트레이드(`league_trade_offers`
+  성사분 전체를 tradeService.ts의 `listTradeHistory`와 동일한 방식으로 가져온 뒤 클라이언트에서
+  `league_trade_offer_players` 배열에서 이 선수 행을 찾음 — PostgREST `!inner`+점 표기 임베드
+  필터는 이 코드베이스에 전례가 없어 검증 없이 새로 쓰지 않고, 이미 프로덕션에서 검증된 패턴을
+  재사용)를 병렬 조회해 날짜 내림차순으로 합침. `draft_picks.team_id`(=team_slug)와
+  `league_trade_offers.from/to_team_id`(=league_teams.id, UUID)가 서로 다른 팀 식별자라는 점을
+  Supabase에서 직접 실측 확인 후 각각 다른 맵(`teamBySlug`/`teamById`)으로 team_abbr 변환.
+- `hooks/usePlayerTransactionHistory.ts` — `usePlayerShotEvents.ts`와 동일한 얇은 useQuery 래퍼.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — `externalTransactionHistory?: {...}[]` prop 추가(값이
+  `undefined`면 위젯 자체가 안 뜸 — externalGameLog와 동일한 "존재 시에만 렌더" 패턴, 싱글
+  플레이어는 이 prop을 안 넘기므로 영향 없음). "위젯 7.5"로 수상 내역(위젯 7)과 부상 이력
+  (위젯 8) 사이에 삽입. 드래프트 행은 `{round}R {ordinal(pick)} {toTeamAbbr}`(예: `1R 3rd LAL`),
+  그 외(트레이드)는 `{fromAbbr} → {toAbbr}`.
+- `views/multi/season/MultiPlayerDetailView.tsx` — `usePlayerTransactionHistory(room?.id, playerId,
+  leagueTeams)` 호출 후 `externalTransactionHistory`로 전달.
+
+**검증**: Supabase MCP `execute_sql`로 실제 데이터(room `9b43a612-...`, player
+`06770683-...`)에 대해 draft_picks/league_trade_offers 조인 결과와 team_id↔team_abbr 매핑이
+기대대로 나오는지 직접 확인(트레이드: GS→MIA, 2026-11-07). `npx tsc --noEmit`, `npx vite build`
+— 신규 에러 없음.
+
+**롤백 방법**: `services/multi/playerHistoryService.ts`, `hooks/usePlayerTransactionHistory.ts`
+삭제, `MultiPlayerDetailView.tsx`의 관련 import/훅 호출/prop 전달 3곳 제거,
+`PlayerDetailView.tsx`의 `externalTransactionHistory` prop 선언·구조분해·위젯 7.5 블록 삭제.
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 테이블 — 날짜 표기를 yy/mm/dd 포맷으로 통일
+
+**배경**: 사용자 요청 — 히스토리 탭 "날짜"/"수락일" 컬럼이 `MM/DD`(연도 생략)로만 표시되던
+것을 `yy/mm/dd`(연도 2자리 포함) 형태로 바꿔달라는 요청.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- 모듈 레벨 헬퍼 `formatSimDateShort(isoDate)` 추가(`formatRemaining` 옆) —
+  `"YYYY-MM-DD"` → `"yy/mm/dd"`로 변환, null이면 `-`.
+- `proposedDate`/`acceptedDate` 계산을 인라인 `.slice(5).replace('-', '/')`(MM/DD만 추출)에서
+  `formatSimDateShort(...)` 호출로 교체.
+
+**Before**: `o.sim_date_at_creation.slice(5).replace('-', '/')` → 예: `08/14`
+**After**: `formatSimDateShort(o.sim_date_at_creation)` → 예: `26/08/14`
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 신규 에러 없음.
+
+**롤백 방법**: `proposedDate`/`acceptedDate` 계산을 Before 형태로 되돌리고
+`formatSimDateShort` 함수를 삭제하면 됨.
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 테이블 — 수락일 컬럼 위치 이동 + 합계 행 제거
+
+**배경**: 사용자 요청 — (1) "수락일" 컬럼을 맨 끝에서 "날짜"(제안일) 바로 오른쪽으로 이동
+(두 날짜 컬럼을 나란히), (2) 선수 수만큼 행을 쪼갤 때 맨 아래 추가했던 "합계" 행이
+불필요하다고 판단해 제거.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` (히스토리 탭 테이블만)
+
+**Before**: 헤더 순서 `날짜 | 제안팀 | 선수 | 연봉 | 수락팀 | 선수 | 연봉 | 수락일`, 각
+트레이드 그룹 마지막에 `합계` 행(선수 열엔 "합계" 라벨, 연봉 열엔 `formatMoneyFull(총액)`)
+포함(`rowCount = playerRowCount + 1`, `isTotalRow` 분기).
+
+**After**: 헤더 순서 `날짜 | 수락일 | 제안팀 | 선수 | 연봉 | 수락팀 | 선수 | 연봉` — 두 날짜
+컬럼이 인접. `rowCount = Math.max(mine.length, theirs.length, 1)`로 단순화(합계 행 제거),
+`isTotalRow`/`sumSalary`/`mineTotal`/`theirsTotal` 전부 삭제. 마지막 컬럼이 된 수락측
+연봉 셀만 `border-r` 제거(테이블 우측 끝).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 신규 에러 없음.
+
+**롤백 방법**: 헤더 순서를 원래대로(수락일을 맨 끝으로) 되돌리고, `rowCount`/`isTotalRow`
+로직과 합계 셀 2곳을 이전 커밋 내용으로 복원하면 됨.
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 테이블 연봉 표기 — 축약(M/K) → 전체 자릿수
+
+**배경**: 사용자 요청 — 히스토리 탭 연봉 컬럼(선수별 + 합계)이 `formatMoney()`로 `$51.4M`
+처럼 축약 표기됐는데, 축약 없이 전체 자릿수(`$51,400,000`)로 보여달라는 요청.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `formatMoneyFull` import 추가(`utils/formatMoney.ts`에 이미 존재하던 헬퍼, 다른 화면에서
+  미사용이라 새 구현 없이 재사용)
+- 히스토리 테이블의 선수별 연봉 셀 2곳 + 합계 셀 2곳(제안측/수락측), 총 4곳만
+  `formatMoney` → `formatMoneyFull`로 교체. 이 화면의 다른 연봉 표시(트레이드 제안서 편지,
+  로스터 리스트 등)는 요청 범위 밖이라 그대로 축약 유지.
+
+**Before/After**: `formatMoney(mineTotal)` → `formatMoneyFull(mineTotal)` (동일 패턴으로
+`theirsTotal`, `mineP.salary`, `theirsP.salary` 4곳)
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 신규 에러 없음.
+
+**롤백 방법**: 위 4곳의 `formatMoneyFull` → `formatMoney`로 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 탭에 필터(팀/날짜/검색) 추가
+
+**배경**: 사용자 요청 — 히스토리 탭 테이블 위(탭 그룹 아래)에 (1) 팀 필터, (2) 날짜 필터,
+(3) 팀·선수 이름 검색 3종 필터 추가. UI 전용 추가라 엔진/DB 변경 없음.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- 상태 4개 추가: `historyTeamFilter`(팀 id, `''`=전체) / `historyDateFrom` / `historyDateTo`
+  (인게임 날짜 문자열) / `historySearch`(텍스트), `hasHistoryFilter`/`resetHistoryFilters` 파생
+- `filteredHistory` — `history`에 세 필터를 AND로 적용한 `useMemo`. 날짜는
+  `o.sim_date_at_resolution ?? o.sim_date_at_creation`(수락일 우선, 마이그레이션 이전 데이터는
+  제안일로 대체) 기준 range 비교. 검색어는 참여 팀명 + 참여 선수 전원 이름을 합친 문자열에
+  대소문자 무시 부분 일치.
+- UI: `<TabBar>` 바로 아래, `activeTab === 'history'`일 때만 필터 바 렌더. 검색 인풋은
+  `LeaderboardToolbar.tsx`의 Search pill, 날짜 범위는 `MultiNewsFeedView.tsx`의 인게임 날짜
+  range pill과 동일한 스타일 재사용. 팀 필터는 네이티브 `<select>`(전체 팀 + `sortedTeams`).
+- 테이블의 빈 상태 문구를 필터 유무에 따라 분기: 원본 데이터 자체가 0건이면 "성사된
+  트레이드가 없습니다", 필터링 결과만 0건이면 "조건에 맞는 트레이드가 없습니다"(인박스 탭의
+  기존 문구 분기 패턴과 동일).
+- 테이블 렌더링 소스를 `history` → `filteredHistory`로 교체(빈 상태 체크, `flatMap` 모두).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 신규 에러 없음.
+
+**롤백 방법**: 필터 바 JSX 블록, `filteredHistory` useMemo, 4개 상태/파생값 선언 삭제 후
+테이블의 `filteredHistory` 참조를 `history`로 되돌리면 됨(DB/마이그레이션 변경 없음).
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 테이블 — 잔여계약 컬럼 제거 + 합계 행 스타일/교차 색상
+
+**배경**: 사용자 피드백(직전 "선수 수만큼 행 분리 + 합계 행" 개편 바로 다음) —
+(1) 잔여계약 컬럼 2개(제안측/수락측) 제거, (2) 합계 행 배경색을 다른 행과 동일하게(기존엔
+`bg-slate-950/60`으로 튀게 처리했었음), (3) "합계" 라벨은 연봉 셀이 아니라 선수 열의
+합계 행에 표시하고 연봉 셀엔 금액만, (4) 트레이드 건끼리 교차(zebra) 배경색 적용.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` (히스토리 탭 테이블 부분만)
+
+**Before**:
+- 헤더 10열(날짜/제안팀/선수/연봉/잔여계약/수락팀/선수/연봉/잔여계약/수락일), `colSpan={10}`
+- 합계 행: `<tr className={isTotalRow ? 'bg-slate-950/60' : undefined}>` — 합계 행만 배경 다름
+- 합계 행 선수 셀: 빈 칸(`<TableCell ... />`), 연봉 셀: `합계 {formatMoney(mineTotal)}`
+- 트레이드 그룹 간 배경 구분 없음(전부 동일 배경)
+
+**After**:
+- 헤더 8열(잔여계약 2개 제거), `colSpan={8}`
+- `history.flatMap((o, tradeIdx) => {...})`로 트레이드 인덱스 확보 →
+  `const zebraClass = tradeIdx % 2 === 1 ? 'bg-slate-950/40' : undefined;`를 그 트레이드에
+  속한 선수 행 + 합계 행 전부에 동일하게 적용(`<tr className={zebraClass}>`) — 합계 행만
+  튀지 않고 트레이드 단위로 번갈아 구분됨
+- 합계 행 선수 셀: `합계` 텍스트(굵게), 연봉 셀: 금액만(`{formatMoney(mineTotal)}`, "합계" 접두어 제거)
+- 잔여계약 관련 `<TableCell>` 2개(제안측/수락측) 완전 삭제
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 신규 에러 없음.
+
+**롤백 방법**: 이 커밋 이전 상태(잔여계약 컬럼 2개 + 합계 행 별도 배경 + "합계 {금액}" 표기)로
+되돌리면 됨.
+
+---
+
+## 2026-09-02 — 멀티 트레이드 화면 선수 호버 카드에 시즌 스탯 표시
+
+**배경**: 사용자 요청 — 트레이드 화면(`MultiFrontOfficeView.tsx`)의 선수 이름 hover 카드가
+항상 "시즌 기록 없음"만 표시됨. 원인은 이 화면이 쓰는 `poolPlayers`(useMultiSearchData →
+`meta_players`만 조회)가 `stats`를 채우지 않기 때문 — PTS/REB/AST 컬럼은 별도로
+`useLeagueRawStats`+`buildLeagueTeams`로 집계한 `statsByPlayerId`(ppg/rpg/apg만)를 쓰지만,
+`PlayerHoverCard`에 넘기는 `player` 객체 자체는 stats가 비어있는 `poolById`/`poolPlayers`
+원본이라 팝업 내부 STAT_COLUMNS(원시 누적치 기반 계산)가 항상 0으로 나왔음.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` — `usePlayerSeasonStatsBatch` 훅 추가 도입
+  (뉴스피드 `newsFeedCards.tsx`/`MultiNewsFeedView.tsx`가 이미 쓰는 것과 동일 패턴).
+  활성 탭(`activeTab`)별로 실제 화면에 보이는 선수 id만 좁혀서(`statsRequestIds`) 배치
+  조회 → `poolById`에 병합한 `poolByIdWithStats` 생성. 이 값을 `renderPlayerList`,
+  `renderHistoryPlayerCell`, `renderOfferLetter` 내부 `renderAssetColumn`, "새 제안" 탭의
+  4개 `<PlayerChip>` 호출부(`myRoster`/`targetRoster`/`cartMine`/`cartTheirs`)에서
+  `player` prop으로 사용하도록 교체. `renderPlayerList`/`renderHistoryPlayerCell` 함수
+  선언을 `poolByIdWithStats` 정의 이후로 이동(TS2448 block-scoped 변수 선언 전 참조 에러
+  회피 — 클로저 안 참조라 런타임엔 문제없지만 tsc가 정적으로 거부함).
+
+**Before** (호출부 예시):
+```tsx
+const p = poolById.get(id);
+// ...
+<PlayerHoverCard player={p} teamAbbr={...}>
+```
+
+**After**:
+```tsx
+// 탭별로 스코프를 좁힌 배치 조회 → poolById에 병합
+const { data: seasonStatsBatch } = usePlayerSeasonStatsBatch(roomId ?? undefined, statsRequestIds);
+const poolByIdWithStats = useMemo(() => {
+    if (!seasonStatsBatch || seasonStatsBatch.size === 0) return poolById;
+    const merged = new Map(poolById);
+    for (const [id, stats] of seasonStatsBatch) {
+        const p = merged.get(id);
+        if (p) merged.set(id, { ...p, stats: { ...p.stats, ...stats } });
+    }
+    return merged;
+}, [poolById, seasonStatsBatch]);
+// ...
+const p = poolByIdWithStats.get(id);
+```
+
+**검증**: `npx tsc --noEmit -p .` — 이 파일 관련 에러 0건(다른 파일들의 기존 무관 에러는
+그대로 존재, 이번 변경으로 새로 생긴 건 없음).
+
+**롤백 방법**: `usePlayerSeasonStatsBatch` import 제거, `statsRequestIds`/`seasonStatsBatch`/
+`poolByIdWithStats` 블록 삭제, 4개 `<PlayerChip>` 호출부와 `renderPlayerList`/
+`renderHistoryPlayerCell`/`renderAssetColumn` 내부의 `poolByIdWithStats` → `poolById`로
+되돌리면 됨(신규 DB 마이그레이션 없음 — 기존 `get_player_season_stats_batch` RPC 재사용).
+
+---
+
+## 2026-09-02 — 멀티 트레이드 히스토리 탭 카드→테이블 전환 + sim_date_at_resolution 컬럼 추가
+
+**배경**: 사용자 요청 — 멀티 트레이드 "히스토리" 탭을 카드 목록에서 테이블로 개편
+(날짜/제안팀/선수·연봉·잔여계약/수락팀/선수·연봉·잔여계약/수락일 10열, 연봉 열엔 합계
+행 추가). "수락한 날짜(시뮬레이션 날짜)" 컬럼용 데이터가 DB에 없어서(`resolved_at`은
+실제 시각만 저장, 리그마다 압축 스케줄이 달라 인게임 날짜를 못 구함) `sim_date_at_creation`
+(2026-08-31 추가분)과 대칭으로 `sim_date_at_resolution` 컬럼을 신규 추가. 사용자가
+DB 마이그레이션 추가 방식을 명시적으로 선택.
+
+**변경 파일**:
+- DB: `league_trade_offers.sim_date_at_resolution` 컬럼 추가 + `respond_trade_offer()` RPC
+  (Supabase MCP로 프로젝트 `buummihpewiaeltywdff`에 직접 적용, 마이그레이션 파일
+  `migrations/add_sim_date_resolution_to_trade_offers.sql`)
+- `services/multi/tradeService.ts` — `TradeOfferRow.sim_date_at_resolution: string | null` 필드 추가
+- `views/multi/season/MultiFrontOfficeView.tsx` — 히스토리 탭 렌더링 전면 교체, 카드용
+  `renderOfferCard()` 삭제(더 이상 호출부 없음), 미사용된 `Clock` 아이콘 import 제거
+
+**Before** (`respond_trade_offer` 핵심 부분, v4):
+```sql
+UPDATE league_trade_offers
+SET status = v_new_status, resolved_at = now(), resolved_by = v_uid, resolved_as_admin = v_admin
+WHERE id = v_o.id;
+```
+(`sim_date_at_resolution` 컬럼 자체가 없었음)
+
+**After** (v5):
+```sql
+-- 함수 상단에서 한 번만 조회
+SELECT sim_date::date INTO v_sim_date FROM rooms WHERE id = v_o.room_id;
+...
+UPDATE league_trade_offers
+SET status = v_new_status, resolved_at = now(), resolved_by = v_uid, resolved_as_admin = v_admin,
+    sim_date_at_resolution = v_sim_date
+WHERE id = v_o.id;
+```
+같은 트랜잭션 내 "다른 대기 중 제안 무효화" UPDATE와 `league_events.sim_date` INSERT도
+동일한 `v_sim_date` 재사용(값 자체는 기존과 동일, 서브쿼리 중복만 제거).
+
+**MultiFrontOfficeView.tsx 히스토리 탭**:
+- Before(1차): `history.map(o => renderOfferCard(o, {}))` — 팀명/선수 이름만 나열하는 카드
+- Before(2차, 최초 테이블화 시도): 트레이드 1건 = `<tr>` 1행, 선수 리스트/연봉/잔여계약을
+  각각 `renderHistoryPlayers`/`renderHistorySalaries`/`renderHistoryContracts`로 한 셀 안에
+  세로 `flex-col` 스택 렌더(연봉 리스트 마지막에 합계를 같은 셀 안에 얹음)
+- After(2026-09-02 최종): 사용자 피드백 반영 — 트레이드 1건을 "포함된 선수 수만큼" 실제
+  `<tr>`로 분리(2대2 트레이드 → 선수 행 2개 + 합계 행 1개 = 3행). 날짜/제안팀/수락팀/수락일처럼
+  트레이드당 한 번만 정해지는 값은 `rowSpan={rowCount}`로 그 트레이드의 전체 행에 걸쳐 병합.
+  양측 선수 수가 다르면(예: 2대3) 적은 쪽은 해당 행 이후 빈 칸, 맨 마지막 "합계" 행에서
+  양쪽 각각의 연봉 합계만 별도 표시. 세 헬퍼는 `renderHistoryPlayerCell(id)` 하나로 축소
+  (선수 1명 셀만 렌더, 연봉/잔여계약은 인라인 처리).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 변경 파일 관련 신규 에러 없음(기존에 있던
+무관 파일들의 에러만 남아있음 확인). 마이그레이션은 Supabase MCP `apply_migration` 성공 응답 확인.
+
+**롤백 방법**: 클라이언트는 이 커밋 이전으로 되돌리면 됨. DB는 `respond_trade_offer_league_event_v4.sql`
+내용을 그대로 재적용(sim_date_at_resolution 컬럼은 남아있어도 무해 — 안 쓰일 뿐).
+
+---
+
+## 2026-09-02 — GameDateStrip(경기 스트립) 좌우 스크롤 버튼 색상 변경 + 불필요 시 숨김
+
+**배경**: 사용자 요청 — 상단 GameDateStrip(날짜 셀렉터 + 경기 카드 가로 스크롤)의 좌/우
+이동 버튼이 (1) 스크롤할 카드가 애초에 다 안 보이는 상태가 아니면(경기 수가 적어 넘치지
+않으면) 필요 없으므로 숨기고, (2) 색상을 인디고 계열에서 slate 계열로 바꿔달라는 요청.
+
+**변경 파일**: `views/multi/season/GameDateStrip.tsx`
+- 좌/우 버튼 모두 `{(canScrollLeft || canScrollRight) && (...)}`로 감싸 렌더 자체를 스킵 —
+  기존엔 `disabled={!canScrollLeft/Right}`로 비활성화만 했을 뿐 항상 렌더되고 있었음. 콘텐츠가
+  overflow 안 하면 `canScrollLeft`/`canScrollRight` 둘 다 false가 되는 걸 이용.
+- 버튼 배경 `bg-indigo-600 hover:bg-indigo-500 disabled:hover:bg-indigo-600` →
+  `bg-slate-800 hover:bg-slate-700 disabled:hover:bg-slate-800`.
+
+**Before**:
+```tsx
+<button
+    onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+    disabled={!canScrollLeft}
+    className="shrink-0 w-8 flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 disabled:cursor-default transition-colors"
+>
+    <ChevronLeft size={18} />
+</button>
+```
+(우측 버튼도 동일 패턴, indigo/scrollBy(320)/ChevronRight)
+
+**After**:
+```tsx
+{(canScrollLeft || canScrollRight) && (
+    <button
+        onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+        disabled={!canScrollLeft}
+        className="shrink-0 w-8 flex items-center justify-center bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:cursor-default transition-colors"
+    >
+        <ChevronLeft size={18} />
+    </button>
+)}
+```
+(우측 버튼도 동일 패턴 적용)
+
+**검증**: 구문/JSX 중첩 확인만 진행(런타임 미실행). 버튼이 `canScrollLeft`/`canScrollRight`
+계산에 의존하므로, 카드가 스트립 너비를 넘치지 않는 날짜(경기 1~2개)에서 버튼이 사라지는지
+브라우저 확인 필요.
+
+**롤백 방법**: 두 버튼의 `{(canScrollLeft || canScrollRight) && (...)}` 래핑 제거하고
+className 색상을 indigo로 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 메세지함 좌측 리스트에 방향/처리상태 체크박스 필터 추가
+
+**배경**: 사용자 요청 — 메세지함 컬럼 헤더(발신/수신/날짜/남은시간) 위에 필터 행을 추가해
+받은 제안/보낸 제안/수락/거절/취소 5개 체크박스로 목록을 걸러볼 수 있게 해달라는 요청.
+디자인은 뉴스피드(MultiNewsFeedView.tsx)의 메시지 타입 체크박스 필터를 그대로 재사용
+지정.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `InboxFilterKey` 타입 + `INBOX_FILTERS` 상수(라벨 5개) 신규 추가.
+- `selectedInboxFilters` state + `toggleInboxFilter()` 추가(뉴스피드 `selectedTypes`/
+  `toggleType`과 동일한 다중 선택 관례 — 빈 배열 = 전체 표시).
+- `filteredInboxList` — `getOfferOpts(o).direction`(받은/보낸)과 `o.status`(수락/거절/취소)
+  중 선택된 필터 하나라도 만족하면 통과(OR). `selectedOffer` 계산도 `inboxList` →
+  `filteredInboxList` 기준으로 변경.
+- 필터 체크박스 행 + 기존 컬럼 헤더 행을 하나의 `sticky top-0` 컨테이너로 묶음(개별
+  sticky 두 개를 픽셀 오프셋으로 쌓으면 높이가 살짝만 바뀌어도 깨지기 쉬워, 뉴스피드에
+  없던 "sticky 두 겹" 상황이라 안전하게 부모 하나로 통합).
+
+**Before**: 좌측 리스트 최상단이 컬럼 헤더(발신/수신/날짜/남은시간) 행 하나뿐, 필터 없음.
+
+**After**: 헤더 행 위에 체크박스 필터 행(뉴스피드와 동일 마크업: `w-4 h-4` 체크박스 +
+`text-sm font-bold` 라벨) 추가, 둘 다 스크롤 시 함께 고정.
+
+**검증**: `npx tsc --noEmit -p .` — MultiFrontOfficeView.tsx 기준 신규 에러 0건.
+
+**주의사항 / 한계**:
+- `invalidated`/`expired` 상태는 필터 목록에 없어서, 방향/처리상태 필터를 하나라도 켜면
+  그 두 상태의 오퍼는 항상 걸러져 안 보임(의도된 동작).
+
+**[추가 반영, 같은 날] 필터 결합 방식을 OR → 그룹별 AND/그룹 내 OR로 수정**: 사용자가
+"뉴스피드 필터는 AND로 동작한다"고 지적 — 실제로 `hooks/useLeagueHeadlines.ts`를 보니
+팀/타입/빅뉴스/날짜 각각 다른 필터 "그룹"은 `.in()`/`.eq()` 체이닝으로 AND 결합되고,
+같은 그룹(예: 타입) 안에서 여러 개 선택하면 `.in('type', sortedTypes)`로 OR 결합됨을
+확인. 트레이드 필터도 동일하게 맞춤:
+- `INBOX_DIRECTION_FILTERS = ['incoming','outgoing']`, `INBOX_STATUS_FILTERS =
+  ['accepted','rejected','cancelled']` 두 그룹으로 분리.
+- `filteredInboxList`를 `directionOk && statusOk`(그룹 간 AND)로 재작성 — 각 `xxxOk`는
+  해당 그룹에서 선택된 항목이 없으면 무조건 통과, 있으면 선택된 것 중 하나라도 맞으면
+  통과(그룹 내 OR). 예: "받은 제안" + "거절" 동시 체크 시 "내가 받았고 거절한" 오퍼만 남음.
+
+**[추가 반영, 같은 날] "취소" 필터에 만료(expired)도 포함**: 사용자 요청 — 만료된 오퍼도
+"취소" 체크박스로 걸러지길 원함. `INBOX_STATUS_MATCH: Record<string,string[]>` 매핑 추가
+(`accepted→['accepted']`, `rejected→['rejected']`, `cancelled→['cancelled','expired']`),
+`statusOk` 판정을 `statusSel.some(f => INBOX_STATUS_MATCH[f].includes(o.status))`로 변경.
+필터 버킷만 합쳤을 뿐 `renderOfferLetter()`의 실제 표시 문구(취소="트레이드 제안을
+취소하였습니다."/만료="제안이 만료되었습니다.")는 그대로 구분됨.
+
+---
+
+## 2026-09-02 — 경기결과 뉴스 제목에서 MVP 텍스트 제거
+
+**배경**: 사용자가 "경기결과 타입 뉴스의 제목에 들어가는 MVP 관련 텍스트는 삭제해줘"
+요청. `detectGameResult()`가 DB에 저장하는 `headline` 문자열에 `(MVP: 이름, 스탯)`이
+항상 덧붙어 있었고, 이 headline이 뉴스피드 좌측 리스트(`MultiNewsFeedView.tsx`의
+`e.headline`)와 컴팩트 리스트 아이템(`newsFeedCards.tsx`의 `event.headline`)에 그대로
+노출되던 게 원인 — 카드 본문(H1)은 `buildNewsTitle()`이 별도로 생성해 MVP 언급이 없었으므로
+문제는 DB headline 쪽에만 있었음.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `detectGameResult()`에서 `headlineMvp`/`mvpText`
+  변수 삭제, `headline` 조합식에서 `${mvpText}` 접미사 제거. `mvpHome`/`mvpAway`(구조화
+  payload, 카드 본문/박스스코어 리더 표시용)는 그대로 유지 — 이번 변경과 무관.
+
+**Before**:
+```ts
+const headlineMvp = pickTeamMvp([...(homeBox ?? []), ...(awayBox ?? [])]);
+const mvpText = headlineMvp
+    ? ` (MVP: ${headlineMvp.name}${headlineMvp.stats.length > 0 ? ' ' + headlineMvp.stats.map(s => `${s.value} ${s.label}`).join(', ') : ''})`
+    : '';
+...
+headline: `${winnerName}, ${loserName}에게 ${winnerScore}-${loserScore} 승리${mvpText}`,
+```
+
+**After**:
+```ts
+headline: `${winnerName}, ${loserName}에게 ${winnerScore}-${loserScore} 승리`,
+```
+
+**검증**: `cd server && npx tsc --noEmit -p tsconfig.json` — 신규 에러 0건(66건 baseline
+유지).
+
+**[적용 완료] 2026-09-02** `fly deploy` 실행, 머신 정상 기동 확인(`basketballgm-app-server`,
+machine `48ee24da30d108`) — 이 시점 이후 새로 생성되는 game_result 이벤트부터 헤드라인에
+MVP 텍스트가 빠진다. 이전에 이미 DB에 저장된 이벤트의 headline은 소급 수정되지 않음(값이
+아니라 문자열이 그대로 저장돼 있어 재작성하려면 별도 백필 필요 — 요청 시 진행).
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 선수 연속기록 뉴스에 연속기록 중인 모든 경기의 결과 표시
+
+**배경**: 사용자가 "선수 연속기록 뉴스에 연속기록 중인 모든 경기의 결과를 표시할 수
+있나" 질문 — `player_stat_streaks` 테이블이 카운터만 저장(`{pts20: N, ...}`)하고
+game_id 목록은 안 남기지만, `win_streak` 뉴스에 이미 정확히 같은 문제(팀 연승을
+구성하는 경기 목록 표시)를 해결해 둔 `detectWinStreak()` 패턴을 그대로 재사용할 수
+있다고 답변 → 사용자가 진행 승인.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` (server)
+  - `PlayerStreakPayload.streaks[]`의 각 항목에 `games` 배열 추가 — `detectWinStreak()`
+    와 동일하게 그 선수 팀의 최근 경기(가장 긴 규칙의 count만큼, `bestCount`)를 조회 →
+    `game_pbp`를 배치 조회 → 규칙별로 `count`만큼 슬라이스해서 각 경기에서 이 선수
+    개인의 해당 스탯(`statKey`) 실측치(`statValue`)를 뽑아 채움. win_streak은 팀
+    전체 MVP를 뽑지만 여기는 "이 선수 개인의 그 경기 스탯 한 줄"이라 항목 구조가 조금
+    다름(`mvp` 대신 `statValue` 숫자).
+  - 여러 규칙(예: 20+득점 연속 + 10+리바운드 연속)이 동시에 걸려 있으면 규칙마다
+    윈도 길이(count)가 다를 수 있어 규칙별로 독립적으로 슬라이스.
+- `services/multi/leagueEventPayload.ts` (client 미러)
+  - `PlayerStreakDetail.streaks[].games: PlayerStreakGame[]` 추가(신규
+    `PlayerStreakGame` 타입, `WinStreakGame`과 유사하나 `mvp` 대신 `statValue`).
+  - 신규 `parsePlayerStreakGame()`/`parseStreakEntry()` 확장 — 개별 경기가 깨지면
+    그 경기만 걸러내고, `games` 필드 자체가 없는 옛 이벤트는 빈 배열(하위호환 폴백,
+    win_streak과 동일 원칙).
+- `views/multi/season/newsFeedCards.tsx` — `StreakCard`에 블러브 다음, 박스스코어
+  이전 위치로 "{라벨} 연속 기록" 리스트 섹션 추가(WinStreakCard의 "연승 경기 기록"과
+  동일한 마크업) — 여러 규칙이 동시에 있으면 규칙별로 섹션을 각각 렌더링, 각 경기 행에
+  날짜+원정약어+스코어+홈약어+`|`+해당 스탯 값(예: "32 PTS") 표시, 팀약어는 클릭 가능.
+
+**검증**: 클라이언트 `npx tsc --noEmit -p .`, 서버 `cd server && npx tsc --noEmit -p
+tsconfig.json` — 둘 다 신규 에러 0건(서버는 66건으로 이전 win_streak 작업 때와 동일한
+baseline 유지 확인).
+
+**주의사항 / 한계**: 이 필드가 생기기 전(2026-09-02 이전)에 이미 쌓인 옛 player_streak
+이벤트는 `games`가 빈 배열이라 리스트 없이 헤더+본문만 렌더링됨(소급 적용 불가).
+
+**[적용 완료] 2026-09-02** 사용자 확인 후 `fly deploy` 실행, 머신 정상 기동 확인
+(`basketballgm-app-server`, machine `48ee24da30d108`) — 이 시점 이후 새로 감지되는
+연속기록 이벤트부터 경기 리스트가 채워진다.
+
+---
+
+## 2026-09-02 — 메세지함에 수락/거절/취소된 트레이드 오퍼도 히스토리로 표시
+
+**배경**: 사용자 요청 — 트레이드 오퍼가 수락/거절/취소되면 "메세지함"(인박스) 탭에서
+아예 사라지던 것을, 처리 후에도 목록에 남아 결과를 확인할 수 있게 해달라는 요청.
+버튼 영역에 상태별 메시지(수락=초록, 거절=빨강, 취소=보통색)를 표시하는 방식으로 구현.
+
+**변경 파일**:
+- `services/multi/tradeService.ts` — `listMyResolvedTradeOffers(roomId, teamId, limit=50)`,
+  `listAllResolvedTradeOffers(roomId, limit=100)` 신규 추가 (status IN
+  accepted/rejected/cancelled, resolved_at desc). 기존 `listPendingTradeOffers`/
+  `listAllPendingTradeOffers`는 사이드바 안읽음 배지(MultiSidebar.tsx,
+  MultiHeaderNavMenu.tsx)에서도 재사용 중이라 status='pending' 동작을 그대로 유지하고
+  건드리지 않음.
+- `views/multi/season/MultiFrontOfficeView.tsx`:
+  - `tradeData` 쿼리에서 `resolved`/`adminResolved`를 추가로 fetch해 `pendingInbox`/
+    `inboxList`에 병합. 정렬 기준을 `created_at` → `resolved_at ?? created_at`(가장 최근
+    활동 시각)으로 변경해 방금 처리한 오퍼가 목록 맨 위로 오도록 함.
+  - `renderOfferLetter()` 하단 버튼 영역을 `offer.status === 'pending'`일 때만 기존
+    수락/거절/취소 버튼을 보여주고, 아니면 상태별 메시지로 교체.
+
+**Before**: 버튼 영역이 `opts.showAccept/showReject/showCancel` 값에 따라 무조건 버튼만 렌더.
+
+**After**:
+```tsx
+{offer.status === 'pending' ? (
+    <div className="flex items-center gap-2">{/* 기존 버튼들 */}</div>
+) : offer.status === 'accepted' ? (
+    <p className="text-sm font-bold text-emerald-400">트레이드가 수락되었습니다!</p>
+) : offer.status === 'rejected' ? (
+    <p className="text-sm font-bold text-red-400">트레이드가 거절되었습니다.</p>
+) : offer.status === 'cancelled' ? (
+    <p className="text-sm font-bold text-slate-300">트레이드 제안을 취소하였습니다.</p>
+) : null}
+```
+
+**검증**: `npx tsc --noEmit -p .` — 변경 파일(MultiFrontOfficeView.tsx, tradeService.ts)
+기준 신규 에러 0건(기존에도 있던 무관한 92건은 그대로).
+
+**주의사항 / 한계**:
+- `invalidated` 상태는 이번 범위에서 제외(목록에 안 뜬 채로 그대로 둠) — `expired`는
+  같은 날 후속 요청으로 추가됨(아래 [추가 반영] 참고).
+- 개인/어드민 각각 최근 50/100건으로 제한 — 리그가 오래 진행되면 그 이전 처리 기록은
+  메세지함에서 안 보임(별도 페이지네이션 없음).
+
+**[추가 반영, 같은 날]**: 사용자 요청으로 만료(expired) 케이스도 추가.
+- `services/multi/tradeService.ts`의 `RESOLVED_OFFER_STATUSES`에 `'expired'` 추가.
+- `MultiFrontOfficeView.tsx` `renderOfferLetter()` 하단에
+  `offer.status === 'expired'` 분기 추가 — `<p className="text-sm font-bold text-slate-300">제안이 만료되었습니다.</p>`
+  (취소와 동일한 보통색, 사용자가 별도 색상을 지정하지 않음).
+- 만료는 `server/src/scheduler.ts`의 `sweepExpiredTradeOffers()`(30초 간격 `expire_trade_offers`
+  RPC 호출)가 `expires_at` 지난 pending 오퍼를 주기적으로 물리 상태 전환해주므로, 사용자가
+  직접 트리거하지 않아도 자연 발생 가능.
+
+---
+
+## 2026-09-02 — 트레이드 인게임 날짜(sim_date) 소스를 rooms.sim_date → 가상 시즌 캘린더로 교정
+
+**배경**: 아래 "sim_date 타입 캐스팅 버그" 수정 직후, 실제 트레이드를 하나 수락해보니 뉴스피드
+트레이드 카드 날짜가 오늘 실제(wall-clock) 날짜(2026-09-02)로 찍히는 문제가 있었음(사용자
+리포트: "모든 뉴스는 시뮬레이션상 날짜로 찍혀야되는거야"). 캐스팅은 고쳤지만 애초에 값의
+소스 자체가 잘못됐던 것 — `rooms.sim_date`는 실제 KST 날짜이고(`server/src/scheduler.ts`의
+`advanceSimDates`가 채움), 메인리그 압축 스케줄에서 "지금"에 해당하는 가상 NBA 캘린더
+날짜(`games.game_date`, 예: "2026-11-07")와는 전혀 다른 값이다
+(`views/multi/season/MultiNewsFeedView.tsx:60-66`에 이미 있던 주석 참고). 조사해보니
+`create_trade_offer()`의 `sim_date_at_creation`(트레이드 인박스/히스토리 리스트에 표시되는
+오퍼 생성일)도 동일한 근본 원인의 같은 버그였음.
+
+**변경 파일**:
+- Supabase DB 함수 `public.current_virtual_date(uuid)` (신규), `public.create_trade_offer`,
+  `public.respond_trade_offer` — Supabase MCP `apply_migration`으로 즉시 반영
+- `migrations/trade_virtual_sim_date_fix.sql` (신규 — 이력 보존용)
+- 기존 데이터 소급 보정(1회성 UPDATE, 마이그레이션 파일에는 미포함):
+  - `league_events`(이 방의 트레이드 이벤트 2건) `sim_date`를 각 이벤트 `created_at`과
+    가장 가까운 `games.scheduled_at`의 `game_date`로 재계산
+  - `league_trade_offers`(이 방의 실제 오퍼 2건 — 더미 히스토리 6건은 스케줄과 무관한
+    합성 데이터라 제외) `sim_date_at_creation`도 동일 방식으로 재계산
+
+**Before**: `current_virtual_date` 헬퍼 없이 두 함수 모두 `rooms.sim_date`(또는 그 캐스팅본)를
+그대로 사용.
+
+**After**:
+```sql
+CREATE FUNCTION public.current_virtual_date(p_room_id uuid) RETURNS date AS $$
+    SELECT coalesce(
+        (SELECT g.game_date FROM games g
+         WHERE g.room_id = p_room_id AND g.scheduled_at IS NOT NULL
+         ORDER BY abs(extract(epoch FROM (g.scheduled_at - now())))
+         LIMIT 1),
+        (SELECT r.sim_date::date FROM rooms r WHERE r.id = p_room_id)
+    );
+$$ LANGUAGE sql STABLE;
+```
+`create_trade_offer`의 `v_sim_date := current_virtual_date(p_room_id)`,
+`respond_trade_offer`의 `league_events` INSERT에서 `current_virtual_date(v_o.room_id)`로 교체.
+경기가 없는 방(시즌 시작 전 등)은 `rooms.sim_date::date`로 폴백.
+
+**검증**: 함수 재정의 후 실데이터로 확인 — 이 방의 "지금과 가장 가까운 경기" `game_date`가
+`2026-11-07`로 나와(`rooms.sim_date`는 `2026-09-02`) 두 값이 실제로 다름을 확인. 소급
+UPDATE 후 트레이드 이벤트 2건이 각각 `2026-11-07`/`2026-11-06`으로, 오퍼 2건이
+`2026-10-23`/`2026-11-07`로 정상 교정됨.
+
+**주의사항 / 한계**:
+- 다른 방(`603386ca-...` 등)에도 같은 근본 버그로 저장된 과거 트레이드 데이터가 있을 수
+  있음 — 이번엔 사용자가 보고 있던 방(`9b43a612-...`)만 소급 보정함. 필요 시 동일 UPDATE를
+  다른 room_id로 재실행하면 됨.
+- `current_virtual_date()`는 토너먼트 리그에도 그대로 쓸 수 있음(`games.scheduled_at`이
+  이미 실제 방송 시각 기준으로 채워져 있어 "가장 가까운 경기" 방식이 리그 타입 분기 없이
+  동일하게 맞음).
+
+**롤백 방법**: `migrations/respond_trade_offer_league_event_v4.sql` + 위 "sim_date 타입
+캐스팅 버그" 항목의 create_trade_offer Before 블록으로 되돌리면 됨(단, 그러면 날짜가 다시
+wall-clock 기준으로 돌아가므로 권장하지 않음).
+
+---
+
+## 2026-09-02 — respond_trade_offer() sim_date 타입 캐스팅 버그 수정
+
+**배경**: 멀티 트레이드 히스토리 탭 테스트용으로 실제 트레이드 오퍼(GS→MIA)를 만들어
+유저가 수락을 시도했는데, "column sim_date is of type date but expression is of type
+text" 에러로 `respond_trade_offer` RPC가 400을 반환하며 실패함. 원인은 2026-09-01에
+추가된 v3 변경(`respond_trade_offer_league_event_v3.sql`)에서 `league_events.sim_date`
+(date 타입)를 채우려고 `rooms.sim_date`(**text** 타입)를 캐스팅 없이 그대로 INSERT
+타겟 컬럼에 넣었기 때문. `create_trade_offer()`의 `v_sim_date date` 변수 대입은
+plpgsql `SELECT INTO`의 암시적 I/O 캐스팅 덕에 문제없이 동작했지만, 이 INSERT 문은
+SQL 실행기가 직접 처리해 text→date 캐스트가 등록돼 있지 않아 실패. **트레이드
+accept 자체가 이 버그로 완전히 막혀 있던 상태였음** (reject/cancel은 league_events
+insert를 안 타서 영향 없음).
+
+**변경 파일**:
+- Supabase DB 함수 `public.respond_trade_offer` (Supabase MCP `apply_migration`으로 즉시 반영)
+- `migrations/respond_trade_offer_league_event_v4.sql` (신규 — 이력 보존용)
+
+**Before**:
+```sql
+(SELECT sim_date FROM rooms WHERE id = v_o.room_id)
+```
+
+**After**:
+```sql
+(SELECT sim_date::date FROM rooms WHERE id = v_o.room_id)
+```
+
+**검증**: 함수 재정의 후 `pg_get_functiondef`로 반영 확인. 실제 accept 재시도는 사용자 확인 필요.
+
+**롤백 방법**: `migrations/respond_trade_offer_league_event_v3.sql`을 그대로 다시
+`apply_migration`으로 적용(단, 이는 버그가 있던 버전으로 되돌리는 것이므로 권장하지 않음).
+
+---
+
+## 2026-09-02 — 뉴스 카드 헤더/본문 로고 크기 추가 축소(h-4 / h-3)
+
+**배경**: 사용자가 뉴스 카드(newsFeedCards.tsx의 `BrandMark`)의 헤더 최상단 로고를
+h-4로, 본문 최하단 로고를 h-3으로 줄여 달라고 요청.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — 6개 카드 전부의 헤더 로고
+`h-[22.4px]` → `h-4`(16px), 본문 하단 로고 `h-5` → `h-3`(12px).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-02 — 뉴스피드 페이지 상단 제목 "리그 소식" 텍스트를 로고로 대체
+
+**배경**: 사용자가 뉴스피드 페이지 상단 헤더의 "리그 소식" 텍스트도 로고로 바꿔
+달라고 요청 — newsFeedCards.tsx의 카드들에 적용한 The Basketball Chronicle
+로고(bc2.svg)와 동일 파일.
+
+**변경 파일**: `views/multi/season/MultiNewsFeedView.tsx` — 헤더의
+`<h1>리그 소식</h1>`을 `<img src="/images/bc2.svg" .../>`(`h-8 w-auto`)로 교체.
+이후 사용자 요청으로 `h-8`(32px) → `h-7`(28px) → `h-5`(20px)로 두 차례 추가 축소.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 좌측 리스트의 "리그 소식" 라벨은 이전 항목에서 이미 삭제된
+상태라 이번엔 손댈 게 없었음.
+
+---
+
+## 2026-09-02 — 뉴스 카드 로고 bc2.svg로 교체 + 스타일 조정(헤더 30% 축소, 하단 좌측정렬)
+
+**배경**: 사용자가 (1) 로고 파일을 `bc.svg`에서 `public/images/bc2.svg`로 교체,
+(2) 본문 최하단 로고의 불투명도를 없애고 좌측 정렬로 변경, (3) 헤더 최상단 로고
+크기를 30% 줄여 달라고 요청.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `BrandMark`의 `src`를 `/images/bc.svg` → `/images/bc2.svg`로 교체(1곳, 6개 카드
+  전부 이 컴포넌트를 공유해 한 번만 고치면 됨).
+- 헤더 로고(6곳): `h-8`(32px) → `h-[22.4px]`(32px×0.7 = 30% 축소).
+- 본문 하단 로고(6곳): `h-5 w-auto mx-auto opacity-60` → `h-5 w-auto`(가운데 정렬용
+  `mx-auto`와 `opacity-60` 삭제 — Tailwind preflight가 `img`를 `display: block`으로
+  만들어 두므로 `mx-auto`만 빼면 자연스럽게 좌측 정렬됨).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-02 — 모든 뉴스 레터 카드에 The Basketball Chronicle 로고(bc.svg) 상단/하단 삽입
+
+**배경**: 사용자가 `public/images/bc.svg`(가상 언론사 The Basketball Chronicle
+로고)를 모든 "리그 소식" 뉴스 카드의 헤더 최상단(신문 마스트헤드 격)과 본문
+최하단(기사 종료 표식 격)에 표시해 달라고 요청.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- 신규 `BrandMark` 컴포넌트(`<img src="/images/bc.svg" .../>`, `className`만
+  받는 얇은 래퍼) 추가.
+- 레터 구조를 쓰는 6개 카드(`GameResultCard`/`FeatCard`/`StreakCard`/
+  `WinStreakCard`/`TradeCard`/`PowerRankingCard`) 전부에 동일하게 적용:
+  - 카드 최상단(제목 블록보다도 위) — `<BrandMark className="h-8 w-auto" />`.
+  - 카드 최하단(모든 본문 콘텐츠 — 블러브/박스스코어/테이블/리스트 등 이후) —
+    `<BrandMark className="h-5 w-auto mx-auto opacity-60" />`(가운데 정렬, 약간
+    옅게 — "기사 끝" 뉘앙스).
+  - "본문 최하단"은 블러브 문단 바로 뒤가 아니라 카드에 딸린 모든 내용(박스스코어
+    표 등 포함)이 끝난 지점으로 해석 — 헤더(상단 마스트헤드)와 대칭을 이루는
+    카드 전체의 "마무리" 표식으로 배치.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건. `grep -c "<BrandMark"` = 12
+(6개 카드 × 2곳)로 누락 없이 전부 적용됐는지 확인.
+
+**주의사항 / 한계**: 옛 이벤트(payload.v 없음, `LegacyCard`)와 좌측 리스트 행은
+이번 적용 범위 밖 — 상세뷰 레터 카드에만 적용됨.
+
+---
+
+## 2026-09-02 — 뉴스피드 헤더 브랜딩 원복 + 좌측 리스트 중복 라벨 삭제
+
+**배경**: 바로 위 항목에서 헤더에 넣었던 The Basketball Chronicle 로고를 사용자가
+다시 빼고, 제목도 "리그 소식"으로 바꿔 달라고 요청. 페이지 상단 제목이 이미
+"리그 소식"이 되면서 좌측 리스트 상단의 "리그 소식" 라벨(필터 행 바로 위)이
+중복이라 같이 삭제해 달라고 요청.
+
+**변경 파일**: `views/multi/season/MultiNewsFeedView.tsx`
+- 헤더의 로고 `<img>` 삭제, `<h1>` 텍스트 "The Basketball Chronicle" → "리그 소식".
+- 좌측 리스트 sticky 헤더 블록에서 "리그 소식" `<div>` 라벨 삭제, 타입 필터 행만 남김
+  (라벨이 있던 자리의 상단 여백을 필터 행에 `pt-2`로 옮겨 시각적 여백 유지).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-02 — 뉴스피드에 가상 언론사 "The Basketball Chronicle" 브랜딩 적용
+
+**배경**: 사용자가 `public/images/thebaseballchronicle.webp`(뉴스를 제공하는 가상
+언론사 The Basketball Chronicle 로고)를 (1) 사이드 내비게이션의 뉴스 아이콘,
+(2) 뉴스피드 화면 헤더의 "뉴스피드" 텍스트 자리에 각각 적용해 달라고 요청 — 헤더
+텍스트는 "The Basketball Chronicle"로 표기. 이후 사용자가 사이드바 아이콘만 다시
+예전 lucide 아이콘으로 되돌려 달라고 요청해 (1)은 원복, (2)는 그대로 유지.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` — "뉴스피드" `NavItem`의 `icon`을 처음엔 lucide
+  `<Newspaper />`에서 로고 `<img>`로 교체했다가(그때 `NavItem`의 아이콘 렌더 로직에
+  "DOM 태그면 size 주입 생략" 분기도 추가), 사용자 요청으로 아이콘/렌더 로직/import
+  전부 원래대로 되돌림 — 최종적으로 이 파일은 이번 작업 이전과 완전히 동일.
+- `views/multi/season/MultiNewsFeedView.tsx` — 헤더의 `<h1>뉴스피드</h1>` 텍스트를
+  로고 이미지(`w-7 h-7`) + `<h1>The Basketball Chronicle</h1>`로 교체(유지).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-02 — 트레이드 화면 탭 순서 변경 및 기본 탭을 "새 제안"으로 변경
+
+**배경**: 사용자 요청 — 탭 그룹 순서를 새 제안-메세지함-트레이드블록-히스토리로, 기본 진입 탭도
+"새 제안"으로 바꿔달라는 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` — `TABS` 배열 순서를
+  `['leagueBlocks','inbox','new','history']` → `['new','inbox','leagueBlocks','history']`로 재배열,
+  `activeTab` 계산의 fallback 기본값을 `'leagueBlocks'` → `'new'`로 변경 (`?tab=` 쿼리 없을 때 적용)
+
+**Before**: 탭 순서 트레이드블록-메세지함-새 제안-히스토리, 기본 탭 트레이드블록.
+
+**After**: 탭 순서 새 제안-메세지함-트레이드블록-히스토리, 기본 탭 새 제안.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `TABS` 배열 순서와 fallback 값을 Before로 되돌리면 됨.
+
+---
+
+## 2026-09-02 — 트레이드 블록 테이블 "제안하기" 컬럼 폭 고정(내용 없을 때 과대 확장 방지)
+
+**배경**: `MultiFrontOfficeView.tsx`의 트레이드 블록 테이블은 `table-layout: auto` + `width:100%`
+방식(2026-08-30 결정, 위 주석 참조)이라 각 컬럼이 자기 내용 길이만큼만 폭을 요구한다. 그런데 모든 팀이
+요구사항/매물 선수 등을 하나도 작성하지 않아 전부 "없음"만 찍힌 상태에선, 텍스트 컬럼들의 요구 폭이
+다같이 작아지면서 남는 공간이 헤더 텍스트조차 없는 마지막 컬럼(제안하기 버튼)에 불균형하게 몰려
+버튼 컬럼만 화면 폭의 상당 부분을 차지하는 문제가 있었다.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` — 제안하기 컬럼의 헤더 `TableHeaderCell`에
+  `width="1%"` 추가, 바디 `TableCell`에 `style={{ width: '1%' }}` 추가. (`whitespace-nowrap`은
+  두 컴포넌트 모두 이미 기본 적용 중) `width:1%` + `nowrap` 조합은 auto-layout 테이블에서 "내용
+  최소폭만큼만 축소"시키는 표준 CSS 트릭 — 남는 여유 공간은 다른(텍스트) 컬럼들이 흡수하게 된다.
+
+**Before**: 제안하기 헤더/셀에 폭 지정 없음 → 데이터 없을 때 컬럼이 과도하게 넓어짐.
+
+**After**: 제안하기 컬럼은 버튼+패딩 크기만큼만 차지, 나머지 공간은 텍스트 컬럼들이 나눠 가짐.
+
+**검증**: `npx tsc --noEmit` 통과 (해당 파일 에러 없음). 실제 화면 렌더링은 직접 미확인 — dev
+서버에서 트레이드 블록 탭 확인 권장.
+
+**롤백 방법**: 두 `width` 지정 제거.
+
+---
+
+## 2026-09-02 — 멀티 시즌 일정 화면 원정/홈 팀 이름 클릭 시 로스터 이동
+
+**배경**: 시즌 일정(멀티) 화면의 경기 리스트에서 팀 이름을 눌러 해당 팀 화면으로 이동하는 기능 요청.
+처음엔 싱글플레이어용 `views/ScheduleView.tsx`(카드형)를 수정했으나, 사용자가 실제 보고 있던 화면은
+멀티플레이어 테이블형 `views/multi/season/MultiScheduleView.tsx`였음 — 스크린샷(날짜/시간/원정/홈/스코어
+컬럼의 테이블)으로 확인 후 올바른 파일에 재적용.
+
+**변경 파일**:
+- `views/multi/season/MultiScheduleView.tsx` — `GameRowProps`에 `onTeamClick: (teamSlug: string) => void` 추가,
+  원정/홈 팀 이름 `span`에 `onClick={() => onTeamClick(g.awayTeamId/homeTeamId)}` + hover 스타일 추가,
+  메인 컴포넌트에 `handleTeamClick`(→ `/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`, `MultiFrontOfficeView`/`MultiStandingsView`와 동일 패턴) 추가해 `GameRow`에 전달
+- (부가) `views/ScheduleView.tsx`, `pages/SchedulePage.tsx` — 싱글플레이어 시즌 일정 카드에도 동일하게 팀 이름
+  클릭 → `/roster/${teamId}` 이동 추가 (요청 대상은 아니었으나 동일 기능 누락이라 함께 반영)
+
+**Before**: 원정/홈 팀 이름은 클릭 불가한 순수 텍스트.
+
+**After**: 팀 이름 클릭 시 해당 팀의 로스터 화면으로 이동.
+
+**검증**: `npx tsc --noEmit` 통과 (수정 파일 관련 에러 없음).
+
+**롤백 방법**: 위 4개 파일에서 onTeamClick/handleTeamClick 관련 추가분 제거.
+
+---
+
+## 2026-09-01 — 뉴스피드 박스스코어 테이블 안 선수들에게도 호버 시즌 스탯 적용
+
+**배경**: 직전 항목(get_player_season_stats_batch RPC)에서 뉴스피드 hover 카드에 시즌 스탯을
+채웠지만, `MultiNewsFeedView.tsx`가 조회하는 대상은 `extractEventPlayerIds(selectedEvent)`
+(그 이벤트의 "주인공" — MVP/개인기록 선수 1~2명)뿐이었다. 그런데 `GameResultCard`/`FeatCard`/
+`StreakCard`는 `useGameBoxScore`로 그 경기의 박스스코어(양 팀 선수 전원, 수십 명)를 별도로
+불러와 `TeamBoxTable`로 보여주는데, 그 표 안의 "주인공 외" 선수들은 여전히 원본
+`playerCardMap`(항상 stats=0)만 참조하고 있어 호버해도 "시즌 기록 없음"이 떴다.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `useBoxScorePlayerCardMap(roomId, boxScore, playerCardMap)` 신설 — `boxScore.homeBox`+
+  `awayBox`의 `playerId` 전부를 모아 `usePlayerSeasonStatsBatch`로 조회 후
+  `mergeStatsIntoPlayerCardMap`으로 병합한 맵을 반환. boxScore 로딩 전/없음(win_streak·trade는
+  박스스코어 자체가 없음)이면 원본 `playerCardMap` 그대로 반환.
+- `GameResultCard`/`FeatCard`/`StreakCard` 3곳 — `useGameBoxScore` 직후 위 훅을 호출해
+  `boxPlayerCardMap`을 만들고, `TeamBoxTable`에 넘기는 `playerCardMap`을 전부 이걸로 교체.
+  `FeatCard`/`StreakCard`의 헤드라인 선수(`entry`) 조회도 `boxPlayerCardMap` 기준으로 변경
+  (박스스코어가 로드되면 헤드라인 선수도 어차피 그 안에 포함되므로 더 정확).
+
+**검증**: `npx tsc --noEmit -p tsconfig.json` — 신규 에러 없음.
+
+**한계**: 헤드라인 선수(MVP/개인기록 주인공)는 상단(`MultiNewsFeedView.tsx`의
+`extractEventPlayerIds` 기반 조회)과 박스스코어 로드 후(`boxPlayerCardMap`) 두 번 조회되는
+약간의 중복이 있음(캐시 키가 달라 별도 요청) — 게임 결과/개인기록/연속기록 카드는 박스스코어가
+로드되면 어차피 상위 조회를 덮어쓰므로 기능상 문제는 없고, 트레이드/팀연승 카드에서만 상위
+조회가 실질적으로 쓰임.
+
+**롤백 방법**: `useBoxScorePlayerCardMap` 정의 및 3개 카드의 호출·`TeamBoxTable`/`entry` 참조를
+`playerCardMap`으로 되돌리면 됨(전부 additive, RPC/훅 자체는 직전 항목과 공유).
+
+---
+
+## 2026-09-01 — 트레이드 테이블 컬럼 순서 변경 + 합계 행 배경 강조
+
+**배경**: 사용자가 (1) 컬럼 순서를 "이름 | PTS | REB | AST | 연봉 | 잔여연수"로
+바꾸고, (2) 각 테이블의 합계 행에 미세하게 밝은 배경을 넣어 완결성을 부여해 달라고
+요청 — (2)는 `TeamBoxTable`의 합계 행에 이미 적용된 `bg-slate-800/40` 패턴과 동일.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — `TradePlayerTable`
+- 헤더/본문 행의 컬럼 순서를 선수→연봉→잔여연수→PTS→REB→AST에서
+  선수→PTS→REB→AST→연봉→잔여연수로 재배치(너비 비율은 그대로: 32/13/13/13/16/13%).
+- `<tfoot>`에 `bg-slate-800/40` 추가.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-01 — 뉴스피드 호버카드에 실제 시즌 스탯 표시 (get_player_season_stats_batch RPC 신설)
+
+**배경**: 시즌 경기가 진행 중인데도 뉴스피드 선수 이름 hover 카드에 "시즌 기록 없음"만 뜬다는
+신고. 원인은 뉴스피드가 쓰는 `useMultiSearchData().poolPlayers`(meta_players만 select, stats
+컬럼 자체가 없음)라 항상 0값 — 실시간 여부와 무관한 구조적 문제. `game_pbp`는 room 전체 30팀
+박스스코어를 담고 있고 player_id 컬럼이 없어(home_box/away_box JSONB 배열) 클라이언트에서
+가볍게 필터링할 방법이 없다 — 기존 `useLeagueRawStats`처럼 room 전체를 통째로 받아오면 뉴스
+피드 한 화면(선수 1~4명)엔 과도한 비용. 사용자가 "화면에 보이는 선수만 타겟팅해 가볍게 조회"를
+선택 — 무거운 스캔은 서버(Postgres)에서 그대로 수행하되 응답은 요청한 선수 몇 명 결과만
+돌려주는 RPC로 해결.
+
+**신규 파일**:
+- `migrations/add_player_season_stats_batch_rpc.sql` — `get_player_season_stats_batch(p_room_id, p_player_ids)` RPC. `game_pbp`를 `jsonb_array_elements(home_box || away_box)`로 언네스트해 요청한 player_id만 집계(pts/reb/ast/stl/blk/tov/fgm/fga/p3m/p3a/ftm/fta/g/mp). `isFinal()`(views/multi/season/multiGameReveal.ts) 기준과 동일하게 `game_start_time + 10분 <= now()` 경과 경기만 집계. SECURITY DEFINER 아님(game_pbp SELECT는 이미 RLS로 room 멤버에게 열려 있어 호출자 권한 그대로 실행) — Supabase MCP로 적용 완료.
+- `hooks/usePlayerSeasonStatsBatch.ts` — 위 RPC를 감싼 React Query 훅, `Map<playerId, Partial<PlayerStats>>` 반환.
+
+**변경 파일**:
+- `components/common/PlayerHoverCard.tsx` — `mergeStatsIntoPlayerCardMap(base, statsByPlayerId)` 신설. `buildPlayerCardMap()`이 만든 맵(항상 stats=0)의 Player.stats를 조회된 시즌 스탯으로 불변 방식(새 Map/엔트리)으로 덮어씀.
+- `views/multi/season/newsFeedCards.tsx` — `extractEventPlayerIds(event)` 신설(game_result의 mvpAway/mvpHome, player_feat/streak의 player, win_streak의 games[].mvp, trade의 aOut/bOut에서 playerId 추출).
+- `views/multi/season/MultiNewsFeedView.tsx` — 좌측 리스트+우측 디테일 레이아웃이라 실제 렌더되는 건 `selectedEvent` 하나뿐 → 그 이벤트의 선수만 `extractEventPlayerIds`로 뽑아 `usePlayerSeasonStatsBatch`에 넘기고, 결과를 `mergeStatsIntoPlayerCardMap`으로 기존 `playerCardMap`에 병합.
+
+**검증**: Supabase에서 RPC 직접 실행해 실제 선수 ID로 정상 집계 확인(예: g=58, pts=1084 → 18.7 ppg). `npx tsc --noEmit -p tsconfig.json` — 신규 에러 없음.
+
+**롤백 방법**: `usePlayerSeasonStatsBatch`/`mergeStatsIntoPlayerCardMap`/`extractEventPlayerIds` 사용 라인만 되돌리면 됨(전부 additive). RPC 자체를 되돌리려면 `DROP FUNCTION public.get_player_season_stats_batch(uuid, uuid[]);`.
+
+---
+
+## 2026-09-01 — 트레이드 테이블에 시즌 스탯(PTS/REB/AST) 컬럼 추가
+
+**배경**: 트레이드 테이블 너비 관련 대화 중 사용자가 "선수들 이번 시즌 스탯을
+조회해서 가져오는 게 데이터 로드가 클지" 질문 — 확인해보니 다른 세션이 그 사이
+정확히 이 문제(뉴스피드에 보이는 선수 몇 명만 가볍게 시즌 스탯을 가져오는 경로)를
+푸는 `get_player_season_stats_batch` RPC(`migrations/
+add_player_season_stats_batch_rpc.sql`)와 `hooks/usePlayerSeasonStatsBatch.ts`를
+이미 만들어 `MultiNewsFeedView.tsx`(`extractEventPlayerIds`+`usePlayerSeasonStatsBatch`+
+`mergeStatsIntoPlayerCardMap`)에 연결해 둔 상태였음 — RPC는 room 전체 game_pbp를
+Postgres 안에서 스캔·집계하되 응답은 요청한 선수만 반환해 네트워크 전송량은 작지만,
+스캔 자체는 여전히 room 전체 대상이라고 설명. 사용자가 "추가해줘"로 확정.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — `TradePlayerTable`
+- 헤더에 `PTS`/`REB`/`AST` 3열 추가(선수 32%/연봉 16%/잔여연수 13%/PTS·REB·AST 각
+  13%로 재배분, `table-fixed` 비율 그대로 유지).
+- 새 데이터 조회는 하지 않음 — `extractEventPlayerIds`의 `'trade'` 분기가 이미
+  aOut+bOut 선수 id를 뽑아 `MultiNewsFeedView.tsx`가 선택된 트레이드 이벤트일 때
+  자동으로 시즌 스탯을 조회해 `playerCardMap`에 병합해서 내려주므로, 이 컴포넌트는
+  `entry.player.stats`(g/pts/reb/ast 등 시즌 합계)를 읽어 `합계/g`로 평균만 계산
+  (`avgStat()` 헬퍼, `g===0`이면 `'-'`).
+- 합계 행의 신규 3열은 팀 단위 평균 합산이 의미 없어(득점 합계는 몰라도 "팀 평균의
+  평균"은 통계적으로 무의미) `—`로 비움(연봉 합계와 달리).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 시즌 스탯은 `game_pbp`에서 재집계한 값이라, 그 방에 아직 시뮬
+결과가 적거나(g=0) 선수가 이번 시즌 한 경기도 못 뛰었으면 "-"로 표시됨(데이터 없음,
+버그 아님).
+
+---
+
+## 2026-09-01 — 트레이드 테이블 컬럼 너비까지 완전히 균일화(table-fixed)
+
+**배경**: 바로 위 항목에서 `w-full`로 두 팀 테이블의 전체 너비는 맞췄지만, 각 열
+(선수/연봉/잔여연수)의 너비는 여전히 각 테이블이 자기 콘텐츠(선수 이름 길이 등)
+기준으로 따로 계산해 두 테이블의 열 경계가 서로 어긋나 보였음 — 사용자가 열 너비까지
+균일하게 맞춰 달라고 후속 요청.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — `TradePlayerTable`
+- `<table>`에 `table-fixed` 추가(브라우저가 콘텐츠를 측정해 열 너비를 정하는 대신,
+  선언된 너비를 그대로 씀).
+- 헤더 `<th>` 3개에 각각 `w-[55%]`/`w-[25%]`/`w-[20%]` 고정 비율 부여 — 두 테이블 모두
+  같은 비율이라 선수 수/이름 길이와 무관하게 열 경계가 항상 일치.
+- 선수 이름 셀에 `truncate` 추가(고정폭이라 넘치는 이름은 줄바꿈 대신 말줄임 처리).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-01 — 트레이드 테이블에 샐러리 합계 행 추가 + 두 팀 테이블 너비 통일
+
+**배경**: 사용자가 (1) 트레이드 레터의 선수 테이블 하단에 이동하는 선수들의 샐러리
+총합 행을 추가하고, (2) teamA/teamB 두 팀 테이블의 너비가 콘텐츠(선수 수/이름 길이)에
+따라 서로 달라 보이던 것을 통일해 달라고 요청.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — `TradePlayerTable`
+- `<table>`에 `w-full` 추가(기존엔 콘텐츠 폭만큼만 차지 → 두 팀 선수 수/이름 길이가
+  다르면 폭도 달라 보였음). 같은 부모(`space-y-4`) 안에서 항상 동일한 폭을 갖도록 통일.
+- `<tfoot>` 합계 행 추가 — `players.reduce(...)`로 각 선수의 `playerCardMap`
+  연봉(`salary`)을 합산해 `formatMoney(totalSalary)`로 표시. 연봉이 없는(이론상만)
+  선수는 0으로 취급.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: 없음.
+
+---
+
+## 2026-09-01 — "트레이드" 뉴스를 레터 디자인으로 재설계(마지막 카드 타입) + 죽은 카드 UI 코드 정리
+
+**배경**: 사용자가 트레이드도 나머지 4개 타입과 동일한 레터 구조로 바꾸고, 두 팀이
+주고받는 선수의 이름+스탯+계약 정보를 팀별 테이블로 위아래에 배치해 달라고 요청.
+확인 작업으로, 실제 DB(방 `9b43a612-...`)에 골든스테이트 뱅가즈 ↔ 덴버 시프터스
+가상 트레이드 뉴스(id `4499fdb9-38b7-4c83-b9bc-5df05e23b616`)를 직접 삽입해 화면
+확인용으로 남겨둠(실제 로스터는 안 바뀐 뉴스 전용 테스트 레코드 — 작업 끝나면 삭제
+예정). 스탯 컬럼은 조사 결과 `poolPlayers`엔 항상 0으로만 들어있고, 실제 시즌 평균을
+구하려면 방 전체 `game_pbp`를 재집계해야 해서(기존 `useLeagueRawStats` 경로 기준
+큰 방은 80MB/13초) 뉴스카드 하나 열 때마다 쓰기엔 부담스럽다고 설명 → 사용자가
+"스탯 생략, 계약 정보만 표시"로 확정.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- 신규 `TradePlayerTable` — 팀 하나가 "내준" 선수 목록을 이름(호버카드+클릭)/연봉
+  (`formatMoney`, `MultiFrontOfficeView.tsx`의 트레이드 오퍼 레터와 동일 포맷)/잔여연수
+  3열 표로 렌더. `TeamBoxTable`과 동일한 팀 테마 컬러 헤더 스타일.
+- `TradeCard` 전면 재작성 — 헤더(양 팀명 각각 클릭 가능 + " ↔ " + "트레이드 성사" +
+  날짜) → 본문(`buildNewsBlurb`) → `TradePlayerTable`×2(teamA가 내준 aOut, teamB가
+  내준 bOut, 위아래로 스택). 트레이드는 "선수 하나"가 아니라 "팀 둘"이 주체라
+  `HeadlineTitle`(선수 이름 전용) 대신 팀명 두 개를 각각 별도 클릭 가능한 span으로
+  직접 조립(`BoxScoreHeadline`과 같은 원리).
+- `StoryCard`의 `trade` 분기: `tier` prop 제거, `onOpenTeam` 추가.
+- **죽은 코드 정리**: 이번 트레이드 재설계로 5개 이벤트 타입 전부가 레터 디자인으로
+  전환 완료되면서, 예전 카드형(compact) UI 인프라를 쓰는 곳이 완전히 사라짐 —
+  `CardShell`/`TeamMark`(이 파일 로컬 버전)/`BigStat`/`BIG_STAT_SIZE`/`CardTier`/
+  `tierFromScore`/`Blurb` 컴포넌트를 전부 삭제. `views/multi/season/
+  MultiNewsFeedView.tsx`의 `tierFromScore` import와 `tier={tierFromScore(...)}` 호출도
+  같이 삭제(`StoryCard`가 더 이상 `tier`를 안 받음).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건. `newsFeedCards.tsx`를 import하는
+파일이 `MultiNewsFeedView.tsx` 하나뿐임을 확인해 삭제한 export들의 외부 참조가
+없음을 재확인. 프로젝트 전체를 `CardTier|BigStat|CardShell|tierFromScore`로
+재검색해 댕글링 참조 없음 확인.
+
+**주의사항 / 한계**: DB에 남아있는 테스트용 가상 트레이드 이벤트(`4499fdb9-...`)는
+디자인 확인이 끝나면 삭제 필요 — 실제 트레이드가 아니라 로스터 상태와 안 맞음.
+
+---
+
+## 2026-09-01 — 뉴스 기사 제목(H1) 바리에이션 추가 (항목당 12개)
+
+**배경**: 사용자가 기사 제목도 다양하게 만들고 싶다고 요청(항목당 10~15개). DB에
+저장된 `league_events.payload.headline`은 이벤트 생성 시점에 서버가 딱 1번만 만들어
+영구 저장하는 문자열이라(좌측 리스트 행 등 여러 곳에서 재사용), 이걸 그대로 다양화하려면
+`leagueEvents.ts`(TS) + trade는 SQL RPC(PL/pgSQL)까지 건드리고 재배포/마이그레이션이
+필요하다고 설명 — 사용자가 "새로고침마다 바뀌는 거 아니냐"고 확인 질문 → event.id
+기반 결정론적 해시라 안 바뀐다고 답변 → 클라이언트 전용 방식(옵션 A) 확정.
+
+**변경 파일**: `services/multi/newsBlurb.ts`
+- 신규 `buildNewsTitle(event, teamBySlug): string | null` — `buildNewsBlurb`와
+  동일한 `pick(seed, 'title', pool)` 메커니즘(event.id 기반 결정론적 선택, 새로고침해도
+  동일 이벤트는 항상 같은 제목)으로 상세뷰 카드의 H1 제목만 별도 생성. DB의
+  `event.headline`(리스트 행 등에 쓰이는 값)은 전혀 건드리지 않음.
+- 6개 항목 × 12개 제목 풀 추가: `TRIPLE_DOUBLE_TITLES`/`DOUBLE_DOUBLE_TITLES`/
+  `STAT_EXPLOSION_TITLES`(featKind별 어투 차별화 유지)/`STREAK_TITLES`/
+  `GAME_RESULT_TITLES`/`WIN_STREAK_TITLES`. 모든 풀이 "이름 + rest" 형태로
+  이어붙여지도록(문자열 앞부분을 추측해서 자르는 게 아니라 애초에 정확한 이름으로
+  조립) 설계 — 카드가 이름 부분만 클릭 가능하게 만드는 기존 로직과 그대로 맞물림.
+  본문(오프닝 문장)과 겹치지 않도록 제목은 신문 헤드라인체(명사형 종결, 짧은 구)로
+  본문(완결된 문장)과 톤을 구분.
+- `views/multi/season/newsFeedCards.tsx` — `FeatCard`/`StreakCard`의
+  `HeadlineTitle` 호출, `GameResultCard`/`WinStreakCard`의 인라인 제목 분리 로직
+  4곳 모두 `event.headline` → `buildNewsTitle(event, teamBySlug) ?? event.headline`
+  으로 교체.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항 / 한계**: trade(`TradeCard`)는 아직 카드형 UI(`CardShell`)를 유지 중이라
+레터 H1 자체가 없어 이번 범위에서 제외 — TradeCard가 레터로 재설계되면 그때 제목
+풀 추가 필요. 서버/DB 변경이 전혀 없는 순수 클라이언트 작업이라 재배포 불필요.
+
+---
+
 ## 2026-09-01 — 쿼터별 득점 라벨 삭제 + 경기 결과 본문에 최우수선수 명시
 
 **배경**: 사용자가 (1) 쿼터별 득점 테이블 위 "쿼터별 득점" 텍스트 라벨을 빼 달라고
@@ -1042,6 +2549,188 @@ league_events엔 경기 전체 박스스코어(양팀 선수 전원 스탯)가 �
 
 **롤백 방법**: 세 파일 모두 git 커밋 해시로 이전 버전(바로 위 "경기 결과" 카드 레이아웃
 개편 커밋)으로 되돌리면 "경기 결과" 섹션이 그대로 복원됨(미러 쌍 아님, 각자 독립 롤백 가능).
+
+---
+
+## 2026-09-02 — 파워랭킹 본문을 다른 카드처럼 기사체 3~4문단으로 확장
+
+**배경**: 파워랭킹 카드 본문이 고정 한 줄("로스터 능력치와 조합을 바탕으로...")뿐이라 다른
+이벤트 카드(game_result/trade/win_streak 등)의 `buildNewsBlurb` 기반 기사체 문단과 비교해
+너무 짧다는 지적 — 동일한 템플릿 조합 방식(event.id 결정론적 해시로 문구 pool에서 선택)으로
+3~4문단 구성.
+
+**변경 파일**:
+- `services/multi/newsBlurb.ts` — `buildPowerRankingBlurb()` 신설, `buildNewsBlurb()` 스위치에
+  `case 'power_ranking'` 추가. 문단 구성: ①오프닝(1위 팀+점수, pool 3개) → ②1위 팀의 공수 성향
+  (offenseScore-defenseScore 격차 15 기준으로 공격형/수비형/밸런스형 3갈래, pool 각 2개) →
+  ③전월 대비 최대 상승/하락팀(둘 다 있으면 한 문장에 결합, 하나만 있으면 단독 문장, 둘 다
+  없으면 "첫 발표" 플레이버 pool로 대체) → ④클로저(pool 3개). 항상 4문단(단, 구버전 이벤트라
+  offenseScore/defenseScore가 없으면 ②를 생략해 3문단).
+- `views/multi/season/newsFeedCards.tsx` — `PowerRankingCard`가 고정 텍스트 대신
+  `buildNewsBlurb(event, teamBySlug)` 결과를 다른 카드와 동일하게 `<p>` 여러 개로 렌더링.
+
+**검증**: `npx tsc --noEmit` 베이스라인(64건) 대비 신규 에러 0건. MAIN 1 테스트 이벤트
+(`league_events.id=a3a16295...`, seed=이 id)로 실제 출력 결과 확인:
+> 로스터 능력치와 조합을 기준으로 집계한 이번 달 파워랭킹에서 토론토 노스가드스가 30개 팀 중
+> 1위(70.9점)에 올랐다. 공격 조합의 완성도가 특히 높게 평가되며 수비보다 득점 쪽에서 강점을
+> 지닌 팀으로 분석됐다. 첫 순위표인 만큼 다음 달 발표에서 어느 팀이 순위를 끌어올릴지에
+> 관심이 쏠린다. 트레이드와 로스터 변화가 다음 달 순위를 가를 변수가 될 전망이다.
+
+**롤백 방법**: `newsFeedCards.tsx`의 blurb 렌더 블록을 원래 고정 `<p>` 한 줄로 되돌리고,
+`newsBlurb.ts`의 `buildPowerRankingBlurb` 관련 추가분(함수+pool 상수+switch case)을 제거.
+
+**[후속, 2026-09-02] 4번째 문단(클로저) 삭제**: 사용자가 "클로저는 필요없을듯"이라고 요청 —
+`buildPowerRankingBlurb()` 끝의 `lines.push(pick(seed, 'closer', POWER_RANKING_CLOSERS)())` 및
+`POWER_RANKING_CLOSERS` pool 상수 삭제. 이제 3문단 고정(오프닝/공수 성향/전월 대비 순위 변동
+또는 첫 발표 플레이버). `npx tsc --noEmit` 신규 에러 0건.
+
+---
+
+## 2026-09-02 — 뉴스피드 전체에서 "내 팀" 강조(칩/도트/배경) 제거
+
+**배경**: 직전 항목에서 power_ranking 이벤트만 예외 처리했는데, 사용자가 "파워랭킹 말고도 모든
+뉴스에서 빼달라"고 확장 요청 — 전 이벤트 타입에서 "내 팀" 시각적 강조를 전부 제거.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`, `views/multi/season/MultiNewsFeedView.tsx`,
+`pages/MultiSeasonPage.tsx`
+
+**Before**:
+- `newsFeedCards.tsx`: `GameResultCard`/`FeatCard`/`StreakCard`/`WinStreakCard`/`TradeCard` 5곳
+  모두 `{event.involvesMyTeam && <span>...내 팀...</span>}` 배지, `LegacyCard`는
+  `event.involvesMyTeam ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900 border-slate-800'`
+- `MultiNewsFeedView.tsx`: 좌측 목록 항목 앞 초록 도트(`e.involvesMyTeam && e.type !== 'power_ranking' ? 'bg-emerald-500' : ''`)
+- `MultiSeasonPage.tsx`: 시즌 홈 위젯 배경(`e.involvesMyTeam && e.type !== 'power_ranking' ? 'bg-emerald-500/10' : ''`)
+
+**After**: 위 8곳 전부 제거/고정 스타일로 단순화(직전 커밋의 `e.type !== 'power_ranking'` 타입
+예외 조건도 더 이상 필요 없어져 함께 삭제). `LeagueEvent.involvesMyTeam` 필드 자체와
+`useLeagueHeadlines`/`useLeagueNewsFeed`의 `myTeamSlug` 파라미터는 남겨둠(호출부 시그니처까지
+바꾸는 더 큰 리팩터라 이번 요청 범위를 넘어선다고 판단) — 계산은 되지만 현재 렌더링에서
+참조하는 곳은 없음.
+
+**검증**: `npx tsc --noEmit` 베이스라인(64건) 대비 신규 에러 0건.
+
+**롤백 방법**: 이번 커밋 diff를 되돌리면 각 파일의 조건부 스타일이 복원됨.
+
+---
+
+## 2026-09-02 — 파워랭킹 뉴스의 "내 팀" 강조(칩/도트) 제거
+
+**배경**: power_ranking 이벤트는 리그 전체 30팀이 `team_ids`에 다 들어가 있어 모든 유저에게
+`involvesMyTeam=true`가 뜬다 — "내 팀만 강조"라는 원래 취지에 안 맞아 사용자가 이 타입만
+강조를 빼달라고 요청. `PowerRankingCard` 자체엔 애초에 "내 팀" 칩이 없었으므로(이전 개편에서
+제거됨), 남은 두 곳(뉴스 목록 도트/배경)만 수정.
+
+**변경 파일**:
+- `views/multi/season/MultiNewsFeedView.tsx` — 좌측 헤드라인 목록의 초록 도트 조건에
+  `&& e.type !== 'power_ranking'` 추가
+- `pages/MultiSeasonPage.tsx` — 시즌 홈 "리그 소식" 위젯의 배경 강조 조건에 동일하게 추가
+
+**Before**: `e.involvesMyTeam ? 'bg-emerald-500' : ''` (도트) / `e.involvesMyTeam ? 'bg-emerald-500/10' : ''` (배경) — 타입 구분 없이 전부 적용.
+
+**After**: `e.involvesMyTeam && e.type !== 'power_ranking' ? ... : ''` — power_ranking만 예외
+처리, 다른 이벤트 타입(트레이드/개인기록 등)의 "내 팀" 강조는 그대로 유지.
+
+**검증**: `npx tsc --noEmit` 베이스라인(64건) 대비 신규 에러 0건.
+
+**롤백 방법**: 두 파일에서 `&& e.type !== 'power_ranking'` 조건만 제거하면 원복.
+
+---
+
+## 2026-09-02 — 파워랭킹에 "재능/공격/수비" 컬럼 분해 추가
+
+**배경**: 사용자가 파워스코어 구성요소(talentScore/compositionScore/positionBalanceScore)를
+질문한 뒤, compositionScore(11개 모듈 조화평균 단일값)를 "공격"/"수비" 두 컬럼으로 쪼개서 보여
+달라고 요청. talentScore는 "재능" 컬럼으로 그대로 노출.
+
+**변경 파일**:
+- `services/multi/powerRanking.ts` (client), `server/src/shared/multi/powerRanking.ts` (server 미러)
+  — `OFFENSE_MODULES`(rimFinishing/postCraft/spotUpShooting/shotCreation/playmaking/
+  offballAttack, 6개)/`DEFENSE_MODULES`(poaDefense/teamDefense/rimProtection/rebounding/
+  motorAvailability, 5개) 분류 추가. `TeamPowerRanking`에 `offenseScore`/`defenseScore`
+  필드 추가(각 모듈군 백분위의 조화평균 — compositionScore와 동일 방식, 하위 분해).
+  rebounding은 defReb 비중(34%)이 offReb(24%)보다 높아 수비 쪽에, motorAvailability(체력/
+  허슬/내구성)는 득점 관여가 없어 수비 쪽에 배정(완전히 깔끔한 분류는 아님 — 2분류 요청이라
+  임의 배정, 이견 있으면 재분류 가능).
+- `server/src/postPowerRankingNews.ts` — payload의 팀별 엔트리에 `talentScore`/`offenseScore`/
+  `defenseScore` 추가(소수 1자리 반올림).
+- `services/multi/leagueEventPayload.ts` — `PowerRankingEntry`에 위 3필드 optional로 추가
+  (구 이벤트 호환 — 없으면 파서가 undefined로 통과, 카드가 '-' 표시).
+- `views/multi/season/newsFeedCards.tsx` — `PowerRankingCard` 테이블에 재능/공격/수비 컬럼
+  3개 추가(순위·팀·재능·공격·수비·파워스코어 순).
+
+**검증**: client/server 둘 다 `npx tsc --noEmit` 베이스라인(64/33건) 대비 신규 에러 0건. MAIN 1
+리그(room_id=9b43a612...)의 테스트 이벤트(`league_events.id=a3a16295...`)는 실제 DB 값으로
+재계산해 payload를 UPDATE로 갱신 완료.
+
+**롤백 방법**: 4개 파일에서 `offenseScore`/`defenseScore`/`OFFENSE_MODULES`/`DEFENSE_MODULES`
+관련 추가분만 제거하면 이전 상태(재능/공격/수비 컬럼 없이 파워스코어만)로 복원됨.
+
+---
+
+## 2026-09-01 — 파워랭킹 카드 UI 개편 (전체 30팀 테이블 + 내 팀 배지 제거)
+
+**배경**: 사용자 요청 — (1) 다른 뉴스 카드(TradeCard/WinStreakCard)와 동일한 "레터" 구조를
+그대로 따를 것, (2) top5만 보여주던 걸 1~30위 전체 + 스코어로 확장, (3) "내 팀" 강조 배지 제거.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `PowerRankingCard`
+
+**Before**: `full.slice(0, 5)`로 5팀만 `<ol>` 리스트로 표시, 우상단에 `event.involvesMyTeam`
+"내 팀" 배지, 리스트가 헤더 바로 아래(리서/폴러는 리스트 뒤).
+
+**After**: `full`(30팀 전체)을 `TradePlayerTable`과 동일한 `<table>` 구조(순위/팀/파워스코어
+3열, `table-fixed`)로 렌더링, "내 팀" 배지 완전 제거, 리서/폴러 콜아웃을 헤더 바로 아래(표
+위)로 이동. [후속] 헤더 제목 옆 `BarChart3` 그래프 아이콘도 사용자 요청으로 제거(제목 텍스트만
+남김, `<h1>`의 `flex items-center gap-2` 레이아웃 클래스도 함께 제거) — `BarChart3` import는
+`HEADLINE_ICON` 맵(레거시 폴백 카드용)에서 여전히 써서 그대로 유지.
+
+**검증**: `npx tsc --noEmit` 통과(베이스라인 64건과 동일, 신규 에러 0건) — 아이콘 제거 후도 동일.
+
+**롤백 방법**: `PowerRankingCard` 함수 본문을 이전 버전(`<ol>` + top5 + 내 팀 배지 + 헤더 아이콘)으로
+되돌리면 됨.
+
+---
+
+## 2026-09-01 — 매월 초 파워랭킹 자동 재계산 + 뉴스피드 게시
+
+**배경**: 이전에 만든 `calculatePreseasonPowerRankings()`(시즌 개막 전 1회성 계산)를 시즌 진행
+중에도 "매월 초"마다 자동으로 재계산해 뉴스피드에 올려달라는 요청. 서버가 가상 시즌 날짜
+(`rooms.sim_date`, YYYY-MM-DD)를 30초 폴링으로 전진시키는 유일한 지점(`server/src/scheduler.ts`
+`advanceSimDates()`)이 이미 존재해 여기에 "월(YYYY-MM) 경계 감지"를 얹었다.
+
+**변경 파일**:
+- `server/src/shared/multi/powerRanking.ts` (신규, server — `services/multi/powerRanking.ts`의
+  미러. calcModuleScores는 client의 `archetypeEvaluator.ts` 전체를 이식하는 대신 필요한 11개
+  모듈 추출 로직만 로컬로 재현 — 계산 자체는 이미 이식된 `ovrEngine.ts`/`ovrUtils.ts` 재사용)
+- `server/src/postPowerRankingNews.ts` (신규, server 전용 — client 미러 없음. DB 조회+
+  `league_events` insert 오케스트레이션)
+- `server/src/scheduler.ts` — `advanceSimDates()` 수정 (client 미러 없음, 서버 전용 로직)
+- `services/multi/leagueEventPayload.ts` — `PowerRankingDetail` 타입 + 파서 케이스 추가
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `'power_ranking'` 추가, `STORY_TYPES`에 등록
+- `views/multi/season/newsFeedCards.tsx` — `PowerRankingCard` 신설, `StoryCard`/`extractEventPlayerIds`
+  디스패처에 등록
+- `views/multi/season/MultiNewsFeedView.tsx`, `pages/MultiSeasonPage.tsx` — 필터/아이콘 맵에 타입 등록
+
+**Before**: `advanceSimDates()`는 방별 다음 `sim_date`를 계산해 `.neq()` 조건으로 UPDATE만 하고
+끝 — 이전 값을 조회하지 않아 "월이 바뀌었는지" 판단할 수 없었음.
+
+**After**: UPDATE 직전에 방들의 현재 `sim_date`/`season_number`를 먼저 조회(`prevStateByRoom`)해
+`prevDate.slice(0,7) !== nextDate.slice(0,7)`(또는 `prevDate`가 아예 없던 첫 배정)이면
+`recomputeAndPostPowerRankings(roomId, leagueId, seasonNumber, month)`를 호출. 이 함수는
+`league_teams`+`meta_players`로 로스터를 재구성해 `calculatePreseasonPowerRankings()`를 돌리고,
+같은 방의 직전 `power_ranking` 이벤트(`payload.full`)와 순위를 비교해 최대 상승/하락 팀을 찾은 뒤
+`league_events`에 `type:'power_ranking'`으로 insert(`payload: {v:1, headline, month, full, riser?,
+faller?}`). 매 tick마다 신선한 DB 상태로 판정하므로 같은 달에 중복 게시되지 않음(다음 tick엔
+`prevDate`가 이미 새 달로 갱신돼 있어 재트리거 안 됨).
+
+**검증**: client(`npx tsc --noEmit`)/server(`server/npx tsc --noEmit`) 둘 다 이 변경으로 인한
+신규 에러 0건(기존 베이스라인 각각 64건/33건과 동일, 두 변경 전후 diff 없음).
+
+**롤백 방법**: `scheduler.ts`의 `advanceSimDates()` 수정분만 원복(월 감지+`recomputeAndPostPowerRankings`
+호출 블록 제거, import 제거)하면 자동 게시가 즉시 멈춘다. 신규 파일 3개(`postPowerRankingNews.ts`,
+`server/src/shared/multi/powerRanking.ts`, 클라이언트 표시 로직)는 삭제해도 다른 곳에서 참조하지
+않아 안전. `league_events`에 이미 쌓인 `power_ranking` 타입 행은 그대로 둬도 무해(타입 CHECK
+제약 없음 — 프론트가 모르는 타입은 `LegacyCard`로 폴백).
 
 ---
 

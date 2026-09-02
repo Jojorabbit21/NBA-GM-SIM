@@ -29,6 +29,25 @@ export function buildPlayerCardMap(
     return m;
 }
 
+/** buildPlayerCardMap()이 만든 맵의 각 Player.stats(항상 0 — poolPlayers는 meta_players만
+ *  조회해서 stats를 안 담음)를, 별도로 조회한 시즌 스탯(예: usePlayerSeasonStatsBatch)으로
+ *  덮어써서 hover 카드가 "시즌 기록 없음" 대신 실제 스탯을 보여주게 한다. statsByPlayerId에
+ *  없는 선수는 원본 그대로(불변 — 새 Map/엔트리만 만들고 기존 객체는 변경하지 않음). */
+export function mergeStatsIntoPlayerCardMap(
+    base: PlayerCardMap,
+    statsByPlayerId: Record<string, Partial<PlayerStats>>,
+): PlayerCardMap {
+    if (Object.keys(statsByPlayerId).length === 0) return base;
+    const merged: PlayerCardMap = new Map();
+    for (const [id, entry] of base) {
+        const stats = statsByPlayerId[id];
+        merged.set(id, stats
+            ? { ...entry, player: { ...entry.player, stats: { ...entry.player.stats, ...stats } } }
+            : entry);
+    }
+    return merged;
+}
+
 const HOVER_DELAY_MS = 500;
 const POPUP_WIDTH = 300;
 const POPUP_HEIGHT_ESTIMATE = 340;

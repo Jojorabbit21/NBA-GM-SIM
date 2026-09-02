@@ -9,7 +9,8 @@ import { parseLeagueEventPayload, type LeagueEventDetail } from '../services/mul
 // (server/src/simRunner.ts, respond_trade_offer RPC), 여기서는 최근 N개를 그대로
 // 가져오기만 하면 된다 — ZenGM의 processEvents() 같은 읽기 시점 재필터링 불필요.
 
-export type LeagueEventType = 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'trade';
+export type LeagueEventType = 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'trade' | 'power_ranking'
+    | 'mvp_award' | 'dpoy_award' | 'all_nba_team' | 'all_def_team';
 
 export interface LeagueEvent {
     id: string;
@@ -76,7 +77,7 @@ export function useLeagueHeadlines(roomId: string | undefined, myTeamSlug: strin
 // (leagueEvents.ts 참고), score>10(=마진 보너스가 붙은 것만)을 "특이케이스" 기준으로 삼는다.
 // PostgREST .or()로 "STORY_TYPES 중 하나 OR (game_result면서 score>10)"을 한 쿼리로 표현.
 const STORIES_PAGE_SIZE = 30;
-const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade'];
+const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade', 'power_ranking', 'mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'];
 const GAME_RESULT_MIN_SCORE = 15;
 // [2026-09-01] 헤더 필터 "빅 뉴스만" 기준 — game_result 대량득점차(margin≥20)/트레이드/
 // 트리플더블/고연승과 같은 급의 중요도. leagueEvents.ts의 score 산정 범위(10~30)에서 상위권.
@@ -122,8 +123,16 @@ export function useLeagueNewsFeed(roomId: string | undefined, myTeamSlug: string
             if (bigNewsOnly) query = query.gte('score', BIG_NEWS_MIN_SCORE);
             if (simDateFrom) query = query.gte('sim_date', simDateFrom);
             if (simDateTo) query = query.lte('sim_date', simDateTo);
+            // [버그 수정] created_at만으로 정렬 + range() 오프셋 페이징을 하면, 같은 트랜잭션에서
+            // 한 번에 여러 행을 insert할 때(예: postSeasonAwards.ts가 mvp_award/dpoy_award/
+            // all_nba_team/all_def_team 4건을 한 insert()로 묶어 넣음 — Postgres now()는 같은
+            // 문장 내에서 전부 동일값) created_at이 완전히 같은 행이 여러 개 생긴다. 동점 행
+            // 사이의 상대 순서가 페이지마다 안정적으로 보장되지 않아 "더보기"로 다음 페이지를
+            // 불러오면 같은 행이 두 페이지에 걸쳐 중복 반환되거나(React key 중복 경고) 누락될
+            // 수 있음 — id를 2차 정렬 키로 추가해 정렬을 완전히 결정론적으로 만들어 해결.
             const { data, error } = await query
                 .order('created_at', { ascending })
+                .order('id', { ascending: true })
                 .range(pageParam, pageParam + STORIES_PAGE_SIZE - 1);
             if (error) throw error;
             return (data ?? []).map((row: any) => mapRow(row, myTeamSlug));

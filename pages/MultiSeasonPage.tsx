@@ -2,7 +2,7 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ChevronRight, ChevronLeft, Flame, TrendingUp, Star, ArrowLeftRight, Tv, type LucideIcon } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Flame, TrendingUp, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, type LucideIcon } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../hooks/useLeagueRawStats';
@@ -341,6 +341,11 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     player_streak: Flame,
     win_streak: TrendingUp,
     trade: ArrowLeftRight,
+    power_ranking: BarChart3,
+    mvp_award: Trophy,
+    dpoy_award: Shield,
+    all_nba_team: Star,
+    all_def_team: Shield,
 };
 
 const LeagueHeadlinesCard: React.FC<{
@@ -364,7 +369,7 @@ const LeagueHeadlinesCard: React.FC<{
                         return (
                             <li
                                 key={e.id}
-                                className={`flex items-start gap-2 px-3 py-2 ${e.involvesMyTeam ? 'bg-emerald-500/10' : ''}`}
+                                className="flex items-start gap-2 px-3 py-2"
                             >
                                 <Icon size={14} className="text-slate-500 mt-0.5 shrink-0" />
                                 <span className="text-xs text-slate-300 ko-normal leading-snug">{e.headline}</span>

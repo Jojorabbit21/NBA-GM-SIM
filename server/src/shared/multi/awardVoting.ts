@@ -1,11 +1,14 @@
 /**
- * 정규시즌 어워드 투표 엔진
- * 100명 미디어 투표인단이 MVP, DPOY, All-NBA, All-Defensive를 투표.
- * 각 투표인은 시드 기반 노이즈로 개인차가 있어 자연스러운 득표 분포를 만듦.
+ * awardVoting.ts — 서버 미러.
+ * 원본: utils/awardVoting.ts. 스코어링 공식/가중치를 바꿀 땐 반드시 양쪽 다 같이 고칠 것
+ * (client/server 미러 쌍 — dev-log.md 기록 대상).
+ *
+ * 원본과의 유일한 차이: calculatePlayerOvr(utils/constants.ts, 클라 전용) 대신 서버에
+ * 이미 이식되어 있는 calculateOvr(ovrUtils.ts)를 사용. 스코어링 로직 자체는 100% 동일.
  */
 
-import type { Team, Player } from '../types';
-import { calculatePlayerOvr } from './constants';
+import type { Team, Player } from '../types.ts';
+import { calculateOvr } from '../utils/ovrUtils.ts';
 
 // ── 타입 ──
 
@@ -13,13 +16,9 @@ export interface AwardStatLine {
     ppg: number; rpg: number; apg: number; spg: number; bpg: number;
     mpg: number; tsPct: number; gamesPlayed: number;
     fgPct: number; p3Pct: number; ftPct: number; orebpg: number; drebpg: number;
-    /** 상대가 이 선수에게 컨테스트당했을 때의 필드골 성공률(DFG%) — contestedAttempted=0이면 0. */
     dfgPct: number;
-    /** 선발 출전 횟수(GS) — 시즌 총합(경기당 평균 아님). */
     gamesStarted: number;
-    /** 경기당 턴오버(TOPG). */
     tovpg: number;
-    /** 경기당 개인파울(PF). */
     pfpg: number;
 }
 
@@ -32,7 +31,6 @@ export interface AwardCandidate {
     statLine: AwardStatLine;
     teamWins: number;
     teamLosses: number;
-    // 스코어링용 내부 필드
     _winPct: number;
     _tovpg: number;
     _drebpg: number;
@@ -47,8 +45,8 @@ export interface AwardCandidate {
 
 export interface VoterBallot {
     voterId: number;
-    mvp: string[];    // playerId[5]
-    dpoy: string[];   // playerId[3]
+    mvp: string[];
+    dpoy: string[];
 }
 
 export interface AwardRankEntry {
@@ -61,8 +59,8 @@ export interface AwardRankEntry {
 export interface AllTeamPlayer {
     playerId: string; playerName: string; teamId: string; position: string; ovr: number;
     votes: number; pos: 'G' | 'F' | 'C';
-    tierVotes: number[];   // [1st팀 득표, 2nd팀 득표, (3rd팀 득표)]
-    totalPoints: number;   // 가중 합계 (1st×3 + 2nd×2 + 3rd×1 등)
+    tierVotes: number[];
+    totalPoints: number;
     statLine: AwardStatLine;
 }
 
@@ -83,10 +81,10 @@ export interface SeasonAwardsContent {
 
 const VOTER_COUNT = 100;
 const MIN_GAMES = 41;
-const MVP_POINTS = [10, 7, 5, 3, 1];    // 1st~5th
-const DPOY_POINTS = [5, 3, 1];           // 1st~3rd
+const MVP_POINTS = [10, 7, 5, 3, 1];
+const DPOY_POINTS = [5, 3, 1];
 
-// ── 시드 기반 랜덤 (간단한 해시) ──
+// ── 시드 기반 랜덤 ──
 
 function seedHash(str: string): number {
     let h = 0;
@@ -99,14 +97,13 @@ function seedHash(str: string): number {
 function seededRandom(seed: string, voterId: number, category: string): number {
     const key = `${seed}_${voterId}_${category}`;
     let h = seedHash(key);
-    // xorshift32로 0~1 사이 값 생성
     h ^= h << 13; h ^= h >> 17; h ^= h << 5;
     return (((h < 0 ? ~h : h) % 10000) / 10000);
 }
 
 function voterNoise(seed: string, voterId: number, category: string): number {
     const r = seededRandom(seed, voterId, category);
-    return (r - 0.5) * 0.4; // ±20%
+    return (r - 0.5) * 0.4;
 }
 
 // ── 포지션 그룹 ──
@@ -140,7 +137,7 @@ function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerM
                 playerName: p.name,
                 teamId: team.id,
                 position: p.position,
-                ovr: calculatePlayerOvr(p),
+                ovr: calculateOvr(p),
                 statLine: {
                     ppg: p.stats.pts / g,
                     rpg: p.stats.reb / g,
@@ -169,7 +166,7 @@ function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerM
                 _intDef: p.intDef,
                 _perDef: p.perDef,
                 _stealAttr: p.steal,
-                _blkAttr: (p as any).blk ?? 0, // blk 어트리뷰트
+                _blkAttr: (p as any).blk ?? 0,
                 _helpDefIq: p.helpDefIq,
                 _defConsist: p.defConsist,
             });
@@ -228,14 +225,12 @@ function simulateVoterBallot(
     candidates: AwardCandidate[],
     seed: string
 ): VoterBallot {
-    // MVP: 상위 5명
     const mvpNoise = voterNoise(seed, voterId, 'mvp');
     const mvpScored = candidates
         .map(c => ({ id: c.playerId, score: scoreMVP(c, mvpNoise + voterNoise(seed, voterId, `mvp_${c.playerId}`)) }))
         .sort((a, b) => b.score - a.score);
     const mvpPicks = mvpScored.slice(0, 5).map(s => s.id);
 
-    // DPOY: 상위 3명
     const dpoyScored = candidates
         .map(c => ({ id: c.playerId, score: scoreDPOY(c, voterNoise(seed, voterId, `alldef_${c.playerId}`)) }))
         .sort((a, b) => b.score - a.score);
@@ -252,12 +247,10 @@ function simulateAllTeamBallot(
     category: string,
     teamCount: number
 ): { guards: string[]; forwards: string[]; center: string }[] {
-    // 포지션별 분류
     const guards = candidates.filter(c => positionGroup(c.position) === 'Guard');
     const forwards = candidates.filter(c => positionGroup(c.position) === 'Forward');
     const centers = candidates.filter(c => positionGroup(c.position) === 'Center');
 
-    // 각 그룹 스코어링 (투표인별 노이즈)
     const scoreAndSort = (group: AwardCandidate[]) =>
         group
             .map(c => ({ id: c.playerId, score: scoreFn(c, voterNoise(seed, voterId, `${category}_${c.playerId}`)) }))
@@ -326,8 +319,7 @@ function tallyAllTeams(
     candidateMap: Map<string, AwardCandidate>,
     teamCount: number
 ): AllTeamEntry[] {
-    // 각 포지션 그룹별 1st team 득표수 집계
-    const guardVotes = new Map<string, number[]>(); // playerId → [tier0 votes, tier1 votes, ...]
+    const guardVotes = new Map<string, number[]>();
     const forwardVotes = new Map<string, number[]>();
     const centerVotes = new Map<string, number[]>();
 
@@ -349,7 +341,6 @@ function tallyAllTeams(
         }
     }
 
-    // 총 득표 (가중: 1st=3, 2nd=2, 3rd=1)
     const tierWeights = teamCount === 3 ? [3, 2, 1] : [2, 1];
     const totalScore = (votes: number[]): number =>
         votes.reduce((sum, v, i) => sum + v * (tierWeights[i] || 1), 0);
@@ -369,7 +360,6 @@ function tallyAllTeams(
     for (let tier = 0; tier < teamCount; tier++) {
         const players: AllTeamPlayer[] = [];
 
-        // Guard 2명
         let gCount = 0;
         for (const g of gRanked) {
             if (gCount >= 2) break;
@@ -387,7 +377,6 @@ function tallyAllTeams(
             gCount++;
         }
 
-        // Forward 2명
         let fCount = 0;
         for (const f of fRanked) {
             if (fCount >= 2) break;
@@ -405,7 +394,6 @@ function tallyAllTeams(
             fCount++;
         }
 
-        // Center 1명
         for (const ct of cRanked) {
             if (usedIds.has(ct.pid)) continue;
             const c = candidateMap.get(ct.pid);
@@ -431,7 +419,7 @@ function tallyAllTeams(
 
 export function runAwardVoting(teams: Team[], seed?: string): SeasonAwardsContent {
     const effectiveSeed = seed || String(Date.now());
-    const { candidates, playerMap } = buildCandidates(teams);
+    const { candidates } = buildCandidates(teams);
 
     if (candidates.length === 0) {
         return { mvpRanking: [], dpoyRanking: [], allNbaTeams: [], allDefTeams: [], ballots: [] };
@@ -440,26 +428,21 @@ export function runAwardVoting(teams: Team[], seed?: string): SeasonAwardsConten
     const candidateMap = new Map<string, AwardCandidate>();
     for (const c of candidates) candidateMap.set(c.playerId, c);
 
-    // 100명 투표 시뮬레이션
     const ballots: VoterBallot[] = [];
     const allNbaBallots: { guards: string[]; forwards: string[]; center: string }[][] = [];
     const allDefBallots: { guards: string[]; forwards: string[]; center: string }[][] = [];
 
     for (let v = 0; v < VOTER_COUNT; v++) {
-        // MVP + DPOY ballot
         const ballot = simulateVoterBallot(v, candidates, effectiveSeed);
         ballots.push(ballot);
 
-        // All-NBA ballot (3팀)
         const nbaBallot = simulateAllTeamBallot(v, candidates, effectiveSeed, scoreAllNBA, 'allnba', 3);
         allNbaBallots.push(nbaBallot);
 
-        // All-Defensive ballot (2팀)
         const defBallot = simulateAllTeamBallot(v, candidates, effectiveSeed, scoreAllDef, 'alldef', 2);
         allDefBallots.push(defBallot);
     }
 
-    // 집계
     const mvpRanking = tallyPointVoting(ballots, candidateMap, 'mvp', MVP_POINTS, 5);
     const dpoyRanking = tallyPointVoting(ballots, candidateMap, 'dpoy', DPOY_POINTS, 3);
     const allNbaTeams = tallyAllTeams(allNbaBallots, candidateMap, 3);

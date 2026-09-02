@@ -48,8 +48,15 @@ export interface PlayerStreakPayload {
     opponentSlug: string;
     /** [2026-09-01] 단수 streak → 복수 streaks로 변경 — 한 선수가 같은 경기에서 여러
      * 규칙(예: 20+득점 연속 + 10+리바운드 연속)을 동시에 만족하면 이벤트를 여러 건이 아니라
-     * 하나로 묶어서 배열에 전부 담는다(detectPlayerStatStreaks 참고). */
-    streaks: { ruleKey: string; statKey: string; min: number; count: number; label: string }[];
+     * 하나로 묶어서 배열에 전부 담는다(detectPlayerStatStreaks 참고).
+     * [2026-09-02] 각 규칙에 games 배열 추가 — 그 연속기록을 구성하는 경기들(최신순, win_streak의
+     * WinStreakPayload.games와 동일한 패턴). statValue는 그 경기에서 이 선수의 해당 스탯
+     * (statKey) 실측치 — 팀 전체 MVP가 아니라 이 선수 개인의 박스스코어 한 줄이라 win_streak의
+     * mvp 필드와 달리 그냥 숫자 하나(카드가 "N PTS"처럼 라벨을 직접 붙임). */
+    streaks: {
+        ruleKey: string; statKey: string; min: number; count: number; label: string;
+        games: { gameId: string; gameDate: string; homeSlug: string; awaySlug: string; homeScore: number; awayScore: number; statValue: number }[];
+    }[];
     /** 연속기록이 갱신(보고 기준 도달)된 바로 그 경기의 최종 스코어. */
     homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
 }
@@ -176,21 +183,13 @@ export function detectGameResult(
 
     const mvpHome = pickTeamMvp(homeBox);
     const mvpAway = pickTeamMvp(awayBox);
-    // 헤드라인(폴백/레거시 카드 전용 텍스트)의 MVP는 기존 그대로 "양팀 통합 최댓값"
-    // 하나 — pickTeamMvp를 concat된 배열에 그대로 적용하면 이전 pickGameMvp와 동일한
-    // 결과(승패 무관, 두 팀 중 PIE가 가장 높은 선수 하나). 구조화 payload(mvpHome/mvpAway)
-    // 와는 별개로 최소 변경 원칙상 헤드라인 로직 자체는 건드리지 않는다.
-    const headlineMvp = pickTeamMvp([...(homeBox ?? []), ...(awayBox ?? [])]);
-    const mvpText = headlineMvp
-        ? ` (MVP: ${headlineMvp.name}${headlineMvp.stats.length > 0 ? ' ' + headlineMvp.stats.map(s => `${s.value} ${s.label}`).join(', ') : ''})`
-        : '';
 
     const closeGame = margin <= CLOSE_GAME_MARGIN;
     const buzzerBeater = detectBuzzerBeater(shotEvents, homeTeamSlug, awayTeamSlug, homeScore, awayScore);
 
     return {
         type: 'game_result',
-        headline: `${winnerName}, ${loserName}에게 ${winnerScore}-${loserScore} 승리${mvpText}`,
+        headline: `${winnerName}, ${loserName}에게 ${winnerScore}-${loserScore} 승리`,
         score: 10 + (margin >= 20 ? 5 : 0) + (margin >= 30 ? 5 : 0) + (closeGame ? 5 : 0) + (buzzerBeater ? 10 : 0),
         teamIds: [homeTeamSlug, awayTeamSlug],
         playerIds: [mvpHome?.playerId, mvpAway?.playerId].filter((id): id is string => !!id),
@@ -365,7 +364,7 @@ export async function detectWinStreak(
     roomId: string,
     teamSlug: string,
     teamName: string,
-    recentGames: { id: string; game_date: string; home_team_id: string; away_team_id: string; home_score: number | null; away_score: number | null }[],
+    recentGames: { game_id: string; game_date: string; home_team_id: string; away_team_id: string; home_score: number | null; away_score: number | null }[],
 ): Promise<DetectedEvent | null> {
     let streak = 0;
     for (const g of recentGames) {
@@ -378,7 +377,7 @@ export async function detectWinStreak(
     if (streak < WIN_STREAK_THRESHOLD) return null;
 
     const streakGames = recentGames.slice(0, streak);
-    const gameIds = streakGames.map(g => g.id);
+    const gameIds = streakGames.map(g => g.game_id);
     const { data: pbpRows } = await supabase
         .from('game_pbp')
         .select('game_id, home_team_id, home_box, away_box')
@@ -387,12 +386,12 @@ export async function detectWinStreak(
     const pbpByGameId = new Map<string, any>((pbpRows ?? []).map((r: any) => [r.game_id, r]));
 
     const games = streakGames.map(g => {
-        const pbp = pbpByGameId.get(g.id);
+        const pbp = pbpByGameId.get(g.game_id);
         const isHome = g.home_team_id === teamSlug;
         const myBox: PlayerBoxScore[] | undefined = pbp ? (isHome ? pbp.home_box : pbp.away_box) : undefined;
         const mvp = pickTeamMvp(myBox);
         return {
-            gameId: g.id,
+            gameId: g.game_id,
             gameDate: g.game_date,
             homeSlug: g.home_team_id, awaySlug: g.away_team_id,
             homeScore: g.home_score!, awayScore: g.away_score!,
@@ -497,6 +496,46 @@ export async function detectPlayerStatStreaks(
         // playedPlayers가 homeBox/awayBox에서만 뽑히므로 항상 존재.
         const teamInfo = slugByPlayerId.get(p.playerId)!;
         const bestCount = Math.max(...merged.map(m => m.count));
+
+        // [2026-09-02] "연속기록 중인 모든 경기의 결과를 표시할 수 있나" 요청 — detectWinStreak과
+        // 동일한 패턴: 이 선수 팀의 최근 경기(가장 긴 규칙의 count만큼)를 가져와 game_pbp를
+        // 배치 조회한 뒤, 규칙별로 필요한 만큼만 슬라이스해서 그 경기에서 이 선수의 해당 스탯
+        // 실측치를 뽑는다. bestCount가 가장 긴 윈도(여러 규칙이 동시에 있으면 짧은 규칙은
+        // 앞부분만 사용).
+        const { data: recentGames } = await supabase
+            .from('games')
+            .select('game_id, game_date, home_team_id, away_team_id, home_score, away_score')
+            .eq('room_id', roomId)
+            .eq('played', true)
+            .or(`home_team_id.eq.${teamInfo.teamSlug},away_team_id.eq.${teamInfo.teamSlug}`)
+            .order('game_date', { ascending: false })
+            .order('game_seq', { ascending: false })
+            .limit(bestCount);
+        const streakGames = recentGames ?? [];
+        const gameIds = streakGames.map(g => g.game_id);
+        const { data: pbpRows } = gameIds.length > 0
+            ? await supabase
+                .from('game_pbp')
+                .select('game_id, home_team_id, home_box, away_box')
+                .eq('room_id', roomId)
+                .in('game_id', gameIds)
+            : { data: [] as any[] };
+        const pbpByGameId = new Map<string, any>((pbpRows ?? []).map((r: any) => [r.game_id, r]));
+
+        const gamesForRule = (statKey: string, count: number) => streakGames.slice(0, count).map(g => {
+            const pbp = pbpByGameId.get(g.game_id);
+            const isHome = g.home_team_id === teamInfo.teamSlug;
+            const box: PlayerBoxScore[] | undefined = pbp ? (isHome ? pbp.home_box : pbp.away_box) : undefined;
+            const playerBox = box?.find(b => b.playerId === p.playerId);
+            const statValue = playerBox ? (playerBox as any)[statKey] as number : 0;
+            return {
+                gameId: g.game_id, gameDate: g.game_date,
+                homeSlug: g.home_team_id, awaySlug: g.away_team_id,
+                homeScore: g.home_score!, awayScore: g.away_score!,
+                statValue,
+            };
+        });
+
         events.push({
             type: 'player_streak',
             headline: `${p.playerName}, ${merged.map(m => `${m.count}경기 연속 ${m.rule.label}`).join(' · ')}`,
@@ -507,7 +546,10 @@ export async function detectPlayerStatStreaks(
                 player: { id: p.playerId, name: p.playerName },
                 teamSlug: teamInfo.teamSlug,
                 opponentSlug: teamInfo.opponentSlug,
-                streaks: merged.map(m => ({ ruleKey: m.rule.key, statKey: m.rule.statKey, min: m.rule.min, count: m.count, label: m.rule.label })),
+                streaks: merged.map(m => ({
+                    ruleKey: m.rule.key, statKey: m.rule.statKey, min: m.rule.min, count: m.count, label: m.rule.label,
+                    games: gamesForRule(m.rule.statKey, m.count),
+                })),
                 homeSlug: homeTeamSlug, awaySlug: awayTeamSlug, homeScore, awayScore,
             },
         });
