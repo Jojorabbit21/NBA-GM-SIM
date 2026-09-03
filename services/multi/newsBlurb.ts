@@ -37,6 +37,7 @@ const i = (w: string) => josa(w, '이', '가');   // 주격
 const eun = (w: string) => josa(w, '은', '는'); // 주제격
 const eul = (w: string) => josa(w, '을', '를'); // 목적격
 const gwa = (w: string) => josa(w, '과', '와'); // 접속(~와)
+const euro = (w: string) => josa(w, '으로', '로'); // 도구/방향격(~으로)
 
 function teamName(slug: string, teamBySlug: Map<string, LeagueTeamRow>): string {
     return teamBySlug.get(slug)?.team_name ?? slug;
@@ -394,6 +395,128 @@ function buildPowerRankingBlurb(d: Extract<LeagueEvent['detail'], { kind: 'power
     return lines;
 }
 
+// ── injury(부상 뉴스, GRADE3+) ───────────────────────────────────────────────
+// [2026-09-03] "부상 발생 시 뉴스, 본문 2~3줄" 요청 — 등급 수치("Grade3" 등)는 본문에서
+// 직접 언급하지 않는다(부상 등급 표는 InjuryCard 하단 테이블이 별도로 보여줌). 대신
+// Grade5(전방십자인대 파열 등 장기 이탈)만 더 무거운 톤의 플레이버로 갈라 톤을 살짝
+// 차별화했다.
+
+interface InjuryVars { player: string; team: string; injuryType: string }
+
+const INJURY_OPENERS: ((v: InjuryVars) => string)[] = [
+    v => `${eun(v.team)} ${i(v.player)} ${v.injuryType}(으)로 이탈했다고 공식 발표했다.`,
+    v => `${i(v.player)} ${v.injuryType} 진단을 받고 코트를 떠나게 됐다.`,
+    v => `${v.team}에 뼈아픈 소식이 전해졌다. ${i(v.player)} ${v.injuryType}(으)로 결장이 불가피해졌다.`,
+    v => `${i(v.player)} ${v.injuryType} 판정을 받아 당분간 팀을 떠나 재활에 전념하게 됐다.`,
+];
+
+const INJURY_SEVERE_FLAVOR: (() => string)[] = [
+    () => `장기 결장이 예상되는 만큼 팀 전력 구상에도 적지 않은 차질이 불가피할 전망이다.`,
+    () => `구단 의료진은 서두르지 않고 신중하게 재활 일정을 잡겠다는 입장이다.`,
+    () => `공백을 메울 로테이션 재편이 당장의 과제로 떠올랐다.`,
+];
+const INJURY_MODERATE_FLAVOR: (() => string)[] = [
+    () => `다행히 시즌 전체를 흔들 정도는 아니라는 평가다.`,
+    () => `팀은 우선 로테이션을 조정하며 공백을 메울 방침이다.`,
+    () => `회복 경과가 좋으면 복귀 시점이 앞당겨질 수도 있다.`,
+];
+
+// [2026-09-03] "제목도 바리에이션" 요청 — 다른 타입들의 제목 풀은 전부 `player.name + 접미사`
+// 형태로 이어붙이는 구조지만(HeadlineTitle이 headline.startsWith(playerName)으로 이름
+// 부분만 잘라 클릭 가능하게 만드는 방식과 맞물림), 부상 뉴스는 사용자가 준 예시("햄스트링
+// 염좌으로 신음하는 이정후"처럼 부상명이 앞에 오는 문구)를 살리기 위해 완성된 문자열
+// 전체를 반환하는 방식으로 둔다 — 이름으로 시작하지 않는 변형은 HeadlineTitle의 폴백
+// 분기(전체 문자열을 이름처럼 스타일링)로 자연스럽게 처리된다. 기간("2개월 결장 예상")은
+// 제목에서 제외 — 그 정보는 본문 2번째 줄(buildInjuryBlurb)과 카드 하단 테이블에 이미
+// 있어 제목에서까지 반복할 필요가 없다는 사용자 지적.
+const INJURY_TITLES: ((v: { player: string; injuryType: string }) => string)[] = [
+    v => `${v.player}, ${v.injuryType} 진단`,
+    v => `${euro(v.injuryType)} 신음하는 ${v.player}`,
+    v => `${v.player}, ${euro(v.injuryType)} 전열 이탈`,
+    v => `${v.injuryType} 판정 받은 ${v.player}`,
+    v => `${v.player}에게 찾아온 ${v.injuryType}`,
+    v => `${v.player}, 끝내 ${euro(v.injuryType)} 코트를 떠나다`,
+];
+
+function formatShortDate(dateStr: string): string {
+    const [y, m, d] = dateStr.split('-');
+    return `${y.slice(2)}/${m}/${d}`;
+}
+
+function buildInjuryBlurb(d: Extract<LeagueEvent['detail'], { kind: 'injury' }>, seed: string, teamBySlug: Map<string, LeagueTeamRow>): string[] {
+    const team = teamName(d.teamSlug, teamBySlug);
+    const returnLine = d.returnDate
+        ? `예상 결장 기간은 ${d.duration}, 복귀 목표는 ${formatShortDate(d.returnDate)} 전후로 알려졌다.`
+        : `예상 결장 기간은 ${d.duration}으로 알려졌다.`;
+    const lines: string[] = [
+        pick(seed, 'opener', INJURY_OPENERS)({ player: d.player.name, team, injuryType: d.injuryType }),
+        returnLine,
+    ];
+    const flavorPool = d.severity === 'Grade5' ? INJURY_SEVERE_FLAVOR : INJURY_MODERATE_FLAVOR;
+    lines.push(pick(seed, 'flavor', flavorPool)());
+    return lines;
+}
+
+// ── suspension(출장정지 뉴스, 싸움 — 항상 양쪽 모두) ─────────────────────────
+// [2026-09-03] "본문을 좀 풍부하게" 요청 — injury(3줄)보다 한 줄 더 많은 4줄 고정 구조:
+// 오프닝(배리에이션) → 양측 징계 사실(고정) → 양 팀 로테이션 영향(고정) → 플레이버
+// (배리에이션). 사건 자체가 리그에 몇 안 되는 진귀한 뉴스라 사실관계(누가 몇 경기)를
+// 흐리지 않도록 2·3번째 줄은 배리에이션 없이 고정 문장으로 둔다.
+
+interface SuspensionVars {
+    fighter: string; fighterTeam: string; opponent: string; opponentTeam: string;
+    quarterLabel: string; timeRemaining: string;
+}
+
+function periodLabel(quarter: number): string {
+    return quarter <= 4 ? `${quarter}쿼터` : `연장 ${quarter - 4}차`;
+}
+
+const SUSPENSION_OPENERS: ((v: SuspensionVars) => string)[] = [
+    v => `${v.quarterLabel} ${v.timeRemaining}을 남기고 코트 위에서 험악한 장면이 나왔다. ${v.fighterTeam}의 ${v.fighter}와(과) ${v.opponentTeam}의 ${v.opponent}가 몸싸움을 벌이며 두 선수 모두 퇴장당했다.`,
+    v => `${v.fighterTeam}과(와) ${v.opponentTeam}의 경기, ${v.quarterLabel} ${v.timeRemaining}에 순식간에 몸싸움이 벌어졌다. ${v.fighter}와(과) ${v.opponent}가 뒤엉키며 벤치와 심판진이 곧바로 뛰어나왔다.`,
+    v => `평온하던 코트가 한순간에 아수라장이 됐다. ${v.quarterLabel} ${v.timeRemaining}, ${v.fighter}와(과) ${v.opponent} 사이에서 시작된 몸싸움이 양 팀 벤치까지 번질 뻔했다.`,
+    v => `${v.fighter}(${v.fighterTeam})와(과) ${v.opponent}(${v.opponentTeam})가 ${v.quarterLabel} ${v.timeRemaining}을 남기고 정면으로 충돌했다. 심판진은 곧바로 양 선수 모두에게 퇴장을 선언했다.`,
+];
+
+const SUSPENSION_FLAVOR: (() => string)[] = [
+    () => `양 팀 코칭스태프는 재발 방지를 약속하며 사태 수습에 나섰다.`,
+    () => `리그 안팎에서는 이례적인 몸싸움 장면에 놀라움을 감추지 못하는 분위기다.`,
+    () => `두 선수 모두 냉각기를 거친 뒤 코트로 복귀할 전망이다.`,
+    () => `이번 사건은 한동안 두고두고 회자될 것으로 보인다.`,
+];
+
+function buildSuspensionBlurb(d: Extract<LeagueEvent['detail'], { kind: 'suspension' }>, seed: string, teamBySlug: Map<string, LeagueTeamRow>): string[] {
+    const fighterTeam = teamName(d.fighterTeamSlug, teamBySlug);
+    const opponentTeam = teamName(d.opponentTeamSlug, teamBySlug);
+    const vars: SuspensionVars = {
+        fighter: d.fighter.name, fighterTeam, opponent: d.opponent.name, opponentTeam,
+        quarterLabel: periodLabel(d.quarter), timeRemaining: d.timeRemaining,
+    };
+    return [
+        pick(seed, 'opener', SUSPENSION_OPENERS)(vars),
+        `리그 사무국은 ${d.fighter.name}에게 ${d.fighterSuspensionGames}경기, ${d.opponent.name}에게 ${d.opponentSuspensionGames}경기의 출장정지 징계를 내렸다.`,
+        `이번 징계로 ${fighterTeam}과(와) ${opponentTeam} 모두 당장 로테이션에 공백이 생기게 됐다.`,
+        pick(seed, 'flavor', SUSPENSION_FLAVOR)(),
+    ];
+}
+
+// [2026-09-03] injury와 동일한 이유로(HeadlineTitle이 클릭 대상으로 삼을 "이름" 단수가
+// 없고 — 이번엔 이름이 둘이라 더더욱 — player.name + 접미사 방식이 안 맞음) 완성된
+// 문자열 전체를 반환. HeadlineTitle은 headline이 어느 쪽 이름으로도 시작하지 않으면
+// 전체를 이름처럼 스타일링하는 폴백 분기를 타는데, InjuryCard와 달리 SuspensionCard는
+// 애초에 HeadlineTitle을 쓰지 않고 평문 h1을 쓴다(선수가 둘이라 "이름 하나만 클릭
+// 가능"한 컴포넌트를 억지로 맞추는 것보다 표 안의 PlayerHoverCard로 각자 클릭하게 하는
+// 편이 자연스럽다는 판단).
+const SUSPENSION_TITLES: ((v: { fighter: string; opponent: string }) => string)[] = [
+    v => `${v.fighter}-${v.opponent}, 코트 위 충돌 끝에 나란히 퇴장`,
+    v => `${v.fighter}와(과) ${v.opponent}, 몸싸움 끝에 동반 출장정지`,
+    v => `충돌로 얼어붙은 코트, ${v.fighter}-${v.opponent} 퇴장`,
+    v => `${v.fighter}, ${v.opponent}와(과)의 몸싸움으로 강제 퇴장`,
+    v => `심판진 격노케 한 ${v.fighter}-${v.opponent}의 몸싸움`,
+    v => `${v.fighter}-${v.opponent}, 순간의 분노가 부른 동반 징계`,
+];
+
 // LeagueEventDetail의 kind별로 문단 배열을 조합. legacy/파싱 실패 시 null(카드가 기존
 // 헤드라인만 표시). 반환값은 문단(문장 그룹) 배열 — 호출부가 각각 별도 줄로 렌더링해
 // "한 줄"이 아니라 여러 줄짜리 기사처럼 보이게 한다.
@@ -408,6 +531,8 @@ export function buildNewsBlurb(event: LeagueEvent, teamBySlug: Map<string, Leagu
         case 'win_streak': return buildWinStreakBlurb(d, seed, teamBySlug);
         case 'trade': return buildTradeBlurb(d, seed, teamBySlug);
         case 'power_ranking': return buildPowerRankingBlurb(d, seed, teamBySlug);
+        case 'injury': return buildInjuryBlurb(d, seed, teamBySlug);
+        case 'suspension': return buildSuspensionBlurb(d, seed, teamBySlug);
         default: return null;
     }
 }
@@ -520,8 +645,8 @@ const WIN_STREAK_TITLES: ((v: { streak: number }) => string)[] = [
     v => `, ${v.streak}연승으로 존재감 과시`,
 ];
 
-// player_feat/player_streak/game_result/win_streak만 지원(트레이드는 위 주석 참고,
-// 레터 H1 자체가 아직 없어 제외). 그 외 kind(legacy 포함)는 null → 호출부가
+// player_feat/player_streak/game_result/win_streak/injury/suspension만 지원(트레이드는 위
+// 주석 참고, 레터 H1 자체가 아직 없어 제외). 그 외 kind(legacy 포함)는 null → 호출부가
 // event.headline(DB 저장값)으로 폴백.
 export function buildNewsTitle(event: LeagueEvent, teamBySlug: Map<string, LeagueTeamRow>): string | null {
     const d = event.detail;
@@ -550,6 +675,12 @@ export function buildNewsTitle(event: LeagueEvent, teamBySlug: Map<string, Leagu
         case 'win_streak': {
             const team = teamName(d.teamSlug, teamBySlug);
             return team + pick(seed, 'title', WIN_STREAK_TITLES)({ streak: d.streak });
+        }
+        case 'injury': {
+            return pick(seed, 'title', INJURY_TITLES)({ player: d.player.name, injuryType: d.injuryType });
+        }
+        case 'suspension': {
+            return pick(seed, 'title', SUSPENSION_TITLES)({ fighter: d.fighter.name, opponent: d.opponent.name });
         }
         default:
             return null;

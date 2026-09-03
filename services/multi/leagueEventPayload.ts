@@ -189,6 +189,39 @@ export interface AllDefTeamDetail {
     tiers: AllDefTeamTier[]; // tier 1~2
 }
 
+/** [2026-09-03] "부상 발생 시 뉴스" 요청 — 서버 미러: server/src/shared/leagueEvents.ts의
+ * InjuryPayload/detectInjuryEvent(). GRADE3 이상만 발행되므로 severity는 항상 이 3개
+ * 값 중 하나(서버가 GRADE1/2는 애초에 이벤트를 만들지 않음). 필드명을 바꿀 땐 반드시
+ * 양쪽 다 같이 고칠 것(client/server 미러 쌍 — dev-log.md 기록 대상). */
+export interface InjuryDetail {
+    kind: 'injury';
+    player: { id: string; name: string };
+    teamSlug: string;
+    severity: 'Grade3' | 'Grade4' | 'Grade5';
+    injuryType: string;
+    duration: string;
+    returnDate: string | null;
+}
+
+/** [2026-09-03] "출장정지도 한 뉴스에 양쪽 다" 요청 — 서버 미러:
+ * server/src/shared/leagueEvents.ts의 SuspensionPayload/detectSuspensionEvent(). 싸움은
+ * 항상 두 선수 모두에게 동시에 발생하므로 이벤트 하나에 양쪽 정보를 전부 담는다(injury와
+ * 달리 선수 1명당 이벤트 1건이 아님). 필드명을 바꿀 땐 반드시 양쪽 다 같이 고칠 것
+ * (client/server 미러 쌍 — dev-log.md 기록 대상). */
+export interface SuspensionDetail {
+    kind: 'suspension';
+    fighter: { id: string; name: string };
+    fighterTeamSlug: string;
+    fighterSuspensionGames: number;
+    fighterReturnDate: string | null;
+    opponent: { id: string; name: string };
+    opponentTeamSlug: string;
+    opponentSuspensionGames: number;
+    opponentReturnDate: string | null;
+    quarter: number;
+    timeRemaining: string;
+}
+
 export type LeagueEventDetail =
     | GameResultDetail
     | PlayerFeatDetail
@@ -200,6 +233,8 @@ export type LeagueEventDetail =
     | DpoyAwardDetail
     | AllNbaTeamDetail
     | AllDefTeamDetail
+    | InjuryDetail
+    | SuspensionDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -459,6 +494,39 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     }));
                 if (tiers.length === 0) return LEGACY;
                 return { kind: 'all_def_team', season: payload.season, tiers };
+            }
+            case 'injury': {
+                if (!payload.player || !isNonEmptyString(payload.player.id) || !isNonEmptyString(payload.player.name)) return LEGACY;
+                if (!isNonEmptyString(payload.teamSlug) || !isNonEmptyString(payload.injuryType) || !isNonEmptyString(payload.duration)) return LEGACY;
+                if (payload.severity !== 'Grade3' && payload.severity !== 'Grade4' && payload.severity !== 'Grade5') return LEGACY;
+                return {
+                    kind: 'injury',
+                    player: { id: payload.player.id, name: payload.player.name },
+                    teamSlug: payload.teamSlug,
+                    severity: payload.severity,
+                    injuryType: payload.injuryType,
+                    duration: payload.duration,
+                    returnDate: isNonEmptyString(payload.returnDate) ? payload.returnDate : null,
+                };
+            }
+            case 'suspension': {
+                if (!payload.fighter || !isNonEmptyString(payload.fighter.id) || !isNonEmptyString(payload.fighter.name)) return LEGACY;
+                if (!payload.opponent || !isNonEmptyString(payload.opponent.id) || !isNonEmptyString(payload.opponent.name)) return LEGACY;
+                if (!isNonEmptyString(payload.fighterTeamSlug) || !isNonEmptyString(payload.opponentTeamSlug)) return LEGACY;
+                if (typeof payload.fighterSuspensionGames !== 'number' || typeof payload.opponentSuspensionGames !== 'number') return LEGACY;
+                return {
+                    kind: 'suspension',
+                    fighter: { id: payload.fighter.id, name: payload.fighter.name },
+                    fighterTeamSlug: payload.fighterTeamSlug,
+                    fighterSuspensionGames: payload.fighterSuspensionGames,
+                    fighterReturnDate: isNonEmptyString(payload.fighterReturnDate) ? payload.fighterReturnDate : null,
+                    opponent: { id: payload.opponent.id, name: payload.opponent.name },
+                    opponentTeamSlug: payload.opponentTeamSlug,
+                    opponentSuspensionGames: payload.opponentSuspensionGames,
+                    opponentReturnDate: isNonEmptyString(payload.opponentReturnDate) ? payload.opponentReturnDate : null,
+                    quarter: typeof payload.quarter === 'number' ? payload.quarter : 0,
+                    timeRemaining: isNonEmptyString(payload.timeRemaining) ? payload.timeRemaining : '',
+                };
             }
             default:
                 return LEGACY;

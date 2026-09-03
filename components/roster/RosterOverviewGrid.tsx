@@ -9,6 +9,8 @@ import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } fro
 import type { PlayerArchetypeState } from '../../types/archetype';
 import { formatMoney } from '../../utils/formatMoney';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
+import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
 
 interface RosterOverviewGridProps {
     team: Team;
@@ -139,9 +141,20 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             return (
                                 <TableRow key={p.id} className="group">
                                     <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                        <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                            <span className="text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
-                                        </PlayerHoverCard>
+                                        <span className="flex items-center gap-1.5 min-w-0">
+                                            <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                                <span className="min-w-0 text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                            </PlayerHoverCard>
+                                            {p.activeInjurySeverity && (
+                                                <InjuryStatusBadge
+                                                    severity={p.activeInjurySeverity}
+                                                    title={formatPlayerActiveInjuryLabel(p) ?? undefined}
+                                                    size={16}
+                                                    iconSize={12}
+                                                    strokeWidth={4}
+                                                />
+                                            )}
+                                        </span>
                                     </TableCell>
                                     <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                                     <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>

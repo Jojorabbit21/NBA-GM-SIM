@@ -10,7 +10,7 @@ import { parseLeagueEventPayload, type LeagueEventDetail } from '../services/mul
 // 가져오기만 하면 된다 — ZenGM의 processEvents() 같은 읽기 시점 재필터링 불필요.
 
 export type LeagueEventType = 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'trade' | 'power_ranking'
-    | 'mvp_award' | 'dpoy_award' | 'all_nba_team' | 'all_def_team';
+    | 'mvp_award' | 'dpoy_award' | 'all_nba_team' | 'all_def_team' | 'injury' | 'suspension';
 
 export interface LeagueEvent {
     id: string;
@@ -77,7 +77,7 @@ export function useLeagueHeadlines(roomId: string | undefined, myTeamSlug: strin
 // (leagueEvents.ts 참고), score>10(=마진 보너스가 붙은 것만)을 "특이케이스" 기준으로 삼는다.
 // PostgREST .or()로 "STORY_TYPES 중 하나 OR (game_result면서 score>10)"을 한 쿼리로 표현.
 const STORIES_PAGE_SIZE = 30;
-const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade', 'power_ranking', 'mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'];
+const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade', 'power_ranking', 'mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team', 'injury', 'suspension'];
 const GAME_RESULT_MIN_SCORE = 15;
 // [2026-09-01] 헤더 필터 "빅 뉴스만" 기준 — game_result 대량득점차(margin≥20)/트레이드/
 // 트리플더블/고연승과 같은 급의 중요도. leagueEvents.ts의 score 산정 범위(10~30)에서 상위권.

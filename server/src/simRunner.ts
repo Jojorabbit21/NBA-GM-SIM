@@ -18,7 +18,8 @@ import { archiveTournament } from './shared/tournamentArchiver.ts';
 import { handlePlayInAdvance } from './shared/playInSeeder.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
-import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, type DetectedEvent } from './shared/leagueEvents.ts';
+import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, detectInjuryEvent, detectSuspensionEvent, type DetectedEvent } from './shared/leagueEvents.ts';
+import { resolveReturnDate } from './shared/injuryDuration.ts';
 
 export interface SimResult {
     ok: boolean;
@@ -112,6 +113,32 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             }
 
             const rosterState: Record<string, any> = (room.roster_state as any) ?? {};
+
+            // ── 2.5. 선수 상태 오버레이 (부상/체력) ───────────────────────────────
+            // rooms.roster_state는 드래프트 확정 시점 초기 스냅샷일 뿐 이후 갱신되지 않는다.
+            // 경기 간 실제 부상/체력은 room_player_state(§6.5에서 기록)에서 조회해 여기 얹는다
+            // — applyRosterState()가 condition/health/injuryType/returnDate를 그대로 읽으므로
+            // 엔진 코드(buildTeamForSim 이하)는 전혀 건드리지 않는다.
+            const currentSeasonNumber = (room as any).season_number ?? null;
+            const { data: playerStateRows } = await supabase
+                .from('room_player_state')
+                .select('player_id, condition, health, injury_type, return_date, season_number')
+                .eq('room_id', roomId)
+                .in('player_id', allPlayerIds);
+            for (const row of (playerStateRows ?? []) as any[]) {
+                // 부상 "현재 활성 여부"는 저장된 health 플래그를 그대로 믿지 않고 매번
+                // return_date를 인게임 날짜(game.game_date)와 비교해 판정한다 — 이렇게 하면
+                // 복귀일이 지난 선수가 자동으로 건강해지고, 별도 복구 배치 잡이 필요 없다.
+                const isActiveInjury = row.health === 'Injured' && (
+                    (row.return_date != null && row.return_date > game.game_date) ||
+                    (row.return_date == null && row.season_number === currentSeasonNumber) // 시즌아웃
+                );
+                rosterState[row.player_id] = {
+                    ...rosterState[row.player_id],
+                    ...(row.condition != null ? { condition: row.condition } : {}),
+                    ...(isActiveInjury ? { health: 'Injured', injuryType: row.injury_type, returnDate: row.return_date } : {}),
+                };
+            }
 
             const homeTeam = buildTeamForSim(homeTeamRow, playerMap, rosterState);
             const awayTeam = buildTeamForSim(awayTeamRow, playerMap, rosterState);
@@ -239,7 +266,114 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 return { ok: true, skipped: true, reason: 'already recorded' };
             }
 
-            // ── 6.5. 리그 소식(League Headlines) 이벤트 감지 ──────────────────────
+            // ── 6.5. 선수 상태 영속화 (부상/출장정지 이력 + 체력 이월) ────────────────
+            // 실패해도 경기 저장 자체(위에서 이미 커밋됨)를 막으면 안 되므로 전체를
+            // try/catch로 감싸 로그만 남기고 넘어간다(아래 6.6 리그 소식 블록과 동일 패턴).
+            //
+            // 두 번의 upsert로 나눈 이유: 한 번의 upsert에 컬럼 구성이 다른 행(조건만 있는
+            // 행 vs 부상 이력까지 있는 행)을 섞으면 PostgREST가 배치 전체의 컬럼 목록을
+            // 첫 행 기준으로 잡아 나머지 행의 누락된 컬럼을 의도와 다르게 null로 채울 위험이
+            // 있다 — 각 upsert 호출 내부는 항상 동일한 컬럼 구성만 갖도록 분리했다. 이렇게
+            // 하면 체력만 갱신하는 호출이 다른 선수의 기존 부상 이력을 실수로 지우지 않는다.
+            //
+            // [2026-09-03] injuryNewsEvents: 이 블록에서 returnDate까지 확정된 부상 entry를
+            // 그대로 재사용해 GRADE3+ 뉴스 이벤트를 만든다(아래 §6.6에서 events 배열에 합류).
+            // try 블록 밖에서 선언해 6.5가 실패해도(catch로 빠져도) 빈 배열인 채로 6.6이
+            // 정상 진행되게 한다.
+            const injuryNewsEvents: DetectedEvent[] = [];
+            // [2026-09-03] suspensionNewsEvents: injuryNewsEvents와 동일한 이유로 try 밖에서
+            // 선언 — 아래 suspension 루프에서 fighterReturn/opponentReturn을 확정한 시점에
+            // detectSuspensionEvent()를 호출해 채운다.
+            const suspensionNewsEvents: DetectedEvent[] = [];
+            try {
+                // (a) 체력 이월 — 이번 경기에 참가한 양 팀 전원(rosterUpdates에 항상 담김).
+                const conditionUpserts = Object.entries(result.rosterUpdates ?? {})
+                    .filter(([, upd]: [string, any]) => upd?.condition !== undefined)
+                    .map(([pid, upd]: [string, any]) => ({ room_id: roomId, player_id: pid, condition: upd.condition }));
+                if (conditionUpserts.length > 0) {
+                    await supabase.from('room_player_state').upsert(conditionUpserts, { onConflict: 'room_id,player_id' });
+                }
+
+                // (b) 부상/출장정지 이력 — 이번 경기에서 새로 발생한 것만.
+                //     severity/quarter/timeRemaining이 담긴 result.injuries/result.suspensions가
+                //     rosterUpdates(health/injuryType/returnDate만 있음)보다 정보가 풍부하다.
+                type HistoryEntry = {
+                    injuryType: string; severity: string; duration: string;
+                    date: string; returnDate: string | null; isTraining: boolean;
+                };
+                const affected = new Map<string, { teamId: string; entry: HistoryEntry }>();
+
+                for (const inj of (result.injuries ?? []) as any[]) {
+                    const returnDate = await resolveReturnDate(supabase, roomId, inj.teamId, game.game_date, inj.durationDesc);
+                    affected.set(inj.playerId, {
+                        teamId: inj.teamId,
+                        entry: {
+                            injuryType: inj.injuryType, severity: inj.severity, duration: inj.durationDesc,
+                            date: game.game_date, returnDate, isTraining: false,
+                        },
+                    });
+                    const newsEvent = detectInjuryEvent(
+                        inj.playerId, inj.playerName, inj.teamId,
+                        inj.severity, inj.injuryType, inj.durationDesc, returnDate,
+                    );
+                    if (newsEvent) injuryNewsEvents.push(newsEvent);
+                }
+                for (const susp of (result.suspensions ?? []) as any[]) {
+                    const [fighterReturn, opponentReturn] = await Promise.all([
+                        resolveReturnDate(supabase, roomId, susp.teamId, game.game_date, `${susp.suspensionGames}경기`),
+                        resolveReturnDate(supabase, roomId, susp.opponentTeamId, game.game_date, `${susp.opponentSuspensionGames}경기`),
+                    ]);
+                    affected.set(susp.playerId, {
+                        teamId: susp.teamId,
+                        entry: {
+                            injuryType: '출장정지 (싸움)', severity: 'Suspension', duration: `${susp.suspensionGames}경기`,
+                            date: game.game_date, returnDate: fighterReturn, isTraining: false,
+                        },
+                    });
+                    affected.set(susp.opponentPlayerId, {
+                        teamId: susp.opponentTeamId,
+                        entry: {
+                            injuryType: '출장정지 (싸움)', severity: 'Suspension', duration: `${susp.opponentSuspensionGames}경기`,
+                            date: game.game_date, returnDate: opponentReturn, isTraining: false,
+                        },
+                    });
+                    suspensionNewsEvents.push(detectSuspensionEvent(
+                        susp.playerId, susp.playerName, susp.teamId, susp.suspensionGames, fighterReturn,
+                        susp.opponentPlayerId, susp.opponentPlayerName, susp.opponentTeamId, susp.opponentSuspensionGames, opponentReturn,
+                        susp.quarter, susp.timeRemaining,
+                    ));
+                }
+
+                if (affected.size > 0) {
+                    const affectedIds = [...affected.keys()];
+                    const { data: existingRows } = await supabase
+                        .from('room_player_state')
+                        .select('player_id, injury_history')
+                        .eq('room_id', roomId)
+                        .in('player_id', affectedIds);
+                    const existingHistoryByPlayer = new Map<string, any[]>(
+                        (existingRows ?? []).map((r: any) => [r.player_id, r.injury_history ?? []]),
+                    );
+
+                    const historyUpserts = affectedIds.map(pid => {
+                        const { entry } = affected.get(pid)!;
+                        const history = [...(existingHistoryByPlayer.get(pid) ?? []), entry];
+                        return {
+                            room_id: roomId, player_id: pid,
+                            injury_history: history,
+                            health: 'Injured',
+                            injury_type: entry.injuryType,
+                            return_date: entry.returnDate,
+                            season_number: (room as any).season_number ?? null,
+                        };
+                    });
+                    await supabase.from('room_player_state').upsert(historyUpserts, { onConflict: 'room_id,player_id' });
+                }
+            } catch (err) {
+                console.error(`[simRunner] 선수 상태 영속화 실패 room=${roomId} game=${gameId}:`, err);
+            }
+
+            // ── 6.6. 리그 소식(League Headlines) 이벤트 감지 ──────────────────────
             // "주목할 만한" 경기 결과만 골라 league_events에 기록 — 실패해도 게임 저장
             // 자체(위에서 이미 커밋됨)를 막으면 안 되므로 감지/삽입 전체를 try/catch로
             // 감싸 로그만 남기고 넘어간다.
@@ -260,6 +394,10 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
 
                 // 선수 연속 기록 — player_stat_streaks 갱신 후 보고 기준 넘은 것만 반환.
                 events.push(...await detectPlayerStatStreaks(supabase, roomId, result.homeBox, result.awayBox, homeTeamId, awayTeamId, homeScore, awayScore));
+
+                // 부상 뉴스(GRADE3+) / 출장정지 뉴스 — §6.5에서 이미 만들어둔 이벤트를 그대로 합류.
+                events.push(...injuryNewsEvents);
+                events.push(...suspensionNewsEvents);
 
                 for (const [teamSlug, teamName] of [
                     [homeTeamId, homeTeamRow.team_name],

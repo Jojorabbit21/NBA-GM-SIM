@@ -6,6 +6,10 @@ export interface SimSettings {
 
     injuriesEnabled: boolean;
     injuryFrequency: number;
+    majorInjuryFrequency: number;
+
+    suspensionsEnabled: boolean;
+    suspensionFrequency: number;
 
     tradeMinValueRatio: number;
     cpuTradeBaseProbability: number;
@@ -27,6 +31,9 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     homeAdvantage: 0.02,
     injuriesEnabled: false,
     injuryFrequency: 1.0,
+    majorInjuryFrequency: 1.0,
+    suspensionsEnabled: true,
+    suspensionFrequency: 1.0,
     tradeMinValueRatio: 0.95,
     cpuTradeBaseProbability: 0.15,
     tcr: 1.0,

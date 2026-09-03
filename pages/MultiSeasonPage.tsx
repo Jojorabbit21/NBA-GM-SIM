@@ -2,7 +2,7 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ChevronRight, ChevronLeft, Flame, TrendingUp, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, type LucideIcon } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Flame, TrendingUp, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, type LucideIcon } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../hooks/useLeagueRawStats';
@@ -346,6 +346,8 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     dpoy_award: Shield,
     all_nba_team: Star,
     all_def_team: Shield,
+    injury: HeartPulse,
+    suspension: Swords,
 };
 
 const LeagueHeadlinesCard: React.FC<{

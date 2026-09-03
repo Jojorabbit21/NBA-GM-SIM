@@ -80,7 +80,7 @@ export interface InjuryReportContent {
     playerId: string;
     playerName: string;
     injuryType: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5';
     duration: string;
     /** 복귀 예정 날짜 (YYYY-MM-DD) */
     returnDate: string;

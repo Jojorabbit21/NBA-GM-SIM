@@ -3,6 +3,9 @@ import React, { useState, useRef, useCallback, useEffect, cloneElement, isValidE
 import { createPortal } from 'react-dom';
 import type { Player, PlayerStats } from '../../types';
 import { COMPACT_ATTR_GROUPS, ATTR_KR_LABEL, CompactAttrItem, getCompactAttrValue } from '../../data/attributeConfig';
+import { InjuryStatusBadge, SEVERITY_TEXT_COLOR } from './InjuryStatusBadge';
+import { formatReturnDateSuffix } from '../../services/multi/activeInjuryStatus';
+import { getAttrColor } from '../../utils/attrRatingColor';
 
 // 완전한 Player 객체가 없는 화면(뉴스피드/시즌 일정 — playerId+이름 정도만 있는 partial
 // payload)이 hover 카드를 쓰기 위해 공용으로 조립하는 조회 맵. 이 파일에 두는 이유: 여러
@@ -68,14 +71,6 @@ const compactLabel = (item: CompactAttrItem): string => {
     return item.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join(' / ');
 };
 
-// 이 팝업 전용 능력치 색상 기준 — 기존 4곳(PlayerDetailView/Table/PlayerPool/PlayerCardModal)이
-// 서로 다른 threshold를 쓰고 있어 통일하지 않고, 이 팝업에서만 쓰는 단순 3단계 기준을 새로 정의.
-const getRatingColor = (val: number): string => {
-    if (val >= 75) return 'text-emerald-400';
-    if (val >= 45) return 'text-slate-200';
-    return 'text-red-400';
-};
-
 type StatFormat = 'avg' | 'percent' | 'rate';
 
 interface StatItem {
@@ -124,12 +119,29 @@ const PlayerRatingsStatsPopup: React.FC<{ player: Player; teamAbbr?: string | nu
             style={style}
             className="w-[300px] bg-slate-950 border border-slate-700 rounded-lg shadow-2xl p-3 pointer-events-none select-none"
         >
-            {/* 헤더 — 이름 · 소속팀 약어 · 포지션 · 나이 (전부 플레인 텍스트) */}
-            <div className="flex items-baseline gap-1.5 mb-2 pb-2 border-b border-slate-800 min-w-0">
-                <span className="text-xs font-bold text-white truncate">{player.name}</span>
-                {teamAbbr && <span className="text-xs text-slate-400 shrink-0">{teamAbbr}</span>}
-                <span className="text-xs text-slate-400 shrink-0">{player.position}</span>
-                <span className="text-xs text-slate-400 shrink-0">{player.age}세</span>
+            {/* 헤더 — 이름 · 소속팀 약어 · 포지션 · 나이 (전부 플레인 텍스트), 활성 부상/출장정지가
+                있으면 그 아래 한 줄 더 — [배지] [부상|출장정지] [부상명(부상일 때만)] [기간] */}
+            <div className="mb-2 pb-2 border-b border-slate-800">
+                <div className="flex items-baseline gap-1.5 min-w-0">
+                    <span className="text-xs font-bold text-white truncate">{player.name}</span>
+                    {teamAbbr && <span className="text-xs text-slate-400 shrink-0">{teamAbbr}</span>}
+                    <span className="text-xs text-slate-400 shrink-0">{player.position}</span>
+                    <span className="text-xs text-slate-400 shrink-0">{player.age}세</span>
+                </div>
+                {player.activeInjurySeverity && (
+                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        <InjuryStatusBadge severity={player.activeInjurySeverity} size={14} iconSize={10} strokeWidth={4} />
+                        <span className={`text-xs font-semibold shrink-0 ${SEVERITY_TEXT_COLOR[player.activeInjurySeverity]}`}>
+                            {player.activeInjurySeverity === 'Suspension' ? '출장정지' : '부상'}
+                        </span>
+                        {player.activeInjurySeverity !== 'Suspension' && player.injuryType && (
+                            <span className={`text-xs font-semibold truncate ${SEVERITY_TEXT_COLOR[player.activeInjurySeverity]}`}>{player.injuryType}</span>
+                        )}
+                        <span className={`text-xs shrink-0 ${SEVERITY_TEXT_COLOR[player.activeInjurySeverity]}`}>
+                            {player.activeInjuryDuration}{formatReturnDateSuffix(player.returnDate)}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* 능력치 3열 그리드 */}
@@ -141,7 +153,7 @@ const PlayerRatingsStatsPopup: React.FC<{ player: Player; teamAbbr?: string | nu
                             return (
                                 <div key={item.key} className="flex items-center justify-between gap-1 min-w-0">
                                     <span className="text-xs text-slate-400 truncate">{compactLabel(item)}</span>
-                                    <span className={`text-xs font-bold tabular-nums shrink-0 ${getRatingColor(val)}`}>{val}</span>
+                                    <span className={`text-xs font-bold tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                 </div>
                             );
                         })}

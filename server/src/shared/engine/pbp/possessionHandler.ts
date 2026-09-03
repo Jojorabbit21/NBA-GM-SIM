@@ -741,7 +741,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // 3.6.2 Fight Check (싸움 → 양측 퇴장 + 출장정지, 극히 희귀)
     // temperament >= THRESHOLD인 수비 선수만 대상, 리그 전체 시즌 ~5-10건
-    {
+    // suspensionsEnabled 필드가 없는(신규 배포 전 저장된) 리그는 true로 폴백 —
+    // 항상 켜져 있던 기존 동작을 그대로 유지하기 위함(끄려면 admin이 명시적으로 꺼야 함).
+    if (state.simSettings.suspensionsEnabled ?? true) {
         const fightCfg = offFoulConfig;
         const hotDefenders = defTeam.onCourt.filter(
             p => (p.tendencies?.temperament ?? 0) >= fightCfg.FIGHT_TEMPERAMENT_THRESHOLD
@@ -752,9 +754,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 (b.tendencies?.temperament ?? 0) > (a.tendencies?.temperament ?? 0) ? b : a
             );
             const t = hottest.tendencies?.temperament ?? 0.5;
-            // 확률: base × (1 + (t - threshold) × scale)
+            // 확률: base × (1 + (t - threshold) × scale) × suspensionFrequency
             const fightChance = fightCfg.FIGHT_BASE_CHANCE
-                * (1 + (t - fightCfg.FIGHT_TEMPERAMENT_THRESHOLD) * fightCfg.FIGHT_TEMPERAMENT_SCALE);
+                * (1 + (t - fightCfg.FIGHT_TEMPERAMENT_THRESHOLD) * fightCfg.FIGHT_TEMPERAMENT_SCALE)
+                * (state.simSettings.suspensionFrequency ?? 1.0);
 
             if (Math.random() < fightChance) {
                 // 상대: 공격팀 코트 랜덤

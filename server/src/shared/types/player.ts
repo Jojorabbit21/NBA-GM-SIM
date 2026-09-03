@@ -102,7 +102,7 @@ export interface SaveTendencies {
 // [New] 부상 이력 기록 (부상 발생 시마다 push)
 export interface InjuryHistoryEntry {
     injuryType: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
     duration: string;
     date: string;
     returnDate: string;

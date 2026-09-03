@@ -16,11 +16,24 @@ export interface LeagueRawStatsData {
      *  격리 저장된다(여러 리그가 동시에 돌아도 서로 안 섞임). 시즌 롤오버 기능이 아직 없어
      *  현재는 항상 빈 배열이지만, buildLeagueTeams()가 이미 이 필드를 merge하도록 준비돼 있다. */
     leagueSeasonRows: { player_id: string; season: string; stat_line: Record<string, any> }[];
+    /** 서버(simRunner.ts)가 경기 시뮬 후 기록하는 부상/출장정지 이력 + 현재 상태 —
+     *  room_player_state 테이블(room_id, player_id 단위). buildLeagueTeams()가
+     *  injury_history를 player.injuryHistory로 merge. health/return_date/season_number는
+     *  "지금 활성 부상인지" 판정용(MultiRosterView.tsx의 로스터 배지 등 호출부가 직접 판정 —
+     *  이 훅은 원본 그대로 전달만 한다). */
+    playerInjuryRows: {
+        player_id: string;
+        injury_history: Record<string, any>[];
+        health: string | null;
+        return_date: string | null;
+        season_number: number | null;
+    }[];
 }
 
 const RAW_PLAYER_COLS = 'id, name, position, base_attributes, tendencies, career_history';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
 const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
+const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number';
 
 export function useLeagueRawStats<T = LeagueRawStatsData>(
     roomId: string | undefined,
@@ -31,15 +44,17 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
         queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')],
         enabled: allRosterIds.length > 0 && !!roomId,
         queryFn: async (): Promise<LeagueRawStatsData> => {
-            const [playersRes, pbpRes, seasonRes] = await Promise.all([
+            const [playersRes, pbpRes, seasonRes, injuryRes] = await Promise.all([
                 supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds),
                 supabase.from('game_pbp').select(RAW_PBP_COLS).eq('room_id', roomId!),
                 supabase.from('league_player_seasons').select(RAW_LEAGUE_SEASON_COLS).eq('room_id', roomId!),
+                supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS).eq('room_id', roomId!).in('player_id', allRosterIds),
             ]);
             return {
                 playersRaw: playersRes.data ?? [],
                 pbpRows: pbpRes.data ?? [],
                 leagueSeasonRows: seasonRes.data ?? [],
+                playerInjuryRows: injuryRes.data ?? [],
             };
         },
         select,

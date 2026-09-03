@@ -149,7 +149,7 @@ export interface InjuryEvent {
     teamId: string;
     injuryType: string;
     durationDesc: string; // e.g., "2주", "당일 복귀"
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5';
     quarter: number;
     timeRemaining: string;
 }

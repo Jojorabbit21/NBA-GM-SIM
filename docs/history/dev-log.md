@@ -35,6 +35,1152 @@
 
 ---
 
+## 2026-09-03 — 출장정지(싸움) 뉴스 이벤트 추가 — 양측 선수를 한 이벤트에 통합
+
+**배경**: 사용자 요청 — 출장정지 뉴스를 만들기 전, 현재 싸움 시스템이 한쪽만 출장정지를 받는지 확인해달라는 질문에 조사 결과 항상 양쪽 모두(fighter + fightOpponent) 동시에 발생함을 확인(`services/game/engine/pbp/possessionHandler.ts` Fight Check — fighter는 수비팀에서 temperament 최고, opponent는 공격팀 코트 위 무작위 1명, 서로 다른 팀). 이에 따라 "두 선수 모두 한 뉴스에 담고, 본문을 풍부하게(4줄), 제목 배리에이션 5~6개"로 설계.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `SuspensionPayload` 인터페이스(양쪽 선수/팀/경기수/복귀일 전부 포함), `DetectedEvent.type`에 `'suspension'` 추가, `detectSuspensionEvent()` 신규(임계값 없이 항상 발행 — 애초에 시즌 5~10건 수준으로 희귀, score=15+양쪽 경기수 합, 최대 30)
+- `server/src/simRunner.ts` — §6.5 출장정지 for 루프(fighterReturn/opponentReturn 확정 직후)에서 `detectSuspensionEvent()` 호출해 `suspensionNewsEvents` 배열에 수집 → §6.6에서 `events.push(...suspensionNewsEvents)`로 다른 이벤트들과 합류(injuryNewsEvents와 동일한 패턴)
+- `services/multi/leagueEventPayload.ts` (client 미러) — `SuspensionDetail` 타입 + `parseLeagueEventPayload()`의 `'suspension'` case
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`/`STORY_TYPES`에 `'suspension'` 추가
+- `services/multi/newsBlurb.ts` — `periodLabel()` 헬퍼(쿼터/연장 표기), `buildSuspensionBlurb()` 신규(오프닝 배리에이션 1줄 + 양측 징계 사실 고정 1줄 + 양 팀 로테이션 영향 고정 1줄 + 플레이버 배리에이션 1줄 = 4줄, injury의 3줄보다 한 줄 더 풍부), `SUSPENSION_TITLES` 6종(완성 문자열 반환 방식 — injury의 INJURY_TITLES와 동일 원리), `buildNewsBlurb`/`buildNewsTitle` switch에 `'suspension'` case 추가
+- `views/multi/season/newsFeedCards.tsx` — `formatInjuryReturnCell` → `formatFullDateCell`로 일반화(두 카드가 재사용), `SuspensionCard` 신규 컴포넌트(평문 h1 제목 — 이름이 둘이라 HeadlineTitle의 단일 이름 클릭 하이라이트를 안 씀 — + 본문 4줄 + 2행 표: 선수/소속팀/출장정지/복귀 예정일, 각 행 선수명은 PlayerHoverCard로 개별 클릭 가능), `HEADLINE_ICON`에 `suspension: Swords` 추가, `StoryCard`/`extractEventPlayerIds`에 `'suspension'` case 추가
+- `pages/MultiSeasonPage.tsx` — 중복 정의된 `HEADLINE_ICON`에도 동일하게 `suspension: Swords` 추가
+- `views/multi/season/MultiNewsFeedView.tsx` — 타입 필터 옵션에 "출장정지" 체크박스 추가
+
+**Before**: `DetectedEvent.type`에 `'suspension'`이 없어 `room_player_state`에 출장정지 이력이 쌓여도 뉴스피드엔 나타나지 않았음. injury처럼 "선수 1명당 이벤트 1건" 패턴을 그대로 적용하면 같은 싸움 사건이 두 개의 별도 뉴스로 쪼개져 나타날 뻔했음.
+
+**After**: §6.5의 출장정지 for 루프는 원래도 fighter/opponent 양쪽을 한 번의 루프 반복에서 처리하고 있어서(`susp` 객체 하나에 양쪽 정보가 다 있음), 그 시점에 `detectSuspensionEvent()`를 한 번만 호출해 이벤트 하나에 양쪽을 담는다. 카드도 표 2행(선수별 1행)으로 통합 표시.
+
+**검증**: `tsc --noEmit` — client 92줄(baseline 동일), server 36개(baseline 동일, 전부 사전 존재 SupabaseClient 제네릭 불일치/tournamentArchiver 등 무관 노이즈, line 606 leagueEvents.ts는 내가 추가한 코드가 위쪽에 삽입되며 기존 `player_stat_streaks` upsert 줄 번호가 밀린 것일 뿐 신규 오류 아님). 테스트 데이터 1건 insert:
+  - room_id=`9b43a612-...`(MAIN 1), 프란츠 바그너(mia, 4경기 출장정지, 복귀 2026-12-07) ↔ 제일런 존슨(bkn, 1경기 출장정지, 복귀 2026-12-01), sim_date=2026-11-27(실제 두 팀이 맞붙는 일정에 맞춤).
+
+**롤백 방법**: 위 8개 파일에서 이번에 추가된 `suspension`/`Suspension*` 관련 코드 블록만 제거(신규 추가분). 테스트 행은 `delete from league_events where id = '2eeb0048-c31d-484e-b4b2-3603ffd4f239';`로 제거 가능.
+
+---
+
+## 2026-09-03 — 뉴스 레터 본문 하단 로고 삭제
+
+**배경**: 사용자 요청 — 뉴스 서신 본문 하단에 찍히던 The Basketball Chronicle 로고
+(`BrandMark`, h-3) 삭제. 헤더 최상단의 마스트헤드 로고(h-4)는 유지 요청 범위 밖이라 그대로 둠.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — 모든 레터 카드 끝의 `<BrandMark className="h-3 w-auto" />`
+  11곳(GameResultCard/FeatCard/StreakCard/WinStreakCard/TradeCard/PowerRankingCard/
+  MvpAwardCard/DpoyAwardCard/AllNbaTeamCard/AllDefTeamCard/InjuryCard) 전부 삭제, 남아있던
+  직전 빈 줄도 함께 정리. `BrandMark` 정의 위 설명 주석도 헤더 로고만 남았다고 갱신.
+
+**검증**: `npx tsc --noEmit` — 해당 파일 관련 에러 없음.
+
+**롤백 방법**: 각 카드 끝(`</div>` 직전)에 `<BrandMark className="h-3 w-auto" />`를 다시
+추가하면 됨(모든 카드가 동일한 패턴 — `git diff`/`git log`로 정확한 위치 확인 가능).
+
+---
+
+## 2026-09-03 — 부상 발생 시 뉴스피드 이벤트 추가 (GRADE3 이상)
+
+**배경**: 사용자 요청 — "부상 발생 시 뉴스를 발생시켜야 한다. GRADE3부터, 본문 2~3줄 + 하단 부상 정도 테이블". league_events 기반 뉴스피드(트레이드/개인기록/연승 등과 동일 인프라)에 `injury` 타입을 신규 추가. GRADE1/2(경증)는 시즌 중 너무 자주 발생해 피드 소음이 되므로 제외.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `InjuryPayload` 인터페이스, `DetectedEvent.type`에 `'injury'` 추가, `detectInjuryEvent()` 신규(GRADE3 미만이면 null 반환, score는 Grade3=15/Grade4=20/Grade5=25)
+- `server/src/simRunner.ts` — §6.5 선수 상태 영속화 블록(부상 이력을 확정하는 for 루프, `resolveReturnDate` 호출 직후)에서 `detectInjuryEvent()` 호출해 `injuryNewsEvents` 배열에 수집 → §6.6에서 `events.push(...injuryNewsEvents)`로 합류시켜 다른 이벤트들과 함께 한 번에 insert
+- `services/multi/leagueEventPayload.ts` (client 미러) — `InjuryDetail` 타입 + `parseLeagueEventPayload()`의 `'injury'` case 추가
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `'injury'` 추가, `STORY_TYPES`에도 추가(뉴스피드 그리드에 노출)
+- `services/multi/newsBlurb.ts` — `buildInjuryBlurb()` 신규(오프닝 1줄 + 결장기간/복귀일 1줄 + 심각도별 플레이버 1줄 = 3줄), `buildNewsBlurb()` switch에 `'injury'` case 추가
+- `views/multi/season/newsFeedCards.tsx` — `InjuryCard` 신규 컴포넌트(헤더+본문 3줄+부상 정도 테이블: 선수/소속팀/부상 정도/부상명/예상 결장/복귀 예정일), `HEADLINE_ICON`에 `injury: HeartPulse` 추가, `StoryCard` 디스패처와 `extractEventPlayerIds`에 `'injury'` case 추가
+
+**Before**: `DetectedEvent.type`은 `'game_result' | 'player_feat' | 'player_streak' | 'win_streak'` 4종뿐이었고, room_player_state에 부상 이력이 쌓여도 뉴스피드엔 아무것도 나타나지 않았음.
+
+**After**: §6.5에서 부상 entry(injuryType/severity/duration/returnDate)를 확정하는 시점에 `detectInjuryEvent()`를 호출해 GRADE3 이상만 걸러 뉴스 이벤트로 만들고, 기존 게임당 이벤트 일괄 insert(§6.6)에 합류시킴. 부상 등급 수치("Grade3" 등)는 본문 문장에 노출하지 않고 하단 테이블에서만 한글 라벨(중등도/중상/중증(장기) — `components/inbox/MessageContentRenderer.tsx`의 `INJURY_GRADE_DISPLAY`와 동일 라벨)로 표시.
+
+**검증**: `tsc --noEmit`으로 client/server 양쪽 확인 — 기존 baseline 오류(client 92개, server의 SupabaseClient 제네릭 불일치 등 사전 존재 노이즈)에서 내가 건드린 파일 기준 신규 오류 0개. Supabase에 직접 테스트 데이터 2건 insert해 렌더 확인용으로 준비:
+  - room_id=`9b43a612-02e6-476f-8815-918713f6d1ae`(MAIN 1), 프란츠 바그너(Grade3, 햄스트링 염좌, 2개월, 복귀 2027-01-22), 아이재아 하텐슈타인(Grade5, 아킬레스건 파열, 12개월, 복귀 2027-11-18) — 둘 다 room_player_state에 이미 있던 실제 부상 데이터를 그대로 반영.
+
+**롤백 방법**: 위 6개 파일에서 이번에 추가된 `injury`/`Injury*` 관련 코드 블록만 제거(신규 추가분이라 기존 로직과 겹치는 부분 없음). 테스트로 넣은 league_events 2행은 `delete from league_events where id in ('195d00ab-f6d4-41bb-8a70-76b015847d73','7b0f602f-d5eb-4b3b-9178-f467c45a2e89');`로 제거 가능.
+
+### 후속 — 제목 배리에이션 6종 + 테이블/날짜 포맷 조정 (같은 날)
+
+**배경**: 사용자 요청 — (1) 부상 뉴스 제목에 5~6개 배리에이션 추가, 기존 제목의 "N개월 결장 예상" 문구 삭제, (2) 카드 하단 테이블의 "부상 정도"(등급) 컬럼 삭제, (3) 복귀 예정일 표기를 "0000년 00월 00일"로 변경.
+
+**변경 파일**:
+- `services/multi/newsBlurb.ts` — `euro()` 조사(으로/로) 헬퍼 추가, `INJURY_TITLES`(6종, `player.name + 접미사` 패턴이 아니라 완성 문자열을 그대로 반환 — "햄스트링 염좌으로 신음하는 OO"처럼 부상명이 앞에 오는 변형도 있어서) 추가, `buildNewsTitle()` switch에 `'injury'` case 추가
+- `server/src/shared/leagueEvents.ts` — `detectInjuryEvent()`의 고정 headline을 `"OO, 부상명 부상 — N개월 결장 예상"` → `"OO, 부상명 진단"`으로 변경(DB에 영구 저장되는 리스트용 headline이라 제목 배리에이션과 톤을 맞춤)
+- `views/multi/season/newsFeedCards.tsx` — `InjuryCard`의 H1을 `event.headline` 고정값 대신 `buildNewsTitle(event, teamBySlug) ?? event.headline`로 변경(다른 카드들과 동일 패턴), 테이블에서 "부상 정도" 컬럼(및 `INJURY_GRADE_LABEL` 상수) 삭제, `formatInjuryReturnCell()`을 `YY/MM/DD` → `YYYY년 MM월 DD일`로 변경. (작업 중 하단 `BrandMark`를 실수로 되살렸다가, 바로 위 "뉴스 레터 본문 하단 로고 삭제" 항목의 결정과 충돌한다는 걸 깨닫고 다시 제거했다 — 최종 상태는 다른 10개 카드와 동일하게 하단 로고 없음.)
+
+**Before**: headline 고정값 하나만 있었고("OO, 부상명 부상 — N개월 결장 예상"), 카드 표에 부상 정도(중등도/중상/중증(장기)) 컬럼이 있었으며 복귀일은 "YY/MM/DD"로 표시됨.
+
+**After**: `buildNewsTitle`이 event.id 기반으로 6개 제목 후보 중 하나를 결정론적으로 골라 표시(새로고침해도 안 바뀜), DB headline 자체도 기간 언급 없이 단순화. 표는 선수/소속팀/부상명/예상 결장/복귀 예정일 5컬럼만 남고, 복귀일은 "2027년 01월 22일" 형식으로 표시.
+
+**검증**: `tsc --noEmit` 92줄(기존 baseline과 동일, 신규 오류 없음). 테스트로 넣어둔 바그너/하텐슈타인 league_events 2건의 payload.headline도 새 포맷("OO, 부상명 진단")으로 맞춰 업데이트.
+
+**롤백 방법**: `newsBlurb.ts`의 `euro`/`INJURY_TITLES`/switch case, `leagueEvents.ts`의 headline 템플릿 문자열, `newsFeedCards.tsx`의 `InjuryCard` 테이블 컬럼/날짜 포맷 함수를 각각 위 "Before" 상태로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 부상 등급 체계 전면 개편: 3단계(Minor/Major/Season-Ending) → 5단계(GRADE1~5)
+
+**배경**: 사용자 요청 — "시즌아웃급 부상"이 실제로는 비유일 뿐 고정 기간이 없던 문제
+(`duration='시즌아웃'`, `returnDate=null`)를 바로잡고, 부상 종류/등급을 더 세분화. 논의를
+거쳐 GRADE1(경미)~GRADE5(시즌아웃급) 5단계로 재설계하고, 등급 판정 방식도 "내구도로
+문턱값을 직접 계산"(기존)에서 "기본 확률 + 내구도 가산" 가중치 방식으로 바꾸기로 확정.
+`BASE_WEIGHT=[55,27,12,4.5,1.5]`, `K_DUR=0.03`는 사용자가 제시된 예시값을 그대로 채택.
+
+**설계**:
+- 등급 판정: `severityIndex(g)=(g-1)/4`(0~1 정규화), `durBias=(70-내구도)×K_DUR`,
+  `weight[g]=BASE_WEIGHT[g]×max(0.05, 1+durBias×(severityIndex×2-1))`. `majorInjuryFrequency`
+  슬라이더는 GRADE3 이상 가중치에만 곱해 "중대 부상 비중"만 조절 — 발생 자체의 빈도
+  (`injuryFrequency`)와 완전히 분리. 5개 가중치로 가중 랜덤 추첨.
+- 등급별 부상 종류/기간(사용자 확정안 그대로):
+
+| 등급 | 부상 종류 | 기간 |
+|---|---|---|
+| GRADE1 | 무릎 통증, 타박상, 팔꿈치 타박상, 정강이 타박상, 허벅지 타박상, 안면 타박상, 열상, 감기 | 1일/3일/1주 |
+| GRADE2 | 발목 염좌, 허리 경직, 손가락 염좌, 손목 염좌, 고관절 타박상, 갈비뼈 타박상, 발가락 염좌, 목 경직, 식중독 | 2주/3주/1개월 |
+| GRADE3 | 햄스트링 염좌, 종아리 염좌, 발목 인대 손상, 허리 경련, 어깨 부상, 사타구니 염좌, 무릎 내측인대 염좌, 대퇴사두근 염좌, 질병 | 1개월/2개월/3개월 |
+| GRADE4 | 코뼈 골절, 안와골절, 족저근막염 수술, 근육 파열, 인대 파열 | 3개월/4개월/6개월 |
+| GRADE5 | 전방십자인대 파열, 후방십자인대 파열, 아킬레스건 파열, 골절, 반월판 파열 | 10개월/12개월/14개월 |
+
+  (손목 인대 부상은 사용자 지시로 제거, 근육 파열/인대 파열/후방십자인대 파열은 신규 추가)
+- 등급 내 기간 선택은 기존 `pickWeighted`(내구도 낮을수록 긴 기간 가중) 그대로 재사용.
+
+**순환 임포트 회피(CLAUDE.md 규칙1)**: `stateUpdater.ts`가 이미 `fatigueSystem.ts`를
+import하고 있어서, 훈련 중 부상(`fatigueSystem.ts`의 `applyRestDayRecovery`)도 같은 등급
+로직을 쓰게 하려면 `fatigueSystem.ts`가 `stateUpdater.ts`에서 가져오는 순환이 생긴다 —
+공용 로직(`GRADE_CONFIG`/`pickWeighted`/`pickInjuryGrade`)을 신규 파일
+`services/game/engine/injuryGrades.ts`(+ 서버 미러 `server/src/shared/engine/injuryGrades.ts`)로
+분리해 양쪽이 여기서 가져오게 함. 훈련 중 부상은 `pickInjuryGrade`의 3번째 인자
+(`severityMultiplier=0.5`)로 기존처럼 "경기 중보다 중증 비율 절반" 동작을 유지.
+
+**변경 파일** (client/server 미러 쌍은 항상 같이):
+- `services/game/engine/injuryGrades.ts` / `server/src/shared/engine/injuryGrades.ts` (신규) —
+  `GRADE_CONFIG`, `pickWeighted`, `pickInjuryGrade` 공용 로직.
+- `services/game/engine/pbp/stateUpdater.ts` / `server/src/shared/engine/pbp/stateUpdater.ts` —
+  기존 `seThreshold`/`majorThreshold`/3-way if-else 블록을 `pickInjuryGrade()` 호출 한 줄로 교체.
+- `services/game/engine/fatigueSystem.ts` / `server/src/shared/engine/fatigueSystem.ts`(서버는
+  미사용 dead code지만 미러 유지) — `applyRestDayRecovery`에 `majorInjuryFrequency` 파라미터
+  추가, 자체 구현하던 3단계 로직을 `pickInjuryGrade(..., 0.5)` 호출로 교체. 이전엔 이 함수만
+  별도의 더 작고 오래된 부상 목록(예: '근육 경직')을 썼는데, 이번에 공용 GRADE_CONFIG로
+  통일됨(부수효과지만 기존 불일치 해소).
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts` —
+  `InjuryEvent.severity` 타입 `'Minor'|'Major'|'Season-Ending'` → `'Grade1'|...|'Grade5'`.
+- `types/player.ts` / `server/src/shared/types/player.ts` — `InjuryHistoryEntry.severity`,
+  `Player.activeInjurySeverity` 타입에 Grade1~5 반영(Suspension은 그대로 유지).
+- `types/message.ts` — `InjuryReportContent.severity` 동일 갱신(싱글플레이어 인박스 메시지용).
+- `components/common/InjuryStatusBadge.tsx` — `SEVERITY_COLOR`/`SEVERITY_TEXT_COLOR`를
+  GRADE1~5 키로 재작성. 색상은 기존 2단계 배색 유지(GRADE1~2=주황, GRADE3~5=빨강,
+  Suspension=파랑) — 5단계 세분 색상은 이번에 요청받지 않아 보수적으로 유지.
+- `components/inbox/MessageContentRenderer.tsx` — 부상 보고 메시지의 "부상 정도" 라벨을
+  `INJURY_GRADE_DISPLAY` 맵(경미/경상/중등도/중상/중증(장기))으로 5단계 표시.
+- `services/simulation/userGameService.ts` / `server/src/shared/injuryDuration.ts` —
+  `durationToDays()`에 GRADE3~5가 쓰는 "N개월" 패턴을 정규식(`/^(\d+)개월$/`×30일)으로
+  일반화 추가, GRADE1의 '1일'도 신규 케이스 추가. 구 '시즌아웃'(180일 고정)은 레거시
+  데이터 호환용으로 남겨둠(신규 부상은 더 이상 이 문자열을 안 만듦).
+- `utils/injurySeverity.ts` (신규) — `services/fa/extensionEngine.ts`/`faValuation.ts`가 구
+  3단계 의미(`=== 'Season-Ending'`, `=== 'Major'`, `!== 'Minor'`)로 severity를 체크하던 걸
+  5단계로 조용히 깨뜨리지 않기 위한 호환 헬퍼(`isSeasonEndingGrade`=GRADE5,
+  `isMajorTierGrade`=GRADE3~4, `isNonMinorGrade`=GRADE3 이상). 구 Minor(17종)=GRADE1~2,
+  구 Major(13종 중 손목인대부상 제외)=GRADE3~4로 갈라졌다는 매핑 근거를 주석에 남김.
+- `hooks/useSimulation.ts`, `services/simulation/batchSeasonService.ts` — ①
+  `applyRestDayRecovery` 호출부에 `majorInjuryFrequency` 인자 추가. ② 하드코딩됐던
+  `severity: 'Minor'` 폴백 4곳을 `'Grade1'`로 교체(더 이상 유효한 등급값이 아니게 됐으므로).
+  ③ `batchSeasonService.ts`의 CPU 경기 부상 히스토리 기록 블록(858행 부근)이 원래
+  `result.injuries` 조회 없이 무조건 `'Minor'`만 넣던 기존 버그도 이 김에 같이 고침 — 같은
+  파일 다른 블록(969행)의 `result.injuries?.find(...)` 패턴을 그대로 적용.
+
+**검증**: `tsc --noEmit` 실행 결과 신규 에러 **0건** — 변경 전후 에러 목록을 diff로 직접
+대조해 라인 번호 이동 2건(내가 추가한 줄만큼 밀린 것)을 제외하면 완전히 동일함을 확인.
+서버 tsconfig로도 별도 확인, 관련 파일 에러 없음. 실제 시뮬레이션 결과 확률 분포 검증
+(예: 내구도별 GRADE 분포가 설계 표와 일치하는지)은 아직 안 함 — 다음 단계로 남김.
+
+**롤백 방법**: 이번 항목에서 나열한 20개 파일을 각각 Before 상태로 되돌리면 됨(대부분
+"직전 커밋과 diff"로 확인 가능). 새 파일 2개(`injuryGrades.ts` client/server), 1개
+(`utils/injurySeverity.ts`)는 삭제. DB 스키마 변경 없음 — `injury_history`에 이미 쌓인
+과거 데이터(옛 Minor/Major/Season-Ending 값)는 그대로 남고, 화면에서 `SEVERITY_TEXT_COLOR`
+등 GRADE1~5 전용 맵을 조회할 때만 매치 실패로 기본 색상 폴백됨(크래시 없음, 단 이번
+세션에서 만든 테스트 데이터 몇 건이 이에 해당).
+
+---
+
+## 2026-09-03 — 멀티 드래프트 선수풀(PlayerPool.tsx) 능력치 색상도 공용 9단계 기준으로 통일
+
+**배경**: 사용자 요청 — `components/draft/PlayerPool.tsx`가 실제로 `MultiDraftView.tsx`
+(`/multi/leagues/:leagueId/draft`)에서 렌더링되는 걸 확인한 뒤, 이 화면도 직전에 만든 공용
+9단계 능력치 색상 기준(`utils/attrRatingColor.ts`)으로 통일해달라는 요청. RookieDraftView/
+FantasyDraftView(싱글)도 같은 컴포넌트를 공유하므로 함께 영향받음.
+
+**변경 파일**:
+- `components/draft/PlayerPool.tsx` — 로컬 `getStatColor`(90/80/70, fuchsia/emerald/amber
+  3단계) 삭제, `utils/attrRatingColor`의 `getAttrColor`(9단계 hex)로 교체. 사용처
+  (`potential`/`ins`/`out`/`ath`/`plm`/`def`/`reb` 컬럼) 전부 `getAttrColor`로 치환.
+
+**검증**: `npx tsc --noEmit` — PlayerPool/attrRatingColor 관련 에러 없음.
+
+**주의**: `Table.tsx`(RosterGrid/DraftView 싱글 전용)와 `PlayerCardModal.tsx`(PlayerEditorPage
+어드민 전용), `ContractManagementTab.tsx`(현재 어디서도 import 안 되는 dead code)는 실제
+멀티플레이어 화면에 노출되지 않아 이번 통일 대상에서 제외.
+
+**롤백 방법**: `PlayerPool.tsx`의 import를 제거하고, 삭제했던 `getStatColor` 함수와
+`getAttrColor(...)` 호출부를 전부 `getStatColor(...)`로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 플레이어 호버 카드 능력치 색상을 PlayerDetailView 9단계 기준으로 통일 + 공용 유틸 추출
+
+**배경**: 사용자 요청 1) 호버 카드(`PlayerHoverCard.tsx`)만 별도로 쓰던 3단계 색상 기준(75/45)을
+`PlayerDetailView.tsx`의 `getAttrColor`와 동일한 9단계 hex 기준으로 맞춰달라는 요청. 2) 이어서
+같은 9단계 기준 함수가 두 파일에 중복 선언된 상태를 공용 유틸로 추출해 참조하도록 리팩토링
+요청.
+
+**변경 파일**:
+- `utils/attrRatingColor.ts` (신규) — `getAttrColor`/`getAttrBarColor` 9단계 기준 함수를
+  여기로 이전. Tailwind JIT은 클래스명을 소스에 리터럴로 존재해야 정적 추출하므로, 각 분기가
+  템플릿 리터럴 조립이 아니라 literal return을 그대로 유지하도록 주의해서 작성.
+- `views/PlayerDetailView.tsx` — 로컬 `getAttrColor`/`getAttrBarColor` 선언 삭제, `utils/attrRatingColor`에서 import.
+- `components/common/PlayerHoverCard.tsx` — 로컬 `getRatingColor` 선언 삭제, `utils/attrRatingColor`의 `getAttrColor`를 import해서 사용(용어 통일).
+
+**Before** (PlayerHoverCard.tsx, 3단계 기준):
+```ts
+const getRatingColor = (val: number): string => {
+    if (val >= 75) return 'text-emerald-400';
+    if (val >= 45) return 'text-slate-200';
+    return 'text-red-400';
+};
+```
+(PlayerDetailView.tsx는 `getAttrColor`/`getAttrBarColor`를 파일 내부에 직접 선언하고 있었음)
+
+**After**: `utils/attrRatingColor.ts`에 9단계 기준(96/90/85/80/75/70/60/50, hex)으로 통합.
+두 파일 모두 `import { getAttrColor } from '../utils/attrRatingColor'` (PlayerDetailView는
+`getAttrBarColor`도 함께) 형태로 참조.
+
+**검증**: `npx tsc --noEmit` — 변경 파일(PlayerHoverCard/PlayerDetailView/attrRatingColor) 관련
+에러 없음 확인(나머지는 기존 베이스라인 에러, 무관).
+
+**주의**: Table.tsx/PlayerPool.tsx(draft)/PlayerCardModal.tsx/ContractManagementTab.tsx는 각자
+다른 3단계 기준(90/80/70, fuchsia/emerald/amber 등)을 의도적으로 별도 유지 중 — 이번 통일
+대상 아님.
+
+**롤백 방법**: `utils/attrRatingColor.ts` 삭제 후, PlayerDetailView.tsx에 원래 함수 2개를
+되돌리고, PlayerHoverCard.tsx의 import를 제거하고 Before 블록의 `getRatingColor`를 복원.
+
+---
+
+## 2026-09-03 — 부상 빈도/중대 부상 비율 슬라이더 범위 0~3.0 → 0~2.0 축소
+
+**배경**: 사용자 요청 — 두 슬라이더의 최대값을 3.0에서 2.0으로. `suspensionFrequency`(출장정지
+빈도)는 요청 대상이 아니라 0~3.0 그대로 유지.
+
+**변경 파일**:
+- `types/simSettings.ts` — `SIM_SETTINGS_META`의 `injuryFrequency`/`majorInjuryFrequency`
+  `max: 3.0` → `max: 2.0`.
+- `views/multi/league/LeagueSettingsView.tsx` — 두 필드의 `<input max={3}>` → `max={2}`,
+  `onChange`의 `Math.min(3, ...)` → `Math.min(2, ...)` 클램프도 함께 수정.
+
+**검증**: `tsc --noEmit` 92건(변화 없음, pre-existing 베이스라인).
+
+**롤백 방법**: 위 4곳의 `2`/`2.0`을 `3`/`3.0`으로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 출장정지 "남은 경기 수"가 경기가 지나도 안 줄어들던 버그 수정
+
+**배경**: 사용자 리포트 — MAIN 1 브랜던 잉그램이 7경기 출장정지를 받은 뒤 경기가 진행돼도
+표시되는 값이 계속 "7경기"로 고정. 원인: `injury_history`의 `duration`("7경기")은
+`server/src/simRunner.ts`가 출장정지를 **발부하는 시점에 한 번 기록한 고정 문자열**이고,
+이후 그 팀이 실제로 경기를 몇 번 더 치렀는지와 무관하게 절대 갱신되지 않음(서버가 재기록할
+계기 자체가 없음). "활성 여부" 판정은 `return_date`(고정 날짜)로 정확히 되고 있었지만,
+화면에 보여주는 "N경기" 텍스트는 그 판정과 별개로 그냥 저장된 문자열을 그대로 노출하고
+있었던 것.
+
+**설계**: 서버에서 매 경기마다 모든 출장정지 중인 선수의 카운터를 갱신하는 대신(엔진 변경
+필요), **클라이언트에서 매번 다시 계산**하는 방식을 택함 — `return_date`는 발부 시점에
+"그 팀의 N번째 다음 경기"로 정확히 고정돼 있으므로, "그 팀이 return_date까지(포함) 아직
+안 치른 경기 수"를 세면 정확히 "지금 남은 경기 수"가 된다. 부상(일수 기반)은 해당 없음 —
+`returnDate` 자체가 이미 "언제까지"를 정확히 말해주므로 재계산 대상은 출장정지뿐.
+
+**변경 파일**:
+- `services/multi/activeInjuryStatus.ts` — `computeSuspensionGamesRemaining(teamId,
+  returnDate, schedule)` 신규(해당 팀의 `!played && date <= returnDate` 경기 수를 셈).
+  `buildActiveInjurySeverityMap`에 4번째 옵션 인자 `suspensionContext:
+  {schedule, getTeamId}` 추가 — 주어지면 severity==='Suspension'인 경우 `duration`을
+  이 재계산값(`"N경기"`)으로 덮어씀, 없으면 기존처럼 고정 문자열 그대로(하위 호환).
+- `views/multi/season/MultiRosterView.tsx` — `leagueTeams`에서 만든 playerId→teamId
+  맵 + `schedule`을 `suspensionContext`로 전달.
+- `views/multi/season/MultiTacticsView.tsx` — 이 화면은 항상 `myTeamId` 한 팀만 다루므로
+  `getTeamId: () => myTeamId`로 간단히 전달.
+- `views/multi/season/MultiFrontOfficeView.tsx` — 이미 있던 `rosterMap`(playerId→team_slug,
+  `useMultiSearchData` 반환값)을 그대로 `getTeamId`로 사용.
+- `views/PlayerDetailView.tsx` — "부상 이력" 리스트에서 **가장 최근 항목이면서 지금도
+  활성 상태일 때만** `entry.duration`(발부 당시 기록, 로그라 불변) 대신
+  `player.activeInjuryDuration`(재계산된 값)을 표시. 과거에 이미 끝난 항목은 원래 기록
+  그대로 유지.
+
+**검증**: DB로 직접 확인 — 잉그램(mia) 출장정지 return_date=2026-12-07, 발부 당시엔
+"7경기"였으나 그 사이 mia가 2경기(11/24, 11/27)를 더 치러 `played=false ∧
+date<=2026-12-07` 조건을 만족하는 경기가 5개로 감소한 것을 SQL로 직접 확인 — 재계산
+로직이 정확히 5를 반환. `tsc --noEmit` 92건(변화 없음). 브라우저 실측 필요.
+
+**롤백 방법**: `buildActiveInjurySeverityMap` 호출 4곳에서 `suspensionContext` 인자를
+빼면 기존처럼 고정 duration이 그대로 노출됨(함수 자체는 이 인자 없이도 정상 동작하도록
+설계돼 있어 부분 롤백 가능). `PlayerDetailView.tsx`는 `isCurrentActive`/`duration` 변수
+2줄만 제거하면 됨.
+
+---
+
+**배경**: 사용자가 스크린샷으로 지적 — 앞서 시도한 "부상 현황" 위젯 수정(부상명/남은일수를
+severity 색상으로 통일)이 화면에 전혀 반영 안 됨. 원인 파악: `MultiPlayerDetailView.tsx`가
+쓰는 `buildLeagueTeams()`에는 애초에 `activeInjurySeverity`를 병합하는 로직이 없어서
+(로스터 탭에만 그 병합을 넣어뒀었음) 그 위젯의 게이팅 조건(`activeInjurySeverity`)이 멀티에서
+항상 false — **애초에 렌더된 적이 없는 위젯을 고치고 있었다.** 실제로 화면에 보이던 건 완전히
+다른 섹션인 "부상 이력"(injuryHistory 리스트, `player.injuryHistory` 기반이라 이미 정상
+렌더 중)이었음 — "부상 현황" 위젯 변경은 전부 되돌리고, 실제로 보이는 "부상 이력" 쪽을
+사용자 요청대로 고쳤다. 이후 대화 중 색상 지시("그냥 흰색/보통굵기로")와 날짜 포맷 지시
+("(예상 복귀 mm/dd)" → "(~ yy/mm/dd)", 호버카드에도 동일 적용)로 두 차례 더 조정.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx`
+  - "부상 현황" 위젯: 이전 시도(게이팅에 `activeInjurySeverity` 추가, 소스를 `currentInjury`로
+    통일, "남은 일수" 병합행, severity 색상) 전부 **원복** — Before 3행 구조(부상명/기간/
+    예상복귀, `player.health` 게이팅, `text-white` 고정) 그대로.
+  - "부상 이력" 리스트(실제로 보이는 곳): `entry.injuryType` + `entry.duration`을 한 줄로 붙이고
+    (기존엔 duration만 별도 회색), 색상은 severity 구분 없이 `text-slate-200` 고정(요청:
+    "다른 영역처럼 흰색/보통굵기"), 뒤에 `formatReturnDateSuffix(entry.returnDate)`로
+    복귀일 접미사 추가.
+- `services/multi/activeInjuryStatus.ts` — `ActiveInjuryStatus`에 `returnDate: string | null`
+  추가, `buildActiveInjurySeverityMap`이 injury_history 마지막 엔트리에서 함께 추출.
+  `formatReturnDateSuffix(returnDate)` 신규 export — `"2026-12-07"` → `" (~ 26/12/07)"`
+  (null이면 빈 문자열, 시즌아웃 등 복귀일 미정 케이스).
+- `views/multi/season/MultiRosterView.tsx`, `MultiTacticsView.tsx`, `MultiFrontOfficeView.tsx`
+  — 기존 `activeInjurySeverity`/`injuryType`/`activeInjuryDuration` 병합에 `returnDate:
+  injuryStatus?.returnDate ?? undefined`도 추가(기존 `Player.returnDate` 필드 재사용 —
+  싱글플레이어도 이미 이 필드를 쓰고 있어 필드 자체는 신설 안 함).
+- `components/common/PlayerHoverCard.tsx` — 부상/출장정지 줄의 기간 표시에
+  `formatReturnDateSuffix(player.returnDate)` 추가 — 프로필 "부상 이력"과 동일 포맷.
+
+**포맷 예시**: "햄스트링 부상 2주 (~ 26/12/07)" — 프로필 부상 이력과 호버카드 양쪽에서
+동일하게 뜬다. 시즌아웃(`returnDate=null`)은 접미사 없이 "아킬레스건 파열 시즌아웃"만 표시.
+
+**검증**: `tsc --noEmit` 92건(변화 없음). 브라우저 실측 필요.
+
+**롤백 방법**: `PlayerDetailView.tsx`의 "부상 이력" 블록을 duration 별도 회색 표시로
+되돌리고, 3개 뷰 파일의 `returnDate: injuryStatus?.returnDate ?? undefined` 줄과
+`activeInjuryStatus.ts`의 `returnDate` 필드/`formatReturnDateSuffix`를 제거하면 됨.
+"부상 현황" 위젯은 이미 원복 완료 상태(추가 조치 불필요).
+
+---
+
+## 2026-09-03 — 호버카드 부상명/기간 텍스트도 배지 색상으로 통일
+
+**배경**: 사용자 요청 — 바로 아래 항목에서 "부상"/"출장정지" 라벨만 배지 색으로 바꿨는데,
+이어지는 부상명(예: 발목 염좌)과 기간(예: 3일, 7경기) 텍스트도 같은 색으로 맞춰달라는 요청.
+
+**변경 파일**: `components/common/PlayerHoverCard.tsx` — 부상명 span(`text-white` →
+`SEVERITY_TEXT_COLOR[severity]`), 기간 span(`text-slate-400` → `SEVERITY_TEXT_COLOR[severity]`).
+
+**검증**: `tsc --noEmit` 92건(변화 없음).
+
+**롤백 방법**: 두 span을 각각 `text-white`/`text-slate-400`로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 호버카드 "부상"/"출장정지" 라벨 색상을 배지 색상으로 통일
+
+**배경**: 사용자 요청 — 바로 아래 항목에서 추가한 "부상"/"출장정지" 라벨 텍스트가
+`text-slate-300`(중립 회색)이었는데, 배지 색상(경증=주황/중증·시즌아웃=빨강/출장정지=파랑)과
+맞춰달라는 요청.
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — 배지 배경색(`SEVERITY_COLOR`, `bg-*`)과 짝을
+  이루는 `SEVERITY_TEXT_COLOR`(`text-*`) 맵 신규 export.
+- `components/common/PlayerHoverCard.tsx` — 라벨 span 클래스를
+  `text-xs text-slate-300` → `text-xs font-semibold ${SEVERITY_TEXT_COLOR[severity]}`로 교체.
+
+**검증**: `tsc --noEmit` 92건(변화 없음, pre-existing 베이스라인).
+
+**롤백 방법**: 라벨 span 클래스를 `text-xs text-slate-300`로 되돌리고
+`SEVERITY_TEXT_COLOR` export 제거.
+
+---
+
+## 2026-09-03 — 선수 호버카드에 부상/출장정지 정보 표시 + 배지 툴팁 버그 수정
+
+**배경**: 사용자 요청 — `PlayerHoverCard`(선수 이름에 마우스 올리면 뜨는 능력치/스탯 팝업)
+헤더에 이름 아래 새 줄로 부상/출장정지 정보 추가. 요청 형식: 부상은 `[배지] [부상]
+[부상명] [기간]`, 출장정지는 `[배지] [출장정지] [N경기]`(부상명 생략).
+
+작업 중 발견한 기존 버그: 로스터/전술/트레이드 화면 6곳의 배지 hover 툴팁이 전부
+`${p.injuryType || '부상'} | 예상 복귀: ${p.returnDate || '미정'}` 형태였는데, 이 두 필드
+(`injuryType`/`returnDate`)는 멀티플레이어 병합 로직이 애초에 채운 적이 없어(그동안
+`activeInjurySeverity`만 채웠음) 항상 "부상 | 예상 복귀: 미정"이라는 의미없는 폴백만
+떴었다 — 이번에 실제 부상명/기간을 채우면서 같이 고쳤다.
+
+**변경 파일**:
+- `services/multi/activeInjuryStatus.ts` — `buildActiveInjurySeverityMap`의 반환 타입을
+  `Map<string, severity>`에서 `Map<string, ActiveInjuryStatus>`(`{severity, injuryType,
+  duration}`)로 확장. `formatActiveInjuryLabel`/`formatPlayerActiveInjuryLabel`(Player
+  필드 버전) 신규 export — "부상 · 발목 염좌 · 3일" / "출장정지 · 7경기" 형식 한 줄 요약.
+- `types/player.ts` — `Player.activeInjuryDuration?: string` 필드 추가(기존
+  `injuryType`은 그대로 재사용).
+- `views/multi/season/MultiRosterView.tsx`, `MultiTacticsView.tsx`,
+  `MultiFrontOfficeView.tsx` — 각 병합 지점에서 `activeInjurySeverity`뿐 아니라
+  `injuryType`/`activeInjuryDuration`도 함께 Player 객체에 부착하도록 수정.
+- `components/roster/RosterGrid.tsx`, `RosterOverviewGrid.tsx`, `RosterStatsStack.tsx`,
+  `components/dashboard/DepthRotationBoard.tsx`, `views/multi/season/MultiFrontOfficeView.tsx`
+  (PlayerChip + renderHistoryPlayerCell) — 배지 `title` 툴팁을
+  `formatPlayerActiveInjuryLabel(p)`로 교체(위 버그 수정).
+- `components/common/PlayerHoverCard.tsx` — 헤더를 2줄 구조로 변경. 기존 이름/팀/포지션/
+  나이 줄은 그대로 두고, `player.activeInjurySeverity`가 있을 때만 그 아래에 배지+라벨
+  줄 추가. 출장정지는 `injuryType`("출장정지 (싸움)")을 생략(라벨과 중복이라 요청 스펙대로).
+
+**Before** (`PlayerHoverCard.tsx` 헤더):
+```tsx
+<div className="flex items-baseline gap-1.5 mb-2 pb-2 border-b border-slate-800 min-w-0">
+    <span className="text-xs font-bold text-white truncate">{player.name}</span>
+    {teamAbbr && <span className="text-xs text-slate-400 shrink-0">{teamAbbr}</span>}
+    <span className="text-xs text-slate-400 shrink-0">{player.position}</span>
+    <span className="text-xs text-slate-400 shrink-0">{player.age}세</span>
+</div>
+```
+
+**After**: 위 블록을 감싸는 `<div>`로 바꾸고, 그 아래 조건부 부상/출장정지 줄 추가(본문
+"변경 파일" 참고 — `InjuryStatusBadge` + 라벨 + (부상만) 부상명 + 기간).
+
+**검증**: `tsc --noEmit` 전체 실행, 92건(모두 pre-existing 베이스라인과 동일 개수) — 신규
+에러 없음. 브라우저 실측 필요.
+
+**롤백 방법**: 위 7개 파일을 각 Before 상태로 되돌리면 됨. `activeInjuryDuration` 필드
+제거 시 `Player` 타입에서만 지우면 되고 DB 스키마 변경 없음(기존 `injury_history` JSONB의
+`duration` 필드를 읽기만 함).
+
+---
+
+## 2026-09-03 — 멀티 전술 화면 "개인 전술" 탭 숨김
+
+**배경**: 사용자 요청으로 `MultiTacticsView`의 4개 탭(뎁스 차트·로테이션/팀 전술/인사이트/개인
+전술) 중 "개인 전술" 탭을 숨김. `PlayerTacticsPanel` 렌더 블록과 `MULTI_TACTICS_TABS`/
+`MultiTacticsTab` 타입은 그대로 둬서(`?tab=player` 딥링크는 계속 동작) TabBar에 보이는
+탭 버튼만 제거 — 완전 삭제가 아니라 재노출 가능한 숨김 처리.
+
+**변경 파일**: `views/multi/season/MultiTacticsView.tsx` — `TabBar`의 `tabs` 배열에서
+`{ id: 'player', label: '개인 전술' }` 항목 제거.
+
+**Before**:
+```tsx
+tabs={[
+    { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
+    { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+    { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
+    { id: 'player' as MultiTacticsTab,    label: '개인 전술' },
+]}
+```
+
+**After**:
+```tsx
+tabs={[
+    { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
+    { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+    { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
+]}
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `tabs` 배열에 `{ id: 'player' as MultiTacticsTab, label: '개인 전술' }` 줄만 다시 추가하면 됨.
+
+---
+
+## 2026-09-03 — 뎁스차트 탭 폰트/트래킹 정리 + 선수 선택 드롭다운 "제거" 옵션 스타일링
+
+**배경**: 바로 위 항목(브라우저 기본 select → 커스텀 드롭다운 교체)에 대한 후속 스타일 지시.
+드롭다운 안 폰트가 `text-xs`/`text-[11px]`로 최소 크기 기준(`text-sm`) 미달, OVR 배지가
+뎁스차트 OVR 컬럼 배지(`!w-6 !h-6 !text-xs`)와 다른 크기(기본 sm=`text-[10px]`)였고, 슬롯
+비우기 옵션 라벨("선수 선택")이 실제 선택 동작과 혼동됨 + 시각적 구분(위험 액션 틴트) 요청.
+동시에 뎁스 차트 탭 전체(제목/툴바 버튼/자동배정 드롭다운/슬롯 라벨)의 `uppercase
+tracking-wider/widest`도 해제 요청, 상단 저장/자동배정/초기화 버튼 텍스트도 `text-sm` 통일.
+
+**변경 파일**:
+- `components/dashboard/DepthRotationBoard.tsx`
+  - `PlayerSlotDropdown`: 옵션 리스트 `text-xs`→`text-sm`(포지션 라벨 `text-[11px]`→`text-sm`
+    포함), 비우기 옵션 라벨 "선수 선택"→"제거" + `text-red-400 bg-red-500/10
+    hover:bg-red-500/20 hover:text-red-300`로 위험 액션 틴트 적용, 옵션 OVR 배지
+    `className`을 OVR 컬럼과 동일하게 `!w-6 !h-6 !text-xs !shadow-none`으로 통일(기존엔
+    `size="sm"` 기본값이라 `text-[10px]`로 더 작았음).
+  - 툴바: 제목 span·"포지션 자동 배정"/"출전시간 자동 배정"/"초기화" 버튼·두 자동배정
+    드롭다운 옵션(및 sub 설명 텍스트)에서 `tracking-wider`/`tracking-widest` 제거, 버튼
+    텍스트 `text-xs`→`text-sm`. 슬롯 라벨(주전/벤치/써드, PG/SG/SF/PF/C)의
+    `tracking-widest`도 제거(크기는 이미 `text-sm`이라 유지).
+- `views/multi/season/MultiTacticsView.tsx` — 저장 버튼 `text-xs`→`text-sm`.
+
+**Before**:
+```tsx
+// PlayerSlotDropdown 옵션
+<button className="... text-xs font-semibold text-slate-500 ...">선수 선택</button>
+<OvrBadge value={...} size="sm" className="!shadow-none shrink-0" />
+<span className="ml-auto text-slate-500 text-[11px] font-bold shrink-0">{p.position}</span>
+
+// 툴바
+<span className="text-base font-black text-white uppercase tracking-widest">뎁스 차트 · 로테이션</span>
+<button className="... text-xs font-bold uppercase tracking-wider ...">포지션 자동 배정</button>
+```
+
+**After**:
+```tsx
+<button className="... text-sm font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 ...">제거</button>
+<OvrBadge value={...} size="sm" className="!w-6 !h-6 !text-xs !shadow-none shrink-0" />
+<span className="ml-auto text-slate-500 text-sm font-bold shrink-0">{p.position}</span>
+
+<span className="text-base font-black text-white uppercase">뎁스 차트 · 로테이션</span>
+<button className="... text-sm font-bold uppercase ...">포지션 자동 배정</button>
+```
+
+**검증**: `npx tsc --noEmit` 통과, `vite build` 성공. 브라우저 실동작(실제 렌더 확인)은 미확인 — 멀티플레이어 방/로스터 상태 필요.
+
+**롤백 방법**: 위 Before 블록으로 되돌리면 됨(3개 파일 모두 텍스트 치환 수준이라 git diff로도 바로 확인 가능).
+
+---
+
+## 2026-09-03 — 뎁스차트 선수 선택 드롭다운을 브라우저 기본 select에서 커스텀 드롭다운으로 교체
+
+**배경**: 전술 > 뎁스 차트(`MultiTacticsView` 'depth' 탭 → `DepthRotationBoard`) 화면의 슬롯별
+선수 선택이 브라우저 기본 `<select>`였음. 옵션 목록 안에 OVR 배지·부상/출장정지 배지 같은
+커스텀 UI를 넣을 수 없는 한계가 있어(닫힌 상태 오버레이에만 배지 표시 가능, 펼친 목록은
+브라우저가 그리는 순수 텍스트) 사용자가 완전 커스텀 드롭다운으로 교체 요청.
+레이아웃 지정: `[OVR] 이름 [부상/출전정지배지] --- [포지션]`.
+
+**변경 파일**: `components/dashboard/DepthRotationBoard.tsx`
+- 신규 컴포넌트 `PlayerSlotDropdown` 추가 — 기존 공용 `components/common/Dropdown.tsx`(포털 렌더링,
+  테이블의 `overflow-auto`/`sticky`에 안 잘림) 위에 옵션 리스트를 직접 그림.
+- 각 슬롯 `<td>`의 `<select>` + 오버레이 3종 div 블록을 `<PlayerSlotDropdown players={sortedRoster}
+  selectedPlayer={selectedPlayer} onChange={...} />` 한 줄로 교체.
+- 닫힌 상태 트리거는 기존과 동일(이름 + 부상배지 + 셰브런), 펼친 목록의 옵션 한 줄은
+  `OvrBadge(size="sm") + 이름 + InjuryStatusBadge(조건부) + ml-auto 포지션` 순서로 구성.
+
+**Before**:
+```tsx
+<div className="relative group/sel w-full h-full">
+    <select className="... text-transparent ..." value={selectedId || ''} onChange={...}>
+        <option value="">선수 선택</option>
+        {sortedRoster.map(p => (
+            <option key={p.id} value={p.id}>({calculatePlayerOvr(p)}) {p.name} - {p.position}</option>
+        ))}
+    </select>
+    <div className="absolute inset-0 ...">{/* 이름 + 부상배지, 닫힌 상태만 */}</div>
+    <div className="absolute right-2 ..."><ChevronDown /></div>
+</div>
+```
+
+**After**:
+```tsx
+<PlayerSlotDropdown
+    players={sortedRoster}
+    selectedPlayer={selectedPlayer}
+    onChange={(playerId) => handleSlotChange(pos, depthIndex, playerId)}
+/>
+// PlayerSlotDropdown 내부: <Dropdown isOpen/onOpenChange 제어> trigger={이름+배지+셰브런}
+//   옵션 버튼: <OvrBadge size="sm" /> + 이름 + (부상시)<InjuryStatusBadge /> + <span className="ml-auto">{p.position}</span>
+```
+
+**검증**: `npx tsc --noEmit` 통과(해당 파일 관련 오류 없음). 브라우저 실동작(드롭다운 열기/스크롤/선택/외부클릭 닫힘)은 미확인.
+
+**롤백 방법**: `PlayerSlotDropdown` 컴포넌트 정의 삭제 + 테이블 셀 코드를 위 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 뎁스차트 부상 배지 안 보이던 버그 수정 (별도 team 객체 미병합)
+
+**배경**: 바로 아래 항목("배지를 선수 기록 탭·전술 뎁스차트·트레이드 화면까지 확장")에서
+`rosterWithZoneStats`(존스탯+`activeInjurySeverity` 병합 완료)를 만들어뒀는데, 실제로
+뎁스차트(`DepthRotationBoard`)에 넘기는 `team` prop은 그 변수가 아니라 **완전히 별도로
+선언된 `team` useMemo**(460행, `roster: rosterPlayers` — 병합 전 원본)를 쓰고 있었다.
+'team'(전술 슬라이더) 탭이 쓰는 `rosterWithZoneStats`와 'depth'(뎁스차트) 탭이 쓰는
+`team.roster`가 애초에 서로 다른 변수였던 것 — 존스탯 병합 당시부터 있던 기존 구조라
+알아채기 어려웠다.
+
+**변경 파일**: `views/multi/season/MultiTacticsView.tsx` — `team` useMemo의
+`roster: rosterPlayers` → `roster: rosterWithZoneStats`, 의존성 배열도 동일하게 교체.
+
+**Before**:
+```ts
+const team = useMemo((): Team => ({
+    ...
+    roster: rosterPlayers,
+}), [myTeamId, myTeamRow?.team_name, rosterPlayers]);
+```
+
+**After**:
+```ts
+const team = useMemo((): Team => ({
+    ...
+    roster: rosterWithZoneStats,
+}), [myTeamId, myTeamRow?.team_name, rosterWithZoneStats]);
+```
+
+**주의사항**: 같은 파일 625행(`activeTab === 'player'` 탭의 `PlayerTacticsPanel`)도 여전히
+원본 `rosterPlayers`를 쓴다 — 다만 그 컴포넌트는 `InjuryStatusBadge`를 렌더링하지 않으므로
+지금은 눈에 보이는 영향이 없어 그대로 둠. 나중에 그 탭에도 배지를 붙이게 되면 같이 고칠 것.
+
+**검증**: `tsc --noEmit` 통과. 브라우저 실측 필요.
+
+**롤백 방법**: `roster: rosterWithZoneStats`를 `roster: rosterPlayers`로, 의존성도 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 부상/출장정지 배지를 선수 기록 탭·전술 뎁스차트·트레이드 화면까지 확장
+
+**배경**: 사용자 요청 — 지금까지 배지가 로스터 탭 2곳(능력치/로스터 개요)에만 있었는데,
+"선수 기록" 탭 테이블, "전술 > 뎁스 차트", "트레이드 > 새 제안"(양 팀 로스터+제공 리스트)과
+"제안 내역"까지 확장. 조사 결과 이 화면들은 서로 다른 3가지 데이터 경로를 쓰고 있어서
+(로스터 화면들이 쓰는 `MultiRosterView.tsx`의 인라인 로직, 전술이 쓰는 완전히 별도의
+`selectTacticsData`(buildLeagueTeams 미사용), 트레이드가 쓰는 `useMultiSearchData`+
+`usePlayerSeasonStatsBatch` 조합) "지금 활성 부상인지" 판정 로직을 한 곳에서 세 번 베껴
+써야 하는 상황이라, 먼저 공용 헬퍼로 뽑아냈다.
+
+**변경 파일**:
+- `services/multi/activeInjuryStatus.ts` (신규) — `buildActiveInjurySeverityMap(rows,
+  currentSimDate, seasonNumber)`. `room_player_state` 행 배열을 받아 playerId→severity
+  맵을 반환. server/src/simRunner.ts §2.5 오버레이와 동일 판정 기준(return_date 비교 /
+  season_number 일치)을 한 곳으로 모음 — 로스터/전술/트레이드 세 화면이 전부 이 함수를 씀.
+- `hooks/usePlayerInjuryStatus.ts` (신규) — `usePlayerSeasonStatsBatch.ts`와 동일 패턴의
+  가벼운 react-query 훅. `room_player_state`만 조회(임의의 player_id 집합 지원) — 트레이드
+  화면처럼 `useLeagueRawStats`(meta_players+game_pbp 통째로) 쓰기엔 과한 곳에서 사용.
+- `views/multi/season/MultiRosterView.tsx` — 기존 인라인 판정 로직을
+  `buildActiveInjurySeverityMap` 호출로 교체(중복 제거, 동작 동일).
+- `components/roster/RosterStatsStack.tsx` — "선수 기록" 탭 유일한 테이블(`CategoryTable`)의
+  이름 셀에 배지 추가. 데이터는 `MultiRosterView.tsx`가 만든 `Team` 객체를 그대로 받으므로
+  (`activeInjurySeverity` 이미 부착돼 있음) 추가 fetch 없이 UI만 추가.
+- `views/multi/season/MultiTacticsView.tsx` — 뎁스차트가 쓰는 `selectTacticsData`(별도
+  `mapRawPlayerToRuntimePlayer` 경로, buildLeagueTeams 미사용)의 반환값에
+  `playerInjuryRows`를 실어보내고, `rosterWithZoneStats`(기존 존스탯 merge 단계)에서
+  `activeInjurySeverity`도 함께 merge. `currentSimDate`/`preferVirtual`을
+  `selectTacticsData`보다 앞으로 옮김(TS2448 "used before declaration" 방지 —
+  CLAUDE.md 규칙2).
+- `components/dashboard/DepthRotationBoard.tsx` — 슬롯 이름 오버레이(`absolute inset-0
+  pointer-events-none` 컨테이너)에 배지 추가. 오버레이 전체가 `pointer-events-none`라
+  배지에만 `pointer-events-auto`를 별도로 줘서 툴팁 hover가 동작하게 함(가운데 있는
+  `<select>`가 계속 클릭을 받아야 해서 오버레이 자체는 그대로 둠).
+- `views/multi/season/MultiFrontOfficeView.tsx` — `usePlayerInjuryStatus(roomId,
+  statsRequestIds)`를 추가 호출(기존 `statsRequestIds`가 탭별로 이미 범위 분기돼 있어
+  재사용 — 새 제안=양 팀 로스터, 히스토리=과거 트레이드 등장 선수 전체 등). 결과를
+  `poolByIdWithStats`에 merge해 `PlayerChip`(양 팀 로스터+제공 리스트 공용 컴포넌트)과
+  `renderHistoryPlayerCell`(제안 내역) 양쪽에서 동일하게 소비. `currentSimDate` 계산은
+  이 파일에 처음 추가(기존엔 없었음, `MultiRosterView.tsx`와 동일 `findCurrentVirtualDate`
+  패턴).
+- `services/multi/buildLeagueTeams.ts`는 이번에도 건드리지 않음 — 리더보드/인사이트 탭은
+  이번 요청 범위 밖.
+
+**검증**: `tsc --noEmit` 전체 실행, 신규 코드 관련 에러 0건 확인(기존에 있던 무관한 에러
+92건은 `git diff`로 각 파일이 이번 세션에서 손대지 않은 상태임을 확인해 pre-existing으로
+분류). 브라우저 실측은 미확인.
+
+**작업 중 사고**: 이 변경을 만들던 도중 `git stash`/`git stash pop`으로 전후 tsc diff를
+비교하려다, 이 세션의 앞선 작업(다른 대화 턴에서 만들어졌으나 컨텍스트 압축으로 요약되어
+있던 `MultiFrontOfficeView.tsx` OVR 정렬 커밋용 dev-log 항목)과 충돌해 스태시 팝이 실패,
+전체 세션 변경사항(23개 파일)이 잠깐 작업 트리에서 사라지는 사고가 있었다. `stash@{0}`이
+보존된 상태였어서 데이터 유실은 없었고(`git status`/`git stash show`로 확인 후 복구),
+`git checkout -- docs/history/dev-log.md`(사전에 별도 백업)로 충돌 원인만 제거한 뒤
+`git stash pop`으로 전체 복구, 마지막으로 백업해둔 OVR 정렬 항목을 dev-log에 다시 삽입.
+**교훈**: 진행 중인 세션에서 `git stash`는 되도록 피하고, 부득이하면 반드시 사전에 관련
+파일을 별도 백업할 것.
+
+**롤백 방법**: 위 7개 파일을 각 Before 상태로 되돌리고 `services/multi/activeInjuryStatus.ts`,
+`hooks/usePlayerInjuryStatus.ts` 삭제.
+
+---
+
+## 2026-09-03 — 부상 배지 아이콘 크기 축소 (14→12px)
+
+**배경**: 사용자 요청 — 아이콘이 원(16px) 대비 너무 커 보여서 축소.
+
+**변경 파일**: `components/roster/RosterGrid.tsx`, `components/roster/RosterOverviewGrid.tsx`
+— `iconSize={14}` → `iconSize={12}`(원 지름 16px, strokeWidth 4는 유지).
+
+**검증**: `tsc --noEmit` 통과.
+
+**롤백 방법**: 두 호출부의 `iconSize`를 14로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 부상 배지 십자가 두께 조정
+
+**배경**: 사용자 요청 — 십자가/마이너스 아이콘을 더 두껍게. lucide 아이콘의 `strokeWidth`가
+3으로 고정돼 있어 prop으로 뺌.
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — `strokeWidth?: number`(기본 3) prop 추가.
+- `components/roster/RosterGrid.tsx`, `components/roster/RosterOverviewGrid.tsx` — 호출부에
+  `strokeWidth={4}` 추가.
+
+**검증**: `tsc --noEmit` 통과.
+
+**롤백 방법**: 두 호출부의 `strokeWidth` prop 제거하면 기본값(3)으로 복귀.
+
+---
+
+## 2026-09-03 — 부상 배지 크기 조정 (원 14→16px, 아이콘 →14px)
+
+**배경**: 사용자 요청 — 배지 원 지름 16px, 내부 아이콘 14px로 확대(기존 자동계산 비율
+size*0.65=9px보다 훨씬 큰 값이라 별도 prop 필요).
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — `iconSize?: number` prop 추가(생략 시 기존
+  `size*0.65` 자동계산 유지, 지정 시 그 값 사용).
+- `components/roster/RosterGrid.tsx`, `components/roster/RosterOverviewGrid.tsx` — 호출부에
+  `size={16} iconSize={14}` 추가.
+
+**검증**: `tsc --noEmit` 통과.
+
+**롤백 방법**: 두 호출부의 `size`/`iconSize` prop을 제거하면 기존 기본값(14px/9px)으로 복귀.
+
+---
+
+## 2026-09-03 — 부상 배지 위치: 이름 옆에 바로 붙게 수정 (flex-1 제거)
+
+**배경**: 사용자 피드백 — 배지가 이름 텍스트 바로 옆이 아니라 이름 컬럼 우측 끝에 붙어있음.
+원인은 안 보이던 버그 수정 때 이름 span에 넣은 `flex-1`(flex-grow:1) — 이게 이름 span을
+180px 셀 전체 너비까지 늘려버려서, 뒤따르는 배지가 항상 셀 오른쪽 끝으로 밀렸음.
+`min-w-0`(너무 긴 이름일 때 줄어들 수 있게)은 유지하되 `flex-1`(강제로 늘어나기)만 빼면
+이름은 원래 텍스트 길이만큼만 차지하고 배지가 바로 옆에 붙는다 — 기본 flex 아이템은
+`flex-shrink:1`이라 여전히 필요할 때(너무 긴 이름) 줄어드는 동작은 보존됨.
+
+**변경 파일**: `components/roster/RosterGrid.tsx`, `components/roster/RosterOverviewGrid.tsx`
+— 이름 span 클래스 `min-w-0 flex-1` → `min-w-0`.
+
+**검증**: `tsc --noEmit` 통과. 브라우저 실측 필요.
+
+**롤백 방법**: 두 파일의 해당 span 클래스에 `flex-1`을 다시 추가하면 됨.
+
+---
+
+## 2026-09-03 — 부상 상태 배지, "로스터"(overview) 탭에도 추가
+
+**배경**: 바로 아래 두 항목에서 배지를 `components/roster/RosterGrid.tsx`에만 추가했는데,
+사용자가 스크린샷으로 확인해보니 "능력치" 탭엔 배지가 뜨는데 "로스터" 탭엔 안 뜬다고 리포트.
+원인 확인 결과 `views/RosterView.tsx`가 탭에 따라 서로 다른 컴포넌트를 렌더링하고 있었음
+(`RosterView.tsx:242` `tab==='overview'` → `RosterOverviewGrid`, `:249` `tab==='attributes'`
+→ `RosterGrid`) — 사용자가 보던 화면(이름/포지션/나이/OVR만 있는 기본 로스터 뷰)은
+`RosterOverviewGrid`였고, 이 컴포넌트는 처음부터 손대지 않았었음. 두 컴포넌트가 같은
+`team.roster`(같은 `activeInjurySeverity` 데이터)를 받으므로 데이터 배선은 이미 돼 있었고,
+UI 렌더링만 빠져 있었음.
+
+**변경 파일**: `components/roster/RosterOverviewGrid.tsx` — `RosterGrid.tsx`와 동일한 패턴
+(이름 span에 `min-w-0 flex-1`, 옆에 `InjuryStatusBadge` 조건부 렌더) 적용.
+
+**검증**: `tsc --noEmit` 통과. 브라우저 실측 필요.
+
+**롤백 방법**: 위 파일을 Before(PlayerHoverCard만 있던 상태)로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 부상 상태 배지 수정: 출장정지 색상/아이콘 + 안 보이던 버그
+
+**배경**: 바로 아래 항목("로스터 테이블에 부상 상태 배지 추가")에 대한 사용자 피드백 2건.
+(1) 출장정지(Suspension) 배지를 빨강 대신 파란색+마이너스(-) 아이콘으로 바꿔달라는 요청.
+(2) 실제 화면에서 배지가 아예 안 보인다는 리포트.
+
+(2)의 원인: `RosterGrid.tsx` 이름 셀이 `position: sticky; width/minWidth/maxWidth: 180px`로
+폭이 고정돼 있는데, 이름 `<span>`에 `truncate` 클래스만 있고 `min-w-0`이 없었다. flex
+아이템의 기본 `min-width`는 `auto`(콘텐츠 크기)라 `min-w-0`이 없으면 `truncate`가 있어도
+실제로는 줄어들지 않고 이름이 원래 너비 그대로 렌더링된다 — 긴 이름일 경우 배지가 180px
+밖으로 밀려나 다음 컬럼(포지션, 같은 sticky 레이어) 뒤에 가려져 안 보였다.
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — `Suspension` 색상 `bg-red-500` → `bg-blue-500`,
+  아이콘 `Plus` → `Minus`(severity별 분기).
+- `components/roster/RosterGrid.tsx` — 이름 span에 `min-w-0 flex-1` 추가해 실제로 줄어들며
+  ellipsis 처리되도록 수정.
+
+**Before/After** (`RosterGrid.tsx`):
+```tsx
+// Before
+<span className="text-sm font-semibold text-slate-200 truncate ...">{p.name}</span>
+// After
+<span className="min-w-0 flex-1 text-sm font-semibold text-slate-200 truncate ...">{p.name}</span>
+```
+
+**검증**: `tsc --noEmit` 통과. 브라우저 실측은 미확인 — 사용자 확인 필요.
+
+**롤백 방법**: 위 두 파일을 각 Before 상태로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 로스터 테이블에 부상 상태 배지 추가 (팀 > 로스터 탭)
+
+**배경**: 사용자 요청 — 부상 시스템을 실제 화면에서 확인할 수 있도록, 로스터 테이블 선수
+이름 옆에 부상 상태 배지(빨간/주황 원 + 흰 십자가)를 추가. "다른 테이블에서도 재사용할
+공통 에셋"으로 만들어달라는 요청이라 별도 컴포넌트로 분리. 기존에 `RosterGrid.tsx`에
+`p.health !== 'Healthy'`로 텍스트 배지("INJURED"/"DAY-TO-DAY")를 표시하는 로직이 이미
+있었지만, 멀티플레이어는 `forceHealthy=true`로 항상 `health='Healthy'`를 강제하고 있어
+한 번도 표시된 적이 없었음(싱글플레이어 전용으로 동작). 이번 배지는 색상을 severity
+(Minor/Major/Season-Ending)로 결정해야 해서 기존 `health` enum만으로는 부족 — 새 판정
+로직이 필요했음.
+
+**변경 파일**:
+- `types/player.ts` — `Player.activeInjurySeverity?: 'Minor'|'Major'|'Season-Ending'|'Suspension'` 필드
+  추가(로스터 배지 전용, health와 별개— 항상 동기화되진 않음). `InjuryHistoryEntry.severity`
+  유니언에 `'Suspension'` 추가(서버가 출장정지를 이 값으로 기록 중인데 타입엔 없던 기존 누락).
+- `server/src/shared/types/player.ts` — 위 severity 유니언 확장만 미러(activeInjurySeverity는
+  서버엔 불필요, 클라이언트 UI 전용 필드).
+- `components/common/InjuryStatusBadge.tsx` (신규) — 재사용 가능한 배지 컴포넌트.
+  severity→색상(Minor=주황, Major/Season-Ending/Suspension=빨강) 매핑만 담당, "지금 활성
+  부상인지" 판정은 호출부 책임.
+- `components/roster/RosterGrid.tsx` — 이름 옆에 `InjuryStatusBadge` 렌더(`p.activeInjurySeverity`
+  있을 때만), 마우스오버 시 `injuryType`/`returnDate` 툴팁.
+- `hooks/useLeagueRawStats.ts` — `room_player_state` 조회 컬럼에 `health, return_date,
+  season_number` 추가(기존 `injury_history`만 있었음) — "활성 부상 여부" 판정에 필요.
+- `views/multi/season/MultiRosterView.tsx` — `selectRosterData`에서 각 선수의 활성 부상
+  여부를 `server/src/simRunner.ts` §2.5 오버레이와 동일 기준(`return_date > 현재 인게임
+  날짜` 또는 `return_date=null && season_number` 일치)으로 판정 후 severity를
+  `injury_history` 마지막 엔트리에서 가져와 `activeInjurySeverity`로 부착. "현재 인게임
+  날짜"는 화면이 이미 계산해두고 있던 `currentSimDate`(`findCurrentVirtualDate` 기반)를
+  그대로 재사용.
+
+**설계 노트**:
+- severity를 `room_player_state`의 별도 컬럼이 아니라 `injury_history` 마지막 엔트리에서
+  가져옴 — 같은 upsert(`simRunner.ts` §6.5)에서 이력과 현재상태(health/injury_type/
+  return_date)가 항상 함께 기록되므로 마지막 엔트리가 곧 현재 상태와 일치한다는 불변식에
+  기댐. 스키마 변경(severity 컬럼 추가) 없이 해결.
+- `Suspension`(출장정지)은 사용자가 지정한 2색 체계(경증=주황/중증·시즌아웃=빨강)에
+  명시되지 않았던 케이스라 임의로 "빨강" 쪽에 포함시킴 — 필요시 조정 가능.
+- 이번엔 로스터 탭에만 연결. `services/multi/buildLeagueTeams.ts`(리더보드/전술/프론트오피스가
+  공유하는 팀 빌더)는 건드리지 않아 다른 화면엔 아직 배지가 안 뜸 — 확장은 후속 작업.
+
+**검증**: `tsc --noEmit` 통과(남은 에러 2건은 `faMarketBuilder.ts`의 무관한 기존 이슈,
+`git stash` 대조로 확인). 브라우저에서 MAIN1 리그 로스터 탭 실제 렌더링은 미확인.
+
+**롤백 방법**: 위 6개 파일을 각 Before 상태로 되돌리고 `InjuryStatusBadge.tsx`를 삭제하면 됨.
+DB 스키마 변경 없음(기존 컬럼 select 범위만 확장).
+
+---
+
+## 2026-09-03 — 부상 이력 항목에서 경기/훈련 라벨 제거
+
+**배경**: 사용자 요청 — 부상 이력 각 줄에 날짜 옆에 뜨던 "경기"/"훈련"(`isTraining` 플래그
+표시) 라벨을 빼고 날짜+내용만 보이게. 싱글/멀티 공용 컴포넌트(`PlayerDetailView.tsx`)라
+양쪽 다 영향받음.
+
+**변경 파일**: `views/PlayerDetailView.tsx` (부상 이력 렌더링, ~1956행)
+
+**Before**:
+```tsx
+<span className="text-slate-500">{dateStr} <span className={`${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>{entry.isTraining ? '훈련' : '경기'}</span></span>
+```
+
+**After**:
+```tsx
+<span className="text-slate-500">{dateStr}</span>
+```
+
+**검증**: `tsc --noEmit` 통과.
+
+**롤백 방법**: Before 줄로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 멀티플레이어 선수 프로필에 부상 이력 노출
+
+**배경**: 부상 시스템 테스트용으로 `room_player_state`에 수동으로 부상 이력을 심었는데도
+`MultiPlayerDetailView.tsx`(선수 프로필)의 부상 이력 섹션에 아무것도 안 뜬다는 사용자 리포트.
+버그가 아니라 이전 작업(`room_player_state` 신설)에서 명시적으로 범위 밖으로 뒀던 부분 —
+서버(simRunner.ts)는 DB에 이력을 쌓지만 클라이언트가 그 테이블을 아예 안 읽고 있었음.
+`hooks/useLeagueRawStats.ts`의 `leagueSeasonRows` 필드가 정확히 이런 미래 확장을 위해
+미리 준비돼 있던 자리(주석에 "buildLeagueTeams()가 이미 이 필드를 merge하도록 준비돼
+있다"고 명시)라 그 패턴을 그대로 따라 연결.
+
+**변경 파일**:
+- `hooks/useLeagueRawStats.ts` — `LeagueRawStatsData`에 `playerInjuryRows` 필드 추가,
+  `room_player_state`에서 `player_id, injury_history` 조회하는 4번째 쿼리를 기존
+  `Promise.all`에 추가(roomId + allRosterIds로 스코프).
+- `services/multi/buildLeagueTeams.ts` — `injuryHistoryByPlayer` 맵 구성 후 각 선수
+  객체에 `injuryHistory` merge(`leagueSeasonRows`→`career_history` merge와 동일 패턴).
+- `views/multi/season/MultiPlayerDetailView.tsx` — 더 이상 사실이 아닌 주석("서버 사이드
+  부상 이력 기록 자체가 없다") 갱신.
+
+**Before** (`buildLeagueTeams.ts` roster map):
+```ts
+const leagueSeasons = leagueSeasonsByPlayer.get(id);
+return {
+    ...base,
+    stats: statsMap.get(id) ?? INITIAL_STATS(),
+    career_history: leagueSeasons ? [...(base.career_history ?? []), ...leagueSeasons] : base.career_history,
+};
+```
+
+**After**:
+```ts
+const leagueSeasons = leagueSeasonsByPlayer.get(id);
+const injuryHistory = injuryHistoryByPlayer.get(id);
+return {
+    ...base,
+    stats: statsMap.get(id) ?? INITIAL_STATS(),
+    career_history: leagueSeasons ? [...(base.career_history ?? []), ...leagueSeasons] : base.career_history,
+    injuryHistory: injuryHistory?.length ? (injuryHistory as any) : base.injuryHistory,
+};
+```
+
+**설계 노트**: 이번엔 부상 **이력**만 merge했고, 현재 진행 중인 부상 상태(health/injuryType/
+returnDate)는 건드리지 않음 — 그 필드들은 `forceHealthy=true`로 로스터/전술 화면 전역에서
+의도적으로 감춰져 있는 값이라(`services/dataMapper.ts:139` 주석 참고), 여기서 같이 덮어쓰면
+로스터/전술 화면에 예고 없이 부상 상태가 노출되는 부수효과가 생긴다. 그건 별도 요청 시
+처리.
+
+**검증**: `tsc --noEmit`으로 확인 — `buildLeagueTeams.ts`에 남은 타입 에러 1건은
+`git stash`로 대조해 변경 전부터 있던 것(무관한 `isFinal` 호출부) 확인. 실제 화면에서
+MAIN1 리그 제임스 하든/프란츠 바그너/아이재아 하텐슈타인 프로필의 부상 이력 섹션에
+반영되는지는 브라우저로 직접 확인 필요(RLS 정책상 room_player_state 읽기는 `my_room_ids()`
+소속 사용자만 가능 — 로그인 세션 기준 정상 노출될 것으로 예상되나 미검증).
+
+**롤백 방법**: 위 3개 파일을 Before 상태로 되돌리면 됨. DB 스키마 변경 없음(기존
+room_player_state 테이블 그대로 사용, 읽기 쿼리만 추가).
+
+---
+
+## 2026-09-03 — 경증/중대 부상 종류 확장 (5→17개 / 6→13개)
+
+**배경**: 사용자 요청 — 부상 풀이 너무 적어(경증 5개, 중대 6개) 반복감이 있으니 경증은
+15개 안팎, 중대는 5-6개 추가로 늘리고 싶다고 함. 외상 위주였던 기존 풀에 식중독/감기/
+전염병 같은 비외상성 질병 유형도 1-2개씩 섞고 싶다는 요청도 함께 반영. durability(내구도)
+기반 복귀기간 가중(`pickWeighted`)은 그대로 유지하기로 사용자 확정(질병에도 내구도 가중을
+적용하는 게 논리적으로는 안 맞지만 구현 단순성을 위해 그대로 감).
+
+**변경 파일**:
+- `services/game/engine/pbp/stateUpdater.ts` (client)
+- `server/src/shared/engine/pbp/stateUpdater.ts` (server 미러)
+
+**Before**:
+```ts
+const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
+...
+const minorInjuries = ['발목 염좌', '무릎 통증', '허리 경직', '타박상', '손가락 염좌'];
+```
+
+**After**:
+```ts
+const majorInjuries = [
+    '햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상',
+    '무릎 내측인대(MCL) 부상', '대퇴사두근 부상', '코뼈 골절', '안와골절', '손목 인대 부상', '족저근막염 악화',
+    '질병',
+];
+...
+const minorInjuries = [
+    '발목 염좌', '무릎 통증', '허리 경직', '타박상', '손가락 염좌',
+    '손목 염좌', '팔꿈치 타박상', '정강이 타박상', '허벅지 타박상', '고관절 타박상',
+    '갈비뼈 타박상', '안면 타박상', '열상', '발가락 염좌', '목 경직',
+    '감기', '식중독',
+];
+```
+
+**설계 노트**:
+- Season-Ending 목록(전방십자인대 파열/아킬레스건 파열/골절/반월판 파열, 4개)은 사용자
+  요청으로 변경 없음.
+- 신규 항목 이름은 기존 목록·다른 등급과 안 겹치게 부위/표현을 구분: "코뼈 골절"/"안와골절"은
+  Season-Ending의 "골절"과 부위를 명시해 구분, "안면 타박상"(경증)은 "어깨 부상"(중대)과
+  구분, "손목 인대 부상"(중대)은 "손목 염좌"(경증)보다 심한 등급으로 명명.
+- 질병 계열("감기"/"식중독"=경증, "질병"=중대)은 시즌아웃 등급에는 넣지 않음(사용자 판단
+  — 질병으로 시즌 전체를 날리는 설정은 과함).
+- `pickWeighted()`(durability 기반 복귀기간 가중치) 로직 자체는 변경 없음 — 새 항목도
+  기존 항목과 동일하게 `majorDurations`/`minorDurations` 풀에서 가중 랜덤으로 기간 결정.
+
+**검증**: 양쪽 파일에서 `minorInjuries.length === 17`, `majorInjuries.length === 13`을
+스크립트로 확인. `tsc --noEmit`으로 client/server 양쪽 구문 검증 — 신규 에러 없음.
+
+**롤백 방법**: 위 Before 블록으로 두 파일을 그대로 되돌리면 됨.
+
+---
+
+## 2026-09-03 — 멀티플레이어 리그 설정에 부상/출장정지 세부 옵션 4종 추가
+
+**배경**: 사용자 요청 — 리그 설정에 "일반 부상 빈도", "중대 부상 빈도", "출장정지 ON/OFF",
+"출장정지 빈도" 4개 설정 추가. 조사 결과 "일반 부상 빈도"는 `injuryFrequency` 필드로 이미
+엔진 끝까지 연결돼 있었는데 `LeagueSettingsView.tsx`에 슬라이더가 없어 노출만 안 됐던 것이고,
+나머지 3개는 엔진에 새로 훅을 심어야 하는 신규 기능이었음. 부상 심각도(Minor/Major/
+Season-Ending)는 기존엔 durability만의 함수였고, 싸움/출장정지(`possessionHandler.ts`
+Fight Check)는 항상 켜져 있는 하드코딩 피처로 스위치가 없었음.
+
+**변경 파일**:
+- `types/simSettings.ts` (client) / `server/src/shared/types/simSettings.ts` (server 미러) —
+  `majorInjuryFrequency: number`(0.0~3.0, 기본 1.0), `suspensionsEnabled: boolean`(기본
+  **true**), `suspensionFrequency: number`(0.0~3.0, 기본 1.0) 3개 필드 추가. client에만
+  `SIM_SETTINGS_META`에 "부상"/"출장정지" 카테고리로 3개 항목 등록(서버엔 이 메타 배열
+  자체가 원래 없음).
+- `services/game/engine/pbp/stateUpdater.ts` (client) / `server/src/shared/engine/pbp/stateUpdater.ts`
+  (server 미러) — 부상 심각도 threshold(`seThreshold`/`majorThreshold`)에 `majorInjuryFrequency`
+  배율 적용.
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts`
+  (server 미러) — Fight Check 블록 전체를 `suspensionsEnabled` 게이트로 감싸고, `fightChance`에
+  `suspensionFrequency` 배율 적용.
+- `views/multi/league/LeagueSettingsView.tsx` — state 4개(`injuryFrequency`도 기존엔 UI에
+  없었으므로 신규) + 초기화 폴백 + JSX(숫자 입력 3개 + 체크박스 1개) + 저장 payload.
+
+**Before** (`stateUpdater.ts`, client/server 동일):
+```ts
+const dur = p.attr?.durability ?? 70;
+const tierRoll = Math.random() * 100;
+const seThreshold = Math.max(1, 12 - dur * 0.12);
+const majorThreshold = seThreshold + Math.max(10, 40 - dur * 0.3);
+```
+(`possessionHandler.ts`, client/server 동일):
+```ts
+{
+    const fightCfg = offFoulConfig;
+    const hotDefenders = defTeam.onCourt.filter(...);
+    if (hotDefenders.length > 0) {
+        ...
+        const fightChance = fightCfg.FIGHT_BASE_CHANCE
+            * (1 + (t - fightCfg.FIGHT_TEMPERAMENT_THRESHOLD) * fightCfg.FIGHT_TEMPERAMENT_SCALE);
+        if (Math.random() < fightChance) { ... }
+    }
+}
+```
+
+**After** (`stateUpdater.ts`):
+```ts
+const majorFreq = state.simSettings.majorInjuryFrequency ?? 1.0;
+const seThreshold = Math.min(100, Math.max(1, 12 - dur * 0.12) * majorFreq);
+const majorThreshold = Math.min(100, seThreshold + Math.max(10, 40 - dur * 0.3) * majorFreq);
+```
+(`possessionHandler.ts`):
+```ts
+if (state.simSettings.suspensionsEnabled ?? true) {
+    const fightCfg = offFoulConfig;
+    const hotDefenders = defTeam.onCourt.filter(...);
+    if (hotDefenders.length > 0) {
+        ...
+        const fightChance = fightCfg.FIGHT_BASE_CHANCE
+            * (1 + (t - fightCfg.FIGHT_TEMPERAMENT_THRESHOLD) * fightCfg.FIGHT_TEMPERAMENT_SCALE)
+            * (state.simSettings.suspensionFrequency ?? 1.0);
+        if (Math.random() < fightChance) { ... }
+    }
+}
+```
+
+**설계 노트**:
+- `?? 1.0`/`?? true` 인라인 폴백을 쓴 이유: 신규 필드 배포 시점에 이미 저장돼 있던 기존
+  리그의 `sim_settings`엔 이 키들이 없다. `injuryFrequency`도 같은 이유로 `calculateIncrementalFatigue`의
+  함수 파라미터 기본값(`= 1.0`)으로 이미 이렇게 처리해왔음 — 기존 컨벤션을 그대로 따름.
+- `suspensionsEnabled` 기본값을 `true`로 한 이유: 싸움/출장정지는 배포 전까지 모든 리그에서
+  항상 켜져 있던 기능. `?? false`로 처리하면 배포 순간 전 리그에서 조용히 사라지는 회귀가
+  생기므로, admin이 명시적으로 끄기 전까지 기존 동작을 유지하도록 `?? true`로 처리.
+- `majorInjuryFrequency`는 `seThreshold`/`majorThreshold` 양쪽에 동일 배율을 곱해 Season-Ending과
+  Major 비중을 함께 조절하며, `Math.min(100, ...)`으로 `tierRoll`(0~100 range)과의 정합을 클램프.
+
+**검증**: `tsc --noEmit`으로 client(`node_modules/.bin/tsc --noEmit`)/server(`server/tsconfig.json`)
+양쪽 확인 — 수정 파일 관련 신규 에러 없음(`LeagueSettingsView.tsx`에 남은 `normalization`
+필드 관련 에러 3건은 변경 전부터 있던 것으로 `git stash`로 대조 확인, 이번 변경과 무관).
+실제 시뮬레이션을 통한 확률 분포 검증(예: `majorInjuryFrequency=0`일 때 Minor만 나오는지,
+`suspensionsEnabled=false`일 때 fight 이벤트가 전혀 없는지)은 아직 수행하지 않음.
+
+**롤백 방법**: 위 5개 파일의 Before 블록으로 되돌리고 `LeagueSettingsView.tsx`의 신규 state/
+초기화/JSX/저장 payload 4곳을 제거하면 이전 동작으로 정확히 복귀. DB에는 스키마 변경이
+없으므로(sim_settings는 JSONB) 별도 마이그레이션 롤백 불필요 — 새 필드는 그냥 무시됨.
+
+---
+
+## 2026-09-03 — 멀티플레이어 선수 상태 테이블 신설 + 부상/출장정지 이력 영속화
+
+**배경**: 멀티플레이어에서 `sim_settings.injuriesEnabled`를 켜도 부상이 경기 종료와 함께
+사라지고 체력(condition)도 매 경기 100으로 리셋됐다. 원인은 선수 상태 변동을 담는 전용
+테이블이 아예 없었기 때문 — `rooms.roster_state`(JSONB)가 유일한 저장소였는데 드래프트
+확정 시 1회만 기록되고 이후 갱신되지 않았다. 엔진(`liveEngine.ts`)은 `result.rosterUpdates`/
+`result.injuries`/`result.suspensions`로 부상 데이터를 정확히 만들어내고 있었지만
+`simRunner.ts`가 이 필드들을 전혀 읽지 않아 버려지고 있었다.
+
+새 테이블을 도입한 이유(RPC 없이): `server/src/scheduler.ts`가 같은 방의 여러 경기를
+`Promise.allSettled`로 동시에 시뮬레이션한다. `rooms.roster_state`처럼 방 1행짜리 JSONB를
+read-modify-write하면 lost update가 나지만, PK `(room_id, player_id)` 행 단위 upsert는
+동시 실행 경기 간 선수 집합이 겹치지 않으므로 안전하다.
+
+**변경 파일**:
+- `migrations/room_player_state.sql` (신규, DB) — `room_player_state` 테이블(PK
+  `room_id,player_id`) + RLS 2정책(`rps_member_select`/`rps_service_write`, `player_stat_streaks`와
+  동일 패턴) + `updated_at` touch 트리거. Supabase MCP(`apply_migration`)로 반영 완료.
+- `server/src/shared/injuryDuration.ts` (신규, server) — duration 문자열('2주'/'시즌아웃'/
+  'N경기') → 실제 복귀 날짜 변환. **미러 쌍**: `services/simulation/userGameService.ts`의
+  `durationToDays()`/`computeReturnDate()`(client, 싱글 전용)와 동일 로직이되, 서버는
+  '시즌아웃'을 날짜 대신 `null`(season_number로 스코프)로, 'N경기'(싸움 출장정지)는 해당
+  팀의 다음 미실행 경기 N번째 날짜로 변환하는 케이스가 추가됨 — client 쪽엔 이 두 케이스가
+  없음(싱글은 시즌아웃도 180일 고정 근사, 출장정지는 별도 처리).
+- `server/src/simRunner.ts`:
+  - §2.5(읽기, `rosterState` 조립 직후) — `room_player_state`에서 양 팀 선수 상태를 조회해
+    `rosterState`에 오버레이. 부상 활성 여부는 `return_date > game.game_date`(또는
+    `return_date IS NULL && season_number` 일치 = 시즌아웃)로 매번 판정 — 별도 복구 배치
+    잡 없이 복귀일 지나면 자동으로 건강 상태가 됨.
+  - §6.5(쓰기, games UPDATE 성공 직후 / 리그 소식 이벤트 블록 이전) — `result.rosterUpdates`의
+    condition과 `result.injuries`/`result.suspensions`(severity='Suspension'으로 정규화)를
+    `room_player_state`에 upsert. 컬럼 구성이 다른 upsert를 섞으면 PostgREST가 배치의
+    컬럼 목록을 첫 행 기준으로 잡을 위험이 있어 (a)체력 전용 (b)부상이력 전용, 두 번의
+    upsert로 분리. 전체를 try/catch로 감싸 실패해도 경기 저장 자체는 막지 않음.
+
+**Before** (`server/src/simRunner.ts`, 핵심 부분만):
+```ts
+const rosterState: Record<string, any> = (room.roster_state as any) ?? {};
+const homeTeam = buildTeamForSim(homeTeamRow, playerMap, rosterState);
+const awayTeam = buildTeamForSim(awayTeamRow, playerMap, rosterState);
+// ...games UPDATE 이후 바로 리그 소식 이벤트 감지로 진행. rosterUpdates/injuries/suspensions
+// 는 result에 담겨 있었지만 어디서도 읽지 않음 — 다음 경기엔 전부 사라짐.
+```
+
+**After**: §2.5 읽기 오버레이 + §6.5 쓰기 블록 추가(본문 상세는 위 "변경 파일" 참고).
+`applyRosterState()`(`server/src/shared/dataMapper.ts`)는 수정하지 않음 — 이미 필요한
+필드를 전부 읽고 있었으므로 `rosterState`에 얹기만 하면 됐음.
+
+**검증**: `mcp__supabase__apply_migration`으로 테이블/RLS 반영 확인, `execute_sql`로 컬럼/정책
+조회 확인. `tsc --noEmit`으로 신규 파일 구문 검증 — `simRunner.ts`에 남은 타입 에러
+(`resolveReturnDate`/`detectPlayerStatStreaks`/`detectWinStreak`/`archiveTournament` 호출부의
+`SupabaseClient` 제네릭 불일치)는 전부 이 변경 이전부터 있던 기존 패턴과 동일한 원인이며
+bun이 타입체크 없이 직접 실행하는 구조라 배포엔 영향 없음(신규 코드가 만든 회귀 아님).
+실제 경기 시뮬레이션을 통한 end-to-end 검증(부상 발생→다음 경기 반영→자동 복귀)은
+아직 수행하지 않음 — 배포 후 테스트 리그로 확인 필요.
+
+**알려진 제약**: `services/multi/leagueService.ts`의 `resetTournament()`(토너먼트 재시작 시
+전체 리셋)이 `roster_state`는 비우지만 `room_player_state`는 정리하지 않음 — 이 함수는
+클라이언트 세션(anon/authenticated 키)으로 실행되는데 `room_player_state`의 쓰기 RLS가
+`service_role` 전용이라 클라이언트에서 delete가 막힌다. `player_stat_streaks`도 같은 이유로
+이 함수에서 정리되지 않는 기존 관행이라 이번엔 손대지 않았음 — 재드래프트 후 이전 시즌
+부상/체력 데이터가 새 로스터에 남을 수 있다는 뜻이므로, 나중에 서버 사이드 RPC로 정리
+로직을 추가할 필요가 있음.
+
+**롤백 방법**: `server/src/simRunner.ts`의 §2.5/§6.5 블록과 `import { resolveReturnDate }`
+줄을 제거하고 `server/src/shared/injuryDuration.ts`를 삭제하면 이전 동작(부상 매 경기
+리셋)으로 정확히 복귀. DB 롤백은 `DROP TABLE IF EXISTS public.room_player_state;`
+(RLS 정책/트리거는 테이블과 함께 삭제됨) — 서비스에 영향 없음(다른 어떤 코드도 이
+테이블을 읽지 않았으므로).
+
+---
+
+## 2026-09-03 — 뉴스피드 좌측 리스트에 제목/내용 검색창 추가
+
+**배경**: 사용자 요청 — 뉴스 화면 좌측 리스트 상단 필터그룹 위에 검색창을 추가하고,
+기사 제목 또는 기사 내용 중 하나라도 검색어와 일치하면 리스트에 노출.
+
+**변경 파일**:
+- `views/multi/season/MultiNewsFeedView.tsx` — `searchQuery` 로컬 state 추가,
+  `filteredStories`(useMemo)가 `stories`를 제목/본문 기준으로 거름. `teamBySlug` 선언을
+  `selectedEvent`보다 앞으로 이동(검색 필터가 `buildNewsTitle`/`buildNewsBlurb` 호출에
+  필요), `selectedEvent`/리스트 렌더링/빈 상태 체크를 `stories` → `filteredStories`로 교체.
+  `hasActiveFilter`에 `searchQuery` 포함. 검색창 UI는 리더보드 툴바
+  (`components/leaderboard/LeaderboardToolbar.tsx`)의 검색 인풋과 동일한 스타일(bg-slate-950
+  pill + 좌측 Search 아이콘 + 입력 중일 때만 뜨는 X 초기화 버튼)을 재사용.
+
+**동작 방식**:
+- 제목 = `buildNewsTitle(event, teamBySlug) ?? event.headline`(리스트/StoryCard가 실제
+  표시하는 제목과 동일), 내용 = `buildNewsBlurb(event, teamBySlug)`가 만드는 본문 문단들을
+  합친 문자열. 검색어를 소문자로 정규화해 둘 중 하나라도 포함하면 통과.
+- 서버 쿼리(`useLeagueNewsFeed`)가 이미 팀/타입/날짜/빅뉴스 조건으로 내려준 `stories`(현재
+  로드된 페이지들)에 대해서만 클라이언트에서 추가로 거른다 — blurb가 payload 원문이 아니라
+  클라이언트가 이벤트 데이터로 그때그때 조립하는 문자열이라 서버 쪽 검색은 불가능.
+
+**검증**: `npx tsc --noEmit` — 해당 파일 관련 에러 없음(레포에 기존부터 있던 무관한 타입
+에러들만 남음).
+
+**주의사항 / 한계**: "더보기"로 아직 불러오지 않은 뒷페이지의 텍스트는 검색 대상에서
+빠진다(무한스크롤 + 클라이언트 검색의 통상적인 트레이드오프) — 필요하면 검색어 입력 시
+자동으로 다음 페이지를 계속 불러오는 개선을 추후 고려.
+
+**롤백 방법**: 위 diff(검색 input 블록 + `searchQuery`/`filteredStories` 관련 코드, `teamBySlug`
+이동)를 되돌리고 `stories`/`selectedEvent` 참조를 원래대로 복원하면 됨.
+
+---
+
 ## 2026-09-02 — 뉴스피드 "전체 기간" 캐시가 최신 날짜를 놓치는 버그 수정
 
 **배경**: 사용자 리포트 — 현재 시뮬레이션 날짜가 11/13인데, 뉴스 화면을 "전체 기간"으로
@@ -1561,6 +2707,121 @@ h-4로, 본문 최하단 로고를 h-3으로 줄여 달라고 요청.
 서버에서 트레이드 블록 탭 확인 권장.
 
 **롤백 방법**: 두 `width` 지정 제거.
+
+---
+
+## 2026-09-03 — 멀티 트레이드 제안 화면 로스터 리스트 헤더 정렬 기능 추가
+
+**배경**: 사용자 요청 — "새 제안" 탭 내 팀/상대 팀 로스터 테이블(PlayerChip/PlayerListHeader)의
+헤더 폰트를 text-xs→text-sm으로 키우고, "잔여계약"을 "잔여"로 줄이고, 잔여계약 값에서 "y" 접미사
+제거, OVR 컬럼에 헤더 텍스트 추가, OVR/이름/POS/PTS/REB/AST/연봉/잔여 전체 컬럼 헤더 클릭 정렬 지원.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx`
+  - `PlayerChip` — 잔여계약 셀 `${player.contractYears}y` → `player.contractYears`(접미사 제거)
+  - `PlayerListHeader` — `showContract`만 받던 props에 `sortConfig`/`onSort` 추가, 헤더 폰트
+    `text-xs`→`text-sm`, 비어있던 OVR `<th />`에 "OVR" 텍스트 추가, "잔여계약"→"잔여"로 라벨 축약,
+    전체 컬럼에 `onClick`+정렬 방향 화살표(ArrowUp/ArrowDown, lucide-react 신규 import) 추가
+  - 신규 타입/헬퍼(모듈 레벨, PlayerListHeader 앞): `PlayerSortKey`, `PlayerSortConfig`,
+    `getPlayerSortValue()`, `sortPlayerList()`
+  - 컴포넌트 내부(cartMine/cartTheirs state 근처)에 `mySortConfig`/`targetSortConfig`
+    useState(기본값 `{key:'ovr', direction:'desc'}` — 이전에 추가한 myRoster/targetRoster 기본
+    OVR 정렬과 동일해 최초 진입 화면은 그대로 유지), `handleMySort`/`handleTargetSort`,
+    `myRosterListed`/`targetRosterListed` useMemo(각각 `myRoster`/`targetRoster`를 카트에 담긴
+    선수 제외 후 정렬) 추가
+  - 렌더 부분에서 `myRoster.filter(...)`/`targetRoster.filter(...)` 인라인 호출을
+    `myRosterListed`/`targetRosterListed`로 교체, `<PlayerListHeader>`에 `sortConfig`/`onSort` prop 전달
+
+**Before**:
+```tsx
+const PlayerListHeader: React.FC<{ showContract?: boolean }> = ({ showContract }) => (
+    <thead className="sticky top-0 z-10 bg-slate-950">
+        <tr className="h-7 border-b border-slate-800 text-xs font-black uppercase text-slate-500 ko-normal">
+            <th />
+            <th />
+            <th className="pl-2 pr-1 text-left">이름</th>
+            ...
+            {showContract && (
+                <>
+                    <th className="pr-4 text-right">연봉</th>
+                    <th className="pr-1 text-right">잔여계약</th>
+                </>
+            )}
+            <th />
+        </tr>
+    </thead>
+);
+// PlayerChip 잔여계약 셀
+<td className="pr-1 text-right text-sm text-white">{player?.contract ? `${player.contractYears}y` : ''}</td>
+// 렌더
+<PlayerListHeader showContract={capEnabled} />
+<tbody>{myRoster.filter(p => !cartMine.has(p.id)).map(p => (...))}</tbody>
+```
+
+**After**: `PlayerListHeader`가 `sortConfig`/`onSort`를 받아 각 `<th>`에 클릭 핸들러+화살표를 붙이고,
+`text-sm`/"OVR"/"잔여" 라벨로 변경. `myRosterListed = sortPlayerList(myRoster.filter(...), mySortConfig, statsByPlayerId)`로
+정렬된 리스트를 별도 useMemo로 뽑아 렌더에 사용. (전체 코드는 파일 참고 — 변경 파일 항목의 함수/라인 위치 그대로.)
+
+**검증**: `npx tsc --noEmit`으로 이 파일에 새로운 타입 에러 없음 확인(기존에 있던 다른 파일들의
+무관한 에러만 존재).
+
+**롤백 방법**: `PlayerListHeader`를 `showContract`만 받는 이전 시그니처로 되돌리고 정렬 관련 신규
+useState/useMemo/헬퍼 4종(`PlayerSortKey`, `PlayerSortConfig`, `getPlayerSortValue`, `sortPlayerList`)과
+`mySortConfig`/`targetSortConfig`/`handleMySort`/`handleTargetSort`/`myRosterListed`/`targetRosterListed`
+제거, 렌더 부분을 `myRoster.filter(p => !cartMine.has(p.id))`/`targetRoster.filter(p => !cartTheirs.has(p.id))`로
+복원, `PlayerChip` 잔여계약 셀에 `` `${player.contractYears}y` `` 복원.
+
+---
+
+## 2026-09-03 — 멀티 트레이드 제안 화면 선수 리스트 OVR 정렬 추가
+
+**배경**: 사용자 보고 — 마이애미 블레이즈(MAIN 1 세션)에서 트레이드로 영입한 브랜던 잉그램(OVR 81)이
+트레이드 제안 화면 로스터 리스트 최하단에 표시됨. 원인은 `myRoster`/`targetRoster`가 DB의
+`team.roster`(선수 ID 배열) 순서를 그대로 썼기 때문 — 새로 영입된 선수는 배열 끝에 추가되므로
+OVR과 무관하게 맨 아래에 나타남. 싱글플레이어 트레이드 화면(TransactionsView.tsx,
+TradeNegotiationBuilder.tsx)은 이미 OVR 내림차순 정렬이 되어 있었는데 이 멀티 화면만 누락.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` — `myRoster`(534행), `targetRoster`(558행) useMemo에
+  `.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))` 추가.
+  (파생 리스트인 `myRosterAvailable`/`myRosterTradeable`은 `myRoster`를 filter만 하므로 자동으로 같이 정렬됨.
+  단순 정렬 추가라 client/server 미러 대상 아님 — 서버 로직 변경 없음.)
+
+**Before**:
+```ts
+const myRoster = useMemo(
+    () => (myTeamRow?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p),
+    [myTeamRow, poolById],
+);
+...
+const targetRoster = useMemo(
+    () => (targetTeamRow?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p),
+    [targetTeamRow, poolById],
+);
+```
+
+**After**:
+```ts
+const myRoster = useMemo(
+    () => (myTeamRow?.roster ?? [])
+        .map(id => poolById.get(id))
+        .filter((p): p is Player => !!p)
+        .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
+    [myTeamRow, poolById],
+);
+...
+const targetRoster = useMemo(
+    () => (targetTeamRow?.roster ?? [])
+        .map(id => poolById.get(id))
+        .filter((p): p is Player => !!p)
+        .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
+    [targetTeamRow, poolById],
+);
+```
+
+**검증**: 코드 리뷰로 구문 확인(기존 파일에서 이미 import된 `calculatePlayerOvr` 재사용, 신규 import 없음).
+
+**롤백 방법**: 각 useMemo에서 `.sort(...)` 줄만 제거하면 Before 상태로 복원.
 
 ---
 

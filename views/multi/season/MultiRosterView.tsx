@@ -11,6 +11,7 @@ import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLe
 import { RosterView } from '../../RosterView';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { isFinal } from './multiGameReveal';
+import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
 import { computeGameLeaders, type GameLeaders } from '../../../services/multi/gameLeadersCache';
@@ -193,6 +194,17 @@ const MultiRosterView: React.FC = () => {
         );
         const statsMap = buildStatsMap(raw.pbpRows, serverNow);
 
+        // room_player_state → "지금 활성 부상인지" 판정 + 배지 색상용 severity.
+        // MultiTacticsView.tsx(뎁스차트)도 동일 로직을 쓰므로 공용 헬퍼로 뽑아뒀다.
+        // suspensionContext: 출장정지 "N경기"를 발부 당시 고정값이 아니라 지금 기준 남은
+        // 경기 수로 재계산하기 위해 playerId→teamId 맵 + 전체 스케줄을 넘긴다.
+        const teamIdByPlayer = new Map<string, string>();
+        for (const lt of leagueTeams) for (const id of (lt.roster ?? [])) teamIdByPlayer.set(id, lt.team_slug);
+        const activeInjuryByPlayer = buildActiveInjurySeverityMap(raw.playerInjuryRows, currentSimDate, room?.season_number, {
+            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            getTeamId: id => teamIdByPlayer.get(id),
+        });
+
         const builtTeams: Team[] = leagueTeams.map(lt => ({
             id:            lt.team_slug,
             name:          lt.team_name,
@@ -211,7 +223,15 @@ const MultiRosterView: React.FC = () => {
             roster: (lt.roster ?? []).map(id => {
                 const base = playerBaseMap.get(id);
                 if (!base) return null;
-                return { ...base, stats: { ...(base.stats ?? {}), ...(statsMap.get(id) ?? {}) } as PlayerStats };
+                const injuryStatus = activeInjuryByPlayer.get(id);
+                return {
+                    ...base,
+                    stats: { ...(base.stats ?? {}), ...(statsMap.get(id) ?? {}) } as PlayerStats,
+                    activeInjurySeverity: injuryStatus?.severity,
+                    injuryType: injuryStatus?.injuryType,
+                    activeInjuryDuration: injuryStatus?.duration,
+                    returnDate: injuryStatus?.returnDate ?? undefined,
+                };
             }).filter(Boolean) as Player[],
         }));
 
@@ -220,7 +240,7 @@ const MultiRosterView: React.FC = () => {
             gameTeamStatsMap: buildGameTeamStatsMap(raw.pbpRows),
             gameLeadersMap: buildGameLeadersMap(raw.pbpRows),
         };
-    }, [leagueTeams, useCustomOverrides]);
+    }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule]);
 
     const {
         data: rosterData,

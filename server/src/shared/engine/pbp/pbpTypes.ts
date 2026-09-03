@@ -147,7 +147,7 @@ export interface InjuryEvent {
     teamId: string;
     injuryType: string;
     durationDesc: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5';
     quarter: number;
     timeRemaining: string;
 }

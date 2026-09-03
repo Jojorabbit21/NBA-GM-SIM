@@ -2,19 +2,25 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Ban, Calendar, Check, GripVertical, Loader2, Minus, Plus, RotateCcw, Search, ShieldAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Ban, Calendar, Check, GripVertical, Loader2, Minus, Plus, RotateCcw, Search, ShieldAlert, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
+import { usePlayerInjuryStatus } from '../../../hooks/usePlayerInjuryStatus';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { buildActiveInjurySeverityMap, formatPlayerActiveInjuryLabel } from '../../../services/multi/activeInjuryStatus';
+import { useSeasonContext } from './seasonContext';
+import { findCurrentVirtualDate } from './multiScheduleUtils';
+import { getServerNow } from '../../../utils/serverClock';
 import { TabBar } from '../../../components/common/TabBar';
 import { Modal } from '../../../components/common/Modal';
 import { Table, TableHead, TableBody, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
+import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
@@ -207,7 +213,20 @@ const PlayerChip: React.FC<{
                 </div>
             </td>
             <PlayerHoverCard player={player} teamAbbr={teamAbbr}>
-                <td className="pl-2 pr-1 text-sm font-semibold text-white truncate">{player?.name ?? playerId}</td>
+                <td className="pl-2 pr-1">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="min-w-0 text-sm font-semibold text-white truncate">{player?.name ?? playerId}</span>
+                        {player?.activeInjurySeverity && (
+                            <InjuryStatusBadge
+                                severity={player.activeInjurySeverity}
+                                title={formatPlayerActiveInjuryLabel(player) ?? undefined}
+                                size={16}
+                                iconSize={12}
+                                strokeWidth={4}
+                            />
+                        )}
+                    </span>
+                </td>
             </PlayerHoverCard>
             <td className="pr-4 text-center text-sm text-white">{player?.position ?? ''}</td>
             <td className="pr-4 text-right text-sm text-white">{(stats?.ppg ?? 0).toFixed(1)}</td>
@@ -216,7 +235,7 @@ const PlayerChip: React.FC<{
             {showContract && (
                 <>
                     <td className="pr-4 text-right text-sm text-white">{player?.contract ? formatMoney(player.salary) : ''}</td>
-                    <td className="pr-1 text-right text-sm text-white">{player?.contract ? `${player.contractYears}y` : ''}</td>
+                    <td className="pr-1 text-right text-sm text-white">{player?.contract ? player.contractYears : ''}</td>
                 </>
             )}
             <td className="text-center">{blocked && <Ban size={13} className="text-red-400 inline" />}</td>
@@ -224,36 +243,98 @@ const PlayerChip: React.FC<{
     );
 };
 
+// "새 제안" 화면 로스터 리스트 정렬 키 — PlayerListHeader의 클릭 정렬과 sortPlayerList가 공유.
+type PlayerSortKey = 'ovr' | 'name' | 'position' | 'pts' | 'reb' | 'ast' | 'salary' | 'contractYears';
+type PlayerSortConfig = { key: PlayerSortKey; direction: 'asc' | 'desc' };
+
+function getPlayerSortValue(
+    p: Player,
+    key: PlayerSortKey,
+    stats?: { ppg: number; rpg: number; apg: number },
+): number | string {
+    switch (key) {
+        case 'name': return p.name;
+        case 'position': return p.position;
+        case 'ovr': return calculatePlayerOvr(p);
+        case 'pts': return stats?.ppg ?? 0;
+        case 'reb': return stats?.rpg ?? 0;
+        case 'ast': return stats?.apg ?? 0;
+        case 'salary': return p.salary ?? 0;
+        case 'contractYears': return p.contractYears ?? 0;
+        default: return 0;
+    }
+}
+
+function sortPlayerList(
+    players: Player[],
+    config: PlayerSortConfig,
+    statsByPlayerId: Map<string, { ppg: number; rpg: number; apg: number }>,
+): Player[] {
+    return [...players].sort((a, b) => {
+        const aVal = getPlayerSortValue(a, config.key, statsByPlayerId.get(a.id));
+        const bVal = getPlayerSortValue(b, config.key, statsByPlayerId.get(b.id));
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            return config.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        return config.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+}
+
 // PlayerChip 위에 얹는 진짜 <thead> — sticky로 스크롤 중에도 고정. showContract가 false면
 // (리그 샐러리캡 비활성) PlayerChip과 동일하게 연봉/잔여계약 칸 자체를 생략.
-const PlayerListHeader: React.FC<{ showContract?: boolean }> = ({ showContract }) => (
-    <thead className="sticky top-0 z-10 bg-slate-950">
-        <tr className="h-7 border-b border-slate-800 text-xs font-black uppercase text-slate-500 ko-normal">
-            <th />
-            <th />
-            <th className="pl-2 pr-1 text-left">이름</th>
-            <th className="pr-4 text-center">POS</th>
-            <th className="pr-4 text-right">PTS</th>
-            <th className="pr-4 text-right">REB</th>
-            <th className="pr-4 text-right">AST</th>
-            {showContract && (
-                <>
-                    <th className="pr-4 text-right">연봉</th>
-                    <th className="pr-1 text-right">잔여계약</th>
-                </>
-            )}
-            <th />
-        </tr>
-    </thead>
-);
+// OVR/이름/POS/PTS/REB/AST/연봉/잔여 전부 클릭 정렬 가능 — sortConfig/onSort는 호출부(내 팀/상대 팀
+// 패널)마다 독립된 상태를 주입해 두 로스터가 서로 다른 기준으로 정렬돼도 상관없게 함.
+const PlayerListHeader: React.FC<{
+    showContract?: boolean;
+    sortConfig: PlayerSortConfig;
+    onSort: (key: PlayerSortKey) => void;
+}> = ({ showContract, sortConfig, onSort }) => {
+    const arrow = (key: PlayerSortKey) => sortConfig.key === key && (
+        sortConfig.direction === 'asc'
+            ? <ArrowUp size={10} className="inline text-indigo-400 ml-0.5 mb-0.5" strokeWidth={3} />
+            : <ArrowDown size={10} className="inline text-indigo-400 ml-0.5 mb-0.5" strokeWidth={3} />
+    );
+    const sortableCls = 'cursor-pointer hover:text-white select-none';
+    return (
+        <thead className="sticky top-0 z-10 bg-slate-950">
+            <tr className="h-7 border-b border-slate-800 text-sm font-black uppercase text-slate-500 ko-normal">
+                <th />
+                <th className={`text-center ${sortableCls}`} onClick={() => onSort('ovr')}>OVR{arrow('ovr')}</th>
+                <th className={`pl-2 pr-1 text-left ${sortableCls}`} onClick={() => onSort('name')}>이름{arrow('name')}</th>
+                <th className={`pr-4 text-center ${sortableCls}`} onClick={() => onSort('position')}>POS{arrow('position')}</th>
+                <th className={`pr-4 text-right ${sortableCls}`} onClick={() => onSort('pts')}>PTS{arrow('pts')}</th>
+                <th className={`pr-4 text-right ${sortableCls}`} onClick={() => onSort('reb')}>REB{arrow('reb')}</th>
+                <th className={`pr-4 text-right ${sortableCls}`} onClick={() => onSort('ast')}>AST{arrow('ast')}</th>
+                {showContract && (
+                    <>
+                        <th className={`pr-4 text-right ${sortableCls}`} onClick={() => onSort('salary')}>연봉{arrow('salary')}</th>
+                        <th className={`pr-1 text-right ${sortableCls}`} onClick={() => onSort('contractYears')}>잔여{arrow('contractYears')}</th>
+                    </>
+                )}
+                <th />
+            </tr>
+        </thead>
+    );
+};
 
 const MultiFrontOfficeView: React.FC = () => {
     const { league, room, members, leagueTeams, reload } = useLeagueContext();
     const { session } = useGame();
+    const { schedule } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { getPlayerUrlId } = usePlayerShortCodes();
+
+    // "지금 활성 부상/출장정지인지" 판정용 인게임 "오늘" — MultiRosterView.tsx/MultiTacticsView.tsx와
+    // 동일한 findCurrentVirtualDate 패턴.
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd = league?.games_per_real_day ?? 5;
+    const preferVirtual = league?.type === 'main_league';
+    const currentSimDate = useMemo(() => {
+        if (!preferVirtual) return room?.sim_date ?? '';
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
+    }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
     // 세션(리그) 설정에서 샐러리캡이 켜져 있을 때만 트레이드 제안 화면의 선수 리스트에
     // 연봉/잔여계약 연수를 노출.
     const capEnabled = !!league?.cap_enabled;
@@ -502,7 +583,10 @@ const MultiFrontOfficeView: React.FC = () => {
     );
     const myTradeableIds = tradeableByTeam.get(myTeamRow?.id ?? '') ?? new Set<string>();
     const myRoster = useMemo(
-        () => (myTeamRow?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p),
+        () => (myTeamRow?.roster ?? [])
+            .map(id => poolById.get(id))
+            .filter((p): p is Player => !!p)
+            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
         [myTeamRow, poolById],
     );
 
@@ -526,7 +610,10 @@ const MultiFrontOfficeView: React.FC = () => {
     }, [humanTargetTeams]);
     const targetTeamRow = teamById.get(targetTeamId) ?? null;
     const targetRoster = useMemo(
-        () => (targetTeamRow?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p),
+        () => (targetTeamRow?.roster ?? [])
+            .map(id => poolById.get(id))
+            .filter((p): p is Player => !!p)
+            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
         [targetTeamRow, poolById],
     );
     const targetTradeableIds = tradeableByTeam.get(targetTeamId) ?? new Set<string>();
@@ -592,15 +679,37 @@ const MultiFrontOfficeView: React.FC = () => {
         return [];
     }, [activeTab, statsRosterIds, tradeableByTeam, leagueTeams, history, selectedOffer]);
     const { data: seasonStatsBatch } = usePlayerSeasonStatsBatch(roomId ?? undefined, statsRequestIds);
+    // 부상/출장정지 배지용 — statsRequestIds가 탭마다 이미 적절한 범위(새 제안=양 팀 로스터,
+    // 히스토리=과거 트레이드에 등장한 선수 전체 등)로 분기돼 있어 그대로 재사용.
+    const { data: injuryRows } = usePlayerInjuryStatus(roomId ?? undefined, statsRequestIds);
+    const activeInjuryByPlayer = useMemo(
+        () => buildActiveInjurySeverityMap(injuryRows, currentSimDate, room?.season_number, {
+            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            getTeamId: id => rosterMap.get(id),
+        }),
+        [injuryRows, currentSimDate, room?.season_number, schedule, rosterMap],
+    );
     const poolByIdWithStats = useMemo(() => {
-        if (!seasonStatsBatch || Object.keys(seasonStatsBatch).length === 0) return poolById;
+        if ((!seasonStatsBatch || Object.keys(seasonStatsBatch).length === 0) && activeInjuryByPlayer.size === 0) {
+            return poolById;
+        }
         const merged = new Map(poolById);
-        for (const [id, stats] of Object.entries(seasonStatsBatch)) {
+        for (const [id, stats] of Object.entries(seasonStatsBatch ?? {})) {
             const p = merged.get(id);
             if (p) merged.set(id, { ...p, stats: { ...p.stats, ...stats } });
         }
+        for (const [id, injuryStatus] of activeInjuryByPlayer) {
+            const p = merged.get(id);
+            if (p) merged.set(id, {
+                ...p,
+                activeInjurySeverity: injuryStatus.severity,
+                injuryType: injuryStatus.injuryType,
+                activeInjuryDuration: injuryStatus.duration,
+                returnDate: injuryStatus.returnDate ?? undefined,
+            });
+        }
         return merged;
-    }, [poolById, seasonStatsBatch]);
+    }, [poolById, seasonStatsBatch, activeInjuryByPlayer]);
 
     // "트레이드 블록" 테이블의 매물 선수/요구 선수 컬럼 — 선수 이름 하나하나를 클릭해서
     // 선수 상세 화면으로 이동할 수 있도록 쉼표 구분 텍스트 대신 개별 <span>으로 렌더.
@@ -635,9 +744,18 @@ const MultiFrontOfficeView: React.FC = () => {
             <PlayerHoverCard player={p} teamAbbr={playerTeamAbbrById.get(id)}>
                 <span
                     onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
-                    className="text-slate-300 ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 text-slate-300 ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
                 >
                     {p?.name ?? id}
+                    {p?.activeInjurySeverity && (
+                        <InjuryStatusBadge
+                            severity={p.activeInjurySeverity}
+                            title={formatPlayerActiveInjuryLabel(p) ?? undefined}
+                            size={16}
+                            iconSize={12}
+                            strokeWidth={4}
+                        />
+                    )}
                 </span>
             </PlayerHoverCard>
         );
@@ -652,6 +770,27 @@ const MultiFrontOfficeView: React.FC = () => {
     const toggleTheirs = useCallback((id: string) => setCartTheirs(prev => {
         const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
     }), []);
+
+    // "새 제안" 화면 내 팀/상대 팀 로스터 리스트 헤더 클릭 정렬 — 두 패널이 서로 다른 기준으로
+    // 정렬될 수 있어 독립된 상태로 관리. 기본값은 myRoster/targetRoster의 기본 정렬(OVR 내림차순)과
+    // 동일해 처음 진입 시 화면이 그대로 유지된다.
+    const [mySortConfig, setMySortConfig] = useState<PlayerSortConfig>({ key: 'ovr', direction: 'desc' });
+    const [targetSortConfig, setTargetSortConfig] = useState<PlayerSortConfig>({ key: 'ovr', direction: 'desc' });
+    const handleMySort = useCallback((key: PlayerSortKey) => {
+        setMySortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
+    }, []);
+    const handleTargetSort = useCallback((key: PlayerSortKey) => {
+        setTargetSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
+    }, []);
+    const myRosterListed = useMemo(
+        () => sortPlayerList(myRoster.filter(p => !cartMine.has(p.id)), mySortConfig, statsByPlayerId),
+        [myRoster, cartMine, mySortConfig, statsByPlayerId],
+    );
+    const targetRosterListed = useMemo(
+        () => sortPlayerList(targetRoster.filter(p => !cartTheirs.has(p.id)), targetSortConfig, statsByPlayerId),
+        [targetRoster, cartTheirs, targetSortConfig, statsByPlayerId],
+    );
+
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [sendSuccess, setSendSuccess] = useState(false);
@@ -1582,9 +1721,9 @@ const MultiFrontOfficeView: React.FC = () => {
                                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                                             <table className="w-full table-fixed border-collapse">
                                                 <PlayerTableCols showContract={capEnabled} />
-                                                <PlayerListHeader showContract={capEnabled} />
+                                                <PlayerListHeader showContract={capEnabled} sortConfig={mySortConfig} onSort={handleMySort} />
                                                 <tbody>
-                                                    {myRoster.filter(p => !cartMine.has(p.id)).map(p => (
+                                                    {myRosterListed.map(p => (
                                                         <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} />
                                                     ))}
                                                 </tbody>
@@ -1648,9 +1787,9 @@ const MultiFrontOfficeView: React.FC = () => {
                                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                                             <table className="w-full table-fixed border-collapse">
                                                 <PlayerTableCols showContract={capEnabled} />
-                                                <PlayerListHeader showContract={capEnabled} />
+                                                <PlayerListHeader showContract={capEnabled} sortConfig={targetSortConfig} onSort={handleTargetSort} />
                                                 <tbody>
-                                                    {targetRoster.filter(p => !cartTheirs.has(p.id)).map(p => (
+                                                    {targetRosterListed.map(p => (
                                                         <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id}
                                                             blocked={!targetTradeableIds.has(p.id) && !isTestUnblockedTarget}
                                                             showContract={capEnabled}

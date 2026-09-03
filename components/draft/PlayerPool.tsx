@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
+import { getAttrColor } from '../../utils/attrRatingColor';
 
 // 가상 스크롤 — 올타임 풀 기준 800명 이상이 한 번에 DOM에 마운트되던 걸,
 // 실제로 화면에 보이는 행 근처만 렌더링하도록 줄인다(행 높이 고정 h-8=32px 전제).
@@ -22,13 +23,6 @@ interface PlayerPoolProps {
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
 
 type SortKey = 'ovr' | 'pot' | 'age' | 'ins' | 'out' | 'ath' | 'plm' | 'def' | 'reb';
-
-const getStatColor = (val: number): string => {
-    if (val >= 90) return 'text-fuchsia-400';
-    if (val >= 80) return 'text-emerald-400';
-    if (val >= 70) return 'text-amber-400';
-    return 'text-slate-500';
-};
 
 const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
     players,
@@ -246,19 +240,19 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                         <OvrBadge value={player.ovr} size="sm" />
                                     </td>
                                     {showPotential && (
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.potential)}`}>
+                                        <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.potential)}`}>
                                             {player.potential}
                                         </td>
                                     )}
                                     <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.height}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.weight}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.out)}`}>{player.out}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ath)}`}>{player.ath}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.plm)}`}>{player.plm}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.def)}`}>{player.def}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.reb)}`}>{player.reb}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.ins)}`}>{player.ins}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.out)}`}>{player.out}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.ath)}`}>{player.ath}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.plm)}`}>{player.plm}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.def)}`}>{player.def}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.reb)}`}>{player.reb}</td>
                                 </tr>
                             );
                         })}

@@ -83,10 +83,41 @@ export interface WinStreakPayload {
         mvp?: { playerId: string; name: string; stats: { label: string; value: number }[] };
     }[];
 }
-export type LeagueEventPayloadData = GameResultPayload | PlayerFeatPayload | PlayerStreakPayload | WinStreakPayload;
+/** [2026-09-03] "부상 발생 시 뉴스" 요청 — GRADE3 이상 부상만 뉴스로 발행(경증 GRADE1/2는
+ * 제외, 시즌에 너무 자주 발생해 피드 소음이 됨). 서버 미러: 클라이언트
+ * services/multi/leagueEventPayload.ts의 InjuryDetail. simRunner.ts의 §6.5 선수 상태
+ * 영속화 블록에서 부상 이력을 확정한 직후(injury_history에 쓸 entry가 이미 계산된 시점)
+ * detectInjuryEvent()를 호출해 생성한다 — room_player_state 쓰기와 동일한 데이터 소스라
+ * 별도 조회가 필요 없다. */
+export interface InjuryPayload {
+    player: { id: string; name: string };
+    teamSlug: string;
+    severity: 'Grade3' | 'Grade4' | 'Grade5';
+    injuryType: string;
+    duration: string;
+    returnDate: string | null;
+}
+/** [2026-09-03] "출장정지도 한 뉴스에 양쪽 다 담자" 요청 — 싸움(fight)은 항상 두 선수
+ * 모두에게 동시에 발생하므로(possessionHandler.ts의 Fight Check — fighter는 defTeam에서
+ * temperament가 가장 높은 선수, opponent는 offTeam 코트 위 무작위 1명, 서로 다른 팀 소속)
+ * 이벤트 하나에 양쪽 선수/팀/경기수/복귀일을 전부 담는다(부상처럼 선수 1명당 이벤트 1건이
+ * 아님). 서버 미러: 클라이언트 services/multi/leagueEventPayload.ts의 SuspensionDetail. */
+export interface SuspensionPayload {
+    fighter: { id: string; name: string };
+    fighterTeamSlug: string;
+    fighterSuspensionGames: number;
+    fighterReturnDate: string | null;
+    opponent: { id: string; name: string };
+    opponentTeamSlug: string;
+    opponentSuspensionGames: number;
+    opponentReturnDate: string | null;
+    quarter: number;
+    timeRemaining: string;
+}
+export type LeagueEventPayloadData = GameResultPayload | PlayerFeatPayload | PlayerStreakPayload | WinStreakPayload | InjuryPayload | SuspensionPayload;
 
 export interface DetectedEvent {
-    type: 'game_result' | 'player_feat' | 'player_streak' | 'win_streak';
+    type: 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'injury' | 'suspension';
     headline: string;
     score: number;
     teamIds: string[];
@@ -576,4 +607,72 @@ export async function detectPlayerStatStreaks(
     }
 
     return events;
+}
+
+// ── 부상 뉴스(GRADE3 이상만) ─────────────────────────────────────────────────
+const INJURY_NEWS_MIN_GRADE = 3;
+// leagueEvents.ts의 score 범위(10~30) 안에서 등급이 높을수록 "빅뉴스" 임계값
+// (useLeagueHeadlines.ts BIG_NEWS_MIN_SCORE=20)에 가까워지도록 배정.
+const INJURY_SCORE_BY_GRADE: Record<string, number> = { Grade3: 15, Grade4: 20, Grade5: 25 };
+
+// ── 출장정지 뉴스(싸움 — 항상 양쪽 모두 발생) ─────────────────────────────────
+// [2026-09-03] 리그 전체 시즌 ~5-10건 수준으로 극히 희귀(FIGHT_BASE_CHANCE 참고)해서
+// GRADE 필터링 같은 임계값 없이 발생하면 항상 뉴스로 발행. score는 두 선수의 출장정지
+// 경기 수 합(2~7경기 범위)에 비례해 15~22 사이 — useLeagueHeadlines.ts의
+// BIG_NEWS_MIN_SCORE(20)를 넘나드는 수준으로, 흔치 않은 사건임을 반영.
+export function detectSuspensionEvent(
+    fighterId: string, fighterName: string, fighterTeamSlug: string, fighterSuspensionGames: number, fighterReturnDate: string | null,
+    opponentId: string, opponentName: string, opponentTeamSlug: string, opponentSuspensionGames: number, opponentReturnDate: string | null,
+    quarter: number, timeRemaining: string,
+): DetectedEvent {
+    return {
+        type: 'suspension',
+        // DB 고정 headline(리스트 행/폴백용) — 실제 표시되는 다양한 제목은 클라이언트가
+        // event.id 기반으로 매번 결정론적으로 골라 쓴다(services/multi/newsBlurb.ts의
+        // SUSPENSION_TITLES, injury와 동일한 패턴).
+        headline: `${fighterName}-${opponentName}, 코트 위 몸싸움으로 동반 퇴장`,
+        score: Math.min(30, 15 + fighterSuspensionGames + opponentSuspensionGames),
+        teamIds: [fighterTeamSlug, opponentTeamSlug],
+        playerIds: [fighterId, opponentId],
+        payload: {
+            fighter: { id: fighterId, name: fighterName },
+            fighterTeamSlug, fighterSuspensionGames, fighterReturnDate,
+            opponent: { id: opponentId, name: opponentName },
+            opponentTeamSlug, opponentSuspensionGames, opponentReturnDate,
+            quarter, timeRemaining,
+        },
+    };
+}
+
+export function detectInjuryEvent(
+    playerId: string,
+    playerName: string,
+    teamSlug: string,
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension',
+    injuryType: string,
+    duration: string,
+    returnDate: string | null,
+): DetectedEvent | null {
+    const gradeNum = Number(severity.replace('Grade', ''));
+    if (!Number.isFinite(gradeNum) || gradeNum < INJURY_NEWS_MIN_GRADE) return null;
+
+    return {
+        type: 'injury',
+        // [2026-09-03] "제목 배리에이션 도입, 기간 언급은 제목에서 제외" 요청 — DB 고정
+        // headline(리스트 행/폴백용)도 클라이언트 buildNewsTitle의 기본형("OO, 부상명 진단")과
+        // 톤을 맞춰 기간을 뺐다. 실제 표시되는 다양한 제목은 클라이언트가 event.id 기반으로
+        // 매번 결정론적으로 골라 쓴다(services/multi/newsBlurb.ts의 INJURY_TITLES).
+        headline: `${playerName}, ${injuryType} 진단`,
+        score: INJURY_SCORE_BY_GRADE[severity] ?? 15,
+        teamIds: [teamSlug],
+        playerIds: [playerId],
+        payload: {
+            player: { id: playerId, name: playerName },
+            teamSlug,
+            severity: severity as 'Grade3' | 'Grade4' | 'Grade5',
+            injuryType,
+            duration,
+            returnDate,
+        },
+    };
 }

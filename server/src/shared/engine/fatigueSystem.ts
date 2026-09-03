@@ -3,6 +3,7 @@ import { LivePlayer } from './pbp/pbpTypes.ts';
 import { TacticalSliders, Player, Team } from '../types.ts';
 import { SIM_CONFIG } from '../game/config/constants.ts';
 import { interpolateCurve } from './pbp/flowEngine.ts';
+import { pickWeighted, pickInjuryGrade } from './injuryGrades.ts';
 
 export function calculateIncrementalFatigue(
     player: LivePlayer,
@@ -91,10 +92,17 @@ export interface TrainingInjury {
     teamId: string;
     injuryType: string;
     duration: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5';
 }
 
-export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.0): TrainingInjury[] {
+/** 훈련 중 부상은 경기 중보다 중증 비율을 낮춘다(GRADE3 이상 가중치에 0.5를 곱함). */
+const TRAINING_SEVERITY_MULTIPLIER = 0.5;
+
+export function applyRestDayRecovery(
+    teams: Team[],
+    injuryFrequency: number = 1.0,
+    majorInjuryFrequency: number = 1.0,
+): TrainingInjury[] {
     const C = SIM_CONFIG.FATIGUE;
     const base = C.REST_DAY_RECOVERY;
     const trainingInjuries: TrainingInjury[] = [];
@@ -133,46 +141,10 @@ export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.
             const roll = Math.random() * 10000;
             if (roll >= totalChance) continue;
 
-            const tierRoll = Math.random() * 100;
-            const seThreshold = Math.max(0.5, (12 - durability * 0.12)) * 0.5;
-            const majorThreshold = seThreshold + Math.max(5, (40 - durability * 0.3)) * 0.5;
-
-            let type: string;
-            let duration: string;
-            let severity: 'Minor' | 'Major' | 'Season-Ending';
-
-            const pickWeighted = (options: string[], dur: number): string => {
-                const n = options.length;
-                const bias = (70 - dur) * 0.05;
-                const weights = options.map((_, i) => {
-                    const normalized = i / (n - 1);
-                    return Math.max(0.1, 1 + bias * (normalized * 2 - 1));
-                });
-                const wTotal = weights.reduce((a, b) => a + b, 0);
-                let r = Math.random() * wTotal;
-                for (let i = 0; i < n; i++) {
-                    r -= weights[i];
-                    if (r <= 0) return options[i];
-                }
-                return options[n - 1];
-            };
-
-            if (tierRoll < seThreshold) {
-                severity = 'Season-Ending';
-                const seInjuries = ['전방십자인대(ACL) 파열', '아킬레스건 파열', '골절', '반월판 파열'];
-                type = seInjuries[Math.floor(Math.random() * seInjuries.length)];
-                duration = '시즌아웃';
-            } else if (tierRoll < majorThreshold) {
-                severity = 'Major';
-                const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
-                type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
-                duration = pickWeighted(['2주', '3주', '1개월'], durability);
-            } else {
-                severity = 'Minor';
-                const minorInjuries = ['근육 경직', '타박상', '발목 염좌', '무릎 통증', '허리 경직'];
-                type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
-                duration = pickWeighted(['당일 복귀', '3일', '1주'], durability);
-            }
+            const grade = pickInjuryGrade(durability, majorInjuryFrequency, TRAINING_SEVERITY_MULTIPLIER);
+            const severity = grade.severity;
+            const type = grade.injuries[Math.floor(Math.random() * grade.injuries.length)];
+            const duration = pickWeighted(grade.durations, durability);
 
             player.health = 'Injured';
             player.injuryType = type;

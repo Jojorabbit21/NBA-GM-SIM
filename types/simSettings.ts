@@ -8,6 +8,11 @@ export interface SimSettings {
     // 부상
     injuriesEnabled: boolean;    // 기본 false
     injuryFrequency: number;     // 0.0~3.0, 기본 1.0
+    majorInjuryFrequency: number; // 0.0~3.0, 기본 1.0 — 부상 중 Major/Season-Ending 비중 배율
+
+    // 출장정지 (싸움)
+    suspensionsEnabled: boolean;  // 기본 true (기존 동작 유지 — 항상 켜져 있던 기능)
+    suspensionFrequency: number;  // 0.0~3.0, 기본 1.0
 
     // 트레이드
     tradeMinValueRatio: number;      // 0.70~1.20, 기본 0.95
@@ -33,6 +38,9 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     homeAdvantage: 0.02,
     injuriesEnabled: false,
     injuryFrequency: 1.0,
+    majorInjuryFrequency: 1.0,
+    suspensionsEnabled: true,
+    suspensionFrequency: 1.0,
     tradeMinValueRatio: 0.95,
     cpuTradeBaseProbability: 0.15,
     tcr: 1.0,
@@ -99,6 +107,30 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         label: '부상 빈도 배율',
         description: '부상 발생 빈도 조절 (1.0 = 기본)',
         category: '부상',
+        min: 0, max: 2.0, step: 0.1,
+    },
+    {
+        key: 'majorInjuryFrequency',
+        type: 'number',
+        label: '중대 부상 비율',
+        description: '부상 중 Major/Season-Ending 비중 배율 (1.0 = 기본, 0 = 전부 경미한 부상)',
+        category: '부상',
+        min: 0, max: 2.0, step: 0.1,
+    },
+    // 출장정지 (싸움)
+    {
+        key: 'suspensionsEnabled',
+        type: 'toggle',
+        label: '출장정지 시스템',
+        description: '경기 중 다혈질 선수의 싸움/출장정지 이벤트 활성화',
+        category: '출장정지',
+    },
+    {
+        key: 'suspensionFrequency',
+        type: 'number',
+        label: '출장정지 빈도 배율',
+        description: '싸움/출장정지 발생 빈도 조절 (1.0 = 기본)',
+        category: '출장정지',
         min: 0, max: 3.0, step: 0.1,
     },
     // 트레이드

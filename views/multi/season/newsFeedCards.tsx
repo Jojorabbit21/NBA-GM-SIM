@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, type LucideIcon } from 'lucide-react';
+import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -41,6 +41,8 @@ export function extractEventPlayerIds(event: LeagueEvent): string[] {
         case 'dpoy_award': return event.detail.ranking.map(r => r.playerId);
         case 'all_nba_team': return event.detail.tiers.flatMap(t => t.players.map(p => p.playerId));
         case 'all_def_team': return event.detail.tiers.flatMap(t => t.players.map(p => p.playerId));
+        case 'injury': return [event.detail.player.id];
+        case 'suspension': return [event.detail.fighter.id, event.detail.opponent.id];
         default: return [];
     }
 }
@@ -77,11 +79,10 @@ function useBoxScorePlayerCardMap(
 // TeamMark/BigStat/CardShell은 더 이상 어떤 카드도 쓰지 않아 전부 삭제(죽은 코드).
 
 // [2026-09-02] 가상 언론사 The Basketball Chronicle 로고(public/images/bc2.svg, 원래
-// bc.svg에서 교체)를 모든 레터 카드 헤더 최상단(마스트헤드 격, h-4)과 본문 최하단
-// (기사 종료 표식 격, 불투명도 없이 좌측 정렬, h-3)에 표시(사용자 요청 — 크기는
-// h-8→h-[22.4px]→h-4(헤더), h-5→h-3(하단) 순으로 여러 차례 축소) — 6개 카드
-// (GameResultCard/FeatCard/StreakCard/WinStreakCard/TradeCard/PowerRankingCard)
-// 전부 동일하게 적용.
+// bc.svg에서 교체)를 모든 레터 카드 헤더 최상단(마스트헤드 격, h-4)에 표시(사용자 요청 —
+// 크기는 h-8→h-[22.4px]→h-4 순으로 여러 차례 축소) — 모든 레터 카드에 동일하게 적용.
+// [2026-09-03] 본문 최하단(기사 종료 표식 격, h-3)에도 같은 로고를 하나 더 찍었었는데
+// 사용자 요청으로 전부 삭제 — 헤더 마스트헤드(h-4)만 남음.
 const BrandMark: React.FC<{ className?: string }> = ({ className = '' }) => (
     <img src="/images/bc2.svg" alt="The Basketball Chronicle" className={className} />
 );
@@ -470,8 +471,6 @@ export const GameResultCard: React.FC<{
                     박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
                 </p>
             ) : null}
-
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -550,8 +549,6 @@ export const FeatCard: React.FC<{
                     박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
                 </p>
             ) : null}
-
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -676,8 +673,6 @@ export const StreakCard: React.FC<{
                     </div>
                 </div>
             ))}
-
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -773,8 +768,6 @@ export const WinStreakCard: React.FC<{
                     </div>
                 </div>
             )}
-
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -918,8 +911,179 @@ export const TradeCard: React.FC<{
                 <TradePlayerTable team={a} teamSlug={teamA.slug} players={aOut} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
                 <TradePlayerTable team={b} teamSlug={teamB.slug} players={bOut} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
             </div>
+        </div>
+    );
+};
 
-            <BrandMark className="h-3 w-auto" />
+// [2026-09-03] "부상 발생 시 뉴스" 요청 — GRADE3 이상 부상만 발행(GRADE1/2는 서버가 애초에
+// 이벤트를 안 만듦, detectInjuryEvent 참고). TradeCard와 동일한 구조(헤더+날짜+구분선 →
+// 본문 2~3줄 → 표) — 다만 즉석 조회할 박스스코어가 없어(payload에 필요한 정보가 이미 다
+// 있음) roomId/useGameBoxScore 의존 없이 훨씬 단순하다.
+
+// [2026-09-03 후속] "테이블의 부상 정도 컬럼 삭제, 복귀 예정일은 0000년 00월 00일 포맷"
+// 요청 — 등급 라벨(중등도/중상/중증(장기))은 이제 어디에서도 쓰이지 않아 INJURY_GRADE_LABEL과
+// 함께 제거. 날짜는 다른 카드들의 YY/MM/DD 축약 표기와 달리 이 표만 풀 연도로 표시.
+// [2026-09-03 후속2] SuspensionCard의 복귀 예정일 컬럼도 동일 포맷이 필요해 이름을
+// formatFullDateCell로 일반화(동작은 그대로) — 두 카드가 함께 재사용.
+function formatFullDateCell(returnDate: string | null): string {
+    if (!returnDate) return '시즌 아웃';
+    const [y, m, d] = returnDate.split('-');
+    return `${y}년 ${m}월 ${d}일`;
+}
+
+export const InjuryCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onPlayerClick?: (playerId: string) => void; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onPlayerClick, onOpenTeam }) => {
+    if (event.detail.kind !== 'injury') return null;
+    const { player, teamSlug, injuryType, duration, returnDate } = event.detail;
+    const team = teamBySlug.get(teamSlug);
+    const blurb = buildNewsBlurb(event, teamBySlug);
+    const entry = playerCardMap.get(player.id);
+
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <HeadlineTitle
+                    headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
+                    onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
+                />
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+
+            {blurb && (
+                <div className="space-y-2">
+                    {blurb.map((line, idx) => (
+                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
+                    ))}
+                </div>
+            )}
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="border-b border-slate-700">
+                            <th className={BOX_HEADER_CELL}>선수</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>소속팀</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>부상명</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>예상 결장</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>복귀 예정일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr className="border-b border-slate-800/60">
+                            <td className="py-1.5 px-2">
+                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                    <span
+                                        className={`text-sm font-bold text-white ${onPlayerClick ? 'cursor-pointer hover:underline' : ''}`}
+                                        onClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
+                                    >
+                                        {player.name}
+                                    </span>
+                                </PlayerHoverCard>
+                            </td>
+                            <td className={`${BOX_STAT_CELL} text-center`}>
+                                <span
+                                    className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                    onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
+                                >
+                                    {team?.team_name ?? teamSlug}
+                                </span>
+                            </td>
+                            <td className={`${BOX_STAT_CELL} text-center`}>{injuryType}</td>
+                            <td className={`${BOX_STAT_CELL} text-center`}>{duration}</td>
+                            <td className={`${BOX_STAT_CELL} text-center`}>{formatFullDateCell(returnDate)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+// [2026-09-03] "출장정지도 한 뉴스에 양쪽 다 담자" 요청 — 싸움은 항상 두 선수 모두에게
+// 동시에 발생하므로(server/src/shared/leagueEvents.ts의 detectSuspensionEvent 참고)
+// InjuryCard처럼 선수 1명당 카드 1건이 아니라, 카드 하나에 양쪽을 2행짜리 표로 함께
+// 보여준다. 제목은 이름이 둘이라 HeadlineTitle(단일 이름 클릭 하이라이트 전용)을 쓰지
+// 않고 평문 h1으로 두고, 대신 표 안의 선수명은 각각 PlayerHoverCard로 클릭 가능하다.
+export const SuspensionCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onPlayerClick?: (playerId: string) => void; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onPlayerClick, onOpenTeam }) => {
+    if (event.detail.kind !== 'suspension') return null;
+    const {
+        fighter, fighterTeamSlug, fighterSuspensionGames, fighterReturnDate,
+        opponent, opponentTeamSlug, opponentSuspensionGames, opponentReturnDate,
+    } = event.detail;
+    const blurb = buildNewsBlurb(event, teamBySlug);
+    const title = buildNewsTitle(event, teamBySlug) ?? event.headline;
+
+    const rows = [
+        { player: fighter, teamSlug: fighterTeamSlug, games: fighterSuspensionGames, returnDate: fighterReturnDate },
+        { player: opponent, teamSlug: opponentTeamSlug, games: opponentSuspensionGames, returnDate: opponentReturnDate },
+    ];
+
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{title}</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+
+            {blurb && (
+                <div className="space-y-2">
+                    {blurb.map((line, idx) => (
+                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
+                    ))}
+                </div>
+            )}
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="border-b border-slate-700">
+                            <th className={BOX_HEADER_CELL}>선수</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>소속팀</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>출장정지</th>
+                            <th className={`${BOX_HEADER_CELL} text-center`}>복귀 예정일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map(row => {
+                            const entry = playerCardMap.get(row.player.id);
+                            const team = teamBySlug.get(row.teamSlug);
+                            return (
+                                <tr key={row.player.id} className="border-b border-slate-800/60">
+                                    <td className="py-1.5 px-2">
+                                        <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                            <span
+                                                className={`text-sm font-bold text-white ${onPlayerClick ? 'cursor-pointer hover:underline' : ''}`}
+                                                onClick={onPlayerClick ? () => onPlayerClick(row.player.id) : undefined}
+                                            >
+                                                {row.player.name}
+                                            </span>
+                                        </PlayerHoverCard>
+                                    </td>
+                                    <td className={`${BOX_STAT_CELL} text-center`}>
+                                        <span
+                                            className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                            onClick={onOpenTeam ? () => onOpenTeam(row.teamSlug) : undefined}
+                                        >
+                                            {team?.team_name ?? row.teamSlug}
+                                        </span>
+                                    </td>
+                                    <td className={`${BOX_STAT_CELL} text-center`}>{row.games}경기</td>
+                                    <td className={`${BOX_STAT_CELL} text-center`}>{formatFullDateCell(row.returnDate)}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };
@@ -1020,8 +1184,6 @@ export const PowerRankingCard: React.FC<{
                     ))}
                 </tbody>
             </table>
-
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -1180,7 +1342,6 @@ export const MvpAwardCard: React.FC<{
                     </tbody>
                 </table>
             </div>
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -1280,7 +1441,6 @@ export const DpoyAwardCard: React.FC<{
                     </tbody>
                 </table>
             </div>
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -1385,7 +1545,6 @@ export const AllNbaTeamCard: React.FC<{
                     />
                 ))}
             </div>
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -1425,7 +1584,6 @@ export const AllDefTeamCard: React.FC<{
                     />
                 ))}
             </div>
-            <BrandMark className="h-3 w-auto" />
         </div>
     );
 };
@@ -1442,6 +1600,8 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     dpoy_award: Shield,
     all_nba_team: Star,
     all_def_team: Shield,
+    injury: HeartPulse,
+    suspension: Swords,
 };
 
 export const LegacyCard: React.FC<{ event: LeagueEvent }> = ({ event }) => {
@@ -1481,6 +1641,8 @@ export const StoryCard: React.FC<{
         case 'dpoy_award': return <DpoyAwardCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'all_nba_team': return <AllNbaTeamCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'all_def_team': return <AllDefTeamCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
+        case 'injury': return <InjuryCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />;
+        case 'suspension': return <SuspensionCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />;
         default: return <LegacyCard event={event} />;
     }
 };

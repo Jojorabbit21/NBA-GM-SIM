@@ -10,6 +10,8 @@ import { useLeaderboardData } from '../../hooks/useLeaderboardData';
 import { PLAYER_COLUMNS, ColumnDef, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
+import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
 
 interface RosterStatsStackProps {
     team: Team;
@@ -214,14 +216,25 @@ const CategoryTable: React.FC<{
                         return (
                             <TableRow key={p.id} className="group">
                                 <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                    <PlayerHoverCard player={originalPlayer} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                        <span
-                                            className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
-                                            onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
-                                        >
-                                            {p.name}
-                                        </span>
-                                    </PlayerHoverCard>
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                        <PlayerHoverCard player={originalPlayer} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                            <span
+                                                className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
+                                                onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
+                                            >
+                                                {p.name}
+                                            </span>
+                                        </PlayerHoverCard>
+                                        {originalPlayer.activeInjurySeverity && (
+                                            <InjuryStatusBadge
+                                                severity={originalPlayer.activeInjurySeverity}
+                                                title={formatPlayerActiveInjuryLabel(originalPlayer) ?? undefined}
+                                                size={16}
+                                                iconSize={12}
+                                                strokeWidth={4}
+                                            />
+                                        )}
+                                    </span>
                                 </TableCell>
                                 <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                                 <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>

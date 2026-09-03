@@ -173,7 +173,7 @@ export async function runBatchSeason(
                         playerId: rec.playerId,
                         playerName: rec.playerName,
                         injuryType: rec.injuryType,
-                        severity: 'Minor' as const,
+                        severity: 'Grade1' as const, // 복귀 보고 메시지는 severity를 표시하지 않아 사실상 미사용 — 타입상 필수라 채움
                         duration: '',
                         returnDate: date,
                         isRecovery: true,
@@ -361,7 +361,8 @@ export async function runBatchSeason(
             // 비경기일: 체력 회복 + 훈련 중 부상 체크
             const injuriesOn = simSettings?.injuriesEnabled ?? false;
             const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
-            const trainingInjuries = applyRestDayRecovery(teams, injFreq);
+            const majorInjFreq = simSettings?.majorInjuryFrequency ?? 1.0;
+            const trainingInjuries = applyRestDayRecovery(teams, injFreq, majorInjFreq);
 
             // 훈련 부상 returnDate 변환 + 히스토리 기록 + 메시지 생성
             for (const ti of trainingInjuries) {
@@ -857,9 +858,10 @@ function processCpuGamesInPlace(
                         // 부상 히스토리 기록
                         if (update.health === 'Injured' && update.injuryType && update.returnDate) {
                             if (!p.injuryHistory) p.injuryHistory = [];
+                            const inj = (res as any).injuries?.find((i: any) => i.playerId === p.id);
                             p.injuryHistory.push({
                                 injuryType: update.injuryType,
-                                severity: 'Minor',
+                                severity: inj?.severity || 'Grade1',
                                 duration: update.returnDate,
                                 date,
                                 returnDate: computeReturnDate(date, update.returnDate),
@@ -965,7 +967,7 @@ function applyGameResultInPlace(
                         const inj = result.injuries?.find((i: any) => i.playerId === p.id);
                         p.injuryHistory.push({
                             injuryType: update.injuryType,
-                            severity: inj?.severity || 'Minor',
+                            severity: inj?.severity || 'Grade1',
                             duration: update.returnDate,
                             date,
                             returnDate: computeReturnDate(date, update.returnDate),

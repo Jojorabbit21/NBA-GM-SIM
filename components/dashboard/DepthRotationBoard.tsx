@@ -3,6 +3,9 @@ import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
+import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
+import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
+import { Dropdown } from '../common/Dropdown';
 import { AlertCircle, CheckCircle2, RotateCcw, ChevronDown, GripVertical } from 'lucide-react';
 import { GanttBar, computeStints, type Stint, type DragState } from './RotationGanttChart';
 
@@ -128,6 +131,74 @@ function cloneDepthChart(chart: DepthChart): DepthChart {
         C:  [...chart.C]  as DepthChart['C'],
     };
 }
+
+// 슬롯 선수 선택 커스텀 드롭다운 — 브라우저 기본 <select>는 옵션 안에 OVR 배지/부상 배지를
+// 넣을 수 없어서 공용 Dropdown(포털 렌더링으로 테이블의 overflow-auto/sticky에 안 잘림)
+// 위에 직접 만든 옵션 리스트를 얹는다. 옵션 한 줄 레이아웃: [OVR] 이름 [부상배지] --- [포지션].
+const PlayerSlotDropdown: React.FC<{
+    players: Player[];
+    selectedPlayer: Player | null;
+    onChange: (playerId: string) => void;
+}> = ({ players, selectedPlayer, onChange }) => {
+    const [open, setOpen] = useState(false);
+    return (
+        <Dropdown
+            className="w-full h-full"
+            width="w-64"
+            align="left"
+            isOpen={open}
+            onOpenChange={setOpen}
+            trigger={
+                <div className="relative w-full h-full flex items-center gap-1.5 pl-3 pr-8 text-sm font-semibold hover:bg-white/5 transition-all">
+                    <span className={`min-w-0 truncate ${selectedPlayer ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {selectedPlayer ? selectedPlayer.name : '선수 선택'}
+                    </span>
+                    {selectedPlayer?.activeInjurySeverity && (
+                        <InjuryStatusBadge
+                            severity={selectedPlayer.activeInjurySeverity}
+                            title={formatPlayerActiveInjuryLabel(selectedPlayer) ?? undefined}
+                            size={16}
+                            iconSize={12}
+                            strokeWidth={4}
+                        />
+                    )}
+                    <ChevronDown
+                        size={13}
+                        strokeWidth={2}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+                    />
+                </div>
+            }
+        >
+            <div className="p-1 max-h-72 overflow-y-auto custom-scrollbar">
+                <button
+                    type="button"
+                    onClick={() => { onChange(''); setOpen(false); }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-sm font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 transition-all"
+                >
+                    제거
+                </button>
+                {players.map(p => (
+                    <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => { onChange(p.id); setOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                            p.id === selectedPlayer?.id ? 'bg-indigo-600/10 text-indigo-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        }`}
+                    >
+                        <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none shrink-0" />
+                        <span className="min-w-0 truncate">{p.name}</span>
+                        {p.activeInjurySeverity && (
+                            <InjuryStatusBadge severity={p.activeInjurySeverity} size={14} iconSize={10} strokeWidth={4} className="shrink-0" />
+                        )}
+                        <span className="ml-auto text-slate-500 text-sm font-bold shrink-0">{p.position}</span>
+                    </button>
+                ))}
+            </div>
+        </Dropdown>
+    );
+};
 
 interface DepthRotationBoardProps {
     team: Team;
@@ -404,12 +475,12 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
             <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 gap-4">
-                <span className="text-base font-black text-white uppercase tracking-widest">뎁스 차트 · 로테이션</span>
+                <span className="text-base font-black text-white uppercase">뎁스 차트 · 로테이션</span>
                 <div className="flex gap-2">
                     <div className="relative flex shadow-md" ref={depthDropdownRef}>
                         <button
                             onClick={() => handleAutoFillDepth('Ability')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-sm font-bold uppercase active:scale-95 border-r border-indigo-700/50"
                         >
                             {coachName ? `${coachName}에게 포지션 위임` : '포지션 자동 배정'}
                         </button>
@@ -422,8 +493,8 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                         {isDepthDropdownOpen && (
                             <div className="absolute top-full right-0 mt-2 w-36 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                                 <div className="p-1">
-                                    <button onClick={() => handleAutoFillDepth('Ability')} className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">능력치 우선</button>
-                                    <button onClick={() => handleAutoFillDepth('Stamina')} className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">체력 우선</button>
+                                    <button onClick={() => handleAutoFillDepth('Ability')} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">능력치 우선</button>
+                                    <button onClick={() => handleAutoFillDepth('Stamina')} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">체력 우선</button>
                                 </div>
                             </div>
                         )}
@@ -432,7 +503,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                     <div className="relative flex shadow-md" ref={allocDropdownRef}>
                         <button
                             onClick={() => handleAllocateRotation('Overwork')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-sm font-bold uppercase active:scale-95 border-r border-indigo-700/50"
                         >
                             출전시간 자동 배정
                         </button>
@@ -446,9 +517,9 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                             <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                                 <div className="p-1">
                                     {ROTATION_OPTIONS.map(({ mode, label, sub }) => (
-                                        <button key={mode} onClick={() => handleAllocateRotation(mode)} className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5">
+                                        <button key={mode} onClick={() => handleAllocateRotation(mode)} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5">
                                             <span>{label}</span>
-                                            <span className="text-xs text-slate-500 font-normal">{sub}</span>
+                                            <span className="text-sm text-slate-500 font-normal">{sub}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -458,7 +529,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
 
                     <button
                         onClick={handleResetAll}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-sm font-bold uppercase shadow-sm active:scale-95"
                     >
                         <RotateCcw size={14} />
                         <span>초기화</span>
@@ -531,11 +602,11 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                 >
                                     {posIdx === 0 && (
                                         <td rowSpan={POSITIONS.length} className={`sticky left-0 z-30 bg-slate-800 text-center align-middle ${SB} border-b-2 border-b-slate-700`}>
-                                            <span className={`text-sm font-bold tracking-widest ${POSITIONS.some(p => depthChart[p][depthIndex]) ? 'text-white' : 'text-slate-600'}`}>{depthLabel}</span>
+                                            <span className={`text-sm font-bold ${POSITIONS.some(p => depthChart[p][depthIndex]) ? 'text-white' : 'text-slate-600'}`}>{depthLabel}</span>
                                         </td>
                                     )}
                                     <td className={`sticky left-[56px] z-30 ${SK} text-center align-middle ${SB} ${groupEndBorder}`}>
-                                        <span className={`text-sm font-bold tracking-widest ${depthChart[pos].some(Boolean) ? 'text-white' : 'text-slate-500'}`}>{String(pos)}</span>
+                                        <span className={`text-sm font-bold ${depthChart[pos].some(Boolean) ? 'text-white' : 'text-slate-500'}`}>{String(pos)}</span>
                                     </td>
 
                                     {/* 드래그 핸들 — 다른 슬롯 행 위에 드롭하면 두 슬롯의 선수(+구간)를 맞바꾼다.
@@ -552,26 +623,13 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                         </div>
                                     </td>
 
-                                    {/* 선수 선택 드롭다운 — DepthChartEditor와 동일 스타일 */}
+                                    {/* 선수 선택 커스텀 드롭다운 */}
                                     <td className={`sticky left-[124px] z-30 ${SK} !p-0 ${SB} ${groupEndBorder}`}>
-                                        <div className="relative group/sel w-full h-full">
-                                            <select
-                                                className="w-full h-full appearance-none bg-transparent border-none rounded-none pl-8 pr-8 py-1.5 text-sm font-semibold text-transparent focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all"
-                                                value={selectedId || ''}
-                                                onChange={(e) => handleSlotChange(pos, depthIndex, e.target.value)}
-                                            >
-                                                <option value="" className="bg-slate-900 text-slate-500">선수 선택</option>
-                                                {sortedRoster.map(p => (
-                                                    <option key={p.id} value={p.id} className="bg-slate-900 text-white text-sm font-semibold">({calculatePlayerOvr(p)}) {p.name} - {p.position}</option>
-                                                ))}
-                                            </select>
-                                            <div className={`absolute inset-0 flex items-center pl-3 pr-8 pointer-events-none text-sm font-semibold truncate ${selectedPlayer ? 'text-slate-200' : 'text-slate-500'}`}>
-                                                {selectedPlayer ? selectedPlayer.name : '선수 선택'}
-                                            </div>
-                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover/sel:text-white transition-colors">
-                                                <ChevronDown size={13} strokeWidth={2} />
-                                            </div>
-                                        </div>
+                                        <PlayerSlotDropdown
+                                            players={sortedRoster}
+                                            selectedPlayer={selectedPlayer}
+                                            onChange={(playerId) => handleSlotChange(pos, depthIndex, playerId)}
+                                        />
                                     </td>
 
                                     <td className={`sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>

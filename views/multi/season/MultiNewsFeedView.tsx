@@ -2,10 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
+import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useLeagueNewsFeed, type LeagueEvent, type LeagueEventType, type NewsSortOrder } from '../../../hooks/useLeagueHeadlines';
+import { buildNewsBlurb, buildNewsTitle } from '../../../services/multi/newsBlurb';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
@@ -36,6 +37,8 @@ const NEWS_TYPE_FILTER_OPTIONS: NewsTypeFilterOption[] = [
     { label: '트레이드', types: ['trade'] },
     { label: '파워랭킹', types: ['power_ranking'] },
     { label: '수상', types: ['mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'] },
+    { label: '부상', types: ['injury'] },
+    { label: '출장정지', types: ['suspension'] },
 ];
 
 // [2026-09-01] 좁은 단일 컬럼 리스트 → 실제 뉴스 사이트 같은 그리드로 개편.
@@ -201,21 +204,44 @@ const MultiNewsFeedView: React.FC = () => {
         if (room?.id) queryClient.invalidateQueries({ queryKey: ['leagueNewsStories', room.id] });
     }, [room?.id, queryClient]);
 
-    // [2026-09-01] 좌측 리스트 + 우측 디테일 레이아웃 — 트레이드 > 메세지함
-    // (MultiFrontOfficeView.tsx의 inbox 탭, selectedOfferId/selectedOffer 패턴)을 그대로
-    // 가져옴. id 하나만 상태로 두고 실제 선택 항목은 .find() ?? stories[0]로 파생 —
-    // 필터/페이지 변경으로 선택했던 항목이 목록에서 사라지면 자동으로 맨 위 항목으로
-    // 폴백된다(별도 리셋 이펙트 불필요, 원본과 동일한 동작).
-    const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-    const selectedEvent = stories.find(e => e.id === selectedEventId) ?? stories[0] ?? null;
-
-    const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultDateFilter;
-
+    // teamBySlug는 buildNewsTitle/buildNewsBlurb(검색 필터)가 필요로 해서 selectedEvent보다
+    // 먼저 선언(CLAUDE.md 규칙2 — 참조되는 변수가 참조하는 변수보다 먼저 와야 함).
     const teamBySlug = useMemo(() => {
         const m = new Map<string, LeagueTeamRow>();
         for (const t of leagueTeams) m.set(t.team_slug, t);
         return m;
     }, [leagueTeams]);
+
+    // [2026-09-03] 좌측 리스트 상단 검색창 요청 — 기사 제목(buildNewsTitle, null이면
+    // event.headline 폴백 — StoryCard/리스트 항목이 표시하는 것과 동일한 제목)과 기사 내용
+    // (buildNewsBlurb가 만드는 본문 문단들) 중 하나라도 검색어를 포함하면 노출. 서버 쿼리
+    // (useLeagueNewsFeed)가 이미 팀/타입/날짜/빅뉴스로 좁혀 내려준 stories(현재까지 로드된
+    // 페이지)에 대해서만 클라이언트에서 추가로 거른다 — blurb는 payload 원문이 아니라
+    // 클라이언트가 이벤트 데이터로 그때그때 조립하는 문자열이라 서버 쪽에서 걸러줄 수 없다.
+    // "더보기"로 아직 안 불러온 뒷페이지는 검색 대상에서 빠짐(무한스크롤+클라이언트 검색의
+    // 통상적인 트레이드오프).
+    const [searchQuery, setSearchQuery] = useState('');
+    const filteredStories = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return stories;
+        return stories.filter(e => {
+            const title = (buildNewsTitle(e, teamBySlug) ?? e.headline).toLowerCase();
+            if (title.includes(q)) return true;
+            const blurb = buildNewsBlurb(e, teamBySlug);
+            return !!blurb && blurb.join(' ').toLowerCase().includes(q);
+        });
+    }, [stories, searchQuery, teamBySlug]);
+
+    // [2026-09-01] 좌측 리스트 + 우측 디테일 레이아웃 — 트레이드 > 메세지함
+    // (MultiFrontOfficeView.tsx의 inbox 탭, selectedOfferId/selectedOffer 패턴)을 그대로
+    // 가져옴. id 하나만 상태로 두고 실제 선택 항목은 .find() ?? filteredStories[0]로 파생 —
+    // 필터/검색/페이지 변경으로 선택했던 항목이 목록에서 사라지면 자동으로 맨 위 항목으로
+    // 폴백된다(별도 리셋 이펙트 불필요, 원본과 동일한 동작). [2026-09-03] 검색어가 있을 때
+    // 우측 디테일도 검색 결과 기준으로 폴백되도록 stories 대신 filteredStories 사용.
+    const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+    const selectedEvent = filteredStories.find(e => e.id === selectedEventId) ?? filteredStories[0] ?? null;
+
+    const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultDateFilter || !!searchQuery.trim();
 
     const sortedTeams = useMemo(() => [...leagueTeams].sort((a, b) => a.team_slug.localeCompare(b.team_slug)), [leagueTeams]);
 
@@ -426,6 +452,31 @@ const MultiNewsFeedView: React.FC = () => {
                             (빈 배열 = 전체 타입). 팀 필터 드롭다운의 체크박스 행과 동일한 마크업
                             (w-4 h-4 체크박스 + text-sm 라벨)을 옵션 5개뿐이라 드롭다운 없이
                             인라인으로 바로 배치. */}
+                        {/* [2026-09-03] 필터 그룹 위 검색창 — 리더보드 툴바(LeaderboardToolbar.tsx)
+                            검색 인풋과 동일한 시각 언어(bg-slate-950 pill + 좌측 Search 아이콘 +
+                            입력 중일 때만 뜨는 X 초기화 버튼), 이 컬럼 너비(30%)에 맞춰 w-full로. */}
+                        <div className="px-3 pt-2">
+                            <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 focus-within:border-indigo-500 focus-within:hover:border-indigo-500 transition-colors shadow-sm w-full">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                    <Search size={14} />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="제목/내용으로 검색"
+                                    className="h-full w-full bg-transparent pl-9 pr-8 text-sm font-bold text-white outline-none placeholder:text-slate-600 ko-normal"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-3 pt-2 pb-2">
                             {NEWS_TYPE_FILTER_OPTIONS.map(opt => {
                                 const checked = opt.types.every(t => selectedTypes.includes(t));
@@ -448,7 +499,7 @@ const MultiNewsFeedView: React.FC = () => {
                         <div className="flex items-center justify-center py-16">
                             <Loader2 size={22} className="animate-spin text-indigo-400" />
                         </div>
-                    ) : stories.length === 0 ? (
+                    ) : filteredStories.length === 0 ? (
                         <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">
                             {hasActiveFilter ? '조건에 맞는 소식이 없습니다.' : '아직 소식이 없습니다.'}
                         </p>
@@ -457,7 +508,7 @@ const MultiNewsFeedView: React.FC = () => {
                             {/* [2026-09-01] 실제(wall-clock) 상대시각("0분 전") 대신 이벤트가 발생한
                                 인게임(시뮬레이션) 날짜(e.simDate)를 표시 — 사용자 요청. simDate가 없는
                                 이론상의 경우(백필 이전 이벤트, 사실상 없음)만 상대시각으로 폴백. */}
-                            {stories.map((e: LeagueEvent) => {
+                            {filteredStories.map((e: LeagueEvent) => {
                                 const selected = e.id === selectedEvent?.id;
                                 return (
                                     <div

@@ -21,10 +21,12 @@ import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { TEAM_DATA } from '../../../data/teamData';
 import { generateAutoTactics } from '../../../services/gameEngine';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal, resolveRealAt } from './multiGameReveal';
+import { findCurrentVirtualDate } from './multiScheduleUtils';
 import type { Team, Game, Player } from '../../../types';
 
 type MultiTacticsTab = 'depth' | 'team' | 'insights' | 'player';
@@ -227,6 +229,24 @@ const MultiTacticsView: React.FC = () => {
         [leagueTeams],
     );
 
+    // schedule의 game_seq 기반 경기는 scheduledAt이 없을 수 있어(레거시) resolveRealAt으로
+    // 역산해 채워야 useLeaderboardData의 isFinal() 게이팅이 정확히 동작한다(MultiLeaderboardView와 동일 처리).
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd     = league?.games_per_real_day ?? 5;
+    const normalizedSchedule = useMemo(
+        () => (schedule as Game[]).map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt })),
+        [schedule, simStart, gprd],
+    );
+
+    // 뎁스차트 부상/출장정지 배지용 "지금 활성 상태인지" 판정 — MultiRosterView.tsx와
+    // 동일한 findCurrentVirtualDate 패턴으로 인게임 "오늘"을 구한다. selectTacticsData보다
+    // 먼저 선언해야 한다(CLAUDE.md 규칙2 — 아래에서 참조하는 activeInjuryByPlayer가 이 값을 씀).
+    const preferVirtual = league?.type === 'main_league';
+    const currentSimDate = useMemo(() => {
+        if (!preferVirtual) return room?.sim_date ?? '';
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
+    }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
+
     const selectTacticsData = useCallback((raw: LeagueRawStatsData) => {
         // .in() 조회는 입력 배열 순서를 보장하지 않으므로, 드래프트 픽 순서(roster 배열 순서)대로 재정렬
         const draftOrder = myTeamRow?.roster ?? [];
@@ -255,7 +275,7 @@ const MultiTacticsView: React.FC = () => {
             }
         }
 
-        return { rosterPlayers, zoneMap };
+        return { rosterPlayers, zoneMap, playerInjuryRows: raw.playerInjuryRows };
     }, [myTeamRow?.roster, myTeamId, useCustomOverrides]);
 
     const {
@@ -266,14 +286,32 @@ const MultiTacticsView: React.FC = () => {
     const rosterPlayers = tacticsRawData?.rosterPlayers ?? [];
     const zoneStatsMap  = tacticsRawData?.zoneMap ?? new Map<string, Record<string, number>>();
 
+    // 뎁스차트 부상/출장정지 배지 — playerInjuryRows는 room 전체 fetch(useLeagueRawStats)에서
+    // 오므로 selectTacticsData의 반환값을 거쳐야 하고, 그 select 함수 자체는 currentSimDate
+    // 변경 시 재실행할 필요가 없어(react-query select와 무관하게) 여기서 별도로 merge한다.
+    const activeInjuryByPlayer = useMemo(
+        () => buildActiveInjurySeverityMap(tacticsRawData?.playerInjuryRows, currentSimDate, room?.season_number, {
+            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            getTeamId: () => myTeamId ?? undefined,
+        }),
+        [tacticsRawData?.playerInjuryRows, currentSimDate, room?.season_number, schedule, myTeamId],
+    );
+
     const rosterWithZoneStats = useMemo(() => {
-        if (zoneStatsMap.size === 0) return rosterPlayers;
         return rosterPlayers.map(p => {
             const z = zoneStatsMap.get(p.id);
-            if (!z) return p;
-            return { ...p, stats: { ...p.stats, ...z } };
+            const injuryStatus = activeInjuryByPlayer.get(p.id);
+            if (!z && !injuryStatus) return p;
+            return {
+                ...p,
+                ...(z ? { stats: { ...p.stats, ...z } } : {}),
+                activeInjurySeverity: injuryStatus?.severity,
+                injuryType: injuryStatus?.injuryType,
+                activeInjuryDuration: injuryStatus?.duration,
+                returnDate: injuryStatus?.returnDate ?? undefined,
+            };
         });
-    }, [rosterPlayers, zoneStatsMap]);
+    }, [rosterPlayers, zoneStatsMap, activeInjuryByPlayer]);
 
     // ── "인사이트" 탭 전용 — 리그 전체 30팀 시즌 누적 스탯 ─────────────────────────
     // MultiLeaderboardView.tsx와 동일한 buildLeagueTeams()를 재사용(로직 중복 방지). queryKey가
@@ -294,15 +332,6 @@ const MultiTacticsView: React.FC = () => {
     const myTeamWithFullStats = useMemo(
         () => leagueTeamsWithStats.find(t => t.id === myTeamId) ?? null,
         [leagueTeamsWithStats, myTeamId],
-    );
-
-    // schedule의 game_seq 기반 경기는 scheduledAt이 없을 수 있어(레거시) resolveRealAt으로
-    // 역산해 채워야 useLeaderboardData의 isFinal() 게이팅이 정확히 동작한다(MultiLeaderboardView와 동일 처리).
-    const simStart = league?.sim_real_start_at ?? null;
-    const gprd     = league?.games_per_real_day ?? 5;
-    const normalizedSchedule = useMemo(
-        () => (schedule as Game[]).map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt })),
-        [schedule, simStart, gprd],
     );
 
     // 인사이트 탭 최상단 "시즌 경기 로그" — 우리 팀이 참여하는 경기 전체(아직 안 치른 미래 경기
@@ -450,8 +479,10 @@ const MultiTacticsView: React.FC = () => {
         budget:        0,
         salaryCap:     0,
         luxuryTaxLine: 0,
-        roster:        rosterPlayers,
-    }), [myTeamId, myTeamRow?.team_name, rosterPlayers]);
+        // rosterPlayers(원본)가 아니라 rosterWithZoneStats — 존스탯 + activeInjurySeverity(부상
+        // 배지)가 병합된 버전. 둘 다 없는 선수는 원본과 동일 객체라 안전하게 대체 가능.
+        roster:        rosterWithZoneStats,
+    }), [myTeamId, myTeamRow?.team_name, rosterWithZoneStats]);
 
     const coachName = coachingData?.[myTeamId ?? '']?.headCoach?.name;
 
@@ -481,7 +512,8 @@ const MultiTacticsView: React.FC = () => {
                     { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
                     { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
                     { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
-                    { id: 'player' as MultiTacticsTab,    label: '개인 전술' },
+                    // 개인 전술 탭 숨김(2026-09-03) — MULTI_TACTICS_TABS/PlayerTacticsPanel 렌더
+                    // 블록은 그대로 둬서 ?tab=player 딥링크는 계속 동작, 재노출 시 이 줄만 복구.
                 ]}
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
@@ -493,7 +525,7 @@ const MultiTacticsView: React.FC = () => {
                         <button
                             onClick={handleSaveTactics}
                             disabled={saving || !isTacticsDirty}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-black uppercase transition-all ${
                                 saving || !isTacticsDirty
                                     ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                     : 'hover:brightness-110 active:scale-95'

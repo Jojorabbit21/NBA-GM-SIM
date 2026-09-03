@@ -9,6 +9,8 @@ import {
     COMPACT_ATTR_GROUPS, COMPACT_ITEM_BY_KEY, getCompactAttrValue,
 } from '../../data/attributeConfig';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
+import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
 
 interface RosterGridProps {
     team: Team;
@@ -235,9 +237,20 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {/* Use inline styles to force border removal and width locking */}
                             <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
-                                    <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                        <span className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
-                                    </PlayerHoverCard>
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                        <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                            <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                        </PlayerHoverCard>
+                                        {p.activeInjurySeverity && (
+                                            <InjuryStatusBadge
+                                                severity={p.activeInjurySeverity}
+                                                title={formatPlayerActiveInjuryLabel(p) ?? undefined}
+                                                size={16}
+                                                iconSize={12}
+                                                strokeWidth={4}
+                                            />
+                                        )}
+                                    </span>
                                     {p.health !== 'Healthy' && (
                                         <span 
                                             className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}

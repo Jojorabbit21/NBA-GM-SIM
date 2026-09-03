@@ -3,6 +3,7 @@ import type { Team } from '../../types/team';
 import type { FARole, FADemandResult, MarketCondition } from '../../types/fa';
 import { ARCHETYPE_TO_FA_ROLE } from '../../types/archetype';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
+import { isSeasonEndingGrade, isMajorTierGrade, isNonMinorGrade } from '../../utils/injurySeverity';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { isRoseRuleEligible, isSuperMaxEligible } from './contractEligibility';
 
@@ -189,13 +190,13 @@ function calcInjuryPenalty(player: Player): number {
     const recent = player.injuryHistory.slice(-6);
     let penalty = 0;
 
-    if (recent.some(e => e.severity === 'Season-Ending')) penalty += 8;
+    if (recent.some(e => isSeasonEndingGrade(e.severity))) penalty += 8;
 
-    const majorCount = recent.filter(e => e.severity === 'Major').length;
+    const majorCount = recent.filter(e => isMajorTierGrade(e.severity)).length;
     if (majorCount >= 2) penalty += 5;
     else if (majorCount === 1) penalty += 2;
 
-    const nonMinorCount = recent.filter(e => e.severity !== 'Minor').length;
+    const nonMinorCount = recent.filter(e => isNonMinorGrade(e.severity)).length;
     if (nonMinorCount >= 3) penalty += 2;
 
     if (player.age >= 30) penalty = Math.round(penalty * 1.5);

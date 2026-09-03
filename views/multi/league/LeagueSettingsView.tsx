@@ -98,6 +98,10 @@ const LeagueSettingsView: React.FC = () => {
     const [playoffTeamsPerConf, setPlayoffTeamsPerConf] = useState(8);
     const [playInEnabled,        setPlayInEnabled]       = useState(true);
     const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
+    const [injuryFrequency,      setInjuryFrequency]      = useState(DEFAULT_SIM_SETTINGS.injuryFrequency);
+    const [majorInjuryFrequency, setMajorInjuryFrequency] = useState(DEFAULT_SIM_SETTINGS.majorInjuryFrequency);
+    const [suspensionsEnabled,  setSuspensionsEnabled]  = useState(DEFAULT_SIM_SETTINGS.suspensionsEnabled);
+    const [suspensionFrequency, setSuspensionFrequency] = useState(DEFAULT_SIM_SETTINGS.suspensionFrequency);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
     const [saving,      setSaving]      = useState(false);
@@ -177,6 +181,10 @@ const LeagueSettingsView: React.FC = () => {
         setPlayoffTeamsPerConf(league.playoff_team_count ?? 8);
         setPlayInEnabled(league.play_in_enabled ?? true);
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
+        setInjuryFrequency(room?.sim_settings?.injuryFrequency ?? DEFAULT_SIM_SETTINGS.injuryFrequency);
+        setMajorInjuryFrequency(room?.sim_settings?.majorInjuryFrequency ?? DEFAULT_SIM_SETTINGS.majorInjuryFrequency);
+        setSuspensionsEnabled(room?.sim_settings?.suspensionsEnabled ?? DEFAULT_SIM_SETTINGS.suspensionsEnabled);
+        setSuspensionFrequency(room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
         setCapEnabled((league as any).cap_enabled ?? true);
@@ -274,6 +282,10 @@ const LeagueSettingsView: React.FC = () => {
                 ...DEFAULT_SIM_SETTINGS,
                 ...(room?.sim_settings ?? {}),
                 injuriesEnabled,
+                injuryFrequency,
+                majorInjuryFrequency,
+                suspensionsEnabled,
+                suspensionFrequency,
                 garbageTimeEnabled,
                 normalization: {
                     ...(room?.sim_settings?.normalization ?? {}),
@@ -497,6 +509,69 @@ const LeagueSettingsView: React.FC = () => {
                             <span className="ml-2 text-xs text-slate-500 ko-normal">경기 중 부상 발생 활성화</span>
                         </div>
                     </label>
+
+                    <div className="pl-1 space-y-2">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">부상 빈도 배율</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={2}
+                                step={0.1}
+                                value={injuryFrequency}
+                                onChange={e => setInjuryFrequency(Math.min(2, Math.max(0, Number(e.target.value) || 0)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">중대 부상 비율</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={2}
+                                step={0.1}
+                                value={majorInjuryFrequency}
+                                onChange={e => setMajorInjuryFrequency(Math.min(2, Math.max(0, Number(e.target.value) || 0)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal px-1">
+                            부상 빈도는 전체 부상 발생 확률(1.0=기본), 중대 부상 비율은 그중 Major/Season-Ending
+                            비중(1.0=기본, 0=전부 경미한 부상)을 조절합니다.
+                        </p>
+                    </div>
+
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            suspensionsEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={suspensionsEnabled}
+                            onChange={e => setSuspensionsEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${suspensionsEnabled ? 'text-white' : 'text-slate-400'}`}>출장정지 시스템</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">경기 중 다혈질 선수의 싸움/출장정지 이벤트 활성화</span>
+                        </div>
+                    </label>
+
+                    <div className="pl-1">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">출장정지 빈도 배율</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={3}
+                                step={0.1}
+                                value={suspensionFrequency}
+                                onChange={e => setSuspensionFrequency(Math.min(3, Math.max(0, Number(e.target.value) || 0)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                    </div>
 
                     <label
                         className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${

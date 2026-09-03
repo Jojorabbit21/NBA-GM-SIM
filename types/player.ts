@@ -122,7 +122,7 @@ export interface SaveTendencies {
 // [New] 부상 이력 기록 (부상 발생 시마다 push)
 export interface InjuryHistoryEntry {
     injuryType: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
     duration: string;
     date: string;
     returnDate: string;
@@ -211,6 +211,14 @@ export interface Player {
     health: 'Healthy' | 'Injured' | 'Day-to-Day';
     injuryType?: string;
     returnDate?: string;
+    /** 현재 활성 부상의 등급 — 로스터 테이블 배지 색상 결정용(경증=주황, 중증/시즌아웃/출장정지=빨강).
+     *  멀티플레이어 한정으로 room_player_state에서 조회해 채움(services/multi/activeInjuryStatus.ts
+     *  참고), health와 별개 필드라 두 값이 항상 동기화되진 않음 — 배지/호버카드 렌더링 외 용도로
+     *  쓰지 말 것. 활성일 때는 `injuryType`(부상명)/`activeInjuryDuration`(기간, '3일'~'시즌아웃'
+     *  또는 출장정지 'N경기')도 함께 채워짐.
+     */
+    activeInjurySeverity?: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
+    activeInjuryDuration?: string;
     condition?: number;
     conditionDelta?: number; // [New] Tracks daily change (e.g., +15, -10)
     ins: number;

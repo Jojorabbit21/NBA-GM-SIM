@@ -399,7 +399,7 @@ export const useSimulation = (
                             playerId: rec.playerId,
                             playerName: rec.playerName,
                             injuryType: rec.injuryType,
-                            severity: 'Minor',
+                            severity: 'Grade1', // 복귀 보고 메시지는 severity를 표시하지 않아 사실상 미사용 — 타입상 필수라 채움
                             duration: '',
                             returnDate: currentSimDate,
                             isRecovery: true,
@@ -652,7 +652,8 @@ export const useSimulation = (
                 _t1 = performance.now();
                 const injuriesOn = simSettings?.injuriesEnabled ?? false;
                 const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
-                const trainingInjuries = applyRestDayRecovery(newTeams, injFreq);
+                const majorInjFreq = simSettings?.majorInjuryFrequency ?? 1.0;
+                const trainingInjuries = applyRestDayRecovery(newTeams, injFreq, majorInjFreq);
 
                 // 훈련 부상 returnDate 변환 + 히스토리 기록 + 메시지 전송
                 for (const ti of trainingInjuries) {

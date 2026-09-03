@@ -19,6 +19,16 @@ import { HofQualificationRenderer } from './HofQualificationRenderer';
 import { AwardsReportViewer } from './AwardsReportViewer';
 import { ScoutReportRenderer } from './ScoutReportRenderer';
 
+/** 부상 보고 메시지의 "부상 정도" 표시 — GRADE1~5(services/game/engine/injuryGrades.ts)를
+ *  구 3단계(경상/중상/시즌아웃) 대신 5단계 라벨/색상으로 표시. */
+const INJURY_GRADE_DISPLAY: Record<InjuryReportContent['severity'], { label: string; color: string }> = {
+    Grade1: { label: '경미', color: 'text-slate-300 font-bold' },
+    Grade2: { label: '경상', color: 'text-slate-300 font-bold' },
+    Grade3: { label: '중등도', color: 'text-amber-400 font-bold' },
+    Grade4: { label: '중상', color: 'text-rose-400 font-bold' },
+    Grade5: { label: '중증(장기)', color: 'text-red-500 font-black' },
+};
+
 interface MessageContentRendererProps {
     type: MessageType;
     content: any;
@@ -193,7 +203,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                             </p>
                             <div className="pl-3 space-y-1 text-sm">
                                 <p><span className="text-slate-500">부상명:</span> <span className="text-white font-bold">{injuryData.injuryType}</span></p>
-                                <p><span className="text-slate-500">부상 정도:</span> <span className={injuryData.severity === 'Season-Ending' ? 'text-red-500 font-black' : injuryData.severity === 'Major' ? 'text-rose-400 font-bold' : 'text-slate-300 font-bold'}>{injuryData.severity === 'Season-Ending' ? '시즌아웃' : injuryData.severity === 'Major' ? '중상' : '경상'}</span></p>
+                                <p><span className="text-slate-500">부상 정도:</span> <span className={INJURY_GRADE_DISPLAY[injuryData.severity].color}>{INJURY_GRADE_DISPLAY[injuryData.severity].label}</span></p>
                                 {injuryData.isTrainingInjury && <p><span className="text-slate-500">발생 경위:</span> <span className="text-amber-400 font-bold">팀 훈련 중</span></p>}
                                 <p><span className="text-slate-500">예상 결장 기간:</span> <span className="text-white font-bold">{injuryData.duration}</span></p>
                                 <p><span className="text-slate-500">복귀 예정일:</span> <span className="text-white font-bold">{injuryData.returnDate}</span></p>

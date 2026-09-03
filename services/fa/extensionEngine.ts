@@ -12,6 +12,7 @@ import type { Player, PlayerContract } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { FARole, FADemandResult, MarketCondition } from '../../types/fa';
 import { generateSaveTendencies, stringToHash } from '../../utils/hiddenTendencies';
+import { isSeasonEndingGrade, isNonMinorGrade } from '../../utils/injurySeverity';
 import { calcFADemand, determineFARole } from './faValuation';
 import { analyzeTeamSituation } from '../tradeEngine/teamAnalysis';
 import { LEAGUE_FINANCIALS, getOVRThreshold } from '../../utils/constants';
@@ -123,7 +124,7 @@ export function getExtensionCandidates(myTeam: Team): Player[] {
         if (p.contract?.option?.type === 'player') return false;
         // Season-Ending 부상 제외
         if (p.health === 'Injured') {
-            const recentSE = p.injuryHistory?.some(h => h.severity === 'Season-Ending');
+            const recentSE = p.injuryHistory?.some(h => isSeasonEndingGrade(h.severity));
             if (recentSE) return false;
         }
         return true;
@@ -167,7 +168,7 @@ function calcTenureAvailability(player: Player): number {
 
     // 재직 기간 내 Major/Season-Ending 부상 빈도
     const recentInjuries = injuries.slice(-(tenure * 5));
-    const seriousCount = recentInjuries.filter(e => e.severity !== 'Minor').length;
+    const seriousCount = recentInjuries.filter(e => isNonMinorGrade(e.severity)).length;
     const injuryRate = seriousCount / tenure; // 시즌당 심각 부상 횟수
 
     // 가용성 점수 (0~1): 현재 시즌 실데이터 우선, 없으면 부상 빈도로 추정

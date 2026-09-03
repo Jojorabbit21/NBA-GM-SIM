@@ -16,27 +16,36 @@ import { updateMoraleFromGame } from '../moraleService';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 import { getBudgetManager } from '../financeEngine';
 
-/** duration 문자열 → 일수 변환 */
+/** duration 문자열 → 일수 변환. GRADE1~5 등급별 기간(services/game/engine/pbp/stateUpdater.ts
+ *  GRADE_CONFIG 참고)을 포함 — "N개월"/"N일"/"N주"는 정규식으로 일반화해 새 기간을 추가할 때
+ *  이 함수를 안 건드려도 되게 함(30일/월, 7일/주 고정 환산). */
 function durationToDays(dur: string): number {
     switch (dur) {
-        // 경증
+        // GRADE1
+        case '1일': return 1;
         case '당일 복귀': return 2;
         case '3일': return 3;
         case '1주': return 7;
-        // 중증
+        // GRADE2
         case '2주': return 14;
         case '3주': return 21;
         case '1개월': return 30;
-        // 시즌아웃
+        // 레거시 호환(구 시즌아웃 표기 — 신규 부상은 더 이상 이 문자열을 만들지 않음)
         case '시즌아웃': return 180;
-        // 레거시 호환
         case 'Day-to-Day': return 2;
         case '3 Days': return 3;
         case '1 Week': return 7;
         case '2 Weeks': return 14;
         case '1 Month': return 30;
-        default: return 7;
     }
+    // GRADE3~5: "N개월"/"N주"/"N일" 일반 패턴 (예: '2개월','4개월','6개월','10개월','12개월','14개월')
+    const monthMatch = dur.match(/^(\d+)개월$/);
+    if (monthMatch) return Number(monthMatch[1]) * 30;
+    const weekMatch = dur.match(/^(\d+)주$/);
+    if (weekMatch) return Number(weekMatch[1]) * 7;
+    const dayMatch = dur.match(/^(\d+)일$/);
+    if (dayMatch) return Number(dayMatch[1]);
+    return 7;
 }
 
 /** currentDate + duration → 복귀 예정 날짜 (YYYY-MM-DD) */
@@ -172,7 +181,7 @@ export const applyUserGameResult = async (
                         const inj = result.injuries?.find((i: any) => i.playerId === p.id);
                         p.injuryHistory.push({
                             injuryType: update.injuryType,
-                            severity: inj?.severity || 'Minor',
+                            severity: inj?.severity || 'Grade1',
                             duration: update.returnDate,
                             date: currentSimDate,
                             returnDate: computeReturnDate(currentSimDate, update.returnDate),

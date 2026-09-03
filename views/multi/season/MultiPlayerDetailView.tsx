@@ -33,11 +33,10 @@ import type { Team, Game } from '../../../types';
 // `player.contract`는 dataMapper.ts가 단일/멀티 공용으로 채워주므로 정상 표시된다.
 // `player.awards`는 아래 `teamsWithAwards`에서 싱글플레이어와 동일한 투표 엔진
 // (runAwardVoting/stampSeasonAwards)을 클라이언트에서 즉석 계산해 채운다.
-// `player.injuryHistory`는 여전히 싱글플레이어 시뮬레이션 서비스(batchSeasonService.ts 등)
-// 에서만 채워지고 멀티 서버 사이드 시뮬레이션에는 이력 로그가 없어("현재 부상 상태"만
-// health/injuryType/returnDate로 갱신, 이력 배열은 없음) 당분간 "정보 없음" 플레이스홀더만
-// 보인다(크래시 없이 안전하게 폴백) — 서버 사이드 부상 이력 기록 자체가 없어 클라이언트에서
-// 즉석 계산으로 우회할 방법이 없다.
+// `player.injuryHistory`는 [2026-09-03]부터 서버(simRunner.ts)가 room_player_state 테이블에
+// 기록한 이력을 buildLeagueTeams.ts가 merge해 채운다(useLeagueRawStats의 playerInjuryRows).
+// 단, 그 테이블에 아직 아무 경기도 기록되지 않은 리그(부상 시스템 비활성 포함)는 배열이
+// 비어 있어 "정보 없음" 플레이스홀더가 그대로 뜬다 — 정상 동작.
 const HIDE_SECTIONS: Array<'contract' | 'awards' | 'injuryHistory'> = [];
 
 const MultiPlayerDetailView: React.FC = () => {

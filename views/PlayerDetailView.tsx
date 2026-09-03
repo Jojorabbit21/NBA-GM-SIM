@@ -12,6 +12,7 @@ import { TeamBadge } from '../components/common/TeamBadge';
 import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { TabBar } from '../components/common/TabBar';
+import { formatReturnDateSuffix } from '../services/multi/activeInjuryStatus';
 import {
     ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
@@ -29,6 +30,7 @@ import type { PlayerArchetypeState } from '../types/archetype';
 import { generateSaveTendencies } from '../utils/hiddenTendencies';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { getMoraleLabel } from '../services/moraleService';
+import { getAttrColor, getAttrBarColor } from '../utils/attrRatingColor';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -372,29 +374,6 @@ const GAME_LOG_COLS = [
     { key: 'pm', label: '+/-' },
 ];
 
-const getAttrColor = (val: number) => {
-    if (val >= 96) return 'text-[#0afffb]';
-    if (val >= 90) return 'text-[#1bff0a]';
-    if (val >= 85) return 'text-[#34f000]';
-    if (val >= 80) return 'text-[#38d100]';
-    if (val >= 75) return 'text-[#ffc800]';
-    if (val >= 70) return 'text-[#f0bc00]';
-    if (val >= 60) return 'text-[#c1731a]';
-    if (val >= 50) return 'text-[#8f8f8f]';
-    return 'text-[#5c5c5c]';
-};
-
-const getAttrBarColor = (val: number) => {
-    if (val >= 96) return '#0afffb';
-    if (val >= 90) return '#1bff0a';
-    if (val >= 85) return '#34f000';
-    if (val >= 80) return '#38d100';
-    if (val >= 75) return '#ffc800';
-    if (val >= 70) return '#f0bc00';
-    if (val >= 60) return '#c1731a';
-    if (val >= 50) return '#8f8f8f';
-    return '#5c5c5c';
-};
 
 // 능력치 막대 그래프에 단색 대신 그라데이션(등급 고유색 → 살짝 밝아진 톤)을 적용 — 등급
 // 구간별 색상 정체성은 시작점에 그대로 유지하면서 입체감을 준다.
@@ -1947,14 +1926,18 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         .sort((a, b) => b.date.localeCompare(a.date))
                                         .map((entry, idx) => {
                                             const dateStr = entry.date.slice(5).replace('-', '/');
-                                            const severityColor =
-                                                entry.severity === 'Season-Ending' ? 'text-red-400' :
-                                                entry.severity === 'Major' ? 'text-amber-400' :
-                                                'text-slate-200';
+                                            // 가장 최근 항목이면서 지금도 활성 상태면(출장정지 등 게임 수
+                                            // 기반) player.activeInjuryDuration이 "지금 기준 남은 경기 수"로
+                                            // 재계산된 값 — 과거에 종료된 항목은 발부 당시 기록(entry.duration)
+                                            // 그대로 둔다(로그는 변하면 안 됨).
+                                            const isCurrentActive = idx === 0 && !!player.activeInjurySeverity;
+                                            const duration = isCurrentActive ? (player.activeInjuryDuration ?? entry.duration) : entry.duration;
                                             return (
                                                 <div key={idx} className="flex justify-between items-center text-sm">
-                                                    <span className="text-slate-500">{dateStr} <span className={`${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>{entry.isTraining ? '훈련' : '경기'}</span></span>
-                                                    <span className={`font-semibold ${severityColor}`}>{entry.injuryType} <span className="text-slate-500 font-normal">{entry.duration}</span></span>
+                                                    <span className="text-slate-500">{dateStr}</span>
+                                                    <span className="text-slate-200">
+                                                        {entry.injuryType} {duration}{formatReturnDateSuffix(entry.returnDate)}
+                                                    </span>
                                                 </div>
                                             );
                                         })}

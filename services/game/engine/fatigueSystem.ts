@@ -3,6 +3,7 @@ import { LivePlayer } from './pbp/pbpTypes';
 import { TacticalSliders, Player, Team } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { interpolateCurve } from './pbp/flowEngine';
+import { pickWeighted, pickInjuryGrade } from './injuryGrades';
 
 /**
  * Calculates incremental fatigue during a possession based on various factors.
@@ -114,16 +115,20 @@ export interface TrainingInjury {
     teamId: string;
     injuryType: string;
     duration: string;
-    severity: 'Minor' | 'Major' | 'Season-Ending';
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5';
 }
+
+/** 훈련 중 부상은 경기 중보다 중증 비율을 낮춘다(GRADE3 이상 가중치에 0.5를 곱함) — 기존
+ *  seThreshold/majorThreshold를 0.5배 하던 것과 동일한 의도를 새 가중치 방식으로 재현. */
+const TRAINING_SEVERITY_MULTIPLIER = 0.5;
 
 /**
  * 비경기일 휴식 회복: 모든 팀의 모든 선수에게 REST_DAY_RECOVERY 적용.
  * stamina/durability가 높을수록 더 빠르게 회복.
  *
  * 훈련 중 부상: 건강한 선수 중 durability가 낮은 선수는 훈련/일상 활동 중 부상 가능.
- * 경기 중 부상 확률의 ~1/5 수준. 3단계 등급 (Minor/Major/Season-Ending).
- * 경기 중보다 중증(SE/Major) 비율 절반으로 감소.
+ * 경기 중 부상 확률의 ~1/5 수준. GRADE1~5 등급(injuryGrades.ts 공용).
+ * 경기 중보다 중증(GRADE3+) 비율 절반으로 감소(TRAINING_SEVERITY_MULTIPLIER).
  * dur 90+: 거의 0%, dur 55 이하: 급증 (비선형 커브 동일)
  *
  * 기본 40pt 회복 기준:
@@ -131,7 +136,11 @@ export interface TrainingInjury {
  *   stamina 90 / durability 90 → 48 회복
  *   stamina 30 / durability 30 → 36 회복
  */
-export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.0): TrainingInjury[] {
+export function applyRestDayRecovery(
+    teams: Team[],
+    injuryFrequency: number = 1.0,
+    majorInjuryFrequency: number = 1.0,
+): TrainingInjury[] {
     const C = SIM_CONFIG.FATIGUE;
     const base = C.REST_DAY_RECOVERY;
     const trainingInjuries: TrainingInjury[] = [];
@@ -174,49 +183,12 @@ export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.
             const roll = Math.random() * 10000;
             if (roll >= totalChance) continue;
 
-            // 부상 등급 결정 (Minor / Major / Season-Ending)
-            // 경기 중보다 중증 비율 낮춤: SE 절반, Major 절반
-            const tierRoll = Math.random() * 100;
-            const seThreshold = Math.max(0.5, (12 - durability * 0.12)) * 0.5;
-            const majorThreshold = seThreshold + Math.max(5, (40 - durability * 0.3)) * 0.5;
-
-            let type: string;
-            let duration: string;
-            let severity: 'Minor' | 'Major' | 'Season-Ending';
-
-            // pickWeighted: 낮은 durability → 긴 기간에 가중
-            const pickWeighted = (options: string[], dur: number): string => {
-                const n = options.length;
-                const bias = (70 - dur) * 0.05;
-                const weights = options.map((_, i) => {
-                    const normalized = i / (n - 1);
-                    return Math.max(0.1, 1 + bias * (normalized * 2 - 1));
-                });
-                const wTotal = weights.reduce((a, b) => a + b, 0);
-                let r = Math.random() * wTotal;
-                for (let i = 0; i < n; i++) {
-                    r -= weights[i];
-                    if (r <= 0) return options[i];
-                }
-                return options[n - 1];
-            };
-
-            if (tierRoll < seThreshold) {
-                severity = 'Season-Ending';
-                const seInjuries = ['전방십자인대(ACL) 파열', '아킬레스건 파열', '골절', '반월판 파열'];
-                type = seInjuries[Math.floor(Math.random() * seInjuries.length)];
-                duration = '시즌아웃';
-            } else if (tierRoll < majorThreshold) {
-                severity = 'Major';
-                const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
-                type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
-                duration = pickWeighted(['2주', '3주', '1개월'], durability);
-            } else {
-                severity = 'Minor';
-                const minorInjuries = ['근육 경직', '타박상', '발목 염좌', '무릎 통증', '허리 경직'];
-                type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
-                duration = pickWeighted(['당일 복귀', '3일', '1주'], durability);
-            }
+            // 부상 등급(GRADE1~5) 결정 — injuryGrades.ts 공용 로직, 훈련 중이라 GRADE3+
+            // 비중을 TRAINING_SEVERITY_MULTIPLIER(0.5배)만큼 낮춰서 뽑는다.
+            const grade = pickInjuryGrade(durability, majorInjuryFrequency, TRAINING_SEVERITY_MULTIPLIER);
+            const severity = grade.severity;
+            const type = grade.injuries[Math.floor(Math.random() * grade.injuries.length)];
+            const duration = pickWeighted(grade.durations, durability);
 
             player.health = 'Injured';
             player.injuryType = type;

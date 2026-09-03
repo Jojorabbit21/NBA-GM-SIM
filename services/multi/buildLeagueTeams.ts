@@ -148,6 +148,15 @@ export function buildLeagueTeams(
         leagueSeasonsByPlayer.set(row.player_id, arr);
     }
 
+    // room_player_state.injury_history — server(simRunner.ts)가 경기 시뮬 후 기록한 부상/
+    // 출장정지 이력. meta_players엔 이 데이터가 없어(mapRawPlayerToRuntimePlayer가
+    // injuryHistory를 채우지 않음) 여기서 player.injuryHistory로 얹어야만 PlayerDetailView의
+    // 부상 이력 섹션에 노출된다. 현재 진행 중인 부상 상태(health/injuryType/returnDate)는
+    // forceHealthy=true로 의도적으로 감춘 값이라 이 merge 대상에서 제외 — 이력만 보여준다.
+    const injuryHistoryByPlayer = new Map<string, Record<string, any>[]>(
+        (raw.playerInjuryRows ?? []).map(row => [row.player_id, row.injury_history ?? []]),
+    );
+
     return leagueTeams.map(lt => ({
         id:           lt.team_slug,
         name:         lt.team_name,
@@ -167,12 +176,14 @@ export function buildLeagueTeams(
             const base = playerBaseMap.get(id);
             if (!base) return null;
             const leagueSeasons = leagueSeasonsByPlayer.get(id);
+            const injuryHistory = injuryHistoryByPlayer.get(id);
             return {
                 ...base,
                 stats: statsMap.get(id) ?? INITIAL_STATS(),
                 career_history: leagueSeasons
                     ? [...(base.career_history ?? []), ...leagueSeasons]
                     : base.career_history,
+                injuryHistory: injuryHistory?.length ? (injuryHistory as any) : base.injuryHistory,
             };
         }).filter(Boolean) as Player[],
         oppZoneStats: oppZoneMap.get(lt.team_slug) ?? {},
