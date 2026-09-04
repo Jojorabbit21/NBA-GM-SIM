@@ -59,6 +59,10 @@ const persister = createSyncStoragePersister({
   key: 'nba-gm-sim-query-cache',
 });
 
+// [2026-09-04 임시 계측] 17.8MB까지 커지는 원인(어떤 쿼리가 몇 KB인지)을 콘솔에서 직접
+// 확인하기 위해 잠깐 노출 — 원인 확인 끝나면 이 줄 제거할 것.
+(window as any).__debugQueryClient = queryClient;
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
