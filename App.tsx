@@ -116,7 +116,14 @@ const App: React.FC = () => {
         else      localStorage.removeItem('nbagm:playMode');
     }, []);
     const isAdminRoute = pathname.startsWith('/admin');
-    const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, pathname.startsWith('/multi'));
+    // [2026-09-04] 모드 선택 화면(/, /auth)과 퀵플레이(/quick)는 아직 싱글플레이에 들어간 게
+    // 아닌데도 로그인만 돼 있으면 useBaseData(meta_players 전체+시즌 일정, 실측 5.9MB)가
+    // 무조건 실행되고 있었음(FA 렉 조사 중 발견 — localStorage 영속 캐시 quota 초과의
+    // 주요 원인 중 하나). 로비 화면의 팀 이름/로고 표시는 TEAM_DATA/getTeamLogoUrl로
+    // DB 없이 대체했고(LobbyPanel.tsx), 퀵플레이는 애초에 getAllTeamsList()로 별도 동작해
+    // baseData가 필요 없으므로 안전하게 스킵 대상에 추가.
+    const shouldSkipSingleLoad = pathname.startsWith('/multi') || pathname === '/' || pathname === '/auth' || pathname === '/quick';
+    const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, shouldSkipSingleLoad);
 
     // ─── App-level state ──────────────────────────────────────────────────────
     const [toastMessage, setToastMessage] = useState<string | null>(null);

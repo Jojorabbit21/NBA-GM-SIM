@@ -5,7 +5,7 @@ import { AuthView } from '../views/AuthView';
 import { useGame } from '../hooks/useGameContext';
 
 const AuthPage: React.FC<{ quickplayOnly?: boolean }> = ({ quickplayOnly = false }) => {
-    const { session, isGuestMode, gameData, setPlayMode, logout } = useGame();
+    const { session, isGuestMode, setPlayMode, logout } = useGame();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const redirectTo = searchParams.get('redirect');
@@ -45,7 +45,6 @@ const AuthPage: React.FC<{ quickplayOnly?: boolean }> = ({ quickplayOnly = false
         <AuthView
             onGuestLogin={() => {}}
             session={session}
-            teams={gameData.teams}
             nickname={isGuestMode ? 'Guest' : nickname}
             onContinue={handleContinue}
             onNewGame={handleNewGame}

@@ -6,7 +6,6 @@ import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { AuthInput } from '../components/AuthInput';
 import { OtpInput } from '../components/OtpInput';
 import { APP_NAME, APP_YEAR } from '../utils/constants';
-import type { Team } from '../types';
 import { LobbyPanel } from './lobby/LobbyPanel';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -16,7 +15,6 @@ interface AuthViewProps {
   onGuestLogin: () => void;
   // 로그인 상태일 때 로비 렌더에 필요한 props
   session?:     Session | null;
-  teams?:       Team[];
   nickname?:    string;
   onContinue?:  () => void;
   onNewGame?:   () => void;
@@ -41,7 +39,6 @@ const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode
 export const AuthView: React.FC<AuthViewProps> = ({
     onGuestLogin: _onGuestLogin,
     session,
-    teams = [],
     nickname = '',
     onContinue,
     onNewGame,
@@ -251,7 +248,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
           <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 pretendard">
               <LobbyPanel
                   session={session}
-                  teams={teams}
                   nickname={profileNickname ?? nickname}
                   onContinue={onContinue}
                   onNewGame={onNewGame}

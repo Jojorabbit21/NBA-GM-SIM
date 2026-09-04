@@ -1,18 +1,17 @@
 
 import React, { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import type { Team } from '../../types';
 import { useSaveSummary } from '../../hooks/useSaveSummary';
 import { SingleSaveCard } from './SingleSaveCard';
 import { MultiPlayCard } from './MultiPlayCard';
 import { QuickPlayCard } from './QuickPlayCard';
 import { NicknameModal } from './NicknameModal';
 import { LogOut, Settings, User } from 'lucide-react';
-import { APP_NAME, APP_YEAR } from '../../utils/constants';
+import { APP_NAME, APP_YEAR, getTeamLogoUrl } from '../../utils/constants';
+import { TEAM_DATA } from '../../data/teamData';
 
 interface LobbyPanelProps {
     session:       Session;
-    teams:         Team[];
     nickname:      string;
     onContinue:    () => void;
     onNewGame:     () => void;
@@ -27,12 +26,19 @@ interface LobbyPanelProps {
 }
 
 export const LobbyPanel: React.FC<LobbyPanelProps> = ({
-    session, teams, nickname, onContinue, onNewGame, onLogout, onMultiPlay, onQuickPlay, quickplayOnly = false,
+    session, nickname, onContinue, onNewGame, onLogout, onMultiPlay, onQuickPlay, quickplayOnly = false,
     forceNicknameSetup = false, onNicknameChange,
 }) => {
     const { data: summary, isLoading } = useSaveSummary(session.user.id);
     const email = session.user.email ?? '';
-    const savedTeam = summary ? teams.find(t => t.id === summary.teamId) : undefined;
+    // [2026-09-04] 예전엔 useGameData()의 무거운 baseData(meta_players 전체+시즌 일정, 실측
+    // 5.9MB) 결과인 teams prop에서 팀을 찾아 이름/로고를 표시했음 — 이 로비 화면(모드 선택,
+    // 아직 싱글플레이에 들어가지도 않은 상태)만 보려고 그 큰 쿼리를 매번 미리 받아야 했던
+    // 원인이었다(FA 렉 조사 중 발견). 팀 이름/로고는 DB 없이도 바로 쓸 수 있는 정적
+    // TEAM_DATA(하드코딩 fallback, meta_teams로 나중에 덮어써지긴 하지만 이름/로고 표시엔
+    // 차이 없음)와 getTeamLogoUrl(로컬스토리지 에디터 오버라이드 → 없으면 /logos/{id}.svg,
+    // 역시 DB 무관)로 대체 — 이제 이 화면은 useGameData를 아예 안 기다려도 된다.
+    const savedTeamStatic = summary ? TEAM_DATA[summary.teamId] : undefined;
     const initial = (nickname || email).charAt(0).toUpperCase();
 
     const [nicknameModalOpen,   setNicknameModalOpen]   = useState(false);
@@ -101,8 +107,8 @@ export const LobbyPanel: React.FC<LobbyPanelProps> = ({
                     ) : (
                         <SingleSaveCard
                             summary={summary ?? null}
-                            teamName={savedTeam?.name}
-                            teamLogo={savedTeam?.logo}
+                            teamName={savedTeamStatic?.name}
+                            teamLogo={summary ? getTeamLogoUrl(summary.teamId) : undefined}
                             onContinue={onContinue}
                             onNewGame={onNewGame}
                         />

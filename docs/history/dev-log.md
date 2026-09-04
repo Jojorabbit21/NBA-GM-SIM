@@ -125,6 +125,78 @@ const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError }
 
 **롤백 방법**: `&& !skipSingleLoad` 부분만 제거하면 즉시 원상복구(단, 그러면 QuotaExceededError 문제도 다시 재발).
 
+### 후속 — leagueRawStats(10MB+)도 같은 원인으로 확인 → 영속 캐시 대상에서 제외 + 안전장치 추가 (같은 날)
+
+**배경**: 위 수정(baseData 제외) 후 재실측하니 `localStorage.setItem`이 1.6MB로 성공했으나, 홈 화면으로 이동해 더 둘러보니 다시 11.9MB에서 `QuotaExceededError` 재발. 캐시 종류별 재집계 결과 `leagueRawStats`(로스터/리더보드/선수프로필/전술 화면이 공유하는 `hooks/useLeagueRawStats.ts` — 방의 경기 박스스코어 전체 포함) 단 1개 쿼리가 **10.3MB**로 확인됨. 이건 `baseData`처럼 "버그로 새는" 게 아니라 "원래 필요해서 가져오는데, 시즌이 진행될수록 계속 커지는 정상 데이터"라 실행 자체를 막을 수 없음 — 대신 이런 데이터는 애초에 localStorage 영속화 대상에서 빼는 쪽으로 처리(사용자와 사전에 상의했던 "안전한 후보/위험한 후보" 구분과 일치).
+
+**변경 파일**:
+- `index.tsx` — `PersistQueryClientProvider`의 `persistOptions.dehydrateOptions.shouldDehydrateQuery`에 `leagueRawStats`/`playerCareerHistory`/`faCareerHistoryBulkPrefetch`(root key 기준) 제외 필터 추가. `createSyncStoragePersister`에 `retry: removeOldestQuery`(`@tanstack/react-query-persist-client` 내장 전략) 추가 — 앞으로 다른 대형 쿼리가 또 생겨도, 실패 시 조용히 전체 스킵되는 대신 오래된 쿼리부터 비우며 재시도.
+
+**Before**:
+```ts
+const persister = createSyncStoragePersister({ storage: debugStorage, key: 'nba-gm-sim-query-cache' });
+...
+persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}
+```
+
+**After**:
+```ts
+const PERSIST_EXCLUDE_ROOT_KEYS = new Set(['leagueRawStats', 'playerCareerHistory', 'faCareerHistoryBulkPrefetch']);
+const persister = createSyncStoragePersister({ storage: debugStorage, key: 'nba-gm-sim-query-cache', retry: removeOldestQuery });
+...
+persistOptions={{
+  persister,
+  maxAge: 24 * 60 * 60 * 1000,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query) =>
+      query.state.status === 'success' && !PERSIST_EXCLUDE_ROOT_KEYS.has(query.queryKey[0] as string),
+  },
+}}
+```
+
+**검증**: `tsc --noEmit` 신규 오류 없음. 실제 quota 안에 들어오는지(재발 없는지)는 사용자가 배포 후 확인 예정 — 아직 최종 검증 전.
+
+**롤백 방법**: `dehydrateOptions`/`retry: removeOldestQuery` 두 부분 제거하면 원상복구.
+
+### 후속 — 모드 선택 화면(/, /auth, /quick)에서도 baseData가 실행되던 문제 수정 (같은 날)
+
+**배경**: 사용자가 "basketballgm.app으로 들어와서 싱글/멀티/퀵플레이 고르는 화면(아직 싱글플레이에 들어가지도 않음)인데도 콘솔에 `🔄 Fetching Base Data...`가 찍힌다"고 제보. 확인해보니 앞선 `skipSingleLoad` 수정은 `/multi` 경로만 막았을 뿐이라, 모드 선택 화면(`/`, `/auth`)에서는 여전히 `session`만 있으면 `useBaseData()`(5.9MB)가 실행되고 있었음. 원인 추적: 이 화면(`pages/AuthPage.tsx` → `views/AuthView.tsx` → `views/lobby/LobbyPanel.tsx`)이 "이어하기" 카드에 저장된 팀 이름/로고를 보여주려고 `gameData.teams`(=`useBaseData()` 결과)에서 팀을 찾고 있었던 게 유일한 이유(`LobbyPanel.tsx`에서 `teams` prop을 쓰는 곳은 그 한 줄뿐이었음). 저장 요약 자체(시즌/승패/날짜)는 이미 가벼운 별도 쿼리(`useSaveSummary`, `saves` 테이블 6개 컬럼)를 쓰고 있어 문제없었음.
+
+**변경 파일**:
+- `views/lobby/LobbyPanel.tsx` — 팀 이름/로고 조회를 `teams.find(...)`(무거운 gameData 의존)에서 `TEAM_DATA[teamId]`(정적 하드코딩 fallback 테이블, `data/teamData.ts`)와 `getTeamLogoUrl(teamId)`(로컬스토리지 에디터 오버라이드 → 없으면 `/logos/{id}.svg`, `utils/constants.ts`)로 교체 — 둘 다 DB fetch 없이 즉시 값을 낸다. `teams: Team[]` prop 제거.
+- `views/AuthView.tsx` — `teams` prop 제거(LobbyPanel로의 패스스루 전용이었음).
+- `pages/AuthPage.tsx` — `gameData.teams` 전달 제거(`useGame()` 구조분해에서 `gameData` 자체도 더 이상 안 씀).
+- `App.tsx` — `useGameData(...)` 4번째 인자(`skipSingleLoad`)를 `pathname.startsWith('/multi')` 단독에서 `pathname.startsWith('/multi') || pathname === '/' || pathname === '/auth' || pathname === '/quick'`(`shouldSkipSingleLoad`)로 확장. 퀵플레이(`pages/QuickPlayPage.tsx`)는 `getAllTeamsList()`로 완전히 별도 동작해 `gameData.teams`를 참조하지 않으므로 스킵 대상에 추가해도 안전함을 확인.
+
+**Before**:
+```ts
+// App.tsx
+const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, pathname.startsWith('/multi'));
+// LobbyPanel.tsx
+const savedTeam = summary ? teams.find(t => t.id === summary.teamId) : undefined;
+// ...
+teamName={savedTeam?.name}
+teamLogo={savedTeam?.logo}
+```
+
+**After**:
+```ts
+// App.tsx
+const shouldSkipSingleLoad = pathname.startsWith('/multi') || pathname === '/' || pathname === '/auth' || pathname === '/quick';
+const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, shouldSkipSingleLoad);
+// LobbyPanel.tsx
+const savedTeamStatic = summary ? TEAM_DATA[summary.teamId] : undefined;
+// ...
+teamName={savedTeamStatic?.name}
+teamLogo={summary ? getTeamLogoUrl(summary.teamId) : undefined}
+```
+
+**검증**: `tsc --noEmit` 92줄(이번 세션 시작 시점 baseline과 동일, 신규 오류 없음). 실제로 모드 선택 화면에서 `🔄 Fetching Base Data...` 로그가 더 이상 안 뜨고, `/home` 진입 시에만 뜨는지는 사용자가 배포 후 확인 예정.
+
+**주의사항**: 싱글플레이 실제 진입(`/home` 등)은 여전히 `baseData`(5.9MB)를 그대로 받는다 — 이건 이번 수정 범위 밖(싱글플레이 자체 최적화는 별도 논의 필요). `select('*')` 대신 필요한 컬럼만 골라 크기를 줄이는 방향은 아직 미착수.
+
+**롤백 방법**: `App.tsx`의 `shouldSkipSingleLoad`를 `pathname.startsWith('/multi')`로 되돌리고, `LobbyPanel.tsx`/`AuthView.tsx`/`AuthPage.tsx`의 `teams` prop 전달 체인을 원복.
+
 ---
 
 ## 2026-09-04 — useLeagueRawStats에 keepPreviousData 적용 (로스터 변경 시 전체 화면 로더 깜빡임 제거)
