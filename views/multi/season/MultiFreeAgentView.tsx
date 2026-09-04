@@ -193,11 +193,19 @@ const MultiFreeAgentView: React.FC = () => {
 
     // 드래프트풀 전체(poolPlayers, league.draft_pool 설정 기준)에서 어느 팀 로스터에도
     // 없는(rosterMap에 없는) 선수만 추려 OVR 내림차순+ID 오름차순(결정론적)으로 정렬.
+    //
+    // [2026-09-04 성능 수정] calculatePlayerOvr()는 adaptPlayerToInput+evaluatePlayerRawOVR을
+    // 매번 새로 계산하는 무거운 함수라, .sort() 비교 함수 안에서 직접 호출하면 비교할 때마다
+    // (선수 161명 기준 n·log₂n ≈ 1,175회 비교 × 2회 호출 ≈ 2,350회) 반복 계산돼 실측 54ms가
+    // 걸렸음(콘솔 [perf] FA: undraftedPlayers filter+sort). 정렬 전 선수당 OVR을 한 번만
+    // 계산해두는 Schwartzian transform으로 호출 횟수를 161회로 줄임.
     const undraftedPlayers = useMemo(() => {
         console.time('[perf] FA: undraftedPlayers filter+sort');
-        const result = poolPlayers
+        const withOvr = poolPlayers
             .filter(p => !rosterMap.has(p.id))
-            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
+            .map(p => ({ p, ovr: calculatePlayerOvr(p) }));
+        withOvr.sort((a, b) => b.ovr - a.ovr || a.p.id.localeCompare(b.p.id));
+        const result = withOvr.map(x => x.p);
         console.timeEnd('[perf] FA: undraftedPlayers filter+sort');
         return result;
     }, [poolPlayers, rosterMap]);
