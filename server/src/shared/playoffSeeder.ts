@@ -88,6 +88,18 @@ export function bracketSeedOrder(size: number): number[] {
     return order;
 }
 
+/** 플레이인 결과 대기 중인 시드(7/8위) 자리에 채워 넣는 더미 팀 로우 — team_slug만 'TBD'로
+ * 의미를 갖고 나머지 필드는 사용되지 않는다(이 슬롯은 게임이 생성되지 않으므로 실제 팀
+ * 정보가 필요 없음). tournamentInitializer.ts의 isPendingTeam()이 이 표식으로 감지한다. */
+function makePendingTeamRow(roomId: string): LeagueTeamRow {
+    return {
+        id: 'pending', room_id: roomId, team_slug: 'TBD', team_name: 'TBD', team_abbr: 'TBD',
+        color_primary: '#64748b', color_secondary: '#64748b', color_tertiary: '#64748b', color_text: '#ffffff',
+        court_background: '#1e293b', court_paint: '#1e293b', court_line: '#334155',
+        conference: null, user_id: null, is_ai: true, draft_order: null, roster: [], created_at: new Date().toISOString(),
+    };
+}
+
 export interface PostseasonLeagueRow {
     id: string;
     match_format: string | null;
@@ -112,6 +124,10 @@ export async function buildAndStoreConferenceBracket(
     league: PostseasonLeagueRow, roomId: string,
     eastQualified: StandingRow[], westQualified: StandingRow[],
     priorSeries: unknown[] = [],
+    // 플레이인과 동시에(정규시즌 종료 직후) 본선 1라운드 프레임을 먼저 만드는 경우, 플레이인
+    // 경기(항상 "+1일" 앵커의 슬롯 0~1)와 시간이 겹치지 않도록 하루 더 늦게 시작시킨다.
+    // 플레이인 없이 곧장 본선을 만드는 startPlayoffs()는 기본값(1일 뒤)을 그대로 쓴다.
+    daysOffset: number = 1,
 ): Promise<void> {
     if (eastQualified.length < 1 && westQualified.length < 1) {
         console.warn(`[playoffSeeder] league=${league.id} — 진출팀 없음(E=${eastQualified.length}, W=${westQualified.length}), skip`);
@@ -121,12 +137,14 @@ export async function buildAndStoreConferenceBracket(
     const { data: teamRows } = await supabase.from('league_teams').select('*').eq('room_id', roomId);
     const bySlug = new Map((teamRows ?? []).map((t: any) => [t.team_slug, t]));
 
+    // team_slug === 'TBD'는 플레이인 결과를 기다리는 시드(7/8위) 자리 — 아직 실제 팀이 없으므로
+    // bySlug 조회 대신 더미 로우로 채워 넣는다(makePendingTeamRow, tournamentInitializer.ts가 감지).
     const seedGroup = (group: StandingRow[]): LeagueTeamRow[] => {
         const order = bracketSeedOrder(group.length);
         return order
             .map(seed => group[seed - 1])
             .filter(Boolean)
-            .map(s => bySlug.get(s.team_slug))
+            .map(s => s.team_slug === 'TBD' ? makePendingTeamRow(roomId) : bySlug.get(s.team_slug))
             .filter(Boolean) as LeagueTeamRow[];
     };
 
@@ -136,7 +154,7 @@ export async function buildAndStoreConferenceBracket(
         return;
     }
 
-    const playoffStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
+    const playoffStart    = kstMidnightPlusDays(new Date().toISOString(), daysOffset);
     const playoffStartIso = playoffStart.toISOString();
     const gamesPerRealDay = league.games_per_real_day ?? 48;
     const intervalMinutes = 1440 / gamesPerRealDay;

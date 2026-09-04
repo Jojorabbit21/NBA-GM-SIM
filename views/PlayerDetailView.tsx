@@ -12,7 +12,8 @@ import { TeamBadge } from '../components/common/TeamBadge';
 import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { TabBar } from '../components/common/TabBar';
-import { formatReturnDateSuffix } from '../services/multi/activeInjuryStatus';
+import { formatReturnDateSuffix, formatPlayerActiveInjuryLabel } from '../services/multi/activeInjuryStatus';
+import { InjuryStatusBadge } from '../components/common/InjuryStatusBadge';
 import {
     ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
@@ -787,9 +788,16 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
 
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
+    // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
+    // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
+    // 그대로라 이 effect가 재실행되지 않아 내부 player state가 옛 데이터로 굳어버렸다
+    // (멀티플레이어 FA 프로필 — 처음 들어갈 때는 커리어 기록이 안 뜨고, 새로고침해야만
+    // 뜨던 버그의 원인). playerProp 참조 자체를 의존성으로 둬서, 같은 id라도 부모가 새
+    // 객체를 내려주면 재동기화되게 한다(호출부는 데이터가 실제로 바뀔 때만 새 참조를
+    // 만들도록 useMemo로 안정화해야 함 — MultiPlayerDetailView.tsx의 faPlayerWithCareer 참고).
     const [player, setPlayer] = useState(playerProp);
     const [teamId, setTeamId] = useState(teamIdProp);
-    useEffect(() => { setPlayer(playerProp); setTeamId(teamIdProp); }, [playerProp.id, teamIdProp]);
+    useEffect(() => { setPlayer(playerProp); setTeamId(teamIdProp); }, [playerProp, teamIdProp]);
 
     const teamName = teamId ? (allTeams?.find(t => t.id === teamId)?.name ?? teamNameProp) : undefined;
 
@@ -889,6 +897,28 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             .map(c => ({ ...c, count: bySeasons[c.key].length, seasons: [...bySeasons[c.key]].sort((a, b) => b.localeCompare(a)) }))
             .filter(c => c.count > 0);
     }, [allAwards]);
+
+    // [2026-09-03] "프로필 헤더 이름 우측에 부상/출장정지 배지" 요청 — 로스터/전술/트레이드
+    // 화면과 동일한 InjuryStatusBadge를 재사용. 멀티플레이어는 player.health가
+    // forceHealthy=true로 항상 'Healthy'라 activeInjurySeverity(지금 활성 상태 —
+    // MultiPlayerDetailView.tsx가 buildActiveInjurySeverityMap()으로 얹어줌)로 판정하고,
+    // 싱글플레이어는 player.health가 진짜 값이라 그걸로 판정한 뒤 injuryHistory 마지막
+    // 항목의 severity를 쓴다 — 두 경로가 서로 다른 필드에 의존해 여기서 하나로 합친다.
+    const headerInjuryBadge = useMemo(() => {
+        if (player.activeInjurySeverity) {
+            return { severity: player.activeInjurySeverity, title: formatPlayerActiveInjuryLabel(player) ?? undefined };
+        }
+        if (player.health && player.health !== 'Healthy') {
+            const currentInjury = [...(player.injuryHistory ?? [])].sort((a, b) => b.date.localeCompare(a.date))[0];
+            if (!currentInjury?.severity) return null;
+            const duration = currentInjury.duration || player.returnDate || '';
+            const title = currentInjury.severity === 'Suspension'
+                ? `출장정지 · ${duration || '기간 미정'}`
+                : `부상 · ${player.injuryType || currentInjury.injuryType || '부상'} · ${duration || '기간 미정'}${formatReturnDateSuffix(player.returnDate)}`;
+            return { severity: currentInjury.severity, title };
+        }
+        return null;
+    }, [player.activeInjurySeverity, player.injuryType, player.activeInjuryDuration, player.health, player.injuryHistory, player.returnDate]);
 
     // 포지션 내 백분위 → 별점 (0.5~5.0)
     const positionStars = useMemo(() => {
@@ -1324,9 +1354,21 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         [tendencySeed, player.id]
     );
 
+    // [2026-09-04] "FA 프로필은 뒤로가기 버튼이 포함된 영역 자체를 숨겨달라" 요청 — teamId가
+    // 없으면(FA) 팀/선수 드롭다운은 이미 숨겨져 있어(아래 {teamId && (...)}) 뒤로가기 버튼
+    // 하나만 덩그러니 남는데, 이 줄까지 통째로 없앤다. 다만 싱글플레이어 FA 시장 진입점
+    // (onNegotiate)이나 방출/연장 버튼처럼 teamId 없이도(또는 teamId===myTeamId일 때) 이
+    // 바에 실제로 보여줄 액션 버튼이 있는 경우는 그대로 유지 — 멀티플레이어는 이 프롭들을
+    // 아예 안 넘기므로 hasActionButtons가 항상 false가 돼 자연히 바가 사라진다. 멀티에서
+    // 뒤로가기 버튼이 없어져도 좌측 사이드바(MultiSidebar.tsx)가 항상 떠 있어 다른 화면으로
+    // 이동하는 길이 막히지 않는다.
+    const hasActionButtons = !!((!teamId && onNegotiate) || (myTeamId && teamId === myTeamId && (onExtension || onRelease)));
+    const showBreadcrumbBar = !!teamId || hasActionButtons;
+
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
             {/* ═══ 브레드크럼 바 ═══ */}
+            {showBreadcrumbBar && (
             <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-800 bg-slate-950 shrink-0">
                 {/* 뒤로 버튼 */}
                 <button
@@ -1336,87 +1378,93 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     <ArrowLeft size={14} />
                 </button>
 
-                {/* 팀 드롭다운 */}
-                <div ref={teamDropRef} className="relative">
-                    <button
-                        onClick={() => { setTeamDropOpen(o => !o); setPlayerDropOpen(false); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors"
-                    >
-                        {teamId && (
-                            <TeamBadge
-                                teamId={teamId}
-                                abbr={currentTeam?.abbr}
-                                colorPrimary={currentTeam?.colorPrimary}
-                                colorSecondary={currentTeam?.colorSecondary}
-                                size="xs"
-                            />
-                        )}
-                        <span className="text-sm font-bold">{teamName ?? 'FA'}</span>
-                        {allTeams && <ChevronDown size={11} className="opacity-60" />}
-                    </button>
-                    {teamDropOpen && allTeams && (
-                        <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-                            {sortedTeams.map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => {
-                                        const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-                                        if (roster.length > 0) {
-                                            if (onSelectPlayer) onSelectPlayer(roster[0].id);
-                                            else { setPlayer(roster[0]); setTeamId(t.id); }
-                                        }
-                                        setTeamDropOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
-                                >
-                                    <TeamBadge
-                                        teamId={t.id}
-                                        abbr={t.abbr}
-                                        colorPrimary={t.colorPrimary}
-                                        colorSecondary={t.colorSecondary}
-                                        size="xs"
-                                    />
-                                    <span className="truncate">{t.name}</span>
-                                </button>
-                            ))}
+                {/* [2026-09-03] "FA 선수 프로필은 브레드크럼을 숨겨달라" 요청 — teamId가 없으면
+                    (FA) 팀/선수 드롭다운 트레일 자체가 의미가 없다("FA ▾"를 눌러도 갈 곳이
+                    없는 죽은 드롭다운이 됨). 뒤로가기 버튼은 유지하고, 이름은 프로필 헤더에
+                    이미 크게 나오니 브레드크럼 자리에는 굳이 다시 안 보여준다. */}
+                {teamId && (
+                    <>
+                        {/* 팀 드롭다운 */}
+                        <div ref={teamDropRef} className="relative">
+                            <button
+                                onClick={() => { setTeamDropOpen(o => !o); setPlayerDropOpen(false); }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors"
+                            >
+                                <TeamBadge
+                                    teamId={teamId}
+                                    abbr={currentTeam?.abbr}
+                                    colorPrimary={currentTeam?.colorPrimary}
+                                    colorSecondary={currentTeam?.colorSecondary}
+                                    size="xs"
+                                />
+                                <span className="text-sm font-bold">{teamName ?? 'FA'}</span>
+                                {allTeams && <ChevronDown size={11} className="opacity-60" />}
+                            </button>
+                            {teamDropOpen && allTeams && (
+                                <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+                                    {sortedTeams.map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => {
+                                                const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+                                                if (roster.length > 0) {
+                                                    if (onSelectPlayer) onSelectPlayer(roster[0].id);
+                                                    else { setPlayer(roster[0]); setTeamId(t.id); }
+                                                }
+                                                setTeamDropOpen(false);
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
+                                        >
+                                            <TeamBadge
+                                                teamId={t.id}
+                                                abbr={t.abbr}
+                                                colorPrimary={t.colorPrimary}
+                                                colorSecondary={t.colorSecondary}
+                                                size="xs"
+                                            />
+                                            <span className="truncate">{t.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
 
-                <span className="text-white/30 text-sm mx-1">›</span>
+                        <span className="text-white/30 text-sm mx-1">›</span>
 
-                {/* 선수 드롭다운 */}
-                <div ref={playerDropRef} className="relative min-w-0">
-                    <button
-                        onClick={() => { setPlayerDropOpen(o => !o); setTeamDropOpen(false); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors max-w-[180px]"
-                    >
-                        <span className="text-sm font-bold truncate">{player.name}</span>
-                        {currentTeamRoster.length > 1 && <ChevronDown size={11} className="opacity-60 shrink-0" />}
-                    </button>
-                    {playerDropOpen && currentTeamRoster.length > 1 && (
-                        <div className="absolute top-full left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-                            {currentTeamRoster.map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => {
-                                        if (onSelectPlayer) onSelectPlayer(p.id);
-                                        else setPlayer(p);
-                                        setPlayerDropOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${p.id === player.id ? 'text-white font-bold' : 'text-slate-300'}`}
-                                >
-                                    <span className="font-mono w-6 text-center shrink-0 text-slate-400">{calculatePlayerOvr(p)}</span>
-                                    <span className="truncate">{p.name}</span>
-                                    <span className="text-slate-500 shrink-0">{p.position}</span>
-                                </button>
-                            ))}
+                        {/* 선수 드롭다운 */}
+                        <div ref={playerDropRef} className="relative min-w-0">
+                            <button
+                                onClick={() => { setPlayerDropOpen(o => !o); setTeamDropOpen(false); }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors max-w-[180px]"
+                            >
+                                <span className="text-sm font-bold truncate">{player.name}</span>
+                                {currentTeamRoster.length > 1 && <ChevronDown size={11} className="opacity-60 shrink-0" />}
+                            </button>
+                            {playerDropOpen && currentTeamRoster.length > 1 && (
+                                <div className="absolute top-full left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+                                    {currentTeamRoster.map(p => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => {
+                                                if (onSelectPlayer) onSelectPlayer(p.id);
+                                                else setPlayer(p);
+                                                setPlayerDropOpen(false);
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${p.id === player.id ? 'text-white font-bold' : 'text-slate-300'}`}
+                                        >
+                                            <span className="font-mono w-6 text-center shrink-0 text-slate-400">{calculatePlayerOvr(p)}</span>
+                                            <span className="truncate">{p.name}</span>
+                                            <span className="text-slate-500 shrink-0">{p.position}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
+                    </>
+                )}
 
                 {/* 액션 버튼 그룹 — 브레드크럼 우측 끝 */}
-                {((!teamId && onNegotiate) || (myTeamId && teamId === myTeamId && (onExtension || onRelease))) && (
+                {hasActionButtons && (
                     <div className="ml-auto flex items-center gap-2 pl-2 shrink-0">
                         {!teamId && onNegotiate && (
                             <button
@@ -1452,6 +1500,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     </div>
                 )}
             </div>
+            )}
 
             {/* ═══ 프로필 헤더 — 이름/포지션/소속팀/키/체중/샐러리/등번호 요약 ═══ */}
             <div className="flex items-center gap-4 px-4 py-5 bg-slate-900 border-b border-slate-800 shrink-0">
@@ -1469,6 +1518,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     <div className="flex items-center gap-3 min-w-0">
                         <OvrBadge value={calculatedOvr} size="lg" className="shrink-0 !w-10 !h-10 !text-2xl" />
                         <h1 className="text-3xl font-black text-white truncate">{player.name}</h1>
+                        {headerInjuryBadge && (
+                            <InjuryStatusBadge
+                                severity={headerInjuryBadge.severity}
+                                title={headerInjuryBadge.title}
+                                size={28}
+                                iconSize={22}
+                                strokeWidth={3.5}
+                                className="shrink-0"
+                            />
+                        )}
                         {player.jerseyNumber != null && (
                             <span className="text-3xl font-bold text-slate-500 shrink-0">#{player.jerseyNumber}</span>
                         )}

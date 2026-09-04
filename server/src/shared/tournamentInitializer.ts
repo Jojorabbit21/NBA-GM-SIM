@@ -125,6 +125,13 @@ function seededShuffle<T>(arr: T[], seed: string): T[] {
     return result;
 }
 
+/** playoffSeeder.ts가 플레이인 대상 시드(7/8위) 자리에 채워 넣는 "확정 대기" 표식 —
+ * team_slug가 이 값이면 아직 실제 팀이 정해지지 않은 슬롯으로 취급한다(BYE와는 다름 —
+ * BYE는 상대가 아예 없어 자동 진출, 이건 상대가 나중에(플레이인 결과로) 정해질 예정). */
+function isPendingTeam(t: LeagueTeamRow | null): boolean {
+    return !!t && t.team_slug === 'TBD';
+}
+
 function offsetDate(base: string, days: number): string {
     const [y, m, d] = base.split('-').map(Number);
     const date = new Date(y, m - 1, d + days);
@@ -226,6 +233,21 @@ function initSingleElim(
                 finished: true,
                 targetWins,
                 winnerId: teamA.team_slug,
+            });
+        } else if (isPendingTeam(teamA) || isPendingTeam(teamB)) {
+            // 플레이인 결과 대기 중인 시드(7/8위) — 매치업 자체(상대 확정팀)는 지금 노출하되
+            // 실제 경기는 아직 생성하지 않는다. 나중에 playInSeeder.ts의
+            // resolveRoundOneFromPlayIn()이 이 시리즈를 찾아 TBD 슬롯을 채우고 경기를 만든다.
+            series.push({
+                id: seriesId,
+                round: 1,
+                conference: 'BPL',
+                higherSeedId: teamA.team_slug,
+                lowerSeedId:  teamB.team_slug,
+                higherSeedWins: 0,
+                lowerSeedWins:  0,
+                finished: false,
+                targetWins,
             });
         } else {
             series.push({

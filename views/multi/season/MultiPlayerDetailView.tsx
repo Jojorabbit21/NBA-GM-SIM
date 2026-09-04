@@ -5,13 +5,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerShotEvents } from '../../../hooks/usePlayerShotEvents';
 import { usePlayerTransactionHistory } from '../../../hooks/usePlayerTransactionHistory';
+import { usePlayerCareerHistory } from '../../../hooks/usePlayerCareerHistory';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { resolveRealAt, isFinal } from './multiGameReveal';
+import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { runAwardVoting } from '../../../utils/awardVoting';
@@ -42,7 +46,17 @@ const HIDE_SECTIONS: Array<'contract' | 'awards' | 'injuryHistory'> = [];
 const MultiPlayerDetailView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
-    const { isLoading: gameLoading, schedule, myTeamId, tendencySeed } = useSeasonContext();
+    const { isLoading: gameLoading, schedule, myTeamId, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
+    // MultiRosterView.tsx/MultiTacticsView.tsx와 동일한 preferVirtual 패턴 — room.sim_date는
+    // 실제 KST 날짜라 메인리그(가상 NBA 캘린더)의 "지금 활성 부상인지" 판정에 직접 쓰면
+    // 어긋난다. 아래 activeInjuryByPlayer 계산에서만 쓰인다.
+    const simStartForInjury = league?.sim_real_start_at ?? null;
+    const gprdForInjury     = league?.games_per_real_day ?? 5;
+    const preferVirtualForInjury = league?.type === 'main_league';
+    const currentSimDate = useMemo(() => {
+        if (!preferVirtualForInjury) return roomSimDate;
+        return findCurrentVirtualDate(schedule, simStartForInjury, gprdForInjury, getServerNow()) ?? roomSimDate;
+    }, [preferVirtualForInjury, roomSimDate, schedule, simStartForInjury, gprdForInjury]);
     // URL에는 DB UUID 대신 meta_players 정렬 순서 기반 번호(1, 2, 3…)가 노출된다 —
     // 실제 매칭/필터링에 쓰는 playerId는 아래에서 resolvePlayerId로 UUID로 되돌린 값.
     // leagueId는 반드시 URL에서 그대로 echo — league.id(DB PK, 진짜 UUID)를 쓰면 라우팅
@@ -53,6 +67,12 @@ const MultiPlayerDetailView: React.FC = () => {
     const playerId = playerUrlId ? resolvePlayerId(playerUrlId) : undefined;
     const navigate = useNavigate();
     const { getGameUrlId } = useGameShortCodes(room?.id);
+
+    // [2026-09-03] "자유 계약 페이지의 선수들도 개인 프로필 페이지가 필요해" 요청 — 이 화면은
+    // 원래 로스터에 있는 선수만 찾았음(아래 found). 드래프트풀 전체(로스터에 없는 FA 포함)는
+    // MultiFreeAgentView.tsx와 동일하게 useMultiSearchData()의 poolPlayers로 조회 가능 —
+    // found가 안 잡히면 이걸로 한 번 더 찾는다(faPlayer, 아래 참고).
+    const { poolPlayers } = useMultiSearchData(league, leagueTeams);
 
     // "최근 경기" 테이블의 RESULT 점수 클릭 시 해당 경기 박스스코어(경기 관람 화면)로 이동.
     const handleGameClick = useCallback((gameId: string) => {
@@ -76,9 +96,36 @@ const MultiPlayerDetailView: React.FC = () => {
         [leagueTeams],
     );
 
+    // [2026-09-03] "프로필 헤더에 부상/출장정지 배지" 요청 — buildLeagueTeams()는
+    // injuryHistory(이력)만 merge하고 "지금 활성 부상인지"(activeInjurySeverity 등)는
+    // 채우지 않는다(player.health는 forceHealthy=true로 항상 'Healthy'라 그걸로는 판정
+    // 불가). MultiRosterView.tsx/MultiTacticsView.tsx와 동일하게
+    // buildActiveInjurySeverityMap()으로 한 번 더 덧씌운다.
     const selectLeagueTeams = useCallback(
-        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides),
-        [leagueTeams, useCustomOverrides],
+        (raw: LeagueRawStatsData): Team[] => {
+            const builtTeams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides);
+            const teamIdByPlayer = new Map<string, string>();
+            for (const lt of leagueTeams) for (const id of (lt.roster ?? [])) teamIdByPlayer.set(id, lt.team_slug);
+            const activeInjuryByPlayer = buildActiveInjurySeverityMap(raw.playerInjuryRows, currentSimDate, room?.season_number, {
+                schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+                getTeamId: id => teamIdByPlayer.get(id),
+            });
+            return builtTeams.map(t => ({
+                ...t,
+                roster: t.roster.map(p => {
+                    const injuryStatus = activeInjuryByPlayer.get(p.id);
+                    if (!injuryStatus) return p;
+                    return {
+                        ...p,
+                        activeInjurySeverity: injuryStatus.severity,
+                        injuryType: injuryStatus.injuryType,
+                        activeInjuryDuration: injuryStatus.duration,
+                        returnDate: injuryStatus.returnDate ?? undefined,
+                    };
+                }),
+            }));
+        },
+        [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule],
     );
 
     const { data: teams = [], isPending: fetchLoading } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams);
@@ -166,6 +213,54 @@ const MultiPlayerDetailView: React.FC = () => {
     // 유효한 번호인데도 즉시 뒤로가기(navigate(-1))가 발동해버린다.
     const isLoading = leagueLoading || gameLoading || fetchLoading || shortCodesLoading;
 
+    // found는 훅(usePlayerCareerHistory) 아래 병합 로직에 필요해 로딩 게이트보다 먼저
+    // 계산한다(Hooks는 항상 동일한 순서로 호출돼야 하므로 이 계산 자체는 조건부 return
+    // 이전에 있어야 함 — teamsWithAwards가 로딩 중엔 빈 배열이라 found도 자연히 undefined,
+    // 문제 없음).
+    const found = teamsWithAwards
+        .flatMap(t => t.roster.map(p => ({ player: p, team: t })))
+        .find(x => x.player.id === playerId);
+
+    // [2026-09-03] "FA 선수 커리어 기록, targeted-fetch로" 요청 — 드래프트풀 전체를 도는
+    // useMultiSearchData/poolPlayers는 career_history 컬럼을 아예 안 가져온다(목록 화면에
+    // 불필요한 페이로드를 막기 위함, hooks/usePlayerCareerHistory.ts 주석 참고). 로스터에서
+    // 못 찾은 경우(=FA일 가능성)에만, 지금 보고 있는 이 선수 한 명만 별도로 조회한다.
+    //
+    // [버그 수정] enabled를 `!isLoading && !found`로 뒀더니 클라이언트 라우팅(뒤로가기 후
+    // 재진입)으로 들어오면 정상 표시되는데, 하드 리프레시(콜드 로드)로 이 URL에 바로
+    // 진입하면 안 뜨는 문제가 있었다 — found는 teamsWithAwards(useLeagueRawStats 기반)에
+    // 의존하는데, 콜드 로드 시 여러 쿼리(useMultiSearchData/useLeagueRawStats/
+    // usePlayerShortCodes)가 동시에 풀리면서 isLoading이 false가 되는 시점과 found가
+    // "확정"되는 시점 사이에 미묘한 렌더 타이밍 차이가 생겨(리그 데이터를 재사용하는
+    // 클라이언트 내비게이션과 달리 전부 새로 fetch됨) enabled가 원하는 타이밍에 true로
+    // 안 걸리는 경우가 있었던 것으로 보임. found/teamsWithAwards 타이밍에 의존하지 않도록
+    // playerId만 준비되면(shortCodesLoading만 확인) 무조건 켠다 — 로스터 선수라도 한 행짜리
+    // 저비용 조회라 낭비가 미미하고(merge는 !found일 때만 적용되므로 로스터 선수에겐 그냥
+    // 안 쓰이고 버려짐), 대신 레이스 컨디션이 완전히 사라진다.
+    const { data: faCareerHistory } = usePlayerCareerHistory(playerId, !shortCodesLoading);
+
+    // 로스터에서 못 찾으면(어느 팀에도 없음) 드래프트풀 전체(poolPlayers)에서 FA로 한 번 더
+    // 찾는다 — MultiFreeAgentView.tsx의 undraftedPlayers와 동일한 데이터 소스. 위에서 targeted로
+    // 조회한 career_history를 여기서 덧씌운다(poolPlayers 자체엔 안 담겨있으므로).
+    //
+    // [버그 수정] useMemo 없이 매 렌더 `{ ...faPlayer, career_history }`로 새 객체를 만들면,
+    // faCareerHistory가 늦게 도착해 이 컴포넌트가 다시 렌더될 때마다 PlayerDetailView에
+    // 넘어가는 player prop의 참조가 계속 바뀐다. 그런데 PlayerDetailView.tsx는
+    // `useState(playerProp)` + `useEffect(..., [playerProp.id, teamIdProp])`로 내부 상태를
+    // 미러링해서 id가 같으면 재동기화를 안 하므로, "처음 진입 시엔 career_history 없는
+    // 채로 굳어버리고 이후 새로고침해야만 보이는" 문제가 생겼다. useMemo로 참조를
+    // 안정시키는 것만으로는 그 자체 버그를 못 고치지만(참조가 바뀌어야 재동기화되므로),
+    // PlayerDetailView.tsx 쪽 effect 의존성도 함께 고쳐서(playerProp 전체를 보게) 두 수정이
+    // 합쳐져야 완전히 해결된다.
+    const faPlayer = useMemo(
+        () => !found ? poolPlayers.find(p => p.id === playerId) : undefined,
+        [found, poolPlayers, playerId],
+    );
+    const faPlayerWithCareer = useMemo(
+        () => (faPlayer && faCareerHistory?.length ? { ...faPlayer, career_history: faCareerHistory } : faPlayer),
+        [faPlayer, faCareerHistory],
+    );
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -174,21 +269,23 @@ const MultiPlayerDetailView: React.FC = () => {
         );
     }
 
-    const found = teamsWithAwards
-        .flatMap(t => t.roster.map(p => ({ player: p, team: t })))
-        .find(x => x.player.id === playerId);
-
-    if (!found) {
+    if (!found && !faPlayerWithCareer) {
         // 잘못된/오래된 playerId로 직접 진입한 경우 — 이전 화면으로 되돌린다.
         navigate(-1);
         return null;
     }
 
+    // PlayerDetailView는 teamId/teamName이 undefined면 그대로 "FA"로 표시하는 등 팀 없는
+    // 선수를 이미 지원한다(싱글플레이어 pages/PlayerDetailPage.tsx의 isFA 케이스와 동일 패턴).
+    const player = found?.player ?? faPlayerWithCareer!;
+    const teamId = found?.team.id;
+    const teamName = found?.team.name;
+
     return (
         <PlayerDetailView
-            player={found.player}
-            teamId={found.team.id}
-            teamName={found.team.name}
+            player={player}
+            teamId={teamId}
+            teamName={teamName}
             allTeams={teamsWithAwards}
             schedule={normalizedSchedule}
             tendencySeed={tendencySeed ?? undefined}

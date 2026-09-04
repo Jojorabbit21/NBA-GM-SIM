@@ -17,6 +17,10 @@ interface RosterOverviewGridProps {
     onPlayerClick: (player: Player) => void;
     /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
     enableHoverCard?: boolean;
+    /** 지정된 경우에만 각 행에 "방출" 버튼 컬럼이 추가됨(멀티플레이어, 내 팀 볼 때만 RosterView가 전달). */
+    onReleasePlayer?: (player: Player) => void;
+    /** 방출 처리 중인 선수 id — 버튼 로딩/비활성 표시용. */
+    releasingId?: string | null;
 }
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' };
@@ -24,7 +28,7 @@ type SortConfig = { key: string; direction: 'asc' | 'desc' };
 const WIDTHS = {
     NAME: 180, POS: 60, AGE: 50, OVR: 60,
     HEIGHT: 70, WEIGHT: 70, SALARY: 110, REMAINING: 80, AAV: 110,
-    ARCHETYPE: 150, SECONDARY: 150, TAGS: 220, RATING: 140,
+    ARCHETYPE: 150, SECONDARY: 150, TAGS: 220, RATING: 140, RELEASE: 90,
 };
 
 function getPlayerArchetypeState(p: Player): PlayerArchetypeState {
@@ -45,7 +49,7 @@ const getStickyStyle = (left: number, width: number, isLast: boolean = false) =>
     borderRight: isLast ? undefined : 'none',
 });
 
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false }) => {
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     const handleSort = (key: string) => {
@@ -98,6 +102,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                         <col style={{ width: WIDTHS.ARCHETYPE }} />
                         <col style={{ width: WIDTHS.SECONDARY }} />
                         <col style={{ width: WIDTHS.TAGS }} />
+                        {onReleasePlayer && <col style={{ width: WIDTHS.RELEASE }} />}
                     </colgroup>
                     <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                         <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
@@ -129,6 +134,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             <TableHeaderCell width={WIDTHS.AAV} className="border-r border-slate-800" sortable onSort={() => handleSort('aav')} sortDirection={sortConfig.key === 'aav' ? sortConfig.direction : null}>AAV</TableHeaderCell>
                             <TableHeaderCell colSpan={2} className="border-r border-slate-800">아키타입</TableHeaderCell>
                             <TableHeaderCell width={WIDTHS.TAGS} align="left" className="pl-3">태그</TableHeaderCell>
+                            {onReleasePlayer && <TableHeaderCell width={WIDTHS.RELEASE}>방출</TableHeaderCell>}
                         </tr>
                     </TableHead>
                     <TableBody>
@@ -184,6 +190,17 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                                             ))}
                                         </div>
                                     </TableCell>
+                                    {onReleasePlayer && (
+                                        <TableCell align="center">
+                                            <button
+                                                onClick={() => onReleasePlayer(p)}
+                                                disabled={releasingId != null}
+                                                className="px-2.5 py-1 rounded-md text-sm font-bold bg-red-900/60 hover:bg-red-800 text-red-200 transition-colors whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed"
+                                            >
+                                                방출
+                                            </button>
+                                        </TableCell>
+                                    )}
                                 </TableRow>
                             );
                         })}

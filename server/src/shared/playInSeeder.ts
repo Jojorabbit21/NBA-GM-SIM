@@ -21,7 +21,6 @@
  * 플레이인 결과(seed7/seed8)를 합쳐 playoffSeeder.ts의 buildAndStoreConferenceBracket()으로
  * 본선 브라켓을 생성한다.
  */
-import { supabase } from '../supabaseAdmin';
 import { generateAllSeriesGames, type PlayoffSeries, type TournamentGame } from './tournamentBracket';
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
@@ -34,7 +33,15 @@ function playInSeriesId(conf: 'East' | 'West', tag: '7v8' | '9v10' | '8th'): str
     return `PI_${conf.toUpperCase()}_${tag}`;
 }
 
-/** 정규시즌 종료 직후 호출 — 컨퍼런스당 4팀(자동클린치 다음 순위)의 플레이인 미니시리즈를 생성. */
+/** 아직 플레이인으로 결정되지 않은 시드(7/8위) 자리 표식 — playoffSeeder.ts가 이 슬롯을
+ * 더미 팀으로 채워 본선 1라운드 시리즈는 만들되 게임은 생성하지 않는다. */
+const pendingSeedRow = (): StandingRow => ({ team_slug: 'TBD', conference: null, wins: 0, losses: 0, pointDiff: 0 });
+
+/** 정규시즌 종료 직후 호출 — 컨퍼런스당 4팀(자동클린치 다음 순위)의 플레이인 미니시리즈를 생성.
+ * 동시에 본선 1라운드 이상 프레임도 즉시 만든다(buildAndStoreConferenceBracket) — 3vs6, 4vs5처럼
+ * 플레이인과 무관하게 이미 확정된 매치업은 게임까지 바로 생성되고, 7/8위가 걸린 매치업은 TBD로
+ * 노출만 되다가 handlePlayInAdvance()/resolveRoundOneFromPlayIn()이 플레이인 결과가 나오는 대로
+ * 채워 넣는다. */
 export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): Promise<void> {
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const n = Math.max(2, league.playoff_team_count ?? 8);
@@ -47,17 +54,17 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
 
     const series: PlayoffSeries[] = [];
     const schedule: TournamentGame[] = [];
-    let anyConfHasField = false;
+    let eastQualified: StandingRow[] = East.slice(0, n);
+    let westQualified: StandingRow[] = West.slice(0, n);
 
     for (const [conf, standings] of [['East', East], ['West', West]] as const) {
         const field = standings.slice(autoClinch, autoClinch + 4);
         if (field.length < 4) {
             // 팀이 부족한 소규모 커스텀 리그 — 이 컨퍼런스는 플레이인 없이 자동 진출로 대체된다
-            // (handlePlayInAdvance가 이 컨퍼런스엔 round:0 시리즈가 없다는 걸 보고 자동 스킵).
+            // (eastQualified/westQualified가 기본값인 top-n 그대로 유지됨).
             console.warn(`[playInSeeder] league=${league.id} conf=${conf} — 플레이인 대상 팀 부족(${field.length}/4), 스킵`);
             continue;
         }
-        anyConfHasField = true;
         const [s7, s8, s9, s10] = field;
 
         series.push({
@@ -86,25 +93,28 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
             playInSeriesId(conf, '9v10'), s9.team_slug, s10.team_slug, 1,
             playInStartIso.slice(0, 10), 0, intervalMinutes, playInStartIso,
         ));
+
+        // 7/8위는 플레이인 결과로 나중에 확정 — 본선 1라운드 프레임엔 일단 TBD로 채워 넣는다.
+        const qualified = [...standings.slice(0, autoClinch), pendingSeedRow(), pendingSeedRow()];
+        if (conf === 'East') eastQualified = qualified; else westQualified = qualified;
     }
 
-    if (!anyConfHasField) {
-        console.warn(`[playInSeeder] league=${league.id} — 양쪽 컨퍼런스 모두 플레이인 불가, 본선 브라켓으로 직행`);
-        await buildAndStoreConferenceBracket(league, roomId, East.slice(0, n), West.slice(0, n));
-        return;
+    if (schedule.length > 0) {
+        const { error: gamesErr } = await insertGames(roomId, league.id, schedule as any);
+        if (gamesErr) {
+            console.error(`[playInSeeder] insertGames failed(${league.id}): ${gamesErr}`);
+            return;
+        }
+        await insertGameShortCodes(roomId, schedule.map(g => ({ id: g.id }))).catch(err =>
+            console.error(`[playInSeeder] insertGameShortCodes 실패(${roomId}):`, err),
+        );
     }
 
-    const { error: gamesErr } = await insertGames(roomId, league.id, schedule as any);
-    if (gamesErr) {
-        console.error(`[playInSeeder] insertGames failed(${league.id}): ${gamesErr}`);
-        return;
-    }
-    await insertGameShortCodes(roomId, schedule.map(g => ({ id: g.id }))).catch(err =>
-        console.error(`[playInSeeder] insertGameShortCodes 실패(${roomId}):`, err),
-    );
-
-    await supabase.from('leagues').update({ bracket_data: { series } }).eq('id', league.id);
-    console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} games)`);
+    // 플레이인 게임(있다면 "+1일" 앵커의 슬롯 0~1)과 시간이 겹치지 않도록 본선 프레임은
+    // 하루 더 늦게(+2일) 시작시킨다. 플레이인이 전혀 없는 리그는 기본값(+1일) 그대로.
+    const daysOffset = schedule.length > 0 ? 2 : 1;
+    await buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, series, daysOffset);
+    console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} play-in games)`);
 }
 
 /**
@@ -144,8 +154,20 @@ export async function handlePlayInAdvance(
         }
     }
 
-    // 존재하는 round:0 시리즈(플레이인 대상 팀이 부족했던 컨퍼런스는 애초에 시리즈 자체가 없음)가
-    // 모두 끝났으면 본선 브라켓 생성으로 넘어간다.
+    // startPlayIn()이 본선 1라운드 프레임을 이미 만들어 둔 리그(이 수정 이후 시작된 플레이인)는
+    // 7v8/8th 승자가 확정되는 즉시 해당 TBD 슬롯만 채우고 끝낸다 — 반대편 컨퍼런스나 나머지
+    // 플레이인 미니시리즈가 끝나길 기다리지 않는다(컨퍼런스/시드별 독립 처리).
+    const hasRoundOneFrame = series.some(s => s.round >= 1);
+    if (hasRoundOneFrame) {
+        if (finishedSeriesId === playInSeriesId(conf, '7v8') || finishedSeriesId === playInSeriesId(conf, '8th')) {
+            await resolveRoundOneFromPlayIn(league, roomId, series, conf, finishedSeriesId, finished.winnerId);
+        }
+        return;
+    }
+
+    // [하위호환] 이 수정 이전에 이미 시작된 리그 — startPlayIn()이 본선 1라운드 프레임을 만들어
+    // 두지 않았으므로, 예전 방식대로 플레이인이 전부 끝난 뒤에야 본선 브라켓 전체를 한 번에
+    // 생성한다. 새로 시작하는 리그는 위 hasRoundOneFrame 분기에서 이미 return되어 여기 오지 않는다.
     const allPlayInFinished = series.filter(s => s.round === 0).every(s => s.finished);
     if (!allPlayInFinished) return;
 
@@ -173,5 +195,41 @@ export async function handlePlayInAdvance(
         resolveQualified('East', East),
         resolveQualified('West', West),
         series,
+    );
+}
+
+/**
+ * 7v8 미니시리즈 승자(=7시드)나 8th 디사이더 승자(=8시드)가 확정되는 시점에, startPlayIn()이
+ * 미리 만들어 둔 본선 1라운드의 TBD 슬롯을 채우고 그 시리즈의 게임을 생성한다. 파트너 시드는
+ * bracketSeedOrder의 표준 시딩 규칙(1번↔n번, 2번↔n-1번)상 항상 2시드(7v8 승자용)/1시드
+ * (8th 디사이더 승자용)로 고정된다.
+ */
+async function resolveRoundOneFromPlayIn(
+    league: PostseasonLeagueRow, roomId: string, series: PlayoffSeries[],
+    conf: 'East' | 'West', finishedSeriesId: string, winnerId: string,
+): Promise<void> {
+    const { East, West } = await computeStandingsByConference(league.id, roomId);
+    const standings = conf === 'East' ? East : West;
+    const partnerSlug = finishedSeriesId === playInSeriesId(conf, '7v8')
+        ? standings[1]?.team_slug   // 7v8 승자 = 7시드 → 파트너는 2시드
+        : standings[0]?.team_slug;  // 8th 디사이더 승자 = 8시드 → 파트너는 1시드
+    if (!partnerSlug) return;
+
+    const target = series.find(s => s.round === 1 && s.higherSeedId === partnerSlug && s.lowerSeedId === 'TBD');
+    if (!target) return; // 이미 채워졌거나(중복 이벤트) 매치 자체가 없는 소규모 리그
+
+    target.lowerSeedId = winnerId;
+
+    const startAnchor     = kstMidnightPlusDays(new Date().toISOString(), 1);
+    const gamesPerRealDay = league.games_per_real_day ?? 48;
+    const intervalMinutes = 1440 / gamesPerRealDay;
+    const games = generateAllSeriesGames(
+        target.id, target.higherSeedId, target.lowerSeedId, target.targetWins,
+        startAnchor.toISOString().slice(0, 10), 0, intervalMinutes, startAnchor.toISOString(),
+    );
+    const { error } = await insertGames(roomId, league.id, games as any);
+    if (error) console.error(`[playInSeeder] round1 insertGames 실패(${league.id}): ${error}`);
+    await insertGameShortCodes(roomId, games.map(g => ({ id: g.id }))).catch(err =>
+        console.error(`[playInSeeder] round1 insertGameShortCodes 실패(${roomId}):`, err),
     );
 }

@@ -37,6 +37,7 @@ import MultiScheduleView from './views/multi/season/MultiScheduleView';
 import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
 import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
+import MultiFreeAgentView from './views/multi/season/MultiFreeAgentView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
@@ -390,6 +391,7 @@ const App: React.FC = () => {
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
                                 <Route path="transaction"  element={<MultiFrontOfficeView />} />
+                                <Route path="free-agent"   element={<MultiFreeAgentView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                             </Route>

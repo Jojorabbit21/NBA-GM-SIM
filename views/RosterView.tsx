@@ -49,11 +49,15 @@ interface RosterViewProps {
   baseSeasonYear?: number;
   /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
   enableHoverCard?: boolean;
+  /** 지정된 경우 "내 팀"을 볼 때만 개요 탭에 방출 버튼이 표시됨(멀티플레이어 전용 — 싱글플레이어는 미지정). */
+  onReleasePlayer?: (player: Player, teamId: string) => void;
+  /** 방출 처리 중인 선수 id — 버튼 로딩/비활성 표시용. */
+  releasingId?: string | null;
 }
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId }) => {
   // capSettings가 없으면(싱글플레이어) "재정" 탭 자체를 숨김 — 호출부마다 hideTabs에
   // 'finance'를 일일이 추가하지 않아도 되도록 여기서 한 번에 처리.
   const effectiveHideTabs = useMemo(
@@ -244,6 +248,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   team={selectedTeam}
                   onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
                   enableHoverCard={enableHoverCard}
+                  onReleasePlayer={isMyTeam && onReleasePlayer ? (p) => onReleasePlayer(p, selectedTeam.id) : undefined}
+                  releasingId={releasingId}
               />
           )}
           {tab === 'attributes' && (

@@ -35,6 +35,382 @@
 
 ---
 
+## 2026-09-04 — useLeagueRawStats에 keepPreviousData 적용 (로스터 변경 시 전체 화면 로더 깜빡임 제거)
+
+**배경**: FA 방출 기능(바로 위 항목) 테스트 중 사용자가 "로스터 화면에서 방출을 누르면 사이드내비/헤더를 제외한 바디 전체가 로더로 바뀐다"고 보고. 원인 조사 결과 `hooks/useLeagueRawStats.ts`의 `queryKey`가 `['leagueRawStats', roomId, allRosterIds.join(',')]`인데, 방출로 `leagueTeams`가 갱신되면 `allRosterIds`(선수 id 목록) 문자열이 바뀌어 **완전히 새로운 쿼리 키**가 되고, React Query(v5)가 이 키에 대한 캐시가 없어 `isPending=true`를 반환 → 이 값을 그대로 전체 화면 로더 게이트로 쓰는 화면들에서 선수 한 명만 바뀌어도 body 전체가 로더로 덮이는 구조적 문제였음. 트레이드 성사/FA 계약에도 동일하게 재현됨. `placeholderData: keepPreviousData`는 네트워크 요청 횟수·캐시 정책에는 영향 없이(새 키에 대한 fetch는 어차피 1회 발생) 그 fetch가 끝날 때까지 이전 키의 데이터를 그대로 보여주기만 하므로 부작용 없이 적용.
+
+**영향 범위 조사**: `useLeagueRawStats`를 호출하는 11개 파일 중 이 훅의 `isPending`을 전체 화면 로더 게이트에 직접 쓰는 곳 4곳만 실제로 이 버그의 영향을 받음 — `MultiRosterView.tsx`, `MultiLeaderboardView.tsx`, `MultiPlayerDetailView.tsx`(단, "최근 경기" 위젯 전용 `gameLogPending`은 로컬 로더라 무관), `MultiTacticsView.tsx`(단, 328번째 줄 두 번째 호출은 이미 코드 주석대로 메인 게이트에서 제외돼 있어 무관). `MultiFrontOfficeView.tsx`/`pages/MultiSeasonPage.tsx`는 `isPending`을 아예 안 쓰고 `.data`만 참조해 애초에 영향 없음.
+
+**변경 파일**:
+- `hooks/useLeagueRawStats.ts` — `useQuery` 옵션에 `placeholderData: keepPreviousData` 추가(`@tanstack/react-query`에서 `keepPreviousData` import). 이 훅 하나만 고치면 위 4개 화면 전부 한 번에 해결됨(공용 훅이라 호출부 수정 불필요).
+
+**Before**:
+```ts
+return useQuery({
+    queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')],
+    enabled: allRosterIds.length > 0 && !!roomId,
+    queryFn: async (): Promise<LeagueRawStatsData> => { ... },
+    select,
+});
+```
+
+**After**:
+```ts
+return useQuery({
+    queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')],
+    enabled: allRosterIds.length > 0 && !!roomId,
+    placeholderData: keepPreviousData,
+    queryFn: async (): Promise<LeagueRawStatsData> => { ... },
+    select,
+});
+```
+
+**검증**: `tsc --noEmit` — 이 훅 및 영향받는 4개 화면 전부 신규 오류 없음. 실제 방출 클릭 시 로더 깜빡임이 사라지는지는 사용자가 직접 확인 예정.
+
+**롤백 방법**: `placeholderData: keepPreviousData` 한 줄과 `keepPreviousData` import를 제거하면 즉시 원상복구.
+
+---
+
+## 2026-09-04 — OVR 배지 색상 재조정 (10티어 → 12티어, 컬러 편집용 아티팩트 제작)
+
+**배경**: 사용자가 `OvrBadge.tsx`의 티어별 그라디언트/글로우/테두리 색을 눈으로 보면서 직접 조절하고 싶다고 요청 → 실시간 미리보기 + Tailwind arbitrary-value 코드 생성 아티팩트(`OVR 배지 편집기`)를 별도 제작해 전달. 이후 최하위 구간(기존 `<73` 전부 하나로 뭉뚱그려져 있던 것)을 `72–66 / 65–60 / 59–0` 3단계로 세분화해달라는 요청 → 아티팩트에 반영. 사용자가 아티팩트에서 직접 색을 조절한 뒤 생성된 코드를 붙여 "이렇게 변경해보자"고 요청 → 그대로 적용하는 과정에서 아티팩트 코드 생성기의 버그 발견(`border-[1px_solid_rgba(...)]`처럼 `border-[]`(색상 전용 자리)에 `1px solid ` 접두사가 섞여 들어가 Tailwind가 값을 인식하지 못하고 테두리 색이 아예 적용되지 않는 문제) → `1px_solid_` 접두사를 제거하고 순수 `rgba(...)` 색상값만 넣도록 수정해서 적용.
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` — `colorStyles` if/else 체인 전면 교체. 10개 티어(97/94/91/88/85/82/79/76/73/else) → 12개 티어(97/94/91/88/85/82/79/76/73/66/60/else)로 세분화. 기존 Tailwind 네임드 컬러(`fuchsia-400`, `rose-600` 등) → 전부 arbitrary hex/rgba 값으로 교체(사용자가 아티팩트에서 직접 튜닝한 색).
+
+**Before**:
+```tsx
+let colorStyles = "";
+if (value >= 97)      colorStyles = 'bg-gradient-to-br from-fuchsia-200 via-fuchsia-400 to-violet-700 text-white shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-fuchsia-200/70 ring-1 ring-fuchsia-300/60';
+else if (value >= 94)  colorStyles = 'bg-gradient-to-br from-violet-400 via-purple-600 to-purple-900 text-white shadow-[0_0_14px_rgba(139,92,246,0.6)] border border-violet-400/50';
+else if (value >= 91)  colorStyles = 'bg-gradient-to-br from-fuchsia-400 via-fuchsia-600 to-fuchsia-800 text-white shadow-[0_0_10px_rgba(232,121,249,0.5)] border border-fuchsia-400/40';
+else if (value >= 88)  colorStyles = 'bg-gradient-to-br from-pink-400 via-pink-600 to-pink-800 text-white shadow-[0_0_10px_rgba(244,114,182,0.4)] border border-pink-400/40';
+else if (value >= 85)  colorStyles = 'bg-gradient-to-br from-rose-400 via-rose-600 to-rose-800 text-white shadow-rose-500/30 border border-rose-400/40';
+else if (value >= 82)  colorStyles = 'bg-gradient-to-br from-red-400 via-red-600 to-red-800 text-white shadow-red-500/30 border border-red-400/40';
+else if (value >= 79)  colorStyles = 'bg-gradient-to-br from-orange-400 via-orange-600 to-orange-800 text-white shadow-orange-600/30 border border-orange-400/30';
+else if (value >= 76)  colorStyles = 'bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-900 text-white shadow-amber-700/20 border border-amber-400/30';
+else if (value >= 73)  colorStyles = 'bg-gradient-to-br from-amber-500 via-amber-700 to-amber-900 text-white shadow-amber-800/20 border border-amber-500/30';
+else                   colorStyles = 'bg-gradient-to-br from-stone-500 via-stone-600 to-stone-700 text-white shadow-stone-700/20 border border-stone-400/30';
+```
+
+**After**:
+```tsx
+let colorStyles = "";
+if (value >= 97)       colorStyles = 'bg-gradient-to-br from-[#ec9eff] via-[#e438ff] to-[#6e14ff] text-white shadow-[0_0_20px_rgba(228,56,255,0.70),_0_0_40px_rgba(236,158,255,0.39),_0_0_0_1px_rgba(245,171,252,0.60)] border border-[rgba(236,158,255,0.70)] ring-1 ring-[rgba(245,171,252,0.60)]';
+else if (value >= 94)  colorStyles = 'bg-gradient-to-br from-[#855cff] via-[#6400c2] to-[#9000ff] text-white shadow-[0_0_12px_rgba(100,0,194,0.70)] border border-[rgba(133,92,255,0.70)]';
+else if (value >= 91)  colorStyles = 'bg-gradient-to-br from-[#e879f9] via-[#ab00c2] to-[#e000f5] text-white shadow-[0_0_12px_rgba(171,0,194,0.50)] border border-[rgba(232,121,249,0.40)]';
+else if (value >= 88)  colorStyles = 'bg-gradient-to-br from-[#f472b6] via-[#d20461] to-[#ff247b] text-white shadow-[0_0_12px_rgba(210,4,97,0.40)] border border-[rgba(244,114,182,0.40)]';
+else if (value >= 85)  colorStyles = 'bg-gradient-to-br from-[#fb7185] via-[#e11d48] to-[#ff1457] text-white shadow-[0_0_12px_rgba(225,29,72,0.30)] border border-[rgba(251,113,133,0.40)]';
+else if (value >= 82)  colorStyles = 'bg-gradient-to-br from-[#f87171] via-[#d31212] to-[#ff2929] text-white shadow-[0_0_12px_rgba(211,18,18,0.30)] border border-[rgba(248,113,113,0.40)]';
+else if (value >= 79)  colorStyles = 'bg-gradient-to-br from-[#fb923c] via-[#c34704] to-[#d15d10] text-white shadow-[0_0_12px_rgba(195,71,4,0.30)] border border-[rgba(251,146,60,0.30)]';
+else if (value >= 76)  colorStyles = 'bg-gradient-to-br from-[#f59e0b] via-[#b76201] to-[#e1893d] text-white shadow-[0_0_12px_rgba(183,98,1,0.20)] border border-[rgba(245,158,11,0.30)]';
+else if (value >= 73)  colorStyles = 'bg-gradient-to-br from-[#f59e0b] via-[#b45309] to-[#d4692b] text-white shadow-[0_0_12px_rgba(180,83,9,0.20)] border border-[rgba(245,158,11,0.27)]';
+else if (value >= 66)  colorStyles = 'bg-gradient-to-br from-[#976e53] via-[#745239] to-[#825d30] text-white shadow-[0_0_12px_rgba(116,82,57,0.16)] border border-[rgba(151,110,83,0.25)]';
+else if (value >= 60)  colorStyles = 'bg-gradient-to-br from-[#83644e] via-[#5a4e3f] to-[#66594d] text-white shadow-[0_0_12px_rgba(90,78,63,0.12)] border border-[rgba(131,100,78,0.22)]';
+else                    colorStyles = 'bg-gradient-to-br from-[#85807a] via-[#635e5a] to-[#71706f] text-white shadow-[0_0_12px_rgba(99,94,90,0.08)] border border-[rgba(133,128,122,0.18)]';
+```
+
+**검증**: 사용자가 아티팩트 프리뷰에서 눈으로 직접 확인 후 코드를 전달 — 실제 앱 브라우저 렌더링 확인은 미실행. `border-[1px_solid_rgba(...)]` → `border-[rgba(...)]` 수정 부분만 육안 문법 검토(Tailwind arbitrary property는 `border-[<color>]` 형태여야 함, `border` 유틸 클래스가 이미 두께 1px를 담당).
+
+**롤백 방법**: 위 Before 블록 내용으로 `colorStyles` if/else 체인을 그대로 되돌리면 됨(10티어 체계, Tailwind 네임드 컬러).
+
+---
+
+## 2026-09-04 — 멀티플레이어 플레이오프 자동생성 스케줄러 복구 + 본선 1라운드 조기 노출
+
+**배경**: 멀티플레이어 "DIV 3" 세션에서 정규시즌이 끝났는데도 플레이오프 브라켓/스케줄이 전혀 생성되지 않는 문제 발견. 원인 추적 결과 프로덕션 DB에 `leagues.regular_season_ended_at` 컬럼이 없어 스케줄러의 정규시즌 종료 감지 쿼리(`server/src/scheduler.ts`의 `checkSeasonCompletions()`)가 매 30초 틱마다 조용히 실패하고 있었음(마이그레이션 파일은 저장소에 존재했으나 실제 DB엔 한 번도 적용되지 않았음). 복구 과정에서 사용자가 추가로 "플레이인 진행 중에도 이미 확정된 시드(3vs6, 4vs5 등)의 매치업은 브라켓에 바로 보여야 하는 것 아니냐"고 지적 — 실제로 기존 설계는 컨퍼런스 양쪽 플레이인이 전부 끝나야만 본선 브라켓(round≥1)을 통째로 한 번에 생성하고 있었음(불필요하게 늦은 노출). 이를 컨퍼런스/시드별로 독립 처리하도록 재설계.
+
+**변경 파일**:
+- (DB) Supabase 프로덕션(`buummihpewiaeltywdff`)에 `migrations/add_league_player_awards.sql`의 일부(컬럼 + 테이블 + RLS만; RPC 함수 `get_league_season_awards_stats`는 후속 마이그레이션 4건으로 이미 더 최신 버전이 배포돼 있어 이번엔 제외) 적용 — `leagues.regular_season_ended_at` timestamptz 컬럼, `league_player_awards` 테이블.
+- `server/src/shared/tournamentInitializer.ts` — `initSingleElim()`의 라운드1 매치업 생성 로직에 "확정 대기(pending)" 분기 추가. `isPendingTeam()` 헬퍼로 `team_slug==='TBD'`인 더미팀을 감지해, 한쪽만 확정된 매치업은 시리즈 메타데이터만 만들고 게임은 생성하지 않음(BYE 분기와는 별개 — BYE는 상대가 아예 없어 자동 진출, 이건 상대가 나중에 정해질 예정).
+- `server/src/shared/playoffSeeder.ts` — `buildAndStoreConferenceBracket()`에 `daysOffset` 파라미터 추가(기본 1일 — `startPlayoffs()`의 기존 동작 유지; 플레이인과 동시 생성 시 2일로 시간 겹침 방지). `seedGroup()`이 `team_slug==='TBD'` 항목을 `makePendingTeamRow()` 더미 `LeagueTeamRow`로 매핑하도록 수정.
+- `server/src/shared/playInSeeder.ts` — `startPlayIn()`이 플레이인 미니시리즈(round:0) 생성과 동시에 `buildAndStoreConferenceBracket()`을 호출해 본선 1라운드 이상 프레임을 즉시 생성(자동클린치 시드끼리의 매치업은 실제 게임까지, 7/8위가 걸린 매치업은 TBD로 노출만). `handlePlayInAdvance()`에 `resolveRoundOneFromPlayIn()` 신설 — 7v8 미니시리즈 승자(=7시드)나 8th 디사이더 승자(=8시드)가 확정되는 즉시 해당 TBD 슬롯만 채우고 게임을 생성(반대편 컨퍼런스나 나머지 플레이인이 끝나길 기다리지 않음). 이 수정 이전에 이미 시작된 리그(본선 프레임이 없는 경우, `series.some(s => s.round >= 1)`로 감지)를 위한 구버전 로직(`allPlayInFinished` 전체 일괄 생성)은 하위호환 fallback으로 그대로 유지.
+
+**Before**:
+```ts
+// playInSeeder.ts startPlayIn() 끝부분 — round:0(플레이인)만 저장
+await supabase.from('leagues').update({ bracket_data: { series } }).eq('id', league.id);
+// round≥1은 handlePlayInAdvance의 allPlayInFinished 조건(양쪽 컨퍼런스 6개 미니시리즈 전부
+// 완료)에서만 buildAndStoreConferenceBracket()으로 한 번에 생성됨 — 그 전까지 브라켓 화면은
+// PostseasonBracket.tsx의 "브라켓 데이터가 아직 없습니다" 상태로 계속 표시됨.
+```
+
+**After**:
+```ts
+// startPlayIn() 끝부분 — round:0 + round≥1(확정 매치업은 게임까지, 미확정은 TBD)을
+// 정규시즌 종료 직후 한 번에 저장
+const daysOffset = schedule.length > 0 ? 2 : 1;
+await buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, series, daysOffset);
+// handlePlayInAdvance()는 7v8/8th 승자가 나올 때마다 resolveRoundOneFromPlayIn()으로
+// 해당 TBD 슬롯만 개별적으로 채움(컨퍼런스/시드별 독립 처리)
+```
+
+**검증**: `npx tsc --noEmit` — 수정한 3개 파일(`tournamentInitializer.ts`/`playoffSeeder.ts`/`playInSeeder.ts`) 신규 오류 없음(그 외 출력된 오류는 전부 이번 세션에서 손대지 않은 기존 파일 — Bun 타입 누락, `tournamentArchiver.ts`/`simRunner.ts`의 Supabase 제네릭 불일치 등). Supabase MCP로 DIV 3(id=773e0291-...) 재조회 결과 마이그레이션 적용 직후 스케줄러가 자동으로 `bracket_data` 생성 + 플레이인 경기 4개 생성 확인. 단, DIV 3는 이 코드 수정 이전에 시작된 세션이라 본선 1라운드 조기 노출 기능은 적용되지 않음(하위호환 fallback으로 기존 방식대로 플레이인 전부 종료 후 일괄 생성됨) — 이 기능은 이후 새로 시작되는 플레이인 리그(MAIN 1/2가 정규시즌을 마치는 시점, 향후 신규 시즌 등)부터 적용됨. 실제 브라우저에서 조기 노출 화면 확인은 아직 미실행.
+
+**롤백 방법**: 코드는 위 3개 파일을 git으로 되돌리면 됨. DB 컬럼/테이블은 `ALTER TABLE public.leagues DROP COLUMN regular_season_ended_at; DROP TABLE public.league_player_awards CASCADE;`로 되돌릴 수 있으나, 롤백 시 스케줄러의 정규시즌 종료 감지가 다시 조용히 멈추므로 **강력히 비권장**(DB 마이그레이션은 되돌리지 말 것).
+
+---
+
+## 2026-09-04 — 멀티플레이어 FA 영입/방출 RPC 및 UI 연결 (1단계: 즉시 계약, 캡 체크 없음)
+
+**배경**: FA 화면 "계약" 버튼(2026-09-03 후속 작업)을 실제로 동작하게 만드는 작업. 사용자 요청 — 협상 페이지는 나중에 추가할 예정이고, 우선 계약 버튼 클릭 시 즉시 팀에 영입되게 + 방출 기능까지 완성해서 테스트하고 싶다. 트레이드 수락(`respond_trade_offer`)과 동일한 아키텍처(클라이언트는 `supabase.rpc()` 호출만, 실제 `league_teams.roster` jsonb 배열 조작 + 소유권 검증 + `FOR UPDATE` 행 잠금은 Postgres `SECURITY DEFINER` 함수 안에서 처리)를 그대로 따름. 샐러리캡 검증은 이번 스코프에 없음(후속 작업).
+
+**변경 파일**:
+- `migrations/add_sign_free_agent_release_player_rpc.sql` (신규, Supabase MCP `apply_migration`으로 원격 DB에 반영 완료) — `sign_free_agent(p_team_id uuid, p_player_id text)`: 팀 소유자(또는 리그 admin) 검증 → `leagues.fa_enabled` 체크 → 같은 room 내 다른 팀이 이미 데려간 선수인지 확인 → `roster || to_jsonb(p_player_id)`로 추가. `release_player(p_team_id uuid, p_player_id text)`: 소유자 검증 → roster에서 제거 → 해당 선수가 걸려있던 `league_trade_blocks` 삭제 → 방출된 팀의 `room_members.tactics`/`depth_chart`를 NULL로 리셋(트레이드 accept와 동일하게 stale 로테이션 참조 방지).
+- `services/multi/faService.ts` (신규) — `signFreeAgent()`/`releasePlayer()`: `supabase.rpc()` 래퍼 + 에러 메시지 한국어 매핑(`tradeService.ts`의 `mapTradeOfferError`와 동일 패턴).
+- `views/multi/season/MultiFreeAgentView.tsx` — "계약" 버튼에 `handleSign` 연결. `leagueTeams.find(t => t.user_id === session.user.id)`로 내 팀 uuid를 찾아 RPC 호출, 성공 시 `useLeagueContext().reload()`로 `leagueTeams` 갱신(→ `rosterMap` 갱신 → 계약된 선수가 FA 목록에서 자동으로 사라짐). 에러는 상단 배너(`ShieldAlert` + 빨간 박스)로 표시.
+- `views/RosterView.tsx` — `onReleasePlayer?`/`releasingId?` optional prop 추가, "개요" 탭(`RosterOverviewGrid`)에 한해 `isMyTeam`일 때만 전달(다른 탭·싱글플레이어 호출부는 prop 자체를 안 넘기므로 영향 없음).
+- `components/roster/RosterOverviewGrid.tsx` — `onReleasePlayer` prop이 있을 때만 트레일링 "방출" 컬럼(`WIDTHS.RELEASE = 90`) 렌더링. `table-layout: fixed`라 `<colgroup>`에도 조건부로 `<col>` 추가해야 폭이 안 어긋남.
+- `views/multi/season/MultiRosterView.tsx` — `handleReleasePlayer`: `window.confirm` 확인 후 `releasePlayer()` RPC 호출, 성공 시 `reload()`. `myTeamId`(members 테이블의 team_slug)로는 RPC를 못 부르므로 `leagueTeams.find(lt => lt.team_slug === myTeamId)`로 uuid(`league_teams.id`)를 다시 찾아서 사용. 에러 배너 표시를 위해 반환 JSX를 `<div className="flex flex-col h-full min-h-0">`로 감싸고 `<RosterView>`를 `flex-1 min-h-0`로 래핑(레이아웃 높이 흐름 유지).
+
+**Before**: "계약" 버튼은 클릭해도 아무 동작이 없는 순수 UI placeholder였음. 로스터 화면에는 방출 수단이 전혀 없었음. `sign_free_agent`/`release_player` RPC 자체가 DB에 존재하지 않았음.
+
+**After**: FA 화면에서 "계약" 클릭 → 즉시 내 팀 로스터에 추가되고 목록에서 사라짐. 로스터 화면(내 팀 개요 탭)에서 각 선수 행에 "방출" 버튼이 생기고, 확인창 → 클릭 시 즉시 로스터에서 제거됨. 둘 다 동시 경합(같은 선수를 두 팀이 동시에 계약 시도 등)은 RPC의 `FOR UPDATE` 행 잠금 + 재검증으로 방지.
+
+**검증**: `tsc --noEmit` — 이번에 건드린 파일(`MultiFreeAgentView.tsx`, `MultiRosterView.tsx`, `RosterView.tsx`, `RosterOverviewGrid.tsx`, `faService.ts`) 전부 신규 오류 없음(그 외 출력된 오류는 전부 이번 세션에서 손대지 않은 기존 파일). Supabase MCP `execute_sql`로 `pg_proc`에 두 함수 등록 확인. 실제 브라우저 클릭 테스트는 아직 미실행(다음 단계).
+
+**롤백 방법**: 프론트엔드는 위 5개 파일 diff를 되돌리면 됨. DB는 `DROP FUNCTION public.sign_free_agent(uuid, text); DROP FUNCTION public.release_player(uuid, text);`를 Supabase에 실행(단, 롤백 시 진행 중인 계약/방출 자체는 되돌아가지 않음 — roster jsonb는 이미 변경된 채로 남음).
+
+---
+
+## 2026-09-03 — "자유 계약"(FA) 독립 메뉴 신설 — 1단계: 미드래프트 선수 목록 표시
+
+**배경**: 사용자 요청 — 드래프트에서 뽑히지 않고 드래프트풀에 남아있는 선수를 자유롭게 영입/방출하는 FA 제도를 만들고 싶다. 영입/방출은 세션 샐러리캡 룰을 따를 예정(후속 작업)이고, 1단계로 미드래프트 선수 목록만 테이블로 보여달라는 요청. **처음엔 트레이드 화면(`MultiFrontOfficeView.tsx`) 하단 탭으로 구현했다가, "트레이드 산하 탭이 아니라 독립된 메뉴"라는 정정을 받고 별도 라우트/사이드바 메뉴로 다시 분리함** — 트레이드 화면 쪽 변경은 전부 되돌림.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` (신규) — 독립 화면. `useMultiSearchData(league, leagueTeams)` 훅으로 `poolPlayers`(드래프트풀 전체)/`rosterMap`(어느 팀 로스터에 있는지 역인덱스)을 가져와, `rosterMap`에 없는 선수만 OVR 내림차순+ID 오름차순(결정론적)으로 정렬해 테이블 표시(컬럼: 선수/포지션/나이/OVR/POT/예상 연봉). `MultiStandingsView.tsx`와 동일한 페이지 구조(`flex flex-col h-full` + 상단 타이틀 바 + `Table`) 재사용.
+- `App.tsx` — `MultiFreeAgentView` import 추가, `/multi/leagues/:leagueId/season` 라우트 그룹에 `<Route path="free-agent" element={<MultiFreeAgentView />} />` 추가(트레이드 라우트 `transaction` 바로 아래).
+- `components/MultiSidebar.tsx` — `UserPlus` 아이콘 import 추가, "트레이드" 다음에 "자유 계약" `NavItem` 추가(`${base}/free-agent`).
+- `views/multi/season/MultiFrontOfficeView.tsx` — 되돌림(diff 없음, 원래 상태로 복원).
+
+**Before**: 미드래프트 선수를 볼 수 있는 화면이 아예 없었음(드래프트 화면 자체는 드래프트 진행 중에만 접근 가능). 사이드바엔 홈/뉴스피드/로스터/전술/순위표/플레이오프/리더보드/일정/트레이드만 있었음.
+
+**After**: 사이드바에 "트레이드" 바로 아래 "자유 계약" 메뉴(사람 추가 아이콘)가 생기고, `/multi/leagues/:leagueId/season/free-agent`에서 미드래프트 선수 전원을 OVR 내림차순 테이블로 확인 가능. 선수명 클릭 시 프로필 이동, 호버 시 능력치 카드. 영입/방출 버튼은 아직 없음(다음 단계).
+
+**검증**: `tsc --noEmit` 92줄(baseline과 동일, 신규 오류 없음 — App.tsx의 기존 오류 1건은 내 변경과 무관한 라인).
+
+**롤백 방법**: `views/multi/season/MultiFreeAgentView.tsx` 삭제, `App.tsx`의 import 1줄 + 라우트 1줄 제거, `MultiSidebar.tsx`의 `UserPlus` import 및 "자유 계약" `NavItem` 블록 제거.
+
+### 후속 — 헤더 필터(포지션/아키타입/이름 검색) + 테이블 컬럼 확장 (같은 날)
+
+**배경**: 사용자 요청 — 헤더에 포지션 체크박스 드롭다운, 아키타입 체크박스 드롭다운, 이름 검색창 추가. 테이블에는 키/몸무게/능력치(6개 카테고리)와 아키타입(한 컬럼)을 추가.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — `CheckboxFilterDropdown` 컴포넌트 신규(팀 필터, `MultiNewsFeedView.tsx`의 "버튼+fixed 패널+체크박스" 패턴을 포지션/아키타입 공용으로 제네릭화). 포지션 옵션은 고정 5개(`PG/SG/SF/PF/C`), 아키타입 옵션은 FA풀에 실제 존재하는 `player.archetype` 값만 동적으로 추출(팀 필터가 "리그에 있는 팀만" 보여주는 것과 동일한 관례). 이름 검색은 `MultiFrontOfficeView.tsx` 히스토리 탭과 동일한 검색창+X버튼 패턴. `filteredPlayers` useMemo로 세 조건(이름 포함/포지션/아키타입) AND 필터링. 테이블에 키/몸무게/아키타입(주+보조를 " / "로 한 컬럼에)/INS·OUT·ATH·PLM·DEF·REB(6컬럼, `TableCell`의 `variant="attribute" colorScale` 기존 내장 색상 로직 재사용, `components/draft/PlayerPool.tsx`와 동일한 능력치 필드명) 컬럼 추가.
+
+**Before**: 필터 없이 전체 미드래프트 선수를 OVR 순으로만 나열, 컬럼은 선수/포지션/나이/OVR/POT/예상연봉 6개뿐.
+
+**After**: 헤더에서 포지션·아키타입 다중 선택 + 이름 검색으로 좁혀볼 수 있고, 테이블은 15개 컬럼(신체 정보+능력치 카테고리+아키타입 포함)으로 확장.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: `MultiFreeAgentView.tsx`를 이번 커밋 이전 버전(6컬럼, 필터 없음 — 바로 위 "자유 계약 독립 메뉴 신설" 항목의 After 상태)으로 되돌리면 됨.
+
+### 후속2 — 필터를 리더보드와 동일한 스타일로 교체, POT 삭제, 능력치 21개 전부 표시 (같은 날)
+
+**배경**: 사용자 요청 — POT 컬럼 삭제, 능력치는 요약 6개가 아니라 전부 표시, 예상 연봉→연봉으로 이름 변경, 헤더 필터를 리더보드 화면(`LeaderboardToolbar.tsx`)과 동일하게.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — `CheckboxFilterDropdown`을 `LeaderboardToolbar.tsx`의 팀/포지션 필터와 시각적으로 동일하게 재작성(버튼 `bg-slate-950`+`hover:text-white`, 패널 `w-48`+`right` 앵커(`window.innerWidth - rect.right`), "선택 초기화" → "모두 선택" 토글 방식으로 교체). 이름 검색창도 리더보드와 동일한 스타일(`bg-slate-950`, `w-48`, placeholder "이름으로 검색")로 교체. 테이블: POT 컬럼 삭제, 요약 6컬럼(INS/OUT/ATH/PLM/DEF/REB) → `COMPACT_ATTR_GROUPS`(`data/attributeConfig.ts`, RosterGrid "능력치" 탭/리더보드 Attributes 카테고리와 동일 소스) 평탄화한 21개 컬럼으로 교체, "예상 연봉" → "연봉".
+
+**Before**: 6개 요약 능력치 컬럼 + POT 컬럼, 자체 스타일의 필터 드롭다운("선택 초기화" 방식, `left` 앵커).
+
+**After**: 능력치 21개 전부 표시(INS/DUNK/POST/MID/3PT/FT/SIQ/PASS/HNDL/PIQ/INTD/PERD/STL/BLK/DCON/OREB/DREB/SPD/STR/VERT/STA), POT 삭제, 필터 드롭다운이 리더보드 화면과 시각적으로 동일(버튼/패널 스타일, "모두 선택" 토글, 우측 앵커 위치).
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: 바로 위 "자유 계약 독립 메뉴 신설" 항목의 After 코드(6개 요약 컬럼+POT+"선택 초기화" 필터)로 되돌리면 됨.
+
+### 후속3 — 아키타입 프라이머리만+연봉 앞으로 이동, 능력치 컬럼 스타일을 로스터 능력치 탭과 통일 (같은 날)
+
+**배경**: 사용자 요청 — 아키타입은 주 아키타입만 표시하고 컬럼 위치를 연봉 바로 앞으로 이동. 능력치 컬럼의 텍스트 스타일을 "팀 > 능력치 탭"(`RosterGrid.tsx`의 `tab==='roster'`) 테이블과 동일하게.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — 아키타입 컬럼을 OVR 바로 뒤(고정 정보 그룹)에서 능력치 21개 컬럼 뒤·연봉 바로 앞으로 이동, 표시 텍스트에서 `secondaryArchetype` 제거(주 아키타입만). 능력치 `TableCell`의 `className`을 `"border-r border-slate-800/30"` → `"font-semibold border-r border-slate-800/30 text-sm"`로 변경(`RosterGrid.tsx:274`와 정확히 동일).
+
+**Before**: 아키타입이 OVR 다음(맨 앞쪽), 주+보조 아키타입을 " / "로 이어붙여 표시. 능력치 셀에 `font-semibold`/`text-sm`이 없어 로스터 능력치 탭보다 얇고 작게 보임.
+
+**After**: 컬럼 순서 = 선수/포지션/나이/키/몸무게/OVR/능력치 21개/아키타입(주 아키타입만)/연봉. 능력치 텍스트 굵기·크기가 로스터 "능력치" 탭과 동일.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: 아키타입 `TableHeaderCell`/`TableCell`을 OVR 컬럼 바로 뒤로 다시 옮기고 `{p.secondaryArchetype ? \` / \${p.secondaryArchetype}\` : ''}`를 복원, 능력치 `TableCell` className에서 `font-semibold `/` text-sm` 제거.
+
+### 후속4 — 부등호(스탯) 필터 추가, 인원수 표시 삭제, 필터 그룹 우측 정렬 (같은 날)
+
+**배경**: 사용자 요청 — 리더보드의 "부등호 필터"(카테고리+연산자+값을 골라 추가하면 칩으로 누적되는 필터)를 능력치 컬럼 대상으로 추가. 헤더 우측 인원수 텍스트 삭제. 필터 그룹 전체를 헤더 우측 정렬.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — `LeaderboardToolbar.tsx`의 Stat Filter 블록(카테고리 `Dropdown`+연산자 `Dropdown`+숫자 입력+추가 버튼, 활성 필터는 칩으로 누적 표시+개별 제거+모두 제거)을 능력치 21개(`ATTR_ITEMS`) 대상으로 재현. `Operator`/`compareOperator`/`StatFilterItem` 신규, `filteredPlayers`에 `statFilters` 조건 추가. 헤더 우측의 `{filteredPlayers.length}명` 텍스트 삭제. 헤더를 `flex-col`로 감싸고 필터 컨트롤 전체(검색창+포지션+아키타입+스탯필터)를 `ml-auto`로 감싸 타이틀과 분리해 우측 정렬, 활성 스탯 필터 칩 목록은 헤더 아래 별도 행(구분선 포함)으로 추가.
+
+**Before**: 능력치 값으로 좁혀보는 방법이 없었고(포지션/아키타입/이름만 필터 가능), 헤더 우측에 필터링된 인원수가 표시됐으며 필터 컨트롤이 타이틀 바로 옆에 좌측 정렬돼 있었음.
+
+**After**: "OVR >= 80" 같은 부등호 조건을 원하는 만큼 추가해 능력치로 좁혀볼 수 있음(칩으로 표시, 개별/전체 제거 가능). 인원수 텍스트 삭제. 필터 그룹(검색+포지션+아키타입+스탯필터)이 헤더 우측에 정렬됨.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: 헤더의 `flex-col` 래퍼와 `ml-auto` 필터 그룹 div를 원래 `flex-wrap items-center` 단일 행으로 되돌리고, Stat Filter 블록과 `statFilters`/`Operator`/`compareOperator`/`StatFilterItem` 관련 코드 전부 제거, `{filteredPlayers.length}명` 텍스트 복원.
+
+### 후속5 — 자유 계약 선수도 프로필 화면 지원 (같은 날)
+
+**배경**: 사용자 요청 — 자유 계약 목록의 선수도 개인 프로필 페이지가 있어야 함. `MultiFreeAgentView.tsx`에서 선수명을 클릭하면 `MultiPlayerDetailView.tsx`로 이동하는데, 그 화면은 지금까지 로스터에 있는 선수만 찾도록(`teamsWithAwards`의 각 팀 roster를 순회) 돼 있어 FA는 못 찾고 `navigate(-1)`로 튕겨나갔음.
+
+**변경 파일**:
+- `views/multi/season/MultiPlayerDetailView.tsx` — `useMultiSearchData(league, leagueTeams)` 훅 추가로 `poolPlayers`(드래프트풀 전체, 로스터 여부 무관 — `MultiFreeAgentView.tsx`와 동일 소스) 확보. 기존 `found`(로스터 검색)가 실패하면 `faPlayer = poolPlayers.find(p => p.id === playerId)`로 한 번 더 찾고, 그것도 실패해야 `navigate(-1)`. `PlayerDetailView`에 넘기는 `teamId`/`teamName`을 `found?.team.id`/`found?.team.name`(FA면 둘 다 `undefined`)로 변경 — `PlayerDetailView.tsx`는 이미 `teamId`/`teamName`이 `undefined`일 때 "FA"로 표시하는 등 팀 없는 선수를 지원하도록 설계돼 있음(싱글플레이어 `pages/PlayerDetailPage.tsx`의 `isFA` 케이스와 동일한 기존 패턴 — 새로 만든 게 아니라 이미 있던 지원을 멀티에서도 쓰게 연결).
+
+**Before**: FA 선수 프로필 URL로 들어가면 무조건 이전 화면으로 튕겨나감(로스터 검색만 하다 실패).
+
+**After**: `MultiFreeAgentView.tsx`에서 FA 선수명을 클릭하면 정상적으로 프로필 화면이 뜸. 팀 배지/계약 등 팀 의존 섹션은 자연스럽게 "FA"/빈 상태로 표시되고, 경기 기록/트레이드 이력 등은 원래도 빈 배열을 안전하게 처리하던 위젯이라 추가 처리 불필요.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: `useMultiSearchData` import와 `poolPlayers` 선언, `faPlayer` 변수, `if (!found && !faPlayer)` 조건, `player`/`teamId`/`teamName` 파생 변수를 제거하고 원래의 `if (!found) { navigate(-1); return null; }` + `found.player`/`found.team.id`/`found.team.name` 직접 참조로 되돌리면 됨.
+
+### 후속6 — FA 프로필 브레드크럼 숨김 (같은 날)
+
+**배경**: 사용자 요청 — FA 선수 프로필은 상단 브레드크럼(팀 드롭다운 › 선수 드롭다운)을 숨겨달라. `teamId`가 없으면 "FA ▾" 드롭다운을 눌러도 갈 곳이 없는 죽은 UI가 되는 문제.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 브레드크럼 바의 팀 드롭다운 + `›` 구분자 + 선수 드롭다운 블록 전체를 `{teamId && (...)}`로 감쌈. 뒤로가기 버튼과 우측 액션 버튼 그룹(계약 협상/연장/방출)은 그대로 유지 — 이름은 어차피 프로필 헤더에 크게 나오므로 브레드크럼 자리에 중복 표시하지 않음.
+
+**Before**: FA 프로필도 팀 드롭다운("FA" 텍스트+화살표)과 선수 드롭다운(이름만, 로스터가 없어 클릭해도 아무 목록도 안 뜸)이 그대로 노출.
+
+**After**: `teamId`가 없으면(FA) 브레드크럼 바에 뒤로가기 버튼만 남고, 팀/선수 드롭다운은 렌더되지 않음. 소속팀이 있는 일반 선수는 기존과 동일.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: `{teamId && (...)}` 래퍼를 제거하고 팀/선수 드롭다운 JSX를 무조건 렌더하도록 되돌리면 됨(내용 자체는 변경 없음, 조건부 래핑만 되돌리면 원상복구).
+
+### 후속7 — FA 선수 커리어 기록 targeted-fetch로 표시 (같은 날)
+
+**배경**: 사용자 요청 — FA 선수 프로필에도 커리어 기록(과거 실제 시즌 기록, 레전드 선수용)이 뜨게 해달라. 직전 조사에서 `useMultiSearchData`(드래프트풀 전체를 한 번에 조회)의 쿼리가 `career_history` 컬럼 자체를 안 가져와서 지금은 FA가 레전드여도 빈 상태로 뜬다는 걸 확인했고, 드래프트풀 전체에 이 컬럼을 얹으면 페이로드가 크게 늘어날 수 있어(선수당 최대 30여 시즌 × 수백 명) targeted-fetch(지금 보는 선수 한 명만 별도 조회)로 가기로 함.
+
+**변경 파일**:
+- `hooks/usePlayerCareerHistory.ts` (신규) — `meta_players`에서 `career_history` 컬럼만 단일 `id`로 조회하는 react-query 훅. `staleTime/gcTime: Infinity`(meta_players는 불변·읽기전용, `usePlayerShortCodes.ts`/`useMultiSearchData.ts`와 동일 근거). `enabled` 파라미터로 호출부가 "FA일 때만" 켜도록 함.
+- `views/multi/season/MultiPlayerDetailView.tsx` — `found`(로스터 검색) 계산을 로딩 게이트(`if (isLoading) return`)보다 앞으로 옮김(Hooks 규칙상 `usePlayerCareerHistory`를 조건 없이 항상 같은 순서로 호출해야 하는데, 그 `enabled` 조건(`!found`)이 필요해서). `usePlayerCareerHistory(playerId, !isLoading && !found)` 호출 후, 로딩 게이트 통과 뒤 `faPlayer`에 조회된 `career_history`를 덧씌운 `faPlayerWithCareer`를 만들어 최종 `player`로 사용.
+
+**Before**: FA 프로필의 "커리어" 위젯이 항상 빈 상태(`player.career_history`가 애초에 안 채워짐).
+
+**After**: FA 프로필을 열면 그 선수 한 명의 `career_history`만 targeted 조회해 병합 — 레전드 FA는 실제 과거 시즌 기록이 뜨고, 기록이 없는 선수는 기존과 동일하게 빈 상태.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: `usePlayerCareerHistory.ts` 삭제, `MultiPlayerDetailView.tsx`에서 훅 import/호출과 `faPlayerWithCareer` 관련 코드를 제거하고 `faPlayer`를 다시 직접 `player`로 사용(`found` 계산 위치는 로딩 게이트 이전으로 유지해도 무해하지만, 되돌리려면 원래 위치인 게이트 이후로 다시 옮기면 됨).
+
+### 후속8 — FA 커리어 기록 콜드 로드(하드 리프레시) 시 안 뜨는 버그 수정 (2026-09-04)
+
+**배경**: 사용자 실측 — 클라이언트 라우팅(다른 화면에서 뒤로가기 후 재진입)으로 FA 프로필에 들어가면 커리어 기록이 정상 표시되는데, 그 URL로 바로 하드 리프레시(콜드 로드)하면 안 뜸. `usePlayerCareerHistory`의 `enabled: !isLoading && !found` 조건이 원인으로 추정 — `found`는 `teamsWithAwards`(`useLeagueRawStats` 기반)에 의존하는데, 콜드 로드 시 `useMultiSearchData`/`useLeagueRawStats`/`usePlayerShortCodes` 등 여러 쿼리가 동시에 처음부터 풀리면서 `isLoading`이 false가 되는 시점과 `found`가 최종값으로 확정되는 시점 사이에 렌더 타이밍이 어긋나 enabled가 원하는 타이밍에 true로 안 걸린 것으로 보임(클라이언트 내비게이션은 리그 데이터가 이미 캐시돼 있어 이 타이밍 문제가 안 드러남).
+
+**변경 파일**:
+- `views/multi/season/MultiPlayerDetailView.tsx` — `usePlayerCareerHistory`의 `enabled`을 `!isLoading && !found`(found/teamsWithAwards 타이밍에 의존)에서 `!shortCodesLoading`(playerId 하나만 준비되면 무조건 켬)으로 변경. 로스터 선수에게도 쿼리가 나가긴 하지만 병합은 `!found`일 때만 적용되므로 그냥 버려짐 — 행 1개짜리 저비용 조회라 낭비 미미, 대신 레이스 컨디션이 원천 제거됨.
+
+**Before**: 하드 리프레시로 FA 프로필 URL에 직접 진입하면 커리어 기록이 안 뜸(클라이언트 내비게이션으로는 정상).
+
+**After**: 진입 경로(콜드 로드/클라이언트 라우팅)와 무관하게 항상 정상 표시.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음). 실제 브라우저 재검증은 사용자 확인 필요.
+
+**롤백 방법**: `enabled` 인자를 `!isLoading && !found`로 되돌리면 됨(다만 이 되돌림은 버그를 다시 들여오는 것이므로 권장하지 않음).
+
+### 후속9 — 진짜 원인: PlayerDetailView.tsx 내부 player state가 늦게 온 데이터를 반영 못하던 버그 (2026-09-04)
+
+**배경**: 사용자 실측 — 후속8 수정 후에도 "FA 프로필에 처음 들어갈 땐 커리어 기록이 안 뜨고, 그 화면에서 새로고침해야만 뜬다"는 증상이 남아있었음. 진짜 원인은 `usePlayerCareerHistory`의 enabled 타이밍이 아니라 **`views/PlayerDetailView.tsx`의 내부 상태 미러링 버그**였음: `const [player, setPlayer] = useState(playerProp)` + `useEffect(() => { setPlayer(playerProp); ... }, [playerProp.id, teamIdProp])` — 의존성 배열이 `playerProp.id`만 보고 있어서, 같은 선수(id 동일)의 career_history가 나중에 비동기로 도착해 부모가 새 player 객체를 내려줘도 effect가 재실행되지 않고 내부 `player` state가 최초 마운트 시점(career_history 없는 상태)에 영구히 고정됐음. 새로고침하면 컴포넌트가 통째로 재마운트되면서 `useState(playerProp)`의 초기값 자체가 (이미 캐시된) 최신 데이터로 잡혀 우연히 정상으로 보였던 것.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 위 `useEffect`의 의존성 배열을 `[playerProp.id, teamIdProp]` → `[playerProp, teamIdProp]`로 변경(참조 전체를 감시 — 같은 id라도 부모가 새 객체를 내려주면 재동기화됨).
+- `views/multi/season/MultiPlayerDetailView.tsx` — 위 수정이 안전하게 동작하려면 부모가 "실제로 데이터가 바뀔 때만" 새 객체 참조를 만들어야 함(안 그러면 매 렌더 재동기화가 돌아 낭비). `faPlayer`/`faPlayerWithCareer` 계산을 로딩 게이트 이전으로 옮기고 `useMemo`로 감싸 참조 안정화.
+
+**Before**: FA 프로필에 처음 진입(클라이언트 라우팅)하면 커리어 기록이 항상 비어있고, 그 화면에서 새로고침해야만(운 좋게 캐시가 이미 있어서) 표시됨.
+
+**After**: 진입 경로와 무관하게 career_history가 비동기로 도착하는 즉시 화면에 반영됨.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음). 실제 브라우저 재검증 필요.
+
+**롤백 방법**: `PlayerDetailView.tsx`의 effect 의존성을 `[playerProp.id, teamIdProp]`로, `MultiPlayerDetailView.tsx`의 `faPlayer`/`faPlayerWithCareer` useMemo를 일반 const 계산으로 되돌리면 됨(다만 둘 다 버그를 재도입하는 것이므로 권장하지 않음).
+
+### 후속10 — FA 목록 진입 시 백그라운드로 커리어 기록 전체 프리페치 (2026-09-04)
+
+**배경**: 사용자 질문 — FA 프로필이 로스터 선수보다 커리어 기록 로딩이 느린 이유. 원인은 로스터 선수는 `useLeagueRawStats`(어차피 페이지 진입 시 불러오는 쿼리)의 `career_history` 컬럼에 묻어오는 반면, FA는 `usePlayerCareerHistory`로 그 선수 한 명만을 위한 별도 네트워크 왕복이 필요하기 때문. 목록 화면(`MultiFreeAgentView.tsx`) 진입 시 전체를 백그라운드로(화면은 안 막고) 미리 받아두는 방식으로 개선하기로 함 — 실측(MAIN 1 기준) 드래프트풀 464명 중 커리어 기록 보유 425명, 합산 페이로드 약 2MB로 화면을 막고 받기엔 부담되는 크기.
+
+**변경 파일**:
+- `hooks/usePrefetchFreeAgentCareerHistory.ts` (신규) — `undraftedPlayers` 전체 id를 받아 `meta_players`에서 `id, career_history`를 **한 번의 벌크 쿼리**(`.in('id', ids)`)로 조회하고, 결과를 `usePlayerCareerHistory.ts`가 쓰는 것과 **동일한 쿼리키**(`['playerCareerHistory', playerId]`)에 `queryClient.setQueryData()`로 개별 시딩. `staleTime/gcTime: Infinity`라 세션(정확히는 24시간 캐시 유효기간)당 한 번만 실행. 이 훅 자체의 반환값(로딩/에러 상태)은 렌더링에 안 쓰임 — 순수 부수효과(캐시 예열) 목적.
+- `views/multi/season/MultiFreeAgentView.tsx` — `undraftedPlayers` 계산 직후 `usePrefetchFreeAgentCareerHistory(undraftedPlayers.map(p => p.id))` 호출 추가.
+
+**Before**: FA 프로필을 열 때마다(캐시 없으면) 그 선수 하나만을 위한 네트워크 요청이 매번 발생 — 로스터 선수 대비 체감 지연.
+
+**After**: FA 목록 화면에 들어가는 순간 전체가 백그라운드에서 한 번에 받아지고(목록 렌더링은 안 막힘), 이후 어떤 FA 프로필을 열어도 이미 캐시에 있어 즉시 표시됨. `MultiPlayerDetailView.tsx`/`usePlayerCareerHistory.ts`는 쿼리키가 동일해 코드 변경 없이 그대로 캐시 히트.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음). 실제 브라우저 재검증(목록 진입 시 백그라운드 요청 발생 확인, 프로필 즉시 표시 확인) 필요.
+
+**롤백 방법**: `usePrefetchFreeAgentCareerHistory.ts` 삭제, `MultiFreeAgentView.tsx`에서 호출 1줄 제거. `MultiPlayerDetailView.tsx`/`usePlayerCareerHistory.ts`는 이 기능과 무관하게 그대로 동작(캐시 시딩이 없어지면 다시 매번 개별 조회로 돌아갈 뿐).
+
+### 후속11 — FA 프로필 브레드크럼 바 전체(뒤로가기 버튼 포함) 숨김 (2026-09-04)
+
+**배경**: 사용자 요청 — 후속6에서 팀/선수 드롭다운 트레일만 숨겼더니, FA 프로필엔 뒤로가기 버튼 하나만 덩그러니 남은 빈 바가 그대로 보임. 이 바(영역) 자체를 통째로 숨겨달라는 요청.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — `hasActionButtons`(기존에 액션 버튼 그룹 렌더 조건으로 인라인돼 있던 식을 변수로 추출) + `showBreadcrumbBar = !!teamId || hasActionButtons` 계산 추가. 브레드크럼 바 전체를 `{showBreadcrumbBar && (...)}`로 감쌈. 싱글플레이어 FA 시장 진입점(`onNegotiate`)이나 방출/연장 버튼처럼 `teamId` 없이도 실제로 보여줄 액션 버튼이 있는 경우는 그대로 유지 — 멀티플레이어는 이 프롭들을 아예 안 넘기므로 `hasActionButtons`가 항상 `false`가 돼 자연히 바 전체가 사라짐.
+
+**Before**: FA 프로필에서 뒤로가기 버튼 하나만 있는 빈 브레드크럼 바가 그대로 노출.
+
+**After**: 멀티플레이어 FA 프로필은 브레드크럼 바 자체가 렌더되지 않음. 좌측 사이드바(`MultiSidebar.tsx`)가 항상 떠 있어 다른 화면 이동은 그대로 가능. 싱글플레이어 FA(계약 협상 버튼 있음)나 내 팀 소속 선수(연장/방출 버튼)는 기존과 동일하게 바가 유지됨.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음).
+
+**롤백 방법**: `{showBreadcrumbBar && (...)}` 래퍼 제거, 액션 버튼 그룹의 `hasActionButtons`를 원래 인라인 식으로 되돌리면 됨(선택사항 — 기능은 동일).
+
+---
+
+## 2026-09-03 — 선수 프로필 헤더에 부상/출장정지 배지 추가
+
+**배경**: 사용자 요청 — 선수 프로필 화면 헤더의 이름 우측에 부상/출장정지 배지를 달아달라. 로스터/전술/트레이드 화면에 이미 있는 `InjuryStatusBadge`를 프로필 헤더에도 추가.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx`(싱글+멀티 공용 헤더 컴포넌트) — `headerAwardBadges` 바로 아래 `headerInjuryBadge` useMemo 추가: `player.activeInjurySeverity`가 있으면(멀티) 그걸 우선 쓰고, 없으면(싱글) `player.health !== 'Healthy'` + `injuryHistory` 마지막 항목의 `severity`로 판정. `<h1>{player.name}</h1>` 바로 뒤에 `<InjuryStatusBadge>` 렌더(title 툴팁). 크기는 최초 size=20/iconSize=14/strokeWidth=4 → "이름 텍스트(text-3xl) 크기와 비슷하게" 요청으로 size=32/iconSize=22/strokeWidth=3.5 → 최종 size=28/iconSize=22/strokeWidth=3.5로 조정. 툴팁도 처음엔 InjuryStatusBadge의 title prop(네이티브, ~1초 지연)을 썼다가 "수상 배지처럼 커스텀 툴팁으로" 요청으로 headerAwardBadges와 동일한 group-hover 즉시노출 방식(다크 배경 박스)으로 교체
+- `views/multi/season/MultiPlayerDetailView.tsx` — **선행 버그 수정**: 이 화면은 `buildLeagueTeams()`만 써서 `injuryHistory`(이력)는 merge되지만 "지금 활성 부상인지"(`activeInjurySeverity` 등)는 전혀 채워지지 않고 있었음(멀티플레이어는 `player.health`가 `forceHealthy=true`로 항상 `'Healthy'`라 그걸로 판정 불가). `MultiRosterView.tsx`/`MultiTacticsView.tsx`와 동일한 패턴으로 `currentSimDate`(main_league는 `findCurrentVirtualDate` 가상 날짜, 그 외엔 room.sim_date) 계산 + `selectLeagueTeams`에서 `buildActiveInjurySeverityMap()`으로 `activeInjurySeverity`/`injuryType`/`activeInjuryDuration`/`returnDate`를 roster 각 선수에 덧씌우도록 수정
+
+### 후속 — 커스텀 툴팁을 컴포넌트 내부로 통합, 테이블 배지까지 전부 적용 (같은 날)
+
+**배경**: 프로필 헤더 배지에만 커스텀 툴팁을 적용했었는데, "테이블에 표시되는 배지들도 커스텀 툴팁을 적용해달라" 요청 — 로스터/전술/트레이드 화면에 총 7곳의 `InjuryStatusBadge` 호출부가 전부 네이티브 `title` prop을 쓰고 있었음.
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — 커스텀 group-hover 툴팁(다크 배경 박스, 즉시노출)을 컴포넌트 **내부**로 이동. 기존엔 `<span title={title}>`이었는데, 이제 바깥에 `relative inline-flex group` 래퍼를 두고 `title` prop이 있으면 그 안에 `bottom-full` 절대 위치 툴팁 span을 렌더한다. `className` prop은 이제 이 바깥 래퍼에 적용됨(레이아웃용 shrink-0 등).
+- `views/PlayerDetailView.tsx` — 직전에 헤더에서만 수동으로 만들었던 group-hover 래퍼(중복이 됨)를 제거하고, 다시 `title` prop만 넘기도록 되돌림(컴포넌트가 내부에서 알아서 처리).
+
+**Before**: `InjuryStatusBadge`가 네이티브 `title` 속성만 지원 — 로스터 그리드/전술 뎁스차트/트레이드 화면(`RosterGrid.tsx`/`RosterOverviewGrid.tsx`/`RosterStatsStack.tsx`/`DepthRotationBoard.tsx`/`MultiFrontOfficeView.tsx`, 총 7개 호출부)이 전부 지연 있는 브라우저 기본 툴팁을 사용.
+
+**After**: 컴포넌트 자체를 고쳤기 때문에 위 7개 호출부는 **파일 수정 없이** 전부 즉시노출 커스텀 다크 툴팁으로 자동 전환됨(모두 기존처럼 `title` prop만 넘기고 있었으므로). `title`을 안 넘기는 호출부(`PlayerHoverCard.tsx`의 인라인 텍스트 버전, `DepthRotationBoard.tsx`의 드롭다운 안 작은 배지)는 툴팁이 필요 없어 그대로 유지 — `title &&` 조건부라 자동으로 안 뜬다.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음). 컴포넌트 하나만 고쳐서 7개 호출부에 일괄 적용되는 구조라 각 파일을 개별 확인할 필요는 없었음(props 시그니처 변경 없음 — `title`/`className` 의미만 내부적으로 재배치).
+
+**롤백 방법**: `InjuryStatusBadge.tsx`를 `<span title={title} className="...">` 단일 span 구조로 되돌리면 7개 호출부 전부 원래대로 네이티브 툴팁으로 복귀(호출부 코드는 변경 불필요).
+
+### 후속2 — group-hover 커스텀 툴팁을 포탈(Portal) 방식으로 교체 (같은 날)
+
+**배경**: 위 group-hover 방식 적용 직후 사용자가 스크린샷으로 버그 제보 — 로스터 테이블에서 툴팁이 옆/다른 행의 "포지션" 컬럼에 가려짐. 원인 조사 결과 `RosterGrid.tsx`의 `getStickyStyle`(이름/포지션 등 sticky 컬럼에 `position: sticky; z-index: 30`)이 각자 독립된 stacking context를 만들어서, 이름 셀 안에 있는 툴팁의 `z-50`은 "그 sticky 셀 내부"에서만 유효하고 옆 sticky 셀(동일 z-index 30, 다른 stacking context)에 가려짐 — CSS만으로는 테이블의 stacking 구조를 벗어날 수 없어 포탈 방식으로 전환.
+
+**변경 파일**:
+- `components/common/InjuryStatusBadge.tsx` — `relative inline-flex group` 래퍼 + `hidden group-hover:block` 절대위치 span 구조를 걷어내고, `useState`+`useRef`로 호버 시(`onMouseEnter`) `getBoundingClientRect()`로 배지의 뷰포트 좌표를 계산해 `createPortal(..., document.body)`로 `position: fixed` 툴팁을 렌더하는 방식으로 교체. `onMouseLeave`에서 상태를 지워 언마운트.
+
+**Before**: 툴팁이 배지의 DOM 부모(sticky 테이블 셀) 안에 중첩돼 있어 stacking context에 갇힘 → 다른 sticky 컬럼에 가려지는 버그.
+
+**After**: 툴팁이 `document.body`에 직접 마운트되고 `position: fixed` + 뷰포트 좌표를 쓰므로 테이블/sticky 컬럼의 stacking 구조와 완전히 무관해짐 — 어떤 컬럼 위에서도 항상 배지 바로 위에 올바르게 그려짐.
+
+**검증**: `tsc --noEmit` 92줄(baseline 동일, 신규 오류 없음). 호버 이벤트 기반이라(렌더/스크롤마다 재계산 없음, 동시에 뜨는 툴팁도 최대 1개) 성능 영향 없음 — Radix/MUI 등 프로덕션 툴팁 라이브러리도 동일 패턴(포탈+getBoundingClientRect) 사용.
+
+**롤백 방법**: `InjuryStatusBadge.tsx`를 이전 group-hover 버전(바로 위 "후속" 항목의 After 코드)으로 되돌리면 됨 — 다만 sticky 컬럼 가림 버그가 다시 생긴다는 점 감안.
+
+
+**Before**: 프로필 헤더엔 이름/등번호/수상 배지만 있었고, 부상 여부를 알려면 아래로 스크롤해 "부상 이력" 리스트를 직접 봐야 했음. 멀티플레이어 프로필 화면은 애초에 `activeInjurySeverity`가 항상 undefined라 이 정보 자체를 가지고 있지 않았음.
+
+**After**: 헤더 이름 바로 오른쪽에 부상 등급별 색상 원(경증=주황/중증=빨강/출장정지=파랑) 배지가 뜨고, 호버하면 "부상 · 햄스트링 염좌 · 2개월 (~ 27/01/22)" 같은 툴팁이 표시됨. 비활성(건강) 선수는 배지 자체가 렌더되지 않음.
+
+**검증**: `tsc --noEmit` 92줄(client baseline과 동일, 신규 오류 없음). MAIN 1 리그의 프란츠 바그너(Grade3 테스트 데이터)로 실제 배지 노출 확인 예정.
+
+**롤백 방법**: `PlayerDetailView.tsx`의 `headerInjuryBadge` useMemo + JSX 삽입 부분, `MultiPlayerDetailView.tsx`의 `currentSimDate`/`selectLeagueTeams` 변경분을 제거하면 이전 상태로 돌아감(둘 다 이번에 신규 추가된 코드라 기존 로직과 겹치는 부분 없음).
+
+---
+
 ## 2026-09-03 — 출장정지(싸움) 뉴스 이벤트 추가 — 양측 선수를 한 이벤트에 통합
 
 **배경**: 사용자 요청 — 출장정지 뉴스를 만들기 전, 현재 싸움 시스템이 한쪽만 출장정지를 받는지 확인해달라는 질문에 조사 결과 항상 양쪽 모두(fighter + fightOpponent) 동시에 발생함을 확인(`services/game/engine/pbp/possessionHandler.ts` Fight Check — fighter는 수비팀에서 temperament 최고, opponent는 공격팀 코트 위 무작위 1명, 서로 다른 팀). 이에 따라 "두 선수 모두 한 뉴스에 담고, 본문을 풍부하게(4줄), 제목 배리에이션 5~6개"로 설계.

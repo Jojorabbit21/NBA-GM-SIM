@@ -1,9 +1,10 @@
 
-import React, { useMemo, useCallback, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
+import React, { useMemo, useCallback, useRef, useState } from 'react';
+import { Loader2, ShieldAlert } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
+import { releasePlayer } from '../../../services/multi/faService';
 import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -142,7 +143,7 @@ function buildStatsMap(pbpRows: any[], serverNow: number): Map<string, Partial<P
 }
 
 const MultiRosterView: React.FC = () => {
-    const { league, room, leagueTeams, members, isLoading: leagueLoading } = useLeagueContext();
+    const { league, room, leagueTeams, members, isLoading: leagueLoading, reload } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
     const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
@@ -170,6 +171,24 @@ const MultiRosterView: React.FC = () => {
         () => members.find(m => m.user_id === session?.user?.id)?.team_id ?? null,
         [members, session],
     );
+
+    // 방출 RPC(release_player)는 league_teams.id(uuid)를 받는다 — myTeamId(team_slug)로
+    // 실제 팀 행을 찾아 그 uuid를 전달한다. MultiFreeAgentView.tsx의 계약 버튼과 동일 패턴.
+    const myTeamRow = useMemo(
+        () => leagueTeams.find(lt => lt.team_slug === myTeamId) ?? null,
+        [leagueTeams, myTeamId],
+    );
+    const [releasingId, setReleasingId] = useState<string | null>(null);
+    const [releaseError, setReleaseError] = useState<string | null>(null);
+    const handleReleasePlayer = useCallback(async (player: Player) => {
+        if (!myTeamRow || releasingId) return;
+        setReleasingId(player.id);
+        setReleaseError(null);
+        const { error } = await releasePlayer(myTeamRow.id, player.id);
+        setReleasingId(null);
+        if (error) { setReleaseError(error); return; }
+        reload();
+    }, [myTeamRow, releasingId, reload]);
 
     // 헤더 우측 GM 닉네임 표시용 — AI팀은 null(미표시)
     const teamNicknames = useMemo(
@@ -327,22 +346,33 @@ const MultiRosterView: React.FC = () => {
     }
 
     return (
-        <RosterView
-            allTeams={allTeams}
-            myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
-            initialTeamId={myTeamId}
-            onViewPlayer={onViewPlayer}
-            schedule={scheduleWithStats}
-            onScoreClick={onScoreClick}
-            userId={session?.user?.id}
-            currentSimDate={currentSimDate}
-            enableHoverCard
-            hideTabs={['coaching', 'draftPicks']}
-            onTabChange={onRosterTabChange}
-            teamNicknames={teamNicknames}
-            capSettings={capSettings}
-            baseSeasonYear={baseSeasonYear}
-        />
+        <div className="flex flex-col h-full min-h-0">
+            {releaseError && (
+                <div className="shrink-0 flex items-center gap-2 mx-4 mt-3 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
+                    <ShieldAlert size={15} className="shrink-0" /> {releaseError}
+                </div>
+            )}
+            <div className="flex-1 min-h-0">
+                <RosterView
+                    allTeams={allTeams}
+                    myTeamId={myTeamId ?? allTeams[0]?.id ?? ''}
+                    initialTeamId={myTeamId}
+                    onViewPlayer={onViewPlayer}
+                    schedule={scheduleWithStats}
+                    onScoreClick={onScoreClick}
+                    userId={session?.user?.id}
+                    currentSimDate={currentSimDate}
+                    enableHoverCard
+                    hideTabs={['coaching', 'draftPicks']}
+                    onTabChange={onRosterTabChange}
+                    teamNicknames={teamNicknames}
+                    capSettings={capSettings}
+                    baseSeasonYear={baseSeasonYear}
+                    onReleasePlayer={handleReleasePlayer}
+                    releasingId={releasingId}
+                />
+            </div>
+        </div>
     );
 };
 

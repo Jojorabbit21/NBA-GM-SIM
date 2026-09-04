@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
     Home, Users, ListOrdered, Calendar, Newspaper,
-    GitPullRequestClosed, BarChart2, ArrowLeftRight, Trophy,
+    GitPullRequestClosed, BarChart2, ArrowLeftRight, Trophy, UserPlus,
     CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -173,6 +173,12 @@ export const MultiSidebar: React.FC = () => {
                     label="트레이드"
                     onClick={() => navigate(`${base}/transaction`)}
                     badge={pendingTradeCount}
+                />
+                <NavItem
+                    active={pathname.startsWith(`${base}/free-agent`)}
+                    icon={<UserPlus />}
+                    label="자유 계약"
+                    onClick={() => navigate(`${base}/free-agent`)}
                 />
 
                 {isAdmin && (

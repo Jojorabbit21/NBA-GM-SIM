@@ -1,5 +1,5 @@
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 
 // 홈 로스터 위젯 / 로스터 화면 / 리더보드 화면이 각자 따로 meta_players+game_pbp를
@@ -43,6 +43,13 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     return useQuery({
         queryKey: ['leagueRawStats', roomId, allRosterIds.join(',')],
         enabled: allRosterIds.length > 0 && !!roomId,
+        // 트레이드 성사/FA 계약·방출 등으로 allRosterIds가 바뀌면 queryKey가 완전히
+        // 새로운 값이 돼 캐시가 없는 상태(isPending=true)가 된다. 이 훅의 isPending을
+        // 그대로 전체 화면 로더 게이트로 쓰는 화면들(MultiRosterView/MultiLeaderboardView/
+        // MultiPlayerDetailView/MultiTacticsView)에서 선수 한 명만 바뀌어도 바디 전체가
+        // 로더로 깜빡이는 문제가 있었음 — 이전 키의 데이터를 유지한 채 백그라운드에서만
+        // 새로 fetch하도록 해 이 깜빡임을 없앤다. 네트워크 요청 횟수/캐시 정책에는 영향 없음.
+        placeholderData: keepPreviousData,
         queryFn: async (): Promise<LeagueRawStatsData> => {
             const [playersRes, pbpRes, seasonRes, injuryRes] = await Promise.all([
                 supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds),
