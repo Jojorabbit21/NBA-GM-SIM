@@ -35,21 +35,28 @@ const queryClient = new QueryClient({
 // staleTime: Infinity라 복원된 캐시도 그대로 "신선한" 것으로 취급되며, 각 화면의 수동
 // 새로고침 버튼/탭 진입 트리거로만 실제 재조회된다. maxAge를 넘긴 캐시는 폐기하고
 // 정상적으로 새로 fetch한다.
-const persister = createSyncStoragePersister({
-  storage: window.localStorage,
-  key: 'nba-gm-sim-query-cache',
-});
+// [2026-09-04 임시 계측] createSyncStoragePersister의 trySave()가 storage.setItem() 실패를
+// try/catch로 조용히 삼켜버려서(에러 콘솔 출력도, throw도 없음) QuotaExceededError가 나도
+// 티가 안 남 — 실제 write 시도 크기와 성공/실패 여부를 직접 로그로 남기기 위해 storage를
+// 얇게 감싼다. 원인 확인 끝나면 이 wrapper 제거하고 window.localStorage를 그대로 넘길 것.
+const debugStorage: Storage = {
+  ...window.localStorage,
+  getItem: (k) => window.localStorage.getItem(k),
+  removeItem: (k) => window.localStorage.removeItem(k),
+  setItem: (k, v) => {
+    const sizeKB = (new Blob([v]).size / 1024).toFixed(1);
+    try {
+      window.localStorage.setItem(k, v);
+      console.log(`[perf][persist-debug] localStorage.setItem 성공 — 크기 ${sizeKB}KB`);
+    } catch (e) {
+      console.error(`[perf][persist-debug] localStorage.setItem 실패! 시도한 크기 ${sizeKB}KB`, e);
+    }
+  },
+};
 
-// [2026-09-04 임시 계측] 영속 캐시에 multiSearchPool 등 멀티플레이어 쿼리가 왜 안 들어가는지
-// 원인 추적용 — 조사 끝나면 제거할 것. 캐시 이벤트가 발생할 때마다 실제 라이브 캐시에 어떤
-// 쿼리들이 있는지(성공 상태 쿼리만) 콘솔에 찍는다.
-queryClient.getQueryCache().subscribe((event) => {
-  if (!['added', 'removed', 'updated'].includes(event.type)) return;
-  const successQueries = queryClient.getQueryCache().getAll().filter(q => q.state.status === 'success');
-  console.log(
-    `[perf][persist-debug] event=${event.type} totalQueries=${queryClient.getQueryCache().getAll().length} successQueries=${successQueries.length}`,
-    successQueries.map(q => JSON.stringify(q.queryKey)),
-  );
+const persister = createSyncStoragePersister({
+  storage: debugStorage,
+  key: 'nba-gm-sim-query-cache',
 });
 
 const rootElement = document.getElementById('root');
