@@ -36,6 +36,8 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
         staleTime: Infinity,
         gcTime: Infinity,
         queryFn: async (): Promise<Player[]> => {
+            // [2026-09-04 임시 계측] FA 화면 렉 원인 실측용 — 조사 끝나면 제거할 것.
+            console.time('[perf] multiSearchPool: fetch');
             const draftPools = draftPool.split(',').map((s: string) => s.trim()).filter(Boolean);
             const useCustomOverrides = draftPools.includes('alltime');
 
@@ -57,14 +59,18 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
 
                 return q;
             }));
+            console.timeEnd('[perf] multiSearchPool: fetch');
 
+            console.time('[perf] multiSearchPool: map+ovr');
             const seenIds = new Set<string>();
             const all: Player[] = [];
+            let rowCount = 0;
 
             for (const { data } of results) {
                 if (!data) continue;
 
                 for (const raw of data) {
+                    rowCount++;
                     if (seenIds.has(raw.id)) continue;
                     seenIds.add(raw.id);
                     const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
@@ -72,6 +78,8 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
                     if (ovr >= ovrMin && ovr <= ovrMax) all.push(player);
                 }
             }
+            console.timeEnd('[perf] multiSearchPool: map+ovr');
+            console.log(`[perf] multiSearchPool: rowCount=${rowCount}, kept=${all.length}`);
 
             return all;
         },

@@ -1,5 +1,5 @@
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Search, X, ChevronDown, Check, Filter, Plus, ShieldAlert } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
@@ -138,6 +138,18 @@ const CheckboxFilterDropdown: React.FC<{
 };
 
 const MultiFreeAgentView: React.FC = () => {
+    // [2026-09-04 임시 계측] FA 화면 렉 원인 실측용 — 조사 끝나면 이 useRef/useEffect 블록 제거할 것.
+    // renderStartRef는 이 컴포넌트가 처음 호출된 시점(React가 render 함수를 부르기 시작한 시각),
+    // 아래 useEffect는 커밋 후 2번의 requestAnimationFrame으로 "실제 페인트가 끝난 시점"을 근사.
+    const renderStartRef = useRef(performance.now());
+    useEffect(() => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                console.log(`[perf] FA view: render→paint ${(performance.now() - renderStartRef.current).toFixed(1)}ms`);
+            });
+        });
+    }, []);
+
     const { league, leagueTeams, isLoading: leagueLoading, reload } = useLeagueContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -181,12 +193,14 @@ const MultiFreeAgentView: React.FC = () => {
 
     // 드래프트풀 전체(poolPlayers, league.draft_pool 설정 기준)에서 어느 팀 로스터에도
     // 없는(rosterMap에 없는) 선수만 추려 OVR 내림차순+ID 오름차순(결정론적)으로 정렬.
-    const undraftedPlayers = useMemo(
-        () => poolPlayers
+    const undraftedPlayers = useMemo(() => {
+        console.time('[perf] FA: undraftedPlayers filter+sort');
+        const result = poolPlayers
             .filter(p => !rosterMap.has(p.id))
-            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id)),
-        [poolPlayers, rosterMap],
-    );
+            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
+        console.timeEnd('[perf] FA: undraftedPlayers filter+sort');
+        return result;
+    }, [poolPlayers, rosterMap]);
 
     // [2026-09-04] "FA 프로필 커리어 기록 로딩이 느리다" 후속 — 화면을 막지 않고 백그라운드로
     // undraftedPlayers 전체의 career_history를 미리 받아 usePlayerCareerHistory.ts가 쓰는
@@ -203,8 +217,9 @@ const MultiFreeAgentView: React.FC = () => {
     );
 
     const filteredPlayers = useMemo(() => {
+        console.time('[perf] FA: filteredPlayers');
         const q = nameQuery.trim();
-        return undraftedPlayers.filter(p => {
+        const result = undraftedPlayers.filter(p => {
             if (q && !p.name.includes(q)) return false;
             if (selectedPositions.length > 0 && !selectedPositions.includes(p.position)) return false;
             if (selectedArchetypes.length > 0 && (!p.archetype || !selectedArchetypes.includes(p.archetype))) return false;
@@ -215,6 +230,8 @@ const MultiFreeAgentView: React.FC = () => {
             }
             return true;
         });
+        console.timeEnd('[perf] FA: filteredPlayers');
+        return result;
     }, [undraftedPlayers, nameQuery, selectedPositions, selectedArchetypes, statFilters]);
 
     const togglePosition = (pos: string) => setSelectedPositions(prev => prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]);
