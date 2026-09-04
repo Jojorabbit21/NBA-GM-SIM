@@ -131,7 +131,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     }, [seasonNumber, leagueCapHistory]);
 
     // --- Base Data Query ---
-    const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData(!!session || isGuestMode);
+    // [2026-09-04 버그 수정] skipSingleLoad(멀티플레이어 경로)를 안 받고 있어서, 로그인 상태면
+    // 멀티플레이어 화면에서도 이 쿼리가 무조건 실행되고 있었음 — meta_players 전체 컬럼(select('*'))
+    // +meta_schedule 전체를 캐싱해 쿼리 캐시가 5.9MB나 차지(FA 화면 렉 조사 중 발견), localStorage
+    // 영속 캐시(index.tsx)가 QuotaExceededError로 조용히 실패하는 주범이었다. 아래에서 쓰는
+    // baseData 관련 로직은 전부 skipSingleLoad로 이미 게이트돼 있거나 null-safe라 안전하게 뺄 수 있음.
+    const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData((!!session || isGuestMode) && !skipSingleLoad);
 
     // --- Custom Mode: 부상 제거 + override 머지 + OVR 재계산 ---
     const applyCustomMode = useCallback((player: Player): Player => {

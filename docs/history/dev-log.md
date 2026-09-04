@@ -102,6 +102,31 @@ if (!res.ok) {
 
 ---
 
+## 2026-09-04 — 멀티플레이어 경로에서 싱글플레이어 baseData 쿼리가 새는 버그 수정 (localStorage 영속 캐시 QuotaExceededError 근본 원인)
+
+**배경**: "FA 기능 추가 후 렉" 제보를 조사하다가 발견한, FA와 무관한 훨씬 큰 기존 버그. 조사 과정(Performance 탭 → 콘솔 실측 → localStorage 캐시 크기 확인 → `storage.setItem` 감시)에서 `index.tsx`의 `PersistQueryClientProvider`(localStorage에 react-query 캐시 영속화, 2026-08-11 도입)가 **17.8MB를 쓰려다 매번 `QuotaExceededError`로 조용히 실패**하고 있음을 확인(`createSyncStoragePersister`의 `trySave()`가 에러를 `catch`만 하고 버림, 콘솔에도 안 뜨고 throw도 안 됨). 실제 캐시 내용을 종류별로 집계해보니 `baseData` 쿼리 하나가 **5.9MB로 전체의 압도적 1위**(멀티플레이어 쿼리인 `multiSearchPool` 1.06MB, FA `playerCareerHistory` ×162개 0.42MB보다 훨씬 큼). `baseData`(`services/queries.ts`의 `useBaseData()`)는 싱글플레이어 전용 초기 로딩 쿼리(`meta_players` select(*) 전체 컬럼 + `meta_schedule` 전체 등)인데, `hooks/useGameData.ts:134`에서 멀티플레이어 여부(`skipSingleLoad`)를 안 받고 `session`/`isGuestMode`만으로 `enabled`를 결정하고 있어서 **멀티플레이어 URL에 있어도 로그인만 돼 있으면 무조건 실행**되고 있었음. 같은 파일의 다른 preload(`preloadGameConfig`, 53~58줄 주석)는 "멀티플레이어에서도 일부러 실행돼야 함"이 명시돼 있는 반대 케이스라 대조적으로 눈에 띔.
+
+**변경 파일**:
+- `hooks/useGameData.ts` — `useBaseData()` 호출의 `enabled` 조건에 `&& !skipSingleLoad` 추가(134줄). `baseData`를 참조하는 다른 모든 코드(165~275, 819~840, 1196~1206줄)는 이미 `if (skipSingleLoad) return;`으로 게이트돼 있거나(188줄 INIT LOGIC effect) `baseData?.freeAgents || []`처럼 null-safe라 부작용 없음.
+
+**Before**:
+```ts
+const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData(!!session || isGuestMode);
+```
+
+**After**:
+```ts
+const { data: baseData, isLoading: isBaseDataLoading, isError: isBaseDataError } = useBaseData((!!session || isGuestMode) && !skipSingleLoad);
+```
+
+**검증**: `tsc --noEmit` — 이 줄 변경으로 인한 신규 오류 없음(파일에 있던 기존 오류 20건은 이번 변경과 무관한 별개 라인). 실측 재확인(localStorage `setItem` 성공 여부, 캐시 종류별 크기 재집계)은 사용자가 배포 후 진행 예정.
+
+**주의사항**: 이 세션에서 원인 추적용으로 `index.tsx`(storage wrapper, `window.__debugQueryClient` 노출)와 `hooks/useMultiSearchData.ts`/`views/multi/season/MultiFreeAgentView.tsx`(console.time 계측)에 **임시 진단 코드**를 심어뒀음 — 전부 "[perf]"/"임시 계측" 주석이 달려 있고, 원인 확정 후 제거 예정(아직 미제거 상태).
+
+**롤백 방법**: `&& !skipSingleLoad` 부분만 제거하면 즉시 원상복구(단, 그러면 QuotaExceededError 문제도 다시 재발).
+
+---
+
 ## 2026-09-04 — useLeagueRawStats에 keepPreviousData 적용 (로스터 변경 시 전체 화면 로더 깜빡임 제거)
 
 **배경**: FA 방출 기능(바로 위 항목) 테스트 중 사용자가 "로스터 화면에서 방출을 누르면 사이드내비/헤더를 제외한 바디 전체가 로더로 바뀐다"고 보고. 원인 조사 결과 `hooks/useLeagueRawStats.ts`의 `queryKey`가 `['leagueRawStats', roomId, allRosterIds.join(',')]`인데, 방출로 `leagueTeams`가 갱신되면 `allRosterIds`(선수 id 목록) 문자열이 바뀌어 **완전히 새로운 쿼리 키**가 되고, React Query(v5)가 이 키에 대한 캐시가 없어 `isPending=true`를 반환 → 이 값을 그대로 전체 화면 로더 게이트로 쓰는 화면들에서 선수 한 명만 바뀌어도 body 전체가 로더로 덮이는 구조적 문제였음. 트레이드 성사/FA 계약에도 동일하게 재현됨. `placeholderData: keepPreviousData`는 네트워크 요청 횟수·캐시 정책에는 영향 없이(새 키에 대한 fetch는 어차피 1회 발생) 그 fetch가 끝날 때까지 이전 키의 데이터를 그대로 보여주기만 하므로 부작용 없이 적용.
