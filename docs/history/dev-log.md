@@ -35,6 +35,73 @@
 
 ---
 
+## 2026-09-04 — archetypes 테이블 조회 시 발생하던 콘솔 406 제거 (.single() → .maybeSingle())
+
+**배경**: 콘솔에 `key=eq.tags`, `key=eq.archetypes` 요청에서 406 에러가 반복 제보됨. 원인 조사 결과 `archetypes` 테이블 자체엔 두 키 행이 정상적으로 1개씩 존재하는데(서비스 롤로 직접 확인), 이 테이블 RLS가 `authenticated` 역할에만 SELECT를 허용해서 — 인증되지 않은(anon) 상태로 요청이 나가면(게스트 모드, 또는 세션이 만료/무효화된 상태) RLS가 해당 행을 가려버려 PostgREST 입장에선 "0 rows"가 되고, `.single()`이 이를 실제 HTTP 406으로 응답하기 때문이었음. 코드 자체는 `error.code === 'PGRST116'`로 이미 이 케이스를 잡아 빈 기본값 폴백 처리하고 있어 기능상 문제는 없었지만, 브라우저가 진짜 406 네트워크 응답을 받으므로 콘솔에 노이즈로 찍힘. `.maybeSingle()`은 GET에서 일반 `Accept: application/json` 헤더를 사용해 PostgREST가 0 rows일 때 200 + 빈 배열로 응답하므로(실제 네트워크 레벨 에러 없음), 앱의 폴백 로직은 동일하게 동작하면서 콘솔 노이즈만 사라짐.
+
+**변경 파일**:
+- `services/admin/gameConfigService.ts` (client) — `fetchArchetypeConfig`/`fetchTagConfig`
+- `server/src/shared/services/admin/gameConfigService.ts` (server 미러)
+
+**Before**:
+```ts
+.eq('key', 'archetypes')
+.single();
+```
+
+**After**:
+```ts
+.eq('key', 'archetypes')
+.maybeSingle();
+```
+(`'tags'` 키 조회도 동일하게 변경)
+
+**검증**: DB에서 `archetypes`/`tags` 키 행이 각 1개씩 정상 존재함을 service-role 쿼리로 확인(`select key, count(*) from archetypes group by key` → 각 1). `.maybeSingle()`도 0 rows일 때 `data`가 `null`이 되어 기존 `data?.value ?? {}` 폴백 병합 로직이 그대로 동일한 결과(빈 기본값)를 만들어내므로 동작 변화 없음 — 로직 검증 완료, 런타임 미검증.
+
+**롤백 방법**: 두 파일의 `.maybeSingle()`을 `.single()`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 라이브 게임 폴링 401 무한반복 방지 (죽은 세션 감지 → 자동 로그아웃/재로그인 유도)
+
+**배경**: 프로덕션에서 `GET /live-games` (Fly 서버)가 401을 계속 반환한다는 제보. Fly 로그(`[auth] getUser failed: Auth session missing!`)와 Supabase auth_logs/`auth.sessions` 테이블을 직접 조회해 원인 확인 — 이 프로젝트의 Supabase Auth가 유저당 세션 1개만 허용하는 정책이라, 같은 admin 계정으로 다른 기기/탭에서 재로그인하면 이전 탭의 세션 row가 DB에서 통째로 삭제됨. 이미 열려 있던 "MAIN 1" 탭은 죽은 access_token으로 5초마다 계속 폴링 → 매번 Fly 서버의 `verifyToken()`이 Supabase에 물어봐서 "Session not found" → 401 영구 반복. 클라이언트가 이 상태를 전혀 감지하지 못하고 콘솔에 401만 무한히 쌓이는 구조였음. 근본 원인(단일세션 정책 + 동일 계정 멀티기기 테스트)은 Supabase 대시보드 설정 영역이라 코드로 못 고치므로, 클라이언트가 죽은 세션을 스스로 감지해 로그인 화면으로 돌려보내는 쪽으로 증상을 완화.
+
+**변경 파일**:
+- `services/multi/liveGameService.ts` — `handlePossibleDeadSession()` 추가, `fetchLiveGameView`/`fetchLiveGamesSummary`에서 Fly 서버가 401을 반환하면 호출
+
+**Before**:
+```ts
+const res = await fetch(`${FLY_SERVER}/live-games?roomId=${roomId}`, { headers });
+if (!res.ok) return [];
+```
+
+**After**:
+```ts
+let sessionDeathHandled = false;
+async function handlePossibleDeadSession(status: number) {
+    if (status !== 401 || sessionDeathHandled) return;
+    try {
+        const { error } = await supabase.auth.getUser(); // 서버에 실제 세션 생사 재확인
+        if (!error) return; // 일시적 네트워크 문제였을 뿐, 세션은 살아있음
+        sessionDeathHandled = true;
+        await supabase.auth.signOut().catch(() => {});
+        window.location.href = '/auth';
+    } catch { /* 판정 실패 시 다음 폴링에서 재시도 */ }
+}
+// ...
+const res = await fetch(`${FLY_SERVER}/live-games?roomId=${roomId}`, { headers });
+if (!res.ok) {
+    handlePossibleDeadSession(res.status);
+    return [];
+}
+```
+
+**검증**: tsc 상 타입 오류 없음(수동 리뷰). 실제 "단일세션 재로그인으로 세션이 죽는" 상황을 프로덕션에서 재현하기 전까지는 런타임 미검증 — 다음에 동일 증상 재현 시 로그인 화면으로 정상 리다이렉트되는지 확인 필요.
+
+**롤백 방법**: `handlePossibleDeadSession` 함수와 두 호출부(`handlePossibleDeadSession(res.status);`) 제거하면 Before 상태로 복귀.
+
+---
+
 ## 2026-09-04 — useLeagueRawStats에 keepPreviousData 적용 (로스터 변경 시 전체 화면 로더 깜빡임 제거)
 
 **배경**: FA 방출 기능(바로 위 항목) 테스트 중 사용자가 "로스터 화면에서 방출을 누르면 사이드내비/헤더를 제외한 바디 전체가 로더로 바뀐다"고 보고. 원인 조사 결과 `hooks/useLeagueRawStats.ts`의 `queryKey`가 `['leagueRawStats', roomId, allRosterIds.join(',')]`인데, 방출로 `leagueTeams`가 갱신되면 `allRosterIds`(선수 id 목록) 문자열이 바뀌어 **완전히 새로운 쿼리 키**가 되고, React Query(v5)가 이 키에 대한 캐시가 없어 `isPending=true`를 반환 → 이 값을 그대로 전체 화면 로더 게이트로 쓰는 화면들에서 선수 한 명만 바뀌어도 body 전체가 로더로 덮이는 구조적 문제였음. 트레이드 성사/FA 계약에도 동일하게 재현됨. `placeholderData: keepPreviousData`는 네트워크 요청 횟수·캐시 정책에는 영향 없이(새 키에 대한 fetch는 어차피 1회 발생) 그 fetch가 끝날 때까지 이전 키의 데이터를 그대로 보여주기만 하므로 부작용 없이 적용.

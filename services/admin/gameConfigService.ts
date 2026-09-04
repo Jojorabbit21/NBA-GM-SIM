@@ -21,7 +21,7 @@ export async function fetchArchetypeConfig(): Promise<ArchetypeConfig> {
         .from('archetypes')
         .select('value')
         .eq('key', 'archetypes')
-        .single();
+        .maybeSingle();
     if (error) {
         if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
         throw error;
@@ -46,7 +46,7 @@ export async function fetchTagConfig(): Promise<TagConfigList> {
         .from('archetypes')
         .select('value')
         .eq('key', 'tags')
-        .single();
+        .maybeSingle();
     if (error) {
         if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
         throw error;

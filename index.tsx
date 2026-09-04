@@ -40,6 +40,18 @@ const persister = createSyncStoragePersister({
   key: 'nba-gm-sim-query-cache',
 });
 
+// [2026-09-04 임시 계측] 영속 캐시에 multiSearchPool 등 멀티플레이어 쿼리가 왜 안 들어가는지
+// 원인 추적용 — 조사 끝나면 제거할 것. 캐시 이벤트가 발생할 때마다 실제 라이브 캐시에 어떤
+// 쿼리들이 있는지(성공 상태 쿼리만) 콘솔에 찍는다.
+queryClient.getQueryCache().subscribe((event) => {
+  if (!['added', 'removed', 'updated'].includes(event.type)) return;
+  const successQueries = queryClient.getQueryCache().getAll().filter(q => q.state.status === 'success');
+  console.log(
+    `[perf][persist-debug] event=${event.type} totalQueries=${queryClient.getQueryCache().getAll().length} successQueries=${successQueries.length}`,
+    successQueries.map(q => JSON.stringify(q.queryKey)),
+  );
+});
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
