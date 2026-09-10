@@ -34,9 +34,31 @@ function identifyDefender(
         const screenPlayer = screener || secondaryActor;
 
         // Funnel inside shots to Bigs
+        // [2026-09-10] 빅맨 파울 트러블 조사 후속 조치 — "코트에 C가 있으면 무조건 C, 없으면
+        // PF" 고정 배정을 intDef^2 가중 확률로 교체. 기존 방식은 실측(포지션 고정 비교)에서
+        // 센터 PF/36이 4.1인데 PF는 2.0으로 2배 이상 벌어졌지만, 그 격차가 수비력 차이가
+        // 아니라 순전히 "센터면 무조건 앵커"라는 포지션 규칙 때문임을 확인(같은 intDef 구간
+        // 안에서 C/PF 격차가 거의 사라지는 걸로 검증) — 그래서 포지션 대신 실제 intDef로
+        // 앵커를 뽑도록 교체. SF도 대상에 포함하되(신장상 SF가 PF보다 큰 경우가 실제로
+        // 존재 — height 실측: SF 최고 211cm vs PF 평균 204cm) 골밑 앵커 전담엔 원래 덜
+        // 적합하므로 가중치를 절반으로 다운웨이트(SF만 ×0.5). 1230경기 검증: 센터 PF/36
+        // 4.08→2.96, PF 2.02→2.90(거의 동률로 수렴), SF 1.32→1.75(과도하지 않은 수준으로만
+        // 분담), 엘리트 가드/윙 PPG도 20.55(플레이타입 재조정 후)에서 20.47로 유지.
         if (targetZone === 'Rim' || targetZone === 'Paint') {
-            const anchor = defTeam.onCourt.find(p => p.position === 'C') ||
-                           defTeam.onCourt.find(p => p.position === 'PF');
+            const bigsOnCourt = defTeam.onCourt.filter(p => p.position === 'C' || p.position === 'PF' || p.position === 'SF');
+            let anchor: LivePlayer | undefined;
+            if (bigsOnCourt.length === 1) {
+                anchor = bigsOnCourt[0];
+            } else if (bigsOnCourt.length > 1) {
+                const weights = bigsOnCourt.map(p => Math.pow(Math.max(1, p.attr.intDef), 2) * (p.position === 'SF' ? 0.5 : 1.0));
+                const total = weights.reduce((a, b) => a + b, 0);
+                let r = Math.random() * total;
+                anchor = bigsOnCourt[bigsOnCourt.length - 1];
+                for (let i = 0; i < bigsOnCourt.length; i++) {
+                    r -= weights[i];
+                    if (r <= 0) { anchor = bigsOnCourt[i]; break; }
+                }
+            }
             if (anchor) {
                 if (isPnrPlay) {
                     // 앵커 자신이 곧 스크리너 수비수(드롭 상태) — 롤맨도 이 앵커가 커버

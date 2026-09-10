@@ -35,6 +35,296 @@
 
 ---
 
+## 2026-09-10 — 존 디펜스 앵커 배정을 포지션 고정 → intDef 가중 확률로 교체
+
+**배경**: 빅맨 파울 트러블 조사에서 "수비 우수 빅맨이 수비 약한 빅맨보다 오히려 파울이
+많다"는 역설을 발견 → 원인 추적 결과 `identifyDefender()`의 존 디펜스 앵커가
+`onCourt.find(C) || onCourt.find(PF)`로 **포지션만 보고 고정 배정**돼 있었음(수비력
+무관). 포지션을 고정하고 재측정하니(센터만/PF만 따로) 수비력 차이 효과가 거의 사라지는
+걸로 확인 — "수비 우수=대부분 센터, 수비 약함=대부분 PF"라는 표본 구성 차이였을 뿐,
+실제로는 "센터면 무조건 앵커"라는 로직 자체가 범인이었음.
+
+**변경 파일**: `server/src/shared/engine/pbp/possessionHandler.ts` /
+`services/game/engine/pbp/possessionHandler.ts` (미러 쌍), `identifyDefender()`의
+존 디펜스 분기(`targetZone === 'Rim' || 'Paint'`).
+
+**Before**:
+```ts
+const anchor = defTeam.onCourt.find(p => p.position === 'C') ||
+               defTeam.onCourt.find(p => p.position === 'PF');
+```
+
+**After**:
+```ts
+const bigsOnCourt = defTeam.onCourt.filter(p => p.position === 'C' || p.position === 'PF' || p.position === 'SF');
+let anchor: LivePlayer | undefined;
+if (bigsOnCourt.length === 1) {
+    anchor = bigsOnCourt[0];
+} else if (bigsOnCourt.length > 1) {
+    const weights = bigsOnCourt.map(p => Math.pow(Math.max(1, p.attr.intDef), 2) * (p.position === 'SF' ? 0.5 : 1.0));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    anchor = bigsOnCourt[bigsOnCourt.length - 1];
+    for (let i = 0; i < bigsOnCourt.length; i++) {
+        r -= weights[i];
+        if (r <= 0) { anchor = bigsOnCourt[i]; break; }
+    }
+}
+```
+C/PF/SF 전원을 후보 풀에 넣고 `intDef^2` 가중 확률로 뽑는다(제곱 지수라 실력 차이가 클수록
+결정론적에 가깝게, 비슷하면 거의 반반). SF는 대상에 넣되 가중치 ×0.5로 다운웨이트 —
+신장상 SF가 PF보다 큰 경우가 실제로 존재하지만(height 실측: SF 최고 211cm vs PF 평균
+204cm), 골밑 앵커 전담엔 원래 덜 적합하다고 보고 절반만 경쟁시킴.
+
+**튜닝 과정(실측 기반)**:
+- 지수=2(C/PF만): 센터 PF/36 4.09→3.60, PF 1.95→2.62 — 의도대로 작동하나 SF 제외.
+- 지수=2, SF 포함(다운웨이트 없음): SF 1.32→2.03(과하게 증가), 엘리트 SF PPG 19.17→18.17.
+- 지수=1.5 시도: SF 부담이 줄기는커녕 오히려 소폭 증가(가중치가 평평해질수록 약한 쪽이
+  더 자주 뽑히는 역설 확인) — 지수 조정은 틀린 레버였음.
+- **지수=2 + SF×0.5 다운웨이트(확정)**: 센터 PF/36 2.89→2.96, PF 2.74→2.90(거의 동률),
+  SF 2.03→1.75(적당히만 분담), 엘리트 가드/윙 PPG 20.34→20.47(최고치).
+
+**검증**: PBL 로스터 1230경기 — 센터 PF/36 4.08(원본)→2.96, PF 2.02→2.90(거의 동률로
+수렴, 기존엔 2배 이상 차이), SF 1.32→1.75(완만한 분담). `npx tsc --noEmit -p .`(client)/
+`cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규 에러 0건. 10경기 정상
+완주(스코어/박스스코어 로우 수 정상) 확인.
+
+**주의사항**: 편집 중 `if (targetZone === 'Rim' || targetZone === 'Paint') {` 가드 라인을
+실수로 지웠다가(존 여부와 무관하게 항상 실행되는 버그) 즉시 발견해 재수정 — 최종본은
+정상. 같은 함수 내 PnR 분기의 `screenerDef` 폴백(라인 ~56-57 부근, C/PF 순서 고정)은
+이번 검증 범위 밖이라 그대로 둠(영향은 부차적 — PnR 커버리지 hitRate 보정용 메타데이터일
+뿐, 주 수비수/파울 귀속과 무관).
+
+**롤백 방법**: 위 Before 블록으로 되돌림(양쪽 파일 동일).
+
+---
+
+## 2026-09-10 — 히든 트레잇 "수비 의지"(defensiveMotor) 실효 계수 상향
+
+**배경**: 빅맨 밸런스 조사 도중 "히든 트레잇 중 수비의지가 실제로 얼마나 영향을 미치는지"
+사용자 질문으로 조사. 코드(`flowEngine.ts`)상으로는 `defRating += defensiveMotor * 3`로
+정상 연결돼 있었지만, intDef(40~99, 59점 범위 그대로 반영)와 달리 defensiveMotor는
+−1.0~+1.0 범위에 계수 3을 곱해 **최대 ±3점**만 반영 — 같은 계수(`INSIDE_DEF_COEFF:
+0.0015`)를 거치면 이론상 최대 효과가 intDef ±8.85%p 대비 defensiveMotor는 ±0.45%p로
+**20배 차이**. 실측(400경기)으로도 구간별 FG% 차이가 노이즈 수준(0.5%p 이내)이라 사실상
+장식용 수치였음을 확인.
+
+**⚠️ 조사 중 발견한 별개 이슈(수정 안 함, 기록만)**: 이번 조사에 쓴 스크립트들이
+`runFullGameSimulation()` 호출 시 9번째 인자 `tendencySeed`를 누락해서, 테스트 중엔 모든
+선수의 히든 트레잇 16종 전부가 `DEFAULT_TENDENCIES`(중립값)로 고정된 채 시뮬레이션되고
+있었다(`initializer.ts:164`, `tendencySeed`가 없으면 `generateSaveTendencies()` 대신
+`DEFAULT_TENDENCIES` 폴백). **실제 프로덕션 경로(`simRunner.ts:198-207`)는
+`tendencySeed + ':' + gameId`를 정상적으로 넘기므로 실제 게임엔 영향 없음** — 이번 세션의
+테스트 스크립트에만 있던 방법론적 허점. defensiveMotor를 제대로 측정하려고 시드를 넣은
+뒤에야 진짜 수치가 나왔다.
+
+**변경 파일**: `server/src/shared/engine/pbp/flowEngine.ts` /
+`services/game/engine/pbp/flowEngine.ts` (미러 쌍), `types/player.ts` /
+`server/src/shared/types/player.ts` (미러 쌍, `SaveTendencies.defensiveMotor` 주석만 갱신).
+
+**Before → After**:
+```ts
+// Before
+let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 3;
+// After
+let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 10;
+```
+
+**검증**: PBL 로스터, `tendencySeed` 정상 전달 후 400경기 실측 — 계수 3(기존)은 구간별 FG%가
+43.1~43.3%로 사실상 평평(노이즈 수준). 계수 18/10 두 값을 비교 실험:
+- 계수 18: 구간 스프레드 2.79%p, 극단(motor≤−0.8 vs ≥0.8) 1.84%p(표본 적어 노이즈 큼)
+- **계수 10(확정)**: 구간 스프레드 2.94%p(이론값 3.0%p와 거의 일치), 극단 6.41%p
+
+**주의사항**: defensiveMotor는 `flowEngine.ts`의 이 hitRate 계산 한 곳에서만 쓰인다(grep
+검증 완료) — 파울 확률·리바운드 등 다른 시스템과는 완전히 독립적이라, 이번 세션의 앵커/
+파울 상수/플레이타입 작업과 상호작용 없음.
+
+**롤백 방법**: 계수를 10 → 3으로 되돌림(4개 파일 전부).
+
+---
+
+## 2026-09-10 — 플레이타입 기본 배분 재조정(빅맨 볼륨 쏠림 근본 원인 대응)
+
+**배경**: 직전 5건 수정(usage 랭킹 분리, MID_BASE_PCT, 파울 상수 3건) 적용 후에도 "OVR90+
+엘리트 가드/윙 PPG가 오히려 더 떨어졌다"는 부작용이 남아있었음 — 원인을 추가로 조사한 결과
+`PLAY_TYPE_PROFILES`(`playTypeProfiles.ts`)의 **base 자체가 구조적으로 빅맨 편향**이었음이
+드러남: 중립 슬라이더에서도 PnR_Roll/PnR_Pop(포지션 게이트로 C/PF 전용 확정)+PostUp(포지션
+가중치상 C/PF가 80%)이 합쳐서 전체 하프코트 플레이의 36.8%를 차지 — usage 랭킹을 아무리
+고쳐도 애초에 그 플레이타입 자체가 그만큼 자주 안 불리면 가드가 볼륨을 못 늘림. 또한 파울
+계측(500경기 원인별 breakdown)에서 센터 파울의 69%가 "수비 중 유발 슈팅파울"이었고, 이는
+센터가 방어하는 골밑 슛 볼륨(N) 자체가 커서 발생 — 결국 볼륨 쏠림이 파울 트러블의 근본
+원인이라는 게 재확인됨.
+
+**변경 파일**: `server/src/shared/game/config/playTypeProfiles.ts` /
+`services/game/config/playTypeProfiles.ts` (미러 쌍) — `PLAY_TYPE_PROFILES`의 `base`만 수정
+(`inside`/`pnr`/`bm` 슬라이더 반응 계수는 그대로 유지).
+
+**Before → After** (base, 중립 슬라이더 기준 비중 변화):
+```
+Iso:            1.5 → 1.5   (14.0%, 변경없음)
+PostUp:         1.5 → 1.2   (13.8% → 11.2%) — C/PF 80% 우세
+PnR_Handler:    1.5 → 2.0   (13.8% → 18.7%)
+PnR_Roll:       1.5 → 1.1   (13.8% → 10.3%) — C/PF 게이트 확정
+PnR_Pop:        1.0 → 0.8   (9.2% → 7.5%)  — C/PF 게이트 확정
+CatchShoot:     1.0 → 1.2   (9.2% → 11.2%)
+OffBallScreen:  1.0 → 0.9   (9.2% → 8.4%)
+DriveKick:      0.7 → 0.8   (6.4% → 7.5%)
+Cut:            0.7 → 0.7   (6.4%, 변경없음)
+Handoff:        0.5 → 0.5   (4.6%, 변경없음)
+```
+사용자가 최종 확정한 값 그대로 적용 — 빅맨 게이트 확정 플레이(PnR_Roll+PnR_Pop) 23.0%→17.8%,
+가드 주도(Iso+PnR_Handler+DriveKick) 33.9%→40.2%로 5.5%p 정도씩 맞바뀜.
+
+**검증**: PBL 로스터로 1230경기씩(전/후) 재시뮬레이션.
+- **OVR90+ 엘리트 가드/윙 PPG**: 19.53 → **20.55**(+5.2%) — 직전 수정으로 생겼던 퇴행을
+  절반 가까이 회복(usage 랭킹 분리+파울 완화 직후 19.54였던 게 20점대 재진입).
+- **빅맨 파울(PF/36)**: 센터 4.22→4.08, 빅맨 전체 3.12→3.05 — 파울 트러블도 부작용 없이
+  같이 개선(볼륨이 줄어드니 자연히 완화).
+- **공격력 약한 빅맨 PPG**(직전 수정의 또 다른 부작용): 9.42 → **8.95**(−5.0%) — MID_BASE_PCT
+  상향으로 생겼던 "약한 빅맨도 미드 점퍼로 득점 상승" 부작용이 볼륨 자체가 줄면서 절반 가까이
+  상쇄됨.
+- `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit -p tsconfig.json`(server) —
+  신규 에러 0건.
+
+**주의사항**: 총합이 10.9→10.7로 바뀌었으나 `computePlayTypeWeights()`는 상대 비중만
+가중랜덤에 쓰므로(절대 크기 무관) 문제 없음. 기존 2026-07-29 튜닝 기록(SEA 설정에서
+PostUp/PnR_Roll이 PnR_Handler를 앞서도록 검증한 실측치)의 절대 기준선이 이 변경으로
+달라짐 — insideOut을 낮춘 "인사이드 지향" 팀의 PostUp/PnR_Roll 실제 비중도 전반적으로
+하향 이동했음(문서 참고용, 재검증 안 함).
+
+**롤백 방법**: `PLAY_TYPE_PROFILES`의 `base` 값을 Before 목록으로 되돌림
+(Iso 1.5/PostUp 1.5/PnR_Handler 1.5/PnR_Roll 1.5/PnR_Pop 1.0/CatchShoot 1.0/
+OffBallScreen 1.0/DriveKick 0.7/Cut 0.7/Handoff 0.5).
+
+---
+
+## 2026-09-10 — 빅맨 볼륨/효율 과다 + 파울 트러블 과중 밸런스 조정 5건
+
+**배경**: 사용자 요청 — "빅맨들의 파울 트러블 과중"과 "빅맨들이 득점 효율이 너무 좋음 and
+빅맨들이 공격 볼륨을 너무 많이 가져감" 두 문제를 조사해달라는 요청으로 시작. 증상: "아무리
+좋은 가드여도 18~20득점에 그친다는거고, 오버롤 78~80 짜리의 빅맨들도 20~30득점을 한다."
+조사 결과 두 문제가 인과관계로 얽혀 있었음 — 빅맨 볼륨 과다(원인) → 골밑 슛 시도 증가 →
+그 슛을 수비하는 빅맨(포지션 매칭/존 디펜스 앵커)이 3점 수비보다 6.4배 높은 골밑 슈팅파울
+확률에 반복 노출(결과). 사용자 확인 하에 득점 배분 수정 2건 + 파울 상수 3건, 총 5건 적용.
+
+**변경 파일** (전부 client/server 미러 쌍 동시 수정):
+- `server/src/shared/engine/pbp/playTypes.ts` / `services/game/engine/pbp/playTypes.ts`
+- `server/src/shared/game/config/constants.ts` / `services/game/config/constants.ts`
+
+### 1. usage multiplier 랭킹을 "플레이타입별 로컬 기준"으로 분리
+
+**원인**: `resolvePlayAction()`의 `pickWeightedActor()`가 슈터 usage 배율(`getContextualMultiplier`)을
+팀 전체 gravity 랭킹(`getTeamOptionRanks`, `calculateScoringGravity` 기반)으로 매겼음 — Iso/
+PnR_Handler 같은 볼핸들러 플레이에서도 마찬가지였음. 팀에 postScorer 게비티 높은 빅맨이
+있으면, 그 플레이의 진짜 적임자인 가드가 팀 내 2~3위로 밀려 배율(2.5배→1.2~1.8배)을 덜
+받았음. 각 플레이타입은 이미 자기만의 액터 선정 기준(`criteria`, 예: Iso는
+`isoScorer+handler*0.5`, PostUp은 `postScorer`)을 갖고 있었으므로, 그 기준을 랭킹에도
+그대로 재사용하기로 함(새 공식 없음).
+
+**Before** (`playTypes.ts`, server/client 동일):
+```ts
+export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
+    const players = team.onCourt;
+    const optionRanks = getTeamOptionRanks(team);   // 팀 전체 gravity 랭킹, 플레이타입 무관
+
+    const pickWeightedActor = (criteria, excludeId, role = 'shooter', eligibleFilter) => {
+        let pool = players;
+        if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
+        if (eligibleFilter) pool = pool.filter(eligibleFilter);
+
+        const candidates = pool.map(p => {
+            const rawScore = criteria(p);
+            const rank = optionRanks.get(p.playerId) || 3;
+            const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
+            let weight = Math.max(1, rawScore) * usageMultiplier;
+            // ...
+        });
+        // ...
+    };
+```
+
+**After**:
+```ts
+export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
+    const players = team.onCourt;
+
+    const pickWeightedActor = (criteria, excludeId, role = 'shooter', eligibleFilter) => {
+        let pool = players;
+        if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
+        if (eligibleFilter) pool = pool.filter(eligibleFilter);
+
+        // 이 호출에 실제로 쓰인 criteria 기준 로컬 랭킹 — 팀 전체 gravity 대신.
+        const localRank = role === 'shooter'
+            ? new Map([...pool].sort((a, b) => criteria(b) - criteria(a)).map((p, i) => [p.playerId, i + 1]))
+            : null;
+
+        const candidates = pool.map(p => {
+            const rawScore = criteria(p);
+            const rank = localRank?.get(p.playerId) ?? 3;
+            const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
+            let weight = Math.max(1, rawScore) * usageMultiplier;
+            // ...
+        });
+        // ...
+    };
+```
+- import에서 `getTeamOptionRanks` 제거(양쪽 파일 다 — 이 파일 내에서 더 이상 안 씀).
+  `usageSystem.ts`의 `getTeamOptionRanks`/`calculateScoringGravity`/`getTopPlayerGravity`
+  자체는 그대로 유지(Star Gravity 플레이타입 선택 가중치·egoMod에서 여전히 팀 전체 서열
+  개념이 맞는 자리라 `possessionHandler.ts`에서 계속 사용).
+
+### 2. `SHOOTING.MID_BASE_PCT` 상향 — 0.38 → 0.40
+
+가드가 Iso/PnR_Handler에서 림까지 못 뚫고 미드 점퍼로 멈추면 전 존 중 기대값이 가장 낮았음
+(Rim 1.14 vs 3PT 1.02 vs Mid 0.76점/슛, INSIDE_BASE_PCT/THREE_BASE_PCT 대비 계산). 실제
+NBA 미드레인지 평균(~40~41%)에 맞춰 소폭 상향 — 기대값 0.746→0.786(약 5% 개선)로 격차를
+줄이는 수준이지 뒤집는 수준은 아님(자유투 생성량 격차가 더 큰 변수지만 이번 범위 밖).
+
+### 3. `SHOOTING_FOUL.BASE_RATE_RIM` 하향 — 0.16 → 0.13
+
++ `ZONE_CURVE_SCALE.Rim` — 0.6 → 0.5(Paint와 동률로). base 자체는 drawFoul 70(평균) 기준
+NBA 벤치마킹 값이지만, zoneScale·INTERIOR_SKILL_CURVE·defIntensity·foulProneness가 전부
+곱/합연산으로 추가로 얹혀 실전 평균 확률이 base보다 상당히 높게 나옴 — base를 19% 낮춰
+복합 배율은 그대로 살아있는 채로 최종 확률만 완화. `ZONE_CURVE_SCALE.Rim`도 딱히 Paint(0.5)
+보다 높아야 할 근거가 약해 동률로 맞춤(이 파라미터는 2026-07-30에 실측 기반으로 한 번
+조정된 이력이 있음 — 엠비드 FTA 6.2개 vs 하든 4개 문제 대응 — 이번은 그 연장선).
+
+### 4. `NON_SHOOTING_FOUL.PLAYTYPE_MOD` — PostUp/PnR_Roll 완화
+
+`'PostUp': 0.006 → 0.003`, `'PnR_Roll': 0.010 → 0.006`. 이 엔진에서 두 플레이타입은 거의
+전적으로 빅맨이 액터(PostUp)/스크리너-롤맨(PnR_Roll)이라, 이 모디파이어가 곧 빅맨 파울
+누적으로 직결됨. Iso(0.012)/PnR_Handler(0.008)/DriveKick(0.008)/Cut(0.006)/
+CatchShoot(-0.010)는 대부분 가드가 액터라 변경 없음.
+
+### 5. `SHOOTING_FOUL.INTERIOR_SKILL_CURVE` 저~중구간 완화
+
+```
+Before: [45, 0.025], [60, 0.010], [72, 0.000], [82, -0.020], [88, -0.05], [93, -0.065], [97, -0.09]
+After:  [45, 0.010], [60, 0.000], [72, -0.010], [82, -0.030], [88, -0.05], [93, -0.065], [97, -0.09]
+```
+기존엔 intDef 72 미만(로테이션/벤치급 빅맨 다수 포함)이 전부 추가 페널티(+0.010~+0.025)
+대상이었음 — 중립점을 72→60으로 낮춰 평균 이하 빅맨도 최소한의 숨통을 틔워줌. 88 이상
+엘리트 구간(림프로텍터) 할인폭은 그대로 유지.
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+(server) — 둘 다 이번 변경 관련 신규 에러 0건(서버 쪽 무관 기존 에러만 잔존, 이전 세션부터
+확인된 사전 존재 이슈).
+
+**주의사항**: 전부 확률/기대값 튜닝값이라 실제 여러 경기 시뮬레이션을 돌려 가드/빅맨 득점
+분포와 빅맨 PF(개인파울) 통계가 의도한 방향으로 움직였는지 확인 필요 — 이번 세션에서는
+정적 코드 분석/수식 검증만 했고 실측 시뮬레이션 결과 확인은 아직 안 함. 자유투 생성량
+격차(BASE_RATE_RIM 여전히 BASE_RATE_3PT의 5.2배)는 손대지 않아 득점 효율 격차의 상당 부분이
+남아있을 수 있음 — 필요 시 후속 작업으로 논의.
+
+**롤백 방법**: 위 5개 항목 전부 Before 값으로 되돌리면 됨 — `playTypes.ts`는 `optionRanks`
+전역 계산 + `getTeamOptionRanks` import 복원, `constants.ts`는 `MID_BASE_PCT: 0.38`,
+`BASE_RATE_RIM: 0.16`, `ZONE_CURVE_SCALE.Rim: 0.6`, `PLAYTYPE_MOD.PostUp: 0.006`/
+`PnR_Roll: 0.010`, `INTERIOR_SKILL_CURVE` Before 배열로 복원. 5건 모두 서로 독립적이라
+일부만 롤백해도 나머지엔 영향 없음.
+
+---
+
+
 ## 2026-09-04 — archetypes 테이블 조회 시 발생하던 콘솔 406 제거 (.single() → .maybeSingle())
 
 **배경**: 콘솔에 `key=eq.tags`, `key=eq.archetypes` 요청에서 406 에러가 반복 제보됨. 원인 조사 결과 `archetypes` 테이블 자체엔 두 키 행이 정상적으로 1개씩 존재하는데(서비스 롤로 직접 확인), 이 테이블 RLS가 `authenticated` 역할에만 SELECT를 허용해서 — 인증되지 않은(anon) 상태로 요청이 나가면(게스트 모드, 또는 세션이 만료/무효화된 상태) RLS가 해당 행을 가려버려 PostgREST 입장에선 "0 rows"가 되고, `.single()`이 이를 실제 HTTP 406으로 응답하기 때문이었음. 코드 자체는 `error.code === 'PGRST116'`로 이미 이 케이스를 잡아 빈 기본값 폴백 처리하고 있어 기능상 문제는 없었지만, 브라우저가 진짜 406 네트워크 응답을 받으므로 콘솔에 노이즈로 찍힘. `.maybeSingle()`은 GET에서 일반 `Accept: application/json` 헤더를 사용해 PostgREST가 0 rows일 때 200 + 빈 배열로 응답하므로(실제 네트워크 레벨 에러 없음), 앱의 폴백 로직은 동일하게 동작하면서 콘솔 노이즈만 사라짐.

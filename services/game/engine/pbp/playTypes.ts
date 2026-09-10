@@ -1,7 +1,7 @@
 
 import { PlayType, TacticalSliders } from '../../../../types';
 import { LivePlayer, TeamState } from './pbpTypes';
-import { getTeamOptionRanks, getContextualMultiplier } from './usageSystem';
+import { getContextualMultiplier } from './usageSystem';
 import { SIM_CONFIG } from '../../config/constants';
 
 // ==========================================================================================
@@ -191,9 +191,6 @@ function resolveFinish(
 export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
     const players = team.onCourt;
 
-    // [New] 1. Calculate Option Ranks for current lineup (1~5)
-    const optionRanks = getTeamOptionRanks(team);
-
     // [Fix] Weighted Random Selection with Option System Integration
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
@@ -208,6 +205,15 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         // SF/SG/PG 등) eligibleFilter로 후보군 자체에서 제거해야 함.
         if (eligibleFilter) pool = pool.filter(eligibleFilter);
 
+        // [2026-09-10] usage multiplier 랭킹을 팀 전체 gravity(getTeamOptionRanks)가 아니라
+        // 이 호출에 실제로 쓰인 criteria 기준 로컬 랭킹으로 교체 — 예: Iso/PnR_Handler에서
+        // "팀 최고 볼핸들러"가 팀에 postScorer 게비티 높은 빅맨이 있다는 이유만으로 2~3옵션
+        // 배율로 밀리는 문제를 막는다. passer role은 원래도 usageMultiplier가 무조건 1.0이라
+        // 랭킹 자체가 영향이 없었으므로(아래 B) 그대로 둠.
+        const localRank: Map<string, number> | null = role === 'shooter'
+            ? new Map([...pool].sort((a, b) => criteria(b) - criteria(a)).map((p, i) => [p.playerId, i + 1]))
+            : null;
+
         const candidates = pool.map(p => {
             // A. Base Skill Score (Existing Logic)
             const rawScore = criteria(p);
@@ -216,7 +222,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // [2026-07-29] usageMultiplier는 "옵션 순위가 높을수록 슛을 더 쏜다"는 의도로 만든
             // 배율인데, role 구분 없이 passer 선정에도 적용되고 있었음 — 득점 옵션 순위와 무관하게
             // 진짜 패스 능력으로 어시스트맨을 정하도록 passer일 땐 적용하지 않는다.
-            const rank = optionRanks.get(p.playerId) || 3;
+            const rank = localRank?.get(p.playerId) ?? 3;
             const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
 
             // C. Final Weight = Skill * OptionMultiplier * Tendencies

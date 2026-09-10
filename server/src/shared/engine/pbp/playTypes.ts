@@ -1,7 +1,7 @@
 
 import { PlayType, TacticalSliders } from '../../types.ts';
 import { LivePlayer, TeamState } from './pbpTypes.ts';
-import { getTeamOptionRanks, getContextualMultiplier } from './usageSystem.ts';
+import { getContextualMultiplier } from './usageSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 
 // ==========================================================================================
@@ -139,8 +139,6 @@ function resolveFinish(
 export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
     const players = team.onCourt;
 
-    const optionRanks = getTeamOptionRanks(team);
-
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
         excludeId?: string,
@@ -151,11 +149,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
         if (eligibleFilter) pool = pool.filter(eligibleFilter);
 
+        // [2026-09-10] usage multiplier 랭킹을 팀 전체 gravity(getTeamOptionRanks)가 아니라
+        // 이 호출에 실제로 쓰인 criteria 기준 로컬 랭킹으로 교체 — 예: Iso/PnR_Handler에서
+        // "팀 최고 볼핸들러"가 팀에 postScorer 게비티 높은 빅맨이 있다는 이유만으로 2~3옵션
+        // 배율로 밀리는 문제를 막는다(client 미러 상세 참조). passer role은 원래도
+        // usageMultiplier가 무조건 1.0이라 랭킹 자체가 영향이 없었으므로 그대로 둠.
+        const localRank: Map<string, number> | null = role === 'shooter'
+            ? new Map([...pool].sort((a, b) => criteria(b) - criteria(a)).map((p, i) => [p.playerId, i + 1]))
+            : null;
+
         const candidates = pool.map(p => {
             const rawScore = criteria(p);
 
-            // [2026-07-29] usageMultiplier/ballDominance는 passer 선정 시 다르게 적용 (client 미러 참고)
-            const rank = optionRanks.get(p.playerId) || 3;
+            const rank = localRank?.get(p.playerId) ?? 3;
             const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
 
             let weight = Math.max(1, rawScore) * usageMultiplier;

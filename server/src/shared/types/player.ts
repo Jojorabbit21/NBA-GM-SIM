@@ -86,7 +86,7 @@ export interface SaveTendencies {
 
     // 플레이스타일 (5)
     shotDiscipline: number;          // -1.0~+1.0 히트레이트 ±1.5%
-    defensiveMotor: number;          // -1.0~+1.0 수비 레이팅 ±3pt
+    defensiveMotor: number;          // -1.0~+1.0 수비 레이팅 ±10pt (2026-09-10, 기존 ±3pt)
     ballDominance: number;           // 0.5~1.5   액터 선택 가중치 배율
     foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
     playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
@@ -122,7 +122,8 @@ export interface AttributeChangeEvent {
 export type PlayerAwardType =
     | 'MVP' | 'DPOY' | 'FINALS_MVP' | 'CHAMPION' | 'REG_SEASON_CHAMPION'
     | 'ALL_NBA_1' | 'ALL_NBA_2' | 'ALL_NBA_3'
-    | 'ALL_DEF_1' | 'ALL_DEF_2';
+    | 'ALL_DEF_1' | 'ALL_DEF_2'
+    | 'ALL_STAR';
 
 export interface PlayerAwardEntry {
     type: PlayerAwardType;

@@ -145,7 +145,13 @@ export function calculateHitRate(
 
     const offRating = zoneOffRating;
     const baseDefRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
-    let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 3;
+    // [2026-09-10] defensiveMotor(히든 트레잇 "수비 의지") 계수 3 → 10. 기존 계수(3)는 이론상
+    // 최대 효과가 ±0.45%p 수준이라 체감 불가한 장식용 수치였음(intDef의 ±8.85%p와 20배 격차).
+    // 400경기 실측(tendencySeed 정상 전달 확인 후) 기준 전체 인구 구간 스프레드 ~2.9%p,
+    // 극단 선수(motor≤-0.8 vs ≥0.8) 간 6.4%p로 확인 — intDef보다는 작지만 체감 가능한 수준으로
+    // 사용자 확정(docs/history/dev-log.md 참고). 파울 계산과는 무관(defensiveMotor는 이 hitRate
+    // 계산에만 쓰임 — grep 검증 완료).
+    let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 10;
 
     const defConsist = (defender.attr?.defConsist ?? 50);
     defRating += (defConsist - 70) * 0.3;

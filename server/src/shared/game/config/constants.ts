@@ -41,7 +41,11 @@ export const SIM_CONFIG = {
         // bonusHitRate 미적용 시절 보상값 해제: Rim -5%, Mid -4%, 3PT -2%
         // 목표 FG% (bonus 없이): Rim 57%, Mid 38%, 3PT 34%
         INSIDE_BASE_PCT: 0.57,
-        MID_BASE_PCT: 0.38,
+        // [2026-09-10] 0.38 → 0.40 — 실제 NBA 미드레인지 평균(~40~41%)에 맞춰 소폭 상향.
+        // 빅맨 볼륨/효율 과다 조사 후속 조치 1건(가드가 미드 점퍼로 밀렸을 때의 기대값이
+        // Rim(1.14)/3PT(0.948)에 비해 지나치게 낮았던 문제 완화 — 완전한 해법은 아니고
+        // 격차를 소폭 줄이는 수준, docs/history/dev-log.md 참고).
+        MID_BASE_PCT: 0.40,
         THREE_BASE_PCT: 0.34,
         
         // Per-zone/shotType 수비 계수 (offense/defense 분리)
@@ -157,7 +161,12 @@ export const SIM_CONFIG = {
     // 이중 게이트(baseFoulChance × shootingFoulRatio) 제거 → 존별 직접 확률
     SHOOTING_FOUL: {
         // 존별 기본 슈팅파울 확률 (NBA 2023-24 기준)
-        BASE_RATE_RIM: 0.16,       // NBA Rim FTA rate ~21.5% (drawFoul 70 기준 16%)
+        // [2026-09-10] 0.16 → 0.13 — 빅맨 파울 트러블 과중 조사 후속 조치. base 자체는 원래
+        // drawFoul 70(평균) 기준 NBA 벤치마킹 값이지만, 여기에 zoneScale(아래)·
+        // INTERIOR_SKILL_CURVE·defIntensity·foulProneness가 전부 곱/합연산으로 추가로 얹혀
+        // 실전 평균 확률이 base보다 상당히 높게 나온다 — base를 19% 낮춰 이 복합 배율들이
+        // 그대로 살아있는 채로 최종 확률만 전반적으로 완화(docs/history/dev-log.md 참고).
+        BASE_RATE_RIM: 0.13,
         BASE_RATE_PAINT: 0.10,     // Floater/Paint (Rim과 Mid 사이)
         BASE_RATE_MID: 0.045,      // 미드레인지 (잡다한 슈팅파울)
         BASE_RATE_3PT: 0.025,      // 3점 슈팅파울 (착지 공간 침범 등)
@@ -177,13 +186,18 @@ export const SIM_CONFIG = {
         ] as [number, number][],
 
         // [2026-07-30] Rim/Paint/Mid/3PT 100/80/50/25% → 60/50/30/20%로 재조정 (client 미러 참고)
-        ZONE_CURVE_SCALE: { 'Rim': 0.6, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
+        // [2026-09-10] Rim 0.6 → 0.5 — Paint와 동률로 맞춤. 딱히 Paint보다 더 커야 할 근거가
+        // 약했고, 엘리트 공격수의 drawFoul 보너스가 골밑에서만 유독 3배(3PT 대비) 증폭되던
+        // 것을 완화(빅맨 파울 트러블 조사 후속 조치, docs/history/dev-log.md 참고).
+        ZONE_CURVE_SCALE: { 'Rim': 0.5, 'Paint': 0.5, 'Mid': 0.3, '3PT': 0.2 } as Record<string, number>,
 
         // [2026-07-30] 수비자 파울회피 스킬 커브 (client 미러 참고) — 존 기준 분리, 포지션 무관
+        // [2026-09-10] 저~중구간 완화(중립점 72→60) — 기존엔 intDef 72 미만(로테이션/벤치급
+        // 빅맨 다수 포함)이 전부 추가 페널티(+0.010~+0.025) 대상이었음. 88 이상 엘리트 구간
+        // 할인폭은 그대로 유지(빅맨 파울 트러블 조사 후속 조치, docs/history/dev-log.md 참고).
         INTERIOR_SKILL_CURVE: [   // Rim/Paint — intDef*0.65 + defConsist*0.35
-            // [2026-07-30] 88/93/97 상위권 강화 (client 미러 참고)
-            [45, 0.025], [60, 0.010], [72, 0.000],
-            [82, -0.020], [88, -0.05], [93, -0.065], [97, -0.09],
+            [45, 0.010], [60, 0.000], [72, -0.010],
+            [82, -0.030], [88, -0.05], [93, -0.065], [97, -0.09],
         ] as [number, number][],
         PERIMETER_SKILL_CURVE: [  // Mid/3PT — perDef*0.65 + defConsist*0.35
             [45, 0.025], [55, 0.012], [71, 0.000],
@@ -215,10 +229,14 @@ export const SIM_CONFIG = {
         DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
         MAX_RATE: 0.06,
         // [2026-07-30] PostUp 1.5%p→0.6%p 재조정 (client 미러 참고) — PnR_Roll(1.0%p)은 유지
+        // [2026-09-10] PostUp/PnR_Roll 추가 완화 — 이 엔진에서 두 플레이타입은 거의 전적으로
+        // 빅맨이 액터(PostUp)/스크리너-롤맨(PnR_Roll)이라, 여기 모디파이어가 곧 빅맨 파울
+        // 누적으로 직결된다. Iso/PnR_Handler/DriveKick/Cut은 대부분 가드가 액터라 그대로 둠
+        // (빅맨 파울 트러블 조사 후속 조치, docs/history/dev-log.md 참고).
         PLAYTYPE_MOD: {
-            'PostUp': 0.006,
+            'PostUp': 0.003,
             'Iso': 0.012,
-            'PnR_Roll': 0.010,
+            'PnR_Roll': 0.006,
             'PnR_Handler': 0.008,
             'DriveKick': 0.008,
             'Cut': 0.006,
