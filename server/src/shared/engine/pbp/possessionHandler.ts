@@ -420,7 +420,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // gravity 63 이하 → 0 (벤치 유닛은 시스템 플레이 유지)
         weights['Iso'] *= (1 + gravityBoost);
         weights['PnR_Handler'] *= (1 + gravityBoost);
-        weights['PostUp'] *= (1 + gravityBoost * 0.5);
+
+        // [2026-09-10] PostUp 빈도를 gravityBoost(포지션 무관 팀 최고 그라비티 — 순수 3점 슈터라도
+        // 그라비티만 높으면 발동)가 아니라, 로스터 내 실제 postScorer 최댓값(포지션 무관)으로 보정.
+        // "포스트업 스킬과 무관한 신호로 포스트업 빈도가 움직인다"는 문제 해결(docs/history/dev-log.md 참고).
+        const topPostThreat = Math.max(...offTeam.onCourt.map(p => p.archetypes.postScorer));
+        const postThreatMod = Math.max(0.5, Math.min(1.5, 0.5 + (topPostThreat - 40) / 60));
+        // postScorer 40 이하(포스트업 위협 전무) → ×0.5, 70(평균) → ×1.0, 100(엘리트) → ×1.5
+        weights['PostUp'] *= postThreatMod;
 
         // [2026-07-30] Playmaking Gravity — 포지션 무관 팀 최고 플레이메이커 기준 어시스트형
         // 플레이 비중 증가 (client 미러 참고). PnR_Pop은 popper 자격과 무관한 부스트라 제외.

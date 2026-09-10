@@ -35,6 +35,74 @@
 
 ---
 
+## 2026-09-10 — 포스트업 센터 과밀화 완화: 포지션 가중치 스프레드 축소 + 빈도 보정 신호 교체
+
+**배경**: 6건 밸런스 조정 이후 재조사에서 "가드/SF가 팀 내 실제 최고 OVR 선수(=1옵션)여도
+빅맨이 FGA를 더 많이 가져가는" 경기가 1230경기 표본에서 46.3%에 달함을 확인. 원인 추적 결과
+PostUp 플레이타입의 액터 선정이 `postScorer × POSITION_WEIGHT`로 계산되는데, 포지션 가중치
+스프레드(C 0.6 ~ PG/SG 0.05, 12배)가 `postScorer` 능력치 자체의 실질 스프레드(약 2.5배)를
+완전히 압도해서, 듀란트·커닝험급 엘리트 포스트업 가드/SF도 평범한 백업 센터에게 항상 밀리는
+구조적 문제를 발견(수치 예시: 평범한 PF `60×0.2=12.0` vs 엘리트 포스트업 SF `90×0.1=9.0` —
+PF가 이김). 이 가중치가 로컬 랭킹(→usageMultiplier)에도 그대로 상속돼 이중 페널티가 걸림.
+추가로, PostUp 빈도 보정에 쓰이는 `gravityBoost`가 포지션·포스트업 스킬과 무관한 "팀 내
+그라비티 최댓값"(순수 3점 슈터라도 그라비티만 높으면 발동) 기준이라 포스트업 스킬과
+상관없는 신호로 포스트업 호출 빈도가 움직이는 것도 확인.
+
+**변경 파일**:
+- `server/src/shared/game/config/constants.ts` / `services/game/config/constants.ts` (미러 쌍) —
+  `SIM_CONFIG.POSITION_WEIGHT.POST_UP`
+- `server/src/shared/engine/pbp/possessionHandler.ts` / `services/game/engine/pbp/possessionHandler.ts`
+  (미러 쌍) — Star Gravity 블록 내 PostUp 빈도 보정 로직
+
+**Before**:
+```ts
+// constants.ts
+POST_UP: { C: 0.6, PF: 0.2, SF: 0.1, SG: 0.05, PG: 0.05 } as Record<string, number>,
+
+// possessionHandler.ts
+weights['Iso'] *= (1 + gravityBoost);
+weights['PnR_Handler'] *= (1 + gravityBoost);
+weights['PostUp'] *= (1 + gravityBoost * 0.5);
+```
+
+**After**:
+```ts
+// constants.ts — 스프레드 12배 → 2배로 완화 (동급 스킬이면 여전히 빅맨 우세, 단
+// 엘리트 포스트업 가드/윙이 평범~약한 빅맨은 실력으로 이길 수 있음)
+POST_UP: { C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 } as Record<string, number>,
+
+// possessionHandler.ts — PostUp 빈도 보정을 gravityBoost 대신 로스터 내 실제 postScorer
+// 최댓값(포지션 무관) 기준으로 교체
+weights['Iso'] *= (1 + gravityBoost);
+weights['PnR_Handler'] *= (1 + gravityBoost);
+
+const topPostThreat = Math.max(...offTeam.onCourt.map(p => p.archetypes.postScorer));
+const postThreatMod = Math.max(0.5, Math.min(1.5, 0.5 + (topPostThreat - 40) / 60));
+// postScorer 40 이하 → ×0.5, 70(평균) → ×1.0, 100(엘리트) → ×1.5
+weights['PostUp'] *= postThreatMod;
+```
+
+PnR_Roll/PnR_Pop은 손대지 않음 — 스크린을 걸고 롤/팝하는 동작 자체가 신체 조건상 빅맨
+전유물이라 하드게이트(`eligibleFilter`, C/PF만 후보)가 합리적이라고 판단, 이번 변경 범위에서
+의도적으로 제외.
+
+**검증(PBL 로스터 1230경기 before/after)**:
+- 포스트업 호출 빈도(전체 하프코트 possession 대비): 6.53% → 7.26%
+- 포스트업 액터 포지션: C 73.7%→45.4%, PF 18.1%→30.1%, SF 5.6%→15.6%, SG 1.2%→5.4%, PG 1.4%→3.6%
+  (C+PF 합산 91.8%→75.5%)
+- 엘리트 포스트업 가드/윙(postScorer≥75)이 코트에 있을 때 실제로 액터가 될 확률: 6.4%→21.3%(3.3배)
+- (참고) 게임레벨 "1옵션(가드/SF) FGA 역전율"은 46.3%→45.2%로 거의 불변 — 이 변경은 포스트업
+  국소 문제만 해결하며, PnR_Roll/PnR_Pop 하드게이트 등 더 큰 구조적 원인은 범위 밖(후속 논의 예정).
+- `npx tsc --noEmit`(client/server) 신규 에러 0건, 10경기 정상 완주(스코어/박스스코어 로우 수 정상) 확인.
+
+**주의사항**: 포스트업 호출 빈도가 이전보다 소폭(+11%) 늘어남 — 대부분 팀에서 `postThreatMod`가
+기존 `gravityBoost*0.5`보다 약간 높게 작동한 결과. 극단적 폭주는 아니나, 팀별 포스트업 총량이
+불편하게 느껴지면 `postThreatMod`의 기준값(40/60/0.5~1.5)을 재조정할 것.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨 (독립적인 변경 2건이라 부분 롤백도 가능).
+
+---
+
 ## 2026-09-10 — 존 디펜스 앵커 배정을 포지션 고정 → intDef 가중 확률로 교체
 
 **배경**: 빅맨 파울 트러블 조사에서 "수비 우수 빅맨이 수비 약한 빅맨보다 오히려 파울이

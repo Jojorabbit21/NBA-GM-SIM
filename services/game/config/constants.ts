@@ -651,8 +651,12 @@ export const SIM_CONFIG = {
     },
     // Position Weight: PostUp/PnR_Roll 액터 선정에 포지션별 배율을 곱해 빅맨 편중을 보정
     // (아키타입 점수만으로는 C/PF/SF 간 실력 차이가 거의 없어 순수 스킬 경쟁으론 센터가 밀림 — 32 TEST 실측 확인)
+    // [2026-09-10] POST_UP 스프레드 12배(0.6~0.05) → 2배(1.0~0.5)로 완화 — 포스트업은 PnR_Roll과
+    // 달리 스크린 없이 순수 스코어링 스킬(postScorer)로 승부하는 플레이타입이라, 듀란트/커닝험형
+    // 엘리트 포스트업 가드·윙이 평범한 빅맨에게도 항상 밀리는 문제 완화(docs/history/dev-log.md 참고).
+    // PnR_Roll은 스크린+롤 자체가 신체 조건상 빅맨 전유물이라 하드게이트 그대로 유지.
     POSITION_WEIGHT: {
-        POST_UP: { C: 0.6, PF: 0.2, SF: 0.1, SG: 0.05, PG: 0.05 } as Record<string, number>,
+        POST_UP: { C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 } as Record<string, number>,
         PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
     },
     // [2026-07-31] PostUp 킥아웃 — 더블팀 유도 후 오픈 슈터에게 패스할지 결정. postScorer와
