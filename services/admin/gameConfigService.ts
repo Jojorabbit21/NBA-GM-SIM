@@ -12,22 +12,37 @@ const EMPTY_ARCHETYPE_CONFIG: ArchetypeConfig = { gates: {}, weights: {}, labels
 
 let archetypeCache: ArchetypeConfig | null = null;
 let tagCache: TagConfigList | null = null;
+// [2026-09-07] 캐시 값(archetypeCache/tagCache)만 체크하고 "진행 중인 요청"은 체크하지
+// 않아서, 첫 요청의 await가 끝나기 전에 두 번째 호출이 들어오면(예: 여러 화면이 동시에
+// preloadGameConfig를 부르는 경우, 또는 React StrictMode의 effect 이중 실행) 캐시가 아직
+// 비어있어 네트워크를 한 번 더 태웠다(실측으로 발견) — 진행 중인 Promise 자체를 캐시해
+// 동시 호출이 같은 요청을 공유하도록 수정.
+let archetypeConfigPromise: Promise<ArchetypeConfig> | null = null;
+let tagConfigPromise: Promise<TagConfigList> | null = null;
 
 // ── Archetype config (gates / weights / labels / positions) ───
 
 export async function fetchArchetypeConfig(): Promise<ArchetypeConfig> {
     if (archetypeCache) return archetypeCache;
-    const { data, error } = await supabase
-        .from('archetypes')
-        .select('value')
-        .eq('key', 'archetypes')
-        .maybeSingle();
-    if (error) {
-        if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
-        throw error;
+    if (archetypeConfigPromise) return archetypeConfigPromise;
+    archetypeConfigPromise = (async () => {
+        const { data, error } = await supabase
+            .from('archetypes')
+            .select('value')
+            .eq('key', 'archetypes')
+            .maybeSingle();
+        if (error) {
+            if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
+            throw error;
+        }
+        archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data?.value ?? {}) } as ArchetypeConfig;
+        return archetypeCache;
+    })();
+    try {
+        return await archetypeConfigPromise;
+    } finally {
+        archetypeConfigPromise = null;
     }
-    archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data?.value ?? {}) } as ArchetypeConfig;
-    return archetypeCache;
 }
 
 export async function saveArchetypeConfig(config: ArchetypeConfig): Promise<void> {
@@ -42,17 +57,25 @@ export async function saveArchetypeConfig(config: ArchetypeConfig): Promise<void
 
 export async function fetchTagConfig(): Promise<TagConfigList> {
     if (tagCache) return tagCache;
-    const { data, error } = await supabase
-        .from('archetypes')
-        .select('value')
-        .eq('key', 'tags')
-        .maybeSingle();
-    if (error) {
-        if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
-        throw error;
+    if (tagConfigPromise) return tagConfigPromise;
+    tagConfigPromise = (async () => {
+        const { data, error } = await supabase
+            .from('archetypes')
+            .select('value')
+            .eq('key', 'tags')
+            .maybeSingle();
+        if (error) {
+            if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
+            throw error;
+        }
+        tagCache = (data?.value ?? []) as TagConfigList;
+        return tagCache;
+    })();
+    try {
+        return await tagConfigPromise;
+    } finally {
+        tagConfigPromise = null;
     }
-    tagCache = (data?.value ?? []) as TagConfigList;
-    return tagCache;
 }
 
 export async function saveTagConfig(tags: TagConfigList): Promise<void> {

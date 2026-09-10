@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import type { Team, Player } from '../../types';
-import { formatMoney, formatMoneyFull } from '../../utils/formatMoney';
+import { formatMoneyFull } from '../../utils/formatMoney';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
@@ -48,8 +48,6 @@ interface TeamPayrollTableProps {
      *  통일해 향후 capSettings가 싱글에도 노출되는 변경이 생겨도 안전하도록 함.) */
     enableHoverCard?: boolean;
 }
-
-const toBarPct = (v: number, max: number) => Math.min(100, Math.max(0, (v / max) * 100));
 
 // 시즌 컬럼 인덱스(0=현재 시즌) 기준 선수의 그 해 연봉 — 계약이 없거나 범위 밖이면 0.
 function salaryAtCol(p: Player, colIndex: number): number {
@@ -118,17 +116,6 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
 
     const currentPayroll = totals[0] ?? 0;
 
-    // 활성화된 임계값만 캡 바에 표시 — 리그 어드민이 개별 항목을 껐으면 그 선은 아예 안 그림.
-    const thresholds = useMemo(() => (
-        [
-            capSettings.salaryFloorEnabled && { v: capSettings.salaryFloorAmount, label: '플로어', color: '#64748b' },
-            capSettings.capEnabled &&         { v: capSettings.salaryCapAmount,   label: '캡',     color: '#10b981' },
-            capSettings.luxuryTaxEnabled &&   { v: capSettings.luxuryTaxAmount,   label: '사치세',  color: '#f59e0b' },
-            capSettings.apron1Enabled &&      { v: capSettings.apron1Amount,      label: '1차 에이프런', color: '#f97316' },
-            capSettings.apron2Enabled &&      { v: capSettings.apron2Amount,      label: '2차 에이프런', color: '#ef4444' },
-        ].filter((t): t is { v: number; label: string; color: string } => !!t)
-    ), [capSettings]);
-
     // 현재 페이롤(0번 시즌 컬럼)과의 차이를 보여줄 하단 행 — 개별 on/off된 것만.
     // 미래 시즌 컬럼은 리그가 향후 캡 금액을 저장하지 않아 값이 없으므로 0번 컬럼만 채움.
     const diffRows = useMemo(() => (
@@ -140,75 +127,12 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
         ].filter((r): r is { label: string; v: number } => !!r)
     ), [capSettings]);
 
-    const maxAxis = thresholds.length > 0 ? Math.max(...thresholds.map(t => t.v), currentPayroll) * 1.1 : currentPayroll * 1.2 || 1;
-
-    // 임계값 사이 구간을 배경색으로 채운 존(zone) 목록 — 선 대신 구간 전체를 색칠.
-    // 순서는 항상 플로어<캡<사치세<1차<2차이므로, 꺼진 항목은 건너뛰고 다음 활성 임계값까지
-    // 이어서 칠한다(예: 플로어를 꺼두면 0부터 바로 "캡 이하" 초록 구간으로 시작).
-    const zones = useMemo(() => {
-        const sorted = [...thresholds].sort((a, b) => a.v - b.v);
-        const nextColor: Record<string, string> = {
-            '플로어': '#10b981', '캡': '#f59e0b', '사치세': '#f97316', '1차 에이프런': '#ef4444', '2차 에이프런': '#991b1b',
-        };
-        const segs: { start: number; end: number; color: string }[] = [];
-        let cursor = 0;
-        let color = '#64748b'; // 첫 임계값 이전 구간(활성화된 게 플로어가 아니면 사실상 안 쓰임)
-        for (const t of sorted) {
-            segs.push({ start: cursor, end: t.v, color });
-            cursor = t.v;
-            color = nextColor[t.label] ?? color;
-        }
-        segs.push({ start: cursor, end: maxAxis, color });
-        return segs;
-    }, [thresholds, maxAxis]);
-
-    // 사용자 팀의 실제 페이롤 막대(불투명도 100%) — 구간 색과 무관하게 항상 밝은 초록색으로 고정.
-    const barColor = '#4ade80';
-
     return (
-        <div className="h-full overflow-y-auto custom-scrollbar">
-            {thresholds.length > 0 && (
-                <div className="bg-slate-900 border-b border-slate-800 p-4">
-                    <span className="text-sm font-bold text-slate-300 ko-normal block mb-3">현재 페이롤</span>
-                    <div className="relative">
-                        {/* 현재 페이롤 금액 — 막대 끝(핸들 자리) 바로 위에 표시 */}
-                        <div
-                            className="absolute bottom-full mb-1.5 -translate-x-1/2 whitespace-nowrap"
-                            style={{ left: `${toBarPct(currentPayroll, maxAxis)}%` }}
-                        >
-                            <span className="text-sm font-bold text-white">{formatMoneyFull(currentPayroll)}</span>
-                        </div>
-                        <div className="relative h-3 rounded-full overflow-hidden">
-                            {/* 임계값 구간 배경 — 낮은 불투명도로 은은하게 */}
-                            {zones.map((z, i) => (
-                                <div
-                                    key={i}
-                                    className="absolute inset-y-0"
-                                    style={{
-                                        left: `${toBarPct(z.start, maxAxis)}%`,
-                                        width: `${toBarPct(z.end, maxAxis) - toBarPct(z.start, maxAxis)}%`,
-                                        backgroundColor: z.color,
-                                        opacity: 0.35,
-                                    }}
-                                />
-                            ))}
-                            {/* 실제 팀 페이롤 — 불투명도 100% */}
-                            <div
-                                className="absolute inset-y-0 left-0"
-                                style={{ width: `${toBarPct(currentPayroll, maxAxis)}%`, backgroundColor: barColor }}
-                            />
-                        </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
-                        {thresholds.map(t => (
-                            <div key={t.label} className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                                <span className="text-sm text-slate-400 ko-normal">{t.label} {formatMoney(t.v)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+        <div className="h-full flex flex-col overflow-hidden">
+            {/* [2026-09-07] "현재 페이롤" 막대 그래프 섹션 제거 — 재정 탭 스크롤 렉 조사 중
+                사용자 요청으로 삭제(합성 테스트로는 이 섹션이 원인이 아닌 것으로 측정됐지만,
+                원인을 못 찾은 채로 일단 제거). 캡/사치세/에이프런 임계값 자체는 아래 "합계" 밑
+                대비 행(diffRows)에서 계속 보여준다. */}
 
             <div className="flex-1 min-h-0">
             <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
@@ -294,7 +218,7 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                         </TableRow>
                     ))}
                 </TableBody>
-                <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
                     <tr className="h-10">
                         <TableCell colSpan={5} align="left" style={getStickyStyle(0, INFO_COL_WIDTH, true)} className="pl-4 bg-slate-950 font-black text-indigo-400 text-sm uppercase border-r border-slate-800">
                             합계

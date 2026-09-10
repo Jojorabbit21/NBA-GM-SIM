@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { PlayerBoxScore, BoxTick, BoxDelta } from '../../../types/engine';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../common/Table';
+import { TeamMark } from '../../common/TeamMark';
 
 interface GameOnOffTabProps {
     boxTimeline?: BoxTick[];
@@ -185,22 +186,22 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
         </TableCell>
     );
 
-    // 박스스코어 standalone(좌우 분할) 헤더와 동일한 톤: bg-slate-950/80 헤더 바 + 사각 배지 + 대문자 트래킹
-    const TeamHeader: React.FC<{ badge: { color: string; abbr: string }; name: string; label: string }> = ({ badge, name, label }) => (
+    // 박스스코어 standalone(좌우 분할) 헤더와 동일한 톤: bg-slate-950/80 헤더 바 + 팀 로고 + 대문자 트래킹
+    // [2026-09-07] 사각 색상 배지(약어 텍스트)를 실제 팀 로고 이미지로 교체(사용자 요청) —
+    // TeamMark가 teamId로 public/logos/real/ 로고를 조회하므로 teamId prop 추가.
+    const TeamHeader: React.FC<{ teamId: string; badge: { color: string; abbr: string }; name: string; label: string }> = ({ teamId, badge, name, label }) => (
         <div className="px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 border-l border-r border-slate-800">
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0" style={{ backgroundColor: badge.color, color: '#fff' }}>
-                    {badge.abbr.slice(0, 3)}
-                </div>
+                <TeamMark teamId={teamId} teamName={name} className="w-8 h-8" badge={badge} />
                 <span className="text-sm font-black text-white uppercase tracking-wider">{name}</span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
         </div>
     );
 
-    const PlayerTable: React.FC<{ rows: PlayerOnOffRow[]; badge: { color: string; abbr: string }; name: string }> = ({ rows, badge, name }) => (
+    const PlayerTable: React.FC<{ rows: PlayerOnOffRow[]; teamId: string; badge: { color: string; abbr: string }; name: string }> = ({ rows, teamId, badge, name }) => (
         <div className="w-full relative">
-            <TeamHeader badge={badge} name={name} label="선수별 On/Off" />
+            <TeamHeader teamId={teamId} badge={badge} name={name} label="선수별 On/Off" />
             <Table className="!rounded-none" fullHeight={false}>
                 <TableHead>
                     <TableHeaderCell align="left" stickyLeft>선수</TableHeaderCell>
@@ -298,8 +299,8 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
         <div className="w-full flex flex-col gap-0 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* 선수별 On/Off — 원정 | 홈 1:1 분할 (좌우 간격 없음, 각자 테두리로 구분) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
-                <PlayerTable rows={result.awayPlayers} badge={awayBadge} name={awayTeamName} />
-                <PlayerTable rows={result.homePlayers} badge={homeBadge} name={homeTeamName} />
+                <PlayerTable rows={result.awayPlayers} teamId={awayTeamId} badge={awayBadge} name={awayTeamName} />
+                <PlayerTable rows={result.homePlayers} teamId={homeTeamId} badge={homeBadge} name={homeTeamName} />
             </div>
 
             {/* 2인/3인 조합 + 5인 라인업 — 팀별로 1개 테이블에 병합, 원정 | 홈 좌우 분할 유지 */}

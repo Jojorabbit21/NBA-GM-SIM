@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Search, X, ChevronDown, Check, Filter, Plus, ShieldAlert } from 'lucide-react';
+import { Loader2, Search, X, ChevronDown, Check, Filter, Plus, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
@@ -242,6 +242,30 @@ const MultiFreeAgentView: React.FC = () => {
         return result;
     }, [undraftedPlayers, nameQuery, selectedPositions, selectedArchetypes, statFilters]);
 
+    // [2026-09-04] "리더보드 화면 구조 적용" 요청 — LeaderboardView.tsx의 페이지네이션(기본
+    // 50명, 25/50/75/100 선택, 가운데 페이지 번호+양옆 화살표, 좌측 "총 N명 중 X-Y" 표시)을
+    // 그대로 재현. 필터가 바뀌면 이전 페이지 번호가 범위를 벗어날 수 있어 1페이지로 리셋.
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(50);
+    useEffect(() => setCurrentPage(1), [nameQuery, selectedPositions, selectedArchetypes, statFilters]);
+    const totalPages = Math.ceil(filteredPlayers.length / itemsPerPage);
+    const pagedPlayers = filteredPlayers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const handleItemsPerPageChange = (val: number) => {
+        setItemsPerPage(val);
+        setCurrentPage(1);
+    };
+    const getPageNumbers = (): (number | '...')[] => {
+        if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+        const left = Math.max(2, currentPage - 2);
+        const right = Math.min(totalPages - 1, currentPage + 2);
+        const pages: (number | '...')[] = [1];
+        if (left > 2) pages.push('...');
+        for (let i = left; i <= right; i++) pages.push(i);
+        if (right < totalPages - 1) pages.push('...');
+        pages.push(totalPages);
+        return pages;
+    };
+
     const togglePosition = (pos: string) => setSelectedPositions(prev => prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]);
     const toggleArchetype = (a: string) => setSelectedArchetypes(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a]);
     const togglePositionAll = () => setSelectedPositions(prev => prev.length === POSITIONS.length ? [] : [...POSITIONS]);
@@ -416,13 +440,13 @@ const MultiFreeAgentView: React.FC = () => {
                         </tr>
                     </TableHead>
                     <TableBody>
-                        {filteredPlayers.length === 0 ? (
+                        {pagedPlayers.length === 0 ? (
                             <tr>
                                 <TableCell colSpan={6 + ATTR_ITEMS.length + 2} className="text-center text-slate-500 text-sm py-10">
                                     조건에 맞는 자유 계약 선수가 없습니다.
                                 </TableCell>
                             </tr>
-                        ) : filteredPlayers.map(p => (
+                        ) : pagedPlayers.map(p => (
                             <tr key={p.id}>
                                 <TableCell align="left" className="border-r border-slate-800/30 pl-4 py-2">
                                     <PlayerHoverCard player={p}>
@@ -467,6 +491,60 @@ const MultiFreeAgentView: React.FC = () => {
                         ))}
                     </TableBody>
                 </Table>
+            </div>
+
+            {/* Pagination Footer — LeaderboardView.tsx와 동일 구조/스타일 */}
+            <div className="relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50">
+                <div className="text-sm font-bold text-slate-500 w-48">
+                    총 {filteredPlayers.length}명 중 {filteredPlayers.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredPlayers.length)}
+                </div>
+
+                <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+                    <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <ChevronLeft size={14} />
+                    </button>
+
+                    {getPageNumbers().map((page, idx) =>
+                        page === '...'
+                            ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-sm text-slate-600 font-bold select-none">··</span>
+                            : <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`w-7 h-7 text-sm font-bold rounded-lg transition-all ${
+                                    currentPage === page
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'text-indigo-400 hover:bg-slate-800 hover:text-indigo-300'
+                                }`}
+                            >
+                                {page}
+                            </button>
+                    )}
+
+                    <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <ChevronRight size={14} />
+                    </button>
+                </div>
+
+                <div className="ml-auto flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-500">페이지 당</span>
+                    <select
+                        value={itemsPerPage}
+                        onChange={e => handleItemsPerPageChange(Number(e.target.value))}
+                        className="bg-slate-800 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                        {[25, 50, 75, 100].map(n => (
+                            <option key={n} value={n}>{n}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
         </div>
     );

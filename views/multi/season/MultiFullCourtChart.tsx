@@ -15,7 +15,7 @@ interface MultiFullCourtChartProps {
     awayAbbr:   string;
     shotEvents: ShotEvent[];
     /** [2026-08-05] "팀 설정"에서 홈팀이 지정한 코트 색상 — 없으면(구버전 데이터 등) 기존 기본
-     * 나무색 코트로 폴백. CourtPreview.tsx와 색상값을 공유해 TeamSettingsModal의 미리보기와
+     * 나무색 코트로 폴백. CourtPreview.tsx와 색상값을 공유해 TeamSettingsPanel의 미리보기와
      * 실제 라이브 코트가 항상 일치하도록 한다(중복 하드코딩 금지). */
     courtBackground?: string;
     courtPaint?:      string;

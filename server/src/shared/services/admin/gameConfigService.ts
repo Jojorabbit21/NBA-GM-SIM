@@ -33,39 +33,60 @@ const EMPTY_ARCHETYPE_CONFIG: ArchetypeConfig = { gates: {}, weights: {}, labels
 
 let archetypeCache: ArchetypeConfig | null = null;
 let tagCache: TagConfigList | null = null;
+// [2026-09-07] client 미러(services/admin/gameConfigService.ts)와 동일한 수정 — 캐시 값만
+// 체크하고 진행 중인 요청은 체크하지 않아 동시 호출(리그 생성 이벤트가 겹치는 경우 등)이
+// 각자 네트워크를 태울 수 있었다. 진행 중인 Promise를 캐시해 공유하도록 수정.
+let archetypeConfigPromise: Promise<ArchetypeConfig> | null = null;
+let tagConfigPromise: Promise<TagConfigList> | null = null;
 
 // ── Archetype config (gates / weights / labels / positions) ───
 
 export async function fetchArchetypeConfig(): Promise<ArchetypeConfig> {
     if (archetypeCache) return archetypeCache;
-    const { data, error } = await supabase
-        .from('archetypes')
-        .select('value')
-        .eq('key', 'archetypes')
-        .maybeSingle();
-    if (error) {
-        if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
-        throw error;
+    if (archetypeConfigPromise) return archetypeConfigPromise;
+    archetypeConfigPromise = (async () => {
+        const { data, error } = await supabase
+            .from('archetypes')
+            .select('value')
+            .eq('key', 'archetypes')
+            .maybeSingle();
+        if (error) {
+            if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
+            throw error;
+        }
+        archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data?.value ?? {}) } as ArchetypeConfig;
+        return archetypeCache;
+    })();
+    try {
+        return await archetypeConfigPromise;
+    } finally {
+        archetypeConfigPromise = null;
     }
-    archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data?.value ?? {}) } as ArchetypeConfig;
-    return archetypeCache;
 }
 
 // ── Tag config ────────────────────────────────────────────────
 
 export async function fetchTagConfig(): Promise<TagConfigList> {
     if (tagCache) return tagCache;
-    const { data, error } = await supabase
-        .from('archetypes')
-        .select('value')
-        .eq('key', 'tags')
-        .maybeSingle();
-    if (error) {
-        if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
-        throw error;
+    if (tagConfigPromise) return tagConfigPromise;
+    tagConfigPromise = (async () => {
+        const { data, error } = await supabase
+            .from('archetypes')
+            .select('value')
+            .eq('key', 'tags')
+            .maybeSingle();
+        if (error) {
+            if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
+            throw error;
+        }
+        tagCache = (data?.value ?? []) as TagConfigList;
+        return tagCache;
+    })();
+    try {
+        return await tagConfigPromise;
+    } finally {
+        tagConfigPromise = null;
     }
-    tagCache = (data?.value ?? []) as TagConfigList;
-    return tagCache;
 }
 
 // ── Sync getters (엔진에서 preload 후 동기 참조) ──────────────

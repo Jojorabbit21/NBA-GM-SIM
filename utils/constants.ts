@@ -185,6 +185,38 @@ export const getTeamLogoUrl = (teamId: string): string => {
     return `/logos/${id}.svg`;
 };
 
+// [2026-09-09] 올스타 본경기/라이징스타 챌린지 가상 팀 ID → public/logos/real/AS/ 전용 로고.
+// resolveTeamId()의 일반 패턴(실제 30팀 약어 매핑)을 안 타게 getRealTeamLogoUrl()에서 먼저
+// 걸러낸다 — 가상 ID를 그대로 resolveTeamId에 넘기면 TEAM_ID_MAP 부분일치 폴백에 걸려 엉뚱한
+// 실제 팀 로고로 잘못 매칭될 위험이 있다(예: 짧은 팀 코드가 "EAST-ALLSTAR" 문자열 안에
+// 우연히 포함되는 경우).
+const ALLSTAR_LOGO_FILE: Record<string, string> = {
+    'EAST-ALLSTAR': 'AS/East', 'WEST-ALLSTAR': 'AS/West',
+    'RISINGSTARS-A': 'AS/RisingA', 'RISINGSTARS-B': 'AS/RisingB',
+};
+
+// [2026-09-06] 멀티플레이어용 신규 로고 세트(public/logos/real/, 대문자 파일명) — 테스트 목적으로
+// 선수 상세페이지 헤더 큰 로고 한 곳에만 우선 적용. 기존 /logos/{id}.svg(소문자, 싱글전용)와는
+// 별개 세트라 milwaukee('mil')처럼 real/에 파일이 없는 팀은 <img onError>에서 구버전으로 폴백.
+export const getRealTeamLogoUrl = (teamId: string): string => {
+    const allstarFile = ALLSTAR_LOGO_FILE[teamId];
+    if (allstarFile) return `/logos/real/${allstarFile}.svg`;
+    const id = resolveTeamId(teamId);
+    return `/logos/real/${id.toUpperCase()}.svg`;
+};
+
+// [2026-09-09] MultiStandingsView.tsx의 컨퍼런스 그룹 헤더 색상으로 도입됐던 값 — 올스타 본경기
+// 헤더 테마색(동부/서부 대표색)에도 재사용하기 위해 공용 상수로 승격.
+export const CONFERENCE_COLORS: Record<'East' | 'West', string> = {
+    East: '#1D4289',
+    West: '#C8102E',
+};
+
+// [2026-09-09] 라이징스타 챌린지 팀 테마색(사용자 지정값) — hooks/useAllStarTeamDisplay.ts
+// (스케줄/라이브뷰)와 views/multi/season/newsFeedCards.tsx(결과 서신 박스스코어) 둘 다
+// 같은 값을 써야 해서 공용 상수로 승격.
+export const RISING_STARS_COLORS = { A: '#0080FF', B: '#FF00A6' };
+
 // [Critical] 항상 능력치 기반으로 OVR 동적 계산 (성장/퇴화 반영)
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
     return calculateOvr(p, position || p.position);

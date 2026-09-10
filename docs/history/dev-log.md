@@ -324,6 +324,7009 @@ After:  [45, 0.010], [60, 0.000], [72, -0.010], [82, -0.030], [88, -0.05], [93, 
 
 ---
 
+## 2026-09-09 — 박스스코어 "샷차트" 탭: 동일한 코트 테두리 끊김 버그 수정
+
+**배경**: 사용자 요청 — "이제 박스스코어 화면의 샷차트에도 똑같이 적용해." 직전
+3점 컨테스트 샷차트에서 찾은 z-order 버그(캔버스 테두리 `<rect>`를 먼저 그린 뒤 불투명
+페인트존 `<rect>`가 나중에 그려지며 테두리 일부를 덮어씀)가 원본 컴포넌트인
+`GameShotChartTab.tsx`(경기 결과 화면의 "샷차트" 탭 — 3점 컨테스트 샷차트가 `BasketLines`를
+가져다 쓰는 바로 그 원본)에도 똑같이 존재 — 이쪽은 좌우 바스켓 두 개라 페인트존
+`<rect>`가 2개(`x=0`쪽/`x=750`쪽)라 좌측·우측 테두리 둘 다 페인트존 높이(y:170~330)만큼
+끊겨 있었을 것.
+
+**변경 파일**: `components/game/tabs/GameShotChartTab.tsx`
+- 배경 `<rect width="940" height="500" fill="#020617" stroke="#334155" strokeWidth="2">`에서
+  `stroke`/`strokeWidth` 제거(배경 채움 전용으로 축소).
+- SVG의 **맨 마지막**(슛 마커 `displayShots.map(...)` 렌더 이후)에 테두리 전용
+  `<rect x="1" y="1" width="938" height="498" fill="none" stroke="#334155" strokeWidth="2">`
+  추가 — 페인트존 채움, 히트맵 오버레이, BasketLines, 슛 마커 등 무엇에도 가려지지 않음.
+
+**검증**: `npx tsc --noEmit -p .` — `GameShotChartTab.tsx` 관련 신규 에러 0건.
+
+**주의사항**: 이 컴포넌트는 실제 게임 박스스코어 화면에서도 쓰이므로(3점 컨테스트
+샷차트뿐 아니라 원본 용도), 정상적인 경기 결과 화면에서도 좌우 테두리가 페인트존
+구간에서 끊기던 게 이번에 같이 고쳐짐.
+
+**롤백 방법**: 배경 `<rect>`에 `stroke="#334155" strokeWidth="2"`를 다시 합치고, 맨
+마지막에 추가한 테두리 전용 `<rect>`는 삭제.
+
+---
+
+## 2026-09-09 — 올스타 선정 시 선수 수상 내역에 기록 + 프로필 헤더 ALL-STAR 배지 (신규 기능)
+
+**배경**: 사용자 요청 — "올스타 선정 시에 선수 히스토리 수상 내역에 기록이 되어야하고,
+선수 프로필 화면 헤더에도 ALL STAR 배지가 뜨면 좋겠다." 기존 MVP/DPOY/올-NBA/올-디펜시브는
+`league_player_awards` DB 테이블(migrations/add_league_player_awards.sql)에 영구 저장은
+되지만, 실제로 화면에 보여줄 땐 그 테이블을 읽지 않고 `MultiPlayerDetailView.tsx`가
+`runAwardVoting()`을 매번 클라이언트에서 즉석 재계산해 채우는 방식이었다(DB 저장 파이프라인은
+있지만 클라 소비 파이프라인이 없던 상태). 올스타는 투표/선발 알고리즘 전체를 다시 돌려야
+하고 과거 시즌 로스터·득표 데이터도 안 남아있어 이 "즉석 재계산" 방식 자체가 불가능 — 그래서
+이번엔 반대로 DB에 저장된 값을 클라이언트가 실제로 읽어오는 파이프라인을 새로 만들었다.
+
+**추가 발견**: 헤더 배지가 실제로 렌더되는 코드는 `components/common/PlayerAwardBadges.tsx`가
+아니라 `views/PlayerDetailView.tsx` 내부에 인라인으로 따로 있었다(`PlayerAwardBadges.tsx`는
+어디서도 import되지 않는 죽은 코드였음 — grep으로 확인). 그 컴포넌트에도 일관성 차원에서
+`ALL_STAR` 메타는 추가했지만, 실제 동작에 필요한 수정은 전부 `PlayerDetailView.tsx` 쪽.
+
+**변경 파일**:
+- `migrations/add_season_label_to_league_player_awards.sql`(신규, DB 적용 완료) —
+  `league_player_awards.season text` 컬럼 추가. 기존 컬럼은 `season_number`(정수)뿐이라
+  과거 시즌의 실제 연도 라벨("2026-27" 등)을 역산할 방법이 없었음(`leagues.
+  virtual_season_year`는 "현재" 시즌 기준값이라 시즌이 바뀔 때마다 갱신됨) — insert
+  시점에 계산된 라벨 문자열을 함께 저장해 이 문제를 근본적으로 피함.
+- `types/player.ts`, `server/src/shared/types/player.ts`(미러) — `PlayerAwardType`에
+  `'ALL_STAR'` 추가.
+- `server/src/postAllStarVoteNews.ts`(`computeAndStoreAllStarVotes()`) — 로스터 확정일
+  (`isFinalDay`)에 `runAllStarSelection()` 결과(east/west starters+reserves, 총 24명)를
+  `league_player_awards`에 `award_type='ALL_STAR', rank=0`(올-NBA/올-디펜시브와 동일하게
+  "순위 개념 없음")으로 upsert(`onConflict: room_id,season_number,player_id,award_type,rank`,
+  `ignoreDuplicates:true` — 멱등성). `selection`을 IIFE 바깥 스코프에 클로저로 담아 재사용
+  (재계산 아님).
+- `hooks/usePlayerAllStarAwards.ts`(신규) — `usePlayerCareerHistory.ts`와 동일한 targeted-fetch
+  패턴(`staleTime: Infinity` — 한 번 기록된 올스타 선정 이력은 절대 안 바뀜)으로 이 선수의
+  `league_player_awards`(`award_type='ALL_STAR'`) 행을 조회해 `PlayerAwardEntry[]`로 변환.
+- `views/multi/season/MultiPlayerDetailView.tsx` — `usePlayerAllStarAwards()` 호출 후
+  `playerWithTargetedFields`에 병합(`player.awards` 배열에 append, 기존 client-recompute
+  MVP/DPOY 등과 공존 — `HeaderAwardTrophies`/수상 내역 위젯이 이미 `type+season` 기준
+  중복 제거를 하므로 안전).
+- `views/PlayerDetailView.tsx` — 헤더 트로피 배지(`headerAwardBadges`)의 `bySeasons`/
+  `CATEGORY_META`에 `ALL_STAR`(라벨 `ALL-STAR`, `text-sky-400`) 추가, "수상 내역" 위젯의
+  `BASE_NAME`/`BASE_DETAIL`/`orderMap`에도 각각 추가(`올스타`/`선정`/order 9.5 — 올-디펜시브와
+  ROY 사이).
+- `components/common/PlayerAwardBadges.tsx`(죽은 코드, 일관성 유지 차원) — `AWARD_META`에
+  `ALL_STAR`(이미지 `/logos/real/AS/AllStar.svg`) 추가, `HeaderAwardTrophies`의
+  `headerTypes`에도 추가.
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit -p tsconfig.json`
+(server) — 둘 다 이번 변경 관련 신규 에러 0건. PBL 세션(이미 로스터가 확정돼 있던 실제
+데이터, 2026-27시즌)에 `computeAndStoreAllStarVotes()`를 동일 인자로 재호출(tsx 스크래치
+스크립트, 실행 후 삭제)해 백필 — `league_player_awards`에 `award_type='ALL_STAR'` 24행
+(동/서 각 12명, `season='2026-27'`) 정상 insert 확인.
+
+**주의사항**: `league_player_awards`의 기존 MVP/DPOY/올-NBA/올-디펜시브 행은 여전히
+`season` 컬럼이 비어있다(이번 변경은 ALL_STAR insert에만 `season`을 채움) — 그쪽도 나중에
+DB 읽기로 전환하려면 `postSeasonAwards.ts`의 insert에도 `season` 값을 추가해야 함(이번
+범위 밖).
+
+**롤백 방법**: `PlayerDetailView.tsx`/`MultiPlayerDetailView.tsx`/`PlayerAwardBadges.tsx`의
+`ALL_STAR` 관련 추가분 제거, `hooks/usePlayerAllStarAwards.ts` 삭제,
+`postAllStarVoteNews.ts`의 `league_player_awards` insert 블록 제거,
+`PlayerAwardType`에서 `'ALL_STAR'` 제거(기존 저장된 행은 DB에 남지만 어디서도 안 읽히므로
+무해). 마이그레이션 컬럼(`season`)은 nullable 추가라 되돌리지 않아도 무방.
+
+---
+
+## 2026-09-09 — 덩크 컨테스트 실제 시뮬레이션 + 결과 발송 (신규 기능)
+
+**배경**: 사용자 요청 — "이제 덩크 콘테스트의 시뮬레이션 및 결과 발송 로직을 만들어야해.
+덩크 콘테스트의 포맷은 현실 NBA 포맷과 동일하면 좋겠어." 참가자 선정/발표(`allstar_dunk_
+contest`, `runDunkContestSelection()`)는 이미 구현돼 있었지만(2026-09-08~09), 실제로 몇 점을
+받았는지 채점하는 로직은 없었다(docs/simulation/allstar-game-plan.md §6이 "후속 작업"으로
+남겨둔 부분) — 3점 챌린지(postThreePointContest.ts)와 형제뻘 구조로 신규 구현.
+
+**포맷(사용자 확정 — 실제 NBA 현행 방식)**: 4명이 예선에서 각 2회 시도(저지 5명이 각
+6~10점, 최대 50점/시도 — 실제 NBA 저지 채점 규칙) → 두 시도 합산(최대 100점) → 상위 2명이
+결승에서 다시 2회 새로 시도(예선 점수 이월 안 됨, 결승 점수만으로 우승 결정). 참가 인원(4명)
+·라운드 구조는 이미 `runDunkContestSelection()`/`AllstarDunkContestCard` 서신 본문에
+확정돼 있던 것을 그대로 따름.
+
+**변경 파일**:
+- `server/src/postDunkContest.ts`(신규) — `computeAndRunDunkContest(roomId, leagueId,
+  virtualDate)`. 채점 모델(신규 — 3점 챌린지의 `calculateHitRate`처럼 재사용할 기존 엔진이
+  없어 새로 설계): `judgeBaseline(dunkRating)`이 dunkRating((dunk+vertical)/2)을 [40,99]→
+  저지 1명당 기준점[6,10]으로 선형 매핑 → `simulateDunkAttempt()`가 저지 5명 각각에 독립
+  노이즈(±1.3)를 더해 6~10 사이로 클램프 후 합산(한 시도 최대 50점). 참가자 명단은
+  재계산하지 않고(3점 챌린지와 동일 원칙) `allstar_dunk_contest` 발표 서신에 저장된 4명을
+  그대로 읽어씀. 동점 처리: 총점 내림차순→마지막 시도 점수→playerId 오름차순(3점 챌린지의
+  `rankEntries()`와 동일 패턴). 결과는 `allstar_dunk_contest_result` 타입으로
+  `league_events`에 저장(멱등성: 같은 시즌에 이미 결과 있으면 스킵하는 count 조회).
+- `server/src/scheduler.ts` — `computeAndRunDunkContest` import, `runDunkContestResult()`
+  함수 추가(`runThreePointContestResult()`와 동일 골격 — `allStarDunkContestDate`, 3점
+  챌린지와 같은 날 트리거), `tick()`의 `Promise.allSettled` 배열에 추가.
+- `services/multi/leagueEventPayload.ts` — `DunkAttemptEntry`/`DunkContestRoundEntry`/
+  `AllstarDunkContestResultDetail` 인터페이스, `parseDunkAttempts()`/`parseDunkRoundEntries()`/
+  `parseAllstarDunkContestResultPayload()` 파서, `LeagueEventDetail` 유니언 추가, switch
+  case 추가.
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `allstar_dunk_contest_result` 추가,
+  `STORY_TYPES` 배열에도 추가.
+- `hooks/useAllStarSideEvents.ts` — `dunkContestResult` 필드 추가, 4번째 병렬 쿼리로
+  `allstar_dunk_contest_result` 조회.
+- `views/multi/season/newsFeedCards.tsx` — `extractEventPlayerIds()` case 추가,
+  `HEADLINE_ICON`에 `allstar_dunk_contest_result: Zap` 추가, 신규 `DunkContestResultTable`
+  컴포넌트(`ThreePointContestResultTable`과 동일 구조, 컬럼만 랙 5개→시도 2개), 신규
+  `AllstarDunkContestResultCard`(3점 챌린지 결과 서신과 동일 톤 — 단, 덩크는 코트 좌표
+  개념이 없어 샷차트 없이 예선/결승 순위표 2개만 세로 배치, `docs/simulation/allstar-game-
+  plan.md` §6 "화면" 절의 "라운드별 순위표 정도" 지침 그대로), `StoryCard` 디스패치 case
+  추가.
+- `views/multi/season/MultiAllStarView.tsx` — `DunkContestResultTable` import, 덩크 탭에
+  `sideEvents?.dunkContestResult` 분기 추가(3점 컨테스트 탭의 "결과가 나오면 이 탭 자체가
+  결과 화면" 패턴과 동일 — 참가자 표보다 우선 체크), `listedPlayerIds`에 `dunkContestResult`
+  선수 ID 추가.
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 필터 그룹의 `types` 배열에
+  `allstar_dunk_contest_result` 추가.
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+(server) — 둘 다 이번 변경 관련 신규 에러 0건(서버 쪽 기존 무관 에러 2건은
+`claimAndPrepareRoom`/로터리 코드에 있던 것으로 이번 변경과 무관, 이전 세션에서도 확인된
+사전 존재 이슈).
+
+**주의사항**: 채점 모델은 완전 신규 확률 모델이라(docs/simulation/allstar-game-plan.md §6
+리스크 항목 그대로) 실제 시즌 데이터로 우승 확률 분포를 검증하지 않았음 — 향후 스크래치
+스크립트로 여러 시드 돌려 분포가 그럴듯한지 확인 권장. 저지별 개별 점수(`judgeScores`)는
+payload에 저장은 되지만 현재 UI(`DunkContestResultTable`)는 시도 합계만 노출 — 추후
+"우측 그래픽" 같은 저지별 브레이크다운이 필요해지면 이미 있는 데이터로 바로 만들 수 있음.
+
+**롤백 방법**: `server/src/postDunkContest.ts` 삭제, `scheduler.ts`의 import/
+`runDunkContestResult()`/`Promise.allSettled` 항목 제거, 나머지 파일들의 이번 diff 블록
+되돌림(전부 기존 3점 챌린지 결과 기능과 병렬 추가라 서로 독립적 — 이 기능만 롤백해도 3점
+챌린지 쪽엔 영향 없음).
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트 바깥 테두리가 페인트존 옆에서 끊기는 진짜 원인 해결
+
+**배경**: 사용자가 스크린샷에 빨간 박스로 정확히 지목 — 코트 좌측 테두리 중 페인트존
+높이(y:170~330)만큼만 선이 끊겨 있었다. 지금까지 스트로크 두께/색상만 만졌던 건 전부
+헛짚었던 것 — 진짜 원인은 **그리기 순서(z-order)**: 코트 배경+테두리 `<rect>`를 먼저
+그린 뒤, 바로 다음에 그리는 페인트존 `<rect y="170" width="190" height="160"
+fill="#0f172a">`가 `x` 생략(기본값 0)이라 왼쪽 끝이 정확히 캔버스 테두리와 같은 x=0에서
+시작하는 불투명 사각형이었다 — 이 불투명 사각형이 테두리보다 나중에 그려지면서 테두리의
+왼쪽 변 중 자기 높이(y:170~330)만큼을 그대로 덮어써버린 것. 캔버스 왼쪽 변이 페인트존
+구간에서만 지워져 보인 이유가 바로 이거였다.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 배경 채움(`fill="#020617"`)과 테두리(`stroke`)를 하나의 `<rect>`로 합쳐 그리던 걸 분리:
+  ① 배경 전용 `<rect width="470" height="500" fill="#020617">`(테두리 없음, 맨 처음),
+  ② 페인트존 `<rect>`/`BasketLines`/랙 클러스터들 그대로,
+  ③ 테두리 전용 `<rect x="1" y="1" width="468" height="498" fill="none" stroke="#334155"
+  strokeWidth="2">`을 SVG의 **맨 마지막**에 배치 — 이후 아무것도 그 위에 덧그려지지
+  않으므로 어떤 요소에도 가려지지 않음.
+- 스트로크 두께/색상은 직전 커밋에서 되돌린 원래 값(`#334155`, 2px) 그대로 유지.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**롤백 방법**: 테두리용 `<rect>`를 다시 배경 `<rect>`와 합쳐 맨 앞으로 옮기고
+(`fill="#020617" stroke="#334155" strokeWidth="2"` 한 태그로), 마지막에 추가한 테두리
+전용 `<rect>`는 삭제.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트 바깥 테두리 두께/색상 강화 되돌림
+
+**배경**: 사용자 재지적 — "단순히 스트로크 굵기만 늘린다고 해결되는게 아니야. 스트로크
+굵기는 다시 예전으로 되돌려놔." 직전 두 커밋(3px `#475569` → 4px `#94a3b8`)이 문제의
+본질을 잘못 짚었다는 판단 — 두께/색상 확대는 되돌리고, `viewBox` 클리핑 인셋(x/y=1,
+width/height=468/498)만 유지.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 코트 배경 `<rect>` 스트로크를 `#94a3b8`(4px) → 원래 값 `#334155`(2px)로 되돌림. 인셋은
+  2px 스트로크 기준으로 재조정(`x/y="1" width="468" height="498"` — 클리핑 자체는 여전히
+  고쳐진 상태 유지).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**참고**: 사용자가 이 시점에서 "페인트존 바깥쪽 외곽선"이 정확히 무엇을 가리키는지
+추가로 특정하지 않아, 근본 원인은 아직 미확정 상태 — 다음 지시를 받아 재조사 필요.
+
+**롤백 방법**: 필요 시 `stroke="#94a3b8" strokeWidth="4"`, `x/y="2" width="466" height="496"`로
+재적용(비권장 — 이번에 명시적으로 되돌리라는 요청 받음).
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트 바깥 테두리 재차 강화(직전 대비 강화로도 불충분)
+
+**배경**: 직전 커밋(`#475569`/3px)으로도 사용자가 "아직도 해결 안 됐다"고 재확인 —
+스크린샷상 여전히 라인이 뚜렷하지 않았음. 랙 클러스터 박스(`#334155` 1px 스트로크)는
+또렷하게 보이는데 이건 스트로크 때문이 아니라 `fill="#0f172a"`(박스 배경)이 코트
+배경(`#020617`)보다 밝아 **면 색상 차이**로 경계가 보이는 것 — 반면 코트 바깥 테두리는
+안팎 채움색이 동일(`#020617`)해서 순전히 스트로크 밝기/두께에만 의존하므로 훨씬 더
+과감하게 올려야 확실히 보임.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 코트 배경 `<rect>` 스트로크를 `#475569`(3px) → `#94a3b8`(slate-400, 4px)로 재차 강화.
+  인셋도 4px 스트로크가 `viewBox` 안에 완전히 들어오도록 `x/y="2" width="466" height="496"`로
+  재조정.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**주의사항**: 그래도 안 보인다면 코드 문제가 아니라 브라우저/HMR 캐시일 가능성 — 하드
+리프레시(Cmd+Shift+R) 확인 필요.
+
+**롤백 방법**: `stroke="#94a3b8" strokeWidth="4"`와 인셋 값을 이전 커밋의
+`stroke="#475569" strokeWidth="3"`, `x/y="1.5" width="467" height="497"`로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트 바깥 테두리 대비 강화(클리핑만으론 미해결)
+
+**배경**: 사용자가 직전 클리핑 수정 후에도 "아직도 해결 안 됐는데?"로 재지적. 원인
+재분석 — 클리핑은 실제로 고쳐졌지만(테두리 전체가 `viewBox` 안에 들어옴), 근본
+문제는 대비(contrast) 부족이었다. 페인트존이 또렷해 보이는 이유는 스트로크가 아니라
+`#0f172a`(페인트) vs `#020617`(배경)의 **면 색상 차이**(칠해진 사각형) 때문인데,
+바깥 테두리는 같은 색 배경(#020617) 위에 얇고 어두운 `#334155` **선**(스트로크) 하나뿐이라
+축소 렌더 시 사실상 안 보이는 수준이었다(원본 `GameShotChartTab.tsx`도 동일한 색 조합을
+쓰지만 그쪽은 박스스코어 화면의 다른 요소들 사이에 묻혀 눈에 덜 띄었을 뿐, 근본적으로
+같은 저대비 상태).
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 코트 배경 `<rect>` 스트로크를 `#334155`(strokeWidth 2) → `#475569`(slate-600,
+  strokeWidth 3)로 밝고 두껍게 변경. 인셋도 3px 스트로크가 전부 `viewBox` 안에 들어오도록
+  `x/y=1`→`1.5`, `width/height`도 그에 맞춰 재조정(468/498→467/497).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**롤백 방법**: `stroke="#475569" strokeWidth="3"`와 인셋 값을 이전 커밋의
+`stroke="#334155" strokeWidth="2"`, `x/y="1" width="468" height="498"`로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트 바깥 테두리 클리핑 버그 수정
+
+**배경**: 사용자 질문 — "왜 페인트존 바깥쪽에는 외곽선이 보이지 않지?" 원인은 SVG
+`<rect>`의 기본 stroke 정렬이 "중앙"이라, `viewBox="0 0 470 500"`와 정확히 같은 크기로
+그린 코트 배경 사각형(`<rect width="470" height="500" stroke="#334155" strokeWidth="2">`)의
+2px 테두리 중 절반(1px)이 `viewBox` 밖으로 나가 SVG 뷰포트에 의해 잘려나갔던 것 — 페인트존
+안쪽 라인(`BasketLines`가 그리는 자유투 레인/서클 등)은 전부 좌표가 `viewBox` 내부에 완전히
+들어있어 잘리지 않고 정상적으로 보였던 것과 대비됨.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 코트 배경 `<rect>`를 `width="470" height="500"`(원점 0,0)에서
+  `x="1" y="1" width="468" height="498"`로 인셋 — 2px 테두리가 전부 `viewBox` 안쪽에
+  들어오도록 사각형 자체를 1px씩 축소.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**롤백 방법**: `x`/`y`/`width`/`height`를 `width="470" height="500"`(x/y 생략, 즉 0)으로
+되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 결과 서신: 샷차트/테이블을 좌우 2단에서 수직 배치로 전환
+
+**배경**: 사용자 요청 — "3점 컨테스트 결과 서신에서는 샷차트와 테이블이 수직으로
+배치되도록 해줘." 직전 커밋에서 좌우 2단(`grid-cols-[2fr_3fr]`)으로 만들었던 걸 결과
+서신(`AllstarThreePointContestResultCard`)에서만 되돌림 — 올스타 화면 3점 컨테스트 탭
+(`MultiAllStarView.tsx`)의 2단 레이아웃은 그대로 유지(이번 요청은 "결과 서신"만 지목).
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`AllstarThreePointContestResultCard`)
+- 샷차트+순위표 래퍼를 `grid grid-cols-[2fr_3fr] gap-6` → `space-y-6`로 교체(샷차트 →
+  결선 표 → 예선 표 순으로 세로 스택, 내부 자식 구조는 변경 없음).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 0건.
+
+**참고**: 이 카드는 `max-w-5xl` 고정폭이라 수직 배치 시 9컬럼 순위표가 카드 전체 폭을
+그대로 쓸 수 있어(기존 2단에서 3fr만 쓰던 것보다) 가로 스크롤 발생 가능성이 오히려
+줄어든다.
+
+**롤백 방법**: `space-y-6`를 `grid grid-cols-[2fr_3fr] gap-6`로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 결과 화면: 샷차트/테이블 그리드 비율 조정(2:3)
+
+**배경**: 사용자 요청 — "샷차트 좌우로 남는 공간만큼 샷차트 영역의 크기를 줄여주고 그만큼
+우측의 테이블 너비를 넓혀줘." 샷차트는 `viewBox="0 0 470 500"`로 하프코트 전체를
+렌더하는데, 아치 바깥쪽(x≈330~470, 하프코트 라인까지)은 원래도 빈 공간이라 좌우 균등
+분할(`grid-cols-2`, 50:50)로 배정된 폭을 다 못 쓰고 남는다 — 그만큼 우측 순위표
+(9컬럼, 좁으면 가로 스크롤 발생) 쪽으로 폭을 넘겨줌.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx`(`AllstarThreePointContestResultCard`) — 결과
+  서신의 샷차트+순위표 래퍼 `grid grid-cols-2 gap-6` → `grid grid-cols-[2fr_3fr] gap-6`.
+- `views/multi/season/MultiAllStarView.tsx`(3점 컨테스트 탭 결과 화면) — 동일하게
+  `grid-cols-2` → `grid-cols-[2fr_3fr]`.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 모두 신규 에러 0건.
+
+**주의사항**: 샷차트 컨테이너 자체는 여전히 `max-w-[400px] mx-auto`로 상한이 걸려있어,
+2fr 컬럼이 400px보다 넓으면 그 안에서 가운데 정렬되고, 400px보다 좁으면 컬럼 폭에 맞춰
+자동으로 더 줄어든다(추가 코드 변경 없이 그리드 비율 조정만으로 자연스럽게 대응됨).
+
+**롤백 방법**: 두 파일의 `grid-cols-[2fr_3fr]`를 `grid-cols-2`로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 45도/중앙 위치 우측 이동 + 텍스트·볼 아이콘 확대
+
+**배경**: 사용자 요청 3건 — "45도 클러스터, 중앙 클러스터는 더 우측으로 옮겨. 클러스터 내
+텍스트 사이즈 text-sm으로 키워. 그리고 원 사이즈도 더 키워." 텍스트는 이미 `text-sm`
+클래스였지만, SVG가 `viewBox`(470유닛)를 최대 400px로 축소 렌더하는 배율(~0.85) 때문에
+실측 크기가 사이드바의 진짜 text-sm(14px)보다 작게 보였던 것 — 그래서 한 단계 위인
+`text-base`(16px, 배율 적용 시 ≈13.6px 실측)로 올려 체감 크기를 맞춤.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `RACK_POSITIONS`: 45도 윙 `[210,110]/[210,390]` → `[230,110]/[230,390]`, 중앙(탑)
+  `[300,250]` → `[330,250]`로 우측 이동(코너 좌표 `[75,38]/[75,462]`는 그대로).
+- `ThreePointBallIcon`: 반지름 6.5 → 8, stroke폭도 비례 확대(성공 1.25→1.5, 실패 2→2.5).
+- `RackShotCluster`: 라벨/점수 텍스트 `text-sm` → `text-base`. 볼 아이콘이 커진 만큼 5구
+  간격도 15 → 19유닛으로 확대(겹침 방지), 텍스트/볼 y좌표도 소폭 조정(-10→-12, 12→16).
+- `CLUSTER_BOX_H`: 52 → 60(커진 텍스트+볼 아이콘을 여유 있게 담도록). `CLUSTER_BOX_W`(140)는
+  변경 없음 — 우측 이동으로 확보된 여유 공간이 커진 콘텐츠를 상쇄.
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건. 좌표 재계산으로
+코너-윙-중앙 3쌍 모두 AABB 겹침 재확인(전부 비겹침, 코너-윙은 x축 거리 155>박스폭합
+140로 오히려 이전보다 더 안전해짐).
+
+**롤백 방법**: `RACK_POSITIONS`를 `[75,38]/[210,110]/[300,250]/[210,390]/[75,462]`로,
+`CLUSTER_BOX_H`를 52로, `ThreePointBallIcon`의 `r`을 6.5로, 볼 간격을 15로, 텍스트
+클래스를 `text-sm`으로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코너 위치 좌표 해석 정정 + 라벨/점수 겹침 버그 수정
+
+**배경**: 사용자가 스크린샷과 함께 재지적 — "아직도 위치가 맞지 않는데, 코너 클러스터를
+더 좌측으로 옮겨." 직전 커밋에서 `(140,30)`을 "코너 좌표"로 잘못 해석했었다 — 이 좌표는
+실제로 `h140` 직선 구간(코너 3점 라인 자체, 베이스라인~14ft)의 "끝점"(아치가 시작되는
+지점, 즉 45도 윙에 더 가까움)이지 코너 슈팅 스팟이 아니다. 실제 코너 스팟은 그 직선의
+베이스라인쪽 끝(x≈0)에 훨씬 가깝다. 스크린샷에서 "좌측 45도2점"처럼 라벨과 점수 텍스트가
+붙어 겹치는 버그도 함께 발견해 같이 수정.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `RACK_POSITIONS` 코너 좌표를 `[135,42]/[135,458]` → `[75,38]/[75,462]`로 베이스라인
+  쪽으로 재차 이동(박스 폭 절반(70)만큼만 여유를 두고 `viewBox` 좌측 경계 밖으로 잘리지
+  않는 한도까지 당김 — 왼쪽 여백 5유닛). 45도 윙 좌표는 `[205,110]/[205,390]` →
+  `[210,110]/[210,390]`으로 소폭만 조정(코너와의 겹침 방지 여유 확보).
+- `CLUSTER_BOX_W`를 96 → 140으로 확대 — "좌측 45도" 같은 4~5글자 라벨이 `text-sm`
+  폰트에서 우측 점수 텍스트와 겹치던 버그 수정(라벨 폭 추정 ~73유닛 + 점수 폭 ~33유닛이
+  기존 96폭 박스에 안 들어갔음).
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건. 좌표 재계산으로
+코너-윙 박스 간 겹침(AABB) 재확인 — x축 거리 135 < 박스폭 합 140(겹침 후보)이지만 y축
+거리 72 > 박스높이 합 52라 실제 겹침 없음.
+
+**주의사항**: 코너 박스가 `viewBox` 좌측 경계(x=0)에 매우 가깝게 붙어(좌측 여백 5유닛)
+카드 폭이 더 좁아지는 반응형 상황에서는 박스 일부가 살짝 잘릴 여지가 있음 — 현재
+`max-w-[400px]` 고정폭 기준으로는 문제 없음 확인.
+
+**롤백 방법**: `RACK_POSITIONS`를 `[135,42]/[205,110]/[300,250]/[205,390]/[135,458]`로,
+`CLUSTER_BOX_W`를 96으로 되돌림.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 폰트/우승자 표시/랙 위치·레이아웃/성공-실패 색상 정리
+
+**배경**: 사용자 요청 5건 — "샷차트 내부에 있는 모든 텍스트 폰트 text-sm으로 키워줘. 우승자
+이름 좌측의 트로피 아이콘은 삭제. 우승자는 노란색 배경색으로 표시해줘. 코너 랙 클러스터와
+45도 랙 클러스터의 위치가 정확하지 않다. 그리고 클러스터 내 점수는 존 이름 우측으로 옮겨줘.
+그리고 실패한 샷은 빨간색 외곽선으로, 성공한 샷은 초록색 원으로, 마지막 공도 똑같이
+표현해줘."
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`,
+`RackShotCluster`, `ThreePointBallIcon`)
+- 결선/예선 토글 버튼·좌측 선수 리스트(이름/점수)·"랙별 샷 데이터 없음" 안내 문구 — 전부
+  `text-xs` → `text-sm`.
+- 선수 리스트 항목: 우승자 왼쪽의 `<Trophy>` 아이콘 제거, 대신 우승자 행 자체를
+  `bg-amber-400 text-slate-950`로 표시(선택 중인 항목과 구분하려고 우승자+선택 동시일 땐
+  `ring-2 ring-white` 추가). 우승자가 아닌 선택 항목은 기존 `bg-indigo-500/20` 유지.
+- `ThreePointBallIcon`: `isMoneyball` prop 제거 — 성공=초록 원(`fill=#22c55e`), 실패=빨간
+  외곽선 원(`fill=none stroke=#ef4444 strokeWidth=2`)으로 통일(머니볼도 동일하게 표시).
+- `RackShotCluster`: 점수 텍스트를 박스 하단 중앙에서 상단 행 우측(존 이름과 같은 줄,
+  `textAnchor="end"`)으로 이동, 존 이름은 `textAnchor="start"`로 좌측 정렬. 박스 크기를
+  92×64 → 96×52로 재조정(2행 레이아웃으로 줄어든 높이에 맞춤).
+- `RACK_POSITIONS`: BasketLines 3점 아치 path(`M0,30h140s150,55,150,220-150,220,-150,220H0`)를
+  3차 베지어 공식으로 직접 풀어 정확한 좌표를 구함 — 코너=(140,30)/(140,470)(직선 구간
+  h140의 끝점), 45도 윙=(215,78)/(215,422)(첫 번째 S 곡선 구간의 t=0.5), 탑=(290,250)(첫
+  S 구간의 끝점=정점). 코너·윙 클러스터를 이 정확한 좌표에 최대한 가깝게 재배치
+  (`[100,50]/[190,110]/[300,250]/[190,390]/[100,450]` → `[135,42]/[205,110]/[300,250]/
+  [205,390]/[135,458]`) — x축은 실제 각도 그대로 두고, 96×52 박스끼리 겹치지 않도록 y축만
+  살짝 밀어냄(코너-윙 박스 간 y거리 68 > 박스 높이 합 52, 안 겹침 확인).
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건. `isMoneyball`
+참조 잔존 여부 grep으로 재확인(0건).
+
+**주의사항**: 박스를 정확한 아치 좌표에 최대한 가깝게 당겼지만 물리적으로 코너-윙 간
+실제 거리(약 89유닛)가 박스 폭(96)보다 좁아 x축까지 정확한 좌표로 맞추면 겹침 —
+y축으로만 분산시켜 겹침을 피했으므로 x축은 기하학적으로 정확하나 y축은 근사값.
+
+**롤백 방법**: `RACK_POSITIONS`를 `[100,50]/[190,110]/[300,250]/[190,390]/[100,450]`로,
+`CLUSTER_BOX_W/H`를 92/64로, `RackShotCluster`의 텍스트 배치(점수를 하단 중앙으로)와
+`ThreePointBallIcon`의 `isMoneyball` 분기(주황/금색 배색)를 되돌리고, 선수 리스트의
+`text-sm`→`text-xs`, 우승자 배경(`bg-amber-400`)을 다시 `Trophy` 아이콘으로 교체.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 크기 축소 + 존별 그래픽 박스화 + 코너 위치 보정
+
+**배경**: 사용자 요청 3건 — "샷차트 사이즈를 조금 줄여줘. 샷차트 내 구역별 그래픽을 박스로
+묶어줘. 그리고 코너쪽 그래픽을 약간 더 코너쪽으로 옮겨줘."
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- 샷차트 컨테이너에 `max-w-[400px] mx-auto` 추가(기존엔 `w-full`로 좌측 컬럼을 제외한
+  남은 폭을 전부 채웠음) — 카드 폭이 넓어도 샷차트가 과도하게 커지지 않게 상한을 둠.
+- `RackShotCluster`에 배경 `<rect>`(92×64, `rx=8`, `fill=#0f172a/85%`,
+  `stroke=#334155`) 추가해 존 이름+볼 아이콘+합계를 하나의 박스로 시각적으로 묶음
+  (`CLUSTER_BOX_W`/`CLUSTER_BOX_H` 상수). 박스에 맞춰 라벨/볼/점수 y좌표 미세 조정
+  (label y: -18→-16, ball y: 0→2).
+- `RACK_POSITIONS`의 코너 두 랙 좌표를 `[100,50]`/`[100,450]` → `[120,40]`/`[120,460]`로
+  변경 — 실제 코너 지점(140,30)/(140,470) 쪽으로 더 당김(중앙 3개 랙 좌표는 변경 없음).
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건.
+
+**주의사항**: 코너 박스(폭 92)가 코트 왼쪽 경계(x=0)에 더 가까워졌지만 좌측 여백(74)이 아직
+충분해 `viewBox="0 0 470 500"` 밖으로 잘리지 않음(박스 좌측 끝 x=120-46=74).
+
+**롤백 방법**: `RACK_POSITIONS` 코너 좌표를 `[100,50]`/`[100,450]`으로 되돌리고,
+`RackShotCluster`의 `<rect>` 블록 삭제 + label/ball y좌표를 -18/0으로 복원, 컨테이너
+클래스에서 `max-w-[400px] mx-auto` 제거.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 결선/예선 셀렉터를 좌측 선수 리스트 위로 편입
+
+**배경**: 사용자 요청 — "샷차트 결선/예선 선택 셀렉터를 샷차트 좌측의 리스트 위로 편입시켜줘."
+기존엔 결선/예선 토글 버튼이 카드 전체 상단(좌/우 2단 레이아웃 바깥)에 별도로 떠 있어서
+좌측 선수 리스트와 시각적으로 분리돼 있었다.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`(`ThreePointContestShotChart`)
+- 결선/예선 토글 버튼 그룹을 좌/우 2단 `flex` 래퍼 바깥에서 좌측 `w-40 shrink-0` 컬럼
+  내부(선수 리스트 바로 위)로 이동. 좌측 컬럼에 `space-y-2` 추가해 토글-리스트 간 간격 확보.
+- 바깥을 감싸던 `space-y-2` 래퍼 `<div>` 제거(2단 `flex` 컨테이너 하나만 남음), 그에 맞춰
+  전체 들여쓰기 재정렬.
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건.
+
+**롤백 방법**: 토글 버튼 블록을 다시 `flex gap-4` 컨테이너 바깥, 최상위 `space-y-2` 래퍼
+안으로 이동.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: X/O 실제 좌표 + 우측 오버레이 되돌리고 랙 그래픽을 코트 위로 복귀
+
+**배경**: 사용자 요청 — "X,O 마크 다시 제거하고 랙별 성공/실패 그래픽 다시 되돌려줘. 그리고
+랙1,랙2가 아니라 존별 이름 적용해줘. 샷차트 우측 그래픽 폰트 text-sm 적용해줘." 바로 직전
+커밋("코트엔 실제 샷 좌표, 랙 그래픽은 우측 상단 오버레이로 분리")이 과했다는 피드백 — 실제
+샷 좌표 마커(X/O)와 별도 오버레이 패널로 쪼갠 것을 취소하고, 랙 위치에 볼 아이콘 무리를 직접
+그리는 이전 방식으로 복귀하되 라벨은 "랙1"이 아니라 존 이름으로 표기.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `ShotMarker`(X/O 실제 좌표 마커) 컴포넌트 및 `SHOT_JITTER` 상수 제거.
+- `ShotChartOverlayPanel`(우측 상단 absolute 오버레이 패널) 컴포넌트 제거 — "랙1"~"랙5" 축약
+  라벨도 이와 함께 사라짐.
+- `RACK_LABELS` 상수(`['좌측 코너','좌측 45도','중앙','우측 45도','우측 코너']`) 복원.
+- 신규 `RackShotCluster` 컴포넌트 — 코트 위 각 랙 위치(`RACK_POSITIONS`)에 직접
+  존 이름(`text-sm`) → 5구 볼 아이콘 무리 → 랙 합계(`text-sm`)를 세로로 그린다(이전
+  오버레이 패널의 `text-[9px]`/`text-[10px]` 축약 폰트 대신 `text-sm`로 확대).
+- `ThreePointContestShotChart`의 SVG 렌더 블록에서 `RACK_POSITIONS.map` 안의
+  `ShotMarker`+`SHOT_JITTER` 루프와 `<ShotChartOverlayPanel/>` 호출을
+  `<RackShotCluster label={RACK_LABELS[rackIdx]} .../>` 단일 렌더로 교체.
+
+**검증**: `npx tsc --noEmit -p .` — `newsFeedCards.tsx` 관련 신규 에러 0건(기존 무관 에러만
+남음, 이 파일 수정 전부터 있던 것).
+
+**주의사항**: SVG `<text>`에 Tailwind `text-sm`을 직접 걸었다 — `viewBox`가 CSS로
+스케일되는 SVG 특성상 컨테이너 폭이 매우 좁아지면(모바일 등) 텍스트 크기가 좌표계 대비
+상대적으로 커 보일 수 있음(기존 오버레이 패널도 동일한 방식의 arbitrary px 클래스를 썼던
+전례라 새로운 이슈는 아님).
+
+**롤백 방법**: `RackShotCluster`/`RACK_LABELS`를 지우고, 위 "코트엔 실제 샷 좌표, 랙
+그래픽은 우측 상단 오버레이로 분리" 항목의 After 내용(`ShotMarker`+`SHOT_JITTER`+
+`ShotChartOverlayPanel`)으로 복원.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트: 코트엔 실제 샷 좌표, 랙 그래픽은 우측 상단 오버레이로 분리
+
+**배경**: 사용자 요청 — "랙별 성공/실패 그래픽을 현재 샷차트 위의 진짜 위치에 위치시켰는데
+샷차트에는 실패, 성공의 실제 샷 좌표를 표시하고, 샷차트 우측 상단에 첨부 이미지와 같은
+그래픽으로 랙별 성공/실패 표시해줘." 참고 이미지(Curry/Klay 실제 NBA 중계 그래픽)는 코트
+위가 아니라 코트 옆(영상 위 오버레이)에 "RACK 1~5 + 볼 아이콘 + 합계" 패널을 띄우는 방식.
+직전 구현은 랙 5개 위치에 볼 아이콘 무리를 직접 코트 위에 그렸는데, 이건 "실제 샷 좌표"가
+아니라 랙 위치에 고정된 장식용 배치였다.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- 코트 위 표시를 랙 위치의 "볼 아이콘 무리"에서 **실제 샷 마커**(성공=채워진 원, 실패=X자 —
+  `GameShotChartTab.tsx`/`MultiFullCourtChart.tsx`와 동일한 시각언어)로 교체. 신규
+  `ShotMarker` 컴포넌트.
+- 한 랙의 5구는 전부 같은 지점에서 던지므로 좌표가 정확히 겹치면 점 하나로만 보인다 —
+  랙 중심 주변에 작은 고정 오프셋 5개(`SHOT_JITTER`, 부채꼴 분산)를 줘서 5개 점이 뭉치지
+  않고 살짝 흩어지게 함(실제 슛차트의 "같은 자리 다회 시도" 표현 관례).
+  - 신규 `ShotChartOverlayPanel` — 코트 컨테이너 우측 상단에 `absolute` 오버레이로 참고
+  이미지와 동일한 구성(헤더 "3점 챌린지 샷차트" → 선수명+합계(노란 배지) → 랙1~5(볼
+  아이콘+점수) → 라운드 라벨) 배치. 랙 라벨은 패널이 좁아 "좌측 코너" 같은 긴 이름 대신
+  "랙1"~"랙5"로 축약(테이블 컬럼 헤더는 그대로 유지, 이 패널만 축약형).
+- 더 이상 안 쓰는 `RACK_LABELS` 상수 제거(코트 위 텍스트 라벨 렌더링 자체를 없앴으므로).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: `ShotMarker`/`ShotChartOverlayPanel`/`SHOT_JITTER` 제거하고, 이전 커밋의 랙
+위치 볼 아이콘 무리 렌더링 블록으로 복원.
+
+---
+
+## 2026-09-09 — 3점 컨테스트 샷차트 코트를 실제 "경기 결과" 샷차트 탭과 동일하게 교체
+
+**배경**: 사용자 지적 — "샷차트 디자인 저게 아니고 경기 결과 화면에 사용되는 샷차트 이미지를
+갖고 올 수 있나?" 직전 구현이 `CourtPreview.tsx`(나무색 코트, `MultiFullCourtChart.tsx`가
+라이브 화면 중앙 패널에서 쓰는 것)를 가져왔는데, 실제 "경기 결과" 화면의 "샷차트" 탭
+(`MultiGamePbpView.tsx` → `components/game/tabs/GameShotChartTab.tsx`)은 이것과 전혀 다른
+어두운 톤 코트(#020617 배경 + #0f172a 페인트존 + 흰색 라인, `CourtPreview`는 나무색 배경 +
+주황색 림 서클)를 쓰고 있었다 — 같은 앱 안에 시각적으로 다른 코트 컴포넌트 2벌이 있었던 것.
+
+**변경 파일**:
+- `components/game/tabs/GameShotChartTab.tsx` — 로컬 `BasketLines` 상수에 `export` 추가(로직
+  변경 없음, 재사용을 위해 노출만).
+- `views/multi/season/newsFeedCards.tsx` — `CourtPreview` import를 `GameShotChartTab.tsx`의
+  `BasketLines`로 교체, 배경(`rect #020617` + 테두리 `#334155`)/페인트존(`rect #0f172a`)도
+  `GameShotChartTab.tsx`가 그리는 것과 동일하게 인라인으로 다시 작성(그쪽도 컴포넌트로 안 뽑혀
+  있어서 코트 배경 2줄만 그대로 복붙 — `BasketLines` 자체는 여전히 새로 작성 안 하고 재사용).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: import를 다시 `CourtPreview`로 되돌리고 `<ShotChartBasketLines/>` 자리를
+`<CourtPreview background="#DDC8AD" paint="#C3AC91" line="#4A3728" />`로 교체.
+`GameShotChartTab.tsx`의 `export`는 남겨둬도 무방(다른 코드에 영향 없음).
+
+---
+
+## 2026-09-09 — 3점 컨테스트 결과 화면 2단 레이아웃(좌: 샷차트, 우: 순위표)
+
+**배경**: 사용자 요청 — "3점 컨테스트 화면을 좌우 두개의 단으로 나누고 좌측에는 샷차트,
+우측에는 테이블을 배치하자." 기존엔 샷차트 → 결선 표 → 예선 표가 세로로 쌓여 있었다.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx`(`AllstarThreePointContestResultCard`),
+  `views/multi/season/MultiAllStarView.tsx`(3점 컨테스트 탭) — 둘 다 동일하게
+  `grid grid-cols-2 gap-6` 래퍼 추가: 왼쪽 열에 `ThreePointContestShotChart`, 오른쪽 열에
+  결선/예선 `ThreePointContestResultTable` 2개를 세로로 스택.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**주의사항**: 결과 서신 카드는 `max-w-5xl`로 폭이 고정돼 있어, 9개 컬럼짜리 순위표가 그
+절반 폭에 들어가면 `overflow-x-auto`로 가로 스크롤이 생길 수 있다(다른 카드들과 폭 일관성을
+유지하려고 이번엔 카드 자체를 넓히지 않음 — 좁아 보이면 후속으로 조정 가능). 올스타 화면
+탭 쪽은 페이지 폭 제한이 없어 이 문제가 없다.
+
+**롤백 방법**: 두 파일의 `grid grid-cols-2 gap-6` 래퍼 div만 제거하고 세 섹션을 다시
+형제 요소로 풀면 됨.
+
+---
+
+## 2026-09-09 — 버그 수정: 올스타 화면이 3점 컨테스트 결과 갱신을 반영 못 함(새로고침해도)
+
+**배경**: 사용자 리포트 — "올스타 화면에서는 새로고침해도 나오지 않아" (3점 챌린지 결과를
+새로 시뮬레이션했는데도 올스타 화면엔 옛날 데이터/빈 데이터가 계속 보임).
+
+**원인**: `index.tsx`의 QueryClient 전역 기본값이 `staleTime: Infinity` +
+`persistQueryClient`(로컬스토리지 영속 캐시) — "클라이언트가 source of truth, 서버 부하
+줄이기 위해 자동 재조회 안 함" 설계라, 브라우저 새로고침(페이지 리로드)도 네트워크 재조회가
+아니라 로컬스토리지에 저장된 옛 쿼리 결과를 그대로 복원한다. `useAllStarSideEvents`
+(3점/덩크 컨테스트 참가자+결과)는 이 캐시를 강제로 무효화하는 장치가 없어서, 이 화면을
+과거에(3점 컨테스트 결과가 생기기 전에) 한 번이라도 열어봤으면 "결과 없음" 응답이 영구
+고정돼 있었다. 같은 파일에 이미 `allStarVotes` 쿼리용으로 동일한 문제를 해결한 선례
+(화면 진입 시 `queryClient.invalidateQueries()` 1회 호출)가 있었는데 `allStarSideEvents`
+쿼리는 그 무효화 목록에서 빠져 있었다.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — 기존 `useEffect`(화면 진입 시 `allStarVotes`
+  쿼리 무효화)에 `queryClient.invalidateQueries({ queryKey: ['allStarSideEvents', room.id] })`
+  추가 — `hooks/useAllStarSideEvents.ts`가 쓰는 쿼리 키와 정확히 일치.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건. 뉴스피드 쪽 결과 서신 카드는 이미
+`useLeagueHeadlines.ts`의 realtime 구독(league_events INSERT 시 자동 무효화)이 있어 이 버그의
+영향을 받지 않았다 — 이번 수정은 `useAllStarSideEvents` 전용 갭만 메움.
+
+**롤백 방법**: 추가한 `queryClient.invalidateQueries({ queryKey: ['allStarSideEvents', room.id] })`
+한 줄만 제거.
+
+---
+
+## 2026-09-09 — 3점 챌린지 결과에 샷차트 그래픽 추가
+
+**배경**: 사용자 요청 — 실제 NBA 중계 그래픽(선수 이름 옆에 랙별 5구를 농구공 아이콘으로
+표시)을 참고 이미지로 첨부하며 "좌측에서 선수 이름을 선택하면 각 영역별 성공/실패가
+농구공 그래픽으로 나오는" 화면을 요청, "샷차트는 박스스코어 화면에 사용되는 샷차트의
+좌측 코트만 사용"하라고 명시. 기존엔 랙 합계 점수만 저장(`rackScores`)해서 개별 5구
+결과를 표시할 방법이 없었다.
+
+**데이터 모델 확장 — 랙 합계뿐 아니라 개별 샷 결과도 저장**:
+- `server/src/postThreePointContest.ts` — `simulateRack()`이 이제 `{score, shots: boolean[]}`를
+  반환(기존엔 `score`만). `RoundEntry`에 `rackShots: boolean[][]` 추가, `league_events` payload에
+  포함.
+- `services/multi/leagueEventPayload.ts` — `ThreePointContestRoundEntry.rackShots?: boolean[][]`
+  추가(optional — 이 필드 이전에 저장된 이벤트는 없을 수 있음), 파서에 파싱 로직 추가.
+
+**코트 재사용 — 새로 그리지 않고 기존 박스스코어 샷차트를 크롭**:
+`views/multi/season/MultiFullCourtChart.tsx`(박스스코어 화면 샷차트)가 쓰는
+`components/multi/CourtPreview.tsx`(`viewBox 0 0 940 500`, 좌우 바스켓 2개 + 하프코트 라인)를
+그대로 가져와 `viewBox`만 `0 0 470 500`(정확히 절반, 하프코트 라인 x=470이 오른쪽 경계)로
+잘랐다 — 우측 바스켓은 렌더 범위 밖으로 자연히 사라짐. 코트 드로잉 코드는 한 줄도 새로
+작성하지 않음(사용자 지시 그대로).
+
+**5랙 좌표**: `CourtPreview.tsx`의 3점 아치 SVG path(`M0,30h140s150,55,150,220...`)를 직접
+분석해 코너(140,30)/(140,470)와 정점(290,250) 사이를 3차 베지어로 근사한 좌표 사용. 이
+가로형 코트에서는 "좌측/우측 코너"가 화면상 실제로는 상/하단에 위치하지만(코트가 옆으로
+누워있어서), `ThreePointContestResultTable` 컬럼 헤더와 동일한 라벨(threeSubZone 데이터 키
+기준)을 그대로 재사용해 표와 차트의 명명을 통일했다.
+
+**변경 파일**:
+- `server/src/postThreePointContest.ts` — 위 데이터 모델 확장.
+- `services/multi/leagueEventPayload.ts` — 위 타입/파서 확장.
+- `views/multi/season/newsFeedCards.tsx`:
+  - `ThreePointContestShotChart`(신규, export) — 좌측 선수 목록(예선/결선 토글 포함, 우승자
+    트로피 아이콘) + 우측 하프코트 SVG. 5랙 위치마다 랙 합계 숫자 + 라벨 + 5개 농구공
+    아이콘(주황 채움=성공, 회색=실패, 마지막 볼(머니볼)은 금색 테두리로 구분).
+  - `AllstarThreePointContestResultCard`(결과 서신)에 샷차트 섹션 추가(순위표들 위, 본문
+    바로 아래).
+- `views/multi/season/MultiAllStarView.tsx` — 3점 컨테스트 탭의 결과 화면에도 동일하게 샷차트
+  섹션 추가(사용자 요청 — "결과 서신 및 올스타 > 3점 컨테스트 탭에 동시 적용"과 동일한
+  이번 요청의 연장).
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+(server) 신규 에러 0건. PBL 룸 재시뮬레이션 후 DB 직접 조회로 `rackShots`가 `rackScores`와
+정합됨을 수치로 확인(예: `[F,F,T,F,T]`→1점+2점머니볼=3점, 저장된 `rackScores`도 3 — 5랙
+전부 일치).
+
+**주의사항 / 한계**: 5랙 좌표는 정확한 실측이 아니라 SVG path 베지어 근사치 — 시각적으로
+합리적인 위치일 뿐 코트 실측 좌표는 아니다. 가로형 코트를 그대로 썼기 때문에(사용자가
+회전 없이 재사용하라고 명시) "좌측/우측 코너"라는 라벨이 실제 화면상으로는 상/하단에
+나타난다(회전된 세로 코트를 썼다면 이름 그대로 좌우에 나타났겠지만, 그건 이번 요청 범위
+밖 — AllStarHalfCourt.tsx처럼 별도 회전 컴포넌트를 새로 만드는 것에 해당).
+
+**롤백 방법**: `ThreePointContestShotChart`/`ThreePointBallIcon`/`RACK_LABELS`/
+`RACK_POSITIONS` 제거, 두 카드(`AllstarThreePointContestResultCard`/`MultiAllStarView.tsx`)의
+샷차트 섹션 호출 제거, `rackShots` 필드는 남겨둬도 무방(옵셔널이라 다른 코드에 영향 없음).
+
+---
+
+## 2026-09-09 — 3점 챌린지 실제 슈팅 시뮬레이션 + 결과 화면/서신
+
+**배경**: 사용자 요청 — "3점 챌린지 시뮬레이션은 어떤 방식으로 하는게 좋을까" 논의 끝에
+"올스타 화면의 3점 컨테스트 탭을 결과 화면으로 쓰고, 서신으로도 결과를 발송해주면 될거같네.
+우선은 8명이 25구(5랙x5개, 마지막 볼 2점) 쏘는것을 기본 포맷으로 하고 PBP엔진에서
+사용하는 3점 성공 공식을 사용하는게 좋겠어"로 확정. 지금까지 참가자 8명 선정+발표까지만
+있었고(runThreePointContestSelection()) 실제로 몇 개를 넣었는지 시뮬레이션한 적은 없었다.
+
+**핵심 설계 — calculateHitRate()를 "수비수 없는" 상태로 통과시켜 재사용**:
+`server/src/shared/engine/pbp/flowEngine.ts`의 `calculateHitRate()`(실제 경기 3점슛 성공
+판정에 쓰이는 바로 그 함수)를 그대로 호출한다. 두 가지 선택지를 검토:
+- `isBotchedSwitch=true` 지름길(수비수 완전 무시, `min(0.82, base+0.20+(rating-70)*0.001)`)
+  — 계산은 간단하지만 rating 차이가 ±3%p 수준으로 뭉개져서 컨테스트처럼 "누가 더 잘 넣는지"를
+  가려야 하는 상황엔 부적합.
+- **채택**: `isBotchedSwitch=false`(일반 경로) + 능력치를 0/중립으로 채운 "가상 수비수"를
+  넘겨 defMod=0·매치업갭=0·수비강도보정=0이 되도록 무력화 — 이러면 THREE_OFF_CURVE(25점→
+  -23%p, 70점→-1%p, 99점→+14%p, constants.ts)라는 실제 비선형 커브가 그대로 살아남아
+  슈터 간 실력 차이가 제대로 반영된다. shotIq/offConsist 기반 매 슛 노이즈(Math.random())도
+  그대로 살아있어 회차마다 다른 결과가 나옴.
+- 랙 순서(왼쪽 코너→왼쪽 45도 윙→탑→오른쪽 45도 윙→오른쪽 코너)는 ShotZones 3분류
+  (zone_c3=코너/zone_atb3_l·r=윙/zone_atb3_c=탑)를 그대로 재사용 — calculateHitRate()가
+  threeSubZone 문자열로 zoneOffRating(threeCorner/three45/threeTop)을 자동 선택.
+
+**변경 파일**:
+- `server/src/shared/engine/pbp/flowEngine.ts` — 변경 없음(이미 export돼 있어 그대로 재사용).
+- `server/src/postThreePointContest.ts` (신규) — `computeAndRunThreePointContest(roomId,
+  leagueId, virtualDate)`:
+  - `league_events`의 `allstar_three_point_contest`(참가자 발표, 이 시즌 유일 행)에서
+    8명을 그대로 읽음(재계산 금지 — postAllStarGame.ts와 동일 원칙)
+  - `meta_players`에서 8명 능력치 조회 → `mapRawPlayerToRuntimePlayer(raw, false)`(선정
+    단계와 동일하게 custom_overrides 미적용)
+  - 예선(8명, 5랙×5구) → 상위 3명 결선(같은 포맷 재시뮬레이션) → 우승자 확정
+  - 동점 처리: 합계 내림차순 → 마지막 랙 점수 내림차순 → playerId 오름차순(완전 결정론적,
+    실제 슛오프 서브시스템은 범위 밖)
+  - 멱등성: `league_events`에 이 시즌 결과가 이미 있으면 스킵(count 조회, games PK 락과
+    달리 이 테이블엔 조회 대상 unique 제약이 없어 다른 서신들과 동일한 count 패턴 사용)
+  - 결과를 `allstar_three_point_contest_result` 타입으로 insert(`round1`/`round2`/
+    `finalistIds`/`winnerId`)
+- `server/src/scheduler.ts` — `runThreePointContestResult()`(신규, `runAllStarGames()`와
+  동일 골격) 추가, `allStarThreePointContestDate`(참가자 발표일 allStarStart보다 뒤,
+  allStarStart+2일 — 이미 존재하던 키데이트, 지금까지 서신 문구에만 쓰였음)에 트리거.
+  `tick()`의 `Promise.allSettled`에 등록.
+- `hooks/useLeagueHeadlines.ts` — `allstar_three_point_contest_result` 타입 등록
+  (LeagueEventType 유니온 + STORY_TYPES).
+- `services/multi/leagueEventPayload.ts` — `ThreePointContestRoundEntry`/
+  `AllstarThreePointContestResultDetail` 타입 + `parseAllstarThreePointContestResultPayload()`
+  파서 + `LeagueEventDetail` 유니온 + `parseLeagueEventPayload()` switch case 추가.
+- `hooks/useAllStarSideEvents.ts` — `threePointContestResult` 필드 추가(3번째 병렬 쿼리,
+  참가자 발표/덩크컨과 동일 패턴).
+- `views/multi/season/newsFeedCards.tsx`:
+  - `ThreePointContestResultTable`(신규, export) — 결과 서신과 올스타 화면 탭이 공유하는
+    순위표(순위/선수/팀/랙1~5/합계), `highlightPlayerId`로 우승자 행만 노란색 하이라이트
+    (TeamBoxTable의 기존 패턴 재사용).
+  - `AllstarThreePointContestResultCard`(신규) — 본문에 우승자 활약 문장("우승은 ○○○
+    (결선 17점)에게 돌아갔습니다") + 결선 표 + 예선 표.
+  - `extractEventPlayerIds()`/`HEADLINE_ICON`/`StoryCard` dispatch에 새 타입 등록.
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 필터 그룹에 새 타입 추가.
+- `views/multi/season/MultiAllStarView.tsx` — 3점 컨테스트 탭: `sideEvents.
+  threePointContestResult`가 있으면(사용자 요청 — "탭을 결과 화면으로") 참가자 표 대신
+  결선/예선 순위표를 보여주도록 분기 추가, `listedPlayerIds`에도 round1 선수 포함(시즌
+  스탯 조회 대상 확장).
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+(server) — 둘 다 신규 에러 0건(서버의 기존 무관 에러 2건은 라인만 밀림). PBL 룸 실제 실행
+확인 — 예선 8명 총점 16/14/14/12/10/10/8/6(합산 내림차순 정상), 결선 3명 17/14/9, 우승
+"에이제이 미첼"(결선 17점). 랙 점수 0~6 범위 정상, 매 실행 다른 결과(비결정적 Math.random()
+기반, 엔진 자체 방식과 동일).
+
+**주의사항 / 한계**:
+- 점수대가 실제 NBA 중계(우승자 보통 20점대 중후반)보다 다소 낮게 나온다(이번 실행 우승
+  17/30점) — THREE_BASE_PCT(34%, 리그 전체 3점 시도 평균 기준 캘리브레이션)를 그대로 쓰고
+  수비만 제거했기 때문. "실제 엔진 공식을 그대로 쓴다"는 요청을 문자 그대로 따른 결과라
+  임의로 부스트를 얹지 않았음 — 체감상 너무 낮다면 후속으로 "와이드오픈 캐치&슛 전용
+  보너스"를 추가하는 방향으로 조정 가능.
+- 덩크 컨테스트는 이번 범위 밖(3점 챌린지만 요청받음) — 같은 패턴으로 별도 작업 필요.
+
+**롤백 방법**: `server/src/postThreePointContest.ts` 삭제, `scheduler.ts`의 import·
+`runThreePointContestResult()`·`tick()` 등록 3곳 제거, 나머지 클라이언트 8개 파일의
+`allstar_three_point_contest_result` 관련 라인 전부 제거.
+
+---
+
+## 2026-09-09 — 뉴스피드 정렬 기준을 created_at → sim_date로 변경
+
+**배경**: 사용자 리포트(스크린샷) — 올스타전 결과 서신(인게임 날짜 2/16)이 3/9자 뉴스들보다
+피드 맨 위에 떠 있었다. 원인은 `useLeagueHeadlines.ts`의 두 쿼리가 전부 `created_at`(DB에
+실제로 삽입된 시각) 기준으로 정렬하고 있었기 때문 — 올스타 서신은 테스트 중 재시뮬레이션으로
+반복 재생성되면서 `created_at`이 계속 "지금"으로 갱신됐지만, 인게임 날짜(`sim_date`)는
+2/16 그대로였다. 사용자가 "sim_date 기준으로 정렬하는게 좋겠어"로 확정.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts`:
+  - `useLeagueHeadlines()`(최근 N건 위젯) — `.order('created_at', desc)` →
+    `.order('sim_date', desc).order('created_at', desc)`
+  - `useLeagueNewsFeed()`의 `storiesQuery`(메인 뉴스피드 그리드, 무한스크롤) —
+    `.order('created_at', {ascending}).order('id', asc)` →
+    `.order('sim_date', {ascending}).order('created_at', {ascending}).order('id', asc)`.
+    기존에 있던 "같은 트랜잭션 일괄 insert로 created_at 동점 발생 시 id로 결정론적 2차
+    정렬" 안전장치(무한스크롤 페이징 시 중복/누락 방지)는 그대로 유지 — sim_date가
+    같은 날 이벤트는 이제 더 흔해지므로 오히려 이 안전장치가 더 자주 쓰이게 됨.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건. `sim_date`는 컬럼 도입 이후 전량 백필돼
+사실상 항상 채워져 있음(코드 주석 확인, null은 이론상만 존재).
+
+**주의사항 / 한계**: `sim_date`는 `date` 타입(일 단위)이라 같은 날 발생한 여러 이벤트(경기당
+~10건 버스트 등)는 전부 동점 처리되고 `created_at`이 2차 정렬로 실제 순서를 결정한다 —
+날짜 내부의 순서는 기존과 동일하게 삽입 순서를 따른다.
+
+**롤백 방법**: 두 쿼리에서 `.order('sim_date', ...)` 라인만 제거하면 이전 동작(created_at
+단독 정렬)으로 복귀.
+
+---
+
+## 2026-09-09 — 올스타/라이징스타 수비 슬라이더 하향(느슨한 지역방어)
+
+**배경**: 사용자 요청 — "올스타전은 보통 수비 안하니까 수비 압박 강도, 풀코트 프레스, 스위치
+수비, 헬프 수비는 2단계로 낮추고, 지역 방어를 8단계로 올리도록 해줘." 지금까지 올스타 전술
+슬라이더는 `generateAutoTactics()`가 로스터 능력치만 보고 계산한 값을 그대로 썼다(로테이션
+분배 방식만 별도 로직으로 교체, 슬라이더는 안 건드림).
+
+**변경 파일**:
+- `server/src/postAllStarGame.ts` — `homeTactics`/`awayTactics` 계산 직후, 로테이션 교체와
+  같은 자리에서 수비 슬라이더 5종을 강제로 덮어씀: `defIntensity=2`, `fullCourtPress=2`,
+  `switchFreq=2`, `helpDef=2`, `zoneFreq=8`. `zoneUsage`(지역방어를 얼마나 "잘" 쓰는지 —
+  possessionHandler.ts의 인테리어 억제/3점 오픈 보너스 등 스타일 파라미터, 발동 빈도가
+  아님)는 로스터 기반 값 그대로 둠 — 사용자가 요청한 건 "자주 쓰게"지 "잘 쓰게"가 아니라서
+  (`zoneFreq`만 발동 빈도를 뜻함, `possessionHandler.ts:465`
+  `Math.random() < sliders.zoneFreq * 0.08`).
+
+**검증**: `cd server && npx tsc --noEmit -p tsconfig.json` 신규 에러 0건. PBL 룸 재시뮬레이션
+— 본경기 142-118(합계 260점, 이전 실행들의 240대와 비교해 득점 상승 방향과 일치, 단일 표본이라
+확정적 검증은 아님). `resolveAllStarScheduledAt()` 정상 동작도 재확인
+(`current_virtual_date()` 정상값 반환).
+
+**롤백 방법**: 슬라이더 덮어쓰기 `for` 루프 블록만 제거하면 로스터 기반 자동 계산 값으로
+복귀.
+
+---
+
+## 2026-09-09 — 올스타/라이징스타 결과 서신에 양팀 박스스코어 추가(MVP 하이라이트 + 본문 활약)
+
+**배경**: 사용자 요청 — "경기결과, 개인활약 등의 서신에 나오는것처럼 라이징스타, 올스타
+종료 서신에도 양 팀의 박스스코어를 보여줘. MVP는 해당 박스스코어에 노란색 틴트 배경색으로
+주고, MVP의 활약을 상단 본문에 내용으로 추가해줘." 직전 항목(MVP 선정+결과 서신)에서는
+표 없이 최종 스코어 배너 + MVP 콜아웃 박스만 있었다.
+
+**설계 결정 — 기존 컴포넌트 재사용, 가상 팀용 새 컴포넌트 안 만듦**: `GameResultCard`가 이미
+쓰는 `QuarterScoreTable`/`TeamBoxTable`을 그대로 재사용한다. 두 컴포넌트는 `LeagueTeamRow`
+객체를 받지만 실제로 읽는 필드는 `team_name`/`team_abbr`/`color_primary`/`color_text`
+뿐이라(다른 필드는 참조 안 함), 가상 팀 ID용 최소 `LeagueTeamRow`를 그 자리에서 조립해
+넘기는 `buildAllStarTeamRow()` 헬퍼 하나만 추가했다 — 두 공용 컴포넌트는 전혀 수정하지 않음.
+`TeamBoxTable`은 이미 `highlightPlayerId` prop(옅은 노란색 `bg-amber-400/10`)을 갖고 있어서
+(개인활약/연속기록 카드가 쓰던 기능) MVP 노란색 하이라이트도 새 로직 없이 그대로 재사용.
+
+**변경 파일**:
+- `utils/constants.ts` — `RISING_STARS_COLORS`(`{A:'#0080FF', B:'#FF00A6'}`) 신규 공용 상수 —
+  원래 `hooks/useAllStarTeamDisplay.ts`에만 로컬로 있던 값을 승격(이번에 newsFeedCards.tsx
+  에서도 같은 값이 필요해짐, `CONFERENCE_COLORS`와 동일한 승격 패턴).
+- `hooks/useAllStarTeamDisplay.ts` — 로컬 라이징스타 색상 상수 제거, `utils/constants.ts`에서
+  import(로직 변경 없음).
+- `views/multi/season/newsFeedCards.tsx`:
+  - `buildAllStarTeamRow(teamSlug, teamName, colorPrimary)`(신규) — 가상 팀용 최소
+    `LeagueTeamRow` 조립. 본경기는 컨퍼런스 대표색(`CONFERENCE_COLORS`), 라이징스타는
+    지정 테마색(`RISING_STARS_COLORS`) 사용.
+  - `AllstarGameResultCard`에 `roomId`/`playerCardMap` prop 추가, `useGameBoxScore()` +
+    `useBoxScorePlayerCardMap()`(둘 다 기존 훅, GameResultCard와 동일하게 재사용)로
+    박스스코어 조회.
+  - 본문에 MVP 활약 문장 추가("MVP는 ○○○(28 PTS, 14 REB, 2 BLK)에게 돌아갔습니다.") —
+    이미 갖고 있던 `mvp.stats` 그대로 재사용, 새 계산 없음.
+  - 최종 스코어 배너 아래에 `QuarterScoreTable`(쿼터별 득점) + `TeamBoxTable`×2(원정/홈,
+    `highlightPlayerId={mvp?.playerId}`) 추가 — `GameResultCard`와 순서/구성 동일.
+  - 더 이상 필요 없어진 "박스스코어 다시보기" 버튼 제거(박스스코어가 이미 본문에 있으므로) —
+    "올스타 화면에서 보러가기" 버튼은 유지, 최종 스코어 배너는 여전히 클릭 시 라이브뷰로
+    이동(`onOpenGame`).
+  - `StoryCard` dispatch의 두 케이스에 `playerCardMap`/`roomId` 전달 추가.
+
+**추가 수정(같은 날, 사용자 스크린샷 지적)**: 직접 만든 커스텀 스코어 배너(테두리 박스 +
+"FINAL" 라벨 + 큰 팀 전체 이름)가 다른 서신들과 스타일이 달랐다 — `GameResultCard`가 쓰는
+`BoxScoreHeadline`(로고+팀약어+스코어를 한 줄로, 배경/테두리 없음)을 그대로 재사용하도록
+교체. 커스텀 배너 삭제, `event.detail`에서 더 안 쓰는 `homeScore`/`awayScore` 구조분해도
+같이 정리(이제 `boxScore.homeScore`/`boxScore.awayScore`만 사용).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건. PBL 룸 DB 직접 조회로 두 경기의
+`game_pbp`(박스스코어 10~12명씩, `quarter_scores` 존재) + reveal 게이트(`game_start_time +
+10분 <= now()`) 통과 확인 — 카드가 즉시 박스스코어를 표시할 수 있는 상태.
+
+**롤백 방법**: `AllstarGameResultCard`를 이전 버전(스코어 배너+MVP 콜아웃만)으로 되돌리고
+`buildAllStarTeamRow()` 제거, `utils/constants.ts`의 `RISING_STARS_COLORS`는 유지해도 무방
+(다른 곳에서 참조 중).
+
+---
+
+## 2026-09-09 — 버그 수정: 올스타 경기 scheduled_at이 실제 삽입 시각으로 잘못 채워짐
+
+**배경**: 사용자 리포트 — "PBL세션의 GameDateStrip이 2.16일에서 바로 3.8일로 넘어가는데
+중간에 경기들이 있는 날짜들이 생략되고 있어." 조사 결과 데이터 손상이 아니라(2/19~3/7 경기는
+DB에 정상 존재, 이미 played=true) **정렬 순서가 깨진 것**이었다.
+
+**근본 원인**: `postAllStarGame.ts`가 올스타/라이징스타 경기의 `games.scheduled_at`을
+`new Date().toISOString()`(함수를 호출한 실제 순간)으로 채웠다. 정규시즌 경기의
+`scheduled_at`은 `leagueScheduleCompressor.ts`가 시즌 생성 시점에 "압축된 방송 시각"으로
+한 번만 계산해 저장한 값(실제 시간 흐름과 무관하게 이미 확정된 값)인데, 올스타 경기만
+"진짜 지금"이 섞여 들어가면서 두 값의 기준이 완전히 달라졌다. `GameDateStrip.tsx`의
+`dateKeys`는 `scheduledAt` 기준 정렬로 만들어지므로(가상 캘린더 날짜가 아니라!), 올스타
+경기(가상 날짜 2/14, 2/16)의 실제 `scheduled_at`이 우연히 3/7~3/8 경기들의 `scheduled_at`
+근처(둘 다 "이 세션이 진행되던 실제 날짜")에 찍히면서, 정렬 결과가 [...,3/7, 2/14, 2/16,
+3/8,...] 처럼 뒤틀렸다 — 2/16에서 "다음" 버튼을 누르면 배열상 바로 다음 항목인 3/8로
+건너뛰고, 2/19~3/7은 배열의 훨씬 앞쪽(이미 지나온 위치)에 있어 다시 나타나지 않는다.
+`current_virtual_date()` RPC(scheduled_at이 실제 now()에 가장 가까운 경기의 game_date를
+반환)도 같은 이유로 2/16에 고정돼 있었다(실제로는 3/8이어야 정상).
+
+**변경 파일**:
+- `server/src/postAllStarGame.ts` — `resolveAllStarScheduledAt(roomId, virtualDate)`(신규)
+  추가: 올스타 브레이크 기간엔 정규시즌 경기가 원래 없어 압축 스케줄이 이 날짜들에 실제
+  시각을 배정한 적이 없으므로, 직전/직후 정규시즌 경기(`is_allstar=false`)의 `scheduled_at`
+  사이를 게임 날짜 비율로 선형 보간한다. 앞/뒤 경기를 못 찾는 예외적 경우에만 기존처럼
+  `new Date()` 폴백. `games` insert와 `game_pbp.game_start_time` 둘 다 이 값을 재사용(따로
+  계산 안 함 — 값이 다르면 또 다른 정렬 불일치가 생길 수 있어서).
+
+**데이터 복구(PBL 룸)**: 이미 잘못 저장된 두 행(`games.scheduled_at`, `game_pbp.
+game_start_time`)을 위와 동일한 선형 보간 공식으로 직접 UPDATE — 앞 경계(2027-02-12,
+실제 스케줄 09-07 11:55:51) / 뒤 경계(2027-02-19, 09-07 12:36:35) 사이를 보간해 라이징스타
+(2/14)는 12:07:29, 본경기(2/16)는 12:19:07로 수정. 수정 후
+`current_virtual_date('9b43a612-...')`가 2027-02-16(틀림) → 2027-03-08(정상, played/
+unplayed 경계와 일치)로 정상화 확인.
+
+**검증**: `cd server && npx tsc --noEmit -p tsconfig.json` 신규 에러 0건. DB 재조회로
+`current_virtual_date()` 정상화 확인(위).
+
+**주의사항 / 한계**: 이번 수정은 앞으로 새로 생성되는 올스타 경기에만 적용된다 — 다른 룸에
+이미 같은 방식(구버전 코드)으로 생성된 올스타 경기가 있다면 이 룸처럼 개별적으로
+scheduled_at을 다시 보정해야 한다(현재는 PBL 룸 1곳만 해당 확인).
+
+**롤백 방법**: `resolveAllStarScheduledAt()` 함수 제거하고 두 곳(`games` insert,
+`game_pbp` upsert)을 다시 `new Date().toISOString()`으로 되돌리면 됨(단, 이러면 버그가
+재발함 — 되돌릴 이유 없음).
+
+---
+
+## 2026-09-09 — 올스타/라이징스타 MVP 선정 + 결과 서신 발송
+
+**배경**: 사용자 요청 — "올스타/라이징스타 MVP 선정 로직을 추가하고, 결과 서신도 발송하는
+로직도 추가해줘." 지금까지는 참가자 선정→경기 시뮬레이션까지만 있었고(직전 두 항목),
+경기가 끝난 뒤 MVP를 뽑거나 결과를 알리는 절차가 없었다(계획서 §자체가 "MVP는 후속 작업"으로
+명시적으로 범위 밖에 뒀던 부분).
+
+**설계 결정 — 새 MVP 로직 대신 기존 `pickTeamMvp()` 재사용**: `server/src/shared/
+leagueEvents.ts`의 `detectGameResult()`가 이미 정규시즌 경기마다 "PIE 최댓값 선수 + 대표
+스탯 최대 5개"로 팀별 MVP를 뽑고 있었다. 이 함수는 원래 팀별(mvpHome/mvpAway)로 나눠 뽑는
+용도지만, 입력 자체가 "박스스코어 배열 하나"라 양팀 박스를 합쳐서 넘기면 그대로 "경기 전체
+MVP 1명" 선정이 된다 — 새 알고리즘을 짜지 않고 `export`만 추가해 재사용. "이긴 팀에서만
+뽑는다" 같은 실제 NBA 올스타 MVP 관례는 요청에 없어 두지 않았다(그냥 PIE 최댓값 1명).
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `pickTeamMvp()`/`GameMvpLite` 인터페이스를
+  `export`로 전환(로직 변경 없음).
+- `server/src/postAllStarGame.ts` — `computeAndRunAllStarGame()` 끝부분(games/game_pbp
+  저장 이후)에 MVP 계산 + `league_events` insert 추가:
+  - `pickTeamMvp([...homeBox, ...awayBox])`로 경기 전체 MVP 1명
+  - `room.season`(신규 select 컬럼) 추가로 seasonLabel 확보
+  - 새 이벤트 타입 2종: `allstar_game_result`(본경기)/`allstar_rising_stars_result`
+    (라이징스타) — `game_id`를 이미 결정론적으로 갖고 있던 `gameId`(`${kind}-${roomId}-
+    ${seasonNumber}`) 그대로 재사용해 박스스코어 딥링크(`onOpenGame`)가 바로 동작
+  - 라이징스타는 `homeTeamName`/`awayTeamName`이 `buildTeamForSim()`용으로 주장 성만
+    담고 있어("엣지컴") 서신 payload에는 "팀 " 접두어를 붙인 별도 변수(`displayHomeTeamName`/
+    `displayAwayTeamName`)로 저장 — 다른 화면/서신과 표기 통일
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType` 유니온 + `STORY_TYPES`에 두 타입 추가
+- `services/multi/leagueEventPayload.ts` — `AllstarGameResultDetail`(두 타입 공유, kind로만
+  구분) 인터페이스 + `parseAllstarGameResultPayload()` 파서(기존 `parseGameMvp()` 헬퍼
+  재사용) + `LeagueEventDetail` 유니온 + `parseLeagueEventPayload()` switch case 추가
+- `views/multi/season/newsFeedCards.tsx`:
+  - `extractEventPlayerIds()`에 두 케이스 추가(mvp.playerId)
+  - `HEADLINE_ICON`에 두 타입 추가(allstar_game_result: Trophy, allstar_rising_stars_result:
+    Sparkles — 각각 선정 서신과 동일 아이콘)
+  - `AllstarGameResultCard`(신규, 두 타입 공유) — 표 없이 최종 스코어 배너(가상 팀 로고는
+    `getRealTeamLogoUrl()`이 이미 AS 로고로 매핑하도록 확장돼 있어 그대로 사용) + MVP
+    callout + "박스스코어 다시보기"(`onOpenGame`)/"올스타 화면에서 보러가기"
+    (`onOpenAllStar`) 링크. 팀명 클릭(`onOpenTeam`)은 의도적으로 안 씀 — 가상 팀 ID로
+    로스터 화면에 들어가면 빈 화면만 뜨기 때문.
+  - `StoryCard` dispatch에 두 케이스 추가
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 필터 그룹 `types` 배열에 두 타입 추가
+
+**검증**:
+- `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`(server) —
+  둘 다 이번에 건드린 파일명으로 grep해 신규 에러 0건(server의 leagueEvents.ts 기존 에러
+  1건은 이 변경과 무관한 사전 존재 이슈, 라인 번호만 밀림)
+- PBL 룸 재시뮬레이션(기존 올스타/라이징스타 경기·서신 삭제 후 재생성) — 두 결과 서신 모두
+  정상 insert 확인: 올스타는 MVP "야니스 안테토쿤보"(홈/원정 팀명 "동부 올스타"/"서부
+  올스타"), 라이징스타는 MVP "캠 스펜서"(팀명 "팀 엣지컴"/"팀 미시" — "팀 " 접두어 정상
+  반영 확인)
+
+**주의사항 / 한계**:
+- MVP는 승패 무관 순수 PIE 최댓값 1명 — 실제 NBA처럼 "이긴 팀 선수 중에서" 같은 제약 없음.
+- 덩크/3점 컨테스트는 실제 시뮬레이션 자체가 아직 없어(별도 확률 모델 필요, 계획서 범위 밖
+  유지) 그 경기들의 "결과 서신"은 이번에도 대상이 아님 — 참가자 선정 서신만 존재.
+
+**롤백 방법**: `server/src/postAllStarGame.ts`의 MVP 계산+insert 블록 제거,
+`server/src/shared/leagueEvents.ts`의 `export` 키워드만 되돌리기(선택), 나머지 5개 파일의
+`allstar_game_result`/`allstar_rising_stars_result` 관련 라인 전부 제거.
+
+---
+
+## 2026-09-09 — 올스타 화면(MultiAllStarView.tsx) 4개 탭 제목에 로고 추가
+
+**배경**: 사용자 요청 — 뉴스 서신에 이어 올스타 화면 자체(4탭: 올스타/라이징스타/3점 컨테스트/
+덩크 컨테스트)의 각 섹션 제목에도 로고를 달아달라는 후속 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx`:
+  - `RisingStarsBody`의 "팀 {teamAName}"/"팀 {teamBName}" `<h2>` → flex로 바꿔 왼쪽에
+    RisingA.svg/RisingB.svg(h-8)
+  - 3점 컨테스트 탭 "3점 컨테스트 참가자" `<h2>` → ThreeContest.svg
+  - 덩크 컨테스트 탭 "덩크 컨테스트 참가자" `<h2>` → DunkContest.svg
+  - 올스타 탭 "동부 컨퍼런스"/"서부 컨퍼런스" `<h2>` → East.svg/West.svg
+  - 서신 카드(newsFeedCards.tsx)와 동일하게 `public/logos/real/AS/*.svg` 재사용, 새 파일
+    없음.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: 6곳의 `<h2>` 안 `<img>` 삽입 + `flex items-center gap-2` 클래스 추가만
+제거하면 원래 텍스트 전용 `<h2>`로 복원됨.
+
+---
+
+## 2026-09-09 — 올스타/라이징스타/3점·덩크 컨테스트 서신 본문에 이벤트 로고 추가
+
+**배경**: 사용자 요청 — 올스타/라이징스타/3점 컨테스트/덩크 컨테스트 뉴스 서신 4종 본문
+최상단에 각 이벤트 로고를 표시. 직전 항목에서 추가한 `public/logos/real/AS/`의
+AllStar.svg/RisingStar.svg/ThreeContest.svg/DunkContest.svg(팀 로고 4종과 별개)를 재사용.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `EventLetterLogo`(신규, `BrandMark`—매체
+  마스트헤드—와는 별개) 컴포넌트 추가, 4개 카드(`AllstarVoteResultCard`/
+  `AllstarRisingStarsCard`/`AllstarThreePointContestCard`/`AllstarDunkContestCard`)의
+  본문 블록(헤더 구획의 구분선 다음, 첫 단락 앞) 최상단에 각각 삽입.
+
+**추가 수정(같은 날)**:
+- 로고 정렬을 중앙(`mx-auto`)에서 좌측으로 변경(사용자 요청) — `EventLetterLogo`의
+  className에서 `mx-auto` 제거.
+- 중간 집계 서신(`AllstarVoteUpdateCard`, `allstar_vote_update`)에도 동일하게 추가(사용자
+  요청) — 이 카드는 다른 4개와 달리 헤더 구획 다음에 본문 텍스트 단락이 없이 바로 컨퍼런스별
+  득표 섹션(`space-y-4`)으로 이어지는 구조라, `space-y-2` 본문 블록 안이 아니라 헤더 구획과
+  득표 섹션 사이에 `<EventLetterLogo .../>`를 형제 요소로 직접 삽입(AllStar.svg 재사용).
+
+- 투표 시작 서신(`AllstarVoteStartCard`, `allstar_vote_start`)에도 추가(사용자 요청) — 이
+  카드는 원래 4개와 동일한 구조(헤더 구획 다음 `space-y-2` 본문 텍스트 블록)라 그 안 첫
+  단락 앞에 그대로 삽입(AllStar.svg 재사용).
+- 올스타/라이징스타 "명단 확정" 서신에 팀별 로고 추가(사용자 요청, "각 팀 좌측에 팀별 로고") —
+  이번엔 `EventLetterLogo`(본문 전체 대표 로고)가 아니라 각 컨퍼런스/팀 제목 옆의 작은
+  인라인 로고라 별도 처리:
+  - `AllstarVoteResultCard` — "동부 컨퍼런스"/"서부 컨퍼런스" `<h2>`를 flex로 바꿔 왼쪽에
+    East.svg/West.svg(h-6) 직접 삽입.
+  - `AllstarRosterTable`(공용 컴포넌트, `AllstarVoteResultCard`/`AllstarRisingStarsCard`/
+    `MultiAllStarView.tsx`가 공유)에 선택적 `logoSrc?: string` prop 추가 — 넘기면 `<h3>{label}</h3>`
+    왼쪽에 작은 로고(h-5)를 붙인다. label이 "스타터"/"리저브"인 다른 호출부(동일 카드의
+    컨퍼런스 스타터/리저브 표, `MultiAllStarView.tsx`의 3곳)는 `logoSrc`를 안 넘겨 기존과
+    동일 — 오직 `AllstarRisingStarsCard`의 두 팀 표(label이 실제 팀명 "팀 ○○○"인 경우)만
+    RisingA.svg/RisingB.svg를 넘겨 적용.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건(`AllstarRosterTable`을 쓰는 4개 호출부 모두
+확인 — `logoSrc` optional이라 기존 호출부는 영향 없음).
+
+**롤백 방법**: `EventLetterLogo` 컴포넌트 정의 + 6개 카드의 `<EventLetterLogo .../>` 삽입
+라인 제거, `AllstarRosterTable`의 `logoSrc` prop 및 두 `<h2>`의 로고 삽입 제거.
+
+---
+
+## 2026-09-09 — 올스타/라이징스타 전용 로고 적용
+
+**배경**: 사용자가 `public/logos/real/AS/`에 East.svg/West.svg/RisingA.svg/RisingB.svg를
+직접 추가하고 적용 요청. 기존엔 가상 팀 ID(EAST-ALLSTAR 등)를 그대로 `getRealTeamLogoUrl()`에
+넘기면 `resolveTeamId()`의 실제 30팀 매핑 로직(TEAM_ID_MAP 부분일치 폴백 포함)을 타서 존재하지
+않는 팀 로고 경로로 잘못 resolve되거나 최종적으로 플레이스홀더 이미지로 떨어졌다.
+
+**변경 파일**:
+- `utils/constants.ts` — `ALLSTAR_LOGO_FILE` 매핑(EAST-ALLSTAR→AS/East, WEST-ALLSTAR→AS/West,
+  RISINGSTARS-A→AS/RisingA, RISINGSTARS-B→AS/RisingB) 신설, `getRealTeamLogoUrl()`이
+  `resolveTeamId()`를 타기 전에 이 매핑을 먼저 확인하도록 분기 추가. 이 함수를 쓰는 모든
+  화면(`MultiScheduleView.tsx`의 `ScheduleTeamLogo`, `MultiGamePbpView.tsx`의
+  `TeamHeaderColumn`)이 코드 수정 없이 자동으로 새 로고를 받음(둘 다 `teamSlug`로 가상 팀 ID를
+  그대로 넘기고 있었기 때문).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건, 4개 SVG 파일 헤더 확인(정상 `<svg>` 태그).
+
+**롤백 방법**: `utils/constants.ts`의 `ALLSTAR_LOGO_FILE` 상수 + `getRealTeamLogoUrl()`의
+분기 3줄만 제거.
+
+---
+
+## 2026-09-09 — 올스타/라이징스타 일정·라이브뷰 표시 수정 + 전용 로테이션(24분 균등+잦은 부분교체)
+
+**배경**: 직전 항목(올스타 본경기/라이징스타 챌린지 실제 시뮬레이션)의 후속 폴리시 — 실제로
+PBL에 생성해보니 (1) 일정 화면에 시간이 안 뜨고 라운드 배지가 과했고, (2) 라이징스타 팀명이
+"라이징스타 A/B"로만 나와 팀장 이름이 반영 안 됐고, (3) 라이브 게임뷰는 가상 팀 ID
+(RISINGSTARS-B 등)가 그대로 노출되고 테마색도 하드코딩 기본값이었고, (4) 정규시즌 AI팀과
+동일한 "주전 36분/벤치 12분, 통짜 교체" 로테이션이 그대로 적용돼 최대 45분씩 뛰는 선수가
+나오는 등 전시성 경기답지 않았다. 사용자가 6개 항목을 한 번에 지시.
+
+**설계 결정 — league_teams에 가상 팀 행을 추가하지 않음**: 팀명/테마색/로스터를 가장 쉽게
+풀 수 있는 방법은 `EAST-ALLSTAR` 등을 `league_teams`에 실제 행으로 넣는 것이지만, 이 테이블은
+스탠딩·트레이드·FA 등 30팀을 전제한 로직이 아주 많아 블라스트 반경이 너무 크다 — 대신
+`hooks/useAllStarTeamDisplay.ts`(신규)라는 클라이언트 전용 조회 훅으로 이름/테마색/로스터를
+따로 제공하고, 필요한 화면(`MultiScheduleView.tsx`/`MultiGamePbpView.tsx`)에서
+`leagueTeams.find()` 실패 시의 폴백으로만 사용한다.
+
+**변경 파일**:
+- `hooks/useAllStarTeamDisplay.ts` (신규) — `useAllStarTeamDisplay(roomId, seasonNumber)`.
+  내부적으로 기존 `useAllStarVotes(roomId, seasonNumber)`(투표 마감일에 서버가 이미 계산해
+  저장한 로스터를 읽음, 재계산 없음)를 재사용해 4개 가상 팀 ID(`EAST-ALLSTAR`/
+  `WEST-ALLSTAR`/`RISINGSTARS-A`/`RISINGSTARS-B`) → `{name, colorPrimary, colorText, roster}`
+  맵을 만든다. 라이징스타 팀명은 `roster.risingStars.teamAName/teamBName`(주장 성)에 "팀 "
+  접두어를 붙여 조합, 못 구했으면(투표 전) "라이징스타 A/B"로 폴백.
+- `utils/constants.ts` — `CONFERENCE_COLORS`(East `#1D4289`/West `#C8102E`) 신설, 원래
+  `MultiStandingsView.tsx`에 로컬로만 있던 상수를 승격(두 곳에서 같은 값 공유).
+- `views/multi/season/MultiStandingsView.tsx` — 로컬 `CONFERENCE_COLORS` const 제거,
+  `utils/constants.ts`에서 import.
+- `views/multi/season/MultiScheduleView.tsx`:
+  - `showRoundColumn`/`roundLabel`에서 올스타 배지 로직 원복(플레이오프 전용으로 되돌림) —
+    팀명 자체(동부 올스타/서부 올스타/팀 ○○○)로 이미 구분되니 "라운드는 없음으로 표시해도
+    된다"는 사용자 확인 반영
+  - 하드코딩 `ALLSTAR_TEAM_DISPLAY_NAMES` 상수 제거, `useAllStarTeamDisplay()` 훅으로 교체
+    (라이징스타 팀명이 이제 실제 주장 성 반영)
+- `views/multi/season/MultiGamePbpView.tsx`:
+  - `isAllstarGame`(state, `loadGame()` effect에서 `game.isAllstar`로 세팅) +
+    `scheduleGame?.isAllstar` 폴백을 합친 `isAllstar` 파생값 추가
+  - `homeColor`/`awayColor`/`homeText`/`awayText`/`homeName`/`awayName`에
+    `allstarDisplay[teamId]` 폴백 추가(leagueTeams 조회 실패 시)
+  - `homeRosterIds`/`awayRosterIds` 신설(`homeTeam?.roster ?? allstarDisplay[..]?.roster`) —
+    경기 시작 전 로스터 프리뷰(`scheduledHomeBox`/`scheduledAwayBox`)가 가상 팀에서도 빈
+    배열 대신 실제 로스터를 보여주도록 함(이전 항목에 "알려진 한계"로 남겼던 갭을 이 김에 해소)
+  - `TeamHeaderColumn`의 `wl` prop을 `isAllstar ? undefined : homeWL/awayWL`로 — 이벤트성
+    경기는 팀명 아래 전적(W-L) 텍스트 숨김(사용자 요청)
+- `server/src/postAllStarGame.ts`:
+  - `games` insert에 `game_time`(신규 `GAME_TIME` 상수: 라이징스타 `19:00`/본경기 `20:30`,
+    실제 올스타 위켄드처럼 라이징스타가 먼저) 추가
+  - `buildAllStarRotationMap(depthChart, rosterIds)`(신규) — 정규시즌 AI팀의
+    `generateAutoTactics()` 하드코딩(주전 36분/벤치 12분, `tacticGenerator.ts:172-189`)을
+    올스타 경기에 그대로 쓰지 않고, 포지션별로 배정된 선수 전원(2명이면 24분씩, 12인
+    로스터는 일부 포지션 3명까지 배정돼 16분씩)이 8분 단위로 번갈아 뛰도록 재계산. 포지션마다
+    시작 시점(phase offset = posIdx % 8)을 어긋나게 둬서 실제 교체가 5개 포지션 동시가 아니라
+    한 번에 1개 포지션(1~2명)씩만 일어나게 함(사용자 요청 "최대한 많이 교체" + "몇 명씩만
+    교체"). `generateAutoTactics()` 자체(정규시즌 AI팀 경로)는 전혀 안 건드림 —
+    `generateAutoTactics(team, undefined, preserveDraftOrder)`로 얻은 `depthChart`만
+    재사용하고 `rotationMap`만 이 함수 결과로 교체해 `runFullGameSimulation()`에 명시적
+    `homeTactics`/`awayTactics`로 전달(이전엔 `undefined`를 넘겨 엔진 내부 폴백에 맡겼음).
+
+**동작 검증**: PBL 룸(9b43a612-...)에 기존 테스트 경기 2건 삭제 후 재생성 —
+`game_time`(19:00/20:30) 정상 반영, 부상 중인 선수(이미 room_player_state에 Injured로
+기록된 선수, 이번 로직과 무관)만 0분이고 건강한 선수는 전원 출전, 최대 출전시간이 이전
+실행(45.5분) 대비 크게 줄고 분포가 훨씬 고르게 나옴(정확한 24분 균등은 아님 — 클러치/파울
+트러블/가비지타임 등 기존 엔진의 동적 서브 로직이 정적 rotationMap 위에 계속 얹혀 있어
+매 경기 편차가 남는 게 정상, 이번 변경은 그 "기준선"만 36/12 통짜 2단계 → 8분 단위
+균등분배로 바꾼 것).
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+(server) — 두 곳 다 이번에 건드린 6개 파일명으로 grep해 신규 에러 0건 확인.
+
+**추가 수정(같은 날, 사용자 스크린샷 지적)**: 위 수정 이후에도 시즌 일정 화면의 "최우수선수"
+컬럼이 `이름 (RISINGSTARS-B)`/`이름 (WEST-ALLSTAR)`처럼 여전히 가상 팀 ID를 그대로 보여줬다
+— MVP 표시가 `away?.team_abbr ?? g.awayTeamId`(팀명이 아니라 `team_abbr` 필드를 따로 조회하는
+별개 코드 경로라 이전 수정에서 빠짐)를 쓰고 있었기 때문. `AllStarTeamDisplayInfo`에 `abbr`
+필드 추가(동부/서부는 "동부"/"서부", 라이징스타는 팀명과 동일하게 주장 성만) 후
+`MultiScheduleView.tsx`의 두 MVP 표시 지점과 `MultiGamePbpView.tsx`의 `homeAbbr`/`awayAbbr`
+(3글자 코드로는 폴백하지만 "동부 올스타" 같은 제대로 된 표기는 아니었음)에 모두 반영. 같은
+패턴(`team_abbr ?? rawId`)이 `newsFeedCards.tsx` 등 다른 화면에도 다수 있으나, 올스타 경기는
+`league_events`에 결과 뉴스를 게시하지 않아(범위 밖) 실제로는 도달 불가능한 코드 경로라 그대로
+둠 — `MultiGamePbpView.legacy.tsx`(레거시, 사용 안 함)도 동일 이유로 미수정.
+
+**주의사항 / 한계**:
+- `buildAllStarRotationMap()`의 8분 단위 균등분배는 "기준선"일 뿐이고, 실제 출전시간은
+  엔진의 클러치/파울트러블/가비지타임 동적 서브 로직에 따라 계속 달라진다 — 실제 NBA
+  올스타전처럼 스타 선수가 클러치에 더 뛰는 것 자체는 의도된 동작(이 변경으로 막을 필요
+  없다고 판단, 사용자도 "정확히 24분"이 아니라 "그 방향으로" 균등화를 요청한 것으로 해석).
+- `league_teams`에 가상 팀 행을 추가하지 않기로 한 결정 때문에, `useAllStarTeamDisplay()`가
+  다루지 않는 다른 화면(예: 팀 상세/트레이드 관련 뷰)에서 올스타 가상 팀 ID를 만나면 여전히
+  raw ID 폴백이 나올 수 있다 — 현재는 일정/라이브뷰 2곳만 요청받아 수정.
+
+**롤백 방법**: 이 항목에 나열된 6개 파일의 위 변경 사항만 되돌리면 됨(DB 스키마 변경 없음,
+이전 항목의 `is_allstar` 컬럼/RPC 마이그레이션은 그대로 유지).
+
+---
+
+## 2026-09-09 — 올스타 본경기/라이징스타 챌린지 실제 시뮬레이션
+
+**배경**: "이제 실제로 키 데이트에 올스타/라이징스타 경기가 진행되는 로직을 추가해보자." —
+지금까지 올스타/라이징스타는 참가자 선정+서신 발표까지만 있었고 실제 경기가 열리지
+않았음. 이미 계산해둔 키데이트(`allStarMainGameDate`/`allStarRisingStarsDate`,
+`utils/allStarSelection.ts`)에 PBP 엔진을 돌려 결과를 `games`/`game_pbp`에 기록하고
+재생 가능하게 만든다. 설계 원안은 `docs/simulation/allstar-game-plan.md`.
+
+사용자 확정 사항(AskUserQuestion):
+- 경기 강도 — 부상/출장정지 **비활성화**(전시성 경기, `SimSettings.injuriesEnabled`/
+  `suspensionsEnabled` 기존 토글 재사용)
+- 일정 화면 노출 — 완전히 숨기지 않고 **배지로 표시**(추천 옵션인 "완전히 숨김"을 거부하고
+  선택)
+
+설계 결정(계획서 대비 단순화): 본경기/라이징스타전 구분에 별도 `event_kind` 컬럼을 쓰지
+않고 **가상 팀 ID 자체**로 구분(`EAST-ALLSTAR`/`WEST-ALLSTAR` vs
+`RISINGSTARS-A`/`RISINGSTARS-B`) — `is_allstar boolean` 하나만 추가. 게임 당일엔
+`league_allstar_votes.roster`(투표 마감일에 이미 저장된 최종 스냅샷)를 그대로 읽어쓰고
+`runAllStarSelection()`/`runRisingStarsSelection()`을 재계산하지 않는다 — 로스터 확정일과
+게임 당일 사이(본경기 +7일/라이징스타 +8일) 트레이드·부상으로 실제 로스터가 바뀌어도
+"발표된 명단과 실제 뛰는 명단이 다른" 혼란을 막기 위함.
+
+**변경 파일**:
+- `migrations/add_is_allstar_to_games.sql` (신규, DB에 직접 적용 완료 —
+  `mcp__supabase__apply_migration`):
+  - `ALTER TABLE public.games ADD COLUMN is_allstar boolean NOT NULL DEFAULT false`
+  - `get_player_season_stats_full/batch/league` 3개 RPC에 `JOIN public.games g ON
+    g.room_id=gp.room_id AND g.game_id=gp.game_id AND g.is_allstar=false` 추가 — 3개 함수
+    모두 원래 `games` JOIN이 전혀 없었음(`is_playoff` 필터조차 없던 기존 갭, 이번 범위 밖이라
+    손대지 않음. 참고 패턴: `add_league_player_awards.sql`의 `get_league_season_awards_stats`)
+- `server/src/postAllStarGame.ts` (신규) — `computeAndRunAllStarGame(roomId, leagueId,
+  virtualDate, kind: 'main'|'rising_stars')`:
+  - 멱등성: `game_id = `${kind}-${roomId}-${seasonNumber}``를 `games` PK(room_id, game_id)
+    유니크 제약에 먼저 INSERT해 락으로 사용(simRunner.ts의 `game_sim_claims` insert-as-lock과
+    동일 원리, 별도 테이블 없이 games PK로 대체) — insert 실패 시 이미 처리된 것으로 보고 스킵
+  - `league_allstar_votes`에서 `roster IS NOT NULL`인 이 시즌 유일 행을 조회해 그대로 사용
+  - `buildTeamForSim()`(`dataMapper.ts`, 신규 DB 조회 없이 재사용)으로 가상 팀 2개 조립,
+    본경기는 스타터를 배열 앞쪽에 둬 `preserveDraftOrder=true`로 뎁스차트 우선순위를 실제
+    발표된 선발/벤치 구성과 맞춤(라이징스타는 스타터 구분이 없어 `preserveDraftOrder=false`,
+    OVR 내림차순 자동배정)
+  - `room.sim_settings`를 얕은 복사해 `injuriesEnabled:false, suspensionsEnabled:false`로
+    덮어써 `runFullGameSimulation()`에 전달 — 이미 부상 중인 선수(`room_player_state`)는
+    simRunner.ts와 동일하게 그대로 반영(새 부상만 안 생기게 할 뿐, 기존 부상은 존중)
+  - 시뮬 결과를 `game_pbp` upsert + `games` UPDATE(played=true, 스코어)로 저장
+    (simRunner.ts §5-6과 동일 패턴)
+- `server/src/scheduler.ts`:
+  - `computeAndRunAllStarGame` import 추가
+  - 신규 `runAllStarGames()` — `runThreePointContestNews()`와 동일 골격, 가상 날짜가
+    `allStarMainGameDate`/`allStarRisingStarsDate` 중 하나와 일치하는 날에만 호출(서로 다른
+    날짜라 두 조건 분리)
+  - `tick()`의 `Promise.allSettled` 배열에 `runAllStarGames()` 추가
+- `types/game.ts` — `Game` 인터페이스에 `isAllstar?: boolean` 필드 추가
+- `services/multi/gameQueries.ts` — `GAME_COLS`에 `is_allstar` 추가, `rowToGame()`에
+  `isAllstar: !!r.is_allstar` 매핑 추가
+- `views/multi/season/MultiScheduleView.tsx`:
+  - 새 컬럼을 만들지 않고 기존 "라운드" 컬럼(플레이오프 전용이던 것)을 재사용 —
+    `showRoundColumn` 조건에 `g.isAllstar` 추가, `roundLabel`에 올스타/라이징스타 분기(가상
+    팀 ID로 판별) 추가
+  - `ALLSTAR_TEAM_DISPLAY_NAMES` 상수 + 원정/홈 팀명 셀의 폴백 체인에
+    `?? ALLSTAR_TEAM_DISPLAY_NAMES[teamId] ?? teamId` 추가(가상 팀 ID는 `leagueTeams`에
+    없어 `team_name` 조회가 항상 실패하므로 "동부 올스타"/"라이징스타 A" 등 고정 표기로 폴백)
+
+**검증**:
+- `mcp__supabase__apply_migration` 성공 확인(`{"success":true}`)
+- `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`(server) —
+  둘 다 기존에 있던 무관한 에러 외 신규 에러 0건(변경 파일명으로 grep해 확인)
+- PBL 테스트 룸(`room_id=9b43a612-...`, season 1)의 실제 저장된 `league_allstar_votes.roster`
+  구조를 직접 조회해 `playerId`/`risingStars.teamAName` 등 필드명이
+  `postAllStarGame.ts`의 타입 가정과 정확히 일치하는지 확인
+
+**주의사항 / 한계**:
+- 이 환경에 Bun 런타임이 없어 `computeAndRunAllStarGame()`을 실제로 호출하는 end-to-end
+  테스트(배포 서버가 아닌 로컬)는 하지 못했다 — 정적 검증(타입체크 + 실제 DB 스키마/데이터
+  형태 대조)까지만 완료. 배포 후 첫 올스타 키데이트에서 로그(`[allstarGame] ...`) 확인 권장.
+- 시뮬레이션이 `simWorkerPool`(워커 스레드)을 거치지 않고 스케줄러 틱의 메인 스레드에서
+  직접 `runFullGameSimulation()`을 호출한다 — 정규 시즌 경기들이 워커 풀로 옮겨진 이유(무거운
+  계산이 이벤트 루프를 막지 않게)가 여기엔 적용되지 않는다. 룸당 시즌에 이벤트당 1회뿐이라
+  실질적 영향은 작지만, 그 순간 해당 틱(30초 폴링)이 시뮬 소요 시간만큼 지연된다.
+- 덩크 컨테스트/3점 챌린지 자체의 슈팅 시뮬레이션, 올스타 MVP 시상은 이번 범위 밖(계획서
+  §6~§7, 후속 작업).
+- `MultiGamePbpView.tsx`의 게임 전 로스터 프리뷰(`scheduledHomeBox`/`awayBox`)는 가상 팀
+  ID를 `leagueTeams`에서 찾지 못해 빈 로스터로 보일 수 있다 — games row가 `played=false`로
+  잠깐 존재하는 극히 짧은 창(동기 시뮬 완료 전)에서만 발생하는 엣지케이스라 패치하지 않음.
+
+**롤백 방법**: `server/src/postAllStarGame.ts` 삭제, `scheduler.ts`의 import·
+`runAllStarGames()` 함수·`tick()` 호출 3곳 제거, `types/game.ts`/`gameQueries.ts`/
+`MultiScheduleView.tsx`의 `isAllstar` 관련 라인 제거. DB는
+`ALTER TABLE public.games DROP COLUMN is_allstar`로 되돌리고 3개 RPC를 이 항목 이전 버전
+정의(`migrations/add_player_season_stats_full_rpc.sql` 등 원본 파일)로 재적용하면 됨.
+
+---
+
+## 2026-09-09 — 올스타 명단 확정 서신에 시즌 스탯 추가 + 3점 챌린지 서신에 OVR 컬럼 추가
+
+**배경**: "올스타 명단 확정 서신 내의 테이블에도 시즌 스탯을 추가해주길 바래. 그리고 3점
+챌린지 명단 확정 서신 내의 테이블에도 이름 좌측에 오버롤 컬럼 추가해줘."
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx`:
+  - `AllstarVoteResultCard`(올스타 명단 확정 서신) — 동/서부 스타터·리저브 4개
+    `AllstarRosterTable` 호출에 전부 `showStats` 추가(이미 존재하던 prop — 라이징스타 서신에
+    쓰던 것과 동일한 G/MP/PTS/REB/AST/STL/BLK/TOV/FG% 컬럼, 새 prop/로직 추가 없이 켜기만 함)
+  - `ThreePointContestTable`(3점 챌린지 서신·페이지 탭 공용) — 헤더에 `OVR` 컬럼을 "순위"
+    바로 다음(선수 이름 왼쪽)에 추가, 각 행에 `OvrBadge`(팀 로스터 화면과 동일한
+    `size="sm" !w-7 !h-7 !text-xs !shadow-none` 조합) 셀 추가. 이 표는 서신
+    (`AllstarThreePointContestCard`)과 `MultiAllStarView.tsx`의 "3점 컨테스트" 탭이 공유하는
+    컴포넌트라 양쪽에 동시 반영됨
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**주의사항**: 두 변경 모두 이미 존재하던 값(participant.ovr은 선정 시점에 이미 계산돼
+payload에 저장돼 있음, showStats는 기존 prop 재사용)을 노출만 하는 것이라 추가 계산/조회
+비용 없음.
+
+**롤백 방법**: `AllstarVoteResultCard`의 `showStats` 4곳과 `ThreePointContestTable`의 OVR
+헤더/셀 블록만 제거하면 됨.
+
+---
+
+## 2026-09-09 — 라이징스타 확정 서신 headline에서 팀명 접미사 제거
+
+**배경**: "라이징스타 확정 서신 제목뒤에 팀 이름 ~ 으로 시작하는 텍스트는 제거해줘.
+확정됐습니다 까지만 나오게 하면 돼." — 뉴스 피드 좌측 목록(`MultiNewsFeedView.tsx:558`의
+`{e.headline}`, `buildNewsTitle()`이 이 이벤트 타입엔 별도 케이스가 없어 DB 저장값으로
+폴백)에 표시되는 `league_events.payload.headline`에 "…확정됐습니다 — 팀 A vs 팀 B"처럼
+팀명이 덧붙어 있었음. 서신 카드 자체의 `<h1>`(`AllstarRisingStarsCard`)은 원래 팀명이 없어
+문제 없었고, 목록 프리뷰용 `headline` 필드만 고치면 됨.
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` — `maybePostRisingStarsNews()`의 `headline` 값에서
+  `` — 팀 ${teamAName} vs 팀 ${teamBName}`` 접미사 제거, `"${seasonLabel}시즌 라이징스타
+  챌린지 명단이 확정됐습니다"`로 끝나도록 수정
+
+**검증**:
+- `cd server && npx tsc --noEmit -p tsconfig.json` 신규 에러 0건
+- PBL 룸 데이터 재생성 → `headline: "2026-27시즌 라이징스타 챌린지 명단이 확정됐습니다"`
+  정상 확인(팀명 접미사 없음)
+
+**롤백 방법**: `headline` 템플릿 리터럴에 `` — 팀 ${risingStars.teamAName} vs 팀
+${risingStars.teamBName}`` 를 다시 붙이면 됨.
+
+---
+
+## 2026-09-09 — 라이징스타 서신 바로가기도 라이징스타 탭으로 연결
+
+**배경**: "라이징스타 챌린지 명단 확정 서신도 라이징스타 탭으로 이동하도록 수정해줘." —
+직전 항목(3점/덩크 컨테스트 서신 바로가기 연결)에서 라이징스타 서신은 빠져 있었음 —
+`onOpenAllStar()`를 인자 없이(기본 올스타 탭) 호출하고 있던 걸 `onOpenAllStar('risingstars')`
+로 수정.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRisingStarsCard`의 하단 바로가기 버튼
+  `onClick`을 `() => onOpenAllStar()` → `() => onOpenAllStar('risingstars')`로 변경, 버튼
+  텍스트도 "올스타 투표 결과 보러가기" → "올스타 화면 라이징스타 탭에서 보러가기"로 수정
+  (3점/덩크 컨테스트 서신과 동일한 문구 패턴)
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: 해당 버튼의 `onClick`/텍스트만 이전 버전으로 되돌리면 됨.
+
+---
+
+## 2026-09-09 — 올스타 탭 그룹 위치 이동 + 3점/덩크 컨테스트 서신 바로가기를 해당 탭으로 연결
+
+**배경**: "탭 버튼 그룹 셀렉터 섹션에서 빼서 다른 화면처럼 별도의 그룹으로 만든 후 셀렉터
+섹션 아래로 옮겨줘. 그리고 3점 컨테스트, 덩크 컨테스트 참가자 확정 서신의 하단 바로가기
+텍스트에도 각 탭의 링크를 달아줘." — 직전 항목에서 스테퍼(셀렉터 섹션)의 `rightAction`에
+얹었던 4탭 그룹을 독립 섹션으로 분리하고, 3점/덩크 컨테스트 서신의 "올스타 투표 결과
+보러가기" 링크가 실제로는 항상 기본(올스타) 탭으로만 갔던 걸 각자의 탭으로 정확히
+연결한다.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — `AllstarVoteStepper`에서 `rightAction` prop
+  완전히 제거(더 이상 쓰는 곳이 없어 죽은 prop이 되므로 정리), 스테퍼를 원래의 `w-fit` 단순
+  구조로 복원. `ALLSTAR_TABS` 탭 그룹을 스테퍼 바로 아래 별도 `border-b` 섹션(다른 화면들의
+  독립 탭 바와 동일한 형태)으로 이동
+- `views/multi/season/MultiNewsFeedView.tsx` — `openAllStar()`가 이제 `(view?: string)`를
+  받아 `?view=` 쿼리스트링을 붙여 네비게이트 — 인자 없이 부르면 기존과 동일(기본 탭)
+- `views/multi/season/newsFeedCards.tsx` — `onOpenAllStar` prop 타입을 7개 카드 컴포넌트
+  전부(`AllstarVoteUpdateCard`/`AllstarVoteStartCard`/`AllstarVoteResultCard`/
+  `AllstarRisingStarsCard`/`AllstarThreePointContestCard`/`AllstarDunkContestCard`/`StoryCard`)
+  `() => void` → `(view?: string) => void`로 변경. 기존 `onClick={onOpenAllStar}`(핸들러를
+  그대로 이벤트 리스너로 전달)를 전부 `onClick={() => onOpenAllStar(...)}` 형태로 감쌈 —
+  그대로 뒀으면 React가 클릭 시 SyntheticEvent 객체를 `view` 인자 자리로 그대로 넘겨버려
+  `?view=[object Object]` 같은 잘못된 URL이 만들어졌을 버그(3점/덩크 컨테스트 두 곳만
+  `'threept'`/`'dunk'`를 명시적으로 넘기고, 나머지 4곳은 인자 없이 호출해 동작 유지).
+  3점/덩크 컨테스트 서신의 버튼 텍스트도 "올스타 투표 결과 보러가기"(오해 소지 있는 문구)에서
+  "올스타 화면 3점 컨테스트 탭에서 보러가기"/"올스타 화면 덩크 컨테스트 탭에서 보러가기"로 수정
+
+**검증**:
+- `npx tsc --noEmit -p .` 신규 에러 0건
+- `onClick={onOpenAllStar}` 패턴이 파일 내에 하나도 안 남았는지 grep으로 확인(SyntheticEvent
+  누수 버그 재발 방지 확인)
+
+**주의사항 / 한계**: 브라우저 테스트 도구가 없어 실제 탭 배치·바로가기 클릭 시 URL·탭 전환
+동작은 직접 확인하지 못했다 — 타입 체크와 코드 검토만 완료.
+
+**롤백 방법**: `MultiAllStarView.tsx`는 `rightAction` prop을 되살리고 탭 그룹을 다시 스테퍼
+안으로 옮기면 됨. `newsFeedCards.tsx`/`MultiNewsFeedView.tsx`는 `onOpenAllStar` 시그니처를
+`() => void`로 되돌리고 `onClick={onOpenAllStar}` 형태로 복원하면 됨(다만 SyntheticEvent
+버그가 있던 이전 상태로 되돌아가는 것이니 권장하지 않음).
+
+---
+
+## 2026-09-09 — 올스타 화면에 탭 그룹 추가(올스타/라이징스타/3점 컨테스트/덩크 컨테스트)
+
+**배경**: "올스타 화면에 탭 그룹을 추가해 — 올스타 | 라이징스타 | 3점 컨테스트 | 덩크
+컨테스트." — 기존엔 "라이징스타 보기" 버튼 하나로 올스타/라이징스타 2단만 전환 가능했는데,
+3점·덩크 컨테스트 참가 명단도 페이지에서 볼 수 있도록 4단 탭 그룹으로 확장.
+
+**변경 파일**:
+- `hooks/useAllStarSideEvents.ts` (신규) — 3점/덩크 컨테스트는 `league_allstar_votes`가 아니라
+  `league_events`(`allstar_three_point_contest`/`allstar_dunk_contest`, `allStarStart`에 1회
+  게시)에만 저장돼 있어 `useAllStarVotes()`로는 못 읽음 — 각각 최신 1건을 조회해
+  `parseAllstarThreePointContestPayload()`/`parseAllstarDunkContestPayload()`로 파싱하는
+  전용 훅(`useAllStarVotes.ts`와 동일한 구조/컨벤션)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarThreePointContestCard`/
+  `AllstarDunkContestCard`의 표(thead+tbody)를 각각 `ThreePointContestTable`/
+  `DunkContestTable`로 분리해 export(서신 카드와 페이지 양쪽에서 재사용하기 위한 순수
+  리팩터링, 렌더링 결과 동일)
+- `views/multi/season/MultiAllStarView.tsx` — 기존 `view: 'main' | 'risingstars'` 2단 상태를
+  `'main' | 'risingstars' | 'threept' | 'dunk'` 4단으로 확장. 스테퍼 우측의 단일 토글 버튼을
+  `ALLSTAR_TABS` 4개짜리 필 탭 그룹(`MultiStandingsView.tsx`의 `MODE_TABS`와 동일 스타일)으로
+  교체. `useAllStarSideEvents()`로 3점/덩크 컨테스트 데이터를 가져와 각 탭에서
+  `ThreePointContestTable`/`DunkContestTable`을 그대로 재사용해 표시(참가자 명단이 아직
+  발표 전이면 안내 문구로 폴백). `listedPlayerIds`/`playerCardMap`용 시즌 스탯 조회를
+  `usePlayerSeasonStatsBatch` → `usePlayerSeasonStatsFull`로 교체(3점 컨테스트 탭이 존
+  슛차트까지 필요 — `MultiNewsFeedView.tsx`와 동일한 이유, full이 batch의 상위 집합이라
+  다른 기존 기능엔 영향 없음)
+
+**검증**:
+- `npx tsc --noEmit -p .` 신규 에러 0건
+- PBL 룸에 이미 저장된 3점/덩크 컨테스트 테스트 데이터로 훅과 동일한 조회+파싱 로직을 직접
+  실행 → 3점 컨테스트 8명/덩크 컨테스트 4명, 둘 다 `contestDate: '2027-02-15'` 정상 파싱 확인
+
+**주의사항 / 한계**: 브라우저 테스트 도구가 이 환경에 없어 실제 탭 전환 UI 동작(클릭 시
+URL 변경, 로딩 스피너, 빈 상태 문구 등)은 직접 확인하지 못했다 — 코드 리뷰와 데이터 계층
+검증만 완료.
+
+**롤백 방법**: `MultiAllStarView.tsx`의 `ALLSTAR_TABS`/`sideEvents` 관련 블록을 이전 버전(단일
+토글 버튼)으로 되돌리고, `hooks/useAllStarSideEvents.ts`를 삭제하면 됨.
+`ThreePointContestTable`/`DunkContestTable` 추출은 순수 리팩터링이라 그대로 둬도 무해.
+
+---
+
+## 2026-09-09 — 덩크 컨테스트 서신에 실제 대회 실행 일자 추가
+
+**배경**: "덩크 컨테스트 서신에도 덩크 컨테스트 일자를 알려주는 문구를 추가해줘." — 3점
+챌린지 때와 동일한 패턴(직전전 항목에서 참가 명단 서신만 먼저 만들고, 이번에 실제 대회
+실행일을 별도로 추가). 실제 NBA도 3점 챌린지와 덩크 컨테스트가 같은 "올스타 토요일
+나이트"에 함께 열리므로, 새 키데이트 `allStarDunkContestDate`를 `allStarThreePointContestDate`
+와 동일하게 allStarStart+2일로 맞춤.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `AllStarKeyDates`에 `allStarDunkContestDate: string`
+  필드 추가, `getAllStarKeyDates()`에서 `addDaysStr(allStarStart, 2)`로 계산(3점 챌린지와
+  동일한 날짜)
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 필드/계산 그대로 이식
+- `server/src/postAllStarVoteNews.ts` — `computeAndPostDunkContestNews()`에 `contestDate:
+  string` 파라미터 추가, payload에 `contestDate` 필드 저장
+- `server/src/scheduler.ts` — `runDunkContestNews()`가 `computeAndPostDunkContestNews()`
+  호출 시 `keyDates.allStarDunkContestDate`를 네 번째 인자로 전달
+- `services/multi/leagueEventPayload.ts` — `AllstarDunkContestDetail`에 `contestDate?: string`
+  추가, `parseAllstarDunkContestPayload()`가 파싱(구버전 데이터엔 없을 수 있어 optional)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarDunkContestCard` 본문에 "실제 대회는
+  {contestDate}에 열릴 예정입니다." 한 줄 추가(날짜 없으면 그 줄 생략)
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸에서 `computeAndPostDunkContestNews(..., '2027-02-15')` 직접 호출 → 저장된 payload에
+  `contestDate: '2027-02-15'` 정상 확인(3점 챌린지와 동일 날짜 — 의도한 대로 같은 날 밤에
+  함께 열리는 것으로 맞춰짐)
+
+**롤백 방법**: 5개 파일에서 `allStarDunkContestDate`/`contestDate` 관련 필드/문구만 제거하면
+됨(3점 챌린지 날짜 로직과는 독립적).
+
+---
+
+## 2026-09-09 — 덩크 컨테스트 참가 명단 뉴스 서신 발송
+
+**배경**: "덩크 콘테스트 참가자 명단 선정도 서신 보내줘" — 3점 챌린지 서신
+(`computeAndPostThreePointContestNews`/`AllstarThreePointContestCard`)과 완전히 동일한
+구조로 덩크 컨테스트 참가 명단도 뉴스 피드에 발송한다. 참가 명단 발표일은 3점 챌린지와
+동일하게 `allStarStart`로 맞춤 — 3점 챌린지도 처음 서신을 만들 때는 이 상태(발표일만 있고
+실제 대회 실행일은 별도 요청으로 나중에 추가)였으므로 동일한 전개를 따름.
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` — `computeAndPostDunkContestNews(roomId, leagueId,
+  virtualDate)` 신규(멱등성은 `type='allstar_dunk_contest'` count 조회, `buildTeamsForRoom()`로
+  팀 구성 공유, 시드 `${roomId}_${season}_dunk`), `dunkParticipantPayload()` 헬퍼 신규
+- `server/src/scheduler.ts` — `runDunkContestNews()` 신규(`runThreePointContestNews()`와
+  동일 골격, 트리거는 `virtualDate === keyDates.allStarStart`), `tick()`의
+  `Promise.allSettled` 배열에 추가
+- `services/multi/leagueEventPayload.ts` — `DunkContestParticipantEntry`,
+  `AllstarDunkContestDetail` 타입 신규, `LeagueEventDetail` 유니온에 추가,
+  `parseAllstarDunkContestPayload()` 파서 신규
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`/`STORY_TYPES`에 `allstar_dunk_contest` 추가
+- `views/multi/season/newsFeedCards.tsx` — `AllstarDunkContestCard` 신규(순위/OVR/선수/팀/
+  덩크 점수 단일 표 — `AllstarRosterTable`은 `posGroup` 필수라 덩크 컨테스트엔 안 맞아
+  재사용하지 않고 새로 그림, 3점 챌린지처럼 시즌 존 슛차트 기반 실제 스탯이 없어 원점수만
+  표시), `HEADLINE_ICON`에 `allstar_dunk_contest: Zap`(신규 import) 추가, `StoryCard` switch와
+  `extractEventPlayerIds()`에 각각 케이스 추가
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 뉴스 필터에 새 타입 포함
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건(기존 `claimAndPrepareRoom` 관련 에러 2건은 이번 변경과 무관, 라인 번호만 밀림)
+- PBL 룸에서 `computeAndPostDunkContestNews()` 직접 호출 → 4명 정상 게시(앤서니 에드워즈
+  dunkRating 98 등 고레이팅 위주), 동일 인자로 2회 연속 호출 → 행 1건만 유지(멱등성 확인)
+
+**롤백 방법**: 6개 파일에서 덩크 컨테스트 관련 블록만 제거하면 됨(3점 챌린지 로직과는
+독립적, 다만 `buildTeamsForRoom()` 등 공용 헬퍼는 그대로 둘 것).
+
+---
+
+## 2026-09-08 — 덩크 컨테스트 참가자 선정 로직 추가 (아키타입 가산점 포함)
+
+**배경**: "이번엔 덩크 콘테스트 참가자 선정 로직을 정해줘. 덩크 콘테스트 역시 아키타입
+가산점을 주도록 해." — `docs/simulation/allstar-game-plan.md` §6 계획대로 dunk/vertical
+능력치 기반 선정 로직을 만들고, 직전 3점 챌린지 작업에서 확립한 "가중치 보너스" 방식의
+아키타입 가산점을 처음부터 함께 반영. 참가 인원은 사용자 확인(AskUserQuestion)으로 4명
+(예선 4명 각 2회 시도 → 결승 상위 2명 2회 시도, 실제 NBA 최근 현행 방식) 확정.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `runDunkContestSelection(teams, seed?)`,
+  `DunkContestParticipant` 타입, `DUNK_CONTEST_SIZE = 4`,
+  `DUNK_CONTEST_ARCHETYPES`(Aerial Wing/Rim Runner/Slashing Wing 3종 Set),
+  `DUNK_CONTEST_ARCHETYPE_BONUS = 1.5` 신규 추가
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 함수/타입/상수 그대로 이식
+
+**동작 방식**: `runThreePointContestSelection()`과 완전히 동일한 패턴 —
+`dunk`(`types/player.ts:239`)/`vertical`(`types/player.ts:262`) 평균값을 "덩크 점수"로 삼고,
+시드 기반 노이즈(±20%, `voterNoise()`)를 얹어 순수 top-4 컷이 아닌 가중 랜덤 추첨으로 만든다.
+여기에 더해 덩크 특화 아키타입(Aerial Wing/Rim Runner/Slashing Wing — 전부 림 어택/공중
+마무리 계열, `utils/ovrEngine.ts`의 `ARCHETYPE_LABEL` 참고)이 주/부 아키타입 중 하나라도
+걸리면 점수에 1.5배 보너스(3점 챌린지와 동일 배율·동일 "하드 필터 아닌 가중치 보너스"
+방식 — 사용자가 3점 챌린지 때 이 방식을 선택했으므로 일관성 유지). 후보 풀은
+`buildCandidates()`의 MIN_GAMES(41경기) 필터 그대로 적용.
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 데이터로 직접 호출 테스트 → 4명 정상 선정, dunk/vertical 88~99 고레이팅 확인,
+  아키타입 가산점도 정상 작동(참가자 4명 중 3명이 Aerial Wing/Slashing Wing/Rim Runner를
+  주 또는 부 아키타입으로 보유)
+
+**주의사항 / 아직 안 한 일**: "참가자 선정 로직"만 요청받아 선정 함수까지만 구현했다.
+아직 안 된 것: 서버 오케스트레이터 연결, 실제 경기일 키데이트, `league_events` 새 타입/뉴스
+서신/페이지 표시, 실제 덩크 시도(2~4회) 시뮬레이션 로직(계획서 §6 — 새 확률 모델
+`simulateDunkAttempt()` 설계 필요, PBP 엔진 재사용 불가) 전부 미구현. 3점 챌린지 때처럼
+다음 단계로 서버 연결 → 키데이트 → 서신 순으로 요청이 이어질 것으로 예상.
+
+**롤백 방법**: 두 파일에서 `runDunkContestSelection`/`DunkContestParticipant`/
+`DUNK_CONTEST_SIZE`/`DUNK_CONTEST_ARCHETYPES`/`DUNK_CONTEST_ARCHETYPE_BONUS` 블록만 제거하면
+됨(다른 코드와 독립적).
+
+---
+
+## 2026-09-08 — 올스타 본경기·라이징스타 챌린지 실제 경기 실행일 키데이트 추가
+
+**배경**: "올스타, 라이징스타 서신에 보면 기간 중 하루에 열릴 예정이라고만 작성되어있는데
+실제 올스타, 라이징스타 경기일자 생성 로직이 없나?" — 확인해보니 정확했다. 3점 챌린지만
+직전 항목에서 구체적 단일 날짜(`allStarThreePointContestDate`)를 추가했었고, 본경기·
+라이징스타는 여전히 `allStarStart`~`allStarEnd`(6일) 범위만 서신에 노출되고 있었음.
+사용자 확인(AskUserQuestion)으로 실제 NBA 순서(금 라이징스타 → 토 3점/덩크 → 일 본경기)를
+그대로 따라 라이징스타=allStarStart+1일, 본경기=allStarStart+3일로 확정(3점 챌린지+2일은
+그대로 유지, 순서가 금/토/일로 자연스럽게 이어짐).
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `AllStarKeyDates`에 `allStarRisingStarsDate`
+  (allStarStart+1일), `allStarMainGameDate`(allStarStart+3일) 필드 추가,
+  `getAllStarKeyDates()`에서 계산해 반환
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 필드/계산 그대로 이식
+- `server/src/postAllStarVoteNews.ts` — `maybePostVoteStartNews()`/`maybePostVoteResultNews()`의
+  `keyDates` 파라미터 타입에 `allStarMainGameDate` 추가, payload에 `mainGameDate` 필드로 저장.
+  `maybePostRisingStarsNews()`의 `keyDates` 파라미터 타입에 `allStarRisingStarsDate` 추가,
+  payload에 `gameDate` 필드로 저장
+- `services/multi/leagueEventPayload.ts` — `AllstarVoteStartDetail`/`AllstarVoteResultDetail`에
+  `mainGameDate?: string`, `AllstarRisingStarsDetail`에 `gameDate?: string` 추가. 각 파서
+  (`parseLeagueEventPayload`의 두 case, `parseAllstarRisingStarsPayload()`)에서 파싱
+  (구버전 데이터엔 없을 수 있어 전부 optional)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteStartCard`(투표 시작 서신)에 본경기
+  날짜 문구 추가, `AllstarVoteResultCard`(명단 확정 서신)와 `AllstarRisingStarsCard`는
+  구체적 날짜가 있으면 범위 문구 대신 "{날짜}에 열릴 예정입니다" 단일 날짜 문구로 교체
+  (구버전 데이터 호환을 위해 날짜 없으면 기존 범위 문구로 폴백)
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- `getAllStarKeyDates(2026)` 직접 호출 → `allStarRisingStarsDate: '2027-02-14'`,
+  `allStarThreePointContestDate: '2027-02-15'`, `allStarMainGameDate: '2027-02-16'` 순서대로
+  계산 확인. PBL 룸에서 3개 서신(투표시작/명단확정/라이징스타) 전부 재생성 →
+  각 payload에 mainGameDate/gameDate 정상 저장 확인
+
+**롤백 방법**: 5개 파일에서 `allStarRisingStarsDate`/`allStarMainGameDate`/`mainGameDate`/
+`gameDate` 관련 필드·문구만 제거하면 됨(3점 챌린지 날짜 로직과는 독립적).
+
+---
+
+## 2026-09-08 — 3점 챌린지 선발에 아키타입 가중치 보너스 추가
+
+**배경**: "3점 컨테스트 참가 명단에 아키타입을 고려하는게 어떨까? 지금 PBL 세션을 보면
+루카 돈치치, 제이슨 테이텀, 카이리 어빙, 폴 조지 등의 선수들이 참여했는데 보통 이정도
+사이즈의 선수들은 잘 참가 안하거든." — 순수 3점 능력치(threeCorner/three45/threeTop) 평균만
+쓰다 보니 볼 핸들링/아이솔레이션 중심 올라운더가 슈터 특화 선수보다 높은 점수를 받아 뽑히는
+경우가 많았음. 조사 결과 `calculateOvrWithArchetype()`(utils/ovrUtils.ts, dataMapper.ts에서
+이미 모든 Player에 채워짐)가 28종 아키타입을 계산해두고 있었고, 돈치치류는
+`PRIMARY_CREATOR_GUARD`("Primary Creator")/`SHOT_CREATOR_WING`/`ISOLATION_SCORER`
+("Midrange Menace") 계열, 슈터 특화는 `MOVEMENT_SHOOTER`("Outside Shooter")/`PERIMETER_3D`
+("Perimeter 3&D")/`LOCKDOWN_SHOOTER`/`STRETCH_BIG`로 명확히 구분됨을 확인.
+반영 방식은 사용자 확인(AskUserQuestion)으로 "하드 필터"가 아니라 "가중치 보너스"(자격은
+유지하되 슈터 특화 아키타입이면 점수 배율 적용) 채택.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `runThreePointContestSelection()`에
+  `THREE_POINT_SHOOTER_ARCHETYPES`(Outside Shooter/Perimeter 3&D/Lockdown Shooter/Stretch Big
+  4종 Set)와 `THREE_POINT_ARCHETYPE_BONUS = 1.5` 상수 추가. 후보의 `archetype` 또는
+  `secondaryArchetype`이 이 목록에 하나라도 걸리면 노이즈 반영 점수에 1.5배 곱해 최종 정렬
+  기준(`weightedScore`)에 반영 — 완전 배제가 아니라 확률을 크게 높이는 방식이라 3점 능력치가
+  압도적인 올라운더는 여전히 뽑힐 여지가 있음
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 로직 그대로 이식
+
+**⚠️ 주의(안정성 한계)**: `player.archetype`은 원시 아키타입 키가 아니라
+`resolveLabel()`이 해석한 "표시용 라벨 문자열"(예: "Outside Shooter")이다. DB 라벨
+오버라이드(`getLabelConfigSync()`)가 설정되면 이 문자열이 바뀌어 매칭이 깨질 수 있음 —
+현재 이 프로젝트에서 그런 오버라이드를 실제로 쓰는 곳은 없어 실사용엔 문제없지만, 향후
+라벨 커스터마이징 기능이 생기면 이 화이트리스트도 같이 손봐야 함(라벨이 아니라 원시
+아키타입 키를 기준으로 매칭하도록 리팩터링 필요).
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 데이터로 직접 호출 테스트 → 스테판 커리(rating 99, Outside Shooter)가 1위로
+  선정되고 8명 전원이 Outside Shooter 주/부 아키타입이거나 슈터 인접 타입(Dual Guard/
+  3-Level Scorer/Perimeter 3&D)으로 확인 — 돈치치/테이텀/어빙/조지류는 더 이상 등장하지
+  않음. 실제 서신 데이터도 재생성해 확인
+
+**롤백 방법**: 두 파일에서 `THREE_POINT_SHOOTER_ARCHETYPES`/`THREE_POINT_ARCHETYPE_BONUS`
+상수와 `isShooterArchetype`/`archetypeBonus` 계산 블록만 제거하면 이전 로직(순수 3점
+능력치+노이즈)으로 복원됨.
+
+---
+
+## 2026-09-08 — 3점 챌린지 서신 본문에 실제 대회 실행 일자 추가
+
+**배경**: "3점 챌린지 서신 본문에 3점 챌린지 컨테스트 실행 일자에 대한 내용도 추가해줘." —
+직전전 항목에서 추가한 `allStarThreePointContestDate` 키데이트를 실제로 서신 payload에
+실어 본문에 노출.
+
+**변경 파일**:
+- `server/src/scheduler.ts` — `runThreePointContestNews()`가 `computeAndPostThreePointContestNews()`
+  호출 시 이미 계산해둔 `keyDates.allStarThreePointContestDate`를 네 번째 인자로 전달
+- `server/src/postAllStarVoteNews.ts` — `computeAndPostThreePointContestNews()`에
+  `contestDate: string` 파라미터 추가(자신은 virtualSeasonYear를 안 받아 직접 계산하지
+  않음 — 호출부가 이미 구한 값을 그대로 받음, 다른 게시 함수들의 keyDates 전달 패턴과 동일),
+  payload에 `contestDate` 필드 추가
+- `services/multi/leagueEventPayload.ts` — `AllstarThreePointContestDetail`에
+  `contestDate?: string` 추가, `parseAllstarThreePointContestPayload()`가 파싱(구버전
+  데이터엔 없을 수 있어 optional)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarThreePointContestCard` 본문에
+  "실제 대회는 {contestDate}에 열릴 예정입니다." 한 줄 추가(날짜 없으면 그 줄 생략)
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸에서 `computeAndPostThreePointContestNews(..., '2027-02-15')` 직접 호출 →
+  저장된 payload에 `contestDate: '2027-02-15'` 정상 확인
+
+**롤백 방법**: 4개 파일에서 `contestDate` 관련 파라미터/필드/문구만 제거하면 됨(서로 독립적).
+
+---
+
+## 2026-09-08 — 3점 챌린지 서신 테이블: OVR/레이팅 → 실제 시즌 3점 스탯으로 교체
+
+**배경**: "3점 확정 명단 서신의 참가자 테이블에 3점 레이팅은 삭제하고, OVR 컬럼도 삭제해.
+그리고 시즌 3점 관련된 스탯들을 추가하자. G, MP, PTS, 3PM, 3PA, 3P%, CNR%, 45%, ATB%,
+TS% 이렇게 추가자. CNR%, 45%, ATB%는 선수의 3점 코너별 슛 성공률을 의미하는것임." —
+CNR%/45%/ATB%가 "실제 슈팅 성공률"이라는 명시적 요청이라, 능력치 레이팅이 아니라
+`get_player_season_stats_full` RPC가 이미 내려주는 실제 시즌 존 슛차트(zone_c3_l/r,
+zone_atb3_l/c/r)로 계산했다 — `types/player.ts`의 `ShotZones` 인터페이스가 이미
+`cnr`(코너3)/`p45`(45도 윙3)/`atb`(브레이크 위·탑3)로 이 3분류를 정의해두고 있어 그
+관례를 그대로 따름(zone_atb3_l/r=45도 윙, zone_atb3_c=탑).
+
+**변경 파일**:
+- `views/multi/season/MultiNewsFeedView.tsx` — 선택된 이벤트의 시즌 스탯 조회를
+  `usePlayerSeasonStatsBatch` → `usePlayerSeasonStatsFull`로 교체. full RPC가 batch가 주던
+  필드(g/mp/pts/reb/ast/stl/blk/tov/fgm/fga/p3m/p3a/ftm/fta 등)를 전부 포함하는 상위 집합이라
+  다른 카드에는 영향 없음 — 3점 챌린지 서신에 필요한 zone_* 존 슛차트만 새로 추가되는 것
+- `views/multi/season/newsFeedCards.tsx` — `AllstarThreePointContestCard`의 표에서 OVR
+  배지·"3점 레이팅" 컬럼 삭제, `G/MP/PTS/3PM/3PA/3P%/CNR%/45%/ATB%/TS%` 10개 컬럼 추가.
+  `threePointZonePct(stats, made[], att[])` 헬퍼 신규(존 슛차트 makes/attempts 합산 후 비율
+  계산, `AllstarVoteSection`의 `showStats` 계산 패턴과 동일 스타일). TS%는
+  `pts / (2 * (fga + 0.44*fta))` — `awardVoting.ts`의 `buildCandidates()`가 이미 쓰는 것과
+  동일 공식. `PlayerStats` 타입 신규 import
+
+**⚠️ 사소한 버그(작성 중 발견·즉시 수정)**: 새 JSDoc 주석 안에 "zone_c3_*/" 문구를 썼는데
+`*/`가 실제 블록 주석 종료 토큰과 겹쳐 주석이 중간에 끊기면서 구문 오류가 났었다 —
+"zone_c3_l, zone_c3_r" 식으로 와일드카드 표기를 풀어써서 해결. 앞으로 JSDoc/블록 주석
+안에서 `필드명_*` 같은 와일드카드 표기는 `*/` 충돌 가능성이 있어 피할 것.
+
+**검증**:
+- `npx tsc --noEmit -p .` 신규 에러 0건
+- PBL 룸 3점 챌린지 참가자 3명으로 `get_player_season_stats_full` RPC 직접 호출 →
+  zone_c3_l/r·zone_atb3_l/c/r 실제 값 확인, 수동 계산한 CNR%/45%/ATB%가 그럴듯한 범위
+  (38~55%)로 나옴을 확인
+
+**롤백 방법**: `MultiNewsFeedView.tsx`는 `usePlayerSeasonStatsFull` → `usePlayerSeasonStatsBatch`
+import/호출만 되돌리면 됨. `newsFeedCards.tsx`는 `AllstarThreePointContestCard`의 표 블록과
+`threePointZonePct` 헬퍼만 이전 버전(OVR+3점 레이팅 2컬럼)으로 되돌리면 됨.
+
+---
+
+## 2026-09-08 — 3점 챌린지 실제 이벤트 실행일 키데이트 추가
+
+**배경**: "3점 챌린지의 이벤트 실행 일자 로직을 추가해줘. 보통은 올스타전 전에 하던데
+언제 하는게 좋을까?" — 참가 명단 발표일(allStarStart)과는 별개로, 실제 슈팅 시뮬레이션이
+열릴 날짜를 새 키데이트 필드로 추가. 사용자 확인(AskUserQuestion)으로
+`allStarStart+2일`(실제 NBA의 "토요일 나이트" 포지션, 본경기보다 앞서 열림) 확정.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `AllStarKeyDates`에 `allStarThreePointContestDate:
+  string` 필드 추가, `getAllStarKeyDates()`에서 `addDaysStr(allStarStart, 2)`로 계산
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 필드/계산 그대로 이식
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- `getAllStarKeyDates(2026)` 직접 호출 → `allStarStart: '2027-02-13'`,
+  `allStarThreePointContestDate: '2027-02-15'` 정상 계산 확인(+2일)
+
+**주의사항 / 아직 안 한 일**: 이번엔 날짜 필드만 추가했다. 실제 3점 슈팅(25구) 시뮬레이션
+로직 자체와 이 날짜를 트리거로 쓰는 스케줄러 연결은 아직 미구현(계획서
+`docs/simulation/allstar-game-plan.md` §7 리스크 항목 — 기존 `shotHitRate.ts`가 수비 상황을
+전제로 설계됐을 가능성이 있어 재사용 가능 여부 확인이 먼저 필요) — 참가 명단 발표만 이미
+`allStarStart`에 발송되고 있고(직전 항목), 실제 대회 개최/결과 발표는 이 날짜가 준비된
+채로 다음 단계 요청을 기다리는 상태.
+
+**롤백 방법**: 두 파일에서 `allStarThreePointContestDate` 필드/계산 라인만 제거하면 됨.
+
+---
+
+## 2026-09-08 — 3점 챌린지 참가 명단 키데이트 설정 + 뉴스 서신 발송
+
+**배경**: "이제 3점 참가 명단 선정이 완료되는 키 데이트를 설정하고(올스타 기간 시작일이면
+괜찮을듯) 3점 컨테스트 참가 명단을 서신으로 발송해줘." — 직전 항목(선정 로직)을 서버
+오케스트레이터에 연결하고 뉴스 서신까지 완성.
+
+**⚠️ 아키텍처 결정 — 별도 진입점으로 분리한 이유**: 3점 챌린지 발표일(`allStarStart`)은
+투표 마감일(`allStarVoteEnd`)보다 뒤 시점이라, 기존 `computeAndStoreAllStarVotes()`의
+스케줄러 트리거 창(`allStarVoteStart`~`allStarVoteEnd`, `scheduler.ts`의
+`runAllStarVoteUpdates()`)을 그대로 쓰면 이 함수가 아예 호출되지 않는다. 트리거 창을
+억지로 넓히는 대신 완전히 독립된 함수+스케줄러 체크로 분리했다 — 그 함수를 투표 마감일
+이후에도 계속 돌리면 `voteProgress`가 1을 넘는 새 스냅샷이 `league_allstar_votes`의 최신
+행이 되면서, 이미 저장된 최종 `roster`(스타터/리저브/라이징스타)를 가려버리는 회귀가
+생길 수 있기 때문(클라이언트 `useAllStarVotes()`가 "가장 최근 sim_date" 행을 그대로 신뢰).
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` — `computeAndStoreAllStarVotes()`의 팀 구성 로직(room/
+  league_teams/meta_players/games/시즌스탯 조회 → `Team[]` 조립, ~90줄)을
+  `buildTeamsForRoom(roomId, leagueId)` 헬퍼로 추출(순수 리팩터링, 동작 변화 없음 — 기존
+  함수는 이 헬퍼를 호출하도록만 변경). `computeAndPostThreePointContestNews(roomId, leagueId,
+  virtualDate)` 신규 export — `buildTeamsForRoom()`으로 팀을 구성해
+  `runThreePointContestSelection()` 호출, `allstar_three_point_contest` 타입으로 `league_events`
+  게시(멱등성은 다른 게시 함수들과 동일한 count 조회 패턴)
+- `server/src/scheduler.ts` — `runThreePointContestNews()` 신규(`runAllStarVoteUpdates()`와
+  동일 골격이지만 트리거 조건이 `virtualDate === keyDates.allStarStart`), `tick()`의
+  `Promise.allSettled` 배열에 추가
+- `services/multi/leagueEventPayload.ts` — `ThreePointContestParticipantEntry`,
+  `AllstarThreePointContestDetail` 타입 신규, `LeagueEventDetail` 유니온에 추가,
+  `parseAllstarThreePointContestPayload()` 파서 신규
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`/`STORY_TYPES`에 `allstar_three_point_contest`
+  추가
+- `views/multi/season/newsFeedCards.tsx` — `AllstarThreePointContestCard` 신규(컨퍼런스/팀
+  구분 없는 단일 순위표 — 순위/OVR/선수/팀/3점 레이팅, `AllstarRosterTable`/
+  `AllstarVoteSection`과 형태가 달라 새로 작성), `HEADLINE_ICON`에 `Target`(신규 import) 추가,
+  `StoryCard` switch와 `extractEventPlayerIds()`에 각각 케이스 추가
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 뉴스 필터에 새 타입 포함
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server)
+  신규 에러 0건(server의 기존 `claimAndPrepareRoom` 관련 에러 2건은 이번 변경과 무관한
+  기존 에러임을 diff로 확인)
+- PBL 룸에서 `computeAndPostThreePointContestNews()` 직접 호출 → 8명 정상 게시(루카 돈치치·
+  제이슨 테이텀 등 고레이팅 슈터 위주), 동일 인자로 2회 연속 호출 → 행 1건만 유지(멱등성 확인)
+
+**롤백 방법**: `buildTeamsForRoom()` 추출은 순수 리팩터링이라 롤백 불필요(그대로 둬도 무해).
+나머지 5개 파일에서 3점 챌린지 관련 블록만 제거하면 됨(서로 독립적).
+
+---
+
+## 2026-09-08 — 3점 챌린지 참가 명단 선정 로직 추가
+
+**배경**: "이제 3점 챌린지 참가 명단 로직을 만들자" — `docs/simulation/allstar-game-plan.md`
+§7 계획에 따라 참가자 선정 로직만 우선 구현(경기 시뮬레이션 자체는 별도 착수). 참가 인원은
+사용자 확인(AskUserQuestion)으로 8명(예선 8명 각 5랙 → 결선 상위 3명, 실제 NBA 현행 방식)
+확정.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `runThreePointContestSelection(teams, seed?)`,
+  `ThreePointContestParticipant` 타입, `THREE_POINT_CONTEST_SIZE = 8` 신규 추가
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 함수/타입 그대로 이식
+
+**동작 방식**: `threeCorner`/`three45`/`threeTop`(`types/player.ts:232-234`) 평균값을 "3점
+슈팅 점수"로 삼되, 순수 top-8 컷이 아니라 "상위권 가중 랜덤 추첨"이 되도록 라이징스타
+선발과 동일한 `scoreAllNBA`+`voterNoise` 인프라를 재사용 — 3점 점수에 시드 기반 노이즈
+(±20%, `voterNoise()` 그대로)를 얹어 정렬 후 상위 8명 컷. 매 시즌 100% 동일한 8명이
+나오지 않으면서 상위권일수록 뽑힐 확률이 높은 효과를 별도 RNG 유틸(`utils/rng.ts`) 없이
+이 파일이 이미 쓰던 인프라만으로 구현. `buildCandidates()`의 MIN_GAMES(41경기) 필터를
+그대로 적용해 콜업 직후 벤치 선수가 3점 능력치만으로 뽑히는 걸 방지.
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 데이터로 직접 호출 테스트 → 8명 정상 선정, 3점 레이팅 85~92 분포(상위권 위주지만
+  완전 고정 top-8은 아님 — 노이즈로 인한 순서 변동 확인)
+
+**주의사항 / 아직 안 한 일**: 이번엔 "참가 명단 로직"만 요청받아 선정 함수까지만 구현했다.
+아직 안 된 것: ①서버 오케스트레이터(`postAllStarVoteNews.ts` 등)에 실제 호출 연결 안 됨,
+②`league_events` 새 타입/뉴스 서신/페이지 표시 전부 미구현, ③실제 슈팅(25구) 시뮬레이션
+로직 자체도 미구현(계획서 §7의 리스크 항목 — 기존 `shotHitRate.ts`가 수비 상황을 전제로
+설계됐을 가능성이 있어 재사용 가능 여부 확인이 먼저 필요). 라이징스타 때처럼 다음 단계로
+서버 연결 → 서신 → 페이지 순으로 요청이 이어질 것으로 예상.
+
+**롤백 방법**: 두 파일에서 `runThreePointContestSelection`/`ThreePointContestParticipant`/
+`THREE_POINT_CONTEST_SIZE` 블록만 제거하면 됨(다른 코드와 독립적).
+
+---
+
+## 2026-09-08 — 라이징스타 확정 서신에 선수 시즌 스탯 컬럼 추가
+
+**배경**: "라이징스타 챌린지 명단 확정 서신에 선수의 시즌 스탯을 추가해줘." — 서신의 팀별
+테이블(`AllstarRosterTable`)에 OVR과 별도로 시즌 스탯 컬럼을 추가한다.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`에 `showStats?: boolean` prop
+  추가(`AllstarVoteSection`의 showStats와 동일한 컬럼/계산 로직 — G/MP/PTS/REB/AST/STL/BLK/TOV/FG%,
+  playerCardMap에서 조회, 추가 API 호출 없음). 컬럼 순서는 포지션 → [OVR] → 선수 → 팀 →
+  [스탯] → [득표]로, `AllstarVoteSection`과 동일한 배치. `AllstarRisingStarsCard`의 두 팀
+  테이블 호출에 `showStats` 추가
+
+**동작 방식**: 뉴스 피드에서 `allstar_rising_stars` 이벤트를 선택하면
+`extractEventPlayerIds()`(이미 이 이벤트 타입 케이스 보유 — 2026-09-08 앞선 항목에서 추가)가
+teamA/teamB 선수 ID를 모아 `usePlayerSeasonStatsBatch`로 조회, `playerCardMap`에 병합해
+`AllstarRosterTable`에 그대로 전달 — 별도 조회 로직 추가 없이 기존 파이프라인 재사용.
+
+**검증**:
+- `npx tsc --noEmit -p .` 신규 에러 0건
+- PBL 룸 `allstar_rising_stars` 최신 행에서 팀A 샘플 3명의 `get_player_season_stats_batch` RPC
+  결과 확인 — 3명 전원 실제 시즌 스탯(G/MP/PTS/REB/AST 등) 정상 반환
+
+**롤백 방법**: `AllstarRosterTable`의 `showStats` prop/헤더/바디 블록과
+`AllstarRisingStarsCard` 호출부의 `showStats`만 제거하면 됨.
+
+---
+
+## 2026-09-08 — 올스타 명단 확정 서신에도 뉴스식 본문(2~3줄) 추가
+
+**배경**: "올스타 명단 확정 서신에도 본문 2-3줄 추가해줘." — 직전 항목(라이징스타 서신)과
+동일한 패턴을 본올스타 최종 명단 서신(`allstar_vote_result`)에도 적용.
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` — `maybePostVoteResultNews()`에 `keyDates:
+  { allStarStart, allStarEnd }` 파라미터 추가(호출부 `computeAndStoreAllStarVotes()` 스코프의
+  `keyDates`를 그대로 전달), payload에 `allStarStart`/`allStarEnd` 필드 추가
+- `services/multi/leagueEventPayload.ts` — `AllstarVoteResultDetail`에 `allStarStart?`/
+  `allStarEnd?: string` 추가, `parseLeagueEventPayload()`의 `case 'allstar_vote_result'`가
+  파싱(구버전 데이터엔 없을 수 있어 optional, 없으면 undefined)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteResultCard`의 테이블 위에 본문 3줄
+  추가: ①"수개월간 이어진 팬 투표를 통해 동/서부 컨퍼런스 스타터가 확정됐고, 코치단 투표로
+  리저브까지…" ②"동부 vs 서부의 올스타전은 {allStarStart}~{allStarEnd} 기간 중…"(날짜 없으면
+  생략) ③"이번 시즌을 빛낸 최고의 스타들이…"
+
+**주의사항**: 라이징스타 서신과 달리 이 문구("팬 투표로 스타터, 코치단 투표로 리저브
+선발")는 연출용 텍스트가 아니라 `runAllStarSelection()`의 실제 선발 메커니즘 그대로다 —
+따로 검증할 필요 없이 사실 그대로의 설명.
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 테스트 데이터 재생성 → payload에 `allStarStart: "2027-02-13"`,
+  `allStarEnd: "2027-02-18"` 정상 저장 확인
+
+**롤백 방법**: 3개 파일에서 `allStarStart`/`allStarEnd` 필드와 본문 3줄 블록만 되돌리면 됨.
+
+---
+
+## 2026-09-08 — 라이징스타 확정 서신에 뉴스식 본문(2~3줄) 추가
+
+**배경**: "라이징스타 확정 서신의 테이블 위에 본문을 추가해줘. 라이징스타 경기 일정과 리그
+관계자들이 투표했다는 점을 추가해서 뉴스식으로 2-3줄의 본문을 추가해줘." — `allstar_vote_start`
+서신(`AllstarVoteStartCard`)처럼 테이블 위에 뉴스 문체의 본문을 넣고, 경기 일정과 "리그
+관계자 투표"를 언급한다.
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` — `maybePostRisingStarsNews()`에 `keyDates:
+  { allStarStart, allStarEnd }` 파라미터 추가(호출부는 이미 `computeAndStoreAllStarVotes()`
+  스코프에 있던 `keyDates`를 그대로 전달), payload에 `allStarStart`/`allStarEnd` 필드 추가
+- `services/multi/leagueEventPayload.ts` — `AllstarRisingStarsDetail`에 `allStarStart`/
+  `allStarEnd: string` 추가, `parseAllstarRisingStarsPayload()`가 파싱(구버전 데이터엔 없을
+  수 있어 없으면 빈 문자열 폴백)
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRisingStarsCard`의 테이블 위에 본문 3줄
+  추가: ①"리그 각 팀의 단장과 코칭스태프들이 투표한 결과…" ②"팀 {A}과(와) 팀 {B}은 올스타
+  위켄드 기간({allStarStart}~{allStarEnd}) 중 맞대결을…"(날짜 없으면 이 줄 생략) ③"리그를
+  이끌어갈 다음 세대의 스타들이…"
+
+**주의사항**: "리그 관계자들이 투표했다"는 문구는 실제 선발 메커니즘과 무관한 연출용
+플레이버 텍스트다 — 실제로는 `runRisingStarsSelection()`이 투표 없이 성적만으로 자동
+선발한다(YOS≤1 우선, 부족하면 YOS≤4까지 완화). 다른 올스타 서신들과 톤을 맞추기 위한
+연출이며, 사용자가 명시적으로 이 문구를 요청함.
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 테스트 데이터 재생성 → payload에 `allStarStart: "2027-02-13"`,
+  `allStarEnd: "2027-02-18"` 정상 저장 확인
+
+**롤백 방법**: 3개 파일에서 `allStarStart`/`allStarEnd` 필드와 본문 3줄 블록만 되돌리면 됨.
+
+---
+
+## 2026-09-08 — 라이징스타 보기 버튼 별 아이콘 제거
+
+**배경**: "라이징스타 보기 버튼에 별모양 아이콘은 지워줘." — 스테퍼 우측 토글 버튼에 있던
+`Sparkles`(반짝임/별모양) 아이콘 삭제. 뒤로가기 상태(올스타 명단 보기)의 `ArrowLeft` 화살표는
+방향을 나타내는 기능적 아이콘이라 유지.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — 라이징스타 보기 버튼에서
+  `<Sparkles size={14} />` 렌더링 삭제, 미사용된 `Sparkles` import 제거.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: import에 `Sparkles` 추가하고 `{view === 'risingstars' ? <ArrowLeft size={14} /> :
+<Sparkles size={14} />}` 형태로 복원.
+
+---
+
+## 2026-09-08 — 라이징스타 페이지: 스타터/리저브 명칭 통일 + OVR 컬럼 제거 + 시즌 스탯 표 추가
+
+**배경**: "라이징 스타도 핵심 5인 / 나머지 명단이 아닌 스타터/리저브로 분류해줘. 그리고
+라이징스타 리저브 테이블에 있는 OVR 컬럼은 삭제해줘. 그리고 라이징스타 10명의 스탯도 하단에
+테이블로 표시해줘. 테이블 포맷은 올스타와 동일. 득표수/득표율만 빼면 되겠다" — 직전 항목에서
+추가한 라이징스타 코트+표 레이아웃을 본올스타와 완전히 동일한 톤으로 맞추는 후속 작업.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`을 라이징스타에도 재사용할 수
+  있게 일반화: `entries` prop 타입을 `AllstarVoteEntry[]`(votes/pct 필수)에서 로컬 타입
+  `VoteSectionEntry[]`(votes/pct optional, `AllstarRosterTable`의 `RosterTablePlayer`와 동일
+  패턴)로 완화, `showVotes?: boolean`(기본값 true) 추가해 득표수/득표율 두 컬럼(헤더+바디)을
+  조건부 렌더링으로 감쌈 — 기존 호출부(후보 명단/중간집계 서신)는 전부 기본값 그대로라
+  동작 변화 없음
+- `views/multi/season/MultiAllStarView.tsx` — `RisingStarsBody`에서 `AllStarCourtDiagram`의
+  `title="핵심 5인"` → `"스타터"`, `AllstarRosterTable`의 `label="나머지 명단"` → `"리저브"`로
+  변경 + 해당 테이블의 `showOvr` prop 삭제. 팀별 코트+리저브 블록 아래에
+  `<div className="border-t border-slate-800 pt-6">`로 구분해
+  `AllstarVoteSection label="선수 기록" entries={risingStars.teamA} showStats showVotes={false}`
+  추가 — 본올스타 "올스타 후보 명단"과 동일한 포맷(G/MP/PTS/REB/AST/STL/BLK/TOV/FG%)으로 팀
+  10명 전원의 시즌 스탯을 보여줌(득표 컬럼만 뺌)
+
+**동작 방식**: 시즌 스탯은 이미 `MultiAllStarView.tsx`의 `listedPlayerIds`에 라이징스타
+선수 ID가 포함돼 있어(직전 항목에서 추가) `usePlayerSeasonStatsBatch`가 이미 이 선수들의
+스탯을 가져와 `playerCardMap`에 병합해두고 있음 — 추가 조회 없이 그대로 표시된다.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건.
+
+**롤백 방법**: `newsFeedCards.tsx`의 `AllstarVoteSection` 일반화(`VoteSectionEntry`/
+`showVotes`)를 되돌리려면 `entries: AllstarVoteEntry[]`로 복원하고 득표 컬럼 조건부 렌더링을
+삭제. `MultiAllStarView.tsx`는 이 항목의 diff만 되돌리면 직전 상태(핵심 5인/나머지 명단,
+OVR 있음, 스탯 표 없음)로 복원됨.
+
+---
+
+## 2026-09-08 — 왕관 아이콘 제거 + 라이징스타 페이지에 코트 이미지 추가
+
+**배경**: "팀장 이름 좌측에 왕관 아이콘은 삭제하고 라이징스타에도 올스타처럼 코트 이미지를
+추가해줘." — 직전 항목에서 넣은 주장 표시용 왕관 아이콘을 빼고, 라이징스타 페이지
+(`MultiAllStarView.tsx`의 `RisingStarsBody`)에도 본올스타 "최종 결과" 섹션과 동일한
+코트+표 레이아웃을 적용했다.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`의 선수명 셀에서 `Crown` 아이콘
+  렌더링 제거(직전 항목에서 추가한 `{p.isCaptain && <Crown .../>}` 삭제), 미사용된 `Crown`
+  import도 제거. `RosterTablePlayer.isCaptain` 필드 자체는 유지(데이터는 여전히 유효하고
+  다른 곳에서 쓰일 수 있어 타입은 안 건드림, 렌더링만 뺌)
+- `views/multi/season/MultiAllStarView.tsx` — `AllStarCourtDiagram`의 `starters` prop 타입을
+  `AllstarRosterPlayer[]`(본올스타 전용)에서 구조적 타입 `CourtDiagramPlayer[]`
+  (`{playerId, playerName, teamSlug}`)로 완화해 `RisingStarsRosterPlayer[]`도 그대로 넘길 수
+  있게 함, `title?: string` prop 추가(기본값 '스타터', 라이징스타는 '핵심 5인'). `RisingStarsBody`를
+  본올스타 "최종 결과" 섹션과 동일한 `grid-cols-[3fr_2fr]` 레이아웃으로 재구성 — 팀별 상위
+  5명(이미 스코어 내림차순 정렬돼 있음)을 코트에, 나머지를 `AllstarRosterTable`(나머지 명단)에 표시
+
+**동작 방식**: 라이징스타는 본올스타처럼 백코트/프론트코트 구분이 없는 순수 스코어 랭킹이라,
+코트 위 2-1-2 슬롯은 포지션과 무관하게 "상위 5명"을 담는 용도로만 씀(슬롯 자체는 좌표일 뿐
+포지션 라벨을 따로 렌더링하지 않아 실제로는 문제 없음).
+
+**검증**: `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server)
+신규 에러 0건.
+
+**롤백 방법**: `newsFeedCards.tsx`에서 Crown 렌더링을 되살리려면 직전 항목의 코드를 복원.
+`MultiAllStarView.tsx`의 `RisingStarsBody`를 코트 없는 단일 `AllstarRosterTable`만 있는 형태로
+되돌리려면 직전 항목의 코드로 복원(둘 다 이 항목의 diff만 되돌리면 됨, 다른 파일 영향 없음).
+
+---
+
+## 2026-09-08 — 라이징스타 "팀 A/팀 B" → 팀장 성(姓) 기반 팀명으로 변경
+
+**배경**: "라이징스타는 팀A, 팀B가 아니라 루키들 중 가장 뛰어난 두 선수를 뽑아서 팀장으로
+임명하고 팀 플래그, 팀 디반사 등으로 성을 팀의 이름으로 활용하고 싶어." — 스네이크 배정(홀짝
+교대) 방식 자체가 이미 전체 1위→teamA 첫 배정, 전체 2위→teamB 첫 배정이 되는 구조라, 각 팀의
+"첫 배정자"를 그대로 주장으로 지정하기만 하면 됐다(별도 드래프트 로직 불필요).
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `RisingStarPlayer`에 `isCaptain: boolean` 추가,
+  `RisingStarsResult`에 `teamAName`/`teamBName: string` 추가. `extractSurname(fullName)` 헬퍼
+  신규(마지막 공백 토큰을 성으로 취급 — DB 선수명이 "이름 성" 순서 한국어 음역이라
+  `feedback_db_player_names_korean.md` 관례와 일치). `runRisingStarsSelection()`의 teamA/teamB
+  배정 루프에서 `target.length === 0`(그 팀에 처음 들어가는 선수)일 때 `isCaptain: true`로 표시,
+  반환값에 `teamAName: extractSurname(teamA[0].playerName)` 등 추가(팀이 비면 'A'/'B' 폴백)
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 로직 그대로 이식
+- `server/src/postAllStarVoteNews.ts` — `risingStarPlayerPayload()`에 `isCaptain` 필드 추가,
+  `isFinalDay` 블록의 `risingStars` payload에 `teamAName`/`teamBName` 추가, `RisingStarsPayload`
+  타입 갱신, `maybePostRisingStarsNews()`의 headline을 "…라이징스타 챌린지 명단이
+  확정됐습니다 — 팀 {A} vs 팀 {B}" 형태로 팀명 반영
+- `services/multi/leagueEventPayload.ts` — `RisingStarsRosterPlayer.isCaptain`,
+  `RisingStarsRosterResult.teamAName/teamBName`, `AllstarRisingStarsDetail.teamAName/teamBName`
+  추가. `parseRisingStarsPlayers()`/`parseAllstarRisingStarsPayload()`/
+  `parseAllstarRosterPayload()`의 risingStars 파싱 모두 갱신 — teamAName/teamBName은
+  구버전 저장 데이터엔 없을 수 있어 없으면 'A'/'B' 폴백
+- `views/multi/season/newsFeedCards.tsx` — `RosterTablePlayer`에 `isCaptain?: boolean` 추가,
+  `AllstarRosterTable`의 선수명 셀에 주장이면 왕관 아이콘(`Crown`, lucide-react 신규 import)
+  표시. `AllstarRisingStarsCard`의 "팀 A"/"팀 B" 라벨을 `팀 ${teamAName}`/`팀 ${teamBName}`으로 변경
+- `views/multi/season/MultiAllStarView.tsx` — `RisingStarsBody`의 "팀 A"/"팀 B" 헤딩·테이블
+  라벨도 동일하게 `팀 {risingStars.teamAName}` 형태로 변경
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 테스트 데이터 재생성 → `headline: "...라이징스타 챌린지 명단이 확정됐습니다 — 팀
+  엣지컴 vs 팀 미시"`, `teamA[0].isCaptain === true`(VJ 엣지컴), `teamB[0].isCaptain === true`
+  (이브스 미시) 확인 — 각 팀에 주장이 정확히 1명씩만 플래그됨을 확인
+
+**롤백 방법**: 6개 파일에서 `isCaptain`/`teamAName`/`teamBName`/`extractSurname`/`Crown` 관련
+블록만 되돌리면 됨(각각 독립적으로 추가된 필드/로직이라 부분 롤백 가능).
+
+---
+
+## 2026-09-08 — 올스타 페이지에 라이징스타 명단 보기 토글 추가
+
+**배경**: "올스타 선정 결과가 발표되고 나면 올스타 화면에서 라이징스타 명단도 볼 수 있어야 할
+것 같아. 스테퍼 섹션의 우측에 라이징스타 보기 버튼을 추가하고, 누르면 하단의 바디를
+라이징스타 명단 페이지로 바꿔줘고, url 라우팅도 해줘" — 지금까지 라이징스타 명단은 뉴스
+서신(`allstar_rising_stars`)에서만 볼 수 있었는데, 올스타 페이지(`MultiAllStarView.tsx`) 자체에도
+같은 데이터를 보여주는 뷰를 추가했다.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — `useSearchParams`로 `?view=risingstars` 쿼리스트링
+  추가(다른 시즌 화면들, 예: `MultiLeaderboardView.tsx`과 동일한 URL 상태 저장 패턴 — 새로고침/
+  뒤로가기에도 유지됨). `AllstarVoteStepper`에 `rightAction` prop 추가해 스테퍼 우측에 토글
+  버튼 배치(투표 마감 전에는 `snapshot.roster.risingStars`가 없어 버튼 자체가 안 보임).
+  `RisingStarsBody` 컴포넌트 신규 — 팀A/팀B를 기존 컨퍼런스 2단 레이아웃(grid-cols-2 divide-x)에
+  맞춰 `AllstarRosterTable`(showOvr만, 투표 없어 showVotes 없음)로 렌더링. `listedPlayerIds`에
+  라이징스타 선수 ID 추가(호버카드 시즌 스탯 조회 대상에 포함시키기 위함)
+
+**동작 방식**: 버튼 클릭 시 `setSearchParams({ view: 'risingstars' })` → URL이
+`?view=risingstars`로 바뀌고 본문이 라이징스타 2팀 명단으로 전환, 버튼 라벨/아이콘도
+"올스타 명단 보기"(뒤로가기 화살표)로 바뀜. 다시 누르면 쿼리 파라미터 제거하고 원래
+컨퍼런스 화면으로 복귀.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 0건(레포에 기존부터 있던 무관한 에러 다수 확인 후
+전부 이번 변경과 무관함을 개별 확인).
+
+**롤백 방법**: `MultiAllStarView.tsx`에서 `useSearchParams`/`view`/`rightAction`/`RisingStarsBody`
+관련 블록만 되돌리면 됨(다른 파일 변경 없음).
+
+---
+
+## 2026-09-08 — 라이징스타 후보 풀 부족 시 YOS 상한 점진 완화(20명 목표 채우기)
+
+**배경**: "라이징스타 서신에서는 A팀 B팀의 선발 다섯명밖에 안보이네. 20명 모두 볼 수
+있어야할듯." — 확인해보니 PBL(테스트 리그)이 `season_number=1`이라 이번 시즌 신인
+드래프트(`draft_year=2026`)가 아직 어느 팀에도 배정되지 않아, YOS≤1(신인+2년차) 자격자가
+2년차(`draft_year=2025`) 10명뿐이라 5+5=10명만 나오던 문제. "신인이 없으면 2년차에서 20명
+뽑으면 되지 않나?"라는 사용자 피드백에 따라, 기본 YOS≤1 풀이 20명 미만이면 상한을 한 해씩
+늘려가며(최대 YOS≤4) 20명을 채우도록 일반화했다.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `runRisingStarsSelection()` 내부 로직 변경:
+  단일 `RISING_STARS_MAX_YOS` 필터 한 번 → `eligibleUpToYos(maxYos)` 헬퍼로 YOS≤1부터 시작해
+  후보가 `RISING_STARS_TARGET_TOTAL`(20) 미만이면 `maxYos`를 1씩 늘려 재시도, 상한은
+  `RISING_STARS_MAX_YOS_CEILING = 4`까지만(그 이상은 "라이징스타" 취지에서 벗어난다고 판단).
+  그래도 20명이 안 채워지면 있는 인원만으로 진행(팀당 10명 미만 가능)
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 동일 로직 그대로 이식
+
+**Before**:
+```ts
+const RISING_STARS_MAX_YOS = 1;
+...
+const eligible = candidates.filter(c => {
+    const draftYear = playerMap.get(c.playerId)?.draftYear;
+    if (draftYear == null) return false;
+    const yos = virtualSeasonYear - draftYear;
+    return yos >= 0 && yos <= RISING_STARS_MAX_YOS;
+});
+...slice(0, RISING_STARS_ROSTER_SIZE * 2)
+```
+
+**After**:
+```ts
+const RISING_STARS_TARGET_TOTAL = RISING_STARS_ROSTER_SIZE * 2; // 20
+const RISING_STARS_MAX_YOS = 1;
+const RISING_STARS_MAX_YOS_CEILING = 4;
+...
+const eligibleUpToYos = (maxYos: number) => candidates.filter(c => { ...yos >= 0 && yos <= maxYos });
+let maxYos = RISING_STARS_MAX_YOS;
+let eligible = eligibleUpToYos(maxYos);
+while (eligible.length < RISING_STARS_TARGET_TOTAL && maxYos < RISING_STARS_MAX_YOS_CEILING) {
+    maxYos += 1;
+    eligible = eligibleUpToYos(maxYos);
+}
+...slice(0, RISING_STARS_TARGET_TOTAL)
+```
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸 테스트 데이터 재생성 → teamA/teamB 각 10명(총 20명)으로 정상 채워짐 확인(YOS≤1
+  10명 + YOS 2~4년차에서 추가로 채워진 인원 확인)
+
+**롤백 방법**: 두 파일에서 `eligibleUpToYos`/`while` 루프 블록을 Before의 단일 필터로
+되돌리면 됨. `RISING_STARS_TARGET_TOTAL`/`RISING_STARS_MAX_YOS_CEILING` 상수 제거.
+
+---
+
+## 2026-09-08 — 라이징스타 챌린지 명단, 별도 서신(allstar_rising_stars)으로 승격
+
+**배경**: 직전 항목("라이징스타 챌린지 선발 로직 추가")에서는 라이징스타 명단을
+`allstar_vote_result`(본올스타 최종 명단) 서신 안에 섹션으로 끼워 넣기만 했는데, "라이징스타
+명단도 서신으로 발송해줘" 요청에 따라 뉴스 피드에 독립된 아이템으로도 발송하도록 승격했다.
+`allstar_vote_result` 서신에서는 라이징스타 섹션을 뺐다(같은 정보가 두 서신에 중복 표시되는
+것을 피하기 위함 — 데이터 자체(`risingStars` 필드)는 여전히 `league_allstar_votes.roster`와
+`AllstarVoteResultDetail` 양쪽에 남아있음, 화면에만 안 그림).
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType` 유니온과 `STORY_TYPES`에
+  `'allstar_rising_stars'` 추가 (이걸 빠뜨리면 새 서신이 뉴스 피드 쿼리에서 아예 조회 안 됨 —
+  이 세션에서 이미 `allstar_vote_update` 때 한 번 겪은 실수 패턴)
+- `services/multi/leagueEventPayload.ts` — `AllstarRisingStarsDetail` 타입 신규,
+  `LeagueEventDetail` 유니온에 추가, `parseAllstarRisingStarsPayload()` 파서 신규(기존
+  `parseAllstarRosterPayload()` 내부의 `parseRisingStars` 클로저를 모듈 스코프
+  `parseRisingStarsPlayers()`로 뽑아내 재사용), `parseLeagueEventPayload()`에
+  `case 'allstar_rising_stars'` 추가
+- `server/src/postAllStarVoteNews.ts` — `maybePostRisingStarsNews()` 신규(멱등성 패턴은 기존
+  `maybePostVoteResultNews()`와 동일한 count 조회 방식), `isFinalDay` 블록에서
+  `rosterPayload.risingStars`를 재계산 없이 그대로 넘겨 호출
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRisingStarsCard` 신규(팀A/팀B를
+  `AllstarRosterTable`로, `showOvr`만 켜고 `showVotes`는 안 씀 — 투표 없는 선발이라 득표
+  컬럼 자체가 없음), `AllstarVoteResultCard`에서 라이징스타 섹션 렌더링 제거,
+  `HEADLINE_ICON`에 `allstar_rising_stars: Sparkles`(신규 import) 추가, `StoryCard` switch와
+  `extractEventPlayerIds()`에 각각 케이스 추가(후자 빠뜨리면 호버카드 스탯이 0으로 나오는
+  게 이 세션에서 반복된 버그 패턴이라 처음부터 포함)
+- `views/multi/season/MultiNewsFeedView.tsx` — `NEWS_TYPE_FILTER_OPTIONS`의 "올스타" 필터
+  `types` 배열에 `'allstar_rising_stars'` 추가
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 신규
+  에러 0건
+- PBL 룸에서 기존 `allstar_vote_result`/`allstar_rising_stars` 테스트 행 삭제 후
+  `computeAndStoreAllStarVotes()` 재호출 → 두 서신 모두 정상 게시 로그 확인, `allstar_rising_stars`
+  payload에 teamA/teamB 5명씩 정상 저장 확인
+- 같은 인자로 재호출 → `allstar_rising_stars` 행이 여전히 1건만 유지되는지 확인(멱등성)
+
+**롤백 방법**: 위 5개 파일에서 이번 항목 관련 블록만 되돌리고, `AllstarVoteResultCard`에서 뺀
+라이징스타 섹션을 직전 항목(2026-09-08 "라이징스타 챌린지 선발 로직 추가")의 코드로 복원하면
+됨. `risingStars` 필드 자체(타입/서버 계산)는 직전 항목 소관이라 이번 롤백과 무관.
+
+---
+
+## 2026-09-08 — 라이징스타 챌린지 선발 로직 추가 + 서버 draftYear 매핑 누락 버그 2건 수정
+
+**배경**: "올스타 선정 로직에 라이징스타들을 선정하는 로직도 필요할 것 같다. 라이징스타는 딱히
+투표할 필요는 없고 올스타 선정이 완료될때 같이 발표되면 될것같아" — 요청에 따라 투표 없이
+성적 기준으로 리그 전체(컨퍼런스 구분 없음) 신인+2년차(YOS≤1) 중 상위 20명을 뽑아 10명씩
+두 팀으로 나누는 로직을 추가하고, 투표 마감일 최종 명단 발표(`allstar_vote_result`)에 같이
+실어 발표되도록 했다(사용자 결정: 10명×2팀, 성적 기준 전리그 통합 선발).
+
+**변경 파일**:
+- `utils/allStarSelection.ts` (client) — `runRisingStarsSelection(teams, virtualSeasonYear, seed?)`,
+  `RisingStarPlayer`/`RisingStarsResult` 타입, `RISING_STARS_ROSTER_SIZE=10`,
+  `RISING_STARS_MAX_YOS=1` 신규 추가
+- `server/src/shared/multi/allStarSelection.ts` (server 미러) — 위와 동일 함수/타입 그대로 이식
+- `server/src/postAllStarVoteNews.ts` — `isFinalDay` 블록에서 `runRisingStarsSelection()` 호출,
+  결과를 `rosterPayload.risingStars`(east/west와 별개 최상위 필드)로 합쳐
+  `league_allstar_votes.roster`와 `allstar_vote_result` 뉴스 payload 양쪽에 함께 저장.
+  `risingStarPlayerPayload()` 추가(votes/pct 없음 — 투표가 아니므로)
+- `services/multi/leagueEventPayload.ts` — `RisingStarsRosterPlayer`/`RisingStarsRosterResult` 타입,
+  `AllstarRosterResult`/`AllstarVoteResultDetail`에 `risingStars?` 필드 추가,
+  `parseAllstarRosterPayload()`가 risingStars도 파싱
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`의 `players` prop 타입을
+  `AllstarRosterPlayer[]`(votes 필수)에서 `RosterTablePlayer[]`(votes?/pct? optional)로 완화해
+  라이징스타(투표 없음)도 같은 표 컴포넌트로 렌더링 가능하게 함, `AllstarVoteResultCard`에
+  "라이징스타 챌린지" 섹션(팀A/팀B, `showOvr`만 켜고 `showVotes`는 안 씀) 추가,
+  `extractEventPlayerIds()`의 `allstar_vote_result` 케이스에 라이징스타 선수 ID 합류(이 함수에
+  case 빠뜨리면 호버카드 스탯이 0으로 나오는 게 이 세션에서 이미 2번 반복된 버그 패턴이라
+  처음부터 포함)
+
+**버그 2건 (배포 전 발견, 같은 세션에서 수정)**:
+1. `server/src/shared/dataMapper.ts`의 `mapRawPlayerToRuntimePlayer()`에 애초에 `draftYear` 필드
+   매핑 자체가 없었음(클라 `services/dataMapper.ts:370-372`엔 있었는데 서버 미러 이식 때
+   누락 — 오늘 이미 한 번 있었던 `popularity` 누락과 동일한 유형의 미러 갭). 추가:
+   ```ts
+   draftYear: raw.draft_year != null
+       ? Number(raw.draft_year)
+       : (baseAttrs.draft_year != null ? Number(baseAttrs.draft_year) : undefined),
+   ```
+2. `postAllStarVoteNews.ts`의 `meta_players` select에 애초부터 `draft_year` 컬럼이 빠져 있어서
+   (`select('id, name, position, base_attributes')`) 위 매핑을 고쳐도 `raw.draft_year`가 항상
+   undefined였음. `select('id, name, position, draft_year, base_attributes')`로 수정.
+   → 두 버그가 겹쳐서 라이징스타 후보가 항상 0명으로 나왔고(YOS 계산 자체가 불가능), PBL 테스트
+   데이터로 재현 후 순서대로 잡아 최종적으로 teamA 5명/teamB 5명(2025 드래프트 클래스만) 확인.
+
+**검증**:
+- `npx tsc --noEmit -p .`(client) / `cd server && npx tsc --noEmit -p tsconfig.json`(server) 둘 다
+  이번 변경 관련 신규 에러 0건
+- PBL 룸(`room_id=9b43a612-...`)의 `league_allstar_votes`/`league_events`
+  (`type=allstar_vote_result`, `sim_date=2027-02-06`) 기존 테스트 행 삭제 후 임시 스크립트로
+  `computeAndStoreAllStarVotes()` 재호출 → 재생성된 행에 `roster.risingStars.teamA/teamB` 각 5명,
+  전원 draft_year=2025(YOS=1) 확인, 임시 스크립트는 검증 후 삭제
+
+**롤백 방법**: 위 5개 파일에서 라이징스타 관련 블록만 되돌리면 됨(각각 독립적으로 추가된
+블록이라 부분 롤백 가능). `dataMapper.ts`의 `draftYear` 매핑과 `postAllStarVoteNews.ts`의
+`draft_year` select 추가는 라이징스타 기능과 무관하게 그 자체로 유효한 버그 수정이라 별도
+기능(FA/익스텐션의 YOS 계산 등)이 서버 사이드에서 이 값을 쓰게 될 경우를 위해 롤백하지 않는
+것을 권장.
+
+---
+
+## 2026-09-08 — 스텝퍼 하단 구분선이 중간에서 끊기던 문제 수정
+
+**배경**: 스텝퍼 컨테이너가 `w-fit`(내용 크기만큼만 폭 차지)이라 그 위에 걸려있던
+`border-b`도 스텝퍼 내용 폭까지만 그어지고, 헤더/본문의 풀폭 구분선과 이어지지 않아
+중간에서 뚝 끊기는 것처럼 보였음.
+
+**변경 파일**: `views/multi/season/MultiAllStarView.tsx` — `AllstarVoteStepper`를 바깥
+`<div className="border-b border-slate-800 shrink-0">`(폭 제한 없음 — flex-col 부모 안에서
+기본 stretch로 풀폭)와 안쪽 `<div className="flex items-center px-6 py-4 w-fit">`(스텝
+내용만 감싸는 원래의 w-fit)로 분리 — 구분선은 풀폭, 스텝 내용은 그대로 필요한 만큼만 차지.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — OVR 배지 크기를 로스터 화면과 통일 + 리저브도 "팬 투표" 득표수/득표율로 정정
+
+**배경**: 직전 항목의 대응이 사용자 의도와 어긋났음이 확인됨 — (1) OVR 배지가 `size="md"`
+(32px)로 너무 커짐, (2) "리저브 득표수/득표율이 이상하다"는 지적은 "컬럼을 없애달라"가
+아니라 "리저브도 (코치 투표 포인트가 아니라) **올스타 팬 투표**의 득표수/득표율을 보여달라"
+는 뜻이었음 — 리저브가 코치 투표로 뽑혔더라도, 팬 투표에서 실제로 몇 표·몇 %를 받았는지는
+별개로 참고할 수 있는 값이고 데이터도 이미 있었음(버리고 있었을 뿐).
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx`
+  - `OvrBadge` 크기를 `size="md"` → 팀 로스터 화면(`RosterGrid.tsx`/`TeamPayrollTable.tsx`
+    등)과 동일한 `size="sm" className="!w-7 !h-7 !text-xs !shadow-none"`(`flex
+    justify-center`로 감쌈)로 통일 — 로스터 화면들이 전부 이 조합을 쓰고 있는 걸 확인하고
+    그대로 복사(임의로 새 크기를 만들지 않음).
+  - `AllstarRosterTable`의 `showVotes`를 리저브 표(동/서부 각 1개)에도 다시 켬 —
+    `showResults` 하나로 묶여 있던 걸 `showOvr`/`showVotes`로 쪼갠 구조는 그대로 유지하고,
+    "리저브는 끈다"는 조건만 되돌림.
+- `server/src/postAllStarVoteNews.ts` — `rosterPlayerPayload(p, voteInfo?)`의 `voteInfo`
+  조회 대상을 스타터뿐 아니라 **리저브에도** 적용 — `voteInfoByPlayerId`(최종 팬 투표
+  리더보드에서 만든 playerId→{votes,pct} 조회 맵, 재계산 아님)를 `selection.east/west.reserves`
+  매핑에도 넘겨줌. 이전엔 리저브가 `AllStarPlayer.votes`(코치 포인트)를 그대로 썼는데,
+  이제 스타터·리저브 구분 없이 항상 팬 투표 값으로 통일.
+
+**테스트 데이터**: 임시 스크립트(`_tmp_allstar_result_refresh2.ts`, 실행 후 삭제)로 PBL 룸의
+`league_allstar_votes.roster`/`league_events`(allstar_vote_result) 재갱신 — 리저브 득표수가
+74~200 같은 코치 포인트 스케일에서 14만~19만 표(스타터와 같은 스케일) + 정상적인 %로 바뀐
+것 확인.
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit`(server) 둘 다 신규
+에러 없음.
+
+---
+
+## 2026-09-08 — 결과 서신 테이블: OVR 왼쪽 이동 + 리저브 득표수/득표율 컬럼 제거 + 배지 확대
+
+**배경**: 스크린샷 확인 후 3가지 지적 — (1) OVR 컬럼을 이름 왼쪽으로, (2) 리저브 행의
+득표수(74/148/143.../코치 포인트)·득표율("-") 표시가 "이상하다", (3) OVR 배지 안 숫자를
+`text-sm`으로 키워달라.
+
+**(2)에 대한 판단**: 리저브는 코치 100인 투표 포인트라 스타터의 팬 득표수(수십만 표)와
+스케일이 완전히 다르고(리저브는 수십~수백 점), pct(득표율) 개념 자체가 없어 전부 "-"로만
+찍히는 게 사용자 눈엔 버그처럼 보였을 것 — 스케일이 다른 두 값을 같은 컬럼 헤더 아래 나란히
+보여준 게 설계 실수였다고 판단해, 리저브 표에서는 득표수/득표율 컬럼 자체를 뺐다("고쳐서
+보여줄 방법"이 아니라 "애초에 비교 불가능한 값이니 안 보여주는" 쪽을 택함).
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx`
+- `AllstarRosterTable`의 `showResults`(OVR+득표수+득표율 한 덩어리) prop을 `showOvr`/
+  `showVotes` 둘로 분리. 컬럼 순서를 포지션 → **OVR** → 선수 → 팀 → (득표수 → 득표율,
+  `showVotes`일 때만)로 재배치.
+- `AllstarVoteResultCard`의 4개 표 중 스타터 2개(동/서부)는 `showOvr showVotes` 그대로,
+  리저브 2개는 `showOvr`만(득표수/득표율 컬럼 자체가 안 뜸).
+- `OvrBadge` 크기를 `size="sm"`(`text-[10px]`) → `size="md"`(`text-sm`)로 변경 — 공용
+  컴포넌트(`components/common/OvrBadge.tsx`) 자체를 건드리는 대신 이미 정의된 사이즈
+  프리셋 중 `text-sm`과 정확히 일치하는 `md`를 골라 씀(className 오버라이드로 폰트 크기만
+  덮어쓰려 하면 Tailwind 클래스 순서 문제로 안 먹힐 수 있어 프리셋 전환이 더 안전).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 투표 결과 서신 테이블에 OVR 배지 + 최종 득표수/득표율 추가
+
+**질문에 대한 답**: "OVR 배지를 표시하려면 계산을 또 돌려야 해서 무거워지나?" — 아니다.
+`ovr`은 `runAllStarSelection()`이 이미 계산해 payload에 넣어뒀던 값인데 테이블에 안 그리고
+있었을 뿐이고, `votes`(득표수)도 `AllStarPlayer.votes`에 이미 있던 값을 payload 변환
+함수(`rosterPlayerPayload`)가 그동안 빼고 저장했던 것뿐이다. 유일하게 "새로 하는 일"은
+스타터의 `pct`(득표율)를 같은 함수 안에서 이미 계산해둔 `result`(최종 투표 리더보드)에서
+playerId로 찾아오는 것 — DB 재조회도, 재시뮬레이션도 아닌 이미 메모리에 있는 배열 하나
+순회하는 조회(lookup)라 사실상 공짜.
+
+**변경 파일**:
+- `services/multi/leagueEventPayload.ts` — `AllstarRosterPlayer`에 `votes: number` +
+  `pct?: number`(스타터만 값 있음, 리저브는 코치 투표라 개념이 없어 undefined) 추가,
+  `parseAllstarRosterPayload()`도 두 필드 파싱하도록 갱신.
+- `views/multi/season/newsFeedCards.tsx`
+  - `AllstarRosterTable`에 `showResults?: boolean` 추가 — true면 팀 컬럼 뒤에
+    `OvrBadge`(`components/common/OvrBadge.tsx`, 이미 있던 등급별 그라디언트 배지 컴포넌트
+    재사용)+득표수+득표율(`formatAwardPct`, 리저브는 `pct` 없어서 '-') 컬럼 추가. 페이지
+    (MultiAllStarView.tsx)의 "최종 결과" 리저브 표는 공간 문제로 OVR을 뺐던 결정을 유지하기
+    위해 기본값(false) 그대로 두고, 결과 서신(`AllstarVoteResultCard`)의 4개 표(동/서부 ×
+    스타터/리저브)에만 `showResults` 켬.
+- `server/src/postAllStarVoteNews.ts` — `rosterPlayerPayload(p, pct?)`가 `votes`/`pct`도
+  반환하도록 확장. `isFinalDay` 블록에서 `result`(이미 계산된 최종 투표 리더보드)로부터
+  `playerId → pct` 조회용 `Map`을 만들어 스타터에만 넘겨줌(리저브는 pct 없이 votes만).
+
+**테스트 데이터**: 임시 스크립트(`_tmp_allstar_result_refresh.ts`, 실행 후 삭제)로 PBL 룸의
+`league_allstar_votes.roster`와 `league_events`(allstar_vote_result) 둘 다 새 필드 포함해
+재계산·갱신 — 스타터(예: 셰이 길저스-알렉산더 OVR99·34만표·8.5%)/리저브(예: 제일런 브런슨
+OVR93·74점·pct 없음) 값 확인.
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit`(server) 둘 다 신규
+에러 없음.
+
+---
+
+## 2026-09-08 — 올스타 "투표 결과" 뉴스 서신 신설 (allstar_vote_result)
+
+**배경**: "투표 결과 서신도 만들어달라, 코트 이미지는 빼고 컨퍼런스별 스타터/리저브를
+리스트로만, 하단엔 결과 화면 이동 링크"라는 요청. `league_allstar_votes.roster`(투표
+마감일에만 채워지는 최종 명단)는 이미 있었지만 지금까지 `league_events`에 뉴스로는 한 번도
+게시된 적이 없었음(마감일엔 테이블에 저장만 하고 뉴스는 안 쏨) — 이번에 그 데이터를 뉴스로도
+같이 발송하도록 연결.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`/`STORY_TYPES`에 `'allstar_vote_result'`
+  추가.
+- `services/multi/leagueEventPayload.ts` — `AllstarVoteResultDetail`(`seasonLabel` + east/west
+  `AllstarConferenceRoster`) 추가. east/west 구조가 기존 `AllstarRosterResult`(원래
+  `league_allstar_votes.roster` 컬럼 전용으로 만든 타입)와 완전히 동일해서 파서
+  (`parseAllstarRosterPayload`)를 그대로 재사용 — 새 파싱 로직을 따로 안 만듦. 그 위 주석도
+  "roster 컬럼 전용"이라던 걸 "league_events에서도 재사용"으로 갱신.
+- `views/multi/season/newsFeedCards.tsx`
+  - `AllstarVoteResultCard`(신규) — 코트 배치도(`AllStarCourtDiagram`) 없이 컨퍼런스별
+    스타터/리저브를 전부 `AllstarRosterTable`(기존 리스트형 표, OVR 없음)로만 표시. 하단
+    "올스타 투표 결과 보러가기" 버튼(문구 고정 — 결과 서신이니 항상 "결과").
+  - `extractEventPlayerIds()`에 `allstar_vote_result` 케이스 추가(스타터7+리저브7×2컨퍼런스
+    = 최대 24명의 시즌 스탯을 호버카드용으로 조회하기 위해 — 이걸 빠뜨리면 지난 번
+    `allstar_vote_update` 때와 같은 "스탯 항상 0" 버그가 재발함).
+  - `HEADLINE_ICON`에 `allstar_vote_result: Trophy`, `StoryCard` 스위치에 케이스 추가.
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 필터에 `allstar_vote_result` 포함.
+- `server/src/postAllStarVoteNews.ts` — `maybePostVoteResultNews()`(신규) — `rosterPayload`가
+  계산된 날(=투표 마감일)에만, `league_allstar_votes.roster`에 저장한 것과 같은 east/west
+  객체를 그대로 `league_events`에도 insert(재계산 없이 재사용). 멱등성은 다른 게시 함수들과
+  동일한 count-조회 패턴.
+
+**테스트 데이터**: PBL 룸의 기존 `league_allstar_votes`(마감일 `2027-02-06`, roster 이미
+계산돼 있던 행)를 그대로 읽어 `allstar_vote_result` 뉴스로 재포장해 insert.
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit`(server) 둘 다 신규
+에러 없음.
+
+---
+
+## 2026-09-08 — 올스타 "투표 시작" 뉴스 서신 신설 (allstar_vote_start)
+
+**배경**: 지금까지 올스타 관련 서신은 중간 집계/최종 결과(`allstar_vote_update`)만 있었고,
+투표가 시작됐다는 안내 서신은 없었다. "오늘부터 [리그] [시즌]시즌 올스타 투표가 시작됩니다
+/ 언제부터 언제까지 진행되며 올스타전은 언제 개최됩니다 / 올해는 어떤 선수가 선정될까요"
+3줄 안내문 + 하단 "올스타 투표 현황 보러가기" 바로가기를 본문으로 하는 새 서신 타입 요청.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `'allstar_vote_start'` 추가,
+  `STORY_TYPES`에도 포함(이걸 빠뜨리면 뉴스피드 쿼리가 걸러버려서 DB엔 있어도 화면에 안
+  보이는 버그가 남 — 2026-09-08 앞선 항목에서 이미 한 번 겪은 실수라 이번엔 처음부터 같이
+  넣음).
+- `services/multi/leagueEventPayload.ts` — `AllstarVoteStartDetail`
+  (`leagueName`/`seasonLabel`/`voteStart`/`voteEnd`/`allStarStart`/`allStarEnd`, 전부 서버가
+  계산 시점에 문자열로 박아서 보냄) 추가, `LeagueEventDetail` 유니온에 편입,
+  `parseLeagueEventPayload()`에 `case 'allstar_vote_start':` 파싱 블록 추가.
+- `views/multi/season/newsFeedCards.tsx`
+  - `AllstarVoteStartCard`(신규) — 표 없이 안내문 3줄 + 하단 "올스타 투표 현황 보러가기"
+    버튼(문구 고정 — 투표 시작 시점엔 결과가 없으므로 `allstar_vote_update`처럼
+    voteProgress로 갈릴 필요 없음).
+  - `HEADLINE_ICON`에 `allstar_vote_start: Vote`(신규 임포트) 추가, `StoryCard` 스위치에
+    케이스 추가(둘 다 빠뜨리면 크래시/폴백 카드로 새는 지점이라 항상 같이 처리).
+- `views/multi/season/MultiNewsFeedView.tsx` — "올스타" 필터 옵션의 `types`에
+  `allstar_vote_start` 추가(기존 `allstar_vote_update`와 같은 필터 그룹으로 묶음).
+- `server/src/postAllStarVoteNews.ts` — `leagues.name` 조회 추가,
+  `maybePostVoteStartNews()`(신규) — `virtualDate === keyDates.allStarVoteStart`일 때만
+  1회 게시(멱등성은 `maybePostInterimNews`와 동일한 count-조회 패턴). `computeAndStoreAllStarVotes()`
+  끝에서 `maybePostInterimNews`와 나란히 호출.
+
+**테스트 데이터**: PBL 룸에 `allstar_vote_start` 테스트 이벤트 1건 직접 insert(임시 스크립트
+실행 후 삭제) — `leagueName: 'PBL'`, `seasonLabel: '2026-27'`, 실제 keyDates 값 그대로.
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit`(server) 둘 다 신규
+에러 없음(서버 쪽 기존 무관 에러 2개는 이전 세션에서 이미 확인된 것).
+
+---
+
+## 2026-09-08 — 중간 집계 서신 백코트5/프론트코트6 원인 규명 + 탑25 내부 스크롤 + 시즌 스탯 추가
+
+**원인 규명**: "왜 백코트는 5명, 프론트코트는 6명만 나오냐"는 질문에 DB 실측으로 확인 —
+현재 `league_events`에 남아있던 테스트 이벤트(`id: 2a2c4ec4-...`)가 이번 세션 훨씬 앞부분,
+`DISPLAY_LIMIT` 상수가 생기기 전에 수동 스크립트로 `trim(guards, 5)`/`trim(frontcourt, 6)`을
+하드코딩해 넣은 아주 오래된 테스트 데이터였음 — 서버 파이프라인(`postAllStarVoteNews.ts`)
+자체는 이미 두 그룹 다 `DISPLAY_LIMIT = 25`로 동일하게 자르고 있어서 실제 코드엔 버그가
+없었음. 낡은 테스트 행을 지우고 현재 파이프라인 그대로 재생성해서 해결(아래 검증 참고).
+
+**요청사항 구현**:
+- `views/multi/season/newsFeedCards.tsx`
+  - `extractEventPlayerIds()`에 `case 'allstar_vote_update':` 추가 — 이게 없어서 뉴스
+    서신에서 올스타 카드가 선택돼도 `usePlayerSeasonStatsBatch`가 빈 배열만 조회해 스탯이
+    전부 0으로 나올 뻔했음(다른 이벤트 타입은 이미 다 등록돼 있었는데 이것만 빠져 있었음).
+  - `AllstarVoteSection`에 `scrollable?: boolean` 추가 — true면 `overflow-y-auto max-h-96`
+    으로 세로 스크롤 고정 높이 컨테이너가 되고 헤더 행(`<tr>`)이 `sticky top-0`으로 고정됨.
+    페이지(MultiAllStarView.tsx)는 셀렉터로 테이블 하나만 보여주고 페이지 자체가 스크롤되니
+    기본값(false) 그대로 둠.
+  - `AllstarVoteUpdateCard`의 백코트/프론트코트 테이블 4곳(동/서부 각 2개) 전부에
+    `showStats scrollable` 추가 — 올스타 페이지와 동일한 시즌 스탯 컬럼(G/MP/PTS/REB/AST/
+    STL/BLK/TOV/FG%)이 나오고, 각 25명이 내부 스크롤 영역 안에 들어감.
+
+**테스트 데이터 갱신**: 임시 스크립트(`_tmp_allstar_news_refresh.ts`, 실행 후 삭제)로 낡은
+5/6 테스트 이벤트 삭제 후 `postAllStarVoteNews.ts`와 동일한 로직(`DISPLAY_LIMIT=25`)으로
+재계산해 재삽입 — 동/서부 백코트/프론트코트 전부 25명씩 확인.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음. DB 재조회로 4그룹 전부 25명 확인.
+
+---
+
+## 2026-09-08 — 올스타 뉴스 서신 하단에 "올스타 페이지로" 바로가기 링크 추가
+
+**배경**: "모든 올스타 서신 최하단에 올스타 페이지로 가는 바로가기 링크를 달아달라 — 투표
+시작/중간 집계 서신엔 '올스타 투표 현황 보러가기', 투표 결과 서신엔 '올스타 투표 결과
+보러가기'"라는 요청. 현재 올스타 관련 서신은 전부 `AllstarVoteUpdateCard`(단일 카드
+컴포넌트) 하나가 렌더하고, 시작/중간집계/결과 여부는 payload의 `voteProgress`
+(0=시작 직후~1=마감)로만 구분 가능 — 별도 카드 타입 분리 없이 `voteProgress===1` 여부로
+문구만 갈아끼우는 방식으로 구현.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx`
+  - `AllstarVoteUpdateCard`에 `onOpenAllStar?: () => void` prop 추가, 본문 하단에
+    버튼(`voteProgress >= 1`이면 "올스타 투표 결과 보러가기", 아니면 "올스타 투표 현황
+    보러가기" + `ArrowRight` 아이콘) 렌더.
+  - `StoryCard`(뉴스피드 상세 패널이 이벤트 종류별 카드를 고르는 스위치)에도 같은 prop을
+    추가해 `AllstarVoteUpdateCard`까지 그대로 전달.
+- `views/multi/season/MultiNewsFeedView.tsx` — `openAllStar = () =>
+  navigate(`/multi/leagues/${leagueId}/season/allstar`)` 추가, `<StoryCard
+  onOpenAllStar={openAllStar} .../>`로 연결(기존 `openGame`/`openPlayer`/`openTeam`과 동일한
+  콜백 prop 패턴).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+**주의사항**: 서버(`postAllStarVoteNews.ts`)는 현재 중간 집계일(3회)에만 뉴스를 게시하고,
+투표 시작일(`allStarVoteStart`)이나 마감일(`allStarVoteEnd`)엔 뉴스를 따로 게시하지 않는다
+(마감일엔 `league_allstar_votes.roster`만 채워질 뿐 `league_events` insert가 없음) — 이번
+작업은 "서신 하단 문구"만 다뤘고, 실제로 투표 시작/최종 결과 서신을 자동 발송하는 서버
+트리거는 별도 작업으로 남아있음.
+
+---
+
+## 2026-09-08 — 뉴스피드 서신(newsFeedCards.tsx) 남은 tracking-wide 2곳도 제거
+
+**배경**: 직전 항목에서 올스타 페이지에서 실제로 안 보인다는 이유로 남겨둔 `AllTeamSection`
+(올-NBA/올-디펜시브 카드)과 `AllstarVoteSection`(올스타 투표 중간 집계 뉴스 카드)의
+`tracking-wide` — 둘 다 뉴스피드 화면에서 열어보는 서신에서는 실제로 보이는 텍스트라,
+"뉴스피드 서신 내에서도 tracking은 다 제거해달라"는 후속 요청으로 마저 제거.
+
+**변경 파일**: `views/multi/season/newsFeedCards.tsx` — `AllTeamSection`(`{tierLabel}` 제목)과
+`AllstarVoteSection`(`{label}` 제목, `hideLabel`이 false일 때만 렌더 — 즉 뉴스피드
+`AllstarVoteUpdateCard`에서)의 `tracking-wide` 제거. 파일 내 `tracking-*` 클래스가 이제
+0개(2026-09-01 후속 항목에서 이미 로고/tabular-nums/font-mono와 함께 대부분 제거했었는데
+이 두 곳만 남아있었음).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 올스타 페이지 내 tracking-wide 전부 제거 + 볼드 재적용
+
+**배경**: 직전 항목에서 뺐던 볼드체를 "너무 얇다"며 다시 요청 → `font-black` 복원. 이어서
+"올스타 페이지 내 tracking-wide 적용된 부분 있으면 전부 해제해달라"는 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — "최종 결과"/"올스타 후보 명단"에 `font-black`
+  재적용. "스타터"(`AllStarCourtDiagram`)/"올스타 후보 명단"/"최종 결과"(×2) 총 4곳의
+  `tracking-wide` 제거.
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`("리저브" 표 제목, 올스타
+  페이지 전용 컴포넌트 — 다른 화면에서 안 씀 확인 후 직접 수정)의 `tracking-wide` 제거.
+  `AllTeamSection`/`AllstarVoteSection`의 `tracking-wide`는 올스타 페이지에서 실제로 렌더되지
+  않아(`AllstarVoteSection`은 이 페이지에서 `hideLabel`로 항상 숨김, `AllTeamSection`은
+  올-NBA/올-디펜시브 카드 전용) 그대로 둠.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — "최종 결과"/"올스타 후보 명단" 소제목 스타일 조정 (text-lg, 볼드 해제)
+
+`views/multi/season/MultiAllStarView.tsx`의 "최종 결과"(동/서부 2곳)·"올스타 후보 명단"
+소제목을 `text-sm font-black uppercase tracking-wide` → `text-lg uppercase tracking-wide`로
+변경(볼드 해제, 크기 확대) — 같은 클래스를 쓰는 "스타터"/"리저브"/"백코트"/"프론트코트"
+라벨 등 다른 소제목은 그대로 둠. `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 컨퍼런스 헤더 틴트 박스 제거 + "최종 결과"/"올스타 후보 명단" 영역 분리
+
+**배경**: "동/서부 컨퍼런스 틴트 박스는 없애고 text-2xl 텍스트만 남기고, 최종 결과(스타터
+코트+리저브)와 후보 명단(득표 리더보드)을 시각적으로 구분해달라"는 요청.
+
+**변경 파일**: `views/multi/season/MultiAllStarView.tsx`
+- 컨퍼런스 `<h2>`에서 배경색(`CONFERENCE_COLORS` 틴트) + 테두리 스타일 제거, `text-2xl
+  font-black text-white` 순수 텍스트로 교체. 더 이상 쓰이지 않는 `CONFERENCE_COLORS` 상수
+  자체도 삭제(죽은 코드).
+- roster(최종 결과) 블록에 `올스타 후보 명단`과 동일한 스타일의 `<h3>최종 결과</h3>` 제목
+  추가(투표 마감 후 roster가 있을 때만 표시). 득표 리더보드(`AllstarVoteGroupPanel`) 앞에
+  `border-t border-slate-800 pt-6`를 둘러 두 영역 사이에 구분선을 넣음.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 마커 확대 + 2인 줄 간격 소폭 확대
+
+`views/multi/season/MultiAllStarView.tsx`:
+- 로고 버튼 `w-16 h-16`(64px) → `w-20 h-20`(80px), 이름 텍스트 `text-sm` → `text-base`.
+- 2명씩 있는 백코트 줄/상단 프론트코트 줄의 x좌표를 `130/370`(간격 240)로 소폭 확대(이전
+  `150/350`, 간격 200) — 로고가 커진 만큼 옆 선수와 안 붙어 보이도록.
+`npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 리저브 테이블 OVR 컬럼 제거 + 스타터 코트 확대
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`에서 OVR 헤더/셀 제거(포지션/
+  선수/팀 3컬럼만 남음).
+- `views/multi/season/MultiAllStarView.tsx` — 명단 발표 블록의 `grid grid-cols-2 gap-4`
+  (코트 다이어그램 | 리저브 테이블, 동/서부 각 1곳씩 총 2곳)를 `grid-cols-[3fr_2fr]`로 변경 —
+  테이블 컬럼이 줄어든 만큼 코트 쪽 비중을 50%→60%로 키움.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 득표 리더보드 테이블 제목 제거 + "올스타 후보 명단" 타이틀 추가
+
+**배경**: "코트 이미지 하단 테이블의 백코트/프론트코트 제목은 지우고 셀렉터가 테이블 바로
+위에 오게 하고, 셀렉터 위에 '올스타 후보 명단' 타이틀을 붙여달라"는 요청.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`에 `hideLabel?: boolean` 추가
+  (기본 false) — true면 상단 `<h3>{label}</h3>`을 생략. 뉴스 카드(`AllstarVoteUpdateCard`)는
+  그대로(제목 유지), 페이지 전용 사용처만 opt-in.
+- `views/multi/season/MultiAllStarView.tsx` — `AllstarVoteGroupPanel`에 `<h3>올스타 후보
+  명단</h3>`을 셀렉터 탭 위에 추가하고, `AllstarVoteSection`에 `hideLabel` 전달 — 셀렉터
+  탭이 테이블 바로 위(제목 없이)에 붙게 됨.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 투표 스텝퍼 날짜 텍스트 밝기 조정 (text-slate-500 → text-slate-400)
+
+`views/multi/season/MultiAllStarView.tsx`의 `AllstarVoteStepper` 날짜 텍스트 색상을 밝게
+조정(사용자 요청, 단순 색상 조정). `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 투표 스텝퍼 각 단계에 날짜 표시 추가
+
+`views/multi/season/MultiAllStarView.tsx`의 `AllstarVoteStepper`에 `keyDates: AllStarKeyDates`
+prop 추가 — 5단계 라벨(투표 시작/1차/2차/3차 집계/투표 완료)을 `keyDates`의 대응 날짜
+(`allStarVoteStart`/`allStarVoteInterimDates[0~2]`/`allStarVoteEnd`)와 짝지은 배열로 바꾸고,
+각 단계 원형 인디케이터 옆에 라벨+날짜를 세로로(`flex flex-col`) 표시. 호출부에서
+`keyDates={keyDates}`(이미 컴포넌트 상단에서 `useMemo`로 계산해두던 값) 전달.
+`npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 투표 스텝퍼 축소 + 완료 단계 체크 아이콘 + 진행률 바 삭제
+
+`views/multi/season/MultiAllStarView.tsx`의 `AllstarVoteStepper` 수정 — (1) 바깥 컨테이너를
+`w-fit`으로 바꿔 화면 폭을 꽉 채우지 않고 내용 크기만큼만 차지하도록(이전엔 `flex-1`로 좌측
+스텝 영역이 늘어남), 연결선도 `flex-1`(가변폭) → `w-8`(고정 32px)로 변경. (2) 완료된 단계
+(`i < stepIndex`)는 숫자 대신 `lucide-react`의 `Check` 아이콘 + 에메랄드(초록) 배경으로 표시,
+현재 단계는 기존처럼 인디고. (3) 우측 진행률 퍼센트 + 프로그레스바 블록 통째로 삭제.
+`npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 올스타 화면 헤더/레이아웃 정리 + 투표 진행 스텝퍼 추가
+
+**배경**: 사용자 요청 5가지 — (1) 동/서부 컨퍼런스 헤더가 명단 발표 블록과 득표 리더보드
+블록에 각각 한 번씩, 총 두 번 중복 표시되던 것 정리, (2) 스타터 위쪽 "올스타 명단 발표 /
+투표 종료" 텍스트 삭제, (3) 화면 헤더 제목을 "올스타 팬 투표" → "{시즌}시즌 올스타 투표"로,
+(4) 헤더 우측 메타정보에서 집계일/진행률 제거하고 투표 기간만 남기기 + 텍스트 밝게,
+(5) 바디 최상단에 5단계 스텝퍼(투표 시작/1차/2차/3차 집계/투표 완료) + 진행률 프로그레스바
+추가.
+
+**변경 파일**: `views/multi/season/MultiAllStarView.tsx`
+- 헤더 중복 제거 + 명단 발표 텍스트 삭제: 예전엔 "명단 발표"(roster 있을 때만)와 "득표
+  리더보드"가 각각 독립된 `grid-cols-2` 블록이라 컨퍼런스 헤더(`<h2>`/`<h3>`)가 컨퍼런스당
+  2번씩 나왔음. 하나의 `grid-cols-2` 블록으로 합쳐 컨퍼런스당 헤더 1개만 남기고, 그 아래
+  (roster 있으면) 코트+리저브 표, 그다음 득표 리더보드 셀렉터를 순서대로 배치. "올스타 명단
+  발표"/"투표 종료 · ... 확정" 안내 텍스트 블록은 통째로 제거.
+- 헤더 제목: `room?.season`(예: "2026-27") 기반으로 `{room.season}시즌 올스타 투표` 표시,
+  없으면 "올스타 투표" 폴백.
+- 헤더 우측: `· 집계일 ... · 진행률 ...%` 접미사 제거, 투표 기간만 표시. 텍스트 컬러
+  `text-slate-500` → `text-slate-300`(더 밝게).
+- `AllstarVoteStepper`(신규 로컬 컴포넌트) — `voteProgress`(0~1)를 25% 구간으로 나눠 5단계 중
+  현재 단계를 원형 인디케이터+연결선으로 표시(완료/현재 단계는 인디고, 이후 단계는
+  slate로 흐리게), 우측에 프로그레스바+퍼센트. 스냅샷이 아직 없으면(투표 시작 전) 0단계·0%.
+  본문(`flex-1 overflow-y-auto`) 최상단에 항상 표시(로딩/빈 상태와 무관하게).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치: 센터를 코트 세로 중앙에 맞추고 위아래 대칭 배치
+
+**배경**: 직전 조정("전체를 위로 당김")이 스크린샷으로 확인해보니 너무 많이 올라감 — 가운데
+센터 1명을 기준으로 코트 세로 중앙에 오도록 다시 잡아달라는 요청.
+
+**변경 파일**: `views/multi/season/MultiAllStarView.tsx` — `STARTER_SLOTS`를 센터
+(starters[4])가 `viewBox` 높이 474의 정중앙(237)에 오도록 재배치하고, 위아래로 140씩
+균등하게 벌려 상단 프론트코트(97)/하단 백코트(377) 줄을 배치 — 위 여유(97)와 아래 여유
+(474-377=97)가 대칭이라 어느 줄의 이름표도 경계에 안 닿음.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치 전체를 위로 이동 (백코트 이름표 경계 겹침 수정)
+
+**배경**: "백코트 선수들의 이름 태그가 코트 경계선에 닿는다" 버그 리포트. 원인은 마커
+(로고+이름표)를 감싸는 div가 `-translate-x-1/2 -translate-y-1/2`로 좌표를 블록의 세로
+중앙에 맞추는데, 이름표가 항상 로고 아래에 붙어있어 실제 블록 하단은 좌표(y)보다 한참
+아래로 내려간다 — 이전 하단 백코트 줄이 `y=420`(viewBox 높이 474 대비 여유 54)이라 이름표
+아랫부분이 컨테이너 경계에 걸리고 있었음.
+
+**변경 파일**: `views/multi/season/MultiAllStarView.tsx` — `STARTER_SLOTS` 전체를 y -80만큼
+이동(`60/200/340`, 간격은 140으로 그대로 유지). 하단 백코트 줄이 `420→340`으로 내려가면서
+경계까지 여유가 134로 늘어남. 상단 프론트코트 줄은 `140→60`으로 올라감(상단 여유는
+줄었지만 로고가 위로 튀어나가는 정도는 이름표보다 작아 문제 없음).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치: 2-1-2 상하좌우 간격 균등화
+
+`views/multi/season/MultiAllStarView.tsx`의 `STARTER_SLOTS` — 상단 프론트코트 2명의 x좌표를
+`90/410`에서 백코트와 동일한 `150/350`으로 맞추고(가로 간격 통일), 세 줄(상단 프론트코트/
+중앙 프론트코트/하단 백코트)의 y좌표를 `140/280/420`으로 재설정해 줄 간 간격을 140씩
+균등하게 벌림(이전엔 `150/260/380`으로 간격이 110·120으로 살짝 불균등했음). `npx tsc
+--noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치 미세 조정 (백코트 간격 축소, 프론트코트 와이드 2명 상향)
+
+`views/multi/season/MultiAllStarView.tsx`의 `STARTER_SLOTS`:
+- 백코트 2명(starters[0]/[1]) x좌표를 `110/390`(간격 280) → `150/350`(간격 200)으로 좁힘.
+- 프론트코트 와이드 2명(starters[2]/[3]) y좌표를 `190` → `150`으로 올림(골대 쪽으로 이동).
+- 센터(starters[4], `250,260`)는 변경 없음.
+`npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치를 다이아몬드 대형으로 조정 (센터를 골밑→자유투 아크 쪽으로)
+
+`views/multi/season/MultiAllStarView.tsx`의 `STARTER_SLOTS`에서 5번째 자리(프론트코트3/센터,
+`starters[4]`)를 골밑 근처(`x:250,y:90`)에서 자유투 아크 쪽(`x:250,y:260`)으로 이동 — 요청한
+대형(프론트코트 2명 상단 와이드 + 프론트코트 1명 가운데 + 백코트 2명 하단 와이드, 다이아몬드
+모양)을 만들기 위함. 다른 4명 좌표는 그대로. `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 득표 리더보드 스탯 컬럼에서 GS/3P%/FT% 제거
+
+**배경**: "공간이 부족하니 GS, 3P%, FT%는 빼달라"는 요청 + "모든 선수의 GS가 0으로 나오는
+이유"를 물어봐서 조사 — `usePlayerSeasonStatsBatch`가 쓰는 `get_player_season_stats_batch`
+RPC(`hooks/usePlayerSeasonStatsBatch.ts:11-16` `StatsBatchRow` 인터페이스) 자체에 `gs`
+컬럼이 없어서, 항상 `stats?.gs ?? 0`의 `?? 0` 폴백만 찍히고 있었던 것으로 확인(실제 데이터가
+0인 게 아니라 애초에 안 불러와짐).
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`의 `showStats` 컬럼에서 GS,
+  3P%, FT% 헤더/셀 제거(G/MP/PTS/REB/AST/STL/BLK/TOV/FG%만 남김). 상단 주석에 GS가 RPC에
+  없어 항상 0이었다는 점도 기록.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+**주의사항**: 나중에 선발 출장(GS) 데이터가 정말 필요해지면
+`get_player_season_stats_batch` RPC(마이그레이션 `add_player_season_stats_batch_rpc.sql`)
+자체에 `gs` 컬럼을 추가하는 작업부터 해야 함 — 클라이언트 훅/컴포넌트만 고쳐서는 안 됨.
+
+---
+
+## 2026-09-08 — 득표 리더보드에 셀렉터 + 시즌 스탯 컬럼 추가
+
+**배경**: "백코트/프론트코트를 나란히 놓지 말고 테이블 위 셀렉터로 전환하게 하고, 팀 컬럼
+우측에 시즌 스탯(G/GS/MP/PTS/REB/AST/STL/BLK/TOV/FG%/3P%/FT%)을 추가해달라"는 요청.
+시즌 스탯은 이미 `usePlayerSeasonStatsBatch`로 화면에 표시되는 선수 전원의 데이터를
+불러와 `playerCardMap`에 병합해두고 있어서(호버카드용) 새 데이터 fetch 없이 이미 있는
+값을 테이블에 꺼내 쓰기만 하면 되는 작업이었음.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`에 `showStats?: boolean`
+  옵션 추가(기본 false, 뉴스 카드는 컴팩트한 폭을 유지해야 해서 그대로 둠 — 페이지에서만
+  켬). true면 팀 컬럼 뒤에 G/GS/MP/PTS/REB/AST/STL/BLK/TOV/FG%/3P%/FT% 12개 컬럼 추가.
+  `AllstarVoteEntry` 자체엔 스탯이 없어(서버 저장 스냅샷은 득표 결과만 담음)
+  `playerCardMap.get(e.playerId)?.player.stats`에서 그때그때 조회. MP/PTS/REB/AST/STL/BLK/TOV는
+  basketball-reference 관례대로 경기당 평균(누적÷G), G/GS만 시즌 누적 그대로.
+- `views/multi/season/MultiAllStarView.tsx` — `AllstarVoteGroupPanel`(신규 로컬 컴포넌트) 추가:
+  `useState`로 백코트/프론트코트 선택 상태를 갖고, `MultiStandingsView.tsx`의 `MODE_TABS`와
+  동일한 스타일의 탭 버튼 2개 + 선택된 그룹의 `AllstarVoteSection`(`showStats` 켬) 하나만
+  렌더. 기존 `grid-cols-2`로 두 표를 나란히 두던 블록을 이걸로 교체(컨퍼런스별 1개씩).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 마커: 호버카드/클릭을 로고에서 이름으로 이동
+
+`views/multi/season/MultiAllStarView.tsx`의 스타터 마커 — `PlayerHoverCard`가 팀 로고 버튼을
+감싸고 있던 걸 이름 `<span>`으로 옮기고, 이름에도 `onClick`(선수 상세 이동) +
+`cursor-pointer hover:text-indigo-300 hover:underline`을 추가해 클리커블 링크처럼 보이게
+함. 로고 버튼은 클릭(이동) 기능은 그대로 유지하되 호버카드는 더 이상 안 뜸. `npx tsc
+--noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 로고 마커 크기 확대 (w-10 h-10 → w-16 h-16)
+
+`views/multi/season/MultiAllStarView.tsx`의 스타터 팀 로고 마커 크기를 40px → 64px로 키움
+(사용자 요청, 단순 크기 조정). `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 마킹 단순화 + 인디고 컬러 + 실제 팀 로고 마커
+
+**배경**: "페인트존 안의 제한구역 반원과 백보드 실선을 지우고, 코트 색상/라인을 인디고로
+맞추고, 선수 마커는 팀 컬러 원+약어 대신 실제 팀 로고를 쓰고, 이름 텍스트를 더 키워달라"는
+요청.
+
+**변경 파일**:
+- `components/multi/AllStarHalfCourt.tsx` — `HalfCourtLines`에서 제한구역(림 아래 반원,
+  `M40,290h12.5c22.09...` path)과 백보드 실선(`line x1=40 x2=40 y1=222 y2=278`) 제거 — 선수
+  마커가 그 자리를 차지해 시각적으로 번잡했던 부분.
+- `views/multi/season/MultiAllStarView.tsx`:
+  - 코트 색상을 `DEFAULT_COURT_COLORS`(리그 기본 우드톤)에서 이 화면 전용
+    `ALLSTAR_COURT_COLORS`(배경 `#1e1b4b`/페인트 `#3730a3`/라인 `#a5b4fc`, 전부 인디고 계열)로
+    교체 — 이 화면 곳곳(컨퍼런스 헤더 배지, 링크 텍스트)이 이미 인디고 톤이라 통일.
+  - 스타터 마커를 "팀 컬러 원형 배지 + 팀 약어 텍스트"에서 실제 팀 로고 이미지로 교체 —
+    `newsFeedCards.tsx`의 `AllstarVoteSection`/`AllstarRosterTable`이 쓰는 것과 동일한 폴백
+    체인(`getRealTeamLogoUrl` → 실패 시 `getTeamLogoUrl` → 플레이스홀더).
+  - 이름 라벨을 `text-[9px]` → `text-sm`으로 확대, 그에 맞춰 `max-w-[70px] truncate`(생략
+    표시)도 제거 — 마커 간격이 이미 넓게 배치돼 있어 겹칠 위험이 낮다고 판단.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 도형을 공유 컴포넌트 우회 방식에서 전용 컴포넌트로 분리
+
+**배경**: 직전 두 항목에서 `CourtPreview.tsx`(샷차트/로스터 화면과 공유하는 컴포넌트)를
+회전(`rotate(90)`) + viewBox 크롭 + 림 마커 마스킹(같은 색 원으로 덮기)까지 세 겹으로
+우회해서 재사용했는데, 사용자가 "공유 컴포넌트를 계속 이렇게 우회하는 게 비효율적이지
+않냐"고 지적 — 맞는 지적이라 판단해 별도 전용 컴포넌트로 분리.
+
+**변경 파일**:
+- `components/multi/AllStarHalfCourt.tsx` (신규) — `CourtPreview.tsx`의 `BasketLines` 경로를
+  그대로 복사한 뒤 림 마커(`circle cx="48" cy="250" r="7.5"`) 한 줄만 제거한 독립 컴포넌트.
+  베지어 곡선 제어점을 손으로 재계산하는 대신, 원본과 동일하게
+  `transform="translate(500,0) rotate(90)"`을 그대로 적용해 곡선 모양을 그대로 보존하되,
+  이제 이 회전은 `AllStarHalfCourt.tsx` 내부에 캡슐화돼 있어 호출부(`MultiAllStarView.tsx`)는
+  더 이상 회전 좌표계를 신경 쓸 필요가 없다. `CourtPreview.tsx`는 전혀 수정하지 않음 —
+  샷차트/팀 설정 미리보기에 영향 없음.
+- `views/multi/season/MultiAllStarView.tsx` — `CourtPreview` import와 `RIM_MASK` 마스킹
+  로직 제거, `AllStarHalfCourt`로 교체. `COURT_VIEW`/`STARTER_SLOTS`는 그대로 유지(좌표계가
+  동일하므로 변경 불필요).
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+**주의사항**: `AllStarHalfCourt.tsx`의 경로 데이터는 `CourtPreview.tsx`와 의도적으로 중복된
+코드다(정적 SVG 마킹이라 유지보수 부담이 낮다고 판단해 분리를 택함) — 만약 나중에 실제
+코트 마킹 자체(예: 3점 라인 정확도)를 조정하게 되면 두 파일 다 고쳐야 할 수 있다는 점을
+유의할 것.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치도를 다시 하프코트로, 림 마커 제거 + 배치 확장
+
+**배경**: 직전 항목에서 풀코트(양쪽 골대) 전체를 세로로 세워 보여줬는데, 사용자가 스크린샷을
+보고 "가로 폭은 유지하되 하프라인 아래(반대편 골대)는 지우고, 림을 나타내는 원도 지우고,
+선수들을 더 넓게 배치해달라"고 요청 — 다시 하프코트로 자르되 이번엔 폭(500) 기준으로 실제
+하프코트 비율(가로세로 거의 1:1)을 유지하도록 높이만 줄임.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx`:
+  - `COURT_VIEW`를 `{w:500,h:940}`(풀코트) → `{w:500,h:474}`(하프코트, 회전 후 하프라인 위치
+    `final_y=470`에서 자름)로 변경. 폭은 그대로 500이라 컨테이너 가로 크기는 안 바뀜.
+  - 림 마커(`CourtPreview` 내부 `BasketLines`의 주황 원, 회전 후 좌표 `(250,48)`)를 지우는
+    대신 같은 위치에 페인트존과 동일한 색 원(`RIM_MASK`)을 겹쳐 그려 시각적으로 가림 —
+    `CourtPreview.tsx`는 샷차트(`MultiFullCourtChart.tsx`) 등 다른 화면과 공유하는 컴포넌트라
+    직접 고치면 그쪽 림 마커까지 사라지므로, 공유 컴포넌트는 건드리지 않고 이 화면에서만
+    오버레이로 가리는 방식을 택함.
+  - `STARTER_SLOTS` 좌표를 더 넓게 재조정 — 백코트 2명은 `x:110/390`(이전 `190/310`,
+    스프레드 약 2배)로 사이드라인 쪽에 가깝게, 프론트코트 2명도 `x:90/410`(이전 `200/300`)로
+    페인트존보다 훨씬 넓게, 센터만 림 근처(`250,90`) 유지.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 스타터 코트 배치도를 하프코트 크롭 → 풀코트 원본 비율로 변경
+
+**배경**: 직전 항목에서 `CourtPreview`를 90도 회전해 재사용하되 `viewBox`를 500x320으로 잘라
+한쪽 골대만 보이게 했었는데, "풀 코트 이미지를 쓰고 가로 사이즈를 스타터 섹션에 꽉 차게
+키우고 세로는 비례해서 키워달라"는 요청 — 자르지 말고 원본 코트 이미지 전체(양쪽 골대)를
+그대로 세로로 세워서 쓰도록 변경.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — `COURT_VIEW`를 `{w:500,h:320}`(크롭) →
+  `{w:500,h:940}`(회전된 풀코트 전체 — 원본 940x500이 회전 후 500x940이 됨)으로 변경.
+  컨테이너 클래스에서 `max-w-[260px] mx-auto`(고정 폭 제한)를 제거하고 `w-full`로 바꿔 스타터
+  섹션 폭을 그대로 채우도록 함 — `aspectRatio: '500/940'` 스타일은 그대로 둬서 세로 높이가
+  폭에 비례해 자동으로 커짐. 스타터 5명의 `STARTER_SLOTS` 좌표(위쪽 골대 근처)는 변경 없음 —
+  잘라내던 부분이 사라지고 그 아래로 하프라인+반대편 골대가 빈 공간으로 이어질 뿐.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음.
+
+**주의사항**: 스타터 섹션(코트)이 옆 리저브 테이블보다 세로로 훨씬 길어질 수 있음(500:940
+비율이라 폭 대비 높이가 거의 2배) — 요청대로 "세로 높이를 비례해서 키운" 결과이므로 의도된
+동작. 화면이 과도하게 길어 보이면 알려주시면 컨테이너 폭 상한을 다시 걸 수 있음.
+
+---
+
+## 2026-09-08 — 올스타 명단 발표 화면에 세로 하프코트 스타터 배치도 추가 (+커스텀 도형 → 실제 코트 재사용으로 교체)
+
+**배경**: "스타터를 테이블 대신 세로 농구 코트 위에 포지션대로 배치해서 보여주자"는 요청.
+1차로 완전히 새로 그린 간단한 SVG 코트(하드코딩 색상 `#0f172a`/`#334155`/`#f97316` 등)로
+구현했는데, 사용자가 "기존 서비스에서 쓰던 코트 이미지가 아닌 것 같다"고 정확히 지적 —
+프로젝트에 이미 있는 `CourtPreview.tsx`(로스터/샷차트 화면이 쓰는 실제 코트 도형)를 재사용하는
+쪽으로 다시 작업.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — `AllStarCourtDiagram`(신규 로컬 컴포넌트)이
+  자체 SVG 도형 대신 `CourtPreview`(`components/multi/CourtPreview.tsx`)를 그대로 import해
+  `<g transform="translate(500,0) rotate(90)">`로 90도 회전시켜 세로 하프코트로 사용.
+  `CourtPreview`는 가로 풀코트(940x500, 좌우 대칭)를 그리는 컴포넌트라 회전 좌표 변환식은
+  `(x,y) → (500-y, x)`(원본 왼쪽 골대의 baseline x=0이 새 좌표계의 y=0/상단이 됨).
+  viewBox를 `0 500 320`(500x320)으로 잘라서 CourtPreview의 한쪽 골대만 보이게 함(회전 후
+  3점 아크 정점이 y≈290 지점이라 320이면 여유 있게 담김) — 반대편 골대/하프라인은 자동으로
+  화면 밖.
+  색상은 팀 커스터마이징이 없는 리그 전체 화면이라 `DEFAULT_COURT_COLORS`
+  (`services/multi/leagueService.ts` — 신규 팀 생성 시 기본 코트 색상과 동일)를 그대로 사용,
+  임의의 다른 팔레트를 새로 만들지 않음.
+  스타터 5명(roster 배열 순서 = 백코트2명→프론트코트3명, `runAllStarSelection` 반환 순서
+  그대로)을 `STARTER_SLOTS`(백코트 2명=탑오브키 좌/우, 프론트코트 3명=양 블록+림 근처)에
+  고정 배치. 각 마커는 팀 컬러 원형 배지(팀 약어) + 이름표, 호버 시 `PlayerHoverCard`,
+  클릭 시 선수 상세 이동.
+- `docs/history/dev-log.md` — 이 항목.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음. 브라우저 스크린샷 도구가 이 환경에 없어
+실제 렌더링은 육안 확인 못함(사용자 확인 필요) — 좌표 변환식은 원본 `BasketLines`의 주요
+지점(림 `cx=48,cy=250` → 회전 후 `(250,48)`, 백보드 `x=40,y=222~278` → 회전 후
+`y=40,x=222~278`, 페인트 `y=170~330` → 회전 후 `x=170~330,y=0~190`)을 손으로 계산해 검증.
+
+**주의사항**: 세부 포지션(PG/SG/SF/PF/C) 구분 없이 백코트/프론트코트 그룹 내 득표 순서로만
+슬롯을 고정 배정 — 실제 `position` 필드(예: "PG"/"SG")를 활용해 더 정교하게 배치하고 싶다면
+추가 작업 필요.
+
+**롤백 방법**: `AllStarCourtDiagram`을 이전 버전(테이블, `AllstarRosterTable label="스타터"`)으로
+되돌리면 됨 — `git log`에서 이 커밋 직전 상태 참고.
+
+---
+
+## 2026-09-08 — 올스타 투표 마감 후 "명단 발표" 화면 + 최종 스타터/리저브 저장 추가
+
+**배경**: 지금까지의 올스타 화면은 투표 진행 중 득표 리더보드만 보여줬음. "투표가 종료되면
+화면 상단에 컨퍼런스별 스타터/리저브 명단이 리스트로 나오게 하자"는 요청으로, 투표 마감일에만
+`runAllStarSelection()`(팬 투표 스타터 5 + 코치 투표 리저브 7, 기존에 이미 구현돼 있던 함수)을
+같이 계산해 저장하고 화면에 표시.
+
+**변경 파일**:
+- `migrations/add_league_allstar_votes.sql` — `league_allstar_votes`에 `roster jsonb`(nullable)
+  컬럼 추가. Supabase에 직접 적용 완료(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS roster jsonb;`).
+  마감일이 아닌 행은 이 컬럼이 계속 NULL — 별도 테이블을 새로 만들지 않고 기존 일일 스냅샷
+  테이블에 얹은 이유는 "그 시점의 스냅샷" 성격이 동일해서(§DB 설계 노트, 위 항목 참고).
+- `services/multi/leagueEventPayload.ts` — `AllstarRosterPlayer`/`AllstarConferenceRoster`/
+  `AllstarRosterResult` 타입 + `parseAllstarRosterPayload()` 추가. `league_events` payload가
+  아니라 `league_allstar_votes.roster` 컬럼 전용이라 `LeagueEventDetail` 유니온엔 넣지 않음.
+- `server/src/postAllStarVoteNews.ts` — `computeAndStoreAllStarVotes()`에서
+  `virtualDate === keyDates.allStarVoteEnd`(마감일)일 때만 `runAllStarSelection(teams, seed)`를
+  같은 seed로 추가 실행(내부적으로 `runAllStarVote(teams, seed, 1.0)`를 다시 호출하므로 그날의
+  최종 집계 payload와 스타터 구성이 항상 일치) → `roster` 컬럼에 함께 upsert.
+- `hooks/useAllStarVotes.ts` — select에 `roster` 컬럼 추가, `AllStarVoteSnapshot.roster:
+  AllstarRosterResult | null`로 노출.
+- `views/multi/season/newsFeedCards.tsx` — `AllstarRosterTable`(신규, export) — 득표수/득표율
+  없이 포지션/선수/팀/OVR만 보여주는 명단 표. `AllstarVoteSection`과 팀 로고·PlayerHoverCard
+  패턴을 동일하게 맞춤(득표수 컬럼이 있고 없고의 차이만).
+- `views/multi/season/MultiAllStarView.tsx` — `snapshot.roster`가 있으면(=마감일 스냅샷) 화면
+  최상단에 "올스타 명단 발표" 블록을 추가로 렌더 — 동/서부 각각 스타터/리저브 표를 나란히
+  배치, 기존 컨퍼런스 헤더 컬러 스타일 그대로 재사용. 그 아래엔 기존 득표 리더보드 그리드가
+  그대로 남아있음(마감 후에도 "최종 득표 현황"으로서 의미가 있어 제거하지 않음).
+
+**더미 데이터 검증**: PBL 룸 실데이터로 마감일(`2027-02-06`) 시나리오를 임시 스크립트로
+재현(`_tmp_allstar_final_dummy.ts`, 실행 후 삭제) — `runAllStarSelection` 결과를 그대로
+`league_allstar_votes`에 upsert. 컨퍼런스당 스타터 5명(백코트2+프론트코트3)/리저브 7명
+(백코트2+프론트코트3+와일드카드2) 정상 산출 확인. 기존에 남아있던 중간 시점(`2027-01-28`,
+`roster` NULL) 행은 그대로 두고 마감일 행을 추가 삽입 — `sim_date` 내림차순 조회라 마감일
+행이 자동으로 "현재 스냅샷"이 되어 화면이 명단 발표 상태로 보임.
+
+**검증**: `npx tsc --noEmit`(client)/`cd server && npx tsc --noEmit`(server) 둘 다 신규 에러
+없음.
+
+**주의사항**: 실제 서비스에서 이 roster 계산은 스케줄러가 가상 날짜를 마감일에 정확히
+맞춰야만(하루 단위 폴링이라 그 날짜에 tick이 한 번이라도 돌면 됨) 트리거된다 — 별도 수동
+재계산 없이는 마감일이 지나간 뒤에 다시 채울 방법이 없으므로(멱등 upsert라 같은 날짜로
+재호출은 안전하지만, 스케줄러가 그 하루를 완전히 건너뛰면 영영 못 채움) 실사용 중 이 리그의
+가상 날짜가 하루씩만 전진하는지(현재 로직상 보장됨, scheduler.ts의 advanceSimDates 참고)
+전제로 함.
+
+**롤백 방법**: `roster` 컬럼과 그 값을 참조하는 코드를 제거해도 기존 득표 리더보드 기능은
+전혀 영향받지 않음(완전히 부가 기능). 컬럼만 되돌리려면
+`ALTER TABLE public.league_allstar_votes DROP COLUMN roster;`.
+
+---
+
+## 2026-09-08 — 올스타 팬 투표 서버 자동 파이프라인 + 전용 페이지 신설
+
+**배경**: 올스타 투표 로직(`runAllStarVote`)과 뉴스 카드는 있었지만 서버 자동 트리거가
+없어 수동 테스트 발송만 존재했음. "클라이언트가 매번 재계산하면 유저마다 결과가 불일치할
+수 있으니 서버가 매일 계산해 저장하는 쪽이 낫다"는 사용자 판단에 따라, 서버가 **가상
+캘린더 날짜 기준 하루 1회** 득표를 계산해 저장하고, 그 저장값을 그대로 보여주는 전용
+"올스타" 페이지를 신설. 투표 기간 중 중간 발표 3회는 기존 뉴스 카드로 자동 발송.
+
+**⚠️ 가장 중요한 함정**: `rooms.sim_date`(text, 실제 KST 방송 예정일)와
+`current_virtual_date(room_id)` RPC(가상 NBA 캘린더 날짜)는 완전히 다른 축. 이 프로젝트에서
+이미 3번 리그레션이 난 지점(`project_sim_date_vs_virtual_date.md`)이라, 이번 트리거는 반드시
+후자를 써야 함. 실측(PBL 룸): `rooms.sim_date = 2026-09-08`인데
+`current_virtual_date = 2027-02-20` — 5개월 이상 차이.
+
+**변경 파일**:
+- `migrations/add_league_allstar_votes.sql` (신규) — `league_allstar_votes` 테이블.
+  `UNIQUE(room_id, season_number, sim_date)`로 "하루 1회 계산"의 멱등성 보장(30초 폴링
+  스케줄러가 같은 가상 날짜에 여러 번 돌아도 upsert가 덮어쓰기만 함). `league_player_awards`
+  테이블 패턴(RLS `{약어}_member_select`/`{약어}_service_write`) 그대로 따름. Supabase에
+  마이그레이션 적용 완료.
+- `server/src/postAllStarVoteNews.ts` (신규) — `computeAndStoreAllStarVotes(roomId, leagueId,
+  virtualSeasonYear, virtualDate)`. `postSeasonAwards.ts` 구조를 복제하되 **`league_teams.conference`를
+  실제 값으로 매핑**(postSeasonAwards/postPowerRankingNews는 어워드 스코어링에 불필요해
+  `'East'` 하드코딩 — 그대로 베끼면 30팀 전원이 East로 몰려 서부가 텅 빈다. `runAllStarVote()`가
+  `teams.filter(t => t.conference === 'East')`로 시작하므로 필수). 시즌 스탯은
+  `get_league_season_awards_stats` RPC(41경기 자격 필터 `MIN_GAMES`가 요구하는 `g` 값이 여기서
+  나옴). 시드는 `${roomId}_${season}_allstar`로 룸/시즌에 고정(같은 날 재계산해도 항상 같은
+  값 — upsert 안전성의 전제). `DISPLAY_LIMIT = 25`(그룹당 노출 인원 — 이전 dev-log 항목에
+  "실제 트리거 구현 시 반영"으로 남겨둔 25명 요청 정식 반영). 중간 발표 3회는
+  `getAllStarKeyDates().allStarVoteInterimDates`와 `virtualDate`가 일치할 때만
+  `league_events`에 삽입(멱등성은 같은 날 같은 타입 존재 여부 count 조회로 확인).
+- `server/src/scheduler.ts` — `tick()`에 `runAllStarVoteUpdates()` 추가(`runScheduledSeasonAwards`
+  옆). `advanceSimDates()`(실시각 날짜 축)는 건드리지 않고, `current_virtual_date` RPC로 별도
+  조회 → `getAllStarKeyDates()` 투표 기간 안일 때만 `computeAndStoreAllStarVotes()` 호출.
+- `services/multi/leagueEventPayload.ts` — 기존 `case 'allstar_vote_update':` 파싱 로직을
+  `parseAllstarVotePayload()`로 분리·export. `league_events.payload`와
+  `league_allstar_votes.payload`가 완전히 같은 형태라 뉴스 카드(`parseLeagueEventPayload`)와
+  올스타 페이지(`useAllStarVotes`)가 이 함수 하나를 공유.
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`을 `export`(올스타 페이지가
+  재사용).
+- `hooks/useAllStarVotes.ts` (신규) — `league_allstar_votes` 최신 1건 조회. react-query 컨벤션
+  (`usePlayerSeasonStatsLeague.ts` 패턴) 준수.
+- `views/multi/season/MultiAllStarView.tsx` (신규) — 동/서부 × 가드/프론트코트 4개
+  `AllstarVoteSection` 테이블. `usePlayerSeasonStatsBatch`로 목록에 뜬 선수들 시즌 스탯을
+  머지해 호버카드에 반영(다른 화면과 동일 패턴).
+- `App.tsx` — `<Route path="allstar" element={<MultiAllStarView />} />` 등록.
+- `components/MultiSidebar.tsx` — 사이드바 "올스타" 메뉴 추가(`NavIcon name="allstar"` —
+  `public/images/sidenav/allstar{,-selected}.svg`는 사용자가 직접 제공 예정, 그 전까지는
+  아이콘이 깨져 보이나 기능은 정상).
+- `components/dashboard/MultiHeaderNavMenu.tsx` — 헤더 드롭다운 메뉴에도 "올스타" 항목 추가.
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `virtual_season_year: number | null` 필드
+  추가(기존엔 `select('*')`로 실제론 내려오는데 타입에 없어 페이지에서 접근 불가했음).
+
+**검증**: 마이그레이션 Supabase 적용 완료. `npx tsc --noEmit`(client)/`cd server && npx tsc
+--noEmit`(server) 둘 다 이번 변경 관련 신규 에러 0건(기존 무관 에러 2개는 git stash로 대조해
+이번 변경 전에도 있던 것 확인). PBL 룸으로 로직 검증: Bun 전용 `supabaseAdmin.ts`를 우회하는
+임시 스크립트(`_tmp_allstar_server_test.ts`, 실행 후 삭제)로
+`computeAndStoreAllStarVotes()`와 동일한 로직을 재현해 (1) `get_league_season_awards_stats`
+RPC 정상 동작(306명 스탯), (2) 컨퍼런스 분리 정상(East 15팀/West 15팀, 하드코딩 안 됨),
+(3) `league_allstar_votes` upsert + 중간 발표 뉴스 insert 성공, (4) 같은 날짜로 재실행해도
+행이 1개로 유지되는 멱등성까지 확인. 검증에 쓴 가상의 `sim_date='2027-01-23'` 스냅샷과
+뉴스는 실제 PBL 진행 상황과 무관한 테스트 데이터라 검증 후 즉시 삭제.
+
+**주의사항**: PBL 룸은 `current_virtual_date`가 이미 `2027-02-20`으로 올스타 브레이크
+(`2027-02-13~18`)와 투표 기간(`2027-01-09~02-06`)을 모두 지나버린 상태 — 이번 시즌엔
+스케줄러가 자연스럽게 트리거될 일이 없다(정상, 실제로 "이미 끝난 이벤트"이므로). 다음
+시즌부터 정상 동작 확인 가능. 기존에 수동으로 넣어뒀던 테스트 뉴스 이벤트
+(`id=b98289d0-...`, `payload.test:true`)는 실제 파이프라인이 생겨 더 이상 필요 없어 삭제.
+
+**롤백 방법**: `server/src/scheduler.ts`의 `runAllStarVoteUpdates()` 호출 1줄과 함수 정의를
+제거하면 자동 트리거만 비활성화(테이블/페이지는 그대로 남아도 무해 — 빈 상태로 보일 뿐).
+완전 롤백 시 `migrations/add_league_allstar_votes.sql`의 역DDL(`DROP TABLE
+public.league_allstar_votes;`)과 이 항목에 나열된 파일들의 추가분 제거.
+
+**[2026-09-08 후속] "데이터를 넣었는데 화면엔 계속 안 뜬다" 버그** — 사용자가 PBL 룸에
+더미 스냅샷을 넣은 뒤에도 페이지가 "아직 투표 집계가 없습니다"만 보여준다고 리포트. 원인은
+RLS가 아니라(`league_events`와 동일한 `my_room_ids()` 기반 정책이라 문제 없었음) `index.tsx`의
+전역 `QueryClient` 기본값 `staleTime: Infinity` + 로컬스토리지 영속 캐시 — 사용자가 더미
+데이터를 넣기 *전에* 이미 한 번이라도 이 화면을 열었었다면, 그때 받은 "없음" 응답이 캐시에
+영구 고정돼 이후 서버(또는 수동 스크립트)가 새로 저장해도 자동으로 다시 안 불러온다.
+`MultiNewsFeedView.tsx`가 이미 동일한 문제를 겪어 "화면 진입 시 1회 무효화"로 해결해둔
+전례가 있는데, 올스타 페이지엔 그 처리가 빠져 있었음. `views/multi/season/MultiAllStarView.tsx`에
+`useEffect`로 `queryClient.invalidateQueries({ queryKey: ['allStarVotes', room.id,
+room.season_number] })`를 화면 진입 시 1회 실행하도록 추가. `npx tsc --noEmit` 신규 에러 없음.
+
+**[2026-09-08 후속2] 헤더/레이아웃을 다른 시즌 화면과 통일** — 처음엔 뉴스 카드 스타일(BrandMark
++ 가운데 정렬 `max-w-5xl` 좁은 폭)을 그대로 페이지에 옮겨써서 다른 화면들과 헤더 모양이
+달랐음. `views/multi/season/MultiAllStarView.tsx`를 `MultiStandingsView.tsx`/
+`MultiScheduleView.tsx`와 동일한 헤더 바 형태(`px-4 py-3 shrink-0 bg-slate-900 border-b
+border-slate-800` + `text-lg font-black text-white ko-tight` h1)로 교체하고, 본문은
+`max-w-5xl mx-auto`로 좁히지 않고 꽉 찬 폭에 `grid grid-cols-2 divide-x divide-slate-800`로
+동부/서부를 좌우 2단 배치하도록 변경. `npx tsc --noEmit` 신규 에러 없음.
+
+**[2026-09-08 후속3] "가드" → "백코트" 표기 변경** — 올스타 페이지(`MultiAllStarView.tsx`)와
+뉴스 카드(`newsFeedCards.tsx`의 `AllstarVoteUpdateCard`) 양쪽의 `AllstarVoteSection label="가드"`
+4곳을 전부 `label="백코트"`로 변경. 데이터 구조(`posGroup: 'G'|'FC'`)는 그대로이고 화면 표기
+텍스트만 교체 — 로직 변경 없음. `npx tsc --noEmit` 신규 에러 없음.
+
+**[2026-09-08 후속4] 팀 컬럼에 로고 추가 + 득표율 볼드 해제** — `AllstarVoteSection`(page/뉴스
+카드 공용, `newsFeedCards.tsx`)의 팀 셀에 `BoxScoreHeadline`의 팀 로고 렌더링과 동일한
+폴백 체인(`getRealTeamLogoUrl` → 실패 시 `getTeamLogoUrl` → 그래도 실패 시 플레이스홀더,
+`color_primary` 없는 팀은 `TeamLogo` 컴포넌트로 폴백)을 팀 약어 왼쪽에 추가. 득표율(pct)
+셀은 `font-bold` 클래스만 제거(`text-white`는 유지) — 사용자가 볼드체만 지목했으므로 다른
+스타일은 그대로.
+
+**[2026-09-08 후속5] 컨퍼런스 내부를 백코트/프론트코트 나란히 배치 + 헤더 컬러 적용** —
+`MultiAllStarView.tsx`의 동/서부 각 컬럼 안에서 세로로 쌓여 있던 백코트/프론트코트 테이블을
+`grid grid-cols-2 gap-4`로 나란히(좌우) 배치. 동/서부 `<h2>` 제목엔 `MultiStandingsView.tsx`의
+`CONFERENCE_COLORS`(East `#1D4289`/West `#C8102E`)와 동일한 값 + 동일한 틴트 방식
+(`backgroundColor: color+'66'`, `border: 1px solid color+'b3'`)을 적용하고 텍스트를 흰색으로
+변경 — 두 화면이 상수를 각자 들고 있지만 값은 반드시 일치시켜야 함(향후 하나를 바꾸면
+다른 쪽도 같이 바꿀 것).
+
+---
+
+## 2026-09-08 — 올스타 중간 집계 전용 뉴스 카드(AllstarVoteUpdateCard) 추가
+
+**배경**: 지난 테스트 발송(바로 아래 항목)은 전용 카드가 없어 `LegacyCard`(headline 텍스트만
+표시)로 폴백됐음. "다른 뉴스 서신 양식 그대로, 동/서부 나눠서 선수·득표수·득표율 테이블로
+보여달라"는 요청으로 MVP/DPOY/올-NBA 카드와 동일한 시각 포맷의 전용 카드를 신설.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` / `server/src/shared/multi/allStarSelection.ts` (미러 쌍) —
+  `AllStarVoteEntry`에 `pct: number` 필드 추가(0~1, 같은 포지션 그룹 내 득표율).
+  `computeGroupVotes()`를 2-pass로 재구성: 1차 패스에서 기존 로직대로 `votes`(paceJitter
+  포함) 계산 → 2차 패스에서 그 그룹의 `votes` 합계 대비 `pct = votes / totalVotes` 계산.
+  이론적 `share`(jitter 적용 전 가중치 비율)가 아니라 실제 표시되는 votes 기준으로 pct를
+  내야 화면에 찍힌 숫자끼리 앞뒤가 맞음.
+- `services/multi/leagueEventPayload.ts` — `AllstarVoteEntry`/`AllstarVoteConference`/
+  `AllstarVoteUpdateDetail` 타입 추가, `LeagueEventDetail` 유니온에 편입, `all_def_team`
+  케이스 뒤에 `case 'allstar_vote_update':` 파싱 블록 추가(다른 award 케이스와 동일하게
+  `isNonEmptyString`/`num` 가드 + 빈 데이터면 `LEGACY` 폴백).
+- `views/multi/season/newsFeedCards.tsx` — `AllstarVoteSection`(순위/선수/팀/득표수/득표율
+  테이블, MVP 카드의 `AWARD_RANK_TH/TD` 스타일 재사용) + `AllstarVoteUpdateCard`(BrandMark+
+  제목+구분선 후 동부/서부 각각 가드·프론트코트 섹션) 신규 컴포넌트 추가.
+  `AllTeamSection`을 재사용하지 않은 이유: 그 컴포넌트는 `pos: 'G'|'F'|'C'`로 못박혀 있고
+  이미 `AllNbaTeamCard`/`AllDefTeamCard` 두 곳에서 쓰고 있어, `posGroup: 'G'|'FC'`에
+  맞추자고 억지로 뜯어고치면 영향 범위가 커짐 — 별도 소형 컴포넌트로 분리.
+  타입 스위치(`case 'allstar_vote_update': return <AllstarVoteUpdateCard .../>`)를
+  `case 'suspension'` 뒤, `default: LegacyCard` 앞에 추가.
+
+**테스트 데이터 갱신**: 임시 스크립트(`_tmp_allstar_vote_card_test.ts`, 실행 후 삭제)로
+PBL 세션(room `9b43a612-...`) 실제 데이터를 `buildLeagueTeams()`(운영 코드와 동일 경로,
+`get_player_season_stats_league` RPC로 시즌 스탯 병합)로 조립 → `runAllStarVote(teams, seed,
+0.55)` → 기존 테스트 이벤트(`id: dfa383f0-...`) 삭제 후 `pct` 필드가 포함된 새 payload로
+재insert(`roundLabel: '2차 중간 집계'`, `voteProgress: 0.55`, east/west 각 guards 5명/
+frontcourt 6명).
+
+**검증**: `npx tsc --noEmit -p .`(client), `cd server && npx tsc --noEmit -p tsconfig.json`
+둘 다 이번 변경 관련 신규 에러 없음. DB insert 성공 확인, 콘솔 출력으로 득표수/pct 값 육안
+검증(동부/서부 각 그룹 pct 합이 1에 근접).
+
+**주의사항**: `leagueEventPayload.ts` 헤더 주석에 적힌 "서버 미러: server/src/shared/
+leagueEvents.ts 필드명 맞출 것" 원칙과 달리, 이 이벤트 타입은 아직 서버 파이프라인이 없어
+(수동 테스트 발송만 존재) 서버 쪽 payload 파싱 타입은 만들지 않음 — 실제 자동 발송
+로직(scheduler.ts 트리거)을 붙일 때 함께 만들 것.
+
+**롤백 방법**: 카드/파싱 로직을 되돌리려면 이 세 파일에서 `allstar` 관련 추가분만 제거하면
+됨(스위치 케이스 1줄, 컴포넌트 2개, 타입 3개, 파싱 케이스 1블록, pct 필드+2-pass 재구성).
+테스트 이벤트만 지우려면 `DELETE FROM league_events WHERE id =
+'dfa383f0-c30a-4972-90aa-f07c4393a294';`.
+
+**[2026-09-08 후속] 중간 집계 노출 인원 5~6명 → 최대 25명으로 확대** — 사용자가 "가드5,
+프론트코트7"로 보인다고 착각한 걸 계기로 최종 로스터(스타터5+리저브7)와 중간 집계 카드
+표시 인원(당시 가드5/프론트코트6, 임의값)이 다른 개념이라는 걸 설명. 이후 "백코트/프론트코트
+나눠서 후보를 좀 많이(25명까지) 보여달라"는 요청으로 테스트 payload의 표시 개수를
+`DISPLAY_LIMIT = 25`로 변경(카드 컴포넌트 자체는 payload를 그대로 렌더링하는 구조라 코드
+수정 불필요, payload만 재생성). 기존 테스트 이벤트(`dfa383f0-...`) 삭제 후 새 이벤트
+(`id: b98289d0-05cb-4559-a616-2b7f6c92bd1a`)로 east/west 각 guards 25명·frontcourt 25명
+(30팀 리그라 후보 풀이 25명에 못 미치면 그보다 적게 나올 수 있음, 이번엔 마침 딱 채워짐)
+삽입. **아직 서버 자동 발송 파이프라인이 없어 이 25라는 값은 정식 상수로 코드에 박아두지
+않고 테스트 스크립트 안에만 존재했다가 삭제됨** — 실제 트리거 구현 시 이 요청(25명)을
+기준으로 다시 반영할 것.
+
+---
+
+## 2026-09-08 — 올스타 투표 로직 실제 PBL 세션으로 테스트 발송 (league_events 신규 타입 추가)
+
+**배경**: `runAllStarVote`를 실제 데이터로 검증하기 위해 PBL 세션(room `9b43a612-...`,
+league `28e4cdf6-...`)의 진짜 로스터/시즌 스탯/전적으로 돌려보고, 결과를 뉴스피드
+서신(`league_events`)으로 실제 발송해 UI에서 확인 가능하게 함.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType` 유니온에 `'allstar_vote_update'` 추가.
+- `views/multi/season/newsFeedCards.tsx` — `HEADLINE_ICON`(`Record<LeagueEventType,
+  LucideIcon>`)에 `allstar_vote_update: BarChart3` 추가. **이거 없이 새 타입을 바로
+  insert했으면 `HEADLINE_ICON[event.type]`이 `undefined`가 돼 `<Icon .../>` 렌더링 시
+  뉴스피드가 크래시났을 것** — `parseLeagueEventPayload`(leagueEventPayload.ts)는
+  `default: return LEGACY` 폴백이 이미 있어 안전했지만 아이콘 맵은 그렇지 않았음.
+  아직 전용 카드 컴포넌트는 안 만들어서 `LegacyCard`(headline 텍스트만 표시)로 렌더됨.
+
+**테스트 데이터 파이프라인**(임시 스크립트, `_tmp_allstar_test.ts` — 실행 후 삭제,
+저장소에 남지 않음): `.env`의 `SUPABASE_SERVICE_ROLE_KEY`로 직접 Supabase 클라이언트를
+만들어(services/supabaseClient.ts는 Vite 전용 `import.meta.env`라 순수 Node/tsx
+실행에서는 못 씀) league_teams+meta_players+`get_player_season_stats_league` RPC+
+games(전적)를 조회 → `Team[]` 조립 → `runAllStarVote(teams, seed, 0.5)`(중간 발표
+시뮬레이션)와 `runAllStarSelection`(최종 참고용) 실행.
+
+**실측 결과**(30팀 305명, 41경기 이상 자격 285명): 인기도가 확실히 지배적으로 작용하는 걸
+확인(동부 가드 1위 스테판 커리 15.9만표, 서부 가드 1위 루카 돈치치 26.4만표 — 둘 다 인기도
+97~100). 브레이크아웃 보너스도 의도대로 작동(서부 프론트코트의 재럿 앨런: 인기도 56인데
+브레이크아웃 보너스 10.1로 4위 진입, 칼-앤서니 타운스: 인기도 80에 보너스 5.4로 서부
+프론트코트 1위).
+
+**발송 내용**: `league_events`에 `type: 'allstar_vote_update'`, `sim_date:'2026-09-08'`,
+`payload.headline`(동/서부 각 포지션 그룹 선두 요약) + `payload.east/west.guards/
+frontcourt`(각 상위 3명 구조화 데이터, 향후 전용 카드 만들 때 재사용 가능하도록) 1건 insert.
+`payload.test: true`로 테스트 발송임을 표시.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음. DB에 실제로 row가 들어갔는지 SELECT로 확인.
+
+**주의사항**: 이번 테스트 데이터는 `voteProgress=0.5`(중간 발표 가정) 스냅샷 — DB에 저장된
+건 그 시점의 "결과 텍스트"뿐이고, 실제 서비스에서는 이런 스냅샷을 저장하지 않고
+`runAllStarVote`를 필요할 때 다시 호출해 재현하는 설계임(지난 항목 참고). 여전히
+scheduler.ts 자동 트리거는 없음 — 이번 건은 수동 1회성 테스트 발송.
+
+**롤백 방법**: 테스트 이벤트 삭제하려면 `DELETE FROM league_events WHERE id =
+'dfa383f0-c30a-4972-90aa-f07c4393a294';`. 타입 추가(`useLeagueHeadlines.ts`/
+`newsFeedCards.tsx`)는 향후 실제 기능에도 필요하므로 되돌리지 않는 걸 권장.
+
+**[2026-09-08 후속1] 발송했는데 뉴스 화면에 안 뜨는 버그** — 사용자가 PBL 세션에서 확인해보니
+안 보인다고 리포트. 원인은 `useLeagueNewsFeed`(뉴스 화면이 실제로 쓰는 훅)가 "특이케이스만"
+걸러 보여주는 하드코딩된 `STORY_TYPES` 배열(`useLeagueHeadlines.ts`)에 `allstar_vote_update`가
+빠져 있어서 — DB엔 정상 insert됐지만 쿼리 자체가 그 타입을 조회 대상에서 제외하고 있었음.
+`STORY_TYPES`에 `'allstar_vote_update'` 추가로 수정.
+
+**[2026-09-08 후속2] 필터 체크박스에 "올스타" 카테고리 추가** — `MultiNewsFeedView.tsx`의
+`NEWS_TYPE_FILTER_OPTIONS`(뉴스 화면 상단 타입 필터 체크박스 그룹)에
+`{ label: '올스타', types: ['allstar_vote_update'] }` 추가. 필터를 아무것도 안 걸면
+(기본값 = 전체) 후속1 수정만으로도 이미 보였겠지만, 사용자가 타입별로 필터링해서 볼 수 있게
+하는 UI 완성도 차원에서 추가.
+
+**검증(후속1/2)**: `npx tsc --noEmit` 둘 다 신규 에러 없음.
+
+---
+
+## 2026-09-08 — 올스타 스타터 선발을 "코치 투표 시뮬레이션"에서 "팬 인기투표 누적 시뮬레이션"으로 재설계
+
+**배경**: 바로 아래 항목("멀티 올스타 선발 키데이트 + 선발 로직 신설")에서 만든 스타터
+선발 로직이 리저브와 똑같이 "성적 기반 100인 투표"였는데, 사용자가 이걸 "올스타는
+사실상 인기투표"라는 전제로 다시 설계해달라고 요청 — (1) 투표 시작/종료 키데이트 +
+중간 결과 발표 2~3회, (2) 인기도 위주 + 브레이크아웃 시즌 보너스 스코어링, (3) 현실적인
+투표 참여 시청자 수. 스타터(팬 투표)만 재설계 대상 — 리저브(코치 투표, 성적 기반)는
+그대로 유지(실제로도 코치는 인기가 아니라 실력으로 뽑으므로).
+
+**선행 버그 발견 및 수정**: 인기도 가중치를 쓰려면 `player.popularity`가 필요한데,
+서버 사이드 데이터 매퍼(`server/src/shared/dataMapper.ts`)에 이 필드 매핑 자체가
+누락돼 있었다 — 클라(`services/dataMapper.ts:381`)엔 `popularity: baseAttrs.popularity
+?? undefined` 매핑이 있는데 서버 미러엔 없어서, 서버에서 도는 모든 계산(이 올스타 투표
+포함, 향후 `postSeasonAwards.ts`류 파이프라인 전부)이 항상 `undefined`로 인기도를
+읽게 되는 상태였음. `server/src/shared/dataMapper.ts`에 동일 매핑 추가로 수정(DB
+`meta_players.base_attributes.popularity`가 실제로 채워져 있음을 Supabase 조회로 확인).
+
+**변경 파일**: `utils/allStarSelection.ts` / `server/src/shared/multi/allStarSelection.ts`
+(미러 쌍) 전면 재작성.
+
+- **키데이트 확장**(`getAllStarKeyDates`): `allStarVoteStart`(투표 시작), `allStarVoteEnd`
+  (=`allStarSelectionDate`와 동일 — 마감 즉시 집계해 발표), `allStarVoteInterimDates: string[]`
+  (중간 발표 3회 — 투표 기간 1/4·2/4·3/4 지점). 투표 기간은 4주(`VOTE_WINDOW_DAYS=28`,
+  실제 NBA도 크리스마스~2월 초 약 한 달).
+- **신규 `runAllStarVote(teams, seed, voteProgress)`**: 컨퍼런스×포지션그룹(가드/
+  프론트코트)별로 후보 전원의 "기대 득표수"를 직접 계산해 정렬된 리더보드로 반환.
+  - `appeal = 인기도(local×0.3+national×0.7, 0~100) × 0.6 + 성적정규화(그룹 내 min-max,
+    0~100) × 0.25 + 브레이크아웃보너스`
+  - `브레이크아웃보너스 = max(0, 성적정규화 - 인기도) × 0.5` — 인지도는 낮은데 성적이
+    그걸 크게 앞지르는 선수에게 추가 가산.
+  - `appeal^3`(SHARE_EXPONENT, 득표 쏠림 지수)을 그룹 내에서 정규화해 득표 점유율(share)로
+    변환 — 실제 팬 투표의 "스타 쏠림"(1위가 2위의 몇 배 득표) 패턴을 재현.
+  - `votes = 컨퍼런스당 400만(TOTAL_VOTERS_PER_CONFERENCE) × voteProgress × share ×
+    (일별 페이스 흔들림 ±10%)` — 개별 유권자 400만 명을 실제로 루프 도는 대신 기대값을
+    직접 계산(연산량 문제 + 대수의 법칙으로 수렴하는 값이라 개별 시뮬레이션이 무의미).
+    voteProgress(0~1)를 다르게 넣으면 그 시점 누적 득표를 그대로 재현 — DB에 중간
+    스냅샷을 저장하지 않고 그때그때 재계산 가능.
+- **`runAllStarSelection`**: 이제 내부적으로 `runAllStarVote(..., 1.0)`(투표 마감)로
+  스타터(가드 상위 2 + 프론트코트 상위 3)를 확정한 뒤, 그 결과를 제외한 풀에서 기존
+  코치 투표 로직(리저브 5 + 와일드카드 2)을 그대로 수행 — 리저브 로직 자체는 변경 없음.
+
+**검증**: client `npx tsc --noEmit`, server `cd server && npx tsc --noEmit -p tsconfig.json`
+둘 다 신규 에러 없음(이전과 동일한 사전 존재 에러 목록만 남음).
+
+**주의사항**:
+- `TOTAL_VOTERS_PER_CONFERENCE=4,000,000`/`SHARE_EXPONENT=3`/가중치(0.6/0.25/0.5)는
+  전부 임의로 정한 근사치 — 실제 시즌 운영해보고 득표 분포가 너무 쏠리거나 너무
+  평평하면 조정 필요.
+- `runAllStarVote`는 매번 `buildCandidates()`/`scoreAllNBA()`를 다시 계산하는 순수
+  함수라 결과를 캐싱하지 않음 — 중간 발표 UI가 이 함수를 자주 부르면(예: 라이브
+  갱신) 매번 전체 재계산 비용이 든다. 지금 규모(팀당 15명 안팎)에선 무시할 수준.
+- 여전히 **아무 데도 연결 안 됨**(DB 저장/scheduler.ts 트리거/league_events 뉴스 발행/
+  UI는 다음 단계) — 이번 것도 순수 로직만.
+
+**롤백 방법**: 이 커밋 이전 버전(코치 투표 방식 스타터 선발)으로 두 allStarSelection.ts
+파일을 되돌리고, `server/src/shared/dataMapper.ts`의 `popularity` 매핑 라인을 제거하면 됨
+(단, 이 매핑 자체는 다른 곳에서도 유용하므로 제거 비권장 — 그냥 두는 걸 권장).
+
+---
+
+## 2026-09-08 — 멀티 올스타 선발 키데이트 + 선발 로직 신설 (1단계: DB/트리거 배선 제외)
+
+**배경**: 멀티 리그에 올스타 개념 도입 1단계 — "언제"(키데이트)와 "어떻게 뽑는지"(선발 로직)만
+우선 구현. 실제 NBA 방식(선발 5 + 후보 7, 컨퍼런스당 12명)을 사용자가 선택. DB 저장/
+scheduler.ts 트리거/league_events 뉴스 발행(postSeasonAwards.ts와 동일한 전체 파이프라인)은
+의도적으로 다음 단계로 미룸 — 이번엔 순수 함수만.
+
+**변경 파일**:
+- `utils/awardVoting.ts` / `server/src/shared/multi/awardVoting.ts` — 올스타 선발 로직이
+  재사용할 내부 헬퍼를 export로 전환: `buildCandidates`, `positionGroup`(+`PosGroup` 타입),
+  `voterNoise`, `scoreAllNBA`, `MIN_GAMES`(41경기 자격 기준, 상수만 export). 기존 동작/
+  `runAwardVoting()` 결과에는 영향 없음(export 추가만, 로직 변경 없음).
+- `utils/allStarSelection.ts` / `server/src/shared/multi/allStarSelection.ts` (신규 미러 쌍):
+  - `getAllStarKeyDates(virtualSeasonYear)`: `allStarStart`(2/13)/`allStarEnd`(2/18)/
+    `allStarSelectionDate`(브레이크 시작 7일 전 = 2/6) 3개 키데이트 계산. `finalize.ts`에
+    두 군데(신규 생성/재초기화) 하드코딩돼 있던 `allStarStart`/`allStarEnd`를 이 함수
+    하나로 통합(부수적 중복 제거).
+  - `runAllStarSelection(teams, seed?)`: 컨퍼런스(East/West)별로 `buildCandidates()` +
+    `scoreAllNBA()` 스코어링 재사용, 가드/프론트코트(포워드+센터 통합) 포지션 그룹으로
+    100인 투표 시뮬레이션 — 선발 5명(가드2+프론트코트3, 팬+선수+미디어 통합 투표 단순화)
+    → 선발 제외 풀에서 후보 5명(가드2+프론트코트3, 코치 투표 시뮬레이션) → 남은 풀에서
+    와일드카드 2명(포지션 무관 최상위)까지 7명. `AllStarSelectionResult { east, west }`
+    반환, 각 `ConferenceAllStarRoster { starters: AllStarPlayer[5], reserves: AllStarPlayer[7] }`.
+- `server/src/finalize.ts` — `getAllStarKeyDates(virtualSeasonYear)`를 import해 두 스케줄
+  생성 호출부(신규 리그/재초기화)의 `allStarStart`/`allStarEnd` 하드코딩 문자열을
+  구조분해 값으로 교체.
+
+**검증**: client `npx tsc --noEmit` 전체 기준 신규 에러 없음, server
+`cd server && npx tsc --noEmit -p tsconfig.json` 기준도 신규 에러 없음(둘 다 이번
+변경 이전과 동일한 사전 존재 에러 목록만 남음).
+
+**주의사항**:
+- `runAllStarSelection`이 받는 `teams: Team[]`는 컨퍼런스 순위/전적이 반영된 리그 전체
+  로스터여야 정확함 — `buildLeagueTeams()`/`runAwardVoting()`과 동일한 입력 요구사항.
+- MIN_GAMES(41경기) 자격 기준을 그대로 재사용 — 올스타 선발일(브레이크 7일 전)까지 이
+  기준을 채운 후보가 컨퍼런스당 5명 미만이면(신규 리그 초반 등) `starters`/`reserves`가
+  요청 인원보다 적게 채워질 수 있음(크래시는 안 남, 그래프풀 축소).
+- **아직 아무 데도 연결 안 됨** — 이 함수를 실제로 언제 호출해서(scheduler.ts 트리거) 결과를
+  어디에 저장/발표할지(league_player_awards 스타일 테이블 신설 또는 league_events 재사용,
+  UI 노출)는 다음 단계.
+
+**롤백 방법**: `utils/allStarSelection.ts`/`server/src/shared/multi/allStarSelection.ts`
+삭제, `finalize.ts`의 두 곳을 하드코딩 문자열로 되돌리고 import 제거, `awardVoting.ts`
+양쪽의 `export` 키워드만 제거(타입/함수 자체는 그대로 둬도 무해).
+
+---
+
+## 2026-09-08 — 시즌 일정 화면 선수 호버 카드에 시즌 기록 누락 수정
+
+**배경**: 사용자 리포트 — 시즌 일정(`MultiScheduleView.tsx`) 화면에서 경기 목록의 "최우수선수"
+이름에 호버해도 시즌 기록이 안 뜨고 항상 "시즌 기록 없음"만 표시됨. 원인은 `playerCardMap`을
+`buildPlayerCardMap(poolPlayers, ...)`로만 만들고 끝냈다는 것 — `poolPlayers`(useMultiSearchData)는
+`meta_players`만 조회해서 `player.stats`가 항상 0(g=0)이라 `PlayerHoverCard`의
+`hasStats = g > 0` 체크가 늘 false로 떨어짐(`components/common/PlayerHoverCard.tsx:35-38`
+주석에 이미 문서화돼 있던 알려진 패턴). `MultiNewsFeedView.tsx`는 `usePlayerSeasonStatsBatch`+
+`mergeStatsIntoPlayerCardMap`으로 이미 이 단계를 거치는데, `MultiScheduleView.tsx`만 빠져있었음.
+
+**변경 파일**: `views/multi/season/MultiScheduleView.tsx` — `playerCardMap`을
+`basePlayerCardMap`으로 이름을 바꾸고, 지금 보고 있는 날짜의 경기 최우수선수
+(`gameLeadersMap[g.id].mvpHome/mvpAway`)만 모아 `usePlayerSeasonStatsBatch`로 targeted 조회 후
+`mergeStatsIntoPlayerCardMap`으로 병합한 걸 최종 `playerCardMap`으로 사용(리그 전체가 아니라
+지금 보이는 날짜 범위로만 좁혀 가볍게 유지 — `MultiNewsFeedView.tsx`의 selectedEventPlayerIds
+스코핑과 동일한 방침).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**롤백 방법**: `playerCardMap`을 다시 `basePlayerCardMap`(=`buildPlayerCardMap(...)` 결과)으로
+직접 쓰도록 되돌리고, 추가한 `visibleMvpPlayerIds`/`usePlayerSeasonStatsBatch`/
+`mergeStatsIntoPlayerCardMap` 관련 코드를 제거하면 됨.
+
+---
+
+## 2026-09-07 — buildLeagueTeams() 공용 함수 game_pbp 의존 제거 (홈/리더보드/트레이드/선수상세/전술 5개 화면)
+
+**배경**: 홈 화면 네트워크 탭 실측 결과 `game_pbp` 원본 fetch가 8.2초 걸림 — 팀 화면
+(MultiRosterView.tsx)에서 이미 고친 것과 동일한 원인인데, 이번엔 `services/multi/
+buildLeagueTeams.ts`라는 **5개 화면이 공유하는 함수**(홈 3곳/리더보드/트레이드/선수상세/
+전술 인사이트 탭)가 전부 `raw.pbpRows`(room 전체 박스스코어)를 클라이언트에서 직접
+집계하고 있어서 범위가 훨씬 넓었다. `buildLeagueTeams`는 팀 화면의 `buildStatsMap()`보다
+필드가 더 많고(tovForced/techFouls/flagrantFouls + 구버전 3존 수비지표 defRim*/defMid*/
+defThree*), 팀 단위 `oppZoneStats`(상대에게 허용한 존별 슈팅, 전술 인사이트 탭 CONTEST
+섹션 전용)도 별도로 계산하고 있어 Phase 1의 RPC를 그대로 재사용할 수 없었다.
+
+**변경 파일**:
+- `migrations/add_player_season_stats_league_rpc.sql` (신규, 적용 완료) — 2개 RPC:
+  - `get_player_season_stats_league(p_room_id, p_player_ids)`: buildLeagueTeams의
+    statsMap과 동일한 필드 전체(구버전 3존 포함) 서버 집계. 실측(250명 대상) 1.96s.
+  - `get_team_opponent_zone_stats(p_room_id)`: 팀별 oppZoneStats(20개 zone_*) 서버 집계 —
+    홈팀 기준 원정팀 박스, 원정팀 기준 홈팀 박스를 합산(팀 advanced stats RPC와 동일한
+    home/away UNION ALL 패턴). 실측 287ms.
+- `hooks/usePlayerSeasonStatsLeague.ts` (신규) — 위 RPC 호출, `usePlayerSeasonStatsFull.ts`와
+  동일 패턴.
+- `hooks/useTeamOpponentZoneStats.ts` (신규) — oppZoneStats RPC 호출.
+- `services/multi/buildLeagueTeams.ts` — `raw.pbpRows`를 순회해 통계를 만들던 로직 전체
+  삭제. 시그니처에 `statsByPlayer`/`oppZoneByTeam` 파라미터 추가(기본값 `{}` — 안 넘기면
+  모든 값 0, 과도기 렌더에서도 크래시 없음), 두 값을 그대로 merge만 하도록 변경.
+- `pages/MultiSeasonPage.tsx` (3곳: HomeLeagueLeadersSection/HomeMyTeamStatsSection/
+  HomeMyRosterSummarySection), `views/multi/season/MultiLeaderboardView.tsx`,
+  `views/multi/season/MultiFrontOfficeView.tsx`, `views/multi/season/
+  MultiPlayerDetailView.tsx`(teams용 selectLeagueTeams만 — selectPlayerGameLog는 경기
+  단위 원본이 실제 필요해 includePbp 기본값 유지), `views/multi/season/MultiTacticsView.tsx`
+  (selectTacticsData의 zoneMap도 usePlayerSeasonStatsLeague로 교체 + selectLeagueTeams는
+  oppZoneStats까지 포함) — 전부 `usePlayerSeasonStatsLeague` 호출 추가 + `useLeagueRawStats`에
+  `{ includePbp: false }` 옵션 적용. 각 화면의 로딩 게이트에 새 훅들의 `isPending`도 포함
+  (신원만 먼저 뜨고 스탯이 늦게 팝인되는 문제 방지 — 팀 화면 Off/Def Rtg 게이트와 동일 이유).
+  MultiLeaderboardView의 수동 새로고침 버튼(`onRefresh`)은 `refetchStats`도 같이 호출하도록 수정.
+
+**Before** (5곳에 반복되던 패턴):
+```ts
+const selectTeams = useCallback(
+    (raw: LeagueRawStatsData) => buildLeagueTeams(raw, leagueTeams, useCustomOverrides),
+    [leagueTeams, useCustomOverrides],
+);
+const { data: teams = [] } = useLeagueRawStats(room?.id, allRosterIds, selectTeams);
+// → useLeagueRawStats가 game_pbp까지 항상 같이 fetch, buildLeagueTeams가 그걸 클라이언트에서 집계
+```
+
+**After**:
+```ts
+const { data: statsByPlayer } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
+const selectTeams = useCallback(
+    (raw: LeagueRawStatsData) => buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer),
+    [leagueTeams, useCustomOverrides, statsByPlayer],
+);
+const { data: teams = [] } = useLeagueRawStats(room?.id, allRosterIds, selectTeams, { includePbp: false });
+```
+
+**검증**:
+- 두 RPC 모두 `EXPLAIN ANALYZE` 실측(위 수치), `get_team_opponent_zone_stats`는 buildLeagueTeams.ts의
+  `addOppZones` 로직과 home/away 귀속 방향이 동일한지 코드 대조로 확인(홈팀→away_box 합계,
+  원정팀→home_box 합계).
+- `npx tsc --noEmit` — 전체 프로젝트 기준 이번 변경 이전과 동일한 사전 존재 에러 목록만
+  남음(신규 에러 없음). 오히려 `services/multi/buildLeagueTeams.ts`의 기존 에러 하나가
+  리팩터 과정에서 같이 없어짐(부수 효과).
+
+**주의사항**:
+- `MultiTacticsView.tsx`의 뎁스차트 존별 슛 히트맵(zoneMap)은 예전엔 "mp 필터 없이" 모든
+  박스 엔트리를 순회했는데, 새 RPC는 `mp>0` 필터가 있음 — DNP 선수는 이제 zoneMap에
+  아예 항목이 안 잡히지만 값 자체는 원래도 전부 0이라 화면상 체감 차이는 없음.
+- `MultiFrontOfficeView.tsx`의 PPG/RPG/APG 위젯은 별도의 전체화면 로딩 게이트가 없어(원래
+  그런 화면이었음) statsByPlayer가 늦게 도착하는 동안 짧게 0으로 보였다가 갱신될 수 있음 —
+  기존에도 이 화면엔 그런 로딩 UI가 없었어서 이번 변경으로 새로 생긴 문제는 아님.
+- 홈 화면 3개 섹션은 `teams.length===0` 기반 플레이스홀더 패턴이라(진짜 isLoading 게이트가
+  아님) 신원이 statsByPlayer보다 먼저 뜨면 리그 리더/팀 스탯 숫자가 잠깐 0으로 보였다가
+  갱신될 수 있음 — 필요하면 후속으로 게이트 방식을 다른 화면들처럼 바꿀 수 있음(이번
+  범위에선 손대지 않음).
+
+**롤백 방법**: `services/multi/buildLeagueTeams.ts`를 이 커밋 이전 버전으로 되돌리고
+(raw.pbpRows 기반 통계 계산 복원), 5개 화면의 `usePlayerSeasonStatsLeague`/
+`useTeamOpponentZoneStats` 호출과 `{ includePbp: false }` 옵션을 제거하면 됨. DB의 두 RPC는
+그대로 둬도 무해.
+
+**[2026-09-07 후속 수정] 놓친 호출부 4곳** — 위 작업 직후 사용자가 홈 화면 Network 탭에서
+`game_pbp`(2.7MB, 2.89s)가 여전히 뜨는 걸 재확인해 발견. `pages/MultiSeasonPage.tsx`에
+`buildLeagueTeams()`는 안 쓰고 `raw.playerInjuryRows`만 뽑는 위젯(`selectInjuryRows`
+3곳 + `selectMyInjuryRows` 1곳 — 호버 카드 부상 정보용)이 있었는데, 이 4곳은
+`buildLeagueTeams` 호출부를 찾아 고칠 때 검색 범위에서 빠졌던 것 — `{ includePbp: false }`를
+안 넘겨서 여전히 기본값(true)으로 `useLeagueRawStats` 내부의 `pbpQuery`가 켜져 있었다.
+`grep -rn "useLeagueRawStats(" `로 프로젝트 전체 호출부를 전수 조사해 4곳 모두
+`{ includePbp: false }` 추가로 마무리. 이제 의도적으로 기본값을 유지하는 곳은
+`MultiPlayerDetailView.tsx`의 `selectPlayerGameLog`(경기 단위 원본이 실제 필요) 단 하나만
+남음 — `npx tsc --noEmit` 신규 에러 없음.
+
+---
+
+## 2026-09-07 — 홈 화면 위젯 7곳 매초 리렌더 제거 (useServerClockBucket 신설)
+
+**배경**: React DevTools로 홈 화면을 보니 `TeamBadge`/`HomeStandingTable`/
+`HomeStandingsSection`/`HomeMyScheduleSection`/`PlayerHoverCard`가 매초 리렌더되고
+있다는 리포트 — 원인 추적 결과 `utils/serverClock.ts`의 `useServerClock()`이
+`setInterval(..., 1000)`으로 매초 `setState`하는데, 이걸 홈 화면 섹션 6곳이 직접
+부르고(`HomeStandingsSection`/`HomeLeagueLeadersSection`/`HomeTransactionsSection`/
+`HomeMyScheduleSection`/`HomeMyRosterSummarySection`/`HomeMyInjuriesSection`) 1곳은
+간접적으로(`HomeMyTeamStatsSection` → `useLeaderboardData` 내부) 물고 있었다. 전부
+`isFinal()`(경기 공개 10분 딜레이) 판정이나 "가상 오늘 날짜" 계산에만 쓰여 초 단위
+정밀도가 불필요한데도, `serverNow`가 매초 새 값이라 그걸 의존성으로 둔 `useMemo`
+(30팀 시즌 전체 스케줄 순회/정렬 — `computeMultiStandingsStats`/`useLeaderboardData`의
+`teamStats`/`computeWL` 등)가 매초 실제로 다시 계산되고 있었다. `MultiHeader.tsx`가
+이미 겪었던 것과 같은 문제(주석 참고: "15초 버킷으로 재계산 빈도를 1/15로 줄인다")인데,
+그쪽은 계산 비용만 줄였을 뿐 `setNowMs` 자체는 여전히 매초 호출돼 컴포넌트 리렌더는
+못 줄였던 반쪽짜리 해법이었음 — 이번엔 리렌더 자체를 줄이는 방식으로 근본 해결.
+
+**변경 파일**:
+- `utils/serverClock.ts` — `useServerClockBucket(bucketMs = 15000)` 신규 훅 추가.
+  내부적으로는 여전히 1초마다 체크하지만, `setState`에 **이전과 동일한 버킷 값이면
+  그대로(`prev`) 반환**해 React가 리렌더 자체를 스킵하게 만든다(1초 단위로 계속
+  polling은 하되, 15초 경계를 넘을 때만 실제로 state가 바뀜). `useServerClock()`(라이브
+  경기 화면 `MultiGamePbpView.tsx` 등 초 단위가 실제로 필요한 곳 전용)은 그대로 유지.
+- `pages/MultiSeasonPage.tsx` — 6개 섹션의 `useServerClock()` 호출을 전부
+  `useServerClockBucket()`으로 교체(`replace_all`).
+- `hooks/useLeaderboardData.ts` — 내부 `useServerClock()` 호출을 `useServerClockBucket()`으로
+  교체. 이 훅은 홈 위젯 외에도 `MultiLeaderboardView.tsx`/`MultiTacticsView.tsx`(인사이트
+  탭)가 공유하므로 세 화면 전부 동일하게 개선됨(전부 isFinal 게이팅 용도로만 씀, 검증 완료).
+
+**Before**:
+```ts
+export function useServerClock(): number {
+    const [serverNow, setServerNow] = useState(() => getServerNow());
+    useEffect(() => {
+        const id = setInterval(() => setServerNow(getServerNow()), 1000); // 매초 무조건 setState
+        return () => clearInterval(id);
+    }, []);
+    return serverNow;
+}
+```
+
+**After** (신규 훅, 기존 `useServerClock`은 그대로 둠):
+```ts
+export function useServerClockBucket(bucketMs: number = 15000): number {
+    const snapToBucket = (t: number) => Math.floor(t / bucketMs) * bucketMs;
+    const [snapped, setSnapped] = useState(() => snapToBucket(getServerNow()));
+    useEffect(() => {
+        const id = setInterval(() => {
+            setSnapped(prev => {
+                const next = snapToBucket(getServerNow());
+                return next === prev ? prev : next;  // 값이 같으면 리렌더 스킵
+            });
+        }, 1000);
+        return () => clearInterval(id);
+    }, [bucketMs]);
+    return snapped;
+}
+```
+
+**검증**: `npx tsc --noEmit` — 전체 기준 신규 에러 없음(기존 목록과 동일).
+
+**주의사항**: 화면에 표시되는 값이 최대 15초 정도 "오래된" 상태로 보일 수 있음(예: 경기가
+공개 조건을 만족한 직후 최대 15초까지는 아직 이전 상태로 보임) — 원래도 10분 딜레이가
+있던 판정이라 실질적 체감 차이는 없음.
+
+**롤백 방법**: `pages/MultiSeasonPage.tsx`/`hooks/useLeaderboardData.ts`의
+`useServerClockBucket()` 호출을 `useServerClock()`으로 되돌리면 됨(import도 함께).
+`utils/serverClock.ts`의 `useServerClockBucket` 함수는 남겨둬도 무해.
+
+**[2026-09-07 후속] 뉴스 화면도 동일 문제** — 사용자가 뉴스 화면(`MultiNewsFeedView.tsx`)에서도
+재렌더 컴포넌트가 많다고 리포트해 확인. 이 화면은 페이지 전체가 단일 컴포넌트라 `todaySimDate`
+계산(`findCurrentVirtualDate`)에만 쓰는 `useServerClock()` 하나가 스토리 카드 전부(+그 안의
+TeamBadge/PlayerHoverCard)를 매초 통째로 리렌더시키고 있었음 — 홈 화면보다 오히려 체감
+영향이 더 큼(리스트가 김). `useServerClockBucket()`으로 동일하게 교체. 이 파일엔 다른 타이머
+소스(setInterval 등)가 없음을 확인 — 원인은 이 하나뿐.
+
+**[2026-09-07 후속1.5] 일정 화면 + 전역 GameDateStrip** — 사용자가 일정 화면에서도 동일 현상을
+리포트해 확인. `MultiScheduleView.tsx`는 이미 `dateBucket`(15초 버킷) 부분 최적화가 있었지만
+`serverNow` 원본 자체는 여전히 매초 갱신돼 `totalPlayed`/`revealedSeriesById` 및 각 `GameRow`
+(일정 목록 행 전체)가 계속 매초 리렌더 — `useServerClockBucket()`으로 교체. 5초 간격 라이브
+폴링(`LIVE_POLL_MS`, liveSummaries/gameLeadersMap)은 실제 데이터 갱신이 필요한 별개 로직이라
+그대로 둠.
+
+더 중요한 발견은 `views/multi/season/GameDateStrip.tsx` — `MultiSeasonLayout.tsx`가 렌더하는
+**모든 시즌 화면 공통 상단 스트립**(오늘 경기 목록)인데, 여기도 `useServerClock()`을 직접
+구독하고 있었다. 이 파일 자체에 이미 "레이아웃 전체가 매초 리렌더되던 걸 스트립 컴포넌트로
+격리"한 이력이 있었지만(주석 참고), 격리만 했을 뿐 스트립 자신은 여전히 매초 리렌더되고
+있었음 — 즉 홈/뉴스/순위/일정 각 화면에서 리포트된 재렌더 중 상당수가 실은 각 화면 고유의
+문제가 아니라 **화면 전환과 무관하게 항상 떠 있는 이 전역 스트립 하나**였을 가능성이 높다.
+동일하게 `useServerClockBucket()`으로 교체.
+
+**[2026-09-07 후속1.7] 헤더는 다른 케이스 — React.memo로 해결** — 사용자가 헤더(`components/
+MultiHeader.tsx`)도 계속 재렌더된다고 리포트해 확인했는데, 여기는 지금까지와 원인이 다르다.
+이 컴포넌트는 "다음 경기까지 남은 시간" 카운트다운(`countdown`/`countdownColor`, mm:ss로
+실제로 매초 바뀌어야 하는 텍스트)을 표시하므로 `nowMs`가 매초 갱신되는 게 정당하다 — 무거운
+계산들(순위/라이브경기/시리즈전적/우승팀 판정)은 이미 `dateBucket`(15초)에 올바르게 걸려
+있어 실제로 매초 재계산되지 않음(과거 작업에서 이미 처리됨, 위 "2026-09-07 nowMs..." 주석
+참고). 문제는 컴포넌트 자신이 매초 리렌더되면서 그 자식인 `MultiHeaderNavMenu`(검색창/
+드롭다운/트레이드 배지)까지 `React.memo` 없이 덩달아 매초 리렌더된다는 것 — 이 메뉴는
+카운트다운과 전혀 무관한데도 낭비되고 있었다. `MultiHeaderNavMenu`에 전달되는 props가
+전부 값 기준으로 안정적임(참조는 매 렌더 새로 만들어지지만 값은 안 바뀜: leagueTeams/
+poolPlayers/rosterMap은 context·react-query 기반, myTeamId는 useMemo, hasPlayoffs/
+capEnabled는 boolean 값 비교, onViewPlayer/onViewTeam은 useCallback)을 확인하고
+`React.memo()`로 감싸 부모의 매초 리렌더를 여기서 차단.
+
+**변경 파일**: `components/dashboard/MultiHeaderNavMenu.tsx` — 컴포넌트 정의를
+`React.memo(...)`로 감싸고 `displayName` 추가. `MultiHeader.tsx` 자체는 변경 없음(카운트다운이
+정말 필요로 하는 매초 리렌더라 그대로 둠).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**[2026-09-07 후속2] 리그 순위 화면도 동일 문제** — 사용자가 순위 화면(`MultiStandingsView.tsx`)에서도
+테이블 컴포넌트들이 매초 재렌더된다고 리포트해 확인. `LeagueStandingsTable`이 받는
+`serverNowMs`가 `isFinal()` 게이팅에만 쓰이는데, 그 값에 의존하는 `computeMultiStandingsStats`/
+`computeSosMap`(리그 전체 순위·SOS 재계산)이 매초 다시 돌고 있었음. 단, 몬테카를로 플레이오프
+확률(`computePlayoffOddsMap`/`computeOddsBreakdownMap`, 1000회 시뮬레이션)은 이미
+`useState(() => ...)` lazy initializer로 마운트 시 1회만 계산하도록 별도 방어돼 있었음(주석
+"이후 리렌더에는 다시 불리지 않으므로") — 이 부분은 원래도 매초 재계산되지 않던 부분이라
+이번 변경의 영향 밖. `useServerClock()` → `useServerClockBucket()` 교체로 나머지(순위/SOS/
+리그평균)의 매초 재계산만 제거.
+
+---
+
+## 2026-09-07 — game_short_codes 훅 react-query 전환 + archetypes/tags 캐시 레이스 수정
+
+**배경**: 네트워크 탭 실측 중 `game_short_codes`(4번)/`archetypes`+`tags`(각 2번) 중복
+요청 발견. 두 가지 별개 원인.
+
+**1) `game_short_codes`**: `useGameShortCodes(roomId)`가 `useState`+`useEffect`로 각
+호출부가 독립적으로 직접 fetch — 이 훅을 부르는 곳이 8군데(MultiSeasonLayout/
+MultiRosterView/MultiTacticsView/MultiScheduleView/MultiSeasonPage/MultiNewsFeedView/
+MultiPlayerDetailView/TournamentBracketView)나 되고, 그중 여러 곳이 항상 동시에
+마운트돼(예: 홈 화면 진입 시 MultiSeasonLayout+MultiSeasonPage 둘 다) 캐시 공유 없이
+매번 중복 fetch가 나갔다. `game_short_codes`는 `finalize.ts`가 시즌 파이널라이즈
+시점에 한 번에 다 생성하고 이후 정상 진행 중엔 안 바뀌므로, 이미 같은 이유로 존재하던
+`usePlayerShortCodes.ts`(meta_players 버전)와 동일한 react-query 패턴(`staleTime:
+Infinity`)으로 옮겼다. 반환 타입이 그대로라 8개 호출부는 전혀 안 건드림.
+
+**변경 파일**: `hooks/useGameShortCodes.ts` — 내부를 `useState`+`useEffect`에서
+`useQuery`로 교체(Before/After 이하).
+
+```ts
+// Before
+const [map, setMap] = useState<Map<string, string>>(new Map());
+useEffect(() => {
+    if (!roomId) { setIsLoading(false); return; }
+    supabase.from('game_short_codes').select(...).eq('room_id', roomId).then(...);
+}, [roomId]);
+
+// After
+const { data: rows, isLoading } = useQuery({
+    queryKey: ['gameShortCodes', roomId],
+    enabled: !!roomId,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    queryFn: async () => { ... },
+});
+```
+
+**2) `archetypes`/`tags`**: `services/admin/gameConfigService.ts`의
+`fetchArchetypeConfig()`/`fetchTagConfig()`가 캐시 "값"만 체크(`if (archetypeCache)
+return archetypeCache;`)하고 "진행 중인 요청"은 체크하지 않아, 첫 요청의 await가 끝나기
+전에 두 번째 호출이 들어오면(여러 화면이 동시에 `preloadGameConfig()`를 부르거나, React
+StrictMode의 effect 이중 실행) 캐시가 아직 비어있어 네트워크를 또 태웠다. 진행 중인
+Promise 자체를 모듈 전역에 캐시해 동시 호출이 같은 요청을 공유하도록 수정 — client
+(`services/admin/gameConfigService.ts`)와 server 미러
+(`server/src/shared/services/admin/gameConfigService.ts`) 둘 다 동일하게 적용.
+
+```ts
+// Before
+export async function fetchArchetypeConfig() {
+    if (archetypeCache) return archetypeCache;
+    const { data, error } = await supabase.from('archetypes')...; // 이 await 도중 또 호출되면 캐시 미스
+    archetypeCache = ...;
+    return archetypeCache;
+}
+
+// After
+let archetypeConfigPromise: Promise<ArchetypeConfig> | null = null;
+export async function fetchArchetypeConfig() {
+    if (archetypeCache) return archetypeCache;
+    if (archetypeConfigPromise) return archetypeConfigPromise;   // 진행 중인 요청 공유
+    archetypeConfigPromise = (async () => { ...기존 로직...; return archetypeCache; })();
+    try { return await archetypeConfigPromise; } finally { archetypeConfigPromise = null; }
+}
+```
+
+**검증**: `npx tsc --noEmit`(client, 전체) — 신규 에러 없음. `cd server && npx tsc
+--noEmit`(server) — gameConfigService.ts 관련 에러 없음(남은 에러는 전부 Bun 전용
+타입 등 이번 변경과 무관한 기존 항목).
+
+**주의사항**: 나머지 중복 요청(`leagues`/`rooms`/`room_members`/`meta_config`, 각 2번)은
+전부 호출부가 단 한 곳(`useCurrentLeague`/`App.tsx`)이라 React StrictMode의 개발 모드
+전용 effect 이중 실행이 원인 — 프로덕션 빌드에서는 재현 안 되므로 의도적으로 손대지
+않음.
+
+**롤백 방법**: `hooks/useGameShortCodes.ts`를 Before 블록(useState+useEffect)으로,
+`services/admin/gameConfigService.ts`와 서버 미러의 두 fetch 함수를 Promise 캐시 없는
+버전으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 트레이드 제안 배지 카운트 중복 조회 통합 (사이드바 + 헤더 메뉴)
+
+**배경**: 네트워크 탭 실측 중 `league_trade_offers?...status=eq.pending` 요청이 페이지당
+최대 6개까지 잡히는 게 발견됨. 원인은 `MultiSidebar.tsx`(사이드바 트레이드 배지)와
+`MultiHeaderNavMenu.tsx`(상단 메뉴 배지)가 "받은 트레이드 제안 중 안읽은 개수"를 완전히
+동일한 로직(`listPendingTradeOffers` — 내부에서 incoming/outgoing 2쿼리 병렬 호출)으로 각자
+`useState`+`useEffect`+개별 Realtime 채널을 써서 따로 조회하고 있었기 때문 — 두 컴포넌트가
+항상 같이 마운트돼 있어(앱 셸 상시 UI) 팀 화면뿐 아니라 멀티 리그의 모든 페이지에서
+상시 중복 발생.
+
+**변경 파일**:
+- `hooks/usePendingTradeCount.ts` (신규) — `useQuery`로 통합. queryKey가 같으므로
+  두 컴포넌트가 동시에 마운트돼도 react-query가 fetch를 하나로 묶어서 실행. Realtime
+  구독 콜백은 raw refetch 대신 `queryClient.invalidateQueries`만 호출 — 채널 자체는
+  컴포넌트 수만큼 열리지만(사이드바+헤더 2개) 무효화가 겹쳐도 실제 refetch는 react-query가
+  한 번으로 묶음.
+- `components/MultiSidebar.tsx` / `components/dashboard/MultiHeaderNavMenu.tsx` — 각자의
+  `useState`+`useEffect`+`supabase.channel(...)` 블록을 `usePendingTradeCount(roomId,
+  myTeamDbId)` 한 줄로 교체. 미사용이 된 `supabase`/`listPendingTradeOffers` import 제거
+  (두 파일 다 `useState`/`useEffect`는 다른 용도로 계속 사용 중이라 그대로 둠).
+
+**Before** (두 파일에 거의 동일하게 중복):
+```ts
+const [pendingTradeCount, setPendingTradeCount] = useState(0);
+useEffect(() => {
+    if (!roomId || !myTeamDbId) { setPendingTradeCount(0); return; }
+    let cancelled = false;
+    const fetchCount = async () => {
+        const { incoming } = await listPendingTradeOffers(roomId, myTeamDbId);
+        if (!cancelled) setPendingTradeCount(incoming.filter(o => !o.to_team_read_at).length);
+    };
+    fetchCount();
+    const channel = supabase.channel(`...-${roomId}-${myTeamDbId}`)
+        .on('postgres_changes', { ... }, fetchCount)
+        .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+}, [roomId, myTeamDbId]);
+```
+
+**After**:
+```ts
+const pendingTradeCount = usePendingTradeCount(roomId, myTeamDbId);
+```
+
+**검증**: `npx tsc --noEmit` — 변경 파일 포함 전체 결과, 이번 변경 이전과 동일한
+사전 존재 에러 목록만 남음(신규 에러 없음).
+
+**주의사항**: Realtime 채널 자체는 여전히 컴포넌트 수만큼(현재 2개) 열림 — 완전한
+단일 구독으로 만들려면 모듈 전역 싱글턴 채널 관리자가 필요한데, 이번엔 HTTP 요청
+중복(네트워크 탭에 실제로 보이는 문제) 제거가 목적이라 그 부분까지는 손대지 않음.
+
+**롤백 방법**: 두 컴포넌트의 `usePendingTradeCount(...)` 호출을 Before 블록으로 되돌리고
+`hooks/usePendingTradeCount.ts`를 삭제.
+
+---
+
+## 2026-09-07 — meta_players 공용 fetch에서 tendencies/career_history 컬럼 제거 (Phase 2)
+
+**배경**: `useLeagueRawStats`의 `RAW_PLAYER_COLS`가 리그 로스터 전체(250명+)를 조회할 때마다
+`tendencies`/`career_history`(선수당 최대 수십 시즌치 JSONB) 두 무거운 컬럼을 항상 같이
+받아왔다(meta_players fetch 1.70s의 상당 부분). 실제 소비처를 전부 grep해보니 이 훅의
+호출부(로스터/리더보드/전술/홈 위젯/프런트오피스) 중 이 두 필드를 쓰는 곳이 하나도 없었고,
+유일한 소비처는 `MultiPlayerDetailView.tsx`(선수 프로필의 커리어 스탯 테이블 + 스카우팅
+리포트)뿐이었다 — 그것도 FA 선수 케이스는 이미 `usePlayerCareerHistory`로 targeted-fetch
+전환이 돼 있었음(2026-09-03). 로스터 선수(found) 케이스만 아직 eager 벌크 fetch에 의존하고
+있어서, 그 케이스도 같은 패턴으로 옮기고 나서 컬럼 자체를 뺐다.
+
+**변경 파일**:
+- `hooks/useLeagueRawStats.ts` — `RAW_PLAYER_COLS`에서 `tendencies, career_history` 제거
+  (`id, name, position, base_attributes`만 남김). 옵션 아님 — 이 두 필드를 실제로 쓰는
+  곳이 없어 기본값 자체를 가볍게 바꿈.
+- `hooks/usePlayerTendencies.ts` (신규) — `usePlayerCareerHistory.ts`와 동일 패턴, 선수
+  1명의 `tendencies`만 targeted 조회.
+- `views/multi/season/MultiPlayerDetailView.tsx` — `usePlayerCareerHistory`/
+  `usePlayerTendencies`를 found(로스터)/FA 구분 없이 항상 호출하도록 변경, `basePlayer`
+  (found?.player ?? faPlayer)에 두 필드를 덮어씌운 `playerWithTargetedFields`를 최종
+  `player` prop으로 사용. 기존 `faPlayerWithCareer`(FA 전용 merge) 로직 통합.
+
+**Before**:
+```ts
+// useLeagueRawStats.ts
+const RAW_PLAYER_COLS = 'id, name, position, base_attributes, tendencies, career_history';
+
+// MultiPlayerDetailView.tsx — FA일 때만 career_history를 targeted로 덧씌움
+const { data: faCareerHistory } = usePlayerCareerHistory(playerId, !shortCodesLoading);
+const faPlayer = useMemo(() => !found ? poolPlayers.find(p => p.id === playerId) : undefined, [...]);
+const faPlayerWithCareer = useMemo(() => (faPlayer && faCareerHistory?.length ? { ...faPlayer, career_history: faCareerHistory } : faPlayer), [...]);
+const player = found?.player ?? faPlayerWithCareer!; // found.player는 eager fetch로 이미 career_history/tendencies 보유
+```
+
+**After**:
+```ts
+// useLeagueRawStats.ts
+const RAW_PLAYER_COLS = 'id, name, position, base_attributes';
+
+// MultiPlayerDetailView.tsx — found/FA 구분 없이 항상 targeted 조회 후 병합
+const { data: playerCareerHistory } = usePlayerCareerHistory(playerId, !shortCodesLoading);
+const { data: playerTendencies } = usePlayerTendencies(playerId, !shortCodesLoading);
+const basePlayer = found?.player ?? faPlayer;
+const playerWithTargetedFields = useMemo(() => (!basePlayer ? basePlayer : {
+    ...basePlayer,
+    ...(playerCareerHistory?.length ? { career_history: playerCareerHistory } : {}),
+    ...(playerTendencies ? { tendencies: playerTendencies } : {}),
+}), [basePlayer, playerCareerHistory, playerTendencies]);
+const player = playerWithTargetedFields;
+```
+
+**검증**:
+- `npx tsc --noEmit` — 변경 파일들에서 신규 타입 에러 없음.
+- 소비처 전수 grep: `views/RosterView.tsx`, `components/roster/*`, `MultiLeaderboardView.tsx`,
+  `MultiTacticsView.tsx`, `pages/MultiSeasonPage.tsx`, `MultiFrontOfficeView.tsx` 전부
+  `tendencies`/`career_history` 미사용 확인. `PlayerDetailView.tsx`(공용 컴포넌트)만 커리어
+  스탯 테이블/스카우팅 리포트에 사용 — targeted fetch로 계속 채워짐.
+
+**주의사항**:
+- 선수 프로필 화면(로스터 소속 선수)이 이제 career_history/tendencies를 위해 요청 2개를
+  추가로 보냄(선수 1명, 1행짜리라 비용 미미) — 팀 화면(로스터 목록)은 이 두 컬럼을 아예
+  요청 안 하므로 순수 이득, 프로필 화면만 아주 약간의 추가 왕복이 생김.
+- `MultiFrontOfficeView.tsx`가 `useLeagueRawStats`(기본 옵션)로 여전히 PPG/RPG/APG용
+  `game_pbp`를 통째로 받고 있는 건 이번 범위 밖(Phase 1과 동일한 최적화 여지가 남아있음,
+  후속 작업으로 남겨둠).
+
+**롤백 방법**: `RAW_PLAYER_COLS`에 `, tendencies, career_history` 다시 추가하고,
+`MultiPlayerDetailView.tsx`를 Before 블록으로 되돌리면 됨(`hooks/usePlayerTendencies.ts`는
+삭제해도 무방).
+
+---
+
+## 2026-09-07 — 멀티 팀 화면 최초 진입 병목 해소 (game_pbp 원본 fetch → 서버 집계 RPC)
+
+**배경**: 네트워크 탭 실측 결과 멀티 팀 화면(로스터) 최초 진입 시 `meta_players`(3.63s) +
+`game_pbp`(7.45s, 2.3MB, room 전체 박스스코어)가 병목이었다. `game_pbp`는
+`useLeagueRawStats`가 팀 화면 진입 때마다 room의 모든 경기 원본 박스스코어(home_box/
+away_box JSONB)를 통째로 받아 `MultiRosterView.tsx`의 `buildStatsMap()`에서 선수별 시즌
+평균(존 슛차트/수비존 포함)을 클라이언트에서 직접 집계하고 있었다. `get_team_season_advanced_stats`/
+`get_player_season_stats_batch`처럼 같은 문제를 서버 집계로 이미 풀어둔 전례가 있어 동일
+패턴으로 확장.
+
+**변경 파일**:
+- `migrations/add_player_season_stats_full_rpc.sql` (신규, Supabase에 직접 적용 완료) —
+  `get_player_season_stats_full(p_room_id, p_player_ids)`: `buildStatsMap()`이 만들던
+  전체 필드(g/gs/mp/기본 박스스탯/rimM·A/midM·A/plusMinus/contested*/수비존 12개/존
+  슛차트 20개) 서버 집계. `get_player_season_stats_batch`(뉴스피드용, 컬럼 적음)와 별개
+  함수로 분리해 기존 호출부 영향 없음.
+- `hooks/usePlayerSeasonStatsFull.ts` (신규) — 위 RPC 호출 훅, `usePlayerSeasonStatsBatch.ts`와
+  동일 패턴.
+- `hooks/useLeagueRawStats.ts` — 내부를 단일 원자적 fetch에서 3개 쿼리(선수신원
+  meta_players / 시즌+부상 / game_pbp)로 분리하고 `includePbp`(기본 true) 옵션 추가.
+  `useRoomGamePbp(roomId, enabled)` 신규 export(game_pbp 단독 lazy fetch, 다른 화면과
+  캐시 공유). 옵션 없이 호출하는 기존 8곳(홈/리더보드/선수상세/전술 등)은 큐key·동작
+  100% 동일 — meta_players를 room 무관 쿼리로 뺐지만 큐key(`leagueRawPlayers`+ids)가
+  같아 화면 간 캐시 공유는 그대로 유지.
+- `views/multi/season/MultiRosterView.tsx` — `selectRosterData`(pbp 의존)를
+  `selectRosterIdentity`(pbp 제외)로 교체하고 `{ includePbp: false }`로 호출, 선수 시즌
+  스탯은 `usePlayerSeasonStatsFull`에서 받아 `useMemo`로 병합. "기록"/"일정" 탭에서만
+  `useRoomGamePbp(room?.id, activeTab==='records'||activeTab==='schedule')`로 지연
+  로딩(URL `?tab=`을 `useSearchParams`로 직접 읽음 — 딥링크 대응). `buildStatsMap()` 함수
+  삭제. records 탭 진입 시 수동 refetch하던 쿨다운 로직(`RECORDS_REFETCH_COOLDOWN_MS`)
+  삭제 — lazy 쿼리의 enabled 전환 자체가 자연스러운 refetch 트리거라 중복.
+
+**Before** (MultiRosterView.tsx 핵심 흐름):
+```ts
+const selectRosterData = useCallback((raw) => {
+    const statsMap = buildStatsMap(raw.pbpRows, serverNow); // game_pbp 클라이언트 집계
+    ...
+    return { builtTeams, gameTeamStatsMap: buildGameTeamStatsMap(raw.pbpRows), gameLeadersMap: ... };
+}, [...]);
+const { data: rosterData, isPending: fetchLoading, refetch: refetchRoster } =
+    useLeagueRawStats(room?.id, allRosterIds, selectRosterData); // game_pbp 항상 같이 fetch
+```
+
+**After**:
+```ts
+const selectRosterIdentity = useCallback((raw): Team[] => { /* pbp 미사용, 신원/부상만 */ }, [...]);
+const { data: allTeamsBase = [], isPending: identityLoading } =
+    useLeagueRawStats(room?.id, allRosterIds, selectRosterIdentity, { includePbp: false });
+const { data: statsFull, isPending: statsFullLoading } = usePlayerSeasonStatsFull(room?.id, allRosterIds);
+const allTeams = useMemo(() => allTeamsBase.map(t => ({ ...t, roster: t.roster.map(p => ({ ...p, stats: { ...p.stats, ...(statsFull?.[p.id] ?? {}) } })) })), [allTeamsBase, statsFull]);
+
+const activeTab = new URLSearchParams(location.search).get('tab') ?? 'overview'; // 실제로는 useSearchParams
+const needsGamePbp = activeTab === 'records' || activeTab === 'schedule';
+const { data: pbpRows = [] } = useRoomGamePbp(room?.id, needsGamePbp); // 개요 탭에선 아예 안 나감
+```
+
+**검증**:
+- `EXPLAIN ANALYZE`로 신규 RPC 실측(room 780경기, box 4MB) — 실행시간 1718ms, 응답 페이로드는
+  선수당 한 줄(수십 KB) 수준으로 기존 2.3MB 원본 전송 대비 대폭 감소.
+- 위 RPC 결과값을 `buildStatsMap()`이 만들던 필드와 대조(존 슛차트/수비존/rimM 등) — 정상
+  집계 확인(rimM/rimA/midM/midA는 원본 자체가 0으로 기록되는 필드라 양쪽 다 0, 회귀 아님).
+- `npx tsc --noEmit` — 변경 파일들에서 신규 타입 에러 없음(기존 에러는 무관한 파일들).
+
+**주의사항**:
+- `useLeagueRawStats`를 3개 독립 쿼리로 쪼개면서, 트레이드/FA 서명으로 로스터가 바뀌는
+  드문 순간에 한해 신원(meta_players)과 시즌스탯 데이터가 서로 다른 타이밍에 갱신되며
+  아주 짧게 불일치할 수 있음(각자 `placeholderData: keepPreviousData`라 로더 깜빡임은
+  없음, 곧 정합). 기존엔 4개 테이블이 한 번에 원자적으로 갱신됐던 것과의 차이.
+- "기록"/"일정" 탭을 처음 열 때 그 탭 안에서 짧은 로딩 갭이 생길 수 있음(예전엔 개요 탭
+  로딩에 묻혀 안 보였음) — 별도 로딩 UI는 추가하지 않음(하위 컴포넌트가 빈 값을 0/대시로
+  자연스럽게 표시).
+
+**롤백 방법**: 이 커밋 이전 상태로 `views/multi/season/MultiRosterView.tsx`,
+`hooks/useLeagueRawStats.ts`를 되돌리고, `hooks/usePlayerSeasonStatsFull.ts`를 삭제.
+DB의 `get_player_season_stats_full` 함수는 그대로 둬도 무해(아무도 호출 안 하면 그만) —
+정리하려면 Supabase에서 `DROP FUNCTION public.get_player_season_stats_full(uuid, uuid[]);`.
+
+---
+
+## 2026-09-07 — 멀티 팀 화면 헤더: Off/Def Rtg·Pace 순위 로딩 게이트 통합
+
+**배경**: 멀티 리그 팀 화면(RosterView 헤더)에서 팀명/전적/컨퍼런스 순위/PPG 순위는 즉시 뜨는데
+Off Rtg/Def Rtg/Pace 리그 순위 줄만 한 박자 늦게 팝인된다는 리포트. 원인은 이 줄이 `useTeamSeasonAdvancedStats`
+(별도 react-query, `get_team_season_advanced_stats` RPC로 game_pbp 재집계라 느림)에서 오는데
+`MultiRosterView.tsx`의 로딩 게이트(`isLoading`)에는 이 쿼리의 pending 상태가 빠져 있었음.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `useTeamSeasonAdvancedStats`에서 `isPending`도 구조분해해
+  `isLoading` 계산에 포함 (client only, server 미러 없음)
+
+**Before**:
+```ts
+const { data: advancedStatsByTeam } = useTeamSeasonAdvancedStats(room?.id);
+...
+const isLoading = leagueLoading || fetchLoading;
+```
+
+**After**:
+```ts
+const { data: advancedStatsByTeam, isPending: advancedStatsLoading } = useTeamSeasonAdvancedStats(room?.id);
+...
+const isLoading = leagueLoading || fetchLoading || advancedStatsLoading;
+```
+
+**검증**: 타입 확인만(react-query `isPending`은 `enabled:false`일 때도 true이므로 room?.id 없을 때 로더가
+계속 뜨는 게 맞는 동작 — 원래도 roomId 없으면 정상 진입 경로가 아님).
+
+**롤백 방법**: `isLoading` 라인을 `leagueLoading || fetchLoading`로, 위 구조분해를 `const { data: advancedStatsByTeam } = ...`로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 가상 시즌 연도 기본값 고정(2026) + 테스트 리그/토너먼트 5개 정리
+
+**배경**: `rooms.season` 포맷 조사 과정에서 `CreateLeagueModal.tsx`의 "가상 시즌 연도" 입력
+기본값이 `new Date().getFullYear() + 1`로 계산돼 방문 시점마다 조용히 달라지는(올해 2027,
+내년엔 2028...) 문제를 발견. 사용자 요청으로 고정값으로 변경. 겸사겸사 그동안 쌓인 테스트용
+리그/토너먼트 세션(PBL·MAIN 2 제외 전부)도 정리 요청받아 함께 처리.
+
+**변경 파일**:
+- `components/multi/CreateLeagueModal.tsx` — `virtualSeasonYear` state 초기값
+- DB — `leagues`/`rooms` 및 하위 전 테이블(CASCADE) 5세트 삭제
+
+**Before**:
+```ts
+const [virtualSeasonYear, setVirtualSeasonYear] = useState(new Date().getFullYear() + 1);
+```
+
+**After**:
+```ts
+const [virtualSeasonYear, setVirtualSeasonYear] = useState(2026);
+```
+
+**DB 삭제 내역**: `DELETE FROM leagues WHERE name IN ('DIVISION 1','DIV 3','DIVISION 2','32 TOUR','TEST 19')`
+— 전부 `rooms`/`leagues` FK가 `ON DELETE CASCADE`라 `league_teams`/`league_events`/
+`league_player_awards`/`draft_picks`/`room_player_state` 등 하위 테이블도 함께 삭제됨.
+삭제 전 전 리그 `human_teams=1`(관리자 본인 테스트용, 타 유저 참여 없음) 확인 후 실행.
+남은 세션: PBL(`9b43a612-...`), MAIN 2(`55a70242-...`) — 둘 다 season="2026-27", virtual_season_year=2026.
+
+**검증**: 삭제 후 `rooms` JOIN `leagues` 쿼리로 PBL/MAIN 2 두 개만 남은 것 확인.
+
+**롤백 방법**: 코드는 Before 블록으로 되돌리면 됨. **DB 삭제는 백업 없이는 복구 불가** —
+CASCADE 삭제라 5개 리그의 모든 팀/이벤트/어워드/드래프트픽 데이터가 영구 소실됨.
+
+---
+
+## 2026-09-07 — 멀티플레이어 `rooms.season` 포맷을 축약형("2025-26")으로 통일
+
+**배경**: 선수 프로필 "기록" 탭에서 현재 시즌 행만 `"2025-2026"`(풀포맷)으로 표시되고
+과거 시즌 행(`career_history`)은 `"2024-25"`(축약형)로 표시돼 포맷이 어긋나 보인다는
+사용자 리포트로 발견. 원인 추적 결과 `rooms.season` 컬럼 자체가 풀포맷으로 저장되고
+있었고, 이 값이 어워드 헤드라인(`postSeasonAwards.ts`)·챔피언 배너(`TournamentBracketView.tsx`)
+·PlayerDetailView 기록 탭까지 그대로 새고 있었음. `rooms.season`은 `grep` 확인 결과 어떤
+쿼리에서도 필터/조인 키로 쓰이지 않는 순수 표시용 라벨(실제 시즌 식별자는 `season_number`
+정수 컬럼)이라, 개별 표시 지점을 패치하는 대신 소스 자체를 축약형으로 통일하기로 결정.
+싱글플레이어의 `saves.current_season`/`hall_of_fame.season`/`user_season_history.season`
+등은 `rooms.season`과 완전히 분리된 별도 컬럼이라 이번 변경과 무관(혼동해서 넓게 잡았다가
+사용자 지적으로 멀티 전용으로 범위 축소함).
+
+**변경 파일**:
+- `services/multi/leagueService.ts` — `createRoom()` 기본값
+- `hooks/useMultiGameData.ts` — `currentSeason` 로컬 state 초기값(room 로드 전 표시되는 fallback)
+- DB `rooms` 테이블 — 기존 활성 리그 7개 `season` 컬럼 일괄 UPDATE(백필)
+
+**Before**:
+```ts
+// leagueService.ts
+season: params.season ?? '2025-2026',
+
+// useMultiGameData.ts
+const [currentSeason, setCurrentSeason] = useState('2025-2026');
+```
+DB: `rooms.season` = `'2025-2026'` (활성 리그 7개 전부)
+
+**After**:
+```ts
+// leagueService.ts
+season: params.season ?? '2025-26',
+
+// useMultiGameData.ts
+const [currentSeason, setCurrentSeason] = useState('2025-26');
+```
+DB: `UPDATE rooms SET season = '2025-26' WHERE season = '2025-2026';` 실행 → 7개 리그 전부 갱신
+
+**검증**: `execute_sql`로 백필 후 `RETURNING`으로 7개 row 전부 `"2025-26"`으로 바뀐 것 확인.
+tsc/build는 문자열 리터럴 변경뿐이라 별도 실행 안 함.
+
+**주의사항**: 리그 `603386ca-...`는 이미 `league_player_awards`에 33건이 시즌 종료 어워드로
+영구 저장돼 있는 상태였음. `MultiPlayerDetailView.tsx`가 클라이언트에서 `${room.id}_${room.season}_awards`
+시드로 동일 어워드를 즉석 재계산해 보여주는 구조라, 이 리그에 한해 시드 문자열이
+`..._2025-2026_awards` → `..._2025-26_awards`로 바뀜. 실제 순위는 스탯 기반이라 결과가
+달라질 가능성은 낮지만(완전 동점 타이브레이크 시에만 영향), 이론상 화면 프리뷰와 이미
+저장된 공식 기록이 미세하게 어긋날 여지가 있음 — 문제 발견 시 이 항목 참고.
+
+**롤백 방법**: 코드는 Before 블록으로 되돌리고, DB는
+`UPDATE rooms SET season = '2025-2026' WHERE season = '2025-26';`로 되돌리면 됨
+(단, 백필 이후 새로 생성된 리그까지 전부 되돌아가므로 신중히 판단).
+
+---
+
+## 2026-09-07 — 멀티 세션 설정 화면(LeagueSettingsView) 탭 구조 재편 + 트레이드 설정 노출
+
+**배경**: 사용자 요청. `LeagueSettingsView.tsx`가 세로 카드 9개를 한 페이지에 전부 나열하는
+구조(1299줄, 스크롤 과다)였음. 리그/시즌/드래프트/트레이드/샐러리캡/재정/엔진/멤버 8개
+탭으로 재편 요청. 트레이드 탭은 기존 UI가 전혀 없었는데, `types/simSettings.ts`의
+`SimSettings.tradeMinValueRatio`/`cpuTradeBaseProbability`가 타입에는 정의돼 있고
+`SIM_SETTINGS_META` 카탈로그에도 있었지만 이 화면 UI에는 한 번도 노출된 적 없던 필드라
+이번에 트레이드 탭 콘텐츠로 신규 노출(트레이드 엔진 동작에 실제로 쓰이는 값이므로
+placeholder가 아닌 진짜 컨트롤). 재정 탭은 세션 단위로 조절 가능한 실존 설정이 없어
+"준비 중" 안내만 배치.
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx` — 단일 파일, 서버 미러 없음
+  - `activeTab: SettingsTabId` state 추가, 상단에 8개 탭 버튼 그룹 삽입
+  - 기존 9개 섹션(엔진/샐러리캡/플레이오프/토너먼트초기화/시즌기간/참가팀수/스케줄/
+    드래프트추첨/팀목록)의 렌더 조건에 `activeTab === '...'`를 AND로 추가해 탭별로 분리
+    (각 섹션 자체의 로직·상태·저장 핸들러는 변경 없음, 노출 조건만 추가)
+  - `tradeMinValueRatio`/`cpuTradeBaseProbability` state 신규 추가, `handleSaveTradeSettings()`
+    신규 함수로 `sim_settings` JSON에 병합 저장(기존 `handleSaveSimSettings`와 동일 패턴,
+    독립 저장 버튼)
+  - 재정 탭: 안내 문구만 있는 placeholder 섹션 추가(저장 로직 없음)
+
+**Before**: 탭 없이 섹션 9개가 전부 항상(조건별) 렌더링됨. 트레이드 설정 UI 자체가 없었음.
+
+**After**: `activeTab` 값에 따라 한 번에 섹션 하나(또는 트레이드/재정처럼 신규 섹션)만
+렌더링. 트레이드 탭 저장 시 `updateLeagueSettings({ simSettings: { ...DEFAULT_SIM_SETTINGS,
+...room.sim_settings, tradeMinValueRatio, cpuTradeBaseProbability } })` 호출.
+
+**검증**: `npx tsc --noEmit` 결과 이 파일 관련 신규 에러 없음(기존에 있던
+`SimSettings.normalization` 타입 미정의 에러 3건은 이번 변경 이전부터 존재하던 것으로
+`git stash` 대조 확인, 이번 작업과 무관하므로 미수정).
+
+**롤백 방법**: `activeTab` state와 8개 탭 버튼 그룹 JSX, 각 섹션 조건문의
+`activeTab === '...' &&` 부분, 트레이드 탭 섹션 전체, 재정 탭 placeholder 섹션을 제거하면
+원래 구조로 복원됨(각 섹션 자체 로직은 손대지 않았으므로 안전).
+
+**후속 변경(같은 날)**: 사용자가 "세션 내 다른 화면처럼 바디 꽉 차는 구조 + 세션 내
+공용 탭 컴포넌트 재사용"을 요청. 조사 결과 `views/multi/season/*`, `views/multi/league/
+AdminTeamEditorView.tsx` 등 세션 진입 후 화면들은 전부 `max-w-*/mx-auto` 없이
+`h-full flex flex-col overflow-hidden animate-in fade-in duration-300` 최상위 컨테이너 +
+`components/common/TabBar.tsx`(제네릭 `TabBar<T extends string>`, 아이콘 미지원, `label`만)
++ `flex-1 min-h-0 overflow-y-auto custom-scrollbar` 스크롤 영역 패턴을 공유하는 걸 확인
+(예: `MultiTacticsView.tsx:509`). 이 패턴에 맞춰 재수정:
+- 최상위 `<div className="max-w-2xl mx-auto px-4 py-10 space-y-8">` →
+  `<div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">`
+- 이름 편집 블록은 `flex-shrink-0` 헤더 바(`px-8 py-4 border-b border-slate-800 bg-slate-950`)로 분리
+- 커스텀 아이콘 버튼 그룹(`SETTINGS_TABS.map` + lucide 아이콘)을 전부 제거하고
+  `<TabBar tabs={SETTINGS_TABS} activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab)} />`
+  로 교체 — `SETTINGS_TABS`에서 `icon` 필드 제거(TabBar가 아이콘 미지원이라 데드 필드가 되므로),
+  이 때문에 오직 탭 아이콘 용도로만 쓰이던 `ClipboardList` import도 함께 제거
+  (`ArrowLeftRight`/`Wallet`/`DollarSign`/`Activity`/`Shield`/`CalendarDays`/`Users`는 각
+  섹션 헤더 아이콘으로 계속 쓰이므로 유지)
+- `onTabChange={setActiveTab}`을 바로 넘기면 `Dispatch<SetStateAction<T>>`가 TabBar의
+  제네릭 `T` 추론을 `string`으로 무너뜨려 타입 에러 발생 → 다른 화면들처럼 인라인 래퍼
+  `(tab: SettingsTabId) => setActiveTab(tab)`로 감싸서 해결
+- 기존 카드 섹션들(`bg-slate-800/60 rounded-2xl p-6` 등)은 그대로 두고, 전체를 감싸는
+  `<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-8 space-y-6">` 안에
+  위치시킴 — 각 섹션의 내부 로직/조건은 무변경
+
+**검증(후속)**: `npx tsc --noEmit` — 신규 에러 없음(기존 `normalization` 타입 에러 3건만
+잔존, 무관). `npx vite build` — 정상 빌드 성공, `CIRCULAR_DEPENDENCY` 경고 없음("Circular
+chunk: vendor -> react-vendor -> vendor"는 manualChunks 청크 이름 재사용 경고로 실제 모듈
+순환과 무관, 이 변경 이전부터 있던 것).
+
+**롤백 방법(후속)**: 최상위 wrapper 클래스와 헤더 블록을 이전 커밋의 `max-w-2xl` 버전으로
+되돌리고, `TabBar` import/사용을 제거한 뒤 원래 `SETTINGS_TABS.map` 버튼 그룹(이 문서
+바로 위 "변경 파일" 항목의 Before 상태)으로 복원.
+
+**후속 변경 2(같은 날)**: 사용자가 "리그 탭을 좌/우로 나눠서 좌측은 리그 제너럴 설정,
+우측은 멤버 설정(우선 멤버 리스트만)"으로 요청. 기존에 "팀 목록" 테이블은 별도 "멤버" 탭
+전용 콘텐츠였는데, 이제 "리그" 탭 우측 컬럼에도 동시에 노출해야 해서 ~90줄짜리 테이블
+JSX를 두 곳에 중복시키지 않도록 `memberListPanel`이라는 JSX 변수로 추출(`humanMembers`
+계산 직후, `return` 문 앞에 정의 — `leagueTeams`/`userId`/`kickingId`/`handleKick`/`room`/
+`league`/`fmtConference`/`getReadableTextColor`를 클로저로 참조).
+- "리그" 탭의 흩어져 있던 3개 섹션(어드민 시뮬레이션 링크, 참가팀 수, 토너먼트 종료&초기화)을
+  물리적으로 한 곳에 모아 `<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">`
+  좌측 컬럼(`space-y-6`)에 배치, 우측 컬럼에 `{memberListPanel}` 배치
+  — 원래 이 3개 섹션이 있던 자리(어드민 시뮬레이션 자리 하나로 통합, 참가팀수/토너먼트초기화
+  원래 위치는 제거)는 코드에서 사라졌으므로 롤백 시 주의
+- "멤버" 탭 콘텐츠는 `{activeTab === 'members' && memberListPanel}` 한 줄로 축약(같은
+  `memberListPanel` 재사용) — "리그" 탭과 "멤버" 탭 양쪽에서 동일한 팀 목록 테이블이
+  보이는 중복 상태가 됨(사용자가 "우선"이라고 명시해 향후 멤버 탭 자체를 없앨지 별도
+  안내 예정, 이번엔 유지)
+
+**검증(후속 2)**: `npx tsc --noEmit` — 신규 에러 없음(기존 `normalization` 에러 3건만
+잔존). `npx vite build` — 정상 빌드, 청크 경고만 기존과 동일.
+
+**롤백 방법(후속 2)**: `memberListPanel` 변수 정의를 삭제하고, "리그" 탭의 grid 2컬럼
+블록을 제거한 뒤 어드민 시뮬레이션/참가팀 수/토너먼트 종료&초기화 3개 섹션을 각각 원래
+위치(엔진 설정 섹션 앞, 시즌 기간 섹션 앞, 스케줄 설정 섹션 앞)에 개별 `{activeTab ===
+'league' && ...}` 조건으로 되돌리고, "멤버" 탭도 인라인 테이블 JSX(후속 변경 1 이전
+"변경 파일" 항목의 원본)로 복원.
+
+**후속 변경 3(같은 날)**: 사용자가 "상단 멤버 탭 제거 + 리그 탭 좌측 최상단에 리그 정보
+요약 카드 추가(시작 시즌/현재 시즌 진행일수/리그 유형/플레이오프·플레이인 여부/진출팀
+수/올스타·정규시즌수상·부상·출전정지·샐러리캡 토글 여부) + 기존 경기 시뮬레이션 섹션
+삭제"를 요청.
+- `SettingsTabId` 유니온과 `SETTINGS_TABS`에서 `'members'` 제거(탭 자체를 없앰,
+  `memberListPanel` 변수는 리그 탭 우측 컬럼에서 계속 사용하므로 유지)
+- 좌측 컬럼 최상단(어드민 시뮬레이션 섹션이 있던 자리)에 항상 노출되는 "리그 정보" 카드
+  신설. 표시값 출처:
+  - 시작 시즌 = `league.season_start_date` 포맷, 현재 시즌 = 같은 값 기준
+    `Math.floor((now - start)/86_400_000) + 1`일째(리그 상태가 recruiting/drafting이면
+    "시작 전") — **실제 가상 NBA 캘린더 날짜가 아니라 wall-clock 기준 경과일**. `rooms.
+    sim_date`도 `games.game_date`(가상 캘린더)도 아닌 `season_start_date`(날짜만 있는
+    값)만 사용해 [[project_sim_date_vs_virtual_date]] 이슈와는 무관하지만, 두 필드의
+    성격이 다르다는 걸 인지하고 있을 것 — 추후 "정규시즌 며칠차"처럼 가상 캘린더 기준
+    표시가 필요해지면 `views/multi/season/multiScheduleUtils.ts`의
+    `findCurrentVirtualDate()`를 써야 함(이번 값과 다른 계산)
+  - 리그 유형/플레이오프 여부는 `league.type`/`league.tier`/`league.tournament_format`에서 파생
+  - 플레이인 여부·진출팀 수·부상·출전정지·샐러리캡은 이미 존재하는 상태
+    (`playInEnabled`/`playoffTeamsPerConf`/`injuriesEnabled`/`suspensionsEnabled`/
+    `capEnabled`)를 그대로 읽어오는 **읽기 전용 요약**(편집은 여전히 시즌/엔진/샐러리캡
+    탭에서)
+  - 올스타 경기·정규시즌 수상은 실제로 토글 가능한 백엔드 필드가 존재하지 않아
+    "미구현"/"상시 활성 (토글 미지원)"으로 정직하게 표시(가짜 토글 생성 안 함 —
+    [[project_no_multiplayer_logo_url]]과 같은 이유로 기능 없는 걸 있는 것처럼 보이면 안 됨)
+  - 반복되는 라벨-값 한 줄을 위해 파일 상단에 작은 로컬 컴포넌트 `InfoRow` 신설
+- "경기 시뮬레이션" 섹션(관리자 sim 페이지 링크) 전체 삭제, 그 용도로만 쓰이던
+  `PlayCircle` import도 제거
+
+**검증(후속 3)**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build`
+— 정상 빌드.
+
+**롤백 방법(후속 3)**: `InfoRow` 컴포넌트, 계산값 4개(`seasonStartLabel` 등), "리그 정보"
+`<section>` 블록을 제거하고 "경기 시뮬레이션" 섹션(후속 변경 2의 좌측 컬럼 최상단 블록)을
+복원, `SettingsTabId`/`SETTINGS_TABS`에 `'members'`를 되돌리고 파일 끝에
+`{activeTab === 'members' && memberListPanel}`을 다시 추가.
+
+**후속 변경 4(같은 날)**: 사용자가 팀 목록(`memberListPanel`) 테이블에 "참가일시 표시,
+추방 버튼(이미 있던 강퇴 버튼을 용어만 맞춤), 팀배지 삭제, 팀 이름 인라인 편집(어드민),
+드래프트 오더를 칩→단순 텍스트"를 요청.
+
+- **팀 이름 편집**: 기존 `updateTeamProfile()`이 부르는 RPC `update_team_profile`을
+  Supabase에서 직접 조회(`pg_get_functiondef`)해보니 `p_user_id === league_teams.user_id`
+  (소유자 본인)만 허용하는 로직이 함수 안에 하드코딩돼 있어 어드민이 남의 팀/AI 팀 이름을
+  바꾸는 데 못 씀. 대신 `league_teams` RLS 정책(`league_teams_update_owner_or_admin`)을
+  `pg_policies`에서 확인하니 "user_id = auth.uid() OR 리그 admin_user_id = auth.uid()"로
+  이미 어드민 UPDATE를 허용하고 있어서, RPC를 우회하고 클라이언트에서 `league_teams`
+  테이블을 직접 `.update({ team_name })`하는 새 함수
+  `services/multi/leagueService.ts`의 `updateTeamName(teamId, teamName)` 추가(서버 마이그레이션
+  불필요, 기존 RLS로 충분).
+  - `LeagueSettingsView.tsx`: `teamNameDrafts`/`savingTeamNameId`/`teamNameErrs` state와
+    `handleSaveTeamName()` 추가. 리그 이름 편집(상단 헤더)과 동일 패턴 — input이 dirty할 때만
+    저장 버튼 노출. `update_team_profile` RPC의 "drafting 중 편집 금지" 규칙을 어드민 경로에도
+    동일하게 적용하기 위해 `league.status === 'drafting'`일 때 input `disabled`.
+- **참가일시**: `RoomMemberRow.joined_at`(이미 `useLeagueContext()`의 `members`로 로드돼 있음)을
+  `members.find(m => m.user_id === t.user_id)?.joined_at`으로 매칭, 새 `fmtJoinedAt()` 헬퍼로
+  KST 고정 오프셋(9시간) 포맷팅 — 파일의 다른 날짜 표시(`toInputValue` 등)와 동일 규칙.
+  AI 팀/미가입 팀은 "—".
+- **팀배지 삭제**: `<div style={{backgroundColor: t.color_primary, ...}}>{t.team_abbr}</div>`
+  색상 사각 배지 제거, 이름 input만 남김(`getReadableTextColor`는 드래프트 오더 추첨 결과
+  섹션에서 별도로 여전히 쓰여서 import는 유지).
+- **드래프트 오더**: `bg-amber-500/20 px-2 py-0.5 rounded` 칩 스타일 제거, `text-amber-400`
+  텍스트만 남김.
+- **추방 버튼**: 기존 강퇴 로직(`handleKick`)은 그대로, 버튼 라벨만 "강퇴"→"추방"으로 사용자
+  용어에 맞춤(기능은 이전부터 이미 있었음).
+
+**검증(후속 4)**: `pg_get_functiondef`/`pg_policies`로 RPC vs RLS 권한 차이 확인 후 우회
+경로 선택. `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build` — 정상 빌드.
+
+**롤백 방법(후속 4)**: `services/multi/leagueService.ts`의 `updateTeamName` export 제거.
+`LeagueSettingsView.tsx`에서 `teamNameDrafts`/`savingTeamNameId`/`teamNameErrs` state,
+`handleSaveTeamName`, `fmtJoinedAt` 헬퍼를 제거하고 테이블의 "팀" 컬럼을 색상 배지+plain
+span으로, "드래프트 오더"를 칩 스타일로, "추방"을 "강퇴"로, "참가일시" `<th>`/`<td>`를
+삭제해 원복.
+
+**후속 변경 5(같은 날)**: 사용자가 "AI 팀이어도 추방 버튼은 보이게 하고 클릭만 막아라"로
+수정 요청. 기존엔 `{isHuman && !isMe && room && <button>...}`로 조건이 false면 버튼 자체가
+렌더링 안 됐음(AI 팀/본인 행엔 버튼이 아예 없어 레이아웃이 흔들림). `canKick = isHuman &&
+!isMe && !!room` 변수로 분리해 버튼은 항상 렌더링하고 `disabled={!canKick || kickingId ===
+t.user_id}`, `onClick`도 `canKick`일 때만 `handleKick` 호출하도록 가드. 비활성 시각 표시를
+기존 `disabled:opacity-50`(다른 로딩중 상태와 공용)에서 `disabled:opacity-30
+disabled:hover:bg-red-600/10 disabled:cursor-not-allowed`로 강화해 "로딩 중이라 잠깐 비활성"과
+"애초에 클릭 불가"를 시각적으로 더 흐리게 구분.
+
+**검증(후속 5)**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존).
+
+**롤백 방법(후속 5)**: 추방 `<td>` 블록을 `{isHuman && !isMe && room && (<button>...)}` 형태로
+되돌리고 `canKick` IIFE 제거.
+
+**버그 수정(같은 날)**: 사용자가 "추방 버튼에 로더가 계속 돈다"고 리포트. 원인은 후속
+변경 5에서 버튼을 AI 팀 행에도 항상 렌더링하게 바꾸면서 생긴 부작용 — `kickingId` state의
+초기값이 `null`이고 AI 팀은 `t.user_id`도 `null`이라, `kickingId === t.user_id` 비교가
+아무도 추방 중이 아닐 때도 AI 팀 행에서는 `null === null`로 항상 `true`가 돼 로딩 스피너가
+상시 표시됨(사람 팀만 버튼을 그리던 이전 버전에서는 `t.user_id`가 항상 실제 UUID라 이
+충돌이 없었음). `isKickingThis = kickingId !== null && kickingId === t.user_id`로 null 여부를
+먼저 걸러 수정 — `disabled`와 아이콘 분기 두 곳 모두 이 변수로 교체.
+
+**검증**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존).
+
+**롤백 방법**: `isKickingThis` 변수를 제거하고 `kickingId === t.user_id`로 되돌림(단, 이러면
+버그가 재발하므로 후속 변경 5의 "AI 팀도 버튼 노출" 자체를 되돌리지 않는 한 권장 안 함).
+
+**후속 변경 6(같은 날, DB 마이그레이션 포함)**: 사용자가 팀 목록에서 "[나] 칩 제거하고
+항상 닉네임 표시, 닉네임 우측에 이메일 컬럼 추가, 어드민은 닉네임 우측에 왕관 아이콘,
+컨퍼런스 컬럼 삭제"를 요청.
+
+- **이메일 컬럼이 새 RPC를 필요로 한 이유**: `profiles` 테이블 SELECT RLS가
+  `auth.uid() = id`(본인 행만)라서 어드민이 클라이언트에서 그냥 `profiles`를 조회하면
+  다른 사용자 이메일은 안 보임. `pg_policies`로 직접 확인 후, 새 SECURITY DEFINER RPC
+  `get_room_member_emails(p_room_id)`를 신설(마이그레이션:
+  `migrations/add_get_room_member_emails_rpc.sql`, Supabase 프로젝트
+  `buummihpewiaeltywdff`에 `apply_migration`으로 직접 적용 완료) — 호출자가 해당 room이
+  속한 리그의 `admin_user_id`인지 함수 내부에서 검증 후에만 `room_members ⋈ profiles`의
+  `(user_id, email)`을 반환하도록 스코프를 그 리그 하나로 제한. `SET search_path = public`
+  포함(이 프로젝트의 기존 RPC 14개는 이게 없어서 advisor에 `function_search_path_mutable`
+  경고가 뜨는데, 신규 함수는 처음부터 포함해서 그 경고 목록에 안 걸림 — `get_advisors`로 확인).
+  적용 후 `anon_security_definer_function_executable`/`authenticated_security_definer_...`
+  WARN이 뜨긴 하지만 이 프로젝트의 다른 모든 RPC(`update_team_profile`, `run_draft_lottery`
+  등)도 동일한 "내부에서 권한 체크하는 SECURITY DEFINER" 패턴이라 새로운 위험 등급이
+  아님(anon은 auth.uid()가 null이라 어차피 아무 admin_user_id와도 안 맞아 통과 못 함).
+  - `services/multi/leagueService.ts`: `getRoomMemberEmails(roomId)` — RPC 호출 후
+    `{user_id: email}` 맵으로 변환해 반환.
+  - `LeagueSettingsView.tsx`: `memberEmails` state, `room?.id` 확정 시 1회 조회하는
+    `useEffect` 추가.
+- **GM 컬럼**: `isMe ? '나' 칩 : ...` 삼항을 없애고 `isHuman ? t.nickname : 'AI'`만 표시,
+  그 옆에 `t.user_id === league.admin_user_id`일 때 `Crown` 아이콘(lucide-react, 신규 import)
+  추가 — "나"인지 여부와 무관하게 항상 실제 닉네임을 보여주고, 방장 여부만 별도 표시.
+- **컨퍼런스 컬럼 삭제**: `<th>`/`<td>` 모두 제거. 이 컬럼에서만 쓰이던 `fmtConference()`
+  헬퍼도 데드코드가 돼서 같이 삭제.
+- **컬럼 순서**: 팀 → GM(닉네임+왕관) → 이메일 → 참가일시 → 드래프트 오더 → 추방.
+
+**검증(후속 6)**: `pg_policies`/`get_advisors`로 권한 모델 확인 후 마이그레이션 적용.
+`npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build` — 정상 빌드.
+
+**롤백 방법(후속 6)**: DB 측 — `DROP FUNCTION public.get_room_member_emails(uuid);` 실행
+(이걸 지우면 이메일 컬럼은 항상 "—"만 뜨게 됨, RLS 자체는 안 건드렸으므로 다른 기능엔
+영향 없음). 클라이언트 측 — `getRoomMemberEmails` export와 `memberEmails` state/useEffect
+제거, GM 컬럼을 `[나]` 칩 삼항으로, 이메일 컬럼 삭제, 컨퍼런스 `<th>`/`<td>`와
+`fmtConference()`를 후속 변경 4 이전 버전으로 복원.
+
+**후속 변경 7(같은 날, UI 전용)**: 사용자가 "상단 리그 이름 입력창과 팀 목록 이름
+입력창을 박스형으로, 팀 목록 테이블은 컨테이너를 해체해서 가장 원초적이고 심플하게 —
+디자인 없는 게 오히려 낫다"고 요청.
+- 리그 이름 입력창(상단 헤더)과 팀 이름 인라인 입력창(테이블) 둘 다 밑줄만 있던 스타일
+  (`bg-transparent border-b border-transparent hover:border-slate-700 ...`)에서 이 파일의
+  다른 입력창들(드래프트 일시 등)과 동일한 박스 스타일
+  (`bg-slate-900 border border-slate-700 rounded-lg px-*` + `focus:border-indigo-500`)로 교체.
+- `memberListPanel`의 카드 껍데기 제거: 바깥 `<section className="bg-slate-800/60 border
+  ... rounded-2xl p-6 space-y-4">` → `<section className="space-y-3">`, 테이블 래퍼
+  `<div className="overflow-x-auto rounded-xl border border-slate-700/60">` → `<div
+  className="overflow-x-auto">`(가로 스크롤 안전장치만 남기고 border/rounded 제거).
+- `<thead className="bg-slate-900/80">` → 배경 없이 `<tr className="border-b
+  border-slate-700">`로 헤더 밑줄만, 헤더 셀의 `uppercase tracking-wider text-[11px]`
+  장식도 제거하고 평범한 `text-xs`로.
+- 각 `<tr>`의 `bg-slate-900/40` 행 배경 제거(구분은 기존 `tbody`의 `divide-y
+  divide-slate-800`만으로 충분), 모든 `<td>` 패딩을 `px-4/px-3` 혼용에서 `px-2 py-2`로 통일.
+
+**검증(후속 7)**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build`
+— 정상 빌드.
+
+**롤백 방법(후속 7)**: 두 입력창 className을 밑줄 스타일로 되돌리고, `memberListPanel`의
+`<section>`/`<div className="overflow-x-auto">`/`<thead>`/`<tr>`/`<td>` className들을
+후속 변경 6 시점 값(카드 배경/보더/rounded/uppercase/행 배경 포함)으로 복원.
+
+**후속 변경 8(같은 날, UI 전용)**: 사용자가 "세션 설정 헤더의 리그 이름 입력창을 바디의
+'리그 정보' 상단으로 옮겨라" 요청. 최상위 `<div className="px-8 py-4 border-b
+border-slate-800 bg-slate-950 flex-shrink-0">` 헤더 블록(이름 input + 저장 버튼 + "세션
+설정 — 어드민 전용" 캡션 + 에러 메시지) 전체를 통째로 들어내 `TabBar` 바로 위 자리를
+없애고, 그 내용을 "리그" 탭 좌측 컬럼 "리그 정보" `<section>` 맨 위(`<h2>리그 정보</h2>`
+바로 위)로 이동. 로직(`nameInput`/`handleSaveName`/`saveNameErr` state·핸들러)은 전혀
+안 건드리고 위치한 JSX 위치만 이동.
+
+**⚠️ 동작 변화(사용자 확인 필요 없이 요청에 내재된 결과지만 기록)**: 이름 입력창이 이제
+"리그" 탭에서만 보임 — 예전엔 최상위 헤더라 어느 탭에 있든 항상 보였지만, "리그 정보
+상단"이라는 요청 자체가 리그 탭 안에 있는 자리라 다른 탭(시즌/드래프트/트레이드/
+샐러리캡/재정/엔진)에서는 이름을 못 바꿈.
+
+**검증(후속 8)**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build`
+— 정상 빌드.
+
+**롤백 방법(후속 8)**: "리그 정보" `<section>` 맨 위의 이름 input 블록을 잘라내 `TabBar`
+바로 위에 `<div className="px-8 py-4 border-b border-slate-800 bg-slate-950
+flex-shrink-0">`로 다시 감싸 복원.
+
+**후속 변경 9(같은 날, UI 전용)**: 사용자가 "시즌 탭의 플레이오프 형식을 리그 탭 좌측
+단 하단으로 옮겨라" 요청. "플레이오프 형식" `<section>`(컨퍼런스별 진출팀 수 +
+플레이인 토글 + 저장 버튼, `handleSavePlayoffSettings`/`playoffTeamsPerConf`/
+`playInEnabled` 등 로직은 무변경)을 원래 위치(시즌 기간 섹션 바로 앞,
+`activeTab === 'season' && league.type === 'main_league' && !league.bracket_data` 조건)에서
+잘라내 "리그" 탭 좌측 컬럼(`<div className="space-y-6">`) 맨 마지막(토너먼트 종료&초기화
+섹션 다음, 좌측 컬럼 닫는 `</div>` 바로 앞)으로 이동. 이 좌측 컬럼 전체가 이미 바깥의
+`{activeTab === 'league' && (...)}`로 감싸여 있어서 조건에서 `activeTab === 'season'`은
+빼고 `league.type === 'main_league' && !league.bracket_data`만 남김(중복 조건 불필요).
+
+**검증(후속 9)**: `npx tsc --noEmit` — 신규 에러 없음(기존 3건만 잔존). `npx vite build`
+— 정상 빌드.
+
+**롤백 방법(후속 9)**: "플레이오프 형식" `<section>`을 리그 탭 좌측 컬럼에서 잘라내
+"시즌 기간" 섹션 바로 앞자리로 되돌리고 조건에 `activeTab === 'season' &&`를 다시 붙임.
+
+**후속 변경 10(같은 날, 큰 리팩터)**: 사용자가 "플레이오프 섹션 저장 버튼 삭제 + 저장을
+탭 헤더 우측 하나로 일원화"를 요청. 범위를 명확히 하려고 AskUserQuestion으로 "플레이오프
+섹션만" vs "전체 탭 통합"을 물었고, 사용자가 "탭 헤더에 저장 버튼 하나만 두고, 탭 이동
+시 변경사항 있으면 재확인"으로 답해 **전체 탭 통합**으로 확정.
+
+**설계**: 탭마다 있던 개별 저장 버튼(이름 인라인/플레이오프/엔진/트레이드/샐러리캡/
+드래프트-스케줄, 총 6곳)을 전부 제거하고, `TabBar`의 `rightSlot`에 저장 버튼 1개만
+배치. 이 버튼은 `activeTab`에 따라 다른 저장 함수를 가리키는 컨텍스트 방식(진짜로 모든
+탭을 한 번에 저장하는 게 아니라 "지금 보고 있는 탭 것만" 저장) — 실제로 여러 RPC를
+한 요청으로 합칠 방법이 없어서(엔진/트레이드는 `rooms.sim_settings` JSONB, 나머지는
+`leagues` 테이블 개별 컬럼) 이 방식이 유일하게 안전한 절충안.
+
+- **탭-필드 재배치**: 예전엔 참가팀 수(`maxTeams`)와 시즌 기간(`durationWeeks`)이 UI상
+  "리그"/"시즌" 탭에 있으면서 실제 저장은 "드래프트" 탭의 `handleSave()`(스케줄 저장)에
+  얹혀 있었음(탭 따로 저장 버튼 따로인 기존 UX 자체는 몰랐어도 됐지만, 탭별 저장 1개
+  원칙에서는 이 불일치가 곧바로 문제가 됨). 그래서:
+  - `handleSaveName` + `handleSavePlayoffSettings` → **`handleSaveLeagueTab()`**로 통합,
+    `maxTeams`도 여기로 흡수(이름/참가팀수/플레이오프를 `updateLeagueSettings()` 한 번
+    호출로 같이 저장). 플레이오프 필드는 `league.type === 'main_league' && !league.bracket_data`
+    일 때만 payload에 포함.
+  - **`handleSaveSeasonTab()`** 신설(`seasonStartDate`/`seasonEndDate`만) — 예전엔 이 필드가
+    독립 저장 버튼조차 없었음(드래프트 탭 저장에 얹혀 있었음).
+  - `handleSave()`(드래프트 탭)에서 `maxTeams`/`seasonStartDate`/`seasonEndDate`/`roomId`
+    제거, 순수하게 드래프트/스케줄 필드만 남김.
+- **탭별 dirty 계산**: 헤더 버튼의 활성화 여부와 "탭 이동 시 확인" 트리거를 위해 6개 탭
+  전부 `isXxxDirty` boolean을 새로 계산(`isLeagueTabDirty`/`isSeasonTabDirty`/
+  `isDraftTabDirty`/`isTradeTabDirty`/`isCapTabDirty`/`isEngineTabDirty`). 각 비교식은
+  초기화 `useEffect`가 state를 채울 때 쓴 소스 표현식(`league.max_teams ?? 8` 등)과 반드시
+  동일하게 맞춤 — 안 맞으면 저장 직후에도 dirty가 안 풀리는 버그가 생김.
+- **`TAB_SAVE_MAP`**: `SettingsTabId → {dirty, saving, ok, err, onSave}` 매핑 테이블 신설,
+  `activeSaveInfo = TAB_SAVE_MAP[activeTab]`으로 헤더 버튼이 참조. `finance` 탭은 저장할
+  게 없어 매핑에서 제외(헤더에 버튼 자체가 안 뜸).
+- **탭 이동 확인**: `handleTabChange(tab)`이 `TabBar`의 `onTabChange`로 들어가서, 이동 전
+  `activeSaveInfo?.dirty`면 `window.confirm(...)`으로 한 번 더 확인 후에만 `setActiveTab`
+  실행. 커스텀 모달 대신 네이티브 `confirm()` 사용(리소스 최소화 — 이 파일은 이미 이번
+  세션에서 "디자인 없는 게 낫다"는 피드백을 받은 적 있어 그 방향과 일치).
+- **부수 발견 및 수정**: 새 dirty 비교식 중 `normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization)`
+  을 추가하면서 `SimSettings` 타입에 `normalization` 필드가 아예 정의돼 있지 않다는 걸
+  발견(이 파일에 이미 3곳 있던 미해결 타입 에러의 원인, 후속 변경 1~9까지 계속 "무관한
+  기존 에러"로만 취급하고 넘어갔던 것). `services/game/engine/pbp/leagueNormalization.ts:95`의
+  실제 런타임 사용처(`{enabled?, k?, muRef?}`)를 확인해 `types/simSettings.ts`의
+  `SimSettings` 인터페이스에 `normalization?: { enabled?: boolean; k?: number; muRef?: number }`
+  필드를 정식으로 추가 — 이걸로 기존 3건 + 이번에 새로 생긴 1건까지 총 4건의 타입 에러가
+  전부 해소됨(다른 파일에 영향 없음을 `npx tsc --noEmit` 전체 실행으로 확인).
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx` — 위 내용 전부
+- `types/simSettings.ts` — `SimSettings.normalization` 필드 추가(client/server 미러 없음,
+  이 타입은 클라이언트 전용 UI 상태 정의라 서버 쪽 정규화 로직은 원래도 `any` 캐스팅이라
+  영향 없음)
+
+**검증**: `npx tsc --noEmit`(프로젝트 전체) — 이 파일 관련 신규 에러 없음, `normalization`
+타입 에러 4건(기존 3 + 신규 1) 전부 해소. 나머지 출력된 에러는 전부 이 세션과 무관한
+다른 파일들(App.tsx, CoachStaffTable.tsx 등)의 기존 이슈. `npx vite build` — 정상 빌드.
+
+**롤백 방법**: `TAB_SAVE_MAP`/`activeSaveInfo`/`handleTabChange`/6개 `isXxxDirty` 계산과
+`handleSaveLeagueTab`/`handleSaveSeasonTab`을 제거. `handleSave()`에 `maxTeams`/
+`seasonStartDate`/`seasonEndDate`/`roomId: room?.id`를 복원. `handleSaveName`/
+`handleSavePlayoffSettings`와 그 state(`savingName`/`saveNameErr`/`savingPlayoff`/
+`savePlayoffOk`/`savePlayoffErr`)를 복원. 각 섹션(이름 입력/플레이오프/엔진/트레이드/
+샐러리캡/드래프트)에 개별 저장 버튼 JSX를 되돌리고, `TabBar`의 `rightSlot`/
+`onTabChange={handleTabChange}`를 제거. `types/simSettings.ts`의 `normalization` 필드는
+실제 런타임에 쓰이는 필드라 롤백 시에도 유지 권장(제거하면 4건의 타입 에러가 다시 생김).
+
+**후속 변경 11(같은 날)**: 사용자가 "시즌 탭 삭제 + 드래프트 탭에 드래프트 결과 테이블
+추가"를 요청.
+
+- **시즌 탭 삭제**: `SettingsTabId`/`SETTINGS_TABS`에서 `'season'` 제거. 이 탭에 있던
+  유일한 필드였던 시즌 기간(`durationWeeks`, 선택 시 정규시즌/플레이오프 일수·일일 시뮬
+  시간대를 계산해 보여주던 요약 박스 포함)을 관련 state(`durationWeeks`,
+  `savingSeason`/`saveSeasonOk`/`saveSeasonErr`)·계산값(`refToday`/`computedSeasonEnd`/
+  `REGULAR_DAYS`/`GAME_DAYS_PER_DAY`/`regularDays`/`gameDaysPerDay`/`lastSlotKst`/
+  `sourceDurationWeeks`/`isSeasonTabDirty`)·핸들러(`handleSaveSeasonTab`)·초기화
+  `useEffect`의 동기화 코드·`TAB_SAVE_MAP`의 `season` 엔트리·JSX 섹션까지 전부 제거(다른
+  곳에 옮기지 않고 완전 삭제 — "옮겨줘"가 아니라 "삭제해줘"라고 명시적으로 요청함).
+  **⚠️ 기능 손실 기록**: 이제 리그 생성 후에는 시즌 기간(1~4주)을 세션 설정에서 바꿀 방법이
+  없다 — `CreateLeagueModal.tsx`의 생성 시점 `durationWeeks` 값이 그대로 굳어짐. 필요해지면
+  이 커밋의 "롤백 방법"을 참고해 되살릴 것.
+- **드래프트 결과 테이블 신설**: 완료된 드래프트 픽 목록을 보여주는 기능 자체가 이
+  프로젝트에 전혀 없었음(조사 결과 `pages/DraftHistoryPage.tsx`는 싱글플레이 전용이라
+  무관, `MultiDraftView.tsx`의 `useLeagueDraft`는 진행 중인 드래프트의 WebSocket
+  실시간용이라 완료 후 조회에는 못 씀). `draft_picks` 테이블 컬럼을 Supabase에서 직접
+  조회(`information_schema.columns`)해 확인 —
+  `room_id, pick_index, round, slot, team_id, team_name, user_id, is_ai, gm_email,
+  player_id, player_name, position, ovr, picked_at` — `team_name`이 이미 비정규화돼 있어
+  `league_teams` 조인 없이 바로 표시 가능. RLS(`draft_picks_select`,
+  `room_id IN (SELECT accessible_room_ids())`)가 이미 룸 멤버/어드민 조회를 허용해서
+  새 RPC 없이 클라이언트 직접 쿼리로 충분.
+  - `services/multi/roomQueries.ts`: `DraftPickRow` 인터페이스 + `listDraftPicks(roomId)`
+    신설(`select('*').eq('room_id', roomId).order('pick_index')`).
+  - `LeagueSettingsView.tsx`: `draftPicks` state, `room.id` 확정 시 1회 조회하는
+    `useEffect`(멤버 이메일 조회와 동일 패턴 — 실시간 구독 없음, 완료된 결과 조회 용도라
+    폴링 불필요). "드래프트" 탭에 `activeTab === 'draft'`만 조건으로 걸어(±`isInProgress`
+    무관하게) 항상 노출되는 새 섹션 추가, 헤더 아이콘은 `ClipboardList`(이전에 탭 아이콘
+    용도로 넣었다가 TabBar가 아이콘을 지원 안 해서 뺐던 걸 재사용).
+
+**후속 변경 12(같은 날, 표 구조 변경)**: 사용자가 드래프트 결과 표를 "픽별 flat 리스트"가
+아니라 "팀×라운드 매트릭스"(엑셀처럼 행=팀, 열=1R/2R/3R.../ 각 셀은 그 라운드에 그 팀이
+뽑은 선수)로 바꾸고, 셀 내용은 `선수이름(포지션,오버롤)` 형식의 순수 텍스트로만 표기하라고
+요청. `draftPicks` 배열을 `pickByTeamRound: Map<teamId, Map<round, DraftPickRow>>`로
+재구성하고, 열 목록은 실제 데이터에 존재하는 라운드만(`Array.from(new
+Set(picks.map(p=>p.round))).sort()`), 행 순서는 각 팀의 1라운드(정확히는 가장 빠른)
+`pick_index` 기준 오름차순(=드래프트 지명 순서)으로 정렬. 셀은 배지/칩 없이
+`{name}({position},{ovr})` 문자열 하나만 렌더링 — 이 세션에서 이미 확립된 "팀 목록"
+테이블의 원초적 스타일(카드 배경 없는 `<thead>`, `border-b`만 있는 헤더, `divide-y`로만
+행 구분)과 동일하게 맞춤.
+
+**검증(후속 변경 11-12)**: `npx tsc --noEmit` — 이 파일 관련 에러 0건(정규화 타입 수정
+이후 완전히 클린). `npx vite build` — 정상 빌드.
+
+**롤백 방법(후속 변경 11-12)**: 드래프트 결과 섹션 전체(state/useEffect/JSX)를 제거하고
+`listDraftPicks`/`DraftPickRow`를 `roomQueries.ts`에서 제거. 시즌 탭은 위 "후속 변경 11"
+설명의 제거 목록을 역으로 복원(각 항목이 있던 원래 자리는 이 문서의 "후속 변경 9" 이전
+버전 참고).
+
+---
+
+## 2026-09-07 — 박스스코어 화면 하단 각 탭(박스스코어/샷차트/로테이션/온오프)의 팀배지를 로고로 대체
+
+**배경**: 사용자 요청. 경기 상세 페이지 최상단 헤더(직전 항목)는 이미 로고로 바꿨는데,
+그 아래 각 탭 섹션(박스스코어 Traditional/Advanced/Defense, 샷차트, 로테이션, 온오프)의
+팀별 서브헤더에도 "팀 이름 좌측 사각 색상 배지(약어 텍스트)"가 반복돼 있어 전부 실제
+로고로 교체. 이 배지는 싱글/멀티 공용 컴포넌트(`components/game/*`)들이 `badge` prop
+유무로 분기하던 것이라, 중복 구현 5곳을 손으로 각각 고치는 대신 공유 컴포넌트
+`components/common/TeamMark.tsx`(GameShotChartTab이 이미 쓰고 있던 것) 하나를 고쳐서
+BoxScoreTable/AdvancedBoxScoreTable/DefenseBoxScoreTable/RotationChart/GameOnOffTab의
+중복 인라인 배지 코드를 전부 `<TeamMark .../>` 호출로 교체(리팩터 겸 수정).
+
+**변경 파일**:
+- `components/common/TeamMark.tsx` — `badge` 분기를 사각 색상 박스에서 `getRealTeamLogoUrl`
+  기반 `<img>`(+ `getTeamLogoUrl` 폴백 → 플레이스홀더)로 교체. `badge` 없는(싱글플레이어)
+  분기는 기존 `TeamLogo` 그대로 유지 — 영향 없음.
+- `components/game/BoxScoreTable.tsx` — 인라인 배지 삼항연산자 제거, `TeamMark` 사용으로 교체
+- `components/game/AdvancedBoxScoreTable.tsx` — 동일
+- `components/game/DefenseBoxScoreTable.tsx` — 동일
+- `components/game/RotationChart.tsx` — 동일
+- `components/game/tabs/GameOnOffTab.tsx` — `TeamHeader`/`PlayerTable`에 `teamId` prop 추가
+  (로고 조회에 필요), 호출부 2곳에 `homeTeamId`/`awayTeamId` 전달
+
+**Before** (5곳 공통 패턴):
+```tsx
+{badge ? (
+    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
+         style={{ backgroundColor: badge.color, color: '#fff' }}>
+        {badge.abbr.slice(0, 3)}
+    </div>
+) : (
+    <TeamLogo teamId={team.id} size="md" />
+)}
+```
+
+**After**:
+```tsx
+<TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
+```
+(`TeamMark` 내부에서 `badge` 유무로 로고 이미지 vs 기존 `TeamLogo` 분기)
+
+**검증**: `npx tsc --noEmit` 통과(변경 파일 전부 오류 없음 — 프로젝트 전역에 존재하는
+기존 무관 타입 오류들은 이번 변경과 무관하며 손대지 않음).
+
+**롤백 방법**: `TeamMark.tsx`의 `badge` 분기를 Before 블록(사각 색상 박스)으로 되돌리면
+5개 호출부는 그대로 둬도 원래 모습으로 복원됨(호출부 코드 자체는 `TeamMark` 위임이라
+변경 불필요). `GameOnOffTab.tsx`의 `teamId` prop은 되돌릴 필요 없음(하위 호환).
+
+---
+
+## 2026-09-07 — 박스스코어 화면 헤더 팀 약칭 영역을 로고 이미지로 대체
+
+**배경**: 사용자 요청. 경기 상세(박스스코어/PBP/샷차트 공통) 페이지 최상단 스코어보드
+헤더(`TeamHeaderColumn`)의 팀 약칭 텍스트("LAL" 등 3자, text-5xl) 영역을 다른 화면들과
+동일한 `public/logos/real/` 실제 로고 이미지로 교체.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `TeamHeaderColumn`(약 67행) — `teamSlug` prop 추가, `abbrEl`을 텍스트 span에서
+    `getRealTeamLogoUrl` 기반 `<img>`(+ `getTeamLogoUrl` 폴백 → 플레이스홀더)로 교체
+  - 호출부 2곳(약 1942행 away, 2116행 home) — `teamSlug={awayTeamId ?? ''}` /
+    `teamSlug={homeTeamId ?? ''}` 전달
+
+**Before**:
+```tsx
+const abbrEl = infoLoading
+    ? <Skeleton className="h-11 w-16" />
+    : <span className="text-5xl font-black uppercase tracking-tight shrink-0">{abbr.slice(0, 3)}</span>;
+```
+
+**After**:
+```tsx
+const abbrEl = infoLoading
+    ? <Skeleton className="h-11 w-16" />
+    : <img src={getRealTeamLogoUrl(teamSlug)} className="h-16 w-16 object-contain shrink-0"
+           onError={...fallback to getTeamLogoUrl then placeholder...} />;
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `teamSlug` prop과 img 블록을 제거하고 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 헤더 검색창 팀 검색 결과 로고를 real 로고 세트로 교체
+
+**배경**: 사용자 요청. `MultiGlobalSearch.tsx`(헤더 전역 검색)의 팀 검색 결과 행이 기존
+`TeamLogo`(싱글플레이어용 구버전 `/logos/{id}.svg`)를 쓰고 있었는데, 다른 멀티플레이어
+화면들과 동일한 `public/logos/real/` 실제 로고 세트로 교체.
+
+**변경 파일**:
+- `components/dashboard/MultiGlobalSearch.tsx` — 팀 검색 결과 행(약 166~183행), `TeamLogo`
+  import 제거 → `getRealTeamLogoUrl`/`getTeamLogoUrl` 사용
+
+**Before**:
+```tsx
+<TeamLogo teamId={result.team.team_slug} size="custom" className="w-6 h-6 shrink-0" />
+```
+
+**After**:
+```tsx
+<img src={getRealTeamLogoUrl(result.team.team_slug)} className="w-6 h-6 object-contain shrink-0"
+     onError={...fallback to getTeamLogoUrl then placeholder...} />
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `TeamLogo` import를 복원하고 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 멀티플레이어 헤더 좌측 내 팀 이름 옆에 로고 추가
+
+**배경**: 사용자 요청. 화면 최상단 헤더(`MultiHeader.tsx`) 가장 좌측, 팀 테마 컬러
+사선 배경 안의 "내 팀명 + 전적 + 리그 순위" 텍스트 앞에 로고 추가. 이 영역은 원래
+클릭 불가능한 순수 텍스트라 [[다른 화면들의 클릭 영역 원복 항목]]과 달리 로고도
+그대로 비인터랙티브로 추가.
+
+**변경 파일**:
+- `components/MultiHeader.tsx` — 팀 테마 컬러 사선 배경 블록(약 285~305행)에 `<img>` 추가
+
+**Before**:
+```tsx
+<span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
+    {myTeam?.team_name ?? '내 팀'}
+    ...
+</span>
+```
+
+**After**:
+```tsx
+{myTeam && (
+    <img src={getRealTeamLogoUrl(myTeam.team_slug)} className="relative w-5 h-5 object-contain shrink-0 mr-1.5"
+         onError={...fallback to getTeamLogoUrl then placeholder...} />
+)}
+<span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
+    {myTeam?.team_name ?? '내 팀'}
+    ...
+</span>
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 추가한 `<img>` 블록을 제거하면 됨.
+
+---
+
+## 2026-09-07 — 팀 로고 클릭 영역 축소(장식용으로 원복)
+
+**배경**: 팀 이름 좌측에 로고를 추가하면서 클릭 가능 영역을 로고까지 확장한 곳들이
+있었는데, 사용자가 요청한 적 없는 임의 변경이라는 지적을 받음 — 로고는 순수 장식용으로
+두고 클릭은 원래대로 팀 이름 텍스트에만 한정하도록 전부 되돌림.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `BoxScoreHeadline`의 `teamLogo()`에서
+  onClick/cursor-pointer 제거(팀약어 텍스트만 계속 클릭 가능)
+- `views/multi/season/MultiStandingsView.tsx` — TEAM 셀, onClick을 로고+텍스트를 감싸던
+  바깥 span에서 안쪽 텍스트 span으로 다시 이동
+- `views/multi/season/MultiScheduleView.tsx` — 원정/홈 셀, onClick을 바깥 div에서
+  텍스트 span으로 다시 이동
+- `views/multi/season/MultiFrontOfficeView.tsx` — 트레이드 블록 TEAM 셀, 히스토리
+  제안 팀/수락 팀 셀 동일하게 원복(발신/수신·새 제안 헤더는 애초에 로고에 onClick을
+  붙이지 않아 수정 불필요했음)
+
+**패턴(공통)**:
+```tsx
+// Before(이번에 되돌린 상태) — 로고까지 클릭됨
+<span onClick={...} className="flex items-center gap-2 cursor-pointer ...">
+    <TeamLogoIcon .../>{team.team_name}
+</span>
+
+// After(원복) — 로고는 장식, 텍스트만 클릭
+<span className="flex items-center gap-2">
+    <TeamLogoIcon .../>
+    <span onClick={...} className="cursor-pointer ...">{team.team_name}</span>
+</span>
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-07 — 트레이드 화면(MultiFrontOfficeView.tsx) 4곳에 팀 로고 추가
+
+**배경**: 사용자 요청 — "새 제안" 탭 헤더, "메세지함" 본문 발신/수신, "트레이드 블록" 탭 팀
+컬럼, "히스토리" 탭 제안 팀/수락 팀 이름 좌측에 로고 추가. 다른 화면들(뉴스피드/리그
+순위/시즌 일정)과 동일한 `public/logos/real/` 로고 + 폴백 체인을 공유하는 모듈 레벨
+`TeamLogoIcon` 컴포넌트를 새로 만들어 4곳 전부에서 재사용.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx`
+  - `TeamLogoIcon` 컴포넌트 신규 추가(320행 부근, `MultiFrontOfficeView` 바로 위)
+  - `renderOfferLetter()`의 발신/수신 그리드(약 1065~1078행) — 메세지함 본문
+  - "새 제안" 탭 내 팀 헤더 바(약 1710행), 상대 팀 헤더 바(약 1760행)
+  - "트레이드 블록" 탭 TEAM 셀(약 1615행)
+  - "히스토리" 탭 제안 팀/수락 팀 셀(약 2044행, 2060행)
+
+**Before** (4곳 공통 패턴 — 팀명 span만):
+```tsx
+<span onClick={...} className="... cursor-pointer hover:underline hover:text-indigo-400">
+    {team?.team_name ?? '?'}
+</span>
+```
+
+**After**:
+```tsx
+<span onClick={...} className="flex items-center gap-2 ...">
+    <TeamLogoIcon teamSlug={team.team_slug} abbr={team.team_abbr} />
+    {team?.team_name ?? '?'}
+</span>
+```
+(헤더 바 2곳은 컬러 배경 `<div>` 안에 로고를 별도 형제 엘리먼트로 추가, 상대 팀 헤더는
+`<select>` 앞에 로고를 배치)
+
+**검증**: `npx tsc --noEmit` 통과(MultiFrontOfficeView.tsx 관련 오류 없음).
+
+**롤백 방법**: `TeamLogoIcon` 컴포넌트와 4곳의 로고 삽입을 제거하고 Before 패턴으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 시즌 일정 테이블 원정/홈 컬럼 너비 180 → 220
+
+**배경**: 사용자 요청 — 로고 추가로 넓어진 원정/홈 셀 내용에 맞춰 컬럼 폭 확대.
+
+**변경 파일**:
+- `views/multi/season/MultiScheduleView.tsx` — `getScheduleTableCols()` (약 55행)
+
+**Before**: `[64, 64, 64, 180, 180, undefined, 90, 90, 80]` / `[64, 64, 180, 180, undefined, 90, 90, 80]`
+**After**: `[64, 64, 64, 220, 220, undefined, 90, 90, 80]` / `[64, 64, 220, 220, undefined, 90, 90, 80]`
+
+**롤백 방법**: 180으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 시즌 일정 테이블 원정/홈 팀 이름 왼쪽에 로고 추가
+
+**배경**: 사용자 요청. `MultiScheduleView.tsx`의 일정 테이블 원정/홈 셀에 로고 추가 —
+리그 순위 테이블([[project 위 항목]])/뉴스피드 스코어 헤드라인과 동일한
+`public/logos/real/` 로고 + 폴백 체인.
+
+**변경 파일**:
+- `views/multi/season/MultiScheduleView.tsx` — `ScheduleTeamLogo` 헬퍼 컴포넌트 신규 추가,
+  `GameRow`의 원정/홈 셀(약 115~135행)에 적용.
+
+**Before**:
+```tsx
+<TableCell ...>
+    <span onClick={() => onTeamClick(g.awayTeamId)} className="... cursor-pointer hover:text-indigo-400 hover:underline">
+        {away?.team_name ?? g.awayTeamId}
+    </span>
+</TableCell>
+```
+
+**After**:
+```tsx
+<TableCell ...>
+    <div className="flex items-center gap-2 min-w-0 cursor-pointer group" onClick={() => onTeamClick(g.awayTeamId)}>
+        <ScheduleTeamLogo teamSlug={g.awayTeamId} abbr={away?.team_abbr} />
+        <span className="... group-hover:text-indigo-400 group-hover:underline">{away?.team_name ?? g.awayTeamId}</span>
+    </div>
+</TableCell>
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `ScheduleTeamLogo` 컴포넌트와 두 셀의 `<div>` 래핑을 제거하고 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 리그 순위 테이블 팀 이름 옆에 로고 추가
+
+**배경**: 사용자 요청. `MultiStandingsView.tsx`의 TEAM 셀(팀 이름만 표시)에 로고를 붙임 —
+뉴스피드 스코어 헤드라인과 동일하게 `public/logos/real/` 실제 로고 + 폴백 체인 사용.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `LeagueStandingsTable`의 TEAM 셀(약 706행)
+
+**Before**:
+```tsx
+<TableCell align="left" className="pl-4 border-r border-slate-800/30">
+    <span onClick={...} className="text-sm font-semibold truncate cursor-pointer hover:underline ...">
+        {t.team_name}
+    </span>
+</TableCell>
+```
+
+**After**:
+```tsx
+<TableCell align="left" className="pl-4 border-r border-slate-800/30">
+    <span onClick={...} className="flex items-center gap-2 cursor-pointer group min-w-0">
+        <img src={getRealTeamLogoUrl(t.team_slug)} className="w-6 h-6 object-contain shrink-0"
+             onError={...fallback to getTeamLogoUrl then placeholder...} />
+        <span className="text-sm font-semibold truncate group-hover:underline ...">{t.team_name}</span>
+    </span>
+</TableCell>
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 뉴스피드 경기결과/개인활약 레터에 팀 로고 추가
+
+**배경**: 멀티세션 > 리그 > 뉴스 화면에서 "경기결과"/"개인활약" 레터 본문의 스코어 헤드라인
+("AWAY 000-000 HOME")에 팀 로고를 붙여달라는 요청. 처음엔 팀 필터 드롭다운과 동일한
+`TeamBadge`(컬러 배지)로 구현했다가, "배지 말고 `public/logos/real/`의 실제 팀 로고를
+써달라"는 후속 요청으로 교체 — `RosterView.tsx`/`PlayerDetailView.tsx` 헤더가 이미 쓰는
+`getRealTeamLogoUrl()` + onError 폴백 체인(신규 로고 실패 → 구버전 `/logos/{id}.svg` →
+플레이스홀더)을 그대로 재사용.
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` — `BoxScoreHeadline` 컴포넌트(경기결과
+  `GameResultCard`/개인활약 `FeatCard`가 공유)에 `teamLogo()` 헬퍼 추가, 어웨이팀 로고 →
+  어웨이 약어 → 스코어 → 홈 약어 → 홈팀 로고 순서로 렌더.
+
+**Before**:
+```tsx
+return (
+    <h4 className="flex items-center gap-1.5">
+        {teamSpan(game.awaySlug, awayTeam)}
+        <span>{game.awayScore}-{game.homeScore}</span>
+        {teamSpan(game.homeSlug, homeTeam)}
+    </h4>
+);
+```
+
+**After**:
+```tsx
+const teamLogo = (slug, team) => (
+    <span className="shrink-0 ...">
+        {team?.color_primary ? (
+            <img src={getRealTeamLogoUrl(slug)} onError={...fallback to getTeamLogoUrl then placeholder...} />
+        ) : (
+            <TeamLogo teamId={slug} teamName={team?.team_name} size="sm" />
+        )}
+    </span>
+);
+return (
+    <h4 className="flex items-center gap-1.5">
+        {teamLogo(game.awaySlug, awayTeam)}
+        {teamSpan(game.awaySlug, awayTeam)}
+        <span>{game.awayScore}-{game.homeScore}</span>
+        {teamSpan(game.homeSlug, homeTeam)}
+        {teamLogo(game.homeSlug, homeTeam)}
+    </h4>
+);
+```
+
+**검증**: `npx tsc --noEmit` 통과(newsFeedCards.tsx 관련 오류 없음).
+
+**롤백 방법**: `teamLogo` 헬퍼와 두 `{teamLogo(...)}` 호출을 제거하고 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 팀 화면 헤더 로고 크기(멀티플레이어 전용) w-20/h-20 → w-24/h-24
+
+**배경**: 사용자 요청으로 `views/RosterView.tsx` 헤더의 멀티플레이어(커스텀 팀, `colorPrimary` 있음)
+로고만 크기를 키움. 싱글플레이어 경로(`TeamLogo size="xl"` = 64px)는 그대로 유지.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 헤더 좌측 로고 `<img>` (약 240행)
+
+**Before**: `className="w-20 h-20 object-contain drop-shadow-md shrink-0"` (80×80px)
+
+**After**: `className="w-24 h-24 object-contain drop-shadow-md shrink-0"` (96×96px)
+
+**롤백 방법**: `w-24 h-24` → `w-20 h-20`으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 팀 설정 커스텀 컬러 미반영 버그 일괄 수정 (팀 화면 헤더 + 게임 탭 4곳)
+
+**배경**: 멀티리그 "팀 설정"에서 팀 테마 컬러(`color_primary`/`color_secondary`/`color_text`)를
+바꿔도 팀 화면(로스터/선수상세) 헤더 배경색이 바뀌지 않는다는 리포트. 조사 결과 `RosterView.tsx`/
+`PlayerDetailView.tsx`가 `selectedTeam.colorPrimary`(실제 저장된 커스텀 컬러)를 전혀 읽지 않고
+`TEAM_DATA[teamId]`(하드코딩된 실제 NBA 팀 컬러 테이블)만 참조하고 있었다. 멀티플레이어의
+`team_slug`가 실제 NBA 팀 slug와 동일한 값을 쓰기 때문에 `TEAM_DATA` 조회가 항상 "성공"해서
+원본 NBA 팀 컬러가 계속 나왔던 것 — 조용히 무시된 게 아니라 다른 값으로 계속 덮어써지고 있었음.
+같은 패턴(badge/커스텀 컬러 prop을 무시하고 `TEAM_DATA`만 참조)을 게임 상세 화면의 슛차트/
+박스스코어/로테이션차트에서도 추가로 발견해 함께 수정.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 헤더 배경색(`theme.bg`) 계산부. `selectedTeam.colorPrimary`가 있으면
+  우선 사용, 없으면 기존 `TEAM_DATA` 폴백. 커스텀 컬러일 땐 `getTeamTheme()`에 `teamId=null`을
+  넘겨 실제 NBA slug 기준 `THEME_OVERRIDES`가 잘못 적용되지 않게 함.
+- `views/PlayerDetailView.tsx` — 선수 상세 페이지 전체 톤(`sectionBg`/`subHeaderBg`/`rowAltBg`/
+  `dividerColor` 등)의 근원인 `theme` 계산부. `currentTeam.colorPrimary` 우선 참조로 동일하게 수정.
+- `services/multi/buildLeagueTeams.ts`, `views/multi/season/MultiRosterView.tsx` — `LeagueTeamRow`
+  → `Team` 매핑에 `colorText: lt.color_text` 추가(기존엔 `colorPrimary`/`colorSecondary`만 복사돼
+  텍스트 커스텀 컬러가 항상 무시됨).
+- `components/game/tabs/GameShotChartTab.tsx` — 슛차트 점 색상(`homeColor`/`awayColor`)이
+  `homeBadge`/`awayBadge`(정상 전달됨, 우측 팀 약어 배지엔 이미 쓰이고 있었음)를 무시하고
+  `TEAM_DATA`만 참조 → badge 우선으로 수정.
+- `components/game/BoxScoreTable.tsx`, `AdvancedBoxScoreTable.tsx`, `DefenseBoxScoreTable.tsx` —
+  헤더 상단 액센트 줄(`teamColor`)이 같은 이유로 `badge` 무시 → badge 우선으로 수정.
+- `components/game/RotationChart.tsx` — 로테이션 타임라인 바 색상(`homeColor`/`awayColor`)도 동일
+  버그 → badge 우선으로 수정.
+
+**Before** (공통 패턴, 파일마다 변수명만 다름):
+```ts
+const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
+```
+
+**After**:
+```ts
+const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
+```
+
+`RosterView.tsx`/`PlayerDetailView.tsx`는 badge prop이 없어 다른 형태:
+```ts
+// Before
+const teamColors = TEAM_DATA[selectedTeam?.id]?.colors || null;
+const theme = getTeamTheme(selectedTeam?.id, teamColors);
+
+// After
+const teamColors = selectedTeam?.colorPrimary
+    ? { primary: selectedTeam.colorPrimary, secondary: selectedTeam.colorSecondary || '#64748b',
+        text: selectedTeam.colorText || getReadableTextColor(selectedTeam.colorPrimary) }
+    : (TEAM_DATA[selectedTeam?.id]?.colors || null);
+const theme = getTeamTheme(selectedTeam?.colorPrimary ? null : (selectedTeam?.id ?? null), teamColors);
+```
+
+**검증**: `tsc --noEmit` 통과 — 수정 파일들에서 새 에러 없음(`buildLeagueTeams.ts`의 기존
+`scheduledAt` 타입 에러 1건은 이 변경과 무관한 pre-existing 에러, stash로 확인함).
+
+**롤백 방법**: 각 파일 Before 블록으로 되돌리면 됨. `colorText` 매핑 추가분은 해당 라인만 삭제.
+
+**미해결로 남긴 부분(이번엔 손대지 않음)**: `components/dashboard/DashboardHeader.tsx`,
+`views/CoachDetailView.tsx`/`GMDetailView.tsx`, `components/game/ResultHeader.tsx`,
+`components/game/TacticsAnalysis.tsx`, `components/physics-lab/PbpGameModePanel.tsx`도 동일하게
+`TEAM_DATA`만 참조하는 패턴이지만 현재 멀티플레이어 경로에서 실제로 도달되지 않는 화면들이라
+이번 수정 범위에서 제외(추후 그 화면들이 멀티에 연결되면 동일 패턴으로 고쳐야 함).
+
+---
+
+## 2026-09-07 — 팀 일정 탭 우측 달력: 종료 경기 승/패 색상 + W/L 표시
+
+**배경**: 멀티리그 팀 화면(로스터 > 일정 탭) 우측 월간 달력에서 종료된 경기 셀이 상대팀 컬러로만
+칠해져 승/패를 한눈에 구분하기 어렵다는 요청 — 종료된 경기는 승/패 색상(초록/빨강)으로 칠하고,
+셀 우측 상단에 W/L 텍스트를 날짜 숫자와 같은 크기로 추가. 처음엔 solid hex(`#15803d`/`#b91c1c`)로
+칠했으나 다크 테마 톤과 안 어울린다는 후속 피드백으로 GameRow의 내 경기 하이라이트(`bg-emerald-500/20`
+등)와 동일한 반투명 틴트 방식으로 교체.
+
+**변경 파일**:
+- `components/roster/TeamScheduleCalendar.tsx` — 우측 달력 셀 렌더링부
+
+**Before**:
+```tsx
+const isClickable = !!onScoreClick || game.played;
+const cellBg = oppTeam?.colorPrimary ?? undefined;
+const cellText = getReadableTextColor(cellBg);
+...
+<button
+    ...
+    style={cellBg ? { backgroundColor: cellBg, color: cellText } : undefined}
+    className={`... ${cellBg ? 'border-black/20' : 'border-slate-800 bg-slate-900/60'} ...`}
+>
+    <span className="text-base font-semibold tabular-nums text-left" style={{ color: cellText, opacity: cellBg ? 0.75 : 1 }}>{day}</span>
+    <div className="flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0">
+```
+
+**After**:
+```tsx
+const isClickable = !!onScoreClick || game.played;
+const isFinishedWin = game.played && myScore != null && oppScore != null && myScore > oppScore;
+const isFinishedLoss = game.played && myScore != null && oppScore != null && myScore < oppScore;
+// 종료된 경기는 상대팀 컬러(cellBg)를 쓰지 않고 className에서 반투명 틴트로 칠한다.
+const cellBg = isFinishedWin || isFinishedLoss ? undefined : (oppTeam?.colorPrimary ?? undefined);
+const cellText = getReadableTextColor(cellBg);
+...
+<button
+    ...
+    style={cellBg ? { backgroundColor: cellBg, color: cellText } : undefined}
+    className={`... ${
+        isFinishedWin ? 'border-emerald-500/40 bg-emerald-500/20' :
+        isFinishedLoss ? 'border-red-500/40 bg-red-500/20' :
+        cellBg ? 'border-black/20' : 'border-slate-800 bg-slate-900/60'
+    } ...`}
+>
+    <div className="flex items-start justify-between">
+        <span className="text-base font-semibold tabular-nums text-left" style={{ color: cellText, opacity: cellBg ? 0.75 : 1 }}>{day}</span>
+        {(isFinishedWin || isFinishedLoss) && (
+            <span className="text-base font-semibold tabular-nums" style={{ color: cellText }}>
+                {isFinishedWin ? 'W' : 'L'}
+            </span>
+        )}
+    </div>
+    <div className="flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0">
+```
+
+**검증**: `tsc --noEmit` 통과(해당 파일 에러 없음).
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨.
+
+---
+
+## 2026-09-07 — 홈 화면 좌/우 컬럼 텍스트 라벨을 로고+이름으로 교체 ("내 팀 소식" → 팀 로고+이름, "리그 소식" → PBL 로고+"PRO BASKETBALL LEAGUE")
+
+**배경**: 사용자 요청으로 `MultiSeasonPage.tsx` 홈 화면의 두 컬럼 상단 텍스트 라벨을 모두 없애고, 그 자리에 로고+이름(2xl)을 넣음. 우측(내 팀 소식)은 내 팀의 실제 로고, 좌측(리그 소식)은 리그 고정 로고(`public/logos/real/PBL.svg`) + 영문 리그명 "PRO BASKETBALL LEAGUE".
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `MultiSeasonPage` 컴포넌트에 `useSeasonContext().myTeamId` + `useLeagueContext().leagueTeams`로 `myTeam` 계산 추가. 우측 컬럼 최상단 `<h2>내 팀 소식</h2>`를 제거하고, `getRealTeamLogoUrl(myTeam.team_slug)` 기반 `<img>`(RosterView.tsx/PlayerDetailView.tsx 헤더와 동일한 신규→구버전→플레이스홀더 3단 `onError` 폴백 체인) + `text-2xl font-black` 팀 이름으로 교체. `getRealTeamLogoUrl`/`getTeamLogoUrl` import 추가. 좌측 컬럼 최상단 `<h2>리그 소식</h2>`도 `/logos/real/PBL.svg` 고정 로고(폴백 체인 없음, 파일이 항상 존재) + `text-2xl font-black` "PRO BASKETBALL LEAGUE"로 교체.
+
+**Before**:
+```tsx
+<div className="space-y-6">
+    <h2 className="text-sm font-black text-slate-500 uppercase tracking-wide">내 팀 소식</h2>
+    <HomeMyScheduleSection />
+    ...
+```
+
+**After**:
+```tsx
+<div className="space-y-6">
+    {myTeam && (
+        <div className="flex items-center gap-3">
+            <img
+                src={getRealTeamLogoUrl(myTeam.team_slug)}
+                alt={myTeam.team_abbr}
+                className="w-16 h-16 object-contain drop-shadow-md shrink-0"
+                onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.dataset.fallback !== 'old') {
+                        img.dataset.fallback = 'old';
+                        img.src = getTeamLogoUrl(myTeam.team_slug);
+                    } else {
+                        img.src = 'https://placehold.co/100x100?text=BPL';
+                    }
+                }}
+            />
+            <span className="text-2xl font-black text-white">{myTeam.team_name}</span>
+        </div>
+    )}
+    <HomeMyScheduleSection />
+    ...
+```
+
+**검증**: `tsc --noEmit` 결과 이 파일 관련 에러 없음(다른 기존 무관 에러만 존재).
+
+**롤백 방법**: Before 블록으로 되돌리고 `getRealTeamLogoUrl`/`getTeamLogoUrl` import 제거.
+
+**후속(같은 날)**: 로고 크기가 텍스트(2xl)에 비해 작아 보인다는 피드백으로 좌우 로고 `w-10 h-10` → `w-16 h-16`으로 확대(위 코드 블록은 최종 크기로 갱신됨).
+
+---
+
+## 2026-09-07 — 재정 탭 "현재 페이롤" 막대 그래프 섹션 제거
+
+**배경**: 재정 탭 스크롤 렉 조사가 장기화됨 — 이중 스크롤 컨테이너/sticky 푸터/`MultiSeasonLayout` 전체 리렌더/`MultiHeader` 스케줄 풀스캔을 순서대로 고쳤고, 헤드리스 브라우저 합성 테스트(페이롤 바 유무, sticky 컬럼 4개 vs 5개)와 React DevTools("Highlight updates") 확인(스크롤 중 리렌더 없음), 크롬 Rendering 탭("Scrolling performance issues" 클린)까지 전부 재정 탭 전용 원인을 찾지 못함. 사용자가 원인 특정 여부와 무관하게 상단 "현재 페이롤" 막대 그래프 섹션 자체를 제거하기로 결정.
+
+**변경 파일**:
+- `components/roster/TeamPayrollTable.tsx` — "현재 페이롤" 바 그래프 JSX 블록 전체 삭제, 그리고 그 블록에서만 쓰이던 `thresholds`/`zones`/`maxAxis`/`toBarPct`/`barColor`와 `formatMoney` import를 함께 정리(dead code 제거). `currentPayroll`/`diffRows`/`capPctColor`는 "합계" 밑 캡·사치세·에이프런 대비 행에서 계속 쓰여 그대로 유지.
+
+**동작 방식**: 재정 탭 최상단에 있던 캡/사치세/에이프런 임계값 시각화 막대(구간 배경색+현재 페이롤 위치 표시)가 사라지고, 바로 로스터 계약 테이블부터 시작함. 임계값 자체(캡/사치세/1·2차 에이프런 금액과 현재 페이롤의 차이)는 테이블 "합계" 행 바로 아래 대비(diff) 행들에서 여전히 텍스트로 확인 가능.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음(90건 기존 에러 그대로), 제거한 식별자들에 대한 잔여 참조 없음 확인.
+
+**주의사항**: 합성(headless Chromium) 테스트로는 이 바 자체가 스크롤 성능에 미치는 영향이 측정되지 않았었다(있음/없음 프레임 타이밍 사실상 동일). 그런데 실제 앱에서 제거 후 사용자가 렉이 눈에 띄게 줄었다고 확인 — 합성 테스트(고립된 미니 HTML, React 없음, 나머지 페이지 복잡도 없음)가 실제 통합 페이지의 레이어 프로모션/페인트 상호작용을 재현하지 못했던 것으로 보인다. 즉 이 섹션은 실제로 스크롤 성능에 기여하고 있었음 — 정확한 메커니즘(예: 사이드바/헤더 등 다른 fixed/sticky 요소와의 스태킹 컨텍스트 상호작용)은 특정 못 했지만 결과로 검증됨. 사용자 보고로는 "많이 줄었지만 아직 약간 남아있음".
+
+**롤백 방법**: git으로 이 커밋 이전 버전의 `TeamPayrollTable.tsx`를 복원(바 그래프 JSX + `thresholds`/`zones`/`maxAxis`/`toBarPct`/`barColor`/`formatMoney` import 전부 되살아남).
+
+---
+
+## 2026-09-07 — MultiHeader.tsx 스케줄 풀스캔 4곳, 초당 재계산 → 15초 버킷으로 완화
+
+**배경**: 재정 탭 스크롤 렉 조사 과정에서 크롬 Performance 프로파일(사용자 제공 스크린샷)에 `MultiHeader.tsx`의 익명함수(line 66/123/134)와 `GameDateStrip.tsx`의 `findCurrentVirtualGame`/`getGameDisplayState`가 같은 프레임에 몰려 잡힘. 확인해보니 `MultiHeader.tsx`가 자체 `setInterval(...,1000)`으로 `nowMs`를 매초 갱신하는데, 시즌 전체 스케줄(1000경기 이상)을 순회하는 `useMemo` 4개가 전부 `nowMs`를 의존성 배열에 직접 넣고 있어 초당 4회씩 풀스캔되고 있었음. 단, 이후 사용자가 크롬 "Scrolling performance issues"/체감 테스트로 재확인한 결과 이게 렉의 "주범"이었다는 근거는 약해졌고(컴포지팅 자체는 정상, 재정 탭만 렉이 느껴지는 이유도 이걸로 설명 안 됨) — 그럼에도 초당 4회 전체 스케줄 재스캔은 그 자체로 불필요한 낭비라 예방 차원에서 정리.
+
+**변경 파일**:
+- `components/MultiHeader.tsx` — `dateBucket`(15초 버킷) 선언을 `nowMs` 선언 직후로 끌어올리고, 아래 4개 `useMemo`의 의존성 배열 마지막 항목을 `nowMs` → `dateBucket`으로 교체. 함수 본문(로직)은 전혀 안 건드림, 재계산 트리거 조건만 변경:
+  - `{wins, losses, rank}` (내 팀 순위)
+  - `myLiveGame` (지금 라이브인 내 경기)
+  - `seriesInfo` (플레이오프 시리즈 전적)
+  - `tournamentChampionId` (토너먼트 우승팀 판정)
+  - 기존에 이미 `dateBucket`을 쓰던 `currentVirtualDate`(원래 위치)는 그대로 유지, 중복 선언만 제거.
+- `countdownColor`/`countdown`(실시간 카운트다운 표시)은 의도적으로 `nowMs` 그대로 유지 — 스케줄 순회가 없는 단순 날짜 뺄셈이라 원래도 가볍고, 실시간 표시가 목적이라 15초 지연이 부적절함.
+
+**동작 방식**: `dateBucket = Math.floor(nowMs / 15000)`은 15초 동안 같은 값을 유지하다가 15초마다 1씩 증가 — 이 값을 deps에 넣으면 해당 `useMemo`가 15초에 한 번만 재계산됨(같은 파일의 `currentVirtualDate`가 이미 쓰던 패턴을 나머지 3+1곳에도 동일 적용). 함수 본문은 여전히 클로저로 `nowMs`(재계산 시점의 최신값)를 그대로 참조하므로 계산 자체의 정확도는 변하지 않고, 단지 "게임이 막 끝난 시점부터 헤더 순위/시리즈 전적/우승자 표시가 갱신되기까지" 최대 15초 지연이 생길 수 있음 — 실제 경기 시뮬레이션 주기(수 분 단위)에 비하면 무시 가능.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음(90건 기존 에러 그대로).
+
+**주의사항**: 이 변경은 "재정 탭에서만 렉이 발생하는 이유"를 설명하지 못한 채 적용한 예방적 정리다 — 사용자가 Rendering 탭의 "Scrolling performance issues"에서 아무 원인도 못 찾았고 체감도 개선됐다고 보고해, 이전 3가지 수정(이중 스크롤 컨테이너/sticky 푸터/MultiSeasonLayout 전체 리렌더)이 실질적 원인이었을 가능성이 높음. 재정 탭 전용 잔존 원인은 못 찾은 채 종결.
+
+**롤백 방법**: 4개 deps의 `dateBucket`을 `nowMs`로 되돌리고, `dateBucket` 선언을 원래 위치(`currentVirtualDate` 바로 위)로 되돌리기.
+
+---
+
+## 2026-09-07 — 시즌 화면 전체 스크롤 랙의 진짜 원인: MultiSeasonLayout의 매초 강제 리렌더
+
+**배경**: 재정 탭 이중 스크롤 컨테이너 + sticky 푸터를 고쳤는데도 사용자가 랙이 여전하다고 제보. 더 파보니 재정 탭만의 문제가 아니라 **모든 시즌 서브라우트(로스터/재정/일정/순위 등)에 공통되는 훨씬 근본적인 원인**을 발견함: `MultiSeasonLayout.tsx`가 `useServerClock()`(1초마다 `setState`하는 훅)을 최상위에서 직접 호출하고 있었고, 이 컴포넌트 함수 안에 `<Outlet/>`(로스터/재정 등 실제 페이지 콘텐츠가 렌더되는 자리)이 같이 있었다. 즉 1초마다 `MultiSeasonLayout`이 리렌더되면서 `<Outlet/>` 하위 트리 전체(예: 재정 탭이면 15명×12컬럼 sticky 테이블)가 매초 통째로 리컨실리에이션됨 — 스크롤 중에 이 매초 틱과 겹치면 프레임이 끊겨 "스크롤할 때 랙"으로 체감된다. `serverNow`는 사실 `MultiSeasonLayout`이 그리는 `<GameDateStrip>`(헤더 아래 오늘 경기 스트립) 하나에만 쓰이고 있었음.
+
+**변경 파일**:
+- `views/multi/season/GameDateStrip.tsx` — `useServerClock` import 추가, `serverNow`를 prop에서 제거하고 컴포넌트 내부에서 직접 `useServerClock()` 호출하도록 변경(1초 틱 구독을 이 컴포넌트로 이전).
+- `views/multi/season/MultiSeasonLayout.tsx` — `useServerClock` import·호출·`<GameDateStrip serverNow={serverNow}>` prop 전달 모두 제거.
+
+**Before**:
+```tsx
+// MultiSeasonLayout.tsx
+const serverNow = useServerClock();
+...
+<GameDateStrip ... serverNow={serverNow} ... />
+<div className="flex-1 overflow-y-auto custom-scrollbar">
+    <Outlet />   {/* MultiSeasonLayout이 매초 리렌더될 때마다 이것도 같이 리렌더 */}
+</div>
+```
+
+**After**:
+```tsx
+// GameDateStrip.tsx
+export const GameDateStrip: React.FC<GameDateStripProps> = ({ ... }) => {
+    const serverNow = useServerClock();   // 이 컴포넌트 안에서만 구독
+    ...
+};
+// MultiSeasonLayout.tsx — useServerClock 관련 코드 전부 삭제, <Outlet/>은 더 이상 1초 틱의 영향을 안 받음
+```
+
+**동작 방식**: React에서 `useState`가 갱신되면 그 훅을 호출한 컴포넌트와 그 하위 트리가 리렌더된다. `serverNow` 구독을 `MultiSeasonLayout`(상위, `<Outlet/>` 포함)에서 `GameDateStrip`(하위, 스트립 하나만 그리는 잎 컴포넌트)으로 옮기면 리렌더 범위가 스트립 자신으로 좁아지고, `<Outlet/>`이 그리는 실제 페이지(로스터/재정 등)는 이제 1초 틱과 무관하게 필요할 때만(데이터가 실제로 바뀔 때만) 리렌더된다.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음(90건 기존 에러 그대로, `GameDateStrip`을 호출하는 곳은 `MultiSeasonLayout` 한 곳뿐이라 prop 제거로 인한 다른 호출부 타입 에러 없음).
+
+**주의사항**: `GameDateStrip` 내부는 이미 `revealBucket`(15초 버킷)처럼 1초 틱을 그대로 deps에 안 넣는 최적화가 부분적으로 있었음 — 이번 변경은 그 스코프를 벗어난(레이아웃 전체가 영향받던) 문제를 고친 것이라 서로 다른 층위의 최적화. 다른 시즌 화면(일정/순위/뉴스피드 등)도 전부 이 레이아웃 하위라 동일하게 스크롤 랙이 개선됐을 것으로 예상됨(사용자 확인 필요).
+
+**롤백 방법**: `MultiSeasonLayout.tsx`에 `const serverNow = useServerClock();`과 `<GameDateStrip serverNow={serverNow} .../>` 재추가, `GameDateStrip.tsx`의 `serverNow`를 다시 props로 받게 되돌리고 내부 `useServerClock()` 호출 제거.
+
+---
+
+## 2026-09-06 — 재정 탭 스크롤 랙 원인(이중 스크롤 컨테이너) 수정 1단계
+
+**배경**: 사용자 제보 — 팀 화면 "재정" 탭에서 스크롤 시 랙이 느껴짐. 원인 조사 결과, 공용 `Table` 컴포넌트(`components/common/Table.tsx:73`)가 자체적으로 `overflow-auto` div를 한 번 감싸는데, "선수 기록"(RosterStatsStack.tsx) 등 다른 탭은 `<Table>`을 바로 렌더링해 스크롤 컨테이너가 하나뿐인 반면, 재정 탭(`TeamPayrollTable.tsx`)만 `<Table>` 바깥에 `overflow-y-auto` div를 하나 더 씌워 스크롤 컨테이너가 이중으로 중첩돼 있었음(scroll chaining으로 인한 버벅임 추정). 부모가 `flex`가 아니어서 `flex-1 min-h-0`도 죽은 클래스였음.
+
+**변경 파일**:
+- `components/roster/TeamPayrollTable.tsx`(line 169) — 최상위 wrapper `className`을 `"h-full overflow-y-auto custom-scrollbar"` → `"h-full flex flex-col overflow-hidden"`로 변경.
+
+**Before**: `<div className="h-full overflow-y-auto custom-scrollbar">`
+
+**After**: `<div className="h-full flex flex-col overflow-hidden">`
+
+**동작 방식**: 바깥 wrapper가 이제 `flex flex-col`이라 "현재 페이롤" 바 섹션은 자연 높이로 고정되고, 형제 `<div className="flex-1 min-h-0">`가 비로소 의도대로 남은 공간을 채움 — 그 안의 `<Table fullHeight>`가 실제 높이를 갖게 되면서 `Table` 자체의 `overflow-auto`(스크롤바 스타일 `custom-scrollbar`도 `Table` 내부에 이미 포함돼 있어 유지됨)가 유일한 스크롤 컨테이너가 됨. 페이롤 바는 스크롤에 딸려가지 않고 항상 보임(부수 효과지만 자연스러운 방향).
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음.
+
+**롤백 방법**: line 169을 `className="h-full overflow-y-auto custom-scrollbar"`로 되돌리기.
+
+**[2026-09-06 추가] 재정 탭 푸터 sticky 해제**: 능력치/선수 기록 탭과 동일하게, 재정 탭 `TableFoot`의 `sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]`도 제거(`components/roster/TeamPayrollTable.tsx` line 297) — "합계"/각 대비 행이 이제 다른 탭들처럼 하단 고정 없이 스크롤을 따라 함께 넘어감. `npx tsc --noEmit -p .` 신규 에러 없음. 롤백은 해당 클래스 재추가.
+
+---
+
+## 2026-09-06 — 팀 > 능력치/선수 기록 탭 "팀 평균" 최하단 행 하단 고정(sticky) 해제
+
+**배경**: 사용자 요청 — 팀 화면의 "능력치"(attributes)/"선수 기록"(stats) 탭 최하단 "팀 평균" 행이 스크롤 시 화면 하단에 고정(sticky bottom-0)돼 있던 걸 고정 해제.
+
+**변경 파일**:
+- `components/roster/RosterGrid.tsx`(line 313, "능력치" 탭) — `TableFoot` 클래스에서 `sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]` 제거.
+- `components/roster/RosterStatsStack.tsx`(line 260, "선수 기록" 탭) — 동일하게 `sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]` 제거.
+
+**Before**: `<TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">` (RosterGrid, z-20은 RosterStatsStack)
+
+**After**: `<TableFoot className="bg-slate-900 border-t-2 border-slate-800">`
+
+**동작 방식**: `position: sticky; bottom: 0`을 제거해 "팀 평균" 행이 이제 테이블 바디의 마지막 행처럼 스크롤을 따라 함께 넘어감. 함께 있던 `shadow-[...]`는 "떠 있는 행이 아래 콘텐츠 위에 겹쳐 보이는 효과"용이라 sticky 제거와 함께 의미가 없어져 같이 정리. 좌측 이름 컬럼의 수평 sticky(`getStickyStyle`의 `left`)는 이번 요청과 무관해 그대로 유지.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음.
+
+**롤백 방법**: 두 파일의 `TableFoot` className에 `sticky bottom-0 z-50/z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]` 재추가.
+
+---
+
+## 2026-09-06 — 팀 화면 "선수 기록"(TRADITIONAL) 탭 팀 평균 행의 G 컬럼 소수점 노출 버그 수정
+
+**배경**: 사용자 스크린샷 제보 — 팀 화면(RosterView) "선수 기록" 탭 최하단 "팀 평균" 행의 G 컬럼에 `30.666666666666668`처럼 반올림 안 된 값이 그대로 노출됨.
+
+**변경 파일**:
+- `data/leaderboardConfig.ts`(line 267) — `PLAYER_COLUMNS`의 TRADITIONAL 카테고리 `g` 컬럼 정의에만 `format: 'integer'`가 빠져 있었음(SHOOTING/ADVANCED/DEFENSE 카테고리의 동일 `g` 컬럼 정의 3곳엔 이미 있었음 — 이 한 곳만 빠진 불일치).
+
+**Before**: `{ key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional' },`
+
+**After**: `{ key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional', format: 'integer' },`
+
+**동작 방식**: `RosterStatsStack.tsx`의 개별 선수 행은 `g` 값이 원래 정수(경기 수)라 포맷 누락이 티가 안 났지만, 팀 평균 행은 `averages[c.key]`(합/인원수)라 나눗셈으로 소수가 나오고, `formatValue(val, col.format)`가 `format`이 `undefined`면 모든 분기를 건너뛰고 `String(val)`(JS 부동소수점 전체 자릿수)을 그대로 반환해 이 문제가 드러남. `format: 'integer'` 추가로 `Math.round(val).toString()` 경로를 타게 됨.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음. `PLAYER_COLUMNS`는 리더보드(LeaderboardView 등)와도 공유되는 배열이라 그쪽의 동일 컬럼도 같이 고쳐짐(부수적으로 정상화).
+
+**롤백 방법**: line 267에서 `, format: 'integer'` 제거.
+
+---
+
+## 2026-09-06 — 팀 화면(RosterView) 헤더 2컬럼 개편 + Off Rtg/Def Rtg/Pace 신규 서버 RPC
+
+**배경**: 사용자 요청 — 팀 화면 헤더를 좌측 큰 로고 + 우측 정보 5줄(팀이름 드랍다운 / W-L·승률·GB / 컨퍼런스 순위 / Pts/g·Opp Pts/g(리그순위) / Off Rtg·Def Rtg·Pace(리그순위))의 2컬럼 레이아웃으로 개편. Off Rtg/Def Rtg/Pace는 포제션 추정치가 필요해 클라이언트에 기존 계산이 전혀 없었고, 사용자가 "서버 RPC까지 새로 만들어서 전부 실제값"으로 처리하기로 결정.
+
+**변경 파일**:
+- `migrations/add_team_season_advanced_stats_rpc.sql` (신규, server) — `get_team_season_advanced_stats(p_room_id uuid)` Postgres 함수. `game_pbp.home_box/away_box`(선수별 JSONB)를 게임당 팀 단위로 합산(FGA/FGM/FTA/offReb/defReb/TOV/MP) 후 basketball-reference 표준 공식으로 포제션 추정 → 팀별 시즌 누적 ppg/oppg/off_rtg/def_rtg/pace 반환. `get_player_season_stats_batch`(`add_player_season_stats_batch_rpc.sql`)와 동일하게 SECURITY DEFINER 아님, 10분 리플레이 지연 필터 동일, 플레이오프 미필터(기존 RPC·conferenceStandings와 동일 수준 일관성).
+- `hooks/useTeamSeasonAdvancedStats.ts` (신규, client) — 위 RPC 호출 + 리그 전체(30팀) 순위 계산(`react-query`).
+- `views/RosterView.tsx` — 헤더 블록 전체 교체(아래 Before/After), `advancedStatsByTeam` prop 추가, `leagueScoringStats`(Pts/g·Opp Pts/g + 리그순위, 스케줄 최종 스코어만으로 계산 — 싱글/멀티 공용) `useMemo` 추가.
+- `views/multi/season/MultiRosterView.tsx` — `useTeamSeasonAdvancedStats(room?.id)` 호출 후 `<RosterView advancedStatsByTeam={...}>`로 전달.
+
+**Before** (`views/RosterView.tsx` 헤더 블록 — 로고 없음, 정보 1줄):
+```tsx
+<div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center" style={{ backgroundColor: theme.bg }}>
+    <div className="relative" ref={teamMenuRef}>
+        <button onClick={() => setTeamMenuOpen(o => !o)} className="flex items-center gap-3 group">
+            <span className="text-lg font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
+            {teamMenuOpen ? <ChevronUp .../> : <ChevronDown .../>}
+        </button>
+        {teamMenuOpen && ( /* 드롭다운 목록 */ )}
+    </div>
+    <div className="flex items-center gap-3 ml-4">
+        {[`${confLabel} 컨퍼런스 ${myStanding?.rank ?? 0}위`, `${wins}W-${losses}L`, `${pctLabel} Win%`, `GB ${gb}`].map(...)}
+    </div>
+    {gmNickname && <span className="ml-auto ...">GM : {gmNickname}</span>}
+</div>
+```
+
+**After**: 좌측에 `selectedTeam.colorPrimary` 유무로 분기되는 로고(있으면 `getRealTeamLogoUrl` 신규 세트→실패 시 `getTeamLogoUrl` 구버전→플레이스홀더 순차 폴백, 없으면 기존 `TeamLogo`) 추가, 우측을 `flex-col`로 감싸 1행(드랍다운)/2행(W-L·승률·GB)/3행(컨퍼런스 순위)/4행(Pts/g·Opp Pts/g, `leagueScoringStats` 기반, 싱글/멀티 공용)/5행(Off Rtg·Def Rtg·Pace, `advancedStatsByTeam` 있을 때만 렌더 — 싱글플레이어는 소스가 없어 자동으로 숨김)으로 분리. 전체 diff는 git으로 추적 가능(`views/RosterView.tsx` 해당 커밋).
+
+**검증**: `npx tsc --noEmit -p .` — 변경 파일(RosterView.tsx/MultiRosterView.tsx/useTeamSeasonAdvancedStats.ts) 관련 신규 에러 없음(기존 무관 에러 90건은 그대로). Supabase MCP로 RPC를 실제 room_id(`fa678d90-...`, 89~106경기 진행)에 실행해 ppg 106~108/oppg 100~105/off_rtg 110~113/def_rtg 104~110/pace 95~96 범위로 합리적인 값 확인. dev 서버(5173) HMR 반영 후 모듈 200 응답 확인(브라우저 실사용 테스트는 로그인 필요해 사용자 확인 대기).
+
+**[2026-09-06 추가] RPC 최적화**: 최초 배포 버전은 팀당 7개 필드(fga/fgm/fta/offReb/defReb/tov/mp)를 각각 별도 상관 서브쿼리로 짜서 `home_box`/`away_box`를 `jsonb_array_elements()`로 7번씩(양팀 합쳐 14번) 반복 펼치고 있었음 — `EXPLAIN (ANALYZE, BUFFERS)`로 실측(1329경기 room): **639ms, 버퍼히트 98,876**. `LATERAL` 서브쿼리 하나로 7개 합계를 동시에 내도록 고쳐 게임당 배열 순회를 14회→2회로 줄임 → 재배포 후 실측 **153ms, 버퍼히트 12,338**(공식/결과값 100% 동일, off_rtg 상위 3팀 수치까지 일치 확인). `migrations/add_team_season_advanced_stats_rpc.sql`을 최적화 버전으로 직접 갱신(아직 커밋 전이라 별도 버전 파일 안 만들고 in-place 수정) 후 `CREATE OR REPLACE FUNCTION`으로 재적용.
+**주의**: 드롭다운으로 팀을 바꿔도 이 RPC는 재호출되지 않음 — react-query 캐시 키가 `room?.id` 하나뿐이라 방 전체 30팀 스탯을 한 번에 받아 클라이언트에서 맵 조회만 함(`MultiRosterView.tsx:152`, `RosterView.tsx:214`). 비용은 최초 진입/`staleTime`(5분) 만료 후 재조회/새로고침 시에만 발생.
+
+**주의사항**: `advancedStatsByTeam`이 비어있으면(해당 룸에 아직 게임이 없거나 로딩 전) 5행 자체가 안 보임 — 정상 동작. Pace/Off Rtg/Def Rtg 순위는 해당 시즌에 최소 1경기 이상 치른 팀들 사이에서만 계산됨(리그 전체 30팀이 다 나온다는 보장은 없음, 시즌 초반엔 참가 팀 수가 적을 수 있음).
+
+**롤백 방법**: `views/RosterView.tsx`/`views/multi/season/MultiRosterView.tsx`를 이 커밋 이전으로 되돌리고, `hooks/useTeamSeasonAdvancedStats.ts` 삭제. RPC 자체는 롤백 불필요(안 쓰이면 그냥 미사용 함수로 남음, 필요시 `DROP FUNCTION public.get_team_season_advanced_stats(uuid);`).
+
+---
+
+## 2026-09-06 — 선수 상세페이지 헤더 큰 로고를 신규 로고 세트(public/logos/real/)로 교체(멀티 한정, 테스트)
+
+**배경**: 사용자가 `public/logos/real/`에 팀별 신규 SVG 32개를 추가 — 우선 테스트 목적으로 선수 상세페이지 헤더의 이름 좌측 큰 로고 한 곳에만 적용해보기로 함.
+
+**변경 파일**:
+- `utils/constants.ts` — `getRealTeamLogoUrl(teamId)` 함수 추가: `resolveTeamId`로 정규화 후 `/logos/real/{ID대문자}.svg` 반환.
+- `views/PlayerDetailView.tsx` — 헤더의 `TeamBadge`(이름 좌측 큰 로고 자리)를 `currentTeam?.colorPrimary` 유무로 분기: 있으면(멀티플레이어) 신규 로고 `<img>`(실패 시 구버전 `/logos/{id}.svg` → 플레이스홀더 순차 폴백), 없으면(싱글플레이어) 기존 `TeamBadge` 그대로.
+
+**Before**:
+```tsx
+{teamId && (
+    <TeamBadge
+        teamId={teamId}
+        abbr={currentTeam?.abbr}
+        colorPrimary={currentTeam?.colorPrimary}
+        colorSecondary={currentTeam?.colorSecondary}
+        size="lg"
+        className="self-stretch !h-auto !w-24 !text-2xl"
+    />
+)}
+```
+
+**After**:
+```tsx
+{teamId && (
+    currentTeam?.colorPrimary ? (
+        <img
+            src={getRealTeamLogoUrl(teamId)}
+            alt={currentTeam?.abbr ?? teamId}
+            className="self-stretch !h-auto w-24 object-contain drop-shadow-md shrink-0"
+            onError={(e) => {
+                const img = e.currentTarget;
+                if (img.dataset.fallback !== 'old') { img.dataset.fallback = 'old'; img.src = getTeamLogoUrl(teamId); }
+                else { img.src = 'https://placehold.co/100x100?text=BPL'; }
+            }}
+        />
+    ) : (
+        <TeamBadge teamId={teamId} abbr={currentTeam?.abbr} colorPrimary={currentTeam?.colorPrimary} colorSecondary={currentTeam?.colorSecondary} size="lg" className="self-stretch !h-auto !w-24 !text-2xl" />
+    )
+)}
+```
+
+**검증**: `npx tsc --noEmit -p .` — 신규 에러 없음. dev 서버로 `/logos/real/ATL.svg` 등 200+`image/svg+xml` 확인, 당시 없던 `MIL.svg`는 SPA 폴백(`text/html`)이 와서 `onError`가 정상적으로 구버전(`/logos/mil.svg`, `image/svg+xml`)으로 폴백함을 확인. 이후 사용자가 `MIL.svg`를 추가해 `/logos/real/MIL.svg`도 200+`image/svg+xml`로 정상 서빙됨을 재확인(코드는 `teamId.toUpperCase()` 매핑이라 그대로, 추가 수정 불필요).
+
+**주의사항**: `public/logos/real/`의 `LV.svg`/`SEA.svg`/`MIA-1.svg`는 현재 `TEAM_DATA`의 팀 id와 매칭되는 게 없어 미사용.
+
+**롤백 방법**: `views/PlayerDetailView.tsx` 헤더를 Before 블록으로 되돌리고, `utils/constants.ts`의 `getRealTeamLogoUrl` 함수 삭제.
+
+---
+
+## 2026-09-05 — 세션 설정 화면을 MultiSeasonLayout 하위 라우트로 이동(사이드바/헤더 유지)
+
+**배경**: 사용자 요청 — "세션 설정 화면을 팀 설정처럼 세션 내에서 사이드 내비게이션과 헤더를 유지한 채 바디만 스왑되는 화면으로 변경". 기존엔 "팀 설정"은 로스터 화면(MultiSeasonLayout 하위 라우트)의 탭이라 사이드바(MultiSidebar)+헤더(MultiHeader)가 항상 보이는 채로 바디만 스왑됐지만, "세션 설정"(LeagueSettingsView)은 `LeagueLayout`(사이드바/헤더 없는 데이터 전용 레이아웃) 직계 자식의 완전히 별도인 풀페이지 라우트(`/multi/leagues/:leagueId/settings`)였다.
+
+**변경 파일**:
+- `App.tsx`(line ~386~405) — `<Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />`를 `LeagueLayout` 직계 자식에서 `MultiSeasonLayout` 하위(다른 시즌 서브라우트들과 동일 레벨, `roster`/`tactics` 등과 나란히)로 이동, 경로를 상대경로 `path="settings"`로 변경 → 최종 URL은 `/multi/leagues/:leagueId/season/settings`.
+- `components/MultiSidebar.tsx`(line ~254) — "세션 설정" 메뉴 항목의 `navigate('/multi/leagues/${leagueId}/settings')` → `navigate('${base}/settings')`(`base` = `/multi/leagues/${leagueId}/season`, "팀 설정" 항목이 이미 쓰던 것과 동일 변수).
+- `views/multi/league/AdminSimView.tsx`(line ~228), `views/multi/league/LeagueLobbyView.tsx`(line ~296) — "설정으로 돌아가기"/"설정" 버튼의 목적지를 새 경로(`/season/settings`)로 갱신.
+- `views/multi/league/LeagueSettingsView.tsx` — 이제 `MultiSeasonLayout`의 `<Outlet/>` 안에서 사이드바/헤더가 이미 떠 있는 채로 렌더링되므로, 화면 자체가 갖고 있던 "뒤로가기"(ArrowLeft, 시즌/로비로 이동) 버튼을 제거(사이드바로 항상 이동 가능해져 중복) — 미사용이 된 `ArrowLeft` import도 함께 정리. 그 외 폼 내용/로딩·에러 상태(`min-h-screen` 등, 다른 시즌 서브라우트들도 동일하게 쓰는 관례)는 그대로 유지.
+
+**동작 방식**: `MultiSeasonLayout.tsx`(line 68-93)는 이미 "리그 진입 직후처럼 시즌 데이터 로드가 안 끝난 채로 URL을 통해 곧바로 시즌 라우트에 진입한 경우"를 대비한 로딩 게이트를 갖고 있어(주석에 "로비/설정 화면을 오가며" 언급까지 있었음 — 이 마이그레이션이 이미 예견돼 있었던 셈), 세션이 아직 시작 전(로비 단계)에 "설정"으로 들어가도 동일한 로딩 게이트가 자연스럽게 처리한다.
+
+**검증**: `npx tsc --noEmit -p .` — 이 변경으로 인한 신규 에러 없음(기존에도 있던 무관한 에러 4건은 `git stash` 전후 비교로 동일함을 확인: App.tsx의 RosterMode 타입 에러, LeagueSettingsView.tsx의 SimSettings.normalization 타입 에러 3건 — 전부 이번 작업과 무관). `npx vite build` 정상 빌드 성공.
+
+**주의사항**: `admin/sim`/`admin/teams` 라우트는 이번 요청 범위 밖이라 여전히 `LeagueLayout` 직계 자식(사이드바/헤더 없는 풀페이지)으로 남아있음 — "설정으로 돌아가기" 버튼만 새 경로를 가리키도록 갱신.
+
+**롤백 방법**: `App.tsx`에서 `settings` 라우트를 다시 `LeagueLayout` 직계 자식으로, 절대경로 `/multi/leagues/:leagueId/settings`로 되돌리기. `MultiSidebar.tsx`/`AdminSimView.tsx`/`LeagueLobbyView.tsx`의 navigate 대상을 원래 절대경로로 복원. `LeagueSettingsView.tsx`에 뒤로가기 버튼(ArrowLeft import 포함) 재삽입.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 순위 테이블 기본 행 배경 slate-900 적용
+
+**배경**: 사용자 요청 — 리그 순위 테이블의 기본 행 배경색을 slate-900으로(플레이오프/플레이인 컬러 틴트 스케일은 그대로 유지). `HomeStandingsTable`은 2026-09-05 앞선 작업에서 다른 홈 테이블들에 `bg-slate-900`를 붙일 때 유일하게 제외됐던 테이블(당시 요청이 "우측 단"/특정 섹션 한정이었음).
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`(line ~98)의 `<table>` `className`에 `bg-slate-900` 추가.
+
+**동작 방식**: 순위 틴트(`rowTint`, `tintStyle()`가 만드는 `backgroundColor: rgba(...)`)는 `<tr>`의 인라인 style로 적용되어 있어 `<table>`의 Tailwind 배경 클래스보다 항상 우선 적용됨 — 틴트가 없는 행(탈락권)은 새로 추가된 slate-900이 그대로 보이고, 틴트가 있는 행(직행권/플레이인권)은 기존과 동일하게 rgba 틴트가 그 위에 그대로 표시되어 컬러 스케일 자체는 변경 없음.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `<table>` `className`에서 ` bg-slate-900` 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 "팀 스탯 · 리그 순위" 섹션 제목을 "팀 스탯"으로 변경
+
+**배경**: 사용자 요청 — 섹션 제목 단순화.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyTeamStatsSection`(line ~993)의 `<h3>` 텍스트 "팀 스탯 · 리그 순위" → "팀 스탯".
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 텍스트를 "팀 스탯 · 리그 순위"로 되돌리기.
+
+---
+
+## 2026-09-05 — 홈 화면 팀 스탯 · 리그 순위 테이블 공/수 2단 분할
+
+**배경**: 사용자 요청 — 직전에 추가한 "팀 스탯 · 리그 순위" 테이블을 공격/수비 2개 단으로 분리.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - `HOME_TEAM_STATS_CONFIG`(14개 통합) → `HOME_OFFENSE_STATS_CONFIG`(PTS/OREB/AST/TOV/ORTG/FG%/3P%/EFG%/TS%, 9개)와 `HOME_DEFENSE_STATS_CONFIG`(DREB/STL/DRTG/OPP PTS/OPP TOV, 5개)로 분리 — `MultiTacticsView.tsx`의 OFFENSE_STATS/DEFENSE_STATS 분류 기준과 동일(슈팅 스탯은 그 화면과 달리 별도 3번째 단 없이 공격 쪽에 합침, 이번 요청이 "2단"만 원했기 때문).
+  - `computeHomeTeamStatRows(allTeamStats, myTeamId)` → `computeHomeTeamStatRows(allTeamStats, myTeamId, statsConfig)`로 시그니처 변경(재사용 가능하도록 설정 객체를 인자로 받게 함).
+  - `HomeMyTeamStatsSection` — `offenseRows`/`defenseRows` 두 개로 나눠 계산, `renderStatTable()` 헬퍼로 테이블 렌더 코드 공유. `HomeStandingsSection`의 동/서부 분할과 동일한 패턴(`grid grid-cols-2 gap-4` + 칸마다 `<h4>` 소제목("공격"/"수비") + 별도 테이블)으로 배치.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 두 설정 배열을 다시 `HOME_TEAM_STATS_CONFIG`(14개 통합)로 합치고, `computeHomeTeamStatRows` 세 번째 인자 제거, 렌더를 단일 테이블로 되돌리기.
+
+---
+
+## 2026-09-05 — 홈 화면 "내 팀 스케쥴" 하단에 팀 스탯 · 리그 순위 테이블 추가
+
+**배경**: 사용자 요청 — 우측 단(내 팀 소식)의 최근 5경기/예정 5경기 하단에 PTS/OREB/DREB/AST/STL/TOV/ORTG/DRTG/OPP PTS/OPP TOV/FG%/3P%/EFG%/TS% 팀 스탯 + 리그 순위 테이블을 표시. "전술 > 인사이트탭"이 이미 팀 스탯 집계·순위 계산을 하고 있으니 동일한 방법을 재사용하고, 디자인은 홈 화면 다른 테이블과 동일하게.
+
+**원본 계산 방식 확인**: `views/multi/season/MultiTacticsView.tsx`의 인사이트 탭이 `hooks/useLeaderboardData.ts`(팀별 스탯 집계 — ORTG/DRTG/TS%/EFG%까지 전부 이 훅이 계산)로 `leagueTeamsWithStats`(buildLeagueTeams 결과)를 태워 `sortedData`를 얻고, 로컬 함수 `computeStatRankRows()`(각 스탯을 재정렬해 우리 팀 순위/리그평균 계산)로 `StatRankRow[]`를 만들어 `TeamStatRankList` 컴포넌트(카드형 배경+uppercase 스타일)로 렌더링하는 구조. `computeStatRankRows`는 export 안 돼 있어 동일 로직을 이 파일에 복제.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - import 추가: `useLeaderboardData`(hooks/useLeaderboardData).
+  - `HomeMyScheduleSection`과 `HomeMyRosterSummarySection` 사이(line ~874)에 신규 섹션 `HomeMyTeamStatsSection` 추가.
+    - 스탯 설정 `HOME_TEAM_STATS_CONFIG`(14개 — pts/oreb/dreb/ast/stl/tov/ortg/drtg/opp_pts/opp_tov/fg%/3p%/efg%/ts%, MultiTacticsView.tsx의 `RankStatConfig` 키와 완전히 동일한 키 이름 사용).
+    - `computeHomeTeamStatRows()` — `computeStatRankRows()`와 동일 로직(팀별 스탯 재정렬로 순위 산출 + 리그 평균 계산) 복제.
+    - 데이터 소스: `useLeagueRawStats` + `buildLeagueTeams`(다른 홈 위젯과 queryKey 공유, 추가 네트워크 없음) → `useLeaderboardData(teams, normalizedSchedule, ...)` → `sortedData`.
+    - UI는 `TeamStatRankList`를 재사용하지 않고 홈 화면 다른 테이블과 동일한 `<table className="w-full text-left border-collapse bg-slate-900">` + `border-b` 구분선 + `pl-2`/`pr-2` 좌우 패딩 패턴으로 새로 작성(스탯/값/평균/순위 4열). 순위 색상만 인사이트 탭과 동일한 컨벤션(1~5위 fuchsia, 6~10위 emerald, 11~30위 blue) 재사용.
+  - `MultiSeasonPage`(line ~1231 부근) — `<HomeMyScheduleSection />` 다음, `<HomeMyRosterSummarySection />` 이전에 `<HomeMyTeamStatsSection />` 배치.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**주의사항**: `computeHomeTeamStatRows`는 `MultiTacticsView.tsx`의 `computeStatRankRows`를 복제한 것이라, 원본 계산 로직(ORTG/DRTG/TS%/EFG% 공식 등)이 `useLeaderboardData.ts`에서 바뀌면 이 파일은 자동으로 그 변경을 반영받지만(같은 훅을 호출), `computeStatRankRows` 자체의 순위/평균 산출 로직이 바뀌면 이 파일의 복제본은 수동으로 함께 고쳐야 함.
+
+**롤백 방법**: `HomeMyTeamStatsSection` 컴포넌트/관련 타입·상수·함수 전부 삭제, `MultiSeasonPage`에서 `<HomeMyTeamStatsSection />` 렌더 제거, `useLeaderboardData` import 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 내 로스터 요약 전체 선수 표시
+
+**배경**: 사용자 요청 — "내 로스터 요약에는 팀에 소속된 모든 선수가 보이도록". 기존엔 OVR 상위 8명만 잘라 보여주는 요약 위젯이었음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyRosterSummarySection`(line ~916) — `.slice(0, 8)` 제거, 변수명을 `topPlayers` → `rosterPlayers`로 변경(더 이상 "상위 N명"이 아니라 전체 로스터이므로). 하위 참조(`.length`, `.map`) 전부 동일하게 변경.
+
+**Before**: `[...myTeam.roster].sort(...).slice(0, 8).map(...)`
+**After**: `[...myTeam.roster].sort(...).map(...)` (슬라이스 제거)
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `.sort(...)` 뒤에 `.slice(0, 8)` 재삽입.
+
+---
+
+## 2026-09-05 — 홈 화면 선수 호버 카드에 부상 정보 누락 버그 수정
+
+**배경**: 사용자 리포트 — "홈 화면에서 뜨는 플레이어 호버 카드에는 부상 정보가 표시가 안되네".
+
+**원인**: `PlayerHoverCard`(components/common/PlayerHoverCard.tsx)는 `player.activeInjurySeverity` 등의 필드가 채워져 있어야 부상 배지를 표시하는데, 홈 화면이 hover 카드에 넘기는 `Player` 객체 두 종류 모두 이 필드가 원래 비어 있었음:
+  1. `services/multi/buildLeagueTeams.ts`가 만드는 Player(리그 리더/내 로스터 요약이 사용) — 주석에 명시된 대로 "현재 진행 중인 부상 상태는 forceHealthy=true로 의도적으로 감춘 값이라 merge 대상에서 제외, 이력만 채움".
+  2. `useMultiSearchData().poolPlayers`(트랜잭션 소식/리그 부상 소식/내 팀 부상자 현황이 사용) — `meta_players`만 조회해서 애초에 부상 컬럼 자체가 없음.
+  `MultiNewsFeedView.tsx`는 이미 이 문제를 `mergeInjuryIntoPlayerCardMap()`으로 해결해뒀었지만(2026-09-04 수정), 그 헬퍼는 `PlayerCardMap`(poolPlayers 기반)에만 적용 가능해서, buildLeagueTeams() 결과물인 완전한 Player 객체를 직접 쓰는 화면엔 적용할 수 없었고, 홈 화면 5개 섹션 전부 이번에 처음 PlayerHoverCard를 붙이면서 이 병합 단계 자체가 통째로 빠져 있었다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - 새 로컬 헬퍼 `applyActiveInjury(player, status)`(line ~65) 추가 — `mergeInjuryIntoPlayerCardMap`과 동일한 필드 매핑을, `PlayerCardMap`이 아닌 완전한 `Player` 객체에 바로 적용.
+  - `HomeLeagueLeadersSection` — `raw.playerInjuryRows` 조회(allRosterIds, 다른 위젯과 캐시 공유) + `todaySimDate`/`activeInjuryByPlayer` 계산(HomeMyInjuriesSection과 동일 패턴) 추가, `leaderGrid` 계산 시 각 선수에 `applyActiveInjury()` 적용.
+  - `HomeMyRosterSummarySection` — 동일한 패턴으로 `activeInjuryByPlayer` 계산 후 `topPlayers`에 `applyActiveInjury()` 적용.
+  - `HomeTransactionsSection` — `basePlayerCardMap`(기존 `playerCardMap`을 이름 변경) + `mergeInjuryIntoPlayerCardMap()`으로 부상 병합한 `playerCardMap` 재계산.
+  - `HomeInjurySection` — 별도 쿼리 없이, 이미 각 행이 갖고 있는 이벤트 자체의 부상/출장정지 정보(`item.severity/typeLabel/durationLabel/returnDate`)를 그대로 `applyActiveInjury()`에 넘겨 병합(해당 리스트 자체가 "그 사건"을 보여주는 화면이라 별도 조회 불필요).
+  - `HomeMyInjuriesSection` — 이미 계산해두고 있던 `status`(ActiveInjuryStatus)를 `playerById.get(playerId)`에 `applyActiveInjury()`로 병합(리스트 자체가 "지금 부상 중"인 선수만 보여주는 화면인데 정작 호버 카드엔 그 정보가 안 들어가고 있었음 — 가장 아이러니한 케이스).
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**주의사항**: `HomeTransactionsSection`은 부상 조회를 현재 로스터(`allRosterIds`) 기준으로만 하므로, 오래전에 방출되어 어느 팀 로스터에도 없는 선수는 호버 카드에 부상 정보가 안 뜰 수 있음(알려진 한계, 트레이드/FA 상대 선수 대부분은 현재 로스터에 있어 실제 영향은 적음).
+
+**롤백 방법**: `applyActiveInjury` 함수 삭제 및 각 섹션에서 그 호출부만 원래 인자(`entry.player`/`p`/`playerById.get(...)` 등 병합 없는 원본)로 되돌리기. `HomeTransactionsSection`은 `mergeInjuryIntoPlayerCardMap(basePlayerCardMap, ...)` 대신 `basePlayerCardMap`을 그대로 `playerCardMap`으로 사용.
+
+---
+
+## 2026-09-05 — 홈 화면 동/서부·리더 카테고리 라벨 크기 확대 + 내 팀 부상자 현황 헤더 추가
+
+**배경**: 사용자 요청 — (1) 리그 순위의 "동부"/"서부", 리그 리더의 "득점"/"리바운드" 등 카테고리 라벨 텍스트 크기를 `text-sm`으로 확대, (2) 내 팀 부상자 현황에도 (트랜잭션 소식·리그 부상 소식과 동일하게) 컬럼 헤더 적용.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - `HomeStandingsSection`(line ~164, 168) — "동부"/"서부" `<h4>` `text-xs` → `text-sm`.
+  - `HomeLeagueLeadersSection`(line ~248) — `{cat.label}`(득점/리바운드/어시스트 등) `<h4>` `text-xs` → `text-sm`.
+  - `HomeMyInjuriesSection`(line ~973) — 목록 최상단에 헤더 행 추가: 빈 스페이서(부상 배지 폭) / "이름"(w-24) / "부상명"(flex-1) / "기간" — `HomeInjurySection`과 동일한 레이아웃/폭.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `text-sm`을 `text-xs`로 되돌리고, 추가한 헤더 `<div>` 블록 삭제.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션/부상 소식 헤더 추가 + 우측 단 4개 섹션 행 좌우 패딩
+
+**배경**: 사용자 요청 — (1) 트랜잭션 소식·리그 부상 소식에도 리그 리더처럼 컬럼 헤더 적용, (2) 우측 단(내 팀 소식)의 최근 5경기/예정 5경기·내 로스터 요약·내 팀 부상자 현황 각 행에 좌우 패딩 적용.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - `HomeTransactionsSection`(line ~479) — 목록 최상단에 헤더 행 추가: "종류"(w-24) / "선수"(flex-1) / "팀 이동"(w-24) / "날짜", 데이터 행과 동일한 컬럼 폭으로 정렬.
+  - `HomeInjurySection`(line ~618) — 헤더 행 추가: 빈 스페이서(부상 배지 폭 `w-4 h-4`) / "이름"(w-24) / "부상명"(flex-1) / "기간".
+  - `HomeMyScheduleSection`의 `renderTable()`(최근 5경기/예정 5경기 공용, line ~704) — 첫 컬럼(날짜) th/td에 `pl-2`, 마지막 컬럼(결과·시간) th/td에 `pr-2` 추가(기존 `px-1` 유지, 좌우 끝만 확장).
+  - `HomeMyRosterSummarySection`(line ~829) — 첫 컬럼(OVR 배지) th/td에 `pl-2`, 마지막 컬럼(3P%) th/td에 `pr-2` 추가.
+  - `HomeMyInjuriesSection`(line ~961) — 행 `className`에 `px-2` 추가(div 리스트라 다른 섹션들과 동일한 방식).
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 추가한 헤더 `<div>`/`<span>` 블록 삭제, 테이블 셀의 `pl-2`/`pr-2`를 `px-1`로, `HomeMyInjuriesSection` 행에서 `px-2` 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 각 테이블 헤더 행 추가
+
+**배경**: 사용자 요청 — 리그 리더(9개 카테고리) 각 리스트에 컬럼 헤더 적용. 다른 리스트(리그 순위/내 팀 스케쥴/내 로스터 요약)는 이미 `<table><thead>` 헤더가 있는데 리그 리더만 `<h4>`(카테고리명)만 있고 컬럼 헤더가 없었음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`(line ~249)의 카테고리별 리스트 최상단에 헤더 행 추가: `#`(순위) / 빈 스페이서(팀뱃지 폭과 동일한 `w-7 h-5`, 데이터 행과 컬럼 정렬용) / `선수` / `{cat.label}`(득점/리바운드 등 값 컬럼명), `border-b border-slate-800`로 다른 테이블 헤더와 동일한 구분선.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 추가한 헤더 `<div className="flex items-center gap-1.5 py-1 border-b border-slate-800">...</div>` 블록 삭제.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션 소식/리그 부상 소식 행 좌우 패딩 추가
+
+**배경**: 사용자 요청 — 리그 리더/리그 최신 뉴스와 동일하게 트랜잭션 소식·리그 부상 소식 각 행에도 좌우 패딩 적용.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeTransactionsSection`(line ~480), `HomeInjurySection`(line ~612) 각 행 `className`에 `px-2` 추가.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 두 곳 `className`에서 ` px-2` 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 최신 뉴스 배경 통합 + 행 좌우 패딩 추가
+
+**배경**: 사용자 요청 — "좌우 영역이 서로 나눠지지 않고 합쳐진 배경을 유지"(기존엔 좌/우 컬럼마다 각각 `bg-slate-900`가 있어 사실상 이미 같은 색이라 시각적으로는 안 나뉘어 보였지만, 컬럼 사이 gap 영역엔 배경이 없었음) + 리그 리더처럼 행 좌우 패딩 적용.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeLatestNewsSection`(line ~312) — `bg-slate-900`를 컬럼 개별 `<div>`에서 바깥 2열 그리드 `<div className="grid grid-cols-2 gap-x-4">`로 이동(컬럼 사이 gap 영역까지 하나의 배경으로 이어짐). 각 행 `className`에 `px-2` 추가(리그 리더 섹션과 동일한 좌우 여백).
+
+**Before**: `<div className="grid grid-cols-2 gap-x-4">` → 컬럼별 `<div className="bg-slate-900">`, 행 `"...py-1.5..."`
+**After**: `<div className="grid grid-cols-2 gap-x-4 bg-slate-900">` → 컬럼별 `<div>`, 행 `"...py-1.5 px-2..."`
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `bg-slate-900`를 바깥 grid div에서 제거하고 컬럼별 `<div>`에 다시 추가, 행 `className`에서 `px-2` 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 각 테이블 좌우 패딩 추가
+
+**배경**: 사용자 요청 — 리그 리더(9개 카테고리) 각 리스트 박스 좌우에 여백 추가.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`(line ~249)의 카테고리별 `bg-slate-900` 컨테이너에 `px-2` 추가, 대신 각 행의 `px-1`은 제거(컨테이너 레벨 패딩으로 대체 — 이중 패딩 방지).
+
+**Before**: `<div className="bg-slate-900">` + 행 `className="... py-1 px-1 ..."`
+**After**: `<div className="bg-slate-900 px-2">` + 행 `className="... py-1 ..."`
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 컨테이너 `className`에서 ` px-2` 제거, 행 `className`에 `px-1` 복원.
+
+---
+
+## 2026-09-05 — 선수 호버 카드 위치 계산 보정 (뷰포트 하단 근처에서 엉뚱한 위치에 뜨는 버그)
+
+**배경**: 사용자 리포트 — 홈 화면 하단부 섹션("트랜잭션 소식", "리그 부상 소식")에서 선수 이름에 마우스를 올렸을 때 호버 카드가 실제 항목 근처가 아니라 화면 훨씬 위쪽(다른 섹션 위)에 뜸. `PlayerHoverCard`(`components/common/PlayerHoverCard.tsx`)는 여러 멀티플레이어 화면이 이미 공유하는 컴포넌트라, 이 파일 자체를 고쳐 모든 사용처에 공통 적용.
+
+**원인 추정**: `computeCoords()`가 팝업을 렌더링하기 전에 고정 추정치(`POPUP_HEIGHT_ESTIMATE=340`)만으로 "뷰포트 하단과 충돌하는지"를 판정해 위/아래 배치를 정함. 홈 화면은 한 페이지 안에 팝업을 여러 리스트(리더/트랜잭션/부상 소식 등)에서 동시에 쓰는 첫 사례라, 실제 렌더된 팝업 높이가 추정치와 어긋나는 경우 뒤집힘(위/아래) 판정이 실제 뷰포트 여백과 맞지 않게 틀어질 수 있음.
+
+**변경 파일**:
+- `components/common/PlayerHoverCard.tsx`:
+  - `PlayerRatingsStatsPopup`을 `React.forwardRef`로 변경해 실제 DOM 크기를 측정할 수 있는 ref를 받도록 함.
+  - `PlayerHoverCard`에 `popupRef` 추가, `useLayoutEffect`로 팝업이 마운트된 직후(페인트 전) 실제 `offsetWidth`/`offsetHeight`로 좌표를 다시 계산해 보정(추정치 기반 1차 좌표는 그대로 두고, 실제 크기 기준으로 2차 보정 — `useLayoutEffect`라 화면 깜빡임 없이 항상 최종 위치로만 보임).
+
+**검증**: `npx tsc --noEmit -p .` 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**주의사항**: `PlayerHoverCard`는 `MultiScheduleView.tsx`/`MultiRosterView.tsx`/`MultiNewsFeedView.tsx` 등 여러 화면이 공유하는 컴포넌트라 이번 수정이 그 화면들에도 함께 적용됨(위치 계산 정확도만 개선하는 변경이라 기존 동작에 회귀 없음).
+
+**롤백 방법**: `useLayoutEffect` 보정 블록 제거, `PlayerRatingsStatsPopup`을 `React.forwardRef`에서 일반 `React.FC`로 되돌리고 `ref={popupRef}` 전달부 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 전체 팀/선수 이름 클릭 가능화 + 선수 호버 카드 적용
+
+**배경**: 사용자 요청 — "홈 화면의 모든 팀/선수 이름은 클릭 가능해야 하고, 선수 호버 카드 역시 표시되어야 함". 점검 결과 대부분의 행은 이미 행 전체(`onClick`)가 알맞은 대상(선수/팀 상세)으로 이동하고 있었으나, 두 곳은 이름과 무관한 곳으로 이동했고(트랜잭션 섹션), 팀 이름 전용 링크가 없는 곳도 있었다(내 팀 스케쥴의 상대팀). 그리고 `PlayerHoverCard`(다른 멀티 화면들이 이미 쓰는 공용 컴포넌트, `components/common/PlayerHoverCard.tsx`)가 홈 화면 어디에도 적용되어 있지 않았다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - import 추가: `PlayerHoverCard`, `buildPlayerCardMap`(components/common/PlayerHoverCard).
+  - `HomeLeagueLeadersSection`(리그 리더) — 이름 span을 `<PlayerHoverCard player={entry.player} teamAbbr={entry.teamAbbr}>`로 감쌈(이미 `buildLeagueTeams()`가 완전한 Player 객체를 주므로 별도 조회 불필요).
+  - `HomeTransactionsSection`(트랜잭션 소식) — 기존엔 행 전체 클릭이 선수/팀과 무관한 `/transaction` 목록 페이지로 이동했음(이름이 사실상 "클릭 가능"하지 않았던 유일한 케이스). `HomeTxnItem`에 `playerId`, `fromTeam`/`toTeam`(구조화된 `{slug, abbr}`, 기존 문자열 `teamMove` 대체)을 추가하고, 선수 이름·트레이드 팀 약어 각각을 `stopPropagation`으로 개별 클릭(선수 상세/팀 로스터로 이동) 가능하게 분리. `useMultiSearchData`에서 `rosterMap`도 추가로 받아 `buildPlayerCardMap()`으로 호버 카드용 맵 구성. 행 전체 클릭(→ 트랜잭션 목록)은 그대로 유지(빈 영역 클릭 시 폴백).
+  - `HomeInjurySection`(리그 부상 소식) — `league`/`leagueTeams`를 추가로 받아 `useMultiSearchData()`로 poolPlayers 조회, `playerById`/`teamAbbrBySlug` 맵으로 이름 span에 `PlayerHoverCard` 적용(이벤트 발생 당시 `item.teamSlug` 기준으로 팀 약어 표시 — 현재 로스터가 아님에 주의).
+  - `HomeMyScheduleSection`(내 팀 스케쥴) — 상대팀 약어에 `openTeam()`(팀 로스터 이동) 클릭 핸들러 + `stopPropagation` 추가(기존 행 클릭은 경기 상세로 그대로 유지).
+  - `HomeMyRosterSummarySection`(내 로스터 요약) — 이름 span을 `<PlayerHoverCard player={p} teamAbbr={myTeam?.abbr}>`로 감쌈(`p`가 이미 완전한 Player 객체).
+  - `HomeMyInjuriesSection`(내 팀 부상자 현황) — `playerById`/`teamAbbrBySlug` 맵 추가해 이름 span에 `PlayerHoverCard` 적용.
+  - 변경 없이 유지: `HomeStandingsTable`(리그 순위, 팀명 — 행 전체가 이미 해당 팀 로스터로 정확히 이동), `HomeLatestNewsSection`(리그 최신 뉴스 — 헤드라인이 자유 문장이라 구조화된 선수/팀 필드가 없음, 범위 밖으로 판단).
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**주의사항**: `HomeTransactionsSection`의 FA/웨이버 항목은 팀 이동 내역 자체를 표시하지 않는 기존 설계(사용자 요청)라 팀 링크가 없음 — 선수 이름 링크만 적용됨.
+
+**롤백 방법**: 이 항목의 각 섹션별 변경을 개별적으로 되돌리면 됨 — `HomeTransactionsSection`은 `HomeTxnItem.fromTeam/toTeam`을 `teamMove: string`으로, `playerId` 필드를 제거하고 원래 매핑 로직으로 복원.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 순위 테이블 헤더 배경 slate-900 적용
+
+**배경**: 사용자 요청 — `HomeStandingsTable`(리그 순위)의 `<thead>` 헤더 행에 `bg-slate-900` 배경 적용.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`(line ~80)의 `<thead><tr>` `className`에 `bg-slate-900` 추가.
+
+**Before**: `<tr className="border-b border-slate-800">`
+**After**: `<tr className="border-b border-slate-800 bg-slate-900">`
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `className`에서 ` bg-slate-900` 제거.
+
+---
+
+## 2026-09-05 — 홈 화면 "리그 소식" 경기 일정 섹션 전체 삭제
+
+**배경**: 사용자 요청 — 좌측 단(리그 소식)의 "경기 일정"(일자별 경기 카드 그리드) 섹션을 통째로 삭제.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - `formatPlayoffRoundLabel()`(구 line ~49), `HomeGameCard`(구 line ~75), `HomeGameGrid`(구 line ~128) 및 각 앞의 설명 주석 블록을 전부 삭제(구 line 43~285, 총 243줄).
+  - `MultiSeasonPage`에서 `<HomeGameGrid />` 렌더 호출 제거(리그 소식 컬럼은 이제 "리그 순위"부터 시작).
+  - 삭제된 컴포넌트에서만 쓰이던 import 정리: `ChevronLeft`/`ChevronRight`(lucide-react), `useGame`(hooks/useGameContext), `groupByDay`/`kstDateKey`/`findCurrentVirtualGame`/`fmtFullDate`(multiScheduleUtils), `computeRevealedSeries`(multiGameReveal), `fetchLiveGamesSummary`/`LiveGameSummary`(liveGameService), `MonthCalendarPopover`. 다른 섹션이 계속 쓰는 `findCurrentVirtualDate`/`fmtDateShort`/`fmtTime`/`getGameDisplayState`/`resolveRealAt`/`useGameShortCodes`/`tintStyle` 등은 그대로 유지.
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 이 커밋 이전 버전으로 `pages/MultiSeasonPage.tsx`를 되돌리는 것이 가장 확실함(삭제 범위가 넓어 diff 역적용 권장). git 커밋 해시 기준 직전 커밋 참고.
+
+---
+
+## 2026-09-05 — 홈 화면 경기 일정 카드 배경/보더 제거
+
+**배경**: 사용자 요청 — 경기 일정 카드 그리드(`HomeGameGrid`)의 개별 게임 카드 배경색·보더라인 제거. 다른 섹션들이 전부 카드 박스 없는 리스트 톤으로 정리된 것과 통일.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeGameCard`(line ~112)의 `<button>` `className`에서 `border border-slate-800 bg-slate-900 hover:border-slate-700` 제거, 호버 시 `hover:bg-white/5`만 유지.
+
+**Before**:
+```tsx
+className="w-full text-left rounded-lg border border-slate-800 bg-slate-900 hover:border-slate-700 hover:bg-white/5 transition-colors p-2.5 space-y-3"
+```
+
+**After**:
+```tsx
+className="w-full text-left rounded-lg hover:bg-white/5 transition-colors p-2.5 space-y-3"
+```
+
+**검증**: `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: `className`에 `border border-slate-800 bg-slate-900 hover:border-slate-700 ` 문자열을 `hover:bg-white/5` 앞에 다시 삽입.
+
+---
+
+## 2026-09-05 — 홈 화면 리스트/테이블 배경 slate-900 적용 (우측 단 → 좌측 단 순차 확장)
+
+**배경**: 사용자 요청이 세 차례에 걸쳐 순차 확장됨 — ①우측 단(내 팀 소식) 테이블 2곳 → ②우측 단 "내 팀 부상자 현황"(div 리스트) → ③좌측 단(리그 소식)의 "리그 리더/리그 최신 뉴스/트랜잭션 소식/리그 부상 소식" 4곳. 좌측 단 중 "리그 순위" 테이블(`HomeStandingsTable`)만 끝까지 제외 대상.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`:
+  - `HomeMyScheduleSection`(내 팀 스케쥴, line ~890), `HomeMyRosterSummarySection`(내 로스터 요약, line ~1009) — `<table>`의 `className`에 `bg-slate-900` 추가.
+  - `HomeMyInjuriesSection`(내 팀 부상자 현황, line ~1136) — `<table>`이 아닌 `<div>` 리스트라 wrapper `<div>`에 `className="bg-slate-900"` 추가.
+  - `HomeLeagueLeadersSection`(리그 리더, line ~494) — 3x3 그리드의 카테고리별 리스트 9개 각각의 wrapper `<div>`에 추가.
+  - `HomeLatestNewsSection`(리그 최신 뉴스, line ~557) — 좌/우 2열 컬럼 각각의 wrapper `<div>`에 추가.
+  - `HomeTransactionsSection`(트랜잭션 소식, line ~701), `HomeInjurySection`(리그 부상 소식, line ~800) — 각각 단일 wrapper `<div>`에 추가.
+  - `HomeStandingsTable`(리그 순위, line ~326, 좌측 단)은 변경 대상에서 계속 제외.
+
+**Before**: `<table className="w-full text-left border-collapse">` / `<div>{...map...}</div>`
+
+**After**: `<table className="w-full text-left border-collapse bg-slate-900">` / `<div className="bg-slate-900">{...map...}</div>`
+
+**검증**: 매 변경 후 `npx tsc --noEmit -p .` MultiSeasonPage 관련 에러 없음, `npx vite build` 정상 빌드 성공.
+
+**롤백 방법**: 각 요소의 `className`에서 ` bg-slate-900` 문자열만 제거 (순수 `<div>`였던 곳은 `className` 속성 자체를 제거).
+
+---
+
+## 2026-09-05 — 홈 화면 "전체보기" 버튼 전부 삭제
+
+**배경**: 사용자 요청 — 홈 화면 9곳 전부에 있던 "전체보기" 버튼을 완전히 삭제.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx`
+- 9개 섹션(리그 순위/리더/최신 뉴스/트랜잭션/부상 소식/내 팀 스케쥴×2/로스터 요약/
+  부상자 현황) 전부에서 `<div className="flex items-center justify-between gap-2">
+  <h3>...</h3><button>전체보기</button></div>` 구조를 `<h3>...</h3>`(또는 `<h4>`)
+  단독으로 단순화.
+- 버튼 제거로 더 이상 쓰이지 않게 된 핸들러 정리: `HomeMyScheduleSection`의
+  `openSchedule`, `HomeInjurySection`의 `openNews`, `HomeMyRosterSummarySection`/
+  `HomeMyInjuriesSection` 각각의 `openRoster` 제거.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 각 섹션에 `flex justify-between` 래퍼 + "전체보기" 버튼 + 해당
+`openXxx` 핸들러를 다시 추가하면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "전체보기" 버튼을 텍스트 링크로 원복
+
+**배경**: 사용자 요청 — 직전에 인디고 프라이머리 버튼으로 바꿨던 "전체보기"를 다시
+텍스트 링크로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — 홈 화면 9곳 전부 `px-2.5 py-1 bg-indigo-600
+hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors`를
+`text-xs font-bold text-indigo-400 hover:text-indigo-300`로 일괄 원복.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+---
+
+## 2026-09-05 — 홈 화면 전체 "전체보기" 버튼을 인디고 프라이머리 버튼 스타일로 변경
+
+**배경**: 사용자 요청 — 홈 화면 모든 섹션의 "전체보기"를 텍스트 링크(`text-indigo-400`)
+에서 배경이 채워진 인디고 프라이머리 버튼으로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — 홈 화면 9개 섹션(리그 순위/리더/최신 뉴스/
+트랜잭션/부상 소식/내 팀 스케쥴×2/로스터 요약/부상자 현황) 전부의 "전체보기" 버튼
+className을 `text-xs font-bold text-indigo-400 hover:text-indigo-300`(텍스트 링크)에서
+`px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg
+transition-colors`(채워진 필 버튼)로 일괄 변경 — 이 코드베이스에서 이미 널리 쓰이는
+인디고 프라이머리 버튼 관례(`bg-indigo-600 hover:bg-indigo-500 text-white`, 예:
+`components/SharedComponents.tsx`의 소형 필 버튼)를 그대로 재사용.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 위 className을 다시 `text-xs font-bold text-indigo-400
+hover:text-indigo-300`로 일괄 되돌리면 됨.
+
+---
+
+## 2026-09-05 — "전체보기" 버튼을 빈 헤더 행에서 각 소제목 옆으로 이동
+
+**배경**: 사용자가 실제 렌더링 스크린샷으로 지적 — 직전 변경에서 타이틀만 지우고 "전체
+보기" 버튼은 그 자리(빈 헤더 행)에 그대로 남겨둬서, 화면 상단에 텅 빈 줄만 남아있었음.
+"최근 5경기"/"예정 5경기" 옆에 각각 배치하고 그 빈 헤더 행 자체를 삭제.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyScheduleSection`
+- 최상단의 `<div className="flex items-center justify-end gap-2">전체보기</div>` 행 제거.
+- "최근 5경기"/"예정 5경기" `<h4>`를 각각 `flex items-center justify-between` 행으로
+  감싸 그 안에 "전체보기" 버튼을 나란히 배치(둘 다 동일한 `openSchedule` 핸들러 — 볼 수
+  있는 전체 일정은 하나뿐이라 링크 대상은 같음).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 두 `<h4>`를 감싼 `flex justify-between` 래퍼를 풀고 안의 버튼을 제거한 뒤,
+최상단에 `전체보기` 단일 버튼 행을 복원하면 됨.
+
+---
+
+## 2026-09-05 — "내 팀 스케쥴" 타이틀 제거 + 소제목에 타이틀 폰트 적용
+
+**배경**: 사용자 요청 — 상단 "내 팀 스케쥴" 텍스트를 삭제하고, "최근 5경기"/"예정 5경기"
+소제목에 그 타이틀이 쓰던 폰트 속성을 적용.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyScheduleSection`
+- `<h3>내 팀 스케쥴</h3>` 제거, 헤더 행은 "전체보기" 버튼만 우측 정렬로 남김
+  (`justify-between` → `justify-end`).
+- "최근 5경기"/"예정 5경기" `<h4>`의 className을 `text-xs font-black text-slate-500
+  uppercase px-1` → `text-lg font-black text-white`(옛 `<h3>`와 동일)로 변경.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 헤더 행에 `<h3>내 팀 스케쥴</h3>`을 복원하고 `justify-end`를
+`justify-between`으로, 두 `<h4>`를 이전 className으로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — "내 팀 스케쥴" 결과/시간 컬럼 좌측 정렬로 변경
+
+**배경**: 사용자 요청 — "최근 5경기"/"예정 5경기" 테이블의 마지막 컬럼(결과/시간)을
+가운데 정렬에서 좌측 정렬로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyScheduleSection`의 `renderTable`에서
+결과/시간 `<th>`/`<td>`의 `text-center` 클래스 제거.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 해당 `<th>`/`<td>`에 `text-center`를 다시 추가하면 됨.
+
+---
+
+## 2026-09-05 — "내 팀 스케쥴"을 좌/우 2열 테이블(최근 5경기 / 예정 5경기)로 재구성
+
+**배경**: 사용자 요청 — 방금 위/아래로 이어붙였던 "내 팀 스케쥴"을 절반으로 나눠 좌측에
+"최근 5경기", 우측에 "예정 5경기"를 각각 테이블로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyScheduleSection`
+- 단일 `renderRow` 플렉스 행 렌더를 걷어내고, `HomeStandingsSection`의 동/서부 분할과
+  동일한 패턴(`grid grid-cols-2 gap-4` + 각 칸에 소제목 + 순수 `<table>`)의
+  `renderTable(games, isRecent)`로 교체.
+- 컬럼: 날짜 | 상대(vs·@ + 팀뱃지 + 팀약어 + 상대 기록) | 결과(좌측: 승패+스코어) 또는
+  시간(우측). 팀명은 좁아진 폭에 맞춰 `team_name` 대신 `team_abbr`로 축약.
+  8개 컬럼짜리 `HomeMyRosterSummarySection`과 동일하게 `overflow-x-auto` 래퍼 추가.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `renderTable`/2열 그리드를 제거하고 이전 `renderRow` + 단일 리스트
+(`upcomingGames` 먼저, `recentGames` 나중)로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — "내 팀 최근 경기" 카드 삭제 + "다음 5경기"를 "내 팀 스케쥴"로 통합
+
+**배경**: 사용자 요청 — 우측 "내 팀 최근 경기"(스코어보드형 단일 경기 카드) 섹션을
+삭제하고, "다음 5경기" 섹션을 "내 팀 스케쥴"로 개명하면서 상위 5줄=다음 5경기,
+하위 5줄=종료된 최근 5경기를 한 리스트로 합친다.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx`
+- `HomeMyTeamGameCard`(스코어보드형 카드)와 `HomeMyTeamRecentGameSection`(그 카드를
+  쓰던 섹션) 정의 전체 삭제.
+- `HomeMyUpcomingGamesSection`을 `HomeMyScheduleSection`으로 재작성 — 기존 "다음
+  5경기"(`upcomingGames`, `scheduled` 상태만) 계산에 `recentGames`(`final` 상태만,
+  최신순 5개) 계산을 추가. 상대팀 승-패 레코드(`opponentRecords`)는 두 그룹의 상대팀
+  전체를 합쳐 한 번에 계산.
+- 행 렌더를 `renderRow(game, showBorder)` 공용 함수로 뽑아 두 그룹에 재사용 — 종료된
+  경기는 시간 칸 대신 승패(W/L, 초록/빨강)+스코어를 보여주고 나머지 컬럼(날짜/vs·@/
+  팀뱃지/팀명+상대 기록)은 동일하게 유지. `showBorder`로 그룹 경계(다음 5경기 마지막
+  행 ~ 최근 5경기 시작)에도 구분선이 끊기지 않게 처리.
+- 헤더 텍스트를 "다음 5경기" → "내 팀 스케쥴"로 변경.
+- `MultiSeasonPage`의 우측 컬럼에서 `<HomeMyTeamRecentGameSection />`/
+  `<HomeMyUpcomingGamesSection />` 두 줄을 `<HomeMyScheduleSection />` 한 줄로 교체.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상(삭제된 컴포넌트가 쓰던
+`fetchLiveGamesSummary`/`LiveGameSummary`/`useGame`/`computeRevealedSeries`/
+`formatPlayoffRoundLabel`는 `HomeGameGrid`가 여전히 써서 미사용 import 없음).
+
+**롤백 방법**: `HomeMyScheduleSection`을 제거하고 이전 `HomeMyTeamGameCard`/
+`HomeMyTeamRecentGameSection`/`HomeMyUpcomingGamesSection` 세 정의로 되돌린 뒤,
+`MultiSeasonPage` 렌더도 두 컴포넌트 호출로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — buildActiveInjurySeverityMap 날짜 도메인 버그 전수 점검 + MultiNewsFeedView.tsx 수정
+
+**배경**: 직전 항목("내 팀 부상자 현황" 버그)에서 발견한 `currentSimDate`(실제 KST) vs
+가상 NBA 캘린더 날짜 불일치가 다른 화면에도 남아있을 수 있어 사용자 요청으로 전수 확인.
+
+**점검 결과**: `buildActiveInjurySeverityMap()`을 호출하는 모든 곳을 grep으로 전수 확인.
+- `MultiRosterView.tsx`/`MultiTacticsView.tsx`/`MultiFrontOfficeView.tsx`/
+  `MultiPlayerDetailView.tsx` — **이미 전부 올바르게 수정돼 있었음**(`findCurrentVirtualDate`
+  기반 `currentSimDate`를 로컬에서 재계산해 씀, `preferVirtual`/`preferVirtualForInjury`
+  가드까지 동일 패턴).
+- `views/multi/season/MultiNewsFeedView.tsx` — **버그 발견**. 이 파일은 날짜 필터
+  기본값용으로 `todaySimDate`(가상 날짜)를 이미 만들어두고서도, 정작 부상 호버카드용
+  `buildActiveInjurySeverityMap()` 호출(이번 세션에서 직접 추가했던 기능)에는 실수로
+  원본 `currentSimDate`(rooms.sim_date, 실제 KST)를 그대로 넘기고 있었음.
+- `pages/MultiSeasonPage.tsx`의 `HomeMyInjuriesSection` — 직전 항목에서 이미 수정 완료.
+
+**변경 파일**: `views/multi/season/MultiNewsFeedView.tsx` — 부상 호버카드용
+`buildActiveInjurySeverityMap()` 호출과 그 `useMemo` 의존성 배열의 `currentSimDate`를
+`todaySimDate`로 교체.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 해당 호출/의존성 배열의 `todaySimDate`를 `currentSimDate`로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — "내 팀 부상자 현황"에 이미 나은 부상까지 계속 뜨는 버그 수정
+
+**배경**: 사용자 리포트 — "내 팀 부상자 현황"에 과거 이력(이미 나았어야 할 부상)까지 계속
+표시되는 것 같다. Supabase로 실제 방 데이터를 직접 조회해 원인을 확인.
+
+**원인**: `HomeMyInjuriesSection`이 `buildActiveInjurySeverityMap()`을 호출하며
+`currentSimDate`(`useSeasonContext()`, 즉 `rooms.sim_date`)를 그대로 넘기고 있었는데,
+`rooms.sim_date`는 **실제(wall-clock) KST 날짜**다(`server/src/scheduler.ts`의
+`advanceSimDates`가 실제 타임스탬프로 채움). 반면 부상 이력(`injury_history`의
+`date`/`returnDate`)은 메인리그 한정으로 **가상 NBA 캘린더 날짜**(`games.game_date`와
+동일 도메인, 예: `"2026-11-22"`)를 쓴다 — `MultiNewsFeedView.tsx`가 이미 겪었던
+"todaySimDate 버그"와 동일 계열이지만, 그때는 뉴스피드 날짜 필터 기본값 계산만 고쳐졌고
+부상 활성 판정 함수 호출부는 고쳐지지 않은 채 남아 있었다. 실제 방을 조회해보니 한
+선수의 `return_date`가 `"2026-11-22"`(가상 캘린더)로 찍혀 있는데 그 방의 `rooms.sim_date`
+는 `"2026-09-05"`(실제 날짜)라, `return_date > currentSimDate` 비교가 앞으로 몇 달간
+계속 참으로 남아 "활성 부상"이 풀리지 않는 상태였다.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyInjuriesSection`에
+`findCurrentVirtualDate()`(메인리그면 가상 날짜, 아니면 `currentSimDate` 그대로 — 다른
+화면들의 "todaySimDate" 계산과 동일 패턴)로 만든 `todaySimDate`를 `buildActiveInjurySeverityMap`
+에 전달하도록 교체. `findCurrentVirtualDate` import 및 `useServerClock()` 추가.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상. Supabase MCP로 실제 방의
+`room_player_state`(health/return_date/injury_history)와 `rooms.sim_date`를 직접 조회해
+날짜 도메인 불일치를 확인.
+
+**주의사항 / 한계**: **동일한 버그가 이 파일 밖에도 남아있을 가능성이 높다** —
+`buildActiveInjurySeverityMap()`을 `currentSimDate`로 그대로 호출하는 다른 화면들
+(`views/multi/season/MultiRosterView.tsx`, `MultiTacticsView.tsx`,
+`MultiFrontOfficeView.tsx`)과, 이번 세션에서 직접 고쳤던
+`views/multi/season/MultiNewsFeedView.tsx`(뉴스 호버 카드 부상 정보 fix)도 같은 패턴이라
+메인리그에서는 똑같이 "이미 나은 부상이 계속 활성으로 뜨는" 문제를 겪을 수 있다.
+이번엔 사용자가 리포트한 홈 화면 파일만 고쳤고, 나머지는 아직 손대지 않았다 — 별도
+확인/수정 필요.
+
+**롤백 방법**: `todaySimDate`를 다시 `currentSimDate`로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "내 팀 부상자 현황" 리스트화 (좌측 부상 소식과 동일 4열 톤)
+
+**배경**: 사용자 요청 — 우측 "내 팀 부상자 현황"도 카드형이 아닌 리스트 형태로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyInjuriesSection`
+- `rounded-lg border ... divide-y ... overflow-hidden` 카드형 컨테이너를 좌측
+  "리그 부상 소식"(`HomeInjurySection`)과 동일한 순수 리스트(`border-b
+  border-slate-800/60`, 마지막 행 제외)로 변경.
+- 한 칸에 " · "로 뭉쳐 있던 "부상명 · 기간+복귀일"을 별개 컬럼으로 분리(배지 | 이름 |
+  부상명(또는 "출장정지") | 기간+복귀일) — `HomeInjurySection`과 동일한 컬럼 구성으로
+  통일. 폰트를 `text-xs`→`text-sm`으로 맞춤.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 컨테이너를 `rounded-lg border ... divide-y` 카드형으로, 3·4번째 span을
+`{typeLabel} · {duration}{formatReturnDateSuffix(...)}` 한 칸으로 다시 합치면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "내 로스터 요약" POS 별도 컬럼화 + OVR 배지 폰트 확대
+
+**배경**: 사용자 요청 — (1) 포지션(POS)을 이름 안에 붙여 쓰던 걸 이름 우측의 별도
+컬럼으로 분리. (2) OVR 배지 내부 폰트를 text-xs로 확대.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyRosterSummarySection`
+- 헤더에 `POS` 컬럼 추가("선수" 다음, "MPG" 이전).
+- 이름 셀에서 포지션 span을 분리해 별도 `<td>`(`text-center text-slate-500`)로 이동.
+- `OvrBadge`에 `className="!text-xs"` 추가 — `MultiFrontOfficeView.tsx`가 이미 쓰는
+  `!`(important) 오버라이드 패턴 재사용(`OvrBadge`의 `size="sm"` 기본 폰트가 `text-[10px]`
+  라 일반 클래스로는 특이도가 같아 안 먹혀서 important가 필요).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: POS `<th>`/`<td>`를 제거하고 이름 셀에 다시 포지션 span을 합치고,
+`OvrBadge`의 `className="!text-xs"`를 제거하면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "내 로스터 요약" 테이블화 (MPG/PPG/APG/RPG/SPG/BPG/FG%/3P% 개별 컬럼)
+
+**배경**: 사용자 요청 — 카드형(하나의 합쳐진 스탯 문자열 "PTS / REB / AST")을 진짜
+테이블로 바꾸고, MPG/PPG/APG/RPG/SPG/BPG/FG%/3P%를 각각 별개의 컬럼으로 표시.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyRosterSummarySection`
+- `rounded-lg border ... divide-y ... overflow-hidden` 카드형 컨테이너를
+  `HomeStandingsTable`과 동일한 패턴의 `<table>`(순위표 스타일 — 헤더 행 + 얇은
+  `border-b border-slate-800/60` 행 구분선, 카드 박스 없음)로 교체. 8개 스탯 컬럼이라
+  좁은 화면에서 넘칠 수 있어 `overflow-x-auto` 래퍼 추가.
+- 컬럼 순서를 요청한 그대로: OVR / 포지션+이름 / MPG / PPG / APG / RPG / SPG / BPG /
+  FG% / 3P%. 카운팅 스탯은 `stats[key]/stats.g`(경기당 평균), 비율 스탯은
+  `made/attempted`로 직접 계산.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `<table>` 블록을 제거하고 카드형 `<div>`(OVR+포지션+이름+"PTS / REB / AST"
+합쳐진 문자열 한 줄)로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "다음 5경기" 승-패 레코드를 팀명 바로 우측으로 이동
+
+**배경**: 사용자 요청 — 방금 추가한 상대팀 승-패 레코드가 `flex-1` 때문에 시간 컬럼
+바로 앞(오른쪽 끝)으로 밀려나 있었는데, 팀 이름 바로 옆에 붙도록 위치 조정.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeMyUpcomingGamesSection`. 팀명 span과
+레코드 span을 `flex items-center gap-1.5 flex-1 min-w-0` 래퍼로 함께 묶어 이름 바로
+뒤에 붙게 하고(이름만 `truncate`), `flex-1`은 이 래퍼 전체로 옮겨 시간 컬럼은 그대로
+맨 끝에 고정.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 래퍼 span을 풀고 팀명 span에 `flex-1 min-w-0`을, 레코드 span을 원래
+위치(이름 뒤, 별도 shrink-0)로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "다음 5경기" 리스트화 + 상대팀 승-패 레코드 추가
+
+**배경**: 사용자 요청 — "다음 5경기" 섹션을 다른 홈 섹션들과 동일하게 카드가 아닌
+리스트로 바꾸고, 각 행에 해당(상대) 팀의 승-패 레코드도 표시.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyUpcomingGamesSection`
+  - `computeWL`(`HomeMyTeamGameCard`가 쓰는 것과 동일 유틸)을 상대팀 5명분 한 번에
+    호출해 `opponentRecords` 계산.
+  - 렌더를 `rounded-lg border ... divide-y ... overflow-hidden` 카드형 컨테이너에서
+    다른 홈 섹션과 동일한 순수 리스트(`border-b border-slate-800/60`, 마지막 행 제외)로
+    변경, 폰트를 `text-xs`→`text-sm`으로 통일.
+  - 컬럼에 상대팀 승-패("W-L") 표시 추가 — 순서: 날짜 · vs/@ · 팀뱃지 · 팀명 · 승-패
+    레코드 · 시간.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `opponentSlugs`/`opponentRecords` 계산과 렌더의 승-패 span을 제거하고,
+컨테이너를 `rounded-lg border ... divide-y` 카드형으로, 폰트를 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 "내 팀 최근 경기" 전용 스코어보드형 카드로 교체
+
+**배경**: 사용자 요청 — 우측 "내 팀 최근 경기"는 좌측 "경기 일정" 그리드와 다른 카드
+디자인을 쓰도록 분리. 요청한 레이아웃:
+```
+                                     [플레이오프일시 부가정보 표시]
+[원정로고] [원정팀 약어] [스코어] - [스코어] [홈팀 약칭] [홈로고]
+                [원정팀 승-패]                             [홈팀 승-패]
+```
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeMyTeamGameCard` 신규 컴포넌트 추가 — `HomeGameCard`(원정/홈을 위아래로 쌓는
+    세로형, 좌측 그리드 전용)와 달리 원정↔홈이 좌우로 마주보고 로고가 카드 바깥쪽
+    가장자리에 오는 스코어보드 형태. `grid-cols-[1fr_auto_1fr]`로 [원정팀 블록]
+    [스코어-스코어] [홈팀 블록] 3열 배치, 그 아래 동일한 그리드 트랙에 팀 승-패 기록을
+    좌/우 정렬. 최상단엔 플레이오프 라운드 정보만 우측 정렬로 표시(정규시즌 경기는 빈
+    칸 — 상태 라벨(예정/LIVE/종료)은 요청 레이아웃에 없어서 뺌, 이 섹션 자체가 이미
+    'scheduled' 경기를 걸러내 live/final만 남기므로 정보 손실은 적음).
+  - `HomeMyTeamRecentGameSection`에 라운드 라벨 계산(`bracketSeries`/
+    `revealedSeriesById` — `HomeGameGrid`와 동일 계산, `formatPlayoffRoundLabel`
+    재사용)과 팀 기록 계산(`computeWL`, `multiSeasonUtils.ts`에서 새로 import)을 추가.
+    `HomeGameCard` 대신 `HomeMyTeamGameCard` 렌더.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `HomeMyTeamGameCard` 정의를 제거하고, `HomeMyTeamRecentGameSection`에서
+`bracketSeries`/`revealedSeriesById`/`records`/`roundLabel` 계산을 걷어낸 뒤 다시
+`HomeGameCard`를 렌더하면 됨(`computeWL` import도 함께 제거).
+
+---
+
+## 2026-09-05 — 홈 화면 리그 부상 소식 로고 제거 + 4열(배지/이름/부상명/기간) 재구성
+
+**배경**: 사용자 요청 — 팀 로고(TeamBadge) 삭제, 컬럼을 "배지 | 이름 | 부상명 | 기간"
+4열로 재구성(이전엔 부상명·기간·복귀일이 한 칸에 " · "로 뭉쳐 있었음).
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeInjurySection`
+- `TeamBadge` 렌더 제거, 그 조회에만 쓰이던 `teamBySlug` useMemo와 `useLeagueContext()`의
+  `leagueTeams` 구조분해도 함께 정리(더 이상 안 씀).
+- 행을 4열로 분리: ①`InjuryStatusBadge` ②선수 이름(`w-24`) ③부상명(`typeLabel`,
+  `flex-1`) ④기간+복귀일(`durationLabel` + `formatReturnDateSuffix`, 등급별 색상 유지).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `TeamBadge`와 `teamBySlug`/`leagueTeams`를 되돌리고, 3번째·4번째 span을
+`{typeLabel} · {durationLabel}{formatReturnDateSuffix(...)}` 한 칸으로 합치면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 부상 소식 리스트화 + 출장정지 추가 + 상세정보 확장
+
+**배경**: 사용자 요청 — (1) 부상/출장정지 소식도 다른 섹션과 동일하게 카드가 아닌
+리스트로. (2) 출장정지도 표기. (3) 부상 정도에 따라 배지 색을 다르게. (4) 부상명/기간/
+예상복귀일을 함께 표시.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeInjurySection`
+  - 조회 타입을 `types: ['injury']`에서 `types: ['injury', 'suspension']`로 확장 —
+    기존엔 `league_events`의 `suspension` 타입이 아예 빠져 있어 출장정지가 전혀
+    안 보였음. 출장정지는 싸움에 연루된 두 선수(`fighter`/`opponent`)가 항상 동시에
+    발생하므로(`SuspensionDetail`), 이벤트 1건을 선수별 2행으로 평탄화(트랜잭션 섹션의
+    트레이드 다중 선수 평탄화와 동일 원리).
+  - `HomeInjuryItem` 타입 추가(`severity`/`typeLabel`/`durationLabel`/`returnDate` 통일) —
+    부상은 `injuryType`/`duration`/`returnDate` 그대로, 출장정지는 `injuryType`이 없어
+    고정 라벨 "출장정지" + `N경기`(games)로 대체.
+  - 배지 색: `InjuryStatusBadge`/`SEVERITY_TEXT_COLOR`(`components/common/
+    InjuryStatusBadge.tsx`)가 이미 Grade3/4/5/Suspension별로 다른 색을 정의해두고
+    있어(로스터/호버카드가 이미 쓰는 것과 동일) 그대로 재사용 — 새로 만들 필요 없었음,
+    부상 타입만 조회하던 이전엔 이 분기가 사실상 Grade3~5만 보였을 뿐.
+  - 상세정보: `{typeLabel} · {durationLabel}{formatReturnDateSuffix(returnDate)}` 한
+    줄로 부상명(또는 "출장정지")·기간·예상 복귀일을 함께 표시(`HomeMyInjuriesSection`과
+    동일 포맷).
+  - 렌더를 `rounded-lg border ... divide-y` 카드형 컨테이너에서 다른 홈 섹션과 동일한
+    순수 리스트(`border-b border-slate-800/60`)로 변경.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상(flatMap 콜백 반환 타입이
+분기별로 갈려 유니온 추론이 안 되는 TS 에러가 있어 콜백에 `(e): HomeInjuryItem[] =>`
+명시적 반환 타입을 달아 해결).
+
+**롤백 방법**: `types: ['injury', 'suspension']`을 `types: ['injury']`로, `HomeInjuryItem`/
+`items` flatMap 로직을 제거하고 injury 이벤트만 직접 매핑하던 이전 코드로, 렌더를
+카드형 컨테이너로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션 소식 4열 재구성 + 종류별 정렬
+
+**배경**: 사용자 요청 — (1) 트레이드→자유계약→웨이버 순으로 정렬하고 그 안에서는 날짜순.
+(2) 컬럼 구성을 "종류(자유계약/웨이버/트레이드) | 이름 | 팀 이동 내역(트레이드만) | 날짜"
+4열로 재구성 — 기존엔 "이름 | 상세(트레이드는 팀 이동, FA/웨이버는 고정 문구) | 날짜"
+3열이라 트레이드의 팀 이동 정보와 종류 라벨이 한 칸에 뒤섞여 있었음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeTxnItem.detail`(트레이드는 팀 이동, FA/웨이버는 고정 문구가 섞여 있던 필드)을
+    `teamMove?: string`(트레이드만 채워짐, FA/웨이버는 undefined)으로 교체.
+  - `TXN_KIND_LABEL`(종류별 고정 라벨: 트레이드/자유 계약/웨이버) 추가 — 렌더 시점에
+    `item.kind`로 조회, 데이터에 중복 저장하지 않음.
+  - `TXN_KIND_ORDER`(트레이드=0, 자유계약=1, 웨이버=2) 추가. `items` 계산에서 "어떤 10건을
+    보여줄지"는 기존처럼 전체 최신순으로 고르고, 마지막에 `TXN_KIND_ORDER` → 날짜 내림차순
+    으로 한 번 더 정렬해 화면에 그리는 순서만 바꿈(선택 기준까지 종류 순으로 바꾸면 "최근
+    10건"의 의미가 흐려짐).
+  - 렌더를 4열로 재구성: ①아이콘+종류 라벨(`w-24`) ②선수 이름(`flex-1`) ③팀 이동 내역
+    (`w-24`, 트레이드 아닌 행은 빈 칸) ④날짜.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `HomeTxnItem.teamMove`를 `detail`(종류 라벨+팀이동 혼합 문자열)로,
+`items` 정렬의 두 번째 `.sort()`(종류 순 재정렬)를 제거, 렌더를 3열(이름/상세/날짜)로
+되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션 소식 아이콘 배지 크기 축소 (text-sm에 맞춤)
+
+**배경**: 사용자 요청 — 트랜잭션 아이콘 배지가 text-sm 텍스트에 비해 커 보여 축소.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — 아이콘 배지 원을 `w-5 h-5`→`w-4 h-4`,
+아이콘 자체를 `size={12}`→`size={10}`으로 축소.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `w-4 h-4`를 `w-5 h-5`로, `size={10}`을 `size={12}`로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션 소식에 종류별 원형 아이콘 배지 추가
+
+**배경**: 사용자 요청 — "자유 계약" 앞엔 트레이드 새 제안 탭에서 쓰는 초록 원+십자 아이콘,
+"웨이버" 앞엔 빨간 원+일자(가로선) 아이콘, 트레이드 앞엔 트레이드에 맞는 아이콘.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeTxnItem`에 `kind: 'trade'|'fa_sign'|'waive'` 필드 추가(트레이드/FA/웨이버
+    구분용 — `items` 계산 로직에서 각 분기에 채움).
+  - `TXN_ICON_BY_KIND` 매핑 추가: `fa_sign`→`Plus`+`bg-emerald-600`,
+    `waive`→`Minus`+`bg-red-600` — `MultiFrontOfficeView.tsx`의 "새 제안" 탭 행 토글
+    버튼(`w-5 h-5 rounded-full` + Plus/Minus)과 완전히 동일한 마크업을 그대로 재사용해
+    시각 언어 통일. `trade`→`ArrowLeftRight`+`bg-indigo-600`(사용자가 색을 지정하지
+    않아 다른 두 배지와 톤을 맞추는 중립색으로 선택).
+  - 각 행의 `detail` 텍스트 앞에 `w-5 h-5 rounded-full` 아이콘 배지 렌더.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `TXN_ICON_BY_KIND` 정의와 렌더의 아이콘 배지 span, `HomeTxnItem.kind`
+필드 및 그 채움 로직을 제거하면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 트랜잭션 소식 리스트화 + 선수별 행 형식 재설계
+
+**배경**: 사용자 요청 — 트랜잭션 소식을 리스트로 변경하고, 트레이드/웨이버/FA영입 전부
+"선수 이름 | 상세 | 날짜" 3열 형식으로 통일. 트레이드는 "[이전팀] → [이후팀]", 웨이버는
+"웨이버", FA영입은 "자유 계약"으로 표시.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeTransactionsSection`
+  - `HomeTxnItem`을 트레이드/FA/웨이버를 구분하는 유니온 타입에서 `{ id, atMs, playerName,
+    detail, dateLabel }` 단일 형태로 통일 — 트레이드 이벤트 하나가 여러 선수를 옮길 수
+    있어(예: 3-for-2) 기존 "이벤트 1건=행 1개"를 "이동한 선수 1명=행 1개"로 평탄화.
+    `aOut`(teamA가 내보내 teamB가 받는 선수들)/`bOut`(반대 방향) 각각을 개별 행으로 전개.
+  - `RawLeagueTransactionRow`에 `sim_date` 필드 추가(select 쿼리에도 추가) — 날짜를
+    다른 홈 섹션과 동일하게 simDate 우선("YY/MM/DD"), 없으면 상대시각 폴백으로 통일.
+  - 렌더를 `rounded-lg border ... divide-y` 카드형 컨테이너에서 순위표/뉴스 스타일과
+    동일한 순수 리스트(헤더 없이 행별 `border-b border-slate-800/60`)로 변경. 아이콘
+    (`ArrowLeftRight`/`UserPlus`/`UserMinus`) 전부 제거.
+  - 표시 건수를 8 → 10으로 확대(`HOME_TRANSACTIONS_LIMIT`). 더 이상 안 쓰는 `teamById`
+    변수와 미사용 아이콘 import 제거.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `HomeTxnItem`을 이전 유니온 타입으로, `items` 계산을 이벤트 단위(트레이드는
+teamA/teamB 획득 목록 합침) 집계로, 렌더를 아이콘+카드형 컨테이너로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 최신 뉴스 2열·10건·리스트화 + 트랜잭션/부상 소식 2열 배치
+
+**배경**: 사용자 요청 — (1) "리그 최신 뉴스" 영역을 반으로 나누고 10개 표시, 카드 디자인을
+리스트로 바꾸고 제목 앞 아이콘 제거, 상대시각("0시간 전") 대신 날짜 표기. (2) 하단
+"트랜잭션 소식" 영역을 반으로 나눠 좌측=트랜잭션 최근 소식, 우측=리그 부상 소식.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeLatestNewsSection` 전면 재작성 — 기존엔 뉴스피드의 `LegacyCard`(아이콘+헤드라인+
+    상대시각, 테두리 있는 카드)를 재사용했으나 요구사항(아이콘 제거/카드 아닌 리스트/날짜
+    표기)이 전부 그 컴포넌트와 어긋나 재사용을 접고 이 섹션 전용 리스트 행을 새로 작성.
+    10건을 5개씩 좌우 두 열로 분할(뉴스는 시간순이라 홀짝 인터리브 대신 "왼쪽에 최신
+    5개, 오른쪽에 다음 5개" 신문 지면 방식). 날짜는 `e.simDate`를 "YY/MM/DD"로 축약
+    표시(`formatSimDateShort` — `MultiNewsFeedView.tsx`의 동명 로컬 함수와 동일 규칙,
+    export 안 돼 있어 복제), simDate 없는 이론상의 옛 이벤트만 `formatRelativeTime`으로
+    폴백. `LegacyCard` import 제거, `formatRelativeTime`/`LeagueEvent` import 추가.
+  - `MultiSeasonPage`의 좌측 컬럼에서 `HomeTransactionsSection`/`HomeInjurySection`을
+    쌓아 두던 걸 `grid grid-cols-2 gap-4`로 감싸 나란히 배치 — 두 섹션 모두 이미 자기
+    헤더("트랜잭션 소식"/"리그 부상 소식")를 갖고 있어 컴포넌트 내부 수정 없이 배치만
+    바꿈.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `HomeLatestNewsSection`을 `LegacyCard` 재사용 버전(6건, 단일 컬럼)으로
+되돌리고, `MultiSeasonPage`의 `HomeTransactionsSection`/`HomeInjurySection`을 감싼
+`grid grid-cols-2` div를 풀어 원래처럼 세로로 쌓으면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 값 텍스트 볼드 해제
+
+**배경**: 사용자 요청 — 리그 리더 각 행의 수치(값) 텍스트에 적용된 `font-black` 제거.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`의 값 span
+className에서 `font-black` 제거(`text-sm font-black text-white` → `text-sm text-white`).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 값 span에 `font-black`을 다시 추가하면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 카드 박스 해체 → 순위표 스타일 리스트로 변경
+
+**배경**: 사용자 요청 — 카테고리별 `rounded-lg border` 카드 박스를 없애고, 순위표
+(`HomeStandingsTable`)처럼 헤더 + 얇은 행 구분선만 있는 리스트 형태로.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`의 카테고리별
+`rounded-lg border border-slate-800 bg-slate-900 p-2` 박스 제거. `HomeStandingsSection`의
+동/서부 블록(카드 박스 없이 `<h4>` 헤더 + 순수 리스트)과 동일한 톤으로 재구성 — 헤더는
+`text-xs font-black text-slate-500 uppercase px-1`, 각 행은 마지막 행 제외
+`border-b border-slate-800/60` 구분선만. 3열 그리드 간격을 `gap-2`(카드 사이 여백)에서
+`gap-x-4 gap-y-3`(리스트 사이 여백)로 조정.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 카테고리 `<div>`의 className을 `rounded-lg border border-slate-800
+bg-slate-900 p-2 space-y-1`로, 행 구분선(`border-b`)을 제거하고 각 행에 `rounded`를
+되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 카드 내 폰트 확대 (text-xs/[10px] → text-sm)
+
+**배경**: 사용자 요청 — 리그 리더 카드 내부 폰트(카테고리명/순위번호/이름/수치)를
+text-sm으로 확대.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`의 카테고리 헤더
+(`text-xs`→`text-sm`), 순위 번호(`text-[10px]`→`text-sm`), 선수명(`text-xs`→`text-sm`),
+수치(`text-xs`→`text-sm`) 전부 확대. 팀뱃지(`TeamBadge` size="xs")는 범위 밖이라 그대로 둠.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 4개 span의 `text-sm`을 각각 원래 값(`text-xs`, `text-[10px]`)으로 되돌리면 됨.
+
+---
+
+## 2026-09-05 — 홈 화면 리그 리더 3x3 그리드로 재설계 (카테고리별 상위 3명)
+
+**배경**: 사용자 요청 — 리그 리더 행을 3단(득점/리바운드/어시스트, 스틸/블락/야투율,
+3점시도/3점성공률/턴오버)으로 나누고, 각 분야별 상위 3명까지 표시.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeLeagueLeadersSection`
+  - `LEADER_CATEGORIES`를 5개(PTS/REB/AST/STL/BLK, 1위만)에서 9개(득점/리바운드/어시스트/
+    스틸/블락/야투율/3점시도/3점성공률/턴오버, 각 상위 3명)로 확장. 카운팅 스탯은
+    경기당 평균(`stats[key]/stats.g`), 비율 스탯(야투율/3점성공률)은 `made/attempted`로
+    직접 계산 — 시도 볼륨 자격 기준은 없음(시도 1~2회로 100%를 찍는 선수가 상위에 뜰 수
+    있는 건 알려진 한계, 전체 리더보드처럼 별도 자격 기준을 두려면 추후 확장).
+  - 렌더를 `grid grid-cols-3 gap-2` 3열 그리드로 변경 — `LEADER_CATEGORIES` 배열을
+    요청한 배치 순서(득점→리바운드→어시스트→스틸→블락→야투율→3점시도→3점성공률→턴오버)로
+    그대로 두면 grid가 자동으로 3행×3열로 배치.
+  - 각 카테고리 칸: 헤더(카테고리명) + 순위 1~3위 각각 순위/팀뱃지/이름/수치 한 줄.
+
+**동작 방식**: 각 행 클릭 시 해당 선수 프로필로 이동, "전체보기"는 전체 리더보드로 이동
+(기존과 동일).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `LEADER_CATEGORIES`를 5개 항목(PTS/REB/AST/STL/BLK)으로, 렌더를
+`divide-y` 단일 컬럼 리스트(각 카테고리 1행)로 되돌리면 됨. `LeaderCategoryDef`/`pctFmt`/
+`avgFmt`/`LEADERS_PER_CATEGORY` 정의도 함께 제거.
+
+---
+
+## 2026-09-04 — 홈 화면 순위 테이블에 플레이오프/플레이인 틴트 + 플레이인 설정별 구분선
+
+**배경**: 사용자 요청 — 순위 테이블에서 플레이오프 직행권 팀에 초록 틴트 스케일, 플레이인권
+팀에 주황 틴트 스케일을 적용하고, 리그 설정의 플레이인 토너먼트 활성화 여부에 따라
+구분선도 달라지게.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`
+  - `tintStyle(rgb, indexInGroup, groupSize)` 헬퍼 추가 — 그룹 내 1위(가장 진하게, alpha
+    0.22) → 그룹 마지막(가장 옅게, alpha 0.06) 선형 보간한 `rgba()` 배경색을 반환. Tailwind의
+    `bg-opacity`/컬러 유틸은 값이 몇 단계로 끊겨 있어 연속적인 스케일을 못 만들어 인라인
+    style로 계산.
+  - `autoClinchCount` 계산 로직을 `computePlayoffOddsMap`(multiSeasonUtils.ts)와 동일한
+    공식으로 추가: 플레이인 활성화 시 `playoffCutoff - 2`(그 2자리는 플레이인 승자 몫),
+    비활성화 시 `playoffCutoff` 그대로. 플레이인 풀은 그 다음 고정 4자리(NBA 7~10시드 방식,
+    같은 파일의 실제 시딩 로직과 동일).
+  - 각 행: `i < autoClinchCount`면 초록(emerald, rgb 16,185,129) 틴트, 플레이인
+    활성화이고 `autoClinchCount <= i < autoClinchCount+4`면 주황(rgb 249,115,22) 틴트,
+    그 외 무색.
+  - 구분선(`border-b-2`)을 직행권 끝(`i === autoClinchCount-1`, 항상)과 플레이인권 끝
+    (`i === autoClinchCount+4-1`, 플레이인 활성화 시만) 두 곳에 — 비활성화면 직행권 끝
+    한 줄만.
+  - `playInEnabled` prop 추가, `HomeStandingsSection`에서 `league?.play_in_enabled ??
+    true`(MultiStandingsView.tsx와 동일 기본값)를 계산해 East/West/통합 3개 호출부 전부에
+    전달.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `tintStyle` 함수, `autoClinchCount`/`playInEndIdx` 계산, `rowTint`/
+`isCutoffRow` 변수와 `<tr>`의 `style={rowTint}`를 제거하고 `playoffCutoff - 1` 기준
+단일 구분선으로 되돌린 뒤, `playInEnabled` prop과 3개 호출부의 전달 인자를 제거.
+
+---
+
+## 2026-09-04 — 홈 화면 리그 순위 테이블 폰트 확대 (text-xs → text-sm)
+
+**배경**: 사용자 요청 — `HomeStandingsTable`(리그 순위) 전체 폰트가 text-xs였는데
+text-sm으로 확대.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`의 헤더(#/팀/W/L/PCT/GB)와
+바디 셀(순위/팀명/W/L/PCT/GB) 전부 `text-xs` → `text-sm`. 팀뱃지(`TeamBadge` size="xs")는
+범위 밖이라 그대로 둠.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `HomeStandingsTable` 내 `text-sm`을 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 일정 날짜 클릭 시 데이트피커(월간 달력) 표시
+
+**배경**: 사용자 요청 — `HomeGameGrid`의 날짜 라벨을 클릭하면 데이트피커가 뜨도록.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `GameDateStrip.tsx`의 날짜 드롭다운(월간 달력, 경기가
+  있는 날짜만 선택 가능한 `MonthCalendarPopover`)과 동일한 패턴을 그대로 재사용.
+  `isDateMenuOpen`/`menuPos`/`dateMenuRef`/`viewYM` 상태 + 바깥 클릭 시 닫기 effect +
+  메뉴 열릴 때 `activeDateKey`의 연/월로 초기화하는 effect 추가. 날짜 라벨을 `<span>`에서
+  클릭 가능한 `<button>`으로 교체하고 `getBoundingClientRect()` 기준 좌표로
+  `MonthCalendarPopover`를 띄운다. `useRef`, `MonthCalendarPopover` import 추가.
+
+**동작 방식**:
+- 날짜 버튼 클릭 → 현재 보고 있는 달의 달력 팝오버가 버튼 바로 아래에 뜸(`position: fixed`
+  라 어디에 마운트되든 무관). 경기가 있는 날짜(`dateKeys`)만 선택 가능, 선택하면
+  `selectedDateKey`가 바뀌고 팝오버가 닫힘. 팝오버 바깥을 클릭하면 자동으로 닫힘.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 추가된 상태/effect 4개, `MonthCalendarPopover` 렌더 블록, `<button>`으로
+바뀐 날짜 라벨을 원래 `<span>`으로 되돌리고 관련 import(`useRef`, `MonthCalendarPopover`)
+제거.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 팀약어/점수 폰트 축소 (text-3xl → text-2xl)
+
+**배경**: 사용자 요청 — 팀약어/점수 폰트를 text-2xl로 축소(text-lg→text-3xl→text-2xl로
+여러 차례 조정된 값 중 최신).
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeGameCard`의 팀약어 span과 점수 span
+className을 `text-3xl` → `text-2xl`로 변경. 로고(`TeamBadge` size="xl", w-9 h-9)는 이번
+요청 범위 밖이라 그대로 둠(참고: text-2xl 기본 line-height는 2rem/h-8이라 h-9 로고와
+살짝 안 맞을 수 있음 — 필요하면 후속 조정).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 두 span의 `text-2xl`을 `text-3xl`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 플레이오프 라운드 라벨 형식 재설계
+
+**배경**: 사용자 요청 — 라운드 표시를 "동부/서부 + 1R/2R/CF + 시리즈전적(0-0)" 형식으로,
+파이널은 컨퍼런스 없이 "파이널 + 0-0"으로 표시.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — 기존 `computeRoundLabelMap`(라운드 번호만 담은
+  "1라운드"/"준결승"/"결승" 문자열 맵)을 `formatPlayoffRoundLabel()`로 교체.
+  - 라운드 판정 규칙은 그대로(마지막 라운드=파이널, 그 바로 전 라운드(전체 3라운드
+    이상일 때만)=CF, 나머지=`N`R).
+  - 시리즈 전적(`N-M`)은 `HomeGameGrid`가 이미 계산해둔 `revealedSeriesById`(플레이오프
+    스포일러 방지 게이팅까지 반영된 `computeRevealedSeries` 결과)의
+    `higherSeedWins`/`lowerSeedWins`를 그대로 사용 — 별도 재계산 없음.
+  - 컨퍼런스 라벨은 `series.conference`가 `'East'`→"동부", `'West'`→"서부", 그 외(`'BPL'`,
+    컨퍼런스 구분 없는 토너먼트 브라켓)면 생략.
+  - `HomeGameGrid`에서 `bracketSeries`(`league.bracket_data.series`) 변수를 별도로 뽑아
+    `revealedSeriesById` 계산과 `formatPlayoffRoundLabel` 호출 양쪽에 재사용.
+
+**예시**: 4라운드 브라켓(1R→2R→CF→파이널) 기준 — "동부 1R 2-1", "서부 2R 1-1",
+"동부 CF 3-2", "파이널 1-0"(컨퍼런스 표기 없음).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `formatPlayoffRoundLabel` 정의와 `HomeGameGrid`의 `bracketSeries` 변수를
+제거하고, 이전 `computeRoundLabelMap`(라운드 번호 문자열만 반환)과 `roundLabelMap`
+useMemo, 그 호출부(`roundLabel={...}`)로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 1행(상태/라운드) 폰트 확대
+
+**배경**: 사용자 요청 — 카드 1행(상태 라벨 "예정"/"LIVE"/"종료" + 플레이오프 라운드 라벨)
+폰트를 text-xs → text-sm으로 확대.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeGameCard`의 상태 라벨 span과 라운드
+라벨 span className을 `text-xs` → `text-sm`으로 변경.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 두 span의 `text-sm`을 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 내부 3행 간격 확대
+
+**배경**: 사용자 요청 — 카드 내 3개 행(상태/라운드, 원정팀, 홈팀) 사이 간격을 벌려달라는
+요청.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeGameCard` 최상위 `<button>`의
+`space-y-1.5` → `space-y-3`로 변경(패딩 `p-2.5`는 그대로).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: `space-y-3`을 `space-y-1.5`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 로고를 텍스트 높이와 맞는 정사각형으로 변경
+
+**배경**: 사용자 요청 — 경기 카드의 팀 로고(`TeamBadge`) 영역을 옆의 text-3xl 팀약어
+텍스트 높이와 같은 정사각형으로 맞춰달라는 요청. 기존 `TeamBadge` size 옵션(xs/sm/md/lg)은
+전부 폭이 높이보다 넓은 직사각형이라 정사각형 옵션 자체가 없었음.
+
+**변경 파일**:
+- `components/common/TeamBadge.tsx` — `size` 유니온에 `'xl'` 추가, `SIZE_CLASS.xl =
+  'w-9 h-9 text-sm'`(정사각형, text-3xl 기본 line-height 2.25rem=h-9와 동일), `LOGO_SIZE.xl
+  = 'lg'`(colorPrimary 없는 싱글플레이어 폴백 경로용, 멀티는 항상 컬러 배지라 실사용 안 됨).
+  기존 옵션(xs/sm/md/lg)은 값 변경 없이 그대로라 다른 화면(RosterView/PlayerDetailView/
+  newsFeedCards 등 기존 소비처) 영향 없음.
+- `pages/MultiSeasonPage.tsx` — `HomeGameCard`의 `TeamBadge` size를 `md`(w-11 h-7, 직사각형)
+  → `xl`(w-9 h-9, 정사각형)로 변경.
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상(다른 `TeamBadge` 소비처가
+`size` 유니온을 exhaustive하게 switch하는 곳 없음을 grep으로 확인 — 추가만 했으므로
+하위 호환).
+
+**롤백 방법**: `pages/MultiSeasonPage.tsx`의 `TeamBadge` size를 `md`로 되돌리고,
+`components/common/TeamBadge.tsx`에서 `'xl'` 관련 항목(유니온/SIZE_CLASS/LOGO_SIZE) 제거.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 텍스트 크기 재확대 (text-lg → text-3xl)
+
+**배경**: 사용자 요청 — 바로 이전에 text-lg로 키웠던 팀약어/점수 텍스트를 text-3xl로 한
+단계 더 확대.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` — `HomeGameCard`의 팀약어 span과 점수 span
+className을 `text-lg` → `text-3xl`로 변경(둘 다, font-black/schibsted-grotesk 등 나머지는
+그대로).
+
+**검증**: `npx tsc --noEmit`, `npx vite build` — 둘 다 정상.
+
+**롤백 방법**: 두 span의 `text-3xl`을 `text-lg`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 카드 디자인 변경 (정사각형·큰 폰트·4열)
+
+**배경**: 사용자 요청 — 홈 화면 경기 일정(`HomeGameCard`/`HomeGameGrid`) 카드 디자인 변경.
+구조([시간/종료]—[라운드] / [원정로고][팀약어]—[점수] / [홈로고][팀약어]—[점수])는 유지하되
+카드 폭을 정사각형 수준으로 줄이고 로고/팀약어/점수 폰트를 키워 한 줄에 4개씩 배치.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeGameCard`: `TeamBadge` 사이즈 `sm`→`md`, 팀 표시를 `team_name`(전체 이름) →
+    `team_abbr`(약어, `text-lg font-black`)로 교체. 점수는 `text-lg font-black
+    tabular-nums`에 `schibsted-grotesk` 클래스 추가 — `PlayerDetailView.tsx:2082`의
+    능력치 숫자와 동일한 폰트(`index.html`에 정의된 커스텀 구글 폰트). 능력치 전용
+    색상 스케일(`getAttrColor`)은 점수에 안 맞아 적용하지 않고 승/패 흰색·회색 구분만 유지.
+    카드 padding을 `p-3 space-y-2` → `p-2.5 space-y-1.5`로 줄여 더 컴팩트하게.
+  - 상단 상태 행에 플레이오프 라운드 라벨 추가(`roundLabel` prop, 정규시즌 경기는
+    undefined라 안 뜸) — `MultiScheduleView.tsx`의 로컬 함수 `computeRoundLabelMap`과
+    동일 규칙을 그대로 복제(그 파일이 export하지 않아서 가져다 쓸 수 없음, 이미
+    `TournamentBracketView.tsx`에도 같은 규칙의 별도 구현이 있어 새삼스러운 중복은 아님).
+  - `HomeGameGrid`의 카드 그리드를 `grid-cols-2 gap-3` → `grid-cols-4 gap-2`로 변경(한
+    줄에 4개).
+
+**동작 방식**:
+- `HomeGameCard`는 우측 "내 팀 최근 경기"(`HomeMyTeamRecentGameSection`)에서도 재사용되는
+  컴포넌트라 그쪽 카드도 같은 폰트/레이아웃으로 함께 바뀜(그쪽은 `roundLabel`을 안 넘겨서
+  라운드 표시는 안 뜸 — 요청 범위 밖이라 그대로 둠).
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeGameCard`의 `TeamBadge` size를 `sm`으로, 팀 표시를 `team_name`/
+`text-sm font-bold`로, 점수를 `schibsted-grotesk` 없는 `text-sm tabular-nums`로 되돌리고,
+`roundLabel` prop과 상단 라운드 span, `computeRoundLabelMap` 함수, `HomeGameGrid`의
+`grid-cols-4 gap-2`를 `grid-cols-2 gap-3`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 홈 화면 경기 일정이 날짜가 지나도 결과가 자동 갱신 안 되는 버그 수정
+
+**배경**: 사용자 리포트 — 홈 > 경기일정(`HomeGameGrid`)에서 날짜가 지나도 경기 결과가
+자동으로 안 바뀜. "쿼리 때문 아니냐"는 질문을 받아 조사한 결과, 이번엔 최근에 고친
+`league_events`(react-query + staleTime:Infinity) 케이스와는 원인이 다르다 —
+`schedule`(`hooks/useMultiGameData.ts`)은 애초에 react-query가 아니라 `games` 테이블
+Realtime 구독 하나로만 최신 상태를 유지하는 순수 `useState`다. 구독 자체는 정상 동작하지만
+(경기 결과가 바뀌면 `postgres_changes` 이벤트로 `loadSchedule()` 재조회), 소켓이 잠깐
+끊겼다 재연결되는 구간(브라우저 탭 백그라운드, 네트워크 순단 등)에 발생한 `games` UPDATE는
+그 채널로 통지받을 방법이 없어 `schedule`이 그 시점 상태로 멈춰버릴 수 있었다 — 결과적으로
+증상은 비슷하지만("자동 갱신 안 됨") 메커니즘은 다른, 같은 계열의 "실시간 구독 재연결
+공백" 버그.
+
+**변경 파일**:
+- `hooks/useMultiGameData.ts` — `games` 테이블 realtime 채널의 `.subscribe()`에 상태
+  콜백 추가: `status === 'SUBSCRIBED'`일 때마다(재연결 포함) `refetch()`를 걸어 그 사이
+  놓친 갱신을 흡수. 최초 연결 시에도 한 번 더 불리지만(`init()`이 이미 로드한 직후라
+  중복) 300ms 디바운스와 맞물려 비용은 무시할 수준.
+
+**검증**: `npx tsc --noEmit` — 에러 없음. `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `.subscribe((status) => { if (status === 'SUBSCRIBED') refetch(); })`를
+`.subscribe()`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 11단계: "내 팀 최근 경기" 아래에 "다음 5경기" 일정 섹션 추가
+
+**배경**: 사용자 요청 — 원래 계획했던 9개 영역 외 추가 요청. 우측 "내 팀 최근 경기" 바로
+아래에 다음 5경기 일정을 보여주는 섹션 추가.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyUpcomingGamesSection` 추가(`HomeMyTeamRecentGameSection`
+  바로 아래에 배치). `HomeMyTeamRecentGameSection`과 반대 방향 필터(`getGameDisplayState`가
+  `'scheduled'`인, 즉 아직 시작 안 한 경기만) + 오름차순 정렬로 상위 5개만 추출. 스코어가
+  없는 예정 경기라 기존 `HomeGameCard`(팀뱃지+스코어 카드)는 안 맞아서, 날짜/시간 위주의
+  더 가벼운 리스트 행으로 새로 작성 — `MultiScheduleView.tsx`가 이미 쓰는 날짜/시간
+  포맷터(`fmtDateShort`/`fmtTime`, `multiScheduleUtils.ts`)를 그대로 재사용.
+
+**동작 방식**:
+- 각 행: 날짜(M/D) · vs/@ 표시 · 상대팀 뱃지+이름 · 시간(HH:MM). 클릭 시 해당 경기 화면
+  으로 이동(아직 시작 전이라 경기 화면은 대기 상태로 보일 수 있음 — GameDateStrip 등
+  기존 화면들과 동일한 동작).
+- 참가 중인 팀이 없거나 예정된 경기가 없으면 안내 문구로 폴백. "전체보기" 클릭 시
+  `/season/schedule`로 이동.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeMyUpcomingGamesSection` 정의와 `MultiSeasonPage`의
+`<HomeMyUpcomingGamesSection />` 호출줄, import 추가분(`fmtDateShort`, `fmtTime`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 10단계: "⑨ 내 팀 부상자 현황" 추가 (홈 화면 개편 9개 영역 전부 완료)
+
+**배경**: 사용자 요청 — 우측 로스터 요약 아래에 내 팀 부상자 현황 추가. 이걸로 처음
+계획했던 9개 영역(① 경기 카드 그리드 ② 리그 부상 소식 ③ 트랜잭션 소식 ④ 리그 순위
+⑤ 내 팀 최근 경기 ⑥ 리그 최신 뉴스 ⑦ 내 로스터 요약 ⑧ 리그 리더 ⑨ 내 팀 부상자 현황)이
+전부 구현 완료됨.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyInjuriesSection` 추가(`HomeMyRosterSummarySection`
+  바로 아래, 우측 컬럼 마지막). 좌측 ②번(리그 부상 소식)이 "발생 사건"(league_events의
+  injury 타입, GRADE3 이상만) 위주라면 이건 "지금 이 순간 활성 상태인" 부상만 보여준다 —
+  로스터/전술 화면이 부상 배지 판정에 쓰는 것과 동일한 `room_player_state` →
+  `buildActiveInjurySeverityMap()` 로직을 그대로 재사용(`server/src/simRunner.ts §2.5`
+  오버레이와 동일 기준 — 화면마다 판정이 어긋나지 않도록 이미 공용 유틸로 뽑혀 있던 것).
+  `useLeagueRawStats`(select로 `raw.playerInjuryRows`만 뽑아 내 팀 로스터 id로 필터)를
+  다른 홈 위젯(리더/로스터 요약)과 같은 `allRosterIds` queryKey로 호출해 캐시를 공유,
+  추가 네트워크 비용 없음. 선수 이름은 `useMultiSearchData().poolPlayers`에서 조회
+  (트랜잭션/부상 소식 섹션과 동일한 이유 — 방출 등으로 로스터에서 빠질 수 있는 경우까지
+  커버).
+
+**동작 방식**:
+- 활성 부상이 있는 선수만, 복귀 예정일 오름차순(가장 빨리 복귀하는 선수 먼저)으로 정렬.
+- 각 행: `InjuryStatusBadge` + 선수명 + 부상명·기간·복귀일(`formatReturnDateSuffix`, 로스터
+  화면과 동일 포맷). 행 클릭 시 선수 프로필, "전체보기" 클릭 시 `/season/roster`로 이동.
+- 참가 중인 팀이 없거나 부상자가 없으면 안내 문구로 폴백.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeMyInjuriesSection` 정의와 `MultiSeasonPage`의
+`<HomeMyInjuriesSection />` 호출줄, 관련 import(`buildActiveInjurySeverityMap`,
+`formatReturnDateSuffix`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 9단계: "내 팀 최근 경기" 카드 폭 수정 + "⑦ 내 로스터 요약" 추가
+
+**배경**: 사용자 요청 — (1) 우측 "내 팀 최근 경기" 카드가 컬럼 폭을 꽉 채우지 않는 버그
+수정, (2) 그 아래에 "내 로스터 요약" 추가.
+
+**원인(1)**: `HomeGameCard`(8단계에서 만든 컴포넌트)의 최상위 엘리먼트가 `<button>`인데
+`w-full` 클래스가 없었음 — 좌측 ①번 그리드(`grid grid-cols-2`) 안에서는 그리드 아이템
+기본 `stretch` 정렬 덕에 우연히 폭이 꽉 차 보였지만, 우측 컬럼처럼 그리드가 아닌 일반
+블록 컨테이너 안에 단독으로 놓이면 `<button>`의 기본 표시 방식(내용 크기만큼만 차지)이
+그대로 드러나 좁게 보였다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx`
+  - `HomeGameCard`의 `<button>` className에 `w-full` 추가(좌측 그리드 안에서는 원래도
+    꽉 찬 것처럼 보였으니 회귀 없음, 우측 단독 배치에서만 실질적으로 폭이 변함).
+  - `HomeMyRosterSummarySection` 추가(`HomeMyTeamRecentGameSection` 바로 아래에 배치).
+    `HomeLeagueLeadersSection`과 동일한 원본 fetch(`useLeagueRawStats` + `buildLeagueTeams`,
+    같은 queryKey라 캐시 공유)로 내 팀(`myTeamId`)의 로스터를 가져와 OVR 내림차순 상위
+    8명만 표시(전체 15명은 요약 위젯으로 과함 — 스타팅 5 + 벤치 주력 정도).
+
+**동작 방식**:
+- 각 행: `OvrBadge` + 포지션 + 이름 + PTS/REB/AST(경기당 평균, `stats.g`로 나눈 값) 한 줄.
+- 행 클릭 시 선수 프로필, "전체보기" 클릭 시 `/season/roster`로 이동.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeGameCard` className에서 `w-full` 제거, `HomeMyRosterSummarySection`
+정의와 `MultiSeasonPage`의 `<HomeMyRosterSummarySection />` 호출줄, `OvrBadge` import 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 8단계: 우측 컬럼 첫 영역 "⑤ 내 팀 최근 경기" 추가
+
+**배경**: 사용자 요청 — 우측(내 팀 소식) 컬럼에 내 팀의 가장 최근 경기 결과 영역 추가.
+지금까지 비어있던 우측 컬럼의 첫 영역.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyTeamRecentGameSection` 추가, 우측 컬럼에 배치.
+  좌측 ①번 경기 카드 그리드에서 이미 만든 `HomeGameCard`(팀뱃지+이름+스코어, 라이브
+  스코어 폴링 포함)를 그대로 재사용 — 새 카드 컴포넌트를 만들지 않고, `schedule`에서
+  내 팀(`myTeamId`)이 낀 경기 중 아직 시작 전(`scheduled`)이 아닌 것만 걸러 가장 최근
+  (`scheduledAt` 내림차순) 하나만 뽑아 그 카드 하나만 렌더.
+
+**동작 방식**:
+- 그 경기가 지금 `live` 상태일 때만 5초 간격으로 실시간 스코어를 폴링(`HomeGameGrid`와
+  동일한 패턴), `final`이면 폴링 없이 확정 스코어만 표시.
+- 카드 클릭 시 해당 경기 상세 화면으로 이동. 참가 중인 팀이 없거나 아직 치른 경기가
+  없으면 안내 문구로 폴백.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeMyTeamRecentGameSection` 정의와 `MultiSeasonPage` 우측 컬럼의
+`<HomeMyTeamRecentGameSection />` 호출줄 제거(다른 import 추가 없이 기존 것만 재사용해
+롤백 시 import 정리 불필요).
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 7단계: 트랜잭션 소식 하단에 "② 리그 부상 소식" 추가 (좌측 컬럼 완료)
+
+**배경**: 사용자 요청 — 홈 화면 좌측 트랜잭션 소식 아래에 부상 소식란 추가. 이걸로 좌측
+컬럼(① 경기 카드 그리드 ② 부상 소식 ③ 트랜잭션 소식 ④ 리그 순위 ⑥ 리그 최신 뉴스
+⑧ 리그 리더) 6개 영역이 전부 완성됨.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeInjurySection` 추가(`HomeTransactionsSection` 바로
+  아래에 배치). `InjuryStatusBadge`/`SEVERITY_TEXT_COLOR`(`components/common/
+  InjuryStatusBadge.tsx`) import 추가 — 로스터/호버카드가 이미 쓰는 부상 등급 배지를
+  그대로 재사용해 등급별 색상이 화면마다 어긋나지 않게 함.
+
+**동작 방식**:
+- `useLeagueNewsFeed(room?.id, myTeamId, { types: ['injury'] })`로 `league_events`의
+  `injury` 타입만 필터링(트랜잭션 섹션의 `trade` 필터와 동일 패턴) — 서버가 GRADE3 이상만
+  발행하므로 항상 유의미한 부상만 표시됨.
+  등급 배지(InjuryStatusBadge) + 팀뱃지 + 선수명 + 부상명·예상 결장 기간 한 줄로 표시,
+  클릭 시 해당 선수 프로필로 이동(부상 뉴스는 한 선수에 관한 것이라 팀 화면보다 선수
+  프로필이 더 적절하다고 판단 — 다른 섹션들과 달리 전체보기 대신 개별 행 이동 대상이 다름).
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeInjurySection` 정의와 `MultiSeasonPage`의 `<HomeInjurySection />`
+호출줄, 관련 import(`InjuryStatusBadge`, `SEVERITY_TEXT_COLOR`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 6단계: 최신 뉴스 하단에 "③ 트랜잭션 소식" 추가
+
+**배경**: 사용자 요청 — 홈 화면 좌측 최신 뉴스 아래에 트랜잭션(트레이드/FA/웨이버) 소식란
+추가. `league_events`에는 `trade` 타입만 있고 FA서명/웨이버는 별도 이벤트가 없어(오직
+`league_transactions` 테이블에만 기록 — `services/multi/playerHistoryService.ts`가 선수
+프로필 "선수 이동 내역" 위젯용으로 이미 쓰고 있던 원본과 동일 테이블) 두 원본을 합쳐야
+했다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeTransactionsSection` 추가(`HomeLatestNewsSection`
+  바로 아래에 배치).
+  - 트레이드: `useLeagueNewsFeed(room?.id, myTeamId, { types: ['trade'] })`로
+    `league_events`에서 조회 — 이미 파싱된 `TradeDetail`(teamA/teamB/aOut/bOut에 선수
+    이름까지 포함)이라 별도 이름 조회 불필요.
+  - FA서명/웨이버: `league_transactions`를 `room_id`로 직접 쿼리(신규 `useQuery`,
+    `RawLeagueTransactionRow` 타입) — `player_id`만 있어 이름 조회가 필요한데, 방출된
+    선수는 로스터에서 이미 빠져 있어 `useLeagueRawStats`의 `allRosterIds`(현재 로스터
+    기준)로는 찾을 수 없다. 대신 로스터 여부와 무관하게 리그 전체 드래프트풀을 담고
+    있는 `useMultiSearchData().poolPlayers`에서 이름을 찾도록 함(FA 화면 등과 동일한
+    이 훅의 캐시를 그대로 재사용).
+  - 두 원본을 시각(`createdAt`/`created_at`) 기준 내림차순 병합 후 8건만 표시.
+
+**동작 방식**:
+- 트레이드 행은 "[A팀] 획득: 선수들 · [B팀] 획득: 선수들"로 방향을 명확히 표기(aOut은
+  teamA가 내보낸 선수라 teamB가 획득 — TradePlayerTable과 동일한 방향 규칙).
+- FA서명은 UserPlus(초록)/웨이버는 UserMinus(빨강) 아이콘으로 구분.
+- 항목/전체보기 클릭 시 모두 `/season/transaction`(프론트오피스 화면)으로 이동.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeTransactionsSection`/`RawLeagueTransactionRow`/`HomeTxnItem`/
+`HOME_TRANSACTIONS_LIMIT` 정의와 `MultiSeasonPage`의 `<HomeTransactionsSection />`
+호출줄, 관련 import(`useQuery`, `ArrowLeftRight`, `UserPlus`, `UserMinus`,
+`useMultiSearchData`, `supabase`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 5단계: 리그 리더 하단에 "⑥ 리그 최신 뉴스" 추가
+
+**배경**: 사용자 요청 — 홈 화면 좌측 리그 리더 아래에 최신 뉴스란 추가. 뉴스 화면
+(`MultiNewsFeedView.tsx`)이 이미 쓰는 `useLeagueNewsFeed()`를 필터 없이(기본값 = 전체
+기간·전체 타입·최신순, 뉴스 화면의 기본 진입 상태와 동일) 그대로 재사용해 최신 6건만
+잘라 보여준다. 일반 경기 결과(`game_result`, score<15)는 이 훅의 기본 쿼리가 이미 걸러내
+(`GAME_RESULT_MIN_SCORE`) 홈 화면 ①번 경기 카드 그리드와 중복되지 않는다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeLatestNewsSection` 추가(`HomeLeagueLeadersSection`
+  바로 아래에 배치). 항목 렌더는 `newsFeedCards.tsx`의 `LegacyCard`(아이콘+헤드라인+
+  상대시각 한 줄 — "옛 이벤트 폴백"용으로 만들어졌지만 실제로는 payload 구조와 무관하게
+  어떤 이벤트든 렌더 가능한 범용 컴포넌트라 export만 돼 있음)를 그대로 재사용, 새 스타일을
+  만들지 않았다.
+
+**동작 방식**:
+- 각 행/헤더의 "전체보기" 클릭 시 모두 `/season/news`(뉴스 화면)로 이동 — 특정 기사로
+  바로 딥링크하는 기능은 아직 없음(이전 대화에서 "기사 ID에 날짜를 박아 넣으면 딥링크가
+  빨라지나" 논의만 했고 구현 보류 상태와 동일).
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공
+(newsFeedCards.tsx → pages/ 방향 새 import에도 순환 임포트 경고 없음).
+
+**롤백 방법**: `HomeLatestNewsSection` 정의와 `MultiSeasonPage`의
+`<HomeLatestNewsSection />` 호출줄, 관련 import(`useLeagueNewsFeed`, `LegacyCard`, `Loader2`)
+제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 4단계: 순위표 하단에 "⑧ 리그 리더" 추가
+
+**배경**: 사용자 요청 — 홈 화면 좌측 순위표 바로 아래에 리그 리더(카테고리별 1위 선수)
+추가. `MultiLeaderboardView.tsx`와 동일한 원본 fetch(`useLeagueRawStats` +
+`buildLeagueTeams`)를 재사용 — queryKey(`room?.id` + `allRosterIds`)가 같아서 로스터/
+리더보드 화면이 이미 로드해둔 캐시를 그대로 재사용하거나 반대로 이 화면이 먼저 로드하면
+그 화면들이 캐시를 재사용한다(`useLeagueRawStats.ts` 자체 주석이 이미 "홈 화면"을 캐시
+공유 대상으로 언급하고 있었음). 전체 리더보드(정렬/필터/고급 스탯)는 홈 위젯으로 쓰기엔
+과해서, PTS/REB/AST/STL/BLK 5개 기본 카운팅 스탯의 1위만 직접 계산하는 압축판을 새로
+작성했다 — `useLeaderboardData`는 카테고리 하나만 정렬해 돌려주는 구조라 5개 카테고리를
+전부 뽑으려면 5번 호출(중복 계산)해야 해서 재사용하지 않았다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `LEADER_CATEGORIES` 상수(PTS/REB/AST/STL/BLK)와
+  `HomeLeagueLeadersSection` 컴포넌트 추가(`HomeStandingsSection` 바로 아래에 배치).
+  `useLeagueRawStats`+`buildLeagueTeams`로 만든 `Team[]`을 평탄화해 카테고리별
+  `stats[key]/stats.g`(경기당 평균) 최댓값 선수를 직접 순회로 계산.
+
+**동작 방식**:
+- 각 행 클릭 시 해당 선수 프로필로 이동, "전체보기" 클릭 시 `/leaderboard`로 이동.
+- 출전 경기 수(`stats.g`) 0인 선수는 집계에서 제외.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `LEADER_CATEGORIES`/`HomeLeagueLeadersSection` 정의와 `MultiSeasonPage`의
+`<HomeLeagueLeadersSection />` 호출줄, 관련 import(`useLeagueRawStats`, `usePlayerShortCodes`,
+`buildLeagueTeams`, `PlayerStats`, `useCallback`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 3단계: 좌측 경기 그리드 하단에 "④ 리그 순위" 추가
+
+**배경**: 사용자 요청 — 홈 화면 좌측 경기 카드 그리드 바로 아래에 리그 순위표 추가.
+`MultiStandingsView.tsx`의 `LeagueStandingsTable`(정렬/PO%/SOS/디비전 전환 등 풀 기능)은
+홈 화면 위젯으로 쓰기엔 과해서, 컨퍼런스별 W/L/PCT/GB만 보여주는 압축판을 새로 만들고
+승/패/승률 계산은 기존 공용 유틸(`computeMultiStandingsStats`, multiSeasonUtils.ts)을 그대로
+재사용해 전체 순위표 화면과 숫자가 어긋나지 않게 했다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`(동/서부 각각 렌더할 압축 테이블,
+  순위/팀뱃지/W/L/PCT/GB, 플레이오프 컷라인에 굵은 구분선)과 `HomeStandingsSection`(동/서부
+  2열 배치 + "전체보기" 링크, 컨퍼런스 구분이 없는 리그는 통합 테이블로 폴백) 추가,
+  `HomeGameGrid` 바로 아래에 배치. `fmtPct()` 헬퍼(`MultiStandingsView.tsx`와 동일한
+  ".650" 표기) 추가.
+
+**동작 방식**:
+- 팀 클릭 시 `?rteam=` 쿼리로 로스터 화면 이동(다른 멀티 화면들과 동일한 팀 이동 경로),
+  "전체보기" 클릭 시 `/standings`로 이동.
+- PO%(플레이오프 진출확률)는 포함하지 않음(몬테카를로 계산 필요 — 필요하면 추후 추가 가능,
+  `computePlayoffOddsMap` 재사용 가능).
+
+**검증**: `npx tsc --noEmit` — 에러 없음(회귀 없음). `npx vite build` — 정상 빌드 성공.
+
+**롤백 방법**: `HomeStandingsTable`/`HomeStandingsSection` 정의와 `MultiSeasonPage`의
+`<HomeStandingsSection />` 호출줄, 관련 import(`computeMultiStandingsStats`,
+`MultiStandingsRecord`, `fmtPct`) 제거.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면 2단계: 좌측 "① 일자별 경기 카드 그리드" 구현
+
+**배경**: 홈 화면 개편 9개 영역 중 1번(일자별 모든 경기 카드 그리드)을 먼저 구현. 상단에
+항상 떠 있는 `GameDateStrip`(MultiSeasonLayout, 가로 스크롤 얇은 스트립)과 데이터/판정
+로직(날짜 계산, 플레이오프 시리즈 스포일러 방지, 라이브 스코어 폴링)은 동일하게 가져가되,
+홈 화면 안에서는 그 날의 경기 전부를 큼직한 카드 그리드로 보여준다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeGameGrid`(날짜 스텝퍼 + 카드 그리드 컨테이너)와
+  `HomeGameCard`(팀뱃지+이름+스코어 2행 카드) 두 컴포넌트 추가, 좌측 컬럼에 배치.
+  - 날짜 계산: `groupByDay`/`kstDateKey`/`findCurrentVirtualGame`(multiScheduleUtils.ts),
+    플레이오프 스포일러 방지: `computeRevealedSeries`/`resolveRealAt`(multiGameReveal.ts) —
+    `GameDateStrip.tsx`가 쓰는 것과 동일한 함수를 그대로 재사용(로직 중복 구현 아님, 계산
+    "호출부"만 각자 따로 둠 — 두 번째 사용처라 아직 공용 훅으로 뽑진 않음, 세 번째
+    사용처가 생기면 추출 고려).
+  - 날짜 이동 UI는 `MultiNewsFeedView.tsx`의 ◀ 날짜 ▶ 스텝퍼와 동일 패턴(월간 달력
+    드롭다운 없이 화살표만 — 경기가 있는 날짜 사이만 이동).
+  - 라이브 스코어: `fetchLiveGamesSummary`로 5초 폴링(GameDateStrip과 동일 주기).
+  - 카드 클릭 시 `/multi/leagues/:leagueId/season/game/:gameId`로 이동.
+
+**검증**: `npx tsc --noEmit` — 에러 없음(레포 기존 무관 에러 63개는 그대로, 회귀 없음).
+`npx vite build` — 정상 빌드 성공(순환 임포트 등 CLAUDE.md 경고 대상 없음). 로그인이
+필요한 실제 멀티플레이어 브라우저 클릭 테스트는 인증 정보가 없어 수행하지 못함 — 사용자
+확인 요망.
+
+**롤백 방법**: 이 커밋 이전(`MultiSeasonPage.tsx`가 2단 컬럼 뼈대만 있던 상태)으로 파일을
+되돌리면 됨.
+
+---
+
+## 2026-09-04 — 멀티 홈 화면(MultiSeasonPage) 전면 초기화 — 1단계: 좌/우 2단 뼈대만
+
+**배경**: 사용자가 홈 화면(멀티 시즌 인덱스 라우트, `/multi/leagues/:leagueId/season`)을
+개편하고 싶다며 최종 목표 9개 영역(①일자별 경기 카드 그리드 ②리그 부상 소식 ③리그
+트랜잭션 소식 ④리그 순위 ⑤내 팀 최근 경기 ⑥리그 최신 뉴스 ⑦내 팀 로스터 요약 ⑧리그
+리더 ⑨내 팀 부상자 현황)을 제시하고, 좌측에 리그 소식(①②③④⑥⑧)/우측에 내 팀 소식
+(⑤⑦⑨)을 배치하기로 함. 1단계로 "우선 기존 홈 화면 내용을 전부 지우고 컬럼만 좌/우
+2단으로 나눠보자"는 요청 — 기존 구현(점보트론/라이브 경기 박스스코어 실시간 재구성/
+파워랭킹 카드 등 989줄)을 전부 걷어내고 빈 2단 컬럼 뼈대만 남김.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — 기존 989줄 구현(라이브 박스스코어 재구성 `buildLiveBox`/
+  `getOnCourtIds`, 날짜 포맷터, 점보트론/스탠딩/헤드라인 렌더링 등) 전체 삭제. `grid
+  grid-cols-2` 2단 컬럼 + "리그 소식"/"내 팀 소식" 헤더만 있는 최소 컴포넌트로 교체.
+
+**Before**: 커밋 `5510ba5`의 `pages/MultiSeasonPage.tsx` 전체(989줄) — `git show
+5510ba5:pages/MultiSeasonPage.tsx`로 전문 확인 가능.
+
+**After**:
+```tsx
+const MultiSeasonPage: React.FC = () => {
+    return (
+        <div className="grid grid-cols-2 gap-4 p-4 min-h-full">
+            <div className="space-y-4">
+                <h2 className="text-sm font-black text-slate-500 uppercase tracking-wide">리그 소식</h2>
+            </div>
+            <div className="space-y-4">
+                <h2 className="text-sm font-black text-slate-500 uppercase tracking-wide">내 팀 소식</h2>
+            </div>
+        </div>
+    );
+};
+```
+
+**검증**: `npx tsc --noEmit` — 이 파일 관련 에러 없음(다른 63개 에러는 전부 이 변경과
+무관한 기존 파일들의 사전 존재 에러, `App.tsx`가 기본 export만 import하는 것도 확인해
+다른 파일에서 이 파일의 헬퍼 함수/서브컴포넌트를 참조하는 곳이 없음을 확인).
+
+**롤백 방법**: `git show 5510ba5:pages/MultiSeasonPage.tsx > pages/MultiSeasonPage.tsx`로
+이전 구현 전체 복원 가능(라이브 경기 점보트론 등 필요하면 여기서 재사용).
+
+**다음 단계**: 좌측 컬럼에 ①④⑥⑧, 우측 컬럼에 ⑤⑦⑨ 순으로 하나씩 채워 넣을 예정(사용자
+확인 후 순서대로 진행).
+
+---
+
+## 2026-09-04 — "선수 이동 내역" 위젯 FA/웨이브 라벨·표기 조정
+
+**배경**: 사용자 요청 — "웨이브"→"웨이버"로 오타 교정, "FA"→"자유 계약"으로 한글화, FA서명 항목의 `— → 팀약어` 표기(fromTeamAbbr가 null이라 대시가 찍힘)를 팀약어만 남기도록 단순화.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — `TX_TYPE_LABEL`의 `fa`/`waive` 라벨 변경, FA 타입 렌더링 분기 추가(대시+화살표 없이 `toTeamAbbr`만 출력).
+
+**Before**:
+```tsx
+const TX_TYPE_LABEL: Record<string, string> = {
+    draft: '드래프트', trade: '트레이드', fa: 'FA', waive: '웨이브',
+};
+...
+{entry.type === 'draft' && entry.draftRound != null && entry.draftPick != null
+    ? `${entry.draftRound}R ${toOrdinal(entry.draftPick)} ${entry.toTeamAbbr}`
+    : `${entry.fromTeamAbbr ?? '—'} → ${entry.toTeamAbbr}`}
+```
+
+**After**:
+```tsx
+const TX_TYPE_LABEL: Record<string, string> = {
+    draft: '드래프트', trade: '트레이드', fa: '자유 계약', waive: '웨이버',
+};
+...
+{entry.type === 'draft' && entry.draftRound != null && entry.draftPick != null
+    ? `${entry.draftRound}R ${toOrdinal(entry.draftPick)} ${entry.toTeamAbbr}`
+    : entry.type === 'fa'
+    ? entry.toTeamAbbr
+    : `${entry.fromTeamAbbr ?? '—'} → ${entry.toTeamAbbr}`}
+```
+
+**검증**: `npx tsc --noEmit` — 해당 파일 에러 없음.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 선수 프로필 부상 이력 날짜 포맷을 yy/mm/dd로 통일
+
+**배경**: 멀티 세션 선수 프로필 화면의 "부상 이력" 위젯에서 각 항목 왼쪽의 날짜가 `mm/dd`로만 표시되어 연도 정보가 없었음. 같은 위젯 우측의 복귀예정일(`formatReturnDateSuffix`)은 이미 `yy/mm/dd` 형식(`~ 26/03/15`)을 쓰고 있어 좌우 포맷이 불일치했음 — 사용자 요청으로 좌측 날짜도 `yy/mm/dd`로 맞춤. `PlayerDetailView.tsx`는 싱글/멀티 공용 컴포넌트라 싱글 화면에도 동일하게 적용됨.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 부상 이력 리스트 렌더링부(`entry.date` 포맷 로직)
+
+**Before**:
+```ts
+const dateStr = entry.date.slice(5).replace('-', '/');
+```
+
+**After**:
+```ts
+const [entryY, entryM, entryD] = entry.date.split('-');
+const dateStr = `${entryY.slice(2)}/${entryM}/${entryD}`;
+```
+
+**검증**: 로직만 확인 (entry.date는 `YYYY-MM-DD` 저장 포맷 — services/simulation/userGameService.ts, batchSeasonService.ts 등에서 push하는 값 형식 기준)
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨
+
+---
+
+## 2026-09-04 — FA서명/방출/트레이드응답의 "인게임 날짜"가 실제 날짜로 찍히던 문제 (리그레션 복구 + FA/웨이브 신규 적용)
+
+**배경**: "선수 이동 내역" 캐시 버그(바로 아래 항목)를 고친 뒤에도 사용자가 "웨이버/FA는 날짜가 현실 날짜로 찍힌다"고 재차 리포트. 조사 결과 원인은 두 가지가 겹쳐 있었음:
+
+1. **트레이드 쪽 리그레션**: `migrations/trade_virtual_sim_date_fix.sql`(2026-09-02 10:35)이 `create_trade_offer()`/`respond_trade_offer()` 둘 다 `rooms.sim_date`(실제 KST 방송 시각 — `server/src/scheduler.ts`의 `advanceSimDates`가 `kstDateFromMs(scheduled_at)`로 채움, 가상 NBA 캘린더 날짜가 아님) 대신 `current_virtual_date(room_id)`(games.game_date 기반 진짜 가상 캘린더 날짜)를 쓰도록 고쳤었는데, 46분 뒤 `migrations/add_sim_date_resolution_to_trade_offers.sql`(11:21)이 `sim_date_at_resolution` 컬럼을 추가하며 `respond_trade_offer()`를 다시 `CREATE OR REPLACE`하면서 `v_sim_date` 계산을 예전 방식(`rooms.sim_date` 직접 읽기)으로 실수로 되돌림. `create_trade_offer()`만 신버전으로 남아 있었던 이유가 이것.
+2. **FA/웨이브 쪽은 애초부터 신버전을 모름**: 오늘 오전 `sign_free_agent()`/`release_player()`를 짤 때(`add_league_transactions_log.sql`) `current_virtual_date()`의 존재를 모르고 트레이드의 구버전(`rooms.sim_date` 직접 읽기)을 그대로 참고해서 만듦.
+
+`rooms.sim_date`가 실제로 오늘 날짜와 같아 보였던 이유: 이 리그가 다음 방송 예정 경기 시각이 마침 오늘(2026-09-04)이라, `advanceSimDates`가 계산한 "실제 KST 방송일"이 우연히 현실 날짜와 일치했던 것 — `current_virtual_date()`로 재확인하니 실제 가상 캘린더 날짜는 `2026-12-18`이었음(전혀 다른 값).
+
+**변경 파일**:
+- `migrations/fix_sim_date_to_virtual_calendar_everywhere.sql` (신규, Supabase MCP로 적용 완료) — `respond_trade_offer()`(리그레션 복구), `sign_free_agent()`, `release_player()` 3개 함수의 `v_sim_date` 계산을 `current_virtual_date(room_id)` 호출로 통일. `current_virtual_date()` 자체는 재정의 없음(기존 함수 재사용).
+
+**Before** (`respond_trade_offer`/`sign_free_agent`/`release_player` 공통 패턴):
+```sql
+SELECT sim_date::date INTO v_sim_date FROM rooms WHERE id = v_team.room_id;
+```
+
+**After**:
+```sql
+v_sim_date := current_virtual_date(v_team.room_id);
+```
+
+**검증**: `select current_virtual_date('9b43a612-...'::uuid)` → `2026-12-18`(정상, `rooms.sim_date`의 `2026-09-04`와 다른 올바른 값). `select proname, pg_get_functiondef(oid) like '%current_virtual_date%' from pg_proc where proname in (...)` 4개 함수 전부 `true` 확인.
+
+**참고**: `create_trade_offer()`는 이미 정상이라 이번에 손대지 않음. `current_virtual_date(p_room_id)` 정의: "지금(now)과 `scheduled_at`이 가장 가까운 경기"의 `game_date`를 반환, 경기가 없는 방(시즌 시작 전 등)은 `rooms.sim_date::date`로 폴백.
+
+**롤백 방법**: 세 함수를 각각 `v_sim_date := current_virtual_date(...)` 대신 `SELECT sim_date::date INTO v_sim_date FROM rooms WHERE id = ...`로 되돌리면 됨(다만 트레이드는 그러면 다시 이번에 고친 리그레션이 재발하므로 권장하지 않음).
+
+---
+
+## 2026-09-04 — "선수 이동 내역" 위젯이 FA서명 후 반영 안 되는 캐시 버그 수정
+
+**배경**: 사용자 리포트 — 멀티리그 선수 프로필의 "선수 이동 내역" 위젯에서 방출(waive)은 기록이 뜨는데 FA서명은 안 뜬다고 함. `league_transactions` 테이블을 직접 조회해보니 두 타입 모두 정상 INSERT돼 있었음(백엔드는 문제 없음) — 원인은 프론트 캐시. 전역 QueryClient(`index.tsx`)가 `staleTime: Infinity`인데 `usePlayerTransactionHistory`가 이 기본값을 그대로 상속받고 있어서, FA/로스터 화면에서 서명·방출한 뒤 프로필 화면으로 돌아와도 캐시가 자동 갱신되지 않음. 사용자가 관찰한 "방출은 되고 서명은 안 됨" 현상은 실제로는 순서 문제 — 방출 테스트 때는 위젯을 캐시 없는 최초 상태로 봐서 정상 반영됐고, 그 직후 재서명 테스트 때는 이미 캐시된(waive만 있는) 결과가 그대로 남아있어 fa_sign이 반영 안 된 것으로 보임.
+
+**변경 파일**:
+- `hooks/usePlayerTransactionHistory.ts` — `useQuery` 옵션에 `staleTime: 0` 추가
+
+**Before**:
+```ts
+return useQuery<PlayerTransactionEntry[]>({
+    queryKey: ['playerTransactionHistory', roomId, playerId],
+    enabled: !!roomId && !!playerId,
+    queryFn: () => listPlayerTransactionHistory(roomId!, playerId!, leagueTeams),
+});
+```
+
+**After**:
+```ts
+return useQuery<PlayerTransactionEntry[]>({
+    queryKey: ['playerTransactionHistory', roomId, playerId],
+    enabled: !!roomId && !!playerId,
+    queryFn: () => listPlayerTransactionHistory(roomId!, playerId!, leagueTeams),
+    staleTime: 0,
+});
+```
+
+**검증**: `npx tsc --noEmit` — 관련 파일 에러 없음. Supabase에 더미 `league_transactions` 행을 INSERT→조회→삭제해 `type='fa_sign'`도 동일하게 정상 조회됨을 별도 확인(이전 세션, 이 수정과는 무관하게 백엔드가 정상이라는 근거).
+
+**참고**: `MultiFrontOfficeView.tsx`의 트레이드 히스토리는 같은 문제(staleTime: Infinity 상속)를 탭 진입 시 명시적 `refetch()` 호출로 우회하지만, 이 위젯은 조회가 가벼워서(room+player로 필터된 로그 몇 줄) `staleTime: 0`으로 마운트마다 다시 fetch하는 쪽을 택함. `league_transactions` 테이블 자체의 신설 내역은 이 문서의 "멀티리그 FA서명/방출 트랜잭션 로그(league_transactions) 신설" 항목 참고.
+
+**롤백 방법**: `staleTime: 0` 라인 제거.
+
+---
+
+## 2026-09-04 — 뉴스피드 호버 카드에 부상 정보 표시 (부상 서신 등)
+
+**배경**: 사용자 리포트 — 로스터 화면에서 부상 선수를 호버하면 부상 정보가 뜨는데, 뉴스
+피드(특히 부상 서신 본문)에서 같은 선수를 호버하면 안 뜸. 원인은 뉴스피드의
+`playerCardMap`이 `poolPlayers`(meta_players, 부상 컬럼 없음)로만 조립돼 있어
+`activeInjurySeverity` 등이 항상 `undefined`였던 것 — 로스터/전술/프론트오피스는 각자
+`room_player_state`를 조회해 `buildActiveInjurySeverityMap()`으로 병합하지만 뉴스피드엔
+그 병합 단계 자체가 없었음. `room_player_state`는 이미 player_id 단위 행이라(시즌 스탯처럼
+game_pbp를 스캔할 필요 없이) RPC 없이 선택된 이벤트의 선수 몇 명(1~4명)만 좁혀 조회하면
+충분 — `usePlayerSeasonStatsBatch`(시즌 스탯)가 이미 쓰는 "화면에 보이는 선수만" 패턴을
+그대로 재사용.
+
+**변경 파일**:
+- `hooks/usePlayerInjuryRowsBatch.ts` (신규) — `room_player_state`를 `roomId` +
+  `playerIds` 목록으로 좁혀 조회하는 얇은 훅. `usePlayerSeasonStatsBatch.ts`와 동일한
+  패턴(정렬된 id로 queryKey 안정화)이지만 RPC 없이 일반 select.
+- `components/common/PlayerHoverCard.tsx` — `mergeInjuryIntoPlayerCardMap()` 추가
+  (`mergeStatsIntoPlayerCardMap`과 동일한 불변 원칙). `ActiveInjuryStatus` 타입 import 추가.
+- `views/multi/season/MultiNewsFeedView.tsx` — `usePlayerInjuryRowsBatch(room?.id,
+  selectedEventPlayerIds)`로 부상 행 조회 → `buildActiveInjurySeverityMap(rows,
+  currentSimDate, room?.season_number, { schedule, getTeamId: id => rosterMap.get(id) })`로
+  활성 부상 맵 생성 → `playerCardMap` 조립 체인에 `mergeInjuryIntoPlayerCardMap` 추가.
+
+**동작 방식**:
+- `currentSimDate`(useSeasonContext, KST 벽시계 sim 날짜)를 사용 — 로스터/전술 화면과 동일한
+  기준(`buildActiveInjurySeverityMap`이 `return_date`와 비교하는 날짜 도메인이 이것과
+  일치한다는 기존 화면들의 전제를 그대로 따름, 뉴스피드 날짜 필터용 가상 NBA 캘린더 날짜
+  `todaySimDate`와는 다른 값이므로 혼동 주의).
+- suspensionContext(schedule + `rosterMap.get(id)`)도 함께 넘겨 출장정지 "N경기"를 로스터
+  화면과 동일하게 지금 기준으로 재계산.
+
+**검증**: `npx tsc --noEmit` — 관련 파일 전부 에러 없음(레포에 기존부터 있던 무관한 타입
+에러들만 남음).
+
+**롤백 방법**: `hooks/usePlayerInjuryRowsBatch.ts` 삭제, `PlayerHoverCard.tsx`의
+`mergeInjuryIntoPlayerCardMap`/`ActiveInjuryStatus` import 제거, `MultiNewsFeedView.tsx`의
+관련 훅 호출/`playerCardMap` 조립 부분을 이전 상태(`mergeStatsIntoPlayerCardMap`만 체인)로
+되돌리면 됨.
+
+---
+
+## 2026-09-04 — 멀티 "팀 설정" 모달 → 로스터 탭 그룹 이동(바디 스왑 방식)
+
+**배경**: 기존엔 사이드바 프로필 드롭다운 → "팀 설정" 클릭 → 오버레이 모달(`TeamSettingsModal`)이 여닫히는 방식이었음. 사용자가 "본인 팀 화면(로스터)의 탭 그룹 최우측에 팀 설정 버튼을 넣고, 모달이 아니라 바디 화면이 스왑되는 방식으로 바꾸자"고 요청.
+
+**변경 파일**:
+- `components/multi/TeamSettingsModal.tsx` — 삭제. 폼 로직을 `components/multi/TeamSettingsPanel.tsx`(신규)로 이관하되, `fixed inset-0` 오버레이/헤더 X버튼/"닫기" 버튼 제거하고 페이지 바디에 바로 꽂을 수 있는 패널로 재구성.
+- `components/roster/RosterTabs.tsx` — `RosterTab` 유니온에 `'settings'` 추가, `TABS` 배열 맨 끝(=탭 그룹 최우측)에 `{ id: 'settings', label: '팀 설정' }` 추가.
+- `views/RosterView.tsx` — `enableTeamSettingsTab`/`renderTeamSettingsPanel` prop 신설. `isMyTeam`(현재 보고 있는 팀이 내 팀인지) 계산을 탭 유효성 검증보다 앞으로 재배치해, `effectiveHideTabs`가 `enableTeamSettingsTab && isMyTeam`일 때만 `'settings'` 탭을 노출하도록 변경(다른 팀을 보고 있을 땐 자동으로 숨김). `tab === 'settings'` 컨텐츠 렌더링 분기 추가.
+- `views/multi/season/MultiRosterView.tsx` — `RosterView`에 `enableTeamSettingsTab` + `renderTeamSettingsPanel={() => <TeamSettingsPanel />}` 전달(싱글플레이어 `pages/RosterPage.tsx`는 미전달이라 자동으로 탭 자체가 생기지 않음).
+- `components/MultiSidebar.tsx` — `showTeamSettings` state/모달 portal 제거. 프로필 드롭다운 "팀 설정" 버튼의 `onClick`을 `navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`)`로 교체(모달 오픈 → 탭 이동).
+
+**Before**:
+```tsx
+// MultiSidebar.tsx
+const [showTeamSettings, setShowTeamSettings] = useState(false);
+...
+<button onClick={() => { setShowTeamSettings(true); setIsMenuOpen(false); }}>팀 설정</button>
+...
+{showTeamSettings && createPortal(
+    <TeamSettingsModal open={showTeamSettings} onClose={() => setShowTeamSettings(false)} />,
+    document.body
+)}
+```
+
+**After**:
+```tsx
+// MultiSidebar.tsx
+<button onClick={() => { navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`); setIsMenuOpen(false); }}>팀 설정</button>
+```
+```tsx
+// RosterView.tsx — 탭 노출 조건
+const effectiveHideTabs = useMemo(() => {
+  const base = [...(hideTabs ?? [])];
+  if (!capSettings) base.push('finance' as RosterTab);
+  if (!enableTeamSettingsTab || !isMyTeam) base.push('settings' as RosterTab);
+  return base;
+}, [hideTabs, capSettings, enableTeamSettingsTab, isMyTeam]);
+```
+
+**검증**: `npx tsc --noEmit -p .` 실행 — 수정한 5개 파일(`RosterView.tsx`/`RosterTabs.tsx`/`MultiSidebar.tsx`/`MultiRosterView.tsx`/`TeamSettingsPanel.tsx`) 관련 오류 0건(기존에도 있던 무관한 타입 오류만 잔존, 이번 변경과 무관).
+
+**롤백 방법**: `components/multi/TeamSettingsPanel.tsx` 삭제하고 `git show <이전커밋>:components/multi/TeamSettingsModal.tsx`로 복원, 위 4개 수정 파일을 Before 블록대로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — 멀티리그 FA서명/방출 트랜잭션 로그(league_transactions) 신설
+
+**배경**: `sign_free_agent()`/`release_player()` RPC(2026-09-04 오전 구현, `add_sign_free_agent_release_player_rpc.sql`)가 `league_teams.roster` jsonb 배열만 직접 변경하고 아무 기록도 남기지 않아, 누가 언제 어떤 선수를 영입/방출했는지 추적 불가능한 상태였음. 사용자가 "방출/영입 기록을 보관/추적할 수 있나"라고 질문 → 스키마 상의 후 구현.
+
+**변경 파일**:
+- `migrations/add_league_transactions_log.sql` (신규 마이그레이션, Supabase MCP로 적용 완료)
+- `services/multi/playerHistoryService.ts` — `listPlayerTransactionHistory()`에 `league_transactions` 조회 추가
+
+**Before**:
+```sql
+-- sign_free_agent()/release_player() 끝에 로그 INSERT 없음, roster 배열만 갱신
+UPDATE league_teams SET roster = roster || to_jsonb(p_player_id) WHERE id = v_team.id;
+RETURN jsonb_build_object('ok', true);
+```
+```ts
+// playerHistoryService.ts — draft_picks + league_trade_offers만 조회, FA/waive는 채우지 못함
+const [draftRes, tradeRes] = await Promise.all([...]);
+```
+
+**After**:
+- `league_transactions` 테이블 신설: `room_id`, `type`('fa_sign'|'waive'), `team_id`(uuid, league_teams.id), `player_id`(text), `sim_date`(date), `created_at`(timestamptz, 현실시각), `acted_by`(uuid), `resolved_as_admin`(bool), `details`(jsonb, 확장용). RLS SELECT는 기존 `accessible_room_ids()` 헬퍼 재사용, INSERT는 SECURITY DEFINER RPC 경유만 허용(별도 policy 없음).
+- `sign_free_agent()`/`release_player()` 끝에 `rooms.sim_date` 스냅샷 후 `league_transactions` INSERT 추가 (트레이드의 `respond_trade_offer()` v_sim_date 패턴과 동일).
+- `listPlayerTransactionHistory()`에 `league_transactions` 세 번째 쿼리 추가, `type='waive'`면 `{fromTeamAbbr: 팀약자, toTeamAbbr: 'FA'}`, `type='fa_sign'`이면 `{fromTeamAbbr: null, toTeamAbbr: 팀약자}`로 매핑해 기존 draft/trade 엔트리와 합류.
+
+**검증**: `npx tsc --noEmit` 통과(해당 파일 오류 없음). `apply_migration` 성공 응답 확인. UI 위젯(`usePlayerTransactionHistory` 훅)은 아직 실제 화면(`MultiPlayerDetailView.tsx`)에 연결되지 않은 준비 단계 — 데이터 소스만 채워둔 상태, 화면 렌더링은 별도 작업 필요.
+
+**주의사항**: 캡 체크 없는 1단계 스코프라 salary/contract 정보는 로그에 없음(향후 캡 시스템 도입 시 `details` jsonb에 추가 예정). `rooms.sim_date`가 text 컬럼이라 `::date` 캐스트 필요(트레이드 RPC의 기존 버그 패턴과 동일하게 캐스트 반영함).
+
+**롤백 방법**: `DROP TABLE public.league_transactions;` 후 `sign_free_agent`/`release_player`를 `migrations/add_sign_free_agent_release_player_rpc.sql`의 정의로 `CREATE OR REPLACE`, `playerHistoryService.ts`는 `faRes` 관련 블록(Promise.all 세 번째 항목 + for 루프) 제거.
+
+---
+
+## 2026-09-04 — 로스터 저지 아이콘 넘버 컬러를 secondary → text로 변경
+
+**배경**: 아티팩트(30팀 저지 컬러 스와치)로 리그에 등록된 30개 팀 컬러를 전수 대입해본 결과, 넘버·칼라 테두리에 `secondary`를 같이 쓰는 기존 방식은 `color_secondary === color_primary`인 팀(예: 브루클린 나이츠 흰/흰, 미네소타 프로스트울브스 파랑/파랑)에서 넘버가 몸통 색에 묻히는 문제가 있었음. `TEAM_COLORS`의 `text` 필드(원래 배지/텍스트 대비용으로 존재)를 넘버에 적용해보니 30팀 전수에서 `text === primary`로 묻히는 조합이 하나도 없어 안전하다고 판단, 아티팩트에서 먼저 검증 후 실제 컴포넌트에 반영.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` (client, 멀티플레이어 전용 — server 미러 없음)
+
+**Before**:
+```tsx
+const RosterIcon: React.FC<{ active: boolean; primary?: string | null; secondary?: string | null }> = ({ active, primary, secondary }) => {
+    ...
+    <path d={JERSEY_PATHS.number} fill={secondary || JERSEY_DEFAULT_SECONDARY} />
+    ...
+};
+
+<RosterIcon active={isRosterActive} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} />
+```
+
+**After**:
+```tsx
+const RosterIcon: React.FC<{ active: boolean; primary?: string | null; secondary?: string | null; text?: string | null }> = ({ active, primary, secondary, text }) => {
+    ...
+    <path d={JERSEY_PATHS.number} fill={text || JERSEY_DEFAULT_SECONDARY} />
+    ...
+};
+
+<RosterIcon active={isRosterActive} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} />
+```
+`collar`(칼라 테두리)는 그대로 `secondary` 유지 — 이번 변경은 `number`(넘버)에만 적용. `myTeam.color_text`는 `services/multi/roomQueries.ts`의 `LeagueTeamRow.color_text`(`league_teams` 테이블 컬럼)에서 옴.
+
+**검증**: `npx tsc --noEmit -p .` MultiSidebar.tsx 관련 에러 없음. `npm run start` 후 `/components/MultiSidebar.tsx` 모듈 트랜스폼 200 확인. 색상 로직 자체는 아티팩트에서 30팀 실제 hex값 전수 대입으로 이미 검증(브루클린/미네소타 포함 전 팀에서 넘버 묻힘 없음 확인) — 실제 로그인된 브라우저에서의 시각 확인은 미실시.
+
+**롤백 방법**: `RosterIcon`의 `text` prop과 `JERSEY_PATHS.number`의 `fill={text || ...}`를 `fill={secondary || ...}`로, 호출부의 `text={myTeam?.color_text}`를 제거하면 Before 상태로 복원됨.
+
+---
+
+## 2026-09-04 — MultiSidebar 커스텀 아이콘 24px→28px 확대 (여백 보정용 패딩 축소 동반)
+
+**배경**: 위 항목에서 적용한 커스텀 SVG 아이콘이 기존 lucide-react 아이콘(2px 스트로크로 그려 24×24 박스를 83~92%까지 채움) 대비 채움 도형(fill) 자체가 더 작게 그려져 있어(대부분 24×24의 64~67%만 채움) 면적 기준 약 35~42% 더 작게 보이는 문제를 사용자가 지적. `<aside>`가 `w-[40px]` 고정폭이고 버튼 패딩이 `p-2`(8px×2)+아이콘 24px로 정확히 40px에 맞춰져 있던 구조라, 아이콘만 28px로 키우면 8+28+8=44px로 4px 오버플로우가 발생함을 사전에 계산해 확인. 패딩을 `p-1.5`(6px×2)로 줄이면 6+28+6=40px로 다시 정확히 맞아떨어져 사이드바 폭 변화 없이 아이콘만 키울 수 있음을 확인 후 적용.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` (client, 멀티플레이어 전용)
+
+**Before**:
+```tsx
+// NavItem
+className={`w-full flex items-center justify-center p-2 rounded-[4px] ...`}
+
+// NavIcon
+<img src={...} className="w-6 h-6" ... />
+
+// RosterIcon
+<img src="/images/sidenav/team.svg" className="w-6 h-6" ... />
+<svg width="24" height="24" viewBox="0 0 24 24" ...>
+```
+
+**After**:
+```tsx
+// NavItem
+className={`w-full flex items-center justify-center p-1.5 rounded-[4px] ...`}
+
+// NavIcon
+<img src={...} className="w-7 h-7" ... />
+
+// RosterIcon
+<img src="/images/sidenav/team.svg" className="w-7 h-7" ... />
+<svg width="28" height="28" viewBox="0 0 24 24" ...>  {/* viewBox는 유지, 렌더 박스만 확대 */}
+```
+프로필(`CircleUser`)·어드민(`Wrench`) 아이콘은 그대로 `size={24}` 유지 — 패딩만 줄어서 6+24+6=36px로 여백이 좀 더 생기지만 오버플로우는 없음.
+
+**검증**: `npx tsc --noEmit -p .` MultiSidebar.tsx 관련 에러 없음. `npm run start`로 Vite dev 서버 기동 후 `/components/MultiSidebar.tsx` 모듈 트랜스폼 200 확인. 6+28+6=40px 계산으로 오버플로우 없음을 수치로 사전 검증 — 실제 브라우저 렌더링 스크린샷 확인은 미실시.
+
+**롤백 방법**: Before 블록대로 `p-1.5`→`p-2`, `w-7 h-7`→`w-6 h-6`, `width="28" height="28"`→`width="24" height="24"`로 되돌리면 됨.
+
+---
+
+## 2026-09-04 — MultiSidebar 커스텀 SVG 아이콘 적용 + 로스터 아이콘 팀 테마 컬러 동적화
+
+**배경**: 사용자가 `public/images/sidenav/`에 lucide-react를 대체할 커스텀 SVG 아이콘 10쌍(default/selected)을 직접 제작해 추가. 파일명이 MultiSidebar의 프로필/어드민 2개를 제외한 나머지 10개 메뉴 라벨과 정확히 1:1로 매칭되어 전체 교체 진행. 그중 로스터(`team.svg`/`team-selected.svg`, 농구 저지 모양)는 선택 상태일 때만 팀 테마 컬러(프라이머리=유니폼 넓은 면, 세컨더리=넘버+칼라 테두리)를 동적으로 입히도록 요청받음. 나머지 9개 아이콘은 이미 selected 파일 자체에 상태별 고정 컬러(초록/골드/빨강 등)가 baked-in 되어 있어 그대로 사용.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` (client, 멀티플레이어 전용 — server 미러 없음)
+- `public/images/sidenav/free agents.svg` → `free-agents.svg`, `free agents-selected.svg` → `free-agents-selected.svg` (파일명 공백 제거, URL 인코딩 이슈 예방)
+
+**Before**:
+```tsx
+import {
+    Home, Users, ListOrdered, Calendar, Newspaper,
+    GitPullRequestClosed, BarChart2, ArrowLeftRight, Trophy, UserPlus,
+    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
+} from 'lucide-react';
+
+const NavItem: React.FC<{...}> = ({ active, icon, label, onClick, buttonRef, badge }) => (
+    <button ...>
+        {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
+        ...
+    </button>
+);
+
+// 사용 예
+<NavItem active={pathname.startsWith(`${base}/roster`)} icon={<Users />} label="로스터" ... />
+```
+
+**After**:
+```tsx
+import {
+    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
+} from 'lucide-react';
+
+const NavItem: React.FC<{...}> = ({ active, icon, label, onClick, buttonRef, badge }) => (
+    <button ...>
+        {icon}  {/* cloneElement 제거 — 각 호출부에서 이미 완성된 노드를 전달 */}
+        ...
+    </button>
+);
+
+// public/images/sidenav/{name}.svg ↔ {name}-selected.svg 스왑
+const NavIcon: React.FC<{ name: string; active: boolean }> = ({ name, active }) => (
+    <img src={`/images/sidenav/${name}${active ? '-selected' : ''}.svg`} alt="" className="w-6 h-6" draggable={false} />
+);
+
+// 로스터 전용 — team-selected.svg의 path를 그대로 인라인, 선택 시에만 팀 컬러 주입
+const JERSEY_PATHS = { body: '...', collar: '...', number: '...' }; // team-selected.svg 원본 path 3개
+const RosterIcon: React.FC<{ active: boolean; primary?: string | null; secondary?: string | null }> = ({ active, primary, secondary }) => {
+    if (!active) return <img src="/images/sidenav/team.svg" alt="" className="w-6 h-6" draggable={false} />;
+    return (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <rect width="24" height="24" fill="#0F172A" />
+            <path d={JERSEY_PATHS.body} fill={primary || '#62748E'} />
+            <path d={JERSEY_PATHS.collar} fill={secondary || '#CAD5E2'} />
+            <path d={JERSEY_PATHS.number} fill={secondary || '#CAD5E2'} />
+        </svg>
+    );
+};
+
+// 사용 예
+<NavItem
+    active={isRosterActive}
+    icon={<RosterIcon active={isRosterActive} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} />}
+    label="로스터" ...
+/>
+```
+나머지 9개 항목(홈/뉴스피드/전술/순위표/플레이오프/리더보드/일정/트레이드/자유계약)도 동일하게 `<NavIcon name="..." active={...} />` 패턴으로 교체. 프로필(`CircleUser`)·어드민(`Wrench`)만 lucide 아이콘 유지하며 `size={24}` 명시 추가(기존엔 cloneElement가 주입).
+
+**검증**: `npx tsc --noEmit -p .` 결과 MultiSidebar.tsx 관련 에러 없음(기존에 있던 무관한 타입 에러들만 남아있음 확인). `npm run start`로 Vite dev 서버 기동 후 `/images/sidenav/*.svg` 전 파일 200 응답 확인, `/components/MultiSidebar.tsx` 모듈 트랜스폼 정상(구문 에러 없음) 확인. 로그인/리그 상태가 필요해 실제 브라우저 스크린샷 검증은 미실시.
+
+**롤백 방법**: Before 블록대로 `components/MultiSidebar.tsx`를 되돌리고, `public/images/sidenav/free-agents*.svg`를 `free agents*.svg`로 재이름 변경(다만 이 리네임은 파일명 공백 회피 목적이라 되돌릴 필요는 없음 — 코드만 롤백해도 무방).
+
+---
 
 ## 2026-09-04 — archetypes 테이블 조회 시 발생하던 콘솔 406 제거 (.single() → .maybeSingle())
 

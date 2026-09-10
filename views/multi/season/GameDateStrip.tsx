@@ -7,6 +7,7 @@ import { MonthCalendarPopover } from './MonthCalendarPopover';
 import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
+import { useServerClockBucket } from '../../../utils/serverClock';
 
 // [2026-08-28] views/multi/season/MultiGamePbpView.tsx에서 분리 — 원래 그 화면(경기 관람)
 // 최상단에만 있던 "오늘 경기 목록" 스트립을 모든 시즌 화면(MultiSeasonLayout, 헤더 바로
@@ -17,11 +18,11 @@ export interface TeamStripInfo { team_name: string; team_abbr: string; color_pri
 
 const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean }> = ({ team, teamId, score, won }) => (
     <div className="flex items-center justify-between gap-2">
-        <span className={`text-sm font-black tabular-nums truncate ${won ? 'text-white' : 'text-slate-500'}`}>
+        <span className={`text-sm font-black truncate ${won ? 'text-white' : 'text-slate-500'}`}>
             {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
         </span>
         {score != null && (
-            <span className={`text-sm font-mono tabular-nums ${won ? 'text-white font-black' : 'text-slate-500 font-bold'}`}>{score}</span>
+            <span className={`text-sm ${won ? 'text-white font-black' : 'text-slate-500 font-bold'}`}>{score}</span>
         )}
     </div>
 );
@@ -34,7 +35,6 @@ export interface GameDateStripProps {
     simStart: string | null;
     gprd: number;
     bracketData: unknown;
-    serverNow: number;
     roomId: string | undefined;
     accessToken: string | undefined;
     getGameUrlId: (gameId: string) => string;
@@ -42,9 +42,20 @@ export interface GameDateStripProps {
 }
 
 export const GameDateStrip: React.FC<GameDateStripProps> = ({
-    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, serverNow, roomId, accessToken, getGameUrlId, preferVirtual,
+    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual,
 }) => {
     const navigate = useNavigate();
+    // [2026-09-07] serverNow(1초 틱)를 MultiSeasonLayout에서 prop으로 받던 걸 여기서 직접
+    // 구독하도록 변경 — 전에는 이 컴포넌트를 감싸는 레이아웃 전체가 매초 리렌더돼 <Outlet/>
+    // 하위의 로스터/재정 탭 등 무거운 테이블까지 매초 통째로 리렌더링되며 스크롤 랙의 원인이
+    // 됐다. 1초 틱 구독을 이 스트립 컴포넌트 안으로 옮겨 재렌더 범위를 스트립 자신으로 한정.
+    // [2026-09-07 후속] 이 컴포넌트는 모든 시즌 화면(MultiSeasonLayout, 헤더 바로 아래)에
+    // 전역으로 떠 있어서, "스트립 자신으로 한정"했다고 해도 그 자체가 매초 리렌더되는 한
+    // 어느 화면을 보든 상단 스트립(그 안의 날짜 배지/TeamBadge 등)이 계속 깜빡였다 — 홈/뉴스/
+    // 순위/일정 화면에서 각각 리포트된 재렌더의 상당 부분이 실은 화면별 원인이 아니라 이
+    // 전역 스트립 하나였을 가능성이 높음. isFinal 게이팅(경기 공개 10분 딜레이)에만 쓰여
+    // 초 단위 정밀도가 필요 없으므로 useServerClockBucket()으로 교체.
+    const serverNow = useServerClockBucket();
 
     // MultiScheduleView.tsx와 동일한 계산(플레이오프 시리즈 미공개 매치업 스포일러 차단 포함) —
     // scheduledAt 보정 + 시간순 정렬.
@@ -231,8 +242,8 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                     }}
                     className={`flex flex-col items-center justify-center px-3 py-2 rounded transition-colors ${isDateMenuOpen ? 'bg-slate-700' : 'hover:bg-slate-700'}`}
                 >
-                    <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">{activeYear}</span>
-                    <span className="text-sm font-black text-white leading-tight tabular-nums whitespace-nowrap">
+                    <span className="text-sm font-black text-white leading-tight whitespace-nowrap">{activeYear}</span>
+                    <span className="text-sm font-black text-white leading-tight whitespace-nowrap">
                         {activeMonth}.{activeDay}
                     </span>
                 </button>

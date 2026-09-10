@@ -213,7 +213,7 @@ export const createRoom = async (
             league_id:     params.leagueId,
             max_players:   params.maxPlayers,
             name:          params.name ?? null,
-            season:        params.season        ?? '2025-2026',
+            season:        params.season        ?? '2025-26',
             season_number: params.seasonNumber  ?? 1,
             sim_date:      params.simDate        ?? '2025-10-20',
             // 히든 텐던시(선수 성격/멘탈/스카우팅 리포트 + PBP 엔진 시드) 생성용 —
@@ -658,6 +658,39 @@ export const updateTeamProfile = async (
     });
     if (error) return { data: null, error: error.message };
     return { data: data as LeagueTeamRow, error: null };
+};
+
+// ─── 팀 이름 변경 (어드민 전용, 소유자 무관) ──────────────────────────────────
+// update_team_profile RPC는 p_user_id === league_teams.user_id(소유자)만 허용해서
+// 어드민이 남의 팀/AI 팀 이름을 바꿀 수 없다. league_teams_update_owner_or_admin RLS
+// 정책은 리그 admin_user_id도 UPDATE를 허용하므로, 어드민 전용 경로는 RPC를 거치지 않고
+// 테이블을 직접 갱신한다(대상 컬럼은 team_name 하나뿐).
+export const updateTeamName = async (
+    teamId:   string,
+    teamName: string,
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase
+        .from('league_teams')
+        .update({ team_name: teamName })
+        .eq('id', teamId);
+    if (error) return { error: error.message };
+    return { error: null };
+};
+
+// ─── 멤버 이메일 조회 (어드민 전용) ────────────────────────────────────────────
+// profiles SELECT RLS가 본인 행만 허용해서 클라이언트에서 그냥 조회하면 남의 이메일은
+// 안 보임 — get_room_member_emails() RPC(SECURITY DEFINER, 호출자가 해당 room이 속한
+// 리그의 admin_user_id인지 내부 검증)로 우회.
+export const getRoomMemberEmails = async (
+    roomId: string,
+): Promise<{ data: Record<string, string>; error: string | null }> => {
+    const { data, error } = await supabase.rpc('get_room_member_emails', { p_room_id: roomId });
+    if (error) return { data: {}, error: error.message };
+    const map: Record<string, string> = {};
+    for (const row of (data ?? []) as { user_id: string; email: string }[]) {
+        map[row.user_id] = row.email;
+    }
+    return { data: map, error: null };
 };
 
 // ─── 탈퇴 (release_team RPC가 팀 반환 + room_members 삭제를 원자적으로 처리) ────

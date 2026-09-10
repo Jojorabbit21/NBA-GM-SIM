@@ -3,10 +3,11 @@ import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
-import { calculatePlayerOvr } from '../utils/constants';
+import { calculatePlayerOvr, getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
 import { formatMoneyFull } from '../utils/formatMoney';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
+import { getReadableTextColor } from '../utils/colorContrast';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TeamBadge } from '../components/common/TeamBadge';
 import { StarRating } from '../components/common/StarRating';
@@ -827,8 +828,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         return [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
     }, [teamId, allTeams]);
 
-    const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
-    const theme = getTeamTheme(teamId || null, teamColors);
+    // 멀티플레이어 팀 설정 커스텀 컬러(currentTeam.colorPrimary) 우선 — 없으면 TEAM_DATA 폴백.
+    // RosterView.tsx와 동일한 패턴(THEME_OVERRIDES 오적용 방지 위해 커스텀 컬러일 땐 teamId=null).
+    const teamColors = currentTeam?.colorPrimary
+        ? {
+            primary: currentTeam.colorPrimary,
+            secondary: currentTeam.colorSecondary || '#64748b',
+            text: currentTeam.colorText || getReadableTextColor(currentTeam.colorPrimary),
+          }
+        : (teamId ? (TEAM_DATA[teamId]?.colors || null) : null);
+    const theme = getTeamTheme(currentTeam?.colorPrimary ? null : (teamId || null), teamColors);
     const tintColor = getEffectiveTintColor(theme);
     const isLight = luminance(tintColor) > 0.5;
     const sectionBg   = { backgroundColor: theme.bg }; // L5: SectionHeader
@@ -860,17 +869,20 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     }, [player.career_history, player.awards]);
 
     // 헤더 트로피 배지 — 챔피언(플레이오프 한정, REG_SEASON_CHAMPION 제외)/MVP/DPOY/올-오펜시브
-    // (ALL_NBA_1~3 통합)/올-디펜시브(ALL_DEF_1~2 통합)/ROY/6MOY(SMOY 표기 통합) 7종, 카테고리당
-    // 1개 배지 + count. ROY/6MOY는 runAwardVoting에 아직 없어 시뮬 실시간 스탬프(player.awards)로는
-    // 절대 안 나오고, career_history(BRef 임포트, 올타임 레전드용) 원본에 코드가 있을 때만 노출됨.
-    // 올스타는 아직 어워드 시스템 자체에 없어(runAwardVoting 미구현) 이번엔 제외.
+    // (ALL_NBA_1~3 통합)/올-디펜시브(ALL_DEF_1~2 통합)/ROY/6MOY(SMOY 표기 통합)/올스타 8종,
+    // 카테고리당 1개 배지 + count. ROY/6MOY는 runAwardVoting에 아직 없어 시뮬 실시간
+    // 스탬프(player.awards)로는 절대 안 나오고, career_history(BRef 임포트, 올타임 레전드용)
+    // 원본에 코드가 있을 때만 노출됨.
+    // [2026-09-09] 올스타 — 서버가 로스터 확정 시 league_player_awards(award_type='ALL_STAR')에
+    // 영구 저장하고, MultiPlayerDetailView.tsx가 usePlayerAllStarAwards()로 조회해
+    // player.awards에 합쳐준다(이 컴포넌트는 그 결과를 그대로 소비 — 재계산 없음).
     const headerAwardBadges = useMemo(() => {
         // MVP/DPOY/ROY는 수상자만(rank 1 또는 rank 없음) — 후보(2위 이하)는 헤더에 안 보여줌.
         const winnersOnly = allAwards.filter((a: any) => {
             if (a.type === 'MVP' || a.type === 'DPOY' || a.type === 'ROY') return a.rank === 1 || a.rank == null;
             return true;
         });
-        const bySeasons: Record<string, string[]> = { CHAMPION: [], MVP: [], DPOY: [], ALL_LEAGUE: [], ALL_DEF: [], ROY: [], SIXTH_MAN: [] };
+        const bySeasons: Record<string, string[]> = { CHAMPION: [], MVP: [], DPOY: [], ALL_LEAGUE: [], ALL_DEF: [], ROY: [], SIXTH_MAN: [], ALL_STAR: [] };
         const seen = new Set<string>();
         for (const a of winnersOnly) {
             const dedupeKey = `${a.type}__${a.season}`;
@@ -883,6 +895,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             else if (a.type === 'ALL_DEF_1' || a.type === 'ALL_DEF_2') bySeasons.ALL_DEF.push(a.season);
             else if (a.type === 'ROY') bySeasons.ROY.push(a.season);
             else if (a.type === 'SIXTH_MAN') bySeasons.SIXTH_MAN.push(a.season);
+            else if (a.type === 'ALL_STAR') bySeasons.ALL_STAR.push(a.season);
         }
         const CATEGORY_META: { key: string; label: string; color: string; bg: string }[] = [
             { key: 'CHAMPION',   label: 'CHAMP',       color: 'text-amber-400',   bg: 'bg-amber-400/15' },
@@ -892,6 +905,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             { key: 'ALL_DEF',    label: 'ALL-DEF',     color: 'text-emerald-400', bg: 'bg-emerald-400/15' },
             { key: 'ROY',        label: 'ROY',         color: 'text-cyan-400',    bg: 'bg-cyan-400/15' },
             { key: 'SIXTH_MAN',  label: '6MOY',        color: 'text-orange-400',  bg: 'bg-orange-400/15' },
+            { key: 'ALL_STAR',   label: 'ALL-STAR',    color: 'text-sky-400',     bg: 'bg-sky-400/15' },
         ];
         return CATEGORY_META
             .map(c => ({ ...c, count: bySeasons[c.key].length, seasons: [...bySeasons[c.key]].sort((a, b) => b.localeCompare(a)) }))
@@ -1505,14 +1519,35 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             {/* ═══ 프로필 헤더 — 이름/포지션/소속팀/키/체중/샐러리/등번호 요약 ═══ */}
             <div className="flex items-center gap-4 px-4 py-5 bg-slate-900 border-b border-slate-800 shrink-0">
                 {teamId && (
-                    <TeamBadge
-                        teamId={teamId}
-                        abbr={currentTeam?.abbr}
-                        colorPrimary={currentTeam?.colorPrimary}
-                        colorSecondary={currentTeam?.colorSecondary}
-                        size="lg"
-                        className="self-stretch !h-auto !w-24 !text-2xl"
-                    />
+                    currentTeam?.colorPrimary ? (
+                        // [2026-09-06] 테스트: 멀티플레이어(colorPrimary가 있는 경우)에 한해 헤더의
+                        // 큰 로고 자리만 신규 로고 세트(public/logos/real/)로 우선 교체. 싱글플레이어는
+                        // 기존 TeamBadge(→TeamLogo) 경로 그대로 유지. real/에 파일이 없는 팀(예: 밀워키)은
+                        // 구버전 로고로, 그마저 없으면 플레이스홀더로 순차 폴백.
+                        <img
+                            src={getRealTeamLogoUrl(teamId)}
+                            alt={currentTeam?.abbr ?? teamId}
+                            className="self-stretch !h-auto w-24 object-contain drop-shadow-md shrink-0"
+                            onError={(e) => {
+                                const img = e.currentTarget;
+                                if (img.dataset.fallback !== 'old') {
+                                    img.dataset.fallback = 'old';
+                                    img.src = getTeamLogoUrl(teamId);
+                                } else {
+                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                }
+                            }}
+                        />
+                    ) : (
+                        <TeamBadge
+                            teamId={teamId}
+                            abbr={currentTeam?.abbr}
+                            colorPrimary={currentTeam?.colorPrimary}
+                            colorSecondary={currentTeam?.colorSecondary}
+                            size="lg"
+                            className="self-stretch !h-auto !w-24 !text-2xl"
+                        />
+                    )
                 )}
                 <div className="flex flex-col gap-1 min-w-0">
                     <div className="flex items-center gap-3 min-w-0">
@@ -1883,6 +1918,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     DEF1: '올-디펜시브 팀', DEF2: '올-디펜시브 팀',
                                     ROY: '올해의 신인', CPOY: '올해의 클러치 플레이어',
                                     MIP: '최고 발전 선수', '6MOY': '식스맨', SMOY: '식스맨', SIXTH_MAN: '식스맨',
+                                    ALL_STAR: '올스타',
                                 };
                                 const BASE_DETAIL: Record<string, string> = {
                                     CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', CHM: '우승', RCHM: '우승',
@@ -1891,6 +1927,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
                                     NBA1: '1st', NBA2: '2nd', NBA3: '3rd',
                                     DEF1: '1st', DEF2: '2nd',
+                                    ALL_STAR: '선정',
                                 };
                                 const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
                                 const sortedAwards = [...allAwards].sort((a, b) => {
@@ -1899,7 +1936,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     const orderMap: Record<string, number> = {
                                         CHAMPION: 0, REG_SEASON_CHAMPION: 1, MVP: 2, FINALS_MVP: 3, DPOY: 4,
                                         ALL_NBA_1: 5, ALL_NBA_2: 6, ALL_NBA_3: 7, ALL_DEF_1: 8, ALL_DEF_2: 9,
-                                        ROY: 10, SIXTH_MAN: 11,
+                                        ALL_STAR: 9.5, ROY: 10, SIXTH_MAN: 11,
                                     };
                                     return (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99);
                                 });
@@ -1948,7 +1985,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 <div className="text-sm text-slate-500">이동 내역이 없습니다</div>
                             ) : (() => {
                                 const TX_TYPE_LABEL: Record<string, string> = {
-                                    draft: '드래프트', trade: '트레이드', fa: 'FA', waive: '웨이브',
+                                    draft: '드래프트', trade: '트레이드', fa: '자유 계약', waive: '웨이버',
                                 };
                                 const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
                                 return (
@@ -1962,6 +1999,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     <span className="text-slate-200 flex-1 text-right">
                                                         {entry.type === 'draft' && entry.draftRound != null && entry.draftPick != null
                                                             ? `${entry.draftRound}R ${toOrdinal(entry.draftPick)} ${entry.toTeamAbbr}`
+                                                            : entry.type === 'fa'
+                                                            ? entry.toTeamAbbr
                                                             : `${entry.fromTeamAbbr ?? '—'} → ${entry.toTeamAbbr}`}
                                                     </span>
                                                 </div>
@@ -1984,7 +2023,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     {[...player.injuryHistory]
                                         .sort((a, b) => b.date.localeCompare(a.date))
                                         .map((entry, idx) => {
-                                            const dateStr = entry.date.slice(5).replace('-', '/');
+                                            const [entryY, entryM, entryD] = entry.date.split('-');
+                                            const dateStr = `${entryY.slice(2)}/${entryM}/${entryD}`;
                                             // 가장 최근 항목이면서 지금도 활성 상태면(출장정지 등 게임 수
                                             // 기반) player.activeInjuryDuration이 "지금 기준 남은 경기 수"로
                                             // 재계산된 값 — 과거에 종료된 항목은 발부 당시 기록(entry.duration)

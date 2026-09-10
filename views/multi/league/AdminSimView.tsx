@@ -225,7 +225,7 @@ const AdminSimView: React.FC = () => {
             {/* 헤더 */}
             <div className="flex items-center justify-between">
                 <button
-                    onClick={() => navigate(`/multi/leagues/${leagueId}/settings`)}
+                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/settings`)}
                     className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
                 >
                     <ArrowLeft size={14} />

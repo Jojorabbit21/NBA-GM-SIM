@@ -2,14 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-    ArrowLeft, Save, Loader2, AlertCircle, CalendarDays,
-    Clock, Users, Shield, Trash2, RotateCcw, Trophy, PlayCircle, Activity, DollarSign,
+    Save, Loader2, AlertCircle, CalendarDays,
+    Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign,
+    ArrowLeftRight, Wallet, Info, Crown, ClipboardList,
 } from 'lucide-react';
+import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
-import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament } from '../../../services/multi/leagueService';
+import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament, updateTeamName, getRoomMemberEmails } from '../../../services/multi/leagueService';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
-import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
+import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
@@ -36,11 +38,16 @@ const CAP_DEFAULTS = {
     salaryFloorAmount: 148_465_000,
 };
 
-function fmtConference(conf: string | null): string {
-    if (!conf) return '—';
-    if (conf === 'East') return '동부';
-    if (conf === 'West') return '서부';
-    return conf;
+// 참가일시 표시(항상 KST 벽시계 시각 기준 — 이 파일의 다른 날짜 표시와 동일 규칙).
+function fmtJoinedAt(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+    const y  = kst.getUTCFullYear();
+    const m  = String(kst.getUTCMonth() + 1).padStart(2, '0');
+    const d  = String(kst.getUTCDate()).padStart(2, '0');
+    const hh = String(kst.getUTCHours()).padStart(2, '0');
+    const mm = String(kst.getUTCMinutes()).padStart(2, '0');
+    return `${y}.${m}.${d} ${hh}:${mm}`;
 }
 
 // 이 앱은 KST(UTC+9)를 기본 시간대로 고정한다 — 브라우저의 실제 로컬 타임존(해외 접속,
@@ -64,6 +71,27 @@ function toIso(local: string): string | null {
 }
 
 
+// ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
+
+type SettingsTabId = 'league' | 'draft' | 'trade' | 'cap' | 'finance' | 'engine';
+
+const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
+    { id: 'league',  label: '리그' },
+    { id: 'draft',   label: '드래프트' },
+    { id: 'trade',   label: '트레이드' },
+    { id: 'cap',     label: '샐러리캡' },
+    { id: 'finance', label: '재정' },
+    { id: 'engine',  label: '엔진' },
+];
+
+// 리그 탭 좌측 "리그 정보" 요약 카드의 라벨-값 한 줄.
+const InfoRow: React.FC<{ label: string; value: string; muted?: boolean }> = ({ label, value, muted }) => (
+    <div className="flex justify-between text-xs py-1">
+        <span className="text-slate-500 ko-normal">{label}</span>
+        <span className={`font-mono ${muted ? 'text-slate-600' : 'text-slate-300'}`}>{value}</span>
+    </div>
+);
+
 // ── LeagueSettingsView ────────────────────────────────────────────────────────
 
 const LeagueSettingsView: React.FC = () => {
@@ -78,8 +106,6 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── form state ────────────────────────────────────────────────────────────
     const [nameInput,    setNameInput]    = useState('');
-    const [savingName,   setSavingName]   = useState(false);
-    const [saveNameErr,  setSaveNameErr]  = useState<string | null>(null);
     const [lotteryAt,         setLotteryAt]         = useState('');
     const [draftAt,           setDraftAt]           = useState('');
     const [tournamentStartAt, setTournamentStartAt] = useState('');
@@ -91,7 +117,6 @@ const LeagueSettingsView: React.FC = () => {
     const [draftOvrMin,       setDraftOvrMin]       = useState(0);
     const [draftOvrMax,       setDraftOvrMax]       = useState(99);
     const [draftFormat,       setDraftFormat]       = useState<DraftFormat>('snake');
-    const [durationWeeks,    setDurationWeeks]    = useState(2);
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
@@ -107,6 +132,12 @@ const LeagueSettingsView: React.FC = () => {
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
+    const [activeTab,   setActiveTab]   = useState<SettingsTabId>('league');
+
+    // ── 리그 탭 통합 저장(이름 + 참가팀 수 + 플레이오프 형식) 상태 ──────────────
+    const [savingLeague,  setSavingLeague]  = useState(false);
+    const [saveLeagueOk,  setSaveLeagueOk]  = useState(false);
+    const [saveLeagueErr, setSaveLeagueErr] = useState<string | null>(null);
 
     // ── 샐러리캡 설정(관리자 전용) — 마스터 스위치(capEnabled) + 세부 항목 5개(각각 개별 on/off + 금액) ──
     const [capEnabled,         setCapEnabled]         = useState(true);
@@ -128,10 +159,13 @@ const LeagueSettingsView: React.FC = () => {
     const [saveSimOk,  setSaveSimOk]  = useState(false);
     const [saveSimErr, setSaveSimErr] = useState<string | null>(null);
 
-    // ── 플레이오프 형식 저장 상태 — bracket_data가 아직 없을 때만(플레이오프 시작 전) 변경 가능 ──
-    const [savingPlayoff,  setSavingPlayoff]  = useState(false);
-    const [savePlayoffOk,  setSavePlayoffOk]  = useState(false);
-    const [savePlayoffErr, setSavePlayoffErr] = useState<string | null>(null);
+    // ── 트레이드 설정(관리자 전용) — sim_settings에 함께 저장, 엔진 설정과 독립 저장 ──
+    const [tradeMinValueRatio,      setTradeMinValueRatio]      = useState(DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
+    const [cpuTradeBaseProbability, setCpuTradeBaseProbability] = useState(DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
+    const [savingTrade,  setSavingTrade]  = useState(false);
+    const [saveTradeOk,  setSaveTradeOk]  = useState(false);
+    const [saveTradeErr, setSaveTradeErr] = useState<string | null>(null);
+
 
     // ── lottery state ─────────────────────────────────────────────────────────
     const [lotteryRunning, setLotteryRunning] = useState(false);
@@ -140,6 +174,17 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── kick state ────────────────────────────────────────────────────────────
     const [kickingId, setKickingId] = useState<string | null>(null);
+
+    // ── 팀 이름 편집 상태(어드민 전용, 팀 목록 인라인) ──────────────────────────
+    const [teamNameDrafts,   setTeamNameDrafts]   = useState<Record<string, string>>({});
+    const [savingTeamNameId, setSavingTeamNameId] = useState<string | null>(null);
+    const [teamNameErrs,     setTeamNameErrs]     = useState<Record<string, string>>({});
+
+    // ── 멤버 이메일(어드민 전용 RPC로 조회, user_id → email) ────────────────────
+    const [memberEmails, setMemberEmails] = useState<Record<string, string>>({});
+
+    // ── 드래프트 결과(draft_picks 테이블, "드래프트" 탭 결과 조회용) ────────────
+    const [draftPicks, setDraftPicks] = useState<DraftPickRow[]>([]);
 
     // ── reset state ───────────────────────────────────────────────────────────
     const [resetConfirm,  setResetConfirm]  = useState(false);
@@ -168,12 +213,6 @@ const LeagueSettingsView: React.FC = () => {
         setDraftOvrMin(league.draft_ovr_min ?? 0);
         setDraftOvrMax(league.draft_ovr_max ?? 99);
         setDraftFormat((league.draft_pool_strategy ?? 'snake') as DraftFormat);
-        if (league.season_start_date && league.season_end_date) {
-            const days = Math.round(
-                (new Date(league.season_end_date).getTime() - new Date(league.season_start_date).getTime()) / 86_400_000,
-            );
-            setDurationWeeks(Math.min(4, Math.max(1, Math.round(days / 7))));
-        }
         setMatchFormat(league.match_format ?? 'best_of_1');
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
         const gprd = (league as any).games_per_real_day ?? 48;
@@ -187,6 +226,8 @@ const LeagueSettingsView: React.FC = () => {
         setSuspensionFrequency(room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
+        setTradeMinValueRatio(room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
+        setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
         setCapEnabled((league as any).cap_enabled ?? true);
         setSalaryCapAmount((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount);
         setLuxuryTaxEnabled((league as any).luxury_tax_enabled ?? true);
@@ -209,32 +250,52 @@ const LeagueSettingsView: React.FC = () => {
         }
     }, [isLoading, league, isAdmin, isInProgress, leagueId, navigate]);
 
-    // Reference start = today (actual start is set at draft completion)
-    const refToday = new Date().toISOString().slice(0, 10);
-    const computedSeasonEnd = (() => {
-        const d = new Date(refToday);
-        d.setDate(d.getDate() + durationWeeks * 7);
-        return d.toISOString().slice(0, 10);
-    })();
+    // 팀 목록의 이메일 컬럼용 — 어드민 확정 후 room.id 기준으로 한 번 조회.
+    useEffect(() => {
+        if (!isAdmin || !room?.id) return;
+        let cancelled = false;
+        getRoomMemberEmails(room.id).then(({ data, error }) => {
+            if (!cancelled && !error) setMemberEmails(data);
+        });
+        return () => { cancelled = true; };
+    }, [isAdmin, room?.id]);
 
-    const REGULAR_DAYS = [5, 10, 16, 20];
-    const GAME_DAYS_PER_DAY = [17, 9, 6, 5];
-    const regularDays = REGULAR_DAYS[durationWeeks - 1];
-    const gameDaysPerDay = GAME_DAYS_PER_DAY[durationWeeks - 1];
-    const lastSlotKst = `${10 + Math.floor((gameDaysPerDay - 1) * 30 / 60)}:${String(((gameDaysPerDay - 1) * 30) % 60).padStart(2, '0')}`;
+    // "드래프트" 탭 결과 테이블용 — room.id 기준으로 한 번 조회(드래프트 진행 중엔
+    // 실시간 반영 없음, 완료된 픽 결과 조회 용도라 폴링/구독 없이 마운트 시 1회로 충분).
+    useEffect(() => {
+        if (!isAdmin || !room?.id) return;
+        let cancelled = false;
+        listDraftPicks(room.id).then(picks => {
+            if (!cancelled) setDraftPicks(picks);
+        });
+        return () => { cancelled = true; };
+    }, [isAdmin, room?.id]);
 
-    const handleSaveName = async () => {
+    // 리그 탭 통합 저장 — 이름 + 참가팀 수 + (메인리그·플레이오프 시작 전이면) 플레이오프 형식.
+    // 예전엔 이름/플레이오프/참가팀수가 각자 다른 버튼(헤더 인라인/플레이오프 섹션/드래프트
+    // 탭의 스케줄 저장)을 눌러야 반영됐는데, 탭 헤더 우측 저장 버튼 하나로 일원화하면서
+    // "리그" 탭에 보이는 필드는 전부 이 함수 하나로 묶었다.
+    const handleSaveLeagueTab = async () => {
         if (!league?.id) return;
-        const trimmed = nameInput.trim();
-        if (!trimmed || trimmed === league?.name) return;
-        setSavingName(true);
-        setSaveNameErr(null);
-        // [2026-08-01 Fix] leagueId(URL)는 short_code일 수 있어 실제 UUID(league.id) 사용.
-        const { error: err } = await updateLeagueSettings({ leagueId: league.id, name: trimmed });
-        setSavingName(false);
-        if (err) { setSaveNameErr(err); return; }
+        setSavingLeague(true);
+        setSaveLeagueOk(false);
+        setSaveLeagueErr(null);
+        const trimmedName = nameInput.trim();
+        const playoffEditable = league.type === 'main_league' && !league.bracket_data;
+        const { error: err } = await updateLeagueSettings({
+            leagueId: league.id,
+            roomId: room?.id,
+            ...(trimmedName && trimmedName !== league.name ? { name: trimmedName } : {}),
+            maxTeams,
+            ...(playoffEditable ? { playoffTeamCount: playoffTeamsPerConf, playInEnabled } : {}),
+        });
+        setSavingLeague(false);
+        if (err) { setSaveLeagueErr(err); return; }
+        setSaveLeagueOk(true);
+        setTimeout(() => setSaveLeagueOk(false), 2000);
         reload();
     };
+
 
     const handleSave = async () => {
         if (!league?.id) return;
@@ -243,8 +304,6 @@ const LeagueSettingsView: React.FC = () => {
         setSaveErr(null);
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
-            roomId:              room?.id,
-            maxTeams,
             lotteryScheduledAt:  toIso(lotteryAt),
             draftScheduledAt:    toIso(draftAt),
             tournamentStartAt:   toIso(tournamentStartAt),
@@ -255,8 +314,6 @@ const LeagueSettingsView: React.FC = () => {
             draftPoolStrategy:    draftFormat,
             draftOvrMin,
             draftOvrMax,
-            seasonStartDate:     refToday,
-            seasonEndDate:       computedSeasonEnd,
             matchFormat,
             finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
             ...(league?.type === 'tournament'
@@ -301,20 +358,25 @@ const LeagueSettingsView: React.FC = () => {
         reload();
     };
 
-    const handleSavePlayoffSettings = async () => {
+    const handleSaveTradeSettings = async () => {
         if (!league?.id) return;
-        setSavingPlayoff(true);
-        setSavePlayoffOk(false);
-        setSavePlayoffErr(null);
+        setSavingTrade(true);
+        setSaveTradeOk(false);
+        setSaveTradeErr(null);
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
-            playoffTeamCount: playoffTeamsPerConf,
-            playInEnabled,
+            roomId: room?.id,
+            simSettings: {
+                ...DEFAULT_SIM_SETTINGS,
+                ...(room?.sim_settings ?? {}),
+                tradeMinValueRatio,
+                cpuTradeBaseProbability,
+            },
         });
-        setSavingPlayoff(false);
-        if (err) { setSavePlayoffErr(err); return; }
-        setSavePlayoffOk(true);
-        setTimeout(() => setSavePlayoffOk(false), 2000);
+        setSavingTrade(false);
+        if (err) { setSaveTradeErr(err); return; }
+        setSaveTradeOk(true);
+        setTimeout(() => setSaveTradeOk(false), 2000);
         reload();
     };
 
@@ -393,6 +455,22 @@ const LeagueSettingsView: React.FC = () => {
         reload();
     };
 
+    const handleSaveTeamName = async (teamId: string) => {
+        const draft = teamNameDrafts[teamId];
+        const trimmed = draft?.trim();
+        if (!trimmed) return;
+        setSavingTeamNameId(teamId);
+        setTeamNameErrs(prev => { const next = { ...prev }; delete next[teamId]; return next; });
+        const { error: err } = await updateTeamName(teamId, trimmed);
+        setSavingTeamNameId(null);
+        if (err) {
+            setTeamNameErrs(prev => ({ ...prev, [teamId]: err }));
+            return;
+        }
+        setTeamNameDrafts(prev => { const next = { ...prev }; delete next[teamId]; return next; });
+        reload();
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -411,47 +489,252 @@ const LeagueSettingsView: React.FC = () => {
 
     const humanMembers = members.filter(m => !m.is_ai);
 
+    // ── 리그 정보 요약(좌측 상단 카드)용 계산값 ──
+    const seasonStartLabel = league.season_start_date
+        ? new Date(`${league.season_start_date}T00:00:00`).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+        : '—';
+    const currentSeasonLabel = (() => {
+        if (league.status === 'recruiting' || league.status === 'drafting') return '시작 전';
+        if (!league.season_start_date) return '—';
+        const days = Math.floor((Date.now() - new Date(`${league.season_start_date}T00:00:00`).getTime()) / 86_400_000) + 1;
+        return `${Math.max(1, days)}일째 진행중`;
+    })();
+    const leagueTypeLabel = league.type === 'main_league'
+        ? `메인리그${league.tier ? ` · ${league.tier.toUpperCase()}` : ''}`
+        : '토너먼트';
+    // single_elim 토너먼트는 결승까지 브라켓 방식이라 "플레이오프 있음"으로 취급, round_robin은 없음.
+    const hasPlayoff = league.type === 'main_league' || league.tournament_format === 'single_elim';
+
+    // ── 탭별 dirty 여부 — 헤더 통합 저장 버튼의 활성화 조건 + 탭 전환 시 "저장 안 됨" 확인용.
+    // 각 비교식은 위 초기화 useEffect가 state를 채울 때 쓴 소스 표현식과 반드시 동일해야
+    // "저장 직후 dirty가 false로 떨어짐"이 보장된다(둘이 어긋나면 저장해도 계속 dirty로 보임).
+    const isNameDirty = nameInput.trim() !== '' && nameInput.trim() !== league.name;
+    const isMaxTeamsDirty = maxTeams !== (league.max_teams ?? 8);
+    const playoffEditable = league.type === 'main_league' && !league.bracket_data;
+    const isPlayoffDirty = playoffEditable && (
+        playoffTeamsPerConf !== (league.playoff_team_count ?? 8) ||
+        playInEnabled !== (league.play_in_enabled ?? true)
+    );
+    const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isPlayoffDirty;
+
+    const sourceDraftPools = (() => {
+        const rawPool = league.draft_pool ?? 'standard';
+        const validTypes: PoolType[] = ['standard', 'alltime', 'rookies'];
+        const parsed = rawPool.split(',').map((s: string) => s.trim()).filter((s: string) => validTypes.includes(s as PoolType)) as PoolType[];
+        return parsed.length > 0 ? parsed : ['standard'];
+    })();
+    const isDraftTabDirty = !isInProgress && (
+        lotteryAt !== toInputValue(league.lottery_scheduled_at) ||
+        draftAt !== toInputValue(league.draft_scheduled_at) ||
+        totalRounds !== (league.draft_total_rounds ?? 10) ||
+        pickSec !== (league.draft_pick_duration_sec ?? 30) ||
+        autoPickAfterMisses !== (league.draft_auto_pick_after_misses ?? 1) ||
+        draftPools.join(',') !== sourceDraftPools.join(',') ||
+        draftOvrMin !== (league.draft_ovr_min ?? 0) ||
+        draftOvrMax !== (league.draft_ovr_max ?? 99) ||
+        draftFormat !== (league.draft_pool_strategy ?? 'snake') ||
+        (league.type === 'tournament' && (
+            tournamentStartAt !== toInputValue((league as any).tournament_start_at) ||
+            tournamentIntervalMin !== Math.round(1440 / Math.max(1, (league as any).games_per_real_day ?? 48)) ||
+            matchFormat !== (league.match_format ?? 'best_of_1') ||
+            finalsMatchFormat !== (league.finals_match_format ?? league.match_format ?? 'best_of_1')
+        ))
+    );
+
+    const isTradeTabDirty =
+        tradeMinValueRatio !== (room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio) ||
+        cpuTradeBaseProbability !== (room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
+
+    const isCapTabDirty =
+        capEnabled !== ((league as any).cap_enabled ?? true) ||
+        salaryCapAmount !== ((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount) ||
+        luxuryTaxEnabled !== ((league as any).luxury_tax_enabled ?? true) ||
+        luxuryTaxAmount !== ((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount) ||
+        apron1Enabled !== ((league as any).apron1_enabled ?? true) ||
+        apron1Amount !== ((league as any).apron1_amount ?? CAP_DEFAULTS.apron1Amount) ||
+        apron2Enabled !== ((league as any).apron2_enabled ?? true) ||
+        apron2Amount !== ((league as any).apron2_amount ?? CAP_DEFAULTS.apron2Amount) ||
+        salaryFloorEnabled !== ((league as any).salary_floor_enabled ?? true) ||
+        salaryFloorAmount !== ((league as any).salary_floor_amount ?? CAP_DEFAULTS.salaryFloorAmount);
+
+    const isEngineTabDirty =
+        injuriesEnabled !== (room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled) ||
+        injuryFrequency !== (room?.sim_settings?.injuryFrequency ?? DEFAULT_SIM_SETTINGS.injuryFrequency) ||
+        majorInjuryFrequency !== (room?.sim_settings?.majorInjuryFrequency ?? DEFAULT_SIM_SETTINGS.majorInjuryFrequency) ||
+        suspensionsEnabled !== (room?.sim_settings?.suspensionsEnabled ?? DEFAULT_SIM_SETTINGS.suspensionsEnabled) ||
+        suspensionFrequency !== (room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency) ||
+        garbageTimeEnabled !== (room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled) ||
+        normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization);
+
+    type TabSaveInfo = { dirty: boolean; saving: boolean; ok: boolean; err: string | null; onSave: () => void };
+    const TAB_SAVE_MAP: Partial<Record<SettingsTabId, TabSaveInfo>> = {
+        league: { dirty: isLeagueTabDirty, saving: savingLeague, ok: saveLeagueOk, err: saveLeagueErr, onSave: handleSaveLeagueTab },
+        draft:  { dirty: isDraftTabDirty,  saving: saving,       ok: saveOk,       err: saveErr,       onSave: handleSave },
+        trade:  { dirty: isTradeTabDirty,  saving: savingTrade,  ok: saveTradeOk,  err: saveTradeErr,  onSave: handleSaveTradeSettings },
+        cap:    { dirty: isCapTabDirty,    saving: savingCap,    ok: saveCapOk,    err: saveCapErr,    onSave: handleSaveCapSettings },
+        engine: { dirty: isEngineTabDirty, saving: savingSim,    ok: saveSimOk,    err: saveSimErr,    onSave: handleSaveSimSettings },
+    };
+    const activeSaveInfo = TAB_SAVE_MAP[activeTab] ?? null;
+
+    // 탭을 옮기기 전에 현재 탭에 저장 안 된 변경사항이 있으면 한 번 더 확인.
+    const handleTabChange = (tab: SettingsTabId) => {
+        if (activeSaveInfo?.dirty) {
+            const proceed = window.confirm('저장하지 않은 변경사항이 있습니다. 다른 탭으로 이동하시겠습니까?');
+            if (!proceed) return;
+        }
+        setActiveTab(tab);
+    };
+
+    const memberListPanel = (
+        <section className="space-y-3">
+            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Users size={14} className="text-slate-400" />
+                팀 목록
+                <span className="text-xs font-normal text-slate-500 ml-1">
+                    {leagueTeams.length}팀 · 인간 GM {humanMembers.length}명
+                </span>
+            </h2>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="border-b border-slate-700">
+                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">팀</th>
+                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">GM</th>
+                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">이메일</th>
+                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">참가일시</th>
+                            <th className="px-2 py-2 text-center text-xs font-bold text-slate-500">드래프트 오더</th>
+                            <th className="px-2 py-2" />
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                        {leagueTeams.map(t => {
+                            const isHuman = !t.is_ai && t.user_id !== null;
+                            const isMe    = t.user_id === userId;
+                            const joinedAt = isHuman ? members.find(m => m.user_id === t.user_id)?.joined_at ?? null : null;
+                            const nameDraft = teamNameDrafts[t.id];
+                            const nameDirty = nameDraft !== undefined && nameDraft.trim() !== '' && nameDraft.trim() !== t.team_name;
+                            return (
+                                <tr key={t.id}>
+                                    {/* 팀 (편집 가능) */}
+                                    <td className="px-2 py-2">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={nameDraft ?? t.team_name}
+                                                onChange={e => setTeamNameDrafts(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                                maxLength={40}
+                                                disabled={league.status === 'drafting'}
+                                                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500 text-sm font-bold text-white transition-colors min-w-0 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            />
+                                            {nameDirty && (
+                                                <button
+                                                    onClick={() => handleSaveTeamName(t.id)}
+                                                    disabled={savingTeamNameId === t.id}
+                                                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-[10px] font-bold text-white transition-colors shrink-0"
+                                                >
+                                                    {savingTeamNameId === t.id
+                                                        ? <Loader2 size={10} className="animate-spin" />
+                                                        : <Save size={10} />
+                                                    }
+                                                </button>
+                                            )}
+                                        </div>
+                                        {teamNameErrs[t.id] && (
+                                            <p className="text-[10px] text-red-400 ko-normal mt-0.5">{teamNameErrs[t.id]}</p>
+                                        )}
+                                    </td>
+
+                                    {/* GM (어드민이면 닉네임 우측에 왕관 아이콘) */}
+                                    <td className="px-2 py-2">
+                                        <div className="flex items-center gap-1.5">
+                                            {isHuman
+                                                ? <span className="text-xs text-slate-300 ko-normal">{t.nickname ?? '선점됨'}</span>
+                                                : <span className="text-xs text-slate-600">AI</span>
+                                            }
+                                            {t.user_id === league.admin_user_id && (
+                                                <Crown size={11} className="text-amber-400 shrink-0" />
+                                            )}
+                                        </div>
+                                    </td>
+
+                                    {/* 이메일 */}
+                                    <td className="px-2 py-2 text-xs text-slate-400 whitespace-nowrap">
+                                        {isHuman ? (memberEmails[t.user_id!] ?? '—') : '—'}
+                                    </td>
+
+                                    {/* 참가일시 */}
+                                    <td className="px-2 py-2 text-xs text-slate-400 font-mono whitespace-nowrap">
+                                        {fmtJoinedAt(joinedAt)}
+                                    </td>
+
+                                    {/* 드래프트 오더 (단순 텍스트) */}
+                                    <td className="px-2 py-2 text-center text-xs font-bold">
+                                        {t.draft_order !== null
+                                            ? <span className="text-amber-400">#{t.draft_order}</span>
+                                            : <span className="text-slate-700">—</span>
+                                        }
+                                    </td>
+
+                                    {/* 추방 — AI 팀/본인도 버튼은 항상 노출, 클릭만 불가 */}
+                                    <td className="px-2 py-2 text-right">
+                                        {(() => {
+                                            const canKick = isHuman && !isMe && !!room;
+                                            // kickingId 기본값(null)과 AI 팀의 t.user_id(역시 null)가
+                                            // 우연히 같아서 `kickingId === t.user_id`만 쓰면 AI 팀 행에서
+                                            // 로더가 항상 켜진 것처럼 보인다 — null 여부를 먼저 걸러야 함.
+                                            const isKickingThis = kickingId !== null && kickingId === t.user_id;
+                                            return (
+                                                <button
+                                                    onClick={() => canKick && handleKick(t.user_id!)}
+                                                    disabled={!canKick || isKickingThis}
+                                                    className="flex items-center gap-1 px-2 py-1 bg-red-600/10 hover:bg-red-600/30 text-red-500 hover:text-red-400 rounded-lg text-xs transition-colors disabled:opacity-30 disabled:hover:bg-red-600/10 disabled:cursor-not-allowed ml-auto"
+                                                >
+                                                    {isKickingThis
+                                                        ? <Loader2 size={11} className="animate-spin" />
+                                                        : <Trash2 size={11} />
+                                                    }
+                                                    추방
+                                                </button>
+                                            );
+                                        })()}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    );
+
     return (
-        <div className="max-w-2xl mx-auto px-4 py-10 space-y-8">
+        <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
 
-            {/* 뒤로가기 */}
-            <button
-                onClick={() => navigate(
-                    isInProgress
-                        ? `/multi/leagues/${leagueId}/season`
-                        : `/multi/leagues/${leagueId}/lobby`,
-                )}
-                className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
-            >
-                <ArrowLeft size={14} />
-                <span className="ko-normal">{isInProgress ? '시즌으로 돌아가기' : '로비로 돌아가기'}</span>
-            </button>
-
-            <div>
-                <div className="flex items-center gap-2">
-                    <input
-                        type="text"
-                        value={nameInput}
-                        onChange={e => setNameInput(e.target.value)}
-                        maxLength={40}
-                        className="text-xl font-black text-white ko-tight bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none transition-colors flex-1 min-w-0"
-                    />
-                    {nameInput.trim() && nameInput.trim() !== league.name && (
+            <TabBar
+                tabs={SETTINGS_TABS}
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+                rightSlot={activeSaveInfo && (
+                    <>
+                        {activeSaveInfo.err && <span className="text-xs text-red-400 ko-normal">{activeSaveInfo.err}</span>}
                         <button
-                            onClick={handleSaveName}
-                            disabled={savingName}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-bold text-white transition-colors shrink-0"
+                            onClick={activeSaveInfo.onSave}
+                            disabled={!activeSaveInfo.dirty || activeSaveInfo.saving}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors"
                         >
-                            {savingName
-                                ? <Loader2 size={12} className="animate-spin" />
+                            {activeSaveInfo.saving
+                                ? <><Loader2 size={12} className="animate-spin" />저장 중…</>
+                                : activeSaveInfo.ok
+                                ? '저장됨 ✓'
                                 : <><Save size={12} />저장</>
                             }
                         </button>
-                    )}
-                </div>
-                <p className="text-xs text-slate-500 ko-normal mt-0.5">세션 설정 — 어드민 전용</p>
-                {saveNameErr && <p className="text-xs text-red-400 ko-normal mt-1">{saveNameErr}</p>}
-            </div>
+                    </>
+                )}
+            />
+
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-8 space-y-6">
 
             {/* ── 세션 진행 중 안내 ────────────────────────────────────────────── */}
             {isInProgress && (
@@ -462,27 +745,203 @@ const LeagueSettingsView: React.FC = () => {
                 </section>
             )}
 
-            {/* ── 어드민 시뮬레이션 (진행 중 세션 전용) ──────────────────────── */}
-            {isInProgress && (
-                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                        <PlayCircle size={14} className="text-emerald-400" />
-                        경기 시뮬레이션
-                    </h2>
-                    <p className="text-xs text-slate-400 ko-normal leading-relaxed">
-                        경기 일정을 확인하고 개별 경기 또는 전체를 수동으로 시뮬레이션합니다.
-                    </p>
-                    <button
-                        onClick={() => navigate(`/multi/leagues/${leagueId}/admin/sim`)}
-                        className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-sm font-bold text-white transition-colors"
-                    >
-                        <PlayCircle size={13} />
-                        시뮬레이션 관리
-                    </button>
-                </section>
+            {/* ── 리그 (좌: 제너럴 설정 / 우: 멤버) ────────────────────────────── */}
+            {activeTab === 'league' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                    {/* 좌측: 리그 제너럴 설정 */}
+                    <div className="space-y-6">
+                        <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
+                            <div>
+                                <input
+                                    type="text"
+                                    value={nameInput}
+                                    onChange={e => setNameInput(e.target.value)}
+                                    maxLength={40}
+                                    className="text-xl font-black text-white ko-tight bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors w-full"
+                                />
+                                <p className="text-xs text-slate-500 ko-normal mt-0.5">세션 설정 — 어드민 전용</p>
+                            </div>
+
+                            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                                <Info size={14} className="text-indigo-400" />
+                                리그 정보
+                            </h2>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 bg-slate-900/60 rounded-xl p-4">
+                                <InfoRow label="시작 시즌" value={seasonStartLabel} />
+                                <InfoRow label="현재 시즌" value={currentSeasonLabel} />
+                                <InfoRow label="리그 유형" value={leagueTypeLabel} />
+                                <InfoRow label="플레이오프 여부" value={hasPlayoff ? '있음' : '없음'} />
+                                <InfoRow
+                                    label="플레이인 토너먼트 여부"
+                                    value={league.type === 'main_league' ? (playInEnabled ? '켜짐' : '꺼짐') : '해당없음'}
+                                />
+                                <InfoRow
+                                    label="플레이오프 진출팀 수"
+                                    value={league.type === 'main_league' ? `컨퍼런스당 ${playoffTeamsPerConf}팀` : '해당없음'}
+                                />
+                                <InfoRow
+                                    label="플레이인 진출팀 수"
+                                    value={league.type === 'main_league' && playInEnabled ? '4팀 (7~10위)' : '해당없음'}
+                                />
+                                <InfoRow label="올스타 경기" value="미구현" muted />
+                                <InfoRow label="정규시즌 수상" value="상시 활성 (토글 미지원)" muted />
+                                <InfoRow label="부상" value={injuriesEnabled ? '켜짐' : '꺼짐'} />
+                                <InfoRow label="출전정지" value={suspensionsEnabled ? '켜짐' : '꺼짐'} />
+                                <InfoRow label="샐러리캡" value={capEnabled ? '켜짐' : '꺼짐'} />
+                            </div>
+                        </section>
+
+                        {!isInProgress && (
+                            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <Users size={14} className="text-indigo-400" />
+                                    참가팀 수
+                                </h2>
+                                <div className="flex gap-2 flex-wrap">
+                                    {(league.type === 'tournament' ? [4, 8, 16, 32, 64] : [10, 20, 30]).map(n => {
+                                        const tooSmall = n < humanMembers.length;
+                                        return (
+                                            <button
+                                                key={n}
+                                                onClick={() => !tooSmall && setMaxTeams(n)}
+                                                disabled={tooSmall}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                                    maxTeams === n
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : tooSmall
+                                                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {n}팀
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {humanMembers.length > 0 && (
+                                    <p className="text-xs text-slate-500 ko-normal">
+                                        현재 참가 인원 {humanMembers.length}명 이상으로만 설정 가능
+                                    </p>
+                                )}
+                            </section>
+                        )}
+
+                        {league.status === 'finished' && (
+                            <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <Trophy size={14} className="text-emerald-400" />
+                                    <h2 className="text-sm font-bold text-emerald-300 ko-tight">토너먼트 종료</h2>
+                                    <span className="text-xs text-emerald-500/70 ko-normal ml-auto">기록 자동 저장 완료</span>
+                                </div>
+
+                                <p className="text-xs text-slate-400 ko-normal leading-relaxed">
+                                    토너먼트가 종료되었습니다. 모든 경기 기록과 선수 박스스코어가 히스토리에 저장되었습니다.
+                                    세션을 초기화하면 드래프트부터 다시 시작할 수 있습니다.
+                                </p>
+
+                                {!resetConfirm ? (
+                                    <button
+                                        onClick={() => setResetConfirm(true)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-bold text-white transition-colors"
+                                    >
+                                        <RotateCcw size={13} />
+                                        기록 저장 &amp; 초기화
+                                    </button>
+                                ) : (
+                                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
+                                        <p className="text-sm font-bold text-white ko-tight">정말 초기화하시겠습니까?</p>
+                                        <p className="text-xs text-slate-400 ko-normal">
+                                            모든 로스터, 드래프트 오더, 경기 일정이 초기화됩니다.
+                                            히스토리 기록은 유지됩니다.
+                                        </p>
+                                        {resetErr && (
+                                            <p className="text-xs text-red-400 ko-normal">{resetErr}</p>
+                                        )}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleReset}
+                                                disabled={resetting}
+                                                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                            >
+                                                {resetting
+                                                    ? <><Loader2 size={13} className="animate-spin" />초기화 중…</>
+                                                    : <><RotateCcw size={13} />초기화 실행</>
+                                                }
+                                            </button>
+                                            <button
+                                                onClick={() => { setResetConfirm(false); setResetErr(null); }}
+                                                disabled={resetting}
+                                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl text-sm text-slate-300 transition-colors"
+                                            >
+                                                취소
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </section>
+                        )}
+
+                        {/* ── 플레이오프 형식 (관리자 전용, 플레이오프 시작 전까지 진행 중 세션에서도 변경 가능) ── */}
+                        {league.type === 'main_league' && !league.bracket_data && (
+                            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <Trophy size={14} className="text-indigo-400" />
+                                    플레이오프 형식
+                                </h2>
+                                <p className="text-xs text-slate-500 ko-normal">
+                                    정규시즌이 끝나고 플레이오프 대진표가 만들어지기 전까지만 변경할 수 있습니다.
+                                </p>
+
+                                <div>
+                                    <div className="flex items-center justify-between px-1">
+                                        <span className="text-xs font-bold text-slate-300">컨퍼런스별 진출 팀 수</span>
+                                        <input
+                                            type="number"
+                                            min={2}
+                                            max={16}
+                                            step={1}
+                                            value={playoffTeamsPerConf}
+                                            onChange={e => setPlayoffTeamsPerConf(Math.min(16, Math.max(2, Math.round(Number(e.target.value) || 0))))}
+                                            className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                                        동부/서부 각 컨퍼런스에서 몇 팀이 플레이오프에 진출할지 정합니다(리그 전체가 아닌 컨퍼런스당 인원).
+                                    </p>
+                                </div>
+
+                                <label
+                                    className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                                        playInEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                                    }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={playInEnabled}
+                                        onChange={e => setPlayInEnabled(e.target.checked)}
+                                        className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <span className={`text-xs font-bold ${playInEnabled ? 'text-white' : 'text-slate-400'}`}>플레이인 토너먼트</span>
+                                        <span className="ml-2 text-xs text-slate-500 ko-normal">
+                                            켜면 상위 {Math.max(0, playoffTeamsPerConf - 2)}팀은 자동 진출, 나머지 4팀(7~10위)이 미니 토너먼트로 마지막 2자리를 다툽니다.
+                                            끄면 컨퍼런스별 상위 {playoffTeamsPerConf}팀이 곧바로 진출합니다.
+                                        </span>
+                                    </div>
+                                </label>
+                            </section>
+                        )}
+                    </div>
+
+                    {/* 우측: 멤버 설정 */}
+                    <div>
+                        {memberListPanel}
+                    </div>
+                </div>
             )}
 
             {/* ── 엔진 설정 (관리자 전용, 진행 중 세션에서도 변경 가능) ─────────── */}
+            {activeTab === 'engine' && (
             <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <Activity size={14} className="text-indigo-400" />
@@ -608,24 +1067,74 @@ const LeagueSettingsView: React.FC = () => {
                         </p>
                     </div>
                 </div>
-
-                {saveSimErr && <p className="text-xs text-red-400 ko-normal">{saveSimErr}</p>}
-
-                <button
-                    onClick={handleSaveSimSettings}
-                    disabled={savingSim}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
-                >
-                    {savingSim
-                        ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
-                        : saveSimOk
-                        ? '저장됨 ✓'
-                        : <><Save size={13} />저장</>
-                    }
-                </button>
             </section>
+            )}
+
+            {/* ── 트레이드 설정 (관리자 전용, 진행 중 세션에서도 변경 가능) ─────── */}
+            {activeTab === 'trade' && (
+            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <ArrowLeftRight size={14} className="text-amber-400" />
+                    트레이드 설정
+                </h2>
+                <p className="text-xs text-slate-500 ko-normal">
+                    CPU 트레이드 엔진의 판단 기준을 조절합니다. 저장 즉시 이후 트레이드 평가부터 적용됩니다.
+                </p>
+
+                <div>
+                    <div className="flex items-center justify-between px-1">
+                        <span className="text-xs font-bold text-slate-300">트레이드 수락 기준</span>
+                        <input
+                            type="number"
+                            min={0.70}
+                            max={1.20}
+                            step={0.05}
+                            value={tradeMinValueRatio}
+                            onChange={e => setTradeMinValueRatio(Math.min(1.20, Math.max(0.70, Number(e.target.value) || 0)))}
+                            className="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-amber-500"
+                        />
+                    </div>
+                    <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                        상대 팀 자산 대비 최소 가치 비율(0.70~1.20, 기본 0.95). 낮을수록 CPU가 트레이드를 쉽게 수락합니다.
+                    </p>
+                </div>
+
+                <div>
+                    <div className="flex items-center justify-between px-1">
+                        <span className="text-xs font-bold text-slate-300">CPU 트레이드 확률</span>
+                        <input
+                            type="number"
+                            min={0}
+                            max={0.5}
+                            step={0.05}
+                            value={cpuTradeBaseProbability}
+                            onChange={e => setCpuTradeBaseProbability(Math.min(0.5, Math.max(0, Number(e.target.value) || 0)))}
+                            className="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-amber-500"
+                        />
+                    </div>
+                    <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                        CPU 팀 간 일일 트레이드 발생 기본 확률(0~0.5, 기본 0.15).
+                    </p>
+                </div>
+            </section>
+            )}
+
+            {/* ── 재정 설정 (준비 중) ──────────────────────────────────────────── */}
+            {activeTab === 'finance' && (
+            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Wallet size={14} className="text-emerald-400" />
+                    재정 설정
+                </h2>
+                <p className="text-xs text-slate-500 ko-normal leading-relaxed">
+                    리그 단위 재정 파라미터(예산 난이도, 출석·머천다이즈 수익 배율 등)는 아직 설정 화면에 노출되지 않았습니다.
+                    현재 재정 엔진은 팀별로 자동 계산되며, 세션 단위 커스터마이징은 준비 중입니다.
+                </p>
+            </section>
+            )}
 
             {/* ── 샐러리캡 설정 (관리자 전용, 진행 중 세션에서도 변경 가능) ─────────── */}
+            {activeTab === 'cap' && (
             <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <DollarSign size={14} className="text-emerald-400" />
@@ -761,21 +1270,7 @@ const LeagueSettingsView: React.FC = () => {
                     </div>
                 </div>
 
-                {saveCapErr && <p className="text-xs text-red-400 ko-normal">{saveCapErr}</p>}
-
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleSaveCapSettings}
-                        disabled={savingCap}
-                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
-                    >
-                        {savingCap
-                            ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
-                            : saveCapOk
-                            ? '저장됨 ✓'
-                            : <><Save size={13} />저장</>
-                        }
-                    </button>
+                <div>
                     <button
                         onClick={handleResetCapDefaults}
                         disabled={savingCap}
@@ -786,206 +1281,10 @@ const LeagueSettingsView: React.FC = () => {
                     </button>
                 </div>
             </section>
-
-            {/* ── 플레이오프 형식 (관리자 전용, 플레이오프 시작 전까지 진행 중 세션에서도 변경 가능) ── */}
-            {league.type === 'main_league' && !league.bracket_data && (
-                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                        <Trophy size={14} className="text-indigo-400" />
-                        플레이오프 형식
-                    </h2>
-                    <p className="text-xs text-slate-500 ko-normal">
-                        정규시즌이 끝나고 플레이오프 대진표가 만들어지기 전까지만 변경할 수 있습니다.
-                    </p>
-
-                    <div>
-                        <div className="flex items-center justify-between px-1">
-                            <span className="text-xs font-bold text-slate-300">컨퍼런스별 진출 팀 수</span>
-                            <input
-                                type="number"
-                                min={2}
-                                max={16}
-                                step={1}
-                                value={playoffTeamsPerConf}
-                                onChange={e => setPlayoffTeamsPerConf(Math.min(16, Math.max(2, Math.round(Number(e.target.value) || 0))))}
-                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
-                            />
-                        </div>
-                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
-                            동부/서부 각 컨퍼런스에서 몇 팀이 플레이오프에 진출할지 정합니다(리그 전체가 아닌 컨퍼런스당 인원).
-                        </p>
-                    </div>
-
-                    <label
-                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
-                            playInEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
-                        }`}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={playInEnabled}
-                            onChange={e => setPlayInEnabled(e.target.checked)}
-                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
-                        />
-                        <div className="flex-1 min-w-0">
-                            <span className={`text-xs font-bold ${playInEnabled ? 'text-white' : 'text-slate-400'}`}>플레이인 토너먼트</span>
-                            <span className="ml-2 text-xs text-slate-500 ko-normal">
-                                켜면 상위 {Math.max(0, playoffTeamsPerConf - 2)}팀은 자동 진출, 나머지 4팀(7~10위)이 미니 토너먼트로 마지막 2자리를 다툽니다.
-                                끄면 컨퍼런스별 상위 {playoffTeamsPerConf}팀이 곧바로 진출합니다.
-                            </span>
-                        </div>
-                    </label>
-
-                    {savePlayoffErr && <p className="text-xs text-red-400 ko-normal">{savePlayoffErr}</p>}
-
-                    <button
-                        onClick={handleSavePlayoffSettings}
-                        disabled={savingPlayoff}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
-                    >
-                        {savingPlayoff
-                            ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
-                            : savePlayoffOk
-                            ? '저장됨 ✓'
-                            : <><Save size={13} />저장</>
-                        }
-                    </button>
-                </section>
             )}
-
-            {/* ── 토너먼트 종료 & 초기화 ──────────────────────────────────────── */}
-            {league.status === 'finished' && (
-                <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center gap-2">
-                        <Trophy size={14} className="text-emerald-400" />
-                        <h2 className="text-sm font-bold text-emerald-300 ko-tight">토너먼트 종료</h2>
-                        <span className="text-xs text-emerald-500/70 ko-normal ml-auto">기록 자동 저장 완료</span>
-                    </div>
-
-                    <p className="text-xs text-slate-400 ko-normal leading-relaxed">
-                        토너먼트가 종료되었습니다. 모든 경기 기록과 선수 박스스코어가 히스토리에 저장되었습니다.
-                        세션을 초기화하면 드래프트부터 다시 시작할 수 있습니다.
-                    </p>
-
-                    {!resetConfirm ? (
-                        <button
-                            onClick={() => setResetConfirm(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-bold text-white transition-colors"
-                        >
-                            <RotateCcw size={13} />
-                            기록 저장 &amp; 초기화
-                        </button>
-                    ) : (
-                        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
-                            <p className="text-sm font-bold text-white ko-tight">정말 초기화하시겠습니까?</p>
-                            <p className="text-xs text-slate-400 ko-normal">
-                                모든 로스터, 드래프트 오더, 경기 일정이 초기화됩니다.
-                                히스토리 기록은 유지됩니다.
-                            </p>
-                            {resetErr && (
-                                <p className="text-xs text-red-400 ko-normal">{resetErr}</p>
-                            )}
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleReset}
-                                    disabled={resetting}
-                                    className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
-                                >
-                                    {resetting
-                                        ? <><Loader2 size={13} className="animate-spin" />초기화 중…</>
-                                        : <><RotateCcw size={13} />초기화 실행</>
-                                    }
-                                </button>
-                                <button
-                                    onClick={() => { setResetConfirm(false); setResetErr(null); }}
-                                    disabled={resetting}
-                                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl text-sm text-slate-300 transition-colors"
-                                >
-                                    취소
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </section>
-            )}
-
-            {/* ── 시즌 기간 ────────────────────────────────────────────────────── */}
-            {!isInProgress && league.type === 'main_league' && (
-                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-5">
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                        <CalendarDays size={14} className="text-indigo-400" />
-                        시즌 기간
-                    </h2>
-
-                    <div>
-                        <label className="text-xs text-slate-400 ko-normal block mb-1">리그 기간</label>
-                        <select
-                            value={durationWeeks}
-                            onChange={e => setDurationWeeks(Number(e.target.value))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        >
-                            {[1, 2, 3, 4].map(w => (
-                                <option key={w} value={w}>{w}주</option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-slate-600 ko-normal mt-1">
-                            시즌은 드래프트 완료 시점부터 자동으로 시작됩니다.
-                        </p>
-                    </div>
-
-                    <div className="bg-slate-900/60 rounded-xl p-4 space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-slate-500 ko-normal">정규시즌</span>
-                            <span className="text-slate-300 font-mono">{regularDays}일 · {gameDaysPerDay}경기/일</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-slate-500 ko-normal">플레이오프</span>
-                            <span className="text-slate-300 font-mono">{durationWeeks * 7 - regularDays}일</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-slate-500 ko-normal">일일 시뮬 시간대</span>
-                            <span className="text-slate-300 font-mono">10:00 ~ {lastSlotKst} KST</span>
-                        </div>
-                    </div>
-                </section>
-            )}
-
-            {/* ── 참가팀 수 ───────────────────────────────────────────────────── */}
-            {!isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Users size={14} className="text-indigo-400" />
-                    참가팀 수
-                </h2>
-                <div className="flex gap-2 flex-wrap">
-                    {(league.type === 'tournament' ? [4, 8, 16, 32, 64] : [10, 20, 30]).map(n => {
-                        const tooSmall = n < humanMembers.length;
-                        return (
-                            <button
-                                key={n}
-                                onClick={() => !tooSmall && setMaxTeams(n)}
-                                disabled={tooSmall}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                                    maxTeams === n
-                                        ? 'bg-indigo-600 text-white'
-                                        : tooSmall
-                                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                                }`}
-                            >
-                                {n}팀
-                            </button>
-                        );
-                    })}
-                </div>
-                {humanMembers.length > 0 && (
-                    <p className="text-xs text-slate-500 ko-normal">
-                        현재 참가 인원 {humanMembers.length}명 이상으로만 설정 가능
-                    </p>
-                )}
-            </section>}
 
             {/* ── 스케줄 설정 ─────────────────────────────────────────────────── */}
-            {!isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-5">
+            {activeTab === 'draft' && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-5">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <CalendarDays size={14} className="text-indigo-400" />
                     스케줄
@@ -1143,25 +1442,10 @@ const LeagueSettingsView: React.FC = () => {
                         )}
                     </div>
                 )}
-
-                {saveErr && <p className="text-xs text-red-400 ko-normal">{saveErr}</p>}
-
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
-                >
-                    {saving
-                        ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
-                        : saveOk
-                        ? '저장됨 ✓'
-                        : <><Save size={13} />저장</>
-                    }
-                </button>
             </section>}
 
             {/* ── 드래프트 추첨 (수동) ─────────────────────────────────────────── */}
-            {!isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+            {activeTab === 'draft' && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <Shield size={14} className="text-amber-400" />
                     드래프트 오더 추첨
@@ -1216,94 +1500,69 @@ const LeagueSettingsView: React.FC = () => {
                 )}
             </section>}
 
-            {/* ── 팀 & 참가자 ─────────────────────────────────────────────────── */}
-            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Users size={14} className="text-slate-400" />
-                    팀 목록
-                    <span className="text-xs font-normal text-slate-500 ml-1">
-                        {leagueTeams.length}팀 · 인간 GM {humanMembers.length}명
-                    </span>
-                </h2>
+            {/* ── 드래프트 결과 (진행 중/완료 여부와 무관하게 항상 조회 가능) ─────── */}
+            {activeTab === 'draft' && (
+                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                        <ClipboardList size={14} className="text-emerald-400" />
+                        드래프트 결과
+                        {draftPicks.length > 0 && (
+                            <span className="text-xs font-normal text-slate-500 ml-1">{draftPicks.length}픽</span>
+                        )}
+                    </h2>
 
-                <div className="overflow-x-auto rounded-xl border border-slate-700/60">
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-900/80">
-                            <tr>
-                                <th className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">팀</th>
-                                {league.type !== 'tournament' && <th className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">컨퍼런스</th>}
-                                <th className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">GM</th>
-                                <th className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">드래프트 오더</th>
-                                <th className="px-4 py-2.5 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider" />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                            {leagueTeams.map(t => {
-                                const isHuman = !t.is_ai && t.user_id !== null;
-                                const isMe    = t.user_id === userId;
-                                return (
-                                    <tr key={t.id} className="bg-slate-900/40">
-                                        {/* 팀 */}
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-2.5">
-                                                <div
-                                                    className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
-                                                    style={{ backgroundColor: t.color_primary, color: t.color_text ?? getReadableTextColor(t.color_primary) }}
-                                                >
-                                                    {t.team_abbr}
-                                                </div>
-                                                <span className="font-bold text-white whitespace-nowrap">{t.team_name}</span>
-                                            </div>
-                                        </td>
+                    {draftPicks.length === 0 ? (
+                        <p className="text-xs text-slate-500 ko-normal">아직 드래프트 결과가 없습니다.</p>
+                    ) : (() => {
+                        // 팀 × 라운드 매트릭스로 재구성 — 팀은 1라운드 픽 순서(pick_index) 기준 정렬.
+                        const rounds = Array.from(new Set(draftPicks.map(p => p.round))).sort((a, b) => a - b);
+                        const pickByTeamRound = new Map<string, Map<number, DraftPickRow>>();
+                        const firstPickIndexByTeam = new Map<string, number>();
+                        const teamNameById = new Map<string, string>();
+                        for (const p of draftPicks) {
+                            if (!pickByTeamRound.has(p.team_id)) pickByTeamRound.set(p.team_id, new Map());
+                            pickByTeamRound.get(p.team_id)!.set(p.round, p);
+                            teamNameById.set(p.team_id, p.team_name ?? p.team_id);
+                            const cur = firstPickIndexByTeam.get(p.team_id);
+                            if (cur === undefined || p.pick_index < cur) firstPickIndexByTeam.set(p.team_id, p.pick_index);
+                        }
+                        const teamIds = Array.from(teamNameById.keys())
+                            .sort((a, b) => (firstPickIndexByTeam.get(a)! - firstPickIndexByTeam.get(b)!));
 
-                                        {/* 컨퍼런스 */}
-                                        {league.type !== 'tournament' && (
-                                            <td className="px-3 py-3 text-xs text-slate-400">
-                                                {fmtConference(t.conference)}
-                                            </td>
-                                        )}
+                        return (
+                            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-slate-700">
+                                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">팀</th>
+                                            {rounds.map(r => (
+                                                <th key={r} className="px-2 py-2 text-left text-xs font-bold text-slate-500 whitespace-nowrap">{r}R</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800">
+                                        {teamIds.map(teamId => (
+                                            <tr key={teamId}>
+                                                <td className="px-2 py-2 text-xs font-bold text-white whitespace-nowrap">{teamNameById.get(teamId)}</td>
+                                                {rounds.map(r => {
+                                                    const pick = pickByTeamRound.get(teamId)?.get(r);
+                                                    return (
+                                                        <td key={r} className="px-2 py-2 text-xs text-slate-300 whitespace-nowrap">
+                                                            {pick ? `${pick.player_name}(${pick.position},${pick.ovr})` : '—'}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        );
+                    })()}
+                </section>
+            )}
 
-                                        {/* GM */}
-                                        <td className="px-3 py-3">
-                                            {isMe
-                                                ? <span className="text-[11px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded">나</span>
-                                                : isHuman
-                                                ? <span className="text-xs text-slate-300 ko-normal">{t.nickname ?? '선점됨'}</span>
-                                                : <span className="text-xs text-slate-600">AI</span>
-                                            }
-                                        </td>
-
-                                        {/* 드래프트 오더 */}
-                                        <td className="px-3 py-3 text-center">
-                                            {t.draft_order !== null
-                                                ? <span className="text-xs font-bold text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded">#{t.draft_order}</span>
-                                                : <span className="text-xs text-slate-700">—</span>
-                                            }
-                                        </td>
-
-                                        {/* 강퇴 */}
-                                        <td className="px-4 py-3 text-right">
-                                            {isHuman && !isMe && room && (
-                                                <button
-                                                    onClick={() => handleKick(t.user_id!)}
-                                                    disabled={kickingId === t.user_id}
-                                                    className="flex items-center gap-1 px-2 py-1 bg-red-600/10 hover:bg-red-600/30 text-red-500 hover:text-red-400 rounded-lg text-xs transition-colors disabled:opacity-50 ml-auto"
-                                                >
-                                                    {kickingId === t.user_id
-                                                        ? <Loader2 size={11} className="animate-spin" />
-                                                        : <Trash2 size={11} />
-                                                    }
-                                                    강퇴
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            </div>
         </div>
     );
 };

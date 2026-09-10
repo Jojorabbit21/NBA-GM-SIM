@@ -113,9 +113,13 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     // 일일 시뮬 시간대(KST) — 이 시간대 안에서만 경기가 진행된다. 기본 저녁 19:00~23:00.
     const [dailyWindowStart, setDailyWindowStart] = useState('19:00');
     const [dailyWindowEnd,   setDailyWindowEnd]   = useState('23:00');
-    // 가상 시즌 연도 — 사용자에게 보여지는 정규시즌 캘린더 연도(예: 2027년 10월 개막).
+    // 가상 시즌 연도 — 사용자에게 보여지는 정규시즌 캘린더 연도(예: 2026년 10월 개막).
     // 실제 리그가 시뮬레이션되는 시각(압축된 실제 시간)과는 무관한 표시 전용 값이다.
-    const [virtualSeasonYear, setVirtualSeasonYear] = useState(new Date().getFullYear() + 1);
+    // new Date().getFullYear() + 1로 계산하면 방문 시점마다 값이 달라져(내년엔 2028로
+    // 자동 이동) 매년 갱신이 필요한 숨은 하드코딩이 되므로, 고정값 2026으로 관리한다.
+    // 생성 후에는 이 값이 leagues.virtual_season_year에 영속되어(finalize.ts) 이후 스케줄
+    // 생성/헤더 표시가 전부 그 DB값만 참조 — 클라이언트가 재계산하는 곳은 없다.
+    const [virtualSeasonYear, setVirtualSeasonYear] = useState(2026);
 
     // ── 드래프트 (공통) ────────────────────────────────────────────────────────
     const [totalRounds,    setTotalRounds]    = useState(10);
@@ -240,6 +244,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             const { data: room, error: re } = await createRoom({
                 leagueId,
                 maxPlayers: maxTeams,
+                ...(type !== 'tournament' && { season: `${virtualSeasonYear}-${String(virtualSeasonYear + 1).slice(-2)}` }),
                 simSettings: {
                     normalization: {
                         enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,

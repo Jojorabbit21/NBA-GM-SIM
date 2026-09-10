@@ -93,6 +93,9 @@ export interface LeagueRow {
     real_time_pace: string;
     sim_real_start_at: string | null;
     games_per_real_day: number;
+    /** 시즌 개막 연도(가상 캘린더 기준) — getAllStarKeyDates()의 인자. finalize.ts가 리그
+     *  생성 시 채운다(CreateLeagueModal.tsx 참조). */
+    virtual_season_year: number | null;
     created_at: string;
 }
 
@@ -336,6 +339,38 @@ export const listLeagueTeams = async (roomId: string): Promise<LeagueTeamRow[]> 
         .order('team_slug');
 
     if (error) { console.error('[listLeagueTeams]', error.message); return []; }
+    return data ?? [];
+};
+
+// ─── draft_picks (완료된 드래프트 결과 조회 — 세션 설정 화면 "드래프트" 탭용) ──────
+
+export interface DraftPickRow {
+    id: number;
+    room_id: string;
+    league_id: string | null;
+    pick_index: number;
+    round: number;
+    slot: number;
+    team_id: string;
+    team_name: string | null;
+    user_id: string | null;
+    is_ai: boolean;
+    gm_email: string | null;
+    player_id: string;
+    player_name: string;
+    position: string;
+    ovr: number;
+    picked_at: string;
+}
+
+export const listDraftPicks = async (roomId: string): Promise<DraftPickRow[]> => {
+    const { data, error } = await supabase
+        .from('draft_picks')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('pick_index');
+
+    if (error) { console.error('[listDraftPicks]', error.message); return []; }
     return data ?? [];
 };
 

@@ -222,6 +222,254 @@ export interface SuspensionDetail {
     timeRemaining: string;
 }
 
+/** [2026-09-08] 올스타 팬 투표 중간/최종 집계 뉴스 — 서버 미러: server/src/postAllStarVoteNews.ts
+ * (league_events 뉴스 + league_allstar_votes 테이블 payload 둘 다 이 형태 그대로 저장). 필드명을
+ * 바꿀 땐 서버 쪽도 반드시 같이 고칠 것(dev-log.md 기록 대상). votes/pct는
+ * utils/allStarSelection.ts의 AllStarVoteEntry(votes, pct)와 동일 정의(pct는 0~1, 같은 포지션
+ * 그룹 내 득표율). */
+export interface AllstarVoteEntry {
+    playerId: string; playerName: string; teamSlug: string;
+    posGroup: 'G' | 'FC';
+    votes: number;
+    pct: number;
+}
+export interface AllstarVoteConference {
+    guards: AllstarVoteEntry[];
+    frontcourt: AllstarVoteEntry[];
+}
+export interface AllstarVoteUpdateDetail {
+    kind: 'allstar_vote_update';
+    /** "1차 중간 집계" / "최종 집계" 등 — 카드 제목에 그대로 사용. */
+    roundLabel: string;
+    /** 0~1, 투표 시작 대비 경과 비율(runAllStarVote의 voteProgress와 동일). */
+    voteProgress: number;
+    east: AllstarVoteConference;
+    west: AllstarVoteConference;
+}
+
+/** [2026-09-08] 투표 시작일(getAllStarKeyDates().allStarVoteStart)에 발송되는 안내 서신 —
+ * 득표 리더보드(allstar_vote_update)와 달리 표가 없는 순수 안내문. 날짜들은 서버가 계산
+ * 시점에 이미 문자열로 박아서 보내므로 카드가 별도 계산 없이 그대로 표시한다. */
+export interface AllstarVoteStartDetail {
+    kind: 'allstar_vote_start';
+    leagueName: string;
+    /** 예: "2026-27" */
+    seasonLabel: string;
+    voteStart: string;
+    voteEnd: string;
+    allStarStart: string;
+    allStarEnd: string;
+    /** [2026-09-08] 올스타 본경기 실제 실행일(allStarStart+3일) — 구버전 데이터엔 없을 수
+     *  있어 optional. */
+    mainGameDate?: string;
+}
+
+/** [2026-09-08] 투표 마감 후 확정된 올스타 명단(스타터/리저브) — 원래는
+ * league_allstar_votes.roster 컬럼 전용으로 만든 타입이었는데, 2026-09-08 후속으로
+ * league_events의 allstar_vote_result 뉴스 payload도 완전히 같은 형태를 그대로 재사용한다
+ * (아래 AllstarVoteResultDetail 참고) — 그래서 이제 LeagueEventDetail 유니온에도 들어감.
+ * utils/allStarSelection.ts의 runAllStarSelection()이 반환하는 AllStarPlayer를 화면 표시에
+ * 필요한 필드만 남겨 축약한 형태 — votes/statLine 등 계산용 필드는 저장하지 않는다. */
+export interface AllstarRosterPlayer {
+    playerId: string; playerName: string; teamSlug: string;
+    posGroup: 'G' | 'FC';
+    position: string;
+    ovr: number;
+    /** 스타터는 최종 팬 득표수, 리저브/와일드카드는 코치 100인 투표 포인트 — 서로 스케일이
+     *  다른 값이니 섞어서 비교하지 말 것(utils/allStarSelection.ts AllStarPlayer.votes 주석 참고). */
+    votes: number;
+    /** 0~1, 같은 포지션 그룹 내 팬 득표율 — 스타터만 있음(팬 투표로 뽑히므로). 리저브는 코치
+     *  투표라 이 개념이 없어 undefined. */
+    pct?: number;
+}
+export interface AllstarConferenceRoster {
+    /** 5명: 백코트 2 + 프론트코트 3 (팬 투표 최종 결과) */
+    starters: AllstarRosterPlayer[];
+    /** 7명: 백코트 2 + 프론트코트 3 + 와일드카드 2 (코치 투표) */
+    reserves: AllstarRosterPlayer[];
+}
+/** [2026-09-08] 라이징스타 챌린지 — 투표 없이 성적 기준으로 뽑힌 선수라 votes/pct가 없다
+ * (AllstarRosterPlayer와 달리 컨퍼런스 구분도 없음, teamA/teamB는 임의 라벨). */
+export interface RisingStarsRosterPlayer {
+    playerId: string; playerName: string; teamSlug: string;
+    posGroup: 'G' | 'FC';
+    position: string;
+    ovr: number;
+    /** [2026-09-08] 팀 내 최고 스코어러(전체 1·2위) — 팀 주장, teamAName/teamBName의 출처. */
+    isCaptain: boolean;
+}
+export interface RisingStarsRosterResult {
+    /** 10명씩 — 소속 실제 팀과 무관한 임의 라벨(컨퍼런스 구분 없음) */
+    teamA: RisingStarsRosterPlayer[];
+    teamB: RisingStarsRosterPlayer[];
+    /** 각 팀 주장의 성(姓) — "팀 " + 이 값으로 조합해 표시(예: "팀 플래그"). */
+    teamAName: string;
+    teamBName: string;
+}
+
+export interface AllstarRosterResult {
+    east: AllstarConferenceRoster;
+    west: AllstarConferenceRoster;
+    /** 본올스타와 같이 발표되므로 같은 행/같은 뉴스에 실린다 — 구버전 데이터엔 없을 수 있어 optional. */
+    risingStars?: RisingStarsRosterResult;
+}
+
+/** [2026-09-08] 투표 마감일에 발송되는 최종 명단 발표 서신 — 코트 배치도 없이 컨퍼런스별
+ * 스타터/리저브를 리스트(표)로만 보여준다(사용자 요청, 뉴스 서신은 코트 이미지 제외).
+ * east/west는 AllstarRosterResult와 완전히 동일한 형태라 파싱기(parseAllstarRosterPayload)를
+ * 그대로 재사용한다. */
+export interface AllstarVoteResultDetail {
+    kind: 'allstar_vote_result';
+    seasonLabel: string;
+    east: AllstarConferenceRoster;
+    west: AllstarConferenceRoster;
+    risingStars?: RisingStarsRosterResult;
+    /** [2026-09-08] 서신 본문에 "올스타전 경기 일정" 문구를 넣기 위해 추가 — 올스타전 개최
+     *  기간(getAllStarKeyDates().allStarStart/allStarEnd)을 그대로 재사용. 구버전 데이터엔
+     *  없을 수 있어 optional. */
+    allStarStart?: string;
+    allStarEnd?: string;
+    /** [2026-09-08] 올스타 본경기 실제 실행일(allStarStart+3일) — 구버전 데이터엔 없을 수
+     *  있어 optional. */
+    mainGameDate?: string;
+}
+
+/** [2026-09-08] 라이징스타 챌린지 명단 — 처음엔 allstar_vote_result 서신 안에 섹션으로만
+ * 끼워 넣었는데, 사용자 요청으로 별도 서신(뉴스 피드 아이템)으로도 발송한다. league_events
+ * 삽입 시점은 allstar_vote_result와 동일(투표 마감일, isFinalDay) — server/src/postAllStarVoteNews.ts
+ * maybePostRisingStarsNews() 참고. teamA/teamB는 AllstarVoteResultDetail.risingStars와 완전히
+ * 같은 값(재계산 아님, computeAndStoreAllStarVotes에서 이미 계산해둔 걸 그대로 씀). */
+export interface AllstarRisingStarsDetail {
+    kind: 'allstar_rising_stars';
+    seasonLabel: string;
+    teamA: RisingStarsRosterPlayer[];
+    teamB: RisingStarsRosterPlayer[];
+    teamAName: string;
+    teamBName: string;
+    /** [2026-09-08] 서신 본문에 "라이징스타 챌린지 경기 일정" 문구를 넣기 위해 추가 — 올스타전
+     *  개최 기간(getAllStarKeyDates().allStarStart/allStarEnd)을 그대로 재사용. */
+    allStarStart: string;
+    allStarEnd: string;
+    /** [2026-09-08] 라이징스타 챌린지 실제 경기 실행일(allStarStart+1일) — 구버전 데이터엔
+     *  없을 수 있어 optional. */
+    gameDate?: string;
+}
+
+/** [2026-09-08] 3점 챌린지 참가자 명단 — 투표 없이 3점슛 능력치 기반 가중 랜덤 추첨으로
+ * 선정(utils/allStarSelection.ts의 runThreePointContestSelection() 참고). 컨퍼런스/팀 구분
+ * 없는 단일 리스트(8명, 실제 NBA 현행 방식). 투표 마감일(allStarVoteEnd)이 아니라 올스타전
+ * 기간 시작일(allStarStart)에 발표된다 — 다른 올스타 서신들과 트리거 시점이 다름. */
+export interface ThreePointContestParticipantEntry {
+    playerId: string; playerName: string; teamSlug: string;
+    position: string; ovr: number;
+    /** threeCorner/three45/threeTop 평균값(원점수, 선정용 노이즈 반영 전) — 참고/표시용. */
+    threePointRating: number;
+}
+export interface AllstarThreePointContestDetail {
+    kind: 'allstar_three_point_contest';
+    seasonLabel: string;
+    participants: ThreePointContestParticipantEntry[];
+    /** [2026-09-08] 실제 대회(슈팅 시뮬레이션) 실행일 — getAllStarKeyDates()의
+     *  allStarThreePointContestDate(참가 명단 발표일 allStarStart+2일)를 그대로 재사용.
+     *  서신 본문에 "실제 대회는 언제 열리는지" 문구를 넣기 위해 추가 — 구버전 데이터엔
+     *  없을 수 있어 optional. */
+    contestDate?: string;
+}
+
+/** [2026-09-08] 덩크 컨테스트 참가자 명단 — 투표 없이 덩크 능력치 기반 가중 랜덤 추첨(+
+ * 아키타입 가산점)으로 선정(utils/allStarSelection.ts의 runDunkContestSelection() 참고).
+ * 3점 챌린지와 완전히 동일한 구조(컨퍼런스/팀 구분 없는 단일 리스트, 4명, allStarStart에
+ * 발표) — ThreePointContestParticipantEntry/AllstarThreePointContestDetail과 짝을 이룸. */
+export interface DunkContestParticipantEntry {
+    playerId: string; playerName: string; teamSlug: string;
+    position: string; ovr: number;
+    /** dunk/vertical 평균값(원점수, 선정용 노이즈·아키타입 보너스 반영 전) — 참고/표시용. */
+    dunkRating: number;
+}
+export interface AllstarDunkContestDetail {
+    kind: 'allstar_dunk_contest';
+    seasonLabel: string;
+    participants: DunkContestParticipantEntry[];
+    /** [2026-09-09] 실제 대회(덩크 시뮬레이션) 실행일 — getAllStarKeyDates()의
+     *  allStarDunkContestDate(3점 챌린지와 같은 날, allStarStart+2일)를 그대로 재사용.
+     *  서신 본문에 "실제 대회는 언제 열리는지" 문구를 넣기 위해 추가 — 구버전 데이터엔
+     *  없을 수 있어 optional. */
+    contestDate?: string;
+}
+
+/** [2026-09-09] 올스타 본경기/라이징스타 챌린지 "결과" 서신 — 참가자 선정(AllstarVoteResultDetail/
+ * AllstarRisingStarsDetail)과는 별개로, 실제 경기 시뮬레이션 완료 후 발송(server/src/
+ * postAllStarGame.ts의 computeAndRunAllStarGame()). 두 이벤트 타입(allstar_game_result/
+ * allstar_rising_stars_result)이 완전히 동일한 payload 구조를 공유해 detail 타입/파서도
+ * 하나로 합쳤다 — kind로만 구분. homeTeamId/awayTeamId는 가상 팀 ID(EAST-ALLSTAR 등)라
+ * teamBySlug 조회가 항상 실패하므로 homeTeamName/awayTeamName을 서버가 계산 시점에 이미
+ * 구해 payload에 직접 실어준다(라이징스타는 시즌마다 주장 성이 달라 클라이언트에서 재조회하지
+ * 않고 그대로 사용). mvp는 양팀 박스스코어를 합쳐 pickTeamMvp()로 고른 경기 전체 MVP 1명
+ * (server/src/shared/leagueEvents.ts) — 후보가 없을 이론상 케이스만 undefined. */
+export interface AllstarGameResultDetail {
+    kind: 'allstar_game_result' | 'allstar_rising_stars_result';
+    seasonLabel: string;
+    homeTeamId: string; awayTeamId: string;
+    homeTeamName: string; awayTeamName: string;
+    homeScore: number; awayScore: number;
+    mvp?: { playerId: string; name: string; position?: string; stats: StatEntry[] };
+}
+
+/** [2026-09-09] 3점 챌린지 "결과" 서신 — 참가자 선정(AllstarThreePointContestDetail)과는
+ * 별개로, 실제 슈팅 시뮬레이션 완료 후 발송(server/src/postThreePointContest.ts). 5랙(코너-
+ * 윙-탑-윙-코너) × 5구(마지막 볼 2점) 라운드를 8명(round1) → 상위 3명 결선(round2)으로 두 번
+ * 시뮬레이션 — round1/round2 모두 이미 총점 내림차순 정렬된 상태로 저장된다(서버가 정렬
+ * 완료 후 저장, 클라이언트 재정렬 불필요). */
+export interface ThreePointContestRoundEntry {
+    playerId: string; playerName: string; teamSlug: string; position: string;
+    /** 5랙 각각의 점수(0~6, 마지막 볼 2점 포함) — 랙 순서: 왼쪽 코너/왼쪽 윙/탑/오른쪽 윙/오른쪽 코너. */
+    rackScores: number[];
+    /** [2026-09-09] 랙별 5구 각각의 성공(true)/실패(false) — 샷차트 그래픽(선수 선택 시 랙별
+     *  볼 아이콘 표시)용. 이 필드 추가 이전 이벤트는 없을 수 있어 optional. */
+    rackShots?: boolean[][];
+    total: number;
+}
+export interface AllstarThreePointContestResultDetail {
+    kind: 'allstar_three_point_contest_result';
+    seasonLabel: string;
+    /** 8명 전원, 총점 내림차순. */
+    round1: ThreePointContestRoundEntry[];
+    /** round1 상위 3명의 playerId. */
+    finalistIds: string[];
+    /** 결선 3명, 총점 내림차순 — round2[0]이 우승자. */
+    round2: ThreePointContestRoundEntry[];
+    winnerId: string;
+}
+
+/** [2026-09-09] 덩크 컨테스트 "결과" 서신 — 참가자 선정(AllstarDunkContestDetail)과는 별개로,
+ * 실제 채점 시뮬레이션 완료 후 발송(server/src/postDunkContest.ts). 3점 챌린지와 동일한
+ * 구조 원칙(round1/round2 모두 이미 총점 내림차순 정렬된 상태로 저장, 클라이언트 재정렬
+ * 불필요) — 4명이 예선 2회씩 시도(합산) → 상위 2명이 결승 2회씩 새로 시도(예선 점수 이월
+ * 안 됨, 결승 점수만으로 우승 결정). */
+export interface DunkAttemptEntry {
+    /** 저지 5명 각각의 점수(6~10) — 표시용, 현재 UI는 합계만 사용. */
+    judgeScores: number[];
+    /** 그 시도의 합계(저지 5명 합산, 최대 50). */
+    total: number;
+}
+export interface DunkContestRoundEntry {
+    playerId: string; playerName: string; teamSlug: string; position: string;
+    /** 2회 시도 각각의 점수 — 실제 NBA와 동일하게 2회 모두 채점, 합산. */
+    dunks: DunkAttemptEntry[];
+    total: number;
+}
+export interface AllstarDunkContestResultDetail {
+    kind: 'allstar_dunk_contest_result';
+    seasonLabel: string;
+    /** 4명 전원, 총점 내림차순. */
+    round1: DunkContestRoundEntry[];
+    /** round1 상위 2명의 playerId. */
+    finalistIds: string[];
+    /** 결승 2명, 총점 내림차순 — round2[0]이 우승자. */
+    round2: DunkContestRoundEntry[];
+    winnerId: string;
+}
+
 export type LeagueEventDetail =
     | GameResultDetail
     | PlayerFeatDetail
@@ -235,6 +483,15 @@ export type LeagueEventDetail =
     | AllDefTeamDetail
     | InjuryDetail
     | SuspensionDetail
+    | AllstarVoteUpdateDetail
+    | AllstarVoteStartDetail
+    | AllstarVoteResultDetail
+    | AllstarRisingStarsDetail
+    | AllstarThreePointContestDetail
+    | AllstarDunkContestDetail
+    | AllstarGameResultDetail
+    | AllstarThreePointContestResultDetail
+    | AllstarDunkContestResultDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -340,6 +597,230 @@ function parsePowerRankingMover(raw: any): (PowerRankingEntry & { fromRank: numb
     const entry = parsePowerRankingEntry(raw);
     if (!entry || typeof raw.fromRank !== 'number') return undefined;
     return { ...entry, fromRank: raw.fromRank };
+}
+
+/** league_events.payload(allstar_vote_update)와 league_allstar_votes.payload가 완전히 같은
+ * 형태를 쓰므로 파싱 로직을 공유한다 — hooks/useAllStarVotes.ts(올스타 페이지)와 아래
+ * parseLeagueEventPayload의 'allstar_vote_update' 케이스(뉴스 카드) 둘 다 이 함수를 쓴다. */
+export function parseAllstarVotePayload(payload: any): AllstarVoteUpdateDetail | null {
+    if (!payload || !isNonEmptyString(payload.roundLabel) || !payload.east || !payload.west) return null;
+    const num = (v: unknown) => typeof v === 'number' ? v : 0;
+    const parseGroup = (arr: any): AllstarVoteEntry[] => Array.isArray(arr)
+        ? arr
+            .filter((e: any) => e && isNonEmptyString(e.playerId) && isNonEmptyString(e.playerName) && isNonEmptyString(e.teamSlug))
+            .map((e: any): AllstarVoteEntry => ({
+                playerId: e.playerId, playerName: e.playerName, teamSlug: e.teamSlug,
+                posGroup: e.posGroup === 'FC' ? 'FC' : 'G',
+                votes: num(e.votes), pct: num(e.pct),
+            }))
+        : [];
+    const east: AllstarVoteConference = { guards: parseGroup(payload.east.guards), frontcourt: parseGroup(payload.east.frontcourt) };
+    const west: AllstarVoteConference = { guards: parseGroup(payload.west.guards), frontcourt: parseGroup(payload.west.frontcourt) };
+    if (east.guards.length === 0 && east.frontcourt.length === 0 && west.guards.length === 0 && west.frontcourt.length === 0) return null;
+    return { kind: 'allstar_vote_update', roundLabel: payload.roundLabel, voteProgress: num(payload.voteProgress), east, west };
+}
+
+/** league_allstar_votes.roster 컬럼(nullable) 전용 파서 — hooks/useAllStarVotes.ts에서 사용.
+ * 투표 마감일이 아닌 행은 컬럼 자체가 NULL이라 raw가 null/undefined인 게 정상. */
+export function parseAllstarRosterPayload(raw: any): AllstarRosterResult | null {
+    if (!raw || !raw.east || !raw.west) return null;
+    const parsePlayers = (arr: any): AllstarRosterPlayer[] => Array.isArray(arr)
+        ? arr
+            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+            .map((p: any): AllstarRosterPlayer => ({
+                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                posGroup: p.posGroup === 'FC' ? 'FC' : 'G',
+                position: isNonEmptyString(p.position) ? p.position : '',
+                ovr: typeof p.ovr === 'number' ? p.ovr : 0,
+                votes: typeof p.votes === 'number' ? p.votes : 0,
+                pct: typeof p.pct === 'number' ? p.pct : undefined,
+            }))
+        : [];
+    const east: AllstarConferenceRoster = { starters: parsePlayers(raw.east.starters), reserves: parsePlayers(raw.east.reserves) };
+    const west: AllstarConferenceRoster = { starters: parsePlayers(raw.west.starters), reserves: parsePlayers(raw.west.reserves) };
+    if (east.starters.length === 0 && west.starters.length === 0) return null;
+
+    // teamAName/teamBName은 [2026-09-08] 추가된 필드라 그 이전에 저장된 행엔 없을 수 있음 —
+    // 없으면 'A'/'B'로 폴백(runRisingStarsSelection()의 빈 팀 폴백과 동일 기본값).
+    const risingStars: RisingStarsRosterResult | undefined = raw.risingStars
+        ? {
+            teamA: parseRisingStarsPlayers(raw.risingStars.teamA), teamB: parseRisingStarsPlayers(raw.risingStars.teamB),
+            teamAName: isNonEmptyString(raw.risingStars.teamAName) ? raw.risingStars.teamAName : 'A',
+            teamBName: isNonEmptyString(raw.risingStars.teamBName) ? raw.risingStars.teamBName : 'B',
+        }
+        : undefined;
+
+    return { east, west, risingStars };
+}
+
+// parseAllstarRosterPayload(league_allstar_votes.roster용)와 parseAllstarRisingStarsPayload
+// (league_events의 allstar_rising_stars 서신용) 둘 다 같은 선수 배열 형태를 파싱하므로 공유.
+function parseRisingStarsPlayers(arr: any): RisingStarsRosterPlayer[] {
+    return Array.isArray(arr)
+        ? arr
+            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+            .map((p: any): RisingStarsRosterPlayer => ({
+                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                posGroup: p.posGroup === 'FC' ? 'FC' : 'G',
+                position: isNonEmptyString(p.position) ? p.position : '',
+                ovr: typeof p.ovr === 'number' ? p.ovr : 0,
+                isCaptain: p.isCaptain === true,
+            }))
+        : [];
+}
+
+/** league_events의 allstar_rising_stars 서신 payload 전용 파서. */
+export function parseAllstarRisingStarsPayload(payload: any): AllstarRisingStartsPayloadResult | null {
+    if (!payload || !isNonEmptyString(payload.seasonLabel)) return null;
+    const teamA = parseRisingStarsPlayers(payload.teamA);
+    const teamB = parseRisingStarsPlayers(payload.teamB);
+    if (teamA.length === 0 && teamB.length === 0) return null;
+    return {
+        seasonLabel: payload.seasonLabel, teamA, teamB,
+        teamAName: isNonEmptyString(payload.teamAName) ? payload.teamAName : 'A',
+        teamBName: isNonEmptyString(payload.teamBName) ? payload.teamBName : 'B',
+        // [2026-09-08] 추가된 필드라 그 이전에 저장된 행엔 없을 수 있음 — 없으면 빈 문자열로
+        // 폴백(카드 쪽에서 빈 문자열이면 일정 문구를 아예 생략).
+        allStarStart: isNonEmptyString(payload.allStarStart) ? payload.allStarStart : '',
+        allStarEnd: isNonEmptyString(payload.allStarEnd) ? payload.allStarEnd : '',
+        gameDate: isNonEmptyString(payload.gameDate) ? payload.gameDate : undefined,
+    };
+}
+type AllstarRisingStartsPayloadResult = {
+    seasonLabel: string; teamA: RisingStarsRosterPlayer[]; teamB: RisingStarsRosterPlayer[];
+    teamAName: string; teamBName: string;
+    allStarStart: string; allStarEnd: string;
+    gameDate?: string;
+};
+
+/** league_events의 allstar_three_point_contest 서신 payload 전용 파서. */
+export function parseAllstarThreePointContestPayload(payload: any): AllstarThreePointContestDetail | null {
+    if (!payload || !isNonEmptyString(payload.seasonLabel)) return null;
+    const participants: ThreePointContestParticipantEntry[] = Array.isArray(payload.participants)
+        ? payload.participants
+            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+            .map((p: any): ThreePointContestParticipantEntry => ({
+                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                position: isNonEmptyString(p.position) ? p.position : '',
+                ovr: typeof p.ovr === 'number' ? p.ovr : 0,
+                threePointRating: typeof p.threePointRating === 'number' ? p.threePointRating : 0,
+            }))
+        : [];
+    if (participants.length === 0) return null;
+    return {
+        kind: 'allstar_three_point_contest', seasonLabel: payload.seasonLabel, participants,
+        contestDate: isNonEmptyString(payload.contestDate) ? payload.contestDate : undefined,
+    };
+}
+
+/** league_events의 allstar_dunk_contest 서신 payload 전용 파서 —
+ * parseAllstarThreePointContestPayload()와 완전히 동일한 구조. */
+export function parseAllstarDunkContestPayload(payload: any): AllstarDunkContestDetail | null {
+    if (!payload || !isNonEmptyString(payload.seasonLabel)) return null;
+    const participants: DunkContestParticipantEntry[] = Array.isArray(payload.participants)
+        ? payload.participants
+            .filter((p: any) => p && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName) && isNonEmptyString(p.teamSlug))
+            .map((p: any): DunkContestParticipantEntry => ({
+                playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamSlug,
+                position: isNonEmptyString(p.position) ? p.position : '',
+                ovr: typeof p.ovr === 'number' ? p.ovr : 0,
+                dunkRating: typeof p.dunkRating === 'number' ? p.dunkRating : 0,
+            }))
+        : [];
+    if (participants.length === 0) return null;
+    return {
+        kind: 'allstar_dunk_contest', seasonLabel: payload.seasonLabel, participants,
+        contestDate: isNonEmptyString(payload.contestDate) ? payload.contestDate : undefined,
+    };
+}
+
+/** league_events의 allstar_game_result/allstar_rising_stars_result 서신 payload 공용 파서 —
+ * 두 타입이 완전히 동일한 구조를 공유(server/src/postAllStarGame.ts 참고)라 kind 문자열만
+ * 그대로 넘겨받아 채운다. */
+export function parseAllstarGameResultPayload(
+    payload: any, kind: 'allstar_game_result' | 'allstar_rising_stars_result',
+): AllstarGameResultDetail | null {
+    if (!payload || !isNonEmptyString(payload.homeTeamId) || !isNonEmptyString(payload.awayTeamId)) return null;
+    if (typeof payload.homeScore !== 'number' || typeof payload.awayScore !== 'number') return null;
+    return {
+        kind,
+        seasonLabel: isNonEmptyString(payload.seasonLabel) ? payload.seasonLabel : '',
+        homeTeamId: payload.homeTeamId, awayTeamId: payload.awayTeamId,
+        homeTeamName: isNonEmptyString(payload.homeTeamName) ? payload.homeTeamName : payload.homeTeamId,
+        awayTeamName: isNonEmptyString(payload.awayTeamName) ? payload.awayTeamName : payload.awayTeamId,
+        homeScore: payload.homeScore, awayScore: payload.awayScore,
+        mvp: parseGameMvp(payload.mvp),
+    };
+}
+
+function parseThreePointRoundEntries(raw: any): ThreePointContestRoundEntry[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .filter((e: any) => e && isNonEmptyString(e.playerId) && isNonEmptyString(e.playerName) && Array.isArray(e.rackScores))
+        .map((e: any): ThreePointContestRoundEntry => ({
+            playerId: e.playerId, playerName: e.playerName,
+            teamSlug: isNonEmptyString(e.teamSlug) ? e.teamSlug : '',
+            position: isNonEmptyString(e.position) ? e.position : '',
+            rackScores: e.rackScores.map((n: any) => (typeof n === 'number' ? n : 0)),
+            rackShots: Array.isArray(e.rackShots)
+                ? e.rackShots.map((rack: any) => Array.isArray(rack) ? rack.map((b: any) => !!b) : [])
+                : undefined,
+            total: typeof e.total === 'number' ? e.total : e.rackScores.reduce((s: number, n: any) => s + (typeof n === 'number' ? n : 0), 0),
+        }));
+}
+
+/** league_events의 allstar_three_point_contest_result 서신 payload 전용 파서. */
+export function parseAllstarThreePointContestResultPayload(payload: any): AllstarThreePointContestResultDetail | null {
+    if (!payload || !isNonEmptyString(payload.winnerId)) return null;
+    const round1 = parseThreePointRoundEntries(payload.round1);
+    const round2 = parseThreePointRoundEntries(payload.round2);
+    if (round1.length === 0 || round2.length === 0) return null;
+    return {
+        kind: 'allstar_three_point_contest_result',
+        seasonLabel: isNonEmptyString(payload.seasonLabel) ? payload.seasonLabel : '',
+        round1,
+        finalistIds: Array.isArray(payload.finalistIds) ? payload.finalistIds.filter(isNonEmptyString) : round2.map((e: ThreePointContestRoundEntry) => e.playerId),
+        round2,
+        winnerId: payload.winnerId,
+    };
+}
+
+function parseDunkAttempts(raw: any): DunkAttemptEntry[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((d: any): DunkAttemptEntry => ({
+        judgeScores: Array.isArray(d?.judgeScores) ? d.judgeScores.map((n: any) => (typeof n === 'number' ? n : 0)) : [],
+        total: typeof d?.total === 'number' ? d.total : 0,
+    }));
+}
+
+function parseDunkRoundEntries(raw: any): DunkContestRoundEntry[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .filter((e: any) => e && isNonEmptyString(e.playerId) && isNonEmptyString(e.playerName) && Array.isArray(e.dunks))
+        .map((e: any): DunkContestRoundEntry => ({
+            playerId: e.playerId, playerName: e.playerName,
+            teamSlug: isNonEmptyString(e.teamSlug) ? e.teamSlug : '',
+            position: isNonEmptyString(e.position) ? e.position : '',
+            dunks: parseDunkAttempts(e.dunks),
+            total: typeof e.total === 'number' ? e.total : e.dunks.reduce((s: number, d: any) => s + (typeof d?.total === 'number' ? d.total : 0), 0),
+        }));
+}
+
+/** league_events의 allstar_dunk_contest_result 서신 payload 전용 파서 —
+ * parseAllstarThreePointContestResultPayload()와 완전히 동일한 구조. */
+export function parseAllstarDunkContestResultPayload(payload: any): AllstarDunkContestResultDetail | null {
+    if (!payload || !isNonEmptyString(payload.winnerId)) return null;
+    const round1 = parseDunkRoundEntries(payload.round1);
+    const round2 = parseDunkRoundEntries(payload.round2);
+    if (round1.length === 0 || round2.length === 0) return null;
+    return {
+        kind: 'allstar_dunk_contest_result',
+        seasonLabel: isNonEmptyString(payload.seasonLabel) ? payload.seasonLabel : '',
+        round1,
+        finalistIds: Array.isArray(payload.finalistIds) ? payload.finalistIds.filter(isNonEmptyString) : round2.map((e: DunkContestRoundEntry) => e.playerId),
+        round2,
+        winnerId: payload.winnerId,
+    };
 }
 
 // v===1이지만 형태가 깨진 payload(반쯤 쓰인 마이그레이션, 수동 편집 등)가 그리드를
@@ -494,6 +975,60 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     }));
                 if (tiers.length === 0) return LEGACY;
                 return { kind: 'all_def_team', season: payload.season, tiers };
+            }
+            case 'allstar_vote_update': {
+                const parsed = parseAllstarVotePayload(payload);
+                return parsed ?? LEGACY;
+            }
+            case 'allstar_vote_start': {
+                if (!isNonEmptyString(payload.leagueName) || !isNonEmptyString(payload.seasonLabel)) return LEGACY;
+                if (!isNonEmptyString(payload.voteStart) || !isNonEmptyString(payload.voteEnd)) return LEGACY;
+                if (!isNonEmptyString(payload.allStarStart) || !isNonEmptyString(payload.allStarEnd)) return LEGACY;
+                return {
+                    kind: 'allstar_vote_start',
+                    leagueName: payload.leagueName, seasonLabel: payload.seasonLabel,
+                    voteStart: payload.voteStart, voteEnd: payload.voteEnd,
+                    allStarStart: payload.allStarStart, allStarEnd: payload.allStarEnd,
+                    mainGameDate: isNonEmptyString(payload.mainGameDate) ? payload.mainGameDate : undefined,
+                };
+            }
+            case 'allstar_vote_result': {
+                if (!isNonEmptyString(payload.seasonLabel)) return LEGACY;
+                const parsed = parseAllstarRosterPayload(payload);
+                if (!parsed) return LEGACY;
+                return {
+                    kind: 'allstar_vote_result', seasonLabel: payload.seasonLabel,
+                    east: parsed.east, west: parsed.west, risingStars: parsed.risingStars,
+                    allStarStart: isNonEmptyString(payload.allStarStart) ? payload.allStarStart : undefined,
+                    allStarEnd: isNonEmptyString(payload.allStarEnd) ? payload.allStarEnd : undefined,
+                    mainGameDate: isNonEmptyString(payload.mainGameDate) ? payload.mainGameDate : undefined,
+                };
+            }
+            case 'allstar_rising_stars': {
+                const parsed = parseAllstarRisingStarsPayload(payload);
+                if (!parsed) return LEGACY;
+                return { kind: 'allstar_rising_stars', ...parsed };
+            }
+            case 'allstar_three_point_contest': {
+                const parsed = parseAllstarThreePointContestPayload(payload);
+                return parsed ?? LEGACY;
+            }
+            case 'allstar_dunk_contest': {
+                const parsed = parseAllstarDunkContestPayload(payload);
+                return parsed ?? LEGACY;
+            }
+            case 'allstar_game_result':
+            case 'allstar_rising_stars_result': {
+                const parsed = parseAllstarGameResultPayload(payload, type);
+                return parsed ?? LEGACY;
+            }
+            case 'allstar_three_point_contest_result': {
+                const parsed = parseAllstarThreePointContestResultPayload(payload);
+                return parsed ?? LEGACY;
+            }
+            case 'allstar_dunk_contest_result': {
+                const parsed = parseAllstarDunkContestResultPayload(payload);
+                return parsed ?? LEGACY;
             }
             case 'injury': {
                 if (!payload.player || !isNonEmptyString(payload.player.id) || !isNonEmptyString(payload.player.name)) return LEGACY;

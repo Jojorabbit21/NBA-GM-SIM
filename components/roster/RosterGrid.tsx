@@ -310,7 +310,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableRow>
                     ))}
                 </TableBody>
-                {showFooter && <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                {showFooter && <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
                     <tr className="h-10">
                         {/* Use inline styles to force border removal and width locking */}
                         <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-sm uppercase tracking-widest">팀 평균</TableCell>

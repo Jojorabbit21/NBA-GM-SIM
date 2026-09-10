@@ -8,6 +8,7 @@ import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats } from '../../../hooks/useLeagueRawStats';
+import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import { usePlayerInjuryStatus } from '../../../hooks/usePlayerInjuryStatus';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
@@ -21,7 +22,7 @@ import { Table, TableHead, TableBody, TableHeaderCell, TableCell } from '../../.
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
-import { calculatePlayerOvr } from '../../../utils/constants';
+import { calculatePlayerOvr, getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
 import { ARCHETYPE_LABEL, type OvrArchetype } from '../../../utils/ovrEngine';
@@ -316,6 +317,27 @@ const PlayerListHeader: React.FC<{
         </thead>
     );
 };
+
+// [2026-09-07] 트레이드 화면 곳곳(새 제안 헤더/메세지함 본문/트레이드 블록/히스토리)의 팀
+// 이름 좌측에 로고를 붙여달라는 요청 — 뉴스피드(newsFeedCards.tsx BoxScoreHeadline)/리그
+// 순위(MultiStandingsView.tsx)/시즌 일정(MultiScheduleView.tsx ScheduleTeamLogo)과 동일한
+// public/logos/real/ 로고 + 폴백 체인(신규 로고 실패 → 구버전 → 플레이스홀더)을 공유.
+const TeamLogoIcon: React.FC<{ teamSlug: string; abbr?: string | null; className?: string }> = ({ teamSlug, abbr, className = 'w-5 h-5' }) => (
+    <img
+        src={getRealTeamLogoUrl(teamSlug)}
+        alt={abbr ?? teamSlug}
+        className={`${className} object-contain shrink-0`}
+        onError={(e) => {
+            const img = e.currentTarget;
+            if (img.dataset.fallback !== 'old') {
+                img.dataset.fallback = 'old';
+                img.src = getTeamLogoUrl(teamSlug);
+            } else {
+                img.src = 'https://placehold.co/100x100?text=BPL';
+            }
+        }}
+    />
+);
 
 const MultiFrontOfficeView: React.FC = () => {
     const { league, room, members, leagueTeams, reload } = useLeagueContext();
@@ -628,7 +650,11 @@ const MultiFrontOfficeView: React.FC = () => {
         [myTeamRow, targetTeamRow],
     );
     const useCustomOverridesForStats = (league?.draft_pool ?? 'standard').split(',').includes('alltime');
-    const { data: statsRawData } = useLeagueRawStats(roomId ?? undefined, statsRosterIds);
+    // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
+    // 시즌 스탯을 받는다 — 홈/리더보드 화면과 동일한 병목이 이 화면에도 있었음
+    // (services/multi/buildLeagueTeams.ts 주석 참고).
+    const { data: statsByPlayer } = usePlayerSeasonStatsLeague(roomId ?? undefined, statsRosterIds);
+    const { data: statsRawData } = useLeagueRawStats(roomId ?? undefined, statsRosterIds, undefined, { includePbp: false });
     const statsByPlayerId = useMemo(() => {
         const map = new Map<string, { ppg: number; rpg: number; apg: number }>();
         if (!statsRawData) return map;
@@ -636,6 +662,7 @@ const MultiFrontOfficeView: React.FC = () => {
             statsRawData,
             [myTeamRow, targetTeamRow].filter((t): t is LeagueTeamRow => !!t),
             useCustomOverridesForStats,
+            statsByPlayer,
         );
         for (const t of teamsWithStats) {
             for (const p of t.roster) {
@@ -648,7 +675,7 @@ const MultiFrontOfficeView: React.FC = () => {
             }
         }
         return map;
-    }, [statsRawData, myTeamRow, targetTeamRow, useCustomOverridesForStats]);
+    }, [statsRawData, myTeamRow, targetTeamRow, useCustomOverridesForStats, statsByPlayer]);
     // [TEMP 테스트 기간 한정 2026-08-30] 관리자가 AI 팀을 상대로 테스트할 땐 트레이드 블록
     // 등록 여부와 무관하게 로스터 전원을 선택 가능하게 함 — AI 팀은 보통 블록에 아무 선수도
     // 안 올라가 있어 정상 조건으론 선택 자체가 불가능함. `create_trade_offer` RPC도 같은
@@ -1065,11 +1092,17 @@ const MultiFrontOfficeView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <div className={sectionLabelClass}>발신</div>
-                        <div className="text-white font-bold">{renderTeamLink(fromTeam)}</div>
+                        <div className="text-white font-bold flex items-center gap-2">
+                            {fromTeam && <TeamLogoIcon teamSlug={fromTeam.team_slug} abbr={fromTeam.team_abbr} />}
+                            {renderTeamLink(fromTeam)}
+                        </div>
                     </div>
                     <div>
                         <div className={sectionLabelClass}>수신</div>
-                        <div className="text-white font-bold">{renderTeamLink(toTeam)}</div>
+                        <div className="text-white font-bold flex items-center gap-2">
+                            {toTeam && <TeamLogoIcon teamSlug={toTeam.team_slug} abbr={toTeam.team_abbr} />}
+                            {renderTeamLink(toTeam)}
+                        </div>
                     </div>
                 </div>
 
@@ -1613,11 +1646,14 @@ const MultiFrontOfficeView: React.FC = () => {
                                     // 셀 호버 효과(TableRow 기본값)를 원하지 않아 이 테이블만 순수 <tr>을 사용.
                                     <tr key={t.id}>
                                         <TableCell align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
-                                            <span
-                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
-                                                className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400"
-                                            >
-                                                {t.team_abbr}
+                                            <span className="flex items-center gap-2">
+                                                <TeamLogoIcon teamSlug={t.team_slug} abbr={t.team_abbr} />
+                                                <span
+                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
+                                                    className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400"
+                                                >
+                                                    {t.team_abbr}
+                                                </span>
                                             </span>
                                         </TableCell>
                                         <TableCell align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
@@ -1710,12 +1746,13 @@ const MultiFrontOfficeView: React.FC = () => {
                                 <div className="flex divide-x divide-slate-800 bg-slate-950 h-[700px]">
                                     <div className="flex-[5] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
                                         <div
-                                            className="h-10 flex items-center pl-4 text-sm font-normal uppercase ko-normal shrink-0"
+                                            className="h-10 flex items-center gap-2 pl-4 text-sm font-normal uppercase ko-normal shrink-0"
                                             style={{
                                                 backgroundColor: myTeamRow.color_primary,
                                                 color: myTeamRow.color_text ?? getReadableTextColor(myTeamRow.color_primary),
                                             }}
                                         >
+                                            <TeamLogoIcon teamSlug={myTeamRow.team_slug} abbr={myTeamRow.team_abbr} />
                                             <span className="truncate min-w-0">{myTeamRow.team_name}</span>
                                         </div>
                                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
@@ -1758,12 +1795,13 @@ const MultiFrontOfficeView: React.FC = () => {
 
                                     <div className="flex-[5] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
                                         <div
-                                            className="h-10 flex items-center pl-4 shrink-0"
+                                            className="h-10 flex items-center gap-2 pl-4 shrink-0"
                                             style={{
                                                 backgroundColor: targetTeamRow?.color_primary ?? '#0f172a',
                                                 color: targetTeamRow?.color_text ?? getReadableTextColor(targetTeamRow?.color_primary ?? '#0f172a'),
                                             }}
                                         >
+                                            {targetTeamRow && <TeamLogoIcon teamSlug={targetTeamRow.team_slug} abbr={targetTeamRow.team_abbr} />}
                                             <select
                                                 value={targetTeamId}
                                                 onChange={e => {
@@ -2043,11 +2081,14 @@ const MultiFrontOfficeView: React.FC = () => {
                                             )}
                                             {i === 0 && (
                                                 <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
-                                                    <span
-                                                        onClick={() => fromTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${fromTeam.team_slug}`)}
-                                                        className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
-                                                    >
-                                                        {fromTeam?.team_name ?? '?'}
+                                                    <span className="flex items-center gap-2">
+                                                        {fromTeam && <TeamLogoIcon teamSlug={fromTeam.team_slug} abbr={fromTeam.team_abbr} />}
+                                                        <span
+                                                            onClick={() => fromTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${fromTeam.team_slug}`)}
+                                                            className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                                                        >
+                                                            {fromTeam?.team_name ?? '?'}
+                                                        </span>
                                                     </span>
                                                 </TableCell>
                                             )}
@@ -2059,11 +2100,14 @@ const MultiFrontOfficeView: React.FC = () => {
                                             </TableCell>
                                             {i === 0 && (
                                                 <TableCell rowSpan={rowCount} align="left" className="border-r border-slate-800/30 pl-4 align-top py-2.5">
-                                                    <span
-                                                        onClick={() => toTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${toTeam.team_slug}`)}
-                                                        className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
-                                                    >
-                                                        {toTeam?.team_name ?? '?'}
+                                                    <span className="flex items-center gap-2">
+                                                        {toTeam && <TeamLogoIcon teamSlug={toTeam.team_slug} abbr={toTeam.team_abbr} />}
+                                                        <span
+                                                            onClick={() => toTeam && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${toTeam.team_slug}`)}
+                                                            className="font-bold text-white ko-normal text-sm cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"
+                                                        >
+                                                            {toTeam?.team_name ?? '?'}
+                                                        </span>
                                                     </span>
                                                 </TableCell>
                                             )}

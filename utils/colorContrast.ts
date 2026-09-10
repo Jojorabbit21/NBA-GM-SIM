@@ -2,7 +2,7 @@
 // 배경색(hex) 위에서 가독성이 더 나은 전경색(흰/검)을 WCAG 상대 명도 기준으로 고른다.
 // colorText가 아직 없는 레코드(구버전 데이터, 미전파 경로)에 대한 안전망 폴백으로 사용.
 
-// 팀/코트 색상 입력 폼 전반(TeamSetupModal/TeamSettingsModal/leagueService 검증)이 공유하는
+// 팀/코트 색상 입력 폼 전반(TeamSetupModal/TeamSettingsPanel/leagueService 검증)이 공유하는
 // #RRGGBB 형식 검사 — 각자 독립 선언해서 3중복이 나던 것을 여기 하나로 통일.
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 

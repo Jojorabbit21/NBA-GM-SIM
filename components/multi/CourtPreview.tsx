@@ -2,7 +2,7 @@
 import React from 'react';
 
 // 코트 바닥/페인트존/라인 색상을 props로 받는 "정적 코트 도형"만 담당 — 슛 마커/범례/툴팁 등
-// 상호작용 요소는 없음. MultiFullCourtChart.tsx(실제 라이브 샷차트)와 TeamSettingsModal.tsx
+// 상호작용 요소는 없음. MultiFullCourtChart.tsx(실제 라이브 샷차트)와 TeamSettingsPanel.tsx
 // (설정 미리보기)가 이 컴포넌트를 공유해서, 예전에 CourtBackground.tsx/MultiFullCourtChart.tsx가
 // 동일 색상값을 각자 중복 하드코딩했던 것과 같은 미러 불일치가 재발하지 않게 한다.
 

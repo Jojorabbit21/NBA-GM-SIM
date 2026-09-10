@@ -257,7 +257,7 @@ const CategoryTable: React.FC<{
                     })}
                 </TableBody>
                 {sortedData.length > 0 && (
-                    <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                    <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
                         <tr className="h-10">
                             <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-sm uppercase tracking-widest">팀 평균</TableCell>
                             <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950" />

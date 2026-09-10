@@ -14,6 +14,7 @@ import { useServerClock } from '../../../utils/serverClock';
 import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
+import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
 import { GameShotChartTab } from '../../../components/game/tabs/GameShotChartTab';
@@ -21,7 +22,7 @@ import { GamePbpTab } from '../../../components/game/tabs/GamePbpTab';
 import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
 import { GameOnOffTab } from '../../../components/game/tabs/GameOnOffTab';
 import type { GameStatLeaders } from '../../../components/game/BoxScoreTable';
-import { getTeamLogoUrl } from '../../../utils/constants';
+import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -65,9 +66,10 @@ function FoulBonusBadge({ fouls, align }: { fouls: number; align: 'left' | 'righ
 // 이름→점수, 홈: 점수→이름→약어)일 뿐 구조가 완전히 같아서 공용 컴포넌트로 추출. side가 어느
 // 쪽이 바깥(고정 폭)/안쪽(중앙 쪽 고정)인지를 결정 — 3구획 grid 자체는 동일.
 function TeamHeaderColumn({
-    side, abbr, name, wl, score, textColor, infoLoading,
+    side, teamSlug, abbr, name, wl, score, textColor, infoLoading,
 }: {
     side: 'away' | 'home';
+    teamSlug: string;
     abbr: string;
     name: string;
     wl: { wins: number; losses: number } | undefined;
@@ -75,9 +77,26 @@ function TeamHeaderColumn({
     textColor: string;
     infoLoading: boolean;
 }) {
+    // [2026-09-07] 팀 약칭 텍스트 영역을 로고 이미지로 대체(사용자 요청) — 다른 화면들과
+    // 동일한 public/logos/real/ 로고 + 폴백 체인(신규 로고 실패 → 구버전 → 플레이스홀더).
     const abbrEl = infoLoading
         ? <Skeleton className="h-11 w-16" />
-        : <span className="text-5xl font-black uppercase tracking-tight shrink-0">{abbr.slice(0, 3)}</span>;
+        : (
+            <img
+                src={getRealTeamLogoUrl(teamSlug)}
+                alt={abbr}
+                className="h-24 w-24 object-contain shrink-0"
+                onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.dataset.fallback !== 'old') {
+                        img.dataset.fallback = 'old';
+                        img.src = getTeamLogoUrl(teamSlug);
+                    } else {
+                        img.src = 'https://placehold.co/100x100?text=BPL';
+                    }
+                }}
+            />
+        );
     const scoreEl = (
         <span
             className={`text-6xl font-black tabular-nums leading-none tracking-tighter shrink-0 ${side === 'away' ? 'justify-self-end' : 'justify-self-start'}`}
@@ -1287,6 +1306,10 @@ const MultiGamePbpView: React.FC = () => {
     // undefined: 미조회, null: 레거시(scheduledAt 없음), string: 정시
     const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
     const [gamePlayed,    setGamePlayed]    = useState(false);
+    // [2026-09-09] 올스타 본경기/라이징스타 챌린지 여부 — games.is_allstar, loadGame() effect에서
+    // 함께 세팅. 가상 팀(EAST-ALLSTAR 등) 이름/테마색 폴백 및 "전적 텍스트 숨김"에 사용.
+    const [isAllstarGame, setIsAllstarGame] = useState(false);
+    const allstarDisplay = useAllStarTeamDisplay(room?.id, room?.season_number);
     const [quarterFilter, setQuarterFilter] = useState<0|1|2|3|4|5>(0);
     // [2026-08-03] 6개 탭(박스스코어/샷차트/경기기록/로테이션/인사이트/온오프)을 스위칭하는 대신
     // 한 페이지에 세로로 이어붙임 — finalTab 전환 상태 대신 "현재 스크롤 위치가 어느 섹션인지"만
@@ -1368,6 +1391,7 @@ const MultiGamePbpView: React.FC = () => {
             // resolvedGameId가 실제 game_id로 갱신되면서 이 effect가 재실행되길 기다린다.
             if (!game) return;
             setGamePlayed(!!game.played);
+            setIsAllstarGame(!!game.isAllstar);
             setScheduledAt(resolveRealAt(game, simStart, gprd) ?? game.scheduledAt ?? null);
         })();
         return () => { cancelled = true; };
@@ -1527,18 +1551,27 @@ const MultiGamePbpView: React.FC = () => {
     const scheduleGame = useMemo(() => schedule.find(g => g.id === resolvedGameId), [schedule, resolvedGameId]);
     const homeTeamId = gameData?.home_team_id ?? scheduleGame?.homeTeamId;
     const awayTeamId = gameData?.away_team_id ?? scheduleGame?.awayTeamId;
+    // isAllstarGame(state)는 loadGame() effect가 채우기 전까지 false다 — schedule(이미 로드된
+    // 시즌 일정)에 먼저 잡히면 그것도 함께 본다(homeTeamId/awayTeamId와 동일한 폴백 패턴).
+    const isAllstar = isAllstarGame || !!scheduleGame?.isAllstar;
 
     const homeTeam = useMemo(() => leagueTeams.find(t => t.team_slug === homeTeamId), [leagueTeams, homeTeamId]);
     const awayTeam = useMemo(() => leagueTeams.find(t => t.team_slug === awayTeamId), [leagueTeams, awayTeamId]);
+    // 올스타/라이징스타는 가상 팀 ID라 leagueTeams에 없다 — useAllStarTeamDisplay가 이름/테마색/
+    // 로스터를 대신 제공(동부·서부는 컨퍼런스 대표색, 라이징스타는 시즌별 주장 성 기반 팀명).
+    const homeAllstarInfo = homeTeamId ? allstarDisplay[homeTeamId] : undefined;
+    const awayAllstarInfo = awayTeamId ? allstarDisplay[awayTeamId] : undefined;
 
-    const homeColor = homeTeam?.color_primary ?? '#4f46e5';
-    const homeText  = homeTeam?.color_text    ?? getReadableTextColor(homeColor);
-    const awayColor = awayTeam?.color_primary ?? '#0f172a';
-    const awayText  = awayTeam?.color_text    ?? getReadableTextColor(awayColor);
-    const homeAbbr  = homeTeam?.team_abbr ?? (homeTeamId?.toUpperCase().slice(0, 3) ?? 'HOM');
-    const awayAbbr  = awayTeam?.team_abbr ?? (awayTeamId?.toUpperCase().slice(0, 3) ?? 'AWY');
-    const homeName  = homeTeam?.team_name ?? homeTeamId ?? '';
-    const awayName  = awayTeam?.team_name ?? awayTeamId ?? '';
+    const homeColor = homeTeam?.color_primary ?? homeAllstarInfo?.colorPrimary ?? '#4f46e5';
+    const homeText  = homeTeam?.color_text    ?? homeAllstarInfo?.colorText    ?? getReadableTextColor(homeColor);
+    const awayColor = awayTeam?.color_primary ?? awayAllstarInfo?.colorPrimary ?? '#0f172a';
+    const awayText  = awayTeam?.color_text    ?? awayAllstarInfo?.colorText    ?? getReadableTextColor(awayColor);
+    const homeAbbr  = homeTeam?.team_abbr ?? homeAllstarInfo?.abbr ?? (homeTeamId?.toUpperCase().slice(0, 3) ?? 'HOM');
+    const awayAbbr  = awayTeam?.team_abbr ?? awayAllstarInfo?.abbr ?? (awayTeamId?.toUpperCase().slice(0, 3) ?? 'AWY');
+    const homeName  = homeTeam?.team_name ?? homeAllstarInfo?.name ?? homeTeamId ?? '';
+    const awayName  = awayTeam?.team_name ?? awayAllstarInfo?.name ?? awayTeamId ?? '';
+    const homeRosterIds = homeTeam?.roster ?? homeAllstarInfo?.roster ?? [];
+    const awayRosterIds = awayTeam?.roster ?? awayAllstarInfo?.roster ?? [];
     // [Fix 2026-08-05] "경기 전환 시 헤더에 HOM/AWY 같은 하드코딩 폴백이 잠깐 보인다" 버그 —
     // homeTeamId/awayTeamId가 아직 없으면(짧은 코드→실제 game_id 변환 중, 또는 schedule에서
     // 아직 못 찾음) homeAbbr/awayAbbr가 마지막 방어선인 'HOM'/'AWY' 리터럴로 떨어진다.
@@ -1569,7 +1602,7 @@ const MultiGamePbpView: React.FC = () => {
     }, [resolvedGameId]);
     useEffect(() => {
         if (displayState !== 'scheduled') return;
-        const ids = [...(homeTeam?.roster ?? []), ...(awayTeam?.roster ?? [])];
+        const ids = [...homeRosterIds, ...awayRosterIds];
         if (ids.length === 0) return;
         let cancelled = false;
         (async () => {
@@ -1580,7 +1613,7 @@ const MultiGamePbpView: React.FC = () => {
             setScheduledRosterCache(map);
         })();
         return () => { cancelled = true; };
-    }, [displayState, homeTeam?.roster, awayTeam?.roster]);
+    }, [displayState, homeRosterIds, awayRosterIds]);
 
     const buildZeroStatBox = (roster: string[] | undefined): PlayerBoxScore[] =>
         (roster ?? []).map(id => ({
@@ -1601,8 +1634,8 @@ const MultiGamePbpView: React.FC = () => {
             defWINGAttempted: 0, defWINGMade: 0, defATBAttempted: 0, defATBMade: 0,
             condition: 100,
         }));
-    const scheduledHomeBox = useMemo(() => buildZeroStatBox(homeTeam?.roster), [homeTeam?.roster, scheduledRosterCache]);
-    const scheduledAwayBox = useMemo(() => buildZeroStatBox(awayTeam?.roster), [awayTeam?.roster, scheduledRosterCache]);
+    const scheduledHomeBox = useMemo(() => buildZeroStatBox(homeRosterIds), [homeRosterIds, scheduledRosterCache]);
+    const scheduledAwayBox = useMemo(() => buildZeroStatBox(awayRosterIds), [awayRosterIds, scheduledRosterCache]);
 
     // ── 파생 상태 ──────────────────────────────────────────────────────────────
 
@@ -1939,7 +1972,7 @@ const MultiGamePbpView: React.FC = () => {
                         flex+justify-start였을 때는 세 요소가 한 덩어리로 붙어 있어서 이름이 짧으면 점수가
                         같이 왼쪽(바깥쪽)으로 딸려왔었음 — 이제 이름 칸이 남는 공간을 전부 흡수하므로
                         점수는 이름 길이와 무관하게 항상 컬럼 안쪽 경계에 붙는다. */}
-                    <TeamHeaderColumn side="away" abbr={awayAbbr} name={awayName} wl={awayWL} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
+                    <TeamHeaderColumn side="away" teamSlug={awayTeamId ?? ''} abbr={awayAbbr} name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
 
                     {/* Center: Final(또는 쿼터/시계)과 쿼터별 득점 테이블을 한 블록으로 묶어 고정 3fr
                         컬럼 안에서 항상 정중앙에 위치한다. */}
@@ -2113,7 +2146,7 @@ const MultiGamePbpView: React.FC = () => {
                     {/* [Fix 2026-08-05] 원정 컬럼과 동일한 이유로 3구획 grid로 재구성. DOM 순서(점수→이름→약어)는
                         그대로 유지 — grid는 순서대로 좌→우 배치되므로 점수(1열)가 컬럼 안쪽(좌측=중앙 쪽),
                         약어(3열)가 바깥쪽(우측)에 자동으로 고정된다. 이름/성적(2열)만 남는 공간을 흡수. */}
-                    <TeamHeaderColumn side="home" abbr={homeAbbr} name={homeName} wl={homeWL} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
+                    <TeamHeaderColumn side="home" teamSlug={homeTeamId ?? ''} abbr={homeAbbr} name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
                 </div>
             </div>
 

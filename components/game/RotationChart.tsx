@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Team, PlayerBoxScore, RotationData, PbpLog, RotationOutReason, ShotEvent } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
-import { TeamLogo } from '../common/TeamLogo';
+import { TeamMark } from '../common/TeamMark';
 import { toGameSeconds } from '../../utils/gameClock';
 
 interface RotationChartProps {
@@ -204,16 +204,7 @@ const TeamRotationCard: React.FC<{
     }>
         <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
             <div className="flex items-center gap-3">
-                {badge ? (
-                    <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                        style={{ backgroundColor: badge.color, color: '#fff' }}
-                    >
-                        {badge.abbr.slice(0, 3)}
-                    </div>
-                ) : (
-                    <TeamLogo teamId={team.id} size="md" />
-                )}
+                <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
                 <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
             </div>
         </div>
@@ -245,8 +236,8 @@ export const RotationChart: React.FC<RotationChartProps> = ({
     const sortedHome = [...homeBox].sort(sortPlayers);
     const sortedAway = [...awayBox].sort(sortPlayers);
 
-    const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#6366f1';
-    const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#94a3b8';
+    const homeColor = homeBadge?.color ?? TEAM_DATA[homeTeam.id]?.colors.primary ?? '#6366f1';
+    const awayColor = awayBadge?.color ?? TEAM_DATA[awayTeam.id]?.colors.primary ?? '#94a3b8';
 
     // 경과초 → 그 시점까지의 누적 스코어. PBP 로그에 이미 찍혀 있는 homeScore/awayScore 스냅샷을
     // 순서대로 훑어 마지막 값을 찾는다(이벤트가 시뮬레이션 순서 그대로 저장되어 있어 정렬 불필요).

@@ -151,6 +151,19 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
         // 계약 (시뮬에서는 불필요하지만 타입 호환을 위해)
         contract: { years: [5_000_000], currentYear: 0, type: 'veteran' },
 
+        // [2026-09-08] 클라(services/dataMapper.ts)엔 있던 매핑이 서버 미러엔 누락돼 있었음 —
+        // 서버 사이드 계산(올스타 투표 등 인기도가 필요한 로직)에서 항상 undefined로 빠지는
+        // 버그였다. base_attributes.popularity를 그대로 통과.
+        popularity: baseAttrs.popularity ?? undefined,
+
+        // [2026-09-08] 위 popularity와 동일한 패턴의 또 다른 누락 — 라이징스타 선발
+        // (runRisingStarsSelection, YOS≤1 필터)이 서버에서 항상 후보 0명으로 나오는 버그의
+        // 원인이었다. row-level raw.draft_year 우선, 없으면 base_attributes.draft_year
+        // (클라 services/dataMapper.ts:370과 동일 우선순위).
+        draftYear: raw.draft_year != null
+            ? Number(raw.draft_year)
+            : (baseAttrs.draft_year != null ? Number(baseAttrs.draft_year) : undefined),
+
         stats: undefined,
         awards: [],
         attrDeltas: undefined,

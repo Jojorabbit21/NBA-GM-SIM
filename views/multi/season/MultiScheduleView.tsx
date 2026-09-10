@@ -1,14 +1,14 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Tv, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
-import { useServerClock } from '../../../utils/serverClock';
+import { useServerClockBucket } from '../../../utils/serverClock';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries, type GameDisplayState } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { supabase } from '../../../services/supabaseClient';
@@ -17,11 +17,14 @@ import type { Game } from '../../../types';
 import type { PlayerBoxScore } from '../../../types/engine';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
-import { PlayerHoverCard, buildPlayerCardMap, type PlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { PlayerHoverCard, buildPlayerCardMap, mergeStatsIntoPlayerCardMap, type PlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
+import { useAllStarTeamDisplay, type AllStarTeamDisplayInfo } from '../../../hooks/useAllStarTeamDisplay';
 import {
     kstDateKey, fmtDateShort, fmtTime, fmtMonthDot, groupByDay, findCurrentVirtualDate,
     addDaysToKey, type DayGroup,
 } from './multiScheduleUtils';
+import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
 
 const LIVE_POLL_MS = 5000;
 
@@ -53,7 +56,27 @@ function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
 // [2026-08-28] 라운드 컬럼은 정규시즌 경기만 있는 날엔 전부 "-"만 찍혀 어색하다는 지적 —
 // 현재 보고 있는 날짜에 플레이오프 경기가 하나라도 있을 때만 컬럼 자체를 노출한다.
 const getScheduleTableCols = (showRound: boolean): (number | undefined)[] =>
-    showRound ? [64, 64, 64, 180, 180, undefined, 90, 90, 80] : [64, 64, 180, 180, undefined, 90, 90, 80];
+    showRound ? [64, 64, 64, 220, 220, undefined, 90, 90, 80] : [64, 64, 220, 220, undefined, 90, 90, 80];
+
+// [2026-09-07] 원정/홈 팀 이름 왼쪽에 로고 추가(사용자 요청) — 리그 순위 테이블
+// (MultiStandingsView.tsx TEAM 셀)/뉴스피드 스코어 헤드라인(newsFeedCards.tsx
+// BoxScoreHeadline)과 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
+const ScheduleTeamLogo: React.FC<{ teamSlug: string; abbr?: string }> = ({ teamSlug, abbr }) => (
+    <img
+        src={getRealTeamLogoUrl(teamSlug)}
+        alt={abbr ?? teamSlug}
+        className="w-5 h-5 object-contain shrink-0"
+        onError={(e) => {
+            const img = e.currentTarget;
+            if (img.dataset.fallback !== 'old') {
+                img.dataset.fallback = 'old';
+                img.src = getTeamLogoUrl(teamSlug);
+            } else {
+                img.src = 'https://placehold.co/100x100?text=BPL';
+            }
+        }}
+    />
+);
 
 interface GameRowProps {
     g: Game;
@@ -70,15 +93,19 @@ interface GameRowProps {
     serverNow: number;
     preferVirtual: boolean;
     showRound: boolean;
+    allstarDisplay: Record<string, AllStarTeamDisplayInfo>;
 }
 
 // 값이 없을 때 항상 "-"로 표시(빈 셀 방지) — 최우수선수/쿼터·상태 컬럼 공통.
 const EMPTY_CELL = '-';
 
-const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, onPlayerClick, onTeamClick, playerCardMap, serverNow, preferVirtual, showRound }) => {
+const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, onPlayerClick, onTeamClick, playerCardMap, serverNow, preferVirtual, showRound, allstarDisplay }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
     const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
+    // [2026-09-09] 올스타/라이징스타 경기는 팀 이름 자체(동부 올스타 vs 서부 올스타, 팀
+    // ○○○ vs 팀 ○○○)로 이미 구분되므로 라운드 컬럼엔 별도 배지 없이 "-"만 표시한다
+    // (사용자 요청 — 처음엔 배지로 표시했다가 팀명 표시로 충분하다고 판단해 원복).
     const roundLabel = g.isPlayoff && g.seriesId ? roundLabelMap[g.seriesId] : undefined;
     const leaders = gameLeadersMap[g.id];
 
@@ -93,7 +120,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
     // [2026-08-29] 최우수선수(팀당 1명씩)를 한 줄로 표시하도록 바꾸면서 모든 컬럼이 다시
     // 1줄뿐이라 h-10으로 충분 — 예전에 2줄 표시 때문에 h-14로 키웠던 걸 원복.
     return (
-        <TableRow className={`h-10 ${isMyGame ? 'bg-emerald-500/20' : ''}`}>
+        <TableRow className={`h-10 ${state === 'live' ? 'bg-red-500/10' : isMyGame ? 'bg-emerald-500/20' : ''}`}>
             {/* 날짜 */}
             <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
                 <span className="font-medium text-slate-400 tabular-nums ko-normal">{fmtDateShort(g, preferVirtual)}</span>
@@ -111,31 +138,30 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                 </TableCell>
             )}
 
-            {/* 원정 */}
+            {/* 원정 — 로고는 순수 장식용, 클릭은 팀 이름 텍스트에만 한정
+                (사용자 지적: 로고까지 클릭되게 만든 건 요청 밖). */}
             <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
-                <span
-                    className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
-                    onClick={() => onTeamClick(g.awayTeamId)}
-                >
-                    {away?.team_name ?? g.awayTeamId}
-                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                    <ScheduleTeamLogo teamSlug={g.awayTeamId} abbr={away?.team_abbr} />
+                    <span
+                        className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
+                        onClick={() => onTeamClick(g.awayTeamId)}
+                    >
+                        {away?.team_name ?? allstarDisplay[g.awayTeamId]?.name ?? g.awayTeamId}
+                    </span>
+                </div>
             </TableCell>
 
             {/* 홈 */}
             <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
                 <div className="flex items-center gap-2 min-w-0">
+                    <ScheduleTeamLogo teamSlug={g.homeTeamId} abbr={home?.team_abbr} />
                     <span
                         className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
                         onClick={() => onTeamClick(g.homeTeamId)}
                     >
-                        {home?.team_name ?? g.homeTeamId}
+                        {home?.team_name ?? allstarDisplay[g.homeTeamId]?.name ?? g.homeTeamId}
                     </span>
-                    {state === 'live' && (
-                        <span className="flex items-center gap-1 shrink-0 animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                            <span className="font-bold text-xs text-red-400">LIVE</span>
-                        </span>
-                    )}
                 </div>
             </TableCell>
 
@@ -144,7 +170,12 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                 두 선수를 절반씩 나눈 두 블록이 아니라, 하나의 흐르는 문장으로 이어 쓰고
                 그 안에서만 "/"로 구분한다 — 문장 전체가 하나의 truncate 대상. */}
             <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
-                {state === 'final' && (leaders?.mvpAway || leaders?.mvpHome) ? (
+                {state === 'live' ? (
+                    <span className="flex items-center gap-1 shrink-0 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        <span className="font-bold text-xs text-red-400">LIVE</span>
+                    </span>
+                ) : state === 'final' && (leaders?.mvpAway || leaders?.mvpHome) ? (
                     <div className="flex items-center gap-1.5 min-w-0 truncate">
                         {leaders?.mvpAway && (
                             <>
@@ -153,7 +184,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                                         className="text-slate-200 shrink-0 ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
                                         onClick={() => onPlayerClick(leaders.mvpAway!.playerId)}
                                     >
-                                        {leaders.mvpAway.name} ({away?.team_abbr ?? g.awayTeamId})
+                                        {leaders.mvpAway.name} ({away?.team_abbr ?? allstarDisplay[g.awayTeamId]?.abbr ?? g.awayTeamId})
                                     </span>
                                 </PlayerHoverCard>
                                 {leaders.mvpAway.stats.length > 0 && (
@@ -171,7 +202,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                                         className="text-slate-200 shrink-0 ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
                                         onClick={() => onPlayerClick(leaders.mvpHome!.playerId)}
                                     >
-                                        {leaders.mvpHome.name} ({home?.team_abbr ?? g.homeTeamId})
+                                        {leaders.mvpHome.name} ({home?.team_abbr ?? allstarDisplay[g.homeTeamId]?.abbr ?? g.homeTeamId})
                                     </span>
                                 </PlayerHoverCard>
                                 {leaders.mvpHome.stats.length > 0 && (
@@ -371,6 +402,7 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
 const MultiScheduleView: React.FC = () => {
     const { leagueId }                                    = useParams<{ leagueId: string }>();
     const navigate                                         = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const { getGameUrlId } = useGameShortCodes(room?.id);
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -381,12 +413,20 @@ const MultiScheduleView: React.FC = () => {
     // 별도로 scheduledAt 우선으로 처리되므로 여기선 리그 타입만 확인하면 된다.
     const preferVirtual = league?.type === 'main_league';
     const { session } = useGame();
+    const allstarDisplay = useAllStarTeamDisplay(room?.id, room?.season_number);
     const { isLoading: gameLoading, schedule, myTeamId, currentSimDate } = useSeasonContext();
     // useSeasonContext().teams는 멀티플레이어 경로에서 항상 빈 배열로 남는 미사용 필드라
     // (실제로 채워주는 곳은 싱글플레이어 useGameData.ts뿐) 다른 멀티 화면들과 동일하게
     // useMultiSearchData(전체 드래프트풀 Player[] + playerId→team_slug 역인덱스)로 대체.
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
-    const serverNow = useServerClock();
+    // [2026-09-07] getGameDisplayState()/computeRevealedSeries() 게이팅(경기 공개 10분
+    // 딜레이)에만 쓰여 초 단위 정밀도가 필요 없다 — 이 화면은 이미 아래 dateBucket에서만
+    // "15초 버킷" 최적화를 부분적으로 해뒀지만(주석 참고), serverNow 자체가 여전히 매초
+    // 갱신돼 totalPlayed/revealedSeriesById useMemo와 각 GameRow(경기 목록 행 전체)가 계속
+    // 매초 리렌더되고 있었다(사용자가 일정 화면에서도 재렌더 확인). useServerClockBucket()으로
+    // 교체해 소스 자체를 15초 단위로 낮춘다 — 5초 간격 라이브 폴링(LIVE_POLL_MS, 아래
+    // liveSummaries/gameLeadersMap)은 실제로 바뀌는 데이터를 받아오는 별개 로직이라 그대로 둠.
+    const serverNow = useServerClockBucket();
 
     // 진행 중(LIVE)인 경기의 실시간 스코어/쿼터/클락 — 서버가 elapsed까지만 잘라서 계산한 값
     const [liveSummaries, setLiveSummaries] = useState<Record<string, LiveGameSummary>>({});
@@ -457,7 +497,7 @@ const MultiScheduleView: React.FC = () => {
     // playerId → {완전한 Player, 소속팀 약어}를 미리 만들어 둔다. 방출/은퇴 등으로 로스터에
     // 없는 선수는 teamAbbr만 빈 문자열이 되고 능력치 팝업 자체는 그대로 뜬다.
     // (MultiNewsFeedView.tsx도 동일한 buildPlayerCardMap을 공유.)
-    const playerCardMap = useMemo(
+    const basePlayerCardMap = useMemo(
         () => buildPlayerCardMap(poolPlayers, rosterMap, slug => teamMap[slug]?.team_abbr),
         [poolPlayers, rosterMap, teamMap],
     );
@@ -524,11 +564,24 @@ const MultiScheduleView: React.FC = () => {
     const handleTeamClick = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
 
     // 현재 보고 있는 날짜 — 하루치만 보여준다.
-    // 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴).
-    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    // 최초 진입 시 "오늘"로 자동 선택(GameDateStrip과 동일 패턴), 단 URL의 ?date= 파라미터가
+    // 있으면 그것을 우선한다. [2026-09-09] 다른 화면(경기/선수/팀)을 봤다가 브라우저 뒤로가기로
+    // 돌아오면 날짜를 다시 찾아야 하는 불편함(사용자 지적) — 날짜를 URL에 실어 히스토리
+    // 엔트리에 남기면, 뒤로가기 시 마지막으로 보던 날짜가 그대로 복원된다. 매 날짜 이동마다
+    // 히스토리를 쌓지 않도록 push 대신 replace를 쓴다(그래야 이 화면 안에서의 뒤로가기가
+    // 날짜 하나씩 되감기는 게 아니라 곧장 이전 화면으로 나간다).
+    const [selectedDate, setSelectedDateState] = useState<string | null>(() => searchParams.get('date'));
+    const setSelectedDate = useCallback((dateKey: string | null) => {
+        setSelectedDateState(dateKey);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (dateKey) next.set('date', dateKey); else next.delete('date');
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
     useEffect(() => {
         if (selectedDate === null && todayKey) setSelectedDate(todayKey);
-    }, [selectedDate, todayKey]);
+    }, [selectedDate, todayKey, setSelectedDate]);
     const activeDate = selectedDate ?? todayKey ?? groupedByDay[0]?.dateKey ?? null;
     const activeDayGroup = useMemo(
         () => groupedByDay.find(g => g.dateKey === activeDate) ?? null,
@@ -546,6 +599,27 @@ const MultiScheduleView: React.FC = () => {
     // 라운드 컬럼 — 지금 보고 있는 날짜에 플레이오프 경기가 하나도 없으면(정규시즌 날짜는
     // 전부 그렇다) 리스트 뷰에서 컬럼 자체를 숨긴다.
     const showRoundColumn = useMemo(() => activeDayGamesByState.some(g => g.isPlayoff), [activeDayGamesByState]);
+
+    // [버그 수정] "최우수선수" 이름에 호버해도 시즌 기록이 안 뜨던 문제 — basePlayerCardMap은
+    // buildPlayerCardMap()이 poolPlayers(meta_players만 조회, stats 없음)로 만들어서
+    // player.stats.g가 항상 0이라 PlayerHoverCard가 "시즌 기록 없음"만 보여줬다.
+    // MultiNewsFeedView.tsx와 동일하게 usePlayerSeasonStatsBatch로 targeted 조회 후
+    // mergeStatsIntoPlayerCardMap으로 덧씌운다 — 리그 전체가 아니라 지금 보고 있는 날짜의
+    // 경기 최우수선수(mvpHome/mvpAway)만 대상으로 좁혀서 가볍게 유지.
+    const visibleMvpPlayerIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const g of activeDayGamesByState) {
+            const leaders = gameLeadersMap[g.id];
+            if (leaders?.mvpHome) ids.add(leaders.mvpHome.playerId);
+            if (leaders?.mvpAway) ids.add(leaders.mvpAway.playerId);
+        }
+        return [...ids];
+    }, [activeDayGamesByState, gameLeadersMap]);
+    const { data: mvpStats } = usePlayerSeasonStatsBatch(room?.id, visibleMvpPlayerIds);
+    const playerCardMap = useMemo(
+        () => mvpStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, mvpStats) : basePlayerCardMap,
+        [basePlayerCardMap, mvpStats],
+    );
 
     // 헤더 타이틀 옆 달력 아이콘 버튼 — DateControlBar/GameDateStrip과 동일한 데이트피커
     // (MonthCalendarPopover) 패턴 재사용.
@@ -665,6 +739,7 @@ const MultiScheduleView: React.FC = () => {
                                     serverNow={serverNow}
                                     preferVirtual={preferVirtual}
                                     showRound={showRoundColumn}
+                                    allstarDisplay={allstarDisplay}
                                 />
                             ))}
                         </TableBody>

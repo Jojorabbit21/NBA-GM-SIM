@@ -81,7 +81,7 @@ export interface SeasonAwardsContent {
 // ── 상수 ──
 
 const VOTER_COUNT = 100;
-const MIN_GAMES = 41;
+export const MIN_GAMES = 41;
 const MVP_POINTS = [10, 7, 5, 3, 1];
 const DPOY_POINTS = [5, 3, 1];
 
@@ -102,16 +102,16 @@ function seededRandom(seed: string, voterId: number, category: string): number {
     return (((h < 0 ? ~h : h) % 10000) / 10000);
 }
 
-function voterNoise(seed: string, voterId: number, category: string): number {
+export function voterNoise(seed: string, voterId: number, category: string): number {
     const r = seededRandom(seed, voterId, category);
     return (r - 0.5) * 0.4;
 }
 
 // ── 포지션 그룹 ──
 
-type PosGroup = 'Guard' | 'Forward' | 'Center';
+export type PosGroup = 'Guard' | 'Forward' | 'Center';
 
-function positionGroup(position: string): PosGroup {
+export function positionGroup(position: string): PosGroup {
     const primary = position.split('/')[0].trim();
     if (primary === 'PG' || primary === 'SG') return 'Guard';
     if (primary === 'SF' || primary === 'PF') return 'Forward';
@@ -120,7 +120,7 @@ function positionGroup(position: string): PosGroup {
 
 // ── 후보 빌드 ──
 
-function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerMap: Map<string, Player> } {
+export function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerMap: Map<string, Player> } {
     const candidates: AwardCandidate[] = [];
     const playerMap = new Map<string, Player>();
 
@@ -202,7 +202,7 @@ function scoreDPOY(c: AwardCandidate, noise: number): number {
     return base * (1 + noise);
 }
 
-function scoreAllNBA(c: AwardCandidate, noise: number): number {
+export function scoreAllNBA(c: AwardCandidate, noise: number): number {
     const base =
         c.statLine.ppg * 2.0 + c.statLine.rpg * 1.0 + c.statLine.apg * 1.5
         + c.statLine.spg * 0.8 + c.statLine.bpg * 0.8 - c._tovpg * 0.5

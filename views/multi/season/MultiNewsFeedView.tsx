@@ -10,12 +10,14 @@ import { buildNewsBlurb, buildNewsTitle } from '../../../services/multi/newsBlur
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
-import { useServerClock } from '../../../utils/serverClock';
+import { useServerClockBucket } from '../../../utils/serverClock';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { StoryCard, extractEventPlayerIds } from './newsFeedCards';
-import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
-import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
+import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap, mergeInjuryIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
+import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
+import { usePlayerInjuryRowsBatch } from '../../../hooks/usePlayerInjuryRowsBatch';
+import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate, addDaysToKey } from './multiScheduleUtils';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 
@@ -39,6 +41,7 @@ const NEWS_TYPE_FILTER_OPTIONS: NewsTypeFilterOption[] = [
     { label: '수상', types: ['mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'] },
     { label: '부상', types: ['injury'] },
     { label: '출장정지', types: ['suspension'] },
+    { label: '올스타', types: ['allstar_vote_update', 'allstar_vote_start', 'allstar_vote_result', 'allstar_rising_stars', 'allstar_three_point_contest', 'allstar_dunk_contest', 'allstar_game_result', 'allstar_rising_stars_result', 'allstar_three_point_contest_result', 'allstar_dunk_contest_result'] },
 ];
 
 // [2026-09-01] 좁은 단일 컬럼 리스트 → 실제 뉴스 사이트 같은 그리드로 개편.
@@ -84,7 +87,11 @@ const MultiNewsFeedView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, room, leagueTeams } = useLeagueContext();
     const { myTeamId, currentSimDate, schedule } = useSeasonContext();
-    const serverNow = useServerClock();
+    // [2026-09-07] todaySimDate(가상 오늘 날짜) 계산에만 쓰여 초 단위 정밀도가 필요
+    // 없다 — useServerClock() 그대로 쓰면 뉴스피드 전체(스토리 카드 전부+그 안의
+    // TeamBadge/PlayerHoverCard)가 매초 리렌더된다(홈 화면과 동일한 문제, React
+    // DevTools로 실측). useServerClockBucket()으로 15초에 한 번만 리렌더되게 함.
+    const serverNow = useServerClockBucket();
     // 메인리그만 game_date가 가상 캘린더 — 토너먼트는 game_date 자체가 실제 방송 시각
     // 기반이라 currentSimDate(실제 KST)를 그대로 써야 함(MultiScheduleView.tsx와 동일 분기).
     const isMainLeague = league?.type === 'main_league';
@@ -257,23 +264,53 @@ const MultiNewsFeedView: React.FC = () => {
     // poolPlayers(meta_players만 조회)는 stats가 항상 0이라 hover 카드에 "시즌 기록 없음"만
     // 뜨는 문제 — 좌/우 분할 레이아웃이라 실제로 렌더되는 건 selectedEvent 하나뿐이므로,
     // 그 이벤트에 등장하는 선수(보통 1~4명)의 시즌 누적만 가볍게 조회해 덮어쓴다. 리그
-    // 전체 game_pbp를 받아오는 useLeagueRawStats보다 훨씬 가벼움(get_player_season_stats_batch
-    // RPC가 서버에서 스캔하고 이 몇 명 결과만 내려줌).
+    // 전체 game_pbp를 받아오는 useLeagueRawStats보다 훨씬 가벼움(RPC가 서버에서 스캔하고
+    // 이 몇 명 결과만 내려줌).
+    // [2026-09-08] usePlayerSeasonStatsBatch → usePlayerSeasonStatsFull로 교체 — 3점 챌린지
+    // 서신(AllstarThreePointContestCard)이 존 슛차트(zone_c3_l/r, zone_atb3_l/c/r 등 —
+    // CNR%/45%/ATB% 계산용)까지 필요해졌는데, get_player_season_stats_full RPC가 기존
+    // batch가 주던 필드(g/mp/pts/reb/ast/stl/blk/tov/fgm/fga/p3m/p3a/ftm/fta 등)를 전부
+    // 포함하는 상위 집합이라 다른 카드들에 영향 없이 이 한 곳만 바꾸면 됨.
     const selectedEventPlayerIds = useMemo(
         () => selectedEvent ? extractEventPlayerIds(selectedEvent) : [],
         [selectedEvent],
     );
-    const { data: selectedEventStats } = usePlayerSeasonStatsBatch(room?.id, selectedEventPlayerIds);
-    const playerCardMap = useMemo(
-        () => selectedEventStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, selectedEventStats) : basePlayerCardMap,
-        [basePlayerCardMap, selectedEventStats],
+    const { data: selectedEventStats } = usePlayerSeasonStatsFull(room?.id, selectedEventPlayerIds);
+
+    // [2026-09-04] "부상 서신 본문 호버 카드에 부상 정보가 안 뜬다" 버그 수정 — 원인은
+    // basePlayerCardMap이 poolPlayers(meta_players, 부상 컬럼 없음)로만 조립돼 있어
+    // activeInjurySeverity 등이 항상 undefined였던 것. room_player_state는 이미 player_id
+    // 단위 행이라(시즌 스탯처럼 game_pbp를 스캔할 필요 없음) usePlayerSeasonStatsBatch와
+    // 동일하게 selectedEventPlayerIds(1~4명)만 가볍게 조회해서 병합한다 — 리그 전체 로스터를
+    // 끌어오는 useLeagueRawStats/MultiRosterView 방식은 불필요.
+    // [2026-09-05 버그 수정] 위 buildActiveInjurySeverityMap 호출에 currentSimDate(rooms.sim_date,
+    // 실제 KST 날짜)를 그대로 넘기고 있었음 — 메인리그는 injury_history의 날짜가 가상 NBA
+    // 캘린더라 도메인이 달라서 이미 나은 부상도 몇 달간 계속 "활성"으로 남는 버그였다(홈
+    // 화면 "내 팀 부상자 현황"에서 먼저 발견됨). 이 파일은 이미 날짜 필터 기본값용으로
+    // todaySimDate(findCurrentVirtualDate 기반)를 만들어두고도 정작 이 호출엔 안 쓰고
+    // 있었던 것 — todaySimDate로 교체.
+    const { data: selectedEventInjuryRows } = usePlayerInjuryRowsBatch(room?.id, selectedEventPlayerIds);
+    const activeInjuryByPlayer = useMemo(
+        () => buildActiveInjurySeverityMap(selectedEventInjuryRows, todaySimDate, room?.season_number, {
+            schedule,
+            getTeamId: id => rosterMap.get(id),
+        }),
+        [selectedEventInjuryRows, todaySimDate, room?.season_number, schedule, rosterMap],
     );
+    const playerCardMap = useMemo(() => {
+        const withStats = selectedEventStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, selectedEventStats) : basePlayerCardMap;
+        return mergeInjuryIntoPlayerCardMap(withStats, activeInjuryByPlayer);
+    }, [basePlayerCardMap, selectedEventStats, activeInjuryByPlayer]);
 
     const openGame = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
     const openPlayer = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);
     // 팀 이동 — MultiStandingsView.tsx/MultiFrontOfficeView.tsx가 이미 쓰는 것과 동일한
     // 라우트(별도 경로 세그먼트가 아니라 로스터 화면에 ?rteam= 쿼리로 팀 지정).
     const openTeam = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
+    // [2026-09-09] 3점/덩크 컨테스트 서신 하단 바로가기는 올스타 화면의 해당 탭으로 바로
+    // 이동해야 해서(사용자 요청) view 파라미터를 선택적으로 받도록 확장 — 안 넘기면 기존과
+    // 동일하게 기본(올스타) 탭으로 이동.
+    const openAllStar = (view?: string) => navigate(`/multi/leagues/${leagueId}/season/allstar${view ? `?view=${view}` : ''}`);
 
     return (
         <div className="h-full flex flex-col overflow-hidden text-slate-200 pretendard">
@@ -544,6 +581,7 @@ const MultiNewsFeedView: React.FC = () => {
                             event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
                             roomId={room?.id}
                             onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
+                            onOpenAllStar={openAllStar}
                         />
                     ) : (
                         <div className="h-full flex items-center justify-center text-slate-600 text-sm ko-normal">선택된 소식이 없습니다.</div>

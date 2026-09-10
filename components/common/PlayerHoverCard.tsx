@@ -1,10 +1,10 @@
 
-import React, { useState, useRef, useCallback, useEffect, cloneElement, isValidElement } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, cloneElement, isValidElement } from 'react';
 import { createPortal } from 'react-dom';
 import type { Player, PlayerStats } from '../../types';
 import { COMPACT_ATTR_GROUPS, ATTR_KR_LABEL, CompactAttrItem, getCompactAttrValue } from '../../data/attributeConfig';
 import { InjuryStatusBadge, SEVERITY_TEXT_COLOR } from './InjuryStatusBadge';
-import { formatReturnDateSuffix } from '../../services/multi/activeInjuryStatus';
+import { formatReturnDateSuffix, type ActiveInjuryStatus } from '../../services/multi/activeInjuryStatus';
 import { getAttrColor } from '../../utils/attrRatingColor';
 
 // 완전한 Player 객체가 없는 화면(뉴스피드/시즌 일정 — playerId+이름 정도만 있는 partial
@@ -46,6 +46,35 @@ export function mergeStatsIntoPlayerCardMap(
         const stats = statsByPlayerId[id];
         merged.set(id, stats
             ? { ...entry, player: { ...entry.player, stats: { ...entry.player.stats, ...stats } } }
+            : entry);
+    }
+    return merged;
+}
+
+/** buildActiveInjurySeverityMap()(services/multi/activeInjuryStatus.ts)이 만든 "지금 활성
+ *  부상/출장정지" 요약을 Player.activeInjurySeverity/injuryType/activeInjuryDuration/
+ *  returnDate로 얹는다 — MultiRosterView.tsx 등 완전한 로스터 화면이 이미 하던 매핑과 동일
+ *  (mergeStatsIntoPlayerCardMap과 동일한 불변 원칙 — 새 Map/엔트리만 생성, 활성 부상이 없는
+ *  선수는 원본 그대로). */
+export function mergeInjuryIntoPlayerCardMap(
+    base: PlayerCardMap,
+    activeInjuryByPlayer: Map<string, ActiveInjuryStatus>,
+): PlayerCardMap {
+    if (activeInjuryByPlayer.size === 0) return base;
+    const merged: PlayerCardMap = new Map();
+    for (const [id, entry] of base) {
+        const injury = activeInjuryByPlayer.get(id);
+        merged.set(id, injury
+            ? {
+                ...entry,
+                player: {
+                    ...entry.player,
+                    activeInjurySeverity: injury.severity,
+                    injuryType: injury.injuryType,
+                    activeInjuryDuration: injury.duration,
+                    returnDate: injury.returnDate ?? undefined,
+                },
+            }
             : entry);
     }
     return merged;
@@ -110,12 +139,13 @@ function formatStat(val: number, format: StatFormat): string {
     return val.toFixed(1);
 }
 
-const PlayerRatingsStatsPopup: React.FC<{ player: Player; teamAbbr?: string | null; style: React.CSSProperties }> = ({ player, teamAbbr, style }) => {
+const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player: Player; teamAbbr?: string | null; style: React.CSSProperties }>(({ player, teamAbbr, style }, ref) => {
     const g = player.stats?.g || 0;
     const hasStats = g > 0;
 
     return (
         <div
+            ref={ref}
             style={style}
             className="w-[300px] bg-slate-950 border border-slate-700 rounded-lg shadow-2xl p-3 pointer-events-none select-none"
         >
@@ -184,7 +214,7 @@ const PlayerRatingsStatsPopup: React.FC<{ player: Player; teamAbbr?: string | nu
             </div>
         </div>
     );
-};
+});
 
 interface PlayerHoverCardProps {
     /** 조회 실패(로스터에서 사라진 선수 등) 또는 멀티플레이어 전용 게이트(enabled=false)로
@@ -211,6 +241,7 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
     const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
+    const popupRef = useRef<HTMLDivElement | null>(null);
 
     const clearTimer = () => {
         if (timerRef.current) {
@@ -250,6 +281,31 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
 
     useEffect(() => clearTimer, []);
 
+    // [2026-09-05] 홈 화면(여러 리스트가 한 페이지에 동시에 존재)에서 팝업이 화면 아래쪽
+    // 항목에서도 엉뚱하게 위쪽에 뜨는 문제 발견 — computeCoords()는 실제 렌더 전
+    // POPUP_HEIGHT_ESTIMATE(고정 추정치)로만 뷰포트 하단 충돌을 판정하는데, 능력치 3열+
+    // 스탯 3열까지 있는 실제 팝업 높이가 항목/화면 폭에 따라 추정치와 어긋나면 뒤집힘
+    // 판정이 틀어질 수 있다. 팝업이 마운트된 직후(paint 전) 실제 크기로 좌표를 다시
+    // 계산해 보정 — useLayoutEffect라 사용자에게는 깜빡임 없이 항상 올바른 위치로 뜬다.
+    useLayoutEffect(() => {
+        if (!visible) return;
+        const anchorRect = anchorRef.current?.getBoundingClientRect();
+        const popupEl = popupRef.current;
+        if (!anchorRect || !popupEl) return;
+        const actualWidth = popupEl.offsetWidth || POPUP_WIDTH;
+        const actualHeight = popupEl.offsetHeight || POPUP_HEIGHT_ESTIMATE;
+        let left = anchorRect.left;
+        let top = anchorRect.bottom + 6;
+        if (left + actualWidth > window.innerWidth - VIEWPORT_MARGIN) {
+            left = Math.max(VIEWPORT_MARGIN, window.innerWidth - actualWidth - VIEWPORT_MARGIN);
+        }
+        if (top + actualHeight > window.innerHeight - VIEWPORT_MARGIN) {
+            top = Math.max(VIEWPORT_MARGIN, anchorRect.top - actualHeight - 6);
+        }
+        setCoords(prev => (prev && Math.abs(prev.top - top) < 1 && Math.abs(prev.left - left) < 1) ? prev : { top, left });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible]);
+
     // 팝업이 열려있는 동안 스크롤되면 앵커 기준 좌표가 무의미해지므로 즉시 닫는다.
     useEffect(() => {
         if (!visible) return;
@@ -276,7 +332,7 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
         <>
             {child}
             {visible && coords && createPortal(
-                <PlayerRatingsStatsPopup player={player} teamAbbr={teamAbbr} style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 200 }} />,
+                <PlayerRatingsStatsPopup ref={popupRef} player={player} teamAbbr={teamAbbr} style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 200 }} />,
                 document.body,
             )}
         </>

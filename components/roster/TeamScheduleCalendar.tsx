@@ -276,7 +276,12 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                         // 클릭 가능 조건: onScoreClick(경기 상세/중계 화면)이 있으면 예정 경기도 클릭
                         // 가능 — 없으면(싱글플레이) 완료된 경기의 박스스코어 조회만 가능.
                         const isClickable = !!onScoreClick || game.played;
-                        const cellBg = oppTeam?.colorPrimary ?? undefined;
+                        const isFinishedWin = game.played && myScore != null && oppScore != null && myScore > oppScore;
+                        const isFinishedLoss = game.played && myScore != null && oppScore != null && myScore < oppScore;
+                        // 종료된 경기는 상대팀 컬러로 칠하지 않고(cellBg=undefined) 대신 아래 className에서
+                        // 승/패 틴트(반투명 emerald/red)를 얹는다 — 다른 화면(GameRow의 내 경기 하이라이트 등)과
+                        // 동일하게 solid 컬러가 아닌 은은한 틴트로 다크 테마 톤을 유지.
+                        const cellBg = isFinishedWin || isFinishedLoss ? undefined : (oppTeam?.colorPrimary ?? undefined);
                         const cellText = getReadableTextColor(cellBg);
 
                         return (
@@ -286,12 +291,21 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                                 disabled={!isClickable || isFetching}
                                 style={cellBg ? { backgroundColor: cellBg, color: cellText } : undefined}
                                 className={`aspect-square rounded-lg border p-1.5 flex flex-col items-stretch overflow-hidden transition-all ${
+                                    isFinishedWin ? 'border-emerald-500/40 bg-emerald-500/20' :
+                                    isFinishedLoss ? 'border-red-500/40 bg-red-500/20' :
                                     cellBg ? 'border-black/20' : 'border-slate-800 bg-slate-900/60'
                                 } ${isClickable ? 'cursor-pointer hover:brightness-110' : 'cursor-default'} ${
                                     isToday ? 'ring-2 ring-yellow-400 ring-inset' : ''
                                 }`}
                             >
-                                <span className="text-base font-semibold tabular-nums text-left" style={{ color: cellText, opacity: cellBg ? 0.75 : 1 }}>{day}</span>
+                                <div className="flex items-start justify-between">
+                                    <span className="text-base font-semibold tabular-nums text-left" style={{ color: cellText, opacity: cellBg ? 0.75 : 1 }}>{day}</span>
+                                    {(isFinishedWin || isFinishedLoss) && (
+                                        <span className="text-base font-semibold tabular-nums" style={{ color: cellText }}>
+                                            {isFinishedWin ? 'W' : 'L'}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0">
                                     <span className="text-2xl font-black leading-none truncate max-w-full" style={{ color: cellText }}>
                                         {isHome ? 'vs' : '@'} {oppTeam?.abbr ?? oppId}

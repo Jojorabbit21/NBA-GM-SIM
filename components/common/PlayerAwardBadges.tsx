@@ -28,6 +28,7 @@ const AWARD_META: Record<PlayerAwardType, AwardMeta> = {
     ALL_NBA_3:            { name: '올-오펜시브 팀',     detail: '3rd',    shortLabel: '3rd',   icon: 'trophy',           color: 'text-slate-400',  order: 7 },
     ALL_DEF_1:            { name: '올-디펜시브 팀',     detail: '1st',    shortLabel: 'D1st',  icon: 'shield',           color: 'text-green-400',  order: 8 },
     ALL_DEF_2:            { name: '올-디펜시브 팀',     detail: '2nd',    shortLabel: 'D2nd',  icon: 'shield',           color: 'text-green-500',  order: 9 },
+    ALL_STAR:             { name: '올스타',         detail: '선정',   shortLabel: 'AS',    img: '/logos/real/AS/AllStar.svg', color: 'text-sky-400', order: 10 },
 };
 
 // ── 헤더용 집계 ──
@@ -98,7 +99,7 @@ const HeaderTrophy: React.FC<{ award: AggregatedAward }> = ({ award }) => {
 // ── 헤더용 트로피 (주요 4종만, 이미지 중심) ──
 
 export const HeaderAwardTrophies: React.FC<{ awards: PlayerAwardEntry[] }> = ({ awards }) => {
-    const headerTypes: PlayerAwardType[] = ['CHAMPION', 'REG_SEASON_CHAMPION', 'MVP', 'FINALS_MVP', 'DPOY'];
+    const headerTypes: PlayerAwardType[] = ['CHAMPION', 'REG_SEASON_CHAMPION', 'MVP', 'FINALS_MVP', 'DPOY', 'ALL_STAR'];
     // MVP/DPOY는 1위(수상)만 헤더 트로피에 표시 (후보 제외)
     const winnersOnly = awards.filter(a => {
         if (a.type === 'MVP' || a.type === 'DPOY') return a.rank === 1 || a.rank == null;

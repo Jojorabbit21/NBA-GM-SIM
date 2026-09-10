@@ -9,7 +9,6 @@ import { useSeasonContext } from './seasonContext';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
-import { useServerClock } from '../../../utils/serverClock';
 import { GameDateStrip, type TeamStripInfo } from './GameDateStrip';
 import type { Game } from '../../../types';
 
@@ -46,7 +45,6 @@ export function MultiSeasonLayout() {
     const { room, league, leagueTeams } = useLeagueContext();
     const { session } = useGame();
     const { getGameUrlId, resolveGameId } = useGameShortCodes(room?.id);
-    const serverNow = useServerClock();
 
     // GameDateStrip용 — team_slug → 팀 표시정보 맵 (MultiGamePbpView.tsx가 쓰던 것과 동일).
     const stripTeamMap = useMemo(() => {
@@ -78,7 +76,6 @@ export function MultiSeasonLayout() {
                     simStart={league?.sim_real_start_at ?? null}
                     gprd={league?.games_per_real_day ?? 5}
                     bracketData={league?.bracket_data}
-                    serverNow={serverNow}
                     roomId={room?.id}
                     accessToken={session?.access_token}
                     getGameUrlId={getGameUrlId}

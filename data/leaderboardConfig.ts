@@ -264,7 +264,7 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     { key: 'ovr', label: 'OVR', width: WIDTHS.OVR, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME + WIDTHS.TEAM + WIDTHS.POS, stickyShadow: true, category: 'Common' },
     
     // [Updated] Moved G and MP to Traditional category so they are hidden in Shooting view
-    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional' },
+    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional', format: 'integer' },
     { key: 'mp', label: 'MIN', width: WIDTHS.STAT, sortable: true, category: 'Traditional', format: 'number' },
 
     // Traditional Stats

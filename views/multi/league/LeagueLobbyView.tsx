@@ -293,7 +293,7 @@ const LeagueLobbyView: React.FC = () => {
                             {/* 설정 (어드민) */}
                             {isAdmin && (
                                 <button
-                                    onClick={() => navigate(`/multi/leagues/${leagueId}/settings`)}
+                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/settings`)}
                                     className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors"
                                 >
                                     <Settings2 size={12} />

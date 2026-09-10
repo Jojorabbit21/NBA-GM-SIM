@@ -15,6 +15,7 @@ import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
 import { SIM_CONFIG } from './shared/game/config/constants';
+import { getAllStarKeyDates } from './shared/multi/allStarSelection';
 import type { TacticalSliders } from './shared/types/tactics';
 
 // URL에 노출되는 게임 ID(T_R1_M0_G1 등)를 대체하는 짧은 코드 — services/multi/leagueService.ts의
@@ -319,13 +320,16 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
         // 완전히 다른 개념 — 그건 아래 compressLeagueSchedule()이 별도로 적용한다).
         // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
         const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
+        // 올스타 키데이트(선발일/브레이크 시작/종료)는 getAllStarKeyDates() 한 곳에서 계산 —
+        // 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이 어긋날 여지가 있었음.
+        const { allStarStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,
                 seasonStart:      `${virtualSeasonYear}-10-21`,
                 regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
-                allStarStart:     `${virtualSeasonYear + 1}-02-13`,
-                allStarEnd:       `${virtualSeasonYear + 1}-02-18`,
+                allStarStart,
+                allStarEnd,
             },
             filteredTeamData as any,
         );
@@ -479,13 +483,16 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         // 정한 "리그 주기"(1~4주)는 compressLeagueSchedule()에서 별도로 적용.
         // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
         const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
+        // 올스타 키데이트(선발일/브레이크 시작/종료)는 getAllStarKeyDates() 한 곳에서 계산 —
+        // 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이 어긋날 여지가 있었음.
+        const { allStarStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,
                 seasonStart:      `${virtualSeasonYear}-10-21`,
                 regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
-                allStarStart:     `${virtualSeasonYear + 1}-02-13`,
-                allStarEnd:       `${virtualSeasonYear + 1}-02-18`,
+                allStarStart,
+                allStarEnd,
             },
             filteredTeamData as any,
         );

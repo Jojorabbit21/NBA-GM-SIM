@@ -9,7 +9,7 @@ import { useSeasonContext } from './seasonContext';
 import { computeMultiStandingsStats, computePlayoffOddsMap } from './multiSeasonUtils';
 import type { MultiStandingsRecord, MultiTeamMeta } from './multiSeasonUtils';
 import { isFinal, resolveRealAt } from './multiGameReveal';
-import { useServerClock } from '../../../utils/serverClock';
+import { useServerClockBucket } from '../../../utils/serverClock';
 import { PostseasonBracket } from './PostseasonBracket';
 import {
     Table, TableHead, TableBody, TableRow,
@@ -17,6 +17,7 @@ import {
 } from '../../../components/common/Table';
 import { TEAM_DATA } from '../../../data/teamData';
 import { DIVISION_KOREAN } from '../../../data/mappings';
+import { getRealTeamLogoUrl, getTeamLogoUrl, CONFERENCE_COLORS } from '../../../utils/constants';
 
 // ── 스탠딩 테이블 (main_league 전용) ─────────────────────────────────────────
 
@@ -111,12 +112,6 @@ interface RankedTeamRow {
     groupLabel?: string;
     groupColor?: string;
 }
-
-// 컨퍼런스/디비전 화면 전용 그룹 헤더 컬러 — 리그 모드(그룹 헤더 없음)에는 영향 없음.
-const CONFERENCE_COLORS: Record<'East' | 'West', string> = {
-    East: '#1D4289',
-    West: '#C8102E',
-};
 
 // 디비전은 항상 특정 컨퍼런스에 소속 — 디비전 모드 그룹 헤더도 소속 컨퍼런스 컬러를 그대로 쓴다.
 const DIVISION_CONFERENCE: Record<string, 'East' | 'West'> = {
@@ -703,17 +698,37 @@ const LeagueStandingsTable: React.FC<{
                                             {rank}
                                         </TableCell>
 
-                                        {/* Team */}
+                                        {/* Team — 이름 옆에 팀 로고(public/logos/real/) 추가(사용자 요청).
+                                            뉴스피드 스코어 헤드라인(newsFeedCards.tsx BoxScoreHeadline)과
+                                            동일한 폴백 체인(신규 로고 실패 → 구버전 → 플레이스홀더).
+                                            [2026-09-07 후속] 로고는 순수 장식용 — 클릭 영역은 팀 이름
+                                            텍스트에만 한정(사용자 지적: 로고까지 클릭되게 만든 건 요청 밖). */}
                                         <TableCell align="left" className="pl-4 border-r border-slate-800/30">
-                                            <span
-                                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
-                                                className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
-                                                    clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
-                                                        : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
-                                                        : 'text-slate-200'
-                                                }`}
-                                            >
-                                                {t.team_name}
+                                            <span className="flex items-center gap-2 min-w-0">
+                                                <img
+                                                    src={getRealTeamLogoUrl(t.team_slug)}
+                                                    alt={t.team_abbr}
+                                                    className="w-6 h-6 object-contain shrink-0"
+                                                    onError={(e) => {
+                                                        const img = e.currentTarget;
+                                                        if (img.dataset.fallback !== 'old') {
+                                                            img.dataset.fallback = 'old';
+                                                            img.src = getTeamLogoUrl(t.team_slug);
+                                                        } else {
+                                                            img.src = 'https://placehold.co/100x100?text=BPL';
+                                                        }
+                                                    }}
+                                                />
+                                                <span
+                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
+                                                    className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
+                                                        clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
+                                                            : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
+                                                            : 'text-slate-200'
+                                                    }`}
+                                                >
+                                                    {t.team_name}
+                                                </span>
                                             </span>
                                         </TableCell>
 
@@ -801,7 +816,13 @@ const MultiStandingsView: React.FC = () => {
     const {
         isLoading: gameLoading, schedule, myTeamId,
     } = useSeasonContext();
-    const serverNow = useServerClock();
+    // [2026-09-07] isFinal() 게이팅(경기 공개 10분 딜레이)에만 쓰여 초 단위 정밀도가
+    // 필요 없다 — useServerClock() 그대로 쓰면 LeagueStandingsTable 전체(+그 아래
+    // computeMultiStandingsStats/computeSosMap 같은 리그 전체 재계산)가 매초 돌았다
+    // (홈/뉴스 화면과 동일한 문제, 사용자가 순위 화면에서도 재렌더 확인). 몬테카를로
+    // 플레이오프 확률(playoffOddsMap/oddsBreakdownMap)은 이미 마운트 시 1회로 고정돼
+    // 있어(아래 useState lazy initializer) 이 변경의 영향을 안 받음.
+    const serverNow = useServerClockBucket();
 
     const isLoading = leagueLoading || gameLoading;
 

@@ -131,7 +131,7 @@ export function useMultiGameData(
     // ── 날짜/시즌 ───────────────────────────────────────────────────────────
     const [currentSimDate,   setCurrentSimDate]   = useState('2025-10-20');
     const [seasonNumber,     setSeasonNumber]     = useState(1);
-    const [currentSeason,    setCurrentSeason]    = useState('2025-2026');
+    const [currentSeason,    setCurrentSeason]    = useState('2025-26');
     const [offseasonPhase,   setOffseasonPhase]   = useState<OffseasonPhase>(null);
 
     // ── 전술 ────────────────────────────────────────────────────────────────
@@ -311,7 +311,17 @@ export function useMultiGameData(
                 { event: '*', schema: 'public', table: 'games', filter: `room_id=eq.${roomId}` },
                 refetch,
             )
-            .subscribe();
+            .subscribe((status) => {
+                // [2026-09-04 버그 수정] "홈 화면 경기 일정에서 날짜가 지나도 결과가 자동
+                // 갱신 안 됨" 리포트 — schedule은 react-query가 아니라 이 realtime 구독
+                // 하나로만 최신 상태를 유지하는 순수 useState라, 소켓이 잠깐 끊겼다
+                // 재연결되는 구간(브라우저 탭 백그라운드, 네트워크 순단 등)에 발생한 games
+                // UPDATE(경기 종료 등)는 통지받지 못해 그 시점 상태로 영영 멈춰버릴 수
+                // 있었다. 재연결(SUBSCRIBED) 시점마다 한 번 강제 재조회해 놓친 갱신을
+                // 흡수한다 — 최초 연결 시에도 한 번 더 불리지만(init()이 이미 한 번
+                // 로드한 직후라 중복) 300ms 디바운스와 맞물려 비용은 무시할 수준.
+                if (status === 'SUBSCRIBED') refetch();
+            });
 
         return () => {
             cancelled = true;

@@ -2,7 +2,7 @@
 import React from 'react';
 import { TabBar } from '../common/TabBar';
 
-export type RosterTab = 'overview' | 'attributes' | 'stats' | 'records' | 'schedule' | 'finance' | 'coaching' | 'draftPicks';
+export type RosterTab = 'overview' | 'attributes' | 'stats' | 'records' | 'schedule' | 'finance' | 'coaching' | 'draftPicks' | 'settings';
 
 interface RosterTabsProps {
     activeTab: RosterTab;
@@ -20,6 +20,10 @@ const TABS: { id: RosterTab; label: string }[] = [
     { id: 'finance', label: '재정' },
     { id: 'coaching', label: '코칭 스태프' },
     { id: 'draftPicks', label: '드래프트 픽' },
+    // [2026-09-04] 멀티플레이어 "본인 팀" 화면 전용 — RosterView가 isMyTeam && enableTeamSettingsTab일
+    // 때만 hideTabs에서 제외해 노출한다(그 외엔 항상 숨김). TABS 배열 맨 끝에 둬서 항상 탭 그룹
+    // 최우측에 위치.
+    { id: 'settings', label: '팀 설정' },
 ];
 
 export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange, hideTabs, theme }) => {

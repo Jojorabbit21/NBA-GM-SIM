@@ -16,6 +16,8 @@ import { TeamLeadersCards } from '../../../components/dashboard/tactics/insights
 import { TeamZoneStatsTable } from '../../../components/dashboard/tactics/insights/TeamZoneStatsTable';
 import { TeamZoneChartInsight } from '../../../components/dashboard/tactics/insights/TeamZoneChartInsight';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
+import { useTeamOpponentZoneStats } from '../../../hooks/useTeamOpponentZoneStats';
 import { useLeaderboardData } from '../../../hooks/useLeaderboardData';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -247,6 +249,13 @@ const MultiTacticsView: React.FC = () => {
         return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
     }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
 
+    // [2026-09-07] 슈팅 존 히트맵(zoneMap)은 예전엔 selectTacticsData 안에서 raw.pbpRows(room
+    // 전체 game_pbp 원본)를 직접 순회해 우리 팀 경기만 걸러 집계했다 — 서버 집계 RPC
+    // (usePlayerSeasonStatsLeague)의 zone_* 필드가 정확히 "그 선수의 시즌 전체 존별 슛 집계"라
+    // 동일한 값이면서 원본 fetch 자체가 필요 없다(홈/리더보드 화면과 동일한 병목 개선,
+    // services/multi/buildLeagueTeams.ts 주석 참고). 내 팀 로스터로만 스코프를 좁혀 조회.
+    const { data: myTeamStatsByPlayer } = usePlayerSeasonStatsLeague(room?.id, myTeamRow?.roster ?? []);
+
     const selectTacticsData = useCallback((raw: LeagueRawStatsData) => {
         // .in() 조회는 입력 배열 순서를 보장하지 않으므로, 드래프트 픽 순서(roster 배열 순서)대로 재정렬
         const draftOrder = myTeamRow?.roster ?? [];
@@ -254,37 +263,25 @@ const MultiTacticsView: React.FC = () => {
         const orderedRaw = draftOrder.map(id => byId.get(String(id))).filter(Boolean);
         const rosterPlayers = orderedRaw.map((r: any) => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
 
-        // 슈팅 존 히트맵용 — 우리 팀이 치른 경기들의 박스스코어에서 선수별 존 슛 집계를 누적
-        // (별도 fetch 없이 이미 불러온 game_pbp를 재사용).
-        const now = getServerNow();
-        const zoneMap = new Map<string, Record<string, number>>();
-
-        for (const row of raw.pbpRows as any[]) {
-            if (row.home_team_id !== myTeamId && row.away_team_id !== myTeamId) continue;
-            if (!isFinal({ scheduledAt: row.game_start_time, played: true }, now)) continue;
-            const isHome = row.home_team_id === myTeamId;
-            const myBox  = isHome ? (row.home_box ?? []) : (row.away_box ?? []);
-
-            for (const bs of myBox as any[]) {
-                if (!bs.playerId) continue;
-                const zd = bs.zoneData ?? {};
-                const prev = zoneMap.get(bs.playerId) ?? {};
-                const next = { ...prev };
-                for (const k of ZONE_KEYS) next[k] = (prev[k] ?? 0) + (zd[k] ?? 0);
-                zoneMap.set(bs.playerId, next);
-            }
-        }
-
-        return { rosterPlayers, zoneMap, playerInjuryRows: raw.playerInjuryRows };
-    }, [myTeamRow?.roster, myTeamId, useCustomOverrides]);
+        return { rosterPlayers, playerInjuryRows: raw.playerInjuryRows };
+    }, [myTeamRow?.roster, useCustomOverrides]);
 
     const {
         data: tacticsRawData,
         isPending: rosterFetchLoading,
-    } = useLeagueRawStats(room?.id, allRosterIds, selectTacticsData);
+    } = useLeagueRawStats(room?.id, allRosterIds, selectTacticsData, { includePbp: false });
 
     const rosterPlayers = tacticsRawData?.rosterPlayers ?? [];
-    const zoneStatsMap  = tacticsRawData?.zoneMap ?? new Map<string, Record<string, number>>();
+    const zoneStatsMap  = useMemo(() => {
+        const m = new Map<string, Record<string, number>>();
+        if (!myTeamStatsByPlayer) return m;
+        for (const [playerId, stats] of Object.entries(myTeamStatsByPlayer)) {
+            const zones: Record<string, number> = {};
+            for (const k of ZONE_KEYS) zones[k] = (stats as any)[k] ?? 0;
+            m.set(playerId, zones);
+        }
+        return m;
+    }, [myTeamStatsByPlayer]);
 
     // 뎁스차트 부상/출장정지 배지 — playerInjuryRows는 room 전체 fetch(useLeagueRawStats)에서
     // 오므로 selectTacticsData의 반환값을 거쳐야 하고, 그 select 함수 자체는 currentSimDate
@@ -319,14 +316,22 @@ const MultiTacticsView: React.FC = () => {
     // 캐시를 그대로 재사용해 별도 네트워크 요청 없이 즉시 계산된다. 인사이트 탭 전용 데이터라
     // 메인 isReady 게이트에는 포함하지 않고(다른 탭이 이 fetch 때문에 기다리지 않도록) 탭 내부에서
     // 로컬 로더로 처리한다.
+    // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC 2개로
+    // 선수 시즌 스탯 + 팀별 oppZoneStats(CONTEST 섹션용)를 받는다 — 홈/리더보드 화면과
+    // 동일한 병목이 인사이트 탭에도 있었음(services/multi/buildLeagueTeams.ts 주석 참고).
+    const { data: leagueStatsByPlayer, isPending: leagueStatsPending } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
+    const { data: oppZoneByTeam, isPending: oppZonePending } = useTeamOpponentZoneStats(room?.id);
     const selectLeagueTeams = useCallback(
-        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides),
-        [leagueTeams, useCustomOverrides],
+        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides, leagueStatsByPlayer, oppZoneByTeam),
+        [leagueTeams, useCustomOverrides, leagueStatsByPlayer, oppZoneByTeam],
     );
     const {
         data: leagueTeamsWithStats = [],
-        isPending: leagueTeamsLoading,
-    } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams);
+        isPending: leagueTeamsFetchPending,
+    } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams, { includePbp: false });
+    // 셋 다 기다렸다 한 번에 표시 — 신원만 먼저 뜨고 스탯/oppZone이 한 박자 늦게 팝인되는
+    // 문제 방지(팀 화면 Off/Def Rtg 게이트 통합과 동일한 이유).
+    const leagueTeamsLoading = leagueTeamsFetchPending || leagueStatsPending || oppZonePending;
 
     // 인사이트 탭 "선수 스탯" 테이블(PlayerStatsTable)용 — 30팀 중 우리 팀만 추출(로스터+시즌 누적 스탯 포함).
     const myTeamWithFullStats = useMemo(

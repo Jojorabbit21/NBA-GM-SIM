@@ -141,14 +141,17 @@ const MVP_STAT_CANDIDATES: { key: 'pts' | 'reb' | 'ast' | 'stl' | 'blk'; label: 
     { key: 'blk', label: 'BLK', threshold: 2 },
 ];
 
-interface GameMvpLite { playerId: string; name: string; position?: string; stats: { label: string; value: number }[] }
+export interface GameMvpLite { playerId: string; name: string; position?: string; stats: { label: string; value: number }[] }
 
 // [2026-09-01] 통합(양팀 concat) 1명 선정 → 팀별 1명씩으로 분리 — 뉴스피드 카드가 팀당
 // 리더 한 줄씩(스크린샷 레퍼런스) 보여줘야 해서. 로직 자체는 그대로(pieRaw 최댓값 + 대표
 // 스탯 최대 5개), 호출부(detectGameResult)가 homeBox/awayBox를 따로 넘기기만 하면 됨.
 // 클라이언트 미러: services/multi/gameLeadersCache.ts의 bestFromBox() — 그쪽은 이미
 // mvpHome/mvpAway로 나뉘어 있었고(MultiScheduleView.tsx가 사용 중), 여기가 뒤늦게 따라감.
-function pickTeamMvp(box: PlayerBoxScore[] | null | undefined): GameMvpLite | undefined {
+// [2026-09-09] export로 전환 — postAllStarGame.ts가 올스타/라이징스타 경기 MVP 선정에
+// 그대로 재사용(양팀 box를 하나로 합쳐 넘기면 "경기 전체 MVP 1명" 선정이 됨, 별도 로직
+// 불필요 — 이 함수는 원래도 단일 box 배열 안에서만 최댓값을 고르므로 팀 구분이 없다).
+export function pickTeamMvp(box: PlayerBoxScore[] | null | undefined): GameMvpLite | undefined {
     if (!box || box.length === 0) return undefined;
 
     let best = box[0];

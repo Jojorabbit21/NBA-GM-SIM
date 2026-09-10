@@ -1,12 +1,16 @@
 
-import React, { useMemo } from 'react';
-import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, type LucideIcon } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, ArrowRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { OvrBadge } from '../../../components/common/OvrBadge';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { getReadableTextColor } from '../../../utils/colorContrast';
+import { getRealTeamLogoUrl, getTeamLogoUrl, CONFERENCE_COLORS, RISING_STARS_COLORS } from '../../../utils/constants';
+import { BasketLines as ShotChartBasketLines } from '../../../components/game/tabs/GameShotChartTab';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import type { LeagueEvent, LeagueEventType } from '../../../hooks/useLeagueHeadlines';
 import type { PlayerBoxScore } from '../../../types/engine';
+import type { PlayerStats } from '../../../types/player';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 import { PlayerHoverCard, type PlayerCardEntry, type PlayerCardMap, mergeStatsIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
 import { buildNewsBlurb, buildNewsTitle } from '../../../services/multi/newsBlurb';
@@ -14,7 +18,7 @@ import { useGameBoxScore } from '../../../hooks/useGameBoxScore';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import type { GameBoxScoreData } from '../../../services/multi/gameQueries';
 import { formatMoney } from '../../../utils/formatMoney';
-import type { AllNbaTeamEntry, AllDefTeamEntry } from '../../../services/multi/leagueEventPayload';
+import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry } from '../../../services/multi/leagueEventPayload';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
 // 재수출만 해서 이 모듈을 이미 import하고 있는 곳(MultiNewsFeedView.tsx 등)의 기존 import
@@ -43,6 +47,22 @@ export function extractEventPlayerIds(event: LeagueEvent): string[] {
         case 'all_def_team': return event.detail.tiers.flatMap(t => t.players.map(p => p.playerId));
         case 'injury': return [event.detail.player.id];
         case 'suspension': return [event.detail.fighter.id, event.detail.opponent.id];
+        case 'allstar_vote_update': return [
+            ...event.detail.east.guards, ...event.detail.east.frontcourt,
+            ...event.detail.west.guards, ...event.detail.west.frontcourt,
+        ].map(e => e.playerId);
+        case 'allstar_vote_result': return [
+            ...event.detail.east.starters, ...event.detail.east.reserves,
+            ...event.detail.west.starters, ...event.detail.west.reserves,
+            ...(event.detail.risingStars?.teamA ?? []), ...(event.detail.risingStars?.teamB ?? []),
+        ].map(p => p.playerId);
+        case 'allstar_rising_stars': return [...event.detail.teamA, ...event.detail.teamB].map(p => p.playerId);
+        case 'allstar_three_point_contest': return event.detail.participants.map(p => p.playerId);
+        case 'allstar_dunk_contest': return event.detail.participants.map(p => p.playerId);
+        case 'allstar_game_result': return event.detail.mvp ? [event.detail.mvp.playerId] : [];
+        case 'allstar_rising_stars_result': return event.detail.mvp ? [event.detail.mvp.playerId] : [];
+        case 'allstar_three_point_contest_result': return event.detail.round1.map(e => e.playerId);
+        case 'allstar_dunk_contest_result': return event.detail.round1.map(e => e.playerId);
         default: return [];
     }
 }
@@ -87,6 +107,14 @@ const BrandMark: React.FC<{ className?: string }> = ({ className = '' }) => (
     <img src="/images/bc2.svg" alt="The Basketball Chronicle" className={className} />
 );
 
+// [2026-09-09] 올스타/라이징스타/3점 챌린지/덩크 컨테스트 서신 4종 본문 최상단에 이벤트별
+// 로고를 표시(사용자 요청) — BrandMark(마스트헤드, 매체 로고)와는 별개로, 각 서신의 본문
+// (헤더 구획 아래 첫 단락 앞)에 event-specific 로고를 크게 한 장 보여준다.
+// public/logos/real/AS/*.svg(사용자 제공, 100x100 정사각형) 재사용.
+const EventLetterLogo: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
+    <img src={src} alt={alt} className="h-16 w-16" />
+);
+
 // [2026-09-01] "박스스코어" 텍스트 자리에 "원정팀약어 스코어-스코어 홈팀약어"를 표기하고
 // 팀약어/스코어 각각을 클릭 가능하게 해 달라는 요청 — 팀약어는 팀 화면
 // (MultiStandingsView.tsx 등이 쓰는 것과 동일한 `?rteam=` 쿼리 파라미터 라우트)으로,
@@ -109,8 +137,37 @@ const BoxScoreHeadline: React.FC<{
             {team?.team_abbr ?? slug}
         </span>
     );
+    // [2026-09-07] 팀약어 옆에 팀 로고를 붙여달라는 요청 — 컬러 배지(TeamBadge)가 아니라
+    // public/logos/real/의 실제 팀 로고 이미지 사용. RosterView.tsx/PlayerDetailView.tsx
+    // 헤더 로고와 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
+    // colorPrimary 없는(이론상만) 팀은 TeamLogo로 폴백. [2026-09-07 후속] 순수 장식용 —
+    // 클릭은 요청받은 적 없어 로고에 onClick/cursor-pointer를 붙이지 않는다(팀약어 텍스트만
+    // 기존처럼 클릭 가능).
+    const teamLogo = (slug: string, team: LeagueTeamRow | undefined) => (
+        <span className="shrink-0">
+            {team?.color_primary ? (
+                <img
+                    src={getRealTeamLogoUrl(slug)}
+                    alt={team?.team_abbr ?? slug}
+                    className="w-8 h-8 object-contain"
+                    onError={(e) => {
+                        const img = e.currentTarget;
+                        if (img.dataset.fallback !== 'old') {
+                            img.dataset.fallback = 'old';
+                            img.src = getTeamLogoUrl(slug);
+                        } else {
+                            img.src = 'https://placehold.co/100x100?text=BPL';
+                        }
+                    }}
+                />
+            ) : (
+                <TeamLogo teamId={slug} teamName={team?.team_name} size="sm" />
+            )}
+        </span>
+    );
     return (
         <h4 className="flex items-center gap-1.5">
+            {teamLogo(game.awaySlug, awayTeam)}
             {teamSpan(game.awaySlug, awayTeam)}
             <span
                 className={`text-lg font-black text-white ${onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
@@ -119,6 +176,7 @@ const BoxScoreHeadline: React.FC<{
                 {game.awayScore}-{game.homeScore}
             </span>
             {teamSpan(game.homeSlug, homeTeam)}
+            {teamLogo(game.homeSlug, homeTeam)}
         </h4>
     );
 };
@@ -1459,7 +1517,7 @@ const AllTeamSection: React.FC<{
     onPlayerClick?: (playerId: string) => void;
 }> = ({ tier, tierLabel, statCols, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
     <div className="space-y-2">
-        <h3 className="text-sm font-black text-slate-300 uppercase tracking-wide">{tierLabel}</h3>
+        <h3 className="text-sm font-black text-slate-300 uppercase">{tierLabel}</h3>
         <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
                 <thead>
@@ -1588,6 +1646,1377 @@ export const AllDefTeamCard: React.FC<{
     );
 };
 
+// 투표 마감 후 확정된 명단(스타터/리저브) 표시용 — AllstarVoteSection과 달리 득표수/득표율이
+// 없다(리저브는 코치 투표라 스케일 자체가 다르고, 최종 명단 화면에선 "누가 뽑혔는지"가
+// 중요하지 득표수 자체는 부차적이라 생략). 팀 로고/PlayerHoverCard 패턴은 AllstarVoteSection과
+// 동일하게 맞춰 두 표가 나란히 있어도 이질감이 없도록 함.
+// AllstarRosterPlayer(votes/pct 필수)와 RisingStarsRosterPlayer(투표 없음, votes/pct 자체가
+// 없음)를 같은 표 컴포넌트로 그리기 위한 최소 공통 타입 — showVotes=false로 쓰는 쪽(라이징
+// 스타)은 votes/pct가 undefined라도 렌더 분기(showVotes && ...) 안에서만 접근하므로 안전.
+type RosterTablePlayer = {
+    playerId: string; playerName: string; teamSlug: string;
+    posGroup: 'G' | 'FC'; position: string; ovr: number;
+    votes?: number; pct?: number;
+    /** [2026-09-08] 라이징스타 팀 주장 표시용 — 본올스타 선수(votes/pct 있는 쪽)엔 없는 개념. */
+    isCaptain?: boolean;
+};
+
+export const AllstarRosterTable: React.FC<{
+    label: string;
+    players: RosterTablePlayer[];
+    teamBySlug: Map<string, LeagueTeamRow>;
+    playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void;
+    onPlayerClick?: (playerId: string) => void;
+    /** true면 선수 이름 왼쪽에 OVR 배지를 보여준다. 값 자체(AllstarRosterPlayer.ovr)는 이미
+     *  서버가 계산해 payload에 넣어둔 것을 그대로 꺼내 쓸 뿐이라 추가 계산 비용은 없다 —
+     *  페이지(MultiAllStarView.tsx)의 "최종 결과" 리저브 표는 공간 문제로 뺐던 걸 유지하기
+     *  위해 기본값(false)으로 두고, 결과 서신(AllstarVoteResultCard)만 켠다. */
+    showOvr?: boolean;
+    /** true면 득표수/득표율 컬럼을 추가로 보여준다. [2026-09-08] 처음엔 스타터=팬 득표,
+     *  리저브=코치 투표 포인트로 서로 다른 값을 넣었다가 스케일이 안 맞아 사용자가 "이상하다"고
+     *  지적 — 확인해보니 리저브도 "올스타 팬 투표" 득표수/득표율을 보여달라는 뜻이었음(코치
+     *  투표로 뽑혔더라도 참고용으로 팬 투표 성적을 보여주는 것). 그래서 votes/pct는 스타터·
+     *  리저브 구분 없이 항상 최종 팬 투표 리더보드(runAllStarVote 결과)에서 playerId로 찾은
+     *  값 — AllstarRosterPlayer.votes/pct 필드 자체가 이제 "팬 득표"로 통일돼 있음
+     *  (server/src/postAllStarVoteNews.ts의 voteInfoByPlayerId 참고). */
+    showVotes?: boolean;
+    /** [2026-09-08] 라이징스타 확정 서신 요청("선수의 시즌 스탯을 추가해줘")으로 추가 —
+     *  AllstarVoteSection의 showStats와 동일한 컬럼/계산 로직(G/MP/PTS/REB/AST/STL/BLK/TOV/FG%,
+     *  playerCardMap에서 조회, 추가 API 호출 없음)을 이 표에도 그대로 이식. */
+    showStats?: boolean;
+    /** [2026-09-09] 라이징스타 확정 서신 요청("각 팀 좌측에 팀별 로고 추가") — label이
+     *  "스타터"/"리저브"가 아니라 실제 팀명("팀 ○○○")인 라이징스타 표에서만 넘겨준다.
+     *  전달되면 label 왼쪽에 작은 로고를 붙인다. */
+    logoSrc?: string;
+}> = ({ label, players, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showOvr, showVotes, showStats, logoSrc }) => (
+    <div className="space-y-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-black text-slate-300 uppercase">
+            {logoSrc && <img src={logoSrc} alt="" className="h-5 w-5" />}
+            {label}
+        </h3>
+        <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/60">
+                        <th className={AWARD_RANK_TH}>포지션</th>
+                        {showOvr && <th className={AWARD_RANK_TH}>OVR</th>}
+                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                        {showStats && (
+                            <>
+                                <th className={AWARD_RANK_TH}>G</th>
+                                <th className={AWARD_RANK_TH}>MP</th>
+                                <th className={AWARD_RANK_TH}>PTS</th>
+                                <th className={AWARD_RANK_TH}>REB</th>
+                                <th className={AWARD_RANK_TH}>AST</th>
+                                <th className={AWARD_RANK_TH}>STL</th>
+                                <th className={AWARD_RANK_TH}>BLK</th>
+                                <th className={AWARD_RANK_TH}>TOV</th>
+                                <th className={AWARD_RANK_TH}>FG%</th>
+                            </>
+                        )}
+                        {showVotes && (
+                            <>
+                                <th className={AWARD_RANK_TH}>득표수</th>
+                                <th className={AWARD_RANK_TH}>득표율</th>
+                            </>
+                        )}
+                    </tr>
+                </thead>
+                <tbody>
+                    {players.map(p => {
+                        const entry = playerCardMap.get(p.playerId);
+                        const team = teamBySlug.get(p.teamSlug);
+                        const stats = entry?.player?.stats;
+                        const g = stats?.g ?? 0;
+                        const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                        const shootPct = (made: number | undefined, att: number | undefined) =>
+                            (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
+                        return (
+                            <tr key={p.playerId} className="border-b border-slate-800/60">
+                                <td className={`${AWARD_RANK_TD} text-slate-500`}>{p.posGroup}</td>
+                                {showOvr && (
+                                    <td className={AWARD_RANK_TD}>
+                                        <div className="flex justify-center">
+                                            <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+                                        </div>
+                                    </td>
+                                )}
+                                <td className="py-1.5 px-2 whitespace-nowrap">
+                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                        <span
+                                            className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                            onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
+                                        >
+                                            {p.playerName}
+                                        </span>
+                                    </PlayerHoverCard>
+                                </td>
+                                <td className="py-1.5 px-2 whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                        {team?.color_primary ? (
+                                            <img
+                                                src={getRealTeamLogoUrl(p.teamSlug)}
+                                                alt={team?.team_abbr ?? p.teamSlug}
+                                                className="w-5 h-5 object-contain shrink-0"
+                                                onError={(ev) => {
+                                                    const img = ev.currentTarget;
+                                                    if (img.dataset.fallback !== 'old') {
+                                                        img.dataset.fallback = 'old';
+                                                        img.src = getTeamLogoUrl(p.teamSlug);
+                                                    } else {
+                                                        img.src = 'https://placehold.co/100x100?text=BPL';
+                                                    }
+                                                }}
+                                            />
+                                        ) : (
+                                            <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
+                                        )}
+                                        <span
+                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                            onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
+                                        >
+                                            {team?.team_abbr ?? p.teamSlug}
+                                        </span>
+                                    </div>
+                                </td>
+                                {showStats && (
+                                    <>
+                                        <td className={AWARD_RANK_TD}>{g}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.reb)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.ast)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.stl)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.blk)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.tov)}</td>
+                                        <td className={AWARD_RANK_TD}>{shootPct(stats?.fgm, stats?.fga)}</td>
+                                    </>
+                                )}
+                                {showVotes && (
+                                    <>
+                                        <td className={`${AWARD_RANK_TD} tabular-nums`}>{(p.votes ?? 0).toLocaleString()}</td>
+                                        <td className={`${AWARD_RANK_TD} text-white`}>{p.pct != null ? formatAwardPct(p.pct) : '-'}</td>
+                                    </>
+                                )}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
+// showStats(선택) — 팀 컬럼 우측에 시즌 스탯(G/MP/PTS/REB/AST/STL/BLK/TOV/FG%)을 추가로
+// 보여준다. AllstarVoteEntry 자체엔 스탯이 없어(서버가 저장하는 득표 스냅샷은 투표 결과만
+// 담음) playerCardMap에서 그때그때 조회 — 이미 호버카드용으로 화면에 표시되는 선수 전원의
+// 시즌 스탯을 usePlayerSeasonStatsBatch로 불러와 병합해두고 있어 추가 조회 비용이 없다.
+// MP/PTS/REB/AST/STL/BLK/TOV는 basketball-reference 관례대로 경기당 평균(총합/G), G만
+// 시즌 누적. GS/3P%/FT%는 넣었다가 공간이 부족하다는 요청으로 뺐고, GS는 애초에
+// usePlayerSeasonStatsBatch가 쓰는 get_player_season_stats_batch RPC에 컬럼 자체가 없어
+// 항상 0으로만 찍히는 문제도 있었음(선발 출장 데이터가 필요해지면 RPC부터 손봐야 함).
+// 뉴스 카드(AllstarVoteUpdateCard)는 컴팩트한 폭을 유지해야 해서 기본값 false로 두고
+// 페이지(MultiAllStarView.tsx)에서만 켠다.
+// AllstarVoteEntry(본올스타 팬 투표, votes/pct 필수)와 RisingStarsRosterPlayer(투표 없음,
+// votes/pct 자체가 없음)를 같은 표 컴포넌트로 그리기 위한 최소 공통 타입 —
+// AllstarRosterTable의 RosterTablePlayer와 동일한 목적/패턴.
+type VoteSectionEntry = {
+    playerId: string; playerName: string; teamSlug: string;
+    posGroup: 'G' | 'FC';
+    votes?: number; pct?: number;
+};
+
+export const AllstarVoteSection: React.FC<{
+    label: string;
+    entries: VoteSectionEntry[];
+    teamBySlug: Map<string, LeagueTeamRow>;
+    playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void;
+    onPlayerClick?: (playerId: string) => void;
+    showStats?: boolean;
+    /** true면 상단 <h3>{label}</h3> 제목을 생략 — 페이지(MultiAllStarView.tsx)의 백코트/
+     *  프론트코트 셀렉터처럼 바깥에서 이미 선택 상태를 보여주는 UI가 있을 때 중복 제목을
+     *  없애기 위해 씀. 뉴스 카드(AllstarVoteUpdateCard)는 기본값(false)대로 제목을 그대로 둠. */
+    hideLabel?: boolean;
+    /** true면 세로 스크롤 가능한 고정 높이 컨테이너로 감싸고 헤더를 sticky로 고정 — 뉴스
+     *  서신처럼 한 카드 안에 여러 테이블(최대 25명×4개)을 한꺼번에 보여줘야 할 때 카드가
+     *  한없이 길어지는 걸 막기 위함. 페이지(MultiAllStarView.tsx)는 셀렉터로 테이블 하나만
+     *  보여주고 페이지 자체가 스크롤되므로 기본값(false) 그대로 씀. */
+    scrollable?: boolean;
+    /** [2026-09-08] 라이징스타(투표 없음)에서 득표수/득표율 컬럼을 빼기 위해 추가 — 기존
+     *  호출부(본올스타 후보 명단/중간집계 서신)는 전부 득표 데이터를 보여줘야 하므로
+     *  기본값 true. */
+    showVotes?: boolean;
+}> = ({ label, entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showStats, hideLabel, scrollable, showVotes = true }) => (
+    <div className="space-y-2">
+        {!hideLabel && <h3 className="text-sm font-black text-slate-300 uppercase">{label}</h3>}
+        <div className={`overflow-x-auto ${scrollable ? 'overflow-y-auto max-h-96' : ''}`}>
+            <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className={`border-b border-slate-700 bg-slate-800/60 ${scrollable ? 'sticky top-0 z-10' : ''}`}>
+                        <th className={AWARD_RANK_TH}>순위</th>
+                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                        {showStats && (
+                            <>
+                                <th className={AWARD_RANK_TH}>G</th>
+                                <th className={AWARD_RANK_TH}>MP</th>
+                                <th className={AWARD_RANK_TH}>PTS</th>
+                                <th className={AWARD_RANK_TH}>REB</th>
+                                <th className={AWARD_RANK_TH}>AST</th>
+                                <th className={AWARD_RANK_TH}>STL</th>
+                                <th className={AWARD_RANK_TH}>BLK</th>
+                                <th className={AWARD_RANK_TH}>TOV</th>
+                                <th className={AWARD_RANK_TH}>FG%</th>
+                            </>
+                        )}
+                        {showVotes && (
+                            <>
+                                <th className={AWARD_RANK_TH}>득표수</th>
+                                <th className={AWARD_RANK_TH}>득표율</th>
+                            </>
+                        )}
+                    </tr>
+                </thead>
+                <tbody>
+                    {entries.map((e, idx) => {
+                        const entry = playerCardMap.get(e.playerId);
+                        const team = teamBySlug.get(e.teamSlug);
+                        const stats = entry?.player?.stats;
+                        const g = stats?.g ?? 0;
+                        const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                        const shootPct = (made: number | undefined, att: number | undefined) =>
+                            (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
+                        return (
+                            <tr key={e.playerId} className="border-b border-slate-800/60">
+                                <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
+                                <td className="py-1.5 px-2 whitespace-nowrap">
+                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                        <span
+                                            className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                            onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
+                                        >
+                                            {e.playerName}
+                                        </span>
+                                    </PlayerHoverCard>
+                                </td>
+                                <td className="py-1.5 px-2 whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                        {team?.color_primary ? (
+                                            <img
+                                                src={getRealTeamLogoUrl(e.teamSlug)}
+                                                alt={team?.team_abbr ?? e.teamSlug}
+                                                className="w-5 h-5 object-contain shrink-0"
+                                                onError={(ev) => {
+                                                    const img = ev.currentTarget;
+                                                    if (img.dataset.fallback !== 'old') {
+                                                        img.dataset.fallback = 'old';
+                                                        img.src = getTeamLogoUrl(e.teamSlug);
+                                                    } else {
+                                                        img.src = 'https://placehold.co/100x100?text=BPL';
+                                                    }
+                                                }}
+                                            />
+                                        ) : (
+                                            <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
+                                        )}
+                                        <span
+                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                            onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
+                                        >
+                                            {team?.team_abbr ?? e.teamSlug}
+                                        </span>
+                                    </div>
+                                </td>
+                                {showStats && (
+                                    <>
+                                        <td className={AWARD_RANK_TD}>{g}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.reb)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.ast)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.stl)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.blk)}</td>
+                                        <td className={AWARD_RANK_TD}>{perGame(stats?.tov)}</td>
+                                        <td className={AWARD_RANK_TD}>{shootPct(stats?.fgm, stats?.fga)}</td>
+                                    </>
+                                )}
+                                {showVotes && (
+                                    <>
+                                        <td className={`${AWARD_RANK_TD} tabular-nums`}>{(e.votes ?? 0).toLocaleString()}</td>
+                                        <td className={`${AWARD_RANK_TD} text-white`}>{e.pct != null ? formatAwardPct(e.pct) : '-'}</td>
+                                    </>
+                                )}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
+export const AllstarVoteUpdateCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    /** 이 서신 하단의 "올스타 페이지로" 바로가기 링크 — voteProgress===1(투표 마감)이면
+     *  "결과 보러가기", 그 전(시작/중간 집계)이면 "현황 보러가기" 문구로 갈림. */
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_vote_update') return null;
+    const { roundLabel, voteProgress, east, west } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">올스타 팬 투표 {roundLabel}</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+            <div className="space-y-4">
+                <h2 className="text-base font-black text-indigo-400">동부 컨퍼런스</h2>
+                <AllstarVoteSection label="백코트" entries={east.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+                <AllstarVoteSection label="프론트코트" entries={east.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+            </div>
+            <div className="space-y-4">
+                <h2 className="text-base font-black text-indigo-400">서부 컨퍼런스</h2>
+                <AllstarVoteSection label="백코트" entries={west.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+                <AllstarVoteSection label="프론트코트" entries={west.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar()}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    {voteProgress >= 1 ? '올스타 투표 결과 보러가기' : '올스타 투표 현황 보러가기'}
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+/** 투표 시작일(allstar_vote_start) 안내 서신 — 득표 리더보드(allstar_vote_update)와 달리
+ * 표가 없는 순수 텍스트 3줄 + 하단 바로가기. 투표 시작이라 아직 결과가 없으므로 링크 문구는
+ * 항상 "현황 보러가기"로 고정(중간 집계/결과 카드처럼 voteProgress로 갈릴 필요 없음). */
+export const AllstarVoteStartCard: React.FC<{
+    event: LeagueEvent;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_vote_start') return null;
+    const { leagueName, seasonLabel, voteStart, voteEnd, allStarStart, allStarEnd, mainGameDate } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">올스타 팬 투표가 시작됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    오늘부터 {leagueName} {seasonLabel}시즌 올스타 투표가 시작됩니다.
+                </p>
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    {voteStart}부터 {voteEnd}까지 진행되며, 올스타 위켄드는 {allStarStart} ~ {allStarEnd}에 진행됩니다
+                    {mainGameDate ? `(본경기는 ${mainGameDate})` : ''}.
+                </p>
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    올해는 어떤 선수가 올스타에 선정될까요?
+                </p>
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar()}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 투표 현황 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+/** 투표 마감일 최종 명단 발표 서신 — 사용자 요청으로 코트 배치도(AllStarCourtDiagram)는
+ * 넣지 않고, 컨퍼런스별 스타터/리저브를 전부 AllstarRosterTable(리스트형 표)로만 보여준다.
+ * 페이지(MultiAllStarView.tsx)의 "최종 결과" 영역과 데이터는 완전히 동일 — league_events의
+ * allstar_vote_result가 league_allstar_votes.roster와 같은 시점에 서버에서 같이 게시됨.
+ * [2026-09-08 추가] 테이블 위 본문(2~3줄) — 라이징스타 서신(AllstarRisingStarsCard)과 달리
+ * "팬 투표로 스타터, 코치단 투표로 리저브 선발"이라는 문구는 실제 선발 메커니즘 그대로다
+ * (runAllStarSelection() 참고, 연출용 플레이버 텍스트가 아님). 경기 일정은
+ * allStarStart/allStarEnd(올스타전 개최 기간) — 구버전 데이터엔 없을 수 있어 둘 다 있을
+ * 때만 그 줄을 렌더링. */
+export const AllstarVoteResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_vote_result') return null;
+    // [2026-09-08] risingStars는 이 카드에서 더 이상 섹션으로 그리지 않는다 — 사용자 요청으로
+    // AllstarRisingStarsCard(allstar_rising_stars)라는 별도 서신으로 승격했음(중복 표시 방지).
+    // event.detail.risingStars 필드 자체는 여전히 존재(league_allstar_votes.roster 재사용 때문).
+    const { seasonLabel, east, west, allStarStart, allStarEnd, mainGameDate } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 올스타 명단이 확정됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    수개월간 이어진 팬 투표를 통해 동/서부 컨퍼런스 스타터가 확정됐고, 코치단 투표로 리저브까지 최종 명단이 완성됐습니다.
+                </p>
+                {mainGameDate ? (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        동부 vs 서부의 올스타전은 {mainGameDate}에 열릴 예정입니다.
+                    </p>
+                ) : allStarStart && allStarEnd && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        동부 vs 서부의 올스타전은 {allStarStart} ~ {allStarEnd} 기간 중 열릴 예정입니다.
+                    </p>
+                )}
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    이번 시즌을 빛낸 최고의 스타들이 한자리에 모입니다.
+                </p>
+            </div>
+            <div className="space-y-4">
+                <h2 className="flex items-center gap-1.5 text-base font-black text-indigo-400">
+                    <img src="/logos/real/AS/East.svg" alt="" className="h-6 w-6" />
+                    동부 컨퍼런스
+                </h2>
+                <AllstarRosterTable label="스타터" players={east.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+                <AllstarRosterTable label="리저브" players={east.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+            </div>
+            <div className="space-y-4">
+                <h2 className="flex items-center gap-1.5 text-base font-black text-indigo-400">
+                    <img src="/logos/real/AS/West.svg" alt="" className="h-6 w-6" />
+                    서부 컨퍼런스
+                </h2>
+                <AllstarRosterTable label="스타터" players={west.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+                <AllstarRosterTable label="리저브" players={west.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar()}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 투표 결과 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+/** [2026-09-08] 라이징스타 챌린지 명단 전용 서신 — allstar_vote_result와 별개의 뉴스 피드
+ * 아이템(사용자 요청, "라이징스타 명단도 서신으로 발송해줘"). 투표가 없는 성적 기준 선발이라
+ * AllstarRosterTable을 showVotes 없이(showOvr만) 쓴다.
+ * [2026-09-08 추가] 테이블 위 본문(2~3줄) — "리그 관계자들이 투표했다"는 문구는 실제 선발
+ * 메커니즘(투표 없는 자동 선발, runRisingStarsSelection() 참고)과 무관한 연출용 플레이버
+ * 텍스트(사용자 명시적 요청, 다른 올스타 서신들과 톤을 맞추기 위함). 경기 일정은
+ * allStarStart/allStarEnd(올스타전 개최 기간)를 재사용 — 구버전 데이터엔 없을 수 있어
+ * 둘 다 있을 때만 그 줄을 렌더링. */
+export const AllstarRisingStarsCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_rising_stars') return null;
+    const { seasonLabel, teamA, teamB, teamAName, teamBName, allStarStart, allStarEnd, gameDate } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 라이징스타 챌린지 명단이 확정됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/RisingStar.svg" alt="라이징스타" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    리그 각 팀의 단장과 코칭스태프들이 투표한 결과, 이번 시즌 라이징스타 챌린지에 나설 유망주 명단이 확정됐습니다.
+                </p>
+                {gameDate ? (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        팀 {teamAName}과(와) 팀 {teamBName}은 {gameDate}에 맞대결을 펼칠 예정입니다.
+                    </p>
+                ) : allStarStart && allStarEnd && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        팀 {teamAName}과(와) 팀 {teamBName}은 올스타 위켄드 기간({allStarStart} ~ {allStarEnd}) 중 맞대결을 펼칠 예정입니다.
+                    </p>
+                )}
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    리그를 이끌어갈 다음 세대의 스타들이 어떤 활약을 보여줄지 지켜봐 주세요.
+                </p>
+            </div>
+            <div className="space-y-4">
+                <AllstarRosterTable label={`팀 ${teamAName}`} players={teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc="/logos/real/AS/RisingA.svg" />
+                <AllstarRosterTable label={`팀 ${teamBName}`} players={teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc="/logos/real/AS/RisingB.svg" />
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar('risingstars')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면 라이징스타 탭에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+// zone_c3_l/r(코너), zone_atb3_l/c/r(브레이크 위 — l/r=45도 윙, c=탑) — get_player_season_stats_full
+// RPC(usePlayerSeasonStatsFull)가 내려주는 실제 시즌 슛차트 원자료. types/player.ts의
+// ShotZones 인터페이스가 이미 이 3분류(cnr/p45/atb)를 "코너 3 / 45도 윙 3 / 브레이크 위(탑) 3"로
+// 정의해두고 있어 그 관례를 그대로 따름 — PlayerStats에 인덱스 시그니처([key: string]: number)가
+// 있어 선언 안 된 zone_* 필드도 타입 에러 없이 읽을 수 있다.
+function threePointZonePct(stats: PlayerStats | undefined, made: string[], att: string[]): number {
+    const s = (stats ?? {}) as Record<string, number>;
+    const m = made.reduce((sum, k) => sum + (s[k] ?? 0), 0);
+    const a = att.reduce((sum, k) => sum + (s[k] ?? 0), 0);
+    return a > 0 ? m / a : 0;
+}
+
+// [2026-09-09] 참가자 표(thead+tbody)를 서신 카드에서 분리해 재사용 가능한 컴포넌트로
+// 추출 — MultiAllStarView.tsx의 "3점 컨테스트" 탭에서도 완전히 동일한 표를 그려야 해서
+// (사용자 요청, "올스타 화면에 탭 그룹을 추가해") 중복 JSX를 피하기 위함.
+export const ThreePointContestTable: React.FC<{
+    participants: ThreePointContestParticipantEntry[];
+    teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+}> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
+    <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+            <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/60">
+                    <th className={AWARD_RANK_TH}>순위</th>
+                    <th className={AWARD_RANK_TH}>OVR</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                    <th className={AWARD_RANK_TH}>G</th>
+                    <th className={AWARD_RANK_TH}>MP</th>
+                    <th className={AWARD_RANK_TH}>PTS</th>
+                    <th className={AWARD_RANK_TH}>3PM</th>
+                    <th className={AWARD_RANK_TH}>3PA</th>
+                    <th className={AWARD_RANK_TH}>3P%</th>
+                    <th className={AWARD_RANK_TH}>CNR%</th>
+                    <th className={AWARD_RANK_TH}>45%</th>
+                    <th className={AWARD_RANK_TH}>ATB%</th>
+                    <th className={AWARD_RANK_TH}>TS%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {participants.map((p, idx) => {
+                    const entry = playerCardMap.get(p.playerId);
+                    const team = teamBySlug.get(p.teamSlug);
+                    const stats = entry?.player?.stats;
+                    const g = stats?.g ?? 0;
+                    const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                    const cnrPct = threePointZonePct(stats, ['zone_c3_l_m', 'zone_c3_r_m'], ['zone_c3_l_a', 'zone_c3_r_a']);
+                    const p45Pct = threePointZonePct(stats, ['zone_atb3_l_m', 'zone_atb3_r_m'], ['zone_atb3_l_a', 'zone_atb3_r_a']);
+                    const atbPct = threePointZonePct(stats, ['zone_atb3_c_m'], ['zone_atb3_c_a']);
+                    const tsa = (stats?.fga ?? 0) + 0.44 * (stats?.fta ?? 0);
+                    const tsPct = tsa > 0 ? (stats?.pts ?? 0) / (2 * tsa) : 0;
+                    return (
+                        <tr key={p.playerId} className="border-b border-slate-800/60">
+                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
+                            <td className={AWARD_RANK_TD}>
+                                <div className="flex justify-center">
+                                    <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+                                </div>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                    <span
+                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
+                                    >
+                                        {p.playerName}
+                                    </span>
+                                </PlayerHoverCard>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                    {team?.color_primary ? (
+                                        <img
+                                            src={getRealTeamLogoUrl(p.teamSlug)}
+                                            alt={team?.team_abbr ?? p.teamSlug}
+                                            className="w-5 h-5 object-contain shrink-0"
+                                            onError={(ev) => {
+                                                const img = ev.currentTarget;
+                                                if (img.dataset.fallback !== 'old') {
+                                                    img.dataset.fallback = 'old';
+                                                    img.src = getTeamLogoUrl(p.teamSlug);
+                                                } else {
+                                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
+                                    )}
+                                    <span
+                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
+                                    >
+                                        {team?.team_abbr ?? p.teamSlug}
+                                    </span>
+                                </div>
+                            </td>
+                            <td className={AWARD_RANK_TD}>{g}</td>
+                            <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
+                            <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
+                            <td className={AWARD_RANK_TD}>{perGame(stats?.p3m)}</td>
+                            <td className={AWARD_RANK_TD}>{perGame(stats?.p3a)}</td>
+                            <td className={AWARD_RANK_TD}>{(stats?.p3a ?? 0) > 0 ? formatAwardPct((stats?.p3m ?? 0) / (stats!.p3a)) : '-'}</td>
+                            <td className={AWARD_RANK_TD}>{formatAwardPct(cnrPct)}</td>
+                            <td className={AWARD_RANK_TD}>{formatAwardPct(p45Pct)}</td>
+                            <td className={AWARD_RANK_TD}>{formatAwardPct(atbPct)}</td>
+                            <td className={AWARD_RANK_TD}>{formatAwardPct(tsPct)}</td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </div>
+);
+
+/** [2026-09-08] 3점 챌린지 참가자 명단 전용 서신 — 투표 없이 3점슛 능력치 기반 가중 랜덤
+ * 추첨으로 뽑힌 8명(utils/allStarSelection.ts의 runThreePointContestSelection() 참고)을
+ * 컨퍼런스/팀 구분 없는 단일 순위표로 보여준다. 다른 올스타 서신들과 달리 투표 마감일이
+ * 아니라 올스타전 기간 시작일(allStarStart)에 발송된다.
+ * [2026-09-08 추가] OVR/3점 레이팅(선정용 원점수) 컬럼 대신 실제 시즌 3점슛 관련 스탯
+ * (G/MP/PTS/3PM/3PA/3P%/CNR%/45%/ATB%/TS%)을 보여준다 — CNR%/45%/ATB%는 개인 코너/45도 윙/
+ * 브레이크 위(탑) 3점 실제 슈팅 성공률(usePlayerSeasonStatsFull이 내려주는 zone_c3_l,
+ * zone_c3_r, zone_atb3_l/c/r 원자료로 계산, 능력치 레이팅이 아님). MultiNewsFeedView.tsx가 이 존 슛차트를
+ * 얻으려고 usePlayerSeasonStatsBatch → usePlayerSeasonStatsFull로 교체했다(다른 카드엔
+ * 영향 없음 — full이 batch의 상위 집합). */
+export const AllstarThreePointContestCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_three_point_contest') return null;
+    const { seasonLabel, participants, contestDate } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 3점 챌린지 참가자 명단이 확정됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/ThreeContest.svg" alt="3점 컨테스트" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    이번 시즌 최고의 슈터 8명이 3점 챌린지 참가 명단에 이름을 올렸습니다.
+                </p>
+                {contestDate && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        실제 대회는 {contestDate}에 열릴 예정입니다.
+                    </p>
+                )}
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    예선에서 각 5랙(25구)을 쏘아 상위 3명이 결선에 진출하며, 결선에서 우승자를 가립니다.
+                </p>
+            </div>
+            <div className="space-y-2">
+                <h3 className="text-sm font-black text-slate-300 uppercase">참가자</h3>
+                <ThreePointContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar('threept')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면 3점 컨테스트 탭에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+// [2026-09-09] 결과 서신(AllstarThreePointContestResultCard)과 올스타 화면 3점 컨테스트
+// 탭(MultiAllStarView.tsx) 양쪽이 공유하는 라운드 순위표 — 랙별 점수 5칸 + 합계.
+// highlightPlayerId를 넘기면(우승자) 해당 행만 TeamBoxTable과 동일한 옅은 노란색으로 표시.
+export const ThreePointContestResultTable: React.FC<{
+    entries: ThreePointContestRoundEntry[];
+    teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    highlightPlayerId?: string;
+}> = ({ entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, highlightPlayerId }) => (
+    <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+            <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/60">
+                    <th className={AWARD_RANK_TH}>순위</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                    <th className={AWARD_RANK_TH}>좌측 코너</th>
+                    <th className={AWARD_RANK_TH}>좌측 45도</th>
+                    <th className={AWARD_RANK_TH}>중앙</th>
+                    <th className={AWARD_RANK_TH}>우측 45도</th>
+                    <th className={AWARD_RANK_TH}>우측 코너</th>
+                    <th className={AWARD_RANK_TH}>합계</th>
+                </tr>
+            </thead>
+            <tbody>
+                {entries.map((e, idx) => {
+                    const entry = playerCardMap.get(e.playerId);
+                    const team = teamBySlug.get(e.teamSlug);
+                    const isHighlighted = e.playerId === highlightPlayerId;
+                    return (
+                        <tr key={e.playerId} className={`border-b border-slate-800/60 ${isHighlighted ? 'bg-amber-400/10' : ''}`}>
+                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                    <span
+                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
+                                    >
+                                        {e.playerName}
+                                    </span>
+                                </PlayerHoverCard>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                    {team?.color_primary ? (
+                                        <img
+                                            src={getRealTeamLogoUrl(e.teamSlug)}
+                                            alt={team?.team_abbr ?? e.teamSlug}
+                                            className="w-5 h-5 object-contain shrink-0"
+                                            onError={(ev) => {
+                                                const img = ev.currentTarget;
+                                                if (img.dataset.fallback !== 'old') {
+                                                    img.dataset.fallback = 'old';
+                                                    img.src = getTeamLogoUrl(e.teamSlug);
+                                                } else {
+                                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
+                                    )}
+                                    <span
+                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
+                                    >
+                                        {team?.team_abbr ?? e.teamSlug}
+                                    </span>
+                                </div>
+                            </td>
+                            {e.rackScores.map((s, i) => <td key={i} className={AWARD_RANK_TD}>{s}</td>)}
+                            <td className={`${AWARD_RANK_TD} font-black text-white`}>{e.total}</td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </div>
+);
+
+// [2026-09-09] 3점 챌린지 샷차트 그래픽 — 좌측 선수 목록에서 선수를 고르면 코트 위 각 랙
+// 위치에 5구의 농구공 아이콘(성공=초록/실패=빨간 외곽선, 5구 전부 동일 시각언어 —
+// 머니볼도 구분하지 않음)과 존 이름·랙 합계가 박스로 묶여 표시된다.
+// 코트는 새로 그리지 않고 "경기 결과 화면"의 "샷차트" 탭(MultiGamePbpView.tsx →
+// GameShotChartTab.tsx)이 쓰는 것과 동일한 배경(#020617)/페인트존(#0f172a)/BasketLines를
+// 그대로 재사용 — viewBox를 0 0 470 500(좌측 절반, 하프코트 라인 x=470이 오른쪽 경계)로 잘라
+// 오른쪽 바스켓/페인트존은 렌더하지 않는다.
+//
+// 5랙 좌표(940x500 좌표계)는 BasketLines의 3점 아치 path(`M0,30h140s150,55,150,220...`)를
+// 분석해 구한 실제 좌표. `h140`(0,30)→(140,30))은 곡선이 아니라 코너 3점 직선 구간 자체 —
+// 즉 (140,30)은 "코너 위치"가 아니라 그 직선이 끝나고 아치가 시작되는 지점(45도 윙에 더
+// 가까움)이었다. 실제 코너 슈팅 지점은 이 직선의 베이스라인쪽 끝(x≈0, y=30)에 훨씬
+// 가깝다 — 사용자가 "아직도 위치가 안 맞는다, 코너 클러스터를 더 좌측으로"로 재지적해
+// 베이스라인 쪽으로 한 번 더 당김(박스 폭 절반만큼만 여유를 두고 뷰포트 밖으로 잘리지
+// 않는 한도까지). 45도 윙=(215,78)/(215,422)(첫 S 곡선 구간의 t=0.5, 아치 구간의 중간)은
+// 그대로 유지, 탑=(290,250)(첫 S 구간의 끝점=정점)도 유지.
+const RACK_POSITIONS: readonly [number, number][] = [
+    [75, 38], [230, 110], [330, 250], [230, 390], [75, 462],
+];
+// 랙 순서(코너→45도 윙→탑→45도 윙→코너)에 대응하는 존 이름 — "랙1"/"랙2" 대신 실제 위치명을
+// 쓴다(postThreePointContest.ts의 RACK_ZONES 순서와 동일).
+const RACK_LABELS = ['좌측 코너', '좌측 45도', '중앙', '우측 45도', '우측 코너'] as const;
+
+// 성공=초록 원, 실패=빨간 외곽선 원(사용자 확정 — 5구 전부 동일하게, 머니볼 구분 없음).
+// 반지름 6.5→8로 확대(사용자 요청 — "원 사이즈도 더 키워").
+const ThreePointBallIcon: React.FC<{ made: boolean; dx: number }> = ({ made, dx }) => (
+    made ? (
+        <circle cx={dx} cy={0} r={8} fill="#22c55e" stroke="#16a34a" strokeWidth={1.5} />
+    ) : (
+        <circle cx={dx} cy={0} r={8} fill="none" stroke="#ef4444" strokeWidth={2.5} />
+    )
+);
+
+// 존 클러스터를 감싸는 박스 크기(사용자 요청 — "구역별 그래픽을 박스로 묶어줘"). 폭은
+// "좌측 45도"처럼 긴 라벨 + 확대된 폰트가 우측 점수와 겹치지 않을 만큼 넉넉하게 잡음. 높이는
+// 커진 볼 아이콘(r=8)과 text-base 폰트를 여유 있게 담도록 52→60으로 확대.
+const CLUSTER_BOX_W = 140;
+const CLUSTER_BOX_H = 60;
+
+// 코트 위 랙 하나를 박스로 묶어 실제 랙 위치에 그린다 — 상단 행에 존 이름(좌)+합계(우, 사용자
+// 요청으로 존 이름 옆으로 이동), 하단 행에 5구 아이콘. 라벨/합계 텍스트는 SVG가 viewBox로
+// 축소 렌더되는 만큼(470유닛→최대 400px, 배율 약 0.85) 실제 화면에서 사이드바의 진짜
+// text-sm(14px)만큼 커 보이도록 한 단계 위인 text-base(16px, 배율 적용 시 ≈13.6px 실측)를
+// 사용(사용자 요청 — "클러스터 내 텍스트 사이즈 text-sm으로 키워").
+const RackShotCluster: React.FC<{ x: number; y: number; label: string; score: number; shots: boolean[] }> = ({ x, y, label, score, shots }) => (
+    <g transform={`translate(${x},${y})`}>
+        <rect
+            x={-CLUSTER_BOX_W / 2} y={-CLUSTER_BOX_H / 2}
+            width={CLUSTER_BOX_W} height={CLUSTER_BOX_H}
+            rx={8}
+            fill="#0f172a" fillOpacity={0.85}
+            stroke="#334155" strokeWidth={1}
+        />
+        <text x={-CLUSTER_BOX_W / 2 + 10} y="-12" textAnchor="start" className="fill-slate-300 text-base font-bold ko-normal">{label}</text>
+        <text x={CLUSTER_BOX_W / 2 - 10} y="-12" textAnchor="end" className="fill-white text-base font-black tabular-nums">{score}점</text>
+        {shots.map((made, ballIdx) => (
+            <g key={ballIdx} transform={`translate(${(ballIdx - (shots.length - 1) / 2) * 19},16)`}>
+                <ThreePointBallIcon made={made} dx={0} />
+            </g>
+        ))}
+    </g>
+);
+
+/** [2026-09-09] 결과 서신/올스타 화면 3점 컨테스트 탭이 공유하는 샷차트 — round1/round2를
+ * 둘 다 받아 내부에서 라운드(예선/결선) + 선수를 선택할 수 있게 한다. 데이터에
+ * rackShots(개별 5구 성공/실패)가 없는 구버전 이벤트는 안내 문구로 대체(카드 자체는 깨지지
+ * 않음). */
+export const ThreePointContestShotChart: React.FC<{
+    round1: ThreePointContestRoundEntry[];
+    round2: ThreePointContestRoundEntry[];
+    winnerId: string;
+}> = ({ round1, round2, winnerId }) => {
+    const [selectedRound, setSelectedRound] = useState<'round1' | 'round2'>('round2');
+    const entries = selectedRound === 'round2' ? round2 : round1;
+    const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+
+    const selected = entries.find(e => e.playerId === selectedPlayerId) ?? entries[0];
+
+    return (
+        <div className="flex gap-4 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+            <div className="w-40 shrink-0 space-y-2">
+                <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 w-fit">
+                    {(['round2', 'round1'] as const).map(r => (
+                        <button
+                            key={r}
+                            type="button"
+                            onClick={() => setSelectedRound(r)}
+                            className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
+                                selectedRound === r ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                        >
+                            {r === 'round2' ? '결선' : '예선'}
+                        </button>
+                    ))}
+                </div>
+                <div className="space-y-0.5">
+                    {entries.map(e => {
+                        const isWinner = e.playerId === winnerId;
+                        const isSelected = selected?.playerId === e.playerId;
+                        return (
+                            <button
+                                key={e.playerId}
+                                type="button"
+                                onClick={() => setSelectedPlayerId(e.playerId)}
+                                className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded text-left transition-colors ${
+                                    isWinner
+                                        ? `bg-amber-400 text-slate-950 ${isSelected ? 'ring-2 ring-white' : ''}`
+                                        : isSelected
+                                            ? 'bg-indigo-500/20 text-white'
+                                            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                }`}
+                            >
+                                <span className="text-sm font-bold truncate">{e.playerName}</span>
+                                <span className="text-sm font-black tabular-nums shrink-0">{e.total}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+            <div className="flex-1 min-w-0">
+                {!selected ? null : !selected.rackShots ? (
+                    <p className="text-sm text-slate-500 ko-normal py-8 text-center">
+                        이 기록엔 랙별 샷 데이터가 없습니다.
+                    </p>
+                ) : (
+                    <div className="relative w-full max-w-[400px] mx-auto" style={{ aspectRatio: '470/500' }}>
+                        <svg viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
+                            <rect width="470" height="500" fill="#020617" />
+                            <rect y="170" width="190" height="160" fill="#0f172a" />
+                            <ShotChartBasketLines />
+                            {RACK_POSITIONS.map(([x, y], rackIdx) => (
+                                <RackShotCluster
+                                    key={rackIdx}
+                                    x={x} y={y}
+                                    label={RACK_LABELS[rackIdx]}
+                                    score={selected.rackScores[rackIdx]}
+                                    shots={selected.rackShots![rackIdx] ?? []}
+                                />
+                            ))}
+                            {/* 테두리는 맨 마지막에 그려서 위 배경/페인트존 사각형에 가려지지 않게 함 */}
+                            <rect x="1" y="1" width="468" height="498" fill="none" stroke="#334155" strokeWidth="2" />
+                        </svg>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+/** [2026-09-09] 3점 챌린지 "결과" 서신 — 참가자 발표(AllstarThreePointContestCard)와 달리
+ * 실제 슈팅 시뮬레이션 완료 후 발송(server/src/postThreePointContest.ts). 본문에 우승자
+ * 활약(합계 점수)을 문장으로 언급 + 예선/결선 순위표 2개, 우승자 행은
+ * ThreePointContestResultTable의 highlightPlayerId로 하이라이트. */
+export const AllstarThreePointContestResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_three_point_contest_result') return null;
+    const { seasonLabel, round1, round2, winnerId } = event.detail;
+    const winner = round2.find(e => e.playerId === winnerId) ?? round2[0];
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 3점 챌린지 결과가 발표됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/ThreeContest.svg" alt="3점 컨테스트" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    3점 챌린지가 막을 내렸습니다.
+                </p>
+                {winner && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        우승은 {winner.playerName}(결선 {winner.total}점)에게 돌아갔습니다.
+                    </p>
+                )}
+            </div>
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <h3 className="text-sm font-black text-slate-300 uppercase">샷차트</h3>
+                    <ThreePointContestShotChart round1={round1} round2={round2} winnerId={winnerId} />
+                </div>
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <h3 className="text-sm font-black text-slate-300 uppercase">결선 (상위 3명)</h3>
+                        <ThreePointContestResultTable entries={round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} highlightPlayerId={winnerId} />
+                    </div>
+                    <div className="space-y-2">
+                        <h3 className="text-sm font-black text-slate-300 uppercase">예선 (8명)</h3>
+                        <ThreePointContestResultTable entries={round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+                    </div>
+                </div>
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar('threept')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면 3점 컨테스트 탭에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+/** [2026-09-09] 덩크 컨테스트 결과 순위표 — ThreePointContestResultTable과 동일한 구조지만
+ * 컬럼이 랙 5개 대신 시도 2개(덩크1/덩크2)뿐이다. */
+export const DunkContestResultTable: React.FC<{
+    entries: DunkContestRoundEntry[];
+    teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    highlightPlayerId?: string;
+}> = ({ entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, highlightPlayerId }) => (
+    <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+            <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/60">
+                    <th className={AWARD_RANK_TH}>순위</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                    <th className={AWARD_RANK_TH}>덩크 1</th>
+                    <th className={AWARD_RANK_TH}>덩크 2</th>
+                    <th className={AWARD_RANK_TH}>합계</th>
+                </tr>
+            </thead>
+            <tbody>
+                {entries.map((e, idx) => {
+                    const entry = playerCardMap.get(e.playerId);
+                    const team = teamBySlug.get(e.teamSlug);
+                    const isHighlighted = e.playerId === highlightPlayerId;
+                    return (
+                        <tr key={e.playerId} className={`border-b border-slate-800/60 ${isHighlighted ? 'bg-amber-400/10' : ''}`}>
+                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                    <span
+                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
+                                    >
+                                        {e.playerName}
+                                    </span>
+                                </PlayerHoverCard>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                    {team?.color_primary ? (
+                                        <img
+                                            src={getRealTeamLogoUrl(e.teamSlug)}
+                                            alt={team?.team_abbr ?? e.teamSlug}
+                                            className="w-5 h-5 object-contain shrink-0"
+                                            onError={(ev) => {
+                                                const img = ev.currentTarget;
+                                                if (img.dataset.fallback !== 'old') {
+                                                    img.dataset.fallback = 'old';
+                                                    img.src = getTeamLogoUrl(e.teamSlug);
+                                                } else {
+                                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
+                                    )}
+                                    <span
+                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
+                                    >
+                                        {team?.team_abbr ?? e.teamSlug}
+                                    </span>
+                                </div>
+                            </td>
+                            {e.dunks.map((d, i) => <td key={i} className={AWARD_RANK_TD}>{d.total}</td>)}
+                            <td className={`${AWARD_RANK_TD} font-black text-white`}>{e.total}</td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </div>
+);
+
+/** [2026-09-09] 덩크 컨테스트 "결과" 서신 — 참가자 발표(AllstarDunkContestCard)와 달리 실제
+ * 채점 시뮬레이션 완료 후 발송(server/src/postDunkContest.ts). 덩크는 3점 챌린지의
+ * 샷차트 같은 좌표 기반 그래픽이 없어(코트 위 특정 지점에서 쏘는 게 아니라 림 위에서
+ * 이루어지는 동작이라 "위치" 개념이 없음) 예선/결승 순위표 2개만 보여준다(docs/simulation/
+ * allstar-game-plan.md §6 "화면" 절 — "라운드별 순위표 정도"). */
+export const AllstarDunkContestResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_dunk_contest_result') return null;
+    const { seasonLabel, round1, round2, winnerId } = event.detail;
+    const winner = round2.find(e => e.playerId === winnerId) ?? round2[0];
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 덩크 컨테스트 결과가 발표됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/DunkContest.svg" alt="덩크 컨테스트" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    덩크 컨테스트가 막을 내렸습니다.
+                </p>
+                {winner && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        우승은 {winner.playerName}(결승 {winner.total}점)에게 돌아갔습니다.
+                    </p>
+                )}
+            </div>
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <h3 className="text-sm font-black text-slate-300 uppercase">결승 (상위 2명)</h3>
+                    <DunkContestResultTable entries={round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} highlightPlayerId={winnerId} />
+                </div>
+                <div className="space-y-2">
+                    <h3 className="text-sm font-black text-slate-300 uppercase">예선 (4명)</h3>
+                    <DunkContestResultTable entries={round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+                </div>
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar('dunk')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면 덩크 컨테스트 탭에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+// [2026-09-09] ThreePointContestTable과 동일한 이유로 표를 분리(MultiAllStarView.tsx의
+// "덩크 컨테스트" 탭에서 재사용).
+export const DunkContestTable: React.FC<{
+    participants: DunkContestParticipantEntry[];
+    teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+}> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
+    <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+            <thead>
+                <tr className="border-b border-slate-700 bg-slate-800/60">
+                    <th className={AWARD_RANK_TH}>순위</th>
+                    <th className={AWARD_RANK_TH}>OVR</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
+                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
+                    <th className={AWARD_RANK_TH}>덩크 점수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {participants.map((p, idx) => {
+                    const entry = playerCardMap.get(p.playerId);
+                    const team = teamBySlug.get(p.teamSlug);
+                    return (
+                        <tr key={p.playerId} className="border-b border-slate-800/60">
+                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
+                            <td className={AWARD_RANK_TD}>
+                                <div className="flex justify-center">
+                                    <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+                                </div>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
+                                    <span
+                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
+                                    >
+                                        {p.playerName}
+                                    </span>
+                                </PlayerHoverCard>
+                            </td>
+                            <td className="py-1.5 px-2 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                    {team?.color_primary ? (
+                                        <img
+                                            src={getRealTeamLogoUrl(p.teamSlug)}
+                                            alt={team?.team_abbr ?? p.teamSlug}
+                                            className="w-5 h-5 object-contain shrink-0"
+                                            onError={(ev) => {
+                                                const img = ev.currentTarget;
+                                                if (img.dataset.fallback !== 'old') {
+                                                    img.dataset.fallback = 'old';
+                                                    img.src = getTeamLogoUrl(p.teamSlug);
+                                                } else {
+                                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
+                                    )}
+                                    <span
+                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
+                                    >
+                                        {team?.team_abbr ?? p.teamSlug}
+                                    </span>
+                                </div>
+                            </td>
+                            <td className={`${AWARD_RANK_TD} tabular-nums`}>{p.dunkRating}</td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </div>
+);
+
+/** [2026-09-08] 덩크 컨테스트 참가자 명단 전용 서신 — 3점 챌린지 서신
+ * (AllstarThreePointContestCard)과 동일한 구조지만, 3점처럼 실제 시즌 존 슛차트로 계산할
+ * "실제 덩크 성공률" 같은 시즌 스탯이 없어(덩크는 game_pbp에 그런 세부 분류가 없음) OVR +
+ * 덩크 점수(dunkRating, 선정용 원점수)만 보여준다 — AllstarRosterTable은 posGroup(G/FC)이
+ * 필수라 덩크 컨테스트엔 안 맞아 재사용하지 않고 이 표를 새로 그린다. */
+export const AllstarDunkContestCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenAllStar }) => {
+    if (event.detail.kind !== 'allstar_dunk_contest') return null;
+    const { seasonLabel, participants, contestDate } = event.detail;
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 덩크 컨테스트 참가자 명단이 확정됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src="/logos/real/AS/DunkContest.svg" alt="덩크 컨테스트" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    이번 시즌 최고의 하이플라이어 4명이 덩크 컨테스트 참가 명단에 이름을 올렸습니다.
+                </p>
+                {contestDate && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        실제 대회는 {contestDate}에 열릴 예정입니다.
+                    </p>
+                )}
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    예선에서 전원 2회씩 시도해 최고점을 합산하고, 상위 2명이 결승에서 다시 2회씩 시도해 우승자를 가립니다.
+                </p>
+            </div>
+            <div className="space-y-2">
+                <h3 className="text-sm font-black text-slate-300 uppercase">참가자</h3>
+                <DunkContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+            </div>
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar('dunk')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면 덩크 컨테스트 탭에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+// 가상 팀(EAST-ALLSTAR 등)은 league_teams에 실제 행이 없어 QuarterScoreTable/TeamBoxTable이
+// 기대하는 LeagueTeamRow를 만들 수 없다 — 두 컴포넌트가 실제로 읽는 필드(team_name/team_abbr/
+// color_primary/color_text)만 payload가 이미 갖고 있는 값(homeTeamName 등 + 컨퍼런스/라이징
+// 스타 테마색)으로 채우고 나머지는 두 컴포넌트가 안 쓰는 필드라 빈 값으로 둔다 — 이렇게 하면
+// 두 컴포넌트를 전혀 수정하지 않고 그대로 재사용할 수 있다.
+function buildAllStarTeamRow(teamSlug: string, teamName: string, colorPrimary: string): LeagueTeamRow {
+    return {
+        id: teamSlug, room_id: '', team_slug: teamSlug, team_name: teamName, team_abbr: teamName,
+        color_primary: colorPrimary, color_secondary: colorPrimary, color_tertiary: colorPrimary,
+        color_text: getReadableTextColor(colorPrimary),
+        court_background: '', court_paint: '', court_line: '',
+        conference: null, user_id: null, nickname: null, is_ai: true, draft_order: null,
+        roster: [], trade_request_note: null, trade_request_positions: [], trade_request_player_ids: [],
+        trade_request_archetypes: [], created_at: '',
+    };
+}
+
+/** [2026-09-09] 올스타 본경기/라이징스타 챌린지 "결과" 서신 — 실제 경기 시뮬레이션 완료 후
+ * 발송(server/src/postAllStarGame.ts). 경기결과/개인활약 레터(GameResultCard/FeatCard)와
+ * 동일한 구성(헤더+본문 → 최종스코어 → 쿼터별 득점 → 양팀 박스스코어)으로 맞춘다(사용자
+ * 요청) — MVP 행은 TeamBoxTable의 기존 highlightPlayerId 기능(옅은 노란색)을 그대로 재사용.
+ * allstar_game_result/allstar_rising_stars_result 두 타입이 완전히 동일한 payload 구조
+ * (AllstarGameResultDetail)를 공유해 카드도 하나로 합치고 kind로 텍스트/로고/색상/바로가기
+ * 대상만 분기한다. 팀명/로고/박스스코어는 payload에 이미 서버가 구워둔 homeTeamName/
+ * awayTeamName + getRealTeamLogoUrl(가상 팀 ID를 AS 로고로 매핑하도록 이미 확장돼 있음) +
+ * useGameBoxScore(event.gameId)로 채운다 — onOpenTeam은 의도적으로 안 씀(가상 팀 ID로 로스터
+ * 화면에 진입하면 빈 화면만 뜸). */
+export const AllstarGameResultCard: React.FC<{
+    event: LeagueEvent;
+    playerCardMap: PlayerCardMap;
+    roomId: string | undefined;
+    onOpenGame?: (gameId: string) => void;
+    onPlayerClick?: (playerId: string) => void;
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, playerCardMap, roomId, onOpenGame, onPlayerClick, onOpenAllStar }) => {
+    const { data: boxScore, isLoading: isBoxLoading } = useGameBoxScore(roomId, event.gameId);
+    const boxPlayerCardMap = useBoxScorePlayerCardMap(roomId, boxScore, playerCardMap);
+    if (event.detail.kind !== 'allstar_game_result' && event.detail.kind !== 'allstar_rising_stars_result') return null;
+    const isMain = event.detail.kind === 'allstar_game_result';
+    const { homeTeamId, awayTeamId, homeTeamName, awayTeamName, mvp } = event.detail;
+    const logoSrc = isMain ? '/logos/real/AS/AllStar.svg' : '/logos/real/AS/RisingStar.svg';
+    const logoAlt = isMain ? '올스타' : '라이징스타';
+    const eventLabel = isMain ? '올스타전' : '라이징스타 챌린지';
+    const homeColor = isMain ? CONFERENCE_COLORS.East : RISING_STARS_COLORS.A;
+    const awayColor = isMain ? CONFERENCE_COLORS.West : RISING_STARS_COLORS.B;
+    const homeTeamRow = buildAllStarTeamRow(homeTeamId, homeTeamName, homeColor);
+    const awayTeamRow = buildAllStarTeamRow(awayTeamId, awayTeamName, awayColor);
+    const mvpStatLine = mvp && mvp.stats.length > 0 ? mvp.stats.map(s => `${s.value} ${s.label}`).join(', ') : null;
+
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{event.detail.seasonLabel}시즌 {eventLabel}이 종료됐습니다</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <div className="space-y-2">
+                <EventLetterLogo src={logoSrc} alt={logoAlt} />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    {awayTeamName}와(과) {homeTeamName}의 {eventLabel}이 막을 내렸습니다.
+                </p>
+                {mvp && (
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                        MVP는 {mvp.name}
+                        {mvpStatLine ? `(${mvpStatLine})` : ''}에게 돌아갔습니다.
+                    </p>
+                )}
+            </div>
+
+            {isBoxLoading ? (
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 size={20} className="animate-spin text-indigo-400" />
+                </div>
+            ) : boxScore ? (
+                <div className="space-y-4">
+                    <BoxScoreHeadline
+                        game={{ homeSlug: homeTeamId, awaySlug: awayTeamId, homeScore: boxScore.homeScore, awayScore: boxScore.awayScore }}
+                        teamBySlug={new Map([[homeTeamId, homeTeamRow], [awayTeamId, awayTeamRow]])}
+                        onOpenGame={event.gameId && onOpenGame ? () => onOpenGame(event.gameId!) : undefined}
+                    />
+                    {boxScore.quarterScores && (
+                        <QuarterScoreTable
+                            homeSlug={homeTeamId} awaySlug={awayTeamId}
+                            homeScore={boxScore.homeScore} awayScore={boxScore.awayScore}
+                            quarterScores={boxScore.quarterScores}
+                            teamBySlug={new Map([[homeTeamId, homeTeamRow], [awayTeamId, awayTeamRow]])}
+                        />
+                    )}
+                    <div className="space-y-4">
+                        <h4 className="text-base font-black text-white uppercase">박스스코어</h4>
+                        <TeamBoxTable team={awayTeamRow} teamSlug={awayTeamId} box={boxScore.awayBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} highlightPlayerId={mvp?.playerId} />
+                        <TeamBoxTable team={homeTeamRow} teamSlug={homeTeamId} box={boxScore.homeBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} highlightPlayerId={mvp?.playerId} />
+                    </div>
+                </div>
+            ) : event.gameId ? (
+                <p className="text-xs text-slate-500 ko-normal py-4 text-center border border-dashed border-slate-800 rounded-lg">
+                    박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
+                </p>
+            ) : null}
+
+            {onOpenAllStar && (
+                <button
+                    type="button"
+                    onClick={() => onOpenAllStar(isMain ? undefined : 'risingstars')}
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                >
+                    올스타 화면에서 보러가기
+                    <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
 // ── 폴백(옛 이벤트, payload.v 없음) ──────────────────────────────────────────
 const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     game_result: Tv,
@@ -1602,6 +3031,16 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     all_def_team: Shield,
     injury: HeartPulse,
     suspension: Swords,
+    allstar_vote_update: BarChart3,
+    allstar_vote_start: Vote,
+    allstar_vote_result: Trophy,
+    allstar_rising_stars: Sparkles,
+    allstar_three_point_contest: Target,
+    allstar_dunk_contest: Zap,
+    allstar_game_result: Trophy,
+    allstar_rising_stars_result: Sparkles,
+    allstar_three_point_contest_result: Target,
+    allstar_dunk_contest_result: Zap,
 };
 
 export const LegacyCard: React.FC<{ event: LeagueEvent }> = ({ event }) => {
@@ -1629,7 +3068,8 @@ export const StoryCard: React.FC<{
     onOpenGame?: (gameId: string) => void;
     onPlayerClick?: (playerId: string) => void;
     onOpenTeam?: (teamSlug: string) => void;
-}> = ({ event, teamBySlug, playerCardMap, roomId, onOpenGame, onPlayerClick, onOpenTeam }) => {
+    onOpenAllStar?: (view?: string) => void;
+}> = ({ event, teamBySlug, playerCardMap, roomId, onOpenGame, onPlayerClick, onOpenTeam, onOpenAllStar }) => {
     switch (event.detail.kind) {
         case 'game_result': return <GameResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'player_feat': return <FeatCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onPlayerClick={onPlayerClick} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} />;
@@ -1643,6 +3083,16 @@ export const StoryCard: React.FC<{
         case 'all_def_team': return <AllDefTeamCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'injury': return <InjuryCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />;
         case 'suspension': return <SuspensionCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />;
+        case 'allstar_vote_update': return <AllstarVoteUpdateCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_vote_start': return <AllstarVoteStartCard event={event} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_vote_result': return <AllstarVoteResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_rising_stars': return <AllstarRisingStarsCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_three_point_contest': return <AllstarThreePointContestCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_dunk_contest': return <AllstarDunkContestCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_game_result': return <AllstarGameResultCard event={event} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_rising_stars_result': return <AllstarGameResultCard event={event} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_three_point_contest_result': return <AllstarThreePointContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'allstar_dunk_contest_result': return <AllstarDunkContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         default: return <LegacyCard event={event} />;
     }
 };

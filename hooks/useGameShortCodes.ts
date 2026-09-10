@@ -1,5 +1,6 @@
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 
 /**
@@ -10,37 +11,41 @@ import { supabase } from '../services/supabaseClient';
  * 전역 GameDateStrip에서 현재 보고 있는 경기(URL의 짧은 코드)를 하이라이트하려면 실제
  * game_id로 되돌려야 하는데, 기존엔 MultiGamePbpView.tsx가 이 매핑과 별개로 자체
  * supabase 쿼리를 또 날리고 있었다 — 이미 로드해둔 forward map을 그대로 뒤집어 재사용.
+ *
+ * [2026-09-07] 예전엔 useState+useEffect로 각 호출부가 독립적으로 직접 fetch했다 —
+ * 이 훅을 부르는 곳이 8군데(MultiSeasonLayout/MultiRosterView/MultiTacticsView/
+ * MultiScheduleView/MultiSeasonPage/MultiNewsFeedView/MultiPlayerDetailView/
+ * TournamentBracketView)나 되고, 그중 여러 곳이 항상 동시에 마운트돼 있어(예: 홈 화면
+ * 진입 시 MultiSeasonLayout+MultiSeasonPage 둘 다) 캐시 공유 없이 매번 중복 fetch가
+ * 나갔다(네트워크 탭 실측으로 발견). react-query로 옮기면 같은 roomId를 쓰는 호출은
+ * 전부 fetch 하나로 묶인다 — usePlayerShortCodes.ts와 동일 패턴. game_short_codes는
+ * finalize.ts가 시즌 파이널라이즈 시점에 한 번에 다 생성하고 이후 정상 시즌 진행 중엔
+ * 안 바뀌므로(플레이오프 브라켓 재생성 시의 삭제만 예외) staleTime을 무한으로 둔다.
  */
 export function useGameShortCodes(roomId: string | undefined): {
     getGameUrlId: (gameId: string) => string;
     resolveGameId: (urlId: string) => string;
     isLoading: boolean;
 } {
-    const [map, setMap] = useState<Map<string, string>>(new Map());
-    const [isLoading, setIsLoading] = useState(true);
+    const { data: rows, isLoading } = useQuery({
+        queryKey: ['gameShortCodes', roomId],
+        enabled: !!roomId,
+        staleTime: Infinity,
+        gcTime: Infinity,
+        queryFn: async (): Promise<{ game_id: string; short_code: string }[]> => {
+            const { data, error } = await supabase
+                .from('game_short_codes')
+                .select('game_id, short_code')
+                .eq('room_id', roomId!);
+            if (error) throw error;
+            return (data ?? []) as { game_id: string; short_code: string }[];
+        },
+    });
 
-    useEffect(() => {
-        if (!roomId) { setIsLoading(false); return; }
-        let cancelled = false;
-        setIsLoading(true);
-
-        supabase
-            .from('game_short_codes')
-            .select('game_id, short_code')
-            .eq('room_id', roomId)
-            .then(({ data, error }) => {
-                if (cancelled) return;
-                if (error) { console.error('[useGameShortCodes]', error.message); setIsLoading(false); return; }
-                setMap(new Map((data ?? []).map(r => [r.game_id as string, r.short_code as string])));
-                setIsLoading(false);
-            });
-
-        return () => { cancelled = true; };
-    }, [roomId]);
+    const map = useMemo(() => new Map((rows ?? []).map(r => [r.game_id, r.short_code])), [rows]);
+    const reverseMap = useMemo(() => new Map((rows ?? []).map(r => [r.short_code, r.game_id])), [rows]);
 
     const getGameUrlId = useCallback((gameId: string) => map.get(gameId) ?? gameId, [map]);
-
-    const reverseMap = useMemo(() => new Map(Array.from(map, ([gameId, shortCode]) => [shortCode, gameId])), [map]);
     const resolveGameId = useCallback((urlId: string) => reverseMap.get(urlId) ?? urlId, [reverseMap]);
 
     return { getGameUrlId, resolveGameId, isLoading };

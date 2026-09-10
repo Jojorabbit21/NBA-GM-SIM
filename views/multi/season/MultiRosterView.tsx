@@ -1,17 +1,19 @@
 
-import React, { useMemo, useCallback, useRef, useState } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { Loader2, ShieldAlert } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { releasePlayer } from '../../../services/multi/faService';
 import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
-import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { useLeagueRawStats, useRoomGamePbp, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
+import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
 import { RosterView } from '../../RosterView';
+import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
-import { isFinal } from './multiGameReveal';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -53,100 +55,12 @@ function buildGameLeadersMap(pbpRows: any[]): Map<string, GameLeaders> {
     return map;
 }
 
-// game_pbp 박스스코어에서 선수별 누적 스탯 집계 (zone 포함)
-function buildStatsMap(pbpRows: any[], serverNow: number): Map<string, Partial<PlayerStats>> {
-    const statsMap = new Map<string, Partial<PlayerStats>>();
-
-    for (const row of pbpRows) {
-        if (!isFinal({ scheduledAt: row.game_start_time, played: true }, serverNow)) continue;
-
-        const sides = [
-            { box: row.home_box ?? [], teamId: row.home_team_id },
-            { box: row.away_box ?? [], teamId: row.away_team_id },
-        ];
-
-        for (const { box, teamId } of sides) {
-            for (const bs of box) {
-                if (!bs.playerId || bs.mp <= 0) continue;
-                const prev = statsMap.get(bs.playerId) ?? {} as any;
-                const add  = (k: string) => (prev[k] ?? 0) + (bs[k] ?? 0);
-                // zone 스탯은 bs.zoneData 중첩 객체 안에 저장됨
-                const zd   = bs.zoneData ?? {};
-                const addZ = (k: string) => (prev[k] ?? 0) + (zd[k] ?? 0);
-                statsMap.set(bs.playerId, {
-                    ...prev,
-                    g:        (prev.g ?? 0) + 1,
-                    gs:       add('gs'),
-                    mp:       add('mp'),
-                    pts:      add('pts'),
-                    reb:      add('reb'),
-                    offReb:   add('offReb'),
-                    defReb:   add('defReb'),
-                    ast:      add('ast'),
-                    stl:      add('stl'),
-                    blk:      add('blk'),
-                    tov:      add('tov'),
-                    pf:       add('pf'),
-                    fgm:      add('fgm'),
-                    fga:      add('fga'),
-                    p3m:      add('p3m'),
-                    p3a:      add('p3a'),
-                    ftm:      add('ftm'),
-                    fta:      add('fta'),
-                    rimM:     add('rimM'),
-                    rimA:     add('rimA'),
-                    midM:     add('midM'),
-                    midA:     add('midA'),
-                    plusMinus:          add('plusMinus'),
-                    contestedAttempted: add('contestedAttempted'),
-                    contestedMade:      add('contestedMade'),
-                    // 존별 수비 스탯 (기록 탭 Defense 카테고리용) — MultiLeaderboardView.tsx와 동일하게
-                    // 누락돼 있던 필드. 여기 없으면 useLeaderboardData가 항상 0으로 읽어 DFG% 등이 집계 안 됨.
-                    defRAAttempted:   add('defRAAttempted'),
-                    defRAMade:        add('defRAMade'),
-                    defITPAttempted:  add('defITPAttempted'),
-                    defITPMade:       add('defITPMade'),
-                    defMIDAttempted:  add('defMIDAttempted'),
-                    defMIDMade:       add('defMIDMade'),
-                    defCNRAttempted:  add('defCNRAttempted'),
-                    defCNRMade:       add('defCNRMade'),
-                    defWINGAttempted: add('defWINGAttempted'),
-                    defWINGMade:      add('defWINGMade'),
-                    defATBAttempted:  add('defATBAttempted'),
-                    defATBMade:       add('defATBMade'),
-                    // zone 세부 스탯 (샷 차트용) — bs.zoneData에서 접근
-                    zone_rim_m:    addZ('zone_rim_m'),
-                    zone_rim_a:    addZ('zone_rim_a'),
-                    zone_paint_m:  addZ('zone_paint_m'),
-                    zone_paint_a:  addZ('zone_paint_a'),
-                    zone_mid_l_m:  addZ('zone_mid_l_m'),
-                    zone_mid_l_a:  addZ('zone_mid_l_a'),
-                    zone_mid_c_m:  addZ('zone_mid_c_m'),
-                    zone_mid_c_a:  addZ('zone_mid_c_a'),
-                    zone_mid_r_m:  addZ('zone_mid_r_m'),
-                    zone_mid_r_a:  addZ('zone_mid_r_a'),
-                    zone_c3_l_m:   addZ('zone_c3_l_m'),
-                    zone_c3_l_a:   addZ('zone_c3_l_a'),
-                    zone_c3_r_m:   addZ('zone_c3_r_m'),
-                    zone_c3_r_a:   addZ('zone_c3_r_a'),
-                    zone_atb3_l_m: addZ('zone_atb3_l_m'),
-                    zone_atb3_l_a: addZ('zone_atb3_l_a'),
-                    zone_atb3_c_m: addZ('zone_atb3_c_m'),
-                    zone_atb3_c_a: addZ('zone_atb3_c_a'),
-                    zone_atb3_r_m: addZ('zone_atb3_r_m'),
-                    zone_atb3_r_a: addZ('zone_atb3_r_a'),
-                } as any);
-            }
-        }
-    }
-    return statsMap;
-}
-
 const MultiRosterView: React.FC = () => {
     const { league, room, leagueTeams, members, isLoading: leagueLoading, reload } = useLeagueContext();
     const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
     const { session } = useGame();
     const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
+    const { data: advancedStatsByTeam, isPending: advancedStatsLoading } = useTeamSeasonAdvancedStats(room?.id);
 
     // MultiScheduleView.tsx와 동일한 preferVirtual 패턴 — 메인리그(main_league)는
     // 로스터 일정 탭의 달력이 가상 NBA 시즌 캘린더(game.date)로 그려지는데,
@@ -201,17 +115,18 @@ const MultiRosterView: React.FC = () => {
         [leagueTeams],
     );
 
-    // 홈 화면 로스터 위젯/리더보드와 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가
-    // 같으면 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이 즉시 뜬다.
-    const selectRosterData = useCallback((raw: LeagueRawStatsData) => {
-        const serverNow = getServerNow();
+    // 홈 화면 로스터 위젯/리더보드/선수상세와 선수 신원(meta_players 등) fetch를 공유 —
+    // queryKey가 같으면 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이
+    // 즉시 뜬다. [2026-09-07] 이 select는 더 이상 game_pbp를 안 받음(includePbp:false) —
+    // 선수 시즌 스탯은 아래 usePlayerSeasonStatsFull(서버 집계 RPC)에서 별도로 받아 병합한다
+    // (팀 화면 최초 진입 시 game_pbp 통째 다운로드가 최대 병목이었던 문제 개선).
+    const selectRosterIdentity = useCallback((raw: LeagueRawStatsData): Team[] => {
         const playerBaseMap = new Map<string, Player>(
             raw.playersRaw.map((r: any) => [
                 String(r.id),
                 mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true),
             ]),
         );
-        const statsMap = buildStatsMap(raw.pbpRows, serverNow);
 
         // room_player_state → "지금 활성 부상인지" 판정 + 배지 색상용 severity.
         // MultiTacticsView.tsx(뎁스차트)도 동일 로직을 쓰므로 공용 헬퍼로 뽑아뒀다.
@@ -224,7 +139,7 @@ const MultiRosterView: React.FC = () => {
             getTeamId: id => teamIdByPlayer.get(id),
         });
 
-        const builtTeams: Team[] = leagueTeams.map(lt => ({
+        return leagueTeams.map(lt => ({
             id:            lt.team_slug,
             name:          lt.team_name,
             city:          '',
@@ -238,6 +153,7 @@ const MultiRosterView: React.FC = () => {
             luxuryTaxLine: 0,
             colorPrimary:   lt.color_primary,
             colorSecondary: lt.color_secondary,
+            colorText:      lt.color_text,
             abbr:           lt.team_abbr,
             roster: (lt.roster ?? []).map(id => {
                 const base = playerBaseMap.get(id);
@@ -245,7 +161,6 @@ const MultiRosterView: React.FC = () => {
                 const injuryStatus = activeInjuryByPlayer.get(id);
                 return {
                     ...base,
-                    stats: { ...(base.stats ?? {}), ...(statsMap.get(id) ?? {}) } as PlayerStats,
                     activeInjurySeverity: injuryStatus?.severity,
                     injuryType: injuryStatus?.injuryType,
                     activeInjuryDuration: injuryStatus?.duration,
@@ -253,23 +168,37 @@ const MultiRosterView: React.FC = () => {
                 };
             }).filter(Boolean) as Player[],
         }));
-
-        return {
-            builtTeams,
-            gameTeamStatsMap: buildGameTeamStatsMap(raw.pbpRows),
-            gameLeadersMap: buildGameLeadersMap(raw.pbpRows),
-        };
     }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule]);
 
     const {
-        data: rosterData,
-        isPending: fetchLoading,
-        refetch: refetchRoster,
-    } = useLeagueRawStats(room?.id, allRosterIds, selectRosterData);
+        data: allTeamsBase = [],
+        isPending: identityLoading,
+    } = useLeagueRawStats(room?.id, allRosterIds, selectRosterIdentity, { includePbp: false });
 
-    const allTeams         = rosterData?.builtTeams ?? [];
-    const gameTeamStatsMap = rosterData?.gameTeamStatsMap ?? new Map<string, { homeStats: Record<string, number>; awayStats: Record<string, number> }>();
-    const gameLeadersMap   = rosterData?.gameLeadersMap ?? new Map<string, GameLeaders>();
+    // 선수당 시즌 평균(존 슛차트/수비존 포함) — 서버 집계 RPC(2026-09-07 신설, 예전엔
+    // game_pbp 원본을 통째로 받아 buildStatsMap()으로 클라이언트에서 집계했다).
+    const { data: statsFull, isPending: statsFullLoading } = usePlayerSeasonStatsFull(room?.id, allRosterIds);
+
+    const allTeams = useMemo(() => {
+        if (!statsFull) return allTeamsBase;
+        return allTeamsBase.map(t => ({
+            ...t,
+            roster: t.roster.map(p => ({
+                ...p,
+                stats: { ...(p.stats ?? {}), ...(statsFull[p.id] ?? {}) } as PlayerStats,
+            })),
+        }));
+    }, [allTeamsBase, statsFull]);
+
+    // "기록"/"일정" 탭만 게임 단위 원본(game_pbp)이 실제로 필요하다 — 그 탭이 열려 있을
+    // 때만 지연 로딩(URL의 ?tab= 을 직접 읽어, 딥링크로 곧장 그 탭에 들어와도 놓치지 않음).
+    const [searchParams] = useSearchParams();
+    const activeTab = searchParams.get('tab') ?? 'overview';
+    const needsGamePbp = activeTab === 'records' || activeTab === 'schedule';
+    const { data: pbpRows = [] } = useRoomGamePbp(room?.id, needsGamePbp);
+
+    const gameTeamStatsMap = useMemo(() => buildGameTeamStatsMap(pbpRows), [pbpRows]);
+    const gameLeadersMap   = useMemo(() => buildGameLeadersMap(pbpRows), [pbpRows]);
 
     // 선수 이름 클릭 → 선수 프로필 전용 캐노니컬 라우트(MultiPlayerDetailView)로 이동.
     // 예전엔 이 화면 안에서 ?player=&team= 쿼리파라미터로 PlayerDetailView를 바꿔치기했는데,
@@ -295,18 +224,6 @@ const MultiRosterView: React.FC = () => {
     const onScoreClick = useCallback((gameId: string) => {
         navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
     }, [navigate, leagueId, getGameUrlId]);
-
-    // 경기 기록 탭 진입 시점에만 최신 game_pbp로 재조회 (로스터 탭은 자주 안 바뀌니 캐시 그대로 사용)
-    // 탭을 빠르게 왔다갔다해도 쿨다운(3초) 안에서는 재조회를 건너뛴다.
-    const RECORDS_REFETCH_COOLDOWN_MS = 3000;
-    const lastRecordsRefetchRef = useRef(0);
-    const onRosterTabChange = useCallback((t: string) => {
-        if (t !== 'records') return;
-        const now = Date.now();
-        if (now - lastRecordsRefetchRef.current < RECORDS_REFETCH_COOLDOWN_MS) return;
-        lastRecordsRefetchRef.current = now;
-        refetchRoster();
-    }, [refetchRoster]);
 
     // "재정" 탭 — 리그의 캡 마스터 스위치(cap_enabled)가 꺼져있으면 아예 숨김.
     const capSettings = useMemo(() => {
@@ -335,7 +252,12 @@ const MultiRosterView: React.FC = () => {
         return m >= 7 ? d.getFullYear() : d.getFullYear() - 1;
     }, [league?.season_start_date]);
 
-    const isLoading = leagueLoading || fetchLoading;
+    // Off Rtg/Def Rtg/Pace(advancedStatsByTeam)는 별도 RPC라 로딩이 느린데, 게이트에서
+    // 빠져 있으면 헤더의 나머지 순위 텍스트만 먼저 뜨고 이 줄만 한 박자 늦게 팝인되는
+    // 문제가 있었다 — 전체를 한 번에 기다렸다 같이 표시하도록 게이트에 포함. game_pbp(pbpRows)
+    // 로딩은 일부러 뺐다 — "기록"/"일정" 탭에서만 필요한 지연 로딩이라 개요 탭 진입을
+    // 붙잡아두면 안 됨(2026-09-07, 팀 화면 최초 진입 병목 개선).
+    const isLoading = leagueLoading || identityLoading || statsFullLoading || advancedStatsLoading;
 
     if (isLoading) {
         return (
@@ -364,12 +286,14 @@ const MultiRosterView: React.FC = () => {
                     currentSimDate={currentSimDate}
                     enableHoverCard
                     hideTabs={['coaching', 'draftPicks']}
-                    onTabChange={onRosterTabChange}
                     teamNicknames={teamNicknames}
                     capSettings={capSettings}
                     baseSeasonYear={baseSeasonYear}
                     onReleasePlayer={handleReleasePlayer}
                     releasingId={releasingId}
+                    enableTeamSettingsTab
+                    renderTeamSettingsPanel={() => <TeamSettingsPanel />}
+                    advancedStatsByTeam={advancedStatsByTeam}
                 />
             </div>
         </div>

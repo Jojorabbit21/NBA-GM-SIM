@@ -10,7 +10,7 @@ interface TeamBadgeProps {
     colorPrimary?: string | null;
     colorSecondary?: string | null;
     colorText?: string | null;
-    size?: 'xs' | 'sm' | 'md' | 'lg';
+    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     className?: string;
 }
 
@@ -19,10 +19,14 @@ const SIZE_CLASS: Record<NonNullable<TeamBadgeProps['size']>, string> = {
     sm: 'w-9 h-6 text-[10px]',
     md: 'w-11 h-7 text-xs',
     lg: 'w-14 h-9 text-sm',
+    // [2026-09-04] 홈 화면 경기 카드(pages/MultiSeasonPage.tsx) — 옆에 나란히 붙는
+    // text-3xl 팀약어와 높이를 맞추려면 기존 lg(w-14 h-9, 직사각형)로는 안 맞아서
+    // 정사각형(h-9와 동일한 w-9) 크기를 추가.
+    xl: 'w-9 h-9 text-sm',
 };
 
 const LOGO_SIZE: Record<NonNullable<TeamBadgeProps['size']>, 'sm' | 'md' | 'lg'> = {
-    xs: 'sm', sm: 'sm', md: 'md', lg: 'lg',
+    xs: 'sm', sm: 'sm', md: 'md', lg: 'lg', xl: 'lg',
 };
 
 /**

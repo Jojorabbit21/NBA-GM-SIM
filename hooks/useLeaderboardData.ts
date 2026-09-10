@@ -4,7 +4,7 @@ import { Team, Game, Player } from '../types';
 import { calculatePlayerOvr, INITIAL_STATS } from '../utils/constants';
 import { FilterItem, ViewMode, ATTRIBUTE_KEYS, getAttrValue as getAttrVal } from '../data/leaderboardConfig';
 import { isFinal } from '../views/multi/season/multiGameReveal';
-import { useServerClock } from '../utils/serverClock';
+import { useServerClockBucket } from '../utils/serverClock';
 
 export type SeasonType = 'regular' | 'playoff';
 
@@ -27,7 +27,10 @@ export const useLeaderboardData = (
     statCategory: string = 'Traditional',
     seasonType: SeasonType = 'regular'
 ) => {
-    const serverNow = useServerClock();
+    // [2026-09-07] isFinal() 게이팅(경기 공개 10분 딜레이)에만 쓰여 초 단위 정밀도가
+    // 필요 없다 — 이 훅을 쓰는 모든 화면(홈 위젯/리더보드/전술 인사이트)에서 teamStats
+    // useMemo(30팀 전체 스탯 집계)가 매초 다시 계산되던 걸 15초에 한 번으로 줄인다.
+    const serverNow = useServerClockBucket();
 
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {

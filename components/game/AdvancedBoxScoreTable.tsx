@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
-import { TeamLogo } from '../common/TeamLogo';
+import { TeamMark } from '../common/TeamMark';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { TEAM_DATA } from '../../data/teamData';
 import { computeTeamBoxTotals, computeAdvancedStats, computePieRaw } from '../../utils/advancedBoxStats';
@@ -40,7 +40,7 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
     // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
     const rosterMap = useMemo(() => new Map(team.roster.map(rp => [rp.id, rp])), [team.roster]);
 
-    const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
+    const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
 
     return (
         <div className={standalone ? "w-full relative" : "w-full bg-slate-900 border-y border-slate-800 relative"}>
@@ -48,16 +48,7 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
 
             <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
-                    {badge ? (
-                        <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                            style={{ backgroundColor: badge.color, color: '#fff' }}
-                        >
-                            {badge.abbr.slice(0, 3)}
-                        </div>
-                    ) : (
-                        <TeamLogo teamId={team.id} size="md" />
-                    )}
+                    <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
                 </div>
                 {headerRight}

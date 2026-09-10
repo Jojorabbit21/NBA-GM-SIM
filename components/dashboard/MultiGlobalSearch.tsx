@@ -1,9 +1,8 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
-import { TeamLogo } from '../common/TeamLogo';
 import { OvrBadge } from '../common/OvrBadge';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
 import type { Player } from '../../types';
 import type { LeagueTeamRow } from '../../services/multi/roomQueries';
 
@@ -165,7 +164,23 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
                                 >
                                     {result.type === 'team' && (
                                         <>
-                                            <TeamLogo teamId={result.team.team_slug} size="custom" className="w-6 h-6 shrink-0" />
+                                            {/* [2026-09-07] 다른 화면들과 동일한 public/logos/real/ 실제
+                                                로고 + 폴백 체인으로 교체(사용자 요청, 기존 TeamLogo는
+                                                싱글플레이어용 구버전 로고만 참조). */}
+                                            <img
+                                                src={getRealTeamLogoUrl(result.team.team_slug)}
+                                                alt={result.team.team_abbr}
+                                                className="w-6 h-6 object-contain shrink-0"
+                                                onError={(e) => {
+                                                    const img = e.currentTarget;
+                                                    if (img.dataset.fallback !== 'old') {
+                                                        img.dataset.fallback = 'old';
+                                                        img.src = getTeamLogoUrl(result.team.team_slug);
+                                                    } else {
+                                                        img.src = 'https://placehold.co/100x100?text=BPL';
+                                                    }
+                                                }}
+                                            />
                                             <span className="text-xs font-semibold text-slate-300 truncate flex-1">
                                                 {result.team.team_name}
                                             </span>

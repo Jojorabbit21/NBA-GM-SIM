@@ -33,6 +33,7 @@ import MultiSeasonPage from './pages/MultiSeasonPage';
 import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
 import MultiStandingsView from './views/multi/season/MultiStandingsView';
 import MultiPlayoffsView from './views/multi/season/MultiPlayoffsView';
+import MultiAllStarView from './views/multi/season/MultiAllStarView';
 import MultiScheduleView from './views/multi/season/MultiScheduleView';
 import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
@@ -385,7 +386,6 @@ const App: React.FC = () => {
                         <Route path="/multi" element={<LeagueListView />} />
                         <Route element={<LeagueLayout />}>
                             <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
-                            <Route path="/multi/leagues/:leagueId/settings" element={<LeagueSettingsView />} />
                             <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
                             <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
                             <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
@@ -394,6 +394,7 @@ const App: React.FC = () => {
                                 <Route path="roster"       element={<MultiRosterView />} />
                                 <Route path="standings"    element={<MultiStandingsView />} />
                                 <Route path="playoffs"     element={<MultiPlayoffsView />} />
+                                <Route path="allstar"      element={<MultiAllStarView />} />
                                 <Route path="schedule"     element={<MultiScheduleView />} />
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
@@ -401,6 +402,7 @@ const App: React.FC = () => {
                                 <Route path="free-agent"   element={<MultiFreeAgentView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
+                                <Route path="settings"     element={<LeagueSettingsView />} />
                             </Route>
                         </Route>
                     </Route>

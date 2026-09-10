@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
-import { TeamLogo } from '../common/TeamLogo';
+import { TeamMark } from '../common/TeamMark';
 import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
@@ -123,7 +123,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
         return ((m / a) * 100).toFixed(1) + '%';
     };
 
-    const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
+    // badge가 있으면 그 색(멀티플레이어 커스텀 컬러) — 없으면 TEAM_DATA 폴백(싱글플레이어).
+    const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
 
     // [2026-08-02] standalone(좌우 분할) 전용 — FAT/TF/FF/FG%/3P%/FT% 컬럼을 삭제하지 않고 숨김
     // (컬럼 정의/로직은 그대로 유지, CSS로만 미표시). 기본(상하 배치)에선 전부 그대로 노출.
@@ -158,16 +159,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             {/* standalone: 헤더는 테두리 없이 라벨만 — 유일한 테두리는 아래 Table 자체가 담당 */}
             <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
-                    {badge ? (
-                        <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                            style={{ backgroundColor: badge.color, color: '#fff' }}
-                        >
-                            {badge.abbr.slice(0, 3)}
-                        </div>
-                    ) : (
-                        <TeamLogo teamId={team.id} size="md" />
-                    )}
+                    <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
                 </div>
                 {headerRight}

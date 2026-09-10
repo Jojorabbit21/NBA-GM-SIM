@@ -31,6 +31,10 @@ export interface SimSettings {
 
     // League-relative normalization
     normalizationStrength?: number;   // 0~1, UI slider override for k
+    // 세션 설정 화면(리그 상대 정규화 강도 0~5 슬라이더)이 저장하는 실제 필드 —
+    // normalizationStrength와 별개로, resolveNormalizationContext()(leagueNormalization.ts)가
+    // 읽는 { enabled, k } 오버라이드. enabled=false면 정규화 자체를 끔.
+    normalization?: { enabled?: boolean; k?: number; muRef?: number };
     leagueContext?: LeagueContext;    // computed at sim start, injected here
 }
 

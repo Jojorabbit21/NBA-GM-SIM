@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { LeaderboardView, type LeaderboardFilterState } from '../../LeaderboardView';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { resolveRealAt } from './multiGameReveal';
@@ -69,14 +70,21 @@ const MultiLeaderboardView: React.FC = () => {
         [leagueTeams],
     );
 
-    // 홈 화면 로스터 위젯/로스터 화면과 원본 fetch(meta_players+game_pbp)를 공유 — queryKey가
+    // 홈 화면 로스터 위젯/로스터 화면과 선수 신원(meta_players 등) fetch를 공유 — queryKey가
     // 같으면 어느 화면이 먼저 로드하든 나머지는 캐시를 그대로 재사용해 로더 없이 즉시 뜬다.
     // 최신 경기 결과를 바로 보고 싶으면 툴바의 새로고침 버튼(onRefresh)으로 수동 강제 갱신.
     // [2026-08-14] 집계 로직은 services/multi/buildLeagueTeams.ts로 추출 — MultiTacticsView의
     // "인사이트" 탭도 동일한 리그 전체 30팀 스탯이 필요해져 공용화함(로직 두 곳에 중복 방지).
+    // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
+    // 시즌 스탯을 받는다 — 홈 화면과 동일한 병목이 리더보드 화면에도 있었음(buildLeagueTeams.ts 주석 참고).
+    const {
+        data: statsByPlayer,
+        isPending: statsLoading,
+        refetch: refetchStats,
+    } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
     const selectLeaderboardTeams = useCallback(
-        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides),
-        [leagueTeams, useCustomOverrides],
+        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer),
+        [leagueTeams, useCustomOverrides, statsByPlayer],
     );
 
     const {
@@ -84,7 +92,7 @@ const MultiLeaderboardView: React.FC = () => {
         isPending: fetchLoading,
         isFetching: fetchRefreshing,
         refetch: refetchTeams,
-    } = useLeagueRawStats(room?.id, allRosterIds, selectLeaderboardTeams);
+    } = useLeagueRawStats(room?.id, allRosterIds, selectLeaderboardTeams, { includePbp: false });
 
     // 선수 이름 클릭 → 선수 프로필 전용 캐노니컬 라우트(MultiPlayerDetailView)로 이동.
     // 리더보드 행은 useLeaderboardData가 항상 정확한 teamId를 채워주지만(hooks/useLeaderboardData.ts),
@@ -104,7 +112,7 @@ const MultiLeaderboardView: React.FC = () => {
         [schedule, simStart, gprd],
     );
 
-    const isLoading = leagueLoading || gameLoading || fetchLoading;
+    const isLoading = leagueLoading || gameLoading || fetchLoading || statsLoading;
 
     if (isLoading) {
         return (
@@ -125,7 +133,7 @@ const MultiLeaderboardView: React.FC = () => {
             hideSeasonType={isTournament}
             savedState={savedFilterState}
             onStateChange={handleFilterStateChange}
-            onRefresh={() => refetchTeams()}
+            onRefresh={() => { refetchTeams(); refetchStats(); }}
             refreshing={fetchRefreshing}
             enableHoverCard
         />

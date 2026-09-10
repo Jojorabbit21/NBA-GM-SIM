@@ -25,7 +25,7 @@ interface GameShotChartTabProps {
 // [2026-08-02] 풀코트 라인(양쪽 바스켓) — MultiFullCourtChart.tsx와 동일한 좌표계(940x500,
 // 원본 x/y*10, 정규화 없음)를 이 탭에도 그대로 적용. 두 팀 슛을 동시에 표시하므로 팀별
 // 하프코트 토글 없이 실제 기록된 위치 그대로 그린다.
-const BasketLines = () => (
+export const BasketLines = () => (
     <g fill="none" stroke="#334155" strokeWidth="2" strokeMiterlimit="10">
         <path d="M0,30h140s150,55,150,220-150,220,-150,220H0" />
         <polyline points="0,170 190,170 190,330 0,330" />
@@ -276,8 +276,11 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     homeBox,
     awayBox,
 }) => {
-    const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#6366f1';
-    const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#94a3b8';
+    // badge가 있으면 그 색(멀티플레이어 커스텀 컬러), 없으면 TEAM_DATA 실제 팀 컬러(싱글플레이어)
+    // — GamePbpTab.tsx와 동일한 패턴. 예전엔 TEAM_DATA만 참조해 멀티에서 커스텀 팀 컬러가
+    // 무시되고 항상 원본 NBA 팀 색으로 슛차트가 그려지는 버그가 있었다.
+    const homeColor = homeBadge?.color ?? TEAM_DATA[homeTeam.id]?.colors.primary ?? '#6366f1';
+    const awayColor = awayBadge?.color ?? TEAM_DATA[awayTeam.id]?.colors.primary ?? '#94a3b8';
 
     const safeEvents = shotEvents || [];
     const homeShots = useMemo(() => safeEvents.filter(s => s.teamId === homeTeam.id), [safeEvents, homeTeam.id]);
@@ -389,7 +392,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                         >
                             <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full drop-shadow-xl">
                                 {/* Court Background */}
-                                <rect width="940" height="500" fill="#020617" stroke="#334155" strokeWidth="2" />
+                                <rect width="940" height="500" fill="#020617" />
                                 {/* Paint Fills */}
                                 <rect y="170" width="190" height="160" fill="#0f172a" />
                                 <rect x="750" y="170" width="190" height="160" fill="#0f172a" />
@@ -446,6 +449,10 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                         </g>
                                     );
                                 })}
+
+                                {/* Court Border — 페인트존 등 다른 도형에 가려지지 않도록 맨 마지막에 그림
+                                    (newsFeedCards.tsx의 3점 컨테스트 샷차트와 동일한 수정) */}
+                                <rect x="1" y="1" width="938" height="498" fill="none" stroke="#334155" strokeWidth="2" />
                             </svg>
 
                             {tooltip && (

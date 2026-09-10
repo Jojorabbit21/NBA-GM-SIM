@@ -3,8 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { MultiGlobalSearch } from './MultiGlobalSearch';
-import { supabase } from '../../services/supabaseClient';
-import { listPendingTradeOffers } from '../../services/multi/tradeService';
+import { usePendingTradeCount } from '../../hooks/usePendingTradeCount';
 import type { Player } from '../../types';
 import type { LeagueTeamRow } from '../../services/multi/roomQueries';
 
@@ -34,7 +33,13 @@ interface DropdownItem {
     badge?: number;
 }
 
-export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
+// [2026-09-07] MultiHeader.tsx는 "다음 경기까지 남은 시간" 카운트다운 때문에 정말로 매초
+// 리렌더돼야 한다(다른 화면들의 useServerClock 오남용과는 다른, 정당한 케이스) — 그런데
+// 이 네비 메뉴(검색창/드롭다운/트레이드 배지)는 그 카운트다운과 무관한데도 부모가 리렌더될
+// 때마다 매초 같이 리렌더되고 있었다. props가 전부 값 기준으로 안정적이라(참조는 리렌더마다
+// 새로 만들어져도 값 자체는 안 바뀜) React.memo로 감싸면 부모의 매초 리렌더를 여기서 차단할
+// 수 있다 — 실제 네비게이션/검색 등 이 컴포넌트 자신의 상태 변화로 인한 리렌더는 그대로 동작.
+export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(({
     leagueTeams,
     poolPlayers,
     rosterMap,
@@ -50,26 +55,11 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
     const { leagueId }     = useParams<{ leagueId: string }>();
 
     // 받은 트레이드 제안(대기중) 개수 — "프론트 오피스" 탭 배지용
+    // [2026-09-07] MultiSidebar.tsx와 완전히 동일한 조회를 각자 따로 하고 있어서 공용 훅
+    // (usePendingTradeCount)으로 통합 — react-query가 같은 queryKey면 두 컴포넌트가 동시에
+    // 마운트돼도 fetch를 한 번만 묶어서 실행한다(네트워크 요청 중복 제거).
     const myTeamDbId = leagueTeams.find(t => t.team_slug === myTeamId)?.id ?? null;
-    const [pendingTradeCount, setPendingTradeCount] = useState(0);
-    useEffect(() => {
-        if (!roomId || !myTeamDbId) { setPendingTradeCount(0); return; }
-        let cancelled = false;
-        const fetchCount = async () => {
-            const { incoming } = await listPendingTradeOffers(roomId, myTeamDbId);
-            // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
-            if (!cancelled) setPendingTradeCount(incoming.filter(o => !o.to_team_read_at).length);
-        };
-        fetchCount();
-        const channel = supabase
-            .channel(`trade-offers-badge-${roomId}-${myTeamDbId}`)
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'league_trade_offers', filter: `to_team_id=eq.${myTeamDbId}` },
-                fetchCount,
-            )
-            .subscribe();
-        return () => { cancelled = true; supabase.removeChannel(channel); };
-    }, [roomId, myTeamDbId]);
+    const pendingTradeCount = usePendingTradeCount(roomId, myTeamDbId);
     const base          = `/multi/leagues/${leagueId}/season`;
 
     const [openDropdown, setOpenDropdown] = useState<DropdownId>(null);
@@ -145,6 +135,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
     const leagueItems: DropdownItem[] = [
         { label: '순위표',    path: `${base}/standings` },
         ...(hasPlayoffs ? [{ label: '플레이오프', path: `${base}/playoffs` }] : []),
+        { label: '올스타',    path: `${base}/allstar` },
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
         { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },
@@ -259,4 +250,5 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = ({
             </div>{/* end Nav 탭 묶음 */}
         </div>
     );
-};
+});
+MultiHeaderNavMenu.displayName = 'MultiHeaderNavMenu';

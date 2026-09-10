@@ -2,7 +2,7 @@
 import React from 'react';
 import { HEX_COLOR_RE } from '../../utils/colorContrast';
 
-// TeamSetupModal/TeamSettingsModal이 각자 반복 정의하던 "컬러 피커 + 헥스 텍스트 입력" 한 쌍을
+// TeamSetupModal/TeamSettingsPanel이 각자 반복 정의하던 "컬러 피커 + 헥스 텍스트 입력" 한 쌍을
 // 공용 컴포넌트로 통합 — 라벨/값만 바꿔가며 재사용.
 
 interface ColorFieldProps {

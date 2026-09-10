@@ -10,6 +10,7 @@ import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services
 import { adaptPlayerToInput } from '../utils/ovrUtils';
 import { evaluatePlayerRawOVR, evalTagConditionOvr, ARCHETYPE_LABEL } from '../utils/ovrEngine';
 import type { ArchetypeModuleScores } from '../types/archetype';
+import { COMPACT_ATTR_GROUPS, getCompactAttrValue } from '../data/attributeConfig';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -1175,7 +1176,21 @@ function render(){
 
     // ── 테이블 내보내기 (CSV / Markdown / Embed HTML) ─────────────────────────
     const handleExport = useCallback((format: 'csv' | 'markdown' | 'html') => {
-        const HEADERS = ['이름', '포지션', '팀', '나이', 'OVR', '1차 아키타입', '2차 아키타입', '태그'];
+        // 능력치 컬럼: COMPACT_ATTR_GROUPS(21개) — RosterGrid/PlayerDetailView 등 유저에게
+        // 실제 노출되는 압축 능력치 세트. 원본 36개 중 drawFoul/hands/offConsist/spdBall/
+        // passVision/offBallMovement/helpDefIq/passPerc/boxOut/hustle/durability는 멀티플레이어
+        // 화면에 노출되지 않는 능력치라 내보내기에서도 제외한다.
+        const ATTR_ITEMS = COMPACT_ATTR_GROUPS.flatMap(g => g.items);
+        // Zone tendencies — RosterGrid 테이블과 동일한 6개 존 순서/라벨(tendencies.zones)
+        const ZONE_ITEMS: { key: string; label: string }[] = [
+            { key: 'ra',  label: 'RA' },
+            { key: 'itp', label: 'ITP' },
+            { key: 'mid', label: 'Mid' },
+            { key: 'cnr', label: 'Cnr' },
+            { key: 'p45', label: 'p45' },
+            { key: 'atb', label: 'ATB' },
+        ];
+        const HEADERS = ['이름', '포지션', '팀', '나이', 'OVR', '1차 아키타입', '2차 아키타입', '태그', ...ATTR_ITEMS.map(i => i.label), ...ZONE_ITEMS.map(z => z.label)];
 
         const dataRows = sortedResults.map(r => {
             const isDraft   = isDraftClass(r.draft_year);
@@ -1195,6 +1210,8 @@ function render(){
                 arch ? archLabel(arch.archetype) : '',
                 arch?.secondary ? archLabel(arch.secondary) : '',
                 arch?.tags.length ? arch.tags.map(t => tagLabelMap[t] ?? t).join(', ') : '',
+                ...ATTR_ITEMS.map(item => String(getCompactAttrValue(r.base_attributes ?? {}, item))),
+                ...ZONE_ITEMS.map(z => String(r.tendencies?.zones?.[z.key] ?? '')),
             ];
         });
 

@@ -11,6 +11,7 @@ import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/seas
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { getReadableTextColor } from '../utils/colorContrast';
+import { getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
 import { CONF_NAMES } from '../utils/playoffLogic';
 import type { Player } from '../types';
 
@@ -62,6 +63,14 @@ export const MultiHeader: React.FC = () => {
         return () => clearInterval(id);
     }, []);
 
+    // [2026-09-07] nowMs는 1초마다 바뀌지만, 아래 스케줄 전체를 순회하는 계산들(순위/라이브
+    // 경기/시리즈 전적/우승팀 판정)은 그렇게 자주 다시 스캔할 필요가 없다 — 실제 경기
+    // 시뮬레이션 주기(수 분 단위)에 비하면 15초 지연은 체감상 무시할 수준. 초당 4회씩 시즌
+    // 전체 스케줄(1000경기 이상)을 훑던 게 스크롤 중 프레임 드랍의 한 원인으로 지목돼,
+    // 15초 버킷으로 낮춰 재계산 빈도를 1/15로 줄인다(원래 currentVirtualDate 한 곳에만
+    // 쓰이던 패턴을 나머지 스케줄-스캔 메모에도 동일 적용).
+    const dateBucket = Math.floor(nowMs / 15000);
+
     // W/L + 순위 (정시+10분 경과 — final 상태인 경기만 집계, 스포일러 방지)
     const { wins, losses, rank } = useMemo(() => {
         const wlMap: Record<string, { w: number; l: number }> = {};
@@ -89,7 +98,7 @@ export const MultiHeader: React.FC = () => {
             .sort((a, b) => pct(b) - pct(a) || b.w - a.w);
 
         return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
-    }, [schedule, myTeamId, leagueTeams, league, simStart, gprd, nowMs]);
+    }, [schedule, myTeamId, leagueTeams, league, simStart, gprd, dateBucket]);
 
     // 내 팀 다음 경기
     const nextGame = useMemo(() => {
@@ -105,9 +114,8 @@ export const MultiHeader: React.FC = () => {
     // 실제 실행 시각(scheduledAt)은 노출 금지이므로, 리그 전체 일정 중 지금(nowMs)과 가장
     // 가까운 실제 방송 시각을 가진 경기를 찾아 그 경기의 가상 date를 "오늘"로 간주한다
     // (내 팀에 다음 경기가 없어도 리그 전체 일정 기준으로는 항상 값이 나온다).
-    // nowMs는 1초마다 바뀌지만 날짜 단위 표시는 그렇게 자주 바뀔 필요가 없으므로 15초
-    // 버킷으로 낮춰 전체 스케줄 재스캔 빈도를 줄인다(MultiGamePbpView.tsx의 revealBucket과 동일 패턴).
-    const dateBucket = Math.floor(nowMs / 15000);
+    // dateBucket 선언은 위(nowMs 선언 직후)로 옮김 — 아래뿐 아니라 순위/라이브경기/시리즈전적/
+    // 우승팀 판정에도 공통으로 재사용(MultiGamePbpView.tsx의 revealBucket과 동일 패턴).
     const currentVirtualDate = useMemo(() => {
         if (league?.type !== 'main_league' || !simStart) return null;
         return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
@@ -154,7 +162,7 @@ export const MultiHeader: React.FC = () => {
             const resolvedAt = resolveRealAt(g, simStart, gprd);
             return getGameDisplayState({ ...g, scheduledAt: resolvedAt }, nowMs) === 'live';
         }) ?? null;
-    }, [schedule, myTeamId, simStart, gprd, nowMs]);
+    }, [schedule, myTeamId, simStart, gprd, dateBucket]);
 
     const liveOpponentId   = myLiveGame
         ? (myLiveGame.homeTeamId === myTeamId ? myLiveGame.awayTeamId : myLiveGame.homeTeamId)
@@ -201,7 +209,7 @@ export const MultiHeader: React.FC = () => {
             else oppWins++;
         }
         return { roundLabel, myWins, oppWins, targetWins: s.targetWins ?? 1 };
-    }, [nextGame, league, schedule, myTeamId, simStart, gprd, nowMs]);
+    }, [nextGame, league, schedule, myTeamId, simStart, gprd, dateBucket]);
 
     // 토너먼트 종료 여부 + 우승팀 (다음 경기가 없을 때 대체 표시용)
     // league.status==='finished'는 서버가 마지막 경기 시뮬 직후 즉시 세팅하므로, 그 경기의
@@ -227,7 +235,7 @@ export const MultiHeader: React.FC = () => {
         if (higherWins >= targetWins) return final.higherSeedId;
         if (lowerWins >= targetWins) return final.lowerSeedId;
         return null;
-    }, [league, schedule, simStart, gprd, nowMs]);
+    }, [league, schedule, simStart, gprd, dateBucket]);
     const isMyTeamChampion = !!(tournamentChampionId && myTeamId && tournamentChampionId === myTeamId);
 
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -279,6 +287,25 @@ export const MultiHeader: React.FC = () => {
                         className="absolute inset-0"
                         style={{ backgroundColor: primaryColor, clipPath: 'polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%)' }}
                     />
+                    {/* [2026-09-07] 팀명 좌측에 로고 추가(사용자 요청) — 다른 화면들과 동일한
+                        public/logos/real/ 로고 + 폴백 체인, 순수 장식용(클릭 불가, 이 영역
+                        자체가 원래 클릭 불가였음). */}
+                    {myTeam && (
+                        <img
+                            src={getRealTeamLogoUrl(myTeam.team_slug)}
+                            alt={myTeam.team_abbr}
+                            className="relative w-5 h-5 object-contain shrink-0 mr-1.5"
+                            onError={(e) => {
+                                const img = e.currentTarget;
+                                if (img.dataset.fallback !== 'old') {
+                                    img.dataset.fallback = 'old';
+                                    img.src = getTeamLogoUrl(myTeam.team_slug);
+                                } else {
+                                    img.src = 'https://placehold.co/100x100?text=BPL';
+                                }
+                            }}
+                        />
+                    )}
                     <span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
                         {myTeam?.team_name ?? '내 팀'}
                         <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>
