@@ -35,6 +35,80 @@
 
 ---
 
+## 2026-09-10 — 존 텐던시에 3점이 없는 빅맨이 PnR_Pop에서 강제로 3점을 던지는 문제 수정
+
+**배경**: 센터 OVR 상위 15명 시즌 스탯 시뮬레이션 중, 루디 고베어(FG% 36.2%, 3PA 1.7개/경기)처럼
+순수 림러너 타입이 부자연스럽게 3점을 던지는 걸 발견. 조사 결과 PBL 로스터에 존 텐던시
+(`cnr=p45=atb=0`, 3점 시도 DNA 전무)인 C/PF가 35명 이상 존재했고, 그중 5명(고베어/아담스/
+드러먼드/조던/카펠라)을 82경기씩 돌려본 결과 **3점 시도의 93~98%가 PnR_Pop에서 발생**함을 확인.
+
+**근본 원인 3중 구조**:
+1. `archetypeSystem.ts`의 `popper` 공식이 `screenerRaw(피지컬)*0.6 + 슈팅스킬*0.4`로, 피지컬이
+   슈팅보다 크게 반영됨 — 3점 스킬이 20점대(고베어 three45=22, threeTop=20)여도 피지컬 점수
+   (strength 94 등)만으로 popper 점수가 높게 나옴.
+2. `playTypes.ts` PnR_Pop의 `zonePref.three < 0.15 ? 0.2 : 1.0` 페널티가 이진(binary)이라,
+   `zonePref.three`가 정확히 0인 선수와 임계값 바로 아래인 선수가 똑같이 0.2배만 페널티를 받음.
+3. PnR_Pop의 결과 슛존이 `preferredZone: '3PT'`로 하드코딩돼 있어, 일단 popper로 뽑히면 텐던시와
+   무관하게 무조건 3점을 던짐(①②가 제대로 작동하면 이 부분은 문제 삼을 필요 없음).
+
+**변경 파일**:
+- `server/src/shared/engine/pbp/archetypeSystem.ts` / `services/game/engine/pbp/archetypeSystem.ts`
+  (미러 쌍) — `popper` 아키타입 공식
+- `server/src/shared/engine/pbp/playTypes.ts` / `services/game/engine/pbp/playTypes.ts` (미러 쌍) —
+  `PnR_Pop` 케이스의 `zonePref.three` 페널티
+
+**Before**:
+```ts
+// archetypeSystem.ts
+const popper = getVal(
+    screenerRaw * 0.6 +
+    ((attr.three45 + attr.threeTop) / 2) * 0.4
+);
+
+// playTypes.ts — PnR_Pop
+p => p.archetypes.popper * (popEligible[p.position] ?? 0)
+    * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+```
+
+**After**:
+```ts
+// archetypeSystem.ts — 비중 역전(피지컬 0.6→0.3, 슈팅 0.4→0.7) — 슈팅을 지배 요인으로
+const popper = getVal(
+    screenerRaw * 0.3 +
+    ((attr.three45 + attr.threeTop) / 2) * 0.7
+);
+
+// playTypes.ts — PnR_Pop 페널티를 이진→비례식으로 교체(0에 가까울수록 강하게 감쇄, 최저 ×0.05)
+const popper = pickWeightedActor(
+    p => {
+        const threePenalty = Math.max(0.05, Math.min(1.0,
+            p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD));
+        return p.archetypes.popper * (popEligible[p.position] ?? 0) * threePenalty;
+    },
+    undefined, 'shooter',
+    p => (popEligible[p.position] ?? 0) > 0
+);
+```
+
+**검증(PBL 로스터, 각 선수당 82경기 = 풀시즌 분량)**:
+- 전통 빅맨(스킬·텐던시 둘 다 없음) 3PA/game 감소: 고베어 1.68→0.22(−87%), 아담스 0.99→0.22(−78%),
+  드러먼드 0.45→0.07(−84%), 조던 0.87→0.17(−80%), 카펠라 0.12→0.01(−92%, 사실상 소멸). FG%는
+  오히려 개선(고베어 38.1%→40.9%, 조던 48.2%→55.1%) — 저확률 3점이 자기 영역 슛으로 대체된 결과.
+- 대조군(스킬은 좋은데 텐던시가 0인 케이스, 알 호포드 three45/threeTop 83/82): 1.50→0.78(−48%)로
+  덜 줄어듦 — 스킬로 어느 정도 상쇄되는 것 확인.
+- 진짜 스트레치 빅(스킬·텐던시 둘 다 있음) 3PA/game 거의 유지: 크리스탑스 포르징기스 12.04→10.32
+  (−14%), 쳇 홈그렌 8.79→8.74(−0.6%), 자바리 스미스 주니어 7.15→6.68(−7%) — 전통 빅맨 대비 훨씬
+  작은 감소폭. 홈그렌은 PPG가 오히려 상승(24.8→26.5, FG% 개선 덕분).
+- `npx tsc --noEmit`(client/server) 신규 에러 0건, 10경기 정상 완주 확인.
+
+**주의사항**: 알 호포드·바비 포르티스처럼 슈팅 스킬은 좋은데 존 텐던시 DB 데이터가 0으로 잡힌
+선수들은 이번 수정으로도 여전히 상당히 억제됨(−48%) — 이건 엔진 로직보다는 텐던시 DB 데이터
+자체의 큐레이션 이슈에 가까워 이번 범위 밖으로 남겨둠.
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨(독립적인 변경 2건이라 부분 롤백도 가능).
+
+---
+
 ## 2026-09-10 — "1옵션 FGA 역전율" 개선 2건: 팀 전체 1옵션 배율 + PnR_Roll/Pop 빈도 감쇄
 
 **배경**: "가드 1옵션이 실제로 1옵션으로 기능"하는지 조사 — 가드/SF가 로스터 최고 OVR인 팀에서도

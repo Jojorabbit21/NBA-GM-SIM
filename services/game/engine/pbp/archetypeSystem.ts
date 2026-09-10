@@ -103,9 +103,13 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     // 스크린을 세운 빅맨이 팝아웃하는 액션인데 거꾸로였음). screenerRaw(신체 스탯 기반)를 0.6 비중으로
     // 반영해 "스크린을 설 수 있는 스트레치 빅"만 후보가 되도록 함 — playTypes.ts의 PnR_Pop에서 이
     // 값에 C/PF 전용 자격 필터까지 추가로 걸어 SF 이하는 완전히 배제한다.
+    // [2026-09-10] screenerRaw*0.6 → *0.3, 슈팅*0.4 → *0.7로 재조정 — 피지컬(힘/키/몸무게)이 슈팅보다
+    // 크게 반영돼서, 3점 스킬이 20점대인 순수 림러너(고베어/아담스급)도 피지컬만으로 popper 점수가
+    // 높게 나와 PnR_Pop에서 3점을 강제로 던지는 문제 확인(docs/history/dev-log.md 참고). 스크린을 설
+    // 최소한의 피지컬은 유지하되(0.3), "팝은 결국 슈팅이 돼야 한다"는 걸 지배 요인으로 되돌림.
     const popper = getVal(
-        screenerRaw * 0.6 +
-        ((attr.three45 + attr.threeTop) / 2) * 0.4
+        screenerRaw * 0.3 +
+        ((attr.three45 + attr.threeTop) / 2) * 0.7
     );
 
     // 8. Post Scorer (Post Play 중심 + 인사이드 피니시 + 핸즈)

@@ -350,9 +350,17 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 계산엔 안 곱해서, PnR_Roll과 달리 SF가 C/PF와 동등하게(다운웨이트 없이) 경쟁하는
             // 불일치가 있었음 — PNR_ROLL에 SF 0.15를 추가하면서 Roll과 동일하게 가중치도 곱하도록 수정.
             const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+            // [2026-09-10] zonePref.three 페널티를 이진(임계값 미만 무조건 ×0.2)에서 비례식으로 교체 —
+            // 임계값(0.15) 바로 아래인 선수와 진짜 3점 텐던시가 0인 선수(고베어급)가 똑같이 0.2배만
+            // 페널티를 받던 문제. 0에 가까울수록 더 강하게 깎임(최저 ×0.05) — 순수 림러너는 거의
+            // 배제되고, 진짜 스트레치 빅(텐던시·스킬 둘 다 있음)은 그대로 기능 유지(docs/history/
+            // dev-log.md 실측 확인: 전통 빅맨 3PA -78~-92%, 스트레치 빅 3PA -0.6~-14%).
             const popper = pickWeightedActor(
-                p => p.archetypes.popper * (popEligible[p.position] ?? 0)
-                    * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+                p => {
+                    const threePenalty = Math.max(0.05, Math.min(1.0,
+                        p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD));
+                    return p.archetypes.popper * (popEligible[p.position] ?? 0) * threePenalty;
+                },
                 undefined, 'shooter',
                 p => (popEligible[p.position] ?? 0) > 0
             );
