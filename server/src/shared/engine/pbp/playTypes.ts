@@ -1,12 +1,19 @@
 
 import { PlayType, TacticalSliders } from '../../types.ts';
 import { LivePlayer, TeamState } from './pbpTypes.ts';
-import { getContextualMultiplier } from './usageSystem.ts';
+import { getContextualMultiplier, getTeamOptionRanks } from './usageSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 
 // ==========================================================================================
 //  PLAY TYPE SYSTEM
 // ==========================================================================================
+
+// [2026-09-10] 팀 전체 1~5옵션(gravity 기반, getTeamOptionRanks) 배율 — 가드 1옵션 실제 기능 문제
+// 대응. 로컬 플레이타입 criteria(usageMultiplier, 최대 7.3배 스프레드)를 압도하지 않도록 완만하게
+// (1.56배 스프레드) 설정 — "국소 스킬 경쟁"은 그대로 두고 "그래도 우리 팀 진짜 에이스인가"를 근소한
+// 차이의 타이브레이커로만 반영. PBL 1230경기 검증: 1옵션 FGA 역전율 46.4%→35.5%(-10.9%p), 역할선수
+// (팀랭크 3~5) 억제 부작용은 -2.4%p로 작음(docs/history/dev-log.md 참고).
+const STAR_USAGE_WEIGHTS = [1.25, 1.10, 1.00, 0.90, 0.80];
 
 export interface PlayContext {
     playType: PlayType;
@@ -138,6 +145,9 @@ function resolveFinish(
 
 export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
     const players = team.onCourt;
+    // [2026-09-10] 팀 전체 1~5옵션 랭킹(gravity 기반) — resolvePlayAction 호출당 1회만 계산해
+    // 클로저로 재사용. STAR_USAGE_WEIGHTS와 함께 사용(아래 pickWeightedActor 참고).
+    const teamRankMap = getTeamOptionRanks(team);
 
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
@@ -165,6 +175,16 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
 
             let weight = Math.max(1, rawScore) * usageMultiplier;
+
+            // [2026-09-10] 팀 전체 1옵션 배율 — 로컬 스킬 순위와 별개 신호. 자격이 되는 플레이타입
+            // 전반에서 "진짜 에이스"가 근소한 차이를 뒤집을 수 있게 함(PnR_Roll/Pop처럼 애초에
+            // 후보 풀에 없는 플레이타입엔 자연히 영향 없음). passer role은 usageMultiplier와 같은
+            // 이유로 제외(순수 스킬로만 패서 선정).
+            const teamRank = teamRankMap.get(p.playerId) ?? 3;
+            const starMultiplier = role === 'shooter'
+                ? STAR_USAGE_WEIGHTS[Math.min(5, Math.max(1, teamRank)) - 1]
+                : 1.0;
+            weight *= starMultiplier;
 
             const ballDom = p.tendencies?.ballDominance ?? 1.0;
             weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
@@ -281,7 +301,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor, secondaryActor: screener, preferredZone: zone, shotType: 'Pullup', bonusHitRate: 0.01 };
         }
         case 'PnR_Roll': {
-            // [2026-07-29] 포지션 가중치(C 0.7/PF 0.3/그 외 0)로 롤맨을 프론트코트로 제한 (client 미러 참고)
+            // [2026-07-29] 포지션 가중치로 롤맨을 프론트코트로 제한 (client 미러 참고)
+            // [2026-09-10] C 0.7/PF 0.3/그 외 0 → C 0.5/PF 0.3/SF 0.15/그 외 0 — 빅윙 SF 참여 허용
             const rollWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
             const screener = pickWeightedActor(
                 p => (p.archetypes.roller + p.archetypes.screener * 0.5) * (rollWeights[p.position] ?? 0),
@@ -325,9 +346,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'PnR_Pop': {
             // [2026-07-29] PnR_Roll과 동일한 스크리너 풀(C/PF)만 허용 (client 미러 참고)
             // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)
+            // [2026-09-10] 기존엔 popEligible을 후보 자격(eligibleFilter)에만 쓰고 실제 가중치
+            // 계산엔 안 곱해서, PnR_Roll과 달리 SF가 C/PF와 동등하게(다운웨이트 없이) 경쟁하는
+            // 불일치가 있었음 — PNR_ROLL에 SF 0.15를 추가하면서 Roll과 동일하게 가중치도 곱하도록 수정.
             const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
             const popper = pickWeightedActor(
-                p => p.archetypes.popper * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+                p => p.archetypes.popper * (popEligible[p.position] ?? 0)
+                    * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
                 undefined, 'shooter',
                 p => (popEligible[p.position] ?? 0) > 0
             );

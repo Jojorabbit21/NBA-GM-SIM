@@ -590,10 +590,12 @@ export const SIM_CONFIG = {
     // [2026-09-10] POST_UP 스프레드 12배(0.6~0.05) → 2배(1.0~0.5)로 완화 — 포스트업은 PnR_Roll과
     // 달리 스크린 없이 순수 스코어링 스킬(postScorer)로 승부하는 플레이타입이라, 듀란트/커닝험형
     // 엘리트 포스트업 가드·윙이 평범한 빅맨에게도 항상 밀리는 문제 완화(docs/history/dev-log.md 참고).
-    // PnR_Roll은 스크린+롤 자체가 신체 조건상 빅맨 전유물이라 하드게이트 그대로 유지.
+    // [2026-09-10] PNR_ROLL에 SF 0.15 신규 추가(빅윙 SF 플레이 다양성 목적) — 신장·체격상 PF급
+    // 스크린/롤이 가능한 SF가 실제 존재(존 디펜스 앵커 작업 때 확인한 신장 분포와 동일 근거).
+    // C 0.7→0.5, PF 0.3 유지 — SF 추가분만큼 C 비중을 낮춰 합계 스케일 유지.
     POSITION_WEIGHT: {
         POST_UP: { C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 } as Record<string, number>,
-        PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
+        PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
     },
     // [2026-07-31] PostUp 킥아웃 (client 미러 참고)
     POST_KICKOUT: {

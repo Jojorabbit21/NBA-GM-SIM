@@ -35,6 +35,142 @@
 
 ---
 
+## 2026-09-10 — "1옵션 FGA 역전율" 개선 2건: 팀 전체 1옵션 배율 + PnR_Roll/Pop 빈도 감쇄
+
+**배경**: "가드 1옵션이 실제로 1옵션으로 기능"하는지 조사 — 가드/SF가 로스터 최고 OVR인 팀에서도
+팀 내 빅맨 에이스가 FGA를 더 많이 가져가는 경기가 43.6%(1옵션 FGA 역전율)에 달함을 확인. 사전에
+`getTeamOptionRanks`(gravity 기반 팀 전체 랭킹)의 정확도를 검증(89.3% 일치, 가드 케이스만 봐도
+95.2% — dominanceBonus로 인한 오인식 우려는 기각됨)한 뒤, 이 신뢰할 수 있는 신호를 활용해 두 건을
+적용. 사용자 요청 — "앞서 두 제안과 이번의 SF 게이팅 추가를 모두 적용해봐."
+
+**변경 파일**:
+- `server/src/shared/engine/pbp/playTypes.ts` / `services/game/engine/pbp/playTypes.ts` (미러 쌍) —
+  `STAR_USAGE_WEIGHTS` 신규 상수 + `pickWeightedActor` 가중치 계산
+- `server/src/shared/engine/pbp/possessionHandler.ts` / `services/game/engine/pbp/possessionHandler.ts`
+  (미러 쌍) — Star Gravity 블록에 PnR_Roll/Pop 감쇄 추가
+
+**Before**: (팀 전체 1옵션 배율 없음, PnR_Roll/Pop은 gravityBoost와 무관)
+
+**After — ① 팀 전체 1옵션 배율** (`playTypes.ts`):
+```ts
+const STAR_USAGE_WEIGHTS = [1.25, 1.10, 1.00, 0.90, 0.80];
+
+export function resolvePlayAction(team, playType, sliders) {
+    const teamRankMap = getTeamOptionRanks(team);  // 호출당 1회
+    const pickWeightedActor = (...) => {
+        ...
+        let weight = Math.max(1, rawScore) * usageMultiplier;  // 기존 로컬 랭킹 배율(그대로 유지)
+        const teamRank = teamRankMap.get(p.playerId) ?? 3;
+        const starMultiplier = role === 'shooter'
+            ? STAR_USAGE_WEIGHTS[Math.min(5, Math.max(1, teamRank)) - 1] : 1.0;
+        weight *= starMultiplier;  // 신규 — 로컬 랭킹과 독립적인 곱셈 레이어
+        ...
+    };
+}
+```
+기존 usageMultiplier(플레이타입별 로컬 랭킹 기반, 최대 7.3배 스프레드)를 대체하는 게 아니라 그 위에
+독립적으로 곱하는 완만한(1.56배 스프레드) 레이어 — "국소 스킬 경쟁"은 그대로 두고 "그래도 팀 진짜
+에이스인가"를 근소한 차이의 타이브레이커로만 반영. PnR_Roll/Pop처럼 애초에 후보 풀에 없는
+플레이타입엔 영향 없음(가드는 eligibleFilter에서 이미 배제).
+
+**After — ② PnR_Roll/Pop 빈도 감쇄** (`possessionHandler.ts`):
+```ts
+weights['Iso'] *= (1 + gravityBoost);
+weights['PnR_Handler'] *= (1 + gravityBoost);
+
+const PNR_ROLL_STAR_DAMPEN = 0.5;
+weights['PnR_Roll'] *= (1 - gravityBoost * PNR_ROLL_STAR_DAMPEN);
+weights['PnR_Pop'] *= (1 - gravityBoost * PNR_ROLL_STAR_DAMPEN);
+```
+핸들러 그라비티가 높을수록(gravityBoost 0~0.30) PnR_Roll/Pop 빈도를 최대 15%까지 부분 감쇄 —
+"에이스가 스스로 마무리하는 비중이 느는 만큼, 자동으로 롤러에게 넘어가는 비중은 준다"는 의도.
+완전 제거가 아니라 절반만 감쇄해 좋은 롤/랍 위협 자체의 가치는 유지.
+
+**검증(PBL 로스터 1230경기)**:
+- 단독 실험(임시 계측, 사전 확인): ①만 적용 시 역전율 46.4%→35.5%(−10.9%p), ②만 적용 시
+  43.6%→38.3%(−5.3%p)
+- ①+② 조합 실험(사전 확인, SF 게이팅 변경 전): 43.6%→31.6%(−12.0%p) — 단순 합산에 가깝게 작동,
+  서로 상쇄되지 않음
+- **최종 상태(①+②+PnR_Roll/Pop SF 게이팅 전부 반영, 이번 검증)**: 1옵션 FGA 역전율 **25.1%**
+  (명목 1옵션 평균 FGA 19.18, 팀 내 빅맨 에이스 평균 FGA 13.34), 빅맨 전체 PF/36 2.80(기존
+  2.87~2.91 수준 유지, 파울 밸런스 안 깨짐), 빅맨 전체 PPG 11.81 / 가드 전체 PPG 10.85
+- `npx tsc --noEmit`(client/server) 신규 에러 0건, 10경기 정상 완주 확인.
+
+**주의사항**: 25.1%는 원본 엔진(52.7%)의 절반 이하 수준으로, PnR_Roll/PnR_Pop 하드게이트가 남아있는
+한 이게 현실적인 하한선에 가깝다고 판단됨(완전히 0%로 만들려면 하드게이트 자체를 풀어야 하는데
+"스크린은 빅맨이 선다"는 현실성이 깨짐 — 권장하지 않음). 빅맨 전체 PPG는 원본(14.24) 대비
+누적 −17.1%까지 내려왔음 — 지금까지의 모든 밸런스 조정(파울 트러블·포스트업·1옵션 볼륨)이 전부
+같은 방향(빅맨 볼륨 감소)으로 누적된 결과라 예상된 흐름이지만, 추가로 더 밀어붙이기 전엔 한 번
+전체적으로 재점검하는 게 좋을 것 같음.
+
+**롤백 방법**: 위 코드 블록에서 신규 추가된 줄만 제거하면 됨(①: `teamRankMap`/`starMultiplier`
+관련 3줄+import, ②: `PNR_ROLL_STAR_DAMPEN` 관련 3줄) — 독립적인 변경 2건이라 부분 롤백도 가능.
+
+---
+
+## 2026-09-10 — PnR_Roll/PnR_Pop 게이팅에 SF 추가(빅윙 SF 플레이 다양성) + PnR_Pop 가중치 누락 버그 수정
+
+**배경**: 사용자 요청 — "빅윙 SF의 플레이 다양성 측면에서 시도하는거야. PNR_ROLL의 게이팅을 C 0.5,
+PF 0.3, SF 0.15 정도로 줘보자." 기존엔 `POSITION_WEIGHT.PNR_ROLL`이 `{C:0.7, PF:0.3, SF:0, SG:0,
+PG:0}`로 SF 이하를 완전히 배제(`eligibleFilter`로 가중치>0인 포지션만 후보 풀에 진입)하고 있었는데,
+신장·체격상 PF급 스크린/롤이 가능한 SF가 실제 존재한다는 판단(앞서 존 디펜스 앵커 작업에서 확인한
+신장 분포와 동일 근거)으로 SF를 낮은 가중치로 새로 포함시킴.
+
+**구현 중 발견한 별개 버그**: `PnR_Roll`의 액터 선정 criteria(`playTypes.ts` PnR_Roll 케이스)는
+`rollWeights[p.position]`을 실제 가중치 계산에 곱해서 쓰는데, `PnR_Pop`은 같은 테이블을
+`eligibleFilter`(후보 자격)에만 쓰고 실제 `popper` 아키타입 점수 계산엔 곱하지 않고 있었음. 그대로
+SF:0.15를 추가하면 Roll에서는 SF가 0.15배로 다운웨이트되지만 Pop에서는 다운웨이트 없이 C/PF와
+동등하게 경쟁하게 돼 의도(제한적 참여)와 어긋남 — Pop도 Roll과 동일하게 가중치를 곱하도록 같이 수정.
+
+**변경 파일**:
+- `server/src/shared/game/config/constants.ts` / `services/game/config/constants.ts` (미러 쌍) —
+  `SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL`
+- `server/src/shared/engine/pbp/playTypes.ts` / `services/game/engine/pbp/playTypes.ts` (미러 쌍) —
+  `PnR_Pop` 케이스의 `popper` 선정 criteria
+
+**Before**:
+```ts
+// constants.ts
+PNR_ROLL: { C: 0.7, PF: 0.3, SF: 0, SG: 0, PG: 0 } as Record<string, number>,
+
+// playTypes.ts — PnR_Pop
+const popper = pickWeightedActor(
+    p => p.archetypes.popper * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+    undefined, 'shooter',
+    p => (popEligible[p.position] ?? 0) > 0
+);
+```
+
+**After**:
+```ts
+// constants.ts — C 0.7→0.5, PF 0.3 유지, SF 0→0.15 신규 추가
+PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
+
+// playTypes.ts — PnR_Pop도 Roll과 동일하게 popEligible 가중치를 실제 계산에 곱하도록 수정
+const popper = pickWeightedActor(
+    p => p.archetypes.popper * (popEligible[p.position] ?? 0)
+        * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0),
+    undefined, 'shooter',
+    p => (popEligible[p.position] ?? 0) > 0
+);
+```
+
+**검증(PBL 로스터 1230경기)**:
+- PnR_Roll 액터 포지션 분포: C 55.0% / PF 31.3% / SF 13.8% — SF가 의미 있는 비중으로 참여하되 여전히
+  C/PF가 다수(86.3%)
+- PnR_Pop 액터 포지션 분포: C 35.2% / PF 43.9% / SF 20.9%
+- SF/PF/C 전체 PPG·PF/36 큰 이상 없음(SF 10.61ppg/2.01pf36, PF 12.75ppg/2.79pf36, C 11.37ppg/2.77pf36)
+- `npx tsc --noEmit`(client/server) 신규 에러 0건, 10경기 정상 완주(스코어/박스스코어 로우 수 정상) 확인.
+
+**주의사항**: 이번 변경은 "빅윙 SF 플레이 다양성" 목적으로 진행한 것으로, "1옵션 FGA 역전율" 개선이
+주목적이 아니었음(사전에 논의한 대로 효과는 제한적일 것으로 예상됨 — 별도로 측정하지 않음). 1옵션
+역전율 개선은 별도로 실험한 "팀 전체 1옵션 배율"(제안①) + "PnR_Roll/Pop 빈도 감쇄"(제안②)가 담당 —
+두 제안 모두 아직 코드에는 반영되지 않은 상태(관측만 완료, 조합 시 역전율 43.6%→31.6% 확인).
+
+**롤백 방법**: 위 Before 블록으로 두 파일 모두 되돌리면 됨.
+
+---
+
 ## 2026-09-10 — 포스트업 센터 과밀화 완화: 포지션 가중치 스프레드 축소 + 빈도 보정 신호 교체
 
 **배경**: 6건 밸런스 조정 이후 재조사에서 "가드/SF가 팀 내 실제 최고 OVR 선수(=1옵션)여도

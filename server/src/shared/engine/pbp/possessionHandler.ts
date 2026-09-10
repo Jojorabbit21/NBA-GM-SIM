@@ -421,6 +421,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         weights['Iso'] *= (1 + gravityBoost);
         weights['PnR_Handler'] *= (1 + gravityBoost);
 
+        // [2026-09-10] 핸들러 그라비티가 높을수록 PnR_Roll/Pop(자동으로 롤러/팝퍼에게 넘어가는 비중)을
+        // 부분적으로 줄임 — "에이스가 스스로 마무리하는 비중이 느는 만큼, 자동으로 롤러에게 넘어가는
+        // 비중은 준다"는 의도. 완전 제거가 아니라 절반만 감쇄(최대 15%) — 좋은 롤/랍 위협은 에이스가
+        // 있어도 그 자체로 유효한 무기라 0으로는 안 만듦. 단독 적용 시 1옵션 FGA 역전율 43.6%→38.3%,
+        // 스타 배율(위 STAR_USAGE_WEIGHTS)과 조합 시 31.6%까지 확인(docs/history/dev-log.md 참고).
+        const PNR_ROLL_STAR_DAMPEN = 0.5;
+        weights['PnR_Roll'] *= (1 - gravityBoost * PNR_ROLL_STAR_DAMPEN);
+        weights['PnR_Pop'] *= (1 - gravityBoost * PNR_ROLL_STAR_DAMPEN);
+
         // [2026-09-10] PostUp 빈도를 gravityBoost(포지션 무관 팀 최고 그라비티 — 순수 3점 슈터라도
         // 그라비티만 높으면 발동)가 아니라, 로스터 내 실제 postScorer 최댓값(포지션 무관)으로 보정.
         // "포스트업 스킬과 무관한 신호로 포스트업 빈도가 움직인다"는 문제 해결(docs/history/dev-log.md 참고).
