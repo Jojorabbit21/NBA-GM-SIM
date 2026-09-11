@@ -91,7 +91,7 @@ const AdminSimView: React.FC = () => {
     // 비어드민 접근 차단
     useEffect(() => {
         if (!ctxLoading && league && !isAdmin) {
-            navigate(`/multi/leagues/${leagueId}/lobby`, { replace: true });
+            navigate(`/multi/leagues/${leagueId}/season`, { replace: true });
         }
     }, [ctxLoading, league, isAdmin, leagueId, navigate]);
 

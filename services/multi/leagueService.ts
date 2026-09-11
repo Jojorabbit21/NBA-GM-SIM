@@ -106,6 +106,10 @@ export interface CreateLeagueParams {
         // 가상 시즌 연도 — 사용자에게 표시되는 정규시즌 캘린더 연도(예: 2027). 미지정 시
         // 서버가 생성 시점의 실제 연도로 폴백한다.
         virtualSeasonYear:    number;
+        // [2026-09-11] 토너먼트 "경기 사이 인터벌"(분) — CreateLeagueModal에서 직접 분 단위로
+        // 입력받아 1440/interval로 환산해서 넘긴다. 미지정 시 토너먼트는 기존처럼 48(30분
+        // 간격)로 고정.
+        gamesPerRealDay:      number;
     }>;
 }
 
@@ -167,6 +171,7 @@ export const createLeague = async (
     if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
     if (opts.playInEnabled        !== undefined) payload.play_in_enabled         = opts.playInEnabled;
     if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
+    if (opts.gamesPerRealDay      !== undefined) payload.games_per_real_day      = opts.gamesPerRealDay;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -509,11 +514,16 @@ function shuffleArray<T>(arr: T[]): T[] {
 
 export const initializeLeagueTeams = async (
     roomId:   string,
-    maxTeams: number
+    maxTeams: number,
+    // [2026-09-11] 토너먼트 생성 시 어드민이 직접 고른 팀 목록 — 지정하면 그 팀들만(순서는
+    // TEAM_DATA 선언 순서 유지) 사용하고, 생략하면 기존처럼 30팀 중 무작위로 뽑는다
+    // (메인리그 등 팀 선택 UI가 없는 호출부는 이 인자를 넘기지 않아 동작이 그대로 유지됨).
+    selectedTeamSlugs?: string[]
 ): Promise<{ error: string | null }> => {
     const allTeams = Object.values(TEAM_DATA);
-    const shuffled = shuffleArray(allTeams);
-    const realSlice = shuffled.slice(0, Math.min(maxTeams, allTeams.length));
+    const realSlice = selectedTeamSlugs && selectedTeamSlugs.length > 0
+        ? allTeams.filter(t => selectedTeamSlugs.includes(t.id)).slice(0, Math.min(maxTeams, allTeams.length))
+        : shuffleArray(allTeams).slice(0, Math.min(maxTeams, allTeams.length));
 
     const teamsJson: any[] = realSlice.map(t => ({
         team_slug:       t.id,

@@ -19,6 +19,7 @@ import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
 import { startPlayIn } from './shared/playInSeeder';
 import { recomputeAndPostPowerRankings } from './postPowerRankingNews';
+import { postDraftLotteryResult } from './postDraftLotteryNews';
 import { computeAndPostSeasonAwards } from './postSeasonAwards';
 import { computeAndStoreAllStarVotes, computeAndPostThreePointContestNews, computeAndPostDunkContestNews } from './postAllStarVoteNews';
 import { computeAndRunAllStarGame } from './postAllStarGame';
@@ -379,7 +380,7 @@ async function runDunkContestResult(): Promise<void> {
 async function runLotteries(now: string): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, admin_user_id')
+        .select('id, admin_user_id, season_number')
         .eq('status', 'recruiting')
         .not('lottery_scheduled_at', 'is', null)
         .lte('lottery_scheduled_at', now);
@@ -402,7 +403,7 @@ async function runLotteries(now: string): Promise<void> {
 
         if ((count ?? 0) > 0) continue; // 추첨 이미 완료
 
-        const { error } = await supabase.rpc('run_draft_lottery', {
+        const { data: lotteryResult, error } = await supabase.rpc('run_draft_lottery', {
             p_room_id:  room.id,
             p_admin_id: league.admin_user_id,
         });
@@ -411,6 +412,11 @@ async function runLotteries(now: string): Promise<void> {
             console.error(`[scheduler:lottery] league=${league.id}: ${error.message}`);
         } else if (!error) {
             console.log(`[scheduler:lottery] done league=${league.id}`);
+            // 로터리 결과를 뉴스피드에도 게시 — startDraft.ts의 handleRunLottery(수동 실행)와
+            // 동일한 후속 처리.
+            await postDraftLotteryResult(room.id, league.id, league.season_number ?? null, lotteryResult as any[]).catch(err =>
+                console.error(`[scheduler:lottery] postDraftLotteryResult failed league=${league.id}:`, err),
+            );
             // 추첨 직후 곧바로 방 준비 — /run-lottery 엔드포인트(수동 로터리)와 동일하게,
             // 자동(예약) 로터리도 다음 스케줄러 틱(최대 30초)을 기다리지 않고 즉시 처리한다.
             // 원자적 클레임을 거치므로 다음 틱의 runDraftRoomPrep()과 겹쳐도 안전하다.

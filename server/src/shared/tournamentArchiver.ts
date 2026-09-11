@@ -5,6 +5,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import type { PlayoffSeries } from './tournamentBracket.ts';
+import { archiveLeagueSeason } from './leagueSeasonArchiver.ts';
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -93,10 +94,12 @@ export async function archiveTournament(
     // 1. League + bracket
     const { data: league, error: leagueErr } = await supabase
         .from('leagues')
-        .select('id, name, tournament_format, match_format, bracket_data, season_start_date')
+        .select('id, name, type, tier, group_id, season_number, tournament_format, match_format, bracket_data, season_start_date')
         .eq('id', leagueId)
         .single();
     if (leagueErr || !league?.bracket_data) return { error: leagueErr?.message ?? 'No bracket data' };
+
+    const completedAt = new Date().toISOString();
 
     const bracketData = league.bracket_data as { series: PlayoffSeries[] };
     const series      = bracketData.series ?? [];
@@ -159,12 +162,13 @@ export async function archiveTournament(
             started_at:        league.season_start_date
                 ? new Date(league.season_start_date).toISOString()
                 : null,
-            completed_at:      new Date().toISOString(),
+            completed_at:      completedAt,
             champion_slug:     champion?.team_slug  ?? null,
             champion_name:     champion?.team_name  ?? null,
             runner_up_slug:    runnerUp?.team_slug  ?? null,
             runner_up_name:    runnerUp?.team_name  ?? null,
             bracket_snapshot:  league.bracket_data,
+            league_type:       league.type ?? 'tournament',
         })
         .select('id')
         .single();
@@ -307,5 +311,28 @@ export async function archiveTournament(
     }
 
     console.log(`[archiveTournament] league=${leagueId} edition=${edition} champion=${championSlug} games=${gameLogRows.length} playerRows=${playerStatRows.length}`);
+
+    // 11. main_league 시즌이면 유저 통산 이력(league_user_history)도 함께 기록.
+    // 실패해도 위 아카이빙 자체는 이미 성공했으므로 리그 종료를 막지 않고 로그만 남긴다.
+    if (league.type === 'main_league' && league.group_id && league.tier) {
+        try {
+            const { error: histErr } = await archiveLeagueSeason(supabase, {
+                leagueId, roomId,
+                groupId:      league.group_id as string,
+                tier:         league.tier as string,
+                seasonNumber: (league.season_number as number) ?? 1,
+                leagueName:   league.name ?? 'League',
+                completedAt,
+                teams,
+                placements,
+                championSlug,
+                runnerUpSlug,
+            });
+            if (histErr) console.error('[archiveTournament] archiveLeagueSeason error:', histErr);
+        } catch (e) {
+            console.error('[archiveTournament] archiveLeagueSeason threw:', e);
+        }
+    }
+
     return { error: null };
 }

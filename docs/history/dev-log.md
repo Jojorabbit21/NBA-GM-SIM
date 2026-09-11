@@ -35,6 +35,2225 @@
 
 ---
 
+## 2026-09-11 — 헤더 드래프트 정보 색상 분리 + "드래프트 룸 입장" 버튼을 타이머 옆으로 이동
+
+**배경**: 사용자 요청 2건 — (1) "드래프트 진행 중" 텍스트는 세션 홈처럼 초록색+점멸, 나머지(라운드/픽/팀명)는 흰색, "남은 시간"은 잔여 시간에 따라 빨간색으로. (2) 드래프트 진행 중일 땐 우측 끝(NavMenu 옆)에 있던 "드래프트 룸 입장" 버튼을 헤더 중앙 "남은 시간" 텍스트 바로 우측으로 이동.
+
+**변경 파일**:
+- `components/MultiHeader.tsx`
+
+**변경 내용**:
+- `headerDraftTimerPct`/`headerDraftTimerColor` 추가(LeagueLobbyPanel.tsx와 동일한 급박도 3단계: ≤15% 빨강/≤40% 주황/기본 흰색). 시즌정보 칸의 "드래프트 진행 중" 텍스트에 `text-emerald-400 font-bold animate-pulse`, 라운드/픽/팀명에 `text-white`, 타이머에 `headerDraftTimerColor` 적용.
+- `showDraftRoomButton` 조건에 `&& !isDrafting` 추가해 드래프트 진행 중엔 우측 NavMenu 옆 버튼을 숨기고, 대신 시즌정보 칸의 타이머 바로 옆에 동일한 주황 그라디언트 버튼(크기만 헤더 인라인에 맞게 축소)을 새로 배치.
+
+**검증 중 발견/수정한 버그**: `showDraftRoomButton` 계산식을 먼저 추가하면서 실수로 `isDrafting` 선언보다 앞줄에 둬 TDZ(`Cannot access 'isDrafting' before initialization`) 오류가 날 뻔했음 — CLAUDE.md 규칙2에 해당하는 패턴이라 `tsc` 실행 전에 직접 재확인해 `isDrafting` 선언을 `showDraftRoomButton`보다 앞으로 옮겨 수정.
+
+**검증**: `npx tsc --noEmit` 통과, 선언 순서 육안 재확인 완료.
+
+**롤백 방법**: 색상 클래스들을 제거하고, `showDraftRoomButton`에서 `&& !isDrafting`을 빼고, 시즌정보 칸에 새로 추가한 버튼을 제거하면 됨.
+
+---
+
+## 2026-09-11 — 헤더에 드래프트 진행 중 정보 표시 추가
+
+**배경**: 사용자 질문("헤더에 드래프트 정보를 표시할 수 있나?")에 가능하다고 답한 뒤, 실제 요청("드래프트 진행 중 {round}라운드 {pick}픽 | 팀 이름 | 00:00" 형식)으로 구현. `MultiHeader.tsx`는 `LeagueLobbyPanel.tsx`/`MultiDraftView.tsx`와 달리 `useLeagueDraft` 훅을 쓰지 않아, 드래프트 진행 중엔 헤더 중앙 "시즌정보" 칸이 비어 있었다(로터리/드래프트 시작 전 카운트다운은 `isDrafting`이 되는 순간부터 조건에서 제외되도록 이미 되어 있었음).
+
+**변경 파일**:
+- `components/MultiHeader.tsx`
+
+**변경 내용**: `useLeagueDraft(isDrafting ? (roomId ?? null) : null, session)` 훅 추가(드래프트 중에만 WS 연결 활성화 — `LeagueLobbyPanel`/`MultiDraftView`가 동시에 마운트되면 같은 방에 대해 별도 WS 연결이 하나 더 열리는 트레이드오프는 사용자에게 사전 확인). `headerDraftRound`/`headerDraftPickInRound`/`headerDraftTeam`/`headerDraftTimer` 파생값 계산(LeagueLobbyPanel.tsx와 동일한 라운드/픽 계산식). 시즌정보 칸의 분기 체인(`myLiveGame → showNextGame → tournamentChampionId → showEventCountdown → null`) 맨 앞에 `isDrafting` 분기 추가 — `"드래프트 진행 중 {round}라운드 {pick}픽 | {팀명} | {mm:ss}"` 형식으로 표시.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `useLeagueDraft` 호출과 `headerDraft*` 파생값들, JSX의 `isDrafting` 분기를 제거하면 됨.
+
+---
+
+## 2026-09-11 — 세션 홈 "현재/다음 차례" 한 줄로 병합 + 타이틀 초록 점멸
+
+**배경**: 사용자 요청 2건 — (1) "현재 차례"/"다음 차례" 라벨+팀 이름을 각각 한 줄로("현재 차례 {팀명}", "다음 차례 {팀명}") 적고 두 줄을 세로로 쌓기(라벨 따로/이름 따로 2줄 스택이던 걸 되돌림). (2) 섹션 타이틀 "현재 드래프트가 진행중입니다." 텍스트를 초록색 + 점멸(pulse) 처리.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**변경 내용**:
+- `<h3>현재 드래프트가 진행중입니다.</h3>`에 `text-emerald-400 animate-pulse` 추가.
+- "현재 차례"/"다음 차례" 블록을 `flex items-start gap-8`(좌우 2블록, 각자 라벨줄+이름줄 스택)에서 `space-y-1`(세로 2줄) 구조로 변경 — 각 줄이 `<span className="text-slate-400">라벨</span> <span className="font-bold text-white">팀명</span>` 형태로 라벨+이름이 한 줄에 같이 표시됨.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — 세션 홈 "드래프트 진행 중" 섹션 텍스트 좌측 정렬로 변경
+
+**배경**: 사용자 요청 — 직전까지 양 끝(justify-between)으로 벌려놨던 두 행(라운드/픽 vs 남은 시간, 현재 차례 vs 다음 차례)을 좌우로 떨어뜨리지 말고 전부 좌측 정렬로.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**변경 내용**: 두 `<div>` 모두 `justify-between` 제거 — 1행은 `flex items-center gap-6`, 2행은 `flex items-start gap-8`로 교체(두 번째 블록의 `text-right`도 제거). 두 항목이 우측 끝까지 밀리지 않고 좌측에 나란히 붙어 표시됨.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — 세션 홈 "드래프트 진행 중" 섹션 레이아웃 미세 조정
+
+**배경**: 직전 재설계 후 사용자 후속 요청 2건 — (1) "{라운드} {픽}(오버롤 N픽)"을 한 줄에 붙여 쓰고, 우측에 "남은 시간"을 동일 폰트 속성으로 배치(기존의 별도 큰 타이머 블록 폐기). (2) "현재 차례"/"다음 차례" 팀 이름을 라벨과 줄바꿈해서 표시.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**Before**: 1행에 "{round}라운드"와 "{pick}픽 (오버롤 N픽)"이 justify-between으로 양 끝에 분리. 그 아래 별도로 중앙정렬된 "남은 시간" 라벨 + `text-3xl` 큰 타이머 블록. 그 아래 "현재 차례: 팀 / 다음 차례: 팀"이 각각 라벨+이름 인라인.
+
+**After**: 1행 좌측에 "{round}라운드 {pickInRound}픽 (오버롤 {overallPick}픽)"을 하나의 문자열로 합침, 우측에 "남은 시간 {mm:ss}"를 좌측과 동일한 `text-sm font-bold text-white` 폰트로 배치(시간 숫자 부분만 급박도 색상 유지, 별도 3xl 블록 삭제). 2행은 "현재 차례"/"다음 차례" 각각 라벨(`text-xs text-slate-500`)을 위에, 팀 이름(`text-sm font-bold text-white`)을 아래 줄에 배치하는 2줄 스택 구조로 변경.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 세션 홈 "드래프트 진행 중" 섹션 전면 재설계
+
+**배경**: 직전에 우측 컬럼 상단으로 옮긴 "드래프트 진행 중" 블록을 사용자가 다시 상세 요청 — (1) 섹션 위에 "현재 드래프트가 진행중입니다." 문구 추가, (2) 기존 점 배지+"드래프트 진행 중" 텍스트 삭제, (3) "드래프트 룸 입장" 버튼을 주황 프라이머리 스타일로, (4) 내부 정보 구조를 `{라운드} ... {픽}(오버롤 {N}픽)` → `남은 시간(큰 타이머)` → `현재 차례 : 팀 / 다음 차례 : 팀` → 버튼 순으로 재구성.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**Before**: 박스 상단에 점 배지+"드래프트 진행 중"+(라운드/픽 총계) 헤더 행, 그 아래 "현재 차례: 팀 [타이머]" 한 줄, 그 아래 "다음 픽" 배지 한 줄, 인디고 버튼.
+
+**After**: 섹션 타이틀 `<h3>`로 "현재 드래프트가 진행중입니다." 추가. 박스 내부: 1행 `{round}라운드 ... {pickInRound}픽 (오버롤 {overallPick}픽)`(justify-between), 2행 "남은 시간" 라벨 + 큰 타이머(`text-3xl`, 급박도에 따라 빨강/주황/흰색), 3행 "현재 차례: 팀 / 다음 차례: 팀"(justify-between, `다음 픽` 배지 방식 폐기하고 이름 텍스트로 통일), 버튼은 `bg-gradient-to-b from-orange-500 to-orange-600`(세션 내 다른 "드래프트 룸 입장" 버튼들과 동일 스타일).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 세션 홈: "드래프트 진행 중" 정보를 좌측 → 우측 컬럼 최상단으로 이동
+
+**배경**: 사용자 요청 — 드래프트가 진행 중일 때 리그 홈(`LeagueLobbyPanel.tsx`)에 뜨는 "드래프트 진행 중" 실시간 정보 블록(현재 차례/타이머/다음 픽/입장 버튼)을, 기존처럼 좌측 "토너먼트 정보" 섹션 안이 아니라 우측 컬럼 맨 위("드래프트 순서 추첨" 섹션보다 위)로 옮김.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**변경 내용**: `isDrafting && (...)` 블록(내부 로직/마크업은 그대로) 전체를 좌측 "토너먼트 정보" `<section>` 안에서 빼내, 우측 컬럼 최상단(`드래프트 순서 추첨` `<section>` 바로 앞)에 별도 `<section>`으로 재배치. 우측 컬럼 wrapper `<div>`에 두 섹션 간 간격을 위한 `space-y-6` 추가(기존엔 섹션이 하나뿐이라 없었음).
+
+**검증**: `npx tsc --noEmit` 통과 — 중첩 JSX 구조 재확인(좌측 "토너먼트 정보" 섹션이 InfoRow 리스트 직후 정상적으로 닫히는지 직접 읽어서 확인).
+
+**롤백 방법**: 블록을 다시 좌측 "토너먼트 정보" `<section>` 안, InfoRow 리스트 `<div>` 다음 위치로 옮기고 우측 컬럼의 `space-y-6`을 제거하면 됨.
+
+---
+
+## 2026-09-11 — DraftHeader AUTO 배지도 아이콘 전용으로 통일
+
+**배경**: 직전에 DraftBoard의 AUTO 칩을 아이콘 전용(새로고침)으로 바꿨는데, DraftHeader의 "현재 차례" AUTO 배지는 아직 "AUTO" 텍스트만 있었음 — 사용자 요청으로 동일하게 아이콘 전용으로 통일.
+
+**변경 파일**:
+- `components/draft/DraftHeader.tsx` — `RefreshCw` import 추가, "현재 차례" AUTO 배지에서 "AUTO" 텍스트 제거하고 `RefreshCw` 아이콘만 남긴 `p-1 rounded-full` 원형 배지로 변경(DraftBoard.tsx와 동일한 스타일).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — AUTO UI 3차 조정 (내 차례 텍스트 확대, 헤더 배지 볼드 해제, 보드 칩 아이콘 전용화)
+
+**배경**: 사용자 요청 3건 — (1) DraftHeader "내 차례입니다!" 텍스트 `text-sm`. (2) DraftHeader AUTO 배지 볼드체 해제. (3) DraftBoard AUTO 칩에서 텍스트 제거하고 새로고침 아이콘만 남김.
+
+**변경 파일**:
+- `components/draft/DraftHeader.tsx` — "내 차례입니다!"(207행) `text-xs` → `text-sm`. AUTO 배지(194행) `font-black` 제거.
+- `components/draft/DraftBoard.tsx` — AUTO 칩에서 `font-black`/`gap-0.5`/`px-2 py-0.5`/"AUTO" 텍스트 제거, `RefreshCw` 아이콘만 남기고 `p-1 rounded-full` 원형 아이콘 배지로 축소.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — AUTO 관련 UI 후속 조정 (아이콘 추가, 흰색 텍스트, 마이로스터 초록 버튼, 폰트 사이즈)
+
+**배경**: 직전 AUTO UI 정리 이후 사용자 후속 요청 4건 — (1) DraftBoard AUTO 칩에도 새로고침 아이콘 추가, 텍스트 흰색. (2) DraftHeader AUTO 배지 텍스트 흰색. (3) DraftHeader "현재 차례"/팀 이름/"N픽 후 내 차례입니다" 텍스트 `text-sm`. (4) MyRoster 오토픽 버튼(켜짐 상태)을 초록 배경+흰 텍스트로.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` — `RefreshCw` 아이콘 import 추가, AUTO 칩에 아이콘 삽입(`flex items-center gap-0.5`), 텍스트 색 `text-emerald-950` → `text-white`.
+- `components/draft/DraftHeader.tsx` — AUTO 배지 `text-emerald-950` → `text-white`. "현재 차례" 라벨(186행)·현재 팀 이름(188행)·"N픽 후 내 차례입니다"(210행) 전부 `text-xs` → `text-sm`.
+- `components/draft/MyRoster.tsx` — 오토픽 버튼 켜짐 상태 색상 `bg-indigo-600/60 text-indigo-200 hover:bg-indigo-600/80` → `bg-emerald-500 text-white hover:bg-emerald-400`(꺼짐 상태는 기존 슬레이트 톤 유지).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**주의**: "내 차례입니다!"(`isUserTurn` true 분기) 텍스트는 이번 요청 범위(오른쪽 "N픽 후" 분기)에 해당하지 않아 `text-xs` 그대로 유지.
+
+---
+
+## 2026-09-11 — AUTO 관련 UI 3곳 정리 (아이콘/문구/색상/배치)
+
+**배경**: 사용자 요청 3건 — (1) 내 로스터의 오토픽 토글 버튼: "내 오토픽 켜기" 문구를 "AUTO"로 축약, 좌측 로봇 아이콘을 새로고침 아이콘으로, 텍스트 `text-sm`. (2) 드래프트 헤더의 "현재 차례" 옆 AUTO 배지: 초록색 + `text-sm`. (3) 드래프트 보드 팀 헤더의 AUTO 칩: 이름 아래→이름 좌측으로 이동, `text-sm`, 그리고 (1)(2)(3) 중 배지/칩 성격인 (2)(3) 전부 초록색 pill로 통일.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — `Bot` → `RefreshCw`(lucide-react) 아이콘 교체, 버튼 텍스트를 온/오프 상태 무관하게 항상 `"AUTO"`로 축약(대신 `title` 속성에 상태 설명 유지), `text-[11px]` → `text-sm`.
+- `components/draft/DraftHeader.tsx` — "현재 차례" AUTO 배지: `text-[9px] ... rounded-sm bg-indigo-400 text-indigo-950` → `text-sm ... rounded-full bg-emerald-500 text-emerald-950`.
+- `components/draft/DraftBoard.tsx` — 팀 헤더 AUTO 칩을 별도 하단 절대배치 `<div>`에서, abbr과 같은 가로 flex 행(`gap-1`) 안으로 합쳐 이름 앞자리(좌측)로 이동 — 배지+이름이 한 그룹으로 카드 정중앙에 정렬됨. 스타일도 `text-[7px] ... rounded-sm bg-indigo-400 text-indigo-950` → `text-sm ... rounded-full bg-emerald-500 text-emerald-950`로 통일.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 각 파일에서 위 Before 값(아이콘/문구/클래스)으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "< 리그 홈"/오토픽 토글 상단 바 삭제 → 뒤로가기는 헤더로, 오토픽은 내 로스터로 이전
+
+**배경**: 사용자 요청 — 드래프트 헤더(`DraftHeader.tsx`) 위에 별도로 떠 있던 "< 리그 홈"/"내 오토픽 켜기" 바를 없애고, 뒤로가기 버튼은 `DraftHeader`의 "드래프트 룸" 텍스트 좌측으로, 오토픽 전환 버튼은 "내 로스터" 패널의 "내 로스터" 텍스트 우측으로 흡수.
+
+**변경 파일**:
+- `views/multi/league/MultiDraftView.tsx` — 기존 상단 바(`<div className="shrink-0 flex items-center justify-between px-3 h-8 ...">`, "< 리그 홈" 버튼 + 오토픽 토글 버튼) 전체 삭제. `<DraftHeader>`에 `onBack={() => navigate(...)}` 추가(컴포넌트 자체엔 이미 `onBack` prop이 있었으나 지금까지 아무도 넘기지 않아 미사용 상태였음). 하단 3열의 `<MyRoster>` 호출에 `myAutoPick={myAutoPick}` / `onToggleAutoPick={myTeamId ? (next) => toggleAutoPick(next) : undefined}` 추가. 더 이상 쓰지 않는 `Bot` 아이콘 import 제거.
+- `components/draft/MyRoster.tsx` — `myAutoPick?`/`onToggleAutoPick?` optional prop 추가(둘 다 넘겨질 때만 렌더링 — 싱글/루키 드래프트뷰는 안 넘기므로 기존과 동일하게 버튼 없음). 헤더를 `<div flex justify-between>`에서 왼쪽 그룹("내 로스터" 텍스트 + 오토픽 버튼)과 오른쪽 그룹(포지션별/총 카운트)으로 재구성.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**주의**: 대기 화면(`draftState.status === 'waiting'`)의 `<MyRoster>` 호출은 이 두 prop을 넘기지 않아 오토픽 버튼이 안 뜸(기존에도 대기 화면엔 오토픽 토글 기능 자체가 없었으므로 범위 밖으로 판단).
+
+**롤백 방법**: `MultiDraftView.tsx`에 원래의 상단 바 블록을 복원하고 `onBack`/`myAutoPick`/`onToggleAutoPick` 전달분을 제거, `MyRoster.tsx`의 헤더를 원래 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — [버그 수정] DraftHeader가 멀티에서 항상 "팀배지" 플레이스홀더만 보여주던 문제
+
+**배경**: 직전 항목("DraftHeader 로고도 real/ 세트로 교체")을 적용했는데도 사용자가 하드리프레시 후에도 여전히 배경 워터마크가 실제 로고가 아니라 "팀배지 스타일"(색깔 박스+약어 텍스트)로 보인다고 재차 확인 — 캐시 문제가 아니라 진짜 코드 분기 버그였다.
+
+**원인**: `teamMetaLookup.ts`의 `resolveTeamDisplay(teamId, teamMeta)`는 `teamMeta?.[teamId]`가 존재하면(=멀티플레이어처럼 `league_teams`에서 만든 커스텀 이름/컬러 메타가 있으면) `isCustom: true`를 반환한다. `DraftHeader.tsx`는 이 `isCustom`이 true면 로고 이미지 대신 컬러 박스+abbr 텍스트("팀배지" 스타일)를 그리는 분기를 갖고 있었는데, 이건 "싱글플레이 커스텀/확장팀은 매칭되는 로고 파일이 없다"던 옛 가정에서 만들어진 코드였다. 그런데 멀티플레이어(`MultiDraftView.tsx`)는 항상 `teamMeta` prop을 채워서 넘기므로, **멀티에서는 `isCustom`이 사실상 항상 true**가 되어 직전에 고친 `RealTeamLogo`(else 분기)가 아예 실행될 일이 없었다 — `DraftBoard.tsx`는 애초에 이런 `isCustom` 분기 자체가 없어 문제가 없었던 것과 대비됨. 싱글플레이 쪽(`FantasyDraftView.tsx`/`RookieDraftView.tsx`)은 애초에 `teamMeta`를 전달하지 않아 `isCustom`이 항상 false였으므로 이 분기가 의미 있게 실행된 적이 없는 죽은 코드였다.
+
+**변경 파일**:
+- `components/draft/DraftHeader.tsx`
+
+**변경 내용**: 배경 워터마크와 "현재 차례" 작은 아이콘 두 곳 모두에서 `isCustom` 분기를 제거하고 항상 `RealTeamLogo`(팀 slug 기준 실제 로고, 폴백 체인 포함)를 렌더링하도록 단순화.
+
+**검증**: `npx tsc --noEmit` 통과. `isCustom` 코드 내 잔여 참조 없음 확인. 싱글플레이 호출부(`teamMeta` 미전달)는 원래도 이 분기를 타지 않았으므로 회귀 없음.
+
+**롤백 방법**: 두 곳 모두 `isCustom` 삼항 분기로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — DraftHeader 로고도 public/logos/real/ 세트로 교체
+
+**배경**: `DraftBoard.tsx`는 이미 `real/` 로고 세트를 쓰도록 바꿨는데(2026-09-11 앞선 항목), `DraftHeader.tsx`(드래프트 화면 상단 바)는 여전히 구버전 `TeamLogo`(`/logos/{id}.svg`)를 쓰고 있었다 — 사용자 요청으로 통일.
+
+**변경 파일**:
+- `components/draft/DraftHeader.tsx`
+
+**변경 내용**: `TeamLogo` import 제거, `DraftBoard.tsx`와 동일한 폴백 체인(신규 `real/` 세트 실패 시 구버전 → 플레이스홀더)을 가진 `RealTeamLogo` 로컬 컴포넌트 신설(크기는 `size` 프리셋 대신 `className`으로 직접 제어). 2곳 교체:
+1. 배경 워터마크(129~132행): `<TeamLogo teamId={displayTeamId} size="3xl" />` → `<RealTeamLogo teamId={displayTeamId} className="w-32 h-32" />`
+2. 현재 차례 팀 작은 아이콘(190~192행): `<TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />` → `<RealTeamLogo teamId={currentTeamId} className="w-5 h-5" />`
+
+**검증**: `npx tsc --noEmit` 통과, `TeamLogo` 잔여 참조 없음 확인.
+
+**롤백 방법**: `RealTeamLogo` 두 호출부를 원래의 `TeamLogo`로 되돌리고 import를 복원하면 됨.
+
+---
+
+## 2026-09-11 — DraftBoard 완료 픽 셀 레이아웃 변경(픽번호+포지션 한 줄, 선수명 아래줄) + 전체 text-sm 통일
+
+**배경**: 사용자 요청 — 완료된 픽 셀 안에서 세로로 3줄(픽번호/포지션/선수명)이던 구성을 "#1 PG" 형태로 픽번호+포지션을 한 줄에 같이 배치하고, 그 아래 줄에 선수명을 두도록 재구성. 폰트 크기도 전부 `text-sm`으로 통일(기존 픽번호=`text-sm`, 포지션=`text-xs`, 선수명=`text-[12px]`로 제각각이었음).
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**Before**: `<div flex-col>{픽번호}{포지션}{선수명}</div>` — 3줄 세로 스택, 폰트 크기 각각 다름.
+
+**After**: `<div flex-col><div flex gap-1.5>{픽번호}{포지션}</div>{선수명}</div>` — 픽번호+포지션은 가로 한 줄, 선수명은 그 아래 별도 줄. 세 텍스트 모두 `text-sm`으로 통일.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — PlayerPool AGE~REB 컬럼 너비 소폭 확대
+
+**배경**: 사용자 요청으로 선수 풀 테이블의 AGE~REB(AGE/HT/WT/INS/OUT/ATH/PLM/DEF/REB) 9개 컬럼 너비를 약간 넓힘 — 앞서 이 컬럼들의 폰트를 `text-sm`으로 키우면서 좁은 너비(`w-8`/`w-10`) 대비 텍스트가 답답해 보일 수 있어 함께 조정.
+
+**변경 파일**:
+- `components/draft/PlayerPool.tsx` — 189~197행. `w-8`→`w-10`(AGE/INS/OUT/ATH/PLM/DEF/REB), `w-10`→`w-12`(HT/WT).
+
+**검증**: `npx tsc --noEmit` 통과. `table-layout: fixed`라 헤더 `<th>` 너비 변경이 그대로 전체 컬럼 폭에 반영됨.
+
+---
+
+## 2026-09-11 — DraftBoard 좌측 "라운드"/"R1,R2..." 텍스트 text-sm으로 확대
+
+**배경**: 사용자 요청으로 좌측 고정열의 "라운드" 헤더 라벨과 각 행의 "R1"/"R2" 등 라운드 번호를 `text-sm`으로 확대.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` — 138행 "라운드" 헤더(`text-xs`→`text-sm`), 223행 "R{round}"(`text-[11px]`→`text-sm`).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**주의**: 그 아래 방향 화살표(→/←) 표시는 요청 범위 밖이라 `text-[10px]` 그대로 유지.
+
+---
+
+## 2026-09-11 — DraftBoard 픽 순서(#N)·"선택 중..." 텍스트 text-sm으로 확대
+
+**배경**: 사용자 요청으로 드래프트 보드 셀의 픽 순서 번호(`#{pickNum}`, 3곳 — 확정 픽/현재 픽/미래 픽)와 "선택 중..." 텍스트를 `text-sm`으로 확대.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` — `text-[9px]` 2종(3곳) + `text-[11px]`(1곳) 전부 `text-sm`으로 치환.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — DraftBoard 팀명 폰트 text-base → text-lg
+
+**배경**: 사용자 요청으로 팀 헤더 카드 팀명(abbr) 폰트를 한 단계 더 확대.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` — abbr `<span>`, `text-base` → `text-lg`.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — DraftBoard 팀명(abbr)을 카드 정중앙으로 절대배치 정렬
+
+**배경**: 사용자 요청 — 팀 헤더 카드의 팀명(abbr)이 박스 정중앙에 오도록. 기존엔 abbr과 AUTO 배지가 같은 `flex-col` 안에 순서대로 쌓여 있었고, 배지가 없을 때도 레이아웃 시프트 방지를 위해 배지 행 높이(`h-[10px]`)를 항상 예약해뒀기 때문에 abbr 텍스트가 박스 정중앙보다 살짝 위로 치우쳐 보였다.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**변경 내용**: abbr을 `<th>` 전체를 덮는 절대배치 레이어(`absolute inset-0 flex items-center justify-center`)로 옮겨 카드 정중앙에 고정. AUTO 배지도 별도의 절대배치 레이어(`absolute bottom-1 inset-x-0`)로 하단에 분리 — 흐름에 관여하지 않으므로 배지가 나타나도 더 이상 높이가 바뀌지 않아, 기존의 "높이 예약" 트릭(빈 `(onlineTeamIds || autoPickTeamIds) &&` 래퍼)이 불필요해져 제거. 모든 자식이 절대배치로 바뀌며 `<th>` 자체의 콘텐츠 높이가 0이 되는 것을 막기 위해 `py-2.5` 대신 명시적 `h-12` 고정 높이로 교체.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: abbr/AUTO 배지를 다시 하나의 `flex-col` 안에 순서대로 배치하고 `h-12`를 `py-2.5`로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — DraftBoard 온라인 초록 외곽선이 탁하게 보이던 원인 수정 (z-order 문제, opacity 아님)
+
+**배경**: 직전에 추가한 온라인 초록 외곽선이 스크린샷상 탁한 색으로 보인다는 사용자 지적 — "로고 밑에 깔려있는지 vs opacity 문제인지" 질문. 확인 결과 **opacity 문제가 아니라 z-order(그려지는 순서) 문제**였다: 외곽선을 `<th>` 자체의 `box-shadow`로 걸었는데, CSS 페인팅 순서상 box-shadow는 자식 요소보다 먼저(아래에) 그려진다 — 뒤이어 그려지는 `TeamLogoWatermark`(반투명 로고, `inset-0`으로 카드 전체를 덮음)가 그 위를 덮어써서 외곽선 색이 로고에 섞여 탁해 보인 것. 단순히 `rgba(74,222,128,0.8)`의 alpha를 1로 올려도 여전히 워터마크가 위에서 덮으므로 근본 해결이 안 됨 — 외곽선을 별도 오버레이 `<div>`로 분리해 DOM 순서상 가장 마지막(=페인팅 순서상 가장 위)에 배치하는 방식으로 수정.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**Before**: `<th style={{ ..., boxShadow: isOnline ? 'inset 0 0 0 2px rgba(74,222,128,0.8), ...' : '...' }}><TeamLogoWatermark/>...</th>` (외곽선이 th 자체 스타일, 워터마크보다 먼저 페인팅됨)
+
+**After**: `<th style={{ ..., boxShadow: '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)' }}><TeamLogoWatermark/>...content.../{isOnline && <div className="absolute inset-0 pointer-events-none" style={{boxShadow: 'inset 0 0 0 2px rgba(74,222,128,1)'}} />}</th>` — 온라인 외곽선을 워터마크·콘텐츠 뒤(DOM 마지막)에 배치된 별도 `<div>`로 분리, alpha도 1로 올려 또렷하게.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — DraftBoard 팀 헤더: 내 팀 노란 외곽선 제거, 팀명 폰트 확대, 온라인 표시를 점→초록 외곽선으로
+
+**배경**: 사용자 요청 3건을 한 번에 반영 — (1) 내 팀(`userTeamId`)일 때 뜨던 노란색 `boxShadow` 외곽선 제거, (2) 팀 약어(`td.abbr`) 폰트를 `text-base`로 확대, (3) 온라인 상태를 표시하던 6px 점 배지를 없애고 대신 헤더 카드 전체에 초록색 외곽선으로 표시.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**Before**: `isUser`(내 팀 여부) 계산 → `boxShadow: isUser ? 'inset 0 0 0 2px rgba(245,158,11,0.7), ...' : '...'`(노란 외곽선). `isOnline` 여부는 6px 원형 점(`#4ade80`/온라인, `rgba(148,163,184,0.4)`/오프라인)으로 표시. `<span>{td.abbr}</span>`는 부모 `<th>`의 `text-xs`를 그대로 상속.
+
+**After**: `isUser` 계산 자체를 제거(다른 곳에서 미사용이라 완전 삭제). `boxShadow`를 `isOnline` 기준으로 전환 — 온라인이면 `inset 0 0 0 2px rgba(74,222,128,0.8)`(초록) 외곽선, 오프라인이면 기본 구분선만. 온라인 점 `<span>` 삭제(AUTO 배지만 남음). `<span className="text-base">{td.abbr}</span>`로 명시적 확대.
+
+**검증**: `npx tsc --noEmit` 통과 — `isUser` 제거로 인한 미사용 참조 없음 확인(`userTeamId` 자체는 tbody의 `isUserCol`에서 계속 사용됨).
+
+**롤백 방법**: `isUser` 계산 복원, `boxShadow` 조건을 `isUser` 기준 노란색으로 되돌리고, 온라인 점 `<span>` 재추가, `text-base` 제거.
+
+---
+
+## 2026-09-11 — DraftBoard 팀 헤더 로고를 배경 워터마크로 전환 + 하단 컬러 구분선 제거
+
+**배경**: 직전에 추가한 작은 인라인 로고(20px, abbr 위) 대신, 사용자가 "배경에 로고를 크게 클리핑되게" 넣어달라고 요청 — `DraftHeader.tsx`의 배경 워터마크 패턴(overflow-hidden 컨테이너 + 확대·저투명도 로고)을 재사용. 이어서 같은 헤더 셀 하단의 팀 세컨더리 컬러 구분선(`borderBottom`)도 삭제 요청.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**변경 내용**:
+1. 기존 `TeamLogoImg`(작은 인라인 로고, 폴백 체인 포함)를 `handleLogoError` 공용 함수 + `TeamLogoWatermark`(부모 대비 확대(`scale-[2]`)·저투명도(`opacity-20`) 배경 로고, `absolute inset-0 pointer-events-none`)로 교체.
+2. 팀 헤더 `<th>`에 `relative overflow-hidden` 추가(워터마크가 카드 경계 밖으로 나간 부분을 잘라내기 위함), 콘텐츠 wrapper에 `relative` 추가(워터마크 위에 뜨도록).
+3. `<th>` 인라인 스타일에서 `borderBottom: `2px solid ${td.colorSecondary}`` 제거.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `TeamLogoWatermark`를 원래의 `TeamLogoImg`(작은 아이콘)로 되돌리고, `borderBottom` 스타일을 다시 추가하면 됨.
+
+---
+
+## 2026-09-11 — DraftBoard 팀 헤더에 실제 팀 로고 추가
+
+**배경**: 사용자 요청으로 `DraftBoard.tsx`의 팀 카드(팀별 헤더 `<th>`, 약어만 표시되던 자리)에 `public/logos/real/` 로고 세트를 추가.
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx`
+
+**변경 내용**: `getRealTeamLogoUrl`/`getTeamLogoUrl`(`utils/constants.ts`) import 추가. 세션 내 다른 화면들(`LeagueLobbyPanel.tsx` 등)과 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더)을 가진 `TeamLogoImg` 서브컴포넌트를 신설해, 팀 헤더 셀의 약어(`td.abbr`) 텍스트 위에 20px 로고 이미지를 추가.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `TeamLogoImg` import/컴포넌트 정의와 헤더 셀의 `<TeamLogoImg .../>` 렌더 줄을 제거하면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 화면 OVR 배지 폰트를 text-sm으로 (드래프트 화면 한정)
+
+**배경**: 드래프트 화면의 OVR 배지(`OvrBadge` `size="sm"` → 기본 `text-[10px]`)를 `text-sm`으로 키워달라는 요청. `OvrBadge`는 앱 전체 76곳(로스터 그리드, 트레이드 UI, 리더보드 등)에서 재사용되는 공용 컴포넌트라 `size="sm"`의 기본 폰트 자체를 바꾸면 전부 영향을 받는다 — AskUserQuestion으로 범위를 확인한 결과 **"드래프트 화면만"**으로 명시적 선택.
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` — 하위 호환 유지한 채 리팩터링. 기존엔 `sizeStyles`(박스 크기+폰트 크기 한 덩어리)만 있었는데, 박스 크기(`boxStyles`)와 기본 폰트 크기(`defaultTextStyles`)를 분리하고, 새 옵션 prop `textClassName`을 추가 — 지정 시 `defaultTextStyles[size]` 대신 그 값을 사용(지정 안 하면 기존과 동일하게 동작, 나머지 76곳 호출부는 변경 없음).
+- `components/draft/PlayerPool.tsx` — 240행 `<OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />`
+- `components/draft/MyRoster.tsx` — 81/107행(주전/벤치) 동일하게 `textClassName="text-sm"` 추가
+
+**검증**: `npx tsc --noEmit` 통과, `OvrBadge` 다른 74개 호출부는 `textClassName` 미지정이라 렌더링 동일(회귀 없음).
+
+**롤백 방법**: 3개 draft 컴포넌트 호출부에서 `textClassName="text-sm"`을 제거하고, `OvrBadge.tsx`를 원래의 `sizeStyles` 단일 객체 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "선수 풀"(PlayerPool) 능력치 컬럼 font-mono 제거
+
+**배경**: 사용자 요청으로 `PlayerPool.tsx` 내 `font-mono`/`tabular-nums`/`tracking-*` 적용 여부 확인 후 해제. 조사 결과 `tabular-nums`/`tracking-*`는 이 파일에 없었고 `font-mono`만 7곳(POT/AGE/INS/OUT/ATH/PLM/DEF 컬럼) 있었음.
+
+**변경 파일**:
+- `components/draft/PlayerPool.tsx` — 243/247/250~255행, `font-mono` 토큰 전부 제거(다른 클래스는 유지).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 위 7개 `<td>`의 className에 `font-mono`를 다시 추가하면 됨.
+
+---
+
+## 2026-09-11 — "선수 풀"(PlayerPool) 텍스트 전체 크기 text-sm 통일
+
+**배경**: 사용자 요청으로 `PlayerPool.tsx`(드래프트 화면 가운데 선수 풀 패널) 안의 모든 텍스트를 `text-sm`으로 통일. 테이블 본문(`<td>`)은 이미 `<table>` 레벨에 `text-sm`이 걸려 있어 상속으로 처리되고 있었고, 툴바 영역(제목/검색창/포지션 필터 버튼/인원수/드래프트 버튼)에만 `text-xs` 7곳이 남아 있었음.
+
+**변경 파일**:
+- `components/draft/PlayerPool.tsx` — 117/125/136/151/157/180/182행의 `text-xs` 전부 `text-sm`으로 일괄 치환.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `text-sm`을 다시 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "내 로스터" 선발/벤치 라벨 색상 밝게
+
+**배경**: 사용자 요청으로 "선발"/"벤치" 구분 라벨 색상을 약간 밝게.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 66/93행, `text-slate-500` → `text-slate-400`.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 포지션별/총 텍스트 text-xs로 축소
+
+**배경**: 앞서 파일 전체를 `text-xs`→`text-sm`으로 올렸는데, 사용자가 헤더의 포지션 라벨/숫자·"총 N" 부분만 다시 `text-xs`로 줄여달라고 요청(다른 영역은 `text-sm` 유지).
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 50~58행 헤더 영역만 `text-sm` → `text-xs`로 되돌림(포지션 라벨, 포지션별 숫자, 구분점 "·", "총" 라벨+숫자).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**주의**: 헤더 아래 선발/벤치 목록 등 나머지 영역은 이전 요청대로 `text-sm` 그대로 유지.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 칩(pill) 스타일 롤백
+
+**배경**: 직전 항목의 칩(pill) 형태가 마음에 들지 않는다는 사용자 피드백으로 즉시 롤백.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 50~59행을 칩 적용 직전 상태(포지션별/총 숫자 모두 흰색 평문 텍스트, `rounded-full` 배지 없음)로 되돌림.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 숫자를 칩(pill) 형태로 변경
+
+**배경**: 포지션별 인원 숫자·"총 N" 숫자를 평문 텍스트에서 칩(둥근 배지) 형태로 바꿔달라는 사용자 요청.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 50~59행.
+
+**Before**:
+```tsx
+<span className="text-sm text-white">{posCounts[pos]}</span>
+...
+<span className="text-sm text-slate-500">총 <span className="text-white">{allPlayers.length}</span></span>
+```
+
+**After**: 두 숫자 모두 `inline-flex items-center justify-center min-w-[20px] px-1 py-0.5 rounded-full bg-slate-700 text-sm font-bold text-white` 칩으로 통일.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 포지션별 숫자도 흰색으로 재변경
+
+**배경**: 직전 항목에서 포지션별 숫자에 인디고 600을 적용했는데, 사용자가 바로 이어서 "총 N"과 동일하게 흰색으로 해달라고 정정.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 54행, `text-sm text-indigo-600` → `text-sm text-white`.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 "총 N" 숫자에도 font-mono 해제 + 흰색 적용
+
+**배경**: 앞서 포지션별 숫자에 적용한 처리(font-mono 해제)를 "총" 옆 전체 인원 숫자에도 동일하게 적용하고, 이 숫자 텍스트만 흰색으로 강조해달라는 사용자 요청.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 58행. "총"과 숫자가 한 `<span>`에 같이 있어("총 {allPlayers.length}") 숫자만 색을 다르게 줄 수 없었음 → 라벨("총")과 숫자를 별도 `<span>`으로 분리: 라벨은 기존 `text-slate-500` 유지, 숫자만 `font-mono` 제거 + `text-white` 적용.
+
+**Before**: `<span className="text-sm font-mono text-slate-500">총 {allPlayers.length}</span>`
+**After**: `<span className="text-sm text-slate-500">총 <span className="text-white">{allPlayers.length}</span></span>`
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "내 로스터" 헤더 포지션별 숫자 스타일 변경
+
+**배경**: 사용자 요청으로 헤더의 포지션별 보유 인원 숫자(`posCounts[pos]`, 예: "PG 2")에서 `font-mono` 제거하고 색상을 인디고 600으로 변경.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 54행, `text-sm font-mono text-slate-400` → `text-sm text-indigo-600`.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**주의**: 바로 옆 "총 N" 카운트(58행)는 요청 범위(포지션별 숫자)에 해당하지 않아 `font-mono`/색상 그대로 유지.
+
+---
+
+## 2026-09-11 — "내 로스터"(MyRoster) 패널 텍스트 전체 크기 상향
+
+**배경**: 사용자 요청으로 `MyRoster.tsx`(드래프트 화면 하단 우측 "내 로스터" 패널) 안의 모든 텍스트를 `text-xs`(12px)에서 `text-sm`(14px)으로 상향.
+
+**변경 파일**:
+- `components/draft/MyRoster.tsx` — 파일 내 `text-xs` 14곳(헤더 라벨, 포지션별 카운트, 선발/벤치 구분 라벨, 포지션/선수명/빈 슬롯 표시) 전부를 `text-sm`으로 일괄 치환.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `text-sm`을 다시 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "드래프트 기록" 빈 상태 문구 변경
+
+**배경**: 사용자 요청으로 픽이 아직 없을 때 뜨는 문구 변경.
+
+**변경 파일**:
+- `components/draft/PickHistory.tsx` — 74행, "아직 픽이 없습니다" → "드래프트 기록 없음".
+
+**검증**: `npx tsc --noEmit` 통과.
+
+---
+
+## 2026-09-11 — "드래프트 기록"(PickHistory) 패널 텍스트 전체 크기 상향
+
+**배경**: 사용자 요청으로 `PickHistory.tsx`(드래프트 화면 하단 좌측 "드래프트 기록" 패널) 안의 모든 텍스트를 `text-xs`(12px)에서 `text-sm`(14px)으로 상향.
+
+**변경 파일**:
+- `components/draft/PickHistory.tsx`
+
+**변경 내용**: 파일 내 `text-xs` 9곳(헤더 라벨, 라운드 필터 드롭다운 버튼/옵션, 빈 상태 문구, 픽 번호/포지션/팀 약어/선수명) 전부를 `text-sm`으로 일괄 치환.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `text-sm`을 다시 `text-xs`로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 시작 전(waiting) 화면에도 픽 히스토리·내 로스터 패널 노출
+
+**배경**: 드래프트 시작 전(`draftState.status === 'waiting'`, 로터리 완료~예정 시각 대기 중) 화면은 드래프트 보드 + 선수 풀만 보여주고 하단 픽 히스토리/내 로스터 패널이 없었다. 사용자가 실제 드래프트 진행 화면과 동일하게 이 두 패널도 미리 보여달라고 요청.
+
+**변경 파일**:
+- `views/multi/league/MultiDraftView.tsx`
+
+**Before**: `draftState.status === 'waiting'` 분기(291~360행)에서 드래그 구분선 아래에 `PlayerPool` 하나만 전체 폭으로 렌더링.
+
+**After**: 진행 중 화면(454~488행)과 동일한 하단 3열 레이아웃(`PickHistory` 22% / `PlayerPool` 나머지 / `MyRoster` 22%)으로 교체. `boardPicks`/`myRosterPlayers`는 드래프트 시작 전이라 실질적으로 빈 배열이지만, 이미 위쪽에서 `useMemo`로 계산돼 있는 값을 그대로 재사용 — 레이아웃만 진행 중 화면과 통일.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 3열 패널 블록을 원래의 `PlayerPool` 단일 패널로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 화면의 tracking-wide/wider/widest 전부 제거
+
+**배경**: 드래프트 화면 폰트 사이즈 전수조사 이후, 사용자가 자간(letter-spacing) 유틸리티(`tracking-wide`/`tracking-wider`/`tracking-widest`)를 전부 해제해달라고 요청. `tabular-nums`는 조사 결과 드래프트 화면 어디에도 쓰이지 않아 해당 사항 없음.
+
+**변경 파일** (모두 client, 서버 미러 없음 — 순수 UI):
+- `views/multi/league/MultiDraftView.tsx` — 309행 픽 타이머 숫자
+- `components/draft/DraftHeader.tsx` — 156행 어나운스먼트 텍스트, 164행 픽 타이머 숫자
+- `components/draft/PickHistory.tsx` — 35행 "드래프트 기록" 라벨
+- `components/draft/PlayerPool.tsx` — 117행 "선수 풀" 라벨
+- `components/draft/MyRoster.tsx` — 49행 "내 로스터", 66행 "선발", 93행 "벤치" 라벨
+- `components/draft/DraftAdminPanel.tsx` — 162/213/247/290행 섹션 소제목 4곳
+
+**변경 내용**: 각 `className` 문자열에서 `tracking-wide`/`tracking-wider`/`tracking-widest` 토큰만 제거(다른 클래스는 그대로 유지). `DraftBoard.tsx`에는 해당 클래스가 원래 없었음.
+
+**검증**: 전체 재검색 결과 잔여 없음 확인, `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 위 각 위치에 해당 클래스 문자열을 다시 추가하면 됨(구체 텍스트는 이 항목의 "변경 파일" 목록 참고).
+
+---
+
+## 2026-09-11 — 헤더 "드래프트 룸 입장" 버튼이 홈으로 이동하던 버그 수정
+
+**배경**: 사용자가 헤더의 "드래프트 룸 입장" 버튼을 누르면 드래프트 룸이 아니라 홈 화면으로 이동한다고 리포트. 원인은 이 버튼을 처음 추가할 때(이전 항목 "헤더에 드래프트 룸 입장 버튼 마련" 참고)의 실수 — `MultiHeader.tsx`의 `base`는 `/multi/leagues/${leagueId}/season`으로 정의돼 있는데, 실제 드래프트 라우트는 `season` 하위가 아니라 `/multi/leagues/:leagueId/draft`(App.tsx)라서 `${base}/draft`가 존재하지 않는 `/season/draft` 경로로 이동시켰고, 매칭되는 라우트가 없어 홈으로 빠졌다.
+
+**변경 파일**:
+- `components/MultiHeader.tsx`
+
+**Before**: `onClick={() => navigate(`${base}/draft`)}` → `/multi/leagues/${leagueId}/season/draft` (존재하지 않는 경로)
+
+**After**: `onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}` — `LeagueLobbyPanel.tsx`의 동일 버튼이 쓰는 경로와 동일하게 맞춤.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `navigate(`${base}/draft`)`로 되돌리면 됨(단, 되돌리면 버그가 재현되므로 권장 안 함).
+
+---
+
+## 2026-09-11 — 세션 홈→드래프트 룸 이동 시 로더 두 번 뜨는 버그 수정 (라우트 트리 통합)
+
+**배경**: 사용자가 "세션 홈에서 드래프트 룸에 들어갈 때 로더가 두 번 뜬다"고 리포트. 원인 조사 결과 `/season`과 `/draft`가 `App.tsx`에서 서로 다른 최상위 `<Route>` 브랜치(`MultiProtectedLayout` vs `MultiDraftLayout`)에 각각 별도의 `<LeagueLayout/>`을 물고 있어서, `/season → /draft` 이동 시 React Router가 `LeagueLayout`을 언마운트→재마운트했다. `LeagueLayout`의 `useCurrentLeague()`는 인스턴스별 `useState(true)`로 시작하고 모듈 캐시가 없어, 방금 세션 홈에서 이미 로드한 리그/방 데이터를 처음부터 다시 fetch하며 불필요한 로더가 한 번 더 떴다(그 뒤 `MultiDraftView`의 정상적인 드래프트 데이터 로더까지 겹쳐 "두 번"으로 보임). `MultiDraftLayout.tsx`를 까보니 `MultiProtectedLayout.tsx`와 인증 가드 로직이 완전히 동일한 중복 컴포넌트였음(주석은 "상단 nav를 감추기 위해 분리"라 되어 있지만 실제로 nav를 그리는 건 `MultiProtectedLayout`이 아니라 `MultiSeasonLayout`이라 애초에 감출 게 없었음) — 두 라우트를 같은 `LeagueLayout` 서브트리로 합치고 `MultiDraftLayout`을 완전히 제거하기로 결정(AskUserQuestion으로 사용자가 이 방식을 명시적으로 선택).
+
+**변경 파일**:
+- `App.tsx` — `/multi/leagues/:leagueId/draft` 라우트를 `MultiDraftLayout` 브랜치에서 `/season`과 같은 `MultiProtectedLayout > LeagueLayout` 서브트리 안으로 이동. `MultiDraftLayout` import 제거.
+- `components/MultiDraftLayout.tsx` — 삭제(다른 곳에서 참조 없음 확인 후 완전 제거, `MultiProtectedLayout`과 로직 100% 중복).
+
+**Before**:
+```tsx
+<Route element={<MultiProtectedLayout />}>
+    <Route element={<LeagueLayout />}>
+        <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+        <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
+        <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>...</Route>
+    </Route>
+</Route>
+
+<Route element={<MultiDraftLayout />}>
+    <Route element={<LeagueLayout />}>
+        <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+    </Route>
+</Route>
+```
+
+**After**:
+```tsx
+<Route element={<MultiProtectedLayout />}>
+    <Route element={<LeagueLayout />}>
+        <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
+        <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
+        <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+        <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>...</Route>
+    </Route>
+</Route>
+```
+(`MultiDraftLayout.tsx` 파일 자체 삭제)
+
+**검증**: `npx tsc --noEmit` 통과(이 변경으로 인한 새 에러 없음 — 기존 `App.tsx(99,74)` RosterMode 에러는 `git stash` 비교로 이 세션 이전부터 있던 무관한 에러임을 확인).
+
+**롤백 방법**: `App.tsx`를 Before 블록으로 되돌리고, `components/MultiDraftLayout.tsx`를 git 이력에서 복원(`git checkout <이전커밋> -- components/MultiDraftLayout.tsx`)하면 됨.
+
+---
+
+## 2026-09-11 — 세션 설정에 "드래프트 시작" 수동 버튼 추가 + 로터리 버튼 문구 통일
+
+**배경**: 예전엔 리그 홈(LeagueLobbyPanel)에 어드민용 "로터리 즉시 시작"/"드래프트 즉시 시작" 버튼이 있었는데, 이번 세션 초반에 사용자 요청으로 홈 화면에서 삭제됐다(대신 세션 설정 화면에서 관리하기로 함). 그런데 삭제 이후 "드래프트 즉시 시작" 기능 자체가 어디에도 노출되지 않은 채로 남아있었음(서비스 함수 `startDraft()`는 존재하나 미사용 dead code) — 사용자가 세션 설정에 "드래프트 순서 추첨 시작"/"드래프트 시작" 버튼을 추가해달라고 요청.
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx`
+
+**Before**:
+- "드래프트 오더 추첨" 섹션(`activeTab === 'draft' && !isInProgress`)에 로터리 실행 버튼만 존재, 문구는 "드래프트 오더 추첨 실행".
+- 로터리 완료 후에는 확정된 오더 목록만 보여주고, 드래프트를 예정 시각 전에 수동으로 시작하는 UI는 없었음(서버 엔드포인트 `/start-draft` 및 클라이언트 `startDraft()`(`services/multi/leagueService.ts`)는 이미 존재하지만 어디서도 호출 안 됨).
+
+**After**:
+- 섹션 타이틀 "드래프트 오더 추첨" → "드래프트 순서 추첨", 로터리 버튼 문구 "드래프트 오더 추첨 실행" → "드래프트 순서 추첨 시작".
+- 로터리 완료(`lotteryDone`) + `league.status === 'recruiting'`(아직 드래프트 시작 전)일 때, 확정된 오더 목록 아래에 "드래프트 시작" 버튼 신규 추가 — `handleStartDraft()`가 `startDraft(league.id, token)`(기존 서비스 함수, `/start-draft` 엔드포인트) 호출 후 `reload()`. 신규 상태: `draftStarting`/`draftStartErr`.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `handleStartDraft`/`draftStarting`/`draftStartErr` 제거, "드래프트 시작" 버튼 블록 삭제, 문구를 "드래프트 오더 추첨"/"드래프트 오더 추첨 실행"으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 종료 후 사이드바 "드래프트 풀" 메뉴 숨김
+
+**배경**: 드래프트가 끝나 정규 시즌으로 전환되면(`isDraftComplete`) 더 이상 지명 대상 선수 풀을 볼 필요가 없다는 사용자 요청 — 사이드바에서 메뉴 자체를 숨겨 접근 경로를 없앤다.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx`
+
+**Before**: "드래프트 풀" `NavItem`이 조건 없이 항상 렌더링(홈/뉴스피드와 동일하게 드래프트 완료 여부와 무관하게 상시 노출).
+
+**After**: `{!isDraftComplete && (...)}`로 감싸 드래프트 완료(`league.status === 'in_progress' || 'finished'`) 이후엔 렌더링하지 않음.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `!isDraftComplete &&` 조건을 제거하면 됨.
+
+**주의**: URL로 직접 `/pool` 경로에 진입하는 것 자체를 막지는 않음(요청 범위가 "사이드 내비게이션에서 숨김"으로 한정됨) — 라우트 가드까지 필요하면 별도 작업 필요.
+
+---
+
+## 2026-09-11 — 홈 화면 "로터리 추첨" 표시 문구를 "드래프트 순서 추첨"으로 변경
+
+**배경**: 사용자 요청으로 리그 홈(LeagueLobbyPanel) 및 헤더에 노출되는 "로터리 추첨" 문구를 "드래프트 순서 추첨"으로 통일. DB 컬럼명(`lottery_scheduled_at`)이나 내부 변수명(`lotteryDone`/`lotteryCountdown` 등)은 그대로 유지 — 화면에 보이는 텍스트만 변경.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx` — 우측 테이블 제목 "로터리 추첨" → "드래프트 순서 추첨", 카운트다운 안내문 "로터리 추첨까지 남은 시간" → "드래프트 순서 추첨까지 남은 시간".
+- `components/MultiHeader.tsx` — `nextEventLabel`의 `'로터리 추첨'` → `'드래프트 순서 추첨'` (헤더 "OO까지 HH:MM:SS" 타이머 라벨).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 위 문자열들을 "로터리 추첨"으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 로터리 추첨 결과를 뉴스피드 서신으로도 발송
+
+**배경**: 사용자가 로터리 추첨 결과를 "뉴스의 서신"에도 보내달라고 요청. 조사해보니 멀티플레이어는 싱글플레이 인박스(`user_messages`)와 완전히 별도인 리그 공유 뉴스피드(`league_events` 테이블, `MultiNewsFeedView.tsx`)를 쓰고 있어, 신규 이벤트 타입(`draft_lottery_result`)을 client/server 양쪽에 추가해야 함. 서버 두 지점(`run_draft_lottery` RPC를 호출하는 곳)에서 성공 직후 뉴스를 게시하도록 배선.
+
+**변경 파일**:
+- `server/src/postDraftLotteryNews.ts` (신규, server) — `postDraftLotteryResult(roomId, leagueId, seasonNumber, lotteryTeams)`가 RPC 반환값(전체 `league_teams` row의 jsonb 배열, `draft_order` 오름차순)을 받아 `{rank, teamSlug, teamName}[]`로 축약해 `league_events`에 `type: 'draft_lottery_result'`로 insert.
+- `server/src/startDraft.ts` (server, `handleRunLottery`) — 어드민 수동 로터리 실행 경로에 `postDraftLotteryResult` 호출 추가, `leagues` select에 `season_number` 컬럼 추가.
+- `server/src/scheduler.ts` (server, `runLotteries`) — 자동(예약) 로터리 실행 경로에도 동일하게 추가. RPC 호출에서 기존엔 `error`만 구조분해했는데 결과 데이터(`lotteryResult`)도 받도록 변경, `leagues` select에 `season_number` 추가.
+- `hooks/useLeagueHeadlines.ts` (client) — `LeagueEventType` 유니온에 `'draft_lottery_result'` 추가. **[후속 수정]** `useLeagueNewsFeed`가 실제로 조회하는 `STORY_TYPES` 화이트리스트 배열에도 추가하지 않으면 쿼리의 `.or(type.in.(...))` 조건에서 이 타입이 통째로 제외돼 뉴스피드가 텅 비어 보인다(TOAST 세션에서 실제로 재현·확인된 버그) — `STORY_TYPES`에도 `'draft_lottery_result'` 추가로 수정.
+- `services/multi/leagueEventPayload.ts` (client) — `DraftLotteryPick`/`DraftLotteryResultDetail` 타입 추가, `LeagueEventDetail` 유니온에 합류, `parseLeagueEventPayload`에 `case 'draft_lottery_result'` 추가(서버 payload 미러: `{v:1, headline, picks}`).
+- `views/multi/season/newsFeedCards.tsx` (client) — `Shuffle` 아이콘 import, `HEADLINE_ICON.draft_lottery_result = Shuffle`, `DraftLotteryResultCard` 신규 컴포넌트(`PowerRankingCard`와 동일한 레터 구조 — 헤더+날짜+구분선→순위/팀 표, 팀명 클릭 시 `onOpenTeam`), `StoryCard` 디스패처에 `case` 추가. `extractEventPlayerIds`는 선수가 없는 이벤트라 기존 `default: return []`가 그대로 커버(수정 불필요).
+
+**Before**: `run_draft_lottery` RPC 성공 후에는 곧바로 `claimAndPrepareRoom()`(방 준비)만 호출되고, 뉴스피드엔 아무 것도 남지 않았음.
+
+**After**: RPC 성공 → `postDraftLotteryResult()` → `league_events`에 1건 insert(`sim_date`는 아직 시즌 캘린더가 없는 시점이라 실제 게시일, `score: 20`) → `claimAndPrepareRoom()` 순으로 처리. 클라이언트는 뉴스피드(`MultiNewsFeedView.tsx`)에서 이 이벤트를 다른 뉴스와 동일하게 그리드에 표시.
+
+**검증**: `npx tsc --noEmit`(루트, 클라이언트) 및 `npx tsc --noEmit -p server/tsconfig.json`(서버) 둘 다 이번 변경으로 인한 새 에러 없음(서버 쪽 `prep.error` 관련 에러 6건은 이 세션 이전부터 있던 기존 에러 — `git stash` 비교로 확인).
+
+**롤백 방법**: `server/src/postDraftLotteryNews.ts` 삭제, `startDraft.ts`/`scheduler.ts`의 `postDraftLotteryResult` 호출과 `season_number` select 추가분 제거, client 3개 파일(`useLeagueHeadlines.ts`/`leagueEventPayload.ts`/`newsFeedCards.tsx`)에서 위 추가분 제거.
+
+---
+
+## 2026-09-11 — 헤더에 "다음 이벤트(로터리/드래프트)까지 남은 시간" 타이머 추가
+
+**배경**: 로터리 추첨 전, 그리고 로터리 완료 후 드래프트 시작 전 상태에서는 헤더의 "시즌정보" 칸(LIVE/다음 경기/우승 표시가 들어가는 자리)이 비어 있었다. 사용자가 이 상태에서 다음 이벤트(로터리 or 드래프트)까지 남은 시간을 헤더에 타이머로 보여달라고 요청.
+
+**변경 파일**:
+- `components/MultiHeader.tsx` (client)
+
+**Before**: 시즌정보 칸의 분기가 `myLiveGame → showNextGame → tournamentChampionId → null` 순으로만 존재, 드래프트 완료 전엔 항상 마지막 `null`로 떨어져 빈칸.
+
+**After**: `isDrafting`(`league.status === 'drafting'`) 신규 계산 + `nextEventLabel`/`nextEventAt`(로터리 미완료면 `lottery_scheduled_at`+"로터리 추첨", 완료했으면 `draft_scheduled_at`+"드래프트 시작") + `showEventCountdown = !isDraftComplete && !isDrafting && !!nextEventAt`. `eventCountdown`은 이미 1초마다 갱신되는 `nowMs`를 그대로 재사용해 `useMemo`로 계산(별도 interval 추가 안 함, `LeagueLobbyPanel.tsx`의 `lotteryCountdown` effect와 동일한 포맷 — `D일 HH:MM:SS` / `HH:MM:SS` / 지나면 "곧 시작"). 시즌정보 칸 마지막 분기에 `showEventCountdown` 케이스 추가해 `{nextEventLabel}까지 {eventCountdown}` 표시(Timer 아이콘 재사용).
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: 위 신규 변수들(`isDrafting`/`nextEventLabel`/`nextEventAt`/`showEventCountdown`/`eventCountdown`)과 JSX의 `showEventCountdown` 분기를 제거하면 됨.
+
+---
+
+## 2026-09-11 — 리그 홈 마스트헤드 우측에도 "드래프트 룸 입장" 버튼 추가
+
+**배경**: 직전 변경으로 `MultiHeader.tsx`(사이드바 옆 상단 고정 헤더) 우측에 버튼을 옮겼는데, 사용자가 스크린샷으로 지목한 "PBL 로고 + TOAST 타이틀" 마스트헤드(`LeagueLobbyPanel.tsx` 본문 최상단, 로터리 추첨 테이블과 나란히 있는 영역)에도 같은 버튼을 원함 — 두 곳 모두에 노출.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx` (client)
+
+**Before**:
+```tsx
+<div className="flex items-center gap-3">
+    <img src="/logos/real/PBL.svg" ... />
+    <span className="text-2xl font-black text-white ko-tight">{league.name}</span>
+</div>
+```
+
+**After**:
+`justify-between`으로 바꿔 로고+타이틀은 좌측, `lotteryDone`일 때 우측에 버튼 추가:
+```tsx
+<div className="flex items-center justify-between gap-3">
+    <div className="flex items-center gap-3">...로고+타이틀...</div>
+    {lotteryDone && (
+        <button onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
+            className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0">
+            드래프트 룸 입장
+        </button>
+    )}
+</div>
+```
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — "드래프트 룸 입장" 버튼을 리그 홈 본문에서 헤더 우측으로 이동
+
+**배경**: 로터리 추첨이 끝나면(`lotteryDone`) `LeagueLobbyPanel.tsx`의 "토너먼트 정보" 섹션 하단에 "드래프트 대기 중" 안내 박스 + "드래프트 룸 입장" 버튼이 정적으로 추가됐는데, 사용자가 이 박스를 없애고 버튼을 헤더(`MultiHeader.tsx`) 가장 우측에 큰 주황색 메인 버튼으로 항상 노출되게 해달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx` (client)
+- `components/MultiHeader.tsx` (client) — 미러 없음(둘 다 순수 클라이언트 UI)
+
+**Before**:
+`LeagueLobbyPanel.tsx`에 아래 정적 박스 존재(`!isDrafting && lotteryDone`일 때 렌더):
+```tsx
+<div className="bg-slate-900 px-4 py-4 space-y-3">
+    <div className="flex items-center gap-2">...드래프트 대기 중</div>
+    <p>...안내 문구...</p>
+    <button onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)} ...>
+        드래프트 룸 입장
+    </button>
+</div>
+```
+`MultiHeader.tsx` 우측 영역엔 `MultiHeaderNavMenu`만 존재.
+
+**After**:
+- `LeagueLobbyPanel.tsx`: 위 박스 전체 삭제(드래프트 진행 중일 때 뜨는 라이브 정보 박스는 그대로 유지 — 별개 섹션).
+- `MultiHeader.tsx`: `lotteryDone`(로터리 완료 여부, `LeagueLobbyPanel.tsx`와 동일한 계산식)을 새로 계산해 `showDraftRoomButton = !isDraftComplete && lotteryDone`일 때 헤더 우측 끝(`MultiHeaderNavMenu` 다음)에 큰 주황색 버튼 추가:
+```tsx
+{showDraftRoomButton && (
+    <button
+        onClick={() => navigate(`${base}/draft`)}
+        className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-black text-white transition-all active:scale-[0.98] shrink-0"
+    >
+        드래프트 룸 입장
+    </button>
+)}
+```
+
+**검증**: `npx tsc --noEmit` 통과, 두 파일 관련 에러 없음.
+
+**롤백 방법**: `LeagueLobbyPanel.tsx`에 Before 블록의 정적 박스를 `!isDrafting && lotteryDone` 조건으로 복원하고, `MultiHeader.tsx`의 `lotteryDone`/`showDraftRoomButton` 계산과 버튼 JSX를 제거하면 됨.
+
+---
+
+## 2026-09-11 — 로터리 추첨 순차 공개 애니메이션 제거, 홈 화면 정보 박스 보더 라디우스 제거
+
+**배경**: 직전에 구현한 "로터리 추첨 순차 공개 애니메이션"(revealedCount 기반 setInterval + localStorage "이미 봤음" 플래그)이 실제 브라우저에서 "로터리 추첨 중..." 텍스트만 계속 뜨고 팀 이름이 전혀 업데이트되지 않는 버그로 보고됨(React StrictMode 이중 실행으로 인해 `hasAnimatedLotteryRef` 가드가 setInterval을 한 번도 못 돌리고 막아버리는 것으로 추정). 사용자가 애니메이션 자체를 걷어내고 로터리 완료 시 결과를 일괄 표시하는 방식으로 간소화 요청. 동시에 홈 화면 "토너먼트 정보"/"로터리 추첨" 박스의 보더 라디우스 제거 요청.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx` (client, 서버 미러 없음 — 순수 클라이언트 UI 상태)
+
+**Before**:
+```tsx
+const [revealedCount, setRevealedCount] = useState(0);
+const hasAnimatedLotteryRef = useRef(false);
+...
+useEffect(() => {
+    if (!lotteryDone) { setRevealedCount(0); hasAnimatedLotteryRef.current = false; return; }
+    if (hasAnimatedLotteryRef.current) return;
+    hasAnimatedLotteryRef.current = true;
+    const total = leagueTeams.length;
+    const storageKey = league?.id ? `lottery-reveal-seen:${league.id}` : null;
+    if (storageKey && localStorage.getItem(storageKey)) { setRevealedCount(total); return; }
+    if (storageKey) localStorage.setItem(storageKey, '1');
+    let i = 0;
+    const id = setInterval(() => {
+        i += 1;
+        setRevealedCount(i);
+        if (i >= total) clearInterval(id);
+    }, 700);
+    return () => clearInterval(id);
+}, [lotteryDone, leagueTeams.length, league?.id]);
+// 렌더: stillRevealing/전광판/revealed 판정으로 한 팀씩 순차 공개
+```
+로터리 추첨 박스: `<div className="bg-slate-900 rounded-lg overflow-hidden">`
+토너먼트 정보 박스: `<div className="bg-slate-900 rounded-lg px-4 divide-y divide-slate-800/60">`
+드래프트 진행중/대기중 상태 박스: `<div className="bg-slate-900 rounded-lg px-4 py-4 space-y-3">` (2곳)
+
+**After**:
+`revealedCount`/`hasAnimatedLotteryRef`/localStorage 로직 전부 삭제. `lotteryDone`이 true가 되면 `sortedTeams`에서 `draft_order`로 바로 매칭해 전체 순위 테이블을 애니메이션 없이 즉시 렌더링(빈 행 placeholder도 로터리 완료 후엔 나타나지 않음 — team이 없으면 빈 슬롯이므로 실질적으로 항상 채워짐). 위 4개 박스 모두 `rounded-lg` 클래스 제거.
+
+**검증**: `npx tsc --noEmit` 통과 (LeagueLobbyPanel.tsx 관련 에러 없음). `useRef` import도 더 이상 안 쓰여 함께 제거.
+
+**롤백 방법**: 위 Before 블록의 state/effect/JSX로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 토너먼트 생성 시에도 "가상 시즌 연도" 입력 노출
+
+**배경**: `CreateLeagueModal.tsx`의 "가상 시즌 연도" 입력이 메인리그(`type === 'main_league'`)에만
+노출돼 있었음. `virtualSeasonYear` state 자체는 공용이었고 `leagueService.createLeague()`의
+`options.virtualSeasonYear`도 이미 타입 구분 없이 `leagues.virtual_season_year`에 그대로
+매핑되므로(서버 쪽은 이미 범용), 토너먼트 세션 생성 시에도 이 값을 설정할 수 있게 UI/제출
+로직만 확장.
+
+**변경 파일**:
+- `components/multi/CreateLeagueModal.tsx` (client only — 서버(`leagueService.ts`,
+  `finalize.ts`)는 이미 타입 무관하게 `virtual_season_year`를 받고 저장하므로 수정 불필요)
+
+**Before**:
+```tsx
+// "가상 시즌 연도" 입력은 type === 'main_league' 블록에만 존재
+
+// createLeague 호출 시 tournament 분기의 options에는 virtualSeasonYear 없음
+options: {
+    ...
+    tournamentStartAt:  startIso,
+    draftScheduledAt:   draftIso,
+    lotteryScheduledAt: lotteryIso,
+    gamesPerRealDay:    Math.max(1, Math.round(1440 / gameIntervalMinutes)),
+},
+
+// createRoom 호출 시 tournament면 season 필드 자체를 안 보냄(DB 기본값 '2025-26'로 고정)
+const { data: room, error: re } = await createRoom({
+    leagueId,
+    maxPlayers: maxTeams,
+    ...(type !== 'tournament' && { season: `${virtualSeasonYear}-${String(virtualSeasonYear + 1).slice(-2)}` }),
+    simSettings: { ... },
+});
+```
+
+**After**:
+```tsx
+// virtualSeasonYear state를 "메인리그 전용" 주석 블록 밖으로 이동(공통 state로 명시)
+
+// 2단(일시 설정) 토너먼트 블록 최상단에 "가상 시즌 연도" 입력 필드 추가
+// (로터리 추첨 일시 입력 바로 위)
+
+// createLeague tournament 분기 options에 virtualSeasonYear 추가
+options: {
+    ...
+    tournamentStartAt:  startIso,
+    draftScheduledAt:   draftIso,
+    lotteryScheduledAt: lotteryIso,
+    gamesPerRealDay:    Math.max(1, Math.round(1440 / gameIntervalMinutes)),
+    virtualSeasonYear,
+},
+
+// createRoom 호출 시 항상 season 전달(타입 무관)
+const { data: room, error: re } = await createRoom({
+    leagueId,
+    maxPlayers: maxTeams,
+    season: `${virtualSeasonYear}-${String(virtualSeasonYear + 1).slice(-2)}`,
+    simSettings: { ... },
+});
+```
+
+**검증**: `tsc --noEmit` 통과(해당 파일 관련 에러 없음).
+
+**주의사항**: 토너먼트 스케줄 생성(`finalize.ts`)은 `tournament_start_at`만 기준점으로 쓰고
+`virtual_season_year`를 참조하지 않으므로(메인리그의 `generateSeasonSchedule()`/올스타 키데이트
+계산에만 쓰임), 이번 변경은 순수 표시값(`rooms.season` → 브라켓 챔피언 문구 등)에만 영향.
+토너먼트 진행 로직/일정에는 영향 없음.
+
+**롤백 방법**: 위 Before 블록 3곳 그대로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 로터리 표시 순서 정정(1순위 항상 맨 위) + localStorage로 재생 1회 제한
+
+**배경**: 바로 위 항목에서 "표시 순서를 역순으로"를 "테이블 행 자체를 32→1로 나열"로
+잘못 구현했는데, 사용자가 정정 — "테이블 최상단은 항상 1순위여야 하고, '역순'은 공개(reveal)
+가 아래(꼴찌 픽)에서 시작해 위(1픽)로 올라오는 것"이라는 의미였음. 추가로 "한 번 본
+사람은 다시 안 봐도 되게, 새로고침/재입장 시 바로 전체 결과를 보여달라"는 요청도 반영
+(바로 전 항목에서는 "이어보기 개념 없음"으로만 답하고 끝났었음).
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - 테이블 행 배열을 `Array.from({length: totalSlots}, (_, idx) => totalSlots - idx)`
+    (32→1 나열) → 원래의 `Array.from({length: totalSlots}, (_, i) => i + 1)`(1→32,
+    1순위가 맨 위)로 되돌림.
+  - `revealed` 판정을 `idx < revealedCount`(배열 위치 기준) → `(totalSlots - rank) <
+    revealedCount`(그 행이 "아래에서부터 몇 번째인지" 기준)로 변경 — 표시는 오름차순
+    그대로인데 공개만 맨 아래 행(꼴찌 픽)부터 시작해서 위(1픽)로 올라오도록 분리.
+    "픽 전광판"의 `lastRevealedRank` 공식(`totalSlots - (revealedCount - 1)`)은 애초에
+    표시 순서와 무관하게 옳았어서 변경 없음.
+  - `localStorage` 키 `lottery-reveal-seen:${league.id}` 신설 — 순차 공개 애니메이션을
+    "시작하는" 시점(끝까지 다 보든 중간에 새로고침하든 무관)에 바로 기록. 다음 마운트 시
+    이 키가 있으면 `setInterval` 없이 `revealedCount`를 즉시 전체 팀 수로 설정해 애니메이션
+    없이 바로 최종 결과만 보여준다.
+
+**Before**: 테이블이 32→1로 나열되고 그 배열 위치 순서대로 공개(사용자 의도와 다름).
+매 마운트마다 애니메이션이 처음부터 재생(이어보기/스킵 불가).
+
+**After**: 테이블은 항상 1순위가 맨 위인 오름차순 고정, 공개만 맨 아래(꼴찌 픽)에서
+시작해 맨 위(1픽)로 진행. 한 번이라도 애니메이션이 시작된 리그는 이후 새로고침/재입장
+시 애니메이션 없이 곧장 전체 결과가 보임(브라우저별 localStorage 기준).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: 행 배열을 다시 내림차순으로, `revealed` 판정을 `idx < revealedCount`로,
+`localStorage` 체크/기록 블록을 제거하면 바로 위 항목(1차 수정) 상태로 복귀.
+
+---
+
+## 2026-09-11 — 로터리 추첨 테이블 4건 수정(고정 행 높이/역순 표시/공개 속도/픽 전광판)
+
+**배경**: 직전에 만든 로터리 추첨 테이블을 실제로 확인한 뒤 사용자가 4가지 수정 요청:
+(1) 빈 행 → 팀 이름 채워질 때 행 높이가 커지는 문제, (2) 표시 순서를 32순위부터 역순으로,
+(3) 공개 속도를 2배 느리게, (4) 한 팀 공개될 때마다 상단에 "00픽 - 팀 이름" 전광판.
++ "추첨 도중 새로고침/재입장하면 어떻게 되는지" 질문.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - 행 컨테이너 `py-2`(내용에 따라 높이 가변) → `h-11`(고정 높이, `items-center`로 내용
+    수직 중앙 정렬) — 빈 플레이스홀더 바(`h-5`)와 로고+텍스트(24px) 둘 다 같은 행 높이
+    안에서 렌더되어 더 이상 행이 늘어나 보이지 않음.
+  - 표시 배열을 `Array.from({length: totalSlots}, (_, i) => i+1)`(오름차순 1→32)에서
+    `Array.from({length: totalSlots}, (_, idx) => totalSlots - idx)`(내림차순 32→1)로
+    변경. 공개 판정도 `rank <= revealedCount`(값 기준) 대신 `idx < revealedCount`(배열
+    위치 기준)로 바꿔 "표시 순서 = 공개 순서"가 되도록 통일 — 위(꼴찌 픽)부터 아래
+    (1픽=최종 결과)로 순서대로 채워짐.
+  - 순차 공개 `setInterval` 간격 350ms → 700ms(2배 느리게).
+  - "픽 전광판" 신설 — `revealedCount`로 방금 공개된 마지막 픽(`totalSlots -
+    (revealedCount - 1)`번째)을 역산해 `bg-slate-950` 강조 패널에 `00픽 - 팀 이름`
+    형태(2자리 zero-pad)로 표시. 공개 중엔 그 위에 "로터리 추첨 중..." 라벨도 함께,
+    전체 공개가 끝나면(1픽 확정) 라벨은 사라지고 마지막 값(1픽 결과)만 남음.
+  - 코드 주석으로 "새로고침 시 재생 여부" 답변 기록 — `revealedCount`/
+    `hasAnimatedLotteryRef`는 순수 로컬 React state라 서버/DB 어디에도 저장되지 않음.
+    새로고침이나 재입장은 컴포넌트를 통째로 다시 마운트시키므로 `hasAnimatedLotteryRef`가
+    초기화되고, `lotteryDone`은 이미 true 상태이므로 애니메이션이 처음부터 다시 재생됨
+    ("이어보기" 개념 없음 — 매번 새로 봄).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건). 실제 TOAST
+토너먼트(league_id `fad8cc0c-...`)에 Supabase `run_draft_lottery` RPC를 직접 실행해
+32팀 draft_order를 확정하고 애니메이션 동작을 확인.
+
+**롤백 방법**: `git diff views/multi/season/LeagueLobbyPanel.tsx`로 이번 4건 변경만
+되돌리면 이전 버전(오름차순 표시, 350ms, 전광판 없음, 가변 행 높이)으로 복귀.
+
+---
+
+## 2026-09-11 — 홈 화면 리그 목록에서 "포맷" 컬럼 제거 (들어가기 버튼 줄바꿈 수정)
+
+**배경**: 사용자가 스크린샷과 함께 홈 화면(`InlineLeagueList.tsx`) 리그 목록 테이블에서
+"들어가기" 버튼이 줄바꿈된다고 리포트, "포맷" 컬럼을 지워달라고 요청.
+
+**변경 파일**:
+- `views/home/InlineLeagueList.tsx` — "포맷"(토너먼트 탭)/"시즌 이름"(메인리그 탭) 겸용
+  컬럼(`secondCol`) 제거: 헤더 `<TH>` 1개, 각 행의 `<td>{secondCol}</td>`, `secondCol`
+  계산 로직, 이제 안 쓰는 `TOURNAMENT_FORMAT_LABEL` import와 `season` 구조분해까지 함께
+  정리.
+
+**Before**: 이름 / 포맷·시즌이름 / 상태 / 현재 날짜 / 참여인원 / 입장 6컬럼 — 좁은 화면에서
+"입장" 컬럼 폭이 부족해 "들어가기"/"참가" 버튼 텍스트가 줄바꿈됨.
+
+**After**: 포맷·시즌이름 컬럼 제거로 5컬럼 — 입장 버튼에 폭 여유가 생겨 한 줄로 표시.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: 헤더 `<TH>` 1개, `<td>{secondCol}</td>`, `secondCol` 계산, `season`
+구조분해, `TOURNAMENT_FORMAT_LABEL` import를 복원하면 됨.
+
+---
+
+## 2026-09-11 — 리그 홈 우측에 로터리 추첨 테이블 신설 (서버 로터리 로직 확인 후 클라이언트 가짜 순차 공개로 구현)
+
+**배경**: 사용자가 "참가 팀 테이블 # 컬럼 제거 + 우측에 로터리 추첨 테이블 — 추첨 전엔
+빈 행 30개 + 큰 카운트다운, 추첨 시작되면 '로터리 추첨 중...'으로 바뀌고 순위별로 팀이
+하나씩 채워지게"를 요청하면서, 실제 서버 로터리 로직상 이게 가능한지 먼저 확인해달라고
+했음. 조사 결과(Supabase `run_draft_lottery` RPC 직접 확인): 이 함수는 `ORDER BY random()`
+으로 뽑은 순서대로 전체 팀의 `draft_order`를 단일 트랜잭션 안에서 지연 없이 한 번에
+UPDATE하고, `server/src/startDraft.ts`의 `/run-lottery`도 그 결과를 단일 HTTP 응답으로
+반환할 뿐 — "한 팀씩 시간차를 두고 실시간으로 확정 알림을 보내는" 스트리밍 메커니즘은
+서버/DB 어디에도 없음. 사용자에게 "서버를 실제로 순차화(대공사)" vs "클라이언트가 이미
+받은 최종 결과를 가짜로 순차 공개(권장)" 중 선택하게 했고, 후자로 결정.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - "참가 팀" 테이블의 "#"(draft_order) 컬럼 제거 — 참가 팀 목록 자체엔 순위가 필요 없고,
+    순위 정보는 이제 오른쪽의 전용 로터리 테이블이 담당.
+  - `lotteryCountdown` state + 1초 tick `useEffect` 신설 — `league.lottery_scheduled_at`
+    기준 남은 시간을 계산(로터리 완료 시 자동 정지).
+  - `revealedCount`/`hasAnimatedLotteryRef` 신설 — `lotteryDone`이 false→true로 바뀐
+    최초 시점(이 패널이 켜져 있는 동안 realtime으로 감지)에만 1회, 350ms 간격으로
+    `leagueTeams.length`까지 순위 1위부터 순차 증가하는 "가짜 순차 공개" 애니메이션.
+    이미 완료된 상태로 마운트되면 애니메이션 없이 바로 최종 테이블만 보여줌.
+  - 우측 컬럼에 "로터리 추첨" 섹션 신설 — `!lotteryDone`이면 큰 글씨(`text-5xl`) 카운트다운
+    + `totalSlots`개의 빈 행(팀 수만큼, 사용자가 예시로 든 "30개"는 실제 정원에 맞춰
+    일반화), `lotteryDone && revealedCount < leagueTeams.length`(공개 애니메이션 진행
+    중)이면 "로터리 추첨 중..." 문구, 각 순위 행은 `revealed` 여부에 따라 팀 로고+이름
+    또는 빈 플레이스홀더 바를 표시.
+
+**Before**: 참가 팀 테이블에 "#" 컬럼 존재, 홈 화면 우측 컬럼이 완전히 비어있음(이전
+2단 레이아웃 작업에서 "추후 확장용"으로 남겨둔 상태).
+
+**After**: 참가 팀 테이블엔 순위 컬럼 없음. 우측엔 로터리 추첨 카운트다운 → (추첨 완료
+시) 순차 공개 애니메이션 → 최종 로터리 순위표가 표시되는 전용 테이블.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff views/multi/season/LeagueLobbyPanel.tsx`로 이번 커밋 범위만
+되돌리면 "#" 컬럼 있는 참가 팀 테이블 + 빈 우측 컬럼 상태로 복귀.
+
+---
+
+## 2026-09-11 — 리그 홈(로터리/드래프트 전) 마스트헤드 타이머 제거 + 2단 레이아웃 + 일시 연도 표시 + 드래프트 대상 링크화
+
+**배경**: 사용자가 5가지를 한 번에 요청 — (1) 마스트헤드(리그명 옆)에 뜨는 카운트다운이
+"드래프트 타이머"라고 라벨링돼있으면서 로터리 전 단계에서도 노출돼 혼란스러움, 삭제,
+(2) 홈 화면을 2단으로 나누고 토너먼트 정보+참가 팀을 좌측에 배치, (3) 토너먼트 정보의
+일시 항목들에 연도도 표시, (4) "드래프트 풀 선수 수"의 명수 텍스트를 `/pool`로 링크,
+(5) 그 라벨을 "드래프트 대상"으로 변경.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - 마스트헤드의 `countdown` 배지(및 이를 채우던 `countdown` state + 1초 tick
+    `useEffect` 타이머) 전체 제거 — `league.draft_scheduled_at` 기준 남은 시간을
+    "드래프트"라는 라벨과 함께 보여주고 있었는데, 로터리도 하기 전 단계에서 노출되는 게
+    문제였음.
+  - 바디를 `grid grid-cols-2 gap-6`로 감싸 좌측 컬럼(`space-y-6`)에 "토너먼트 정보"+
+    "참가 팀" 섹션을 배치, 우측 컬럼은 현재 빈 `<div/>`(추후 확장용).
+  - `fmtDate()`에 `year: 'numeric'` 옵션 추가 — "토너먼트 시작 일시"/"드래프트 순서 추첨
+    일시"/"드래프트 일시" 전부에 연도가 함께 표시됨.
+  - "드래프트 풀 선수 수" → "드래프트 대상"으로 라벨 변경, 값(`{poolCount}명`)을
+    `<button onClick={() => navigate(`.../season/pool`)}>`로 감싸 클릭 시 드래프트 풀
+    화면으로 이동하도록 변경(로딩 중엔 기존처럼 "불러오는 중…" 텍스트만 표시, 링크 없음).
+
+**Before**: 마스트헤드에 항상 뜨는 드래프트 카운트다운(단계 무관), 단일 컬럼 세로 나열,
+일시에 연도 없음(월/일/시:분만), "드래프트 풀 선수 수" 텍스트는 클릭 불가.
+
+**After**: 카운트다운 없음, 좌측 컬럼에 토너먼트 정보/참가 팀(우측은 비어있음), 일시
+전부 연도 포함 표시, "드래프트 대상" 값 클릭 시 `/pool`로 이동.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff views/multi/season/LeagueLobbyPanel.tsx`로 이번 커밋 범위만
+확인 후 되돌리면 이전(단일 컬럼, 카운트다운 있음, 연도 없음, 링크 없음) 상태로 복귀.
+
+---
+
+## 2026-09-11 — 드래프트 풀 화면에서 "팀" 컬럼 제거
+
+**배경**: `MultiDraftPoolView.tsx` 신설 시 드래프트된 선수의 소속 팀을 보여주는 "팀"
+컬럼(약어 또는 "미지명")을 추가했었는데, 사용자가 삭제해도 된다고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiDraftPoolView.tsx` — 헤더의 "팀" `TableHeaderCell`과 각 행의
+  팀 표시 `TableCell` 제거. 이제 쓸모없어진 `rosterMap`(useMultiSearchData 구조분해에서
+  제거)과 `teamBySlug` useMemo, 행별 `draftedTeamSlug`/`draftedTeam` 계산도 함께 정리.
+  빈 목록일 때의 `colSpan`도 `6 + ATTR_ITEMS.length + 1` → `6 + ATTR_ITEMS.length`로 조정.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff`로 이 항목의 변경만 되돌리면(팀 컬럼 마크업 + `rosterMap`/
+`teamBySlug` 복원) 이전 상태로 복귀.
+
+---
+
+## 2026-09-11 — 드래프트 풀 → 선수 프로필 무한 로딩 버그 수정 (React Query `enabled:false` 함정)
+
+**배경**: 사용자가 `/pool`(드래프트 풀 화면)에서 선수 프로필로 들어가면 로더가 계속
+돈다고 리포트. 원인 추적 결과 `MultiPlayerDetailView.tsx`의 `isLoading = leagueLoading
+|| gameLoading || fetchLoading || shortCodesLoading || statsLoading` 중
+`fetchLoading`(`useLeagueRawStats`)과 `statsLoading`(`usePlayerSeasonStatsLeague`) 두 훅
+모두 내부적으로 `enabled: allRosterIds.length > 0 && ...`로 게이팅돼 있었음 — 드래프트 완료
+전엔 `leagueTeams`가 전부 빈 로스터라 `allRosterIds`가 빈 배열이 되고, React Query는
+`enabled:false`인 쿼리를 "아직 실행 안 됨"으로 취급해 `isPending`을 영원히 `true`로
+유지한다(한 번도 안 돈 쿼리라 "성공"도 "실패"도 아닌 상태에 그대로 머무름). 이 두 훅을
+쓰는 화면(로스터/리더보드/전술/트레이드/선수상세)은 원래 전부 드래프트 완료 후에만
+접근 가능했던 메뉴 뒤에 있어 이 버그가 드러날 일이 없었는데, 이번에 새로 만든 `/pool` →
+선수 프로필 진입 경로가 "드래프트 완료 전"이라는 조건을 처음으로 뚫고 들어가면서 잠재
+버그가 실제로 재현된 것.
+
+**변경 파일**:
+- `hooks/usePlayerSeasonStatsLeague.ts` — `enabled` 조건을 변수로 분리하고, 반환하는
+  `isPending`을 `enabled ? query.isPending : false`로 덮어씀(쿼리가 비활성 상태면 "가져올
+  게 없어 완료됨"으로 정정).
+- `hooks/useLeagueRawStats.ts` — `playersQuery`/`seasonInjuryQuery`/`pbpQuery` 3개 서브
+  쿼리 각각의 `enabled` 조건을 변수(`playersEnabled`/`seasonInjuryEnabled`/`pbpEnabled`)로
+  분리하고, 합산 `isPending`/`isFetching` 계산 시 각 서브쿼리가 자신의 enabled 조건이
+  켜져 있을 때만 집계에 반영하도록 수정(`(playersEnabled && playersQuery.isPending) || ...`).
+
+**Before**: `allRosterIds`(또는 `playerIds`)가 빈 배열이면 두 훅 모두 `isPending`이
+영원히 `true` — 이 값을 쓰는 화면은 데이터를 영원히 못 받는 게 아니라(애초에 가져올 게
+없어 정상), "로딩 중" 표시만 영원히 풀리지 않음.
+
+**After**: 로스터가 비어있어 쿼리가 비활성 상태인 경우 `isPending`이 즉시 `false`로
+떨어져(가져올 데이터가 없다는 뜻일 뿐 로딩 실패가 아님) 화면이 정상적으로 렌더됨.
+`data`는 기존과 동일하게 `undefined`/빈 값 그대로라 실제 조회 동작(네트워크 호출 여부)은
+변경 없음 — 순수하게 로딩 상태 표시만 정정.
+
+**검증**: `npx tsc --noEmit -p .` — 두 훅 + 5개 소비 화면(MultiLeaderboardView/
+MultiFrontOfficeView/MultiPlayerDetailView/MultiSeasonPage/MultiTacticsView) 전부 에러
+0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: 두 훅에서 `enabled`/`playersEnabled` 등 변수 분리와 `isPending` 오버라이드
+로직을 제거하고 원래의 `query.isPending`/`playersQuery.isPending || ...` 직접 반환으로
+되돌리면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 전 헤더에 뜨던 목업 "동부 1라운드 2-1 @ ATL" 표시 제거 + 리그/검색창 숨김 확장
+
+**배경**: 사용자가 헤더에서 드래프트 전 단계인데도 "동부 1라운드 2-1 @ ATL" 같은 시리즈
+정보가 왜 보이냐고 질문 — 코드 확인 결과 `MultiHeader.tsx`의 `fallbackMode`(2026-08-26
+결정: "실제 예정된 경기가 없을 때 목업 다음 경기 표시를 보여주기로 함")가 하드코딩한
+`{ roundLabel: '동부 1라운드', myWins: 2, oppWins: 1, targetWins: 4 }` 값이었음. 이 목업은
+원래 "활성 시즌인데 아직 예정된 경기가 없는" 경우를 위한 것이었는데, 최근 세션 레이아웃
+변경으로 헤더가 드래프트 전(로터리/드래프트 단계, 시즌 자체가 없는 상태)에도 항상 렌더되면서
+조건 미비로 노출된 것. 같은 요청에서 "리그 메뉴도 모두 숨겨 홈/뉴스/드래프트풀 3개만
+접근 가능하게, 검색창도 숨겨달라"는 추가 요청도 함께 반영.
+
+**변경 파일**:
+- `components/MultiHeader.tsx`:
+  - `isDraftComplete = league?.status === 'in_progress' || 'finished'` 상수 신설.
+    `fallbackMode` 조건 앞에 `isDraftComplete &&`를 추가해 드래프트 완료 전(시즌 없음)엔
+    목업이 아예 뜨지 않고(`showNextGame`도 자동으로 false) 해당 영역이 비워지도록 수정.
+  - `<MultiHeaderNavMenu isDraftComplete={isDraftComplete} .../>` — 기존에 인라인으로
+    중복 계산하던 걸 이 상수로 통일.
+- `components/dashboard/MultiHeaderNavMenu.tsx` — "리그" 탭(순위표/플레이오프/올스타/
+  리더보드/일정/트레이드 드롭다운)과 `MultiGlobalSearch` 검색창을
+  `{isDraftComplete && (...)}`로 감싸 드래프트 완료 전엔 숨김(바로 위 항목에서 "내 팀"/
+  "전술" 탭은 이미 같은 방식으로 숨겨둔 상태 — 이번에 리그/검색창까지 확장).
+- `components/MultiSidebar.tsx` — 로스터/전술뿐 아니라 순위표/플레이오프/올스타/리더보드/
+  일정/트레이드/자유계약/어드민 팀 관리까지 전부 `{isDraftComplete && (...)}` 하나로
+  묶어 드래프트 완료 전엔 숨김(구분선 포함). 결과적으로 사이드바엔 홈/뉴스피드/드래프트
+  풀 3개만 남음.
+
+**Before**: 헤더에 활성 시즌 여부와 무관하게 항상 뜨는 목업 시리즈 정보, 사이드바/헤더에
+"리그"/검색창 등 드래프트 전엔 무의미한 메뉴들이 그대로 노출.
+
+**After**: 드래프트 완료 전엔 헤더의 "다음 경기" 영역이 비고, 사이드바는 홈/뉴스피드/
+드래프트 풀 3개만, 헤더는 홈 탭만(+검색창 없음) 남음. 드래프트가 끝나 `league.status`가
+`in_progress`로 바뀌면 전부 자동으로 다시 노출.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `MultiHeader.tsx`의 `fallbackMode` 앞 `isDraftComplete &&` 제거,
+`MultiHeaderNavMenu.tsx`의 "리그"/검색창 `isDraftComplete` 감싸기 제거,
+`MultiSidebar.tsx`의 순위표~어드민 블록을 감싼 `isDraftComplete` 조건을 벗겨내면 됨.
+
+---
+
+## 2026-09-11 — 드래프트 전 "내 팀"/"전술" 메뉴 숨김 + `/pool` 드래프트 풀 조회 화면 신설
+
+**배경**: 드래프트가 끝나기 전엔 팀 로스터가 비어있어 사이드바 "로스터"/"전술", 헤더의
+"내 팀"/"전술" 메뉴로 들어가도 빈 화면일 뿐이었음. 사용자가 두 가지를 요청:
+(1) 드래프트 종료 전까지 좌측 사이드바 + 상단 헤더에서 이 메뉴들을 완전히 숨길 것,
+(2) 새 라우트 `/pool`을 만들어 드래프트 풀 전체 선수를 FA(자유 계약) 화면과 같은 스타일의
+테이블로 보여줄 것 — 아이콘은 `public/images/sidenav/pool(-selected).svg`(사용자가 이미
+준비해둠) 사용, 사이드바에서 뉴스피드 바로 아래 위치.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` — `isDraftComplete = league?.status === 'in_progress' ||
+  'finished'` 계산 추가. "로스터"/"전술" `NavItem` 2개를 `{isDraftComplete && (...)}`로 감쌈.
+  "뉴스피드"와 "로스터" 사이에 새 `NavItem`(`NavIcon name="pool"`, label "드래프트 풀",
+  `navigate(`${base}/pool`)`) 추가 — 이 항목은 드래프트 단계와 무관하게 항상 노출.
+- `components/dashboard/MultiHeaderNavMenu.tsx` — `isDraftComplete?: boolean` prop 추가,
+  "내 팀"/"전술" 탭 버튼 2개를 `{isDraftComplete && (...)}`로 감쌈.
+- `components/MultiHeader.tsx` — `<MultiHeaderNavMenu isDraftComplete={league?.status ===
+  'in_progress' || league?.status === 'finished'} .../>` 전달.
+- `views/multi/season/MultiDraftPoolView.tsx` (신규) — `MultiFreeAgentView.tsx`(자유 계약
+  화면)를 거의 그대로 이식(검색/포지션·아키타입 필터/부등호 스탯 필터/페이지네이션/전체
+  능력치 21개 컬럼 전부 동일). 차이점:
+  - FA 화면은 `rosterMap`에 없는(=미배정) 선수만 걸러 보여주지만, 이 화면은 `poolPlayers`
+    전체를 그대로 보여줌(드래프트 완료 후에도 조회 가능, 드래프트된 선수는 소속 팀 표시).
+  - FA 전용 기능(계약 서명 `signFreeAgent`, `myTeamRow`, 연봉 컬럼, 계약 버튼) 전부 제거,
+    대신 "팀" 컬럼 신설(`rosterMap.get(p.id)` → `leagueTeams`에서 team_abbr 조회, 없으면
+    "미지명").
+- `App.tsx` — `<Route path="pool" element={<MultiDraftPoolView />} />`를
+  `/multi/leagues/:leagueId/season` 하위(`free-agent` 라우트 바로 다음)에 등록.
+
+**Before**: 드래프트 전에도 "로스터"/"전술" 메뉴가 노출돼 빈 화면으로 이어졌고, 드래프트
+풀 전체를 볼 수 있는 화면 자체가 없었음(이전 세션에서 "드래프트 풀 보기" 모달 버튼도 이미
+제거된 상태).
+
+**After**: 드래프트 완료 전엔 "로스터"/"전술"이 사이드바·헤더 양쪽에서 완전히 숨겨짐.
+`/multi/leagues/:leagueId/season/pool`에서 언제든(드래프트 전후 무관) 전체 풀 선수를
+FA 화면과 동일한 테이블 UI로 조회 가능, 사이드바 "뉴스피드" 바로 아래 새 아이콘으로 진입.
+
+**검증**: `npx tsc --noEmit -p .` — 신규/수정 5개 파일 모두 에러 0건, 전체 에러 수 동일
+(58건, App.tsx의 RosterMode 에러 1건은 이번 변경과 무관한 기존 이슈로 이미 확인됨).
+
+**롤백 방법**: `MultiDraftPoolView.tsx` 삭제, `App.tsx`의 `pool` 라우트/import 제거,
+`MultiSidebar.tsx`/`MultiHeaderNavMenu.tsx`/`MultiHeader.tsx`의 `isDraftComplete` 관련
+분기와 "드래프트 풀" NavItem을 제거하면 이전 상태로 복귀.
+
+---
+
+## 2026-09-11 — "토너먼트 정보" 섹션을 수직 텍스트 리스트로 전환 + 항목 확장
+
+**배경**: 기존 "토너먼트 정보"는 한 줄에 시즌/포맷/추첨/드래프트/참가자를 `flex-wrap`으로
+욱여넣은 형태였는데, 사용자가 "수직 텍스트 리스트로 전환"하며 항목도 10개로 구체적으로
+지정: 참가팀 수 / 대진 방식(Single Elimination·Round-Robin) / 경기 방식(Bo5·Final Bo7) /
+토너먼트 시작 일시 / 드래프트 순서 추첨 일시 / 드래프트 일시 / 드래프트 형식 / 드래프트
+라운드 수 / 드래프트 라운드 당 시간 / 드래프트 풀 선수 수.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - `InfoRow` 컴포넌트 신설(라벨 좌측/값 우측, `divide-y`로 구분선) — `bg-slate-900
+    rounded-lg px-4 divide-y divide-slate-800/60` 컨테이너 안에 10개 행을 순서대로 배치.
+  - "드래프트 형식"(스네이크/선형)은 `league.draft_pool_strategy` 값을 사용 —
+    `CreateLeagueModal.tsx`가 `DraftPoolSettings`의 `draftFormat`(snake/linear, "드래프트
+    순서" 개념)을 저장할 때 실제로 매핑하는 DB 컬럼이 `draft_pool_strategy`라는 걸 코드로
+    확인(별도 컬럼 `draft_format`은 이 값과 무관).
+  - "드래프트 풀 선수 수"는 실시간 카운트가 필요해 신규 `poolCount` state + useEffect 추가
+    — `DraftPoolSettings.tsx`의 `fetchStats()`(풀 타입별 조건절 + OVR 필터 + rookies 예외)와
+    동일한 조회 규칙을 총원 카운트만 필요하도록 축약해 재사용(포지션별 분포는 계산 안 함).
+  - "토너먼트 시작 일시"는 기존에 빠져있던 `league.tournament_start_at`을 새로 노출.
+
+**Before**: 한 줄짜리 `flex-wrap` 정보 라인(시즌/포맷/추첨/드래프트/참가자 5개 항목만).
+
+**After**: 10개 항목의 세로 리스트. 드래프트 풀 선수 수는 비동기 조회 중엔 "불러오는
+중…"으로 표시 후 실제 인원 수로 갱신.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `InfoRow` 컴포넌트와 `poolCount` state/useEffect, `fmtDraftStrategy` 함수를
+제거하고 정보 블록을 이전의 `flex flex-wrap` 5항목 라인으로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — LeagueLobbyPanel 풀폭 레이아웃 전환 + 어드민 즉시시작/드래프트풀/내팀카드 제거
+
+**배경**: 바로 위 항목에서 세션 디자인으로 재작성한 뒤, 사용자가 "실제 리그 홈 화면처럼
+바디에 꽉 차는 형태로", "어드민 전용 로터리 즉시 시작/드래프트 즉시 시작/설정 버튼 제거",
+"드래프트 풀 보기 버튼도 우선은 삭제", "로터리 버튼 아래 내 팀 카드도 삭제"를 추가 요청.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx`:
+  - 최상위 래퍼 `max-w-4xl mx-auto px-4 py-6` → `p-4`(MultiSeasonPage.tsx와 동일한 풀폭
+    패딩, 가운데 정렬 폭 제한 제거).
+  - "토너먼트 정보" 헤더의 우측 버튼 그룹(드래프트 풀 보기 `Eye`, 설정 `Settings2`) 제거
+    → `<h3>` 단독으로 단순화.
+  - 어드민 "로터리 즉시 시작"/"드래프트 즉시 시작" 블록(`handleRunLottery`/
+    `handleStartDraft` 핸들러, `runningLottery`/`startingDraft` state 포함) 전체 제거.
+  - "내 팀 상태 알림" 카드(팀 선점 완료 시 표시되던 로고+팀명+체크 카드) 제거.
+  - 드래프트 풀 미리보기 모달(`DraftPoolModal`, `showDraftPool` state, `draftPoolTypes`
+    useMemo, `VALID_POOL_TYPES` 상수, `PoolType` 타입 임포트) 전부 제거 — 트리거 버튼이
+    없어져 도달 불가능해진 코드라 함께 정리.
+  - 위 제거로 미사용이 된 `startDraft`/`runDraftLottery`(leagueService) 임포트, `Eye`/
+    `Settings2`/`Check` 아이콘 임포트, `useMemo` 임포트 정리.
+
+**Before**: 중앙 정렬된 `max-w-4xl` 좁은 컬럼, 토너먼트 정보 헤더에 "드래프트 풀 보기"/
+"설정" 버튼, 그 아래 어드민 "로터리/드래프트 즉시 시작" 버튼, 그 아래 "내 팀 선점 완료"
+알림 카드.
+
+**After**: `MultiSeasonPage.tsx`와 동일하게 풀폭. 토너먼트 정보 섹션은 헤더+정보 텍스트만
+남고 버튼류 전부 제거. 로터리/드래프트는 예정 시각(`lottery_scheduled_at`/
+`draft_scheduled_at`) 기반 자동 진행에만 의존 — 이 화면에서 즉시 실행할 방법이 당장은
+없음(어드민은 사이드바 프로필 메뉴의 "세션 설정" → 드래프트 탭에서 `runDraftLottery`를
+여전히 호출할 수 있음, `LeagueSettingsView.tsx:423` 확인됨; 다만 "드래프트 즉시 시작"에
+해당하는 수동 트리거는 그쪽에도 없어 현재 UI 전체에서 사라진 상태).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff views/multi/season/LeagueLobbyPanel.tsx`로 이번 변경분만
+확인 후 되돌리면 바로 위 항목("세션 디자인으로 재작성") 상태로 복귀.
+
+---
+
+## 2026-09-11 — LeagueLobbyPanel(리그 홈, 로터리/드래프트 전) 세션 디자인으로 재작성
+
+**배경**: `LeagueLobbyPanel.tsx`는 원래 별도 `/lobby` 라우트(LeagueLobbyView.tsx)의 UI를
+그대로 이식해온 것이라, 상단 "< 홈으로" 백버튼과 `bg-slate-800/60 border rounded-2xl`
+카드 스타일 등 세션 내 다른 화면(사이드바 있는 `/season/*`)과 톤이 안 맞았음. 사용자가
+"< 홈으로 버튼 삭제, 홈 화면의 '리그 소식' 영역처럼 로고+타이틀을 최상단에, 그 아래 토너먼트
+정보, 그 아래 참가팀 리스트, 컴포넌트 디자인은 세션 내 디자인 재사용"으로 요청. "어떤 로고냐"
+재질문에 "PBL 로고"라고 답변 — `pages/MultiSeasonPage.tsx`의 홈 탭 최상단에 이미 있는
+마스트헤드(`/logos/real/PBL.svg` 64px + "PRO BASKETBALL LEAGUE" 텍스트, `HomeStandingsSection`
+등 "리그 소식" 위젯들 바로 위)와 동일한 패턴임을 코드에서 확인.
+
+**변경 파일**:
+- `views/multi/season/LeagueLobbyPanel.tsx` — 전면 재작성(상태/핸들러/realtime 구독 등
+  로직은 100% 동일, JSX만 교체):
+  - 상단 "< 홈으로" 버튼(`ChevronLeft`) 제거.
+  - 마스트헤드 신설: `/logos/real/PBL.svg`(64px) + 리그 이름(`league.name`, MultiSeasonPage의
+    "PRO BASKETBALL LEAGUE" 자리를 대체) + 드래프트 카운트다운 배지.
+  - "토너먼트 정보" 섹션: `<h3 className="text-lg font-black text-white">` 헤더 +
+    flat `bg-slate-900 rounded-lg` 패널(기존 `bg-slate-800/60 border rounded-2xl` 카드 폐기).
+    드래프트 진행중/대기중/내팀알림 카드도 전부 동일하게 flat 스타일로 통일.
+  - "참가 팀" 섹션 신설(별도 `<h3>` 타이틀) — 기존 `<table>` 마크업을 flex row 리스트로
+    교체하고, 컬러 배지+약어 텍스트 대신 실제 로고(`TeamLogoImg`, `getRealTeamLogoUrl` 폴백
+    체인 — TeamSelectModal.tsx와 동일 패턴) 사용. 컨퍼런스 컬럼은 세션 내 팀 리스트들이
+    보통 별도 컬럼 없이 두는 것과 맞춰 제거(액션 버튼 로직은 전부 동일하게 유지).
+
+**Before**: 상단 "< 홈으로" 버튼 + `h1` 리그명 + `bg-slate-800/60` 카드들 + `<table>` 팀
+목록(컬러 배지). 예전 별도 페이지 룩을 그대로 유지.
+
+**After**: 백버튼 없음. PBL 마스트헤드 + 리그명. "토너먼트 정보"/"참가 팀" 두 섹션이
+세션 내 홈 위젯과 동일한 flat 패널 + `<h3>` 헤더 스타일. 팀 리스트는 실제 로고 사용.
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff views/multi/season/LeagueLobbyPanel.tsx`로 이번 재작성만 되돌리면
+됨(로직은 그대로라 diff는 전부 JSX/스타일 변경).
+
+---
+
+## 2026-09-11 — 리그 만들기 팝업 2단 → 3단 재구성 + 로터리/드래프트/인터벌 직접 설정 가능
+
+**배경**: 사용자가 "2단에서 3단으로, 드래프트 관련 설정은 3번째 단으로, 2번째 단은 각종
+일시(토너먼트 시작/드래프트 시작/로터리 추첨/경기 사이 인터벌)를 설정할 수 있게, 설정
+가능한 모든 시간은 설정 가능하도록" 요청. 기존엔 드래프트/로터리 시각이 토너먼트 시작
+시각의 자동 오프셋(-30분/-40분)이라 어드민이 손댈 수 없었고, "경기 사이 인터벌"은 UI
+안내 문구에 "2시간"이라고만 쓰여있을 뿐 실제 입력 필드가 없었다 — 코드 확인 결과 실제
+서버 기본값은 `games_per_real_day=48`(=30분 간격)이라 안내 문구 자체가 이미 부정확했음
+(`createLeague()`의 토너먼트 분기, leagueService.ts:137).
+
+**변경 파일**:
+- `services/multi/leagueService.ts`:
+  - `CreateLeagueParams.options`에 `gamesPerRealDay: number` 추가.
+  - "옵션 오버라이드" 섹션에 `if (opts.gamesPerRealDay !== undefined) payload.games_per_real_day = opts.gamesPerRealDay;` 추가 — 토너먼트 전용 하드코딩(`= 48`, 137번째 줄)을 이 값으로 덮어쓸 수 있게 됨.
+- `components/multi/CreateLeagueModal.tsx`:
+  - 모달 `max-w-3xl` → `max-w-6xl`(3단 수용), 바디 `grid-cols-2` → `grid-cols-3`.
+  - **1단(기본 설정)**: 리그 이름/유형/정원 + (신규 위치) 토너먼트 "경기 설정"(대진방식/
+    경기포맷/결승포맷)과 메인리그 "티어" + 참가 팀 선택(기존 그대로).
+  - **2단(일시 설정, 신규)**: 토너먼트는 로터리 추첨 일시 → 드래프트 시작 일시 → 토너먼트
+    시작 일시 → 경기 사이 인터벌(분) 4개 필드 전부 독립 입력. 메인리그는 가상 시즌 연도/
+    정규시즌 기간/일일 시뮬 시간대(기존 "메인리그 설정"에서 이동).
+  - **3단(드래프트+엔진 설정)**: 기존 우측 컬럼 하단부(드래프트 라운드/픽제한/오토픽/
+    DraftPoolSettings/엔진 정규화 강도)를 그대로 이동.
+  - `draftStartAt`/`lotteryStartAt`/`gameIntervalMinutes` state 신설. 초기값만 토너먼트
+    시작 시각 기준 기본 오프셋(`DEFAULT_DRAFT_OFFSET_MIN=30`, `DEFAULT_LOTTERY_OFFSET_MIN=40`)
+    으로 채우고, 이후로는 서로 자동 연동되지 않는 완전 독립 필드(신규 `shiftLocal()` 헬퍼로
+    초기값만 계산).
+  - `MIN_START_LEAD_MS`(토너먼트 시작 기준 1시간)를 `MIN_LOTTERY_LEAD_MS`(로터리 기준
+    15분)로 교체 — 세 시각 중 가장 이른 로터리에 직접 최소 리드타임을 검증.
+  - `handleSubmit` 검증 로직 교체: 기존 "시작 시각만 확인 후 오프셋 자동 계산" →
+    "로터리 최소 리드타임 확인 + 로터리<드래프트<시작 순서 확인 + 인터벌 10~360분 범위
+    확인"으로 재작성. `draftScheduledAt`/`lotteryScheduledAt`은 더 이상 계산값이 아니라
+    사용자가 입력한 필드를 그대로 `kstLocalToIso()` 변환해서 전달.
+  - `gamesPerRealDay: Math.max(1, Math.round(1440 / gameIntervalMinutes))`를 토너먼트
+    생성 옵션에 추가.
+
+**Before**: 우측 단일 컬럼에 "경기 설정"(대진방식+포맷+토너먼트시작일시, 안내 문구에만
+"2시간 간격" 언급) → "드래프트 설정" → "엔진 설정" 순으로 쌓여 있었고, 로터리/드래프트
+시각·경기 인터벌은 사용자가 직접 건드릴 수 없었음.
+
+**After**: 3단 레이아웃 — 1단 기본/경기설정, 2단 일시(로터리/드래프트/시작/인터벌 4개
+독립 필드, 메인리그는 연도/기간/시뮬시간대), 3단 드래프트+엔진. 어드민이 로터리 추첨
+시각부터 경기 사이 인터벌까지 전부 직접 설정 가능.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `git diff components/multi/CreateLeagueModal.tsx services/multi/leagueService.ts`
+로 이번 커밋 범위만 확인 후 `git checkout -- <두 파일>`로 되돌리면 바로 위 항목("참가 팀
+선택 그리드 동부/서부 분리")까지의 2단 레이아웃 상태로 복귀.
+
+---
+
+## 2026-09-11 — 참가 팀 선택 그리드를 동부/서부 컨퍼런스로 분리
+
+**배경**: 바로 위 항목에서 만든 30팀 체크 그리드가 3열 뒤섞인 배치였는데, 사용자가
+"동부/서부 컨퍼런스로 나눠서 배치"해달라고 요청.
+
+**변경 파일**:
+- `components/multi/CreateLeagueModal.tsx` — 모듈 top-level에 `EAST_TEAMS`/`WEST_TEAMS`
+  (`ALL_REAL_TEAMS`를 `conference`로 필터) 상수 추가. 팀 선택 그리드를 `grid-cols-3` 단일
+  목록에서 `grid-cols-2`(동부|서부) 2열로 바꾸고, 각 열 안에서는 `space-y-1`로 팀을
+  세로로 쌓음(한 컨퍼런스당 15팀 × 단일 열). 버튼 선택/비활성 스타일 로직은 그대로.
+
+**Before**: 30팀을 컨퍼런스 구분 없이 3열 그리드에 순서대로 나열.
+
+**After**: 좌측 "동부"/우측 "서부" 2열로 나뉘어, 같은 컨퍼런스 팀끼리 모여 보임(각 열
+세로 목록, 15팀 기준 스크롤 없이 다 보임).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `EAST_TEAMS`/`WEST_TEAMS` 상수 제거하고, 그리드를 다시 `ALL_REAL_TEAMS`
+전체를 순회하는 단일 `grid-cols-3`로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 토너먼트 생성 시 참가 팀 직접 선택 + 무작위 선택 버튼
+
+**배경**: `initializeLeagueTeams()`(services/multi/leagueService.ts)는 항상 30개 실제
+팀 중 무작위로 `maxTeams`개를 뽑아 `league_teams`를 채웠음 — 어드민이 어떤 팀을 넣을지
+고를 방법이 없었음. 사용자가 "토너먼트 세션은 생성 시 어드민이 참가 팀을 직접 고르게,
+무작위 선택 버튼도 필요"라고 요청.
+
+**변경 파일**:
+- `services/multi/leagueService.ts` — `initializeLeagueTeams(roomId, maxTeams,
+  selectedTeamSlugs?)`에 3번째 인자 추가. 지정되면 그 슬러그들만(TEAM_DATA 선언 순서
+  유지) 사용, 생략하면 기존처럼 무작위 셔플 — 메인리그 등 이 인자를 넘기지 않는 기존
+  호출부는 동작 그대로 유지.
+- `components/multi/CreateLeagueModal.tsx`:
+  - `data/teamData.ts`의 `TEAM_DATA`(30개 실제 팀) import, `pickRandomTeamSlugs(count)`
+    헬퍼 추가.
+  - `selectedTeamSlugs` state 신설 — 초기값은 기본 정원(8팀) 기준 무작위 선택(어드민이
+    아무것도 안 건드려도 바로 생성 가능하게). 정원(`maxTeams`)이 바뀌면 그 수에 맞춰
+    자동으로 다시 무작위 선택.
+  - "정원" 필드 바로 아래(왼쪽 컬럼)에 "참가 팀 선택" 섹션 신설(토너먼트 타입에서만
+    노출) — 30팀 체크 그리드(3열, 이미 선택한 개수만큼 차면 나머지는 비활성화) + 우측
+    상단 "무작위 선택" 버튼(`Shuffle` 아이콘).
+  - 정원이 30 초과(32팀 옵션)면 실제 30팀 전원이 자동 포함되고(기존 규칙 그대로) 선택
+    UI 대신 안내 문구만 표시 — 고를 여지가 없는 경우이므로 그리드 자체를 숨김.
+  - `handleSubmit`에 토너먼트 검증 추가: 정확히 `teamPickCount`팀이 선택되지 않으면
+    제출 차단.
+  - `initializeLeagueTeams()` 호출 시 `type === 'tournament'`이면 `selectedTeamSlugs`
+    전달, 메인리그는 기존처럼 `undefined`(무작위) 유지.
+
+**Before**: 토너먼트/메인리그 모두 `initializeLeagueTeams(roomId, maxTeams)` 무작위 셔플만
+가능.
+
+**After**: 토너먼트는 어드민이 직접 30팀 중 정원 수만큼 체크해서 고르거나, "무작위 선택"
+버튼으로 즉시 다시 뽑을 수 있음. 메인리그는 기존 동작(무작위) 그대로 유지.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `initializeLeagueTeams` 3번째 인자와 그 분기 로직 제거,
+`CreateLeagueModal.tsx`에서 "참가 팀 선택" 섹션 JSX와 관련 state/useEffect/핸들러
+(`selectedTeamSlugs`, `teamPickLocked`, `teamPickCount`, `toggleTeam`,
+`handleRandomizeTeams`, `pickRandomTeamSlugs`)를 제거하고 `initializeLeagueTeams(room.id,
+maxTeams)` 2-arg 호출로 되돌리면 됨.
+
+---
+
+## 2026-09-11 — 팀 선택 팝업: 참가/선점 서버 호출을 카드 클릭 → "입장하기" 클릭으로 이연
+
+**배경**: 사용자가 "카드 클릭할 때마다 왜 스피너가 도냐"고 질문 → 원인은 카드 클릭 시점에
+`joinLeague()`+`claimTeam()`을 바로 서버로 보내고 있었기 때문이라고 답변했는데, 이어서
+"굳이 카드 클릭 때 보낼 필요 없지 않냐, 하단 입장 버튼 눌렀을 때 보내면 되는 거 아니냐"는
+합리적인 재반문 — 실제로 그게 더 맞는 설계라 변경.
+
+**변경 파일**:
+- `components/multi/TeamSelectModal.tsx`:
+  - `claimingId` state 제거, `entering: boolean` state 신설.
+  - `handleSelect(team)` — 이제 `joinLeague`/`claimTeam` 호출 없이 `setSelectedId(team.id)`만
+    하는 순수 로컬 상태 변경. 이미 남이 선점한 팀(`user_id !== null && user_id !== userId`)만
+    클릭을 막고, 빈 팀이나 이미 내 팀인 경우는 몇 번을 눌러도 네트워크 요청이 안 나간다.
+  - 신규 `handleEnter()` — "입장하기" 클릭 시에만 `joinLeague()` → `claimTeam(selectedTeam.id)`
+    순서로 서버 반영. 클레임 실패(동시 클릭 경합으로 다른 유저가 먼저 선점) 시 에러 표시 +
+    `listLeagueTeams()` 재조회로 그리드를 최신 상태로 갱신.
+  - 팀 카드에서 로고 위 스피너 오버레이(`isClaiming`) 제거 — 이제 로딩은 "입장하기" 버튼
+    하나에만 있음(`entering`일 때 `Loader2` + "입장 중…" 텍스트로 CreateLeagueModal의
+    "저장 중…" 패턴과 통일).
+  - 선택 상태 라벨을 "내 팀" → "선택됨"으로 변경(아직 서버에 커밋 안 된 로컬 선택 상태를
+    "내 팀"이라 부르는 건 부정확했음).
+
+**Before**: 카드 클릭 즉시 `joinLeague`+`claimTeam` 왕복(카드마다 로딩 스피너), 팝업을
+그냥 닫아도 이미 서버에 반영된 상태.
+
+**After**: 카드 클릭은 로컬 선택만 바꾸는 즉시 반응 UI. 서버 반영은 "입장하기" 클릭
+1회로 모아짐 — 팝업을 그냥 닫으면(취소) 서버에는 아무 것도 반영되지 않는다(카드 클릭
+단계에서 이미 참가+클레임이 실행되던 이전 버전과 달리, 이제는 진짜로 "취소" 가능).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `handleSelect`를 원래의 async 버전(클릭 시 joinLeague+claimTeam 즉시 호출)
+으로 되돌리고, 카드의 `isClaiming` 스피너 오버레이 및 `claimingId` state를 복원하면 됨.
+
+---
+
+## 2026-09-10 — 팀 선택 팝업 하단 버튼 너비 축소 + 우측 정렬
+
+**배경**: 바로 위 항목에서 버튼 크기(패딩/폰트)는 원복했지만 여전히 `flex-1`로 컨테이너
+너비를 절반씩 채우고 있어 텍스트 대비 버튼이 넓었음. "텍스트에 맞게 줄이고 우측 정렬"
+요청.
+
+**변경 파일**:
+- `components/multi/TeamSelectModal.tsx` — 버튼 컨테이너 `flex gap-2` → `flex justify-end
+  gap-2`. 두 버튼의 `flex-1` 제거하고 `px-5`로 교체(텍스트 폭만큼만 차지).
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `flex justify-end gap-2` → `flex gap-2`, 버튼 `px-5` → `flex-1`로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 팀 선택 팝업(TeamSelectModal) 전체 크기 확대
+
+**배경**: 실제 로고를 적용한 뒤 사용자가 "팝업 훨씬 더 크게, 팀 카드와 로고 사이즈도 더
+크게" 요청.
+
+**변경 파일**:
+- `components/multi/TeamSelectModal.tsx` — 모달 패널 `max-w-2xl max-h-[85vh]` →
+  `max-w-5xl max-h-[90vh]`. 헤더/그리드/푸터 여백 확대(`px-6 py-4` → `px-8 py-5~6`),
+  타이틀 `text-base` → `text-xl`. 팀 카드 그리드 유지(3열)하되 `gap-2` → `gap-4`, 카드
+  패딩 `px-2.5 py-2` → `px-5 py-4`, `rounded-xl` → `rounded-2xl`. 로고 `w-8 h-8` →
+  `w-14 h-14`, 팀명 `text-xs` → `text-base`, 상태 텍스트 `text-[11px]` → `text-sm`,
+  체크 아이콘 14 → 20. (하단 "취소"/"입장하기" 버튼도 한 차례 `py-3 text-base`로 같이
+  키웠으나, 바로 이어서 사용자가 "버튼까지 커질 필요는 없다"고 정정해 `py-2.5 text-sm`
+  원래 사이즈로 되돌림 — 버튼만 팝업 확대와 무관하게 기존 크기 유지.)
+
+**검증**: `npx tsc --noEmit -p .` — 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: 위 클래스 값들을 각각 이전 값으로 되돌리면 됨(코드 로직 변경 없음, 순수
+Tailwind 클래스 조정). 버튼은 이미 원래 사이즈(`py-2.5 text-sm`, gap-2, 아이콘 14, 에러
+텍스트 text-xs)로 복원된 상태.
+
+---
+
+## 2026-09-10 — 팀 선택 팝업(TeamSelectModal)에 real 로고 세트 적용
+
+**배경**: `TeamSelectModal.tsx`(이번 세션에 신설)가 팀 카드 배지를 `color_primary` 배경 +
+`team_abbr` 텍스트로 그리고 있었는데, `MultiStandingsView.tsx`/`MultiScheduleView.tsx`/
+`MultiHeader.tsx` 등 멀티플레이어 화면 전반은 이미 `public/logos/real/` 실제 로고 세트
+(`getRealTeamLogoUrl()`)를 쓰고 있어 이 팝업만 시각적으로 어긋나 있었음. 사용자 요청으로
+동일하게 맞춤.
+
+**변경 파일**:
+- `components/multi/TeamSelectModal.tsx` — `getReadableTextColor` import를
+  `getRealTeamLogoUrl`/`getTeamLogoUrl`(utils/constants.ts)로 교체. 다른 화면들과 동일한
+  3단 폴백 체인(신규 로고 세트 실패 → 구버전 → placehold.co)을 쓰는 로컬 `TeamLogoImg`
+  컴포넌트를 새로 추가하고, 팀 카드의 색상 배지 `<div>`를 이 이미지로 교체. 클레임 진행 중
+  스피너는 로고 위에 반투명 오버레이(`absolute inset-0 bg-slate-900/70`)로 얹는 방식으로
+  변경(기존엔 배지 내부 텍스트 자리에 스피너를 대신 넣는 방식).
+
+**Before**: 팀 카드 좌측이 `{ backgroundColor: color_primary }` 사각형 + `team_abbr` 텍스트.
+
+**After**: `public/logos/real/{ABBR}.svg` 실제 로고 이미지(실패 시 구버전 로고 → 플레이스홀더
+순으로 폴백) — 다른 멀티 화면들과 동일한 톤.
+
+**검증**: `npx tsc --noEmit -p .` — `TeamSelectModal.tsx` 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: import를 `getReadableTextColor`로 되돌리고, `TeamLogoImg` 사용 부분을
+원래의 `backgroundColor`/`team_abbr` 텍스트 `<div>`로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 리그 생성 직후 자동 입장 제거 (참가 팝업 흐름으로 통일)
+
+**배경**: 바로 위 항목("참가 → 팀 선택 팝업")에서 참가 흐름은 팝업에서 팀을 고른 뒤에야
+입장하도록 바꿨는데, "리그 만들기"는 여전히 생성 즉시 `/season`으로 자동 이동해 어드민이
+팀 선택 없이 곧바로 들어가버리는 비일관성이 남아있었음. 사용자가 "어드민이 리그를 만들어도
+바로 입장되지 않도록" 요청.
+
+**변경 파일**:
+- `views/home/InlineLeagueList.tsx` — `CreateLeagueModal`의 `onCreated` 콜백에서
+  `navigate('/season')` 제거, `setIsCreateOpen(false)` 후 `load()`로 목록만 새로고침.
+  `createRoom`/`initializeLeagueTeams`(leagueService.ts) 어느 쪽도 관리자를
+  `room_members`에 자동으로 넣지 않는다는 걸 코드로 확인 — 즉 생성자도 원래 "미참가"
+  상태라 다른 유저와 동일하게 목록에서 "참가" 버튼(→ TeamSelectModal)을 눌러야 입장 가능.
+
+**Before**: 리그 생성 성공 → 모달 닫힘과 동시에 `/multi/leagues/:id/season`으로 즉시 이동
+(팀 선택 없이 로비 패널부터 봄).
+
+**After**: 리그 생성 성공 → 모달만 닫히고 홈 화면 목록이 새로고침되어 새 리그가 "참가"
+버튼과 함께 보임. 어드민도 그 버튼을 눌러 TeamSelectModal에서 팀을 고르고 "입장하기"를
+눌러야 실제로 들어감.
+
+**검증**: `npx tsc --noEmit -p .` — `InlineLeagueList.tsx` 에러 0건, 전체 에러 수 동일(58건).
+
+**롤백 방법**: `onCreated` 콜백을 `(leagueId) => { setIsCreateOpen(false);
+navigate(\`/multi/leagues/${leagueId}/season\`); }`로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 홈 화면 모달 2종 footer 가림 버그 수정 (createPortal 이관)
+
+**배경**: "새 리그 만들기"(CreateLeagueModal) 팝업 하단이 화면 최하단 footer(About/Terms/
+Privacy 등)에 가려 보이는 버그 리포트. 원인 확인: `StartScreen.tsx`의 콘텐츠 래퍼
+(`<div className="relative z-10 ...">`)와 `<footer className="relative z-10 ...">`가
+서로 형제(sibling)인데, `position: relative` + 숫자 `z-index`를 가진 요소는 새 스태킹
+컨텍스트를 만든다 — 그 안에 `position: fixed` + `z-50`으로 떠 있는 모달을 넣어도 z-index
+비교는 콘텐츠 래퍼 스태킹 컨텍스트 "내부"에서만 유효하고, DOM상 나중에 오는 동일-z-10
+형제(footer)가 그 콘텐츠 래퍼 전체(모달 포함) 위에 그려진다. 즉 모달 내부 z-index를 아무리
+올려도(`z-[9999]` 등) 이 스태킹 컨텍스트 경계를 벗어날 수 없어 근본 해결이 안 됨 — 유일한
+해결책은 모달을 `document.body`로 포탈(`createPortal`)해서 그 경계 자체를 벗어나는 것.
+`components/multi/TeamSelectModal.tsx`(바로 위 항목에서 이번 세션에 신설)도 같은
+InlineLeagueList 안에서 열리는 동일 구조라 같은 버그를 안고 있어 함께 수정.
+
+**변경 파일**:
+- `components/multi/CreateLeagueModal.tsx` — `import { createPortal } from 'react-dom'`
+  추가, `return (<div className="fixed inset-0 z-50 ...">` → `return createPortal(<div
+  className="fixed inset-0 z-[9999] ...">`로 변경하고 JSX 끝에 `, document.body)` 추가.
+  덤으로 "팝업 높이 줄여" 요청에 따라 패널 `max-h-[92vh]` → `max-h-[80vh]`.
+- `components/multi/TeamSelectModal.tsx` — 동일 패턴 적용(`z-50` → `z-[9999]` +
+  `createPortal(..., document.body)`). 높이는 원래도 짧아 `max-h` 변경 없음.
+
+**Before**: 두 모달 모두 `<div className="fixed inset-0 z-50 ...">`로 시작해 호출부(
+`InlineLeagueList` → `StartScreen`의 z-10 콘텐츠 래퍼) 안에 인라인 렌더 — 홈 화면에서 열면
+footer가 하단 버튼 위를 덮음.
+
+**After**: 두 모달 모두 `document.body`로 포탈되어 어떤 조상의 스태킹 컨텍스트에도 갇히지
+않음(`MultiSidebar.tsx` 프로필 드롭다운과 동일 패턴). CreateLeagueModal은 패널 최대 높이도
+80vh로 줄여 여유를 더 확보.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 에러 0건, 전체 에러 수도 변경 전후 동일(58건,
+전부 무관한 기존 이슈).
+
+**롤백 방법**: 두 파일에서 `createPortal(` / `, document.body\n    );` 부분을 원래
+`return (` / `);`로 되돌리고, `import { createPortal } from 'react-dom';` 제거,
+CreateLeagueModal의 `max-h-[80vh]`를 `max-h-[92vh]`로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 홈 화면 "참가" → 팀 선택 팝업(TeamSelectModal) 신설
+
+**배경**: 기존엔 홈 화면(InlineLeagueList) "참가" 버튼을 누르면 `joinLeague()`만 호출하고
+바로 `/season`으로 이동, 팀은 그 다음 리그 홈(로비 패널)의 팀 목록 테이블에서 따로 골라야
+했음. 사용자가 "참가를 누르면 팝업에서 팀을 선택하고, 선택 후 입장하기 버튼이 활성화되어
+누르면 시즌 대시보드로 이동" 하도록 흐름을 바꿔달라고 요청.
+
+**변경 파일**:
+- `components/multi/TeamSelectModal.tsx` (신규) — `listLeagueTeams(roomId)`로 팀 목록을
+  받아 3열 그리드로 표시. 빈 팀 클릭 시 `joinLeague()` → `claimTeam()`을 순서대로 호출(기존
+  `LeagueLobbyPanel.tsx`의 `handleJoinAndClaim`과 동일 패턴), 성공하면 해당 카드에 체크
+  표시 + 하단 "입장하기" 버튼 활성화. 이미 다른 유저가 선점한 팀은 닉네임 표시 후 비활성화.
+  같은 유저가 다른 빈 팀을 다시 클릭하면 `claimTeam()`이 기존 팀 클레임을 새 팀으로
+  옮긴다(기존 로비의 "변경" 버튼과 동일 RPC 재사용 — 로비 쪽에서 이미 검증된 동작이라
+  별도 확인 없이 그대로 의존).
+- `views/home/InlineLeagueList.tsx` — `handleJoin`(참가 즉시 이동) 제거, `openJoinModal`로
+  교체(비로그인이면 기존처럼 `onRequireLogin` 경유). `joiningId` 상태를 `joinTarget:
+  LeagueListEntry | null`로 교체. "참가" 버튼 클릭 시 `joinTarget` 세팅 → 하단에
+  `TeamSelectModal` 렌더. `onEntered`에서 `enterLeague()`(`/season`으로 navigate) 호출,
+  `onClose`에서는 `load()`로 목록을 다시 불러와(모달 안에서 이미 참가했을 수 있으므로)
+  "참가"/"들어가기" 버튼 상태를 최신화.
+
+**Before**: 참가 클릭 → 즉시 `joinLeague()` → `/season`(로비 패널)으로 이동 → 거기서
+팀 목록 테이블의 "선택" 버튼을 다시 눌러야 함.
+
+**After**: 참가 클릭 → 팝업에서 팀 선택(선택 즉시 서버 반영) → "입장하기" 클릭 → `/season`
+으로 이동. 팝업을 팀 선택 없이 닫아도 이미 서버에 반영된 참가/클레임은 유지되고(다른 화면의
+즉시-반영 패턴과 동일), 홈 목록은 닫는 시점에 새로고침되어 "들어가기"로 바뀐 상태를 보여준다.
+
+**검증**: `npx tsc --noEmit -p .` — 두 파일 모두 에러 0건, 전체 에러 수도 이번 변경 전후
+동일(58건, 전부 무관한 기존 이슈).
+
+**롤백 방법**: `git checkout -- views/home/InlineLeagueList.tsx` + `rm
+components/multi/TeamSelectModal.tsx`(신규 파일이므로 git엔 없음).
+
+---
+
+## 2026-09-10 — 리그 홈(`/season`) 모집/드래프트 단계에서도 사이드바/헤더 유지로 변경
+
+**배경**: 바로 아래 "`/lobby` 라우트 삭제" 작업에서 처음엔 "모집/드래프트 단계엔 사이드바
+숨김(기존 로비와 동일)"으로 구현했는데, 실제 화면을 본 사용자가 "여전히 예전 로비 화면과
+똑같아 보인다"며 사이드바/헤더가 있는 정규 레이아웃으로 보여야 한다고 정정.
+
+**변경 파일**:
+- `views/multi/season/MultiSeasonLayout.tsx` — `!isActive && isSeasonIndexRoute`일 때
+  컴포넌트 전체를 `<LeagueLobbyPanel/>`로 조기 반환하던 것을 제거. 대신 사이드바/헤더/
+  GameDateStrip은 항상 그대로 렌더하고, `Outlet` 자리(본문 영역)만
+  `showLobbyPanel ? <LeagueLobbyPanel/> : <Outlet/>`로 분기.
+
+**Before**: 모집/드래프트 중엔 사이드바·헤더 없이 `LeagueLobbyPanel`만 풀페이지로 렌더.
+
+**After**: 모집/드래프트 중에도 `MultiSidebar`/`MultiHeader`/`GameDateStrip`은 그대로 뜨고,
+본문 영역만 로비 패널로 바뀜. `MultiHeader.tsx`는 이미 "실제 예정된 경기가 없을 때 목업
+다음 경기 표시를 보여주는" 폴백 로직(`fallbackMode`, 2026-08-26 결정)을 갖고 있어 스케줄/
+로스터가 비어있는 이 단계에서도 크래시 없이 정상 표시됨을 코드로 확인. 사이드바의 로스터/
+순위표/트레이드 등 메뉴는 클릭 시 빈 화면일 수 있음(모집 단계엔 실제로 클릭할 유인이 적어
+허용된 한계).
+
+**검증**: `npx tsc --noEmit -p .` — `MultiSeasonLayout.tsx`, `LeagueLobbyPanel.tsx` 에러 0건.
+
+**롤백 방법**: `git diff views/multi/season/MultiSeasonLayout.tsx`에서 이 커밋의 변경만
+되돌리면 바로 아래 항목("`/lobby` 라우트 삭제")의 사이드바-숨김 버전으로 복귀.
+
+---
+
+## 2026-09-10 — `/lobby` 라우트 삭제, 리그 홈(`/season`)이 로비 기능까지 흡수
+
+**배경**: 토너먼트/리그를 생성·참가하면 `/multi/leagues/:id/lobby`(LeagueLobbyView.tsx —
+사이드바 없는 별도 화면, 팀 목록+로터리/드래프트 컨트롤)로 이동했는데, 사용자가 "이 화면을
+전부 제거하고 리그 홈 화면에서 볼 수 있게" 요청. 리그 홈은 `/multi/leagues/:id/season`
+인덱스 라우트(`pages/MultiSeasonPage.tsx`, 순위표/리그 리더/뉴스/트랜잭션 등을 보여주는
+대시보드)를 가리키는 것으로 확인 — 로터리/드래프트 전엔 이 대시보드가 쓰는 데이터(스케줄/
+로스터)가 아직 없으므로, `/season` 인덱스 라우트가 리그 상태에 따라 로비 패널 vs 정규
+대시보드를 조건부로 렌더링하도록 구조를 바꿨다. 모집/드래프트 단계에서 사이드바·헤더를
+보여줄지 사용자에게 확인한 결과 "숨김(기존 로비와 동일)"으로 결정.
+
+**변경 파일**:
+- `views/multi/league/LeagueLobbyView.tsx` → `views/multi/season/LeagueLobbyPanel.tsx`로
+  이동+개명(내용 대부분 동일, 순수 콘텐츠 컴포넌트로 전환):
+  - `isInProgress/isFinished`일 때 `/season`으로 리다이렉트하던 `useEffect` 제거(더 이상
+    별도 라우트가 아니므로 불필요)
+  - "비참가자 — 진행 중 안내" 블록 제거(이 패널은 `!isActive`일 때만 렌더되므로
+    `isInProgress`가 항상 false — 도달 불가능했던 코드)
+  - import 경로 `./LeagueLayout` → `../league/LeagueLayout`로 조정
+- `views/multi/season/MultiSeasonLayout.tsx` — `isSeasonIndexRoute`(경로가 정확히
+  `.../season` 또는 `.../season/`)와 `isActive`(`league.status`가 `in_progress`/
+  `finished`) 계산 추가. `!isActive && isSeasonIndexRoute`면 사이드바/헤더/GameDateStrip
+  없이 `<LeagueLobbyPanel />`만 렌더, 그 외엔 기존 정규 레이아웃(사이드바+Outlet) 그대로.
+  `/season/settings` 등 인덱스가 아닌 서브라우트는 이 분기와 무관하게 항상 정규 레이아웃으로
+  렌더(모집 단계에도 어드민이 설정 화면엔 접근 가능해야 함).
+- `App.tsx` — `<Route path="/multi/leagues/:leagueId/lobby" element={<LeagueLobbyView />} />`
+  라우트 및 import 제거
+- 아래 7개 파일의 `navigate(...lobby)` 호출(총 9곳)을 전부 `.../season`으로 변경, 그 중
+  `MyLeagues.tsx`/`InlineLeagueList.tsx`의 `status === 'in_progress' ? season : lobby`
+  삼항연산자는 `/season`이 이제 상태와 무관하게 항상 옳은 목적지가 되어 단순화(각각의
+  `enter`/`enterLeague` 헬퍼에서 `status` 파라미터 자체를 제거):
+  - `views/multi/league/AdminSimView.tsx:94`, `AdminTeamEditorView.tsx:34`
+    (비어드민 접근 차단 리다이렉트)
+  - `views/multi/league/MultiDraftView.tsx:283,301,379` (드래프트 룸 내 "로비로/리그 홈으로
+    돌아가기" 버튼 3곳 — 라벨도 "로비"→"리그 홈"으로 변경)
+  - `views/multi/league/LeagueSettingsView.tsx:244-249`(비어드민 리다이렉트, `isInProgress`
+    분기 조건 자체를 제거해 단순화), `:444`(토너먼트 리셋 후 이동)
+  - `views/home/MyLeagues.tsx:38-40`, `views/home/InlineLeagueList.tsx:77-81,172-176,199,231`
+
+**Before**: `/lobby`가 별도 라우트/컴포넌트로 존재, `/season`은 `isInProgress||isFinished`인
+멤버만 도달 가능(로비의 `useEffect` 리다이렉트로 진입).
+
+**After**: `/lobby` 라우트 자체가 사라짐. `/season` 인덱스 라우트 하나가 리그 상태에 따라
+로비 패널(모집/드래프트 중, 비회원도 열람 가능)과 정규 시즌 대시보드(진행/종료)를 모두
+서빙. `league.status`가 `useCurrentLeague()`의 기존 realtime 구독으로 자동 갱신되므로,
+로터리/드래프트가 끝나면 사용자가 같은 URL(`/season`)에 머문 채로 화면만 로비→대시보드로
+자동 전환됨.
+
+**검증**: `npx tsc --noEmit -p .`로 이번에 수정한 파일들 확인 — `LeagueLobbyPanel.tsx`,
+`MultiSeasonLayout.tsx`, 신규 navigate 대상으로 바꾼 7개 파일 전부 에러 0건.
+`App.tsx(99,74)`와 `AdminTeamEditorView.tsx(215,25)`에 타입 에러가 있으나 `git diff`로
+확인 결과 이번 변경과 무관한 다른 라인(각각 RosterMode 제네릭, AdminTab 세터 타입)의
+기존 이슈.
+
+**롤백 방법**: `git checkout -- App.tsx views/multi/league/AdminSimView.tsx
+views/multi/league/AdminTeamEditorView.tsx views/multi/league/MultiDraftView.tsx
+views/multi/league/LeagueSettingsView.tsx views/home/MyLeagues.tsx
+views/home/InlineLeagueList.tsx views/multi/season/MultiSeasonLayout.tsx
+views/multi/league/LeagueLobbyView.tsx` (마지막 파일은 삭제됐던 것이므로 이 명령으로 복원),
+그리고 `rm views/multi/season/LeagueLobbyPanel.tsx`(신규 파일이므로 git엔 없음 — 직접 삭제)
+
+---
+
+## 2026-09-10 — `/multi` 리그 목록 라우트 삭제 (홈 화면 InlineLeagueList로 완전 대체)
+
+**배경**: `views/home/StartScreen.tsx` 리팩토링으로 홈 화면(`/`, `/auth`) 우측 패널에
+`InlineLeagueList`/`MyLeagues`가 이미 붙어 `/multi`(`LeagueListView.tsx`) 전체 페이지와 동일한
+기능(리그 조회·참가)을 대체하고 있었음(`StartScreen.tsx` 주석에 "기존 /multi(LeagueListView)
+전체 페이지로 이동하지 않고 여기서 바로 조회·참가"라고 명시돼 있었음). 사용자가 "/multi로 이어지는
+url을 삭제해, 그 화면은 이제 필요없어"라고 요청해 라우트/컴포넌트를 삭제.
+
+**변경 파일**:
+- `App.tsx` — `<Route path="/multi" element={<LeagueListView />} />` 및
+  `import LeagueListView from './views/multi/league/LeagueListView'` 제거
+- `views/multi/league/LeagueListView.tsx` — 파일 삭제 (App.tsx 외 다른 곳에서 import하는 곳
+  없음 확인, `InlineLeagueList.tsx`의 참조는 주석뿐)
+- `pages/AuthPage.tsx` — `handleMultiPlay`(→ `/multi` navigate) 함수 삭제,
+  `<StartScreen onMultiPlay={...}>` prop 전달 제거
+- `views/home/StartScreen.tsx` / `views/home/StartMenu.tsx` — `onMultiPlay` prop 타입 선언·
+  전달부 제거 (StartMenu 컴포넌트 본문에서는 이미 destructure조차 안 해서 실질적으로 미사용이던
+  dead prop이었음)
+- `views/multi/league/LeagueLobbyView.tsx` — 상단 "리그 목록" 버튼, 에러 화면 "리그 목록으로
+  돌아가기" 버튼 총 2곳을 `navigate('/multi')` → `navigate('/')`로 변경, 라벨을 각각
+  "홈으로"/"홈으로 돌아가기"로 수정
+- `components/MultiSidebar.tsx` — "리그 목록으로"(`navigate('/multi')`) 버튼 제거 (바로 아래
+  있던 "홈으로"(`navigate('/')`) 버튼과 기능이 중복되므로 통합), 더 이상 쓰이지 않는 `ArrowLeft`
+  아이콘 import 제거
+
+**Before**: `/multi` 경로가 `LeagueListView`(전체 페이지 리그 목록)로 연결돼 있었고, 로비/
+사이드바의 "뒤로가기"류 버튼들이 전부 `/multi`로 이동.
+
+**After**: `/multi` 경로 자체가 라우트 테이블에서 사라짐(더 이상 존재하지 않는 URL). 리그 목록
+조회는 홈 화면(`/`, `/auth`)의 `InlineLeagueList`/`MyLeagues`로만 제공. 로비/사이드바의 이동
+버튼은 전부 홈(`/`)으로 통일.
+
+**검증**: `npx tsc --noEmit -p .` 실행 결과, 이번에 수정한 파일들(App.tsx, AuthPage.tsx,
+StartScreen.tsx, StartMenu.tsx, LeagueLobbyView.tsx, MultiSidebar.tsx)에서는 타입 에러 0건.
+출력된 나머지 타입 에러는 이번 변경과 무관한 기존 파일들(useGameData.ts, PlayerEditorPage.tsx 등,
+세션 시작 시점에 이미 수정 중이던 파일들)의 사전 존재 이슈.
+
+**롤백 방법**: `git checkout -- App.tsx pages/AuthPage.tsx views/home/StartScreen.tsx
+views/home/StartMenu.tsx views/multi/league/LeagueLobbyView.tsx components/MultiSidebar.tsx
+views/multi/league/LeagueListView.tsx` (마지막 파일은 삭제됐던 것이므로 이 명령으로 git 추적
+버전이 그대로 복원됨)
+
+---
+
+## 2026-09-10 — 멀티플레이어 유저 통산 기록(리그 시즌 아카이버) 신설 + DB 스키마 보강
+
+**배경**: 유저가 "언제 어떤 토너먼트/리그에서 몇 등을 했는지 + 통산 승수"를 조회하고 싶다고 요청.
+조사 결과 `views/home/MultiplayerHistory.tsx`가 이미 존재했고, 코드 주석에 "`league_user_history`를
+채우는 아카이버가 구현 안 돼 있어 리그 쪽 수치가 항상 0으로 표시된다"라고 명시돼 있었음 — 즉
+UI/쿼리는 준비돼 있었고 **시즌 종료 시 값을 써넣는 로직만 없던 상태**. `league_user_history`,
+`league_promotions`, `tournament_archives`, `tournament_team_records` 전부 당시 0행이라
+스키마를 안전하게 보강할 수 있는 시점이었음.
+
+또한 `simRunner.ts`가 `main_league`의 플레이오프 브라켓과 순수 `tournament` 타입을 **동일한**
+`archiveTournament()` 경로로 처리한다는 걸 확인 — main_league 시즌 종료 시점의 훅을 별도로
+만들 필요 없이 이 함수 안에서 분기하면 됐음. 단, 이로 인해 main_league 플레이오프 결과가
+`tournament_archives`/`tournament_team_records`에도 항상 같이 기록되므로, 클라이언트가 "순수
+토너먼트" 통계와 "리그 플레이오프" 통계를 구분할 방법이 필요해 `tournament_archives.league_type`을
+새로 추가함(추가 전엔 완료된 리그가 0건이라 아직 실제로 뒤섞인 데이터는 없었음).
+
+**변경 파일**:
+- DB 마이그레이션: `migrations/add_league_history_archiver_columns.sql` (Supabase 프로젝트
+  `buummihpewiaeltywdff`에 적용 완료)
+  - `league_user_history`: `league_id`, `league_name`, `team_count`, `playoff_wins`,
+    `playoff_losses`, `completed_at` 컬럼 추가
+  - `tournament_archives`: `league_type text not null default 'tournament'` 컬럼 추가
+- `server/src/shared/leagueSeasonArchiver.ts` (신규, server 전용) — `archiveLeagueSeason()`.
+  main_league 시즌 1회분을 `league_user_history`에 기록. 플레이오프 승패는 `games`(`is_playoff`)
+  에서, 정규시즌 승패는 `playoffSeeder.ts`의 기존 `computeStandingsByConference()`를 재사용해서
+  집계. 플레이오프 미진출 팀의 `final_rank`는 정규시즌 성적으로 이어서 매김.
+  `(group_id, user_id, season_number)` 유니크 제약 + `upsert(..., ignoreDuplicates:true)`로
+  재시도 시 중복 삽입 방지.
+- `server/src/shared/tournamentArchiver.ts` (server 전용) — `archiveTournament()` 수정:
+  - `leagues` select에 `type, tier, group_id, season_number` 추가
+  - `tournament_archives` insert에 `league_type: league.type` 추가
+  - 함수 끝에서 `league.type === 'main_league'`일 때 `archiveLeagueSeason()` 호출(실패해도
+    기존 아카이빙 자체는 성공 처리, catch 후 로그만 남김)
+- `views/home/MultiplayerHistory.tsx` (client 전용, server 미러 없음 — 순수 읽기 UI) —
+  - `league_user_history` select에 `playoff_wins/playoff_losses/league_id/league_name/
+    team_count/completed_at` 추가, 하드코딩된 `playoffWins: 0, playoffLosses: 0` 제거
+  - `tournament_team_records` 쿼리에 `tournament_archives!inner(...)` 조인 + `.eq('tournament_archives.league_type','tournament')` 필터 추가 — main_league 플레이오프 브라켓이
+    "토너먼트" 집계에 중복으로 섞이지 않게
+  - 신규 "참가 이력" 섹션 — 리그+토너먼트 기록을 `completed_at` 기준 병합/정렬해 "언제·어떤
+    대회·몇 등·승패"를 한 줄씩 표시(기본 5개 + 더 보기)
+
+**Before**: `league_user_history`가 항상 0행 → `MultiplayerHistory.tsx`의 "리그" 섹션 전체가
+0으로 표시. 플레이오프 W-L 필드 자체가 없어 UI에서 상수 0으로 하드코딩. 참가 이력(개별 대회
+목록) UI 없음.
+
+**After**: main_league 시즌이 끝나면(`archiveTournament()` 호출 시점과 동일) 유저별 정규시즌/
+플레이오프 성적·최종순위·우승여부가 `league_user_history`에 실제로 쌓이고 UI에 그대로 반영됨.
+
+**검증**: `npx tsc --noEmit`(root, client) — 이번에 건드린 파일(`MultiplayerHistory.tsx`) 관련
+신규 에러 없음(기존에도 있던 무관한 에러 다수는 그대로 남아있음, 내 변경과 무관). server 쪽은
+`server/tsconfig.json`이 Bun 전용이라 `npm install`로 server 자체 의존성을 받아 재확인한 결과
+`leagueSeasonArchiver.ts`/`tournamentArchiver.ts`에 뜨는 에러는 전부 `createClient()`에
+Database 제네릭을 안 넘겨서 모든 `.from().select()`가 `never`로 좁혀지는 환경적 현상(기존
+코드 라인 100~308 전부 동일 패턴으로 이미 발생) — 내가 추가한 라인만의 문제가 아님을 확인.
+실제 종료된 리그/토너먼트가 0건이라 운영 데이터로의 E2E 검증은 아직 못함 — 다음 리그/토너먼트가
+실제로 종료될 때 `league_user_history`/`tournament_archives.league_type`에 값이 채워지는지
+확인 필요.
+
+**롤백 방법**:
+1. `server/src/shared/tournamentArchiver.ts`: import 줄과 L96 select 컬럼 추가분, `league_type`
+   insert 필드, 함수 끝 `if (league.type === 'main_league' ...)` 블록 제거 → 원상복구.
+2. `server/src/shared/leagueSeasonArchiver.ts` 파일 삭제.
+3. `views/home/MultiplayerHistory.tsx`: git으로 이전 버전 복원.
+4. DB는 컬럼 추가만 했으므로(기존 컬럼/데이터 변경 없음) 되돌릴 필요 없음. 되돌리려면:
+   ```sql
+   alter table public.league_user_history
+       drop column if exists league_id, drop column if exists league_name,
+       drop column if exists team_count, drop column if exists playoff_wins,
+       drop column if exists playoff_losses, drop column if exists completed_at;
+   alter table public.tournament_archives drop column if exists league_type;
+   ```
+
+---
+
+## 2026-09-10 — 토너먼트 브라켓 라운드 헤더 상단 패딩 추가
+
+**배경**: 직전 변경으로 라운드 헤더(`1라운드`/`2라운드`.../`결승`) 글자를 text-2xl로 키웠더니
+화면 최상단에 바짝 붙어 보인다는 피드백 → 상단 여백 추가.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client 전용, server 미러 없음)
+
+**Before**: `<div className="flex gap-0" ...>` (단일 브라켓 모드 라운드 헤더 행, 패딩 없음).
+
+**After**: `<div className="flex gap-0 pt-4" ...>` — 상단 패딩만 추가(좌우/하단은 그대로).
+
+**검증**: `npx tsc --noEmit`으로 신규 타입 에러 없음 확인.
+
+**롤백 방법**: `pt-4` 클래스만 제거하면 됨.
+
+---
+
+## 2026-09-10 — 토너먼트 브라켓 라운드 헤더 스타일 변경 + 우승 표시 위치 이동 + 올스타 메뉴 숨김(tournament)
+
+**배경**: 세 가지 UI 요청. (1) 브라켓 화면의 "1라운드/2라운드/.../결승" 라운드 헤더 텍스트가
+너무 작고(text-sm, slate-500) 잘 안 보인다는 피드백 → 키우고 흰색으로. (2) 단일 브라켓(classic)
+모드는 결승 라운드 카드가 고정폭(MATCH_W=150px)이라 화면이 넓을수록 그 오른쪽에 큰 빈 공간이
+남는데, 우승팀 표시가 아예 없었음(split 모드에서만 바닥에 겹쳐 띄우는 배너가 있었음) → 그
+남는 공간에 결승 카드와 나란히 우승 표시 추가. (3) 올스타는 main_league 전용 기능인데(서버
+`scheduler.ts`가 `type='main_league'`인 리그만 투표/경기를 자동 진행, 기존부터 있던 제약)
+tournament 세션에서도 메뉴가 그대로 노출돼 눌러도 아무 일도 안 일어나는 죽은 메뉴였음 →
+숨김 처리.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` — (1)(2)
+- `components/MultiSidebar.tsx` — (3) 사이드바 올스타 메뉴
+- `components/dashboard/MultiHeaderNavMenu.tsx` + `components/MultiHeader.tsx` — (3) 헤더 드롭다운 올스타 메뉴
+- `views/multi/season/MultiAllStarView.tsx` — (3) URL 직접 접근 방어(라우트 가드)
+
+**Before**: 라운드 헤더 `text-sm font-black text-slate-500 uppercase`. 단일 브라켓 모드의
+"Bracket grid" 영역은 grid 하나만 있고 우승 표시 없음(`championTeam`은 split 모드 배너에서만
+사용). 올스타 메뉴는 `hasPlayoffs`(플레이오프 존재 여부)처럼 조건부 노출 없이 항상 렌더링.
+
+**After**: 라운드 헤더 `text-2xl font-black text-white uppercase`로 변경. 단일 브라켓 모드의
+grid를 `flex items-center gap-10` 컨테이너로 감싸고, `championTeam`이 있으면 grid 오른쪽에
+트로피 이미지+시즌+팀명을 나란히 배치(split 모드처럼 ResizeObserver로 겹침 공간을 계산할
+필요 없이 그냥 flex 형제로 들어가므로 로직 단순). 올스타 메뉴는 3곳 모두
+`league?.type !== 'tournament'` 조건(MultiSidebar의 기존 `hasPlayoffs` 판별과 동일 패턴)으로
+감싸고, `MultiAllStarView.tsx`에는 모든 훅 호출 뒤·메인 return 앞에 `league?.type === 'tournament'`
+얼리 리턴(안내 메시지)을 추가.
+
+**검증**: `npx tsc --noEmit`으로 5개 파일 전부 신규 타입 에러 없음 확인.
+
+**롤백 방법**: 각 파일에서 위 변경 사항을 Before 상태로 되돌리면 됨 — 올스타 가드 3곳은 조건부
+래핑(`{league?.type !== 'tournament' && (...)}` / `...(isTournament ? [] : [...])` / 얼리 리턴
+블록)만 제거하면 원상복구.
+
+---
+
+## 2026-09-10 — 토너먼트 브라켓 좌/우 대칭 렌더링 오판 수정 (매치 사라짐/하단 중복 버그)
+
+**배경**: 32팀 토너먼트 세션 브라켓에서 서부 3라운드/컨퍼런스 파이널이 통째로 사라지고, 동부
+3라운드/컨퍼런스 파이널이 엉뚱한 위치+화면 하단에 중복 렌더링되는 버그 리포트. 원인: `isSplit`
+판별 로직이 "1라운드에 East/West 컨퍼런스 팀이 하나라도 섞여 있으면 좌/우 대칭(컨퍼런스 분리)
+모드"로 판단했는데, 이 구조는 `services/multi`의 main_league 플레이오프(`playoffSeeder.ts`가
+East N팀/West N팀을 미리 앞/뒤 연속 슬롯에 배치)에서만 성립하는 전제였다. tournament 타입
+리그(`server/src/shared/tournamentInitializer.ts`의 `initSingleElim`)는 seedMode 기본값이
+'random'이라 참가팀 전체를 컨퍼런스 구분 없이 셔플하므로, 1라운드부터 동/서부 팀이 뒤섞여
+붙을 수 있다. 이 상태에서 `sideByKey` 라운드 전파(부모 매치의 두 자식 매치 중 하나의 진영을
+그냥 채택 — 자식 둘의 진영이 다를 때 검증 없이 하나를 버림)가 깨지면서, 서부 진영 배열에
+들어가야 할 매치가 통째로 빠지거나(westByRound 누락 → 화면에서 사라짐), 동부 진영 배열의
+로컬 인덱스 재계산이 실제 트리 구조와 어긋나 CSS Grid의 `gridTemplateRows`(1라운드 매치 수
+기준 명시적 행 수)를 벗어난 자리에 배치되어 암시적(implicit) 행으로 화면 맨 아래에 밀려나
+보이는 현상이 발생했다.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client 전용, server 미러 없음)
+
+**Before**:
+```ts
+const isSplit = useMemo(() => {
+    if (totalRounds < 2) return false;
+    const values = new Set(sideByKey.values());
+    return values.has('East') && values.has('West');
+}, [sideByKey, totalRounds]);
+```
+
+**After**: 1라운드 매치들을 matchIndex 오름차순으로 훑어 각 매치의 확정 진영(양 팀 컨퍼런스가
+일치해야 유효, 한쪽만 알려졌으면(TBD 플레이인 대기 등) 알려진 쪽을 신뢰, BYE는 higherSeed
+기준)을 구하고, 그 시퀀스가 정확히 "East 블록 하나 + West 블록 하나"(전환점 정확히 1번)로만
+이루어지는 구조적 무결성을 검증한 뒤에만 `isSplit=true`로 판정하도록 변경. 크로스 컨퍼런스
+매치가 하나라도 있거나 블록이 섞여 있으면 조건 없이 `isSplit=false`로 폴백 — 일반 단일 브라켓
+레이아웃은 컨퍼런스와 무관하게 항상 정확하므로 안전한 기본값이다. (`sideByKey`/`buildSideByRound`
+등 하위 로직 자체는 변경하지 않음 — round1이 깨끗한 2블록이면 이후 라운드도 재귀적으로 항상
+깨끗한 2블록을 유지한다는 성질을 이용.)
+
+**검증**: `npx tsc --noEmit`으로 신규 타입 에러 없음 확인. main_league 플레이오프(East N/West N,
+항상 2의 거듭제곱, 항상 깨끗한 2블록)는 기존과 동일하게 split 렌더링 유지되고, tournament
+타입(랜덤 셔플)은 이제 안전하게 단일 브라켓으로 폴백됨을 코드 추적으로 확인.
+
+**롤백 방법**: 위 Before 블록으로 `isSplit` useMemo 본문을 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 토너먼트 브라켓 페이지에 팀 로고 추가
+
+**배경**: 토너먼트 세션(`views/multi/season/TournamentBracketView.tsx`)의 브라켓 화면에서 팀
+약칭(team_abbr)만 텍스트로 표시되던 것을, `MultiStandingsView.tsx`/`newsFeedCards.tsx` 등
+다른 멀티플레이어 화면들과 동일하게 `public/logos/real/` 실제 로고 이미지를 약칭 좌측에
+추가해달라는 요청. 순수 장식용이라 클릭 영역은 확장하지 않음([[feedback_no_scope_creep_interactivity]]).
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client 전용, server 미러 없음)
+
+**Before**: `TeamSlot`(매치카드 팀 행), `MatchCard`의 부전승(BYE) 카드, 사이드 패널 헤더의
+higherTeam/lowerTeam 표시 모두 `team_abbr` 텍스트만 렌더링.
+
+**After**: 3곳 모두에 `getRealTeamLogoUrl(teamId)` 기반 `<img>`(신규 로고 실패 → `getTeamLogoUrl`
+구버전 → placehold.co 플레이스홀더 순 폴백 체인, `TeamMark.tsx`/`MultiStandingsView.tsx`와 동일
+패턴)를 약칭 좌측에 추가하는 공용 `TeamLogoImg` 컴포넌트를 신설해 적용.
+
+**검증**: `npx tsc --noEmit`으로 해당 파일 관련 신규 타입 에러 없음 확인(기존에도 있던 무관한
+에러들은 그대로).
+
+**롤백 방법**: `TeamLogoImg` 컴포넌트 정의 삭제 + `TeamSlot`/`MatchCard`(BYE)/사이드 패널
+헤더 3곳에서 `<TeamLogoImg .../>` 호출과 이를 감싼 `<span className="flex items-center gap-2 ...">`
+래퍼를 제거하고 원래 텍스트만 있던 구조로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 토너먼트 가상 확장팀(시애틀 에메랄즈/라스베이거스 팬텀스) 로고 미표시 수정
+
+**배경**: 토너먼트 세션(32/64팀, `data/virtualTeams.ts`)의 가상 확장팀 중 시애틀 에메랄즈(SEA)·
+라스베이거스 팬텀스(LVP)용 실제 로고(`public/logos/real/SEA.svg`, `LV.svg`)를 추가했는데도
+게임 내에서 로고가 뜨지 않는 문제. 원인 2가지: (1) `utils/constants.ts`의 `resolveTeamId()`가
+`TEAM_DATA`(실제 30팀)와 `TEAM_ID_MAP`만 알고 `VIRTUAL_TEAMS`를 전혀 모름 → 'sea'/'lvp' 같은
+가상팀 id를 넘기면 전부 'unknown'으로 귀결돼 `getRealTeamLogoUrl`/`getTeamLogoUrl` 둘 다 깨짐.
+(2) 라스베이거스 팬텀스는 `team_slug='lvp'`, `team_abbr='LVP'`인데 실제 로고 파일명은 `LV.svg`라
+resolveTeamId를 고쳐도 `id.toUpperCase()` 규칙만으로는 `/logos/real/LVP.svg`(존재하지 않음)를
+찾게 됨.
+
+**변경 파일**:
+- `utils/constants.ts` (client 전용, server 미러 없음)
+
+**Before**:
+```ts
+import { TEAM_DATA, TeamStaticData } from '../data/teamData';
+import { TEAM_ID_MAP } from '../data/mappings';
+import { editorLogoUrls } from './editorState';
+...
+    // Check mappings
+    if (TEAM_ID_MAP[input]) return TEAM_ID_MAP[input];
+
+    // Partial match fallback (Slower but robust)
+...
+export const getRealTeamLogoUrl = (teamId: string): string => {
+    const allstarFile = ALLSTAR_LOGO_FILE[teamId];
+    if (allstarFile) return `/logos/real/${allstarFile}.svg`;
+    const id = resolveTeamId(teamId);
+    return `/logos/real/${id.toUpperCase()}.svg`;
+};
+```
+
+**After**:
+```ts
+import { TEAM_DATA, TeamStaticData } from '../data/teamData';
+import { TEAM_ID_MAP } from '../data/mappings';
+import { VIRTUAL_TEAMS } from '../data/virtualTeams';
+import { editorLogoUrls } from './editorState';
+...
+    // Check mappings
+    if (TEAM_ID_MAP[input]) return TEAM_ID_MAP[input];
+
+    // 가상 확장팀(토너먼트 32/64팀) — team_slug 또는 team_abbr로 조회
+    const virtualTeam = VIRTUAL_TEAMS.find(t => t.team_slug === input || t.team_abbr.toLowerCase() === input);
+    if (virtualTeam) return virtualTeam.team_slug;
+
+    // Partial match fallback (Slower but robust)
+...
+// 가상 확장팀(토너먼트) 로고 파일명이 team_slug/team_abbr와 다른 경우 오버라이드.
+// 예: 라스베이거스 팬텀스(team_slug='lvp', team_abbr='LVP')지만 실제 로고 파일은 LV.svg.
+const VIRTUAL_LOGO_FILE_OVERRIDE: Record<string, string> = {
+    'lvp': 'LV',
+};
+
+export const getRealTeamLogoUrl = (teamId: string): string => {
+    const allstarFile = ALLSTAR_LOGO_FILE[teamId];
+    if (allstarFile) return `/logos/real/${allstarFile}.svg`;
+    const id = resolveTeamId(teamId);
+    const override = VIRTUAL_LOGO_FILE_OVERRIDE[id];
+    return `/logos/real/${override ?? id.toUpperCase()}.svg`;
+};
+```
+
+**검증**: `tsc --noEmit` 통과 확인. 나머지 32개 가상팀은 아직 `public/logos/real/`에 SVG가 없어
+여전히 폴백 체인(→ 구버전 소문자 세트 → placeholder)을 타지만, 이는 로고 파일 자체가 없는
+정상적인 상태이며 이번 수정과 무관.
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨.
+
+---
+
+## 2026-09-10 — 시작 화면 2차 다듬기: 컴팩트 버튼·중앙 정렬·인라인 로그인·배경 로테이션
+
+**배경**: 위 "홈 화면 개편" 직후 사용자 피드백 3라운드. (1) 좌측 패널이 화면 왼쪽에 고정돼 있던 걸
+항상 화면 중앙에 오도록, (2) 싱글/멀티/퀵플레이 카드가 아이콘+설명+CTA로 너무 높아 라벨 텍스트만
+남기고 높이 최소화, 계정 영역을 패널 최상단으로 이동, (3) 로그인/회원가입 버튼을 누르면 모달이 뜨는
+대신 이메일/비밀번호 인풋을 패널에 바로 노출해 즉시 로그인 가능하게, (4) `public/images/background/`에
+사용자가 넣어둔 `back-1~5.webp` 5장을 무작위로 골라 10초마다 크로스페이드 전환.
+
+**변경 파일**:
+- `views/lobby/SingleSaveCard.tsx` / `MultiPlayCard.tsx` / `QuickPlayCard.tsx` — 아이콘·설명·CTA
+  줄 전부 제거, `onClick` + 라벨 텍스트 한 줄만 남은 단일 버튼으로 축소(패딩 `p-6`→`py-3.5`).
+  `SingleSaveCard`는 `summary`/`teamName`/`teamLogo`/`onContinue`/`isLocked` props를 없애고
+  `onClick`+`disabled`로 단순화(이어하기/새게임 분기는 `StartMenu`의 `handleSingleClick`으로 이동).
+- `views/home/StartMenu.tsx` — 계정 영역(아바타/닉네임/설정/로그아웃, 또는 비로그인 시 인라인
+  로그인 폼)을 앱 타이틀보다 위로 재배치. 비로그인 상태의 "로그인 / 회원가입" 버튼을
+  `<AuthForm variant="modal" onSuccess={onLoginSuccess} />` 인라인 렌더로 교체.
+- `views/auth/AuthForm.tsx` — 타이틀 `<h1>`을 감싸던 `mb-10`/`mb-6` 여백 div가 `variant='modal'`
+  일 때도 항상 렌더돼 빈 여백만 차지하던 것을 `variant==='page'`일 때만 렌더하도록 수정.
+- `views/home/StartScreen.tsx` — 컨텐츠 wrapper를 `sm:mx-0`(좌측 고정) 대신 `justify-center`로
+  항상 화면 중앙에 배치. 좌우 비대칭이던 `bg-gradient-to-r` 오버레이를 균일한 `bg-black/55`로 교체.
+  배경을 단일 이미지 상수 대신 `BACKGROUND_IMAGES`(5장) 배열 + `pickRandomBackground()`로 바꾸고,
+  2레이어(`bg.images[0]`/`[1]`) opacity 크로스페이드 + 10초 `setInterval`로 무작위 전환 구현.
+  `StartMenuProps`에 `onLoginSuccess` 추가(인라인 폼 성공 시 pendingAction 없이 바로 호출).
+
+**Before** (StartScreen.tsx, 배경 1장 고정):
+```tsx
+const BACKGROUND_IMAGE_URL = '/backgrounds/locker-room.jpg';
+...
+<div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${BACKGROUND_IMAGE_URL})` }} />
+<div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/30 sm:from-black/85 sm:via-black/55 sm:to-transparent" />
+...
+<div className="relative z-10 min-h-screen flex items-center px-4 py-10 sm:px-10 lg:px-16">
+    <div className="w-full max-w-md mx-auto sm:mx-0">
+```
+
+**After**:
+```tsx
+const BACKGROUND_IMAGES = ['/images/background/back-1.webp', ..., '/images/background/back-5.webp'];
+const BACKGROUND_ROTATE_MS = 10_000;
+// bg state: { images: [string, string]; active: 0 | 1 }, setInterval로 10초마다 active 토글
+// + 방금 숨겨진 레이어를 다음 후보 이미지로 미리 갱신
+...
+{bg.images.map((src, idx) => (
+    <div key={idx} className={`absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ease-in-out ${bg.active === idx ? 'opacity-100' : 'opacity-0'}`} style={{ backgroundImage: `url(${src})` }} />
+))}
+<div className="absolute inset-0 bg-black/55" />
+...
+<div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10">
+    <div className="w-full max-w-md">
+```
+
+**검증**: `npx tsc --noEmit` — 새 에러 없음. Playwright로 데스크톱 뷰 재확인: 패널이 화면 중앙에
+위치, 3개 버튼 높이가 ~56px로 축소, 계정/로그인 영역이 최상단, 인라인 로그인 폼(이메일/비밀번호/
+로그인 버튼) 정상 렌더. 배경은 초기 로드 시 5장 중 하나가 무작위로 뜨고, 11초 대기 후 재스크린샷에서
+실제로 다른 이미지로 바뀐 것을 확인(예: 경기장 풀샷 → 라커룸 사진).
+
+**롤백 방법**: 이 커밋을 되돌리면 됨. 개별적으로는 위 5개 파일을 이전 커밋 시점으로 되돌리면 되고,
+그 경우 `public/images/background/` 아래 이미지 5장 자체는 그대로 남아있어도 무방(참조하는 코드만
+없어짐).
+
+### 추가 수정 — 배경 크로스페이드 전환 중 엉뚱한 이미지가 잠깐 보이는 버그
+
+**배경**: 위에서 구현한 크로스페이드가 실제로는 A→B가 아니라 A→(다른 이미지 C가 순간 보임)→B처럼
+보인다는 사용자 리포트. 원인은 `setInterval` 콜백이 `active` 플립과 "방금 숨겨진 레이어의 다음
+후보 이미지 갱신"을 같은 `setState` 호출(같은 React 커밋)에서 처리했기 때문 — `transition-opacity`는
+opacity에만 걸려있고 `background-image`는 트랜지션 대상이 아니라 즉시 스냅되므로, 페이드아웃이
+시작되는 바로 그 순간 배경 이미지가 이미 다음 후보(C)로 바뀌어버려 "A가 C로 순간 전환된 뒤 C가
+서서히 사라지며 B가 드러나는" 것처럼 보였다.
+
+**변경 파일**: `views/home/StartScreen.tsx` — `bg: {images, active}` 단일 state를 `bgImages`/
+`bgActive` 두 state로 분리. `bgActive`는 10초 `setInterval`로만 토글하고, 숨겨진 레이어의 이미지
+갱신은 `bgActive` 변경에 반응하는 별도 `useEffect` + `setTimeout(..., BACKGROUND_FADE_MS)`(CSS
+`duration-1000`과 동일한 1000ms)로 트랜지션이 완전히 끝난 뒤에만 실행하도록 지연.
+
+**검증**: Playwright로 전환 구간(9.3s~10.6s)을 150ms 간격으로 샘플링해 두 레이어의
+`getComputedStyle().backgroundImage`/`opacity`를 직접 추적 — 페이드아웃되는 레이어는 opacity가
+0.99→0으로 내려가는 동안 `background-image`가 끝까지 동일(`back-5.webp`)하게 유지되다가, opacity가
+완전히 0이 된 다음 프레임에서만 `back-4.webp`로 바뀜을 확인(중간에 다른 이미지로 스냅되는 현상 없음).
+
+---
+
+## 2026-09-10 — 홈 화면을 로그인 강제 로비에서 비로그인 시작 화면으로 개편
+
+**배경**: 기존엔 `/`, `/auth`가 비로그인 시 이메일/비밀번호 로그인 폼만 보여줬고(다른 진입 경로
+없음), 로그인 후에만 `LobbyPanel`의 3열 그리드 카드(싱글/멀티/퀵플레이)가 나타났다. 퀵플레이는
+원래 인증 가드 없이 접근 가능했음에도 진입 경로가 노출되지 않았고, 멀티플레이 리그 목록(`/multi`)은
+`MultiProtectedLayout`이 세션 없으면 무조건 `/`로 리다이렉트해 완전히 막혀 있었다. 실제 게임(Football
+Manager 등) 시작 화면처럼 라커룸 배경 위에 좌측 메뉴 패널을 얹고, 로그인 없이도 세션 리스트·퀵플레이에
+닿을 수 있게 구조를 바꿔달라는 요청.
+
+**변경 파일**:
+- `views/AuthView.tsx` — 삭제 (로그인 폼 + 로비 분기를 겸하던 파일)
+- `views/lobby/LobbyPanel.tsx` — 삭제 (기능 전체가 `StartMenu.tsx`로 이관)
+- `views/auth/AuthForm.tsx` (신규) — `AuthView`의 로그인/회원가입/OTP 로직을 그대로 이동, `variant='modal'|'page'` prop 추가
+- `components/auth/LoginModal.tsx` (신규) — `AuthForm`을 감싸는 오버레이 모달
+- `views/home/StartScreen.tsx` (신규) — 배경 레이어 + 로그인 모달 상태 + pendingAction(로그인 후 이어서 실행할 동작) 관리, `profiles.nickname` 동기화(`AuthView`에서 이관)
+- `views/home/StartMenu.tsx` (신규) — 좌측 메뉴 패널(카드 세로 스택 + 계정 영역), `LobbyPanel`의 로직 그대로 이관
+- `views/lobby/SingleSaveCard.tsx` — `isLocked` prop 추가 (비로그인 시 "로그인하고 시작하기" CTA)
+- `pages/AuthPage.tsx` — `AuthView` 대신 `StartScreen` 렌더
+- `App.tsx` — `/multi` 라우트를 `MultiProtectedLayout` 밖으로 이동(목록 읽기 전용 공개), `/multi/leagues/*` 하위는 그대로 가드 안에 유지
+- `views/multi/league/LeagueListView.tsx` — 비로그인 참가/입장 클릭 시 무반응(`if (!userId) return`) 대신 로그인 모달 오픈 + 로그인 성공 후 원래 동작 재개(pendingAction 패턴), 비로그인이면서 `roomId===null`인 행(RLS로 진행중/종료 리그의 방이 가려짐)은 인원수 "0/N" 대신 "—" 표시
+
+**Before** (App.tsx, `/multi`가 가드 안에 있었음):
+```tsx
+<Route element={<MultiProtectedLayout />}>
+    <Route path="/multi" element={<LeagueListView />} />
+    <Route element={<LeagueLayout />}>
+        ...
+```
+
+**After**:
+```tsx
+<Route path="/multi" element={<LeagueListView />} />
+
+<Route element={<MultiProtectedLayout />}>
+    <Route element={<LeagueLayout />}>
+        ...
+```
+
+**DB 확인 사항 (변경 아님)**: Supabase RLS를 조회해 `leagues`(`l_select_all`, qual `true`)와 `rooms`
+(`r_recruiting_select`, `recruiting`/`drafting` 리그만)가 이미 anon SELECT를 허용함을 확인 — DB
+마이그레이션 없이 비로그인 목록 조회가 가능해 RLS는 건드리지 않았다.
+
+**검증**: `npx tsc --noEmit` — 이번 변경으로 새로 발생한 타입 에러 없음(기존에 있던 무관한 에러들만
+잔존). 로컬 Vite dev 서버(5173)에 Playwright로 접속해 비로그인 상태 `/`(카드 3개 세로 스택 + 하단
+로그인 버튼), `/multi`(로그인 없이 리그 목록 조회), 로그인 모달 오픈까지 스크린샷으로 확인, 콘솔 에러
+없음. 실제 서비스는 현재 `meta_config.quickplay_only=true`(사이트 전역 플래그, 기존 값)라 싱글플레이
+카드가 항상 숨겨져 있는 상태 — 이 플래그와 무관하게 정상 동작하는지는 로컬에서 네트워크 응답을
+가로채(`quickplay_only=false`로 오버라이드) 별도 확인.
+
+**롤백 방법**: 이 커밋을 되돌리면 됨. 파일 단위로는 `views/home/`, `views/auth/`, `components/auth/`
+디렉터리를 삭제하고 `pages/AuthPage.tsx`가 다시 `views/AuthView.tsx`를 import하도록 되돌린 뒤,
+`views/AuthView.tsx`/`views/lobby/LobbyPanel.tsx`를 git history에서 복원, App.tsx의 `/multi` 라우트
+위치를 `MultiProtectedLayout` 안으로 되돌리면 된다.
+
+---
+
 ## 2026-09-10 — 존 텐던시에 3점이 없는 빅맨이 PnR_Pop에서 강제로 3점을 던지는 문제 수정
 
 **배경**: 센터 OVR 상위 15명 시즌 스탯 시뮬레이션 중, 루디 고베어(FG% 36.2%, 3PA 1.7개/경기)처럼

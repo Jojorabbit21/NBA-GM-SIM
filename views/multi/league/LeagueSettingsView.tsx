@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
-import { updateLeagueSettings, leaveLeague, runDraftLottery, resetTournament, updateTeamName, getRoomMemberEmails } from '../../../services/multi/leagueService';
+import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails } from '../../../services/multi/leagueService';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
@@ -172,6 +172,10 @@ const LeagueSettingsView: React.FC = () => {
     const [lotteryErr,     setLotteryErr]     = useState<string | null>(null);
     const lotteryDone = leagueTeams.some(t => t.draft_order !== null);
 
+    // ── 드래프트 즉시 시작 상태 — 추첨 완료 후 예정 시각 전에 어드민이 수동으로 시작 ──────
+    const [draftStarting, setDraftStarting] = useState(false);
+    const [draftStartErr, setDraftStartErr] = useState<string | null>(null);
+
     // ── kick state ────────────────────────────────────────────────────────────
     const [kickingId, setKickingId] = useState<string | null>(null);
 
@@ -243,12 +247,9 @@ const LeagueSettingsView: React.FC = () => {
     // 비어드민 접근 차단
     useEffect(() => {
         if (!isLoading && league && !isAdmin) {
-            const dest = isInProgress
-                ? `/multi/leagues/${leagueId}/season`
-                : `/multi/leagues/${leagueId}/lobby`;
-            navigate(dest, { replace: true });
+            navigate(`/multi/leagues/${leagueId}/season`, { replace: true });
         }
-    }, [isLoading, league, isAdmin, isInProgress, leagueId, navigate]);
+    }, [isLoading, league, isAdmin, leagueId, navigate]);
 
     // 팀 목록의 이메일 컬럼용 — 어드민 확정 후 room.id 기준으로 한 번 조회.
     useEffect(() => {
@@ -429,6 +430,21 @@ const LeagueSettingsView: React.FC = () => {
         reload();
     };
 
+    // 예정 시각(draft_scheduled_at) 전이라도 어드민이 수동으로 드래프트를 즉시 시작 —
+    // 서버(handleStartDraft)가 league.status==='recruiting'인지, 방이 이미 활성화됐는지
+    // 재검증하므로 여기서는 lotteryDone 여부만 미리 걸러 불필요한 요청을 막는다.
+    const handleStartDraft = async () => {
+        if (!league?.id) return;
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) { setDraftStartErr('인증 정보를 가져올 수 없습니다.'); return; }
+        setDraftStarting(true);
+        setDraftStartErr(null);
+        const { error: err } = await startDraft(league.id, token);
+        setDraftStarting(false);
+        if (err) { setDraftStartErr(err); return; }
+        reload();
+    };
+
     const handleReset = async () => {
         if (!league?.id || !room) return;
         setResetting(true);
@@ -444,7 +460,7 @@ const LeagueSettingsView: React.FC = () => {
         // 아카이브 edition 정보 로그 (디버깅)
         console.log('[resetTournament] archive edition:', archiveEdition);
         reload();
-        navigate(`/multi/leagues/${leagueId}/lobby`);
+        navigate(`/multi/leagues/${leagueId}/season`);
     };
 
     const handleKick = async (kickUserId: string) => {
@@ -1448,11 +1464,11 @@ const LeagueSettingsView: React.FC = () => {
             {activeTab === 'draft' && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <Shield size={14} className="text-amber-400" />
-                    드래프트 오더 추첨
+                    드래프트 순서 추첨
                 </h2>
 
                 {lotteryDone ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         <p className="text-xs text-emerald-400 ko-normal">추첨 완료. 드래프트 오더가 확정되었습니다.</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {[...leagueTeams]
@@ -1475,6 +1491,25 @@ const LeagueSettingsView: React.FC = () => {
                                 ))
                             }
                         </div>
+
+                        {/* [2026-09-11] 예정 시각(draft_scheduled_at) 전이라도 어드민이 바로
+                            드래프트를 시작할 수 있게 — league.status가 여전히 'drafting'으로
+                            바뀌기 전(즉 아직 'recruiting')에만 노출. */}
+                        {league.status === 'recruiting' && (
+                            <div className="space-y-2 pt-1">
+                                {draftStartErr && <p className="text-xs text-red-400 ko-normal">{draftStartErr}</p>}
+                                <button
+                                    onClick={handleStartDraft}
+                                    disabled={draftStarting}
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                >
+                                    {draftStarting
+                                        ? <><Loader2 size={13} className="animate-spin" />시작 중…</>
+                                        : '드래프트 시작'
+                                    }
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -1490,7 +1525,7 @@ const LeagueSettingsView: React.FC = () => {
                         >
                             {lotteryRunning
                                 ? <><Loader2 size={13} className="animate-spin" />추첨 중…</>
-                                : '드래프트 오더 추첨 실행'
+                                : '드래프트 순서 추첨 시작'
                             }
                         </button>
                         {league.status !== 'recruiting' && (

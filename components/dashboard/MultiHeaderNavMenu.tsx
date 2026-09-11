@@ -14,8 +14,13 @@ interface MultiHeaderNavMenuProps {
     myTeamId?:     string | null;
     roomId?:       string | null;
     hasPlayoffs?:  boolean;
+    /** tournament 세션 여부 — 올스타는 main_league 전용 기능이라 tournament에서는 메뉴에서 제외한다. */
+    isTournament?: boolean;
     /** 리그 샐러리캡 마스터 스위치 — 켜져 있을 때만 "내 팀" 드롭다운에 "재정" 항목 노출. */
     capEnabled?:   boolean;
+    /** 드래프트 완료 여부(league.status가 in_progress/finished) — false면 "내 팀"/"전술"
+     * 탭 자체를 숨긴다(드래프트 전엔 로스터가 비어있어 두 메뉴가 빈 화면으로 이어짐). */
+    isDraftComplete?: boolean;
     onViewPlayer:  (player: Player, teamSlug: string | null) => void;
     onViewTeam:    (teamSlug: string) => void;
 }
@@ -46,7 +51,9 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     myTeamId,
     roomId,
     hasPlayoffs,
+    isTournament,
     capEnabled,
+    isDraftComplete,
     onViewPlayer,
     onViewTeam,
 }) => {
@@ -135,7 +142,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     const leagueItems: DropdownItem[] = [
         { label: '순위표',    path: `${base}/standings` },
         ...(hasPlayoffs ? [{ label: '플레이오프', path: `${base}/playoffs` }] : []),
-        { label: '올스타',    path: `${base}/allstar` },
+        ...(isTournament ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
         { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },
@@ -179,14 +186,17 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
 
     return (
         <div ref={containerRef} className="flex items-center gap-6">
-            {/* 검색창 — 메뉴보다 먼저(좌측) 배치 */}
-            <MultiGlobalSearch
-                leagueTeams={leagueTeams}
-                poolPlayers={poolPlayers}
-                rosterMap={rosterMap}
-                onViewPlayer={onViewPlayer}
-                onViewTeam={onViewTeam}
-            />
+            {/* 검색창 — 메뉴보다 먼저(좌측) 배치. 드래프트 완료 전엔 검색 대상(로스터/선수)
+                자체가 의미 없어 숨김. */}
+            {isDraftComplete && (
+                <MultiGlobalSearch
+                    leagueTeams={leagueTeams}
+                    poolPlayers={poolPlayers}
+                    rosterMap={rosterMap}
+                    onViewPlayer={onViewPlayer}
+                    onViewTeam={onViewTeam}
+                />
+            )}
 
             {/* Nav 탭 묶음 */}
             <div className="flex items-center gap-0">
@@ -198,55 +208,60 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                     홈
                 </button>
 
-                {/* 내 팀 */}
-                <div className="relative">
-                    <button
-                        onClick={() => toggle('team')}
-                        className={`${tabBase} ${openDropdown === 'team' ? tabOpen : isTeamActive ? tabActivePage : tabDefault}`}
-                    >
-                        내 팀
-                        {openDropdown === 'team'
-                            ? <ChevronUp size={16} className="shrink-0" />
-                            : <ChevronDown size={16} className="shrink-0" />
-                        }
-                    </button>
-                    {openDropdown === 'team' && <DropdownPanel items={teamItems} minWidth="140px" />}
-                </div>
+                {/* 내 팀 / 전술 — 드래프트 완료 전엔 로스터가 없어 숨김 */}
+                {isDraftComplete && (
+                    <>
+                        <div className="relative">
+                            <button
+                                onClick={() => toggle('team')}
+                                className={`${tabBase} ${openDropdown === 'team' ? tabOpen : isTeamActive ? tabActivePage : tabDefault}`}
+                            >
+                                내 팀
+                                {openDropdown === 'team'
+                                    ? <ChevronUp size={16} className="shrink-0" />
+                                    : <ChevronDown size={16} className="shrink-0" />
+                                }
+                            </button>
+                            {openDropdown === 'team' && <DropdownPanel items={teamItems} minWidth="140px" />}
+                        </div>
 
-                {/* 전술 */}
-                <div className="relative">
-                    <button
-                        onClick={() => toggle('tactics')}
-                        className={`${tabBase} ${openDropdown === 'tactics' ? tabOpen : isTacticsActive ? tabActivePage : tabDefault}`}
-                    >
-                        전술
-                        {openDropdown === 'tactics'
-                            ? <ChevronUp size={16} className="shrink-0" />
-                            : <ChevronDown size={16} className="shrink-0" />
-                        }
-                    </button>
-                    {openDropdown === 'tactics' && <DropdownPanel items={tacticsItems} minWidth="140px" />}
-                </div>
+                        <div className="relative">
+                            <button
+                                onClick={() => toggle('tactics')}
+                                className={`${tabBase} ${openDropdown === 'tactics' ? tabOpen : isTacticsActive ? tabActivePage : tabDefault}`}
+                            >
+                                전술
+                                {openDropdown === 'tactics'
+                                    ? <ChevronUp size={16} className="shrink-0" />
+                                    : <ChevronDown size={16} className="shrink-0" />
+                                }
+                            </button>
+                            {openDropdown === 'tactics' && <DropdownPanel items={tacticsItems} minWidth="140px" />}
+                        </div>
+                    </>
+                )}
 
-                {/* 리그 */}
-                <div className="relative">
-                    <button
-                        onClick={() => toggle('league')}
-                        className={`${tabBase} relative ${openDropdown === 'league' ? tabOpen : isLeagueActive ? tabActivePage : tabDefault}`}
-                    >
-                        리그
-                        {openDropdown === 'league'
-                            ? <ChevronUp size={16} className="shrink-0" />
-                            : <ChevronDown size={16} className="shrink-0" />
-                        }
-                        {pendingTradeCount > 0 && (
-                            <span className="absolute -top-1.5 -right-2.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold">
-                                {pendingTradeCount > 9 ? '9+' : pendingTradeCount}
-                            </span>
-                        )}
-                    </button>
-                    {openDropdown === 'league' && <DropdownPanel items={leagueItems} />}
-                </div>
+                {/* 리그 — 드래프트 완료 전엔 숨김(홈/뉴스/드래프트 풀만 접근 가능해야 함) */}
+                {isDraftComplete && (
+                    <div className="relative">
+                        <button
+                            onClick={() => toggle('league')}
+                            className={`${tabBase} relative ${openDropdown === 'league' ? tabOpen : isLeagueActive ? tabActivePage : tabDefault}`}
+                        >
+                            리그
+                            {openDropdown === 'league'
+                                ? <ChevronUp size={16} className="shrink-0" />
+                                : <ChevronDown size={16} className="shrink-0" />
+                            }
+                            {pendingTradeCount > 0 && (
+                                <span className="absolute -top-1.5 -right-2.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold">
+                                    {pendingTradeCount > 9 ? '9+' : pendingTradeCount}
+                                </span>
+                            )}
+                        </button>
+                        {openDropdown === 'league' && <DropdownPanel items={leagueItems} />}
+                    </div>
+                )}
             </div>{/* end Nav 탭 묶음 */}
         </div>
     );

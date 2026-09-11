@@ -22,6 +22,7 @@ import {
     seededShuffle,
 } from './shared/multiDraftEngine';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
+import { postDraftLotteryResult } from './postDraftLotteryNews';
 
 const DEFAULT_TOTAL_ROUNDS         = 10;
 const DEFAULT_PICK_DURATION_SEC    = 30;
@@ -90,7 +91,7 @@ export async function handleRunLottery(req: Request): Promise<Response> {
     // 어드민 검증 — run_draft_lottery RPC는 p_admin_id를 받지만 실제로 검증하지 않으므로 여기서 대신 확인한다.
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, admin_user_id, status')
+        .select('id, admin_user_id, status, season_number')
         .eq('id', body.leagueId)
         .single();
 
@@ -107,6 +108,11 @@ export async function handleRunLottery(req: Request): Promise<Response> {
         if (msg.includes('lottery_already_done')) return json({ error: '이미 추첨이 완료되었습니다.' }, 400);
         return json({ error: msg }, 500);
     }
+
+    // 로터리 결과를 뉴스피드에도 게시 — 실패해도 로터리 자체는 이미 끝난 것이므로 흐름을 막지 않는다.
+    await postDraftLotteryResult(body.roomId, body.leagueId, league.season_number ?? null, lotteryResult as any[]).catch(err =>
+        console.error(`[run-lottery] postDraftLotteryResult failed for room ${body.roomId}:`, err),
+    );
 
     // 로터리 직후 곧바로 방 준비 — 원자적 클레임을 거치므로 스케줄러 폴링과 동시 실행돼도
     // 중복 없이 안전하다. 실패해도 스케줄러 폴링(runDraftRoomPrep)이 안전망으로 재시도한다.

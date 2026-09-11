@@ -47,10 +47,11 @@ export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
 
 export function usePlayerSeasonStatsLeague(roomId: string | undefined | null, playerIds: string[]) {
     const sortedIds = [...new Set(playerIds)].sort();
+    const enabled = !!roomId && sortedIds.length > 0;
 
-    return useQuery({
+    const query = useQuery({
         queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(',')],
-        enabled: !!roomId && sortedIds.length > 0,
+        enabled,
         queryFn: async (): Promise<PlayerSeasonStatsLeague> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_league', {
                 p_room_id: roomId,
@@ -99,4 +100,12 @@ export function usePlayerSeasonStatsLeague(roomId: string | undefined | null, pl
             return m;
         },
     });
+
+    // [2026-09-11 Fix] React Query는 enabled:false인 쿼리를 "아직 실행 안 됨"으로 취급해
+    // isPending을 영원히 true로 유지한다 — playerIds가 애초에 비어있는 경우(드래프트 완료
+    // 전이라 어느 팀에도 로스터가 없을 때 등) 가져올 데이터 자체가 없을 뿐인데, 소비하는
+    // 화면(MultiPlayerDetailView.tsx 등)이 isPending을 "아직 로딩 중"으로 해석해 무한
+    // 로딩 스피너로 이어졌다(드래프트 풀 화면 → 선수 프로필 진입 시 재현). 비활성 상태에서는
+    // isPending을 false로 덮어써 "가져올 게 없어 완료됨"으로 정정.
+    return { ...query, isPending: enabled ? query.isPending : false };
 }

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
-    CircleUser, LogOut, ArrowLeft, ChevronLeft, Settings2, Wrench, Palette,
+    CircleUser, LogOut, ChevronLeft, Settings2, Wrench, Palette,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
@@ -87,6 +87,10 @@ export const MultiSidebar: React.FC = () => {
     // 포스트시즌 진입을 판별해 "플레이오프" 메뉴를 노출한다. tournament 타입은 "순위표"
     // 메뉴 자체가 곧 브라켓이라 별도 메뉴가 필요 없다.
     const hasPlayoffs = !!league?.bracket_data && league?.type !== 'tournament';
+    // [2026-09-11] "드래프트 끝나기 전엔 내 팀/전술 메뉴 숨김" 요청 — 드래프트 완료 전엔
+    // 로스터 자체가 없어(팀이 아직 비어있음) 두 메뉴가 사실상 빈 화면으로 이어지므로 접근을
+    // 막는다. league.status가 in_progress/finished가 되면(=드래프트 종료) 다시 노출.
+    const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
 
     const base = `/multi/leagues/${leagueId}/season`;
     const isRosterActive = pathname.startsWith(`${base}/roster`);
@@ -144,76 +148,98 @@ export const MultiSidebar: React.FC = () => {
                     label="뉴스피드"
                     onClick={() => navigate(`${base}/news`)}
                 />
-                <NavItem
-                    active={isRosterActive}
-                    icon={<RosterIcon active={isRosterActive} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} />}
-                    label="로스터"
-                    onClick={() => navigate(myTeam ? `${base}/roster?rteam=${myTeam.team_slug}` : `${base}/roster`)}
-                />
-                <NavItem
-                    active={pathname.startsWith(`${base}/tactics`)}
-                    icon={<NavIcon name="tactics" active={pathname.startsWith(`${base}/tactics`)} />}
-                    label="전술"
-                    onClick={() => navigate(`${base}/tactics`)}
-                />
-
-                <Divider />
-
-                <NavItem
-                    active={pathname.startsWith(`${base}/standings`)}
-                    icon={<NavIcon name="standings" active={pathname.startsWith(`${base}/standings`)} />}
-                    label="순위표"
-                    onClick={() => navigate(`${base}/standings`)}
-                />
-                {hasPlayoffs && (
+                {/* [2026-09-11] 드래프트가 끝나면(정규 시즌 진입) 더 이상 지명 대상 풀을
+                    조회할 필요가 없어 메뉴 자체를 숨긴다(요청 — 접근 자체를 막음). */}
+                {!isDraftComplete && (
                     <NavItem
-                        active={pathname.startsWith(`${base}/playoffs`)}
-                        icon={<NavIcon name="playoffs" active={pathname.startsWith(`${base}/playoffs`)} />}
-                        label="플레이오프"
-                        onClick={() => navigate(`${base}/playoffs`)}
+                        active={pathname.startsWith(`${base}/pool`)}
+                        icon={<NavIcon name="pool" active={pathname.startsWith(`${base}/pool`)} />}
+                        label="드래프트 풀"
+                        onClick={() => navigate(`${base}/pool`)}
                     />
                 )}
-                <NavItem
-                    active={pathname.startsWith(`${base}/allstar`)}
-                    icon={<NavIcon name="allstar" active={pathname.startsWith(`${base}/allstar`)} />}
-                    label="올스타"
-                    onClick={() => navigate(`${base}/allstar`)}
-                />
-                <NavItem
-                    active={pathname.startsWith(`${base}/leaderboard`)}
-                    icon={<NavIcon name="leaderboard" active={pathname.startsWith(`${base}/leaderboard`)} />}
-                    label="리더보드"
-                    onClick={() => navigate(`${base}/leaderboard`)}
-                />
-                <NavItem
-                    active={pathname.startsWith(`${base}/schedule`)}
-                    icon={<NavIcon name="schedule" active={pathname.startsWith(`${base}/schedule`)} />}
-                    label="일정"
-                    onClick={() => navigate(`${base}/schedule`)}
-                />
-                <NavItem
-                    active={pathname.startsWith(`${base}/transaction`)}
-                    icon={<NavIcon name="transactions" active={pathname.startsWith(`${base}/transaction`)} />}
-                    label="트레이드"
-                    onClick={() => navigate(`${base}/transaction`)}
-                    badge={pendingTradeCount}
-                />
-                <NavItem
-                    active={pathname.startsWith(`${base}/free-agent`)}
-                    icon={<NavIcon name="free-agents" active={pathname.startsWith(`${base}/free-agent`)} />}
-                    label="자유 계약"
-                    onClick={() => navigate(`${base}/free-agent`)}
-                />
-
-                {isAdmin && (
+                {/* [2026-09-11 후속] "리그 메뉴도 모두 숨겨줘야, 홈/뉴스/드래프트풀 3개만
+                    접근 가능해야" 요청 — 로스터/전술뿐 아니라 순위표~자유계약, 어드민 팀
+                    관리까지 드래프트 완료 전엔 전부 숨긴다(구분선 포함). */}
+                {isDraftComplete && (
                     <>
-                        <Divider />
                         <NavItem
-                            active={pathname.startsWith(`/multi/leagues/${leagueId}/admin/teams`)}
-                            icon={<Wrench size={24} />}
-                            label="어드민: 팀 관리"
-                            onClick={() => navigate(`/multi/leagues/${leagueId}/admin/teams`)}
+                            active={isRosterActive}
+                            icon={<RosterIcon active={isRosterActive} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} />}
+                            label="로스터"
+                            onClick={() => navigate(myTeam ? `${base}/roster?rteam=${myTeam.team_slug}` : `${base}/roster`)}
                         />
+                        <NavItem
+                            active={pathname.startsWith(`${base}/tactics`)}
+                            icon={<NavIcon name="tactics" active={pathname.startsWith(`${base}/tactics`)} />}
+                            label="전술"
+                            onClick={() => navigate(`${base}/tactics`)}
+                        />
+
+                        <Divider />
+
+                        <NavItem
+                            active={pathname.startsWith(`${base}/standings`)}
+                            icon={<NavIcon name="standings" active={pathname.startsWith(`${base}/standings`)} />}
+                            label="순위표"
+                            onClick={() => navigate(`${base}/standings`)}
+                        />
+                        {hasPlayoffs && (
+                            <NavItem
+                                active={pathname.startsWith(`${base}/playoffs`)}
+                                icon={<NavIcon name="playoffs" active={pathname.startsWith(`${base}/playoffs`)} />}
+                                label="플레이오프"
+                                onClick={() => navigate(`${base}/playoffs`)}
+                            />
+                        )}
+                        {/* 올스타 이벤트는 main_league 전용(server/src/scheduler.ts가
+                            type='main_league'만 투표/경기를 자동 진행) — tournament
+                            세션에서는 기능 자체가 동작하지 않으므로 메뉴도 숨긴다. */}
+                        {league?.type !== 'tournament' && (
+                            <NavItem
+                                active={pathname.startsWith(`${base}/allstar`)}
+                                icon={<NavIcon name="allstar" active={pathname.startsWith(`${base}/allstar`)} />}
+                                label="올스타"
+                                onClick={() => navigate(`${base}/allstar`)}
+                            />
+                        )}
+                        <NavItem
+                            active={pathname.startsWith(`${base}/leaderboard`)}
+                            icon={<NavIcon name="leaderboard" active={pathname.startsWith(`${base}/leaderboard`)} />}
+                            label="리더보드"
+                            onClick={() => navigate(`${base}/leaderboard`)}
+                        />
+                        <NavItem
+                            active={pathname.startsWith(`${base}/schedule`)}
+                            icon={<NavIcon name="schedule" active={pathname.startsWith(`${base}/schedule`)} />}
+                            label="일정"
+                            onClick={() => navigate(`${base}/schedule`)}
+                        />
+                        <NavItem
+                            active={pathname.startsWith(`${base}/transaction`)}
+                            icon={<NavIcon name="transactions" active={pathname.startsWith(`${base}/transaction`)} />}
+                            label="트레이드"
+                            onClick={() => navigate(`${base}/transaction`)}
+                            badge={pendingTradeCount}
+                        />
+                        <NavItem
+                            active={pathname.startsWith(`${base}/free-agent`)}
+                            icon={<NavIcon name="free-agents" active={pathname.startsWith(`${base}/free-agent`)} />}
+                            label="자유 계약"
+                            onClick={() => navigate(`${base}/free-agent`)}
+                        />
+
+                        {isAdmin && (
+                            <>
+                                <Divider />
+                                <NavItem
+                                    active={pathname.startsWith(`/multi/leagues/${leagueId}/admin/teams`)}
+                                    icon={<Wrench size={24} />}
+                                    label="어드민: 팀 관리"
+                                    onClick={() => navigate(`/multi/leagues/${leagueId}/admin/teams`)}
+                                />
+                            </>
+                        )}
                     </>
                 )}
             </nav>
@@ -264,13 +290,6 @@ export const MultiSidebar: React.FC = () => {
                                     </button>
                                 )}
                                 {(isAdmin || myTeam) && <div className="my-1 border-t border-slate-700/60" />}
-                                <button
-                                    onClick={() => { navigate('/multi'); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
-                                >
-                                    <ArrowLeft size={14} />
-                                    <span className="text-xs font-bold">리그 목록으로</span>
-                                </button>
                                 <button
                                     onClick={() => { navigate('/'); setIsMenuOpen(false); }}
                                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"

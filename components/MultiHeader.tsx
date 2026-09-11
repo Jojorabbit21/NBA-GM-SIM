@@ -10,6 +10,7 @@ import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
+import { useLeagueDraft } from '../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../utils/colorContrast';
 import { getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
 import { CONF_NAMES } from '../utils/playoffLogic';
@@ -261,7 +262,60 @@ export const MultiHeader: React.FC = () => {
 
     // [2026-08-26] 실제 예정된 경기가 없을 때 "시즌정보" 칸을 비워두지 않고 목업 "다음 경기"
     // 표시를 보여주기로 결정(사용자 확인 후 유지 요청). 실제 데이터가 있으면 항상 실데이터 우선.
-    const fallbackMode        = !myLiveGame && !(nextGame && countdown) && !tournamentChampionId;
+    // [2026-09-11 Fix] 이 목업이 원래 전제한 "활성 시즌인데 아직 예정된 경기가 없는" 경우와
+    // 달리, 드래프트 완료 전(로터리/드래프트 단계)엔 애초에 시즌 자체가 없어 "동부 1라운드
+    // 2-1 @ ATL" 같은 가짜 시리즈 정보가 그대로 노출되는 버그가 있었다 — 드래프트 완료
+    // 여부를 fallbackMode 조건에 추가해 활성 시즌에서만 목업이 뜨도록 제한.
+    const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
+    // [2026-09-11] LeagueLobbyPanel.tsx의 "토너먼트 정보" 섹션 하단에 있던 "드래프트 룸
+    // 입장" 정적 안내 박스(로터리 완료~드래프트 시작 전 상태)를 삭제하고, 대신 로터리가
+    // 끝난 순간부터 드래프트 완료 전까지 항상 헤더 우측 끝에서 진입할 수 있도록 이동.
+    const lotteryDone = leagueTeams.length > 0 && leagueTeams.some(t => t.draft_order !== null);
+    const isDrafting = league?.status === 'drafting';
+    // [2026-09-11] 드래프트 진행 중엔 이 버튼을 우측 끝(NavMenu 옆)이 아니라 시즌정보 칸의
+    // "남은 시간" 텍스트 바로 우측으로 옮겨 붙인다(요청) — 그래서 isDrafting일 땐 여기서 숨김.
+    const showDraftRoomButton = !isDraftComplete && lotteryDone && !isDrafting;
+
+    // [2026-09-11] "드래프트 진행 중일 때 헤더에도 현재 픽 정보 표시" 요청 — LeagueLobbyPanel.tsx/
+    // MultiDraftView.tsx가 이미 쓰는 훅을 그대로 재사용(WS 연결이 하나 더 열리지만, 드래프트
+    // 중에만 활성화되고 사용자가 이 트레이드오프를 확인 후 요청함).
+    const { draftState: headerDraftState, currentPickEntry: headerCurrentPickEntry, timeRemaining: headerTimeRemaining } = useLeagueDraft(
+        isDrafting ? (roomId ?? null) : null,
+        session,
+    );
+    const headerDraftTeamCount = Math.max(headerDraftState?.teamCount ?? 1, 1);
+    const headerDraftRound     = headerDraftState ? Math.floor(headerDraftState.currentPickIndex / headerDraftTeamCount) + 1 : 1;
+    const headerDraftPickInRound = headerDraftState ? (headerDraftState.currentPickIndex % headerDraftTeamCount) + 1 : 1;
+    const headerDraftTeam = headerCurrentPickEntry
+        ? leagueTeams.find(t => t.team_slug === headerCurrentPickEntry.teamId)
+        : null;
+    const headerDraftTimer = `${String(Math.floor(headerTimeRemaining / 60)).padStart(2, '0')}:${String(headerTimeRemaining % 60).padStart(2, '0')}`;
+    const headerDraftTimerPct = headerDraftState && headerDraftState.pickDurationSec > 0
+        ? Math.min(100, Math.round((headerTimeRemaining / headerDraftState.pickDurationSec) * 100))
+        : 100;
+    const headerDraftTimerColor = headerDraftTimerPct <= 15 ? 'text-red-400' : headerDraftTimerPct <= 40 ? 'text-amber-400' : 'text-white';
+
+    // [2026-09-11] 로터리 추첨 전 / (로터리 완료 후) 드래프트 시작 전 상태에서 "다음
+    // 이벤트까지 남은 시간"을 헤더에 타이머로 표시 — nowMs(1초마다 갱신, 위에서 이미
+    // tick 중)를 그대로 재사용해 별도 interval 없이 계산.
+    const nextEventLabel = !lotteryDone ? '드래프트 순서 추첨' : '드래프트 시작';
+    const nextEventAt    = !lotteryDone ? league?.lottery_scheduled_at : league?.draft_scheduled_at;
+    const showEventCountdown = !isDraftComplete && !isDrafting && !!nextEventAt;
+    const eventCountdown = useMemo(() => {
+        if (!nextEventAt) return null;
+        const diff = new Date(nextEventAt).getTime() - nowMs;
+        if (diff <= 0) return '곧 시작';
+        const totalSec = Math.floor(diff / 1000);
+        const d  = Math.floor(totalSec / 86400);
+        const h  = Math.floor((totalSec % 86400) / 3600);
+        const m  = Math.floor((totalSec % 3600) / 60);
+        const s  = totalSec % 60;
+        const hh = String(h).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        const ss = String(s).padStart(2, '0');
+        return d > 0 ? `${d}일 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+    }, [nextEventAt, nowMs]);
+    const fallbackMode        = isDraftComplete && !myLiveGame && !(nextGame && countdown) && !tournamentChampionId;
     const fallbackOpponent    = leagueTeams.find(t => t.team_slug !== myTeamId) ?? null;
     const displayOpponent     = fallbackMode ? fallbackOpponent : opponentTeam;
     const displayOpponentId   = fallbackMode ? fallbackOpponent?.team_slug ?? null : opponentId;
@@ -326,7 +380,27 @@ export const MultiHeader: React.FC = () => {
                 )}
 
                 <div className="flex items-center gap-1.5 text-sm text-text-muted min-w-0 truncate pl-3">
-                    {myLiveGame ? (
+                    {isDrafting ? (
+                        <div className="flex items-center gap-2 min-w-0 shrink-0">
+                            <span className="truncate">
+                                <span className="text-emerald-400 font-bold animate-pulse">드래프트 진행 중</span>
+                                {' '}
+                                <span className="text-white">
+                                    {headerDraftRound}라운드 {headerDraftPickInRound}픽
+                                    {' | '}
+                                    {headerDraftTeam?.team_name ?? headerCurrentPickEntry?.teamId.toUpperCase() ?? '—'}
+                                    {' | '}
+                                </span>
+                                <span className={`tabular-nums ${headerDraftTimerColor}`}>{headerDraftTimer}</span>
+                            </span>
+                            <button
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
+                                className="flex items-center gap-1 px-3 py-1 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-xs font-black text-white transition-all active:scale-[0.98] shrink-0"
+                            >
+                                드래프트 룸 입장
+                            </button>
+                        </div>
+                    ) : myLiveGame ? (
                         <>
                             <span className="relative flex h-1.5 w-1.5 shrink-0">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -363,11 +437,16 @@ export const MultiHeader: React.FC = () => {
                                 {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
                             </span>
                         </>
+                    ) : showEventCountdown ? (
+                        <span className="flex items-center gap-1 font-semibold shrink-0 text-indigo-400">
+                            <Timer size={12} />
+                            {nextEventLabel}까지 {eventCountdown}
+                        </span>
                     ) : null}
                 </div>
             </div>
 
-            {/* 오른쪽: 검색창 + 메뉴 */}
+            {/* 오른쪽: 검색창 + 메뉴 + (로터리 완료~드래프트 진행 중) 드래프트 룸 입장 */}
             <div className="flex items-center gap-3 pr-6 shrink-0 relative z-10">
                 <MultiHeaderNavMenu
                     leagueTeams={leagueTeams}
@@ -376,10 +455,20 @@ export const MultiHeader: React.FC = () => {
                     myTeamId={myTeamId}
                     roomId={roomId}
                     hasPlayoffs={!!league?.bracket_data && league?.type !== 'tournament'}
+                    isTournament={league?.type === 'tournament'}
                     capEnabled={!!league?.cap_enabled}
+                    isDraftComplete={isDraftComplete}
                     onViewPlayer={handleViewPlayer}
                     onViewTeam={handleViewTeam}
                 />
+                {showDraftRoomButton && (
+                    <button
+                        onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-black text-white transition-all active:scale-[0.98] shrink-0"
+                    >
+                        드래프트 룸 입장
+                    </button>
+                )}
             </div>
         </div>
     );

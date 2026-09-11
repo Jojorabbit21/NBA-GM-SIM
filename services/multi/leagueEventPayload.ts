@@ -470,6 +470,19 @@ export interface AllstarDunkContestResultDetail {
     winnerId: string;
 }
 
+/** [2026-09-11] 드래프트 순서 로터리 추첨 결과 서신 — 서버 미러: server/src/postDraftLotteryNews.ts의
+ * DraftLotteryResultPayloadData. 필드명을 바꿀 땐 반드시 양쪽 다 같이 고칠 것(client/server
+ * 미러 쌍 — dev-log.md 기록 대상). */
+export interface DraftLotteryPick {
+    rank: number;
+    teamSlug: string;
+    teamName: string;
+}
+export interface DraftLotteryResultDetail {
+    kind: 'draft_lottery_result';
+    picks: DraftLotteryPick[]; // rank 오름차순(1순위부터)
+}
+
 export type LeagueEventDetail =
     | GameResultDetail
     | PlayerFeatDetail
@@ -492,6 +505,7 @@ export type LeagueEventDetail =
     | AllstarGameResultDetail
     | AllstarThreePointContestResultDetail
     | AllstarDunkContestResultDetail
+    | DraftLotteryResultDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -1062,6 +1076,14 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     quarter: typeof payload.quarter === 'number' ? payload.quarter : 0,
                     timeRemaining: isNonEmptyString(payload.timeRemaining) ? payload.timeRemaining : '',
                 };
+            }
+            case 'draft_lottery_result': {
+                if (!Array.isArray(payload.picks)) return LEGACY;
+                const picks: DraftLotteryPick[] = payload.picks
+                    .filter((p: any) => p && typeof p.rank === 'number' && isNonEmptyString(p.teamSlug) && isNonEmptyString(p.teamName))
+                    .map((p: any): DraftLotteryPick => ({ rank: p.rank, teamSlug: p.teamSlug, teamName: p.teamName }));
+                if (!picks.length) return LEGACY;
+                return { kind: 'draft_lottery_result', picks };
             }
             default:
                 return LEGACY;

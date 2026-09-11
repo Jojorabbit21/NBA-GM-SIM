@@ -1,27 +1,19 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
-import { AuthInput } from '../components/AuthInput';
-import { OtpInput } from '../components/OtpInput';
-import { APP_NAME, APP_YEAR } from '../utils/constants';
-import { LobbyPanel } from './lobby/LobbyPanel';
+import { AuthInput } from '../../components/AuthInput';
+import { OtpInput } from '../../components/OtpInput';
+import { APP_NAME, APP_YEAR } from '../../utils/constants';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
-interface AuthViewProps {
-  onGuestLogin: () => void;
-  // 로그인 상태일 때 로비 렌더에 필요한 props
-  session?:     Session | null;
-  nickname?:    string;
-  onContinue?:  () => void;
-  onNewGame?:   () => void;
-  onLogout?:    () => void;
-  onMultiPlay?: () => void;
-  onQuickPlay?: () => void;
-  quickplayOnly?: boolean;
+interface AuthFormProps {
+  /** 로그인/회원가입 완료 시 호출 — 세션 자체는 useAuth의 onAuthStateChange가 별도로 반영한다 */
+  onSuccess?: (opts: { isFirstSignup: boolean; nickname: string | null }) => void;
+  /** 'modal'이면 풀스크린 래퍼 없이 카드 내용만 렌더 */
+  variant?: 'modal' | 'page';
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
@@ -36,17 +28,7 @@ const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode
     );
 };
 
-export const AuthView: React.FC<AuthViewProps> = ({
-    onGuestLogin: _onGuestLogin,
-    session,
-    nickname = '',
-    onContinue,
-    onNewGame,
-    onLogout,
-    onMultiPlay,
-    onQuickPlay,
-    quickplayOnly = false,
-}) => {
+export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, variant = 'page' }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,11 +39,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
-  // profiles.nickname — 멀티플레이 화면에서 실제로 참조하는 닉네임 소스와 일치시키기 위해
-  // user_metadata/이메일 fallback보다 우선한다. isFirstSignup: 방금 profiles row가 처음 생성된 경우(true)
-  // → 로비에서 닉네임 설정 팝업을 자동으로 띄우는 트리거로 쓴다.
-  const [profileNickname, setProfileNickname] = useState<string | null>(null);
-  const [isFirstSignup,   setIsFirstSignup]   = useState(false);
 
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
@@ -100,11 +77,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // handle_new_user())가 있어, signUp() 시점에 이미 profiles row가 만들어진다. 즉 OTP 인증(가입 완료)
   // 시점엔 항상 row가 "이미 존재"하므로, 여기서의 select/insert 결과로는 최초가입 여부를 판별할 수 없다
   // (그래서 이 함수는 nickname 동기화용 안전망으로만 쓰고, 최초가입 트리거는 handleOtpChange 성공 시점에서 별도로 세팅한다).
-  const ensureProfileExists = async (userId: string, userEmail?: string) => {
+  const ensureProfileExists = async (userId: string, userEmail?: string): Promise<string | null> => {
     const { data, error: selectError } = await supabase.from('profiles').select('id, nickname').eq('id', userId).maybeSingle();
     if (selectError) {
         console.warn('⚠️ [ensureProfileExists] Profile check failed:', selectError.message);
-        return;
+        return null;
     }
     if (!data) {
         const defaultNickname = userEmail ? userEmail.split('@')[0] : 'GM';
@@ -116,21 +93,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
         });
         if (insertError) {
             console.warn('⚠️ [ensureProfileExists] Profile insert failed:', insertError.message);
-        } else {
-            setProfileNickname(defaultNickname);
+            return null;
         }
-    } else {
-        setProfileNickname(data.nickname ?? null);
+        return defaultNickname;
     }
+    return data.nickname ?? null;
   };
-
-  // 이미 profiles row가 있는 상태로 세션이 잡히는 경우(새로고침, 이미 로그인된 브라우저 등)에도
-  // profiles.nickname을 반영 — ensureProfileExists는 로그인/가입 폼 제출 시에만 호출되므로 별도로 동기화한다.
-  useEffect(() => {
-    if (!session?.user?.id) return;
-    supabase.from('profiles').select('nickname').eq('id', session.user.id).maybeSingle()
-        .then(({ data }) => { if (data?.nickname) setProfileNickname(data.nickname); });
-  }, [session?.user?.id]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,7 +124,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
       } else {
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
-        if (data.user) await ensureProfileExists(data.user.id, data.user.email);
+        if (data.user) {
+          const nickname = await ensureProfileExists(data.user.id, data.user.email);
+          onSuccess?.({ isFirstSignup: false, nickname });
+        }
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
@@ -213,10 +184,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
           type: 'signup',
         }).then(async ({ data, error }: any) => {
           if (!error && data?.user) {
-            await ensureProfileExists(data.user.id, data.user.email);
+            const nickname = await ensureProfileExists(data.user.id, data.user.email);
             // OTP 인증 성공 = 회원가입 완료 시점 — profiles row는 DB 트리거가 signUp() 때 이미
             // 만들어놓기 때문에 ensureProfileExists의 insert 여부로는 최초가입을 판별할 수 없어 여기서 직접 트리거
-            setIsFirstSignup(true);
+            onSuccess?.({ isFirstSignup: true, nickname });
           }
           if (error) {
             const nextAttempts = otpAttempts + 1;
@@ -242,34 +213,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // 로그인 상태 → Lobby 패널
-  if (session && onContinue && onNewGame && onLogout) {
-      return (
-          <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 pretendard">
-              <LobbyPanel
-                  session={session}
-                  nickname={profileNickname ?? nickname}
-                  onContinue={onContinue}
-                  onNewGame={onNewGame}
-                  onLogout={onLogout}
-                  onMultiPlay={onMultiPlay ?? (() => {})}
-                  onQuickPlay={onQuickPlay ?? (() => {})}
-                  quickplayOnly={quickplayOnly}
-                  forceNicknameSetup={isFirstSignup}
-                  onNicknameChange={setProfileNickname}
-              />
+  const cardContent = (
+    <>
+        {variant === 'page' && (
+          <div className={`text-center ${mode === 'verify' ? 'mb-6' : 'mb-10'}`}>
+            <h1 className="text-2xl font-black text-text-primary leading-tight tracking-tighter uppercase">
+              {APP_NAME}<br />{APP_YEAR}
+            </h1>
           </div>
-      );
-  }
-
-  return (
-    <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-text-primary">
-      <div className="w-full max-w-md bg-surface-card/80 border border-border-default backdrop-blur-md rounded-3xl p-8 shadow-elevation-lg relative z-10">
-        <div className={`text-center ${mode === 'verify' ? 'mb-6' : 'mb-10'}`}>
-          <h1 className="text-2xl font-black text-text-primary leading-tight tracking-tighter uppercase">
-            {APP_NAME}<br />{APP_YEAR}
-          </h1>
-        </div>
+        )}
 
         {mode === 'verify' ? (
           <div className="space-y-5">
@@ -330,20 +282,29 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-cta-strong hover:bg-cta-default disabled:bg-surface-disabled text-white font-semibold py-4 rounded-xl transition-all shadow-elevation-md flex items-center justify-center gap-3 active:scale-[0.98]"
+                  className="w-full bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 disabled:from-surface-disabled disabled:to-surface-disabled text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span>로그인</span></> : <><UserPlus size={20} /> <span>회원가입</span></>)}
                 </button>
               </div>
             </form>
 
-            <div className="mt-8 text-center border-t border-border-dim pt-6">
+            <div className="mt-6 text-center">
               <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-text-disabled hover:text-cta-default font-medium text-sm transition-all">
                 {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
               </button>
             </div>
           </>
         )}
+    </>
+  );
+
+  if (variant === 'modal') return cardContent;
+
+  return (
+    <div className="min-h-screen bg-surface-background flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-text-primary">
+      <div className="w-full max-w-md bg-surface-card/80 border border-border-default backdrop-blur-md rounded-3xl p-8 shadow-elevation-lg relative z-10">
+        {cardContent}
       </div>
     </div>
   );

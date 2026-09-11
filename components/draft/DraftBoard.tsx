@@ -1,7 +1,36 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
+import { RefreshCw } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
+import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
+
+// public/logos/real/ 로고 세트 — 세션 내 다른 화면들(LeagueLobbyPanel.tsx 등)과 동일한
+// 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
+function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, teamId: string) {
+    const img = e.currentTarget;
+    if (img.dataset.fallback !== 'old') {
+        img.dataset.fallback = 'old';
+        img.src = getTeamLogoUrl(teamId);
+    } else {
+        img.src = 'https://placehold.co/100x100?text=BPL';
+    }
+}
+
+// [2026-09-11] "배경에 로고를 크게 클리핑되게" 요청 — DraftHeader.tsx의 배경 워터마크
+// 패턴(overflow-hidden 컨테이너 + 확대된 저투명도 로고)을 팀 헤더 카드에도 적용. 부모(th)가
+// position:relative + overflow-hidden으로 카드 경계 밖으로 나간 부분을 잘라낸다.
+const TeamLogoWatermark: React.FC<{ teamId: string }> = ({ teamId }) => (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <img
+            src={getRealTeamLogoUrl(teamId)}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-full object-contain opacity-20 scale-[2]"
+            onError={(e) => handleLogoError(e, teamId)}
+        />
+    </div>
+);
 
 export interface BoardPick {
     pickNumber?: number;  // 루키 드래프트: 1~60 (슬롯 매핑용)
@@ -107,7 +136,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                     <tr>
                         {/* Round column header (sticky left) — 고정 너비 */}
                         <th
-                            className="sticky left-0 z-30 bg-slate-950 px-2 py-2 text-center font-bold text-slate-500 text-xs"
+                            className="sticky left-0 z-30 bg-slate-950 px-2 py-2 text-center font-bold text-slate-500 text-sm"
                             style={{
                                 width: ROUND_COL_W,
                                 minWidth: ROUND_COL_W,
@@ -119,57 +148,48 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                         </th>
                         {/* Team column headers — 너비 미지정 → table-layout:fixed가 균등 분배 */}
                         {teamIds.map(teamId => {
-                            const isUser     = teamId === userTeamId;
                             const isOnline   = onlineTeamIds ? onlineTeamIds.has(teamId) : undefined;
                             const isAutoPick = autoPickTeamIds ? autoPickTeamIds.has(teamId) : false;
                             const td = resolveTeamDisplay(teamId, teamMeta);
                             return (
                                 <th
                                     key={teamId}
-                                    className="px-1 py-2.5 text-center text-xs font-bold"
+                                    className="relative overflow-hidden px-1 h-12 text-center text-xs font-bold"
                                     title={td.name}
                                     style={{
                                         backgroundColor: td.colorPrimary,
                                         color: td.textColor,
-                                        borderBottom: `2px solid ${td.colorSecondary}`,
-                                        boxShadow: isUser
-                                            ? `inset 0 0 0 2px rgba(245,158,11,0.7), 1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)`
-                                            : '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
+                                        boxShadow: '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
                                     }}
                                 >
-                                    <div className="flex flex-col items-center gap-0.5">
-                                        <span>{td.abbr}</span>
-                                        {/* 온라인 점/오토픽 배지 여부와 무관하게 항상 같은 높이를 차지하도록 고정 —
-                                            안 그러면 AUTO 배지(온라인 점보다 큼)가 나타나는 순간 이 행의 높이가
-                                            늘어나면서 sticky 헤더 전체 높이가 갑자기 커지는 레이아웃 시프트가 생김.
-                                            멀티 드래프트 전용(onlineTeamIds/autoPickTeamIds 둘 다 안 쓰는 싱글/루키
-                                            드래프트 보드에서는 기존과 동일하게 아예 렌더링 안 함). */}
-                                        {(onlineTeamIds || autoPickTeamIds) && (
-                                            <div className="flex items-center justify-center gap-1 h-[10px]">
-                                                {isOnline !== undefined && (
-                                                    <span
-                                                        title={isOnline ? '접속 중' : '오프라인'}
-                                                        style={{
-                                                            display: 'inline-block',
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: '50%',
-                                                            backgroundColor: isOnline ? '#4ade80' : 'rgba(148,163,184,0.4)',
-                                                            flexShrink: 0,
-                                                        }}
-                                                    />
-                                                )}
-                                                {isAutoPick && (
-                                                    <span
-                                                        title="오토픽 진행 중"
-                                                        className="text-[7px] font-black leading-none px-1 py-[1px] rounded-sm bg-indigo-400 text-indigo-950 shrink-0"
-                                                    >
-                                                        AUTO
-                                                    </span>
-                                                )}
-                                            </div>
+                                    <TeamLogoWatermark teamId={teamId} />
+                                    {/* [2026-09-11] "팀명이 박스 중앙에" 요청 — abbr은 th 전체를 채우는
+                                        절대배치 레이어로 완전히 중앙 정렬한다. AUTO 배지는 [2026-09-11
+                                        후속] "이름 좌측으로" 요청에 따라 같은 가로 flex 행 안에서 abbr
+                                        앞자리로 옮겨, 배지+이름이 한 그룹으로 정중앙 정렬된다(따로 하단에
+                                        절대배치하던 이전 구조 폐기). */}
+                                    <div className="absolute inset-0 flex items-center justify-center gap-1">
+                                        {isAutoPick && (
+                                            <span
+                                                title="오토픽 진행 중"
+                                                className="flex items-center justify-center p-1 rounded-full bg-emerald-500 text-white shrink-0"
+                                            >
+                                                <RefreshCw size={11} />
+                                            </span>
                                         )}
+                                        <span className="text-lg">{td.abbr}</span>
                                     </div>
+                                    {/* [2026-09-11 Fix] 온라인 외곽선을 th 자체의 box-shadow로 걸면, 뒤이어
+                                        그려지는 TeamLogoWatermark(반투명 이미지)가 그 위를 덮어 색이 탁해
+                                        보였다(사용자 스크린샷으로 확인 — 단순 opacity 문제 아님). 워터마크·
+                                        콘텐츠보다 나중(DOM 순서상 마지막 자식)에 그려지는 별도 오버레이로
+                                        분리해 항상 최상단에서 또렷하게 보이도록 수정. */}
+                                    {isOnline && (
+                                        <div
+                                            className="absolute inset-0 pointer-events-none"
+                                            style={{ boxShadow: 'inset 0 0 0 2px rgba(74,222,128,1)' }}
+                                        />
+                                    )}
                                 </th>
                             );
                         })}
@@ -197,7 +217,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                     }}
                                 >
                                     <div className="flex flex-col items-center gap-0.5">
-                                        <span className={`text-[11px] font-black whitespace-nowrap ${
+                                        <span className={`text-sm font-black whitespace-nowrap ${
                                             isCurrentRound ? 'text-indigo-300' : isPast ? 'text-slate-600' : 'text-slate-500'
                                         }`}>
                                             R{round}
@@ -239,19 +259,21 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                             >
                                                 {pick ? (
                                                     <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
-                                                        {pickNum != null && (
-                                                            <span className="text-[9px] opacity-40 font-bold text-slate-300">
-                                                                #{pickNum}
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            {pickNum != null && (
+                                                                <span className="text-sm opacity-40 font-bold text-slate-300">
+                                                                    #{pickNum}
+                                                                </span>
+                                                            )}
+                                                            <span
+                                                                className="text-sm font-bold uppercase opacity-60"
+                                                                style={{ color: posColor }}
+                                                            >
+                                                                {pick.position}
                                                             </span>
-                                                        )}
+                                                        </div>
                                                         <span
-                                                            className="text-xs font-bold uppercase opacity-60"
-                                                            style={{ color: posColor }}
-                                                        >
-                                                            {pick.position}
-                                                        </span>
-                                                        <span
-                                                            className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
+                                                            className="text-sm font-bold text-center leading-tight break-words line-clamp-2"
                                                             style={{ color: posColor }}
                                                         >
                                                             {pick.playerName}
@@ -260,17 +282,17 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                 ) : isCurrent ? (
                                                     <div className="h-full flex flex-col items-center justify-center gap-0.5 animate-pulse">
                                                         {pickNum != null && (
-                                                            <span className="text-[9px] opacity-40 font-bold text-slate-300">
+                                                            <span className="text-sm opacity-40 font-bold text-slate-300">
                                                                 #{pickNum}
                                                             </span>
                                                         )}
-                                                        <span className="text-[11px] font-bold text-emerald-400">
+                                                        <span className="text-sm font-bold text-emerald-400">
                                                             선택 중...
                                                         </span>
                                                     </div>
                                                 ) : pickNum != null ? (
                                                     <div className="h-full flex items-end justify-center pb-1.5">
-                                                        <span className="text-[9px] opacity-25 font-bold text-slate-400">
+                                                        <span className="text-sm opacity-25 font-bold text-slate-400">
                                                             #{pickNum}
                                                         </span>
                                                     </div>

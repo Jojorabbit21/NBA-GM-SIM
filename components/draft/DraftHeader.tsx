@@ -1,9 +1,29 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play } from 'lucide-react';
-import { TeamLogo } from '../common/TeamLogo';
+import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play, RefreshCw } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
+import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
+
+// public/logos/real/ 로고 세트 — DraftBoard.tsx와 동일한 폴백 체인(신규 로고 세트 실패 시
+// 구버전 → 플레이스홀더). size는 className으로 직접 제어(호출부마다 크기가 달라 TeamLogo의
+// 프리셋 size prop 대신 className 하나로 단순화).
+const RealTeamLogo: React.FC<{ teamId: string; teamName?: string; className?: string }> = ({ teamId, teamName = '', className = '' }) => (
+    <img
+        src={getRealTeamLogoUrl(teamId)}
+        alt={teamName}
+        className={`object-contain ${className}`}
+        onError={(e) => {
+            const img = e.currentTarget;
+            if (img.dataset.fallback !== 'old') {
+                img.dataset.fallback = 'old';
+                img.src = getTeamLogoUrl(teamId);
+            } else {
+                img.src = 'https://placehold.co/100x100?text=BPL';
+            }
+        }}
+    />
+);
 
 // 싱글/루키 드래프트뷰에서 사용하는 기본 픽 제한 시간
 export const PICK_TIME_LIMIT = 30;
@@ -108,28 +128,16 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
             {/* Dark overlay for text readability */}
             <div className="absolute inset-0 bg-black/40" />
 
-            {/* Background team logo watermark */}
+            {/* Background team logo watermark — isCustom(팀 이름/컬러가 커스텀인지) 여부와
+                무관하게 항상 실제 로고 이미지 사용. isCustom 분기(컬러 박스+abbr 텍스트)는
+                "커스텀 팀 = 매칭되는 로고 이미지가 없다"던 싱글플레이 시절 가정이었는데,
+                멀티는 team_slug 기준으로 public/logos/real/에 전 팀 로고가 있어 더 이상
+                맞지 않음(DraftBoard.tsx도 이미 이 가정 없이 항상 실제 로고 사용) — 사용자가
+                "저건 팀배지 스타일인데 로고가 적용 안 됐다"고 정확히 짚어낸 버그. */}
             <div className="absolute inset-0 overflow-hidden flex items-center justify-center pointer-events-none">
-                {displayDisplay.isCustom ? (
-                    <div
-                        className="flex items-center justify-center rounded-3xl font-black"
-                        style={{
-                            width: '240px',
-                            height: '240px',
-                            backgroundColor: displayDisplay.colorPrimary,
-                            border: `8px solid ${displayDisplay.colorSecondary}`,
-                            color: displayDisplay.textColor,
-                            fontSize: '96px',
-                            opacity: 0.18,
-                        }}
-                    >
-                        {displayDisplay.abbr}
-                    </div>
-                ) : (
-                    <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
-                        <TeamLogo teamId={displayTeamId} size="3xl" />
-                    </div>
-                )}
+                <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
+                    <RealTeamLogo teamId={displayTeamId} className="w-32 h-32" />
+                </div>
             </div>
 
             {/* Main content — 3-column grid */}
@@ -153,7 +161,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                 <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
                     {announcement ? (
                         <div
-                            className="pretendard font-black text-sm text-white leading-snug tracking-wide max-w-[400px]"
+                            className="pretendard font-black text-sm text-white leading-snug max-w-[400px]"
                             style={{ animation: 'draft-flash 0.6s ease-in-out 2' }}
                             key={announcement.pickNumber}
                         >
@@ -161,7 +169,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                         </div>
                     ) : (
                         <>
-                            <div className={`pretendard font-black text-xl tracking-wider leading-none ${isPaused ? 'text-amber-400' : 'text-white'}`}>
+                            <div className={`pretendard font-black text-xl leading-none ${isPaused ? 'text-amber-400' : 'text-white'}`}>
                                 {isPaused ? '일시정지' : timerStr}
                             </div>
                             <div className="text-xs text-white/60 font-bold mt-0.5">
@@ -175,30 +183,17 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                 <div className="flex items-center justify-end gap-3">
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-white/50 font-medium">현재 차례</span>
-                        {currentDisplay.isCustom ? (
-                            <div
-                                className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shrink-0"
-                                style={{
-                                    backgroundColor: currentDisplay.colorPrimary,
-                                    border: `1.5px solid ${currentDisplay.colorSecondary}`,
-                                    color: currentDisplay.textColor,
-                                }}
-                            >
-                                {currentDisplay.abbr.slice(0, 3)}
-                            </div>
-                        ) : (
-                            <TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />
-                        )}
-                        <span className="text-xs font-bold text-white">
+                        <span className="text-sm text-white/50 font-medium">현재 차례</span>
+                        <RealTeamLogo teamId={currentTeamId} className="w-5 h-5" />
+                        <span className="text-sm font-bold text-white">
                             {currentDisplay.name}
                         </span>
                         {isCurrentTeamAutoPick && (
                             <span
                                 title="오토픽 진행 중"
-                                className="text-[9px] font-black leading-none px-1.5 py-0.5 rounded-sm bg-indigo-400 text-indigo-950"
+                                className="flex items-center justify-center p-1 rounded-full bg-emerald-500 text-white"
                             >
-                                AUTO
+                                <RefreshCw size={11} />
                             </span>
                         )}
                     </div>
@@ -208,11 +203,11 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                     {/* User turn info */}
                     {isUserTurn ? (
-                        <span className="text-xs font-bold text-emerald-300 animate-pulse">
+                        <span className="text-sm font-bold text-emerald-300 animate-pulse">
                             내 차례입니다!
                         </span>
                     ) : picksUntilUser > 0 ? (
-                        <span className="text-xs text-white/70">
+                        <span className="text-sm text-white/70">
                             <span className="font-bold text-white">{picksUntilUser}</span>픽 후 내 차례입니다
                         </span>
                     ) : null}

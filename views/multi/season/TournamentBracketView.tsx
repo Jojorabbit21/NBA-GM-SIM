@@ -8,6 +8,7 @@ import { useServerClock } from '../../../utils/serverClock';
 import { isFinal, isStarted, computeRevealedSeries } from './multiGameReveal';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
+import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,26 @@ function buildColTemplate(rounds: number): string {
     ).join(' ');
 }
 
+// ── Team Logo Img ─────────────────────────────────────────────────────────────
+// MultiStandingsView.tsx/newsFeedCards.tsx와 동일한 폴백 체인(신규 로고 실패 → 구버전 →
+// 플레이스홀더). 순수 장식용 — 클릭 영역은 부여하지 않는다.
+const TeamLogoImg: React.FC<{ teamId: string; abbr: string; className: string }> = ({ teamId, abbr, className }) => (
+    <img
+        src={getRealTeamLogoUrl(teamId)}
+        alt={abbr}
+        className={`${className} object-contain shrink-0`}
+        onError={(e) => {
+            const img = e.currentTarget;
+            if (img.dataset.fallback !== 'old') {
+                img.dataset.fallback = 'old';
+                img.src = getTeamLogoUrl(teamId);
+            } else {
+                img.src = 'https://placehold.co/100x100?text=BPL';
+            }
+        }}
+    />
+);
+
 // ── Team Slot ─────────────────────────────────────────────────────────────────
 
 const TeamSlot: React.FC<{
@@ -117,8 +138,11 @@ const TeamSlot: React.FC<{
             onMouseEnter={() => onHoverTeam(teamId)}
             onMouseLeave={() => onHoverTeam(null)}
         >
-            <span className="text-xl font-bold truncate">
-                {label}
+            <span className="flex items-center gap-2 min-w-0">
+                <TeamLogoImg teamId={teamId} abbr={label} className="w-6 h-6" />
+                <span className="text-xl font-bold truncate">
+                    {label}
+                </span>
             </span>
             {showWins && (
                 <span className="text-xl font-black tabular-nums shrink-0">
@@ -159,8 +183,11 @@ const MatchCard: React.FC<{
                 onMouseEnter={() => onHoverTeam(series.higherSeedId)}
                 onMouseLeave={() => onHoverTeam(null)}
             >
-                <span className="text-xl font-bold truncate min-w-0">
-                    {team?.team_abbr ?? series.higherSeedId.toUpperCase()}
+                <span className="flex items-center gap-2 min-w-0">
+                    <TeamLogoImg teamId={series.higherSeedId} abbr={team?.team_abbr ?? series.higherSeedId.toUpperCase()} className="w-6 h-6" />
+                    <span className="text-xl font-bold truncate">
+                        {team?.team_abbr ?? series.higherSeedId.toUpperCase()}
+                    </span>
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 bg-black/25 ml-2 shrink-0">부전승</span>
             </div>
@@ -471,11 +498,34 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
         return map;
     }, [byRound, confBySlug, totalRounds]);
 
+    // 좌/우 대칭 렌더링은 1라운드가 "동부 매치들이 앞쪽 연속 구간, 서부 매치들이 뒤쪽 연속
+    // 구간"(또는 그 반대)으로 완전히 분리돼 있을 때만 안전하다 — main_league 플레이오프
+    // (playoffSeeder.ts)는 East N팀/West N팀을 미리 앞/뒤로 나눠 배치해서 이 구조를 보장하지만,
+    // tournament 타입 리그(tournamentInitializer.ts)는 참가팀 전체를 컨퍼런스 구분 없이 랜덤
+    // 셔플하므로(seedMode 기본값 'random') 이 구조가 보장되지 않는다 — 1라운드부터 동/서부
+    // 팀이 섞여 붙을 수 있다. 예전엔 "1라운드에 East/West가 하나라도 섞여 있으면 split"으로만
+    // 판별했는데, 그러면 위 tournament 케이스에서 sideByKey 전파(다음 라운드 부모의 두 자식
+    // 매치 진영이 다를 때 하나를 임의로 버림)가 깨져서 라운드가 진행될수록 매치가 뒤섞이거나
+    // 격자 밖(그리드 template 행 수를 넘어서는 자리)으로 밀려나 사라지는 버그가 있었다
+    // (2026-09-10 발견). 그래서 여기서는 1라운드 매치들을 matchIndex 오름차순으로 봤을 때
+    // 정확히 "East 블록 하나 + West 블록 하나"(전환점 1번)로만 이루어지는지 구조적으로 검증하고,
+    // 아니면 조건 없이 일반 단일 브라켓(컨퍼런스 무관, 항상 정확)으로 폴백한다.
     const isSplit = useMemo(() => {
         if (totalRounds < 2) return false;
-        const values = new Set(sideByKey.values());
-        return values.has('East') && values.has('West');
-    }, [sideByKey, totalRounds]);
+        const r1 = byRound.get(1) ?? [];
+        if (r1.length === 0) return false;
+        const sides = r1.map(s => {
+            const hi = s.higherSeedId === 'TBD' ? null : confBySlug.get(s.higherSeedId);
+            const lo = s.lowerSeedId === 'BYE' ? hi : (s.lowerSeedId === 'TBD' ? null : confBySlug.get(s.lowerSeedId));
+            if (hi && lo) return hi === lo ? hi : null; // 두 팀 다 알려졌는데 컨퍼런스가 다르면(크로스 컨퍼런스 매치) 무효
+            return hi ?? lo ?? null; // 한쪽만 알려졌으면(플레이인 대기 등) 알려진 쪽의 컨퍼런스를 신뢰
+        });
+        if (sides.some(s => s === null)) return false;
+        if (new Set(sides).size !== 2) return false;
+        let transitions = 0;
+        for (let i = 1; i < sides.length; i++) if (sides[i] !== sides[i - 1]) transitions++;
+        return transitions === 1;
+    }, [byRound, confBySlug, totalRounds]);
 
     const confRounds = totalRounds - 1;
 
@@ -815,9 +865,9 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                         </>
                     ) : (
                         <>
-                            {/* Round headers — 바디와 분리된 영역, 패딩 없음 */}
+                            {/* Round headers — 바디와 분리된 영역, 좌우/하단 패딩은 없고 상단만 여백 */}
                             <div
-                                className="flex gap-0"
+                                className="flex gap-0 pt-4"
                                 style={{ width: gridCols % 2 === 1
                                     ? `${Math.ceil(gridCols / 2) * MATCH_W + Math.floor(gridCols / 2) * CONN_W}px`
                                     : undefined
@@ -826,7 +876,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                 {Array.from({ length: totalRounds }, (_, i) => i + 1).map(r => (
                                     <React.Fragment key={r}>
                                         <div
-                                            className="text-center text-sm font-black text-slate-500 uppercase"
+                                            className="text-center text-2xl font-black text-white uppercase"
                                             style={{ width: MATCH_W, flexShrink: 0 }}
                                         >
                                             {getRoundLabel(r, totalRounds)}
@@ -836,48 +886,64 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                 ))}
                             </div>
 
-                            {/* Bracket grid — 패딩은 이 영역에만 적용 */}
-                            <div
-                                className="px-6 pt-5 pb-12"
-                                style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: colTemplate,
-                                    gridTemplateRows: `repeat(${r1Count}, ${ROW_H}px)`,
-                                }}
-                            >
-                                {gridSeries.map(({ key, series: s, col, rowStart, rowSpan }) => (
-                                    <div
-                                        key={key}
-                                        className="flex items-center"
-                                        style={{
-                                            gridColumn: col,
-                                            gridRow: `${rowStart} / ${rowStart + rowSpan}`,
-                                        }}
-                                    >
-                                        <MatchCard
-                                            series={s}
-                                            leagueTeams={leagueTeams}
-                                            myTeamId={myTeamId}
-                                            selected={selectedId === s.id}
-                                            isFinalRound={s.round === totalRounds}
-                                            onClick={() => s.lowerSeedId !== 'BYE' && toggle(s.id)}
-                                            hoveredTeamId={hoveredTeamId}
-                                            onHoverTeam={setHoveredTeamId}
-                                        />
-                                    </div>
-                                ))}
+                            {/* Bracket grid + 우승 표시 — 결승 라운드 카드는 고정폭(MATCH_W)이라
+                                화면이 넓으면 그 오른쪽에 항상 빈 공간이 남는다. split 모드처럼
+                                바닥에 겹쳐 띄우는 대신, 그 남는 공간에 결승 카드와 나란히
+                                배치한다(사용자 요청). 패딩은 이 행 전체에만 적용. */}
+                            <div className="flex items-center gap-10 px-6 pt-5 pb-12">
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: colTemplate,
+                                        gridTemplateRows: `repeat(${r1Count}, ${ROW_H}px)`,
+                                    }}
+                                >
+                                    {gridSeries.map(({ key, series: s, col, rowStart, rowSpan }) => (
+                                        <div
+                                            key={key}
+                                            className="flex items-center"
+                                            style={{
+                                                gridColumn: col,
+                                                gridRow: `${rowStart} / ${rowStart + rowSpan}`,
+                                            }}
+                                        >
+                                            <MatchCard
+                                                series={s}
+                                                leagueTeams={leagueTeams}
+                                                myTeamId={myTeamId}
+                                                selected={selectedId === s.id}
+                                                isFinalRound={s.round === totalRounds}
+                                                onClick={() => s.lowerSeedId !== 'BYE' && toggle(s.id)}
+                                                hoveredTeamId={hoveredTeamId}
+                                                onHoverTeam={setHoveredTeamId}
+                                            />
+                                        </div>
+                                    ))}
 
-                                {gridConns.map(({ key, col, rowStart, rowSpan }) => (
-                                    <div
-                                        key={key}
-                                        style={{
-                                            gridColumn: col,
-                                            gridRow: `${rowStart} / ${rowStart + rowSpan}`,
-                                        }}
-                                    >
-                                        <BracketConnector highlightedSide={highlightedConnKeysClassic.get(key) ?? null} />
+                                    {gridConns.map(({ key, col, rowStart, rowSpan }) => (
+                                        <div
+                                            key={key}
+                                            style={{
+                                                gridColumn: col,
+                                                gridRow: `${rowStart} / ${rowStart + rowSpan}`,
+                                            }}
+                                        >
+                                            <BracketConnector highlightedSide={highlightedConnKeysClassic.get(key) ?? null} />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {championTeam && (
+                                    <div className="flex flex-col items-center gap-3 shrink-0">
+                                        <img src="/images/final.webp" alt="트로피" className="w-40 h-40 object-contain" />
+                                        <div className="text-base font-bold text-amber-400 uppercase">
+                                            {room?.season ?? ''} 챔피언
+                                        </div>
+                                        <div className="text-4xl font-black text-white text-center">
+                                            {championTeam.team_name}
+                                        </div>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </>
                     )}
@@ -917,22 +983,28 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <span className="flex-1 text-2xl font-bold text-white text-center truncate">
-                                {higherTeam?.team_abbr ?? 'TBD'}
-                                {higherTeam && seedBySlug.has(higherTeam.team_slug) && (
-                                    <span> ({seedBySlug.get(higherTeam.team_slug)})</span>
-                                )}
+                            <span className="flex-1 flex items-center justify-center gap-1.5 min-w-0 text-2xl font-bold text-white truncate">
+                                {higherTeam && <TeamLogoImg teamId={higherTeam.team_slug} abbr={higherTeam.team_abbr} className="w-6 h-6" />}
+                                <span className="truncate">
+                                    {higherTeam?.team_abbr ?? 'TBD'}
+                                    {higherTeam && seedBySlug.has(higherTeam.team_slug) && (
+                                        <span> ({seedBySlug.get(higherTeam.team_slug)})</span>
+                                    )}
+                                </span>
                             </span>
 
                             <div className="text-2xl font-black text-white shrink-0">
                                 {selectedSeries.higherSeedWins}-{selectedSeries.lowerSeedWins}
                             </div>
 
-                            <span className="flex-1 text-2xl font-bold text-white text-center truncate">
-                                {lowerTeam?.team_abbr ?? 'TBD'}
-                                {lowerTeam && seedBySlug.has(lowerTeam.team_slug) && (
-                                    <span> ({seedBySlug.get(lowerTeam.team_slug)})</span>
-                                )}
+                            <span className="flex-1 flex items-center justify-center gap-1.5 min-w-0 text-2xl font-bold text-white truncate">
+                                {lowerTeam && <TeamLogoImg teamId={lowerTeam.team_slug} abbr={lowerTeam.team_abbr} className="w-6 h-6" />}
+                                <span className="truncate">
+                                    {lowerTeam?.team_abbr ?? 'TBD'}
+                                    {lowerTeam && seedBySlug.has(lowerTeam.team_slug) && (
+                                        <span> ({seedBySlug.get(lowerTeam.team_slug)})</span>
+                                    )}
+                                </span>
                             </span>
                         </div>
                     </div>

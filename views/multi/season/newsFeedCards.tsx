@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, ArrowRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, type LucideIcon } from 'lucide-react';
+import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, ArrowRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { TeamBadge } from '../../../components/common/TeamBadge';
@@ -18,7 +18,7 @@ import { useGameBoxScore } from '../../../hooks/useGameBoxScore';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import type { GameBoxScoreData } from '../../../services/multi/gameQueries';
 import { formatMoney } from '../../../utils/formatMoney';
-import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry } from '../../../services/multi/leagueEventPayload';
+import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick } from '../../../services/multi/leagueEventPayload';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
 // 재수출만 해서 이 모듈을 이미 import하고 있는 곳(MultiNewsFeedView.tsx 등)의 기존 import
@@ -1238,6 +1238,76 @@ export const PowerRankingCard: React.FC<{
                             <td className="py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums">{entry.offenseScore?.toFixed(1) ?? '-'}</td>
                             <td className="py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums">{entry.defenseScore?.toFixed(1) ?? '-'}</td>
                             <td className="py-1.5 px-2 text-sm font-bold text-white text-center tabular-nums">{entry.powerScore.toFixed(1)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// ── draft_lottery_result — 드래프트 순서 로터리 추첨 직후 게시되는 서신
+// (server/src/postDraftLotteryNews.ts). PowerRankingCard와 동일한 레터 구조(헤더+날짜+
+// 구분선→표)를 따르되, 순위 변동/기사체 문단 없이 픽 순서 표만 보여준다.
+export const DraftLotteryResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'draft_lottery_result') return null;
+    const { picks } = event.detail;
+    const firstPick = picks[0] as DraftLotteryPick | undefined;
+
+    return (
+        <div className="max-w-5xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">드래프트 순서 추첨 결과</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+
+            {firstPick && (
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    전체 1순위 지명권은{' '}
+                    <span
+                        className={onOpenTeam ? 'font-bold text-white cursor-pointer hover:text-indigo-400 hover:underline' : 'font-bold text-white'}
+                        onClick={onOpenTeam ? () => onOpenTeam(firstPick.teamSlug) : undefined}
+                    >
+                        {teamBySlug.get(firstPick.teamSlug)?.team_name ?? firstPick.teamName}
+                    </span>
+                    {' '}팀에게 돌아갔습니다.
+                </p>
+            )}
+
+            <table className="w-full table-fixed text-left border-collapse">
+                <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/60">
+                        <th className="w-[15%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">순위</th>
+                        <th className="w-[85%] py-1.5 px-2 text-sm font-bold text-slate-300 text-left">팀</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {picks.map(pick => (
+                        <tr key={pick.rank} className="border-b border-slate-800/60">
+                            <td className="py-1.5 px-2 text-sm font-black text-slate-400 text-center tabular-nums">{pick.rank}</td>
+                            <td className="py-1.5 px-2">
+                                <div className="flex items-center gap-2">
+                                    <TeamBadge
+                                        teamId={pick.teamSlug}
+                                        teamName={pick.teamName}
+                                        abbr={teamBySlug.get(pick.teamSlug)?.team_abbr}
+                                        colorPrimary={teamBySlug.get(pick.teamSlug)?.color_primary}
+                                        colorSecondary={teamBySlug.get(pick.teamSlug)?.color_secondary}
+                                        colorText={teamBySlug.get(pick.teamSlug)?.color_text}
+                                        size="xs"
+                                    />
+                                    <span
+                                        className={`text-sm font-semibold text-slate-100 truncate ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(pick.teamSlug) : undefined}
+                                    >
+                                        {teamBySlug.get(pick.teamSlug)?.team_name ?? pick.teamName}
+                                    </span>
+                                </div>
+                            </td>
                         </tr>
                     ))}
                 </tbody>
@@ -3041,6 +3111,7 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     allstar_rising_stars_result: Sparkles,
     allstar_three_point_contest_result: Target,
     allstar_dunk_contest_result: Zap,
+    draft_lottery_result: Shuffle,
 };
 
 export const LegacyCard: React.FC<{ event: LeagueEvent }> = ({ event }) => {
@@ -3093,6 +3164,7 @@ export const StoryCard: React.FC<{
         case 'allstar_rising_stars_result': return <AllstarGameResultCard event={event} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'allstar_three_point_contest_result': return <AllstarThreePointContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'allstar_dunk_contest_result': return <AllstarDunkContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
+        case 'draft_lottery_result': return <DraftLotteryResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
         default: return <LegacyCard event={event} />;
     }
 };

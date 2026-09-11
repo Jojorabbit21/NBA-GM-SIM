@@ -114,7 +114,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
         <div className="flex flex-col h-full">
             {/* Toolbar */}
             <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50 bg-slate-800/30">
-                <span className="text-xs font-black uppercase tracking-wider text-indigo-400 shrink-0">선수 풀</span>
+                <span className="text-sm font-black uppercase text-indigo-400 shrink-0">선수 풀</span>
                 <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -122,7 +122,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                         placeholder="선수 검색..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-md pl-7 pr-2 py-1 text-xs text-slate-200 w-32 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
+                        className="bg-slate-900 border border-slate-800 rounded-md pl-7 pr-2 py-1 text-sm text-slate-200 w-32 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
                     />
                 </div>
                 <div className="flex gap-0.5">
@@ -133,7 +133,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                             <button
                                 key={pos}
                                 onClick={() => setPosFilter(pos)}
-                                className={`text-xs px-1.5 py-0.5 rounded-md font-bold transition-colors ${
+                                className={`text-sm px-1.5 py-0.5 rounded-md font-bold transition-colors ${
                                     isActive
                                         ? 'text-white'
                                         : 'bg-transparent text-slate-500 hover:text-slate-300'
@@ -148,13 +148,13 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                         );
                     })}
                 </div>
-                <span className="text-xs text-slate-500 ml-1">{filtered.length}명</span>
+                <span className="text-sm text-slate-500 ml-1">{filtered.length}명</span>
                 {/* Draft button */}
                 <div className="ml-auto">
                     <button
                         onClick={handleDraftClick}
                         disabled={!isUserTurn || !selectedPlayer}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
+                        className={`px-4 py-1.5 rounded-lg text-sm font-black uppercase transition-all ${
                             !isUserTurn || !selectedPlayer
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                 : 'hover:brightness-110 active:scale-95'
@@ -177,24 +177,24 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                 className="flex-1 min-h-0 overflow-y-auto"
                 style={{ scrollbarWidth: 'none' } as React.CSSProperties}
             >
-                <table className="w-full border-collapse text-xs table-fixed">
+                <table className="w-full border-collapse text-sm table-fixed">
                     <thead className="sticky top-0 z-10 bg-slate-900">
-                        <tr className="text-xs font-black uppercase text-slate-500 border-b border-slate-700/50">
+                        <tr className="text-sm font-black uppercase text-slate-500 border-b border-slate-700/50">
                             <th className="w-6 px-1 py-1.5"></th>
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
                             <th className="px-2 py-1.5 text-left w-36">NAME</th>
                             <th className="px-1 py-1.5 text-left text-slate-500">TYPE</th>
                             <SortHeader label="OVR" field="ovr" className="w-12" />
                             {showPotential && <SortHeader label="POT" field="pot" className="w-8" />}
-                            <SortHeader label="AGE" field="age" className="w-8" />
-                            <th className="px-1 py-1.5 text-center w-10 text-slate-500">HT</th>
-                            <th className="px-1 py-1.5 text-center w-10 text-slate-500">WT</th>
-                            <SortHeader label="INS" field="ins" className="w-8" />
-                            <SortHeader label="OUT" field="out" className="w-8" />
-                            <SortHeader label="ATH" field="ath" className="w-8" />
-                            <SortHeader label="PLM" field="plm" className="w-8" />
-                            <SortHeader label="DEF" field="def" className="w-8" />
-                            <SortHeader label="REB" field="reb" className="w-8" />
+                            <SortHeader label="AGE" field="age" className="w-10" />
+                            <th className="px-1 py-1.5 text-center w-12 text-slate-500">HT</th>
+                            <th className="px-1 py-1.5 text-center w-12 text-slate-500">WT</th>
+                            <SortHeader label="INS" field="ins" className="w-10" />
+                            <SortHeader label="OUT" field="out" className="w-10" />
+                            <SortHeader label="ATH" field="ath" className="w-10" />
+                            <SortHeader label="PLM" field="plm" className="w-10" />
+                            <SortHeader label="DEF" field="def" className="w-10" />
+                            <SortHeader label="REB" field="reb" className="w-10" />
                         </tr>
                     </thead>
                     <tbody>
@@ -237,22 +237,22 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                         {player.archetype ?? '—'}{player.secondaryArchetype ? ` / ${player.secondaryArchetype}` : ''}
                                     </td>
                                     <td className="px-2 py-0.5">
-                                        <OvrBadge value={player.ovr} size="sm" />
+                                        <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
                                     </td>
                                     {showPotential && (
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.potential)}`}>
+                                        <td className={`px-1 py-0.5 text-center ${getAttrColor(player.potential)}`}>
                                             {player.potential}
                                         </td>
                                     )}
-                                    <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-400">{player.age}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.height}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-500">{player.weight}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.ins)}`}>{player.ins}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.out)}`}>{player.out}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.ath)}`}>{player.ath}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.plm)}`}>{player.plm}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.def)}`}>{player.def}</td>
-                                    <td className={`px-1 py-0.5 text-center font-mono ${getAttrColor(player.reb)}`}>{player.reb}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.ins)}`}>{player.ins}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.out)}`}>{player.out}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.ath)}`}>{player.ath}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.plm)}`}>{player.plm}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.def)}`}>{player.def}</td>
+                                    <td className={`px-1 py-0.5 text-center ${getAttrColor(player.reb)}`}>{player.reb}</td>
                                 </tr>
                             );
                         })}

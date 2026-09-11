@@ -26,7 +26,7 @@ export const AuthInput: React.FC<AuthInputProps> = ({
 
   return (
     <div className="w-full flex flex-col mb-1">
-      <label className="text-sm font-medium text-text-muted mb-2.5 ml-1">
+      <label className="text-sm font-medium text-slate-400 mb-2.5 ml-1">
         {label}
       </label>
 
@@ -35,10 +35,10 @@ export const AuthInput: React.FC<AuthInputProps> = ({
           type={type}
           required
           placeholder={placeholder}
-          className={`w-full bg-surface-background border text-text-primary text-sm rounded-xl py-4 px-5 outline-none transition-all duration-200 font-medium placeholder:text-text-disabled placeholder:text-sm placeholder:font-medium ${
+          className={`w-full bg-slate-900/60 border text-white text-sm rounded-xl py-4 px-5 outline-none transition-all duration-200 font-medium placeholder:text-slate-500 placeholder:text-sm placeholder:font-medium ${
             hasError
               ? 'border-status-danger-border'
-              : 'border-border-default hover:border-cta-stronger focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]'
+              : 'border-slate-700/50 hover:border-slate-500 focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]'
           }`}
           value={value}
           onChange={(e) => onChange(e.target.value)}

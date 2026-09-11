@@ -31,7 +31,7 @@ const AdminTeamEditorView: React.FC = () => {
     // 비어드민 접근 차단
     useEffect(() => {
         if (!leagueLoading && league && !isAdmin) {
-            navigate(`/multi/leagues/${leagueId}/lobby`, { replace: true });
+            navigate(`/multi/leagues/${leagueId}/season`, { replace: true });
         }
     }, [leagueLoading, league, isAdmin, leagueId, navigate]);
 

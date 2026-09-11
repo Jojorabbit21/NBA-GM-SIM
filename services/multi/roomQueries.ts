@@ -118,6 +118,8 @@ export interface LeagueListEntry {
     memberCount: number;   // 실제 참가 인원 (is_ai=false)
     maxPlayers:  number;
     isJoined:    boolean;
+    /** rooms.season — 시즌 표시명(예: "2025-2026"). 방이 없으면 null. */
+    season:      string | null;
 }
 
 export const listLeaguesWithStats = async (
@@ -138,7 +140,7 @@ export const listLeaguesWithStats = async (
     const [roomsRes, membershipRes] = await Promise.all([
         supabase
             .from('rooms')
-            .select('id, league_id, max_players')
+            .select('id, league_id, max_players, season')
             .in('league_id', leagueIds)
             .eq('status', 'active'),
         userId
@@ -177,6 +179,7 @@ export const listLeaguesWithStats = async (
             memberCount: room ? (memberCounts[room.id] ?? 0) : 0,
             maxPlayers:  room?.max_players ?? league.max_teams,
             isJoined:    room ? joinedRoomIds.has(room.id) : false,
+            season:      room?.season ?? null,
         };
     });
 };

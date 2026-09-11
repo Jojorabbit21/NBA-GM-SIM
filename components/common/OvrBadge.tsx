@@ -5,16 +5,26 @@ interface OvrBadgeProps {
     value: number;
     size?: 'sm' | 'md' | 'lg' | 'xl';
     className?: string;
+    /** size가 정하는 폰트 크기만 개별적으로 덮어쓰고 싶을 때(예: 드래프트 화면처럼 배지
+     * 크기(w/h)는 sm 그대로 두되 글자만 키우고 싶은 경우) — 지정하지 않으면 기존처럼
+     * size에 묶인 기본 폰트 크기를 그대로 사용(다른 76곳 호출부는 영향 없음). */
+    textClassName?: string;
 }
 
-export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', className = '' }) => {
+export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', className = '', textClassName }) => {
     const baseStyles = "flex items-center justify-center font-black shadow-lg text-shadow-ovr transition-all leading-none";
-    
-    const sizeStyles = {
-        sm: "w-6 h-6 text-[10px] rounded",
-        md: "w-8 h-8 text-sm rounded-md",
-        lg: "w-11 h-11 text-xl rounded-lg",
-        xl: "w-16 h-16 text-3xl rounded-xl"
+
+    const boxStyles = {
+        sm: "w-6 h-6 rounded",
+        md: "w-8 h-8 rounded-md",
+        lg: "w-11 h-11 rounded-lg",
+        xl: "w-16 h-16 rounded-xl"
+    };
+    const defaultTextStyles = {
+        sm: "text-[10px]",
+        md: "text-sm",
+        lg: "text-xl",
+        xl: "text-3xl"
     };
 
     let colorStyles = "";
@@ -32,7 +42,7 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
     else                   colorStyles = 'bg-gradient-to-br from-[#85807a] via-[#635e5a] to-[#71706f] text-white shadow-[0_0_12px_rgba(99,94,90,0.08)] border border-[rgba(133,128,122,0.18)]';
 
     return (
-        <div className={`${baseStyles} ${sizeStyles[size]} ${colorStyles} ${className}`}>
+        <div className={`${baseStyles} ${boxStyles[size]} ${textClassName ?? defaultTextStyles[size]} ${colorStyles} ${className}`}>
             {value}
         </div>
     );

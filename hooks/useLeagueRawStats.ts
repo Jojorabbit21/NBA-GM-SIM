@@ -90,9 +90,13 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     // meta_players는 room과 무관(전체 리그가 공유하는 테이블)이라 roomId 없이 선수 id
     // 집합만으로 캐시를 공유한다 — 홈 위젯/로스터/리더보드/선수상세가 같은 allRosterIds를
     // 쓰는 한(대개 그렇다) game_pbp 포함 여부와 무관하게 항상 재사용된다.
+    const playersEnabled      = allRosterIds.length > 0 && extraEnabled;
+    const seasonInjuryEnabled = allRosterIds.length > 0 && !!roomId && extraEnabled;
+    const pbpEnabled          = !!roomId && allRosterIds.length > 0 && extraEnabled && includePbp;
+
     const playersQuery = useQuery({
         queryKey: ['leagueRawPlayers', idsKey],
-        enabled: allRosterIds.length > 0 && extraEnabled,
+        enabled: playersEnabled,
         placeholderData: keepPreviousData,
         queryFn: async (): Promise<any[]> => {
             const { data, error } = await supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds);
@@ -103,7 +107,7 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
 
     const seasonInjuryQuery = useQuery({
         queryKey: ['leagueRawSeasonInjury', roomId, idsKey],
-        enabled: allRosterIds.length > 0 && !!roomId && extraEnabled,
+        enabled: seasonInjuryEnabled,
         placeholderData: keepPreviousData,
         queryFn: async () => {
             const [seasonRes, injuryRes] = await Promise.all([
@@ -130,8 +134,17 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     // 메모이제이션 의도) — 호출부는 select 함수를 useCallback으로 안정된 참조로 넘겨야 함.
     const data = useMemo(() => (select ? select(raw) : (raw as unknown as T)), [select, raw]);
 
-    const isPending = playersQuery.isPending || seasonInjuryQuery.isPending || (includePbp && pbpQuery.isPending);
-    const isFetching = playersQuery.isFetching || seasonInjuryQuery.isFetching || (includePbp && pbpQuery.isFetching);
+    // [2026-09-11 Fix] React Query는 enabled:false인 쿼리를 "아직 실행 안 됨"으로 취급해
+    // isPending을 영원히 true로 유지한다 — allRosterIds가 애초에 비어있는 경우(드래프트
+    // 완료 전이라 어느 팀에도 로스터가 없을 때 등)엔 세 쿼리 다 비활성 상태로 멈춰서 이
+    // 훅을 쓰는 화면(선수상세 등)이 무한 로딩 스피너에 갇히는 버그가 있었다. 각 쿼리는
+    // 자신의 enabled 조건이 켜져 있을 때만 isPending을 집계에 반영한다.
+    const isPending = (playersEnabled && playersQuery.isPending)
+        || (seasonInjuryEnabled && seasonInjuryQuery.isPending)
+        || (pbpEnabled && pbpQuery.isPending);
+    const isFetching = (playersEnabled && playersQuery.isFetching)
+        || (seasonInjuryEnabled && seasonInjuryQuery.isFetching)
+        || (pbpEnabled && pbpQuery.isFetching);
 
     const refetch = useCallback(async () => {
         await Promise.all([

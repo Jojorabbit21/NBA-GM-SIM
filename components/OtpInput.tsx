@@ -77,12 +77,12 @@ export const OtpInput: React.FC<OtpInputProps> = ({ length, value, onChange, dis
           onPaste={handlePaste}
           onFocus={(e) => e.target.select()}
           className={`
-            w-11 h-12 text-center text-lg font-bold text-text-primary
-            bg-surface-background border border-border-default rounded-xl
+            w-11 h-12 text-center text-lg font-bold text-white
+            bg-slate-900/60 border border-slate-700/50 rounded-xl
             outline-none transition-all duration-200
-            hover:border-cta-stronger
+            hover:border-slate-500
             focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]
-            disabled:bg-surface-disabled disabled:border-transparent disabled:opacity-50 disabled:cursor-not-allowed
+            disabled:bg-slate-800 disabled:border-transparent disabled:opacity-50 disabled:cursor-not-allowed
           `}
           autoComplete="one-time-code"
         />

@@ -1,7 +1,7 @@
 
 import React, { useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AuthView } from '../views/AuthView';
+import { StartScreen } from '../views/home/StartScreen';
 import { useGame } from '../hooks/useGameContext';
 
 const AuthPage: React.FC<{ quickplayOnly?: boolean }> = ({ quickplayOnly = false }) => {
@@ -32,24 +32,17 @@ const AuthPage: React.FC<{ quickplayOnly?: boolean }> = ({ quickplayOnly = false
         navigate('/home', { replace: true });
     }, [setPlayMode, navigate]);
 
-    const handleMultiPlay = useCallback(() => {
-        setPlayMode('multi');
-        navigate('/multi');
-    }, [setPlayMode, navigate]);
-
     const handleQuickPlay = useCallback(() => {
         navigate('/quick');
     }, [navigate]);
 
     return (
-        <AuthView
-            onGuestLogin={() => {}}
+        <StartScreen
             session={session}
             nickname={isGuestMode ? 'Guest' : nickname}
             onContinue={handleContinue}
             onNewGame={handleNewGame}
             onLogout={logout}
-            onMultiPlay={handleMultiPlay}
             onQuickPlay={handleQuickPlay}
             quickplayOnly={quickplayOnly}
         />

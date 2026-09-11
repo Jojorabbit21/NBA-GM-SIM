@@ -21,11 +21,8 @@ import Loader, { DatabaseErrorView } from './components/Loader';
 import ProtectedLayout from './components/ProtectedLayout';
 import MultiProtectedLayout from './components/MultiProtectedLayout';
 import AdminGuard from './components/AdminGuard';
-import MultiDraftLayout from './components/MultiDraftLayout';
 
 // Multi Pages — 비동기 로드
-import LeagueListView from './views/multi/league/LeagueListView';
-import LeagueLobbyView from './views/multi/league/LeagueLobbyView';
 import LeagueSettingsView from './views/multi/league/LeagueSettingsView';
 import MultiDraftView from './views/multi/league/MultiDraftView';
 import { LeagueLayout } from './views/multi/league/LeagueLayout';
@@ -39,6 +36,7 @@ import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
 import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
 import MultiFreeAgentView from './views/multi/season/MultiFreeAgentView';
+import MultiDraftPoolView from './views/multi/season/MultiDraftPoolView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
@@ -121,7 +119,7 @@ const App: React.FC = () => {
     // 아닌데도 로그인만 돼 있으면 useBaseData(meta_players 전체+시즌 일정, 실측 5.9MB)가
     // 무조건 실행되고 있었음(FA 렉 조사 중 발견 — localStorage 영속 캐시 quota 초과의
     // 주요 원인 중 하나). 로비 화면의 팀 이름/로고 표시는 TEAM_DATA/getTeamLogoUrl로
-    // DB 없이 대체했고(LobbyPanel.tsx), 퀵플레이는 애초에 getAllTeamsList()로 별도 동작해
+    // DB 없이 대체했고(views/home/StartMenu.tsx), 퀵플레이는 애초에 getAllTeamsList()로 별도 동작해
     // baseData가 필요 없으므로 안전하게 스킵 대상에 추가.
     const shouldSkipSingleLoad = pathname.startsWith('/multi') || pathname === '/' || pathname === '/auth' || pathname === '/quick';
     const gameData = useGameData(isAdminRoute ? null : session, isGuestMode, rosterMode, shouldSkipSingleLoad);
@@ -383,11 +381,16 @@ const App: React.FC = () => {
 
                     {/* ── 멀티플레이어 라우트 (quickplay_only 모드에서도 항상 노출 — 어드민 제한은 싱글만 해당) ── */}
                     <Route element={<MultiProtectedLayout />}>
-                        <Route path="/multi" element={<LeagueListView />} />
                         <Route element={<LeagueLayout />}>
-                            <Route path="/multi/leagues/:leagueId/lobby"    element={<LeagueLobbyView />} />
                             <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
                             <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
+                            {/* [2026-09-11] /draft를 /season과 같은 LeagueLayout 서브트리로 통합 —
+                                예전엔 별도 브랜치(MultiDraftLayout)에 물려 있어 /season→/draft
+                                이동 시 LeagueLayout이 통째로 언마운트→재마운트되며 이미 로드된
+                                리그 데이터를 처음부터 다시 fetch, 로더가 두 번 뜨는 원인이었다
+                                (사용자 리포트). MultiDraftLayout은 MultiProtectedLayout과 인증
+                                가드 로직이 완전히 동일해 별도 유지할 이유가 없어 함께 제거. */}
+                            <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
                             <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
                                 <Route index element={<MultiSeasonPage />} />
                                 <Route path="news"         element={<MultiNewsFeedView />} />
@@ -400,16 +403,11 @@ const App: React.FC = () => {
                                 <Route path="tactics"      element={<MultiTacticsView />} />
                                 <Route path="transaction"  element={<MultiFrontOfficeView />} />
                                 <Route path="free-agent"   element={<MultiFreeAgentView />} />
+                                <Route path="pool"         element={<MultiDraftPoolView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                                 <Route path="settings"     element={<LeagueSettingsView />} />
                             </Route>
-                        </Route>
-                    </Route>
-
-                    <Route element={<MultiDraftLayout />}>
-                        <Route element={<LeagueLayout />}>
-                            <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
                         </Route>
                     </Route>
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Check } from 'lucide-react';
+import { Loader2, Check, Star } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -362,6 +362,21 @@ const MultiAllStarView: React.FC = () => {
         () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear()),
         [league?.virtual_season_year],
     );
+
+    // 올스타는 main_league 전용 기능(server/src/scheduler.ts가 type='main_league'만 투표/경기를
+    // 자동 진행) — tournament 세션은 메뉴 자체가 숨겨지지만(MultiSidebar.tsx/
+    // MultiHeaderNavMenu.tsx), URL 직접 접근은 막히지 않으므로 여기서도 한 번 더 막는다.
+    if (league?.type === 'tournament') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-slate-200 pretendard">
+                <Star size={40} className="text-slate-600" />
+                <div className="text-center">
+                    <h2 className="text-lg font-black text-slate-300 ko-tight">올스타</h2>
+                    <p className="text-sm text-slate-500 ko-normal mt-1">토너먼트 세션에서는 지원하지 않는 기능입니다.</p>
+                </div>
+            </div>
+        );
+    }
 
     // 헤더 바(제목 + 우측 메타정보)는 다른 시즌 화면들(MultiStandingsView.tsx/
     // MultiScheduleView.tsx)과 동일한 형태(px-4 py-3, border-b, text-lg font-black h1)로

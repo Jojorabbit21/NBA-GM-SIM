@@ -5,6 +5,7 @@ export { getOVRThreshold } from './ovrUtils';
 export type { OvrTier } from './ovrUtils';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
+import { VIRTUAL_TEAMS } from '../data/virtualTeams';
 import { editorLogoUrls } from './editorState';
 
 import { DEFAULT_SEASON_CONFIG } from './seasonConfig';
@@ -164,6 +165,10 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     // Check mappings
     if (TEAM_ID_MAP[input]) return TEAM_ID_MAP[input];
 
+    // 가상 확장팀(토너먼트 32/64팀) — team_slug 또는 team_abbr로 조회
+    const virtualTeam = VIRTUAL_TEAMS.find(t => t.team_slug === input || t.team_abbr.toLowerCase() === input);
+    if (virtualTeam) return virtualTeam.team_slug;
+
     // Partial match fallback (Slower but robust)
     for (const key in TEAM_ID_MAP) {
         if (input.includes(key)) return TEAM_ID_MAP[key];
@@ -198,11 +203,18 @@ const ALLSTAR_LOGO_FILE: Record<string, string> = {
 // [2026-09-06] 멀티플레이어용 신규 로고 세트(public/logos/real/, 대문자 파일명) — 테스트 목적으로
 // 선수 상세페이지 헤더 큰 로고 한 곳에만 우선 적용. 기존 /logos/{id}.svg(소문자, 싱글전용)와는
 // 별개 세트라 milwaukee('mil')처럼 real/에 파일이 없는 팀은 <img onError>에서 구버전으로 폴백.
+// 가상 확장팀(토너먼트) 로고 파일명이 team_slug/team_abbr와 다른 경우 오버라이드.
+// 예: 라스베이거스 팬텀스(team_slug='lvp', team_abbr='LVP')지만 실제 로고 파일은 LV.svg.
+const VIRTUAL_LOGO_FILE_OVERRIDE: Record<string, string> = {
+    'lvp': 'LV',
+};
+
 export const getRealTeamLogoUrl = (teamId: string): string => {
     const allstarFile = ALLSTAR_LOGO_FILE[teamId];
     if (allstarFile) return `/logos/real/${allstarFile}.svg`;
     const id = resolveTeamId(teamId);
-    return `/logos/real/${id.toUpperCase()}.svg`;
+    const override = VIRTUAL_LOGO_FILE_OVERRIDE[id];
+    return `/logos/real/${override ?? id.toUpperCase()}.svg`;
 };
 
 // [2026-09-09] MultiStandingsView.tsx의 컨퍼런스 그룹 헤더 색상으로 도입됐던 값 — 올스타 본경기

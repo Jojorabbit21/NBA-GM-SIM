@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, GripHorizontal, ChevronLeft, Bot } from 'lucide-react';
+import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
 import { countGames } from '../../../services/multi/gameQueries';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
@@ -280,10 +280,10 @@ const MultiDraftView: React.FC = () => {
             <div className="flex flex-col items-center justify-center min-h-screen gap-3">
                 <p className="text-slate-400 text-sm ko-normal">드래프트가 아직 시작되지 않았습니다.</p>
                 <button
-                    onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
+                    onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
                     className="text-indigo-400 text-sm hover:underline ko-normal"
                 >
-                    로비로 돌아가기
+                    리그 홈으로 돌아가기
                 </button>
             </div>
         );
@@ -298,7 +298,7 @@ const MultiDraftView: React.FC = () => {
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5">
                         <div className="flex items-center gap-2">
                             <button
-                                onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
                                 className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
                             >
                                 <ChevronLeft size={16} />
@@ -306,7 +306,7 @@ const MultiDraftView: React.FC = () => {
                             <span className="text-sm font-bold text-white/80">드래프트 룸</span>
                         </div>
                         <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
-                            <div className="pretendard font-black text-xl tracking-wider leading-none text-amber-400">
+                            <div className="pretendard font-black text-xl leading-none text-amber-400">
                                 {countdown ?? '--:--:--'}
                             </div>
                             <div className="text-xs text-white/60 font-bold mt-0.5">
@@ -343,9 +343,20 @@ const MultiDraftView: React.FC = () => {
                     <GripHorizontal size={14} className="text-slate-600" />
                 </div>
 
-                {/* ── 선수 풀 미리보기 (선택 비활성) ── */}
-                <div className="flex-1 min-h-0 overflow-hidden bg-slate-950 p-1.5">
-                    <div className="h-full bg-slate-900/60 rounded-xl overflow-hidden">
+                {/* ── 하단 3열 패널 (픽 히스토리 / 선수 풀 미리보기 / 내 로스터) — 아직
+                    드래프트 시작 전이라 히스토리·로스터는 비어있지만, 실제 진행 중 화면과
+                    동일한 레이아웃을 미리 보여준다(사용자 요청). ── */}
+                <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 p-1.5">
+                    <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
+                        <PickHistory
+                            picks={boardPicks}
+                            totalRounds={draftState.totalRounds}
+                            userTeamId={myTeamId ?? ''}
+                            teamMeta={teamMeta}
+                        />
+                    </div>
+
+                    <div className="flex-1 bg-slate-900/60 rounded-xl overflow-hidden">
                         <PlayerPool
                             players={adaptedPlayers}
                             selectedPlayerId={selectedPlayerId}
@@ -354,6 +365,10 @@ const MultiDraftView: React.FC = () => {
                             onDraft={() => {}}
                             positionColors={POSITION_COLORS}
                         />
+                    </div>
+
+                    <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
+                        <MyRoster players={myRosterPlayers} />
                     </div>
                 </div>
             </div>
@@ -372,30 +387,6 @@ const MultiDraftView: React.FC = () => {
 
     return (
         <div ref={containerRef} className="pretendard flex flex-col h-screen bg-slate-950">
-
-            {/* ── 로비 복귀 버튼 + 내 오토픽 토글 ── */}
-            <div className="shrink-0 flex items-center justify-between px-3 h-8 bg-slate-900/80 border-b border-slate-800/60">
-                <button
-                    onClick={() => navigate(`/multi/leagues/${leagueId}/lobby`)}
-                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-200 transition-colors"
-                >
-                    <ChevronLeft size={13} />
-                    <span className="ko-normal">로비</span>
-                </button>
-                {myTeamId && (
-                    <button
-                        onClick={() => toggleAutoPick(!myAutoPick)}
-                        className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
-                            myAutoPick
-                                ? 'bg-indigo-600/60 text-indigo-200 hover:bg-indigo-600/80'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                        }`}
-                    >
-                        <Bot size={12} />
-                        <span className="ko-normal">{myAutoPick ? '내 오토픽 켜짐 · 끄기' : '내 오토픽 켜기'}</span>
-                    </button>
-                )}
-            </div>
 
             {/* ── 어드민 패널 (admin_user_id 일치 시만 표시) ── */}
             {isAdmin && leagueId && room?.id && (
@@ -423,6 +414,7 @@ const MultiDraftView: React.FC = () => {
                 nextPickTeamId={currentPickEntry?.teamId}
                 teamMeta={teamMeta}
                 isCurrentTeamAutoPick={isCurrentTeamAutoPick}
+                onBack={() => navigate(`/multi/leagues/${leagueId}/season`)}
             />
 
             {/* ── 드래프트 보드 (리사이즈 가능) ── */}
@@ -483,7 +475,11 @@ const MultiDraftView: React.FC = () => {
 
                 {/* 내 로스터 */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                    <MyRoster players={myRosterPlayers} />
+                    <MyRoster
+                        players={myRosterPlayers}
+                        myAutoPick={myAutoPick}
+                        onToggleAutoPick={myTeamId ? (next) => toggleAutoPick(next) : undefined}
+                    />
                 </div>
             </div>
         </div>
