@@ -37,9 +37,8 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 
 const DESIRED_POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
-// React Query 데이터가 아직 없을 때(최초 로드 전) 쓰는 폴백 — 매 렌더마다 새 배열/Map을
+// React Query 데이터가 아직 없을 때(최초 로드 전) 쓰는 폴백 — 매 렌더마다 새 배열을
 // 만들면 참조가 계속 바뀌어 불필요한 재계산을 유발하므로 모듈 레벨 상수로 고정.
-const EMPTY_TRADEABLE_MAP: Map<string, Set<string>> = new Map();
 const EMPTY_OFFERS: TradeOfferRow[] = [];
 
 // [2026-08-26] 아키타입 27종을 가드/윙/빅 3그룹으로 분류(UI 편의용 — utils/ovrEngine.ts의
@@ -463,10 +462,18 @@ const MultiFrontOfficeView: React.FC = () => {
             ]);
             // [2026-08-24] opt-in 방식으로 반전 — league_trade_blocks에 행이 있으면
             // "트레이드 가능"(기본값은 전원 불가).
-            const tradeableByTeam = new Map<string, Set<string>>();
+            // [2026-09-11 버그 수정] Map<string, Set<string>>이었으나, index.tsx의
+            // PersistQueryClientProvider가 react-query 캐시를 localStorage에
+            // JSON.stringify로 영속화한다 — Map/Set은 JSON 직렬화 시 "{}"가 되어(고유
+            // 프로퍼티가 전혀 보존 안 됨) 새로고침 후 캐시 복원 시 진짜 Map/Set이 아닌 빈
+            // plain object가 되고, 소비처가 .get()을 호출하며 렌더링 중 크래시
+            // (TypeError: X.get is not a function). usePlayerSeasonStatsBatch.ts와 동일한
+            // 원인 — 캐시에는 JSON 직렬화가 안전한 plain Record<string, string[]>로 저장하고,
+            // Map/Set으로의 변환은 아래(490행)에서 useMemo로 매 렌더 파생시켜 처리한다.
+            const tradeableByTeam: Record<string, string[]> = {};
             for (const b of blocks) {
-                if (!tradeableByTeam.has(b.team_id)) tradeableByTeam.set(b.team_id, new Set());
-                tradeableByTeam.get(b.team_id)!.add(b.player_id);
+                if (!tradeableByTeam[b.team_id]) tradeableByTeam[b.team_id] = [];
+                tradeableByTeam[b.team_id].push(b.player_id);
             }
 
             let incoming: TradeOfferRow[] = [];
@@ -487,7 +494,17 @@ const MultiFrontOfficeView: React.FC = () => {
             return { tradeableByTeam, history: historyRows, incoming, outgoing, resolved, adminAll, adminResolved };
         },
     });
-    const tradeableByTeam = tradeData?.tradeableByTeam ?? EMPTY_TRADEABLE_MAP;
+    // 캐시(tradeData)엔 JSON-safe한 plain Record로 저장돼 있으므로, 소비처들이 쓰는
+    // .get()/.values() 인터페이스를 위해 여기서만 Map/Set으로 파생시킨다(캐시 자체는
+    // 절대 Map/Set으로 만들지 말 것 — 위 queryFn 주석 참고).
+    const tradeableByTeam = useMemo(() => {
+        const raw = tradeData?.tradeableByTeam;
+        const map = new Map<string, Set<string>>();
+        if (raw) {
+            for (const teamId of Object.keys(raw)) map.set(teamId, new Set(raw[teamId]));
+        }
+        return map;
+    }, [tradeData?.tradeableByTeam]);
     const history         = tradeData?.history ?? EMPTY_OFFERS;
     const incoming        = tradeData?.incoming ?? EMPTY_OFFERS;
     const outgoing        = tradeData?.outgoing ?? EMPTY_OFFERS;

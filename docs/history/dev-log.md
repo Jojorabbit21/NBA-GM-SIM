@@ -35,6 +35,53 @@
 
 ---
 
+## 2026-09-11 — [버그 수정] MultiFrontOfficeView 트레이드 화면이 새로고침 후 크래시하던 문제 (Map/Set → JSON 영속화 비호환)
+
+**배경**: FMK 테스트 토너먼트에서 사용자가 콘솔에 `TypeError: X.get is not a function` (at MultiFrontOfficeView.tsx:606) 크래시를 리포트. `index.tsx`의 `PersistQueryClientProvider`가 react-query 캐시를 `localStorage`에 `JSON.stringify`로 영속화하는데, `Map`/`Set`은 JSON 직렬화 시 `"{}"`(빈 객체)가 되어 고유 프로퍼티가 전혀 보존되지 않는다 — 새로고침 후 캐시가 복원되면 `tradeData.tradeableByTeam`이 진짜 `Map`이 아니라 빈 plain object가 되고, `.get()` 호출 시 렌더링 중 크래시(uncaught, 트레이드 화면 먹통). `hooks/usePlayerSeasonStatsBatch.ts`(2026-09-02)에서 이미 한 번 발견·수정된 것과 동일한 원인의 재발이며, 그 수정이 이 파일까지는 커버하지 못했음. "AI가 아닌 유저끼리 트레이드가 안 된다"는 리포트의 원인 중 하나로 추정(트레이드 블록 opt-in 미등록 문제와는 별개).
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx`
+
+**Before**:
+```ts
+const EMPTY_TRADEABLE_MAP: Map<string, Set<string>> = new Map();
+...
+// queryFn 내부
+const tradeableByTeam = new Map<string, Set<string>>();
+for (const b of blocks) {
+    if (!tradeableByTeam.has(b.team_id)) tradeableByTeam.set(b.team_id, new Set());
+    tradeableByTeam.get(b.team_id)!.add(b.player_id);
+}
+...
+const tradeableByTeam = tradeData?.tradeableByTeam ?? EMPTY_TRADEABLE_MAP;
+```
+
+**After**: `usePlayerSeasonStatsBatch.ts`와 동일한 패턴 적용 — 캐시(queryFn 반환값)엔 JSON-safe한 plain `Record<string, string[]>`로 저장, 소비 시점(컴포넌트 본문)에서 `useMemo`로 `Map<string, Set<string>>`을 매 렌더 파생시켜 기존 `.get()`/`.values()` 소비처들은 변경 없이 그대로 동작:
+```ts
+// queryFn 내부
+const tradeableByTeam: Record<string, string[]> = {};
+for (const b of blocks) {
+    if (!tradeableByTeam[b.team_id]) tradeableByTeam[b.team_id] = [];
+    tradeableByTeam[b.team_id].push(b.player_id);
+}
+...
+const tradeableByTeam = useMemo(() => {
+    const raw = tradeData?.tradeableByTeam;
+    const map = new Map<string, Set<string>>();
+    if (raw) for (const teamId of Object.keys(raw)) map.set(teamId, new Set(raw[teamId]));
+    return map;
+}, [tradeData?.tradeableByTeam]);
+```
+`EMPTY_TRADEABLE_MAP` 모듈 상수는 더 이상 필요 없어 제거.
+
+**검증**: `npx tsc --noEmit` 통과(206/641/694/1628행 등 기존 `.get()`/`.values()` 소비처 전부 타입 에러 없음 확인).
+
+**배포**: git 커밋 + push(origin/main). 이 파일은 프론트엔드(Vercel)만 해당 — Fly.io는 `server/` 디렉토리(드래프트 WS 서버)만 서빙하므로 이번 수정과 무관, 별도 Fly 재배포 불필요. Fly.io는 이 작업 직전에 이미 최신 서버 코드로 재배포 완료(별도 dev-log 항목 참고 불필요 — 배포만 진행, 서버 코드 변경 없었음).
+
+**롤백 방법**: Before 블록으로 되돌리면 됨(단, 되돌리면 이 크래시가 재현되므로 권장 안 함).
+
+---
+
 ## 2026-09-11 — 헤더 드래프트 정보 색상 분리 + "드래프트 룸 입장" 버튼을 타이머 옆으로 이동
 
 **배경**: 사용자 요청 2건 — (1) "드래프트 진행 중" 텍스트는 세션 홈처럼 초록색+점멸, 나머지(라운드/픽/팀명)는 흰색, "남은 시간"은 잔여 시간에 따라 빨간색으로. (2) 드래프트 진행 중일 땐 우측 끝(NavMenu 옆)에 있던 "드래프트 룸 입장" 버튼을 헤더 중앙 "남은 시간" 텍스트 바로 우측으로 이동.
