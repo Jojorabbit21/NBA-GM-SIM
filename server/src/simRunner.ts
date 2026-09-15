@@ -464,6 +464,15 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
 
 // ── 토너먼트 상태 전진 ────────────────────────────────────────────────────────
 
+// [2026-09-15 Fix] leagues.bracket_data는 리그 전체 시리즈가 JSONB 배열 하나에 뭉쳐있는
+// "리그당 row 1개" 구조다. 1라운드는 설계상 모든 매치업이 같은 슬롯에서 동시에 시작되므로,
+// 같은 리그의 여러 시리즈가 동시에 끝나면 서로 다른 워커 스레드가 동시에 이 함수를 호출해
+// 같은 row를 두고 read-modify-write 경합을 벌인다 — 나중에 쓰는 쪽만 반영되고 다른 시리즈의
+// 승수 증가분(과 라운드 전진 결과)은 통째로 유실된다(브라켓에서 어떤 시리즈는 4-0인데 어떤
+// 시리즈는 계속 0-0으로 보이던 버그). 워커 스레드는 서로 메모리를 공유하지 않아 in-process
+// 락으로는 못 막으므로, leagues.bracket_version 카운터로 "내가 읽은 버전 그대로일 때만
+// 쓴다"는 낙관적 동시성 제어(compare-and-swap)를 건다 — 실패하면(다른 워커가 먼저 씀) 최신
+// 상태를 다시 읽어 로직 전체를 재실행한다.
 async function handleTournamentAdvance(
     roomId:     string,
     leagueId:   string,
@@ -474,16 +483,43 @@ async function handleTournamentAdvance(
     homeScore:  number,
     awayScore:  number,
 ) {
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const applied = await tryAdvanceTournamentOnce(
+            roomId, leagueId, gameId, seriesId, homeTeamId, awayTeamId, homeScore, awayScore,
+        );
+        if (applied) return;
+        // bracket_version 불일치 — 다른 워커가 먼저 썼다는 뜻. 짧게 대기(지터 포함) 후
+        // 맨 위부터 다시 읽어 재시도한다.
+        await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
+    }
+    console.error(`[simRunner] handleTournamentAdvance — bracket_version 경합 재시도 ${MAX_ATTEMPTS}회 초과(league=${leagueId}, series=${seriesId})`);
+}
+
+/** handleTournamentAdvance() 한 번의 시도. 성공적으로 반영했으면 true, bracket_version이
+ *  그 사이 바뀌어(다른 워커가 먼저 씀) 조건부 write가 실패했으면 false를 반환해 바깥
+ *  루프가 최신 상태로 재시도하게 한다. */
+async function tryAdvanceTournamentOnce(
+    roomId:     string,
+    leagueId:   string,
+    gameId:     string,
+    seriesId:   string,
+    homeTeamId: string,
+    awayTeamId: string,
+    homeScore:  number,
+    awayScore:  number,
+): Promise<boolean> {
     // [migration 2026-08-06] 경기 결과 자체(played/homeScore/awayScore)는 runSimulation()의
     // games UPDATE가 이미 기록했다 — 여기서는 시리즈 진행(series)과 다음 라운드 경기 생성만 담당.
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count')
+        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year')
         .eq('id', leagueId)
         .maybeSingle();
 
-    if (!leagueRow?.bracket_data) return;
+    if (!leagueRow?.bracket_data) return true; // 처리할 브라켓 자체가 없음 — 재시도 불필요
 
+    const readVersion = (leagueRow as any).bracket_version ?? 0;
     const bracketData = leagueRow.bracket_data as { series: BPLSeries[] };
     const series: BPLSeries[] = bracketData.series ?? [];
     const tournStartAt = leagueRow.tournament_start_at as string | null;
@@ -494,7 +530,7 @@ async function handleTournamentAdvance(
     );
 
     const seriesObj = series.find(s => s.id === seriesId);
-    if (!seriesObj || seriesObj.finished) return;
+    if (!seriesObj || seriesObj.finished) return true;
 
     // 승패 집계
     const homeWon = homeScore > awayScore;
@@ -517,6 +553,7 @@ async function handleTournamentAdvance(
     if (seriesObj.finished) {
         // 시리즈가 조기 확정되면(예: Bo3에서 2-0) 아직 실행되지 않은 잔여 예정 경기는
         // 무의미하므로 제거한다 — 해당 슬롯은 경기 없이 그냥 지나가는 휴식 기간이 된다.
+        // (games 테이블은 게임별 row라 여기선 경합 걱정 없이 그대로 둔다 — 재시도해도 멱등.)
         const { data: pruned } = await supabase
             .from('games')
             .delete()
@@ -531,7 +568,8 @@ async function handleTournamentAdvance(
 
         // advanceTournamentState는 순수 함수 — "이미 존재하는 시리즈인지" 체크(seriesId만 읽음)와
         // "신규 라운드 경기 push"만 한다. 현재 games 행들로 최소 stub 배열을 만들어 넘기고,
-        // 호출 후 늘어난 뒷부분만 신규 생성된 TournamentGame 전체 객체로 취한다.
+        // 호출 후 늘어난 뒷부분만 신규 생성된 TournamentGame 전체 객체로 취한다. 이 존재 체크가
+        // games 테이블(멱등한 upsert로 기록됨)을 기준으로 하므로 재시도가 발생해도 중복 생성되지 않는다.
         const { data: existing } = await supabase
             .from('games').select('game_id, series_id').eq('room_id', roomId);
         const stub: TournamentGame[] = (existing ?? []).map(r => ({ id: r.game_id, seriesId: r.series_id ?? undefined } as any));
@@ -559,16 +597,29 @@ async function handleTournamentAdvance(
     // 플레이인 미니시리즈(round:0) 완료 감지 — 표준 라운드 전진(advanceTournamentState)은
     // round 1부터만 처리하므로 round:0은 위 블록에서 항상 그대로 지나쳐진다. 여기서
     // series를 직접 mutate(디사이더 슬롯 채우기, 본선 브라켓 생성 등)한 뒤 이어서 저장한다.
+    // handlePlayInAdvance가 [하위호환] 레거시 경로를 타면 buildAndStoreConferenceBracket을
+    // persist=false로 호출해 자체 write는 안 하고 앵커 값만 돌려준다 — 아래 최종 write에
+    // 병합해서 한 번에 내보내야 bracket_version 조건이 안 깨진다.
+    let extraFields: { tournament_start_at?: string; sim_real_start_at?: string } = {};
     if (seriesObj.round === 0 && seriesObj.finished) {
-        await handlePlayInAdvance(
-            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count },
+        const playInResult = await handlePlayInAdvance(
+            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year },
             roomId, series, seriesId,
-        ).catch(err => console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err));
+        ).catch(err => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return null; });
+        if (playInResult) {
+            extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };
+        }
     }
 
-    await supabase.from('leagues')
-        .update({ bracket_data: { series } })
-        .eq('id', leagueRow.id);
+    // bracket_version이 내가 읽은 값 그대로일 때만 쓴다 — 그 사이 다른 워커가 먼저 썼다면
+    // 0행 매칭으로 실패해 바깥 루프가 최신 상태로 재시도한다(낙관적 동시성 제어).
+    const { data: updated } = await supabase.from('leagues')
+        .update({ bracket_data: { series }, bracket_version: readVersion + 1, ...extraFields })
+        .eq('id', leagueRow.id)
+        .eq('bracket_version', readVersion)
+        .select('id');
+
+    if (!updated || updated.length === 0) return false; // 경합 발생 — 재시도 필요
 
     const realSeries = series.filter(s => s.lowerSeedId !== 'BYE');
     const allDone    = realSeries.length > 0 && realSeries.every(s => s.finished);
@@ -578,4 +629,5 @@ async function handleTournamentAdvance(
         if (archiveErr) console.error('[simRunner] archive error:', archiveErr);
         await supabase.from('leagues').update({ status: 'finished' }).eq('id', leagueId);
     }
+    return true;
 }

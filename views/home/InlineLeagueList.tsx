@@ -33,7 +33,7 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
 
     const [entries,      setEntries]      = useState<LeagueListEntry[]>([]);
     const [isLoading,    setIsLoading]    = useState(true);
-    const [activeTab,    setActiveTab]    = useState<Tab>('tournament');
+    const [activeTab,    setActiveTab]    = useState<Tab>('main_league');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [joinTarget,   setJoinTarget]   = useState<LeagueListEntry | null>(null);
     const [actionErr,    setActionErr]    = useState<string | null>(null);
@@ -95,7 +95,7 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
 
             {/* 헤더 */}
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-black text-white ko-tight">멀티플레이 리그</h2>
+                <h2 className="text-lg font-black text-white ko-tight">활성화된 세션</h2>
                 {session && (
                     <button
                         onClick={() => setIsCreateOpen(true)}
@@ -110,8 +110,8 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
             {/* 탭 */}
             <div className="flex gap-1 border-b border-slate-700/50 mb-3">
                 {([
-                    { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
                     { key: 'main_league' as Tab, label: '온라인 리그' },
+                    { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
                 ]).map(({ key, label }) => (
                     <button
                         key={key}

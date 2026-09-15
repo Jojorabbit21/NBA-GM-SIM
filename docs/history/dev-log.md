@@ -35,6 +35,1246 @@
 
 ---
 
+## 2026-09-15 — 멀티리그 리더보드 "플레이오프" 토글이 항상 0으로만 나오던 버그 수정
+
+**배경**: 리더보드에서 정규시즌/플레이오프 토글을 바꿔도 플레이오프 스탯이 전부 0으로만
+나옴. 원인 2단계: (1) `get_player_season_stats_league` RPC(`is_allstar=false` 조인은
+2026-09-09에 이미 추가돼 있었음)에 `is_playoff` 구분이 아예 없어서 정규시즌/플레이오프
+경기가 한 선수 안에 통째로 합산됐다. (2) `buildLeagueTeams.ts`는 이 RPC 결과를
+`player.stats`에만 채우고 `player.playoffStats`를 세팅하는 코드 자체가 없었는데,
+`useLeaderboardData.ts`는 토글이 playoff일 때 `p.playoffStats || INITIAL_STATS()`를
+읽어서 항상 undefined → 0으로 폴백했다.
+
+**변경 파일**:
+- DB 마이그레이션 `migrations/add_is_playoff_to_player_season_stats_league_rpc.sql` —
+  `get_player_season_stats_league`에 `p_is_playoff boolean DEFAULT false` 파라미터 추가
+  (형제 RPC 패턴과 동일하게 `AND g.is_playoff = p_is_playoff` 조건). **파라미터 개수가
+  늘어나는 함수 시그니처 변경이라 `DROP FUNCTION`을 먼저 해야 했다** — 안 그러면
+  `CREATE OR REPLACE`가 기존 2-인자 함수를 대체하지 않고 오버로드로 새로 만들어서
+  PostgREST가 "function is not unique" 에러를 낸다(이 프로젝트에서 이미 한 번 겪었던
+  패턴, `add_gs_to_awards_rpc_drop_first` 참고). Supabase 프로젝트(`buummihpewiaeltywdff`)에
+  적용 후 `pg_proc`로 함수가 정확히 1개(3-인자)만 남았는지 확인 완료.
+- `hooks/usePlayerSeasonStatsLeague.ts` — `isPlayoff`(기본 false) + `enabledOverride`(기본
+  true) 파라미터 추가, queryKey에 `isPlayoff` 포함
+- `services/multi/buildLeagueTeams.ts` — `playoffStatsByPlayer` 파라미터 추가(기본 `{}`),
+  `player.playoffStats`를 `stats`와 동일한 패턴으로 채움
+- `views/multi/season/MultiLeaderboardView.tsx` — `usePlayerSeasonStatsLeague`를 한 번 더
+  호출(`isPlayoff=true`, `enabledOverride=isPlayoffMode` — 토글이 playoff일 때만 실제로
+  fetch), 결과를 `buildLeagueTeams`의 새 파라미터로 전달. 새로고침 버튼도 플레이오프
+  모드일 때 두 번째 쿼리까지 함께 refetch하도록 수정
+
+**검증**: `npx tsc --noEmit -p .`(루트) — 수정한 3개 TS 파일 관련 신규 오류 없음(84줄
+그대로 유지). Supabase에서 함수 시그니처 재확인(`pronargs: 3`, 오버로드 없음).
+
+**한계**: 다른 5개 `buildLeagueTeams` 호출부(홈/트레이드/선수상세/전술/리더보드
+정규시즌)는 새 파라미터를 안 넘기므로 `player.playoffStats`가 전부 0으로 채워진 채로
+유지된다 — 원래도 그 화면들은 플레이오프 스탯을 안 쓰므로 문제 없음.
+
+**롤백 방법**: `DROP FUNCTION public.get_player_season_stats_league(uuid, uuid[], boolean);`
+후 `migrations/add_player_season_stats_league_rpc.sql`의 2-인자 버전을 재생성, 나머지 3개
+TS 파일은 이 항목의 변경분만 되돌리기.
+
+---
+
+## 2026-09-15 — 시즌 일정 화면에 올스타 서브 이벤트(발표/라이징스타/컨테스트/본경기) 노출 + 딥링크
+
+**배경**: 사용자 요청 — "세션 생성 시 시즌 일정에 올스타 일정들도 표시되게 하자". 기존엔
+`MultiScheduleView.tsx`의 `groupByDay()`가 `games` 배열만 보고 날짜 그룹을 만드는데,
+올스타 서브 이벤트 5개(발표/라이징스타/3점/덩크/본경기) 중 발표·3점·덩크는 `games` 테이블에
+행이 아예 없고(뉴스 이벤트일 뿐), 라이징스타·본경기도 실제 시뮬레이션 전엔 행이 없어서 이
+5개 날짜는 전부 "이 날짜엔 예정된 경기가 없습니다"로만 보였다.
+
+**사용자 확정 스펙(직접 명시)**:
+- 올스타 투표 시작일 이전엔 클릭 불가.
+- 투표 시작 ~ 브레이크 기간(그리고 **브레이크가 끝나 메뉴가 숨겨진 뒤에도**) 클릭하면
+  올스타 화면으로 이동.
+- 라이징스타/본경기는 이미 시뮬레이션됐으면(games 행 존재) 그 경기 자체(중계/박스스코어)로
+  이동, 아직이면 올스타 화면의 해당 탭으로.
+- 3점/덩크 컨테스트는 전용 중계 화면이 없으므로 항상 올스타 화면의 해당 탭으로 딥링크.
+
+이 마지막 조건(브레이크 종료 후에도 딥링크 유지) 때문에 `MultiAllStarView.tsx`의 라우트
+가드도 함께 손봤다 — 원래는 "메뉴 숨김"과 동일한 기준(`isAllStarWindowActive`, 투표
+시작~브레이크 종료)으로 화면 자체까지 막았는데, 이러면 브레이크 종료 후 시즌 일정에서
+딥링크로 들어와도 막혀버린다. **메뉴 노출**(사이드바/헤더 드롭다운)과 **화면 접근 가능
+여부**를 분리 — 화면은 "투표 시작 전"만 막고 그 이후는 영구히 열어둔다(지난 결과를 계속
+볼 수 있어야 하므로).
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` — 라우트 가드를 `!isAllStarWindowActive(...)`
+  (투표시작~브레이크종료 밖이면 항상 차단) → `currentVirtualDate < allStarVoteStart`만 차단
+  (투표 시작 전만 차단, 이후는 영구 접근 가능)으로 변경
+- `views/multi/season/MultiScheduleView.tsx` — `AllStarScheduleEntry`/`AllStarScheduleRow`
+  신설, `allStarEntriesByDate`(5개 서브 이벤트를 날짜별로 매핑) 계산 추가,
+  `scheduleDateSet`(데이트피커 선택 가능 날짜)에 이 5개 날짜 포함, `activeDayGames.length
+  === 0`이고 올스타 날짜면 기존 "경기 없음" 문구 대신 클릭 가능한 안내 카드 렌더 +
+  `handleAllStarEntryClick()`(라이징스타/본경기는 games 테이블에 `${kind}-${roomId}-
+  ${seasonNumber}` 행이 이미 있으면 그 경기로, 없으면 올스타 화면으로 분기)
+
+**검증**: `npx tsc --noEmit -p .`(루트) — 수정한 2개 파일 관련 신규 오류 없음(기존 84줄
+그대로 유지).
+
+**한계**:
+- 데이트피커 월간 팝업(`MonthCalendarPopover`)이 "게임이 있는 날짜"와 "올스타 서브
+  이벤트만 있는 날짜"를 시각적으로 구분하지는 않는다(둘 다 선택 가능으로만 표시) — 필요하면
+  별도 아이콘/색상 처리 추가 가능.
+- 이번 세션에서 만든 리그(`allstar_schedule` 채워짐)든 이전 리그든 이 시즌 일정 표시
+  자체는 동일하게 동작한다(가상 캘린더 키데이트만 사용, `allstar_schedule`은 스케줄러
+  트리거 타이밍에만 관여) — 다만 요일별 정밀 분산은 여전히 신규 리그부터만 적용된다(위
+  "2차 수정" 항목 참고).
+
+**롤백 방법**: 위 두 파일을 각각 이전 상태로 되돌리기.
+
+---
+
+## 2026-09-15 — 올스타 서브 이벤트가 요일별로 분산되지 않고 한꺼번에 몰려서 발동하던 문제 수정 (2차)
+
+**배경**: 바로 아래 항목(1차 수정, `virtualDate===X` → `virtualDate>=X`)으로 "아예 발동이
+안 되던" 문제는 해결했지만, 사용자가 "발표/라이징스타/컨테스트/본경기가 요일별로 분산되어야
+하는 게 원래 설계인데 왜 한꺼번에 몰리냐"고 정당하게 지적함. 재조사 결과 더 근본적인
+문제였다: `server/src/shared/leagueScheduleCompressor.ts`의 `compressLeagueSchedule()`이
+날짜 그룹이 바뀔 때마다 `DATE_TRANSITION_GAP_MIN`(10분)만 실제 시간 간격을 주는데, 올스타
+브레이크 기간엔 게임이 하나도 없어서 "브레이크 직전 마지막 날짜"→"브레이크 이후 첫 날짜"
+전환도 평범한 하루 전환과 똑같은 10분만 받는다 — **브레이크 자체가 실제 시간상 폭이 0에
+가까웠다.** 그래서 1차 수정 이후에도 브레이크 안에 몰려있던 4개 서브 이벤트 키데이트가
+브레이크 직후 같은 실시간 순간(같은 스케줄러 틱)에 전부 `>=` 조건을 통과해버렸다. 캘린더에
+그 날짜들이 없어서 `current_virtual_date()`로는 애초에 구분이 불가능한 구조적 한계였음.
+
+**해결 방향**: `games` 테이블에 브레이크용 placeholder 행을 심어서 앵커로 삼는 방법도
+검토했으나, 순위표(`computeStandingsByConference`)/시즌스탯 RPC 등 `games`를 읽는 기존
+소비처를 전부 재검증해야 하는 리스크가 커서 채택하지 않음. 대신 **압축 계산 시점에 4개
+서브 이벤트 각각에 실제 시간 슬롯을 통째로 예약**하고, 그 결과 나온 정확한 실제 시각을
+`leagues`의 새 컬럼에 저장해 스케줄러가 `current_virtual_date()` 대신 이 실제 시각과
+`now()`를 직접 비교하도록 바꿨다 — `games` 테이블은 전혀 건드리지 않는다.
+
+**변경 파일** (전부 server 전용):
+- DB 마이그레이션 `migrations/add_allstar_schedule_to_leagues.sql` — `leagues.allstar_schedule
+  jsonb` 추가, Supabase 프로젝트(`buummihpewiaeltywdff`)에 적용 완료
+- `server/src/shared/leagueScheduleCompressor.ts` — `LeagueCompressionConfig`에
+  `allStarBreak` 옵션 추가, 반환 타입을 `T[]` → `{ games: T[], allStarRealSchedule? }`로 변경.
+  브레이크 경계(직전 그룹 날짜 < allStarStart && 이번 그룹 날짜 > allStarEnd) 감지 시 발표/
+  라이징스타/컨테스트/본경기 4개에 각각 `dayIndex++` + 풀 하루 슬롯을 예약
+- `server/src/finalize.ts` — 두 호출부(신규 생성 / 강제 재초기화) 모두 `getAllStarKeyDates()`
+  전체 결과를 `compressLeagueSchedule()`의 `allStarBreak`로 전달, 결과의
+  `allStarRealSchedule`을 `leagues.allstar_schedule`에 저장
+- `server/src/scheduler.ts` — F-3~F-7 5개 함수를 `current_virtual_date()`+`keyDates` 비교
+  대신 `allstar_schedule`의 실제 시각과 `now()` 비교로 전환. `isAllStarSubEventDue()` 헬퍼
+  신설 — `allstar_schedule`이 없는(이 수정 이전에 이미 생성된) 리그는 자동으로 1차 수정
+  방식(`current_virtual_date()`+`keyDates.X` 이상)으로 폴백(하위호환, 요일별 분산은 안 되지만
+  발동은 보장)
+- `server/src/postAllStarGame.ts` — `computeAndRunAllStarGame()`이 기존의 선형 보간
+  (`resolveAllStarScheduledAt`, 앞뒤 정규시즌 경기 scheduled_at 사이를 날짜 비율로 추정하던
+  임시방편)보다 `leagues.allstar_schedule`의 정확한 값을 우선 사용하도록 변경. 보간 함수는
+  하위호환 폴백으로만 남음
+
+**Before**:
+```ts
+// leagueScheduleCompressor.ts — 날짜 그룹 전환은 전부 동일하게 10분
+if (!isFirstGroupOfDay && usedMinInDay + gapBefore + neededForGroup > windowMin) {
+    dayIndex++; usedMinInDay = 0; isFirstGroupOfDay = true;
+}
+// → 브레이크 경계도 예외 없이 이 10분짜리 전환 하나로 처리됨
+```
+```ts
+// scheduler.ts — current_virtual_date()가 브레이크 안 날짜에 도달할 수 없어 4개가 동시에 통과
+if (virtualDate >= keyDates.allStarMainGameDate) { ... }       // 이 순간
+if (virtualDate >= keyDates.allStarRisingStarsDate) { ... }    // 이 순간도 이미 true
+```
+
+**After**:
+```ts
+// leagueScheduleCompressor.ts — 브레이크 경계에서 4개 서브 이벤트에 풀 하루씩 예약
+if (isAllStarBreakBoundary) {
+    for (const _subDate of [announce, risingStars, contests, mainGame]) {
+        dayIndex++;
+        subTimestamps.push(addMinutes(kstMidnightPlusDays(realStartAt, startDayOffset + dayIndex), dailyWindowStartMin).toISOString());
+    }
+    allStarRealSchedule = { announceAt, risingStarsAt, contestsAt, mainGameAt };
+}
+```
+```ts
+// scheduler.ts — 실제 시각을 직접 비교(서로 다른 압축 실제 하루라 자연히 분산됨)
+if (await isAllStarSubEventDue(room.id, schedule?.mainGameAt, keyDates.allStarMainGameDate)) { ... }
+if (await isAllStarSubEventDue(room.id, schedule?.risingStarsAt, keyDates.allStarRisingStarsDate)) { ... }
+```
+
+**검증**: `cd server && npx tsc --noEmit -p .` — 수정한 5개 파일 관련 신규 오류 없음(총
+오류 수 62줄로 이번 세션 내내 동일, 전부 기존 무관 오류).
+
+**주의사항**: 이미 진행 중인 리그(`allstar_schedule`이 비어있음, 예: MAIN 2)는 이 정밀
+분산 혜택을 못 받고 계속 1차 수정의 폴백 동작(현재 시각 이후 한꺼번에 발동)을 따른다 —
+새로 생성되는 리그부터 요일별로 정확히 분산된다. 기존 리그까지 소급 적용하려면
+`allstar_schedule`을 관리자가 수동으로 채워주는 백필이 별도로 필요하다(자동 계산은
+`compressLeagueSchedule()`을 재실행해야 하는데, 이미 진행된 시즌의 압축 스케줄을 다시
+계산하면 이미 지난 경기들의 scheduled_at까지 흔들릴 위험이 있어 자동화하지 않음).
+
+**롤백 방법**: 위 Before 블록으로 되돌리거나, 바로 아래 항목(1차 수정, `virtualDate>=X`
+방식)까지만 유지.
+
+---
+
+## 2026-09-15 — 올스타 이벤트(3점/덩크 컨테스트·본경기·라이징스타) 자체가 발동 안 되던 버그 수정
+
+**배경**: `server/src/shared/scheduleGenerator.ts`(및 서버 미러 없음, 서버 전용 파일)의
+`buildCalendar()`가 올스타 브레이크 기간(allStarStart~allStarEnd, 2/13~2/18)을 캘린더에서
+통째로 제외해서, 그 기간 안의 날짜(allStarStart/allStarMainGameDate/
+allStarThreePointContestDate/allStarDunkContestDate 등)는 애초에 어떤 게임의 `game_date`도
+될 수 없었다. `current_virtual_date()`는 "실제 존재하는 게임의 날짜"만 반환하므로 이 날짜들과
+절대 같아질 수 없고, `scheduler.ts`의 5개 트리거 함수가 전부 `virtualDate === keyDates.X`
+정확 일치 비교를 쓰고 있어서 항상 실패 — 올스타 관련 이벤트(참가자 발표/컨테스트/본경기)가
+전혀 발동하지 않았다.
+
+**변경 파일**:
+- `server/src/scheduler.ts` — `runThreePointContestNews`/`runDunkContestNews`/
+  `runThreePointContestResult`/`runDunkContestResult`의 `!==`를 `<`로,
+  `runAllStarGames`의 두 `===`를 `>=`로 변경(사실상 "이미 지났는지" 체크로 전환)
+- `server/src/postAllStarVoteNews.ts` — `computeAndPostThreePointContestNews`/
+  `computeAndPostDunkContestNews`의 멱등성 체크를 `sim_date` 기준에서 `season_number`
+  기준으로 변경(**중요**: 아래 "발견한 부수 버그" 참고 — 이 수정 없이 `>=`만 적용하면
+  매일 중복 게시되는 새 버그가 생겼을 것)
+
+**Before**:
+```ts
+// scheduler.ts — 5곳 모두 정확 일치라 브레이크 안 날짜와는 영원히 안 맞음
+if (virtualDate !== keyDates.allStarStart) continue;
+if (virtualDate === keyDates.allStarMainGameDate) { ... }
+```
+```ts
+// postAllStarVoteNews.ts — 호출 시점의 virtualDate 그 자체로 멱등성 체크
+const { count: alreadyPosted } = await supabase.from('league_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId).eq('type', 'allstar_three_point_contest').eq('sim_date', virtualDate);
+```
+
+**After**:
+```ts
+// scheduler.ts
+if (virtualDate < keyDates.allStarStart) continue;
+if (virtualDate >= keyDates.allStarMainGameDate) { ... }
+```
+```ts
+// postAllStarVoteNews.ts — 시즌 단위로 한 번만
+const { data: room } = await supabase.from('rooms').select('season_number').eq('id', roomId).maybeSingle();
+const seasonNumber = (room as any)?.season_number ?? 1;
+const { count: alreadyPosted } = await supabase.from('league_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId).eq('type', 'allstar_three_point_contest').eq('season_number', seasonNumber);
+```
+
+**발견한 부수 버그(수정 과정에서 확인, 별도 커밋 없이 같이 처리)**: `computeAndRunAllStarGame`
+(game_id가 `${kind}-${roomId}-${seasonNumber}`로 시즌 단위 고정 — PK 충돌로 이미 안전)과
+`computeAndRunThreePointContest`/`computeAndRunDunkContest`(이미 `season_number` 기준 체크)는
+`>=`로 바꿔도 안전했지만, `computeAndPostThreePointContestNews`/`computeAndPostDunkContestNews`
+딱 2개만 `sim_date`(호출 시점 virtualDate 그 자체) 기준이었다 — `===`를 `>=`로 바꾸면 이후
+매 틱마다 다른 virtualDate로 재호출되면서 "아직 이 날짜엔 안 올렸다"고 매번 오판해 3점/덩크
+컨테스트 참가자 명단 뉴스가 시즌 끝날 때까지 매일 중복 게시될 뻔했다. 위 두 함수만
+`season_number` 기준으로 함께 고쳐서 방지.
+
+**검증**: `cd server && npx tsc --noEmit -p .` — 수정한 2개 파일 관련 신규 오류 없음.
+
+**한계**: 브레이크 안에 몰려있던 여러 키데이트가 브레이크 직후 같은 틱에 한꺼번에 발동한다
+(참가자 발표/컨테스트/본경기가 요일별로 분산되지 않고 몰림) — 원래 아예 발동 안 하던
+것보다는 낫지만, 완전히 분산시키려면 `scheduleGenerator.ts`의 캘린더 생성기 자체를 손봐야
+해서 이번 범위에서는 제외. 이미 브레이크를 그냥 지나쳐버린 기존 진행 중인 리그(MAIN 2 등)는
+다음 스케줄러 틱에서 바로 소급 발동된다(가상 날짜가 이미 `>=` 조건을 만족하는 상태이므로
+별도 백필 불필요).
+
+**롤백 방법**: 위 Before 블록으로 2개 파일 되돌리기.
+
+---
+
+## 2026-09-15 — 올스타 메뉴/화면 노출 기간을 hasPlayoffs 근사치 대신 정확한 날짜 비교로 정밀화
+
+**배경**: 바로 아래 항목(올스타 메뉴 미숨김 수정)에서 임시로 `hasPlayoffs`(bracket_data
+존재 여부)를 "올스타 기간 종료"의 대리 신호로 썼는데, 이는 근사치라 정규시즌 종료~플레이오프
+시작 사이 공백 기간엔 여전히 노출되는 오차가 있었다. 사용자가 정확한 스펙을 확정: "올스타
+투표가 시작되는 날 올스타 화면을 보여주고, 올스타 브레이크가 종료되는 날에 올스타 메뉴를
+숨긴다" — 즉 노출 구간은 `[allStarVoteStart, allStarEnd)`(종료일 당일부터 숨김). 이걸
+구현하려면 가상 캘린더상 "오늘"(currentVirtualDate)이 실제로 필요한데, 마침
+`MultiHeader.tsx`가 이미 `findCurrentVirtualDate()`로 동일한 값을 계산하고 있어서(다음 경기
+카운트다운용) 그 로직을 공용 훅으로 뽑아 재사용했다.
+
+**변경 파일**:
+- `utils/allStarSelection.ts` + `server/src/shared/multi/allStarSelection.ts`(미러 쌍, 둘 다
+  수정) — `isAllStarWindowActive(virtualDate, virtualSeasonYear)` 신설:
+  `virtualDate >= allStarVoteStart && virtualDate < allStarEnd`
+- `hooks/useCurrentVirtualDate.ts` (신규) — `MultiHeader.tsx`가 원래 컴포넌트 내부에 직접
+  구현했던 "현재 가상 캘린더 날짜" 계산(15초 버킷 최적화 포함)을 공용 훅으로 분리 —
+  사이드바/올스타 화면도 동일 로직이 필요해짐
+- `components/MultiSidebar.tsx` — `useSeasonContext()`/`useCurrentVirtualDate` 추가,
+  올스타 `NavItem` 조건을 `!hasPlayoffs` → `showAllStar`(`isAllStarWindowActive` 결과)로 교체
+- `components/MultiHeader.tsx` — 기존에 이미 계산해두던 `currentVirtualDate`로
+  `showAllStar`를 계산해 `MultiHeaderNavMenu`에 새 prop으로 전달
+- `components/dashboard/MultiHeaderNavMenu.tsx` — `showAllStar` prop 추가, 올스타 항목 조건을
+  `isTournament || hasPlayoffs` → `isTournament || !showAllStar`로 교체
+- `views/multi/season/MultiAllStarView.tsx` — URL 직접 접근 가드를 `!!league?.bracket_data` →
+  `!isAllStarWindow`로 교체, 안내 메시지도 "투표 미시작/기간 종료"로 분기
+
+**Before**:
+```tsx
+// 직전 커밋에서 쓰던 근사치
+const hasPlayoffs = !!league?.bracket_data && league?.type !== 'tournament';
+{league?.type !== 'tournament' && !hasPlayoffs && (<NavItem label="올스타" ... />)}
+```
+
+**After**:
+```ts
+// utils/allStarSelection.ts (+ server 미러)
+export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number): boolean {
+    if (!virtualDate) return false;
+    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+    return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
+}
+```
+```tsx
+// MultiSidebar.tsx
+const { schedule } = useSeasonContext();
+const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day);
+const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
+{league?.type !== 'tournament' && showAllStar && (<NavItem label="올스타" ... />)}
+```
+
+**검증**: `npx tsc --noEmit -p .`(루트, client) 및 `cd server && npx tsc --noEmit -p .` 둘 다
+수정한 파일 관련 신규 오류 없음(각각 기존 84줄/62줄의 무관한 기존 오류만 남음).
+
+**한계**: `useCurrentVirtualDate`는 `MultiHeader.tsx`가 이미 하던 계산과 별개의
+`setInterval(1초)` 타이머를 하나 더 돌린다(사이드바/올스타 화면에서 각각 1개씩) — 성능
+영향은 무시할 수준이지만, 완전히 통합하려면 SeasonCtx 자체에 이 값을 얹는 더 큰 리팩터링이
+필요하다(이번 범위 밖).
+
+**롤백 방법**: 위 Before 블록으로 되돌리거나, 바로 아래 항목(hasPlayoffs 근사 버전)으로 되돌림.
+
+---
+
+## 2026-09-15 — 올스타 기간 종료 후에도 올스타 메뉴/화면이 안 사라지던 버그 수정
+
+**배경**: 올스타 메뉴 노출 조건이 애초에 `league.type !== 'tournament'`뿐이었고 "기간이
+끝났는가"를 판단하는 로직 자체가 없었다. 올스타는 항상 플레이오프보다 먼저 끝나므로,
+플레이오프 메뉴 노출에 이미 쓰이던 `hasPlayoffs`(`!!league?.bracket_data && league?.type
+!== 'tournament'`, 플레이오프 대진표 생성 여부)를 "올스타 기간 종료"의 대리 신호로 재사용—
+가상 날짜를 별도로 조회할 필요 없이 기존 계산값만 재사용.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` — 올스타 `NavItem` 노출 조건에 `&& !hasPlayoffs` 추가
+- `components/dashboard/MultiHeaderNavMenu.tsx` — `leagueItems` 배열의 올스타 항목 조건을
+  `isTournament ? [] : [...]` → `isTournament || hasPlayoffs ? [] : [...]`로 변경
+- `views/multi/season/MultiAllStarView.tsx` — URL 직접 접근 가드 조건을
+  `league?.type === 'tournament'` → `league?.type === 'tournament' || !!league?.bracket_data`로 확장
+
+**Before**:
+```tsx
+// MultiSidebar.tsx
+{league?.type !== 'tournament' && (<NavItem ... label="올스타" ... />)}
+// MultiHeaderNavMenu.tsx
+...(isTournament ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
+// MultiAllStarView.tsx
+if (league?.type === 'tournament') { return <...토너먼트 미지원 안내...>; }
+```
+
+**After**:
+```tsx
+// MultiSidebar.tsx
+{league?.type !== 'tournament' && !hasPlayoffs && (<NavItem ... label="올스타" ... />)}
+// MultiHeaderNavMenu.tsx
+...(isTournament || hasPlayoffs ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
+// MultiAllStarView.tsx
+if (league?.type === 'tournament' || !!league?.bracket_data) {
+    return <...안내 메시지 분기(토너먼트 미지원 / 올스타 기간 종료)...>;
+}
+```
+
+**검증**: `npx tsc --noEmit -p .`(루트) — 수정한 3개 파일 관련 신규 오류 없음.
+
+**한계**: "플레이오프 시작 = 올스타 종료"라는 근사치를 쓴다 — 정규시즌 종료 직후~플레이오프
+시작 전 며칠(브라켓이 아직 안 만들어진 짧은 공백 기간) 동안은 올스타 메뉴가 계속 남아있을
+수 있다. 이번에 리포트된 증상("기간이 끝났는데도 안 사라짐")은 해결되지만, 더 정밀하게
+하려면 `current_virtual_date` 기반 실제 날짜 비교가 필요하다(비용 대비 실익이 낮아 이번
+수정 범위에서는 제외).
+
+**롤백 방법**: 위 Before 블록으로 3개 파일 되돌리기.
+
+---
+
+## 2026-09-15 — 플레이오프 브라켓 전적(bracket_data) 동시성 레이스로 승수 유실되던 버그 수정
+
+**배경**: 멀티리그 플레이오프 브라켓에서 어떤 시리즈는 4-0인데 어떤 시리즈는 계속 0-0으로
+보이는 문제. 원인: `leagues.bracket_data`(JSONB)는 리그 하나에 row 하나, 그 안에 모든
+시리즈가 배열 하나로 뭉쳐있는 구조인데, `simRunner.ts`의 `handleTournamentAdvance()`가
+경기 완료마다 이걸 read-modify-write 한다. 1라운드는 설계상 모든 매치업의 1차전이 같은
+슬롯에서 동시에 시작되므로, 같은 리그의 여러 시리즈가 동시에 끝나면 서로 다른 워커 스레드가
+동시에 같은 row를 두고 경합 — 나중에 쓰는 쪽만 반영되고 다른 시리즈의 승수 증가분은 통째로
+유실됐다. `handleTournamentAdvance()`는 워커 스레드 안에서 통째로 실행되므로(스레드끼리
+메모리 비공유) in-process 락으로는 막을 수 없고, Supabase-js는 RPC 한 번 = 트랜잭션 한
+번이라 여러 왕복에 걸쳐 DB 잠금을 유지할 수도 없어, DB에 버전 카운터를 두고 "내가 읽은
+버전 그대로일 때만 쓴다"는 낙관적 동시성 제어(CAS)로 해결.
+
+**변경 파일** (전부 server 전용):
+- DB 마이그레이션 `migrations/add_bracket_version_to_leagues.sql` — `leagues.bracket_version
+  integer NOT NULL DEFAULT 0` 추가, Supabase 프로젝트(`buummihpewiaeltywdff`)에 적용 완료
+- `server/src/simRunner.ts` — `handleTournamentAdvance()`를 얇은 재시도 루프(최대 5회)로
+  분리하고, 기존 로직 전체를 `tryAdvanceTournamentOnce()`로 옮겨 마지막 write를
+  `bracket_version` 조건부 update로 변경
+- `server/src/shared/playoffSeeder.ts` — `buildAndStoreConferenceBracket()`에 `persist`
+  파라미터 추가(기본 true) 및 반환 타입을 `{ tournamentStartAt, simRealStartAt } | null`로 변경
+- `server/src/shared/playInSeeder.ts` — `handlePlayInAdvance()`의 [하위호환] 레거시 경로가
+  `buildAndStoreConferenceBracket`을 `persist=false`로 호출하도록 변경, 반환 타입도 동일하게 변경
+
+**Before**:
+```ts
+// simRunner.ts handleTournamentAdvance() — 조건 없는 단순 write
+async function handleTournamentAdvance(...) {
+    const { data: leagueRow } = await supabase.from('leagues').select('...bracket_data...')...;
+    const series = leagueRow.bracket_data.series;
+    const seriesObj = series.find(s => s.id === seriesId);
+    seriesObj.higherSeedWins++;  // 또는 lowerSeedWins++
+    ... (라운드 전진, 플레이인 처리) ...
+    await supabase.from('leagues')
+        .update({ bracket_data: { series } })   // 버전 체크 없이 무조건 덮어씀
+        .eq('id', leagueRow.id);
+}
+```
+
+**After**:
+```ts
+// bracket_version 컬럼 신설 + CAS 재시도 루프
+async function handleTournamentAdvance(...) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        if (await tryAdvanceTournamentOnce(...)) return;
+        await new Promise(r => setTimeout(r, 50 + Math.random() * 100));  // 경합 시 재시도
+    }
+}
+async function tryAdvanceTournamentOnce(...): Promise<boolean> {
+    const { data: leagueRow } = await supabase.from('leagues')
+        .select('...bracket_data, bracket_version...')...;
+    const readVersion = leagueRow.bracket_version;
+    ... (기존 로직 동일: 승수 증가, 라운드 전진, 플레이인 처리) ...
+    const { data: updated } = await supabase.from('leagues')
+        .update({ bracket_data: { series }, bracket_version: readVersion + 1, ...extraFields })
+        .eq('id', leagueRow.id)
+        .eq('bracket_version', readVersion)   // ← 내가 읽은 버전 그대로일 때만 성공
+        .select('id');
+    return !!(updated && updated.length);     // 0행 매칭 = 경합 발생, false 반환 → 바깥 루프 재시도
+}
+```
+
+**검증**: `cd server && npx tsc --noEmit -p .` — 수정한 3개 파일(simRunner.ts, playoffSeeder.ts,
+playInSeeder.ts) 관련 신규 오류 없음(출력된 오류는 전부 기존에도 있던 무관한 오류, 라인
+번호만 밀림). `mcp__supabase__apply_migration`으로 마이그레이션 적용 확인(`success:true`).
+
+**주의사항**: 이미 유실된 기존 브라켓 데이터(0-0에 멈춰있는 시리즈)는 이 수정으로 소급
+복구되지 않는다 — 실제 `games` 테이블(정상 기록됨) 기준으로 `bracket_data.series`를
+재계산해서 백필하는 별도 스크립트가 필요하다. 재시도 5회를 전부 소진하면(매우 드문 극단적
+경합) 콘솔 에러만 남기고 그 경기의 시리즈 반영은 유실되는데, 다음 경기가 또 같은 시리즈에서
+끝나면 그 시점에 다시 시도되므로 완전 방치되지는 않는다.
+
+**롤백 방법**: 위 Before 블록으로 simRunner.ts를 되돌리고, playoffSeeder.ts/playInSeeder.ts의
+`persist`/반환 타입 변경분을 되돌린다. `bracket_version` 컬럼은 남겨둬도 무해(다른 코드가
+참조하지 않음)하므로 굳이 DROP COLUMN할 필요는 없다.
+
+---
+
+## 2026-09-15 — 멀티리그 플레이오프 game_date가 실제(wall-clock) 날짜로 찍히던 버그 수정
+
+**배경**: 멀티리그(MAIN 2) 플레이오프 진행 중 사용자가 "플레이오프 화면 날짜가 시뮬레이션
+날짜가 아니라 현실 날짜로 표시된다"고 리포트. 조사 결과 `tournamentInitializer.ts`의
+`initializeTournamentBracket()`은 원래 `startDate`(→ `games.game_date`, 가상 캘린더용)와
+`simRealStartAt`(→ `games.scheduled_at`, 실제 방송 시각용)를 분리해서 받도록 설계돼 있는데,
+`playoffSeeder.ts`/`playInSeeder.ts`가 두 값을 전부 `new Date()`(실제 wall-clock "오늘")
+하나에서 뽑아 썼음. 실제 DB 확인 결과 정규시즌 마지막 가상 날짜는 `2027-04-13`인데 플레이오프
+게임의 `game_date`는 세션 실제 날짜(`2026-09-14`)로 찍혀 있었음.
+부수적으로, `simRunner.ts`의 `handleTournamentAdvance()`(2라운드 이후 신규 경기 생성)가
+`tournament_start_at`이 비어있을 때 `leagues.season_start_date`(정규시즌 **시작일**, 10월)로
+폴백하는 것도 발견 — 이 폴백을 타면 2라운드부터는 날짜가 또 10월로 튀는 잠재 버그였음(아직
+관측되진 않았으나 동일 원인 계열이라 함께 수정).
+
+**변경 파일** (전부 server 전용, 클라이언트 미러 없음):
+- `server/src/shared/playoffSeeder.ts` — `PostseasonLeagueRow`에 `virtual_season_year` 필드
+  추가, `postseasonVirtualAnchor()`/`addDaysStr()` 헬퍼 신설, `buildAndStoreConferenceBracket()`
+- `server/src/shared/playInSeeder.ts` — `startPlayIn()`, `handlePlayInAdvance()`(디사이더 생성),
+  `resolveRoundOneFromPlayIn()`
+- `server/src/scheduler.ts` — `checkSeasonCompletions()`의 leagues select에 `virtual_season_year` 추가
+- `server/src/simRunner.ts` — `handleTournamentAdvance()`의 leagues select에
+  `virtual_season_year` 추가, `handlePlayInAdvance()` 호출 시 넘기는 league 객체에도 추가
+
+**Before**:
+```ts
+// playoffSeeder.ts buildAndStoreConferenceBracket()
+const playoffStart    = kstMidnightPlusDays(new Date().toISOString(), daysOffset);
+const playoffStartIso = playoffStart.toISOString();
+const result = initializeTournamentBracket(
+    seededTeams, 'single_elim', ..., `${league.id}-playoffs`,
+    playoffStartIso.slice(0, 10),   // game_date도 실제 오늘 날짜에서 파생됨
+    intervalMinutes, playoffStartIso, 'ranked',
+);
+...
+await supabase.from('leagues')
+    .update({ bracket_data: { series: priorSeries } })   // tournament_start_at 저장 안 함
+    .eq('id', league.id);
+
+// playInSeeder.ts (3곳 동일 패턴)
+const playInStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
+const playInStartIso = playInStart.toISOString();
+schedule.push(...generateAllSeriesGames(
+    playInSeriesId(conf, '7v8'), s7.team_slug, s8.team_slug, 1,
+    playInStartIso.slice(0, 10), 0, intervalMinutes, playInStartIso,  // game_date = 실제 오늘
+));
+```
+
+**After**:
+```ts
+// playoffSeeder.ts — game_date(가상)와 scheduledAt(실제)을 분리
+export function postseasonVirtualAnchor(virtualSeasonYear: number | null | undefined): string {
+    const y = virtualSeasonYear ?? (new Date().getFullYear() - 1);
+    return `${y + 1}-04-14`;   // finalize.ts의 regularSeasonEnd('...-04-13') 다음날
+}
+export function addDaysStr(dateStr: string, days: number): string { /* YYYY-MM-DD + days */ }
+
+const playoffStart     = kstMidnightPlusDays(new Date().toISOString(), daysOffset);  // scheduledAt용 — 유지
+const playoffStartIso  = playoffStart.toISOString();
+const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), daysOffset - 1);
+const result = initializeTournamentBracket(
+    seededTeams, 'single_elim', ..., `${league.id}-playoffs`,
+    virtualStartDate,               // game_date는 가상 캘린더에서
+    intervalMinutes, playoffStartIso, 'ranked',
+);
+...
+await supabase.from('leagues')
+    .update({
+        bracket_data: { series: priorSeries },
+        tournament_start_at: `${virtualStartDate}T00:00:00.000Z`,  // 2라운드+ 앵커 재사용
+        sim_real_start_at: playoffStartIso,
+    })
+    .eq('id', league.id);
+
+// playInSeeder.ts — 동일 원칙 (virtualStartDate/deciderVirtualDate/round1VirtualDate 신설,
+// generateAllSeriesGames의 date 인자만 교체, simRealStartAt 인자는 real anchor 그대로 유지)
+```
+
+**검증**: `cd server && npx tsc --noEmit -p .` — 수정한 4개 파일(playoffSeeder.ts,
+playInSeeder.ts, scheduler.ts, simRunner.ts) 관련 오류 없음(출력된 오류는 전부 Bun 타입 누락 등
+기존에도 있던 무관한 오류).
+
+**주의사항**: 이미 생성된 기존 플레이오프 게임(예: MAIN 2)의 `game_date`는 이 수정으로 소급
+정정되지 않음 — 이미 잘못 찍힌 row는 별도 백필 스크립트 없이는 그대로 남음. 새로 시작되는
+플레이오프/플레이인부터 적용됨.
+
+**롤백 방법**: 위 Before 블록으로 4개 파일 되돌리기, 또는 이 커밋 이전으로 revert.
+
+---
+
+## 2026-09-15 — 2026 드래프트 60명 신인: 팀 배정 + draft_round/draft_pick + 계약 반영
+
+**배경**: 서비스를 2026-27 시즌 기준으로 전환하면서, DB에 미리 생성해둔 2026 드래프트 클래스
+신인 선수(72명, `draft_year=2026`)들 중 실제로 드래프트된 60명에게 소속팀·드래프트 라운드/픽·
+루키 계약을 채워야 했음. `basketball-reference.com/draft/NBA_2026.html`(전체 60픽 결과)과
+사용자가 직접 매핑한 `scripts/data/bbref_id_worksheet_rookies_mod.csv`(60명 bbref_slug 검증
+완료)를 입력으로 사용. `draft_round`/`draft_pick` 필드 자체는 이번 세션에서 처음 어드민
+UI(`PlayerEditorPage.tsx`)에 노출시킨 직후라, 실제 값을 채우는 것도 이번이 처음.
+
+**변경 파일**:
+- `scripts/data/draft_2026_results.csv` (신규, 참고용) — bbref 드래프트 페이지에서 추출한
+  60픽 전체(순번/라운드/팀/선수명/slug)
+- DB `meta_players`: 60명 전원 `base_team_id`(top-level 컬럼) + `base_attributes.draft_round`,
+  `base_attributes.draft_pick` 갱신. 계약 데이터를 찾은 38명은 추가로
+  `base_attributes.contract`(`{type, years[], currentYear:0, option?}`) +
+  top-level `salary`/`contract_years` 컬럼도 동기화.
+
+**Before**: 60명 전원 `base_team_id = null`, `base_attributes`에 `draft_round`/`draft_pick`/
+`contract` 키 없음(선수 능력치만 존재).
+
+**After**:
+- 1라운드 30명 전원: bbref `contracts_XXX` 테이블에서 실제 4년 루키 스케일 연봉을 그대로 가져와
+  `type: 'rookie'`, 3년차 팀옵션(`option:{type:'team',year:2}`) 부여 — 기존 2025 드래프티들과
+  동일 컨벤션.
+- 2라운드 30명 중 8명은 최저연봉 스케일 계약 확인(`type:'min'`), 22명은 이 시점 기준 bbref에
+  계약 테이블 자체가 없어(정식 계약 미체결 상태로 추정) `contract` 필드는 비워둠 — 팀/라운드/픽만
+  반영.
+- 예외 처리: bbref 드래프트 페이지는 샬럿을 `CHA`로 표기하는데(다른 페이지들은 `CHO`) 매핑
+  테이블에 빠져있어서 한네스 스타인바흐·크리스티안 앤더슨 2명이 일시적으로 `base_team_id=null`로
+  잘못 들어갔던 것을 즉시 발견해 `cha`로 수동 수정함.
+
+**검증**: `draft_year='2026'` 전체 63명 중, 실제 60명 드래프티는 `base_team_id`/`draft_round`/
+`draft_pick` 전부 채워짐, 나머지 3명(말리크 르노·네이트 비틀·말라카이 모레노 — 미드래프트)은
+의도대로 그대로 비어있음을 SQL로 재확인.
+
+**롤백 방법**: 60명의 `id` 목록은 `scripts/data/bbref_id_worksheet_rookies_mod.csv`. 되돌리려면
+각 선수 `base_attributes`에서 `draft_round`/`draft_pick`/`contract`(계약 있던 38명만) 키를
+삭제하고 `base_team_id`를 `null`로 되돌리면 됨 (다른 능력치 키는 이번 작업에서 건드리지 않음).
+
+**주의사항 (미해결)**: 사용자가 요청한 3가지(등번호/소속팀/계약) 중 **등번호(jersey number)는
+반영 못 함** — basketball-reference의 2026-27 팀 로스터 페이지(`/teams/{TEAM}/2027.html`)를
+확인한 결과 이 시점 기준 전 리그 선수 전원(신인뿐 아니라 트레이 영 등 기존 선수도) `number`
+컬럼이 비어있음. 시즌 개막 전이라 아직 등번호 데이터 자체가 bbref에 게시되지 않은 것으로 보임 —
+추후 시즌 시작 후 재수집 필요.
+
+---
+
+## 2026-09-15 — meta_players.career_history에 2025-26 시즌 실기록 일괄 반영
+
+**배경**: 게임 제작 시점(2025-26 시즌 진행 중)엔 `career_history`가 2024-25까지만 있었는데,
+이제 실제 2025-26 시즌이 종료되어 현역 선수 전원의 최신 시즌 실기록을 채워야 했음. 기존에
+`fetch_career_bref.py`/`fetch_targeted_career.py` 같은 bbref 자동 수집 스크립트가 있었지만
+(1) 예전에 bbref에서 차단당한 이력이 있고 (2) 한글 이름 ↔ bbref 영문 슬러그 자동 매칭 로직이
+동명이인/유사이름 선수를 다수 오매칭한 전례가 있어(예: "에이사 뉴웰"→"Jaylen Nowell"로 잘못
+매칭) 그대로 재사용하지 않음. 대신 사용자가 직접 `id/korean_name/bbref_slug` 매핑을 검증한
+CSV(`scripts/data/bbref_id_worksheet_verified.csv`, 468행)를 만들어 넘겨받아, 이름 매칭을
+전혀 거치지 않고 slug로 바로 접근하는 방식으로 전환.
+
+**변경 파일**:
+- `scripts/update_2025_26_season.py` (신규) — bbref_slug로 선수 페이지 직접 접근 →
+  `per_game_stats`/`per_game_stats_post`(플레이오프) 테이블에서 `season == '2025-26'` 행만
+  추출 → 기존 `career_history` 배열에서 2025-26 항목만 제거 후 새로 파싱한 값으로 교체(다른
+  시즌은 그대로 보존) → Supabase 직접 업데이트. `--team <약어>` 단위 실행, 팀 내 선수 간 8~14초
+  랜덤 대기로 차단 방지. `--dry-run`으로 파싱만 먼저 검증 가능.
+- `scripts/data/bbref_id_worksheet.csv` (신규, 작업용) — DB `meta_players`(`base_team_id IS NOT
+  NULL`, 현역 468명)에서 뽑은 원본 리스트 (id/korean_name/team/draft_year/기존 english_name
+  추정값)
+- `scripts/data/bbref_id_worksheet_verified.csv` (신규, 작업용) — 사용자가 직접 bbref에서
+  확인한 `bbref_slug` 468개 전부 채움 + 기존 추정 영문명이 틀렸던 51명은 `wrongname=Y` 표시
+- DB: `meta_players.career_history` — 30개 팀 전원(총 468명 중 463명에 신규 시즌행 추가, 5명은
+  2025-26 기록 없음 확인 후 스킵)
+
+**Before**: `career_history` 배열의 최신 시즌이 `"season": "2024-25"`까지만 존재.
+
+**After**: 463명은 `"season": "2025-26"` 행(정규시즌, 트레이드 시 2TM/3TM 합산행 + 팀별 개별행,
+플레이오프 진출 시 `"playoff": true` 별도 행)이 배열 맨 앞에 추가됨. 팀 이동 없이 시즌 아웃된
+5명(데미안 릴라드-POR, 타이리스 할리버튼-IND, 테리 로지어-MIA, 프레드 밴블리트-HOU, 카이리
+어빙-DAL)은 bbref에 2025-26 행 자체가 없어 기존 히스토리 그대로 유지(정상 케이스, 데이터
+누락 아님).
+
+**검증**: 30개 팀 스크립트 전부 `실패 0`으로 완주(중간 DNS 일시 오류로 실패한 1명 "비트
+크레이치"만 즉시 재시도해서 해결). 최종 SQL로 `base_team_id IS NOT NULL AND career_history에
+season='2025-26' 존재` 카운트 = 463/468, 나머지 5명은 위 부상 케이스와 정확히 일치함을
+재확인.
+
+**롤백 방법**: 특정 선수의 `career_history`에서 `season = '2025-26'`인 원소만 제거하면 원상
+복구됨 (다른 시즌 데이터는 이번 작업에서 건드리지 않았음):
+```sql
+UPDATE meta_players
+SET career_history = (
+  SELECT jsonb_agg(e) FROM jsonb_array_elements(career_history) e
+  WHERE e->>'season' != '2025-26'
+)
+WHERE id = '<uuid>';
+```
+전체 롤백이 필요하면 위 쿼리를 `WHERE base_team_id IS NOT NULL`로 걸고 전체 실행.
+
+---
+
+## 2026-09-14 — 사용자 상세 페이지에 멀티플레이 전적 편집 폼 + 전적 초기화 버튼 추가
+
+**배경**: 바로 아래 항목("사용자 관리" 탭)의 후속 요청 — 각 계정의 수정 페이지 안에서
+홈 화면 "멀티플레이 전적"(`league_user_history`/`tournament_team_records`)도 입력폼으로
+직접 수정할 수 있어야 하고, 전적을 통째로 지우는 초기화 버튼도 필요하다는 요청. Supabase에서
+두 테이블의 RLS를 확인한 결과 `league_user_history`는 UPDATE/DELETE가 "그 리그 그룹의
+admin_user_id인 유저만" 허용(`luh_admin_write`)이라 대부분 케이스에선 클라이언트 직접 호출도
+가능하지만, `tournament_team_records`는 UPDATE/DELETE 정책이 아예 없어(서비스 롤 INSERT만
+허용) 반드시 서비스 롤이 필요함 — 두 테이블을 한 곳에서 다루려고 전부 기존 Fly.io 서버
+(`/admin/users*`)에 얹었다.
+
+**변경 파일**:
+- `server/src/index.ts` (server) — `GET /admin/users/history?userId=`(리그+토너먼트 전적 조회),
+  `POST /admin/users/history/update`(kind: 'league'|'tournament' 구분해 단건 갱신),
+  `POST /admin/users/history/delete`(단건 삭제), `POST /admin/users/history/reset`(해당 유저의
+  두 테이블 행을 전부 삭제) 4개 라우트/핸들러 추가. 모두 `requireGlobalAdmin()` 재사용.
+- `services/admin/userAdminService.ts` (client) — `AdminLeagueHistoryRow`/`AdminTournamentHistoryRow`
+  타입, `adminGetUserHistory`/`adminUpdateLeagueHistory`/`adminUpdateTournamentHistory`/
+  `adminDeleteLeagueHistory`/`adminDeleteTournamentHistory`/`adminResetUserHistory` 추가
+- `pages/AdminUserDetailPage.tsx` (client) — 프로필 편집 섹션과 계정 삭제 섹션 사이에
+  "멀티플레이 전적" 섹션 신설. 리그 항목은 리그명/참가팀수/정규시즌 W·L/플레이오프 W·L/
+  최종순위/플레이오프 결과(select)를 행별 인풋으로, 토너먼트 항목은 최종순위/최종라운드/
+  시리즈 W·L/경기 W·L/득실점을 행별 인풋으로 편집 — 각 행에 저장/삭제 버튼, 섹션 헤더에
+  "전적 초기화"(두 테이블 전체 삭제, 확인 단계 있음) 버튼
+
+**Before**: 사용자 상세 페이지에 프로필 필드(닉네임/이메일/이름/생년/국적/아바타)만 있었고,
+멀티플레이 전적(리그/토너먼트 참가 기록)은 조회·수정 경로가 전혀 없었음.
+
+**After**: 사용자 상세 페이지에서 그 유저의 모든 리그/토너먼트 참가 기록을 행별로
+수정·저장·삭제할 수 있고, "전적 초기화" 버튼으로 한 번에 전부 지울 수 있음.
+
+**검증**: `npx tsc --noEmit -p .` — 변경 전후 에러 라인 수 동일(84줄, stash 비교로 확인),
+신규 코드(`AdminUserDetailPage.tsx`, `userAdminService.ts`) 자체 에러 없음. `server/`
+`tsc --noEmit`도 변경 전후 동일(62줄, 전부 기존 Bun 타입 미설치와 무관한 오류). 중괄호 짝
+검증 스크립트 통과. Fly.io 재배포(`fly deploy --app basketballgm-app-server`) 후
+`GET /admin/users/history`, `POST /admin/users/history/reset` 둘 다 인증 없이 403을
+반환하는 것을 curl로 라이브 확인. 브라우저 클릭 테스트는 진행하지 않음.
+
+**주의사항**:
+- `league_user_history` 삭제/초기화는 Fly 서버의 서비스 롤 클라이언트로 실행되어 RLS를
+  완전히 우회한다 — "사용자 관리" 탭의 리그 삭제(`deleteLeague`, 클라이언트에서 RLS를 그대로
+  통과)와 달리 리그 그룹의 admin_user_id와 무관하게 항상 성공함.
+- 리그 항목의 `season_number`/`tier`/`completed_at`, 토너먼트 항목의 대회명(`tournament_archives.name`)은
+  식별자·구조 정보라 읽기 전용으로만 표시하고 편집 대상에서 제외함(편집하면 다른 시즌/대회
+  레코드와 혼동될 수 있다고 판단).
+- "전적 초기화"는 `league_user_history` + `tournament_team_records` 두 테이블만 지우고,
+  홈 화면 통계와 무관한 다른 테이블(`hall_of_fame` 등)은 건드리지 않음.
+
+**롤백 방법**: 위 3개 파일의 diff를 되돌리고 `server/`에서 `fly deploy --app
+basketballgm-app-server`로 재배포.
+
+---
+
+## 2026-09-14 — /admin에 "사용자 관리" 탭 신설 (전체 유저 목록/개별 수정/계정 삭제)
+
+**배경**: 어드민이 전체 가입자를 한 곳에서 보고, 개별 사용자 페이지에서 정보를 수정·저장하고,
+계정을 삭제할 수 있어야 한다는 요청. `profiles` 테이블 RLS(Supabase 확인 결과 SELECT/UPDATE
+모두 `auth.uid() = id`만 허용, DELETE 정책은 아예 없음)로는 어드민이 클라이언트에서 직접
+남의 프로필을 조회·수정·삭제할 방법이 없어서, 이미 서비스 롤 클라이언트를 갖고 있는
+Fly.io Bun 서버(`server/src/index.ts` — start-draft/sim-override 등과 동일 서버)에
+`/admin/users*` 엔드포인트 3개를 새로 추가했다. 계정 완전 삭제는 `auth.users` 로우를
+직접 SQL로 지우는 대신(내부 세션/식별자 테이블과의 정합성이 깨질 수 있음) 공식 Admin API인
+`supabase.auth.admin.deleteUser()`를 사용— 이것도 서비스 롤 키가 있어야만 호출 가능해서
+Fly 서버를 거쳐야 하는 이유이기도 하다.
+
+**변경 파일**:
+- `server/src/index.ts` (server) — 상단에 고정 어드민 UUID 상수 추가(App.tsx/AdminGuard.tsx의
+  ADMIN_USER_ID와 동일 값), `GET /admin/users`(전체 profiles 조회) / `POST /admin/users/update`
+  (프로필 필드 갱신) / `POST /admin/users/delete`(팀 반환 → profiles 삭제 → auth 계정 삭제)
+  라우트와 핸들러 3개 추가. 삭제 핸들러는 대상이 고정 어드민 계정이면 거부.
+- `services/multi/leagueService.ts` (client) — 기존 파일-스코프 `FLY_SERVER` 상수를 `export`로
+  변경(다른 admin 서비스 파일에서도 재사용하기 위함, 값 자체는 불변)
+- `services/admin/userAdminService.ts` (client, 신규) — `adminListUsers`/`adminUpdateUser`/
+  `adminDeleteUser` — 위 세 엔드포인트를 호출하는 얇은 fetch 래퍼(Bearer 토큰은
+  `supabase.auth.getSession()`에서 가져와 첨부, startDraft/simGameOverride와 동일 패턴)
+- `pages/AdminUserManagerPage.tsx` (client, 신규) — `/admin/editor/users`. 전체 유저 테이블
+  (닉네임/이메일/이름/국적/생년/가입일), 행 클릭 시 상세 페이지로 이동(state로 데이터 전달),
+  행별 인라인 삭제 확인(고정 어드민 계정 행은 삭제 버튼 대신 "삭제 불가" 표시)
+- `pages/AdminUserDetailPage.tsx` (client, 신규) — `/admin/editor/users/:userId`. 닉네임/이메일/
+  성/이름/출생연도/국적/아바타 URL 편집 폼 + 저장 버튼, 하단 "계정 삭제" 위험 구역(고정 어드민
+  계정이면 이 섹션 자체를 숨김). 목록에서 넘어온 state가 없으면(새로고침 등) 목록 API를 다시
+  불러와 id로 찾음(전용 단건 조회 엔드포인트는 만들지 않음 — 유저 규모상 과설계로 판단)
+- `pages/EditorLayout.tsx` (client) — 탭 바에 "사용자 관리" NavLink(`to="users"`) 추가
+- `App.tsx` (client) — `AdminUserManagerPage`/`AdminUserDetailPage` import, `/admin/editor` 하위에
+  `users`, `users/:userId` 라우트 추가
+
+**Before**: `/admin/editor`에 사용자 목록/편집/삭제 기능이 전혀 없었고, `profiles` 테이블은
+본인 행만 CRUD 가능한 RLS만 있어 어드민이라도 클라이언트에서 남의 정보를 볼 방법이 없었음.
+
+**After**: `/admin/editor/users`에서 전체 가입자 목록을 보고, 행을 클릭해 상세 페이지에서
+모든 프로필 필드를 수정·저장할 수 있으며, 목록/상세 양쪽에서 계정을 완전히 삭제(로그인 계정+
+프로필 삭제, 보유 중이던 팀은 `release_team` RPC로 자동 반환)할 수 있음.
+
+**검증**: `npx tsc --noEmit -p .` — 변경 전후 에러 수 동일(85→84, 기존에도 있던 무관한
+오류들이며 stash 비교로 신규 파일발(發) 에러 없음을 확인). `server/tsconfig.json` 기준
+`tsc`는 `@types/bun` 미설치로 Bun 전역 타입 에러가 이미 다수 있었고(기존 파일들도 동일하게
+에러남) 새로 추가한 `handleAdminListUsers`/`handleAdminUpdateUser`/`handleAdminDeleteUser`/
+`requireGlobalAdmin`/`adminCorsJson` 자체에서 발생한 에러는 없음. 중괄호 짝 검증(스크립트)
+통과. 브라우저 클릭 테스트와 Fly.io 배포는 진행하지 않음.
+
+**주의사항**:
+- Fly.io 서버(`basketballgm-app-server`) 재배포 완료(`fly deploy`, 2026-09-14) — `/admin/users`
+  GET 요청이 인증 없이는 `{"error":"Forbidden"}`(403)을 반환하는 것으로 라이브 확인함.
+  프론트엔드(Vercel)는 이번 변경에서 별도 배포가 필요 없음(클라이언트 코드는 커밋만 하면
+  다음 Vercel 배포에 자연히 포함됨).
+- 계정 삭제는 `room_members`에 남아있는 참가 기록을 `release_team`으로 정리하지만, 그 외
+  과거 히스토리 테이블(`league_user_history`, `hall_of_fame`, `user_game_results` 등)의
+  user_id는 그대로 남는다 — 설계상 이 앱은 히스토리를 유저 삭제와 무관하게 보존하는 편이
+  합리적이라 판단해 별도로 지우지 않았음(완전 GDPR급 삭제가 필요하면 추가 작업 필요).
+- `profiles.email`은 가입 시점에 복사된 표시용 값이라, 이 페이지에서 수정해도 실제 로그인
+  이메일(Supabase Auth)은 바뀌지 않음 — 상세 페이지 라벨에 이미 명시.
+
+**롤백 방법**: 위 5개 파일의 diff를 되돌리고 `pages/AdminUserManagerPage.tsx`,
+`pages/AdminUserDetailPage.tsx`, `services/admin/userAdminService.ts` 세 신규 파일을 삭제한 뒤
+`server/`에서 `fly deploy --app basketballgm-app-server`로 재배포. 클라이언트만 되돌리고
+Fly 서버를 그대로 둬도 위험하진 않음(호출하는 코드가 없어지는 죽은 라우트로만 남음).
+
+---
+
+## 2026-09-14 — 홈 화면 InlineLeagueList 제목/탭 순서 변경
+
+**배경**: 사용자 요청 — 홈 화면 우측 패널 제목 "멀티플레이 리그"를 "활성화된 세션"으로,
+탭 순서를 "온라인 토너먼트/온라인 리그"에서 "온라인 리그/온라인 토너먼트" 순으로 변경.
+
+**변경 파일**:
+- `views/home/InlineLeagueList.tsx` — 헤더 `<h2>` 텍스트 변경, 탭 배열의 `main_league`/`tournament`
+  순서 스왑, 기본 선택 탭(`activeTab` 초기값)도 첫 번째 탭에 맞춰 `'tournament'` → `'main_league'`로 변경
+
+**Before**:
+```tsx
+const [activeTab, setActiveTab] = useState<Tab>('tournament');
+...
+<h2 className="text-lg font-black text-white ko-tight">멀티플레이 리그</h2>
+...
+{([
+    { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
+    { key: 'main_league' as Tab, label: '온라인 리그' },
+]).map(...)}
+```
+
+**After**:
+```tsx
+const [activeTab, setActiveTab] = useState<Tab>('main_league');
+...
+<h2 className="text-lg font-black text-white ko-tight">활성화된 세션</h2>
+...
+{([
+    { key: 'main_league' as Tab, label: '온라인 리그' },
+    { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
+]).map(...)}
+```
+
+**검증**: `npx tsc --noEmit -p .` — 해당 파일 에러 없음.
+
+**롤백 방법**: 위 Before 블록으로 되돌리면 됨.
+
+---
+
+## 2026-09-14 — /admin에 "리그 관리" 탭 신설 (리그/토너먼트 개설·삭제 통합)
+
+**배경**: 바로 위 항목에서 세션 설정(LeagueSettingsView) 안에 리그 삭제 버튼을 추가했지만,
+그 방법은 리그 하나에 직접 들어가야만 삭제할 수 있었음. 어드민이 여러 리그/토너먼트를
+"한 곳에서" 만들고 지울 수 있어야 한다는 요청으로 `/admin/editor/league`에 통합 관리 탭을
+신설. 개설 UI(`CreateLeagueModal`)와 삭제 함수(`deleteLeague`)는 이미 존재하던 걸 그대로
+재사용 — 새 백엔드 로직은 추가하지 않음.
+
+**변경 파일**:
+- `pages/AdminLeagueManagerPage.tsx` (신규) — 전체/토너먼트/리그 탭 필터, `listLeaguesWithStats(null)`로
+  전체 리그 목록 조회, 행별 인라인 삭제 확인(LeagueSettingsView와 동일 UX), 헤더 "새 리그/토너먼트"
+  버튼으로 `CreateLeagueModal` 오픈
+- `pages/EditorLayout.tsx` — 탭 바에 "리그 관리" NavLink(`to="league"`) 추가
+- `App.tsx` — `AdminLeagueManagerPage` import, `/admin/editor` 하위에 `<Route path="league" .../>` 추가
+
+**Before**: `/admin/editor` 탭이 선수 편집/아키타입 설정/드래프트 시뮬/물리 랩 4개뿐이었고,
+리그/토너먼트 개설·삭제를 한 화면에서 다루는 곳이 없었음(개설은 홈 화면 InlineLeagueList의
+"새 리그" 버튼, 삭제는 리그별 세션 설정 화면으로 분산돼 있었음).
+
+**After**: `/admin/editor/league`에서 전체 리그/토너먼트 목록(이름/유형/상태/시즌/참여인원/생성일)을
+보고 그 자리에서 개설·삭제 모두 가능.
+
+**검증**: `npx tsc --noEmit -p .` — 신규 파일과 수정 파일 모두 에러 없음(기존에도 있던
+`App.tsx(100,74)` RosterMode 관련 에러는 이번 변경과 무관, stash 비교로 사전 존재 확인).
+브라우저 클릭 테스트는 진행하지 않음.
+
+**주의사항**: `deleteLeague()`는 Supabase RLS(`l_admin_write` 정책, `admin_user_id = auth.uid()`)를
+그대로 통과해야 하므로, 이 페이지의 삭제 버튼도 **로그인한 관리자 계정이 직접 만든 리그만**
+지울 수 있음(다른 유저가 홈 화면에서 만든 리그는 RLS가 막음). 현재 DB에 존재하는 리그 8개는
+전부 admin_user_id가 고정 어드민 계정(`d2f6a469-...`)이라 실사용엔 문제 없지만, 향후 일반
+유저가 만든 리그까지 어드민이 강제 삭제해야 한다면 SECURITY DEFINER RPC 신설이 별도로 필요함
+(이번 스코프에는 포함하지 않음).
+
+**롤백 방법**: `App.tsx`의 import/Route 두 줄, `pages/EditorLayout.tsx`의 NavLink 블록을 제거하고
+`pages/AdminLeagueManagerPage.tsx` 파일을 삭제하면 됨.
+
+---
+
+## 2026-09-14 — 홈 프로필 멀티플레이 전적 섹션 내부 스크롤 + 세션 설정 리그 탭 리그 삭제 버튼 추가
+
+**배경**: (1) 홈 화면 좌측 프로필 패널의 "멀티플레이 전적" 섹션이 참가 이력이 많아지면
+`shrink-0`인 채로 계속 늘어나서 부모 패널(`StartMenu`, `h-full` 고정)의 세로 경계를 넘어
+튀어나가는 문제 — 사용자가 스크린샷으로 지적. (2) 어드민이 세션 설정 > 리그 탭에서 리그를
+삭제할 방법이 UI에 없었음 — `deleteLeague()`(`services/multi/leagueService.ts`)는 이미
+존재했지만(leagues 삭제 → rooms/room_members/league_teams CASCADE) 어디서도 호출되지 않던
+dead code였음.
+
+**변경 파일**:
+- `views/home/MultiplayerHistory.tsx` — 펼침 상태 콘텐츠를 감싸던 `<>` Fragment를
+  `max-h-72 overflow-y-auto` div로 교체(헤더 버튼은 스크롤 영역 밖에 유지)
+- `views/multi/league/LeagueSettingsView.tsx` — `deleteLeague` import 추가, `deleteConfirm`/
+  `deleting`/`deleteErr` state 및 `handleDeleteLeague()` 추가(`resetConfirm`류와 동일 패턴),
+  "리그" 탭 좌측 컬럼 최하단(플레이오프 형식 섹션 다음)에 확인 단계 있는 삭제 버튼 섹션 추가
+
+**Before**:
+```tsx
+// MultiplayerHistory.tsx
+{!collapsed && (
+    <>
+        <div className="space-y-1">...리그 통계...</div>
+        <div className="space-y-1">...토너먼트 통계...</div>
+        {history.length > 0 && <div className="space-y-1">...참가 이력...</div>}
+    </>
+)}
+```
+```tsx
+// LeagueSettingsView.tsx — 리그 탭 좌측 컬럼은 플레이오프 형식 섹션에서 끝났고
+// deleteLeague()를 호출하는 UI가 아예 없었음
+{league.type === 'main_league' && !league.bracket_data && (
+    <section>...플레이오프 형식...</section>
+)}
+</div>
+{/* 우측: 멤버 설정 */}
+```
+
+**After**:
+```tsx
+// MultiplayerHistory.tsx
+{!collapsed && (
+    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+        <div className="space-y-1">...리그 통계...</div>
+        <div className="space-y-1">...토너먼트 통계...</div>
+        {history.length > 0 && <div className="space-y-1">...참가 이력...</div>}
+    </div>
+)}
+```
+```tsx
+// LeagueSettingsView.tsx
+{league.type === 'main_league' && !league.bracket_data && (
+    <section>...플레이오프 형식...</section>
+)}
+
+<section className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 space-y-4">
+    <h2>리그 삭제</h2>
+    {!deleteConfirm ? (
+        <button onClick={() => setDeleteConfirm(true)}>리그 삭제</button>
+    ) : (
+        <div>
+            <p>"{league.name}" 리그가 영구적으로 삭제됩니다...</p>
+            <button onClick={handleDeleteLeague} disabled={deleting}>삭제 실행</button>
+            <button onClick={() => setDeleteConfirm(false)}>취소</button>
+        </div>
+    )}
+</section>
+</div>
+{/* 우측: 멤버 설정 */}
+```
+```ts
+// handleDeleteLeague (handleReset 옆에 추가)
+const handleDeleteLeague = async () => {
+    if (!league?.id || !userId) return;
+    setDeleting(true); setDeleteErr(null);
+    const { error: err } = await deleteLeague(league.id, userId);
+    setDeleting(false);
+    if (err) { setDeleteErr(err); return; }
+    navigate('/', { replace: true });
+};
+```
+
+**검증**: `tsc --noEmit` 두 파일 모두 에러 없음. UI를 브라우저에서 직접 클릭 테스트는
+하지 않음(에디터 세션이라 표기).
+
+**주의사항**: `deleteLeague()`는 서버 RLS가 `admin_user_id` 일치를 재검증하므로 클라이언트
+쪽 `isAdmin` 체크가 우회되어도 안전하지만, 삭제는 CASCADE로 즉시 영구 반영되고 취소가 불가능
+— 되돌리려면 백업/히스토리 테이블(`league_user_history`, `tournament_archives` 등)에서 수동
+복구해야 함(리그 자체 레코드는 복구 불가).
+
+**롤백 방법**: 위 Before 블록으로 되돌리면 됨 (또는 이 커밋 해시로 revert).
+
+---
+
+## 2026-09-14 — matchupFoulMult의 strength 기반(Rim/Paint) 배수 비활성화
+
+**배경**: 바로 아래 항목("빅맨 파울 confound 완화") 조사 중 발견한 별개 현상 — 웸반야마(intDef
+99, defConsist 99로 스킬 블렌드 최고치)가 고베어(95)보다 pf/48이 높은 이유를 추적하다가
+`matchupFoulMult`(강도 매치업 기반 파울 배수, 0.5~1.5배)를 지목함. 웸반야마 strength=62 vs
+고베어 strength=94 — 힘이 약한 수비수가 몸싸움에서 밀릴 때마다 최대 1.5배 파울 배수를 받는
+구조. 처음엔 "스킬과 피지컬은 원래 별개 축이니 이대로 둬도 된다"고 판단했으나, 사용자 요청으로
+실제 NBA와 비교 검증한 결과 **전제 자체가 반대 방향**임을 확인:
+- StatMuse 실측(PF per 36분, 커리어): 웸반야마 **2.71**, 홈그렌 **2.91** (마른 체형) vs
+  고베어 **3.12**, 스티븐 아담스 **3.28** (벌크 체형) — 마른 선수들이 오히려 파울이 적음.
+  엔진의 "약하면 더 분다"는 가정과 정반대.
+- 스카우팅 코멘트(센군 인터뷰 등)로도 마른 빅맨이 몸싸움에서 밀리는 장면 자체는 실재하지만,
+  그게 실제 개인 파울 총량 증가로는 이어지지 않는 것으로 보임(길이·수직으로 접촉 없이
+  컨테스트하는 능력이 상쇄하는 것으로 추정, 확정된 인과는 아님).
+
+**검증**: 29팀 453명 실제 로스터로 10000경기(`git worktree` 격리, 실제 저장소는 무변경 유지) —
+Rim/Paint에서만 `matchupFoulMult`를 1로 고정(Mid/3PT의 speed+agility 기반 배수는 그대로 유지).
+- 리그 평균 불변(PPG 108.2→108.3, PF 12.4→12.5, FTA 15.4→15.4) — 총량이 아니라 배정 방식만
+  바뀌는 성격이라 예상대로 밸런스 영향 없음.
+- corr(strength, pf/48): -0.387 → **-0.056**(사실상 제거). strength 상하위25% pf/48 격차:
+  0.44 → **0.06**(93% 감소).
+- 부수 발견: corr(intDef, pf/48)도 -0.274 → -0.183로 같이 약해짐 — strength와 intDef가
+  약하게 상관(0.386)돼 있어서, 바로 아래 항목에서 확인한 "수비 좋으면 파울 준다" 개선 효과
+  일부가 실은 intDef 자체가 아니라 strength를 통해 간접적으로 빌려온 것이었음이 드러남
+  (INTERIOR_SKILL_CURVE 개선 자체는 유효, 다만 겉보기 효과 크기가 다소 부풀려져 있었음).
+- 개별 사례: 웸반야마 3.09→2.96(-0.13), 홈그렌 3.88→3.71(-0.17) 개선 / 고베어 2.38→2.59(+0.21),
+  엠비드 3.09→3.15(+0.06) 악화 — 방향이 실제 NBA 실측 패턴과 일치.
+
+**변경 파일**:
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 슈팅파울 계산부의 `matchupFoulMult`
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일
+
+**Before** (두 파일 동일한 로직):
+```ts
+const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+const matchupFoulMult = 1 + gapNormalized * 0.5; // 0.5배(수비 압도) ~ 1.5배(수비 압도당함)
+```
+
+**After** (두 파일 동일한 로직):
+```ts
+const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
+const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
+const isInteriorZoneForFoul = preferredZone === 'Rim' || preferredZone === 'Paint';
+const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5); // Mid/3PT만 유지
+```
+
+**검증**: `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit -p tsconfig.json`(server)
+— possessionHandler.ts 관련 신규 에러 0건. 위 10000경기 실측으로 리그 밸런스 무변화 + 의도한
+효과(strength-파울 상관 제거) 확인.
+
+**주의사항 / 한계**:
+- `nonShootingFoulRate`(오펜시브파울 등 비슈팅파울)도 동일한 `matchupFoulMult` 변수를 재사용하고
+  있어([possessionHandler.ts:696](../../services/game/engine/pbp/possessionHandler.ts)) 이번
+  변경이 Rim/Paint 비슈팅파울에도 함께 적용됨 — 별도로 분리 검증하지 않았으니 참고.
+- Mid/3PT 쪽 speed+agility 기반 배수는 이번에 손대지 않았음. 그쪽도 실제 NBA와 맞는 방향인지는
+  검증 안 됨(가드 매치업 파울에 대한 실측이 필요하면 별도 조사 대상).
+- 실제 NBA 비교는 표본 4명(웸반야마/홈그렌/고베어/아담스)뿐이라 통계적으로 확정적이진 않음 —
+  다만 방향이 예외 없이 일관됐고, 스카우팅 코멘트 등 정성적 근거와도 부합해서 채택.
+
+**롤백 방법**: 위 Before 블록 로직을 두 파일에 그대로 되돌리면 됨(3줄 → 1줄, `isInteriorZoneForFoul`
+변수 제거하고 `matchupFoulMult = 1 + gapNormalized * 0.5;`로 복원).
+
+---
+
+## 2026-09-14 — 빅맨 파울 confound 완화: BASE_RATE_RIM/PAINT 인하 + INTERIOR_SKILL_CURVE 비대칭 확대
+
+**배경**: 사용자가 "수비 능력이 좋은 선수가 오히려 파울을 더 많이 한다"고 지적. 실제 PBL 룸(방
+`9b43a612-02e6-476f-8815-918713f6d1ae`, 1323경기, `game_pbp.home_box/away_box`) 데이터를
+Supabase에서 직접 조회해 intDef vs pf/48 상관관계를 확인한 결과 가설이 사실로 확인됐음. 다만
+원인은 intDef 자체가 아니라 **"골밑을 얼마나 많이 지키느냐"**(자체 정의한 진단용 지표
+`rim_share` = defRA시도/(defRA+defITP+defMID+defCNR+defWING+defATB 시도 합, 전부
+`statsMappers.ts`의 `bumpDefendedShot()`이 채우는 실제 박스스코어 필드) — 같은 intDef 90대
+안에서도 rim_share 낮은 야니스/드레이먼드는 파울이 적고 rim_share 높은 웸반야마/고베어는 많음.
+근본 원인은 `SHOOTING_FOUL.BASE_RATE_RIM(0.13)`이 `BASE_RATE_3PT(0.025)`의 5배가 넘는 존별
+기본 확률 격차이고, 이를 상쇄해야 할 `INTERIOR_SKILL_CURVE`의 실효 할인(zoneScale 0.5배 감쇠
+적용 후 최상위 -4.5%p)이 그 격차보다 작아 상쇄가 안 되고 있었음.
+
+**검증 과정(요약)**: 실제 meta_players 로스터(29팀 453명, `base_team_id in (...)`)를 Supabase
+anon key로 직접 fetch해 `mapRawPlayerToRuntimePlayer()` + `runFullGameSimulation()`으로 풀게임
+시뮬레이션 하네스 구성(client/server 원본 코드는 그대로 두고 `git worktree`로 격리한 사본에서만
+상수를 바꿔 A/B 비교, 실제 저장소는 이번 커밋 전까지 전혀 안 건드림). 후보 여러 개를 600→1280→
+10000경기로 표본을 늘려가며 비교:
+- BASE_RATE만 인하(0.06/0.05, 0.09/0.07, 0.10/0.08): 0.06/0.05는 FTA/게임이 21.3→12.9로
+  과다 하락(비현실적), 0.10/0.08이 FTA 현실성(19.8~20.0 근접)과 confound 완화의 균형점.
+- `INTERIOR_SKILL_CURVE` 대칭 2배 확대: 리그 전체 confound는 더 줄지만(rim_share 상하위25%
+  격차 1.63→0.96~1.14), intDef 45~60 구간(약한 수비 빅맨)의 페널티도 같이 커져 일부 선수
+  (루카 가르자 등)의 파울이 오히려 늘어나는 부작용 확인.
+- `INTERIOR_SKILL_CURVE` 비대칭 확대(45/60 원본 유지, 72 이상만 2배): 리그 전체 confound 완화
+  폭은 대칭 버전과 거의 동급(1.10~1.18)이면서, 부작용 없음 — **10000경기 재검증**(defA≥500
+  필터, 표본 2900~13000시도/선수)에서 빅맨 수비 상위10/하위10/공격상위·수비하위10 **30명
+  전원이 예외 없이 pf/48 개선**(-0.26~-1.51) 확인.
+- `ZONE_CURVE_SCALE` 확대(0.5→1.0)도 시도했으나 이건 drawFoulBonus(공격자 파울 유도 스킬)까지
+  같이 증폭시켜 요키치/타운스 같은 특정 선수가 오히려 악화되는 매치업 의존적 부작용이 있어 기각
+  (`INTERIOR_SKILL_CURVE` 단독 확대가 더 안전한 선택으로 최종 채택).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `SHOOTING_FOUL.BASE_RATE_RIM`,
+  `BASE_RATE_PAINT`, `INTERIOR_SKILL_CURVE`
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+
+**Before** (두 파일 동일):
+```ts
+BASE_RATE_RIM: 0.13,
+BASE_RATE_PAINT: 0.10,
+...
+INTERIOR_SKILL_CURVE: [
+    [45, 0.010], [60, 0.000], [72, -0.010],
+    [82, -0.030], [88, -0.05], [93, -0.065], [97, -0.09],
+],
+```
+
+**After** (두 파일 동일):
+```ts
+BASE_RATE_RIM: 0.10,
+BASE_RATE_PAINT: 0.08,
+...
+INTERIOR_SKILL_CURVE: [
+    [45, 0.010], [60, 0.000], [72, -0.020],
+    [82, -0.060], [88, -0.10], [93, -0.13], [97, -0.18],
+],
+```
+
+**검증**:
+- `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit -p tsconfig.json`(server) —
+  constants.ts 관련 신규 에러 0건.
+- 리그 평균(29팀, 10000경기): PPG 109.8→108.3, PF/게임 14.4→12.5, FTA/게임 19.8→15.5 —
+  스코어링/페이스 급변 없음.
+- 빅맨(C/PF) 내부 격차(intDef 상위25%-하위25% pf/48): Control **-0.06**(거의 무의미, 사용자가
+  지적한 문제 그대로) → **-0.46**(올바른 방향으로 명확히 역전).
+- 전체 포지션 rim_share 상하위25% pf/48 격차: 1.64 → 1.10 (약 33% 완화).
+- 30명 개별 breakdown(수비상위10/하위10/공격상위·수비하위10) 전원 개선, 방향이 튀는 선수 없음
+  (10000경기 표본에서 노이즈 해소 확인 — 1280경기 때는 일부 선수가 노이즈로 방향이 튀었었음).
+
+**주의사항 / 한계**:
+- **`matchupFoulMult`(strength 기반 피지컬 매치업 배수, [possessionHandler.ts:658-666](../../services/game/engine/pbp/possessionHandler.ts))는 이번 변경 범위 밖**이고 그대로 둠. 조사 중 발견한
+  별개 현상: 웸반야마(intDef 99, defConsist 99 — 스킬 블렌드 최고치)가 고베어(95)보다 파울이
+  많은 이유가 이 배수 때문으로 추정됨(웸반야마 strength=62 vs 고베어 strength=94 — 힘이 약해
+  몸싸움에서 밀리는 매치업마다 최대 1.5배 파울 배수를 받음). 사용자와 논의 결과 "스킬(intDef)과
+  피지컬(strength)은 원래 별개 축이어야 한다"는 결론으로 **의도적으로 손대지 않기로 결정** —
+  다만 이 배수(0.5~1.5배)의 크기 자체가 적절한지는 아직 실측 안 됨, 다음 조사 대상으로 남겨둠.
+- `Floater`(contest 0.6)/`Hook`(contest 0.5)/`Fadeaway`(contest 0.4)의 `SHOT_DEFENSE.CONTEST`
+  낮은 값 문제(수비 스탯이 슛 성공률 자체에 미치는 영향, 이번 파울 조사와는 별개 축)는 여전히
+  미해결.
+- 이번 실측에 쓴 하네스 스크립트(`foul_harness_fullleague.ts`, `fetch_full_league.mjs` 등)는
+  전부 스크래치 스크립트로 커밋 안 함 — 다음에 유사 조사 시 재사용하려면 새로 작성 필요. 핵심
+  기법만 기록: `git worktree add`로 격리 사본 생성 → 사본에서만 상수 수정 → `mapRawPlayerToRuntimePlayer()` + `runFullGameSimulation()` 직접 호출 → `defRA*/defITP*/defMID*/defCNR*/
+  defWING*/defATB*` 박스스코어 필드로 집계 → `git worktree remove`로 정리(실제 저장소 무변경 유지).
+
+**롤백 방법**: 위 Before 블록 값 두 쌍(BASE_RATE_RIM/PAINT, INTERIOR_SKILL_CURVE)을 두 파일에
+그대로 되돌리면 됨.
+
+---
+
+## 2026-09-14 — [보류/롤백] 수비 능력치(intDef/perDef) 슛 방어 효과 리시프 커브 — 풀게임 실측에서 효과 미확인, 코드 미반영
+
+**배경**: 사용자가 "수비 스탯이 낮은 선수도 결과가 적정선으로 수렴하는 느낌"을 보고. 조사 결과
+`calculateHitRate()`의 defMod = defRating(raw intDef/perDef) × contestFactor × defCoeff 구조가
+완전 선형이라, meta_players 854명 실측 분포(intDef 중앙값 59, perDef 중앙값 68 — DB 쿼리로
+확인) 기준 리그 대다수 수비수끼리는 FG% 차이가 거의 안 나고, 진짜 엘리트/최약체 수비수만 갈려야
+할 상황에서도 그 폭 자체가 좁았음(3PT 기준 population p05~p95 스윙 약 4.1%p에 불과). 여러 후보
+배율/형태(x2·x3, 선형·꼬리가속형 exponent 1.7)를 순수 함수 몬테카를로(N=60000, 실제
+`calculateHitRate` import)로 비교한 뒤, 사용자와 함께 "x2 배율 + 꼬리가속 곡선형"으로 확정.
+곡선형은 중앙값 근처(리그 대다수)는 거의 그대로 두고 꼬리(진짜 잘함/못함)만 벌리는 형태라
+"평균 근처로 수렴" 문제의 정반대 해법이자 실제 NBA 특성과도 부합.
+
+**설계 핵심**: defRating을 raw 값 그대로 곱하지 않고, RESHAPE_CURVE로 먼저 리시프(reshape)한
+뒤 기존과 동일하게 contestFactor×defCoeff를 곱하는 구조로 변경. reshape 함수는 f(중앙값)=중앙값
+(레벨 불변, BASE_PCT 재보정 불필요)이고 양쪽 꼬리로 갈수록 `(|x-median|/range)^1.7` 형태로
+가속 증폭되어, 편차의 절대 스케일이 min~max 기준 정확히 2배가 되도록 캘리브레이션(공식:
+`f(x) = median ± 2×range×((|x-median|)/range)^1.7`). intDef 기반 zone(Rim/Paint/Mid/Dunk)이
+전부 `INTDEF_RESHAPE_CURVE` 하나를 공유하므로, Rim/Layup/Dunk/Mid/Paint 각각 서로 다른
+defCoeff·contestFactor를 갖고 있어도 이 커브 하나만으로 전부 정확히 2배 스윙이 나온다(수학적으로
+defMod_new = reshapedX × coeff = (기존 대비 스윙 2배로 늘어난 x) × coeff이므로 coeff 값과
+무관하게 배율이 그대로 전파됨 — Monte Carlo로 6개 zone/shotType 조합 전부 실측 검증 완료, 아래
+참고).
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `PERDEF_RESHAPE_CURVE`/`INTDEF_RESHAPE_CURVE` 신규 추가
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일 추가
+- `services/game/engine/pbp/flowEngine.ts` (client) — `calculateHitRate()`의 3PT/non-3PT defMod 계산부
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러) — 동일 반영
+
+**Before** (constants.ts, 두 파일 동일):
+```ts
+THREE_DEF_COEFF: 0.001,
+INSIDE_DEF_COEFF: 0.0015,
+MID_DEF_COEFF: 0.0012,
+DUNK_DEF_COEFF: 0.002,
+// (RESHAPE_CURVE 없음)
+```
+
+**After** (constants.ts, 두 파일 동일):
+```ts
+THREE_DEF_COEFF: 0.001,
+INSIDE_DEF_COEFF: 0.0015,
+MID_DEF_COEFF: 0.0012,
+DUNK_DEF_COEFF: 0.002,
+
+PERDEF_RESHAPE_CURVE: [
+    [32, -4], [48, 41.49], [60, 62.42], [68, 68], [78, 77.27], [89, 100.72], [98, 128],
+] as [number, number][],
+INTDEF_RESHAPE_CURVE: [
+    [25, -9], [35, 21.39], [46, 45.74], [59, 59], [72, 70.84], [88, 105.31], [99, 139],
+] as [number, number][],
+```
+
+**Before** (flowEngine.ts, 두 파일 동일):
+```ts
+if (preferredZone === '3PT') {
+    const offMod = interpolateCurve(offRating, S.THREE_OFF_CURVE);
+    const defMod = defRating * contestFactor * S.THREE_DEF_COEFF;
+    hitRate += offMod - defMod;
+    if (threeSubZone?.startsWith('zone_c3')) hitRate += S.THREE_CORNER_BONUS;
+} else {
+    // ...
+    const offMod = interpolateCurve(offRating, shotCurve);
+    const defMod = defRating * contestFactor * defCoeff;
+    hitRate += offMod - defMod;
+}
+```
+
+**After** (flowEngine.ts, 두 파일 동일):
+```ts
+if (preferredZone === '3PT') {
+    const offMod = interpolateCurve(offRating, S.THREE_OFF_CURVE);
+    const reshapedDefRating = interpolateCurve(defRating, S.PERDEF_RESHAPE_CURVE);
+    const defMod = reshapedDefRating * contestFactor * S.THREE_DEF_COEFF;
+    hitRate += offMod - defMod;
+    if (threeSubZone?.startsWith('zone_c3')) hitRate += S.THREE_CORNER_BONUS;
+} else {
+    // ...
+    const offMod = interpolateCurve(offRating, shotCurve);
+    const reshapedDefRating = interpolateCurve(defRating, S.INTDEF_RESHAPE_CURVE);
+    const defMod = reshapedDefRating * contestFactor * defCoeff;
+    hitRate += offMod - defMod;
+}
+```
+
+**1차 검증(공식 단위 몬테카를로) — 이 시점에 실수로 먼저 코드에 반영함**:
+- `npx tsc --noEmit -p .`(client)/`cd server && npx tsc --noEmit -p tsconfig.json`(server) — 신규
+  에러 0건.
+- `calculateHitRate()`를 직접 import한 몬테카를로(N=40000~60000/포인트)로 6개 zone/shotType
+  전부에서 min~max 스윙이 이론값(변경 전 대비 정확히 2배)과 일치: 3PT/CatchShoot 6.6→13.2%p,
+  Rim/Layup 11.1→22.2%p, Rim/Dunk 12.58→25.16%p, Mid/Jumper 7.55→15.1%p, Paint/Floater
+  6.66→13.32%p, Paint/Hook 5.55→11.1%p. 중앙값(intDef=59/perDef=68) 레벨은 변경 전후 동일.
+- **문제**: 사용자가 "시뮬레이션 검증을 먼저 하고 코드에 반영해야 하는 거 아니냐"고 지적 —
+  맞는 말이었음. 이 몬테카를로는 offRating/기타 변수를 전부 고정한 "격리된 공식" 검증이라
+  커브 산수 자체는 맞다는 것만 증명하지, 실제 게임에서 그 효과가 살아남는지는 증명하지 못함.
+
+**2차 검증(풀게임 실측) — 뒤늦게 실행, 결과가 정반대로 나와 롤백**:
+- 실제 선수 데이터(meta_players `phx`/`chi` 실존 로스터 36명, Supabase 조회)로 `Team` 객체를
+  구성해 `runFullGameSimulation()`을 직접 300경기 실행. `git worktree`로 변경 전(HEAD)과 변경
+  후(작업트리)를 동시에 준비해 완전히 동일한 로스터·시드로 비교.
+- 리그 평균 자체는 거의 안 흔들림(PPG 109.3→108.7, FG% 44.2→43.8, 3P% 35.2→34.4) — 레벨 불변
+  설계는 의도대로 작동.
+- **그러나 개별 선수의 실제 박스스코어(`defRA/defITP/defMID/defCNR/defWING/defATB`
+  Made/Attempted — `statsMappers.ts`의 `bumpDefendedShot()`이 채우는 진짜 필드. 애초에 참고했던
+  `PlayerBoxScore`의 `defRim/defMid/defThree` 필드는 실제로는 아무데도 안 채워지는 죽은
+  컬럼이었음, 시행착오로 확인)를 intDef/perDef 상하위로 나눠 시도수 가중평균한 결과, 2배로
+  벌어지긴커녕 zone마다 들쭉날쭉했음:
+  - Rim: 격차 5.28%p → 6.37%p (거의 그대로, 목표였던 2배와 무관)
+  - Mid: 격차 4.76%p → **2.64%p (오히려 줄어듦)**
+  - Three: 격차 1.51%p → 1.74%p (원래도 미미했고 그대로)
+- **원인 추정(미확정)**: `identifyDefender()`(possessionHandler.ts)의 1차 수비수 배정이 포지션
+  매칭 기반이지 수비력 기반이 아니라서, 박스스코어의 "이 선수가 방어한 슛" 표본 자체가 그
+  선수의 수비력과 약하게만 연관됨(누구를 막았는지가 거의 랜덤에 가까움) — defCoeff/커브를 아무리
+  키워도 애초에 매치업 배정이 skill-neutral이면 표본 자체가 신호를 못 담을 가능성. 2팀
+  36명이라는 표본 크기·시도수 자체도 zone별로 8~2500까지 편차가 커서 노이즈가 컸을 가능성도
+  배제 못 함. 둘 다 검증 안 된 가설 — 다음에 이 주제를 다시 볼 때는 `identifyDefender()`가
+  실제로 skill 기반 라우팅을 하는지부터 확인 필요.
+
+**최종 조치**: `git checkout --`으로 4개 파일(client/server × constants.ts/flowEngine.ts)을
+변경 전 상태로 완전히 되돌림 — 코드에는 아무 변경도 남아있지 않음. 아래 Before/After 블록은
+"무엇을 시도했었는지"와 "왜 롤백했는지"를 위한 기록용으로만 남긴다.
+
+**시도했던 변경 내용(참고용, 실제 반영 안 됨)**:
+
+Before (constants.ts, 두 파일 동일):
+```ts
+THREE_DEF_COEFF: 0.001,
+INSIDE_DEF_COEFF: 0.0015,
+MID_DEF_COEFF: 0.0012,
+DUNK_DEF_COEFF: 0.002,
+// (RESHAPE_CURVE 없음)
+```
+
+시도했던 After (반영 안 됨):
+```ts
+PERDEF_RESHAPE_CURVE: [
+    [32, -4], [48, 41.49], [60, 62.42], [68, 68], [78, 77.27], [89, 100.72], [98, 128],
+] as [number, number][],
+INTDEF_RESHAPE_CURVE: [
+    [25, -9], [35, 21.39], [46, 45.74], [59, 59], [72, 70.84], [88, 105.31], [99, 139],
+] as [number, number][],
+```
+
+flowEngine.ts 쪽은 `defMod = defRating * contestFactor * defCoeff`를
+`defMod = interpolateCurve(defRating, RESHAPE_CURVE) * contestFactor * defCoeff`로 바꾸는
+것이었음(3PT는 PERDEF_RESHAPE_CURVE, 나머지 zone은 INTDEF_RESHAPE_CURVE 공유).
+
+**주의사항 / 한계 / 다음에 참고할 것**:
+- **교훈**: 격리된 공식 단위 몬테카를로는 "산수가 맞는지"만 증명한다 — 실제 게임 루프(매치업
+  배정, 로테이션, 표본 크기)를 통과했을 때도 그 효과가 살아남는지는 별개 질문이고, 반드시
+  `runFullGameSimulation()` 풀게임 실측을 먼저 거친 뒤에 코드에 반영해야 함. 이번처럼 순서를
+  거꾸로 하면 "검증됨"이라고 잘못 보고하게 됨.
+- `AceStopper` 시스템(`aceStopperSystem.ts`, `defTeam.tactics.stopperId`)은 UI에서 실제 선수
+  id를 대입하는 경로가 전무함을 grep으로 확인(사용자 판단 확인 완료) — 사실상 데드코드. 이 결론
+  자체는 이번 롤백과 무관하게 유효.
+- 풀게임 실측용 하네스 스크립트(`services/dataMapper.ts`의 `mapRawPlayerToRuntimePlayer` +
+  `services/game/engine/pbp/main.ts`의 `runFullGameSimulation` 직접 호출, `git worktree`로
+  before/after 비교)는 커밋하지 않은 스크래치 스크립트였음 — 다음에 이 주제를 다시 볼 때
+  재사용하려면 새로 만들어야 함. 실제 박스스코어 필드명은 `defRA*/defITP*/defMID*/defCNR*/
+  defWING*/defATB*`이지 `defRim*/defMid*/defThree*`가 아니라는 점(둘 다 타입 정의엔 있지만
+  후자는 죽은 컬럼)은 다음 조사에서 바로 써먹을 수 있음.
+- `Floater`(contest 0.6)/`Hook`(contest 0.5)/`Fadeaway`(contest 0.4)의 contestFactor가 낮아
+  수비 영향이 구조적으로 작다는 관찰 자체는 여전히 유효(이번 롤백과 무관), 다만 이걸 고치는
+  것도 이번처럼 풀게임 실측 없이는 확정 짓지 말 것.
+
+**롤백 방법**: 이미 롤백 완료 상태(코드 변경 없음) — 재적용하려면 위 "시도했던 변경 내용"을
+다시 넣고, 이번엔 반드시 실제 로스터로 `runFullGameSimulation()`을 먼저 돌려 박스스코어
+(defRA/defITP/defMID/defCNR/defWING/defATB Made·Attempted)의 intDef/perDef 상관관계가 실제로
+개선되는지 확인한 뒤에 반영할 것.
+
+---
+
 ## 2026-09-11 — [버그 수정] MultiFrontOfficeView 트레이드 화면이 새로고침 후 크래시하던 문제 (Map/Set → JSON 영속화 비호환)
 
 **배경**: FMK 테스트 토너먼트에서 사용자가 콘솔에 `TypeError: X.get is not a function` (at MultiFrontOfficeView.tsx:606) 크래시를 리포트. `index.tsx`의 `PersistQueryClientProvider`가 react-query 캐시를 `localStorage`에 `JSON.stringify`로 영속화하는데, `Map`/`Set`은 JSON 직렬화 시 `"{}"`(빈 객체)가 되어 고유 프로퍼티가 전혀 보존되지 않는다 — 새로고침 후 캐시가 복원되면 `tradeData.tradeableByTeam`이 진짜 `Map`이 아니라 빈 plain object가 되고, `.get()` 호출 시 렌더링 중 크래시(uncaught, 트레이드 화면 먹통). `hooks/usePlayerSeasonStatsBatch.ts`(2026-09-02)에서 이미 한 번 발견·수정된 것과 동일한 원인의 재발이며, 그 수정이 이 파일까지는 커버하지 못했음. "AI가 아닌 유저끼리 트레이드가 안 된다"는 리포트의 원인 중 하나로 추정(트레이드 블록 opt-in 미등록 문제와는 별개).

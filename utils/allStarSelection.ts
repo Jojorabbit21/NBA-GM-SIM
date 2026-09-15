@@ -93,6 +93,16 @@ export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
     };
 }
 
+/** [2026-09-15] "올스타" 메뉴/화면 노출 여부 — 투표 시작일(allStarVoteStart)부터 브레이크
+ *  종료일(allStarEnd) 전날까지(브레이크 종료 당일부터는 숨김). 사용자 확정 스펙: "투표가
+ *  시작되는 날 보여주고, 브레이크가 종료되는 날 숨긴다". virtualDate는 findCurrentVirtualDate()
+ *  등으로 구한 "가상 캘린더 오늘"(YYYY-MM-DD) — 아직 못 구했으면(null) false. */
+export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number): boolean {
+    if (!virtualDate) return false;
+    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+    return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // 팬 투표(스타터) — 누적 득표 시뮬레이션
 // ══════════════════════════════════════════════════════════════════════════

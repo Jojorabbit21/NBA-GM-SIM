@@ -81,6 +81,9 @@ import EditorLayout from './pages/EditorLayout';
 import ArchetypeConfigPage from './pages/ArchetypeConfigPage';
 import DraftSimPage from './pages/DraftSimPage';
 import PhysicsLabPage from './pages/PhysicsLabPage';
+import AdminLeagueManagerPage from './pages/AdminLeagueManagerPage';
+import AdminUserManagerPage from './pages/AdminUserManagerPage';
+import AdminUserDetailPage from './pages/AdminUserDetailPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
@@ -366,6 +369,9 @@ const App: React.FC = () => {
                             <Route path="archetype" element={<ArchetypeConfigPage />} />
                             <Route path="draft-sim" element={<DraftSimPage />} />
                             <Route path="physics-lab" element={<PhysicsLabPage />} />
+                            <Route path="league" element={<AdminLeagueManagerPage />} />
+                            <Route path="users" element={<AdminUserManagerPage />} />
+                            <Route path="users/:userId" element={<AdminUserDetailPage />} />
                         </Route>
                     </Route>
 

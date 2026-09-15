@@ -9,6 +9,7 @@ import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
+import { isAllStarWindowActive } from '../utils/allStarSelection';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { useLeagueDraft } from '../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../utils/colorContrast';
@@ -121,6 +122,10 @@ export const MultiHeader: React.FC = () => {
         if (league?.type !== 'main_league' || !simStart) return null;
         return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
     }, [league, schedule, simStart, gprd, dateBucket]);
+
+    // [2026-09-15 Fix] "올스타" 메뉴 노출 — 투표 시작일에 나타나고 브레이크 종료일에 사라진다.
+    // currentVirtualDate를 이미 위에서 계산해두므로 추가 조회 없이 날짜 비교만 하면 된다.
+    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
 
     const opponentId  = nextGame
         ? (nextGame.homeTeamId === myTeamId ? nextGame.awayTeamId : nextGame.homeTeamId)
@@ -456,6 +461,7 @@ export const MultiHeader: React.FC = () => {
                     roomId={roomId}
                     hasPlayoffs={!!league?.bracket_data && league?.type !== 'tournament'}
                     isTournament={league?.type === 'tournament'}
+                    showAllStar={showAllStar}
                     capEnabled={!!league?.cap_enabled}
                     isDraftComplete={isDraftComplete}
                     onViewPlayer={handleViewPlayer}

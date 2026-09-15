@@ -194,7 +194,7 @@ export const MultiplayerHistory: React.FC<MultiplayerHistoryProps> = ({ userId }
             </button>
 
             {!collapsed && (
-                <>
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     <div className="space-y-1">
                         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">리그</p>
                         <div className="divide-y divide-slate-700/50">
@@ -259,7 +259,7 @@ export const MultiplayerHistory: React.FC<MultiplayerHistoryProps> = ({ userId }
                             )}
                         </div>
                     )}
-                </>
+                </div>
             )}
         </div>
     );

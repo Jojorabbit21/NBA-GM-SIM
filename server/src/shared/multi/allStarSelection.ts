@@ -77,6 +77,16 @@ export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
     };
 }
 
+/** [2026-09-15] 클라이언트 미러(utils/allStarSelection.ts)와 동일 — "올스타" 메뉴/화면 노출
+ *  여부. 투표 시작일(allStarVoteStart)부터 브레이크 종료일(allStarEnd) 전날까지(브레이크
+ *  종료 당일부터는 숨김). 서버 쪽에서는 현재 사용처가 없지만(스케줄러는 자체 키데이트
+ *  비교를 씀) 미러 쌍 로직 동기화 원칙에 따라 함께 추가. */
+export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number): boolean {
+    if (!virtualDate) return false;
+    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+    return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // 팬 투표(스타터) — 누적 득표 시뮬레이션
 // ══════════════════════════════════════════════════════════════════════════

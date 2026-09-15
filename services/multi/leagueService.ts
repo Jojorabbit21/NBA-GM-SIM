@@ -737,7 +737,7 @@ export const deleteLeague = async (
 // ─── 드래프트 즉시 시작 (어드민, Fly.io POST /start-draft) ───────────────────
 // start-draft EF를 완전 대체. Fly.io Bun 서버로 요청 → 방 로드 + 타이머 시작.
 
-const FLY_SERVER = (import.meta as any).env?.VITE_DRAFT_WS_URL
+export const FLY_SERVER = (import.meta as any).env?.VITE_DRAFT_WS_URL
     ? (import.meta as any).env.VITE_DRAFT_WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
     : 'https://basketballgm-app-server.fly.dev';
 

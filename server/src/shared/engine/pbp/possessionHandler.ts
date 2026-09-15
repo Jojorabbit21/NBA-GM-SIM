@@ -616,9 +616,12 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
 
     // [2026-07-29] 매치업 격차 → 파울 배수(0.5~1.5x, client 미러 상세 참조)
+    // [2026-09-14] Rim/Paint(strength 기반)만 비활성화 — 실제 NBA 실측과 반대 방향이었음
+    // (client 미러 상세 참조, docs/history/dev-log.md 참고). Mid/3PT는 그대로 유지.
     const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
     const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
-    const matchupFoulMult = 1 + gapNormalized * 0.5;
+    const isInteriorZoneForFoul = preferredZone === 'Rim' || preferredZone === 'Paint';
+    const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5);
 
     shootingFoulRate *= foulProbMod * matchupFoulMult;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)

@@ -27,6 +27,11 @@ import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
 
+// 전역 어드민 계정(admin@mail.com) — App.tsx/AdminGuard.tsx의 ADMIN_USER_ID와 동일한 값.
+// 리그별 admin_user_id(leagues.admin_user_id)와는 별개로, /admin/users* 는 이 고정 계정만
+// 호출할 수 있어야 한다(전체 유저를 다루는 기능이라 특정 리그 소유권 체크로는 대체 불가).
+const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
+
 // ── WebSocket 핸들러 ──────────────────────────────────────────────────────────
 
 const wsHandlers = {
@@ -207,6 +212,31 @@ const server = Bun.serve<WsData>({
         // 방 전체의 "지금 진행 중"인 경기 요약 (일정 리스트 라이브 스코어용)
         if (url.pathname === '/live-games' && req.method === 'GET') {
             return handleLiveGames(req, url);
+        }
+
+        // 어드민 사용자 관리 — 전체 유저 목록/수정/삭제 (고정 어드민 계정 전용)
+        if (url.pathname === '/admin/users' && req.method === 'GET') {
+            return handleAdminListUsers(req);
+        }
+        if (url.pathname === '/admin/users/update' && req.method === 'POST') {
+            return handleAdminUpdateUser(req);
+        }
+        if (url.pathname === '/admin/users/delete' && req.method === 'POST') {
+            return handleAdminDeleteUser(req);
+        }
+
+        // 어드민 사용자 관리 — 멀티플레이 전적(league_user_history/tournament_team_records) 조회/수정/삭제/초기화
+        if (url.pathname === '/admin/users/history' && req.method === 'GET') {
+            return handleAdminGetUserHistory(req, url);
+        }
+        if (url.pathname === '/admin/users/history/update' && req.method === 'POST') {
+            return handleAdminUpdateUserHistory(req);
+        }
+        if (url.pathname === '/admin/users/history/delete' && req.method === 'POST') {
+            return handleAdminDeleteUserHistory(req);
+        }
+        if (url.pathname === '/admin/users/history/reset' && req.method === 'POST') {
+            return handleAdminResetUserHistory(req);
         }
 
         // CORS preflight
@@ -419,6 +449,243 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
 
     const summaries = (rows ?? []).map(r => buildLiveSummary(r as GamePbpSource, Date.now()));
     return json({ ok: true, games: summaries });
+}
+
+// ── 어드민 사용자 관리 ────────────────────────────────────────────────────────
+// /admin 페이지 "사용자 관리" 탭 전용. profiles 테이블 RLS("Users can view/update own
+// profile"만 허용)로는 전체 유저 목록 조회·타인 수정이 불가능해서, 서비스 롤 클라이언트를
+// 쓰는 이 Fly 서버를 거친다. 세 엔드포인트 모두 호출자가 고정 어드민 계정인지부터 검증.
+
+function adminCorsJson(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin':  '*',
+            'Access-Control-Allow-Headers': 'authorization, content-type',
+        },
+    });
+}
+
+async function requireGlobalAdmin(req: Request): Promise<string | null> {
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const userId = token ? await verifyToken(token) : null;
+    return userId === ADMIN_USER_ID ? userId : null;
+}
+
+async function handleAdminListUsers(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, nickname, first_name, last_name, birth_year, nationality, avatar_url, created_at, updated_at')
+        .order('created_at', { ascending: false });
+
+    if (error) return adminCorsJson({ error: error.message }, 500);
+    return adminCorsJson({ ok: true, users: data ?? [] });
+}
+
+async function handleAdminUpdateUser(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    let body: {
+        userId?: string; nickname?: string | null; email?: string | null;
+        first_name?: string | null; last_name?: string | null;
+        birth_year?: number | null; nationality?: string | null; avatar_url?: string | null;
+    };
+    try { body = await req.json(); } catch { return adminCorsJson({ error: 'invalid json' }, 400); }
+
+    const { userId, ...fields } = body;
+    if (!userId) return adminCorsJson({ error: 'userId required' }, 400);
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .update({
+            nickname:    fields.nickname    ?? null,
+            email:       fields.email       ?? null,
+            first_name:  fields.first_name  ?? null,
+            last_name:   fields.last_name   ?? null,
+            birth_year:  fields.birth_year  ?? null,
+            nationality: fields.nationality ?? null,
+            avatar_url:  fields.avatar_url  ?? null,
+            updated_at:  new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+
+    if (error) return adminCorsJson({ error: error.message }, 500);
+    if (!data) return adminCorsJson({ error: 'user not found' }, 404);
+    return adminCorsJson({ ok: true, user: data });
+}
+
+async function handleAdminDeleteUser(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    let body: { userId?: string };
+    try { body = await req.json(); } catch { return adminCorsJson({ error: 'invalid json' }, 400); }
+
+    const { userId } = body;
+    if (!userId) return adminCorsJson({ error: 'userId required' }, 400);
+    if (userId === ADMIN_USER_ID) return adminCorsJson({ error: '어드민 계정은 삭제할 수 없습니다' }, 400);
+
+    // 삭제 전 이 유저가 붙잡고 있는 팀/참가 상태를 먼저 정리 — release_team이 room_members
+    // 삭제까지 처리하므로(leagueService.releaseTeam과 동일 RPC), 계정만 지우고 팀은
+    // 남겨두면 그 리그의 로스터가 "삭제된 유저 소유"인 채로 유령 상태가 된다.
+    const { data: memberships } = await supabase
+        .from('room_members')
+        .select('room_id')
+        .eq('user_id', userId);
+
+    for (const m of memberships ?? []) {
+        await supabase.rpc('release_team', { p_room_id: m.room_id, p_user_id: userId });
+    }
+
+    await supabase.from('profiles').delete().eq('id', userId);
+
+    const { error: authErr } = await supabase.auth.admin.deleteUser(userId);
+    if (authErr) return adminCorsJson({ error: authErr.message }, 500);
+
+    return adminCorsJson({ ok: true });
+}
+
+// ── 어드민 사용자 관리 — 멀티플레이 전적 조회/수정/삭제/초기화 ───────────────────
+// MultiplayerHistory.tsx(홈 화면)와 동일한 소스 테이블(league_user_history,
+// tournament_team_records)을 다룬다. league_user_history는 RLS가 "그 리그 그룹의
+// admin_user_id인 유저만 쓰기 가능"이라 대부분은 클라이언트에서 직접 써도 되지만,
+// tournament_team_records는 UPDATE/DELETE RLS 정책이 아예 없어(서비스 롤 INSERT만 허용)
+// 반드시 이 서버를 거쳐야 한다 — 두 테이블을 한 곳에서 다루려고 통째로 서버 경유로 통일.
+async function handleAdminGetUserHistory(req: Request, url: URL): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    const userId = url.searchParams.get('userId');
+    if (!userId) return adminCorsJson({ error: 'userId required' }, 400);
+
+    const [leagueRes, tourRes] = await Promise.all([
+        supabase
+            .from('league_user_history')
+            .select('group_id, user_id, season_number, tier, league_id, league_name, team_count, wins, losses, playoff_wins, playoff_losses, final_rank, playoff_result, completed_at')
+            .eq('user_id', userId)
+            .order('completed_at', { ascending: false }),
+        supabase
+            .from('tournament_team_records')
+            .select('id, archive_id, placement, final_round, series_wins, series_losses, game_wins, game_losses, pts_for, pts_against, tournament_archives!inner(name, team_count, completed_at, league_type)')
+            .eq('user_id', userId)
+            .eq('tournament_archives.league_type', 'tournament')
+            .order('id'),
+    ]);
+
+    if (leagueRes.error) return adminCorsJson({ error: leagueRes.error.message }, 500);
+    if (tourRes.error) return adminCorsJson({ error: tourRes.error.message }, 500);
+
+    return adminCorsJson({ ok: true, league: leagueRes.data ?? [], tournament: tourRes.data ?? [] });
+}
+
+async function handleAdminUpdateUserHistory(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    let body: any;
+    try { body = await req.json(); } catch { return adminCorsJson({ error: 'invalid json' }, 400); }
+
+    if (body.kind === 'league') {
+        const { groupId, userId, seasonNumber, ...fields } = body;
+        if (!groupId || !userId || seasonNumber == null) {
+            return adminCorsJson({ error: 'groupId, userId, seasonNumber required' }, 400);
+        }
+        const { data, error } = await supabase
+            .from('league_user_history')
+            .update({
+                league_name:    fields.league_name,
+                team_count:     fields.team_count,
+                wins:           fields.wins,
+                losses:         fields.losses,
+                playoff_wins:   fields.playoff_wins,
+                playoff_losses: fields.playoff_losses,
+                final_rank:     fields.final_rank,
+                playoff_result: fields.playoff_result,
+            })
+            .eq('group_id', groupId).eq('user_id', userId).eq('season_number', seasonNumber)
+            .select()
+            .maybeSingle();
+        if (error) return adminCorsJson({ error: error.message }, 500);
+        if (!data) return adminCorsJson({ error: 'record not found' }, 404);
+        return adminCorsJson({ ok: true, record: data });
+    }
+
+    if (body.kind === 'tournament') {
+        const { id, ...fields } = body;
+        if (!id) return adminCorsJson({ error: 'id required' }, 400);
+        const { data, error } = await supabase
+            .from('tournament_team_records')
+            .update({
+                placement:      fields.placement,
+                final_round:    fields.final_round,
+                series_wins:    fields.series_wins,
+                series_losses:  fields.series_losses,
+                game_wins:      fields.game_wins,
+                game_losses:    fields.game_losses,
+                pts_for:        fields.pts_for,
+                pts_against:    fields.pts_against,
+            })
+            .eq('id', id)
+            .select()
+            .maybeSingle();
+        if (error) return adminCorsJson({ error: error.message }, 500);
+        if (!data) return adminCorsJson({ error: 'record not found' }, 404);
+        return adminCorsJson({ ok: true, record: data });
+    }
+
+    return adminCorsJson({ error: 'kind must be "league" or "tournament"' }, 400);
+}
+
+async function handleAdminDeleteUserHistory(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    let body: any;
+    try { body = await req.json(); } catch { return adminCorsJson({ error: 'invalid json' }, 400); }
+
+    if (body.kind === 'league') {
+        const { groupId, userId, seasonNumber } = body;
+        if (!groupId || !userId || seasonNumber == null) {
+            return adminCorsJson({ error: 'groupId, userId, seasonNumber required' }, 400);
+        }
+        const { error } = await supabase
+            .from('league_user_history')
+            .delete()
+            .eq('group_id', groupId).eq('user_id', userId).eq('season_number', seasonNumber);
+        if (error) return adminCorsJson({ error: error.message }, 500);
+        return adminCorsJson({ ok: true });
+    }
+
+    if (body.kind === 'tournament') {
+        const { id } = body;
+        if (!id) return adminCorsJson({ error: 'id required' }, 400);
+        const { error } = await supabase.from('tournament_team_records').delete().eq('id', id);
+        if (error) return adminCorsJson({ error: error.message }, 500);
+        return adminCorsJson({ ok: true });
+    }
+
+    return adminCorsJson({ error: 'kind must be "league" or "tournament"' }, 400);
+}
+
+async function handleAdminResetUserHistory(req: Request): Promise<Response> {
+    if (!(await requireGlobalAdmin(req))) return adminCorsJson({ error: 'Forbidden' }, 403);
+
+    let body: { userId?: string };
+    try { body = await req.json(); } catch { return adminCorsJson({ error: 'invalid json' }, 400); }
+
+    const { userId } = body;
+    if (!userId) return adminCorsJson({ error: 'userId required' }, 400);
+
+    const [leagueDel, tourDel] = await Promise.all([
+        supabase.from('league_user_history').delete().eq('user_id', userId),
+        supabase.from('tournament_team_records').delete().eq('user_id', userId),
+    ]);
+    if (leagueDel.error) return adminCorsJson({ error: leagueDel.error.message }, 500);
+    if (tourDel.error) return adminCorsJson({ error: tourDel.error.message }, 500);
+
+    return adminCorsJson({ ok: true });
 }
 
 // ── 시작 ──────────────────────────────────────────────────────────────────────

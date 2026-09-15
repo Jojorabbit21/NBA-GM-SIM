@@ -9,6 +9,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
 import { usePendingTradeCount } from '../hooks/usePendingTradeCount';
+import { useSeasonContext } from '../views/multi/season/seasonContext';
+import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
+import { isAllStarWindowActive } from '../utils/allStarSelection';
 
 const NavItem: React.FC<{
     active: boolean;
@@ -91,6 +94,12 @@ export const MultiSidebar: React.FC = () => {
     // 로스터 자체가 없어(팀이 아직 비어있음) 두 메뉴가 사실상 빈 화면으로 이어지므로 접근을
     // 막는다. league.status가 in_progress/finished가 되면(=드래프트 종료) 다시 노출.
     const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
+    // [2026-09-15 Fix] "올스타 투표 시작일에 보이고, 브레이크 종료일에 숨긴다" — 정확한 노출
+    // 기간은 가상 캘린더 날짜를 실제로 비교해야 한다(hasPlayoffs 근사는 정규시즌 종료~
+    // 플레이오프 시작 사이 공백 기간에 여전히 노출되는 오차가 있었음).
+    const { schedule } = useSeasonContext();
+    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day);
+    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
 
     const base = `/multi/leagues/${leagueId}/season`;
     const isRosterActive = pathname.startsWith(`${base}/roster`);
@@ -194,8 +203,12 @@ export const MultiSidebar: React.FC = () => {
                         )}
                         {/* 올스타 이벤트는 main_league 전용(server/src/scheduler.ts가
                             type='main_league'만 투표/경기를 자동 진행) — tournament
-                            세션에서는 기능 자체가 동작하지 않으므로 메뉴도 숨긴다. */}
-                        {league?.type !== 'tournament' && (
+                            세션에서는 기능 자체가 동작하지 않으므로 메뉴도 숨긴다.
+                            [2026-09-15 Fix] 투표 시작일(allStarVoteStart)에 나타나고 브레이크
+                            종료일(allStarEnd)에 사라지도록 가상 캘린더 날짜를 실제로 비교한다
+                            (showAllStar, isAllStarWindowActive) — 원래는 tournament 여부만
+                            체크하고 기간 조건이 아예 없어 끝나도 안 사라지던 버그. */}
+                        {league?.type !== 'tournament' && showAllStar && (
                             <NavItem
                                 active={pathname.startsWith(`${base}/allstar`)}
                                 icon={<NavIcon name="allstar" active={pathname.startsWith(`${base}/allstar`)} />}

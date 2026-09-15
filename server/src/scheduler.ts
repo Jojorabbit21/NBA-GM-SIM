@@ -118,7 +118,7 @@ async function tick(): Promise<void> {
 async function checkSeasonCompletions(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at, virtual_season_year')
         .eq('type', 'main_league')
         .eq('status', 'in_progress')
         .is('bracket_data', null);
@@ -228,15 +228,43 @@ async function runAllStarVoteUpdates(): Promise<void> {
     }
 }
 
-// ── F-3. 3점 챌린지 참가 명단 — 올스타전 기간 시작일에 1회 발표 ──────────────────────────────
+// [2026-09-15 Fix, 2차] F-3~F-7 공통: 1차 수정(virtualDate===X → virtualDate>=X)으로
+// "아예 발동 안 하던" 문제는 해결했지만, leagueScheduleCompressor.ts가 브레이크 구간을
+// 평범한 날짜 전환과 똑같이 10분만 주고 지나가버려서(브레이크가 실제 시간상 폭이 0에
+// 가까움) 발표/라이징스타/컨테스트/본경기가 전부 같은 순간에 몰려서 발동했다 — 요일별로
+// 분산되어야 한다는 사용자 피드백으로 근본 수정.
+//
+// leagueScheduleCompressor.ts가 이제 시즌 생성 시점에 브레이크 경계에서 이 4개 서브
+// 이벤트 각각에 압축된 실제 하루치 시간을 예약하고, 그 결과 나온 정확한 실제 시각을
+// leagues.allstar_schedule(JSONB: announceAt/risingStarsAt/contestsAt/mainGameAt)에
+// 저장해둔다. 이 함수들은 이제 current_virtual_date()가 아니라 이 실제 시각을 real
+// now()와 직접 비교한다 — games 테이블에 앵커가 없어도 정확히 그 시점에만 발동한다.
+//
+// 하위호환: allstar_schedule이 비어있는 리그(이 수정 이전에 이미 생성된 리그, 예: 기존
+// 진행 중이던 메인리그)는 isAllStarSubEventDue()가 자동으로 예전 방식(current_virtual_date()
+// + keyDates.X 이상 비교)으로 폴백한다 — 요일별 분산은 안 되지만 최소한 발동은 보장된다.
+async function isAllStarSubEventDue(
+    roomId: string, preciseRealAt: string | undefined, fallbackKeyDate: string,
+): Promise<boolean> {
+    if (preciseRealAt) return new Date(preciseRealAt).getTime() <= Date.now();
+    const { data: virtualDate, error } = await supabase.rpc('current_virtual_date', { p_room_id: roomId });
+    if (error || !virtualDate) return false;
+    return virtualDate >= fallbackKeyDate;
+}
+
+interface AllStarScheduleRow {
+    announceAt?: string; risingStarsAt?: string; contestsAt?: string; mainGameAt?: string;
+}
+
+// ── F-3. 3점 챌린지 참가 명단 — 발표 시각 도래 시 1회 발표 ──────────────────────────────
 // runAllStarVoteUpdates()와 별개 함수인 이유: allStarStart는 투표 마감일(allStarVoteEnd)보다
 // 뒤라 위 함수의 트리거 창(allStarVoteStart~allStarVoteEnd) 밖이다. computeAndStoreAllStarVotes()
 // 트리거 창을 억지로 넓히는 대신(voteProgress/roster upsert 로직이 꼬일 위험) 완전히 독립된
-// 체크로 분리했다 — 멱등성은 computeAndPostThreePointContestNews() 내부의 count 조회로 보장.
+// 체크로 분리했다 — 멱등성은 computeAndPostThreePointContestNews() 내부의 season_number 체크로 보장.
 async function runThreePointContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, allstar_schedule')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -244,26 +272,23 @@ async function runThreePointContestNews(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        const { data: virtualDate, error: vdErr } = await supabase.rpc('current_virtual_date', { p_room_id: room.id });
-        if (vdErr || !virtualDate) continue;
-
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
         const keyDates = getAllStarKeyDates(virtualSeasonYear);
-        if (virtualDate !== keyDates.allStarStart) continue;
+        const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
+        if (!(await isAllStarSubEventDue(room.id, schedule?.announceAt, keyDates.allStarStart))) continue;
 
-        await computeAndPostThreePointContestNews(room.id, league.id, virtualDate, keyDates.allStarThreePointContestDate).catch(err =>
+        await computeAndPostThreePointContestNews(room.id, league.id, keyDates.allStarStart, keyDates.allStarThreePointContestDate).catch(err =>
             console.error(`[scheduler:allstar] computeAndPostThreePointContestNews failed(${league.id}):`, err),
         );
     }
 }
 
-// ── F-4. 덩크 컨테스트 참가 명단 — 올스타전 기간 시작일에 1회 발표 ────────────────────────────
-// runThreePointContestNews()와 완전히 동일한 구조/이유(별개 트리거 창) — 3점 챌린지와 같은 날
-// (allStarStart) 함께 발표된다.
+// ── F-4. 덩크 컨테스트 참가 명단 — runThreePointContestNews()와 완전히 동일한 구조/이유
+// (별개 트리거 창) — 3점 챌린지와 같은 날(allStarStart/announceAt) 함께 발표된다.
 async function runDunkContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, allstar_schedule')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -271,28 +296,25 @@ async function runDunkContestNews(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        const { data: virtualDate, error: vdErr } = await supabase.rpc('current_virtual_date', { p_room_id: room.id });
-        if (vdErr || !virtualDate) continue;
-
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
         const keyDates = getAllStarKeyDates(virtualSeasonYear);
-        if (virtualDate !== keyDates.allStarStart) continue;
+        const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
+        if (!(await isAllStarSubEventDue(room.id, schedule?.announceAt, keyDates.allStarStart))) continue;
 
-        await computeAndPostDunkContestNews(room.id, league.id, virtualDate, keyDates.allStarDunkContestDate).catch(err =>
+        await computeAndPostDunkContestNews(room.id, league.id, keyDates.allStarStart, keyDates.allStarDunkContestDate).catch(err =>
             console.error(`[scheduler:allstar] computeAndPostDunkContestNews failed(${league.id}):`, err),
         );
     }
 }
 
 // ── F-5. 올스타 본경기/라이징스타 챌린지 — 실제 시뮬레이션 ────────────────────────────────
-// runThreePointContestNews()/runDunkContestNews()와 동일 골격이지만 트리거 창이 둘로
-// 나뉜다(allStarMainGameDate/allStarRisingStarsDate, 서로 다른 날) — computeAndRunAllStarGame()
-// 내부에서 games PK(room_id, game_id) insert를 락으로 써서 멱등성을 보장하므로 여기선
-// "오늘이 그 날짜인지"만 걸러내면 된다.
+// 트리거 시각이 둘로 나뉜다(mainGameAt/risingStarsAt, 서로 다른 압축 실제 하루) —
+// computeAndRunAllStarGame() 내부에서 games PK(room_id, game_id) insert를 락으로 써서
+// 멱등성을 보장하므로 여기선 "이미 그 시각을 지났는지"만 걸러내면 된다.
 async function runAllStarGames(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, allstar_schedule')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -300,19 +322,17 @@ async function runAllStarGames(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        const { data: virtualDate, error: vdErr } = await supabase.rpc('current_virtual_date', { p_room_id: room.id });
-        if (vdErr || !virtualDate) continue;
-
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
         const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
 
-        if (virtualDate === keyDates.allStarMainGameDate) {
-            await computeAndRunAllStarGame(room.id, league.id, virtualDate, 'main').catch(err =>
+        if (await isAllStarSubEventDue(room.id, schedule?.mainGameAt, keyDates.allStarMainGameDate)) {
+            await computeAndRunAllStarGame(room.id, league.id, keyDates.allStarMainGameDate, 'main').catch(err =>
                 console.error(`[scheduler:allstar] computeAndRunAllStarGame(main) failed(${league.id}):`, err),
             );
         }
-        if (virtualDate === keyDates.allStarRisingStarsDate) {
-            await computeAndRunAllStarGame(room.id, league.id, virtualDate, 'rising_stars').catch(err =>
+        if (await isAllStarSubEventDue(room.id, schedule?.risingStarsAt, keyDates.allStarRisingStarsDate)) {
+            await computeAndRunAllStarGame(room.id, league.id, keyDates.allStarRisingStarsDate, 'rising_stars').catch(err =>
                 console.error(`[scheduler:allstar] computeAndRunAllStarGame(rising_stars) failed(${league.id}):`, err),
             );
         }
@@ -320,13 +340,13 @@ async function runAllStarGames(): Promise<void> {
 }
 
 // ── F-6. 3점 챌린지 — 실제 슈팅 시뮬레이션 ─────────────────────────────────────────────
-// runAllStarGames()와 동일 골격 — allStarThreePointContestDate(참가자 발표일보다 뒤,
-// allStarStart+2일)에만 트리거. computeAndRunThreePointContest() 내부에서 이미 결과가
-// 있으면 스킵하는 멱등성 체크를 하므로 여기선 "오늘이 그 날짜인지"만 걸러내면 된다.
+// runAllStarGames()와 동일 골격 — contestsAt(참가자 발표보다 뒤, 압축 실제 하루 +2)에
+// 트리거. computeAndRunThreePointContest() 내부에서 이미 결과가 있으면 스킵하는 멱등성
+// 체크를 하므로 여기선 "이미 그 시각을 지났는지"만 걸러내면 된다.
 async function runThreePointContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, allstar_schedule')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -334,27 +354,25 @@ async function runThreePointContestResult(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        const { data: virtualDate, error: vdErr } = await supabase.rpc('current_virtual_date', { p_room_id: room.id });
-        if (vdErr || !virtualDate) continue;
-
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
         const keyDates = getAllStarKeyDates(virtualSeasonYear);
-        if (virtualDate !== keyDates.allStarThreePointContestDate) continue;
+        const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
+        if (!(await isAllStarSubEventDue(room.id, schedule?.contestsAt, keyDates.allStarThreePointContestDate))) continue;
 
-        await computeAndRunThreePointContest(room.id, league.id, virtualDate).catch(err =>
+        await computeAndRunThreePointContest(room.id, league.id, keyDates.allStarThreePointContestDate).catch(err =>
             console.error(`[scheduler:allstar] computeAndRunThreePointContest failed(${league.id}):`, err),
         );
     }
 }
 
 // ── F-7. 덩크 컨테스트 — 실제 채점 시뮬레이션 ───────────────────────────────────────────
-// runThreePointContestResult()와 완전히 동일한 골격 — allStarDunkContestDate(3점 챌린지와
-// 같은 날, allStarStart+2일)에만 트리거. computeAndRunDunkContest() 내부에서 이미 결과가
-// 있으면 스킵하는 멱등성 체크를 하므로 여기선 "오늘이 그 날짜인지"만 걸러내면 된다.
+// runThreePointContestResult()와 완전히 동일한 골격 — contestsAt(3점 챌린지와 같은 압축
+// 실제 하루)에 트리거. computeAndRunDunkContest() 내부에서 이미 결과가 있으면 스킵하는
+// 멱등성 체크를 하므로 여기선 "이미 그 시각을 지났는지"만 걸러내면 된다.
 async function runDunkContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, allstar_schedule')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -362,14 +380,12 @@ async function runDunkContestResult(): Promise<void> {
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
-        const { data: virtualDate, error: vdErr } = await supabase.rpc('current_virtual_date', { p_room_id: room.id });
-        if (vdErr || !virtualDate) continue;
-
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
         const keyDates = getAllStarKeyDates(virtualSeasonYear);
-        if (virtualDate !== keyDates.allStarDunkContestDate) continue;
+        const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
+        if (!(await isAllStarSubEventDue(room.id, schedule?.contestsAt, keyDates.allStarDunkContestDate))) continue;
 
-        await computeAndRunDunkContest(room.id, league.id, virtualDate).catch(err =>
+        await computeAndRunDunkContest(room.id, league.id, keyDates.allStarDunkContestDate).catch(err =>
             console.error(`[scheduler:allstar] computeAndRunDunkContest failed(${league.id}):`, err),
         );
     }

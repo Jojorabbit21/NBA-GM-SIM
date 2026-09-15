@@ -106,6 +106,36 @@ export interface PostseasonLeagueRow {
     finals_match_format: string | null;
     games_per_real_day: number | null;
     playoff_team_count: number | null;
+    /** [2026-09-15 Fix] 포스트시즌 game_date를 가상 캘린더로 앵커링하기 위해 필요 —
+     *  finalize.ts가 정규시즌 regularSeasonEnd(`${virtualSeasonYear+1}-04-13`)를 계산할 때 쓰는
+     *  것과 동일한 값. 호출부(scheduler.ts checkSeasonCompletions, simRunner.ts
+     *  handleTournamentAdvance)가 select에 포함시켜야 한다. */
+    virtual_season_year: number | null;
+}
+
+/**
+ * [2026-09-15 Fix] 포스트시즌 전체(플레이인~파이널)의 game_date를 앵커링하는 가상 캘린더
+ * 기준일(day 0) — 정규시즌 가상 캘린더 종료일(finalize.ts의 regularSeasonEnd,
+ * `${virtualSeasonYear+1}-04-13`) 바로 다음날로 고정한다.
+ *
+ * 이전 버그: playoffSeeder.ts/playInSeeder.ts가 game_date 계산에 `new Date()`(실제
+ * wall-clock "오늘")를 그대로 썼다 — 플레이인/디사이더/본선이 실제로 언제 시뮬레이션
+ * 완료되든 상관없이 항상 이 가상 날짜를 기준으로 계산해야, 화면에 노출되는 날짜가
+ * "오늘"이 아니라 시즌 캘린더 상 올바른 날짜(4월 중순)로 보인다. 실제 방송 시각
+ * (scheduledAt/simRealStartAt)은 이 함수와 무관하게 계속 `new Date()` 기반으로 남는다 —
+ * "언제 실제로 시뮬레이션되는가"와 "화면에 어떤 날짜로 보이는가"는 서로 다른 축이다.
+ */
+export function postseasonVirtualAnchor(virtualSeasonYear: number | null | undefined): string {
+    const y = virtualSeasonYear ?? (new Date().getFullYear() - 1);
+    return `${y + 1}-04-14`;
+}
+
+/** 'YYYY-MM-DD' 문자열에 일수를 더한 새 'YYYY-MM-DD' — tournamentInitializer.ts의
+ * offsetDate()와 동일 로직(로컬 타임존 기준 계산, DST 이슈 없음). */
+export function addDaysStr(dateStr: string, days: number): string {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + days);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -115,10 +145,15 @@ export interface PostseasonLeagueRow {
  *
  * priorSeries — 호출자가 들고 있는 현재 bracket_data.series 배열(레퍼런스). 플레이인을 거쳐온
  * 경우 이미 완료된 플레이인 시리즈(round:0)가 들어있는 그 배열을 그대로 넘기면, 여기서 새로
- * 생성한 본선 시리즈를 그 배열에 직접 push하고 단일 update로 저장한다 — 별도 재조회
- * read-modify-write를 하지 않으므로, 호출자가 이 함수 호출 직후 같은 배열 레퍼런스로 다시
- * bracket_data를 저장하더라도(simRunner.ts의 handleTournamentAdvance처럼) 방금 여기서 쓴
- * 내용을 덮어쓰는 게 아니라 정확히 같은 최신 상태를 한 번 더 쓰는 것이 되어 안전하다.
+ * 생성한 본선 시리즈를 그 배열에 직접 push한다.
+ *
+ * [2026-09-15 Fix] persist=false로 호출하면(handlePlayInAdvance()의 "하위호환" 레거시 경로 —
+ * simRunner.ts의 handleTournamentAdvance() 재시도 루프 안에서 중첩 호출됨) 이 함수는
+ * leagues.update()를 직접 하지 않고 series 배열만 mutate한 뒤 tournament_start_at/
+ * sim_real_start_at 값을 반환한다 — 그 write는 반드시 바깥쪽 루프가 읽은 bracket_version
+ * 조건에 맞춰 한 번에 나가야 낙관적 동시성 제어(CAS)가 깨지지 않는다. persist=true(기본값,
+ * startPlayoffs/startPlayIn처럼 handleTournamentAdvance 바깥에서 최초 호출되는 경우)면 기존과
+ * 동일하게 이 함수가 직접 저장한다.
  */
 export async function buildAndStoreConferenceBracket(
     league: PostseasonLeagueRow, roomId: string,
@@ -128,10 +163,11 @@ export async function buildAndStoreConferenceBracket(
     // 경기(항상 "+1일" 앵커의 슬롯 0~1)와 시간이 겹치지 않도록 하루 더 늦게 시작시킨다.
     // 플레이인 없이 곧장 본선을 만드는 startPlayoffs()는 기본값(1일 뒤)을 그대로 쓴다.
     daysOffset: number = 1,
-): Promise<void> {
+    persist: boolean = true,
+): Promise<{ tournamentStartAt: string; simRealStartAt: string } | null> {
     if (eastQualified.length < 1 && westQualified.length < 1) {
         console.warn(`[playoffSeeder] league=${league.id} — 진출팀 없음(E=${eastQualified.length}, W=${westQualified.length}), skip`);
-        return;
+        return null;
     }
 
     const { data: teamRows } = await supabase.from('league_teams').select('*').eq('room_id', roomId);
@@ -151,13 +187,19 @@ export async function buildAndStoreConferenceBracket(
     const seededTeams = [...seedGroup(eastQualified), ...seedGroup(westQualified)];
     if (seededTeams.length < 2) {
         console.warn(`[playoffSeeder] league=${league.id} — resolved team rows < 2, skip`);
-        return;
+        return null;
     }
 
-    const playoffStart    = kstMidnightPlusDays(new Date().toISOString(), daysOffset);
-    const playoffStartIso = playoffStart.toISOString();
-    const gamesPerRealDay = league.games_per_real_day ?? 48;
-    const intervalMinutes = 1440 / gamesPerRealDay;
+    // [2026-09-15 Fix] game_date(가상 캘린더)와 scheduledAt(실제 방송 시각)을 서로 다른
+    // 소스에서 계산한다 — playoffStartIso는 "실제로 언제 방송되는가"에만 쓰고, game_date는
+    // postseasonVirtualAnchor() 기반 가상 날짜를 쓴다. daysOffset(플레이인 유무에 따른
+    // 1일/2일 차이)은 두 축 모두에 동일하게 반영해 상대적 순서(플레이인 → 디사이더/본선)는
+    // 유지한다.
+    const playoffStart     = kstMidnightPlusDays(new Date().toISOString(), daysOffset);
+    const playoffStartIso  = playoffStart.toISOString();
+    const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), daysOffset - 1);
+    const gamesPerRealDay  = league.games_per_real_day ?? 48;
+    const intervalMinutes  = 1440 / gamesPerRealDay;
 
     const result = initializeTournamentBracket(
         seededTeams,
@@ -165,7 +207,7 @@ export async function buildAndStoreConferenceBracket(
         league.match_format ?? 'best_of_7',
         league.finals_match_format ?? league.match_format ?? 'best_of_7',
         `${league.id}-playoffs`,
-        playoffStartIso.slice(0, 10),
+        virtualStartDate,
         intervalMinutes,
         playoffStartIso,
         'ranked',
@@ -174,7 +216,7 @@ export async function buildAndStoreConferenceBracket(
     const { error: gamesErr } = await insertGames(roomId, league.id, result.schedule as any);
     if (gamesErr) {
         console.error(`[playoffSeeder] insertGames failed(${league.id}): ${gamesErr}`);
-        return;
+        return null;
     }
     await insertGameShortCodes(roomId, result.schedule.map(g => ({ id: g.id }))).catch(err =>
         console.error(`[playoffSeeder] insertGameShortCodes 실패(${roomId}):`, err),
@@ -183,11 +225,26 @@ export async function buildAndStoreConferenceBracket(
     // priorSeries(호출자의 배열 레퍼런스)에 새 본선 시리즈를 직접 push — 재조회 없이 호출자가
     // 들고 있던 최신 상태(플레이인 결과 등) 그대로에 이어 붙인다. 자세한 이유는 위 함수 설명 참조.
     priorSeries.push(...result.series);
-    await supabase.from('leagues')
-        .update({ bracket_data: { series: priorSeries } })
-        .eq('id', league.id);
+    // [2026-09-15 Fix] tournament_start_at/sim_real_start_at을 함께 저장해야 2라운드 이후
+    // 신규 경기(simRunner.ts의 handleTournamentAdvance → advanceTournamentState)도 여기서 쓴
+    // 것과 동일한 앵커를 재사용한다. 이 값이 없으면 handleTournamentAdvance가
+    // leagues.season_start_date(정규시즌 "시작일", 10월)로 잘못 폴백해 2라운드부터 game_date가
+    // 다시 엉뚱한 날짜로 튄다 — tournament_start_at은 원래 개별 토너먼트(type='tournament')
+    // 전용 컬럼이었지만 main_league 플레이오프에서도 이름 그대로 "이 포스트시즌의 시작 앵커"로
+    // 재사용해도 안전하다(handleTournamentAdvance가 league.type을 가리지 않고 무조건 읽음).
+    const tournamentStartAt = `${virtualStartDate}T00:00:00.000Z`;
+    if (persist) {
+        await supabase.from('leagues')
+            .update({
+                bracket_data: { series: priorSeries },
+                tournament_start_at: tournamentStartAt,
+                sim_real_start_at: playoffStartIso,
+            })
+            .eq('id', league.id);
+    }
 
     console.log(`[playoffSeeder] league=${league.id} — playoffs started (E=${eastQualified.length} W=${westQualified.length}, ${seededTeams.length} teams, ${result.schedule.length} games)`);
+    return { tournamentStartAt, simRealStartAt: playoffStartIso };
 }
 
 /** 플레이인 없이 정규시즌 종료 즉시 컨퍼런스별 top-N으로 브라켓 생성. */

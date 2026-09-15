@@ -3,6 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Check, Star } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
+import { useSeasonContext } from './seasonContext';
+import { useCurrentVirtualDate } from '../../../hooks/useCurrentVirtualDate';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
@@ -281,6 +283,10 @@ const MultiAllStarView: React.FC = () => {
     const { league, room, leagueTeams } = useLeagueContext();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
+    // [2026-09-15 Fix] "투표 시작일에 보이고 브레이크 종료일에 숨긴다" — 메뉴 숨김
+    // (MultiSidebar.tsx/MultiHeaderNavMenu.tsx)과 동일 계산을 URL 직접 접근 가드에도 적용.
+    const { schedule } = useSeasonContext();
+    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day);
 
     // [2026-09-09] "올스타 화면에 탭 그룹을 추가해(올스타/라이징스타/3점 컨테스트/덩크
     // 컨테스트)" 요청으로 기존 2단(main/risingstars) 토글을 4단 탭으로 확장 — URL
@@ -366,13 +372,23 @@ const MultiAllStarView: React.FC = () => {
     // 올스타는 main_league 전용 기능(server/src/scheduler.ts가 type='main_league'만 투표/경기를
     // 자동 진행) — tournament 세션은 메뉴 자체가 숨겨지지만(MultiSidebar.tsx/
     // MultiHeaderNavMenu.tsx), URL 직접 접근은 막히지 않으므로 여기서도 한 번 더 막는다.
-    if (league?.type === 'tournament') {
+    // [2026-09-15 Fix, 2차] 처음엔 메뉴 숨김과 동일하게 isAllStarWindow(투표시작~브레이크종료)
+    // 밖이면 통째로 막았는데, 사용자 확정 스펙: "브레이크가 끝나고 메뉴가 숨겨진 뒤에도 시즌
+    // 일정 화면에서 각 올스타 일정을 클릭하면 실제 탭 화면으로 딥링크되어야 한다"(지난 결과를
+    // 다시 볼 수 있어야 하므로). 그래서 "아직 시작 전"(투표 시작일 이전)만 막고, 브레이크가
+    // 끝난 뒤는 막지 않는다 — 메뉴에서만 사라질 뿐 화면 자체는 계속 살아있다.
+    const beforeAllStarVoteStart = !!currentVirtualDate && currentVirtualDate < keyDates.allStarVoteStart;
+    if (league?.type === 'tournament' || beforeAllStarVoteStart) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-slate-200 pretendard">
                 <Star size={40} className="text-slate-600" />
                 <div className="text-center">
                     <h2 className="text-lg font-black text-slate-300 ko-tight">올스타</h2>
-                    <p className="text-sm text-slate-500 ko-normal mt-1">토너먼트 세션에서는 지원하지 않는 기능입니다.</p>
+                    <p className="text-sm text-slate-500 ko-normal mt-1">
+                        {league?.type === 'tournament'
+                            ? '토너먼트 세션에서는 지원하지 않는 기능입니다.'
+                            : '올스타 투표가 아직 시작되지 않았습니다.'}
+                    </p>
                 </div>
             </div>
         );

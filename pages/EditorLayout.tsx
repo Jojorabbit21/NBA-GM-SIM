@@ -61,6 +61,30 @@ const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
                     >
                         물리 랩
                     </NavLink>
+                    <NavLink
+                        to="league"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        리그 관리
+                    </NavLink>
+                    <NavLink
+                        to="users"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        사용자 관리
+                    </NavLink>
                 </div>
                 <Outlet context={{ userId }} />
             </div>

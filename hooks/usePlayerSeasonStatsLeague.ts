@@ -45,17 +45,27 @@ interface StatsLeagueRow {
 
 export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
 
-export function usePlayerSeasonStatsLeague(roomId: string | undefined | null, playerIds: string[]) {
+// [2026-09-15 Fix] isPlayoff(기본 false) — 리더보드의 "플레이오프" 토글이 이 값을 true로
+// 넘겨 별도로 한 번 더 호출한다(MultiLeaderboardView.tsx). RPC에 p_is_playoff 파라미터가
+// 생기기 전엔 정규시즌/플레이오프 구분 없이 전부 합산돼서, buildLeagueTeams.ts가
+// player.playoffStats를 채울 방법 자체가 없었다(항상 undefined → 리더보드 플레이오프
+// 토글이 매번 0으로만 나오던 버그).
+// enabledOverride — 호출부가 "지금은 이 쿼리가 필요 없다"고 판단할 때(리더보드가 정규시즌
+// 모드일 때 플레이오프 쿼리를 안 돌리는 등) false로 넘겨 아예 fetch를 막는다. 기본 true.
+export function usePlayerSeasonStatsLeague(
+    roomId: string | undefined | null, playerIds: string[], isPlayoff: boolean = false, enabledOverride: boolean = true,
+) {
     const sortedIds = [...new Set(playerIds)].sort();
-    const enabled = !!roomId && sortedIds.length > 0;
+    const enabled = !!roomId && sortedIds.length > 0 && enabledOverride;
 
     const query = useQuery({
-        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(',')],
+        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(','), isPlayoff],
         enabled,
         queryFn: async (): Promise<PlayerSeasonStatsLeague> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_league', {
                 p_room_id: roomId,
                 p_player_ids: sortedIds,
+                p_is_playoff: isPlayoff,
             });
             if (error) throw error;
 

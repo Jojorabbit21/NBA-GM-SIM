@@ -166,8 +166,10 @@ export const SIM_CONFIG = {
         // INTERIOR_SKILL_CURVE·defIntensity·foulProneness가 전부 곱/합연산으로 추가로 얹혀
         // 실전 평균 확률이 base보다 상당히 높게 나온다 — base를 19% 낮춰 이 복합 배율들이
         // 그대로 살아있는 채로 최종 확률만 전반적으로 완화(docs/history/dev-log.md 참고).
-        BASE_RATE_RIM: 0.13,
-        BASE_RATE_PAINT: 0.10,     // Floater/Paint (Rim과 Mid 사이)
+        // [2026-09-14] 0.13 → 0.10, PAINT 0.10 → 0.08 (client 미러 참고 — 빅맨 파울 confound
+        // 실측 후속 조치, docs/history/dev-log.md 참고).
+        BASE_RATE_RIM: 0.10,
+        BASE_RATE_PAINT: 0.08,     // Floater/Paint (Rim과 Mid 사이)
         BASE_RATE_MID: 0.045,      // 미드레인지 (잡다한 슈팅파울)
         BASE_RATE_3PT: 0.025,      // 3점 슈팅파울 (착지 공간 침범 등)
 
@@ -195,9 +197,11 @@ export const SIM_CONFIG = {
         // [2026-09-10] 저~중구간 완화(중립점 72→60) — 기존엔 intDef 72 미만(로테이션/벤치급
         // 빅맨 다수 포함)이 전부 추가 페널티(+0.010~+0.025) 대상이었음. 88 이상 엘리트 구간
         // 할인폭은 그대로 유지(빅맨 파울 트러블 조사 후속 조치, docs/history/dev-log.md 참고).
+        // [2026-09-14] 72 이상만 비대칭 2배 확대, 45/60 원본 유지 (client 미러 참고 — 대칭 2배는
+        // 약한 수비 빅맨 페널티도 같이 커지는 부작용 있었음, docs/history/dev-log.md 참고).
         INTERIOR_SKILL_CURVE: [   // Rim/Paint — intDef*0.65 + defConsist*0.35
-            [45, 0.010], [60, 0.000], [72, -0.010],
-            [82, -0.030], [88, -0.05], [93, -0.065], [97, -0.09],
+            [45, 0.010], [60, 0.000], [72, -0.020],
+            [82, -0.060], [88, -0.10], [93, -0.13], [97, -0.18],
         ] as [number, number][],
         PERIMETER_SKILL_CURVE: [  // Mid/3PT — perDef*0.65 + defConsist*0.35
             [45, 0.025], [55, 0.012], [71, 0.000],

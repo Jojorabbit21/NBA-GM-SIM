@@ -82,9 +82,18 @@ const MultiLeaderboardView: React.FC = () => {
         isPending: statsLoading,
         refetch: refetchStats,
     } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
+    // [2026-09-15 Fix] "플레이오프" 토글이 항상 0으로만 나오던 버그 — buildLeagueTeams.ts가
+    // player.playoffStats를 채운 적이 없었다. 토글이 playoff일 때만 두 번째 RPC 호출을
+    // 활성화(enabledOverride)해서 정규시즌 조회와 중복 부담 없이 필요할 때만 가져온다.
+    const isPlayoffMode = savedFilterState.seasonType === 'playoff';
+    const {
+        data: playoffStatsByPlayer,
+        refetch: refetchPlayoffStats,
+    } = usePlayerSeasonStatsLeague(room?.id, allRosterIds, true, isPlayoffMode);
     const selectLeaderboardTeams = useCallback(
-        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer),
-        [leagueTeams, useCustomOverrides, statsByPlayer],
+        (raw: LeagueRawStatsData): Team[] =>
+            buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer, undefined, playoffStatsByPlayer),
+        [leagueTeams, useCustomOverrides, statsByPlayer, playoffStatsByPlayer],
     );
 
     const {
@@ -133,7 +142,7 @@ const MultiLeaderboardView: React.FC = () => {
             hideSeasonType={isTournament}
             savedState={savedFilterState}
             onStateChange={handleFilterStateChange}
-            onRefresh={() => { refetchTeams(); refetchStats(); }}
+            onRefresh={() => { refetchTeams(); refetchStats(); if (isPlayoffMode) refetchPlayoffStats(); }}
             refreshing={fetchRefreshing}
             enableHoverCard
         />

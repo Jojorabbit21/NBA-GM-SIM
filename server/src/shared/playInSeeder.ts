@@ -26,6 +26,7 @@ import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
 import {
     computeStandingsByConference, buildAndStoreConferenceBracket,
+    postseasonVirtualAnchor, addDaysStr,
     type StandingRow, type PostseasonLeagueRow,
 } from './playoffSeeder';
 
@@ -47,10 +48,13 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     const n = Math.max(2, league.playoff_team_count ?? 8);
     const autoClinch = Math.max(0, n - 2);
 
-    const playInStart     = kstMidnightPlusDays(new Date().toISOString(), 1);
-    const playInStartIso  = playInStart.toISOString();
-    const gamesPerRealDay = league.games_per_real_day ?? 48;
-    const intervalMinutes = 1440 / gamesPerRealDay;
+    // [2026-09-15 Fix] game_date(가상 캘린더)는 postseasonVirtualAnchor() 기반으로 계산 —
+    // playInStartIso(실제 방송 시각/scheduledAt)와는 별개 축. 플레이인은 포스트시즌 day 0.
+    const playInStart      = kstMidnightPlusDays(new Date().toISOString(), 1);
+    const playInStartIso   = playInStart.toISOString();
+    const virtualStartDate = postseasonVirtualAnchor(league.virtual_season_year);
+    const gamesPerRealDay  = league.games_per_real_day ?? 48;
+    const intervalMinutes  = 1440 / gamesPerRealDay;
 
     const series: PlayoffSeries[] = [];
     const schedule: TournamentGame[] = [];
@@ -87,11 +91,11 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
         // 게임을 만들지 않고, handlePlayInAdvance가 양쪽 슬롯이 채워지는 시점에 슬롯 1로 생성한다.
         schedule.push(...generateAllSeriesGames(
             playInSeriesId(conf, '7v8'), s7.team_slug, s8.team_slug, 1,
-            playInStartIso.slice(0, 10), 0, intervalMinutes, playInStartIso,
+            virtualStartDate, 0, intervalMinutes, playInStartIso,
         ));
         schedule.push(...generateAllSeriesGames(
             playInSeriesId(conf, '9v10'), s9.team_slug, s10.team_slug, 1,
-            playInStartIso.slice(0, 10), 0, intervalMinutes, playInStartIso,
+            virtualStartDate, 0, intervalMinutes, playInStartIso,
         ));
 
         // 7/8위는 플레이인 결과로 나중에 확정 — 본선 1라운드 프레임엔 일단 TBD로 채워 넣는다.
@@ -121,12 +125,16 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
  * simRunner.ts의 handleTournamentAdvance가 round:0 시리즈 완료를 감지했을 때 호출된다.
  * series 배열을 직접 mutate한다 — 호출부가 그 직후 bracket_data를 저장하므로 여기서는
  * "8th 디사이더 게임 생성"처럼 games 테이블에 별도로 반영해야 하는 부수효과만 처리한다.
+ *
+ * [2026-09-15 Fix] 반환값은 [하위호환] 레거시 경로에서 buildAndStoreConferenceBracket을
+ * persist=false로 호출했을 때 나온 tournament_start_at/sim_real_start_at — handleTournamentAdvance
+ * 의 낙관적 동시성 제어(bracket_version CAS) 최종 write에 병합돼야 한다. 그 경로를 안 탔으면 null.
  */
 export async function handlePlayInAdvance(
     league: PostseasonLeagueRow, roomId: string, series: PlayoffSeries[], finishedSeriesId: string,
-): Promise<void> {
+): Promise<{ tournamentStartAt: string; simRealStartAt: string } | null> {
     const finished = series.find(s => s.id === finishedSeriesId);
-    if (!finished || !finished.winnerId || finished.conference === 'BPL') return;
+    if (!finished || !finished.winnerId || finished.conference === 'BPL') return null;
     const conf = finished.conference;
     const loserId = finished.winnerId === finished.higherSeedId ? finished.lowerSeedId : finished.higherSeedId;
 
@@ -139,12 +147,16 @@ export async function handlePlayInAdvance(
         }
 
         if (decider.higherSeedId !== 'TBD' && decider.lowerSeedId !== 'TBD') {
+            // [2026-09-15 Fix] 디사이더는 플레이인 다음날(포스트시즌 day 1) — 실제로 이 함수가
+            // 언제(며칠 뒤든) 호출되든 game_date는 항상 이 가상 날짜로 고정한다. 실제 방송
+            // 시각(scheduledAt)만 호출 시점의 real "now"+1일을 그대로 사용.
+            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1);
             const deciderStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
             const gamesPerRealDay = league.games_per_real_day ?? 48;
             const intervalMinutes = 1440 / gamesPerRealDay;
             const games = generateAllSeriesGames(
                 decider.id, decider.higherSeedId, decider.lowerSeedId, 1,
-                deciderStart.toISOString().slice(0, 10), 1, intervalMinutes, deciderStart.toISOString(),
+                deciderVirtualDate, 1, intervalMinutes, deciderStart.toISOString(),
             );
             const { error } = await insertGames(roomId, league.id, games as any);
             if (error) console.error(`[playInSeeder] decider insertGames 실패(${league.id}): ${error}`);
@@ -162,14 +174,14 @@ export async function handlePlayInAdvance(
         if (finishedSeriesId === playInSeriesId(conf, '7v8') || finishedSeriesId === playInSeriesId(conf, '8th')) {
             await resolveRoundOneFromPlayIn(league, roomId, series, conf, finishedSeriesId, finished.winnerId);
         }
-        return;
+        return null;
     }
 
     // [하위호환] 이 수정 이전에 이미 시작된 리그 — startPlayIn()이 본선 1라운드 프레임을 만들어
     // 두지 않았으므로, 예전 방식대로 플레이인이 전부 끝난 뒤에야 본선 브라켓 전체를 한 번에
     // 생성한다. 새로 시작하는 리그는 위 hasRoundOneFrame 분기에서 이미 return되어 여기 오지 않는다.
     const allPlayInFinished = series.filter(s => s.round === 0).every(s => s.finished);
-    if (!allPlayInFinished) return;
+    if (!allPlayInFinished) return null;
 
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const n = Math.max(2, league.playoff_team_count ?? 8);
@@ -188,13 +200,16 @@ export async function handlePlayInAdvance(
     };
 
     // series(호출자 simRunner.ts의 배열 레퍼런스)를 그대로 넘긴다 — buildAndStoreConferenceBracket이
-    // 여기에 새 본선 시리즈를 push하므로, 이 함수 반환 이후 simRunner.ts가 같은 배열로 한 번 더
-    // bracket_data를 저장해도 방금 여기서 쓴 것과 동일한 최신 상태를 재기록할 뿐이라 안전하다.
-    await buildAndStoreConferenceBracket(
+    // 여기에 새 본선 시리즈를 push한다. persist=false — 이 write는 leagues.bracket_version CAS를
+    // 태워야 하므로 여기서 직접 저장하지 않고, 계산된 앵커만 반환해 handleTournamentAdvance의
+    // 최종 조건부 write에 병합시킨다(위 함수 설명 참조).
+    return await buildAndStoreConferenceBracket(
         league, roomId,
         resolveQualified('East', East),
         resolveQualified('West', West),
         series,
+        1,
+        false,
     );
 }
 
@@ -220,12 +235,16 @@ async function resolveRoundOneFromPlayIn(
 
     target.lowerSeedId = winnerId;
 
+    // [2026-09-15 Fix] 본선 1라운드는 플레이인 다음날(포스트시즌 day 1) — startPlayIn()이
+    // buildAndStoreConferenceBracket을 daysOffset=2로 호출할 때 계산하는 virtualStartDate와
+    // 동일한 날짜여야 같은 라운드의 다른 매치업들과 game_date가 어긋나지 않는다.
+    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1);
     const startAnchor     = kstMidnightPlusDays(new Date().toISOString(), 1);
     const gamesPerRealDay = league.games_per_real_day ?? 48;
     const intervalMinutes = 1440 / gamesPerRealDay;
     const games = generateAllSeriesGames(
         target.id, target.higherSeedId, target.lowerSeedId, target.targetWins,
-        startAnchor.toISOString().slice(0, 10), 0, intervalMinutes, startAnchor.toISOString(),
+        round1VirtualDate, 0, intervalMinutes, startAnchor.toISOString(),
     );
     const { error } = await insertGames(roomId, league.id, games as any);
     if (error) console.error(`[playInSeeder] round1 insertGames 실패(${league.id}): ${error}`);

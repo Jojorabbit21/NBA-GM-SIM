@@ -205,7 +205,7 @@ const TAG_LABEL: Record<string, string> = {
 
 // ── 테이블 데이터 헬퍼 ───────────────────────────────────────────────────────
 const DISPLAY_ONLY_CO_KEYS = new Set([
-    'contract', 'popularity', 'name', 'num', 'salary', 'lock', 'draft_year',
+    'contract', 'popularity', 'name', 'num', 'salary', 'lock', 'draft_year', 'draft_round', 'draft_pick',
 ]);
 
 type PlayerDataEntry = {
@@ -642,7 +642,7 @@ const PlayerEditorPage: React.FC = () => {
     const livePreview = useMemo(() => {
         if (!selected || Object.keys(draft).length === 0) return null;
 
-        const NON_STAT_CO_KEYS = new Set(['contract', 'popularity', 'position', 'name', 'team', 'num', 'salary', 'lock', 'draft_year']);
+        const NON_STAT_CO_KEYS = new Set(['contract', 'popularity', 'position', 'name', 'team', 'num', 'salary', 'lock', 'draft_year', 'draft_round', 'draft_pick']);
 
         const computePreview = (attrs: Record<string, any>) => {
             try {
@@ -2781,6 +2781,52 @@ function sortBy(th) {
                                                     </div>
                                                 </td>
                                             </tr>
+                                            {/* 드래프트 라운드 · 픽 */}
+                                            <tr className="hover:bg-white/5 group transition-colors">
+                                                <td className="py-3 pl-4 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-300">드래프트 라운드 · 픽</span>
+                                                        <span className="text-[9px] text-gray-700 font-mono opacity-0 group-hover:opacity-100 transition-opacity">draft_round / draft_pick</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5" colSpan={2}>
+                                                    <div className="flex items-center gap-3">
+                                                        <select
+                                                            className="w-28 bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60"
+                                                            value={draft.draft_round ?? ''}
+                                                            onChange={e => {
+                                                                const raw = e.target.value;
+                                                                setDraft(prev => {
+                                                                    const next = { ...prev };
+                                                                    if (raw === '') delete next.draft_round;
+                                                                    else next.draft_round = Number(raw) as 1 | 2;
+                                                                    return next;
+                                                                });
+                                                            }}>
+                                                            <option value="">언드래프트</option>
+                                                            <option value="1">1라운드</option>
+                                                            <option value="2">2라운드</option>
+                                                        </select>
+                                                        <input type="number" min={1} max={60} placeholder="픽 번호"
+                                                            className="w-24 bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 placeholder-gray-600 transition-colors"
+                                                            value={draft.draft_pick ?? ''}
+                                                            onChange={e => {
+                                                                const raw = e.target.value;
+                                                                setDraft(prev => {
+                                                                    const next = { ...prev };
+                                                                    if (raw === '') delete next.draft_pick;
+                                                                    else next.draft_pick = Number(raw);
+                                                                    return next;
+                                                                });
+                                                            }} />
+                                                        {draft.draft_round != null && draft.draft_pick != null && (
+                                                            <span className="text-sm text-gray-400">
+                                                                → {draft.draft_round}라운드 전체 {draft.draft_pick}순위
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
                                             {/* 토글 행 */}
                                             <tr className="hover:bg-white/5 transition-colors">
                                                 <td colSpan={3} className="py-3 pl-4 pr-4">
@@ -2921,7 +2967,7 @@ function sortBy(th) {
                                 onRemoveYear={removeContractYear}
                                 onSetContractField={setContractField}
                                 onSetSalary={v => setField('salary', v)}
-                                startYear={2025 - ((draft.contract?.currentYear) ?? 0)}
+                                startYear={2026 - ((draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
                         <Section label="CO 계약">
@@ -2943,7 +2989,7 @@ function sortBy(th) {
                                 onRemoveYear={removeCoContractYear}
                                 onSetContractField={setCoContractField}
                                 onSetSalary={v => setCoField('salary', v)}
-                                startYear={2025 - ((draft.custom_overrides?.contract?.currentYear) ?? (draft.contract?.currentYear) ?? 0)}
+                                startYear={2026 - ((draft.custom_overrides?.contract?.currentYear) ?? (draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
 

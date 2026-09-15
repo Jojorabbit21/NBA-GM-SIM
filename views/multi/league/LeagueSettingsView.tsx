@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
-import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails } from '../../../services/multi/leagueService';
+import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague } from '../../../services/multi/leagueService';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
@@ -194,6 +194,11 @@ const LeagueSettingsView: React.FC = () => {
     const [resetConfirm,  setResetConfirm]  = useState(false);
     const [resetting,     setResetting]     = useState(false);
     const [resetErr,      setResetErr]      = useState<string | null>(null);
+
+    // ── 리그 삭제 state (어드민 전용) ────────────────────────────────────────
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [deleting,      setDeleting]      = useState(false);
+    const [deleteErr,     setDeleteErr]     = useState<string | null>(null);
 
     // 같은 league.id면 재초기화 하지 않음 — Realtime reload() 시 폼 덮어쓰기 방지
     const initializedLeagueIdRef = useRef<string | null>(null);
@@ -461,6 +466,16 @@ const LeagueSettingsView: React.FC = () => {
         console.log('[resetTournament] archive edition:', archiveEdition);
         reload();
         navigate(`/multi/leagues/${leagueId}/season`);
+    };
+
+    const handleDeleteLeague = async () => {
+        if (!league?.id || !userId) return;
+        setDeleting(true);
+        setDeleteErr(null);
+        const { error: err } = await deleteLeague(league.id, userId);
+        setDeleting(false);
+        if (err) { setDeleteErr(err); return; }
+        navigate('/', { replace: true });
     };
 
     const handleKick = async (kickUserId: string) => {
@@ -947,6 +962,57 @@ const LeagueSettingsView: React.FC = () => {
                                 </label>
                             </section>
                         )}
+
+                        {/* ── 리그 삭제 (어드민 전용, 되돌릴 수 없음) ─────────────────── */}
+                        <section className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 space-y-4">
+                            <h2 className="text-sm font-bold text-red-300 flex items-center gap-2">
+                                <Trash2 size={14} className="text-red-400" />
+                                리그 삭제
+                            </h2>
+                            <p className="text-xs text-slate-400 ko-normal leading-relaxed">
+                                이 리그를 완전히 삭제합니다. 참가팀, 로스터, 경기 일정, 진행 상황이 모두 사라지며
+                                되돌릴 수 없습니다.
+                            </p>
+
+                            {!deleteConfirm ? (
+                                <button
+                                    onClick={() => setDeleteConfirm(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-xl text-sm font-bold text-white transition-colors"
+                                >
+                                    <Trash2 size={13} />
+                                    리그 삭제
+                                </button>
+                            ) : (
+                                <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
+                                    <p className="text-sm font-bold text-white ko-tight">정말 삭제하시겠습니까?</p>
+                                    <p className="text-xs text-slate-400 ko-normal">
+                                        "{league.name}" 리그가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                                    </p>
+                                    {deleteErr && (
+                                        <p className="text-xs text-red-400 ko-normal">{deleteErr}</p>
+                                    )}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleDeleteLeague}
+                                            disabled={deleting}
+                                            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                        >
+                                            {deleting
+                                                ? <><Loader2 size={13} className="animate-spin" />삭제 중…</>
+                                                : <><Trash2 size={13} />삭제 실행</>
+                                            }
+                                        </button>
+                                        <button
+                                            onClick={() => { setDeleteConfirm(false); setDeleteErr(null); }}
+                                            disabled={deleting}
+                                            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl text-sm text-slate-300 transition-colors"
+                                        >
+                                            취소
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
                     </div>
 
                     {/* 우측: 멤버 설정 */}

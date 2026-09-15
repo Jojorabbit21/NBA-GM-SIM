@@ -1,6 +1,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Tv, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Loader2, Tv, ChevronLeft, ChevronRight, Calendar, Star } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -25,6 +25,7 @@ import {
     addDaysToKey, type DayGroup,
 } from './multiScheduleUtils';
 import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { getAllStarKeyDates } from '../../../utils/allStarSelection';
 
 const LIVE_POLL_MS = 5000;
 
@@ -46,6 +47,39 @@ function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
     }
     return map;
 }
+
+// [2026-09-15] 올스타 서브 이벤트(발표/라이징스타/3점/덩크/본경기)를 시즌 일정 화면에도
+// 노출 — 이 5개 날짜엔 announce/threept/dunk는 games 테이블에 아예 행이 없고(뉴스 이벤트일
+// 뿐), rising_stars/main도 실제로 시뮬레이션되기 전까진 행이 없다. groupByDay()가 games
+// 배열만 보고 그룹을 만들기 때문에 이 날짜들은 원래 "경기 없음"으로만 보였다 — 아래
+// allStarEntriesByDate가 이 공백을 채운다.
+type AllStarScheduleKind = 'announce' | 'rising_stars' | 'three_point' | 'dunk' | 'main';
+interface AllStarScheduleEntry {
+    kind: AllStarScheduleKind;
+    label: string;
+}
+const ALLSTAR_VIEW_BY_KIND: Record<AllStarScheduleKind, 'main' | 'risingstars' | 'threept' | 'dunk'> = {
+    announce: 'main', rising_stars: 'risingstars', three_point: 'threept', dunk: 'dunk', main: 'main',
+};
+
+// 사용자 확정 스펙: 올스타 투표 시작일 이전엔 클릭 불가(아직 아무 것도 없음), 그 이후로는
+// 브레이크가 끝나 메뉴가 숨겨진 뒤에도 계속 클릭 가능(지난 결과를 시즌 일정에서 다시 볼 수
+// 있어야 함 — MultiAllStarView.tsx의 라우트 가드도 동일 기준으로 맞춰둠).
+const AllStarScheduleRow: React.FC<{ entry: AllStarScheduleEntry; clickable: boolean; onClick: () => void }> = ({ entry, clickable, onClick }) => (
+    <button
+        onClick={clickable ? onClick : undefined}
+        disabled={!clickable}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-md border transition-colors text-left ${
+            clickable
+                ? 'border-indigo-700 bg-indigo-950/40 hover:bg-indigo-900/50 cursor-pointer'
+                : 'border-slate-800 bg-slate-900/50 cursor-default opacity-60'
+        }`}
+    >
+        <Star size={18} className={clickable ? 'text-indigo-300' : 'text-slate-600'} />
+        <span className="flex-1 text-sm font-bold text-slate-100 ko-normal">{entry.label}</span>
+        <span className="text-xs text-slate-400 ko-normal">{clickable ? '보러가기 →' : '예정'}</span>
+    </button>
+);
 
 // ── 서브 컴포넌트 ──────────────────────────────────────────────────────────────
 
@@ -542,8 +576,36 @@ const MultiScheduleView: React.FC = () => {
     // 자연히 최상단에, 진행중/예정 경기는 시간이 흐른 순서 그대로 아래에 이어진다.
     const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
     const totalPlayed  = useMemo(() => allGames.filter(g => getGameDisplayState(g, serverNow) === 'final').length, [allGames, serverNow]);
-    // 데이트피커에서 경기가 있는 날짜만 선택 가능하도록(GameDateStrip과 동일 제약).
-    const scheduleDateSet = useMemo(() => new Set(groupedByDay.map(g => g.dateKey)), [groupedByDay]);
+
+    // [2026-09-15] 올스타 서브 이벤트 5개 — 날짜별로 묶어둔다(3점/덩크는 같은 날이라 한
+    // 날짜에 항목이 2개). main_league가 아니면(토너먼트) 빈 맵.
+    const allStarKeyDates = useMemo(
+        () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear()),
+        [league?.virtual_season_year],
+    );
+    const allStarEntriesByDate = useMemo(() => {
+        const map = new Map<string, AllStarScheduleEntry[]>();
+        if (!preferVirtual) return map;
+        const push = (dateKey: string, entry: AllStarScheduleEntry) => {
+            const arr = map.get(dateKey) ?? [];
+            arr.push(entry);
+            map.set(dateKey, arr);
+        };
+        push(allStarKeyDates.allStarStart, { kind: 'announce', label: '올스타 참가자 발표' });
+        push(allStarKeyDates.allStarRisingStarsDate, { kind: 'rising_stars', label: '라이징스타 챌린지' });
+        push(allStarKeyDates.allStarThreePointContestDate, { kind: 'three_point', label: '3점 챌린지' });
+        push(allStarKeyDates.allStarDunkContestDate, { kind: 'dunk', label: '덩크 컨테스트' });
+        push(allStarKeyDates.allStarMainGameDate, { kind: 'main', label: '올스타 본경기' });
+        return map;
+    }, [preferVirtual, allStarKeyDates]);
+
+    // 데이트피커에서 경기가 있는 날짜 + 올스타 서브 이벤트 날짜만 선택 가능(GameDateStrip과
+    // 동일 제약 원칙, 올스타는 여기 추가로 열어준다).
+    const scheduleDateSet = useMemo(() => {
+        const set = new Set(groupedByDay.map(g => g.dateKey));
+        for (const dateKey of allStarEntriesByDate.keys()) set.add(dateKey);
+        return set;
+    }, [groupedByDay, allStarEntriesByDate]);
 
     // "오늘" 배지 판정 기준값 — 메인리그(preferVirtual)는 dateKey가 가상 캘린더 값이라
     // currentSimDate(실제 KST, useSeasonContext에서 옴)와 직접 비교하면 항상 어긋난다.
@@ -557,6 +619,20 @@ const MultiScheduleView: React.FC = () => {
 
     // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
     const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
+
+    // [2026-09-15] 올스타 서브 이벤트 클릭 가능 여부 — 투표 시작일 이전엔 불가, 그 이후로는
+    // 브레이크가 끝나 메뉴가 숨겨진 뒤에도 계속 가능(MultiAllStarView.tsx 라우트 가드와 동일 기준).
+    const allStarClickable = preferVirtual && !!todayKey && todayKey >= allStarKeyDates.allStarVoteStart;
+    // 라이징스타/본경기는 이미 실제로 시뮬레이션됐으면(games 테이블에 해당 game_id 존재)
+    // 올스타 화면 대신 그 경기 자체(중계/박스스코어)로 보낸다 — postAllStarGame.ts의
+    // gameId 포맷(`${kind}-${roomId}-${seasonNumber}`)과 반드시 일치해야 한다.
+    const handleAllStarEntryClick = (entry: AllStarScheduleEntry) => {
+        if ((entry.kind === 'rising_stars' || entry.kind === 'main') && room?.id && room.season_number != null) {
+            const gameId = `${entry.kind}-${room.id}-${room.season_number}`;
+            if (allGames.some(g => g.id === gameId)) { handleView(gameId); return; }
+        }
+        navigate(`/multi/leagues/${leagueId}/season/allstar?view=${ALLSTAR_VIEW_BY_KIND[entry.kind]}`);
+    };
     // 최우수선수 이름 클릭 → 선수 프로필(MultiPlayerDetailView) 캐노니컬 라우트로 이동.
     const handlePlayerClick = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);
     // 원정/홈 팀 이름 클릭 → 팀 로스터 화면으로 이동. MultiFrontOfficeView/MultiStandingsView와
@@ -710,7 +786,20 @@ const MultiScheduleView: React.FC = () => {
             {/* 본문 — 컨테이너 없이 페이지 가장자리에 바로 붙는다 */}
             {activeDate && (
                 activeDayGames.length === 0 ? (
-                    <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                    allStarEntriesByDate.get(activeDate)?.length ? (
+                        <div className="flex flex-col gap-2 max-w-md mx-auto px-4 py-10">
+                            {allStarEntriesByDate.get(activeDate)!.map(entry => (
+                                <AllStarScheduleRow
+                                    key={entry.kind}
+                                    entry={entry}
+                                    clickable={allStarClickable}
+                                    onClick={() => handleAllStarEntryClick(entry)}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                    )
                 ) : (
                     <Table className="!rounded-none !shadow-none" fullHeight={false} tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                         <colgroup>

@@ -460,11 +460,19 @@ async function maybePostRisingStarsNews(
 export async function computeAndPostThreePointContestNews(
     roomId: string, leagueId: string, virtualDate: string, contestDate: string,
 ): Promise<void> {
-    // 멱등성 — 다른 게시 함수들과 동일한 count 조회 패턴.
+    // [2026-09-15 Fix] sim_date 기준 멱등성 → season_number 기준으로 변경. scheduler.ts의
+    // 호출 조건이 virtualDate===allStarStart(정확 일치, 브레이크 안이라 영원히 불가능했음)에서
+    // virtualDate>=allStarStart로 바뀌면서, 이 함수가 그 시점 이후 매 틱(다른 virtualDate로)
+    // 재호출된다 — sim_date로 걸면 호출될 때마다 virtualDate가 달라져 매번 "아직 안 올렸다"고
+    // 오판해 뉴스가 매일 중복 게시된다. season_number 하나로 이 시즌에 한 번만 게시되도록
+    // 고정 — 3점/덩크 콘테스트 "결과" 발표 함수들(postThreePointContest.ts/postDunkContest.ts)
+    // 이 이미 쓰던 것과 동일한 패턴으로 통일.
+    const { data: room } = await supabase.from('rooms').select('season_number').eq('id', roomId).maybeSingle();
+    const seasonNumber = (room as any)?.season_number ?? 1;
     const { count: alreadyPosted } = await supabase
         .from('league_events')
         .select('id', { count: 'exact', head: true })
-        .eq('room_id', roomId).eq('type', 'allstar_three_point_contest').eq('sim_date', virtualDate);
+        .eq('room_id', roomId).eq('type', 'allstar_three_point_contest').eq('season_number', seasonNumber);
     if ((alreadyPosted ?? 0) > 0) return;
 
     const built = await buildTeamsForRoom(roomId, leagueId);
@@ -480,7 +488,7 @@ export async function computeAndPostThreePointContestNews(
 
     const { error } = await supabase.from('league_events').insert({
         room_id: roomId, league_id: leagueId, type: 'allstar_three_point_contest',
-        sim_date: virtualDate,
+        sim_date: virtualDate, season_number: seasonNumber,
         payload: {
             v: 1,
             headline: `${season}시즌 3점 챌린지 참가자 명단이 확정됐습니다`,
@@ -515,11 +523,15 @@ function threePointParticipantPayload(p: ThreePointContestParticipant) {
 export async function computeAndPostDunkContestNews(
     roomId: string, leagueId: string, virtualDate: string, contestDate: string,
 ): Promise<void> {
-    // 멱등성 — 다른 게시 함수들과 동일한 count 조회 패턴.
+    // [2026-09-15 Fix] computeAndPostThreePointContestNews()와 동일 이유/패턴 —
+    // sim_date 기준 멱등성은 scheduler.ts의 virtualDate>= 재시도와 맞물려 매일 중복 게시로
+    // 이어지므로 season_number 기준으로 변경.
+    const { data: room } = await supabase.from('rooms').select('season_number').eq('id', roomId).maybeSingle();
+    const seasonNumber = (room as any)?.season_number ?? 1;
     const { count: alreadyPosted } = await supabase
         .from('league_events')
         .select('id', { count: 'exact', head: true })
-        .eq('room_id', roomId).eq('type', 'allstar_dunk_contest').eq('sim_date', virtualDate);
+        .eq('room_id', roomId).eq('type', 'allstar_dunk_contest').eq('season_number', seasonNumber);
     if ((alreadyPosted ?? 0) > 0) return;
 
     const built = await buildTeamsForRoom(roomId, leagueId);
@@ -535,7 +547,7 @@ export async function computeAndPostDunkContestNews(
 
     const { error } = await supabase.from('league_events').insert({
         room_id: roomId, league_id: leagueId, type: 'allstar_dunk_contest',
-        sim_date: virtualDate,
+        sim_date: virtualDate, season_number: seasonNumber,
         payload: {
             v: 1,
             headline: `${season}시즌 덩크 컨테스트 참가자 명단이 확정됐습니다`,

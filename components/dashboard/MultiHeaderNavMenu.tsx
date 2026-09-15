@@ -16,6 +16,9 @@ interface MultiHeaderNavMenuProps {
     hasPlayoffs?:  boolean;
     /** tournament 세션 여부 — 올스타는 main_league 전용 기능이라 tournament에서는 메뉴에서 제외한다. */
     isTournament?: boolean;
+    /** [2026-09-15] 올스타 투표 시작일~브레이크 종료일 전날까지만 true(isAllStarWindowActive) —
+     *  이 기간 밖에서는 isTournament와 무관하게 "올스타" 항목 자체를 리스트에서 제외한다. */
+    showAllStar?: boolean;
     /** 리그 샐러리캡 마스터 스위치 — 켜져 있을 때만 "내 팀" 드롭다운에 "재정" 항목 노출. */
     capEnabled?:   boolean;
     /** 드래프트 완료 여부(league.status가 in_progress/finished) — false면 "내 팀"/"전술"
@@ -52,6 +55,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     roomId,
     hasPlayoffs,
     isTournament,
+    showAllStar,
     capEnabled,
     isDraftComplete,
     onViewPlayer,
@@ -142,7 +146,10 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     const leagueItems: DropdownItem[] = [
         { label: '순위표',    path: `${base}/standings` },
         ...(hasPlayoffs ? [{ label: '플레이오프', path: `${base}/playoffs` }] : []),
-        ...(isTournament ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
+        // [2026-09-15 Fix] 올스타 투표 시작일에 나타나고 브레이크 종료일에 사라진다
+        // (showAllStar = isAllStarWindowActive, MultiHeader.tsx가 계산해서 내려줌). 원래는
+        // isTournament만 체크하고 기간 종료 조건이 아예 없어 끝나도 안 사라지던 버그.
+        ...(isTournament || !showAllStar ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
         { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },

@@ -659,9 +659,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // (calculateHitRate의 isMismatch, ±12%)로 흡수되고, 파울 쪽은 보조적으로만 반영 — "가드가
     // 빅맨을 못 막으면 대부분 그냥 뚫리는 것"이지 파울로 이어지는 게 대부분이 아니기 때문에
     // 배수 상한을 좁게(1.5배) 잡음. MATCHUP_GAP_SCALE=60은 실제 선수 매치업 시뮬레이션으로 확정.
+    // [2026-09-14] Rim/Paint(strength 기반)만 비활성화 — 실제 NBA 실측(웸반야마/홈그렌 같은
+    // 마른 림프로텍터가 고베어/아담스 같은 벌크 빅맨보다 PF/36이 오히려 낮음, StatMuse 확인)과
+    // 정반대 방향이었음. Mid/3PT(speed+agility 기반)는 그대로 유지 — 이건 별개 검증 대상이라
+    // 이번 조사 범위 밖(docs/history/dev-log.md 참고).
     const matchupGap = calculateMatchupGap(actor, defender, preferredZone);
     const gapNormalized = Math.max(-1, Math.min(1, matchupGap / MATCHUP_GAP_SCALE));
-    const matchupFoulMult = 1 + gapNormalized * 0.5; // 0.5배(수비 압도) ~ 1.5배(수비 압도당함)
+    const isInteriorZoneForFoul = preferredZone === 'Rim' || preferredZone === 'Paint';
+    const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5); // Mid/3PT만 0.5~1.5배 유지
 
     shootingFoulRate *= foulProbMod * matchupFoulMult;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)

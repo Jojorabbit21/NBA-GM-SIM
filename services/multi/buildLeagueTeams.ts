@@ -25,6 +25,11 @@ export interface LeagueTeamWithOppZones extends Team {
  * statsByPlayer/oppZoneByTeam을 안 넘기면(기본값 {}) 모든 선수/팀이 INITIAL_STATS()/빈
  * 객체로 채워진다 — 라우팅 전환 중 아직 두 번째 쿼리가 안 끝난 과도기 렌더에서도 크래시
  * 없이 0으로 표시되도록 하는 안전장치.
+ *
+ * [2026-09-15 Fix] playoffStatsByPlayer(선택) — 넘기면 player.playoffStats도 함께 채운다.
+ * 기본값 빈 객체라 이 파라미터를 안 쓰는 5개 호출부(홈/트레이드/선수상세/전술/리더보드
+ * 정규시즌)는 전혀 영향 없음 — 리더보드가 "플레이오프" 토글일 때만
+ * usePlayerSeasonStatsLeague(..., isPlayoff=true)로 따로 받아와 넘긴다.
  */
 export function buildLeagueTeams(
     raw: LeagueRawStatsData,
@@ -32,6 +37,7 @@ export function buildLeagueTeams(
     useCustomOverrides: boolean,
     statsByPlayer: Record<string, Partial<PlayerStats>> = {},
     oppZoneByTeam: Record<string, Record<string, number>> = {},
+    playoffStatsByPlayer: Record<string, Partial<PlayerStats>> = {},
 ): LeagueTeamWithOppZones[] {
     const playerBaseMap = new Map<string, Player>(
         raw.playersRaw.map((r: any) => [
@@ -82,6 +88,7 @@ export function buildLeagueTeams(
             return {
                 ...base,
                 stats: { ...INITIAL_STATS(), ...(statsByPlayer[id] ?? {}) } as PlayerStats,
+                playoffStats: { ...INITIAL_STATS(), ...(playoffStatsByPlayer[id] ?? {}) } as PlayerStats,
                 career_history: leagueSeasons
                     ? [...(base.career_history ?? []), ...leagueSeasons]
                     : base.career_history,

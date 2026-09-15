@@ -62,6 +62,35 @@ export interface LeagueCompressionConfig {
     dailyWindowStartMin: number;
     /** 일일 시뮬 시간대 종료 — 자정 기준 분(KST). 예: 23:00 = 1380. */
     dailyWindowEndMin: number;
+    /**
+     * [2026-09-15 Fix] 올스타 브레이크(allStarStart~allStarEnd, 이 기간엔 게임이 하나도
+     * 생성되지 않음) 경계를 지정하면, 그 경계에서 단순 10분짜리 날짜 전환 대신 발표/
+     * 라이징스타/컨테스트/본경기 4개 서브 이벤트 각각에 압축된 실제 하루치 시간을 예약한다.
+     * 반환값의 allStarRealSchedule에 각 서브 이벤트의 실제(압축) 발동 시각이 담겨 나온다 —
+     * games 테이블에는 이 4개 날짜에 해당하는 경기가 전혀 없으므로(브레이크 기간이라
+     * current_virtual_date()로는 구분이 안 됨), scheduler.ts가 이 실제 시각을 직접
+     * now()와 비교해 트리거한다.
+     */
+    allStarBreak?: {
+        allStarStart: string;
+        allStarEnd: string;
+        risingStarsDate: string;
+        contestsDate: string;
+        mainGameDate: string;
+    };
+}
+
+export interface AllStarRealSchedule {
+    announceAt: string;
+    risingStarsAt: string;
+    contestsAt: string;
+    mainGameAt: string;
+}
+
+export interface CompressLeagueScheduleResult<T> {
+    games: T[];
+    /** config.allStarBreak을 넘겼고 실제로 그 경계를 지났을 때만 채워짐. */
+    allStarRealSchedule?: AllStarRealSchedule;
 }
 
 /**
@@ -73,7 +102,7 @@ export interface LeagueCompressionConfig {
 export function compressLeagueSchedule<T extends CompressibleGame>(
     games: T[],
     config: LeagueCompressionConfig,
-): T[] {
+): CompressLeagueScheduleResult<T> {
     const totalDays    = Math.max(1, config.durationWeeks * 7);
     const targetPerDay = Math.max(1, games.length / totalDays);
     const windowMin    = Math.max(1, config.dailyWindowEndMin - config.dailyWindowStartMin);
@@ -105,8 +134,44 @@ export function compressLeagueSchedule<T extends CompressibleGame>(
     let dayIndex = 0;
     let usedMinInDay = 0;
     let isFirstGroupOfDay = true;
+    let prevGroupDate: string | null = null;
+    let allStarRealSchedule: AllStarRealSchedule | undefined;
 
     for (const group of dateGroups) {
+        // [2026-09-15 Fix] 올스타 브레이크 경계 감지 — buildCalendar()가 allStarStart~
+        // allStarEnd 구간을 통째로 캘린더에서 뺐기 때문에, 이 구간을 건너뛰는 바로 그 경계
+        // (직전 그룹 날짜가 allStarStart 이전, 이번 그룹 날짜가 allStarEnd 이후)에서만 한 번
+        // 발생한다. 평범한 날짜 전환(10분)과 달리, 여기서는 발표/라이징스타/컨테스트/본경기
+        // 4개 서브 이벤트 각각에 압축된 실제 하루치 시간을 통째로 예약해 서로 다른 실제
+        // 시각을 갖게 한다 — 그래야 scheduler.ts가 이 4개를 실제로 다른 시점에 트리거할 수
+        // 있다(이전엔 브레이크 전체가 이 자리의 10분짜리 간격 하나에 뭉개져 있었음).
+        const isAllStarBreakBoundary = !!config.allStarBreak && prevGroupDate !== null &&
+            prevGroupDate < config.allStarBreak.allStarStart && group.date > config.allStarBreak.allStarEnd;
+
+        if (isAllStarBreakBoundary) {
+            const subDates = [
+                config.allStarBreak!.allStarStart,
+                config.allStarBreak!.risingStarsDate,
+                config.allStarBreak!.contestsDate,
+                config.allStarBreak!.mainGameDate,
+            ];
+            const subTimestamps: string[] = [];
+            for (const _subDate of subDates) {
+                dayIndex++;
+                const subDayMidnight = kstMidnightPlusDays(config.realStartAt, startDayOffset + dayIndex);
+                subTimestamps.push(addMinutes(subDayMidnight, config.dailyWindowStartMin).toISOString());
+            }
+            allStarRealSchedule = {
+                announceAt: subTimestamps[0], risingStarsAt: subTimestamps[1],
+                contestsAt: subTimestamps[2], mainGameAt: subTimestamps[3],
+            };
+            // 브레이크용으로 예약한 날들 다음날부터 정규시즌 재개 — 이 그룹(첫 재개 그룹)은
+            // 새 하루의 첫 그룹으로 취급한다.
+            dayIndex++;
+            usedMinInDay = 0;
+            isFirstGroupOfDay = true;
+        }
+
         const neededForGroup = (group.games.length - 1) * baseIntervalMin;
         const gapBefore = isFirstGroupOfDay ? 0 : DATE_TRANSITION_GAP_MIN;
 
@@ -131,14 +196,15 @@ export function compressLeagueSchedule<T extends CompressibleGame>(
         }
         usedMinInDay += neededForGroup;
         isFirstGroupOfDay = false;
+        prevGroupDate = group.date;
     }
 
     if (dayIndex + 1 > totalDays) {
         console.warn(
             `[compressLeagueSchedule] 설정한 압축 기간(${totalDays}일)보다 ${dayIndex + 1 - totalDays}일 ` +
-            `더 걸림 — 날짜 전환 최소 간격(${DATE_TRANSITION_GAP_MIN}분) 확보 때문.`,
+            `더 걸림 — 날짜 전환 최소 간격(${DATE_TRANSITION_GAP_MIN}분) 확보 때문(올스타 브레이크 예약 포함).`,
         );
     }
 
-    return result;
+    return { games: result, allStarRealSchedule };
 }

@@ -8,6 +8,7 @@
 import { supabase } from './supabaseAdmin';
 import { generateSeasonSchedule } from './shared/scheduleGenerator';
 import { compressLeagueSchedule } from './shared/leagueScheduleCompressor';
+import type { AllStarRealSchedule } from './shared/leagueScheduleCompressor';
 import { initializeTournamentBracket } from './shared/tournamentInitializer';
 import { TEAM_DATA } from './shared/teamData';
 import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
@@ -295,6 +296,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     let schedule: any[];
     let bracketData: { series: any[]; schedule: any[] } | null = null;
+    let allStarRealSchedule: AllStarRealSchedule | undefined;
 
     if (league.type === 'tournament') {
         const result = initializeTournamentBracket(
@@ -320,32 +322,42 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
         // 완전히 다른 개념 — 그건 아래 compressLeagueSchedule()이 별도로 적용한다).
         // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
         const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
-        // 올스타 키데이트(선발일/브레이크 시작/종료)는 getAllStarKeyDates() 한 곳에서 계산 —
-        // 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이 어긋날 여지가 있었음.
-        const { allStarStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+        // 올스타 키데이트 전체(선발일/브레이크 시작·종료/서브 이벤트 4종)는 getAllStarKeyDates()
+        // 한 곳에서 계산 — 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이
+        // 어긋날 여지가 있었음.
+        const keyDates = getAllStarKeyDates(virtualSeasonYear);
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,
                 seasonStart:      `${virtualSeasonYear}-10-21`,
                 regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
-                allStarStart,
-                allStarEnd,
+                allStarStart: keyDates.allStarStart,
+                allStarEnd:   keyDates.allStarEnd,
             },
             filteredTeamData as any,
         );
-        schedule = compressLeagueSchedule(rawSchedule, {
+        const compressed = compressLeagueSchedule(rawSchedule, {
             realStartAt:         simRealStartAt,
             durationWeeks:       league.duration_weeks ?? 2,
             dailyWindowStartMin: league.daily_window_start_min ?? 1140, // 기본 19:00 KST
             dailyWindowEndMin:   league.daily_window_end_min   ?? 1380, // 기본 23:00 KST
+            allStarBreak: {
+                allStarStart:    keyDates.allStarStart,
+                allStarEnd:      keyDates.allStarEnd,
+                risingStarsDate: keyDates.allStarRisingStarsDate,
+                contestsDate:    keyDates.allStarThreePointContestDate,
+                mainGameDate:    keyDates.allStarMainGameDate,
+            },
         });
+        schedule = compressed.games;
+        allStarRealSchedule = compressed.allStarRealSchedule;
     }
 
     if (bracketData) {
         const { error } = await supabase.from('leagues').update({ bracket_data: { series: bracketData.series }, sim_real_start_at: simRealStartAt, games_per_real_day: gamesPerRealDay }).eq('id', room.league_id);
         if (error) return { ok: false, error: `bracket save: ${error.message}` };
     } else {
-        await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
+        await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt, allstar_schedule: allStarRealSchedule ?? null }).eq('id', room.league_id);
     }
 
     // [migration 2026-08-06] rooms.schedule 대신 games 테이블에 삽입. 결정론적 game_id
@@ -459,6 +471,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 일정 / 브라켓 생성 ──────────────────────────────────────────────────
     let schedule: any[];
     let bracketData: { series: any[]; schedule: any[] } | null = null;
+    let allStarRealSchedule: AllStarRealSchedule | undefined;
 
     if (league.type === 'tournament') {
         const tendencySeed = `${room.league_id}-${seasonStartDate}`;
@@ -483,25 +496,35 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         // 정한 "리그 주기"(1~4주)는 compressLeagueSchedule()에서 별도로 적용.
         // 연도 자체(예: 2027)는 관리자가 지정 가능 — 지정 안 하면 실제 생성 시점 연도로 폴백.
         const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
-        // 올스타 키데이트(선발일/브레이크 시작/종료)는 getAllStarKeyDates() 한 곳에서 계산 —
-        // 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이 어긋날 여지가 있었음.
-        const { allStarStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+        // 올스타 키데이트 전체(선발일/브레이크 시작·종료/서브 이벤트 4종)는 getAllStarKeyDates()
+        // 한 곳에서 계산 — 예전엔 이 값들을 두 군데(신규 생성/재초기화)에 각각 하드코딩해 값이
+        // 어긋날 여지가 있었음.
+        const keyDates = getAllStarKeyDates(virtualSeasonYear);
         const rawSchedule = generateSeasonSchedule(
             {
                 seasonYear:       virtualSeasonYear,
                 seasonStart:      `${virtualSeasonYear}-10-21`,
                 regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
-                allStarStart,
-                allStarEnd,
+                allStarStart: keyDates.allStarStart,
+                allStarEnd:   keyDates.allStarEnd,
             },
             filteredTeamData as any,
         );
-        schedule = compressLeagueSchedule(rawSchedule, {
+        const compressed = compressLeagueSchedule(rawSchedule, {
             realStartAt:         simRealStartAt,
             durationWeeks:       league.duration_weeks ?? 2,
             dailyWindowStartMin: league.daily_window_start_min ?? 1140, // 기본 19:00 KST
             dailyWindowEndMin:   league.daily_window_end_min   ?? 1380, // 기본 23:00 KST
+            allStarBreak: {
+                allStarStart:    keyDates.allStarStart,
+                allStarEnd:      keyDates.allStarEnd,
+                risingStarsDate: keyDates.allStarRisingStarsDate,
+                contestsDate:    keyDates.allStarThreePointContestDate,
+                mainGameDate:    keyDates.allStarMainGameDate,
+            },
         });
+        schedule = compressed.games;
+        allStarRealSchedule = compressed.allStarRealSchedule;
     }
 
     // ── 브라켓/리그 저장 ──────────────────────────────────────────────────────
@@ -515,7 +538,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
             return;
         }
     } else {
-        await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt }).eq('id', room.league_id);
+        await supabase.from('leagues').update({ sim_real_start_at: simRealStartAt, allstar_schedule: allStarRealSchedule ?? null }).eq('id', room.league_id);
     }
 
     // [migration 2026-08-06] rooms.schedule 대신 games 테이블 삽입. 결정론적 game_id가

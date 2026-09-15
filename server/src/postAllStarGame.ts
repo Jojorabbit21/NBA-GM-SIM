@@ -111,6 +111,10 @@ function buildAllStarRotationMap(depthChart: DepthChart, allRosterIds: string[])
     return rotationMap;
 }
 
+// [2026-09-15] leagues.allstar_schedule(leagueScheduleCompressor.ts가 시즌 생성 시점에
+// 미리 계산해둔 정확한 실제 시각)이 있으면 그쪽을 우선 쓰고, 이 함수는 그 컬럼이 비어있는
+// (이 수정 이전에 생성된) 리그를 위한 폴백으로만 남는다.
+//
 // [2026-09-09 버그 수정] scheduled_at을 new Date()(실제 삽입 시각)로 넣었더니, 정규시즌
 // 경기들의 scheduled_at(방송 압축 스케줄, leagueScheduleCompressor.ts가 시즌 생성 시점에
 // 한 번만 계산해 저장한 값)과 전혀 다른 기준(진짜 "지금")이 섞여 들어갔다. 여러 화면
@@ -166,7 +170,14 @@ export async function computeAndRunAllStarGame(
     // ── 멱등성 락 — games PK(room_id, game_id) 유니크 제약을 그대로 락으로 사용 ──────────
     const homeTeamId = kind === 'main' ? EAST_ALLSTAR_ID : RISING_STARS_A_ID;
     const awayTeamId = kind === 'main' ? WEST_ALLSTAR_ID : RISING_STARS_B_ID;
-    const scheduledAt = await resolveAllStarScheduledAt(roomId, virtualDate);
+    // [2026-09-15 Fix] leagueScheduleCompressor.ts가 시즌 생성 시점에 이미 이 정확한 실제
+    // 시각을 계산해 leagues.allstar_schedule에 저장해두므로(브레이크 서브 이벤트 4개 각각에
+    // 압축된 실제 하루치 시간 예약) 이걸 우선 쓴다 — 정확하다. 이 컬럼이 비어있는(이 수정
+    // 이전에 생성된) 리그만 예전처럼 선형 보간으로 폴백한다.
+    const { data: scheduleRow } = await supabase.from('leagues').select('allstar_schedule').eq('id', leagueId).maybeSingle();
+    const allStarSchedule = (scheduleRow as any)?.allstar_schedule as { mainGameAt?: string; risingStarsAt?: string } | null;
+    const preciseAt = kind === 'main' ? allStarSchedule?.mainGameAt : allStarSchedule?.risingStarsAt;
+    const scheduledAt = preciseAt ?? await resolveAllStarScheduledAt(roomId, virtualDate);
     const { error: claimErr } = await supabase.from('games').insert({
         room_id: roomId, game_id: gameId, league_id: leagueId,
         home_team_id: homeTeamId, away_team_id: awayTeamId,
