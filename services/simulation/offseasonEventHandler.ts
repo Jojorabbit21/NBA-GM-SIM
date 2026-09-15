@@ -470,9 +470,9 @@ function handleOpeningNight(
         const userTeam = teams.find(t => t.id === userTeamId);
         if (userTeam) {
             for (const player of userTeam.roster) {
-                if (player.contract?.option?.type === 'team' &&
-                    player.contract.option.year === player.contract.currentYear) {
-                    player.contract = { ...player.contract, option: undefined };
+                const cur = player.contract?.currentYear;
+                if (player.contract?.options?.some(o => o.type === 'team' && o.year === cur)) {
+                    player.contract = { ...player.contract, options: player.contract.options.filter(o => o.year !== cur) };
                 }
             }
         }

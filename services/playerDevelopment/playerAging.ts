@@ -748,10 +748,10 @@ function estimateMarketValue(player: Player): number {
  * 플레이어옵션: 시장가 > 옵션연봉 × 1.1 → 거부(FA)
  * 팀옵션: 옵션연봉 ≤ 시장가 × 1.05 → 행사(잔류)
  */
-function decideOption(player: Player, optionSalary: number): boolean {
+function decideOption(player: Player, optionSalary: number, optionType: 'player' | 'team'): boolean {
     const marketValue = estimateMarketValue(player);
 
-    if (player.contract!.option!.type === 'player') {
+    if (optionType === 'player') {
         // 플레이어옵션: 시장가치가 옵션 연봉보다 충분히 높으면 거부 (FA 진출)
         return marketValue <= optionSalary * 1.1; // true = 행사(잔류)
     } else {
@@ -846,14 +846,15 @@ export function processOffseason(
                 player.contract.currentYear += 1;
 
                 // 옵션 체크 (currentYear 진행 후)
-                if (player.contract.option && player.contract.option.year === player.contract.currentYear) {
+                const currentOption = player.contract.options?.find(o => o.year === player.contract!.currentYear);
+                if (currentOption) {
                     const optionSalary = player.contract.currentYear < player.contract.years.length
                         ? player.contract.years[player.contract.currentYear]
                         : player.salary;
 
                     // 유저팀 팀옵션: 결정 보류 → pendingTeamOptions에 추가
                     const isUserTeamOption = userTeamId && team.id === userTeamId
-                        && player.contract.option.type === 'team';
+                        && currentOption.type === 'team';
 
                     if (isUserTeamOption) {
                         result.pendingTeamOptions.push({
@@ -867,14 +868,14 @@ export function processOffseason(
                         });
                         // 로스터 잔류, 결정은 인박스에서 유저가 직접 처리
                     } else {
-                        const exercised = decideOption(player, optionSalary);
+                        const exercised = decideOption(player, optionSalary, currentOption.type);
 
-                        entry.optionDecision = { type: player.contract.option.type, exercised };
+                        entry.optionDecision = { type: currentOption.type, exercised };
                         result.optionDecisions.push({
                             playerId: player.id,
                             playerName: player.name,
                             teamId: team.id,
-                            optionType: player.contract.option.type,
+                            optionType: currentOption.type,
                             exercised,
                             salary: optionSalary,
                         });

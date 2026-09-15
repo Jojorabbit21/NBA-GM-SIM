@@ -117,8 +117,8 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     // 평균)에서 postPlay 지분이 1/5뿐이라, 진짜 로우포스트 기술보다 범용 림 피니시(layup/dunk)가 더
     // 크게 반영됐다 — 32 TEST 실측: C/PF 평균 postScorer가 74.4/74.1로 사실상 동률이라 순수 스킬
     // 경쟁으론 센터가 밀리는 원인 중 하나였음. postPlay를 직접 50% 반영하고 (closeShot+layup+dunk)
-    // 평균은 30%로 낮춰 일반 인사이드 피니시 비중을 줄임 (playTypes.ts 'PostUp'에서 이 값에 포지션
-    // 가중치(constants.ts SIM_CONFIG.POSITION_WEIGHT.POST_UP)를 추가로 곱해 최종 액터를 정함).
+    // 평균은 30%로 낮춰 일반 인사이드 피니시 비중을 줄임. [2026-09-15] playTypes.ts 'PostUp'은 이제
+    // 이 값 그대로(포지션 가중치 없이) 액터를 정함 — 포지션 대신 순수 실력으로 경쟁.
     const postScorer = getVal(
         (attr.postPlay * 0.50) +
         (((attr.closeShot + attr.layup + attr.dunk) / 3) * 0.30) +

@@ -368,9 +368,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { playType, actor: popper, secondaryActor: handler, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.01 };
         }
         case 'PostUp': {
-            // [2026-07-29] 포지션 가중치(C 0.6/PF 0.2/SF 0.1/SG,PG 0.05)로 보정 (client 미러 참고)
-            const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;
-            const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
+            // [2026-09-15] 포지션 가중치 제거 — postScorer 순수 실력 경쟁 (client 미러 참고)
+            const actor = pickWeightedActor(p => p.archetypes.postScorer);
 
             // [2026-07-31] 더블팀 유도 후 킥아웃 (client 미러 참고)
             const pkCfg = SIM_CONFIG.POST_KICKOUT;

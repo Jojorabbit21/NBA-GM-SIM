@@ -3087,6 +3087,303 @@ export const AllstarGameResultCard: React.FC<{
     );
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// 플레이오프 서신 7종 [2026-09-15] — 서버 미러: server/src/shared/multi/playoffNews.ts.
+// ══════════════════════════════════════════════════════════════════════════
+
+export const PlayInBracketCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'play_in_bracket') return null;
+    const { seasonLabel, matchups } = event.detail;
+    const renderGroup = (label: string, conf: 'East' | 'West') => (
+        <div className="space-y-2">
+            <h3 className="text-sm font-bold text-slate-400">{label}</h3>
+            {matchups.filter(m => m.conference === conf).map(m => (
+                <div key={`${m.conference}-${m.tag}`} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-slate-800/60 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <TeamBadge teamId={m.higherSeedSlug} teamName={teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName} abbr={teamBySlug.get(m.higherSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.higherSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.higherSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.higherSeedSlug)?.color_text} size="xs" />
+                        <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(m.higherSeedSlug)}>
+                            {m.higherSeedRank}. {teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName}
+                        </span>
+                    </div>
+                    <span className="text-slate-500 shrink-0 text-xs font-bold">VS</span>
+                    <div className="flex items-center gap-2 min-w-0 flex-row-reverse text-right">
+                        <TeamBadge teamId={m.lowerSeedSlug} teamName={teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName} abbr={teamBySlug.get(m.lowerSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.lowerSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.lowerSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.lowerSeedSlug)?.color_text} size="xs" />
+                        <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(m.lowerSeedSlug)}>
+                            {m.lowerSeedRank}. {teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName}
+                        </span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+    return (
+        <div className="max-w-3xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 플레이인 토너먼트 대진 발표</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                플레이오프 진출의 마지막 관문, 플레이인 토너먼트 대진이 확정됐습니다. 동부와 서부에서
+                각각 4개 팀이 7~8시드 두 자리를 놓고 격돌합니다 — 7-8위전 승자는 곧바로 7시드를
+                확정 짓고, 두 경기의 패자와 승자는 8시드를 걸고 최종 결정전을 치릅니다.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {renderGroup('동부', 'East')}
+                {renderGroup('서부', 'West')}
+            </div>
+        </div>
+    );
+};
+
+export const PlayInResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'play_in_result') return null;
+    const { conference, tag, winnerSlug, winnerName, loserSlug, loserName, winnerScore, loserScore, seedClinched } = event.detail;
+    const confLabel = conference === 'East' ? '동부' : '서부';
+    const tagLabel = tag === '7v8' ? '7-8위전' : tag === '9v10' ? '9-10위전' : '8시드 결정전';
+    const winnerDisplay = teamBySlug.get(winnerSlug)?.team_name ?? winnerName;
+    const loserDisplay = teamBySlug.get(loserSlug)?.team_name ?? loserName;
+    return (
+        <div className="max-w-3xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">
+                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
+                        {winnerDisplay}
+                    </span>
+                    , {confLabel} {tagLabel} 승리
+                </h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                이(가) {confLabel} {tagLabel}에서{' '}
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾었습니다.{' '}
+                {seedClinched
+                    ? `이로써 ${winnerDisplay}이(가) ${confLabel} ${seedClinched}시드를 확정 지었습니다.`
+                    : `${loserDisplay}은(는) 탈락 없이 8시드를 놓고 최종 결정전에 나섭니다.`}
+            </p>
+        </div>
+    );
+};
+
+export const PlayoffBracketConfirmedCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'playoff_bracket_confirmed') return null;
+    const { seasonLabel, east, west } = event.detail;
+    const renderGroup = (label: string, seeds: typeof east) => (
+        <div className="space-y-1.5">
+            <h3 className="text-sm font-bold text-slate-400">{label}</h3>
+            {seeds.map(s => (
+                <div key={s.seed} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800/60 text-sm">
+                    <span className="text-slate-500 font-black w-5 text-center shrink-0">{s.seed}</span>
+                    <TeamBadge teamId={s.teamSlug} teamName={teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName} abbr={teamBySlug.get(s.teamSlug)?.team_abbr} colorPrimary={teamBySlug.get(s.teamSlug)?.color_primary} colorSecondary={teamBySlug.get(s.teamSlug)?.color_secondary} colorText={teamBySlug.get(s.teamSlug)?.color_text} size="xs" />
+                    <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(s.teamSlug)}>
+                        {teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+    return (
+        <div className="max-w-3xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 플레이오프 대진 확정</h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                {seasonLabel}시즌 플레이오프 대진표가 확정됐습니다. 동부와 서부에서 각 8개 팀이
+                우승을 향한 여정을 시작하며, 1라운드부터 각 컨퍼런스 1번 시드와 8번 시드가 맞붙습니다.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {renderGroup('동부', east)}
+                {renderGroup('서부', west)}
+            </div>
+        </div>
+    );
+};
+
+export const PlayoffGameResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>;
+    onOpenGame?: (gameId: string) => void; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenGame, onOpenTeam }) => {
+    if (event.detail.kind !== 'playoff_game_result') return null;
+    const { homeSlug, awaySlug, homeScore, awayScore, roundName, gameNum, higherSeedSlug, lowerSeedSlug, higherSeedWins, lowerSeedWins } = event.detail;
+    const homeWon = homeScore > awayScore;
+    const winnerSlug = homeWon ? homeSlug : awaySlug;
+    const loserSlug = homeWon ? awaySlug : homeSlug;
+    const winnerDisplay = teamBySlug.get(winnerSlug)?.team_name ?? winnerSlug;
+    const loserDisplay = teamBySlug.get(loserSlug)?.team_name ?? loserSlug;
+    const winnerScore = homeWon ? homeScore : awayScore;
+    const loserScore = homeWon ? awayScore : homeScore;
+    const leaderSlug = higherSeedWins >= lowerSeedWins ? higherSeedSlug : lowerSeedSlug;
+    const leaderWins = Math.max(higherSeedWins, lowerSeedWins);
+    const trailWins = Math.min(higherSeedWins, lowerSeedWins);
+    const isTied = higherSeedWins === lowerSeedWins;
+    return (
+        <div className="max-w-3xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">
+                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
+                        {winnerDisplay}
+                    </span>
+                    , {roundName} {gameNum}차전 승리
+                </h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                이(가){' '}
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾고 {roundName} {gameNum}차전을 가져갔습니다.{' '}
+                {isTied
+                    ? '시리즈 전적은 원점으로 돌아갔습니다.'
+                    : <>시리즈 전적은{' '}
+                        <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(leaderSlug)}>{teamBySlug.get(leaderSlug)?.team_name ?? leaderSlug}</span>
+                        의 {leaderWins}승 {trailWins}패로 앞서갑니다.
+                    </>}
+            </p>
+            {event.gameId && onOpenGame && (
+                <button type="button" onClick={() => onOpenGame(event.gameId!)} className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer">
+                    경기 다시보기 <ArrowRight size={14} />
+                </button>
+            )}
+        </div>
+    );
+};
+
+export const PlayoffSeriesResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'playoff_series_result') return null;
+    const { roundName, winnerSlug, winnerName, loserSlug, loserName, winnerWins, loserWins } = event.detail;
+    const winnerDisplay = teamBySlug.get(winnerSlug)?.team_name ?? winnerName;
+    const loserDisplay = teamBySlug.get(loserSlug)?.team_name ?? loserName;
+    const isSweep = loserWins === 0;
+    return (
+        <div className="max-w-3xl space-y-6 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="flex items-center gap-4 py-2">
+                <TeamBadge teamId={winnerSlug} teamName={winnerDisplay} abbr={teamBySlug.get(winnerSlug)?.team_abbr} colorPrimary={teamBySlug.get(winnerSlug)?.color_primary} colorSecondary={teamBySlug.get(winnerSlug)?.color_secondary} colorText={teamBySlug.get(winnerSlug)?.color_text} size="md" />
+                <TrendingUp size={20} className="text-emerald-400 shrink-0" />
+            </div>
+            <div className="space-y-2">
+                <h1 className="text-xl font-black text-white">
+                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
+                        {winnerDisplay}
+                    </span>
+                    , {roundName} 시리즈 승리
+                </h1>
+                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+                <div className="border-t border-slate-700" />
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                이(가){' '}
+                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                을(를) <b className="text-white">{winnerWins}승 {loserWins}패</b>로{isSweep ? ' 스윕하며' : ' 꺾고'} {roundName} 관문을 통과했습니다.
+            </p>
+        </div>
+    );
+};
+
+export const PlayoffChampionCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam }) => {
+    if (event.detail.kind !== 'playoff_champion') return null;
+    const { seasonLabel, championSlug, championName, playoffWins, playoffLosses } = event.detail;
+    const team = teamBySlug.get(championSlug);
+    const displayName = team?.team_name ?? championName;
+    return (
+        <div className="max-w-3xl space-y-8 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="flex flex-col items-center text-center gap-3 py-4 px-6 rounded-2xl bg-gradient-to-b from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/20">
+                <img src="/images/final.webp" alt="Playoff Champion" className="h-36 w-auto object-contain drop-shadow-[0_0_20px_rgba(251,191,36,0.35)]" />
+                <p className="text-xs font-black tracking-[0.3em] text-amber-400 uppercase">{seasonLabel} CHAMPIONS</p>
+                <h1
+                    className="text-3xl font-black text-white cursor-pointer hover:text-amber-300 transition-colors"
+                    onClick={() => onOpenTeam?.(championSlug)}
+                >
+                    {displayName}
+                </h1>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                    <span className="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300">플레이오프 {playoffWins}승 {playoffLosses}패</span>
+                </div>
+            </div>
+            <p className="text-sm text-slate-500 -mt-4">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                플레이인부터 파이널까지 이어진 길고 치열했던 여정 끝에,{' '}
+                <span className="cursor-pointer text-white font-bold hover:text-amber-300" onClick={() => onOpenTeam?.(championSlug)}>{displayName}</span>
+                {' '}이(가) {seasonLabel}시즌 정상에 올랐습니다. 플레이오프 전적 <b className="text-white">{playoffWins}승 {playoffLosses}패</b>로
+                시즌을 마무리하며 우승 트로피를 들어 올렸습니다.
+            </p>
+        </div>
+    );
+};
+
+export const FinalsMvpCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
+}> = ({ event, teamBySlug, onOpenTeam, onPlayerClick }) => {
+    if (event.detail.kind !== 'finals_mvp') return null;
+    const { seasonLabel, playerId, playerName, teamSlug, teamName, gp, ppg, rpg, apg, spg, bpg } = event.detail;
+    const displayTeamName = teamBySlug.get(teamSlug)?.team_name ?? teamName;
+    return (
+        <div className="max-w-3xl space-y-8 ko-normal relative">
+            <BrandMark className="h-4 w-auto" />
+            <div className="flex flex-col items-center text-center gap-3 py-4 px-6 rounded-2xl bg-gradient-to-b from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/20">
+                <img src="/images/fmvp.webp" alt="Finals MVP" className="h-32 w-auto object-contain drop-shadow-[0_0_20px_rgba(251,191,36,0.35)]" />
+                <p className="text-xs font-black tracking-[0.3em] text-amber-400 uppercase">{seasonLabel} FINALS MVP</p>
+                <h1 className="text-2xl font-black text-white">
+                    <span
+                        className={onPlayerClick ? 'cursor-pointer hover:text-amber-300 transition-colors' : ''}
+                        onClick={onPlayerClick ? () => onPlayerClick(playerId) : undefined}
+                    >
+                        {playerName}
+                    </span>
+                </h1>
+                <span
+                    className="text-sm font-bold text-slate-400 cursor-pointer hover:text-indigo-400"
+                    onClick={() => onOpenTeam?.(teamSlug)}
+                >
+                    {displayTeamName}
+                </span>
+                <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm text-slate-300 mt-1">
+                    <span><b className="text-white">{gp}</b> 경기</span>
+                    <span><b className="text-white">{ppg.toFixed(1)}</b> PPG</span>
+                    <span><b className="text-white">{rpg.toFixed(1)}</b> RPG</span>
+                    <span><b className="text-white">{apg.toFixed(1)}</b> APG</span>
+                    {spg >= 0.5 && <span><b className="text-white">{spg.toFixed(1)}</b> SPG</span>}
+                    {bpg >= 0.5 && <span><b className="text-white">{bpg.toFixed(1)}</b> BPG</span>}
+                </div>
+            </div>
+            <p className="text-sm text-slate-500 -mt-4">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
+            <p className="text-sm text-slate-300 leading-relaxed">
+                파이널 시리즈 {gp}경기에서 평균 <b className="text-white">{ppg.toFixed(1)}점, {rpg.toFixed(1)}리바운드,
+                {' '}{apg.toFixed(1)}어시스트</b>를 기록한{' '}
+                <span
+                    className={onPlayerClick ? 'cursor-pointer text-white font-bold hover:text-amber-300' : 'text-white font-bold'}
+                    onClick={onPlayerClick ? () => onPlayerClick(playerId) : undefined}
+                >
+                    {playerName}
+                </span>
+                이(가) {seasonLabel}시즌 파이널 MVP의 영예를 안았습니다.
+            </p>
+        </div>
+    );
+};
+
 // ── 폴백(옛 이벤트, payload.v 없음) ──────────────────────────────────────────
 const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     game_result: Tv,
@@ -3112,6 +3409,13 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     allstar_three_point_contest_result: Target,
     allstar_dunk_contest_result: Zap,
     draft_lottery_result: Shuffle,
+    play_in_bracket: Swords,
+    play_in_result: Swords,
+    playoff_bracket_confirmed: BarChart3,
+    playoff_game_result: Tv,
+    playoff_series_result: TrendingUp,
+    playoff_champion: Trophy,
+    finals_mvp: Star,
 };
 
 export const LegacyCard: React.FC<{ event: LeagueEvent }> = ({ event }) => {
@@ -3165,6 +3469,13 @@ export const StoryCard: React.FC<{
         case 'allstar_three_point_contest_result': return <AllstarThreePointContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'allstar_dunk_contest_result': return <AllstarDunkContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'draft_lottery_result': return <DraftLotteryResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'play_in_bracket': return <PlayInBracketCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'play_in_result': return <PlayInResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'playoff_bracket_confirmed': return <PlayoffBracketConfirmedCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'playoff_game_result': return <PlayoffGameResultCard event={event} teamBySlug={teamBySlug} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} />;
+        case 'playoff_series_result': return <PlayoffSeriesResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'playoff_champion': return <PlayoffChampionCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'finals_mvp': return <FinalsMvpCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         default: return <LegacyCard event={event} />;
     }
 };

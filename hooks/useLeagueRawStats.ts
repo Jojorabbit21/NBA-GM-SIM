@@ -26,9 +26,11 @@ export interface LeagueRawStatsData {
      *  격리 저장된다(여러 리그가 동시에 돌아도 서로 안 섞임). 시즌 롤오버 기능이 아직 없어
      *  현재는 항상 빈 배열이지만, buildLeagueTeams()가 이미 이 필드를 merge하도록 준비돼 있다. */
     leagueSeasonRows: { player_id: string; season: string; stat_line: Record<string, any> }[];
-    /** 서버(simRunner.ts)가 경기 시뮬 후 기록하는 부상/출장정지 이력 + 현재 상태 —
-     *  room_player_state 테이블(room_id, player_id 단위). buildLeagueTeams()가
-     *  injury_history를 player.injuryHistory로 merge. health/return_date/season_number는
+    /** 서버(simRunner.ts)가 경기 시뮬 후 기록하는 부상/출장정지 이력 + 현재 상태, 그리고
+     *  리그별 계약 오버라이드 — 전부 room_player_state 테이블(room_id, player_id 단위)의
+     *  같은 행에서 온다. buildLeagueTeams()가 injury_history를 player.injuryHistory로,
+     *  contract를 player.contract로 merge(contract는 null이면 meta_players 원본 폴백 —
+     *  migrations/add_room_player_state_contract.sql 참고). health/return_date/season_number는
      *  "지금 활성 부상인지" 판정용(MultiRosterView.tsx의 로스터 배지 등 호출부가 직접 판정 —
      *  이 훅은 원본 그대로 전달만 한다). */
     playerInjuryRows: {
@@ -37,6 +39,7 @@ export interface LeagueRawStatsData {
         health: string | null;
         return_date: string | null;
         season_number: number | null;
+        contract: Record<string, any> | null;
     }[];
 }
 
@@ -50,7 +53,7 @@ export interface LeagueRawStatsData {
 const RAW_PLAYER_COLS = 'id, name, position, base_attributes';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
 const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
-const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number';
+const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';
 
 // game_pbp만 단독으로 필요한 곳(경기 기록/일정 탭 등)에서 직접 쓸 수 있도록 공개 export —
 // useLeagueRawStats 내부의 pbp 쿼리와 완전히 동일한 queryKey/queryFn을 써서, 한쪽에서

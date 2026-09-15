@@ -483,6 +483,96 @@ export interface DraftLotteryResultDetail {
     picks: DraftLotteryPick[]; // rank 오름차순(1순위부터)
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// 플레이오프 서신 7종 [2026-09-15]
+// 서버 미러: server/src/shared/multi/playoffNews.ts. 로직/필드명을 바꿀 땐 반드시 양쪽 다
+// 같이 고칠 것(client/server 미러 쌍 — dev-log.md 기록 대상).
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 플레이인 대진 발표 — 컨퍼런스별 7v8/9v10 미니시리즈(총 4개). 8th 디사이더는 두 미니시리즈
+ * 패자/승자가 나와야 매치업이 정해지므로 이 발표엔 포함하지 않는다(패자가 정해지면
+ * play_in_result 서신에서 "8th 디사이더로 진출" 형태로 자연히 안내됨). */
+export interface PlayInMatchup {
+    conference: 'East' | 'West';
+    tag: '7v8' | '9v10';
+    higherSeedSlug: string; higherSeedName: string; higherSeedRank: number;
+    lowerSeedSlug: string; lowerSeedName: string; lowerSeedRank: number;
+}
+export interface PlayInBracketDetail {
+    kind: 'play_in_bracket';
+    seasonLabel: string;
+    matchups: PlayInMatchup[];
+}
+
+/** 플레이인 미니시리즈(항상 단판) 결과 — 7v8/9v10/8th 디사이더 각각 끝날 때마다 1건 발송.
+ * seedClinched는 이 승리로 시드가 "바로" 확정될 때만(7v8 승자=7시드, 8th 디사이더 승자=8시드)
+ * 채워진다 — 9v10 승자는 8th 디사이더로 진출할 뿐 시드가 아직 안 정해져 undefined. */
+export interface PlayInResultDetail {
+    kind: 'play_in_result';
+    conference: 'East' | 'West';
+    tag: '7v8' | '9v10' | '8th';
+    winnerSlug: string; winnerName: string;
+    loserSlug: string; loserName: string;
+    winnerScore: number; loserScore: number;
+    seedClinched?: 7 | 8;
+}
+
+/** 플레이오프 본선 대진 확정 — 컨퍼런스별 표준 시드 순서(1번↔최하위 순서가 아니라 순위
+ * 오름차순) 전체 명단. 플레이인이 있는 리그는 7/8시드가 확정된 뒤에 발송된다. */
+export interface PlayoffBracketSeed { seed: number; teamSlug: string; teamName: string }
+export interface PlayoffBracketConfirmedDetail {
+    kind: 'playoff_bracket_confirmed';
+    seasonLabel: string;
+    east: PlayoffBracketSeed[];
+    west: PlayoffBracketSeed[];
+}
+
+/** 플레이오프 개별 경기 결과 — 기존 일반 game_result(정규시즌 포함 모든 경기 1건씩)와는
+ * 별개 타입이다. 이렇게 나눈 이유: (1) game_result는 대량득점차 등 "특이케이스"만 노출되는데
+ * 반해 플레이오프 경기는 전부 노출해야 하고, (2) 라운드/시리즈 스코어 문구가 필요해 payload
+ * 구조 자체가 다르다. roundName은 서버가 그 시점의 전체 라운드 수를 보고 계산해서("1라운드"/
+ * "준결승"/"파이널") 그대로 문자열로 실어준다 — 멀티리그 브라켓 엔진은 라운드 2 이상부터
+ * conference를 트래킹하지 않아(tournamentBracket.ts, 항상 'BPL') 클라이언트가 재계산할
+ * 방법이 없다. */
+export interface PlayoffGameResultDetail {
+    kind: 'playoff_game_result';
+    homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
+    roundName: string;
+    gameNum: number;
+    higherSeedSlug: string; lowerSeedSlug: string;
+    /** 이 경기 결과가 반영된 뒤의 시리즈 스코어. */
+    higherSeedWins: number; lowerSeedWins: number;
+    mvpHome?: { playerId: string; name: string; position?: string; stats: StatEntry[] };
+    mvpAway?: { playerId: string; name: string; position?: string; stats: StatEntry[] };
+}
+
+/** 플레이오프 시리즈 결과 — 한쪽이 targetWins에 도달해 시리즈가 최종 확정된 시점에 1건. */
+export interface PlayoffSeriesResultDetail {
+    kind: 'playoff_series_result';
+    roundName: string;
+    winnerSlug: string; winnerName: string;
+    loserSlug: string; loserName: string;
+    winnerWins: number; loserWins: number;
+}
+
+/** 플레이오프 우승팀 소식 — 토너먼트 전체(모든 시리즈) 종료 시 1건. */
+export interface PlayoffChampionDetail {
+    kind: 'playoff_champion';
+    seasonLabel: string;
+    championSlug: string; championName: string;
+    playoffWins: number; playoffLosses: number;
+}
+
+/** 파이널 MVP 선정 소식 — 파이널(최종 라운드) 시리즈 종료와 함께 1건. 선정 기준은
+ * 싱글플레이어 services/reportGenerator.ts의 selectFinalsMvp()와 동일한 공식(PPG×2.5+
+ * RPG×1.2+APG×1.8+SPG+BPG×0.8-TOV×0.8+TS%×15+±/game×0.5)을 서버에서 재구현해서 쓴다. */
+export interface FinalsMvpDetail {
+    kind: 'finals_mvp';
+    seasonLabel: string;
+    playerId: string; playerName: string; teamSlug: string; teamName: string;
+    gp: number; ppg: number; rpg: number; apg: number; spg: number; bpg: number;
+}
+
 export type LeagueEventDetail =
     | GameResultDetail
     | PlayerFeatDetail
@@ -506,6 +596,13 @@ export type LeagueEventDetail =
     | AllstarThreePointContestResultDetail
     | AllstarDunkContestResultDetail
     | DraftLotteryResultDetail
+    | PlayInBracketDetail
+    | PlayInResultDetail
+    | PlayoffBracketConfirmedDetail
+    | PlayoffGameResultDetail
+    | PlayoffSeriesResultDetail
+    | PlayoffChampionDetail
+    | FinalsMvpDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -1084,6 +1181,91 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     .map((p: any): DraftLotteryPick => ({ rank: p.rank, teamSlug: p.teamSlug, teamName: p.teamName }));
                 if (!picks.length) return LEGACY;
                 return { kind: 'draft_lottery_result', picks };
+            }
+            case 'play_in_bracket': {
+                if (!isNonEmptyString(payload.seasonLabel) || !Array.isArray(payload.matchups)) return LEGACY;
+                const matchups: PlayInMatchup[] = payload.matchups.filter((m: any) =>
+                    m && (m.conference === 'East' || m.conference === 'West') && (m.tag === '7v8' || m.tag === '9v10') &&
+                    isNonEmptyString(m.higherSeedSlug) && isNonEmptyString(m.higherSeedName) && typeof m.higherSeedRank === 'number' &&
+                    isNonEmptyString(m.lowerSeedSlug) && isNonEmptyString(m.lowerSeedName) && typeof m.lowerSeedRank === 'number',
+                );
+                if (matchups.length === 0) return LEGACY;
+                return { kind: 'play_in_bracket', seasonLabel: payload.seasonLabel, matchups };
+            }
+            case 'play_in_result': {
+                if (payload.conference !== 'East' && payload.conference !== 'West') return LEGACY;
+                if (payload.tag !== '7v8' && payload.tag !== '9v10' && payload.tag !== '8th') return LEGACY;
+                if (!isNonEmptyString(payload.winnerSlug) || !isNonEmptyString(payload.loserSlug)) return LEGACY;
+                if (typeof payload.winnerScore !== 'number' || typeof payload.loserScore !== 'number') return LEGACY;
+                return {
+                    kind: 'play_in_result',
+                    conference: payload.conference, tag: payload.tag,
+                    winnerSlug: payload.winnerSlug, winnerName: isNonEmptyString(payload.winnerName) ? payload.winnerName : payload.winnerSlug,
+                    loserSlug: payload.loserSlug, loserName: isNonEmptyString(payload.loserName) ? payload.loserName : payload.loserSlug,
+                    winnerScore: payload.winnerScore, loserScore: payload.loserScore,
+                    seedClinched: payload.seedClinched === 7 || payload.seedClinched === 8 ? payload.seedClinched : undefined,
+                };
+            }
+            case 'playoff_bracket_confirmed': {
+                if (!isNonEmptyString(payload.seasonLabel) || !Array.isArray(payload.east) || !Array.isArray(payload.west)) return LEGACY;
+                const parseSeeds = (arr: any[]): PlayoffBracketSeed[] => arr.filter((s: any) =>
+                    s && typeof s.seed === 'number' && isNonEmptyString(s.teamSlug) && isNonEmptyString(s.teamName),
+                );
+                const east = parseSeeds(payload.east);
+                const west = parseSeeds(payload.west);
+                if (east.length === 0 && west.length === 0) return LEGACY;
+                return { kind: 'playoff_bracket_confirmed', seasonLabel: payload.seasonLabel, east, west };
+            }
+            case 'playoff_game_result': {
+                if (!isNonEmptyString(payload.homeSlug) || !isNonEmptyString(payload.awaySlug)) return LEGACY;
+                if (typeof payload.homeScore !== 'number' || typeof payload.awayScore !== 'number') return LEGACY;
+                if (!isNonEmptyString(payload.higherSeedSlug) || !isNonEmptyString(payload.lowerSeedSlug)) return LEGACY;
+                if (typeof payload.higherSeedWins !== 'number' || typeof payload.lowerSeedWins !== 'number') return LEGACY;
+                return {
+                    kind: 'playoff_game_result',
+                    homeSlug: payload.homeSlug, awaySlug: payload.awaySlug,
+                    homeScore: payload.homeScore, awayScore: payload.awayScore,
+                    roundName: isNonEmptyString(payload.roundName) ? payload.roundName : '플레이오프',
+                    gameNum: typeof payload.gameNum === 'number' ? payload.gameNum : 1,
+                    higherSeedSlug: payload.higherSeedSlug, lowerSeedSlug: payload.lowerSeedSlug,
+                    higherSeedWins: payload.higherSeedWins, lowerSeedWins: payload.lowerSeedWins,
+                    mvpHome: parseGameMvp(payload.mvpHome),
+                    mvpAway: parseGameMvp(payload.mvpAway),
+                };
+            }
+            case 'playoff_series_result': {
+                if (!isNonEmptyString(payload.winnerSlug) || !isNonEmptyString(payload.loserSlug)) return LEGACY;
+                if (typeof payload.winnerWins !== 'number' || typeof payload.loserWins !== 'number') return LEGACY;
+                return {
+                    kind: 'playoff_series_result',
+                    roundName: isNonEmptyString(payload.roundName) ? payload.roundName : '플레이오프',
+                    winnerSlug: payload.winnerSlug, winnerName: isNonEmptyString(payload.winnerName) ? payload.winnerName : payload.winnerSlug,
+                    loserSlug: payload.loserSlug, loserName: isNonEmptyString(payload.loserName) ? payload.loserName : payload.loserSlug,
+                    winnerWins: payload.winnerWins, loserWins: payload.loserWins,
+                };
+            }
+            case 'playoff_champion': {
+                if (!isNonEmptyString(payload.seasonLabel) || !isNonEmptyString(payload.championSlug)) return LEGACY;
+                if (typeof payload.playoffWins !== 'number' || typeof payload.playoffLosses !== 'number') return LEGACY;
+                return {
+                    kind: 'playoff_champion',
+                    seasonLabel: payload.seasonLabel,
+                    championSlug: payload.championSlug, championName: isNonEmptyString(payload.championName) ? payload.championName : payload.championSlug,
+                    playoffWins: payload.playoffWins, playoffLosses: payload.playoffLosses,
+                };
+            }
+            case 'finals_mvp': {
+                if (!isNonEmptyString(payload.seasonLabel) || !isNonEmptyString(payload.playerId) || !isNonEmptyString(payload.playerName)) return LEGACY;
+                if (!isNonEmptyString(payload.teamSlug)) return LEGACY;
+                const num = (v: unknown) => typeof v === 'number' ? v : 0;
+                return {
+                    kind: 'finals_mvp',
+                    seasonLabel: payload.seasonLabel,
+                    playerId: payload.playerId, playerName: payload.playerName,
+                    teamSlug: payload.teamSlug, teamName: isNonEmptyString(payload.teamName) ? payload.teamName : payload.teamSlug,
+                    gp: num(payload.gp), ppg: num(payload.ppg), rpg: num(payload.rpg), apg: num(payload.apg),
+                    spg: num(payload.spg), bpg: num(payload.bpg),
+                };
             }
             default:
                 return LEGACY;

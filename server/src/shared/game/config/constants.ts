@@ -598,7 +598,7 @@ export const SIM_CONFIG = {
     // 스크린/롤이 가능한 SF가 실제 존재(존 디펜스 앵커 작업 때 확인한 신장 분포와 동일 근거).
     // C 0.7→0.5, PF 0.3 유지 — SF 추가분만큼 C 비중을 낮춰 합계 스케일 유지.
     POSITION_WEIGHT: {
-        POST_UP: { C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 } as Record<string, number>,
+        // [2026-09-15] POST_UP 제거 (client 미러 참고)
         PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
     },
     // [2026-07-31] PostUp 킥아웃 (client 미러 참고)

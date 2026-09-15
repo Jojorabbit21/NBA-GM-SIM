@@ -523,12 +523,15 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             };
         }
         case 'PostUp': {
-            // Best Post Scorer (Usually Rank 1-2 Bigs)
-            // [2026-07-29] postScorer 아키타입만으로는 C/PF/SF 실력 차이가 거의 없어(32 TEST 실측
-            // 평균 74.4/74.1/70.8) 순수 스킬 경쟁 시 센터가 밀림 — 포지션 가중치를 곱해 보정
-            // (C 0.6 / PF 0.2 / SF 0.1 / SG,PG 0.05, constants.ts SIM_CONFIG.POSITION_WEIGHT.POST_UP).
-            const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;
-            const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
+            // Best Post Scorer
+            // [2026-09-15] 포지션 가중치(SIM_CONFIG.POSITION_WEIGHT.POST_UP) 제거 — 실제 NBA에서도
+            // SGA/하든/듀란트처럼 빅맨이 아닌 스코어러가 포스트업을 자주 쓰므로, "누가 이 플레이를
+            // 할 자격이 있는가"를 포지션이 아니라 postScorer 순수 실력으로만 경쟁시킨다(Iso/
+            // PnR_Handler와 동일 패턴). 10시즌 리그 시뮬레이션 검증: 포지션별 터치 비중이 실력
+            // 기준으로 합리적으로 재분배(C 46.5%→31.4%, PG 4.0%→12.3%)되고, 엘리트 빅(요키치/
+            // 엠비드)은 -5~7%만 손해보며 최상위권을 유지, 공격력이 약한 전통 빅맨(고베어 등)만
+            // 크게 손해(-30~45%, PostUp 극대화 전술 기준) — docs/history/dev-log.md 참고.
+            const actor = pickWeightedActor(p => p.archetypes.postScorer);
 
             // [2026-07-31] 더블팀 유도 후 킥아웃 — postScorer vs postPassing 비율 방식은 같은
             // 0~99 스케일이라 순수 스코어러(샤킬 등)도 킥아웃률이 40%에 육박하는 문제가 있었음

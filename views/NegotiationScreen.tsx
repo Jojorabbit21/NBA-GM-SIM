@@ -1178,8 +1178,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                     const seasonLabel  = `${year}-${String(year + 1).slice(-2)}`;
                                     const isCurrent    = i === player.contract!.currentYear;
                                     const isCompleted  = i <  player.contract!.currentYear;
-                                    const opt          = player.contract!.option;
-                                    const isOptionYear = opt && opt.year === i;
+                                    const opt          = player.contract!.options?.find(o => o.year === i);
+                                    const isOptionYear = !!opt;
                                     return (
                                         <div key={i} className="flex justify-between items-center text-xs">
                                             <span className={`flex items-center gap-1 ${isCompleted ? 'text-slate-500' : 'text-slate-500'}`}>

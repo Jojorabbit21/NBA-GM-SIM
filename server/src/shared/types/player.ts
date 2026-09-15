@@ -137,15 +137,19 @@ export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension';
 
 export interface ContractOption {
     type: 'player' | 'team';
-    year: number;               // 적용 연차 (0-based, 보통 마지막 해)
+    year: number;               // 적용 연차 (0-based) — options 배열에서 연차마다 하나씩 가질 수 있음
 }
 
 export interface PlayerContract {
     years: number[];            // 연차별 연봉 (달러) [30_000_000, 32_000_000, ...]
+    yearSeasons?: number[];     // years와 1:1 대응하는 실제 시즌 연도 [2026, 2027, ...] — 계산식이
+                                 // 아니라 연차마다 직접 입력하는 사실 데이터(과거 계약 재구성용).
     currentYear: number;        // 0-based
     type: ContractType;
     noTrade?: boolean;
-    option?: ContractOption;
+    options?: ContractOption[]; // 연차별 팀/플레이어 옵션 — 같은 year를 가진 항목은 최대 1개
+                                 // (연차당 옵션은 하나뿐). 특정 연차의 옵션 조회는
+                                 // options?.find(o => o.year === targetYear).
     tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
 }
 
@@ -258,6 +262,7 @@ export interface Player {
     awards?: PlayerAwardEntry[];
     career_history?: CareerSeasonStat[];
     contract?: PlayerContract;
+    contractHistory?: PlayerContract[];
     draftYear?: number;
     draftRound?: 1 | 2 | null;
     draftPick?: number | null;

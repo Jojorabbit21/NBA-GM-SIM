@@ -44,12 +44,18 @@ function buildPlayerContract(baseAttrs: any, salary: number, contractYears: numb
     const rawContract = baseAttrs?.contract;
     if (rawContract && Array.isArray(rawContract.years)) {
         const years = (rawContract.years as number[]).map((y: number) => normalizeSalary(y));
+        // 연차별 옵션(options[])이 정식 형태. 예전 단일 option{type,year} 형태로 저장된 기존
+        // 데이터(2026-27 일괄 갱신분 전부)도 계속 읽혀야 하므로 배열로 승격해 하위호환한다.
+        const options = Array.isArray(rawContract.options) && rawContract.options.length
+            ? rawContract.options
+            : (rawContract.option ? [rawContract.option] : undefined);
         return {
             years,
             currentYear: rawContract.currentYear ?? 0,
             type: rawContract.type ?? inferContractType(salary, ovr, age),
             ...(rawContract.noTrade && { noTrade: true }),
-            ...(rawContract.option && { option: rawContract.option }),
+            ...(options?.length && { options }),
+            ...(Array.isArray(rawContract.yearSeasons) && rawContract.yearSeasons.length && { yearSeasons: rawContract.yearSeasons }),
         };
     }
     // fallback: salary/contractYears → 균등 배열
@@ -406,6 +412,9 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     }
     if (baseAttrs?.prev_contract?.years?.length) {
         player.prevContract = baseAttrs.prev_contract as import('../types/player').PlayerContract;
+    }
+    if (Array.isArray(baseAttrs?.contract_history) && baseAttrs.contract_history.length) {
+        player.contractHistory = baseAttrs.contract_history as import('../types/player').PlayerContract[];
     }
     if (baseAttrs?.draft_round !== undefined) {
         player.draftRound = baseAttrs.draft_round as 1 | 2 | null;

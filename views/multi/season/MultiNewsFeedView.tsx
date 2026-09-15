@@ -42,6 +42,8 @@ const NEWS_TYPE_FILTER_OPTIONS: NewsTypeFilterOption[] = [
     { label: '부상', types: ['injury'] },
     { label: '출장정지', types: ['suspension'] },
     { label: '올스타', types: ['allstar_vote_update', 'allstar_vote_start', 'allstar_vote_result', 'allstar_rising_stars', 'allstar_three_point_contest', 'allstar_dunk_contest', 'allstar_game_result', 'allstar_rising_stars_result', 'allstar_three_point_contest_result', 'allstar_dunk_contest_result'] },
+    // [2026-09-15] 플레이인 대진/결과, 본선 대진 확정, 경기/시리즈 결과, 우승팀, 파이널 MVP — 7종.
+    { label: '플레이오프', types: ['play_in_bracket', 'play_in_result', 'playoff_bracket_confirmed', 'playoff_game_result', 'playoff_series_result', 'playoff_champion', 'finals_mvp'] },
 ];
 
 // [2026-09-01] 좁은 단일 컬럼 리스트 → 실제 뉴스 사이트 같은 그리드로 개편.

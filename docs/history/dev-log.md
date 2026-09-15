@@ -35,6 +35,172 @@
 
 ---
 
+## 2026-09-15 — PostUp 포지션 게이팅 제거 (postScorer 순수 실력 경쟁으로 전환)
+
+**배경**: "육각형 윙/가드를 PF 슬롯에 넣으면 PostUp/PnR_Roll/PnR_Pop 풀까지 동시 독점해 득점이
+비현실적으로 폭발한다"는 버그(PF 슬롯 스태킹 편법)를 조사하는 과정에서, 근본 원인이
+`SIM_CONFIG.POSITION_WEIGHT.POST_UP`(뎁스차트 슬롯 기준 포지션 가중치)로 PostUp 자격을
+게이팅하는 구조 자체에 있다는 결론에 도달. 사용자 제안: "포스트업을 꼭 파워포워드나 센터가
+해야되는 것도 아니다(SGA/하든/듀란트도 자주 함) — 누가 할지를 제한하는 건 옳지 않다." 격리된
+git worktree(`postup_gate_test`)에서 실제 30팀 로스터/일정으로 10시즌 시뮬레이션 검증 후 반영.
+
+**검증 결과**:
+- 리그 전체(자연스러운 실제 포지션 배치, PostUp 극대화 전술 기준): 포지션별 터치 비중이
+  C 46.5%→31.4%, PF 29.1%→25.3%, SF 15.1%→20.0%, SG 5.4%→11.0%, PG 4.0%→12.3%로 재분배.
+  엘리트 빅(니콜라 요키치 27.1→25.6 PPG, 조엘 엠비드 26.4→24.6)은 -5~7%만 손해보고 최상위권
+  유지. 공격력이 약한 전통 빅맨(루디 고베어 -44.8%, 이비차 주바치 -28.0%, 디안드레 에이튼
+  -38.3%)은 큰 폭으로 손해. 실제로 포스트업을 잘 쓰는 선수(루카 돈치치 21.0→26.4 PPG +25.7%,
+  케빈 듀란트 26.2→29.7 +13.4%, SGA 22.1→26.1 +18.1%)는 이득 — 승자/패자가 실력 기준으로
+  합리적으로 갈림. 야니스 안테토쿤보는 +1.5%로 거의 무변화(포스트업 의존도가 낮아서).
+- PF 슬롯 편법 시나리오(9인 재검증)로는 PPG 변화가 평균 0%(±5% 이내)로 미미함 — 이 선수들의
+  부풀려진 볼륨은 대부분 PnR_Roll/PnR_Pop에서 나오고 PostUp 비중은 원래도 작았기 때문(PF 슬롯
+  스태킹 버그 자체는 이 변경만으로 해결되지 않음, `project_pf_slot_stacking_bug` 메모리 참고).
+  다만 이건 별개 문제 — PostUp 게이팅 제거 자체는 리그 전체 관점에서 독립적으로 타당한 개선.
+
+**변경 파일**:
+- `services/game/engine/pbp/playTypes.ts` — `PostUp` case에서
+  `p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05)` → `p.archetypes.postScorer`
+  (Iso/PnR_Handler와 동일하게 포지션 무관 순수 아키타입 경쟁)
+- `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — 동일 변경
+- `services/game/config/constants.ts` — `SIM_CONFIG.POSITION_WEIGHT.POST_UP` 테이블
+  (`{ C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 }`) 삭제 — 더 이상 참조하는 코드 없음
+  (`PNR_ROLL` 테이블은 그대로 유지 — 스크린을 설 수 있어야 한다는 물리적 전제가 있어 포지션
+  하드필터가 여전히 타당하다고 판단, 이번 변경 범위 밖)
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일 삭제
+- `services/game/engine/pbp/archetypeSystem.ts` — `postScorer` 계산부 주석에서 제거된
+  포지션 가중치 언급 정리 (로직 변경 없음, 주석만)
+
+**Before** (`playTypes.ts` PostUp case):
+```ts
+const postUpWeights = SIM_CONFIG.POSITION_WEIGHT.POST_UP;
+const actor = pickWeightedActor(p => p.archetypes.postScorer * (postUpWeights[p.position] ?? 0.05));
+```
+
+**After**:
+```ts
+const actor = pickWeightedActor(p => p.archetypes.postScorer);
+```
+
+**검증**: `npx tsc --noEmit` client/server 둘 다 통과. 워크트리 10시즌(약 12,300경기) 시뮬레이션
++ PF 슬롯 편법 9인 재검증 10시즌(총 24,600경기) 완료.
+
+**롤백 방법**: 위 Before 블록으로 `playTypes.ts`(client+server) 되돌리고,
+`constants.ts`(client+server)의 `POSITION_WEIGHT`에 `POST_UP: { C: 1.0, PF: 0.85, SF: 0.7,
+SG: 0.55, PG: 0.5 } as Record<string, number>,` 재추가.
+
+---
+
+## 2026-09-15 — 플레이오프 서신 7종 사후 수정: headline/simDate 누락 + 디자인 전면 보강
+
+**배경**: 바로 아래 항목(플레이오프 서신 7종 신설)을 PBL 세션에서 실제로 발행해보니 사용자가
+4가지 결함을 지적함: (1) 서신 제목이 아예 없음 (2) 상단 날짜가 가상 캘린더 날짜가 아니라
+"N분 전"(실제 시각)으로 뜸 (3) 본문 없이 표/그리드만 있는 앙상한 뉴스레터 형식 (4) 우승팀/
+파이널 MVP 서신 디자인이 부실함. 근본 원인: `hooks/useLeagueHeadlines.ts`의
+`headline: row.payload?.headline ?? ''` — 이 프로젝트의 다른 모든 이벤트 타입(allstar_*,
+draft_lottery_result 등)은 payload에 반드시 `headline` 필드를 채우는데, 플레이오프 7종을
+만들 때 이 컨벤션을 전부 놓쳤다. `simDate`도 4개 발행 지점(`play_in_bracket`,
+`playoff_bracket_confirmed`, `playoff_champion`, `finals_mvp`)에서 누락.
+
+**변경 파일**:
+- `server/src/shared/multi/playoffNews.ts` — `InsertLeagueEventParams.payload` 타입을
+  `Record<string, any>` → `{ headline: string } & Record<string, any>`로 강화해 컴파일
+  타임에 누락을 막음(다시는 빠뜨리지 않도록 하는 안전장치)
+- `server/src/shared/playoffSeeder.ts` — `buildBracketConfirmedEvent()`에 `virtualDate`
+  파라미터 추가, `headline` 채움
+- `server/src/shared/playInSeeder.ts` — `play_in_bracket`/`play_in_result` 발행에
+  `headline` + `simDate`(포스트시즌 가상 앵커 날짜) 추가, `buildBracketConfirmedEvent` 호출부
+  2곳에 `virtualDate` 인자 추가
+- `server/src/simRunner.ts` — `tryAdvanceTournamentOnce()`에 트리거 게임의 `game_date`를
+  조회하는 쿼리 추가(`gameDate` 변수), `playoff_game_result`/`playoff_series_result`/
+  `playoff_champion`/`finals_mvp` 4곳 모두에 `headline` + `simDate: gameDate` 추가
+- `views/multi/season/newsFeedCards.tsx` — 7개 카드 전면 재작성: 모든 카드에 실제 기사체
+  본문 문단 추가(팀/승부 맥락을 설명하는 완결된 문장), `TeamBadge`로 팀 로고 노출,
+  `PlayoffChampionCard`/`FinalsMvpCard`는 싱글플레이어 `PlayoffChampionRenderer.tsx` 스타일을
+  참고해 실제 트로피 이미지(`/images/final.webp`, `/images/fmvp.webp`) + 그라디언트 히어로
+  섹션으로 전면 재설계
+
+**검증**: 클라이언트/서버 `tsc --noEmit` 둘 다 신규 오류 없음(84줄/62줄, 기존과 동일). PBL의
+잘못 발행된 기존 110건을 전부 삭제하고, 수정된 로직으로 다시 발행 후 `payload->>'headline'`/
+`sim_date` 전 건 채워짐을 SQL로 재확인.
+
+**한계**: `playoff_champion`/`finals_mvp`의 `simDate`는 파이널 마지막 경기의 `games.game_date`
+를 그대로 쓰는데, PBL은 문제 1(플레이오프 game_date 실제 날짜 버그) 수정 이전에 생성된
+리그라 그 값 자체가 여전히 실제 날짜(2026-09-06)다 — 새 코드 자체의 버그가 아니라 PBL의
+과거 데이터 자체가 아직 소급 정정되지 않은 것(이전 항목에서 이미 설명한 한계와 동일).
+
+**롤백 방법**: 이 항목의 변경분만 되돌리면 바로 아래 "플레이오프 서신 7종 신설" 시점(제목/
+날짜 없는 버전)으로 복귀.
+
+---
+
+## 2026-09-15 — 플레이오프 서신 7종 신설(플레이인 대진/결과, 본선 대진 확정, 경기/시리즈 결과, 우승팀, 파이널 MVP)
+
+**배경**: 사용자 요청 — 멀티리그 뉴스피드에 "플레이오프" 카테고리를 추가하고, 플레이인/
+플레이오프 진행 상황을 서신(뉴스 이벤트)으로 발송. 결정 사항: (1) "플레이오프 경기 결과"는
+기존 일반 `game_result`(점수 문턱 이상만 노출)와 별개인 `playoff_game_result` 신설(항상
+노출) — 사용자 확정. (2) "컨퍼런스 파이널 MVP"는 실제 NBA에 없는 독자 설계라 범위에서
+제외 — 사용자 확정. Finals MVP 선정 공식은 싱글플레이어 `services/reportGenerator.ts`의
+`selectFinalsMvp()`(PPG×2.5+RPG×1.2+APG×1.8+SPG+BPG×0.8-TOV×0.8+TS%×15+±/game×0.5)를
+서버에서 재구현.
+
+**핵심 설계 — CAS 재시도와 서신 발행의 충돌 방지**: `simRunner.ts`의 `tryAdvanceTournamentOnce()`
+는 `leagues.bracket_version` 낙관적 동시성 제어(2026-09-15 앞선 항목, 문제 2)로 실패 시 처음부터
+재시도된다. 이 함수 안에서 바로 `insertLeagueEvent()`를 호출하면 재시도마다 서신이 중복
+발행되므로, "무엇을 보낼지"만 `PendingLeagueEvent[]`로 모아뒀다가 **CAS write가 성공한
+직후에만** 실제로 발행하도록 설계(`server/src/shared/multi/playoffNews.ts`의
+`flushPendingLeagueEvents`). `playInSeeder.ts`의 `handlePlayInAdvance()`/
+`resolveRoundOneFromPlayIn()`/`buildAndStoreConferenceBracket()`도 전부 이 규칙을 따르도록
+반환 타입을 `pendingEvents` 포함 구조로 변경.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 7종 추가, `STORY_TYPES`(뉴스피드 노출
+  화이트리스트)에도 반드시 함께 추가해야 함(안 하면 쿼리에서 조용히 필터링됨 — 실수하기 쉬운 지점)
+- `services/multi/leagueEventPayload.ts` — 7종 payload 인터페이스 + `parseLeagueEventPayload`
+  케이스 추가 (서버 미러: `server/src/shared/multi/playoffNews.ts`)
+- `views/multi/season/newsFeedCards.tsx` — 7종 카드 컴포넌트 + `HEADLINE_ICON`/`StoryCard`
+  dispatcher 등록
+- `views/multi/season/MultiNewsFeedView.tsx` — `NEWS_TYPE_FILTER_OPTIONS`에 "플레이오프"
+  카테고리(7종) 추가
+- `server/src/shared/multi/playoffNews.ts` (신규) — `insertLeagueEvent`/`flushPendingLeagueEvents`/
+  `PendingLeagueEvent` 타입, `roundLabel()`(라운드 라벨 계산 — 멀티리그 브라켓 엔진은 2라운드
+  이상부터 conference를 트래킹 안 해서 "동부/서부" 접두어 없이 "N라운드"/"준결승"/"파이널"만),
+  `computeFinalsMvp()`(game_pbp 직접 집계)
+- `server/src/shared/playoffSeeder.ts` — `seasonLabelFor()`, `buildBracketConfirmedEvent()`
+  신설(qualified 배열에 TBD 있으면 null 반환), `buildAndStoreConferenceBracket()` 반환 타입에
+  `pendingEvents` 추가
+- `server/src/shared/playInSeeder.ts` — `startPlayIn()`에 "플레이인 대진 발표" 즉시 발행 추가,
+  `handlePlayInAdvance()`가 `homeTeamId/awayTeamId/homeScore/awayScore`를 추가로 받아 "플레이인
+  결과" pendingEvent 생성 + 반환 타입을 `HandlePlayInAdvanceResult`(pendingEvents 포함)로 변경,
+  `resolveRoundOneFromPlayIn()`이 "본선 1라운드 전체에 더 이상 TBD가 없으면" 대진 확정 이벤트를
+  반환하도록 변경
+- `server/src/simRunner.ts` — `tryAdvanceTournamentOnce()`에 경기결과/시리즈결과/우승팀/
+  파이널MVP pendingEvent 생성 로직 추가, `handlePlayInAdvance` 호출 시그니처 갱신, CAS 성공
+  직후 `flushPendingLeagueEvents()` 호출
+
+**검증**: 클라이언트 `npx tsc --noEmit -p .`(84줄, 기존 무관 오류와 동일), 서버
+`cd server && npx tsc --noEmit -p .`(62줄, 기존 무관 오류와 동일) — 둘 다 신규 오류 없음.
+실제 시즌 진행을 통한 E2E 테스트는 미실시(플레이오프가 다 끝나야 전 종류 검증 가능 —
+다음 시즌 진행 시 확인 필요).
+
+**알려진 단순화(스코프 조정)**:
+- `playoff_game_result`에는 `mvpHome`/`mvpAway`가 optional 필드로 남아있지만 현재 항상
+  `undefined`다 — 일반 `game_result`의 MVP는 박스스코어가 있는 `runSimulation()` 시점에서
+  계산되는데, `tryAdvanceTournamentOnce()`는 그 시점 이후(series 진행 단계)라 박스스코어에
+  접근하지 않는다. 필요하면 `runSimulation()`이 이미 계산한 MVP를 `handleTournamentAdvance()`
+  로 전달하도록 시그니처를 확장해야 함.
+- `playoff_bracket_confirmed`는 시드 번호를 `eastQualified`/`westQualified` 배열의 순서로만
+  매기므로(1-indexed), 소규모 커스텀 리그(컨퍼런스당 팀 수가 2의 거듭제곱이 아닌 경우)에서
+  실제 브라켓 시드(`bracketSeedOrder`)와 표시 순서가 다를 수 있다 — 표준 8/16팀 구성에서는
+  문제없음.
+- 플레이오프 대진 확정 서신의 "동부/서부" 구분은 `resolveRoundOneFromPlayIn()`에서 스탠딩을
+  다시 조회해 재구성한 것이라, `series` 배열 자체(2라운드부터 항상 'BPL')와는 별개 계산 경로다.
+
+**롤백 방법**: `server/src/shared/multi/playoffNews.ts` 삭제, `playoffSeeder.ts`/
+`playInSeeder.ts`/`simRunner.ts`의 이번 항목 변경분 되돌리기(특히 `handlePlayInAdvance`
+시그니처를 원래 4-인자 버전으로), 클라이언트 4개 파일의 추가분 제거.
+
+---
+
 ## 2026-09-15 — 멀티리그 리더보드 "플레이오프" 토글이 항상 0으로만 나오던 버그 수정
 
 **배경**: 리더보드에서 정규시즌/플레이오프 토글을 바꿔도 플레이오프 스탯이 전부 0으로만
@@ -558,6 +724,193 @@ playInSeeder.ts, scheduler.ts, simRunner.ts) 관련 오류 없음(출력된 오�
 플레이오프/플레이인부터 적용됨.
 
 **롤백 방법**: 위 Before 블록으로 4개 파일 되돌리기, 또는 이 커밋 이전으로 revert.
+
+---
+
+## 2026-09-15 — 계약 옵션(팀/플레이어 옵션) 연차별 다중 지원: `option`(단수) → `options[]`(배열)
+
+**배경**: 바로 위 항목("연차별 연도 직접 입력 + 계약 이력")에 이어서, 옵션(팀옵션/플레이어옵션)도
+"계약당 1개, 보통 마지막 연차"로 고정돼 있던 걸 지적받았다 — 연차마다 독립적으로 옵션을
+체크할 수 있어야 실제 복잡한 계약(중간 연차 팀옵션 + 마지막 연차 플레이어옵션 등)을 표현할
+수 있다. `PlayerContract.option?: ContractOption`(단일 객체)을 `options?: ContractOption[]`
+(연차별 배열, 같은 year는 최대 1개)로 바꿨다 — 이 필드는 어드민뿐 아니라 FA서명/익스텐션/
+시즌롤오버/워시브 등 게임 엔진 전반에서 읽고 쓰던 필드라, 소비하는 곳을 전부 같이 고쳤다.
+
+**변경 파일** (타입 정의 → 하위호환 매핑 → 엔진 소비처 → 어드민 UI 순):
+- `types/player.ts`, `server/src/shared/types/player.ts` (미러 쌍) — `PlayerContract.option`
+  제거, `options?: ContractOption[]` 추가
+- `services/dataMapper.ts`(`buildPlayerContract`) — **하위호환**: 이번 세션에 2026-27 일괄
+  갱신한 21개 팀 + 60명 신인 전부 예전 단일 `option{type,year}` 형태로 저장돼 있으므로, 읽을
+  때 `rawContract.options`(신규 배열)가 없으면 `rawContract.option`(구 단일)을 자동으로
+  `[option]` 배열로 승격. 기존 DB 데이터 마이그레이션 불필요 — 읽기 시점에 자동 변환
+- `services/playerDevelopment/playerAging.ts` — 시즌 롤오버 옵션 행사 판정
+  (`currentYear`에 해당하는 옵션을 `options.find()`로 조회), `decideOption()`이 이제
+  `optionType`을 파라미터로 받음(기존엔 `player.contract!.option!.type`을 non-null
+  assertion으로 직접 읽어서 놓치기 쉬웠음)
+- `services/fa/extensionEngine.ts`, `services/fa/faMarketBuilder.ts` — 오퍼→최종계약 변환
+  시 `contract.option = option` → `contract.options = [option]`. "오퍼" 자체의 타입(협상 중
+  1건의 결정)은 그대로 단수 유지 — 계약 하나 새로 맺을 때 한 번에 정할 수 있는 옵션은
+  여전히 하나뿐이라 자연스러움
+- `services/fa/cpuWaiverEngine.ts`, `services/simulation/offseasonEventHandler.ts`,
+  `hooks/useGameData.ts`(2곳), `pages/InboxPage.tsx`, `pages/FrontOfficePage.tsx`,
+  `components/frontoffice/ContractManagementTab.tsx`(2곳) — 전부
+  `options?.some(o => o.type === X && o.year === currentYear)` 패턴으로 전환. 옵션 행사/거부
+  후 제거도 `options: undefined` 대신 `options.filter(o => o.year !== currentYear)`로 해당
+  연차만 제거(다른 연차 옵션은 보존)
+- `views/FrontOfficeView.tsx`, `views/NegotiationScreen.tsx` — 페이롤 표에서 연차마다
+  `options.find(o => o.year === i)`로 그 연차의 옵션을 개별 조회해 (PO)/(TO) 표시 — 이제
+  여러 연차에 옵션이 있어도 전부 정확히 표시됨(예전엔 단일 option.year 연차에서만 표시)
+- `pages/PlayerEditorPage.tsx` — 계약 폼 연봉 테이블에 "옵션" 컬럼 신설, 연차마다 TO/PO
+  체크박스 2개(상호배타, 체크 시 해당 연차에 `{type,year:idx}` 추가·해제). 예전 메타 테이블의
+  "옵션 타입 select + 연차 인덱스 입력" 단일 행 제거. `removeContractYear` 등 연차 삭제
+  핸들러에 `reindexOptionsAfterRemove()` 신설 적용 — 중간 연차 삭제 시 이후 연차의 옵션도
+  year 값을 함께 당겨서 밀리지 않게 함(Base/CO/계약이력 3곳 전부 동일 적용)
+
+**Before**: `contract.option = {type:'team', year:3}` — 계약 하나에 옵션 최대 1개.
+
+**After**: `contract.options = [{type:'team',year:2}, {type:'player',year:3}]` — 연차마다
+독립적으로 팀옵션/플레이어옵션/없음을 지정 가능.
+
+**검증**: `tsc --noEmit` 기준 전체 프로젝트 에러 58건으로 이번 리팩터 전후 동일(전부 무관한
+기존 오류로 개별 확인) — 이 변경으로 인한 새 타입 오류 없음. `grep`으로 전체 저장소에서
+`.option`(옵션 단수 필드) 참조를 전부 찾아 하나씩 검토해 반영했고, "offer" 로컬 타입(협상
+중 오퍼 하나의 옵션 선택)은 의도적으로 단수 유지했다.
+
+**주의사항**: dataMapper.ts의 하위호환 변환은 **읽을 때만** 일어난다 — DB의 기존 `option`
+필드 자체는 그대로 남아있고 지워지지 않는다(단, 어드민에서 그 선수의 계약을 다시 저장하면
+그 순간부터 `options` 배열 형태로 갱신됨). 게임 엔진이 실제로 트레이드/시즌롤오버 등으로
+그 선수의 계약을 저장하는 것도 마찬가지로 새 형태로 남는다.
+
+---
+
+## 2026-09-15 — 어드민 계약 폼: 연차별 연도 직접 입력 + 계약 이력(여러 묶음) 지원
+
+**배경**: 바로 위 항목("시작 연도 자동계산 → 직접 입력")이 근본적으로 부족하다는 지적 —
+`startYear + idx` 방식은 (1) 계약 묶음 하나 전체가 "시작 연도 + 등차수열"이라고 가정해서
+연차마다 실제 연도를 따로 기록할 수 없고, (2) 애초에 `contract` 필드 자체가 선수당 1개뿐이라
+과거에 같은 선수가 4년 계약을 두 번 체결했어도(예: 2010-14, 2018-22) 하나만 추적 가능했다.
+레전드처럼 커리어 전체의 실제 계약을 재구성하려면 둘 다 필요.
+
+**변경 파일**:
+- `types/player.ts`, `server/src/shared/types/player.ts` (미러 쌍) — `PlayerContract.startYear`
+  제거, 대신 `yearSeasons?: number[]`(years와 1:1 대응하는 실제 연도, 계산식 아님) 추가.
+  `Player.contractHistory?: PlayerContract[]` 신설(현재 `contract`와 별개, 과거 계약 묶음들)
+- `services/dataMapper.ts` — `base_attributes.contract_history` → `player.contractHistory` 매핑
+  추가(`prev_contract` → `prevContract` 매핑과 동일 패턴)
+- `pages/PlayerEditorPage.tsx`:
+  - `ContractForm`: 연봉 테이블의 "시즌" 셀을 `startYear+idx` 텍스트에서 연차별 직접 입력
+    `<input>`(→ `onSetYearSeason(idx, val)`)로 교체. `salary`/`onSetSalary`를 선택적(optional)으로
+    바꿔 "루트 salary" 행을 현재 계약(Base/CO)에서만 렌더링(과거 계약 묶음엔 불필요)
+  - 신규 핸들러 7개: `addContractHistoryEntry`/`removeContractHistoryEntry`/
+    `setContractHistoryField`/`setContractHistoryYear`/`setContractHistoryYearSeason`/
+    `addContractHistoryYear`/`removeContractHistoryYear` — 전부 `draft.contract_history`
+    (배열) 조작, base/CO 계약 핸들러와 동일한 불변성 패턴
+  - `removeContractYear`/`removeCoContractYear`에 `yearSeasons` 배열도 같이 splice하도록 추가
+    (연차 삭제 시 이후 연도 라벨이 밀리지 않게)
+  - "계약 이력" 섹션 신설(Base/CO 계약 아래, 2컬럼 그리드 전체 폭) — `contract_history` 배열의
+    각 항목을 `ContractForm` 재사용으로 렌더링, 항목별 삭제 버튼 + "+ 과거 계약 추가" 버튼
+  - `DISPLAY_ONLY_CO_KEYS`에 `contract_history` 추가
+
+**Before**: `startYear`(계약 묶음 전체에 1개, 등차수열 계산) + `contract` 필드 1개(현재
+계약만 추적 가능).
+
+**After**: `yearSeasons`(연차마다 직접 입력) + `contract_history`(과거 계약을 원하는 만큼
+추가/삭제 가능한 배열). 레전드 선수의 커리어 전체 계약 이력을 각 계약 묶음·각 연도 단위로
+정확히 재구성 가능.
+
+**검증**: `tsc --noEmit` 기준 이번 변경으로 인한 새 타입 오류 없음(기존 무관 오류 8건 그대로).
+
+**롤백 방법**: git으로 이 커밋 되돌리기 권장(변경 지점이 많아 부분 롤백 시 타입 불일치
+위험). DB에는 아직 `contract_history`/`yearSeasons`를 쓴 데이터가 없으므로(이번 세션에 막
+추가한 필드) 데이터 손실 없이 코드만 되돌리면 됨.
+
+---
+
+## 2026-09-15 — 어드민 계약 폼 "시작 연도" 자동계산 → 직접 입력으로 전환
+
+**배경**: 바로 위 항목("meta_players.career_history 2025-26 반영")과 같은 세션에서, 어드민
+계약 폼(`PlayerEditorPage.tsx`)의 `startYear`를 `2026 - currentYear` 공식으로 자동 계산하게
+고쳤었다. 그런데 계약 데이터를 앞으로 선수마다 직접 조사해 입력하는 방식으로 바꾸기로
+하면서(자동 bbref 갱신 중단), 이 공식이 근본적으로 틀렸다는 게 드러났다 — 올타임 레전드처럼
+과거 계약(예: 1997년 계약)을 입력하려 해도 "2026 - currentYear"로 강제 계산되어 엉뚱한 연도가
+나온다. 시작 연도 자체가 선수마다 다른 사실 데이터인데 공식으로 유도할 수 있는 값이 아니었다.
+
+**변경 파일**:
+- `types/player.ts`, `server/src/shared/types/player.ts` (미러 쌍) — `PlayerContract`에
+  `startYear?: number` 필드 추가 (years[0]이 속하는 시즌, 어드민이 직접 입력)
+- `pages/PlayerEditorPage.tsx` — `ContractFormProps`에서 `startYear` prop 제거,
+  `ContractForm` 내부에서 `contract.startYear ?? 2026`으로 자체 계산(2026은 "아직 입력
+  안 함" 임시 표시값일 뿐, 계산식 아님). "시작 연도" 입력 행 신설(현재 시즌 입력 행
+  바로 위) — `onSetContractField('startYear', ...)`로 직접 편집. 호출부 2곳(Base 계약/CO
+  계약)에서 `startYear={2026 - currentYear}` prop 전달 제거.
+
+**Before**:
+```tsx
+startYear={2026 - ((draft.contract?.currentYear) ?? 0)}
+// ContractForm은 이 prop을 그대로 받아 시즌 라벨 계산에만 사용, 입력 UI 없음
+```
+
+**After**:
+```tsx
+// ContractForm 내부
+const startYear: number = contract.startYear ?? 2026;
+// + "시작 연도" input 행 신설, onSetContractField('startYear', Number(e.target.value))
+```
+
+**검증**: `tsc --noEmit` 기준 이번 수정으로 인한 새 타입 오류 없음(기존에 있던 무관한
+오류 4건은 그대로 존재, 이번 변경과 무관 확인).
+
+**주의사항**: 기존에 `contract.startYear`를 한 번도 입력 안 한 계약(전부 다 그렇다 —
+이 필드 자체가 이번에 신설됨)은 폼에 2026으로 임시 표시된다. 실제 값을 안 채운 채 그대로
+저장하면 2026으로 저장되어버리니, 레전드/과거 선수 계약을 입력할 때는 반드시 이 필드를
+직접 고쳐야 한다 — 자동으로 맞는 값이 채워지지 않는다.
+
+---
+
+## 2026-09-15 — 멀티플레이어 계약 리그별 오버라이드 (room_player_state.contract)
+
+**배경**: `meta_players.base_attributes.contract`를 앞으로 사람이 직접 조사해 채우는
+"실제 2026-27 시즌 계약" 값으로 확정하기로 하면서, 멀티플레이어에서 트레이드/FA서명/방출로
+계약이 바뀌었을 때 그게 어디에 저장되는지 점검했다. 조사 결과 **아예 저장되는 곳이 없었음**
+— `services/multi/buildLeagueTeams.ts`가 항상 `meta_players.base_attributes.contract`를
+그대로 통과시켜서, 리그 A에서 계약이 바뀌어도 다시 불러오면 원본 값으로 리셋됐다. 싱글
+플레이어는 이미 `saves.roster_state[playerId].contract`(`hooks/useGameData.ts`)로 이 문제를
+풀고 있어서, 멀티도 같은 패턴을 적용 — 이미 부상/체력을 `(room_id, player_id)` 단위로
+저장하던 `room_player_state` 테이블에 `contract` 컬럼만 추가했다.
+
+**변경 파일**:
+- `migrations/add_room_player_state_contract.sql` (신규) — `room_player_state`에 `contract
+  jsonb` 컬럼 추가 + 기존 행 전체를 그 선수의 현재 `meta_players.base_attributes.contract`로
+  백필(2026-09-15 Supabase MCP로 적용, 606행 중 604행 백필 — 나머지 2행은 meta_players에
+  계약 데이터 자체가 없는 케이스)
+- `hooks/useLeagueRawStats.ts` — `RAW_PLAYER_INJURY_COLS`에 `contract` 추가,
+  `LeagueRawStatsData.playerInjuryRows`에 `contract` 필드 타입 추가 (기존 `room_player_state`
+  쿼리 재사용, 별도 쿼리 추가 없음)
+- `services/multi/buildLeagueTeams.ts` — `contractByPlayer` Map 신설(`injuryHistoryByPlayer`와
+  동일 패턴), roster 매핑 시 `contract: roomContract ?? base.contract`로 오버라이드하고
+  `salary`/`contractYears`도 `dataMapper.ts`의 `buildPlayerContract`와 동일한 공식으로 재파생
+
+**Before**: 멀티 리그의 선수 계약은 항상 `meta_players.base_attributes.contract` 그대로 —
+리그별 분기 불가능, 트레이드/FA서명으로 바뀐 계약이 저장될 곳 없음.
+
+**After**: `room_player_state.contract`가 null이 아니면 그 리그 전용 계약으로 사용, null이면
+`meta_players` 원본으로 폴백. 리그마다 독립적으로 계약이 진화할 수 있는 인프라 확보.
+
+**검증**: 마이그레이션 적용 후 `SELECT COUNT(*), COUNT(contract) FROM room_player_state` →
+606/604 확인. `tsc --noEmit` 기준 수정한 두 파일(`buildLeagueTeams.ts`,
+`useLeagueRawStats.ts`)에 새 타입 오류 없음.
+
+**주의사항 (미해결)**: 멀티플레이어에는 현재 **재계약/익스텐션 기능 자체가 없음** (FA는
+즉시 서명만, 협상 없음 — `NegotiationScreen.tsx`는 싱글 전용). 즉 이번 작업은 "읽기 우선순위 +
+저장소" 인프라만 마련한 것이고, 실제로 room_player_state.contract에 새 값을 **쓰는** 멀티
+기능(연장/재계약 UI, 또는 FA서명 시 계약조건 입력)은 아직 없다 — 나중에 그 기능을 만들 때
+이 컬럼에 쓰기만 하면 됨. 트레이드/방출은 계약 조건 자체를 바꾸지 않으므로(실제 NBA처럼
+선수를 따라 계약이 그대로 이동) 이번 범위에서 쓰기 로직을 추가하지 않았다.
+
+**롤백 방법**: `ALTER TABLE public.room_player_state DROP COLUMN contract;`로 컬럼 제거하면
+즉시 이전 동작(meta_players 원본 항상 사용)으로 복귀. 코드 쪽은 `buildLeagueTeams.ts`에서
+`contractByPlayer` 관련 3줄과 roster 반환 객체의 `contract/salary/contractYears` 세 필드,
+`useLeagueRawStats.ts`의 `contract` 관련 2곳만 되돌리면 됨.
 
 ---
 

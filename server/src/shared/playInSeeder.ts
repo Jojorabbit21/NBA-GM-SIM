@@ -24,11 +24,13 @@
 import { generateAllSeriesGames, type PlayoffSeries, type TournamentGame } from './tournamentBracket';
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
+import { supabase } from '../supabaseAdmin';
 import {
-    computeStandingsByConference, buildAndStoreConferenceBracket,
+    computeStandingsByConference, buildAndStoreConferenceBracket, buildBracketConfirmedEvent, seasonLabelFor,
     postseasonVirtualAnchor, addDaysStr,
     type StandingRow, type PostseasonLeagueRow,
 } from './playoffSeeder';
+import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
 
 function playInSeriesId(conf: 'East' | 'West', tag: '7v8' | '9v10' | '8th'): string {
     return `PI_${conf.toUpperCase()}_${tag}`;
@@ -47,6 +49,10 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const n = Math.max(2, league.playoff_team_count ?? 8);
     const autoClinch = Math.max(0, n - 2);
+
+    const { data: teamRows } = await supabase.from('league_teams').select('team_slug, team_name').eq('room_id', roomId);
+    const teamNameBySlug = new Map((teamRows ?? []).map((t: any) => [t.team_slug as string, t.team_name as string]));
+    const matchups: any[] = [];
 
     // [2026-09-15 Fix] game_date(가상 캘린더)는 postseasonVirtualAnchor() 기반으로 계산 —
     // playInStartIso(실제 방송 시각/scheduledAt)와는 별개 축. 플레이인은 포스트시즌 day 0.
@@ -70,6 +76,11 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
             continue;
         }
         const [s7, s8, s9, s10] = field;
+        const name = (slug: string) => teamNameBySlug.get(slug) ?? slug;
+        matchups.push(
+            { conference: conf, tag: '7v8', higherSeedSlug: s7.team_slug, higherSeedName: name(s7.team_slug), higherSeedRank: autoClinch + 1, lowerSeedSlug: s8.team_slug, lowerSeedName: name(s8.team_slug), lowerSeedRank: autoClinch + 2 },
+            { conference: conf, tag: '9v10', higherSeedSlug: s9.team_slug, higherSeedName: name(s9.team_slug), higherSeedRank: autoClinch + 3, lowerSeedSlug: s10.team_slug, lowerSeedName: name(s10.team_slug), lowerSeedRank: autoClinch + 4 },
+        );
 
         series.push({
             id: playInSeriesId(conf, '7v8'), round: 0, conference: conf,
@@ -114,6 +125,19 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
         );
     }
 
+    // [2026-09-15] "플레이인 대진 발표" 서신 — 실제 미니시리즈가 생성됐을 때만(소규모 리그라
+    // 플레이인 자체가 스킵됐으면 matchups가 비어있으므로 발행하지 않는다). 이 함수는 리그당
+    // 정확히 한 번만 실행되고(scheduler.ts가 bracket_data IS NULL 조건으로 중복 방지) CAS
+    // 재시도 대상이 아니므로 바로 발행해도 안전하다.
+    if (matchups.length > 0) {
+        const seasonLabel = seasonLabelFor(league.virtual_season_year);
+        await insertLeagueEvent({
+            roomId, leagueId: league.id, type: 'play_in_bracket', simDate: virtualStartDate,
+            teamIds: matchups.flatMap(m => [m.higherSeedSlug, m.lowerSeedSlug]),
+            payload: { headline: `${seasonLabel}시즌 플레이인 토너먼트 대진 발표`, seasonLabel, matchups },
+        });
+    }
+
     // 플레이인 게임(있다면 "+1일" 앵커의 슬롯 0~1)과 시간이 겹치지 않도록 본선 프레임은
     // 하루 더 늦게(+2일) 시작시킨다. 플레이인이 전혀 없는 리그는 기본값(+1일) 그대로.
     const daysOffset = schedule.length > 0 ? 2 : 1;
@@ -121,22 +145,67 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} play-in games)`);
 }
 
+export interface HandlePlayInAdvanceResult {
+    tournamentStartAt?: string;
+    simRealStartAt?: string;
+    pendingEvents: PendingLeagueEvent[];
+}
+
 /**
  * simRunner.ts의 handleTournamentAdvance가 round:0 시리즈 완료를 감지했을 때 호출된다.
  * series 배열을 직접 mutate한다 — 호출부가 그 직후 bracket_data를 저장하므로 여기서는
  * "8th 디사이더 게임 생성"처럼 games 테이블에 별도로 반영해야 하는 부수효과만 처리한다.
  *
- * [2026-09-15 Fix] 반환값은 [하위호환] 레거시 경로에서 buildAndStoreConferenceBracket을
- * persist=false로 호출했을 때 나온 tournament_start_at/sim_real_start_at — handleTournamentAdvance
- * 의 낙관적 동시성 제어(bracket_version CAS) 최종 write에 병합돼야 한다. 그 경로를 안 탔으면 null.
+ * [2026-09-15 Fix] tournamentStartAt/simRealStartAt은 [하위호환] 레거시 경로에서
+ * buildAndStoreConferenceBracket을 persist=false로 호출했을 때만 채워짐 —
+ * handleTournamentAdvance의 낙관적 동시성 제어(bracket_version CAS) 최종 write에 병합돼야 한다.
+ *
+ * [2026-09-15] pendingEvents는 "플레이인 결과"/"플레이오프 대진 확정" 서신 — 호출부
+ * (simRunner.ts의 tryAdvanceTournamentOnce)가 bracket_version CAS write 성공 직후에만
+ * 실제로 발행해야 재시도 시 중복 발행을 막을 수 있다(playoffNews.ts 헤더 주석 참고).
+ *
+ * homeTeamId/awayTeamId/homeScore/awayScore — 방금 끝난 플레이인 게임의 실제 스코어(플레이인은
+ * 항상 단판이라 이 경기 자체가 곧 시리즈 결과). "플레이인 결과" 서신에 승/패 스코어를 그대로
+ * 실어주기 위해 tryAdvanceTournamentOnce로부터 전달받는다.
  */
 export async function handlePlayInAdvance(
     league: PostseasonLeagueRow, roomId: string, series: PlayoffSeries[], finishedSeriesId: string,
-): Promise<{ tournamentStartAt: string; simRealStartAt: string } | null> {
+    homeTeamId: string, awayTeamId: string, homeScore: number, awayScore: number,
+): Promise<HandlePlayInAdvanceResult> {
     const finished = series.find(s => s.id === finishedSeriesId);
-    if (!finished || !finished.winnerId || finished.conference === 'BPL') return null;
+    if (!finished || !finished.winnerId || finished.conference === 'BPL') return { pendingEvents: [] };
     const conf = finished.conference;
     const loserId = finished.winnerId === finished.higherSeedId ? finished.lowerSeedId : finished.higherSeedId;
+
+    const tag: '7v8' | '9v10' | '8th' =
+        finishedSeriesId === playInSeriesId(conf, '7v8') ? '7v8' :
+        finishedSeriesId === playInSeriesId(conf, '9v10') ? '9v10' : '8th';
+    const seedClinched: 7 | 8 | undefined = tag === '7v8' ? 7 : tag === '8th' ? 8 : undefined;
+    const winnerScore = finished.winnerId === homeTeamId ? homeScore : awayScore;
+    const loserScore  = finished.winnerId === homeTeamId ? awayScore : homeScore;
+    const { data: teamRows } = await supabase.from('league_teams')
+        .select('team_slug, team_name').eq('room_id', roomId).in('team_slug', [finished.winnerId, loserId]);
+    const nameOf = (slug: string) => teamRows?.find((t: any) => t.team_slug === slug)?.team_name ?? slug;
+    // 플레이인은 항상 단판이라 이 시리즈의 game_date는 게임 종류(7v8/9v10=포스트시즌 day 0,
+    // 8th 디사이더=day 1)만으로 이미 결정돼 있다(startPlayIn()/handlePlayInAdvance의 디사이더
+    // 생성 로직과 동일 규칙) — 별도 조회 없이 그대로 계산.
+    const confLabel = conf === 'East' ? '동부' : '서부';
+    const tagLabel = tag === '7v8' ? '7-8위전' : tag === '9v10' ? '9-10위전' : '8시드 결정전';
+    const winnerName = nameOf(finished.winnerId);
+    const playInVirtualDate = tag === '8th'
+        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1)
+        : postseasonVirtualAnchor(league.virtual_season_year);
+    const pendingEvents: PendingLeagueEvent[] = [{
+        type: 'play_in_result', simDate: playInVirtualDate,
+        teamIds: [finished.winnerId, loserId],
+        payload: {
+            headline: `${winnerName}, ${confLabel} ${tagLabel} 승리`,
+            conference: conf, tag,
+            winnerSlug: finished.winnerId, winnerName,
+            loserSlug: loserId, loserName: nameOf(loserId),
+            winnerScore, loserScore, seedClinched,
+        },
+    }];
 
     const decider = series.find(s => s.id === playInSeriesId(conf, '8th'));
     if (decider && !decider.finished) {
@@ -172,16 +241,17 @@ export async function handlePlayInAdvance(
     const hasRoundOneFrame = series.some(s => s.round >= 1);
     if (hasRoundOneFrame) {
         if (finishedSeriesId === playInSeriesId(conf, '7v8') || finishedSeriesId === playInSeriesId(conf, '8th')) {
-            await resolveRoundOneFromPlayIn(league, roomId, series, conf, finishedSeriesId, finished.winnerId);
+            const bracketEvent = await resolveRoundOneFromPlayIn(league, roomId, series, conf, finishedSeriesId, finished.winnerId);
+            if (bracketEvent) pendingEvents.push(bracketEvent);
         }
-        return null;
+        return { pendingEvents };
     }
 
     // [하위호환] 이 수정 이전에 이미 시작된 리그 — startPlayIn()이 본선 1라운드 프레임을 만들어
     // 두지 않았으므로, 예전 방식대로 플레이인이 전부 끝난 뒤에야 본선 브라켓 전체를 한 번에
     // 생성한다. 새로 시작하는 리그는 위 hasRoundOneFrame 분기에서 이미 return되어 여기 오지 않는다.
     const allPlayInFinished = series.filter(s => s.round === 0).every(s => s.finished);
-    if (!allPlayInFinished) return null;
+    if (!allPlayInFinished) return { pendingEvents };
 
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const n = Math.max(2, league.playoff_team_count ?? 8);
@@ -203,7 +273,7 @@ export async function handlePlayInAdvance(
     // 여기에 새 본선 시리즈를 push한다. persist=false — 이 write는 leagues.bracket_version CAS를
     // 태워야 하므로 여기서 직접 저장하지 않고, 계산된 앵커만 반환해 handleTournamentAdvance의
     // 최종 조건부 write에 병합시킨다(위 함수 설명 참조).
-    return await buildAndStoreConferenceBracket(
+    const bracketResult = await buildAndStoreConferenceBracket(
         league, roomId,
         resolveQualified('East', East),
         resolveQualified('West', West),
@@ -211,6 +281,12 @@ export async function handlePlayInAdvance(
         1,
         false,
     );
+    if (!bracketResult) return { pendingEvents };
+    return {
+        tournamentStartAt: bracketResult.tournamentStartAt,
+        simRealStartAt: bracketResult.simRealStartAt,
+        pendingEvents: [...pendingEvents, ...bracketResult.pendingEvents],
+    };
 }
 
 /**
@@ -218,20 +294,25 @@ export async function handlePlayInAdvance(
  * 미리 만들어 둔 본선 1라운드의 TBD 슬롯을 채우고 그 시리즈의 게임을 생성한다. 파트너 시드는
  * bracketSeedOrder의 표준 시딩 규칙(1번↔n번, 2번↔n-1번)상 항상 2시드(7v8 승자용)/1시드
  * (8th 디사이더 승자용)로 고정된다.
+ *
+ * [2026-09-15] 이 슬롯을 채운 뒤 본선 1라운드 전체(양쪽 컨퍼런스)에 더 이상 TBD가 없으면
+ * "플레이오프 대진 확정" 서신을 반환한다 — 컨퍼런스/시드별로 독립 처리되는 구조라, 어느
+ * resolveRoundOneFromPlayIn() 호출이 "마지막 TBD"를 채우는지는 실행 순서에 달려있어 매번
+ * 여기서 다시 확인해야 한다.
  */
 async function resolveRoundOneFromPlayIn(
     league: PostseasonLeagueRow, roomId: string, series: PlayoffSeries[],
     conf: 'East' | 'West', finishedSeriesId: string, winnerId: string,
-): Promise<void> {
+): Promise<PendingLeagueEvent | null> {
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const standings = conf === 'East' ? East : West;
     const partnerSlug = finishedSeriesId === playInSeriesId(conf, '7v8')
         ? standings[1]?.team_slug   // 7v8 승자 = 7시드 → 파트너는 2시드
         : standings[0]?.team_slug;  // 8th 디사이더 승자 = 8시드 → 파트너는 1시드
-    if (!partnerSlug) return;
+    if (!partnerSlug) return null;
 
     const target = series.find(s => s.round === 1 && s.higherSeedId === partnerSlug && s.lowerSeedId === 'TBD');
-    if (!target) return; // 이미 채워졌거나(중복 이벤트) 매치 자체가 없는 소규모 리그
+    if (!target) return null; // 이미 채워졌거나(중복 이벤트) 매치 자체가 없는 소규모 리그
 
     target.lowerSeedId = winnerId;
 
@@ -251,4 +332,21 @@ async function resolveRoundOneFromPlayIn(
     await insertGameShortCodes(roomId, games.map(g => ({ id: g.id }))).catch(err =>
         console.error(`[playInSeeder] round1 insertGameShortCodes 실패(${roomId}):`, err),
     );
+
+    const stillPending = series.some(s => s.round === 1 && (s.higherSeedId === 'TBD' || s.lowerSeedId === 'TBD'));
+    if (stillPending) return null;
+
+    const n = Math.max(2, league.playoff_team_count ?? 8);
+    const autoClinch = Math.max(0, n - 2);
+    const resolveQualified = (c: 'East' | 'West', st: StandingRow[]): StandingRow[] => {
+        const auto = st.slice(0, autoClinch);
+        const bySlug = new Map(st.map(s => [s.team_slug, s]));
+        const seed7Id = series.find(s => s.id === playInSeriesId(c, '7v8'))?.winnerId;
+        const seed8Id = series.find(s => s.id === playInSeriesId(c, '8th'))?.winnerId;
+        const extra = [seed7Id, seed8Id].map(id => (id ? bySlug.get(id) : undefined)).filter(Boolean) as StandingRow[];
+        return extra.length > 0 ? [...auto, ...extra] : st.slice(0, n);
+    };
+    const { data: teamRows } = await supabase.from('league_teams').select('team_slug, team_name').eq('room_id', roomId);
+    const bySlugName = new Map((teamRows ?? []).map((t: any) => [t.team_slug, t]));
+    return buildBracketConfirmedEvent(league.virtual_season_year, round1VirtualDate, resolveQualified('East', East), resolveQualified('West', West), bySlugName);
 }

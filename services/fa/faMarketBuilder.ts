@@ -153,7 +153,7 @@ function buildContract(
     tradeKicker?: number,
 ): PlayerContract {
     const contract: PlayerContract = { years: Array(years).fill(Math.round(salary)), currentYear: 0, type };
-    if (option)                   contract.option      = option;
+    if (option)                   contract.options     = [option];
     if (noTrade)                  contract.noTrade     = true;
     if (tradeKicker && tradeKicker > 0) contract.tradeKicker = tradeKicker;
     return contract;

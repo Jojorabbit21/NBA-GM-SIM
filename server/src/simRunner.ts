@@ -15,7 +15,9 @@ import {
     type TournamentGame,
 } from './shared/tournamentBracket.ts';
 import { archiveTournament } from './shared/tournamentArchiver.ts';
-import { handlePlayInAdvance } from './shared/playInSeeder.ts';
+import { handlePlayInAdvance, type HandlePlayInAdvanceResult } from './shared/playInSeeder.ts';
+import { seasonLabelFor } from './shared/playoffSeeder.ts';
+import { roundLabel, computeFinalsMvp, flushPendingLeagueEvents, type PendingLeagueEvent } from './shared/multi/playoffNews.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, detectInjuryEvent, detectSuspensionEvent, type DetectedEvent } from './shared/leagueEvents.ts';
@@ -532,6 +534,19 @@ async function tryAdvanceTournamentOnce(
     const seriesObj = series.find(s => s.id === seriesId);
     if (!seriesObj || seriesObj.finished) return true;
 
+    // [2026-09-15] 플레이오프 서신 — "무엇을 보낼지"만 여기서 모아두고, 실제 insertLeagueEvent
+    // 호출은 맨 끝의 bracket_version CAS write가 성공한 뒤에만 한다(재시도 시 중복 발행 방지,
+    // playoffNews.ts 헤더 주석 참고). team_name 조회는 필요해질 때 한 번만 지연 조회.
+    const pendingEvents: PendingLeagueEvent[] = [];
+    let teamNameBySlug: Map<string, string> | null = null;
+    const getTeamName = async (slug: string): Promise<string> => {
+        if (!teamNameBySlug) {
+            const { data: teamRows } = await supabase.from('league_teams').select('team_slug, team_name').eq('room_id', roomId);
+            teamNameBySlug = new Map((teamRows ?? []).map((t: any) => [t.team_slug as string, t.team_name as string]));
+        }
+        return teamNameBySlug.get(slug) ?? slug;
+    };
+
     // 승패 집계
     const homeWon = homeScore > awayScore;
     if (homeWon) {
@@ -548,6 +563,53 @@ async function tryAdvanceTournamentOnce(
     } else if (seriesObj.lowerSeedWins >= seriesObj.targetWins) {
         seriesObj.finished = true;
         seriesObj.winnerId = seriesObj.lowerSeedId;
+    }
+
+    // [2026-09-15] "플레이오프 경기 결과"/"플레이오프 시리즈 결과" 서신 — round 0(플레이인)은
+    // 별도 play_in_result 서신으로 다루므로 제외(round>=1만). 일반 game_result와 달리 항상
+    // 발행(점수 문턱 없음). gameDate — 방금 끝난 이 경기 자체의 가상 캘린더 날짜(뉴스피드
+    // sim_date 필터/정렬용) — 우승팀/파이널 MVP 서신도 "이 경기로 인해 확정"된 것이므로 동일
+    // 날짜를 재사용한다.
+    let gameDate: string | null = null;
+    if (seriesObj.round >= 1) {
+        const { data: gameRow } = await supabase.from('games').select('game_date').eq('room_id', roomId).eq('game_id', gameId).maybeSingle();
+        gameDate = gameRow?.game_date ?? null;
+
+        const totalRounds = series.reduce((mx, s) => Math.max(mx, s.round), 0);
+        const label = roundLabel(seriesObj.round, totalRounds);
+        const gameNum = seriesObj.higherSeedWins + seriesObj.lowerSeedWins;
+        const gameWinnerSlug = homeWon ? homeTeamId : awayTeamId;
+        pendingEvents.push({
+            type: 'playoff_game_result', simDate: gameDate,
+            teamIds: [homeTeamId, awayTeamId],
+            gameId,
+            payload: {
+                headline: `${await getTeamName(gameWinnerSlug)}, ${label} ${gameNum}차전 승리`,
+                homeSlug: homeTeamId, awaySlug: awayTeamId, homeScore, awayScore,
+                roundName: label, gameNum,
+                higherSeedSlug: seriesObj.higherSeedId, lowerSeedSlug: seriesObj.lowerSeedId,
+                higherSeedWins: seriesObj.higherSeedWins, lowerSeedWins: seriesObj.lowerSeedWins,
+            },
+        });
+
+        if (seriesObj.finished) {
+            const winnerSlug = seriesObj.winnerId!;
+            const loserSlug = winnerSlug === seriesObj.higherSeedId ? seriesObj.lowerSeedId : seriesObj.higherSeedId;
+            const winnerWins = winnerSlug === seriesObj.higherSeedId ? seriesObj.higherSeedWins : seriesObj.lowerSeedWins;
+            const loserWins  = winnerSlug === seriesObj.higherSeedId ? seriesObj.lowerSeedWins : seriesObj.higherSeedWins;
+            const winnerName = await getTeamName(winnerSlug);
+            pendingEvents.push({
+                type: 'playoff_series_result', simDate: gameDate,
+                teamIds: [winnerSlug, loserSlug],
+                payload: {
+                    headline: `${winnerName}, ${label} 시리즈 승리`,
+                    roundName: label,
+                    winnerSlug, winnerName,
+                    loserSlug, loserName: await getTeamName(loserSlug),
+                    winnerWins, loserWins,
+                },
+            });
+        }
     }
 
     if (seriesObj.finished) {
@@ -604,11 +666,10 @@ async function tryAdvanceTournamentOnce(
     if (seriesObj.round === 0 && seriesObj.finished) {
         const playInResult = await handlePlayInAdvance(
             { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year },
-            roomId, series, seriesId,
-        ).catch(err => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return null; });
-        if (playInResult) {
-            extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };
-        }
+            roomId, series, seriesId, homeTeamId, awayTeamId, homeScore, awayScore,
+        ).catch((err): HandlePlayInAdvanceResult => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return { pendingEvents: [] }; });
+        extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };
+        pendingEvents.push(...playInResult.pendingEvents);
     }
 
     // bracket_version이 내가 읽은 값 그대로일 때만 쓴다 — 그 사이 다른 워커가 먼저 썼다면
@@ -621,13 +682,56 @@ async function tryAdvanceTournamentOnce(
 
     if (!updated || updated.length === 0) return false; // 경합 발생 — 재시도 필요
 
+    // [2026-09-15] 여기서부터는 CAS write가 이미 성공했다 — 재시도되지 않으므로 이제
+    // insertLeagueEvent()를 호출해도 중복 발행 걱정이 없다.
     const realSeries = series.filter(s => s.lowerSeedId !== 'BYE');
     const allDone    = realSeries.length > 0 && realSeries.every(s => s.finished);
     if (allDone) {
         console.log(`[simRunner] tournament complete — archiving league=${leagueId}`);
+
+        // "플레이오프 우승팀"/"파이널 MVP" 서신 — 파이널(최고 라운드) 시리즈의 승자를 우승팀으로,
+        // 그 시리즈의 game_pbp를 집계해 MVP를 뽑는다.
+        const finalsSeries = realSeries.reduce<BPLSeries | null>(
+            (best, s) => (!best || s.round > best.round) ? s : best, null,
+        );
+        if (finalsSeries?.winnerId) {
+            const championSlug = finalsSeries.winnerId;
+            let playoffWins = 0, playoffLosses = 0;
+            for (const s of realSeries) {
+                if (s.higherSeedId === championSlug) { playoffWins += s.higherSeedWins; playoffLosses += s.lowerSeedWins; }
+                else if (s.lowerSeedId === championSlug) { playoffWins += s.lowerSeedWins; playoffLosses += s.higherSeedWins; }
+            }
+            const championName = await getTeamName(championSlug);
+            const seasonLabel = seasonLabelFor((leagueRow as any).virtual_season_year);
+            pendingEvents.push({
+                type: 'playoff_champion', simDate: gameDate,
+                teamIds: [championSlug],
+                payload: { headline: `${championName}, ${seasonLabel}시즌 챔피언 등극`, seasonLabel, championSlug, championName, playoffWins, playoffLosses },
+            });
+
+            const mvp = await computeFinalsMvp(roomId, finalsSeries.id, championSlug).catch(err => {
+                console.error(`[simRunner] computeFinalsMvp 실패(${leagueId}):`, err);
+                return null;
+            });
+            if (mvp) {
+                pendingEvents.push({
+                    type: 'finals_mvp', simDate: gameDate,
+                    teamIds: [championSlug], playerIds: [mvp.playerId],
+                    payload: {
+                        headline: `${mvp.playerName}, ${seasonLabel}시즌 파이널 MVP 선정`,
+                        seasonLabel, playerId: mvp.playerId, playerName: mvp.playerName,
+                        teamSlug: championSlug, teamName: championName,
+                        gp: mvp.gp, ppg: mvp.ppg, rpg: mvp.rpg, apg: mvp.apg, spg: mvp.spg, bpg: mvp.bpg,
+                    },
+                });
+            }
+        }
+
         const { error: archiveErr } = await archiveTournament(supabase, leagueId, roomId);
         if (archiveErr) console.error('[simRunner] archive error:', archiveErr);
         await supabase.from('leagues').update({ status: 'finished' }).eq('id', leagueId);
     }
+
+    await flushPendingLeagueEvents(roomId, leagueId, pendingEvents);
     return true;
 }

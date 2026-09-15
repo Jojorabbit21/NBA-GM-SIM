@@ -1105,8 +1105,9 @@ const PayrollRow: React.FC<{
             const colIdx = i - player.contract.currentYear;
             if (colIdx >= 0 && colIdx < seasonColumns.length) {
                 let label = fmtSalary(player.contract.years[i]);
-                if (player.contract.option && i === player.contract.option.year) {
-                    label += player.contract.option.type === 'player' ? ' (PO)' : ' (TO)';
+                const opt = player.contract.options?.find(o => o.year === i);
+                if (opt) {
+                    label += opt.type === 'player' ? ' (PO)' : ' (TO)';
                 }
                 result[colIdx] = label;
             }

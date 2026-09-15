@@ -157,15 +157,19 @@ export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension';
 
 export interface ContractOption {
     type: 'player' | 'team';
-    year: number;               // 적용 연차 (0-based, 보통 마지막 해)
+    year: number;               // 적용 연차 (0-based) — options 배열에서 연차마다 하나씩 가질 수 있음
 }
 
 export interface PlayerContract {
     years: number[];            // 연차별 연봉 (달러) [30_000_000, 32_000_000, ...]
+    yearSeasons?: number[];     // years와 1:1 대응하는 실제 시즌 연도 [2026, 2027, ...] — 계산식이
+                                 // 아니라 연차마다 직접 입력하는 사실 데이터(과거 계약 재구성용).
     currentYear: number;        // 0-based
     type: ContractType;
     noTrade?: boolean;
-    option?: ContractOption;
+    options?: ContractOption[]; // 연차별 팀/플레이어 옵션 — 같은 year를 가진 항목은 최대 1개
+                                 // (연차당 옵션은 하나뿐). 특정 연차의 옵션 조회는
+                                 // options?.find(o => o.year === targetYear).
     tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
 }
 
@@ -292,6 +296,9 @@ export interface Player {
     awards?: PlayerAwardEntry[];
     career_history?: CareerSeasonStat[];
     contract?: PlayerContract;
+    contractHistory?: PlayerContract[]; // 과거에 체결했던 계약 묶음들(현재 contract와 별개) —
+                                         // meta_players.base_attributes.contract_history, 어드민
+                                         // 에서 계약을 여러 번 나눠 입력할 때 씀(레전드 등)
     draftYear?: number;     // meta_players.draft_year (YOS 역산용)
     draftRound?: 1 | 2 | null;  // 드래프트 라운드 (null = 언드래프트)
     draftPick?: number | null;  // 픽 번호 (1~30: 1라운드, 31~60: 2라운드, null: 언드래프트)

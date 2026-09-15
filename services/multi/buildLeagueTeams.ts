@@ -30,6 +30,11 @@ export interface LeagueTeamWithOppZones extends Team {
  * 기본값 빈 객체라 이 파라미터를 안 쓰는 5개 호출부(홈/트레이드/선수상세/전술/리더보드
  * 정규시즌)는 전혀 영향 없음 — 리더보드가 "플레이오프" 토글일 때만
  * usePlayerSeasonStatsLeague(..., isPlayoff=true)로 따로 받아와 넘긴다.
+ *
+ * [2026-09-15] player.contract도 room_player_state.contract(raw.playerInjuryRows에 같이
+ * 실려옴)가 있으면 그걸로, 없으면 meta_players 원본(base.contract)으로 폴백 — 트레이드/
+ * FA서명/방출로 이 리그에서 바뀐 계약이 다른 리그나 meta_players에 새지 않는다(싱글플레이어
+ * saves.roster_state와 동일한 패턴). salary/contractYears도 함께 재파생한다.
  */
 export function buildLeagueTeams(
     raw: LeagueRawStatsData,
@@ -64,6 +69,15 @@ export function buildLeagueTeams(
         (raw.playerInjuryRows ?? []).map(row => [row.player_id, row.injury_history ?? []]),
     );
 
+    // room_player_state.contract — 이 리그에서 트레이드/FA서명/방출로 바뀐 계약 오버라이드.
+    // null인 행(또는 행 자체가 없는 선수)은 이 Map에 들어오지 않아 meta_players 원본
+    // 계약(base.contract)으로 자연스럽게 폴백한다 — migrations/add_room_player_state_contract.sql.
+    const contractByPlayer = new Map<string, Record<string, any>>(
+        (raw.playerInjuryRows ?? [])
+            .filter(row => row.contract != null)
+            .map(row => [row.player_id, row.contract as Record<string, any>]),
+    );
+
     return leagueTeams.map(lt => ({
         id:           lt.team_slug,
         name:         lt.team_name,
@@ -85,6 +99,14 @@ export function buildLeagueTeams(
             if (!base) return null;
             const leagueSeasons = leagueSeasonsByPlayer.get(id);
             const injuryHistory = injuryHistoryByPlayer.get(id);
+            const roomContract = contractByPlayer.get(id);
+            // dataMapper.ts의 buildPlayerContract와 동일한 파생 공식 — contract가 오버라이드
+            // 되면 salary/contractYears도 같이 재계산해야 로스터 페이롤 화면 등에서 어긋나지 않는다.
+            const contract = (roomContract ?? base.contract) as Player['contract'];
+            const salary = contract?.years?.[contract.currentYear] ?? base.salary;
+            const contractYears = contract?.years
+                ? contract.years.length - contract.currentYear
+                : base.contractYears;
             return {
                 ...base,
                 stats: { ...INITIAL_STATS(), ...(statsByPlayer[id] ?? {}) } as PlayerStats,
@@ -93,6 +115,9 @@ export function buildLeagueTeams(
                     ? [...(base.career_history ?? []), ...leagueSeasons]
                     : base.career_history,
                 injuryHistory: injuryHistory?.length ? (injuryHistory as any) : base.injuryHistory,
+                contract,
+                salary,
+                contractYears,
             };
         }).filter(Boolean) as Player[],
         oppZoneStats: oppZoneByTeam[lt.team_slug] ?? {},

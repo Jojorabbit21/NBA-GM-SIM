@@ -669,7 +669,8 @@ export const SIM_CONFIG = {
     // 스크린/롤이 가능한 SF가 실제 존재(존 디펜스 앵커 작업 때 확인한 신장 분포와 동일 근거).
     // C 0.7→0.5, PF 0.3 유지 — SF 추가분만큼 C 비중을 낮춰 합계 스케일 유지.
     POSITION_WEIGHT: {
-        POST_UP: { C: 1.0, PF: 0.85, SF: 0.7, SG: 0.55, PG: 0.5 } as Record<string, number>,
+        // [2026-09-15] POST_UP 제거 — PostUp은 이제 postScorer 순수 실력 경쟁(playTypes.ts 참고),
+        // PnR_Roll/PnR_Pop은 스크린을 설 수 있어야 한다는 물리적 전제가 있어 포지션 하드필터 유지.
         PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
     },
     // [2026-07-31] PostUp 킥아웃 — 더블팀 유도 후 오픈 슈터에게 패스할지 결정. postScorer와

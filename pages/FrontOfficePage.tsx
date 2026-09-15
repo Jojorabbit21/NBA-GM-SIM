@@ -204,8 +204,8 @@ const FrontOfficePage: React.FC = () => {
                     if (t.id !== gameData.myTeamId) return t;
                     if (exercised) {
                         return { ...t, roster: t.roster.map((p: Player) =>
-                            p.id === playerId && p.contract?.option
-                                ? { ...p, contract: { ...p.contract, option: undefined } }
+                            p.id === playerId && p.contract?.options?.length
+                                ? { ...p, contract: { ...p.contract, options: p.contract.options.filter(o => o.year !== p.contract!.currentYear) } }
                                 : p
                         )};
                     } else {

@@ -245,7 +245,7 @@ function calcContractValue(player: Player): number {
     }
 
     const controlYears   = remaining >= 1 && remaining <= 3 ? 0.5 : remaining > 3 ? 0.2 : 0.8;
-    const teamOptionBonus = player.contract?.option?.type === 'team' ? 0.1 : 0;
+    const teamOptionBonus = player.contract?.options?.some(o => o.type === 'team' && o.year === player.contract!.currentYear) ? 0.1 : 0;
 
     return clamp(
         0.50 * salaryEfficiency +

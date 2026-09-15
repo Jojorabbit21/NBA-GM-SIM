@@ -205,7 +205,7 @@ const TAG_LABEL: Record<string, string> = {
 
 // ── 테이블 데이터 헬퍼 ───────────────────────────────────────────────────────
 const DISPLAY_ONLY_CO_KEYS = new Set([
-    'contract', 'popularity', 'name', 'num', 'salary', 'lock', 'draft_year', 'draft_round', 'draft_pick',
+    'contract', 'contract_history', 'popularity', 'name', 'num', 'salary', 'lock', 'draft_year', 'draft_round', 'draft_pick',
 ]);
 
 type PlayerDataEntry = {
@@ -1369,10 +1369,30 @@ function sortBy(th) {
         setDraft(prev => {
             const years = [...(prev.contract?.years ?? [])];
             years.splice(idx, 1);
-            const contract = { ...(prev.contract ?? {}), years };
+            const yearSeasons = [...(prev.contract?.yearSeasons ?? [])];
+            if (idx < yearSeasons.length) yearSeasons.splice(idx, 1);
+            const options = reindexOptionsAfterRemove(prev.contract?.options, idx);
+            const contract = { ...(prev.contract ?? {}), years, yearSeasons, options };
             if ((contract.currentYear ?? 0) >= years.length)
                 contract.currentYear = Math.max(0, years.length - 1);
             return { ...prev, contract, salary: years[contract.currentYear ?? 0] ?? prev.salary };
+        });
+    }, []);
+
+    const setContractYearSeason = useCallback((idx: number, val: number) => {
+        setDraft(prev => {
+            const yearSeasons = [...(prev.contract?.yearSeasons ?? [])];
+            yearSeasons[idx] = val;
+            return { ...prev, contract: { ...(prev.contract ?? {}), yearSeasons } };
+        });
+    }, []);
+
+    // 연차별 옵션 — 같은 year를 가진 기존 항목을 제거하고, type이 있으면 새로 추가(연차당 1개).
+    const setContractYearOption = useCallback((idx: number, type: 'player' | 'team' | null) => {
+        setDraft(prev => {
+            const existing = ((prev.contract?.options ?? []) as { type: string; year: number }[]).filter(o => o.year !== idx);
+            const options = type ? [...existing, { type, year: idx }] : existing;
+            return { ...prev, contract: { ...(prev.contract ?? {}), options } };
         });
     }, []);
 
@@ -1436,12 +1456,43 @@ function sortBy(th) {
         setDraft(prev => {
             const years = [...(prev.custom_overrides?.contract?.years ?? [])];
             years.splice(idx, 1);
-            const coC = { ...(prev.custom_overrides?.contract ?? {}), years };
+            const yearSeasons = [...(prev.custom_overrides?.contract?.yearSeasons ?? [])];
+            if (idx < yearSeasons.length) yearSeasons.splice(idx, 1);
+            const options = reindexOptionsAfterRemove(prev.custom_overrides?.contract?.options, idx);
+            const coC = { ...(prev.custom_overrides?.contract ?? {}), years, yearSeasons, options };
             if ((coC.currentYear ?? 0) >= years.length)
                 coC.currentYear = Math.max(0, years.length - 1);
             return {
                 ...prev,
                 custom_overrides: { ...(prev.custom_overrides ?? {}), contract: coC },
+            };
+        });
+    }, []);
+
+    const setCoContractYearSeason = useCallback((idx: number, val: number) => {
+        setDraft(prev => {
+            const yearSeasons = [...(prev.custom_overrides?.contract?.yearSeasons ?? [])];
+            yearSeasons[idx] = val;
+            return {
+                ...prev,
+                custom_overrides: {
+                    ...(prev.custom_overrides ?? {}),
+                    contract: { ...(prev.custom_overrides?.contract ?? {}), yearSeasons },
+                },
+            };
+        });
+    }, []);
+
+    const setCoContractYearOption = useCallback((idx: number, type: 'player' | 'team' | null) => {
+        setDraft(prev => {
+            const existing = ((prev.custom_overrides?.contract?.options ?? []) as { type: string; year: number }[]).filter(o => o.year !== idx);
+            const options = type ? [...existing, { type, year: idx }] : existing;
+            return {
+                ...prev,
+                custom_overrides: {
+                    ...(prev.custom_overrides ?? {}),
+                    contract: { ...(prev.custom_overrides?.contract ?? {}), options },
+                },
             };
         });
     }, []);
@@ -1454,6 +1505,88 @@ function sortBy(th) {
                 contract: { ...(prev.custom_overrides?.contract ?? {}), [key]: val },
             },
         }));
+    }, []);
+
+    // ── 계약 이력 (contract_history: 과거에 체결했던 계약 묶음들, 현재 contract와 별개) ────
+    const addContractHistoryEntry = useCallback(() => {
+        setDraft(prev => ({
+            ...prev,
+            contract_history: [
+                ...(prev.contract_history ?? []),
+                { years: [0], yearSeasons: [], currentYear: 0, type: 'veteran' },
+            ],
+        }));
+    }, []);
+
+    const removeContractHistoryEntry = useCallback((entryIdx: number) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            history.splice(entryIdx, 1);
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const setContractHistoryField = useCallback((entryIdx: number, key: string, val: any) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            history[entryIdx] = { ...(history[entryIdx] ?? {}), [key]: val };
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const setContractHistoryYear = useCallback((entryIdx: number, yearIdx: number, raw: string) => {
+        const num = Number(raw.replace(/,/g, ''));
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            const years = [...(history[entryIdx]?.years ?? [])];
+            years[yearIdx] = isNaN(num) ? 0 : num;
+            history[entryIdx] = { ...(history[entryIdx] ?? {}), years };
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const setContractHistoryYearSeason = useCallback((entryIdx: number, yearIdx: number, val: number) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            const yearSeasons = [...(history[entryIdx]?.yearSeasons ?? [])];
+            yearSeasons[yearIdx] = val;
+            history[entryIdx] = { ...(history[entryIdx] ?? {}), yearSeasons };
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const setContractHistoryYearOption = useCallback((entryIdx: number, yearIdx: number, type: 'player' | 'team' | null) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            const existing = ((history[entryIdx]?.options ?? []) as { type: string; year: number }[]).filter(o => o.year !== yearIdx);
+            const options = type ? [...existing, { type, year: yearIdx }] : existing;
+            history[entryIdx] = { ...(history[entryIdx] ?? {}), options };
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const addContractHistoryYear = useCallback((entryIdx: number) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            const years = [...(history[entryIdx]?.years ?? []), 0];
+            history[entryIdx] = { ...(history[entryIdx] ?? {}), years };
+            return { ...prev, contract_history: history };
+        });
+    }, []);
+
+    const removeContractHistoryYear = useCallback((entryIdx: number, yearIdx: number) => {
+        setDraft(prev => {
+            const history = [...(prev.contract_history ?? [])];
+            const years = [...(history[entryIdx]?.years ?? [])];
+            years.splice(yearIdx, 1);
+            const yearSeasons = [...(history[entryIdx]?.yearSeasons ?? [])];
+            if (yearIdx < yearSeasons.length) yearSeasons.splice(yearIdx, 1);
+            const options = reindexOptionsAfterRemove(history[entryIdx]?.options, yearIdx);
+            const entry = { ...(history[entryIdx] ?? {}), years, yearSeasons, options };
+            if ((entry.currentYear ?? 0) >= years.length) entry.currentYear = Math.max(0, years.length - 1);
+            history[entryIdx] = entry;
+            return { ...prev, contract_history: history };
+        });
     }, []);
 
     // ── CO stat 필드 ───────────────────────────────────────────────────────
@@ -2963,11 +3096,12 @@ function sortBy(th) {
                                 contract={draft.contract ?? {}}
                                 salary={draft.salary}
                                 onSetContractYear={setContractYear}
+                                onSetYearSeason={setContractYearSeason}
+                                onSetYearOption={setContractYearOption}
                                 onAddYear={addContractYear}
                                 onRemoveYear={removeContractYear}
                                 onSetContractField={setContractField}
                                 onSetSalary={v => setField('salary', v)}
-                                startYear={2026 - ((draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
                         <Section label="CO 계약">
@@ -2985,13 +3119,47 @@ function sortBy(th) {
                                 contract={draft.custom_overrides?.contract ?? {}}
                                 salary={draft.custom_overrides?.salary}
                                 onSetContractYear={setCoContractYear}
+                                onSetYearSeason={setCoContractYearSeason}
+                                onSetYearOption={setCoContractYearOption}
                                 onAddYear={addCoContractYear}
                                 onRemoveYear={removeCoContractYear}
                                 onSetContractField={setCoContractField}
                                 onSetSalary={v => setCoField('salary', v)}
-                                startYear={2026 - ((draft.custom_overrides?.contract?.currentYear) ?? (draft.contract?.currentYear) ?? 0)}
                             />
                         </Section>
+
+                        {/* Row 2: 계약 이력 (과거에 체결했던 계약 묶음들 — 현재 contract와 별개) */}
+                        <div className="col-span-2">
+                            <Section label="계약 이력 (과거 계약 묶음)">
+                                <div className="space-y-4">
+                                    {(draft.contract_history ?? []).map((entry: Record<string, any>, entryIdx: number) => (
+                                        <div key={entryIdx} className="relative rounded-xl ring-1 ring-white/10 p-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-xs text-gray-500">계약 #{entryIdx + 1}</span>
+                                                <button
+                                                    onClick={() => removeContractHistoryEntry(entryIdx)}
+                                                    className="text-xs text-red-500 hover:text-red-400 border border-red-900 rounded px-2 py-0.5"
+                                                >
+                                                    이 계약 삭제
+                                                </button>
+                                            </div>
+                                            <ContractForm
+                                                contract={entry}
+                                                onSetContractYear={(idx, val) => setContractHistoryYear(entryIdx, idx, val)}
+                                                onSetYearSeason={(idx, val) => setContractHistoryYearSeason(entryIdx, idx, val)}
+                                                onSetYearOption={(idx, type) => setContractHistoryYearOption(entryIdx, idx, type)}
+                                                onAddYear={() => addContractHistoryYear(entryIdx)}
+                                                onRemoveYear={idx => removeContractHistoryYear(entryIdx, idx)}
+                                                onSetContractField={(key, val) => setContractHistoryField(entryIdx, key, val)}
+                                            />
+                                        </div>
+                                    ))}
+                                    <button onClick={addContractHistoryEntry} className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+                                        + 과거 계약 추가
+                                    </button>
+                                </div>
+                            </Section>
+                        </div>
 
                         {/* Row 3: 인사이드 | 아웃사이드 */}
                         {renderStatSection(STAT_SECTIONS[0])}
@@ -3770,28 +3938,41 @@ function formatSalary(n: number | undefined): string {
     return n.toLocaleString('en-US');
 }
 
+/** years[removedIdx] 삭제 시 options[] 재정렬 — removedIdx의 옵션은 제거, 그 뒤 연차의
+ *  옵션은 year를 1씩 당긴다(연차 인덱스가 한 칸씩 밀리므로). */
+function reindexOptionsAfterRemove(
+    options: { type: 'player' | 'team'; year: number }[] | undefined,
+    removedIdx: number,
+): { type: 'player' | 'team'; year: number }[] {
+    return (options ?? [])
+        .filter(o => o.year !== removedIdx)
+        .map(o => (o.year > removedIdx ? { ...o, year: o.year - 1 } : o));
+}
+
 // ── 계약 폼 (Base / CO 공용) ───────────────────────────────────────────────────
 interface ContractFormProps {
     contract: Record<string, any>;
-    salary: number | undefined;
+    salary?: number;
     onSetContractYear: (idx: number, val: string) => void;
+    onSetYearSeason: (idx: number, val: number) => void;
+    onSetYearOption: (idx: number, type: 'player' | 'team' | null) => void;
     onAddYear: () => void;
     onRemoveYear: (idx: number) => void;
     onSetContractField: (key: string, val: any) => void;
-    onSetSalary: (val: string) => void;
-    startYear: number;
+    onSetSalary?: (val: string) => void;
 }
 
 const ContractForm: React.FC<ContractFormProps> = ({
     contract, salary,
-    onSetContractYear, onAddYear, onRemoveYear, onSetContractField, onSetSalary,
-    startYear,
+    onSetContractYear, onSetYearSeason, onSetYearOption, onAddYear, onRemoveYear, onSetContractField, onSetSalary,
 }) => {
     const years: number[] = contract.years ?? [];
+    const yearSeasons: number[] = contract.yearSeasons ?? [];
     const currentYear: number = contract.currentYear ?? 0;
     const contractType: string = contract.type ?? 'veteran';
     const noTrade: boolean = !!contract.noTrade;
-    const option = contract.option ?? null;
+    // 연차별 옵션 — options[]에서 연차(year)로 조회. 연차당 최대 1개(팀/플레이어 중 하나).
+    const options: { type: 'player' | 'team'; year: number }[] = contract.options ?? [];
 
     const inputCls = 'w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors';
 
@@ -3809,40 +3990,21 @@ const ContractForm: React.FC<ContractFormProps> = ({
                                 </select>
                             </td>
                         </tr>
-                        <tr className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">현재 시즌</td>
-                            <td className="px-3 py-2.5">
-                                <div className="flex items-center gap-2">
-                                    <input type="number" min={0} max={Math.max(0, years.length - 1)}
-                                        className="w-12 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
-                                        value={currentYear} onChange={e => onSetContractField('currentYear', Number(e.target.value))} />
-                                    <span className="text-sm text-gray-600">(0부터)</span>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400">옵션</td>
-                            <td className="px-3 py-2.5">
-                                <div className="flex items-center gap-3">
-                                    <select className="bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
-                                        value={option?.type ?? 'none'}
-                                        onChange={e => { const v = e.target.value; onSetContractField('option', v === 'none' ? undefined : { ...option, type: v }); }}>
-                                        <option value="none">없음</option>
-                                        <option value="player">Player Option</option>
-                                        <option value="team">Team Option</option>
-                                    </select>
-                                    {option && (
-                                        <>
-                                            <span className="text-sm text-gray-500">년도</span>
-                                            <input type="number" min={0} max={Math.max(0, years.length - 1)}
-                                                className="w-10 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
-                                                value={option.year ?? 0} onChange={e => onSetContractField('option', { ...option, year: Number(e.target.value) })} />
-                                            <span className="text-sm text-gray-600">(인덱스)</span>
-                                        </>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
+                        {/* 과거 계약 묶음(계약 이력)엔 "현재" 개념이 없음 — onSetSalary 없는
+                            호출부(계약 이력)에서는 이 행 자체를 숨긴다 */}
+                        {onSetSalary && (
+                            <tr className="hover:bg-white/5 transition-colors">
+                                <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">현재 시즌</td>
+                                <td className="px-3 py-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <input type="number" min={0} max={Math.max(0, years.length - 1)}
+                                            className="w-12 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                            value={currentYear} onChange={e => onSetContractField('currentYear', Number(e.target.value))} />
+                                        <span className="text-sm text-gray-600">(0부터)</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
                         <tr className="hover:bg-white/5 transition-colors">
                             <td className="py-3 pl-4 pr-3 text-sm text-gray-400">NTC</td>
                             <td className="px-3 py-2.5">
@@ -3867,13 +4029,14 @@ const ContractForm: React.FC<ContractFormProps> = ({
                             <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400 w-16">시즌</th>
                             <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400">연봉</th>
                             <th scope="col" className="py-3 pl-3 pr-4 text-right text-xs font-semibold text-gray-400 w-14">$M</th>
+                            <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-400 w-24">옵션</th>
                             <th scope="col" className="py-3 pr-4 w-8"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                         {years.map((sal, idx) => {
-                            const isCurrent = idx === currentYear;
-                            const isOpt = option && option.year === idx;
+                            const isCurrent = !!onSetSalary && idx === currentYear;
+                            const yearOption = options.find(o => o.year === idx) ?? null;
                             return (
                                 <tr key={idx} className={`hover:bg-white/5 transition-colors ${isCurrent ? 'bg-indigo-950/30' : ''}`}>
                                     <td className="py-3 pl-4 pr-3">
@@ -3882,8 +4045,11 @@ const ContractForm: React.FC<ContractFormProps> = ({
                                         </span>
                                     </td>
                                     <td className="px-3 py-3 text-sm text-gray-400 whitespace-nowrap">
-                                        {startYear + idx}–{(startYear + idx + 1).toString().slice(2)}
-                                        {isOpt && <span className="ml-1 text-amber-400 text-xs">[{option.type === 'player' ? 'PO' : 'TO'}]</span>}
+                                        <input type="number"
+                                            className="w-16 bg-white/5 rounded px-1.5 py-0.5 text-sm text-gray-300 text-center ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                                            value={yearSeasons[idx] ?? ''}
+                                            placeholder={idx > 0 && yearSeasons[idx - 1] ? String(yearSeasons[idx - 1] + 1) : ''}
+                                            onChange={e => onSetYearSeason(idx, Number(e.target.value))} />
                                     </td>
                                     <td className="px-3 py-2.5">
                                         <input type="text"
@@ -3892,6 +4058,22 @@ const ContractForm: React.FC<ContractFormProps> = ({
                                     </td>
                                     <td className="py-3 pl-3 pr-4 text-sm font-mono text-gray-500 text-right whitespace-nowrap">
                                         {sal ? `$${(sal / 1_000_000).toFixed(1)}M` : '—'}
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                        <div className="flex items-center gap-2.5">
+                                            <label className="flex items-center gap-1 cursor-pointer" title="Team Option">
+                                                <input type="checkbox" className="accent-amber-500"
+                                                    checked={yearOption?.type === 'team'}
+                                                    onChange={e => onSetYearOption(idx, e.target.checked ? 'team' : null)} />
+                                                <span className="text-[10px] text-gray-500">TO</span>
+                                            </label>
+                                            <label className="flex items-center gap-1 cursor-pointer" title="Player Option">
+                                                <input type="checkbox" className="accent-amber-500"
+                                                    checked={yearOption?.type === 'player'}
+                                                    onChange={e => onSetYearOption(idx, e.target.checked ? 'player' : null)} />
+                                                <span className="text-[10px] text-gray-500">PO</span>
+                                            </label>
+                                        </div>
                                     </td>
                                     <td className="py-3 pr-4 text-center">
                                         <button onClick={() => onRemoveYear(idx)} className="text-gray-700 hover:text-red-400 text-xs transition-colors">✕</button>
@@ -3902,10 +4084,12 @@ const ContractForm: React.FC<ContractFormProps> = ({
                     </tbody>
                     <tfoot className="bg-white/5">
                         <tr>
-                            <td colSpan={5} className="py-2.5 pl-4 pr-4">
+                            <td colSpan={6} className="py-2.5 pl-4 pr-4">
                                 <div className="flex items-center gap-4">
                                     <button onClick={onAddYear} className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">+ 년도 추가</button>
-                                    <span className="text-sm text-gray-600">총 {years.length}년 · 잔여 {years.length - currentYear}년</span>
+                                    <span className="text-sm text-gray-600">
+                                        총 {years.length}년{onSetSalary && ` · 잔여 ${years.length - currentYear}년`}
+                                    </span>
                                 </div>
                             </td>
                         </tr>
@@ -3913,14 +4097,16 @@ const ContractForm: React.FC<ContractFormProps> = ({
                 </table>
             </div>
 
-            {/* 루트 salary */}
-            <div className="flex items-center gap-3 px-1">
-                <span className="text-sm text-gray-400 shrink-0">salary (루트)</span>
-                <input type="text"
-                    className="w-36 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-right ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
-                    value={formatSalary(salary)} onChange={e => onSetSalary(e.target.value.replace(/,/g, ''))} />
-                <span className="text-sm text-gray-600">Y{currentYear + 1}과 동기화</span>
-            </div>
+            {/* 루트 salary — 현재 계약(Base/CO)에서만 존재, 과거 계약 묶음(계약 이력)에는 없음 */}
+            {onSetSalary && (
+                <div className="flex items-center gap-3 px-1">
+                    <span className="text-sm text-gray-400 shrink-0">salary (루트)</span>
+                    <input type="text"
+                        className="w-36 bg-white/5 rounded px-2 py-0.5 text-sm text-white text-right ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors"
+                        value={formatSalary(salary)} onChange={e => onSetSalary(e.target.value.replace(/,/g, ''))} />
+                    <span className="text-sm text-gray-600">Y{currentYear + 1}과 동기화</span>
+                </div>
+            )}
         </div>
     );
 };

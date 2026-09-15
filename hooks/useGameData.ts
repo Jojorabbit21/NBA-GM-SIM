@@ -484,9 +484,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         loadedTeams = loadedTeams!.map(t => ({
                             ...t,
                             roster: t.roster.map(p => {
-                                if (p.contract?.option?.type === 'team' &&
-                                    p.contract.option.year === p.contract.currentYear) {
-                                    return { ...p, contract: { ...p.contract, option: undefined } };
+                                const cur = p.contract?.currentYear;
+                                if (p.contract?.options?.some(o => o.type === 'team' && o.year === cur)) {
+                                    return { ...p, contract: { ...p.contract, options: p.contract.options.filter(o => o.year !== cur) } };
                                 }
                                 return p;
                             }),
@@ -912,7 +912,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
                             const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
                             const hasAwards = p.awards && p.awards.length > 0;
-                            const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.option || p.contract.type === 'extension');
+                            const hasContract = p.contract && (p.contract.currentYear > 0 || p.contract.noTrade || p.contract.options?.length || p.contract.type === 'extension');
                             const hasArchetypeState = !!p.archetypeState;
                             const hasPopularity = !!p.popularity;
                             const hasMorale = !!p.morale;

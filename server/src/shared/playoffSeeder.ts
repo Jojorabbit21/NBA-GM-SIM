@@ -24,6 +24,13 @@ import { supabase } from '../supabaseAdmin';
 import { initializeTournamentBracket, type LeagueTeamRow } from './tournamentInitializer';
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
+import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
+
+/** "2026-27" 형태 — MultiHeader.tsx의 seasonShortFromDate와 동일 규칙(가상 시즌 시작 연도 기준). */
+export function seasonLabelFor(virtualSeasonYear: number | null | undefined): string {
+    const y = virtualSeasonYear ?? new Date().getFullYear();
+    return `${y}-${String(y + 1).slice(2)}`;
+}
 
 export interface StandingRow {
     team_slug: string;
@@ -138,6 +145,35 @@ export function addDaysStr(dateStr: string, days: number): string {
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
+/** [2026-09-15] "플레이오프 대진 확정" 서신 — qualified 배열에 'TBD'가 하나라도 남아있으면
+ * (플레이인 결과를 기다리는 시드) 아직 확정이 아니므로 null을 반환해 호출부가 발행을
+ * 건너뛰게 한다. bySlug는 team_name 조회용(buildAndStoreConferenceBracket이 이미 갖고 있는
+ * league_teams 맵을 그대로 재사용 — 별도 쿼리 없음). virtualDate는 이 대진이 확정된 가상
+ * 캘린더 날짜(뉴스피드 sim_date 필터/정렬용) — 호출부가 이미 계산해둔 값(virtualStartDate/
+ * round1VirtualDate)을 그대로 넘긴다. */
+export function buildBracketConfirmedEvent(
+    virtualSeasonYear: number | null, virtualDate: string,
+    eastQualified: StandingRow[], westQualified: StandingRow[],
+    bySlug: Map<string, any>,
+): PendingLeagueEvent | null {
+    if (eastQualified.some(s => s.team_slug === 'TBD') || westQualified.some(s => s.team_slug === 'TBD')) return null;
+    if (eastQualified.length === 0 && westQualified.length === 0) return null;
+    const seedRows = (group: StandingRow[]) => group.map((s, i) => ({
+        seed: i + 1, teamSlug: s.team_slug, teamName: bySlug.get(s.team_slug)?.team_name ?? s.team_slug,
+    }));
+    const seasonLabel = seasonLabelFor(virtualSeasonYear);
+    return {
+        type: 'playoff_bracket_confirmed',
+        simDate: virtualDate,
+        teamIds: [...eastQualified, ...westQualified].map(s => s.team_slug),
+        payload: {
+            headline: `${seasonLabel}시즌 플레이오프 대진 확정`,
+            seasonLabel,
+            east: seedRows(eastQualified), west: seedRows(westQualified),
+        },
+    };
+}
+
 /**
  * qualified 팀(컨퍼런스당 N팀, 이미 순위순 정렬됨) 두 그룹을 East+West로 합쳐 브라켓을 생성해
  * leagues.bracket_data에 저장한다. startPlayoffs(플레이인 없음)와 playInSeeder.ts(플레이인
@@ -164,7 +200,7 @@ export async function buildAndStoreConferenceBracket(
     // 플레이인 없이 곧장 본선을 만드는 startPlayoffs()는 기본값(1일 뒤)을 그대로 쓴다.
     daysOffset: number = 1,
     persist: boolean = true,
-): Promise<{ tournamentStartAt: string; simRealStartAt: string } | null> {
+): Promise<{ tournamentStartAt: string; simRealStartAt: string; pendingEvents: PendingLeagueEvent[] } | null> {
     if (eastQualified.length < 1 && westQualified.length < 1) {
         console.warn(`[playoffSeeder] league=${league.id} — 진출팀 없음(E=${eastQualified.length}, W=${westQualified.length}), skip`);
         return null;
@@ -243,8 +279,19 @@ export async function buildAndStoreConferenceBracket(
             .eq('id', league.id);
     }
 
+    // [2026-09-15] "플레이오프 대진 확정" 서신 — eastQualified/westQualified에 TBD가 남아있으면
+    // (플레이인 결과를 기다리는 시드) buildBracketConfirmedEvent가 null을 반환해 자동으로
+    // 스킵된다(startPlayIn()이 이 함수를 처음 호출할 때가 바로 이 경우). persist=true(CAS 재시도
+    // 루프 밖에서 호출된 경우, 즉 startPlayoffs()/handlePlayInAdvance 레거시 경로)면 여기서 바로
+    // 발행해도 안전 — 이 두 경로는 리그당 정확히 한 번만 실행되고 재시도되지 않는다.
+    const bracketEvent = buildBracketConfirmedEvent(league.virtual_season_year, virtualStartDate, eastQualified, westQualified, bySlug);
+    const pendingEvents: PendingLeagueEvent[] = bracketEvent ? [bracketEvent] : [];
+    if (persist && bracketEvent) {
+        await insertLeagueEvent({ roomId, leagueId: league.id, ...bracketEvent });
+    }
+
     console.log(`[playoffSeeder] league=${league.id} — playoffs started (E=${eastQualified.length} W=${westQualified.length}, ${seededTeams.length} teams, ${result.schedule.length} games)`);
-    return { tournamentStartAt, simRealStartAt: playoffStartIso };
+    return { tournamentStartAt, simRealStartAt: playoffStartIso, pendingEvents };
 }
 
 /** 플레이인 없이 정규시즌 종료 즉시 컨퍼런스별 top-N으로 브라켓 생성. */

@@ -121,7 +121,7 @@ export function getExtensionCandidates(myTeam: Team): Player[] {
     return myTeam.roster.filter(p => {
         if ((p.contractYears ?? 0) > 2) return false;
         if ((p.contractYears ?? 0) < 1) return false;
-        if (p.contract?.option?.type === 'player') return false;
+        if (p.contract?.options?.some(o => o.type === 'player' && o.year >= (p.contract?.currentYear ?? 0))) return false;
         // Season-Ending 부상 제외
         if (p.health === 'Injured') {
             const recentSE = p.injuryHistory?.some(h => isSeasonEndingGrade(h.severity));
@@ -644,7 +644,7 @@ export function buildExtensionContract(
         currentYear: 0,
         type: 'extension',
     };
-    if (option)                         contract.option      = option;
+    if (option)                         contract.options     = [option];
     if (noTrade)                        contract.noTrade     = true;
     if (tradeKicker && tradeKicker > 0) contract.tradeKicker = tradeKicker;
     return contract;
